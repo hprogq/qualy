@@ -1,0 +1,17 @@
+# Where this project wants its environment mounted.
+#
+# 1Password's agent hook reads this to decide which paths in the working tree
+# it serves. The file is the project's half of that contract and nothing more:
+# WHICH environment, whose account and which vault are the developer's, held
+# on the developer's machine, and none of it belongs in a repository.
+#
+# One path, because the repository has one. `.env` is already what every
+# command here reads - `pnpm dev`, `pnpm start`, the CLI, `docker compose` -
+# so a mounted environment needs no second interface and the product keeps
+# consuming plain environment variables either way. Nothing in this repository
+# depends on 1Password, links against it, or knows whether it is running.
+#
+# What is mounted is a pipe rather than a file, which changes one thing worth
+# knowing: it is read ONCE, as a session starts, and a changed variable takes
+# a `pnpm dev` restart. See docs/notes/mounted-env.md.
+mount_paths = [".env"]

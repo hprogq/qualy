@@ -957,7 +957,7 @@ Dev Service 允许：
 
 - `qualy.yml`；
 - Assembly lock；
-- `.env`；
+- ~~`.env`~~（见 §25 修订：环境在 session 启动时读一次，`.env` 不再被监视）；
 - plugin descriptor entry；
 - workspace/package metadata；
 - plugin shared declaration/config code；
@@ -1193,7 +1193,7 @@ Host 仍必须 watch：
 
 至少维护：
 
-- `.env`；
+- ~~`.env`~~（见 §25 修订）；
 - effective `QUALY_CONFIG` path；
 - lock path；
 - package metadata；
@@ -1249,6 +1249,14 @@ node_modules/.modules.yaml
 
 # 25. Environment Snapshot
 
+> **2026-09-16 修订(实现已偏离本节两处)**：快照仍然是本节说的那一份，但它在
+> **session 启动时读一次就冻结**，`.env` 也**不再进 watch plan**——因此下文
+> 「`.env` 改动触发新 session staging」不再成立，改环境变量要重启 `pnpm dev`。
+> 理由是 `.env` 可能是密钥管理器挂载的**命名管道**：每次 open 拿的是 writer 的
+> 新一轮，writer 不在时 open 会**无限阻塞且不报错**——实测把旧行为放回去以后，
+> 一次后端重载直接把 supervisor 挂死，终端上一个字都没有。事实与实验见
+> docs/notes/mounted-env.md，读取点是 `apps/server/src/dev/env.ts`。
+
 当前 root `pnpm dev` 不应再使用：
 
 ```text
@@ -1283,7 +1291,7 @@ other Dev Services
 spawn(..., { env: snapshot })
 ```
 
-`.env` 改动触发新 session staging。
+~~`.env` 改动触发新 session staging。~~（见本节开头的 2026-09-16 修订）
 
 使用 Node 24 自己的 env-file parsing 规则，不重新发明 dotenv 语义。
 
@@ -2431,7 +2439,8 @@ Watcher V1 采用 conservative roots。
 
 38. `.env` change：
 
-- 同一 candidate session children拿同一个env snapshot。
+- 同一 candidate session children拿同一个env snapshot；
+- 见 §25 修订：session 期间不再重读，改了要重启 `pnpm dev`。
 
 39. `PORT`非法：
 

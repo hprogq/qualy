@@ -1,8 +1,6 @@
 import { createConnection } from 'node:net'
-import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parseEnv } from 'node:util'
 import type { FSWatcher } from 'chokidar'
 import type { DevServiceSpec } from '@qualy/plugin-kit/dev'
 import { readManifest } from '@qualy/assembly'
@@ -22,6 +20,7 @@ import {
   type Child,
   type Prepared,
 } from './child.ts'
+import { developmentEnv } from './env.ts'
 import { merge, watch, watchTargets, type Action, type WatchPlan } from './watch.ts'
 
 // The process `pnpm dev` is (docs/runtime-redesign.md §45, §46).
@@ -57,29 +56,6 @@ const repoRoot = path.resolve(fileURLToPath(new URL('.', import.meta.url)), '../
 const logging = resolveLogging(readManifest(manifestPath()).logging, process.env, 'development')
 const say = (line: string, level: 'Info' | 'Warn' | 'Error' = 'Info') =>
   logLine(logging, level, line, { source: 'dev' })
-
-/**
- * One environment for every child of this session.
- *
- * Read here rather than inherited, because this process outlives many
- * children: started with `--env-file`, its own `process.env` would hold the
- * `.env` of whenever it happened to start, and every later child would get
- * that instead of what is on disk. The shell wins over the file, which is
- * what anyone typing a variable in front of a command expects.
- */
-const childEnv = (manifest: string): NodeJS.ProcessEnv => {
-  const file = path.join(repoRoot, '.env')
-  const declared = fs.existsSync(file) ? parseEnv(fs.readFileSync(file, 'utf8')) : {}
-  return {
-    ...declared,
-    ...process.env,
-    NODE_ENV: 'development',
-    QUALY_DEV_SUPERVISED: '1',
-    // every child reads one manifest: a browser bundle built from a different
-    // selection than the api answering it is a mismatch neither half notices
-    QUALY_CONFIG: manifest,
-  }
-}
 
 /**
  * Where the backend answers, read from the SAME environment the children get.
@@ -133,19 +109,23 @@ let stopping = false
 let watcher: FSWatcher | null = null
 
 const manifest = manifestPath()
-// Re-read when a world is staged rather than once at startup: `.env` is
-// watched, a change to it asks for a session, and a session that rebuilt
-// everything while still handing out the values read minutes ago would apply
-// nothing - the one edit the reload exists for.
-let env = childEnv(manifest)
-let origin = originOf(env)
+// The session's environment, fixed here: every backend, every development
+// service and every reload of either inherits this one reading of `.env`.
+const env = developmentEnv({
+  envFile: path.join(repoRoot, '.env'),
+  manifest,
+  notice: (message) => say(message),
+})
+const origin = originOf(env)
 
 const plan = (): WatchPlan => ({
   bootstrap: [
     manifest,
     `${manifest.slice(0, -path.extname(manifest).length)}.lock.json`,
     path.join(repoRoot, 'qualy.lock.json'),
-    path.join(repoRoot, '.env'),
+    // `.env` is deliberately absent: it is read once and the session is that
+    // reading, so an event here could only rebuild everything around values
+    // nobody would re-read
     path.join(repoRoot, 'package.json'),
     path.join(repoRoot, 'pnpm-lock.yaml'),
     path.join(repoRoot, 'pnpm-workspace.yaml'),
@@ -315,8 +295,6 @@ const resyncWatcher = async (): Promise<void> => {
 
 /** a backend and, if asked, the services its own topology declares */
 const stageWorld = async (kind: 'backend' | 'session'): Promise<void> => {
-  env = childEnv(manifest)
-  origin = originOf(env)
   const backend = watchExit(forkBackend(env))
   candidate = { backend, services: new Map(), committed: false }
   let prepared: Prepared

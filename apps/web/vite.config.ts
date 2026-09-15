@@ -14,6 +14,18 @@ const stylexUnplugin =
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url))
 
 export default defineConfig(({ mode }) => ({
+  // This build reads no `.env`, and says so.
+  //
+  // Nothing here uses `import.meta.env` beyond the four Vite defines itself -
+  // the shell's configuration arrives from the server at runtime, not baked
+  // into a bundle - so there is nothing for an env file to supply. Saying
+  // `false` rather than leaving the default also takes those paths out of the
+  // dev server's watch list: Vite watches every file `envDir` would name and
+  // RESTARTS itself when one changes, and `.env` in this repository can be a
+  // pipe a secret manager mounts. A restart loop around a pipe is not a thing
+  // to leave to a default nobody has read.
+  envDir: false,
+
   // StyleX must transform the file before the React plugin sees it; Tailwind
   // stays until the last migration phase (docs/ui-platform-migration-mantine.md)
   plugins: [

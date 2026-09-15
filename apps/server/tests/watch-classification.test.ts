@@ -25,7 +25,7 @@ const web: DevServiceSpec = {
 }
 
 const plan: WatchPlan = {
-  bootstrap: [path.join(repoRoot, 'qualy.yml'), path.join(repoRoot, '.env')],
+  bootstrap: [path.join(repoRoot, 'qualy.yml')],
   roots: [
     { id: '@qualy/plugin-web', root: '/repo/packages/plugins/infra/web', linked: true },
     { id: '@qualy/plugin-auth', root: '/repo/packages/plugins/base/auth', linked: true },
@@ -67,7 +67,16 @@ describe('what a saved file asks for', () => {
     expect(asked('/repo/packages/core/plugin-kit/src/dev.ts')).toBe('session')
     // the assembly's own inputs
     expect(asked('/repo/qualy.yml')).toBe('session')
-    expect(asked('/repo/.env')).toBe('session')
+  })
+
+  it('asks for nothing when `.env` changes, because nobody would re-read it', () => {
+    // A session is one reading of `.env`: the supervisor takes it at startup
+    // and every child inherits that, because what may be mounted there is a
+    // pipe whose next open is a different question and may be no answer at
+    // all. So it is neither watched nor acted on, and a changed variable
+    // takes a new `pnpm dev`.
+    expect(watchTargets(plan)).not.toContain(path.join(repoRoot, '.env'))
+    expect(asked('/repo/.env')).toBeNull()
   })
 
   it('will not pretend to replace the supervisor itself', () => {
