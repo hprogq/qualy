@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { transform } from 'lightningcss'
 import { lockPathFor, readLock } from '@qualy/assembly'
 import { manifestPath, repoRoot } from '../lib/manifest.ts'
 import { readCurrentWebRelease, storeAt } from '../../packages/build/web/src/release-store.ts'
@@ -103,6 +104,59 @@ if (leaked.length > 0) {
   fail(
     `release ${releaseId} serves the private release vocabulary: ${leaked.slice(0, 5).join(', ')}`,
   )
+}
+
+// The css a viewer is served is built css.
+//
+// Two things went wrong here at once and neither was visible from inside the
+// build. The compiled StyleX rules are appended to one stylesheet in
+// `generateBundle`, which is AFTER Vite has minified what it produced - so
+// ninety-nine kilobytes of pretty-printed css went out on the end of a
+// minified file, and the only way anyone noticed was opening the url and
+// reading it. And the plugin finds that stylesheet BY NAME, so the day the
+// public file names became opaque it stopped finding one and fell through to
+// "the first css asset in the bundle", which was the right one by luck: on
+// another day it is the lazy stylesheet of a page nobody has opened, and the
+// shell comes up unstyled.
+//
+// So both are asked of the artifact. Re-minifying is the honest way to ask
+// the first - not "does it look minified", but "is there anything left to
+// take out" - and a couple of percent is the noise between two minifiers
+// rather than a pipeline leaving work undone.
+const RE_MINIFY_TOLERANCE = 0.02
+{
+  const shell = fs.readFileSync(path.join(root, 'index.html'), 'utf8')
+  const linked = [...shell.matchAll(/href="\/?(assets\/[^"]+\.css)"/g)].map((one) => one[1]!)
+  // whitespace-tolerant on purpose: a stylesheet that went out unminified is
+  // a different fault with a different answer below, and a detector that
+  // could not see one would report it as the missing-stylesheet fault instead
+  const styled = (body: string) =>
+    /@layer priority\d/.test(body) && /\.x[a-z0-9]{6,}\s*\{/.test(body)
+
+  const cssAssets = release.assets.filter((asset) => asset.endsWith('.css'))
+  const carrying = cssAssets.filter((asset) =>
+    styled(fs.readFileSync(path.join(store.root, asset), 'utf8')),
+  )
+  if (carrying.length !== 1) {
+    fail(
+      `${String(carrying.length)} stylesheet(s) carry the compiled style rules, expected exactly 1`,
+    )
+  } else if (!linked.includes(carrying[0]!)) {
+    fail(
+      `the shell links ${linked.join(', ') || 'no stylesheet'}, but the style rules are in ${carrying[0]!}`,
+    )
+  }
+
+  const unminified: string[] = []
+  for (const asset of cssAssets) {
+    const source = fs.readFileSync(path.join(store.root, asset))
+    const { code } = transform({ filename: path.basename(asset), code: source, minify: true })
+    const left = (source.length - code.length) / source.length
+    if (left > RE_MINIFY_TOLERANCE) {
+      unminified.push(`${asset} is ${(left * 100).toFixed(1)}% larger than it needs to be`)
+    }
+  }
+  if (unminified.length > 0) fail(`the release serves unminified css: ${unminified.join(', ')}`)
 }
 
 const lock = readLock(lockPathFor(manifestPath()))

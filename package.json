@@ -38,6 +38,7 @@
     "@vitejs/plugin-react": "catalog:",
     "@vitest/browser-playwright": "catalog:",
     "effect": "catalog:",
+    "lightningcss": "catalog:",
     "pg": "catalog:",
     "playwright": "catalog:",
     "prettier": "catalog:",

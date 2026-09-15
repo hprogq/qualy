@@ -15490,3 +15490,59 @@ scope 不是。
 
 **门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm test` 238 passed | 3 skipped (241),
 Tests 1709 passed | 17 skipped (1726);`pnpm test:browser` 52 / 379;`pnpm test:browser:webkit` 2 / 14。
+
+## 打包出来的 CSS:后半截没压,而且注入目标是我上一节弄坏的(2026-09-15)
+
+用户直接打开 `localhost:3000/assets/a-Cin1SrVR.css` 看源码,发现**上半压缩、下半没压**。核实属实:
+
+```text
+第 1 行     268,610 字节   ← Vite 压过的
+第 2 行起    98,741 字节 / 6,870 行   ← StyleX 的,pretty-print
+```
+
+**根因不是 gzip**(store 里 `.br` / `.gz` 双胞胎都在:339 KB → br 46 KB),是
+`@stylexjs/unplugin` 在 `generateBundle` 里把聚合后的 StyleX CSS **追加**到一份**已经 minify 完**的
+CSS 资产末尾。它自己会对这段跑一次 Lightning CSS,但**不设 `minify`**。读安装产物确认调用是:
+
+```js
+lightningTransform({ targets: ..., ...options.lightningcssOptions, filename, code })
+```
+
+`lightningcssOptions` 是 spread 进去的、后面没有任何东西覆盖 `minify`——**属于可配的那种情况,
+不用改 patch**。加上 `lightningcssOptions: { minify: mode === 'production' }` 即可:
+
+```text
+367,352 字节 / 6,871 行  →  338,778 字节 / 2 行
+再跑一遍 minifier 只能多省 0.1%(改之前是 7.8%)
+```
+
+### 顺带查出一处我上一节弄坏的东西
+
+`cssInjectionTarget` 匹配的是 `index-*.css`,而我把资源名改成 `a-[hash]` 之后**这个文件不存在了**——
+插件于是落到 fallback「bundle 里第一个 CSS 资产」,**这次恰好落对了**。config 里那段注释写得很清楚:
+上一次落错时落在 formula 编辑器的懒加载样式表上,整个产品的样式跟着一个没人打开的页面走,壳裸奔。
+
+也就是说,我把一个有注释警告过的隐患从「有保护」变成了「靠运气」。修法:入口样式表拿一个自己的字母——
+`assets/s-[hash].css`(shell,角色不是源文件名,与 `e-/c-/w-/a-` 同一套),`cssInjectionTarget` 认它。
+入口 CSS 靠 Vite 给 `assetFileNames` 的 `names: ['index.css']` 识别,不看源文件名。
+
+### 门禁
+
+`check-staged-web` 新增两条,都问被真正服务的那份 release:
+
+```text
+壳 link 的那份样式表,就是带着编译后样式规则的那份(且全库只有一份带)
+每份 CSS 再 minify 一遍,省不出超过 2%
+```
+
+第二条是**重新压一遍去问「还剩多少没做」**,而不是「看起来像不像压过」。2% 是两个 minifier
+之间的噪声余量。检测「哪份带样式规则」的正则对空白宽容——否则没压的那次会被报成「没有任何样式表」,
+两种故障说同一句话。
+
+**两条分别实测过会红**:关掉 minify → `assets/s-*.css is 7.8% larger than it needs to be`;
+把 `cssInjectionTarget` 打回 false → `the shell links assets/s-fn3it-fE.css, but the style rules are in assets/a-DTY4g4oM.css`。
+
+**门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm test` 238 passed | 3 skipped (241),
+Tests 1709 passed | 17 skipped (1726);`pnpm test:browser` 52 / 379;`pnpm test:browser:webkit` 2 / 14;
+`pnpm build` exit 0;`check-staged-web`、`check-chunks`、`check-public-web`、`check-csp-build`、
+`smoke-production` 全过。

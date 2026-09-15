@@ -38,8 +38,15 @@ export default defineConfig(({ mode }) => ({
       // names neither exists, and the first asset was the formula editor's
       // lazy stylesheet - so every rule of the product rode along with one
       // page nobody had opened yet, and the shell came up unstyled. The
-      // entry's own stylesheet is the one the shell links.
-      cssInjectionTarget: (file) => /(^|[\\/])index-[^\\/]*\.css$/.test(file),
+      // entry's own stylesheet is the one the shell links, and it is named
+      // for this above.
+      cssInjectionTarget: (file) => /(^|[\\/])s-[^\\/]*\.css$/.test(file),
+      // The append happens in `generateBundle`, after Vite has already
+      // minified the css it produced - so the compiled rules went out
+      // pretty-printed on the end of a minified file, ninety-nine kilobytes
+      // of it. The plugin runs its own Lightning CSS pass over them and sets
+      // no `minify`, so this is the pass to ask.
+      lightningcssOptions: { minify: mode === 'production' },
     }),
     react(),
   ],
@@ -138,7 +145,18 @@ export default defineConfig(({ mode }) => ({
         // stopped naming its own parts.
         entryFileNames: 'assets/e-[hash].js',
         chunkFileNames: 'assets/c-[hash].js',
-        assetFileNames: 'assets/a-[hash][extname]',
+        // The shell's own stylesheet keeps a letter of its own. Not because
+        // anything reads a name to know what is inside it, but because one
+        // thing has to be able to FIND it: the StyleX plugin appends every
+        // compiled rule to one css asset, and it picks that asset by name.
+        // It used to look for `index-*.css`, which these opaque names
+        // silently stopped producing - so it fell through to "the first css
+        // asset in the bundle" and landed on the right one by luck. `s` is
+        // the role, not the source.
+        assetFileNames: (info) =>
+          info.names?.includes('index.css')
+            ? 'assets/s-[hash][extname]'
+            : 'assets/a-[hash][extname]',
         // a worker is emitted through its own pipeline and does not inherit
         // the three above; the editor's left `editor.worker-<hash>.js` in the
         // open, which names the library a screen is built out of

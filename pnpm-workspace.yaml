@@ -16,6 +16,9 @@ allowBuilds:
   esbuild: true
   msgpackr-extract: false
 catalog:
+  # read by the staged-web gate, which re-minifies the served css to ask
+  # whether the build left anything undone
+  lightningcss: 1.33.0
   '@types/node': 24.13.3
   chokidar: 5.0.0
   typescript: 7.0.2
