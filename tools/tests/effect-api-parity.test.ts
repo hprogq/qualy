@@ -62,6 +62,59 @@ describe('the Effect api against the frozen surface', () => {
     expect(withBody).toEqual([])
   })
 
+  // What the shell is handed addresses surfaces: a page id, the contract that
+  // frames it, the item under a slot. It carried the module behind each of
+  // them once, which is what made the browser's registry a directory of this
+  // repository's source tree - and a deployment's plugin inventory, readable
+  // by anyone who could reach the login page.
+  //
+  // Asserted on the rendered document rather than on the schema value: this
+  // is a question about what goes on the wire, and the document is what says
+  // so. The words are the vocabulary of how the product is BUILT; none of it
+  // is a thing a browser addresses.
+  it('describes the shell manifest in product words only', () => {
+    const document = OpenApi.fromApi(qualyApi) as {
+      paths: Record<string, Record<string, { responses?: Record<string, unknown> }>>
+    }
+    const manifest = document.paths[`${QUALY_API_PREFIX}/app/manifest`]?.['get']?.responses?.['200']
+    // every property name the document declares for this one response
+    const properties: string[] = []
+    const walk = (node: unknown) => {
+      if (node === null || typeof node !== 'object') return
+      for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+        if (key === 'properties' && value !== null && typeof value === 'object') {
+          properties.push(...Object.keys(value as object))
+        }
+        walk(value)
+      }
+    }
+    walk(manifest)
+    // Not vacuous, and not a word filter: this is every property name the
+    // document declares for this response, and all of them are things a
+    // reader of the product can point at. `kind`, `defaultMessage` and
+    // `value` come from the translatable-text contract a title is written in.
+    // A module path, a package name or a plugin id would have to be added to
+    // this list by somebody, which is the point.
+    expect(properties.sort()).toEqual([
+      'collections',
+      'contract',
+      'defaultMessage',
+      'id',
+      'id',
+      'id',
+      'kind',
+      'kind',
+      'layout',
+      'layouts',
+      'order',
+      'pages',
+      'path',
+      'slots',
+      'title',
+      'value',
+    ])
+  })
+
   it('serves only routes the frozen table already names', () => {
     const frozen = new Set(FROZEN_ROUTES)
     const invented = effectRoutes().filter((route) => !frozen.has(route))

@@ -118,12 +118,40 @@ export default defineConfig(({ mode }) => ({
             },
           ],
         },
-        // `entriesAware` names each pool after every entry that reaches it,
-        // which runs past a hundred characters and is repeated in the shell's
-        // preload list and in every importing chunk. The hash already tells
-        // them apart.
-        chunkFileNames: (chunk) =>
-          `assets/${chunk.name.startsWith('shared~') ? 'shared' : chunk.name}-[hash].js`,
+        // A public file name says nothing about what is inside it.
+        //
+        // The default is the module's own basename, so a production
+        // deployment served `BatchSettingsPage-<hash>.js` and
+        // `FormulaCodeEditor-<hash>.js` - a directory of this product's
+        // screens, readable in any browser's network panel by anyone who
+        // loads the login page, and a plugin inventory for a deployment that
+        // had deliberately stopped publishing one. The content hash already
+        // does the only job a name has to do here.
+        //
+        // `e-` and `c-` rather than nothing at all because the two are told
+        // apart by tooling and by whoever reads a manifest of the store; the
+        // letter is the kind of file, not what it holds.
+        //
+        // Stylesheets and fonts go the same way for the same reason: a
+        // `FormulaCodeEditor-<hash>.css` names the component just as plainly
+        // as the chunk beside it did, and the public half of this product has
+        // stopped naming its own parts.
+        entryFileNames: 'assets/e-[hash].js',
+        chunkFileNames: 'assets/c-[hash].js',
+        assetFileNames: 'assets/a-[hash][extname]',
+        // a worker is emitted through its own pipeline and does not inherit
+        // the three above; the editor's left `editor.worker-<hash>.js` in the
+        // open, which names the library a screen is built out of
+      },
+    },
+  },
+  worker: {
+    format: 'es',
+    rollupOptions: {
+      output: {
+        entryFileNames: 'assets/w-[hash].js',
+        chunkFileNames: 'assets/w-[hash].js',
+        assetFileNames: 'assets/a-[hash][extname]',
       },
     },
   },

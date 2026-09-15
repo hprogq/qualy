@@ -1,85 +1,78 @@
 import fs from 'node:fs'
+import path from 'node:path'
 import { collectWebPlugins } from '@qualy/web-build/collect'
+import { BROWSER_SURFACE_MAP } from '@qualy/web-build/vite'
 import { surfaceLabel } from '@qualy/ui-contract'
 
 // Tree-shaking sentinel: every surface's renderer is an independent chunk in
 // the web build, and `--expect-absent <surface>` asserts that one is not
 // there at all.
 //
-// Both halves read the same two collections and never guess. The ACTIVE set
-// is what the build carries, so it is what the positive half expects; the
-// SUPERSET is only how a surface that is deliberately not built is looked up
-// - a disabled plugin has no binding in the active set, and the question
-// "which module would have implemented it" has no other answer. Deriving a
-// chunk name from a surface address was possible while an address WAS the
-// source file (`assessment/ReviewPage`); it would now look for a chunk called
-// `batches`.
+// It reads the build's own private surface map rather than the file names.
+// It used to count files whose basename matched the module's - which worked
+// only while a public file was named after a source file, and that naming was
+// itself the disclosure the build has since stopped making. Two plugins
+// shipping a module of the same basename could also answer for each other,
+// which is the regression this gate exists to catch, passing on a collision.
+// The bundler writes down which chunk each surface landed in; this asserts
+// the file is there.
 //
-// NOTE: relies on the bundler's default [name]-[hash] chunk naming;
-// configuring manualChunks/chunkFileNames would silently break this.
+// The map is a private build artifact and stays one: it never enters the
+// release store, which `check-staged-web` holds.
 
-const bindingsOf = async (all: boolean) =>
-  (await collectWebPlugins(all ? { all: true } : {})).flatMap((entry) => entry.surfaces)
-
-const built = await bindingsOf(false)
-const installed = await bindingsOf(true)
-const surfaces = new Set(built.map((binding) => surfaceLabel(binding.surface)))
-
-const distDir = new URL('../dist/assets', import.meta.url).pathname
-const files = fs.existsSync(distDir) ? fs.readdirSync(distDir) : []
-const absentIndex = process.argv.indexOf('--expect-absent')
-const expectAbsent = absentIndex >= 0 ? process.argv[absentIndex + 1] : undefined
-
-// Two plugins may legally ship a module of the same basename, and chunk files
-// carry only that basename. Asking whether ONE chunk starts with it therefore
-// let a sibling plugin's chunk answer for a module that had lost its own -
-// the regression this gate exists to catch, passing because of a name
-// collision. Counting per basename does not. Two surfaces sharing one module
-// share its chunk, so a module is counted once however many surfaces name it.
-const chunkName = (file: string) =>
-  file
-    .split('/')
-    .pop()!
-    .replace(/\.[^.]+$/, '')
-const chunksNamed = (base: string) => files.filter((file) => file.startsWith(`${base}-`)).length
-
-/** how many distinct modules the BUILT set puts under one chunk basename */
-const modulesOf = (base: string) =>
-  new Set(built.filter((binding) => chunkName(binding.file) === base).map((b) => b.file)).size
-
-const expected = new Map<string, string[]>()
-for (const binding of built) {
-  const base = chunkName(binding.file)
-  expected.set(base, [...(expected.get(base) ?? []), surfaceLabel(binding.surface)])
+interface SurfaceEntry {
+  readonly owner: string
+  readonly module: string
+  readonly export: string
+  readonly chunk?: string
 }
+
+const distDir = new URL('../dist', import.meta.url).pathname
+const mapFile = path.join(distDir, BROWSER_SURFACE_MAP)
+if (!fs.existsSync(mapFile)) {
+  console.error(
+    `check-chunks: no ${BROWSER_SURFACE_MAP} in apps/web/dist; run \`pnpm build\` first`,
+  )
+  process.exit(1)
+}
+const built = JSON.parse(fs.readFileSync(mapFile, 'utf8')) as Record<string, SurfaceEntry>
 
 let failed = false
-for (const [base, named] of expected) {
-  const wanted = modulesOf(base)
-  const found = chunksNamed(base)
-  const enough = found >= wanted
-  const shown = named.length > 1 ? `${named.join(', ')} (${found}/${wanted} chunks)` : named[0]!
-  console.log(`${shown}: ${enough ? 'chunk present' : 'CHUNK MISSING'}`)
-  if (!enough) failed = true
+for (const [surface, entry] of Object.entries(built)) {
+  const present = entry.chunk !== undefined && fs.existsSync(path.join(distDir, entry.chunk))
+  console.log(`${surface}: ${present ? 'chunk present' : 'CHUNK MISSING'}`)
+  if (!present) failed = true
 }
+
+const absentIndex = process.argv.indexOf('--expect-absent')
+const expectAbsent = absentIndex >= 0 ? process.argv[absentIndex + 1] : undefined
 if (expectAbsent) {
-  if (surfaces.has(expectAbsent)) {
+  if (built[expectAbsent] !== undefined) {
     console.log(`${expectAbsent}: still built, disable its plugin first`)
     failed = true
-  }
-  // The module that WOULD have implemented it, read out of the installed
-  // set rather than guessed from the address. A surface nothing installed
-  // declares is a typo, and saying so beats reporting it absent.
-  const gone = installed.find((binding) => surfaceLabel(binding.surface) === expectAbsent)
-  if (gone === undefined) {
-    console.log(`${expectAbsent}: no installed plugin declares this surface`)
-    failed = true
   } else {
-    const base = chunkName(gone.file)
-    const found = chunksNamed(base)
-    const others = modulesOf(base)
-    console.log(`${expectAbsent}: ${found > others ? 'UNEXPECTED CHUNK' : 'absent as expected'}`)
-    if (found > others) failed = true
+    // The module that WOULD have implemented it, read out of the INSTALLED
+    // superset rather than guessed from the address. A surface nothing
+    // installed declares is a typo, and saying so beats reporting it absent.
+    const installed = (await collectWebPlugins({ all: true })).flatMap((entry) =>
+      entry.surfaces.map((binding) => ({
+        label: surfaceLabel(binding.surface),
+        file: binding.file,
+      })),
+    )
+    const gone = installed.find((one) => one.label === expectAbsent)
+    if (gone === undefined) {
+      console.log(`${expectAbsent}: no installed plugin declares this surface`)
+      failed = true
+    } else {
+      // another built surface may legitimately share the module; then it is
+      // in the build for that surface's sake and this one is still not built
+      const shared = installed.some(
+        (one) => one.file === gone.file && built[one.label] !== undefined,
+      )
+      console.log(`${expectAbsent}: ${shared ? 'UNEXPECTED CHUNK' : 'absent as expected'}`)
+      if (shared) failed = true
+    }
   }
 }
 process.exit(failed ? 1 : 0)

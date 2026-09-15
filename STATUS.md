@@ -15261,3 +15261,63 @@ renderer 只能经描述器到达浏览器(collector 读 `uiSurfacesOf` / `login
 
 **门禁(实际执行)**:`pnpm typecheck` exit 0;rum + rum-tencent + api-paths + effect-api-parity
 4 文件 26 例;rum 浏览器套件 20 例(含两条新回归)。
+
+## 设计符合性收口(二):公开产物的文件名与一道综合门禁(2026-09-15)
+
+### §23:公开文件名不再说出源文件叫什么
+
+默认命名是模块 basename,所以生产部署一直在服务
+`BatchSettingsPage-<hash>.js`、`FormulaCodeEditor-<hash>.js`——
+**任何人打开登录页、开一下 Network 面板,就得到这个产品的屏幕目录**,
+而这套部署刚刚才不再公开自己的插件清单。内容哈希已经做完了文件名要做的全部工作。
+
+```text
+entryFileNames  assets/e-[hash].js
+chunkFileNames  assets/c-[hash].js
+assetFileNames  assets/a-[hash][extname]
+worker          assets/w-[hash].js
+```
+
+比 §23 多做两处,理由相同:`FormulaCodeEditor-<hash>.css` 与旁边的 chunk 说的是同一件事;
+worker 走独立管线、不继承上面三条,留下了 `editor.worker-<hash>.js`,它说出了一块屏幕是用什么库搭的。
+改完 `ls dist/assets` 里**没有一个文件名不是 `[acew]-`**。
+
+### `check-chunks` 脱离 basename
+
+旧实现按文件名前缀数 chunk,注释也承认「relies on the bundler's default [name]-[hash]」——
+**而那个命名本身就是要消掉的披露**。现在构建把「每个 surface 落在哪个 chunk」写进它自己那份
+**私有** surface map(`.qualy-browser-surfaces.json`,照旧不进 store),门禁读它、断言文件在。
+不再有 basename 猜测,也不再有「两个插件同名模块互相顶替」那种靠碰撞变绿的路径。
+`--expect-absent` 同理:surface 不在 built map 里即为缺席,并按**模块**而不是名字排除
+「另一个 built surface 恰好共用同一模块」。
+
+### §32:`tools/quality/check-public-web.ts`
+
+设计要的那条综合门禁,现在存在并进了 CI(`check-csp-build` 之后)。它对**真正被服务的那份 release**
+逐文件问三类问题:
+
+```text
+产物    0 个 .map、0 处 sourceMappingURL;
+        40 个源模块名,没有一个出现在被服务的文件名里;
+        未被选中的插件在产物里 0 字节(§35 sentinel);
+        壳的 HTML 不说 plugin/assembly/resolution/descriptor/provider
+契约    release probe 只答 releaseId + schema
+环境    本机环境里的 server-only 值(DATABASE_URL、腾讯云密钥、
+        QUALY_SERVER_PRIVATE_SENTINEL)一个都不在产物里(§85)
+```
+
+**三条实测过会红**:壳里塞一句 `a plugin based platform` → 点名;
+往一个 asset 尾部追加 `acme-dist-probe-boot-4d90ab` → 点名那个文件;
+把 `chunkFileNames` 改回 `[name]-[hash]` 重建 → `53 served file(s) are named after a source module`。
+
+**sentinel 的另一半在别处**:「该插件被选中时 sentinel 确实出现」由 `dist-only-plugin` 套件证明
+(它真跑一次 vite build)。两半合起来才是 §35 那两行。
+
+**manifest schema 那条没放进这道门禁**,而是放在 `effect-api-parity`——它已经拿到服务端真正发布的
+OpenAPI 文档。断言方式也改了:不是过滤敏感词(那会误伤 `auth provider` 这类**产品**词汇),
+而是**把这份响应声明的全部属性名逐字钉死**(16 个,含 UiText 的 `kind`/`defaultMessage`/`value`)。
+多一个模块路径、包名或插件 id,得有人把它加进这张表。
+
+**门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm test` 236 passed | 3 skipped (239),
+Tests 1703 passed | 17 skipped (1720);`pnpm test:browser` 52 / 379;`pnpm build` exit 0;
+`check-chunks`、`check-public-web`、`check-staged-web`、`check-csp-build`、`smoke-production` 全过。

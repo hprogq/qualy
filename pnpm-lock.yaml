@@ -180,6 +180,9 @@ importers:
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:packages/core/api-kit
+      '@qualy/app-contract':
+        specifier: workspace:*
+        version: link:packages/contracts/app
       '@qualy/assembly':
         specifier: workspace:*
         version: link:packages/core/assembly
@@ -216,6 +219,9 @@ importers:
       '@qualy/rbac-contract':
         specifier: workspace:*
         version: link:packages/contracts/rbac
+      '@qualy/release-contract':
+        specifier: workspace:*
+        version: link:packages/contracts/release
       '@qualy/tsconfig':
         specifier: workspace:*
         version: link:packages/build/tsconfig

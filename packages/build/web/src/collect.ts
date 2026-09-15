@@ -300,14 +300,26 @@ export async function buildPluginModuleSource(
  * answer down beside its output, under the same rule as a source map:
  * archived with the build, never installed into a release, never served.
  */
-export async function buildSurfaceMapSource(options: { ymlPath?: string } = {}): Promise<string> {
-  const map: Record<string, { owner: string; module: string; export: string }> = {}
+/**
+ * @param chunkOf where a module ended up, when a build is asking
+ */
+export async function buildSurfaceMapSource(
+  options: { ymlPath?: string; chunkOf?: (file: string) => string | undefined } = {},
+): Promise<string> {
+  const map: Record<string, { owner: string; module: string; export: string; chunk?: string }> = {}
   for (const entry of await collectWebPlugins(options)) {
     for (const binding of entry.surfaces) {
+      const chunk = options.chunkOf?.(binding.file)
       map[surfaceLabel(binding.surface)] = {
         owner: entry.name,
         module: binding.module,
         export: binding.export,
+        // Which output file carries it, recorded where the answer exists.
+        // The tree-shaking sentinel used to derive it from the file name,
+        // which only worked while a chunk was named after its module - and
+        // naming a public file after a source file is the disclosure this
+        // build stopped making. The bundler knows; it writes it down.
+        ...(chunk === undefined ? {} : { chunk }),
       }
     }
   }

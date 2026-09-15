@@ -70,7 +70,13 @@ export const qualyPlugins = (): Plugin => {
     resolveId(id) {
       return id === virtualId ? cacheFile : undefined
     },
-    async generateBundle() {
+    async generateBundle(_options, bundle) {
+      // where each module ended up, from the bundle rather than from a name
+      const chunks = new Map<string, string>()
+      for (const output of Object.values(bundle)) {
+        if (output.type !== 'chunk') continue
+        for (const id of Object.keys(output.modules)) chunks.set(id, output.fileName)
+      }
       // Only a build writes it: a dev server has the sources themselves, and
       // the file exists so a build can be diagnosed long after the machine
       // that made it is gone. It travels with the output and the installer
@@ -78,7 +84,7 @@ export const qualyPlugins = (): Plugin => {
       this.emitFile({
         type: 'asset',
         fileName: BROWSER_SURFACE_MAP,
-        source: await buildSurfaceMapSource(),
+        source: await buildSurfaceMapSource({ chunkOf: (file) => chunks.get(file) }),
       })
     },
   }
