@@ -16127,3 +16127,133 @@ Phase 3 第一次把它用到 API 路径,数量级就不对了。
 `sanitize.ts` 这个**纯字符串**模块(仓库里已有同样写法),根 program 不再看到它的兄弟文件。
 
 **下一步是人的**:按 docs/notes/rum-rollout.md 走。代码侧的 RUM 接入到此为止。
+
+## API 路由按契约归一 + 1Password 挂载式 `.env`(2026-09-16)
+
+两件代码侧的事,互不依赖。**不含腾讯真实 staging rollout。**
+
+### 一、API 测速的地址改由 HttpApi 契约回答,放弃 heuristic sanitizer
+
+**为什么推翻上一轮的 `WORDS` 修法。** 上一轮发现 sanitizer 会吃掉 13 个路由名,改成「纯小写词段保留」。
+那修的是一半:反方向同样成立——`school-cas`(`:providerCode`)、`review-entry`(`:permission`)、
+`1`(`:versionNo`)都是**长得像词的参数值**,按形状判断会原样送出。本产品给路由名和参数值起名的
+方式是同一种,所以不存在能分开它们的长度 / 字符集 / 大小写规则。只有声明路由的契约知道。
+
+**落地(依赖方向:Effect 只在 runtime 一侧,observability 只收纯数据):**
+
+- `@qualy/api-kit/local` 新增 `apiRouteTemplates(api)`:公开 API `HttpApi.reflect` + 公开字段
+  `endpoint.method` / `endpoint.path`,产出 `{method, template}`。实查 rc.115:`path` 已含 `/api`
+  前缀、参数是 `:name` 形式,真实装配共 148 个 endpoint / 111 个不同 template。
+- `packages/web/observability/src/api-routes.ts`:纯字符串匹配器,**零 Effect**。先按段数,literal
+  字面相等,`:param` 吃一段不问内容;literal 多者胜;不同 template 打平 → 不回答。只经叶子子路径
+  `@qualy/browser-observability/api-routes` 暴露(包 index 不再转出):index 的兄弟模块读
+  `window`/`location`,而 `clientFor` 也被 node 程序(`apps/server/tests/effect-api.test.ts`)编译——
+  直接 import index 时 typecheck 当场 10 个 DOM 全局错误,换叶子后归零。
+- 注册点 `clientFor(api)`(浏览器所有 typed client 的唯一出口)。
+- **绕开 `clientFor` 的路径审计**:四处 `HttpApiClient.urlBuilder`——RUM settings 探测(SDK 尚未存在)、
+  `assessmentUrls`(`<a href>`/`<img src>`,非 fetch/XHR,且 IMAGE_ERROR 已丢弃)、公式编辑器
+  WebSocket(`websocketHack: false`)、**storage-local 的 XHR 上传**。只有最后一个会产生 speed record。
+  它在 `BrowserPlugin.start()` 里 dynamic import `../urls.ts` 后注册——第一版用静态 import,
+  **browser-graph 门禁当场红:boot 模块 126 KB > 24 KB 上限**(把 api kit 拖进了每页必加载图)。
+- `api-speed.ts`:`apiSpeedUrl`(urlHandler)只做同源 + 去 query;`beforeReportSpeed` 是真正的
+  决定点(每条 record 必经,且只有它拿得到 `method`),匹配不到 **fail closed 直接丢弃**。
+- `privacy.ts`:错误日志 msg 里的地址——同源 `/api/**` 走契约,不认识的换成 `/api/<unclaimed>`;
+  其他地址(页面、资源)仍走页面 sanitizer。
+- `sanitize.ts` 撤回 ef603f10 的 `WORDS` 与注释改动(`git show ef603f10 -- sanitize.ts | git apply -R`),
+  回到只面对页面地址的保守语义,并在头注释写明它不再被问 API 地址。
+
+**测试数据来自真实契约,不再有第二份手写 route truth。** 抽出 `tools/tests/support/served-api.ts`
+(按 runtime 同法构建 aggregate),`effect-api-parity.test.ts` 与新的 `observed-routes.test.ts` 共用。
+后者 9 例:全部 template 注册;**每个 endpoint × 10 种参数形状**(uuid、`1`、长数字、`school-cas`、
+`review-entry`、混合大小写 token、带点、单字母、百分号编码中文、`v2026.09-beta`)回代都答回自己的
+template,且先断言这些值不是任何路由 literal;按参数**名**从契约里找出 `providerCode`/`versionNo`/
+`permission`/`userId` 四例;literal 全保留;literal-vs-param 重叠(真实只有
+`/api/assessment/attachments/uploads` 一对)**正反两种注册顺序**都答 literal;**全表无打平**
+(自维护检查);未知路径 / 带 query / 空表都答 undefined。
+
+**可证伪(逐条实测):**
+
+| 故意破坏                                   | 结果                                  |
+| ------------------------------------------ | ------------------------------------- |
+| literal 不再要求相等                        | observed-routes 5 例红                |
+| 忽略 specificity、先到先得                  | 第一版**没红**(真实注册顺序恰好对)→ 加反序后 1 例红 |
+| 匹配不到时回退原路径                        | 3 例红                                |
+| `observedApiRoute` 匹配不到回退 `sanitizePath` | 浏览器 2 例红                       |
+| 忽略 method                                 | 浏览器 1 例红                         |
+| 去掉同源判断                                | 浏览器 2 例红                         |
+
+顺带:`rum-tencent.browser.test.tsx` 里 provider 配置那组 `describe` 被上一轮误嵌进了
+「api failures」组内,已提回顶层;原用例用的 `/api/iam/users/.../role-assignments`、
+`/api/storage/attachments/...` 并不是真实路由,在 fail closed 下本来就该被丢,已换成真实 template。
+
+### 二、1Password Environments 挂载的 FIFO `.env`
+
+**先做实验,再写代码**(Node 24.20.0 / Vite 8.2.0 / Docker Compose v5.5.0,细节
+docs/notes/mounted-env.md):
+
+- FIFO 上 `existsSync` = true、`statSync().isFile()` = **false**、`isFIFO()` = true,且 stat 不 open;
+- `readFileSync` / `node --env-file(-if-exists)` / `process.loadEnvFile` 都能读,每次消耗 writer 一轮;
+- **没有 writer 时三者都无限阻塞**(`timeout 3` → exit 124),无报错;
+- `docker compose config` 对 FIFO `env_file` 正常读出;
+- vite 8 `loadEnv` 本身认 FIFO(`!stat.isFile() && !stat.isFIFO()`);dev server 会 chokidar 监视
+  `getEnvFilesForMode(mode, envDir)` 并在命中时 `restartServerWithUrls`;`envDir` 默认 = `apps/web`,
+  所以仓库根 `.env` 本来就不在 Vite 的读取/监视集合里。
+
+**改动:**
+
+- 新 `apps/server/src/dev/env.ts`:`developmentEnv({envFile, manifest, shell, notice})`,优先级不变
+  (`.env` 基线、shell 覆盖),`NODE_ENV`/`QUALY_DEV_SUPERVISED`/`QUALY_CONFIG` 逻辑原样搬入;
+  `.env` 是 FIFO 时先打印 `.env is a mounted environment; reading it once for this session` 再 open——
+  没 writer 时这是终端上最后一行,说明卡在哪。
+- `host.ts`:模块顶层读一次,`env`/`origin` 改 `const`;`stageWorld` 不再重读;`.env` 移出 watch plan。
+- `apps/web/vite.config.ts`:`envDir: false`(审计 `import.meta.env` 零使用;`MODE/DEV/PROD/BASE_URL`
+  不来自 env file,不受影响)。
+- `.1password/environments.toml`:仅 `mount_paths = [".env"]` 与说明注释。无 SDK/CLI/MCP 依赖。
+- `.env.example` 头注释、README Development 段、docs/notes/mounted-env.md;docs/runtime-redesign.md
+  §25 与两处 watch 清单、§57.6 第 38 条加 2026-09-16 修订标注。
+
+**真机验证(对 repo 根真实 `.env`,就地备份到 gitignored 的 `.env.real-backup`,trap 还原,md5/行数核对):**
+
+```text
+FIFO .env, 新代码
+  startup: ".env is a mounted environment" ×1 / backend#1 serving / vite :5173 / health 200
+  kill writer → cat .env 阻塞 (exit 124)
+  touch apps/server/src/health.ts → "health.ts -> backend" → backend#3 serving, health 200, notice 仍 ×1
+
+FIFO .env, 把「每次 stage 重读」临时放回 (证伪)
+  同样步骤 → 看到 "health.ts -> backend",90s 内再无 "is serving" (1 -> 1)
+  supervisor 挂在 open 管道上,终端一个字没有;旧 backend 还在答 200,但所有后续保存都失效
+
+普通文件 .env
+  notice ×0 / health 200 / vite 200 / 经 vite 代理 /health/live 200
+  backend 重载 1 -> 2,web development server 启动次数保持 1 (浏览器 HMR 未受影响)
+```
+
+一个实验里的教训:第一版脚本用 writer 轮数计数,repo 根的 FIFO 在 0.5s 内被**别的进程**打开了 12 次
+(macOS 上编辑器/索引会碰文件),轮数不可归因。所以真机实验改用「杀掉 writer 再触发 reload」作判据,
+单测 `development-env.test.ts` 也放弃了「恰好 1 轮」断言(全量并行时偶发 2,已实际观察到一次)——
+改为:挂载值能读到且提示一次;**writer 消失后第二次读在子进程里 1s 内完不成**,普通文件则可重复读。
+证伪:去掉 FIFO 提示 → 1 例红;完全不读 `.env` → 2 例红;shell 与文件优先级对调 → 1 例红。
+
+`watch-classification.test.ts`:`.env` 不在 `watchTargets`,`classify('/repo/.env')` 为 `null`。
+
+### 门禁(实际执行,2026-09-16)
+
+```text
+pnpm typecheck                                   exit=0
+pnpm test                    242 passed | 3 skipped (245) / 1740 passed | 17 skipped (1757)
+pnpm test:browser            52 passed (52) / 399 passed (399)
+pnpm test:browser:webkit     2 passed (2) / 14 passed (14)
+pnpm vendor:check / qualy resolve --frozen-lockfile / database check / drop-guard   exit=0
+pnpm build / check-staged-web / check-chunks / check-csp-build / check-public-web   exit=0
+smoke-production / check-csp-enforce                                               exit=0
+prettier --check(本轮改动文件)                  clean
+```
+
+有一次全量 `pnpm test` 红了 3 例(supervisor.test.ts),原因是跑的同时我在改 `apps/server/src/dev/`——
+被测 supervisor 自己打出 `the supervisor itself changed`。停手后单独重跑 3/3 通过,上表是之后的完整一轮。
+全仓 `prettier --check .` 有 55 个既有文件不合规,均非本轮改动,也不在 CI 里。
+
+### 下一步
+
+代码侧 RUM 仍无待办;staging 按 docs/notes/rum-rollout.md 由人执行。
