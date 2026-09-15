@@ -93,7 +93,7 @@ const at = (iso: string) => () => new Date(iso)
 const WHEN = '2026-09-14T09:00:00.000Z'
 const HASH = 'sha256:assembly'
 
-const install = (
+const install = async (
   store: ReturnType<typeof storeAt>,
   releaseId: string,
   options: Parameters<typeof buildOutput>[1] & {
@@ -101,7 +101,7 @@ const install = (
     readonly hash?: string
   } = {},
 ) =>
-  installWebRelease({
+  await installWebRelease({
     source: buildOutput(releaseId, options),
     store,
     resolutionHash: options.hash ?? HASH,
@@ -112,9 +112,9 @@ const currentId = (store: ReturnType<typeof storeAt>) => readCurrentWebRelease(s
 const exists = (...parts: string[]) => fs.existsSync(path.join(...parts))
 
 describe('installing', () => {
-  it('installs a first release: its shell, its assets, and the pointer to it', () => {
+  it('installs a first release: its shell, its assets, and the pointer to it', async () => {
     const store = storeAt(temp('qualy-store-'))
-    const result = install(store, 'A')
+    const result = await install(store, 'A')
     expect(result.reused).toBe(false)
     expect(currentId(store)).toBe('A')
     const current = readCurrentWebRelease(store)!
@@ -144,9 +144,9 @@ describe('installing', () => {
     expect(exists(store.root, 'assets', 'tiny-A.js.br')).toBe(false)
   })
 
-  it('fingerprints the surfaces a release can render, and only their identities', () => {
+  it('fingerprints the surfaces a release can render, and only their identities', async () => {
     const store = storeAt(temp('qualy-store-'))
-    install(store, 'A')
+    await install(store, 'A')
     const first = readCurrentWebRelease(store)!.release.browserContractHash
     expect(first).toMatch(/^sha256:[0-9a-f]{64}$/)
 
@@ -168,30 +168,30 @@ describe('installing', () => {
         ),
       ),
     )
-    installWebRelease({ source: dist, store: rewritten, resolutionHash: HASH, now: at(WHEN) })
+    await installWebRelease({ source: dist, store: rewritten, resolutionHash: HASH, now: at(WHEN) })
     expect(readCurrentWebRelease(rewritten)!.release.browserContractHash).toBe(first)
 
     // one surface renamed: a different contract, whatever else is equal
     const renamed = storeAt(temp('qualy-store-'))
-    install(renamed, 'C', { surfaces: ['page:test/renamed', 'layout:app-shell/v1'] })
+    await install(renamed, 'C', { surfaces: ['page:test/renamed', 'layout:app-shell/v1'] })
     expect(readCurrentWebRelease(renamed)!.release.browserContractHash).not.toBe(first)
   })
 
-  it('refuses a build whose aggregate wrote no surface map', () => {
+  it('refuses a build whose aggregate wrote no surface map', async () => {
     const store = storeAt(temp('qualy-store-'))
     const dist = buildOutput('A')
     fs.rmSync(path.join(dist, BROWSER_SURFACE_MAP))
     // a release installed without its browser contract cannot be shown to be
     // compatible with any other, so it is not installed at all
-    expect(() =>
+    await expect(
       installWebRelease({ source: dist, store, resolutionHash: HASH, now: at(WHEN) }),
-    ).toThrow(BROWSER_SURFACE_MAP)
+    ).rejects.toThrow(BROWSER_SURFACE_MAP)
   })
 
-  it('keeps the build revision in the store, where the public id cannot carry it', () => {
+  it('keeps the build revision in the store, where the public id cannot carry it', async () => {
     const store = storeAt(temp('qualy-store-'))
     const revision = '3e01e6a2d9cbeda2581671b45727ef268861d564'
-    install(store, 'A', { revision })
+    await install(store, 'A', { revision })
     const current = readCurrentWebRelease(store)!
     // the private half of an opaque release id: this is where a deployment
     // asks what r_... was built from. It sits in the release's own metadata
@@ -200,19 +200,19 @@ describe('installing', () => {
     expect(RELEASE_METADATA.startsWith('.')).toBe(true)
   })
 
-  it('refuses a second build under one release id when the revision differs', () => {
+  it('refuses a second build under one release id when the revision differs', async () => {
     const store = storeAt(temp('qualy-store-'))
-    install(store, 'A', { revision: 'aaa' })
+    await install(store, 'A', { revision: 'aaa' })
     // one id, one build: the same bytes from another commit is still
     // another build, and a store that overwrote it would answer two
     // questions with one name
-    expect(() => install(store, 'A', { revision: 'bbb' })).toThrow('different content')
+    await expect(install(store, 'A', { revision: 'bbb' })).rejects.toThrow('different content')
   })
 
-  it('installs a second release beside the first and keeps both, shells and assets alike', () => {
+  it('installs a second release beside the first and keeps both, shells and assets alike', async () => {
     const store = storeAt(temp('qualy-store-'))
-    install(store, 'A')
-    install(store, 'B', { when: '2026-09-14T10:00:00.000Z' })
+    await install(store, 'A')
+    await install(store, 'B', { when: '2026-09-14T10:00:00.000Z' })
     expect(currentId(store)).toBe('B')
     for (const id of ['A', 'B']) {
       expect(exists(resolveReleaseRoot(store, id), 'index.html')).toBe(true)
@@ -223,22 +223,22 @@ describe('installing', () => {
     ).toContain('<title>A</title>')
   })
 
-  it('shares an asset two releases name, and refuses the name with other bytes', () => {
+  it('shares an asset two releases name, and refuses the name with other bytes', async () => {
     const store = storeAt(temp('qualy-store-'))
-    install(store, 'A', { assets: { 'shared-h1.js': 'export const v = 1\n' } })
+    await install(store, 'A', { assets: { 'shared-h1.js': 'export const v = 1\n' } })
     // the same name, the same bytes: shared, not copied twice
-    install(store, 'B', {
+    await install(store, 'B', {
       assets: { 'shared-h1.js': 'export const v = 1\n' },
       when: '2026-09-14T10:00:00.000Z',
     })
     expect(currentId(store)).toBe('B')
     // the same name, other bytes: the content hash invariant is broken
-    expect(() =>
+    await expect(
       install(store, 'C', {
         assets: { 'shared-h1.js': 'export const v = 2\n' },
         when: '2026-09-14T11:00:00.000Z',
       }),
-    ).toThrow(/different bytes/)
+    ).rejects.toThrow(/different bytes/)
     expect(currentId(store)).toBe('B')
     expect(exists(resolveReleaseRoot(store, 'C'))).toBe(false)
     expect(fs.readFileSync(path.join(store.root, 'assets', 'shared-h1.js'), 'utf8')).toBe(
@@ -246,41 +246,41 @@ describe('installing', () => {
     )
   })
 
-  it('leaves the pointer where it was when an installation cannot complete', () => {
+  it('leaves the pointer where it was when an installation cannot complete', async () => {
     const store = storeAt(temp('qualy-store-'))
-    install(store, 'A')
-    expect(() => install(store, 'B', { metadata: false })).toThrow(/release plugin/)
-    expect(() => install(store, 'C', { index: false })).toThrow(/index\.html/)
+    await install(store, 'A')
+    await expect(install(store, 'B', { metadata: false })).rejects.toThrow(/release plugin/)
+    await expect(install(store, 'C', { index: false })).rejects.toThrow(/index\.html/)
     const unnamed = buildOutput('D')
     fs.writeFileSync(
       path.join(unnamed, WEB_BUILD_METADATA),
       JSON.stringify({ schema: 1, releaseId: 'D', mode: 'development', clientProtocol: 1 }),
     )
-    expect(() => installWebRelease({ source: unnamed, store, resolutionHash: HASH })).toThrow(
-      /development/,
-    )
+    await expect(
+      installWebRelease({ source: unnamed, store, resolutionHash: HASH }),
+    ).rejects.toThrow(/development/)
     expect(currentId(store)).toBe('A')
     expect(fs.readdirSync(path.join(store.root, 'releases'))).toEqual(['A'])
   })
 
-  it('installs the same release again as a no-op, and refuses a different build under the same name', () => {
+  it('installs the same release again as a no-op, and refuses a different build under the same name', async () => {
     const store = storeAt(temp('qualy-store-'))
-    const first = install(store, 'A')
-    const again = install(store, 'A', { when: '2026-09-14T12:00:00.000Z' })
+    const first = await install(store, 'A')
+    const again = await install(store, 'A', { when: '2026-09-14T12:00:00.000Z' })
     expect(again.reused).toBe(true)
     // the first installation's record stands, time included
     expect(again.release).toEqual(first.release)
     expect(currentId(store)).toBe('A')
-    expect(() => install(store, 'A', { shell: '<!doctype html><title>A again</title>' })).toThrow(
-      /different content/,
-    )
-    expect(() => install(store, 'A', { hash: 'sha256:other' })).toThrow(/different content/)
+    await expect(
+      install(store, 'A', { shell: '<!doctype html><title>A again</title>' }),
+    ).rejects.toThrow(/different content/)
+    await expect(install(store, 'A', { hash: 'sha256:other' })).rejects.toThrow(/different content/)
     expect(
       fs.readFileSync(path.join(resolveReleaseRoot(store, 'A'), 'index.html'), 'utf8'),
     ).toContain('<title>A</title>')
   })
 
-  it('clears the flat layout it replaces, once, before the first release goes in', () => {
+  it('clears the flat layout it replaces, once, before the first release goes in', async () => {
     const root = temp('qualy-store-')
     fs.writeFileSync(path.join(root, 'index.html'), 'old flat shell')
     fs.writeFileSync(path.join(root, '.qualy-assembly.json'), '{}')
@@ -288,7 +288,7 @@ describe('installing', () => {
     fs.mkdirSync(path.join(root, 'assets'))
     fs.writeFileSync(path.join(root, 'assets', 'index-flat.js'), 'flat')
     const store = storeAt(root)
-    install(store, 'A')
+    await install(store, 'A')
     expect(exists(root, 'index.html')).toBe(false)
     expect(exists(root, '.qualy-assembly.json')).toBe(false)
     expect(exists(root, WEB_BUILD_METADATA)).toBe(false)
@@ -297,7 +297,7 @@ describe('installing', () => {
     expect(currentId(store)).toBe('A')
   })
 
-  it('leaves every source map in the build directory, and stages none of them', () => {
+  it('leaves every source map in the build directory, and stages none of them', async () => {
     // The build writes maps so that a minified stack can be read back, and a
     // map carries `sourcesContent` - the whole source of this product. The
     // store is served publicly, so a map that got in would be a download link
@@ -313,7 +313,7 @@ describe('installing', () => {
     // and one beside the shell, where a twin could also have been written
     fs.writeFileSync(path.join(dist, 'boot.js.map'), '{"version":3}')
     fs.writeFileSync(path.join(dist, 'assets', 'index-M.js.map.br'), 'compressed')
-    const result = installWebRelease({
+    const result = await installWebRelease({
       source: dist,
       store,
       resolutionHash: HASH,
@@ -354,11 +354,11 @@ describe('installing', () => {
 describe('retention', () => {
   const hour = (n: number) => `2026-09-14T${String(n).padStart(2, '0')}:00:00.000Z`
 
-  it('keeps the newest few and everything recent, the current one always, and collects the rest with their assets', () => {
+  it('keeps the newest few and everything recent, the current one always, and collects the rest with their assets', async () => {
     const store = storeAt(temp('qualy-store-'))
     // six releases, an hour apart, none collected on the way in
     for (const [index, id] of ['A', 'B', 'C', 'D', 'E', 'F'].entries()) {
-      installWebRelease({
+      await installWebRelease({
         source: buildOutput(id),
         store,
         resolutionHash: HASH,
@@ -391,12 +391,12 @@ describe('retention', () => {
     expect(currentId(store)).toBe('F')
   })
 
-  it('keeps an asset for as long as any retained release names it', () => {
+  it('keeps an asset for as long as any retained release names it', async () => {
     const store = storeAt(temp('qualy-store-'))
     const shared = { 'shared-h1.js': 'export const v = 1\n' }
-    install(store, 'A', { assets: shared, when: hour(0) })
-    install(store, 'B', { assets: { ...shared, 'only-B.js': 'b' }, when: hour(1) })
-    install(store, 'C', { assets: { 'only-C.js': 'c' }, when: hour(2) })
+    await install(store, 'A', { assets: shared, when: hour(0) })
+    await install(store, 'B', { assets: { ...shared, 'only-B.js': 'b' }, when: hour(1) })
+    await install(store, 'C', { assets: { 'only-C.js': 'c' }, when: hour(2) })
     const result = gcWebReleases(store, { count: 1, hours: 1, now: at(hour(2)) })
     expect(result.retained).toEqual(['B', 'C'])
     expect(result.removedReleases).toEqual(['A'])
@@ -405,19 +405,19 @@ describe('retention', () => {
     expect(exists(store.root, 'assets', 'only-B.js')).toBe(true)
   })
 
-  it('never collects the current release, however old', () => {
+  it('never collects the current release, however old', async () => {
     const store = storeAt(temp('qualy-store-'))
-    install(store, 'A', { when: hour(0) })
+    await install(store, 'A', { when: hour(0) })
     const result = gcWebReleases(store, { count: 0, hours: 0, now: at(hour(23)) })
     expect(result.retained).toEqual(['A'])
     expect(result.removedReleases).toEqual([])
     expect(exists(resolveReleaseRoot(store, 'A'), 'index.html')).toBe(true)
   })
 
-  it('collects nothing when a release cannot be read, rather than guess what it needs', () => {
+  it('collects nothing when a release cannot be read, rather than guess what it needs', async () => {
     const store = storeAt(temp('qualy-store-'))
-    install(store, 'A', { when: hour(0) })
-    install(store, 'B', { when: hour(1) })
+    await install(store, 'A', { when: hour(0) })
+    await install(store, 'B', { when: hour(1) })
     fs.writeFileSync(path.join(resolveReleaseRoot(store, 'A'), RELEASE_METADATA), '{ not json')
     const result = gcWebReleases(store, { count: 1, hours: 0, now: at(hour(9)) })
     expect(result.skipped).toMatch(/release A has unreadable metadata/)
@@ -426,10 +426,10 @@ describe('retention', () => {
     expect(exists(store.root, 'assets', 'index-A.js')).toBe(true)
   })
 
-  it('collects as part of an installation, under the policy it is given', () => {
+  it('collects as part of an installation, under the policy it is given', async () => {
     const store = storeAt(temp('qualy-store-'))
     for (const [index, id] of ['A', 'B', 'C'].entries()) {
-      installWebRelease({
+      await installWebRelease({
         source: buildOutput(id),
         store,
         resolutionHash: HASH,
@@ -437,7 +437,7 @@ describe('retention', () => {
         retention: false,
       })
     }
-    const result = installWebRelease({
+    const result = await installWebRelease({
       source: buildOutput('D'),
       store,
       resolutionHash: HASH,
@@ -461,25 +461,25 @@ describe('retention', () => {
 })
 
 describe('compression', () => {
-  it('twins a text file once, where the twin wins, and leaves it alone afterwards', () => {
+  it('twins a text file once, where the twin wins, and leaves it alone afterwards', async () => {
     const dir = temp('qualy-compress-')
     const big = path.join(dir, 'big.js')
     fs.writeFileSync(big, 'export const x = 1\n'.repeat(200))
-    expect(ensureCompressed(big)).toBe(true)
+    expect(await ensureCompressed(big)).toBe(true)
     expect(zlib.brotliDecompressSync(fs.readFileSync(`${big}.br`)).toString()).toBe(
       fs.readFileSync(big, 'utf8'),
     )
     expect(zlib.gunzipSync(fs.readFileSync(`${big}.gz`)).toString()).toBe(
       fs.readFileSync(big, 'utf8'),
     )
-    expect(ensureCompressed(big)).toBe(false)
+    expect(await ensureCompressed(big)).toBe(false)
     // too small to be worth a request's negotiation, or not text at all
     const small = path.join(dir, 'small.js')
     fs.writeFileSync(small, 'export {}\n')
-    expect(ensureCompressed(small)).toBe(false)
+    expect(await ensureCompressed(small)).toBe(false)
     const image = path.join(dir, 'image.png')
     fs.writeFileSync(image, Buffer.alloc(4096, 7))
-    expect(ensureCompressed(image)).toBe(false)
+    expect(await ensureCompressed(image)).toBe(false)
     expect(fs.existsSync(`${image}.br`)).toBe(false)
   })
 })

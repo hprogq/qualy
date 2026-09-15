@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import zlib from 'node:zlib'
+import { promisify } from 'node:util'
 import { isReleaseId } from '@qualy/release-contract'
 import {
   RELEASE_SCHEMA,
@@ -99,6 +100,18 @@ export const readCurrentWebRelease = (store: ReleaseStore): CurrentWebRelease | 
  * because it happens once: a shared asset already twinned is left alone.
  */
 const COMPRESSIBLE = new Set(['.js', '.css', '.html', '.json', '.svg'])
+/**
+ * How many files are compressed at once.
+ *
+ * Brotli at quality 11 costs seconds, not milliseconds: on this product's own
+ * output it was six and a half of them, every build, for a release most builds
+ * never deploy. The quality is still right - a release is compressed once and
+ * served until it is collected, so the bytes are paid by every visitor and the
+ * seconds by one machine - but there is no reason to spend them one file at a
+ * time. Run concurrently it is three, and the floor is one file: the editor's
+ * two-and-a-half megabyte chunk alone is most of what is left.
+ */
+const COMPRESSION_LANES = 8
 const TWINS = ['.br', '.gz'] as const
 
 const isTwin = (file: string) => TWINS.some((twin) => file.endsWith(twin))
@@ -118,22 +131,30 @@ const isTwin = (file: string) => TWINS.some((twin) => file.endsWith(twin))
  */
 const isDebugArtifact = (file: string): boolean => /\.map(?:\.br|\.gz)?$/.test(file)
 
-export const ensureCompressed = (file: string): boolean => {
+const brotli = promisify(zlib.brotliCompress)
+const gzip = promisify(zlib.gzip)
+
+/** whether this file wants twins it does not have */
+const wantsCompressing = (file: string): boolean => {
   if (!COMPRESSIBLE.has(path.extname(file)) || isTwin(file)) return false
   if (TWINS.every((twin) => fs.existsSync(`${file}${twin}`))) return false
+  return fs.statSync(file).size >= 1024
+}
+
+export const ensureCompressed = async (file: string): Promise<boolean> => {
+  if (!wantsCompressing(file)) return false
   const raw = fs.readFileSync(file)
-  if (raw.length < 1024) return false
   const bodies: [string, Buffer][] = [
     [
       `${file}.br`,
-      zlib.brotliCompressSync(raw, {
+      await brotli(raw, {
         params: {
           [zlib.constants.BROTLI_PARAM_QUALITY]: zlib.constants.BROTLI_MAX_QUALITY,
           [zlib.constants.BROTLI_PARAM_SIZE_HINT]: raw.length,
         },
       }),
     ],
-    [`${file}.gz`, zlib.gzipSync(raw, { level: zlib.constants.Z_BEST_COMPRESSION })],
+    [`${file}.gz`, await gzip(raw, { level: zlib.constants.Z_BEST_COMPRESSION })],
   ]
   let wrote = false
   for (const [twin, body] of bodies) {
@@ -142,6 +163,16 @@ export const ensureCompressed = (file: string): boolean => {
     wrote = true
   }
   return wrote
+}
+
+/** the same, for a whole release, with more than one file in flight */
+const compressAll = async (files: readonly string[]): Promise<void> => {
+  const pending = files.filter(wantsCompressing)
+  let next = 0
+  const lane = async () => {
+    while (next < pending.length) await ensureCompressed(pending[next++]!)
+  }
+  await Promise.all(Array.from({ length: COMPRESSION_LANES }, lane))
 }
 
 // ---------------------------------------------------------------------------
@@ -348,7 +379,7 @@ const sameRelease = (a: InstalledWebRelease, b: InstalledWebRelease) =>
   a.assets.length === b.assets.length &&
   a.assets.every((asset, index) => asset === b.assets[index])
 
-export const installWebRelease = (options: InstallOptions): InstallResult => {
+export const installWebRelease = async (options: InstallOptions): Promise<InstallResult> => {
   const { source, store } = options
   const now = options.now ?? (() => new Date())
 
@@ -424,6 +455,7 @@ export const installWebRelease = (options: InstallOptions): InstallResult => {
   }
 
   // 4. assets first: a name already there must carry the same bytes
+  const assetTwins: string[] = []
   for (const file of assetFiles) {
     const from = path.join(source, SHARED_ASSETS, file)
     const to = path.join(store.root, SHARED_ASSETS, file)
@@ -436,20 +468,23 @@ export const installWebRelease = (options: InstallOptions): InstallResult => {
     } else {
       copyAtomically(from, to)
     }
-    ensureCompressed(to)
+    assetTwins.push(to)
   }
+  await compressAll(assetTwins)
 
   // 5-7. the shell, whole, then in place
   if (!reused) {
     fs.mkdirSync(path.join(store.root, RELEASES), { recursive: true })
     const staging = path.join(store.root, RELEASES, `.tmp-${built.releaseId}-${nonce()}`)
     try {
+      const shellTwins: string[] = []
       for (const file of shellFiles) {
         const to = path.join(staging, file)
         fs.mkdirSync(path.dirname(to), { recursive: true })
         fs.copyFileSync(path.join(source, file), to)
-        ensureCompressed(to)
+        shellTwins.push(to)
       }
+      await compressAll(shellTwins)
       fs.writeFileSync(
         path.join(staging, RELEASE_METADATA),
         `${JSON.stringify(release, null, 2)}\n`,

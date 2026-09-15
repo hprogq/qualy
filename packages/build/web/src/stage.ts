@@ -20,7 +20,7 @@ if (!lock) {
   throw new Error('no assembly lock; run `pnpm qualy resolve` before staging web assets')
 }
 
-const { release, reused, gc } = installWebRelease({
+const { release, reused, gc } = await installWebRelease({
   source,
   store: storeAt(target),
   resolutionHash: lock.resolutionHash,

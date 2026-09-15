@@ -1,4 +1,5 @@
-import { execSync } from 'node:child_process'
+import { execFile } from 'node:child_process'
+import os from 'node:os'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -87,21 +88,42 @@ const buildInfo = (project: string) =>
     `${project.replaceAll(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') || 'root'}.tsbuildinfo`,
   )
 
-// every program runs even after one fails: aborting on the first meant the
-// web-side programs went unchecked whenever the root had an error, so a
-// green run of the earlier projects was never evidence about the later ones
+// Every program runs even after one fails: aborting on the first meant the
+// web-side programs went unchecked whenever the root had an error, so a green
+// run of the earlier projects was never evidence about the later ones.
+//
+// And they run a few at a time. Twenty-nine programs in a row is twenty-nine
+// compiler startups on one core while the rest of the machine waits - cold,
+// that was twenty-eight seconds of mostly idle cpu. Bounded rather than all
+// at once: each `tsc` holds a whole program in memory, and enough of them at
+// once turns a cpu win into a swapping loss. Half the cores, at least two,
+// because the smallest runner has two and one at a time is where this
+// started.
+const LANES = Math.max(2, Math.min(8, Math.floor((os.availableParallelism?.() ?? 4) / 2)))
+
 const failed: string[] = []
-for (const project of projects) {
-  console.log(`typecheck ${project}`)
-  try {
-    execSync(
-      `./node_modules/.bin/tsc -p ${project} --noEmit --incremental --tsBuildInfoFile ${buildInfo(project)}`,
-      { stdio: 'inherit' },
-    )
-  } catch {
-    failed.push(project)
+const said: string[] = []
+let next = 0
+const lane = async (): Promise<void> => {
+  while (next < projects.length) {
+    const project = projects[next++]!
+    await new Promise<void>((resolve) => {
+      execFile(
+        './node_modules/.bin/tsc',
+        ['-p', project, '--noEmit', '--incremental', '--tsBuildInfoFile', buildInfo(project)],
+        // the output of one program at a time, kept together: interleaved
+        // diagnostics from three compilers name no file a reader can act on
+        (error, stdout, stderr) => {
+          said.push(`typecheck ${project}`, `${stdout}${stderr}`.trimEnd())
+          if (error) failed.push(project)
+          resolve()
+        },
+      )
+    })
   }
 }
+await Promise.all(Array.from({ length: LANES }, lane))
+for (const line of said) if (line !== '') console.log(line)
 // the compiler cannot resolve a module named by a string in Ui.react(...);
 // this asks it to, against each plugin's own client program
 console.log('typecheck client component references')

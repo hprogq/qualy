@@ -47,6 +47,17 @@ jobs:
         with:
           node-version: 24.20.0
           cache: pnpm
+      # The compile cache below is filled by the first step of every run and
+      # then thrown away with the runner, so every run paid for it and no run
+      # arrived with one. Keyed by what decides its contents - the node that
+      # wrote the bytecode and the dependency set that was compiled - and
+      # restored from the newest near miss, because a cache that is mostly
+      # right still saves most of the compiling.
+      - uses: actions/cache@v4
+        with:
+          path: /tmp/node-compile-cache
+          key: node-compile-24.20.0-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: node-compile-24.20.0-
       - run: pnpm install --frozen-lockfile
       # The same trade the compose stack makes, for the same reason: this
       # database exists for the length of one job and every test commits.

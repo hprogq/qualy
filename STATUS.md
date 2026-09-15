@@ -15546,3 +15546,73 @@ lightningTransform({ targets: ..., ...options.lightningcssOptions, filename, cod
 Tests 1709 passed | 17 skipped (1726);`pnpm test:browser` 52 / 379;`pnpm test:browser:webkit` 2 / 14;
 `pnpm build` exit 0;`check-staged-web`、`check-chunks`、`check-public-web`、`check-csp-build`、
 `smoke-production` 全过。
+
+## 构建与类型检查提速:先量,再改两处(2026-09-15)
+
+外部分析给了一张优先级表。逐条**实测**之后,只有两条是本仓库真实存在的浪费,做了;
+其余几条在这里量不出收益或者会坏,如实记下,免得以后再试一遍。
+
+### 做了的:release 预压缩改并发(cold install 6.98s → 3.85s)
+
+`pnpm build` 的后半段 `stage.ts` 逐文件同步做 Brotli q11 + gzip 9。对本产品的 95 个可压缩文件:
+
+```text
+brotli q11   6541ms   1,279,712 bytes
+brotli q9     182ms   1,390,265 bytes      ← 36 倍快,8.6% 大
+brotli q6      97ms   1,412,118 bytes
+```
+
+**没有降质量**:release 压一次、服务到被回收为止,字节由每个访客付、秒数由一台机器付,q11 是对的。
+浪费在「一次一个文件」。改成 8 条并发之后 **6.98s → 3.85s**,95 个 twin **逐字节相同**。
+下限是单个文件:Monaco 那个 2.5 MB 的 chunk 一个人就占 3.3 秒,并发切不开它。
+
+`installWebRelease` 因此变成 async,调用点(stage、release-store 套件)跟着 await。
+
+### 做了的:typecheck 从串行改成有界并发(cold 28.35s → 16.35s)
+
+29 个程序一个接一个跑,在一颗核上排队,机器其余部分闲着。改成 `max(2, min(8, cores/2))` 条:
+
+```text
+cold   28.35s → 16.35s
+warm    6.83s →  4.43s
+```
+
+不是无脑铺满——每个 `tsc` 驻留一整个 program,开太多会用换页把 CPU 的便宜赔回去;最小 2 条,
+因为最小的 runner 只有两核。诊断输出**按程序成段收集后再打印**,不让三个编译器的行交错。
+实测过仍会红并点名文件。
+
+### 量过但没做的
+
+| 建议 | 实测 | 结论 |
+| --- | --- | --- |
+| `reportCompressedSize: false` | 8.40/8.75s vs 8.42/8.46s | **噪声内**。Vite 8 这一步已经够快,不改 |
+| `collectWebPlugins` 一轮三次 | 首次 681ms,之后 16–22ms | 冗余真实但**只值 40ms**,不为此重构 |
+| `experimental.viteModuleRunner: false` | 11.1s vs 10.4s,**且 8 条用例红** | 更慢,而且无扩展名的 export 子路径 Node 解析不了 |
+| `experimental.fsModuleCache` | 9.66–10.35s vs 9.62–9.74s | 量不出 |
+| `pool: 'threads'`(保持 isolate) | 16.5–17.1s vs 16.8–19.0s | 几乎没有区别 |
+| `pool: 'threads'` + `isolate: false` | 15.2–15.4s,import CPU 29.7s → 14.2s | **赢的是 `isolate: false`,不是 threads** |
+
+最后一条是唯一有量的杠杆(非 DB 那 83 个文件省约 10%),**但没有采用**:`isolate: false` 让同一 worker
+里的测试文件共享模块状态,而这个仓库到处是模块级注册表(observability sink、rum registry、
+assembly resolver cache、warnOnce 集合)。一次跑绿不等于换个顺序还绿。收益 2–3 秒,风险是难查的串扰。
+
+**全量 66.7s 里真正的大头是 Postgres**:最慢的 12 个文件全是 DB 支撑的
+(recognition 31s、review-flow 25s、lsp-bridge 24s),换 pool 帮不上。
+
+### 顺带两件小的
+
+- CI 的 `NODE_COMPILE_CACHE` 每次 run 填满又随 runner 扔掉,**没有一次是带着 cache 开始的**。
+  加 `actions/cache`,key 用 node 版本 + lockfile,带 `restore-keys` 近似命中。本地实测省约 5%(30 MB)。
+- 加 `test:watch` / `test:browser:watch`。完整 1709 + 379 条不应该是每改一行的反馈环。
+
+**没试的**:`optimizeDeps.holdUntilCrawlEnd: false` 与 bundled dev mode。前者与本仓库那份 scan 孪生
+文件的用意确实吻合,但它的失败模式正是「跑到一半 re-optimize 重载」——这个仓库被它整套浏览器套件炸过一次,
+config 里有注释记着。要试得单独一轮,带着浏览器套件反复验证,不顺手做。
+
+**结论与分析一致:不换 Rsbuild/Rstest/Bun。** 当前 Vite 8 的生产构建已经是 Rolldown/Oxc,
+迁移要重写 `qualyPlugins` / `qualyRelease` / `qualyBootFrame` 七个 hook、重新翻译 codeSplitting.groups、
+重新证明十来条 release 不变量,而 Rsbuild 自己公开的 benchmark 里 production build 还比 Vite 慢。
+
+**门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm test` 238 passed | 3 skipped (241),
+Tests 1709 passed | 17 skipped (1726);`pnpm test:browser` 52 / 379;`pnpm build` exit 0(13.46s,
+原 15.7s);`check-staged-web`、`check-chunks`、`check-public-web`、`smoke-production` 全过。
