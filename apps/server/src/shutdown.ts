@@ -39,6 +39,27 @@ export const requestShutdown = (): void => {
 }
 
 /**
+ * What a first signal says, which differs only in who is listening.
+ *
+ * The hint is an instruction, and an instruction is only worth printing to
+ * somebody who can follow it: a person at a terminal, holding the key that
+ * sent this. Production's SIGINT comes from a supervisor, a container stop or
+ * a one-off `kill`, and telling a log file to press Ctrl+C again is advice
+ * nobody in the room can take.
+ *
+ * Only the sentence changes. A second, distinct signal still gives up on the
+ * graceful shutdown in either mode, and still says so when it happens - that
+ * line reports an operator's decision rather than offering them one.
+ */
+export const shutdownStartMessage = (
+  mode: 'development' | 'production',
+  signal: 'SIGINT' | 'SIGTERM',
+): string =>
+  mode === 'development' && signal === 'SIGINT'
+    ? 'shutting down; press Ctrl+C again to give up waiting'
+    : `${signal}: shutting down`
+
+/**
  * Completes when a stop has been asked for.
  *
  * Raced against the launched application in the entry point, so that the

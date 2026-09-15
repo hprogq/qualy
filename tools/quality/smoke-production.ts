@@ -315,7 +315,46 @@ await check(asset!, async (response) => {
 const stopped = await server.stop()
 if (stopped.timedOut) fail(`SIGTERM did not stop the process within ${String(stopped.ms)}ms`)
 if (stopped.exitCode !== 0) fail(`shutdown exited ${String(stopped.exitCode)}`)
-console.log('smoke: shutdown clean (exit 0)')
+// the finalizers are the only evidence the teardown ran at all: the entry
+// point logs this because a finalizer ran, so a silent exit zero is a
+// shutdown that skipped them
+if (!server.output().includes('shutdown complete')) {
+  fail('SIGTERM exited zero without reporting a completed shutdown')
+}
+console.log('smoke: shutdown clean (exit 0), finalizers reported')
+
+// And the same request from a keyboard.
+//
+// A production instance is stopped by a supervisor, but `kill -INT` and a
+// terminal both reach it, and the process must not answer those by telling
+// whoever is reading the log to press a key. It is the same graceful path -
+// this asserts the exit and the finalizers again, because a message-only
+// change that quietly took either with it is exactly what this guards.
+{
+  const interrupted = startQualyServer({
+    port: PORT,
+    env: {
+      DATABASE_URL: process.env.DATABASE_URL ?? 'postgres://qualy:qualy@localhost:5432/qualy',
+    },
+  })
+  await interrupted.waitUntilReady().catch((error: unknown) => {
+    console.error(interrupted.output())
+    interrupted.kill()
+    return fail(`the interrupt probe never became ready: ${String(error)}`)
+  })
+  const ended = await interrupted.stop({ signal: 'SIGINT' })
+  const said = interrupted.output()
+  if (ended.timedOut) fail(`SIGINT did not stop the process within ${String(ended.ms)}ms`)
+  if (ended.exitCode !== 0) fail(`a graceful SIGINT exited ${String(ended.exitCode)}`)
+  if (!said.includes('SIGINT: shutting down')) fail('SIGINT did not name itself')
+  if (said.includes('press Ctrl+C again')) {
+    fail('a production instance offered its log file a second Ctrl+C')
+  }
+  if (!said.includes('shutdown complete')) {
+    fail('SIGINT exited zero without reporting a completed shutdown')
+  }
+  console.log('smoke: SIGINT shuts down the same way, and offers nobody a keystroke')
+}
 
 // A boot that refuses has to end, and say why.
 //

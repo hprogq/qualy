@@ -31,11 +31,16 @@ export interface QualyServer {
   /** resolves when the readiness probe answers, and throws if it never does */
   readonly waitUntilReady: (options?: { readonly timeoutMs?: number }) => Promise<void>
   /**
-   * SIGTERM, then the exit. A deployment's rolling restart waits for this, so
-   * a tool that does not wait is not testing what a deployment does.
+   * A stop signal, then the exit. A deployment's rolling restart waits for
+   * this, so a tool that does not wait is not testing what a deployment does.
+   *
+   * SIGTERM unless a caller says otherwise: that is what a supervisor sends.
+   * SIGINT is the same request from a keyboard, and the process answers it
+   * differently in one respect only - what it says while starting.
    */
   readonly stop: (options?: {
     readonly timeoutMs?: number
+    readonly signal?: 'SIGTERM' | 'SIGINT'
   }) => Promise<{ readonly exitCode: number | null; readonly timedOut: boolean; readonly ms: number }>
   readonly kill: () => void
 }
@@ -124,9 +129,9 @@ export const startQualyServer = (options: QualyServerOptions): QualyServer => {
         await delay(500)
       }
     },
-    stop: async ({ timeoutMs = STOP_TIMEOUT } = {}) => {
+    stop: async ({ timeoutMs = STOP_TIMEOUT, signal = 'SIGTERM' } = {}) => {
       const started = performance.now()
-      child.kill('SIGTERM')
+      child.kill(signal)
       const code = await Promise.race([exited, delay(timeoutMs).then(() => 'timeout' as const)])
       const timedOut = code === 'timeout'
       if (timedOut) child.kill('SIGKILL')

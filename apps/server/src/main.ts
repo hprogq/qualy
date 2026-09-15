@@ -5,7 +5,12 @@ import { readManifest } from '@qualy/assembly'
 import { telemetryLayer } from '@qualy/telemetry'
 import { logLine, loggingLayer, resolveLogging } from './logging.ts'
 import { mark, reportBootTiming } from './boot-timing.ts'
-import { onShutdownRequested, requestShutdown, shutdownRequested } from './shutdown.ts'
+import {
+  onShutdownRequested,
+  requestShutdown,
+  shutdownRequested,
+  shutdownStartMessage,
+} from './shutdown.ts'
 import { devTopology, pluginRoots } from './dev/topology.ts'
 import { supervisedPrepareFence } from './dev/fence.ts'
 import { verifyAssembly } from './verify-assembly.ts'
@@ -312,13 +317,7 @@ for (const [signal, code] of [
     requestShutdown()
     // say so at once: the drain that follows can take a few seconds, and a
     // silent one is indistinguishable from a press that did not land
-    logLine(
-      logging,
-      'Info',
-      signal === 'SIGINT'
-        ? 'shutting down; press Ctrl+C again to give up waiting'
-        : `${signal}: shutting down`,
-    )
+    logLine(logging, 'Info', shutdownStartMessage(mode, signal))
   })
 }
 
