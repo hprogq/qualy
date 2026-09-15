@@ -34,6 +34,7 @@
     "@qualy/release-contract": "workspace:*",
     "@qualy/telemetry": "workspace:*",
     "@qualy/ui-contract": "workspace:*",
+    "@qualy/web-build": "workspace:*",
     "@qualy/web-runtime": "workspace:*",
     "chalk": "^6.0.0",
     "chokidar": "catalog:",

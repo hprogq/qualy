@@ -11,6 +11,9 @@ import { clientAssemblyLayer } from '@qualy/api-kit/client-assembly'
 import { readinessLayer } from '@qualy/api-kit/readiness'
 import { shellPolicyLayer } from '@qualy/api-kit/shell-policy'
 import { Plugin } from '@qualy/plugin-kit'
+// one function, and it names no capability: which surfaces exist is each
+// owner's answer, collected where the browser build already collects them
+import { browserContractOf } from '@qualy/web-build/browser-contract'
 import { lockFromResolution, type Resolution } from '@qualy/assembly'
 import { loadAssembly } from '@qualy/assembly/runtime'
 import { ServerConfig, apiReferenceEnabled } from './config.ts'
@@ -230,7 +233,10 @@ export async function makeApplication(
     Layer.provide(
       Layer.succeed(
         AssemblyInfo,
-        AssemblyInfo.of({ resolutionHash: lockFromResolution(resolution).resolutionHash }),
+        AssemblyInfo.of({
+          resolutionHash: lockFromResolution(resolution).resolutionHash,
+          browserContractHash: browserContractOf(resolution),
+        }),
       ),
     ),
   ) as unknown as Layer.Layer<never>

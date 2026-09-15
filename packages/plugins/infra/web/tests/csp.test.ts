@@ -13,7 +13,7 @@ import { requestOriginGuard } from '@qualy/api-kit/origin'
 import { shellPolicyLayer } from '@qualy/api-kit/shell-policy'
 import { WebConfig, layer as policyLayer, routes } from '../src/server/index.ts'
 import { composeShellPolicy, type CspMode } from '../src/server/shell-policy.ts'
-import { installTestRelease } from './support/store.ts'
+import { TEST_CONTRACT, installTestRelease } from './support/store.ts'
 
 // The policy on the wire: which header the shell sends in each mode, that
 // an asset sends none, and what the report endpoint answers to each kind
@@ -26,7 +26,10 @@ const port = 3214
 const enforcePort = 3215
 
 const HASH = 'sha256:test'
-const assemblyInfo = Layer.succeed(AssemblyInfo, AssemblyInfo.of({ resolutionHash: HASH }))
+const assemblyInfo = Layer.succeed(
+  AssemblyInfo,
+  AssemblyInfo.of({ resolutionHash: HASH, browserContractHash: TEST_CONTRACT }),
+)
 
 const assetRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-web-csp-'))
 installTestRelease(assetRoot, { hash: HASH, assets: { 'app-abc123.js': 'export {}\n' } })

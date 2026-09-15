@@ -3,6 +3,7 @@ import type { UiText } from '@qualy/i18n-contract'
 import {
   definePage,
   reactComponent,
+  type BrowserSurface,
   type ClientComponentRef,
   type LayoutContractId,
   type LayoutDeclaration,
@@ -14,7 +15,12 @@ import {
   type CollectionDeclaration,
   type UiCollectionToken,
 } from '@qualy/ui-contract'
-import { ExtensionPoint, Plugin, type PluginFeature } from '@qualy/plugin-kit'
+import {
+  ExtensionPoint,
+  Plugin,
+  type PluginDescriptor,
+  type PluginFeature,
+} from '@qualy/plugin-kit'
 import { registerSurfaces, uiLayer } from './server/registry.ts'
 
 // The shell's face in the descriptor model.
@@ -46,6 +52,40 @@ export const I18nCatalogs = ExtensionPoint.make<{ readonly module: string }>(
   '@qualy/plugin-ui-registry/i18n',
   { phase: 'external' },
 )
+
+/**
+ * The browser surfaces one descriptor declares, with what implements each.
+ *
+ * Read by the browser build, which turns the references into import edges,
+ * and by the host, which hashes the identities to check that the release it
+ * is about to serve was built from these same surfaces. Two readers, one
+ * walk: a second copy of this loop would let the two disagree about what the
+ * contract IS, and the disagreement would show up as a deployment that
+ * refuses to start for no reason a log could explain.
+ *
+ * Login drivers are the fourth kind and are not here: they are auth's
+ * declaration, and this capability does not read another's.
+ */
+export const uiSurfacesOf = (
+  descriptor: PluginDescriptor,
+): { surface: BrowserSurface; component: ClientComponentRef }[] => {
+  const found: { surface: BrowserSurface; component: ClientComponentRef }[] = []
+  for (const surfaces of Plugin.contributionsOf(descriptor, UiSurfaceDeclarations)) {
+    for (const page of surfaces.pages ?? []) {
+      found.push({ surface: { kind: 'page', id: page.page.id }, component: page.component })
+    }
+    for (const layout of surfaces.layouts ?? []) {
+      found.push({ surface: { kind: 'layout', id: layout.contract }, component: layout.component })
+    }
+    for (const slot of surfaces.slots ?? []) {
+      found.push({
+        surface: { kind: 'slot', slot: slot.key, id: slot.id },
+        component: slot.component,
+      })
+    }
+  }
+  return found
+}
 
 export interface PageOptions {
   readonly id: NamespacedId

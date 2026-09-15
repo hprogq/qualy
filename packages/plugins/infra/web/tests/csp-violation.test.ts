@@ -13,7 +13,7 @@ import { NodeServer } from '@qualy/api-kit/node'
 import { requestOriginGuard } from '@qualy/api-kit/origin'
 import { WebConfig, routes } from '../src/server/index.ts'
 import { composeShellPolicy, ShellPolicyHeader } from '../src/server/shell-policy.ts'
-import { installTestRelease } from './support/store.ts'
+import { TEST_CONTRACT, installTestRelease } from './support/store.ts'
 
 // One real violation, end to end: a browser loads a shell served with the
 // policy, the shell carries an inline script the policy does not hash, the
@@ -95,7 +95,10 @@ beforeAll(async () => {
           WebConfig.of({ assetRoot, sourceRoot: assetRoot, cspMode: 'report' }),
         ),
         Layer.sync(NodeServer, () => createServer()),
-        Layer.succeed(AssemblyInfo, AssemblyInfo.of({ resolutionHash: HASH })),
+        Layer.succeed(
+          AssemblyInfo,
+          AssemblyInfo.of({ resolutionHash: HASH, browserContractHash: TEST_CONTRACT }),
+        ),
         Layer.succeed(ShellPolicyHeader, ShellPolicyHeader.of({ value: () => withoutReportTo })),
         clientAssemblyLayer,
       ),

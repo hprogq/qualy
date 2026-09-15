@@ -245,6 +245,23 @@ const production = Effect.fn('Web.production')(function* (
       }),
     )
   }
+  // And the half that hash cannot see. The selection can be identical while
+  // ordinary code adds, renames or removes a page, a slot or a login method:
+  // the lock records no surface identity, and every workspace plugin's
+  // version is 0.0.0. A deployment that updated the server and reused the
+  // store's existing release would then serve a bundle with no renderer for
+  // a surface its own manifest names - a blank screen, discovered by a user.
+  //
+  // A release installed before this was recorded cannot be shown to match,
+  // and unprovable is refused rather than assumed, the same reading the old
+  // tab judgement takes.
+  if (current.release.browserContractHash !== info.browserContractHash) {
+    return yield* Effect.die(
+      new WebUnservable({
+        message: `web release ${current.releaseId} carries browser contract ${current.release.browserContractHash ?? '(none recorded)'}, but this process declares ${info.browserContractHash}; run 'pnpm build' so the bundle matches the surfaces this assembly serves`,
+      }),
+    )
+  }
   yield* Effect.logInfo(`serving web release ${current.releaseId} from ${current.root}`)
   return {
     current,

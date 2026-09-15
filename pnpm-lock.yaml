@@ -186,6 +186,9 @@ importers:
       '@qualy/assembly-contract':
         specifier: workspace:*
         version: link:packages/contracts/assembly
+      '@qualy/auth-contract':
+        specifier: workspace:*
+        version: link:packages/contracts/auth
       '@qualy/cli':
         specifier: workspace:*
         version: link:apps/cli
@@ -405,6 +408,9 @@ importers:
       '@qualy/ui-contract':
         specifier: workspace:*
         version: link:../../packages/contracts/ui
+      '@qualy/web-build':
+        specifier: workspace:*
+        version: link:../../packages/build/web
       '@qualy/web-runtime':
         specifier: workspace:*
         version: link:../../packages/web/runtime

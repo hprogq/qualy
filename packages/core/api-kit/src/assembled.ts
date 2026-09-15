@@ -30,6 +30,19 @@ export class AssemblyInfo extends Context.Service<
   AssemblyInfo,
   {
     readonly resolutionHash: string
+    /**
+     * The other half of the same question, for the half of an artifact the
+     * assembly hash cannot see.
+     *
+     * A lock records which plugins were selected; it records nothing about
+     * the page ids, layout contracts, slot keys and login types their browser
+     * halves offer. So ordinary code can add, rename or remove one of those
+     * without moving the assembly hash at all - and a deployment that
+     * updated the server while reusing the store's existing release would
+     * serve a bundle with no renderer for a surface its own manifest now
+     * names. Two opaque strings, neither interpreted here.
+     */
+    readonly browserContractHash: string
   }
 >()('@qualy/api-kit/AssemblyInfo') {}
 

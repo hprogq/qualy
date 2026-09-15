@@ -4,8 +4,8 @@ import { pathToFileURL } from 'node:url'
 import { commonErrorCodes } from '@qualy/i18n-contract'
 import { isPluginDescriptor, Plugin, type PluginDescriptor } from '@qualy/plugin-kit'
 import { BrowserModules } from '@qualy/plugin-kit/browser'
-import { I18nCatalogs, UiSurfaceDeclarations } from '@qualy/plugin-ui-registry/plugin'
-import { LoginDriverDeclarations } from '@qualy/auth-contract/plugin'
+import { I18nCatalogs, uiSurfacesOf } from '@qualy/plugin-ui-registry/plugin'
+import { loginSurfacesOf } from '@qualy/auth-contract/plugin'
 import { surfaceLabel, type BrowserSurface, type ClientComponentRef } from '@qualy/ui-contract'
 import { currentResolution, readEntries, resolvePluginExport } from '@qualy/assembly/host'
 import { manifestPath, repoRoot } from './manifest.ts'
@@ -64,35 +64,16 @@ export interface WebPluginEntry {
   browserModules: string[]
 }
 
-/** every surface one descriptor declares, with the reference that implements it */
+// every surface one descriptor declares, with the reference that implements
+// it - each kind from the capability that owns it, so the host computing the
+// same contract at boot reads the same two walks rather than a second copy
 const declaredSurfaces = (
   descriptor: PluginDescriptor,
-): { surface: BrowserSurface; ref: ClientComponentRef }[] => {
-  const found: { surface: BrowserSurface; ref: ClientComponentRef }[] = []
-  for (const surfaces of Plugin.contributionsOf(descriptor, UiSurfaceDeclarations)) {
-    for (const page of surfaces.pages ?? []) {
-      found.push({ surface: { kind: 'page', id: page.page.id }, ref: page.component })
-    }
-    for (const layout of surfaces.layouts ?? []) {
-      found.push({ surface: { kind: 'layout', id: layout.contract }, ref: layout.component })
-    }
-    for (const slot of surfaces.slots ?? []) {
-      found.push({
-        surface: { kind: 'slot', slot: slot.key, id: slot.id },
-        ref: slot.component,
-      })
-    }
-  }
-  for (const driver of Plugin.contributionsOf(descriptor, LoginDriverDeclarations)) {
-    if (driver.presentation.mode === 'component') {
-      found.push({
-        surface: { kind: 'login', id: driver.type },
-        ref: driver.presentation.component,
-      })
-    }
-  }
-  return found
-}
+): { surface: BrowserSurface; ref: ClientComponentRef }[] =>
+  [...uiSurfacesOf(descriptor), ...loginSurfacesOf(descriptor)].map((entry) => ({
+    surface: entry.surface,
+    ref: entry.component,
+  }))
 
 export async function collectWebPlugins(
   options: { all?: boolean; ymlPath?: string } = {},

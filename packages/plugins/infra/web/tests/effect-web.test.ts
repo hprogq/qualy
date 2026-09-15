@@ -18,7 +18,7 @@ import { NodeServer } from '@qualy/api-kit/node'
 import { WebConfig, routes } from '../src/server/index.ts'
 import { ShellPolicyHeader } from '../src/server/shell-policy.ts'
 import { viteLogger } from '../src/dev/index.ts'
-import { installTestRelease, TEST_HASH } from './support/store.ts'
+import { TEST_CONTRACT, TEST_HASH, installTestRelease } from './support/store.ts'
 
 // The boundary between the api and the browser shell.
 //
@@ -67,7 +67,10 @@ installFixture(assetRoot, {
   browserContract: 'sha256:other-surfaces',
 })
 installFixture(assetRoot)
-const assemblyInfo = Layer.succeed(AssemblyInfo, AssemblyInfo.of({ resolutionHash: HASH }))
+const assemblyInfo = Layer.succeed(
+  AssemblyInfo,
+  AssemblyInfo.of({ resolutionHash: HASH, browserContractHash: TEST_CONTRACT }),
+)
 // a policy already frozen: which header the shell sends is another suite's question
 const policy = Layer.succeed(
   ShellPolicyHeader,
@@ -190,8 +193,21 @@ describe('the shell against the api mount', () => {
           ),
         ),
       )
-    const other = Layer.succeed(AssemblyInfo, AssemblyInfo.of({ resolutionHash: 'sha256:other' }))
+    const other = Layer.succeed(
+      AssemblyInfo,
+      AssemblyInfo.of({ resolutionHash: 'sha256:other', browserContractHash: TEST_CONTRACT }),
+    )
     expect(Exit.isFailure(await buildAt(assetRoot, other))).toBe(true)
+
+    // The same refusal for the half the assembly hash cannot see. Adding,
+    // renaming or removing a page or a slot moves no lock and bumps no
+    // version, so a server updated over a reused store would answer a
+    // manifest naming surfaces its own bundle cannot render.
+    const movedSurfaces = Layer.succeed(
+      AssemblyInfo,
+      AssemblyInfo.of({ resolutionHash: HASH, browserContractHash: 'sha256:one-more-page' }),
+    )
+    expect(Exit.isFailure(await buildAt(assetRoot, movedSurfaces))).toBe(true)
 
     const unstamped = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-web-unstamped-'))
     try {

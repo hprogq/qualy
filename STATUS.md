@@ -15074,3 +15074,57 @@ Tests 1698 passed | 17 skipped (1715);plugin-isolation / error-codes / package-e
 顺带:`docs/plugin-refactor.md` §108 的标题 `Phase G/H/I/J` 改成 `Phase G/H`,并写明
 **不存在被定义过的 Phase I 或 J**——那四组里只有两组有目标与 DoD,另外两组(descriptor purity、SDK)
 连同 `purge` 都是想法而非计划。那个标题是「Phase I」这个疑问的唯一来源。
+
+## post-H 验收修复(三):当前 release 与当前 server 也要比 browser contract(2026-09-15)
+
+复审指出的部署缺口成立。D1.1 只解决了「**历史** release vs 当前 release」;
+启动时「**当前 pinned** release vs 当前 server 源码」仍然只比 `resolutionHash`,
+而 surface 身份不进 lock、工作区插件版本恒 `0.0.0`——加一个 page、改一个 slot key,
+resolutionHash 纹丝不动。于是「只更新 server、复用旧 web store」这种部署能启动成功,
+浏览器拿旧 bundle,server 发新 manifest。
+
+### 实现
+
+`AssemblyInfo` 多一个 `browserContractHash`,plugin-web 启动时**两个都比**,任一不同拒绝服务。
+
+难点在「谁来算」,而且两侧必须**同一支 walk**,否则 host 会拒绝所有 release 而日志说不清原因。
+做法是各能力公开自己那部分:`uiSurfacesOf`(ui-registry 的 page/layout/slot)与
+`loginSurfacesOf`(auth-contract 的 login driver),collector 与 host 都用这两支;
+`browserContractHashOf` 从 `@qualy/web-build` 移到 `@qualy/ui-contract/browser-contract`
+(**独立模块 + 独立子路径**:它要 `node:crypto`,而 `browser-surface.ts` 是浏览器代码会 import 的,
+放进去就会把 crypto 带进 bundle——跟上一节私有 release 文档同一个教训)。
+
+**两道门禁替我纠正了两次放错位置**,如实记:
+- 第一版 host 走 `resolution.descriptors` 全集 → 新门禁 `browser-contract.test.ts` 立刻红:
+  多出 `page:ping/page`,因为 ping 是 **detached**。改成 `runtimePlugins`(active 选集)。
+- 第二版让 `apps/server/src/runtime.ts` 直接 import 两个 capability facade →
+  `capability-boundary` 的「the composition root names no plugin」红。**没有去放宽那条豁免**,
+  而是把整支 walk 收进 `@qualy/web-build/browser-contract`,host 只 import 一个
+  `browserContractOf(resolution)`,不认识「page」是什么。
+
+### 部署不变量(写进 CLAUDE.md)
+
+> **server 与 web release 是同一个 deployment unit,不存在「只更新 server、复用旧 web store」的合法部署。**
+
+### 验证
+
+- 新门禁 `browser-contract.test.ts`:build 侧收集到的 surface 集合与 host 侧从描述器现算的集合
+  **逐项相等**(41 条),两者的 hash 相等,且 `browserContractOf(resolution)` 与之相等。
+- 单元用例:`AssemblyInfo` 的 contract hash 与 release 不符 → 层构建失败(**去掉这段检查后该用例转红**)。
+- **真实生产启动**:重建后正常启动、smoke 全过;随后**只改源码不重建**(给 org 加一个
+  `Ui.page`)→ `smoke-production` exit 1,服务器不再 ready。
+
+### 同时发现一个**既有**缺陷,没有在本轮修
+
+启动期 `WebUnservable` 的失败**不会打印原因**:进程既不退出也不报错,一直挂到被 SIGTERM
+(我的 `timeout` 杀掉时才出现 `shutdown complete`)。用插桩确认检查确实执行、两个 hash 确实不同、
+`Effect.die` 确实走到;把 `resolutionHash` 篡改成不匹配**行为完全一样**——所以这不是本轮引入的,
+它和 D1.1 之前就有的那条检查同一个形状。看上去是 die 之后某个 finalizer 阻塞,
+最终以 interrupt 收尾,于是 `Layer.launch` 的 onExit 走了「shutdown complete」分支、盖掉了真实 cause。
+
+**因此 CLAUDE.md 与 STATUS 里「不一致拒绝启动」应当读作:不会服务,但目前不会说明原因。**
+对编排器是安全的(readiness 永不通过),对人是难查的。这条是下一件该修的事,不在 post-H 范围内自行展开。
+
+**门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm test` 236 passed | 3 skipped (239),
+Tests 1700 passed | 17 skipped (1717);`pnpm test:browser` 52 / 377;`pnpm test:browser:webkit` 2 / 14;
+`pnpm build` exit 0 → `r_88AkbU8zgM-y5o7QfjMtDg`;`check-staged-web`、`smoke-production` 全过。

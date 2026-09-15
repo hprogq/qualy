@@ -1,5 +1,11 @@
 import { Layer } from 'effect'
-import { ExtensionPoint, Plugin, type PluginFeature } from '@qualy/plugin-kit'
+import {
+  ExtensionPoint,
+  Plugin,
+  type PluginDescriptor,
+  type PluginFeature,
+} from '@qualy/plugin-kit'
+import type { BrowserSurface, ClientComponentRef } from '@qualy/ui-contract'
 import { loginDriversLayer, registerLoginDriver, type LoginDriver } from './login.ts'
 
 // The sign-in capability's face in the descriptor model. A driver's
@@ -12,6 +18,28 @@ export const LoginDriverDeclarations = ExtensionPoint.make<LoginDriver>(
   '@qualy/auth-contract/login-drivers',
   { phase: 'prepare' },
 )
+
+/**
+ * The browser surface a driver presents, when it presents one.
+ *
+ * The same walk the ui capability publishes for its three kinds, for the one
+ * this capability owns - so the build and the host agree about the fourth
+ * without either of them reading the other's declarations. A redirect driver
+ * has no component and therefore no browser surface.
+ */
+export const loginSurfacesOf = (
+  descriptor: PluginDescriptor,
+): { surface: BrowserSurface; component: ClientComponentRef }[] =>
+  Plugin.contributionsOf(descriptor, LoginDriverDeclarations).flatMap((driver) =>
+    driver.presentation.mode === 'component'
+      ? [
+          {
+            surface: { kind: 'login' as const, id: driver.type },
+            component: driver.presentation.component,
+          },
+        ]
+      : [],
+  )
 
 export const Login = {
   /** declares how this plugin's sign-in method is presented and typed */

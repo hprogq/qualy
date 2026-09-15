@@ -10,12 +10,8 @@ import {
   parseWebBuildMetadata,
   type InstalledWebRelease,
 } from '@qualy/release-contract/private'
-import {
-  BROWSER_SURFACE_MAP,
-  PRIVATE_BUILD_FILES,
-  WEB_BUILD_METADATA,
-  browserContractHashOf,
-} from './release-vite.ts'
+import { browserContractHashOf } from '@qualy/ui-contract/browser-contract'
+import { BROWSER_SURFACE_MAP, PRIVATE_BUILD_FILES, WEB_BUILD_METADATA } from './release-vite.ts'
 
 // The release store: where web builds are installed, and how they are kept.
 //

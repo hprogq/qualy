@@ -5,11 +5,12 @@
   "license": "AGPL-3.0-only",
   "type": "module",
   "exports": {
-    "./vite": "./src/vite.ts",
+    "./browser-contract": "./src/browser-contract.ts",
     "./collect": "./src/collect.ts",
-    "./stage": "./src/stage.ts",
+    "./package.json": "./package.json",
     "./release-store": "./src/release-store.ts",
-    "./package.json": "./package.json"
+    "./stage": "./src/stage.ts",
+    "./vite": "./src/vite.ts"
   },
   "dependencies": {
     "@qualy/assembly": "workspace:*",

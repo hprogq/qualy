@@ -7,6 +7,7 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
+    "./browser-contract": "./src/browser-contract.ts",
     "./package.json": "./package.json"
   },
   "dependencies": {
