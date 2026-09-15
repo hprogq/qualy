@@ -1,11 +1,14 @@
-# 挂载式 `.env`(1Password Environments / FIFO)
+# 挂载式 `.env`(FIFO)
 
 日期:2026-09-16。实测环境:macOS 27,Node 24.20.0,Vite 8.2.0,Docker Compose v5.5.0。
 
-本地开发时,`.env` 里的连接串与密钥可以不落盘:1Password 的 Agent Hook 会在工作区
-挂载一条**命名管道(FIFO)**,每次有人打开它就把值写进去。本文记录这条路对 Qualy
-意味着什么,以及为什么代码改成现在这样。**仓库不依赖 1Password**:没有 SDK、没有
-CLI、没有 MCP,产品消费的始终是标准环境变量与 `.env` 这一个接口。
+Qualy 只使用标准的 `.env` / process environment 接口。**普通磁盘 `.env` 是默认方式,完全支持。**
+开发者怎么保管自己的密钥是个人选择——普通 `.env`、shell 环境变量、任何 secret manager 都可以,
+仓库不假设、不要求其中任何一种,也不包含任何 secret manager 的项目级配置。
+
+本文只处理其中一种情况对运行时的影响:secret manager 可以把 `.env` **挂载为命名管道(FIFO)**,
+每次有人打开就写入内容,密钥因此不落盘。1Password Environments 是一个兼容的例子,但不是项目
+要求、不是推荐安装步骤,也不是依赖。
 
 ## 一、FIFO 不是「放在别处的文件」
 
@@ -102,13 +105,22 @@ DEV, PROD}`)。
 
 都是「进程起来时读一次」,没有一个会在运行中重读。
 
-## 五、给使用者的口径
+## 五、口径
 
-1. 用不用 1Password 都一样:`.env` 是普通文件时行为不变,`.env.example` 仍然是
-   schema 与参考,不删。
-2. `.1password/environments.toml` 只写 `mount_paths = [".env"]`——Agent Hook 的
-   项目级挂载契约,不含 Environment ID、账号、vault 名或任何 secret。
-3. **挂载的环境在 dev session 启动那一刻冻结**;在 1Password 里改了变量之后,
-   要重启 `pnpm dev` 才生效。
-4. Agent Hook 没跑而 `.env` 又是管道时,任何读它的命令都会停在打开那一步。
-   `pnpm dev` 会先说 `.env is a mounted environment`,那行之后不动就是这种情况。
+1. Qualy 支持普通 `.env` 与 secret manager 挂载的环境;普通文件是默认,行为不变。
+   `.env.example` 仍然是 schema 与参考,不删。
+2. 挂载的环境可能是 FIFO,可能只能可靠读取一次,所以 dev supervisor 在 session 启动时
+   读一次并冻结;**改了环境变量后重启 `pnpm dev`**。
+3. 在 Qualy 自己的 Node 进程里(`pnpm dev`、`pnpm start`、CLI、seed),shell 里已经设置的
+   变量优先于 `.env`(`--env-file-if-exists` 与 `process.loadEnvFile` 实测均不覆盖已有变量)。
+   `docker compose` 的 `env_file` 不在此列,按 Compose 自己的规则。
+4. 选择哪个 secret manager、它怎么挂载,属于每个开发者自己的机器配置,不进仓库。
+   仓库里没有、也不需要任何这类工具的配置文件或 hook。
+5. 如果 `.env` 是管道而另一端没有 writer,任何读它的命令都会停在打开那一步。
+   `pnpm dev` 会先打印 `.env is a mounted environment`,那行之后不动就是这种情况。
+
+## 附:项目级 1Password 配置的撤回(2026-09-16)
+
+第一版曾提交 `.1password/environments.toml`(`mount_paths = [".env"]`),把一个 secret manager
+的挂载路径写成了项目级约定。已撤回:secret manager 的选择属于每个开发者,不属于仓库。
+上面的 FIFO 兼容设计与之无关,原样保留。

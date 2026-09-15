@@ -1252,7 +1252,9 @@ node_modules/.modules.yaml
 > **2026-09-16 修订(实现已偏离本节两处)**：快照仍然是本节说的那一份，但它在
 > **session 启动时读一次就冻结**，`.env` 也**不再进 watch plan**——因此下文
 > 「`.env` 改动触发新 session staging」不再成立，改环境变量要重启 `pnpm dev`。
-> 理由是 `.env` 可能是密钥管理器挂载的**命名管道**：每次 open 拿的是 writer 的
+> 普通磁盘 `.env` 仍是默认、完全支持；用不用 secret manager、用哪个是每个开发者自己的
+> 选择，仓库不含任何这类工具的配置。只是 `.env` 也可能是 secret manager 挂载的
+> **命名管道**：每次 open 拿的是 writer 的
 > 新一轮，writer 不在时 open 会**无限阻塞且不报错**——实测把旧行为放回去以后，
 > 一次后端重载直接把 supervisor 挂死，终端上一个字都没有。事实与实验见
 > docs/notes/mounted-env.md，读取点是 `apps/server/src/dev/env.ts`。

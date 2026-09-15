@@ -34,7 +34,7 @@ const workspace = () => {
 /**
  * A pipe at `.env` and something on the other end of it.
  *
- * One writer per open, the way a secret agent's hook behaves: the path holds
+ * One writer per open, the way a mounting secret manager behaves: the path holds
  * nothing until somebody reads it, and reading is what produces the content.
  */
 const mountedEnv = (dir: string, body: string) => {
