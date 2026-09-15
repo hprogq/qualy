@@ -1,5 +1,6 @@
 import { Context, Deferred, Effect, Exit, Fiber, Layer, Logger, References, Scope } from 'effect'
 import { sql } from 'kysely'
+import { Client } from 'pg'
 import { describe, expect, it, vi } from 'vitest'
 import { entityManager, kyselyOf, query, transaction } from '../src/server/index.ts'
 import { Orm } from '../src/server/orm.ts'
@@ -24,6 +25,16 @@ const closeWithin = (scope: Scope.Closeable, budget = CLOSE_BUDGET_MS) =>
     Effect.runPromise(Scope.close(scope, Exit.void)).then(() => 'closed' as const),
     new Promise<'still closing'>((resolve) => setTimeout(() => resolve('still closing'), budget)),
   ])
+
+/** waits for a fact about the server, and gives up loudly rather than hanging */
+const until = async (holds: () => Promise<boolean>, within = CLOSE_BUDGET_MS) => {
+  const deadline = Date.now() + within
+  while (Date.now() < deadline) {
+    if (await holds()) return
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+  throw new Error('the server never reported the state this test waits for')
+}
 
 const backendPid = Effect.gen(function* () {
   const em = yield* entityManager<readonly []>()
@@ -176,9 +187,19 @@ describe.runIf(postgresAvailable)('a pool that will not close', () => {
 describe.runIf(postgresAvailable)('a query still running when its fiber is interrupted', () => {
   it('holds the interruption until the statement is done, so the pool can close', async () => {
     const db = await createTestContext('pool-release-interrupted')
+    // A second session, which is what makes this deterministic: it takes an
+    // advisory lock and the statement under test blocks on the same one, so
+    // "the query is in flight" is a fact the server reports rather than a
+    // duration this test guessed. Nothing here waits a fixed number of
+    // milliseconds for anything.
+    const control = new Client({ connectionString: db.url })
+    await control.connect()
+    const KEY = 20260915
     const scope = await Effect.runPromise(Scope.make())
     const built = await Effect.runPromise(Layer.buildWithScope(databaseFor(db.url), scope))
     try {
+      await control.query('select pg_advisory_lock($1)', [KEY])
+
       // the shape a shutdown meets: a background fiber mid-statement when its
       // scope closes. Nothing cancels the statement - nothing can - so the
       // question is only whether the fiber may be gone before the driver has
@@ -186,24 +207,44 @@ describe.runIf(postgresAvailable)('a query still running when its fiber is inter
       const running = Effect.runFork(
         Effect.gen(function* () {
           const em = yield* entityManager<readonly []>()
-          yield* query(() => sql`select pg_sleep(1)`.execute(kyselyOf(em)))
+          yield* query(() => sql`select pg_advisory_lock(${KEY})`.execute(kyselyOf(em)))
         }).pipe(Effect.provide(built)),
       )
-      // long enough to have reached the server and taken a connection
-      await new Promise((resolve) => setTimeout(resolve, 200))
 
-      const asked = performance.now()
-      await Effect.runPromise(Fiber.interrupt(running))
-      const waited = performance.now() - asked
+      // it has a connection and the server has it waiting. This scratch
+      // database is this test's alone, so an ungranted advisory lock in it is
+      // the one above.
+      await until(async () => {
+        const { rows } = await control.query<{ waiting: number }>(
+          `select count(*)::int as waiting
+             from pg_locks
+            where locktype = 'advisory'
+              and not granted
+              and database = (select oid from pg_database where datname = current_database())`,
+        )
+        return rows[0]!.waiting > 0
+      })
 
-      // it waited. Half the remaining sleep is the loosest bound that still
-      // separates waiting from not: an interruption that outran the statement
-      // comes back in single-digit milliseconds
-      expect(waited).toBeGreaterThan(400)
+      let interrupted = false
+      const interrupting = Effect.runPromise(Fiber.interrupt(running)).then(() => {
+        interrupted = true
+      })
+      // every chance to finish, if it were going to
+      for (let turn = 0; turn < 5; turn += 1) await new Promise(setImmediate)
+
+      // it did not, and it cannot: the statement is blocked on a lock this
+      // test holds, so an interruption that came back here came back without
+      // the connection
+      expect(interrupted).toBe(false)
+
+      await control.query('select pg_advisory_unlock($1)', [KEY])
+      await interrupting
+      expect(interrupted).toBe(true)
     } finally {
       // and because it waited, nothing is checked out and the layer closes at
-      // once - rather than onto a connection whose owner is already collected
+      // once - rather than onto a connection the driver has not taken back
       expect(await closeWithin(scope)).toBe('closed')
+      await control.end()
       await db.dispose()
     }
   }, 30_000)
