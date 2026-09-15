@@ -21,21 +21,27 @@ export interface ResourceDescription {
   readonly attributes: Record<string, string>
 }
 
-const declaredAttributes = Config.schema(
-  Schema.UndefinedOr(Config.Record(Schema.StringFromUriComponent, Schema.StringFromUriComponent)),
-  'OTEL_RESOURCE_ATTRIBUTES',
+// `Config.Record` reads the flat `key=value,key=value` form the OTel spec
+// gives this variable, and decodes each half as a URI component. It carries
+// its own lookup path now, so the wrapper that used to supply one is gone.
+const declaredAttributes = Config.option(
+  Config.Record(
+    Schema.StringFromUriComponent,
+    Schema.StringFromUriComponent,
+    'OTEL_RESOURCE_ATTRIBUTES',
+  ),
 )
 
 export const resourceFromEnv: Effect.Effect<ResourceDescription> = Effect.gen(function* () {
   const { name, version, qualyVersion, instanceId, nodeEnv, declared } = yield* Config.all({
-    name: Config.option(Config.string('OTEL_SERVICE_NAME')),
-    version: Config.option(Config.string('OTEL_SERVICE_VERSION')),
-    qualyVersion: Config.option(Config.string('QUALY_VERSION')),
-    instanceId: Config.option(Config.string('QUALY_INSTANCE_ID')),
-    nodeEnv: Config.option(Config.string('NODE_ENV')),
+    name: Config.option(Config.String('OTEL_SERVICE_NAME')),
+    version: Config.option(Config.String('OTEL_SERVICE_VERSION')),
+    qualyVersion: Config.option(Config.String('QUALY_VERSION')),
+    instanceId: Config.option(Config.String('QUALY_INSTANCE_ID')),
+    nodeEnv: Config.option(Config.String('NODE_ENV')),
     declared: declaredAttributes,
   })
-  const env = declared ?? {}
+  const env = Option.getOrUndefined(declared) ?? {}
   const attributes: Record<string, string> = {}
   if (env['service.namespace'] === undefined) {
     attributes['service.namespace'] = 'qualy'

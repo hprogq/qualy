@@ -40,8 +40,8 @@ const SampleRate = Schema.Number.check(
 /** the environment may name it; the manifest is the fallback, not the reverse */
 const stringOr = (name: string, declared: string | undefined) =>
   declared === undefined
-    ? Config.string(name)
-    : Config.string(name).pipe(Config.withDefault(declared))
+    ? Config.String(name)
+    : Config.String(name).pipe(Config.withDefault(declared))
 
 export const config = (
   manifest: unknown,
@@ -52,10 +52,10 @@ export const config = (
     Effect.gen(function* () {
       const declared = yield* decodePluginConfig(TencentRumManifestConfig, manifest)
       const id = yield* stringOr('QUALY_RUM_TENCENT_ID', declared.id)
-      const environment = yield* Config.literals(RUM_ENVIRONMENTS, 'QUALY_RUM_TENCENT_ENV').pipe(
+      const environment = yield* Config.Literals(RUM_ENVIRONMENTS, 'QUALY_RUM_TENCENT_ENV').pipe(
         Config.withDefault(declared.environment ?? 'production'),
       )
-      const rate = yield* Config.number('QUALY_RUM_TENCENT_SAMPLE_RATE').pipe(
+      const rate = yield* Config.Number('QUALY_RUM_TENCENT_SAMPLE_RATE').pipe(
         Config.withDefault(declared.sampleRate ?? 1),
       )
       const sampleRate = yield* Schema.decodeUnknownEffect(SampleRate)(rate)

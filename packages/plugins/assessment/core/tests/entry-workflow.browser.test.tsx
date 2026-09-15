@@ -355,10 +355,10 @@ describe('filing a claim', () => {
 
     await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
     await clickVisible('file-claim')
-    await page.getByLabelText('事项说明').fill('2024 年入伍，2026 年退役复学')
+    await page.getByLabelText('事项说明', { exact: false }).fill('2024 年入伍，2026 年退役复学')
     // keeping it is one press and handing it on is another, so a claim can be
     // written down before anybody is asked to look at it
-    await page.getByRole('button', { name: '存为草稿' }).click()
+    await page.getByRole('button', { name: '存为草稿', exact: false }).click()
     await vi.waitFor(() => expect(created).toHaveBeenCalledOnce())
     expect(created.mock.calls[0]![0].payload).toMatchObject({
       itemId: ITEM_ID,
@@ -408,13 +408,13 @@ describe('filing a claim', () => {
 
     await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
     await clickVisible('file-claim')
-    await page.getByLabelText('事项说明').fill('2024 年入伍，2026 年退役复学')
+    await page.getByLabelText('事项说明', { exact: false }).fill('2024 年入伍，2026 年退役复学')
 
     // The press writes the claim down and hands it on, so the question it
     // opens carries three answers, not two: the writing happens either way,
     // and only the handing on is in doubt. Nothing has been written yet at
     // the moment the question appears.
-    await page.getByRole('button', { name: '保存并提交审核' }).click()
+    await page.getByRole('button', { name: '保存并提交审核', exact: false }).click()
     await expect.element(page.getByRole('alertdialog')).toBeVisible()
     expect(created).not.toHaveBeenCalled()
     await expect.element(page.getByTestId('confirm-dismiss')).toBeVisible()
@@ -441,8 +441,8 @@ describe('filing a claim', () => {
 
     await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
     await clickVisible('file-claim')
-    await page.getByLabelText('事项说明').fill('2024 年入伍，2026 年退役复学')
-    await page.getByRole('button', { name: '保存并提交审核' }).click()
+    await page.getByLabelText('事项说明', { exact: false }).fill('2024 年入伍，2026 年退役复学')
+    await page.getByRole('button', { name: '保存并提交审核', exact: false }).click()
     await page.getByTestId('confirm-accept').click()
 
     await vi.waitFor(() => expect(created).toHaveBeenCalledOnce())
@@ -544,24 +544,24 @@ describe('filing a claim', () => {
     await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
     await clickVisible('file-claim')
     const said = '2024 年入伍，2026 年退役复学'
-    await page.getByLabelText('事项说明').fill(said)
-    await page.getByRole('button', { name: '存为草稿' }).click()
+    await page.getByLabelText('事项说明', { exact: false }).fill(said)
+    await page.getByRole('button', { name: '存为草稿', exact: false }).click()
 
     // the refusal lands where the work is: the dialog stays, the answer
     // stays in the field, both ways out are shut until it has been read -
     // and the form itself does not move while somebody is answering it
     await expect.element(page.getByTestId('rules-changed')).toBeVisible()
-    await expect.element(page.getByLabelText('事项说明')).toHaveValue(said)
-    await expect.element(page.getByRole('button', { name: '存为草稿' })).toBeDisabled()
-    await expect.element(page.getByRole('button', { name: '保存并提交审核' })).toBeDisabled()
+    await expect.element(page.getByLabelText('事项说明', { exact: false })).toHaveValue(said)
+    await expect.element(page.getByRole('button', { name: '存为草稿', exact: false })).toBeDisabled()
+    await expect.element(page.getByRole('button', { name: '保存并提交审核', exact: false })).toBeDisabled()
     expect(page.getByLabelText('获奖级别').elements()).toHaveLength(0)
 
     // the new question arrives when it is asked for, carrying the answers it
     // still asks for in the same way
     await page.getByRole('button', { name: '查看最新要求' }).click()
     await expect.element(page.getByLabelText('获奖级别')).toBeVisible()
-    await expect.element(page.getByLabelText('事项说明')).toHaveValue(said)
-    await expect.element(page.getByRole('button', { name: '存为草稿' })).toBeEnabled()
+    await expect.element(page.getByLabelText('事项说明', { exact: false })).toHaveValue(said)
+    await expect.element(page.getByRole('button', { name: '存为草稿', exact: false })).toBeEnabled()
     expect(page.getByTestId('rules-changed').elements()).toHaveLength(0)
   })
 
@@ -625,18 +625,18 @@ describe('filing a claim', () => {
 
     await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
     await clickVisible('file-claim')
-    await page.getByLabelText('事项说明').fill('2024 年入伍，2026 年退役复学')
-    await page.getByLabelText('获奖名次').fill('5')
-    await page.getByRole('button', { name: '存为草稿' }).click()
+    await page.getByLabelText('事项说明', { exact: false }).fill('2024 年入伍，2026 年退役复学')
+    await page.getByLabelText('获奖名次', { exact: false }).fill('5')
+    await page.getByRole('button', { name: '存为草稿', exact: false }).click()
     await expect.element(page.getByTestId('rules-changed')).toBeVisible()
 
     await page.getByRole('button', { name: '查看最新要求' }).click()
     // the text survives the move; the number the new field cannot carry
     // does not linger on screen as if it were filed
     await expect
-      .element(page.getByLabelText('事项说明'))
+      .element(page.getByLabelText('事项说明', { exact: false }))
       .toHaveValue('2024 年入伍，2026 年退役复学')
-    await expect.element(page.getByLabelText('获奖名次')).toHaveValue('')
+    await expect.element(page.getByLabelText('获奖名次', { exact: false })).toHaveValue('')
   })
 
   it('asks the server again on the refresh key', async () => {
@@ -1164,7 +1164,7 @@ describe('filing a claim', () => {
     await vi.waitFor(() => expect(addressNow()).toContain(`open=${ITEM_ID}`))
     expect(addressNow()).toContain('entry=new')
     // and the form is the clicked question's own
-    await expect.element(page.getByLabelText('事项说明')).toBeVisible()
+    await expect.element(page.getByLabelText('事项说明', { exact: false })).toBeVisible()
   })
 
   it('says the places are used up where the way in stood', async () => {
@@ -1429,8 +1429,8 @@ describe('judging a submission', () => {
     await page.getByRole('button', { name: /退回/ }).click()
     // the word this dialog refuses to go without says so before it is asked
     // for, and says it to a reader and not only to the eye
-    await expect.element(page.getByLabelText('审核意见')).toHaveAttribute('aria-required')
-    await page.getByLabelText('审核意见').fill('证书缺少落款。')
+    await expect.element(page.getByLabelText('审核意见', { exact: false })).toHaveAttribute('aria-required')
+    await page.getByLabelText('审核意见', { exact: false }).fill('证书缺少落款。')
     await page
       .getByRole('dialog')
       .getByRole('button', { name: /确认退回/ })
@@ -1467,7 +1467,7 @@ describe('judging a submission', () => {
     await page.getByRole('button', { name: /退回/ }).click()
     const confirm = page.getByRole('dialog').getByRole('button', { name: /确认退回/ })
     await expect.element(confirm).toBeDisabled()
-    await page.getByLabelText('审核意见').fill('证明日期与填报不符，请核对。')
+    await page.getByLabelText('审核意见', { exact: false }).fill('证明日期与填报不符，请核对。')
     await expect.element(confirm).toBeEnabled()
     await confirm.click()
     await vi.waitFor(() => expect(decided).toHaveBeenCalledOnce(), { timeout: 8000 })
@@ -1545,7 +1545,7 @@ describe('judging a submission', () => {
 
     await page.getByRole('button', { name: /退回/ }).click()
     const confirm = page.getByRole('dialog').getByRole('button', { name: /确认退回/ })
-    await expect.element(page.getByRole('dialog').getByText('材料不清晰')).toBeVisible()
+    await expect.element(page.getByRole('dialog').getByText('材料不清晰', { exact: false })).toBeVisible()
 
     // the focus rests on the dialog, not on the first option: a ring there
     // reads as "this one is chosen" when nothing is
@@ -1565,7 +1565,7 @@ describe('judging a submission', () => {
 
     // a reason alone does not send: the written word is still required
     await expect.element(confirm).toBeDisabled()
-    await page.getByLabelText('审核意见').fill('与三月的献血申报是同一件事。')
+    await page.getByLabelText('审核意见', { exact: false }).fill('与三月的献血申报是同一件事。')
     await confirm.click()
     await vi.waitFor(() => expect(decided).toHaveBeenCalledOnce(), { timeout: 8000 })
     expect((decided.mock.calls[0] as unknown[])[0]).toMatchObject({

@@ -146,7 +146,7 @@ export const config = (
     StorageConfig,
     Effect.gen(function* () {
       const declared = yield* decodePluginConfig(StorageManifestConfig, manifest)
-      const defaultBackend = yield* Config.string('QUALY_STORAGE_DEFAULT_BACKEND').pipe(
+      const defaultBackend = yield* Config.String('QUALY_STORAGE_DEFAULT_BACKEND').pipe(
         Config.withDefault(declared.defaultBackend ?? 'local'),
       )
       return StorageConfig.of({ defaultBackend, limits: limitsFrom(declared.limits) })

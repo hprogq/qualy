@@ -73,8 +73,8 @@ describe('the cards variant answers with real radios', () => {
   }
   it('clicking a card checks its radio and moves the picked mark', async () => {
     mount(<Cards />)
-    const second = page.getByRole('radio', { name: '仅限清单' })
-    await expect.element(page.getByRole('radio', { name: '不限位置' })).toBeChecked()
+    const second = page.getByRole('radio', { name: '仅限清单', exact: false })
+    await expect.element(page.getByRole('radio', { name: '不限位置', exact: false })).toBeChecked()
     await second.click()
     await expect.element(second).toBeChecked()
     const picked = [...document.querySelectorAll('[data-picked="true"]')]

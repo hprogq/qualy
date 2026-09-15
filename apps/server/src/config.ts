@@ -17,11 +17,11 @@ export class ServerConfig extends Context.Service<
     ServerConfig,
     Effect.gen(function* () {
       return ServerConfig.of({
-        port: yield* Config.port('PORT').pipe(Config.withDefault(3000)),
+        port: yield* Config.Port('PORT').pipe(Config.withDefault(3000)),
         // The proxy tier this deployment stands behind, as addresses or CIDR
         // blocks. Empty means the socket peer is the client and forwarded
         // headers are ignored - the only safe reading of an absent setting.
-        trustedProxies: (yield* Config.string('QUALY_TRUSTED_PROXIES').pipe(Config.withDefault('')))
+        trustedProxies: (yield* Config.String('QUALY_TRUSTED_PROXIES').pipe(Config.withDefault('')))
           .split(',')
           .map((entry) => entry.trim())
           .filter((entry) => entry !== ''),
@@ -43,10 +43,10 @@ export class ServerConfig extends Context.Service<
  * unconditionally, which exposes them in production.
  */
 export const apiReferenceEnabled = Effect.gen(function* () {
-  const exposure = yield* Config.literals(['auto', 'off', 'public'], 'QUALY_API_DOCS').pipe(
+  const exposure = yield* Config.Literals(['auto', 'off', 'public'], 'QUALY_API_DOCS').pipe(
     Config.withDefault('auto' as const),
   )
   if (exposure === 'off') return false
   if (exposure === 'public') return true
-  return (yield* Config.string('NODE_ENV').pipe(Config.withDefault('development'))) !== 'production'
+  return (yield* Config.String('NODE_ENV').pipe(Config.withDefault('development'))) !== 'production'
 })

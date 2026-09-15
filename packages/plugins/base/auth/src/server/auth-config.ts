@@ -57,12 +57,12 @@ export const config = (
       // secure whenever the process is not a development one, which is the
       // rule the cordis config expressed as an 'auto' setting
       const secureCookies =
-        (yield* Config.string('NODE_ENV').pipe(Config.withDefault('development'))) === 'production'
+        (yield* Config.String('NODE_ENV').pipe(Config.withDefault('development'))) === 'production'
       return AuthConfig.of({
-        defaultTenantSlug: yield* Config.string('QUALY_DEFAULT_TENANT').pipe(
+        defaultTenantSlug: yield* Config.String('QUALY_DEFAULT_TENANT').pipe(
           Config.withDefault('default'),
         ),
-        sessionTtlSeconds: yield* Config.number('QUALY_SESSION_TTL_SECONDS').pipe(
+        sessionTtlSeconds: yield* Config.Number('QUALY_SESSION_TTL_SECONDS').pipe(
           Config.withDefault(604_800),
         ),
         secureCookies,

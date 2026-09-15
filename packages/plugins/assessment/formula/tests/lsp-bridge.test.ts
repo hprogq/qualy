@@ -419,7 +419,7 @@ afterAll(async () => {
   await db.dispose()
 })
 
-describe.runIf(postgresAvailable).sequential('the formula language bridge', () => {
+describe.runIf(postgresAvailable)('the formula language bridge', { concurrent: false }, () => {
   it('refuses the handshake without a same-origin page behind it', async () => {
     expect(await refusalOf(handshake({ origin: null }))).toBe(403)
     expect(await refusalOf(handshake({ origin: 'https://evil.example' }))).toBe(403)

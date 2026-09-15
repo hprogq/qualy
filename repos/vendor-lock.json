@@ -7,10 +7,10 @@
       "contentSha256": "0a3c7e028172b05be6ac30b275beb984668640c47b32e47c59f7c874cf889cd4"
     },
     "effect": {
-      "packageVersion": "4.0.0-rc.111",
-      "tag": "effect@4.0.0-rc.111",
-      "commit": "648f566dd259898e7697c7fcb796183ccbc474ab",
-      "contentSha256": "4c7d853d08eec3793544a0f517f466d980973ab9482c7de7631b532280877722"
+      "packageVersion": "4.0.0-rc.115",
+      "tag": "effect@4.0.0-rc.115",
+      "commit": "4a05d4914fa2327a42bd75fe77c22c188becf3b4",
+      "contentSha256": "9c5935339df1fc4767c41313369cff116019d1092d6499cabfc290b60ca72a2d"
     },
     "quickjs-emscripten-core": {
       "packageVersion": "0.32.0",

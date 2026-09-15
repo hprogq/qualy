@@ -267,7 +267,11 @@ export const qualyLogger = (settings: LoggingSettings): Logger.Logger<unknown, v
     const requestId = Option.getOrUndefined(
       Option.map(Context.getOption(options.fiber.context, RequestContext), (c) => c.requestId),
     )
-    const span = options.fiber.currentSpan
+    // the fiber's span moved onto its cache; the narrowing to `Span` is
+    // upstream's own (`internal/effect.ts`, `currentSpanLocal`) - a linked
+    // external span is somebody else's work, not this line's
+    const inside = options.fiber.cache.span
+    const span = inside?._tag === 'Span' ? inside : undefined
     const traced = span !== undefined && span.traceId !== 'noop'
 
     console.log(

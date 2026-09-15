@@ -178,7 +178,7 @@ describe('user types screen', () => {
     expect(modes.length).toBeGreaterThan(0)
     for (const mode of modes) expect(mode).toBeDisabled()
     // and nothing on it acts
-    expect(await page.getByRole('button', { name: '保存' }).elements()).toHaveLength(0)
+    expect(await page.getByRole('button', { name: '保存', exact: false }).elements()).toHaveLength(0)
     expect(await page.getByRole('button', { name: '重命名' }).elements()).toHaveLength(0)
     expect(await page.getByRole('button', { name: '停用' }).elements()).toHaveLength(0)
     expect(await page.getByRole('button', { name: '删除' }).elements()).toHaveLength(0)
@@ -241,7 +241,7 @@ describe('user types screen', () => {
     // all: the api refuses it, and clearing the last entry must not read as
     // "may stand anywhere"
     await college.click()
-    const save2 = page.getByRole('button', { name: '保存' }).first()
+    const save2 = page.getByRole('button', { name: '保存', exact: false }).first()
     await expect.element(save2).toBeDisabled()
     await save2.click({ force: true })
     expect(save).not.toHaveBeenCalled()
@@ -290,9 +290,9 @@ describe('user types screen', () => {
     // a system identity stands at the tenant root whatever its row says, so
     // there is no placement to edit and the only save is the one behind the
     // rename dialog
-    expect(await page.getByRole('button', { name: '保存' }).elements()).toHaveLength(0)
+    expect(await page.getByRole('button', { name: '保存', exact: false }).elements()).toHaveLength(0)
     await page.getByRole('button', { name: '重命名' }).click()
-    await page.getByRole('button', { name: '保存' }).click()
+    await page.getByRole('button', { name: '保存', exact: false }).click()
     // the refusal reaches the reader translated - the subject here is that
     // the raw code never does, asserted just below
     await expect.element(page.getByText('租户将失去最后一个还能登录的管理员。')).toBeInTheDocument()
@@ -422,7 +422,7 @@ describe('roles screen', () => {
     // everything a role needs before it can be activated comes afterwards.
     await page.getByRole('tab', { name: '可担任的人' }).click()
     await expect
-      .element(page.getByRole('radio', { name: '仅指定类型' }).first())
+      .element(page.getByRole('radio', { name: '仅指定类型', exact: false }).first())
       .toBeInTheDocument()
     // and creation, which draws from nothing, still asks its two questions
     await page.getByRole('button', { name: '新建组织角色' }).click()
@@ -505,7 +505,7 @@ describe('roles screen', () => {
       children: <RolesPage />,
     })
 
-    const manage = page.getByRole('checkbox', { name: '编辑批次' })
+    const manage = page.getByRole('checkbox', { name: '编辑批次', exact: false })
     await expect.element(manage).toBeInTheDocument()
     await expect.element(manage).not.toBeChecked()
     await manage.click()
@@ -514,7 +514,7 @@ describe('roles screen', () => {
     // the role is active and held: the save asks first, out loud
     await page.getByRole('button', { name: '保存权限' }).click()
     await expect.element(page.getByRole('alertdialog')).toBeInTheDocument()
-    await page.getByRole('alertdialog').getByRole('button', { name: '保存' }).click()
+    await page.getByRole('alertdialog').getByRole('button', { name: '保存', exact: false }).click()
 
     await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1))
     // the version the editor read, and the set as the user left it: the

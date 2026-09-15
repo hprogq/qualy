@@ -54,16 +54,16 @@ catalog:
   # project needs (httpapi, schema, observability) are exported from
   # effect/unstable/*, where a prerelease is still allowed to break them, so
   # upgrades go through scripts/vendor-sync.ts and a full gate run rather
-  # than a version bump on its own. Baseline frozen at rc.111; later RCs only
-  # on need (a fix Qualy hits, runtime correctness, or stable itself).
-  effect: 4.0.0-rc.111
-  '@effect/vitest': 4.0.0-rc.111
-  '@effect/platform-node': 4.0.0-rc.111
+  # than a version bump on its own. Moved to rc.115 with the test toolchain,
+  # so @effect/vitest sits on the same release as the runtime it tests.
+  effect: 4.0.0-rc.115
+  '@effect/vitest': 4.0.0-rc.115
+  '@effect/platform-node': 4.0.0-rc.115
   '@effect/tsgo': 0.36.4
   pg: 8.22.0
   '@types/pg': 8.20.0
   yaml: 2.9.0
-  vitest: 4.1.10
+  vitest: 5.0.1
   prettier: 3.9.6
   '@lingui/core': 6.6.0
   '@lingui/message-utils': 6.6.0
@@ -79,8 +79,8 @@ catalog:
   sirv: 3.0.2
   argon2: 0.45.1
   clsx: 2.1.1
-  '@vitest/browser-playwright': 4.1.10
-  'vitest-browser-react': 2.2.0
+  '@vitest/browser-playwright': 5.0.1
+  'vitest-browser-react': 2.3.0
   playwright: 1.62.1
   # UI platform migration (docs/ui-platform-migration-mantine.md): StyleX is
   # the styling compiler for product layout and visuals. One version across
@@ -116,10 +116,10 @@ catalog:
 patchedDependencies:
   '@stylexjs/unplugin@0.19.0': patches/@stylexjs__unplugin@0.19.0.patch
 minimumReleaseAgeExclude:
-  - effect@4.0.0-rc.111
-  - '@effect/vitest@4.0.0-rc.111'
-  - '@effect/platform-node-shared@4.0.0-rc.111'
-  - '@effect/platform-node@4.0.0-rc.111'
+  - effect@4.0.0-rc.115
+  - '@effect/vitest@4.0.0-rc.115'
+  - '@effect/platform-node-shared@4.0.0-rc.115'
+  - '@effect/platform-node@4.0.0-rc.115'
   - '@mikro-orm/core@7.1.13'
   - '@mikro-orm/migrations@7.1.13'
   - '@mikro-orm/postgresql@7.1.13'
@@ -132,3 +132,17 @@ minimumReleaseAgeExclude:
   - '@effect/tsgo-win32-arm64@0.36.4'
   - '@effect/tsgo-win32-x64@0.36.4'
   - '@effect/tsgo@0.36.4'
+  # The Vitest 5 line, whole. `@vitest/browser-playwright` peers on an exact
+  # vitest, and `@vitest/browser` pulls the ui package for its orchestrator,
+  # so this set moves together or not at all - a partial exemption would just
+  # be an install that cannot resolve. Taken at 5.0.1 rather than 5.0.0 for
+  # the self-referencing `extends` fix (the webkit config is one) and the
+  # doctor's pool measurement.
+  - '@vitest/browser-playwright@5.0.1'
+  - '@vitest/browser@5.0.1'
+  - '@vitest/mocker@5.0.1'
+  - '@vitest/pretty-format@5.0.1'
+  - '@vitest/spy@5.0.1'
+  - '@vitest/ui@5.0.1'
+  - '@vitest/utils@5.0.1'
+  - vitest@5.0.1

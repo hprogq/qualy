@@ -478,12 +478,12 @@ describe('what a question can contribute', () => {
     // however many an officer may file
     const folding = () => page.getByRole('combobox', { name: '多条申报计分方式' })
     await folding().click()
-    await page.getByRole('option', { name: '仅计最高一条' }).click()
+    await page.getByRole('option', { name: '仅计最高一条', exact: false }).click()
     await expect.element(ceiling).toHaveAttribute('data-ceiling', '2')
 
     // the best two of the five
     await folding().click()
-    await page.getByRole('option', { name: '计最高 N 条之和' }).click()
+    await page.getByRole('option', { name: '计最高 N 条之和', exact: false }).click()
     await expect.element(ceiling).toHaveAttribute('data-ceiling', '4')
   })
 
@@ -516,7 +516,7 @@ describe('what a save may not quietly rewrite', () => {
     })
     await expect.element(page.getByRole('textbox', { name: '标题' })).toBeVisible()
     await page.getByRole('textbox', { name: '标题' }).fill('竞赛获奖(改名)')
-    await page.getByRole('button', { name: '保存' }).click()
+    await page.getByRole('button', { name: '保存', exact: false }).click()
 
     await expect.poll(() => saved.length).toBe(1)
     const sent = (saved[0]?.config as { scoringConfig?: unknown })?.scoringConfig
@@ -533,7 +533,7 @@ describe('what a save may not quietly rewrite', () => {
     })
     await expect.element(page.getByRole('textbox', { name: '每条通过计分' })).toBeVisible()
     await page.getByRole('textbox', { name: '每条通过计分' }).fill('3')
-    await page.getByRole('button', { name: '保存' }).click()
+    await page.getByRole('button', { name: '保存', exact: false }).click()
 
     await expect.poll(() => saved.length).toBe(1)
     const sent = (saved[0]?.config as { scoringConfig?: { calculator?: { config?: unknown } } })
@@ -645,7 +645,7 @@ describe("what may do a question's arithmetic", () => {
       .elements()
       .find((row) => row.getAttribute('data-version-id') === OTHER_VERSION_ID)!
     ;(offered as HTMLButtonElement).click()
-    await page.getByRole('button', { name: '保存' }).click()
+    await page.getByRole('button', { name: '保存', exact: false }).click()
 
     const sent = saved.at(-1)?.config?.scoringConfig as Record<string, unknown> | undefined
     const before = item.currentRevision.scoringConfig as Record<string, unknown>
@@ -727,7 +727,7 @@ describe('a scoring language this build does not speak', () => {
     await expect.element(page.getByRole('combobox', { name: '多条申报计分方式' })).toBeDisabled()
 
     await page.getByRole('textbox', { name: '标题' }).fill('未来的题(改名)')
-    await page.getByRole('button', { name: '保存' }).click()
+    await page.getByRole('button', { name: '保存', exact: false }).click()
     await expect.poll(() => saved.length).toBe(1)
     const sent = (saved[0]?.config as { scoringConfig?: unknown })?.scoringConfig
     expect(JSON.stringify(sent)).toBe(JSON.stringify(future.currentRevision.scoringConfig))
@@ -750,8 +750,8 @@ describe('who owns which half of a versioned configuration', () => {
     const folding = page.getByRole('combobox', { name: '多条申报计分方式' })
     await expect.element(folding).toBeVisible()
     await folding.click()
-    await page.getByRole('option', { name: '全部累加' }).click()
-    await page.getByRole('button', { name: '保存' }).click()
+    await page.getByRole('option', { name: '全部累加', exact: false }).click()
+    await page.getByRole('button', { name: '保存', exact: false }).click()
 
     await expect.poll(() => saved.length).toBe(1)
     const sent = (saved[0]?.config as { scoringConfig?: Record<string, unknown> })?.scoringConfig
@@ -907,7 +907,7 @@ describe('binding what the arithmetic asks for', () => {
 
     const label = page.getByRole('textbox', { name: '认定名称' })
     await label.fill('获奖等级')
-    await page.getByRole('button', { name: '保存' }).click()
+    await page.getByRole('button', { name: '保存', exact: false }).click()
 
     await expect.poll(() => saved.length).toBe(1)
     const facts = saved[0]?.config?.scoringConfig?.['recognitions'] as readonly Record<
@@ -939,7 +939,7 @@ describe('binding what the arithmetic asks for', () => {
     await page.getByRole('option', { name: '固定分值' }).click()
     await expect.element(page.getByRole('textbox', { name: '每条通过计分' })).toBeVisible()
     await page.getByRole('textbox', { name: '每条通过计分' }).fill('5')
-    await page.getByRole('button', { name: '保存' }).click()
+    await page.getByRole('button', { name: '保存', exact: false }).click()
 
     await expect.poll(() => saved.length).toBe(1)
     const sent = saved[0]?.config?.scoringConfig as Record<string, unknown>
@@ -964,7 +964,7 @@ describe('binding what the arithmetic asks for', () => {
       .elements()
       .find((row) => row.getAttribute('data-version-id') === OTHER_VERSION_ID)!
     ;(offered as HTMLButtonElement).click()
-    await page.getByRole('button', { name: '保存' }).click()
+    await page.getByRole('button', { name: '保存', exact: false }).click()
 
     // the press is how a reader asks what is wrong, and the answer is that
     // nothing was sent
@@ -994,7 +994,7 @@ describe('what survives a round trip', () => {
     const item = officerItem()
     openWith({ items: [item], saved })
     await expect.element(page.getByRole('textbox', { name: '标题' })).toBeVisible()
-    await page.getByRole('button', { name: '保存' }).click()
+    await page.getByRole('button', { name: '保存', exact: false }).click()
 
     await expect.poll(() => saved.length).toBe(1)
     expect(JSON.stringify(saved[0]?.config?.scoringConfig)).toBe(
@@ -1011,7 +1011,7 @@ describe('what survives a round trip', () => {
     openWith({ items: [item], saved, binding: bindingOptions() })
     await expect.element(page.getByRole('textbox', { name: '标题' })).toBeVisible()
     await page.getByRole('textbox', { name: '标题' }).fill('竞赛获奖(改名)')
-    await page.getByRole('button', { name: '保存' }).click()
+    await page.getByRole('button', { name: '保存', exact: false }).click()
 
     await expect.poll(() => saved.length).toBe(1)
     expect(JSON.stringify(saved[0]?.config?.scoringConfig)).toBe(
@@ -1031,7 +1031,7 @@ describe('what survives a round trip', () => {
     const label = page.getByRole('textbox', { name: '认定名称' })
     await label.fill('获奖等级')
     await label.fill('获奖等第')
-    await page.getByRole('button', { name: '保存' }).click()
+    await page.getByRole('button', { name: '保存', exact: false }).click()
 
     await expect.poll(() => saved.length).toBe(1)
     const carried = saved[0]?.config?.scoringConfig?.['recognitions'] as readonly Record<
@@ -1080,7 +1080,7 @@ describe('a calculator chosen but not yet configured', () => {
     expect(page.getByTestId('contract-pending').elements()).toHaveLength(0)
 
     // and the save says which step is outstanding
-    await page.getByRole('button', { name: '保存' }).click()
+    await page.getByRole('button', { name: '保存', exact: false }).click()
     await expect.element(page.getByTestId('feedback').first()).toBeVisible()
     expect(saved).toHaveLength(0)
   })

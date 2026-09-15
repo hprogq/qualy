@@ -53,15 +53,15 @@ const specDefaults = ConfigProvider.layerAdd(
 export const telemetryLayer: Layer.Layer<OtlpExporter.Flusher> = Layer.unwrap(
   Effect.gen(function* () {
     const { disabled, base, traces, metrics } = yield* Config.all({
-      disabled: Config.boolean('OTEL_SDK_DISABLED').pipe(Config.withDefault(false)),
-      base: Config.option(Config.string('OTEL_EXPORTER_OTLP_ENDPOINT')),
-      traces: Config.option(Config.string('OTEL_EXPORTER_OTLP_TRACES_ENDPOINT')),
-      metrics: Config.option(Config.string('OTEL_EXPORTER_OTLP_METRICS_ENDPOINT')),
+      disabled: Config.Boolean('OTEL_SDK_DISABLED').pipe(Config.withDefault(false)),
+      base: Config.option(Config.String('OTEL_EXPORTER_OTLP_ENDPOINT')),
+      traces: Config.option(Config.String('OTEL_EXPORTER_OTLP_TRACES_ENDPOINT')),
+      metrics: Config.option(Config.String('OTEL_EXPORTER_OTLP_METRICS_ENDPOINT')),
     })
     if (disabled || (Option.isNone(base) && Option.isNone(traces) && Option.isNone(metrics))) {
       return OtlpExporter.layerFlusher
     }
-    const protocol = yield* Config.literals(
+    const protocol = yield* Config.Literals(
       ['http/protobuf', 'http/json', 'grpc'],
       'OTEL_EXPORTER_OTLP_PROTOCOL',
     ).pipe(Config.withDefault('http/protobuf'))

@@ -362,7 +362,7 @@ describe('approving with a determination', () => {
     await expect.element(page.getByRole('dialog')).toBeVisible()
     // a refusal determines nothing: no recognition form in this dialog
     expect(document.querySelector('[data-testid="recognition-form"]')).toBeNull()
-    await page.getByLabelText('审核意见').fill('材料不足')
+    await page.getByLabelText('审核意见', { exact: false }).fill('材料不足')
     await page
       .getByRole('dialog')
       .getByRole('button', { name: /确认退回/ })
@@ -408,7 +408,7 @@ describe('approving with a determination', () => {
     await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
     await page.getByRole('button', { name: /退回/ }).click()
     await expect.element(page.getByRole('dialog')).toBeVisible()
-    await page.getByLabelText('审核意见').fill('序位与证书不符')
+    await page.getByLabelText('审核意见', { exact: false }).fill('序位与证书不符')
     const { userEvent } = await import('vitest/browser')
     // open the suggestion grid and correct the integer
     await page.getByRole('checkbox', { name: /修改建议/ }).click()

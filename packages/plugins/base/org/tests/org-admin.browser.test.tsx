@@ -140,7 +140,7 @@ describe('the organization screen', () => {
     // the one legal destination, and none of the illegal ones
     await expect.element(listbox.getByRole('option', { name: '外国语学院' })).toBeVisible()
     expect(await listbox.getByRole('option', { name: '软件2301班' }).elements()).toHaveLength(0)
-    expect(await listbox.getByRole('option', { name: '软件学院' }).elements()).toHaveLength(0)
+    expect(await listbox.getByRole('option', { name: '软件学院', exact: false }).elements()).toHaveLength(0)
     expect(await listbox.getByRole('option', { name: '示例大学' }).elements()).toHaveLength(0)
 
     await listbox.getByRole('option', { name: '外国语学院' }).click()
@@ -242,7 +242,7 @@ describe('the organization screen', () => {
     // allow colleges to also hold colleges, stop them holding classes
     await classBox.click()
     await page.getByRole('checkbox', { name: /学院/ }).click()
-    await page.getByRole('button', { name: '保存' }).click()
+    await page.getByRole('button', { name: '保存', exact: false }).click()
 
     await vi.waitFor(() => expect(put).toHaveBeenCalledTimes(1))
     expect(put).toHaveBeenCalledWith({

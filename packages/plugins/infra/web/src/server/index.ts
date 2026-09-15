@@ -79,7 +79,7 @@ export const config = (
       // an environment setting rather than a manifest key: it changes per
       // deployment and per day, and the manifest hash must not move with it
       const cspMode = yield* Schema.decodeUnknownEffect(CspModeSetting)(
-        yield* Config.string('QUALY_CSP_MODE').pipe(Config.withDefault('report')),
+        yield* Config.String('QUALY_CSP_MODE').pipe(Config.withDefault('report')),
       )
       return WebConfig.of({ ...rootsFrom(declared, context.manifestDir), cspMode })
     }),
@@ -347,7 +347,7 @@ export const routes: Layer.Layer<
     // would answer navigations this process is not the entry point for.
     // a NODE_ENV that cannot be read is a broken process, not a case a
     // caller could handle
-    const deployed = yield* Config.string('NODE_ENV').pipe(
+    const deployed = yield* Config.String('NODE_ENV').pipe(
       Config.withDefault('development'),
       Effect.orDie,
     )

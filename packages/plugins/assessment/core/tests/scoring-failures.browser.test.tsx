@@ -418,7 +418,7 @@ describe('a rule that re-prices what stands', () => {
   const retitleAndSave = async () => {
     await expect.element(page.getByRole('textbox', { name: '标题' })).toBeVisible()
     await page.getByRole('textbox', { name: '标题' }).fill('学生干部任职(改名)')
-    await page.getByRole('button', { name: '保存' }).click()
+    await page.getByRole('button', { name: '保存', exact: false }).click()
   }
 
   it('tells how many amounts change, and takes the token alone as the answer', async () => {
@@ -434,7 +434,7 @@ describe('a rule that re-prices what stands', () => {
     await expect.element(section).toBeVisible()
     await expect.element(section).toHaveAttribute('data-approved', '128')
     await expect.element(section).toHaveAttribute('data-amount-changed', '47')
-    await page.getByRole('dialog').getByRole('button', { name: '保存' }).click()
+    await page.getByRole('dialog').getByRole('button', { name: '保存', exact: false }).click()
     await vi.waitFor(() => expect(sent).toHaveLength(2))
     // nothing to choose: the acknowledgement is the token, and only the token
     expect(sent[1]?.['effects']).toEqual({ impactToken: 'token-1' })

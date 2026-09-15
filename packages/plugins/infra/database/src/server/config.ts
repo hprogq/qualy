@@ -67,11 +67,11 @@ export const config = (
       // - a manifest is committed, so a connection string in it is a
       // credential in version control, and it is read from the environment.
       const declared = yield* decodePluginConfig(DatabaseManifestConfig, manifest)
-      const environment = yield* Config.string('NODE_ENV').pipe(Config.withDefault('development'))
+      const environment = yield* Config.String('NODE_ENV').pipe(Config.withDefault('development'))
       // asking whether it was set, rather than comparing the value: the local
       // default is a real connection string somebody may well have configured
       // on purpose, and warning about their own setting is noise
-      const configured = yield* Config.option(Config.string('DATABASE_URL'))
+      const configured = yield* Config.option(Config.String('DATABASE_URL'))
       if (Option.isNone(configured)) {
         // A production instance that falls back connects to whatever postgres
         // happens to be on localhost and, with migrations on, applies the
@@ -89,7 +89,7 @@ export const config = (
         url: Redacted.make(Option.getOrElse(configured, () => LOCAL_FALLBACK)),
         // 'off' leaves the lineage to a deployment job; the layer then refuses
         // to build if the database is behind
-        migrations: yield* Config.literals(['apply', 'off'], 'QUALY_MIGRATIONS').pipe(
+        migrations: yield* Config.Literals(['apply', 'off'], 'QUALY_MIGRATIONS').pipe(
           Config.withDefault('apply' as const),
         ),
         // relative to the manifest, never to the working directory: the CLI

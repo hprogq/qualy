@@ -621,7 +621,10 @@ describe('a press on the rail', () => {
     await expect.element(entry).toHaveAttribute('aria-current', 'page')
     await expect.element(entry).not.toHaveAttribute('data-pending')
     await expect.element(entry).not.toHaveAttribute('aria-busy')
-    expect(entry.element().querySelector('[data-seg]')).toBeNull()
+    // the loader leaves one commit later than the attributes: `indicating` is
+    // cleared by the effect that observes `pending` falling, not by the render
+    // that dropped it. So this waits, as its siblings do.
+    await expect.poll(() => entry.element().querySelector('[data-seg]')).toBeNull()
   })
 
   it('fetches the rail pages while idle, and a bar link on hover', async () => {

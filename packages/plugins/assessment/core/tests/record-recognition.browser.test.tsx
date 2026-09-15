@@ -185,7 +185,7 @@ describe('recording with a determination', () => {
     })
     const { userEvent } = await import('vitest/browser')
     // the evidence choice seeds the determination
-    await userEvent.selectOptions(page.getByLabelText('申报级别').element(), '国家级')
+    await userEvent.selectOptions(page.getByLabelText('申报级别', { exact: false }).element(), '国家级')
     const recognition = () =>
       document.querySelector(
         '[data-testid="record-recognition"] [data-parameter="rec-level"] select',
@@ -194,15 +194,15 @@ describe('recording with a determination', () => {
       if (recognition().value !== 'national') throw new Error('seed not followed yet')
     })
     // material changes, untouched determination follows
-    await userEvent.selectOptions(page.getByLabelText('申报级别').element(), '省部级')
+    await userEvent.selectOptions(page.getByLabelText('申报级别', { exact: false }).element(), '省部级')
     await vi.waitFor(() => {
       if (recognition().value !== 'provincial') throw new Error('still following')
     })
     // the registrar judges otherwise; the material moving again must not
     // overwrite their word
     await userEvent.selectOptions(recognition(), 'national')
-    await userEvent.selectOptions(page.getByLabelText('申报级别').element(), '国家级')
-    await userEvent.selectOptions(page.getByLabelText('申报级别').element(), '省部级')
+    await userEvent.selectOptions(page.getByLabelText('申报级别', { exact: false }).element(), '国家级')
+    await userEvent.selectOptions(page.getByLabelText('申报级别', { exact: false }).element(), '省部级')
     expect(recognition().value).toBe('national')
   })
 
@@ -254,7 +254,7 @@ describe('recording with a determination', () => {
       if (document.querySelector('[data-testid="record-recognition"]') === null)
         throw new Error('no recognition section yet')
     })
-    await userEvent.selectOptions(page.getByLabelText('申报级别').element(), '国家级')
+    await userEvent.selectOptions(page.getByLabelText('申报级别', { exact: false }).element(), '国家级')
     const recognition = () =>
       document.querySelector('[data-testid="record-recognition"] select') as HTMLSelectElement
     await vi.waitFor(() => {
@@ -286,7 +286,7 @@ describe('recording with a determination', () => {
       if (document.querySelector('[data-testid="record-recognition"]') === null)
         throw new Error('no recognition section yet')
     })
-    await userEvent.selectOptions(page.getByLabelText('申报级别').element(), '国家级')
+    await userEvent.selectOptions(page.getByLabelText('申报级别', { exact: false }).element(), '国家级')
     const recognition = () =>
       document.querySelector(
         '[data-testid="record-recognition"] [data-parameter="rec-level"] select',
@@ -295,7 +295,7 @@ describe('recording with a determination', () => {
     // a different subject: evidence and determination both start over
     await userEvent.selectOptions(selects()[1]!, '林晚舟')
     await vi.waitFor(() => {
-      const evidence = page.getByLabelText('申报级别').element() as HTMLSelectElement
+      const evidence = page.getByLabelText('申报级别', { exact: false }).element() as HTMLSelectElement
       if (evidence.value !== '' || recognition().value !== '')
         throw new Error('the previous person\u2019s sheet is still standing')
     })
@@ -313,7 +313,7 @@ describe('recording with a determination', () => {
       if (document.querySelector('[data-testid="record-recognition"]') === null)
         throw new Error('no recognition section yet')
     })
-    await userEvent.selectOptions(page.getByLabelText('申报级别').element(), '国家级')
+    await userEvent.selectOptions(page.getByLabelText('申报级别', { exact: false }).element(), '国家级')
     const recognition = () =>
       document.querySelector(
         '[data-testid="record-recognition"] [data-parameter="rec-level"] select',
@@ -329,7 +329,7 @@ describe('recording with a determination', () => {
     await vi.waitFor(() => {
       const who = selects()[1] as HTMLSelectElement
       if (who.value !== '') throw new Error('subject still selected')
-      const evidence = page.getByLabelText('申报级别').element() as HTMLSelectElement
+      const evidence = page.getByLabelText('申报级别', { exact: false }).element() as HTMLSelectElement
       if (evidence.value !== '') throw new Error('evidence survived the filing')
       if (recognition().value !== '') throw new Error('determination survived the filing')
     })

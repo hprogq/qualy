@@ -69,13 +69,13 @@ describe('login methods screen', () => {
     await expect.element(page.getByRole('heading', { name: '账号密码' })).toBeInTheDocument()
     // nothing to save until something changes: a save button live on arrival
     // invites a write that says nothing
-    const save2 = page.getByRole('button', { name: '保存' })
+    const save2 = page.getByRole('button', { name: '保存', exact: false })
     await expect.element(save2).toBeDisabled()
 
     // narrowing the door from "anyone" to a named list is one decision, and
     // the list it lands on is the whole rule rather than a delta
-    await page.getByRole('radio', { name: '仅指定类型' }).click()
-    await page.getByRole('checkbox', { name: '学生' }).click()
+    await page.getByRole('radio', { name: '仅指定类型', exact: false }).click()
+    await page.getByRole('checkbox', { name: '学生', exact: false }).click()
     await expect.element(save2).toBeEnabled()
     await save2.click()
 
@@ -139,6 +139,6 @@ describe('login methods screen', () => {
     const modes = await page.getByRole('radio').elements()
     expect(modes.length).toBeGreaterThan(0)
     for (const mode of modes) expect(mode).toBeDisabled()
-    expect(await page.getByRole('button', { name: '保存' }).elements()).toHaveLength(0)
+    expect(await page.getByRole('button', { name: '保存', exact: false }).elements()).toHaveLength(0)
   })
 })

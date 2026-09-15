@@ -225,7 +225,7 @@ const initialize = async (session: Awaited<ReturnType<typeof openSession>>, text
 const activeSessions = (): Promise<number> =>
   Effect.runPromise(client.GetAuthoringCapabilities()).then((caps) => caps.activeLspSessions)
 
-describe.sequential('the formula language service', () => {
+describe('the formula language service', { concurrent: false }, () => {
   it('answers completion, hover, signatures, symbols and both diagnostic voices', async () => {
     const session = await openSession(FIXTURE)
     try {
@@ -470,7 +470,7 @@ export default homepage
   }, 60_000)
 })
 
-describe.sequential('the hostile author', () => {
+describe('the hostile author', { concurrent: false }, () => {
   it('refuses foreign and traversing uris by name', async () => {
     const session = await openSession(FIXTURE)
     try {

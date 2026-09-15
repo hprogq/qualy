@@ -23,7 +23,7 @@ const handlers = HttpApiBuilder.group(local, 'ping', (handlers) =>
   Effect.gen(function* () {
     // read once while the layer is built, not per request: a greeting that is
     // configured wrong should stop the assembly rather than fail requests
-    const greeting = yield* Config.string('PING_GREETING').pipe(Config.withDefault('hi'))
+    const greeting = yield* Config.String('PING_GREETING').pipe(Config.withDefault('hi'))
     // taken while the group is built, so the handler carries no requirement
     const withDb = yield* withDatabase
     return handlers.handle(

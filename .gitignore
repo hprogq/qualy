@@ -65,11 +65,13 @@ Thumbs.db
 
 # misc
 *.local
-.vitest-attachments/
 
 # vitest browser writes these when a test fails; they are diagnostics,
 # not baselines, and nothing compares against them. Wherever the test lives:
-# a browser test belongs to its package now, and so does its debris
+# a browser test belongs to its package now, and so does its debris.
+# `.vitest/` is where a run puts all of it from Vitest 5 on - attachments,
+# failure screenshots, reporter output - beside the project it ran for
+.vitest/
 __screenshots__/
 
 # resolved runtime entry list, generated from qualy.yml

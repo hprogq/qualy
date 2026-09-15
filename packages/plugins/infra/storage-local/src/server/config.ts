@@ -27,7 +27,7 @@ export const config = (
     LocalStorageConfig,
     Effect.gen(function* () {
       const declared = yield* decodePluginConfig(LocalManifestConfig, manifest)
-      const root = yield* Config.string('QUALY_STORAGE_LOCAL_ROOT').pipe(
+      const root = yield* Config.String('QUALY_STORAGE_LOCAL_ROOT').pipe(
         Config.withDefault(declared.root ?? './data/storage'),
       )
       // relative to the manifest, not to the working directory: where the files

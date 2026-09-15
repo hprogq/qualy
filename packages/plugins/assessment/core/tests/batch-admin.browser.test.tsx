@@ -491,11 +491,13 @@ describe('the countdown', () => {
 })
 
 /** some instance of the text the user can actually see: a phrase may render
-    in both panes of a responsive layout, with CSS hiding one per viewport */
+    in both panes of a responsive layout, with CSS hiding one per viewport.
+    The phrase is a fragment of the line it sits in, so the match is stated
+    as a partial one - text locators are whole-string by default now. */
 async function expectVisibleText(text: string) {
   await vi.waitFor(() => {
     const shown = page
-      .getByText(text)
+      .getByText(text, { exact: false })
       .elements()
       .some((el) => (el as HTMLElement).checkVisibility())
     expect(shown).toBe(true)
@@ -608,10 +610,10 @@ describe('the batch lifecycle', () => {
     screen({ updateBatch }, `/assessment/batches/${BATCH_ID}/settings`)
 
     // nothing to save until something differs from what was read
-    await expect.element(page.getByRole('button', { name: '保存' })).toBeDisabled()
+    await expect.element(page.getByRole('button', { name: '保存', exact: false })).toBeDisabled()
     await page.getByRole('textbox', { name: '名称' }).fill('2026 春季综测（改）')
     await page.getByRole('textbox', { name: '备注' }).fill('先行试点')
-    await page.getByRole('button', { name: '保存' }).click()
+    await page.getByRole('button', { name: '保存', exact: false }).click()
 
     await vi.waitFor(() => expect(updateBatch).toHaveBeenCalledTimes(1))
     expect(updateBatch.mock.calls[0]![0]).toMatchObject({
@@ -686,9 +688,9 @@ describe('creating a batch', () => {
     await dialog.getByRole('button', { name: '下一步' }).click()
 
     // the units are chosen right here, not in a dialog stacked on this one
-    await expect.element(dialog.getByRole('checkbox', { name: '软件学院' })).toBeVisible()
-    await dialog.getByRole('checkbox', { name: '软件学院' }).click()
-    await dialog.getByRole('checkbox', { name: '学生' }).click()
+    await expect.element(dialog.getByRole('checkbox', { name: '软件学院', exact: false })).toBeVisible()
+    await dialog.getByRole('checkbox', { name: '软件学院', exact: false }).click()
+    await dialog.getByRole('checkbox', { name: '学生', exact: false }).click()
     await dialog.getByRole('button', { name: '创建批次' }).click()
 
     await vi.waitFor(() => expect(createBatch).toHaveBeenCalledTimes(1))
@@ -727,7 +729,7 @@ describe('the stage plan', () => {
     await details.getByLabelText('阶段名称').fill('正式填报')
     await details.getByRole('button', { name: '完成' }).click()
     expect(putPhases).not.toHaveBeenCalled()
-    await page.getByRole('button', { name: '保存' }).click()
+    await page.getByRole('button', { name: '保存', exact: false }).click()
 
     await vi.waitFor(() => expect(putPhases).toHaveBeenCalledTimes(1))
     const sent = putPhases.mock.calls[0]![0]
@@ -832,7 +834,7 @@ describe('the stage plan', () => {
     await expect.element(panel.getByRole('checkbox', { name: '查看排名' })).not.toBeChecked()
     await panel.getByRole('button', { name: '完成' }).click()
 
-    await page.getByRole('button', { name: '保存' }).click()
+    await page.getByRole('button', { name: '保存', exact: false }).click()
     await vi.waitFor(() => expect(putPhases).toHaveBeenCalledTimes(1))
     const plan = putPhases.mock.calls[0]![0].payload!['phases'] as readonly Record<
       string,
@@ -848,11 +850,11 @@ describe('the stage plan', () => {
     const putPhases = vi.fn((_request: Request) => Effect.succeed({ phases: [], warnings: [] }))
     screen({ putPhases, getPhases: () => Effect.succeed(twoPhases()) })
 
-    await page.getByRole('button', { name: '编辑阶段' }).click()
-    await page.getByRole('button', { name: '从模板添加' }).click()
+    await page.getByRole('button', { name: '编辑阶段', exact: false }).click()
+    await page.getByRole('button', { name: '从模板添加', exact: false }).click()
     const dialog = page.getByRole('dialog')
-    await dialog.getByLabelText('时间线').selectOptions('常规四阶段')
-    await dialog.getByRole('button', { name: '从模板添加' }).click()
+    await dialog.getByLabelText('时间线', { exact: false }).selectOptions('常规四阶段')
+    await dialog.getByRole('button', { name: '从模板添加', exact: false }).click()
 
     await vi.waitFor(() => expect(putPhases).toHaveBeenCalledTimes(1))
     // the server copies the template, so the provenance it records is its own
@@ -878,7 +880,7 @@ describe('the stage plan', () => {
     const panel = page.getByRole('dialog')
     await panel.getByLabelText('阶段名称').fill('审核整理期')
     await panel.getByRole('button', { name: '完成' }).click()
-    await page.getByRole('button', { name: '保存' }).click()
+    await page.getByRole('button', { name: '保存', exact: false }).click()
     await expect
       .element(page.getByTestId('phase-refusal'))
       .toHaveAttribute('data-reason', 'scheduled-phase-immutable')
@@ -959,13 +961,13 @@ describe('the participants tab', () => {
 
     // ticking a unit, and untucking it again: a selection that cannot be
     // taken back is a trap, and this one was
-    const unit = page.getByRole('checkbox', { name: '软件学院' })
+    const unit = page.getByRole('checkbox', { name: '软件学院', exact: false })
     await unit.click()
     await expect.element(unit).toBeChecked()
     await unit.click()
     await expect.element(unit).not.toBeChecked()
     await unit.click()
-    await page.getByRole('checkbox', { name: '学生' }).click()
+    await page.getByRole('checkbox', { name: '学生', exact: false }).click()
 
     // and the number is said before the button will do anything
     // how many it would add is the number, not the sentence carrying it
@@ -1029,7 +1031,7 @@ describe('who may work on a batch', () => {
 
     // unticking is not the decision; confirming is
     expect(setAccessDeny).not.toHaveBeenCalled()
-    await page.getByRole('button', { name: '保存' }).click()
+    await page.getByRole('button', { name: '保存', exact: false }).click()
     await vi.waitFor(() => expect(setAccessDeny).toHaveBeenCalledTimes(1))
     expect(setAccessDeny.mock.calls[0]![0]).toMatchObject({
       params: { userId: USER_ID, permission: 'assessment.review.process' },

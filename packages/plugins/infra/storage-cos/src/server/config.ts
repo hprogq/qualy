@@ -24,8 +24,8 @@ export type CosManifestConfig = typeof CosManifestConfig.Type
 /** the environment may name it; the manifest is the fallback, not the reverse */
 const stringOr = (name: string, declared: string | undefined) =>
   declared === undefined
-    ? Config.string(name)
-    : Config.string(name).pipe(Config.withDefault(declared))
+    ? Config.String(name)
+    : Config.String(name).pipe(Config.withDefault(declared))
 
 export const config = (
   manifest: unknown,
@@ -37,9 +37,9 @@ export const config = (
       const declared = yield* decodePluginConfig(CosManifestConfig, manifest)
       const region = yield* stringOr('QUALY_STORAGE_COS_REGION', declared.region)
       const bucket = yield* stringOr('QUALY_STORAGE_COS_BUCKET', declared.bucket)
-      const secretId = yield* Config.redacted('QUALY_STORAGE_COS_SECRET_ID')
-      const secretKey = yield* Config.redacted('QUALY_STORAGE_COS_SECRET_KEY')
-      const downloadDomain = yield* Config.string('QUALY_STORAGE_COS_DOWNLOAD_DOMAIN').pipe(
+      const secretId = yield* Config.Redacted('QUALY_STORAGE_COS_SECRET_ID')
+      const secretKey = yield* Config.Redacted('QUALY_STORAGE_COS_SECRET_KEY')
+      const downloadDomain = yield* Config.String('QUALY_STORAGE_COS_DOWNLOAD_DOMAIN').pipe(
         Config.withDefault(declared.downloadDomain ?? ''),
       )
       return CosStorageConfig.of({

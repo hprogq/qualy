@@ -96,7 +96,8 @@ export const bridgeSocket = (
   Effect.gen(function* () {
     const inbound = yield* Queue.bounded<InboundFrame, Cause.Done>(INBOUND_QUEUE_CAPACITY)
     let flooded = false
-    const write = yield* socket.writer
+    // the write half is an object now; `write` off it is the same call
+    const { write } = yield* socket.writer
 
     const closeWith = (code: number, reason: string): Effect.Effect<void> =>
       write(new Socket.CloseEvent(code, reason)).pipe(Effect.ignore)
@@ -153,27 +154,43 @@ export const bridgeSocket = (
       Effect.forkScoped,
     )
 
-    // the socket loop is the connection's spine; the handler stays on the
-    // SYNCHRONOUS path so arrival order survives (measured: effect results
-    // are run on an unordered fiber set)
-    yield* socket
-      .runRaw((data) => {
-        const frame: InboundFrame =
-          typeof data !== 'string'
-            ? { kind: 'binary' }
-            : Buffer.byteLength(data, 'utf8') > LSP_FRAME_LIMIT
-              ? { kind: 'oversized' }
-              : { kind: 'text', jsonRpc: data }
-        if (!Queue.offerUnsafe(inbound, frame)) {
-          // a consumer this far behind is a flood; the connection ends
-          // rather than the buffer growing
-          flooded = true
-          Queue.endUnsafe(inbound)
+    // The socket loop is the connection's spine.
+    //
+    // It used to be a synchronous callback handed to `runRaw`, kept
+    // synchronous so arrival order survived - effect results run on an
+    // unordered fiber set. The read half is a pull now, and one fiber
+    // draining it in a loop gives that ordering by construction: a batch
+    // arrives in arrival order, and the next pull does not start until this
+    // one is classified. So the classification stays unsuspended, and the
+    // offer stays the unsafe one, for the reason it always was.
+    //
+    // The transport applies its own backpressure now (it pauses past its
+    // high-water mark), but the bounded queue below still guards the half
+    // this loop cannot see: a language session that has stopped consuming.
+    // This loop keeps pulling regardless, so that flood is still reachable,
+    // and the answer to it is still to end the connection rather than let
+    // the buffer grow.
+    yield* Effect.gen(function* () {
+      const { pull } = yield* socket.reader
+      for (;;) {
+        for (const data of yield* pull) {
+          const frame: InboundFrame =
+            typeof data !== 'string'
+              ? { kind: 'binary' }
+              : Buffer.byteLength(data, 'utf8') > LSP_FRAME_LIMIT
+                ? { kind: 'oversized' }
+                : { kind: 'text', jsonRpc: data }
+          if (!Queue.offerUnsafe(inbound, frame)) {
+            // a consumer this far behind is a flood; the connection ends
+            // rather than the buffer growing
+            flooded = true
+            Queue.endUnsafe(inbound)
+          }
         }
-      })
-      .pipe(
-        // any socket-side ending (client close, network error) lands here;
-        // the scope's finalizers do the rest
-        Effect.ignore,
-      )
+      }
+    }).pipe(
+      // any socket-side ending (client close, network error) lands here;
+      // the scope's finalizers do the rest
+      Effect.ignore,
+    )
   })

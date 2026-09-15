@@ -174,10 +174,10 @@ describe('filing typed evidence', () => {
     await startFiling()
     const { userEvent } = await import('vitest/browser')
     // the screen offers the words; the wire carries the value
-    await userEvent.selectOptions(page.getByLabelText('赛事级别').element(), '省部级')
-    await userEvent.fill(page.getByLabelText('获奖序位').element(), '2')
-    await userEvent.fill(page.getByLabelText('训练时长').element(), '3.50')
-    await page.getByRole('button', { name: '存为草稿' }).click()
+    await userEvent.selectOptions(page.getByLabelText('赛事级别', { exact: false }).element(), '省部级')
+    await userEvent.fill(page.getByLabelText('获奖序位', { exact: false }).element(), '2')
+    await userEvent.fill(page.getByLabelText('训练时长', { exact: false }).element(), '3.50')
+    await page.getByRole('button', { name: '存为草稿', exact: false }).click()
     await vi.waitFor(() => expect(created).toHaveBeenCalledOnce())
     expect(created.mock.calls[0]![0].payload).toMatchObject({
       payload: { level: 'provincial', placing: 2, hours: '3.50' },
@@ -189,18 +189,18 @@ describe('filing typed evidence', () => {
     open({ createEntry: created as never })
     await startFiling()
     const { userEvent } = await import('vitest/browser')
-    await userEvent.selectOptions(page.getByLabelText('赛事级别').element(), '国家级')
-    await userEvent.fill(page.getByLabelText('获奖序位').element(), '2')
+    await userEvent.selectOptions(page.getByLabelText('赛事级别', { exact: false }).element(), '国家级')
+    await userEvent.fill(page.getByLabelText('获奖序位', { exact: false }).element(), '2')
     // the optional decimal holds a draft no schema admits: the door must
     // shut rather than let the typo file as "left blank"
-    await userEvent.fill(page.getByLabelText('训练时长').element(), '1.')
-    await expect.element(page.getByRole('button', { name: '存为草稿' })).toBeDisabled()
-    await expect.element(page.getByRole('button', { name: '保存并提交审核' })).toBeDisabled()
+    await userEvent.fill(page.getByLabelText('训练时长', { exact: false }).element(), '1.')
+    await expect.element(page.getByRole('button', { name: '存为草稿', exact: false })).toBeDisabled()
+    await expect.element(page.getByRole('button', { name: '保存并提交审核', exact: false })).toBeDisabled()
     // finished, the doors open; emptied, the field is honestly omitted
-    await userEvent.fill(page.getByLabelText('训练时长').element(), '1.5')
-    await expect.element(page.getByRole('button', { name: '存为草稿' })).not.toBeDisabled()
-    await userEvent.fill(page.getByLabelText('训练时长').element(), '')
-    await expect.element(page.getByRole('button', { name: '存为草稿' })).not.toBeDisabled()
+    await userEvent.fill(page.getByLabelText('训练时长', { exact: false }).element(), '1.5')
+    await expect.element(page.getByRole('button', { name: '存为草稿', exact: false })).not.toBeDisabled()
+    await userEvent.fill(page.getByLabelText('训练时长', { exact: false }).element(), '')
+    await expect.element(page.getByRole('button', { name: '存为草稿', exact: false })).not.toBeDisabled()
     expect(created).not.toHaveBeenCalled()
   })
 
@@ -211,12 +211,12 @@ describe('filing typed evidence', () => {
     open({ createEntry: created as never })
     await startFiling()
     const { userEvent } = await import('vitest/browser')
-    const placing = page.getByLabelText('获奖序位')
+    const placing = page.getByLabelText('获奖序位', { exact: false })
     await userEvent.fill(placing.element(), '-')
     // mid-edit is a draft, not a filing; the field reports itself instead
     await expect.element(placing).toHaveAttribute('aria-invalid', 'true')
-    await expect.element(page.getByRole('button', { name: '存为草稿' })).toBeDisabled()
+    await expect.element(page.getByRole('button', { name: '存为草稿', exact: false })).toBeDisabled()
     await userEvent.fill(placing.element(), '2')
-    await expect.element(page.getByRole('button', { name: '存为草稿' })).not.toBeDisabled()
+    await expect.element(page.getByRole('button', { name: '存为草稿', exact: false })).not.toBeDisabled()
   })
 })
