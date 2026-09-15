@@ -1,6 +1,7 @@
-import { execFileSync } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
+import { promisify } from 'node:util'
 import { afterAll, describe, expect, it } from 'vitest'
 import { walkSources } from '../lib/walk.ts'
 
@@ -48,7 +49,17 @@ afterAll(() => {
 const buildInfoFor = (dir: string) =>
   path.join('node_modules/.cache/qualy-isolation', `${dir.replaceAll('/', '-')}.tsbuildinfo`)
 
-const typecheckAlone = (dir: string) => {
+const run = promisify(execFile)
+
+// Asynchronous, because the suite below is declared concurrent and a
+// synchronous spawn cannot be. A synchronous one holds the thread for the whole
+// compile, so the cases never overlapped: they only started their clocks
+// together and then queued, and on a two-core runner the ones at the back of
+// the queue timed out - including the trivial case that only counts
+// directories, which had nothing to wait for but the thread. Vitest bounds
+// how many run at once, which is the bound this wants anyway: each `tsc`
+// holds a whole program in memory.
+const typecheckAlone = async (dir: string) => {
   const probe = probeFor(dir)
   fs.mkdirSync(path.join(repoRoot, 'node_modules/.cache/qualy-isolation'), { recursive: true })
   fs.writeFileSync(
@@ -63,10 +74,9 @@ const typecheckAlone = (dir: string) => {
     }),
   )
   try {
-    execFileSync('node_modules/.bin/tsc', ['-p', probe, '--noEmit'], {
+    await run('node_modules/.bin/tsc', ['-p', probe, '--noEmit'], {
       cwd: repoRoot,
       encoding: 'utf8',
-      stdio: 'pipe',
     })
     return ''
   } catch (error) {
@@ -432,8 +442,8 @@ describe.concurrent('every plugin typechecks on its own', () => {
   })
 
   for (const dir of pluginDirs) {
-    it(`${dir.split('/').slice(-1)[0]} needs no other plugin in its program`, () => {
-      const output = typecheckAlone(dir)
+    it(`${dir.split('/').slice(-1)[0]} needs no other plugin in its program`, async () => {
+      const output = await typecheckAlone(dir)
       // the failure this guards reads as "Property 'auth' does not exist on
       // type 'Context'", so point at the fix rather than only the symptom
       expect(
