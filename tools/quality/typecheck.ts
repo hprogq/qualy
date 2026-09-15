@@ -25,17 +25,27 @@ function findClientProjects(root: string): string[] {
 }
 
 // A browser test renders the same code the browser runs, so it is checked by
-// a browser program rather than the node one - discovered by the file name
-// every such program carries, the way client directories are.
+// a browser program rather than the node one - discovered the way client
+// directories are, by the directory that owns one.
+//
+// The file is `tsconfig.json` and not some name of our own, because an editor
+// finds a file's project by walking up for exactly that name: under any other
+// name the program exists for this script alone, the editor falls back to its
+// own defaults, and every `import './x.css'` in a moved test is underlined as
+// a missing module while `pnpm typecheck` stays green.
 function findBrowserTestProjects(root: string): string[] {
   const projects: string[] = []
   const stack = [root]
   while (stack.length > 0) {
     const dir = stack.pop()!
     for (const child of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (!child.isDirectory() || child.name === 'node_modules') continue
       const full = path.join(dir, child.name)
-      if (child.isFile() && child.name === 'tsconfig.browser.json') projects.push(full)
-      else if (child.isDirectory() && child.name !== 'node_modules') stack.push(full)
+      if (child.name === 'tests' && fs.existsSync(path.join(full, 'tsconfig.json'))) {
+        projects.push(full)
+        continue
+      }
+      stack.push(full)
     }
   }
   return projects.sort()

@@ -15181,3 +15181,25 @@ renderer 只能经描述器到达浏览器(collector 读 `uiSurfacesOf` / `login
 当前仓库没有触发:唯一的外部 consumer(formula)只 `contribute` 一个 collection item,不带 renderer。
 以后收窄成「`contribute` 公开,其余内部」,让 api 与 active-only build 的物理能力一致。
 已写进 `service.ts` 的头注,不在本次展开。
+
+## 浏览器测试工程改名 tsconfig.json(2026-09-15)
+
+`packages/plugins/base/auth/tests/support/screen.tsx` 里 `import '../.../apps/web/src/app.css'`
+在编辑器里报 TS2882。路径没写错(文件在),`pnpm typecheck` 也是绿的——**是我给工程起错了名字**。
+
+编辑器按 `tsconfig.json` / `jsconfig.json` 这两个名字向上找一个文件属于哪个工程。从 `tests/support/`
+往上:`tests/` 只有我起的 `tsconfig.browser.json`,一路到仓库根才有 `tsconfig.json`,
+而根工程的 exclude 里正是 `packages/plugins/*/*/tests/**/*.tsx`。于是文件落进 inferred project,
+没有 `types: ["vite/client"]`,也就没有 `*.css` 的模块声明。
+**复现过**:把这个文件放在任何工程之外编译,Mantine 自己的 `.css` 副作用导入同样是 TS2882。
+`pnpm typecheck` 看不见这件事,因为它显式 `-p .../tsconfig.browser.json`。
+
+七个 `tests/tsconfig.browser.json` 全部改名为 `tests/tsconfig.json`;
+`typecheck.ts` 的发现方式从「按文件名」改成「`tests` 目录里有没有 tsconfig.json」,
+与 client 目录同一套。同目录下的 node 测试仍归根工程(实测:
+`effect-sign-in.test.ts` 在根工程的 file list 里、不在浏览器工程里),编辑器对它做祖先查找即可落回根工程。
+
+教训记下来:**给工程起一个编译器认得、编辑器不认得的名字,等于把类型检查只留给 CI。**
+
+**门禁(实际执行)**:`pnpm typecheck` exit 0(七个 `*/tests` 工程逐一编译);
+`plugin-isolation` + `browser-contract` 34 例;`pnpm test:browser` 52 / 377。
