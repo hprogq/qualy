@@ -1,4 +1,4 @@
-import { Context, Deferred, Effect, Exit, Layer, Logger, References, Scope } from 'effect'
+import { Context, Deferred, Effect, Exit, Fiber, Layer, Logger, References, Scope } from 'effect'
 import { sql } from 'kysely'
 import { describe, expect, it, vi } from 'vitest'
 import { entityManager, kyselyOf, query, transaction } from '../src/server/index.ts'
@@ -171,4 +171,40 @@ describe.runIf(postgresAvailable)('a pool that will not close', () => {
       await db.dispose()
     }
   }, 40_000)
+})
+
+describe.runIf(postgresAvailable)('a query still running when its fiber is interrupted', () => {
+  it('holds the interruption until the statement is done, so the pool can close', async () => {
+    const db = await createTestContext('pool-release-interrupted')
+    const scope = await Effect.runPromise(Scope.make())
+    const built = await Effect.runPromise(Layer.buildWithScope(databaseFor(db.url), scope))
+    try {
+      // the shape a shutdown meets: a background fiber mid-statement when its
+      // scope closes. Nothing cancels the statement - nothing can - so the
+      // question is only whether the fiber may be gone before the driver has
+      // handed the connection back.
+      const running = Effect.runFork(
+        Effect.gen(function* () {
+          const em = yield* entityManager<readonly []>()
+          yield* query(() => sql`select pg_sleep(1)`.execute(kyselyOf(em)))
+        }).pipe(Effect.provide(built)),
+      )
+      // long enough to have reached the server and taken a connection
+      await new Promise((resolve) => setTimeout(resolve, 200))
+
+      const asked = performance.now()
+      await Effect.runPromise(Fiber.interrupt(running))
+      const waited = performance.now() - asked
+
+      // it waited. Half the remaining sleep is the loosest bound that still
+      // separates waiting from not: an interruption that outran the statement
+      // comes back in single-digit milliseconds
+      expect(waited).toBeGreaterThan(400)
+    } finally {
+      // and because it waited, nothing is checked out and the layer closes at
+      // once - rather than onto a connection whose owner is already collected
+      expect(await closeWithin(scope)).toBe('closed')
+      await db.dispose()
+    }
+  }, 30_000)
 })

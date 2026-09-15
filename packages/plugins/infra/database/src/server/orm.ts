@@ -234,19 +234,37 @@ const settle = async (
  * Who is asking, read off the running fiber without an effect: the fiber's
  * current span and its log annotations are both kept on the fiber itself.
  */
+/**
+ * The span a fiber is inside, without asking for it as an effect.
+ *
+ * `Effect.currentParentSpan` is the way to ask, and `ownerOf` below does ask -
+ * it runs once per transaction. This one runs once per statement, on the path
+ * every query takes, and the answer is already sitting on the fiber.
+ *
+ * Its own function so the runtime's shape is named in one place. It used to be
+ * `fiber.currentSpan`, read through a cast, and the cast is why nobody noticed
+ * when the runtime moved it: the property stopped existing, the code went on
+ * compiling, and every checkout the ledger recorded afterwards carried no span
+ * at all. `cache.span` is declared on the published `Fiber` interface, so the
+ * same move again is a typecheck failure rather than a field that quietly goes
+ * blank - which is the only property that made the last one hard to find.
+ *
+ * `Span` and not `ExternalSpan`: a span this process was handed by a caller is
+ * somebody else's work, and naming it would point a stuck checkout at them.
+ */
+const spanNameOnFiber = (fiber: Fiber.Fiber<unknown, unknown> | undefined): string | undefined => {
+  const span = fiber?.cache.span
+  return span?._tag === 'Span' ? span.name : undefined
+}
+
 const ownerOnFiber = (kind: CheckoutOwner['kind']): CheckoutOwner => {
   const fiber = Fiber.getCurrent()
   const source = fiber?.getRef(References.CurrentLogAnnotations)['source']
-  // the span lives on the fiber's cache; it used to be reachable as
-  // `fiber.currentSpan`, and reading it through a cast is how that stopped
-  // being true without anything saying so - every checkout this ledger
-  // recorded after the runtime moved it was recorded with no span at all
-  const span = fiber?.cache.span
   return {
     kind,
     token: {},
     fiber: fiber?.id,
-    span: span?._tag === 'Span' ? span.name : undefined,
+    span: spanNameOnFiber(fiber),
     source: typeof source === 'string' ? source : undefined,
   }
 }
@@ -351,10 +369,45 @@ export const query = <A>(run: () => Promise<A>): Effect.Effect<A, QueryFailed> =
     // because this is every query's hot path. The span and the source are
     // what a CI autopsy could not say when all it had was a fiber number.
     const owner: CheckoutOwner = ownerOnFiber('query')
+    // The one promise this effect ever waits on, kept so that the interrupt
+    // path can wait on the SAME one rather than start another.
+    const holder: { running: Promise<A> | undefined } = { running: undefined }
     return Effect.tryPromise({
-      try: () => checkoutOwner.run(owner, run),
+      try: () => (holder.running = checkoutOwner.run(owner, run)),
       catch: (cause) => new QueryFailed(cause),
     }).pipe(
+      // Interruption does not cancel a promise - nothing cancels a promise -
+      // so the only question is whether this fiber may call itself finished
+      // while the statement it started is still out. It may not, and the
+      // reason is the connection: the driver returns it in the `finally` of
+      // that same chain, so a fiber that outran it would leave a checkout
+      // behind with nobody left to attribute it to. The pool then closes
+      // onto a connection whose owner is already collected, which is the
+      // "still releasing" line with a backend PostgreSQL calls idle.
+      //
+      // `Effect.tryPromise` will not do this on its own. It fits a
+      // cancellation finalizer only when the callback takes the AbortSignal
+      // it offers (`internal/effect.ts`: `callbackOptions(..., f.length !==
+      // 0)`), and with neither a controller nor an onCancel it yields with
+      // no finalizer at all. Taking the signal would not help by itself
+      // either: the driver below does not read one, so aborting would
+      // release nothing. Waiting does.
+      //
+      // Unbounded on purpose. A statement that never settles already stops
+      // the pool from closing; what changes is where that shows up - on the
+      // fiber that asked, still carrying its owner, instead of inside a
+      // finalizer that can only say which plugin. The deadline that ends a
+      // wedged shutdown is the process's, and it is unchanged.
+      Effect.onInterrupt(() =>
+        holder.running === undefined
+          ? Effect.void
+          : Effect.promise(() =>
+              holder.running!.then(
+                () => undefined,
+                () => undefined,
+              ),
+            ),
+      ),
       Effect.onExit((exit) =>
         Metric.update(
           Metric.withAttributes(operationDuration, operationAttributes(exit)),
