@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { promisify } from 'node:util'
-import { afterAll, describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it, vi } from 'vitest'
 import { walkSources } from '../lib/walk.ts'
 
 // A plugin must typecheck on its own, not merely in company.
@@ -433,9 +433,33 @@ describe('a browser test outside the host reaches for neither aggregate nor host
   })
 })
 
-// concurrent: each case compiles one plugin in its own subprocess, and they
-// share nothing but the disk. Run in sequence this file was the whole suite's
-// critical path, since vitest parallelises files and not the cases inside one.
+// Two at a time, and the number is the point.
+//
+// Each case compiles one plugin in its own subprocess, and they share nothing
+// but the disk - so they run concurrently, because in sequence this file was
+// the whole suite's critical path: vitest parallelises files, not the cases
+// inside one. But a whole TypeScript program is not a small unit of work, and
+// the runner's default of five of them at once is an amount of parallelism
+// this file cannot see the machine to justify. On a two-core runner it is
+// oversubscription: measured there, the two largest programs took 30.0s each
+// and died on the 30s budget while three more compilers held the cores.
+//
+// Two, rather than one, because the cost of the bound is wall time and the
+// benefit is per-case time. Measured cold, locally: five lanes finish the
+// file in 9.2s with the slowest case at 2.5s; two lanes finish in 10.1s with
+// the slowest at 1.3s; one lane finishes in 15.9s. Two buys most of the
+// headroom for a second of wall.
+//
+// `vi.setConfig` rather than the root config, because this is the only
+// concurrent suite in the repository and a limit chosen for compilers should
+// not be waiting for the next suite that has nothing to do with them. It is
+// scoped to this file: every file gets its own runtime config.
+//
+// Measured, not assumed: a case queued behind the bound does not spend its
+// timeout waiting. Per-case times FALL as the bound tightens (2.5s -> 1.3s ->
+// 0.9s), which they could not do if the clock started at queue time.
+vi.setConfig({ maxConcurrency: 2 })
+
 describe.concurrent('every plugin typechecks on its own', () => {
   it('found plugins to check', () => {
     expect(pluginDirs.length).toBeGreaterThan(5)
