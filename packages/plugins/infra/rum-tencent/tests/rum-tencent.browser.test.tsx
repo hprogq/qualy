@@ -207,7 +207,6 @@ describe('which api failures reach the error panel', () => {
     // which is the whole reason the header is read at all
     expect(failed.msg).toContain('x-qualy-request-id: 0199f03e-2222-7abc-8def-000000000002')
   })
-})
 
 describe('what this deployment asks the vendor to do', () => {
   const options = aegisOptions(
@@ -246,5 +245,20 @@ describe('what this deployment asks the vendor to do', () => {
     expect(options.spa).toBe(false)
     // the compressing worker is built from a blob url, which the shell refuses
     expect(options.gzip).toEqual({ useWorker: false })
+  })
+})
+
+  it('masks the same address when the call failed the other way round', () => {
+    // through fetch a 5xx is an ajax error; through XHR the same 5xx is a
+    // retcode error, because only the fetch path reads the http status. The
+    // message is the same either way, and so is what has to come out of it
+    const retcode = {
+      level: '1024',
+      code: '500',
+      msg: `fetch req url: ${location.origin}/api/iam/users/2023123456/role-assignments`,
+    }
+    expect(beforeReport(retcode)).toBe(true)
+    expect(retcode.msg).toContain('/api/iam/users/:id/role-assignments')
+    expect(retcode.msg).not.toContain('2023123456')
   })
 })

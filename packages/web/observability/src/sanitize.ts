@@ -20,11 +20,24 @@ const PLAIN = /^[A-Za-z0-9._~-]+$/
 /**
  * Long enough to be an identifier rather than a word.
  *
- * Sixteen because that is past every segment this product's routes actually
- * use - `batches`, `review`, `user-types`, `role-assignments` - and short of
- * nothing a generated id would be.
+ * Sixteen was chosen against the segments PAGE routes use - `batches`,
+ * `review`, `user-types` - and it was wrong the moment api routes were
+ * sanitized too: thirteen of this product's own api segments are longer than
+ * that, up to `formula-binding-options` at twenty-three. Length alone cannot
+ * tell them from a token, so it is no longer asked to.
  */
 const OPAQUE_LENGTH = 16
+
+/**
+ * A segment that reads as words rather than as a value.
+ *
+ * This product names its routes in lower-case words joined by hyphens, and
+ * nothing it generates looks like that: a uuid has digits and a fixed shape,
+ * a business number is digits, an opaque token carries case or digits or
+ * both. So a segment of nothing but lower-case words is kept however long it
+ * is, and everything else still has to get past the rules below.
+ */
+const WORDS = /^[a-z]+(?:-[a-z]+)*$/
 
 const decoded = (segment: string): string => {
   try {
@@ -44,6 +57,8 @@ const identifies = (segment: string): boolean => {
   // anything that had to be escaped, or that carries a character a route
   // never would: a name, an address, something somebody typed
   if (plain !== segment || !PLAIN.test(plain)) return true
+  // a route word, whatever its length
+  if (WORDS.test(plain)) return false
   return plain.length >= OPAQUE_LENGTH
 }
 

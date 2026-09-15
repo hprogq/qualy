@@ -15989,14 +15989,141 @@ smoke-production / database check / drop-guard                       exit=0
 
 CSP 没有变化:上报仍然只连 `https://rumt-zh.com` 一个 host,开 API 测速不增加端点。
 
-### manual acceptance pending(不算绿)
+### 远端
 
-需要真实腾讯项目与真实部署才能答,与 Phase 2 同类:
+CI run 34990587611(`a59080b4`)整轮 **success**,6m22s,含 build 与 production smoke。
 
-- RUM 的 API duration 与服务端 access log 的 duration 能否对上(§42 验收第一条);
-- 从 RUM 的 requestId 走到 CLS、再到 traceId、再到 APM 这条链(§42 验收第二条);
-- 控制台的 API 面板在 `isErr` 只标 5xx 的口径下读起来是否合用。
+### 三条 acceptance 移交 Phase 4
+
+原本挂在这里的三条不是实现问题,是真实腾讯项目 + 真实部署才能答的验收,已移到
+Phase 4 的 staging acceptance(见 docs/notes/rum-rollout.md 第 4 步):API duration 对照、
+requestId → CLS → traceId → APM 链路、以及 `isErr` 口径在控制台里读起来是否合用。
 
 **下一步**:docs/rum.md §42 的 Phase 4(上线前 rollout:正式项目、secrets、告警阈值、
 费用告警、staging soak)。上线前仍必须把真实部署域名加进 RUM 应用的来源白名单,
 否则线上一条都收不到(Phase 1 已实测,`rum-error: 111`)。
+
+## 浏览器可观测性 Phase 4:上线工程(2026-09-15,代码侧完成)
+
+docs/rum.md §42 的 Phase 4。这一阶段绝大部分是**控制台配置、部署密钥与真实环境验收**,
+仓库做不了;能做的是把其中「顺序错了会静默失败」的那一步变成可执行的检查,其余写成手册。
+
+### 唯一新增的代码:`qualy rum preflight <origin>`
+
+平台**按 origin 精确匹配**(端口算在内)决定允不允许上报,被拒的浏览器拿到 `403 forbidden`,
+而 SDK 对这个字符串有专门处理——**第一条被拒的请求就销毁 Aegis 实例**,整页此后不再上报。
+产品侧看不出任何异常:没有报错、没有 CSP violation、没有失败请求。最早的迹象是事后发现
+一段时间没有数据。
+
+所以「先配白名单、再部署」是硬前置,而它此前只是 STATUS 里的一句话。现在:
+
+```bash
+QUALY_RUM_TENCENT_ID=<id> pnpm qualy rum preflight https://staging.example.edu.cn
+```
+
+问的是 SDK 起来时问的同一个接口(`GET /collect/whitelist`),**不需要任何密钥**——
+reporting id 随每条上报走,本来就是公开的。区分得出「id 不存在」(41)与「来源不允许」(111),
+并顺带报出平台当前下发的 `rate`:`sampleRate` 是上限不是保证,平台可以随时把它压到 0。
+
+命名空间归 provider、`context: 'assembly'`、模块懒加载,与 `rum sourcemaps` 同型。
+插件停用时这条命令不存在(实测 `no capability or namespace rum in this assembly`),这是对的。
+
+### 写命令时真机打了一次,当场推翻一条记录
+
+Phase 1 的 notes 把 `rum-error` 记成了一张码值表。真机再打:
+
+```text
+rum-error: type:business, code:41, msg:project(qualy-preflight-does-not-exist) is not exist
+```
+
+**头本身不是裸码**,按裸码查表永远匹配不上——第一版就是这么写的,一跑就露馅。
+改成抠 `code:(\d+)`,并且把平台原话一并打出来:翻译是本产品的说法,原话才是证据。
+notes 已更正。
+
+判读逻辑抽成 `explainRefusal(header)` 并有 3 条用例钉住(含「翻译不出来的原样读出、不要只给个数字」)。
+请求那半不测:它跑过一次真的,那正是发现头部格式不对的原因。
+
+### 其余交付是手册,不是代码
+
+`docs/notes/rum-rollout.md`:七步顺序(建项目取两个 id → 配白名单并用 preflight 验证 →
+构建/传 map/部署 → staging 五条验收 → 线上隐私 wire audit → 告警与费用 + soak 24–72h →
+切 production),以及每一步「为什么是这个顺序」。
+
+两个 id 的分工写进了表:browser reporting id 给浏览器进部署环境变量,numeric ProjectID 与
+云 API 密钥**只进 CI secret**,永不进 qualy.yml / lock / 应用进程 / 浏览器 / 日志。
+
+顺带修了 `.env.example` 里 Phase 2 之后就已过时的命令名(`pnpm rum:tencent:sourcemaps`
+→ `qualy rum sourcemaps`)。
+
+### 留到 staging 再定的一条口径:429
+
+当前 `isErr` 只标 5xx 与网络失败,所以 429 在 API 面板算成功,而 error 面板保留它。
+语义上说得通,但若控制台直接拿 `isErr` 算成功率,可能出现「成功率 100%、旁边一批 429」的
+误导画面。**先看真实控制台怎么呈现再决定**是否改成 `status === 429 || status >= 500`。
+这是 rollout 裁决,不是 Phase 3 的缺陷。
+
+### 仓库没做的,以及为什么
+
+**没有加 release workflow。** docs/rum.md §46 描述了一条「build → 传 map → 部署」的
+release CI,§49 也把它列为「when present」。前两步是仓库的,第三步不是:这里不知道部署目标,
+写一条只做前两步的 workflow 会像是能部署而其实不能。手册里把命令按顺序写清楚了,
+要接进任何流水线都可以;需要那条 workflow 的话再加。
+
+### 门禁(实际执行)
+
+```text
+pnpm vendor:check / qualy resolve --frozen-lockfile / typecheck      exit=0
+pnpm test   ×3      240 passed | 3 skipped (243) / 1725 passed | 17 skipped (1742)
+pnpm test:browser ×3   52 passed (52) / 392 passed (392)
+pnpm test:browser:webkit               2 (2) / 14 (14)
+build / check-staged-web / check-chunks / check-csp-build / check-public-web
+smoke-production / database check / drop-guard                       exit=0
+```
+
+### 读官方文档时核出两件事,一件是真缺陷
+
+用户给了 `docs/aegis-official-docs.md`,按 §38 的权威顺序(pin 产物 → 官方文档 → 实测)
+复核 Phase 3 的实现。
+
+**一、官方那句「需要开两个」不适用。** `api.retCodeHandler` 示例注着
+`reportApiSpeed: true, // 需要开两个，不然不会有返回码上报` 并要求 `reportAssetSpeed: true`,
+而本仓库是 `false`。读产物:真正的门是请求被分类成 `fetch` 还是 `static`
+(扩展名正则 + content-type 片段表),**与 assetSpeed 无关**。`application/json` 不在静态表里,
+所以 Qualy 的 API 分类成 `fetch`、`retCodeHandler` 会跑。官方那句描述的是
+「接口返回 text/html 被误判成静态资源」的症状,真正的解法是 `resourceTypeHandler`。以产物为准。
+
+**二、`isErr: true` 会额外产生 RET_ERROR,而掩码没覆盖它。** 官方明说这一点,产物印证:
+同一个 5xx **走 fetch 是 AJAX_ERROR,走 XHR 是 RET_ERROR**——只有 fetch 路径看 HTTP status。
+两者的 `msg` 形状相同,都带完整 api 路径。而 Phase 3 的掩码只挂在 AJAX_ERROR 上。
+已改成按「这条日志是不是在讲一次 API 调用」判,覆盖 `AJAX_ERROR` / `RET_ERROR` /
+`SLOW_NET_REQUEST` 三个 level,并补了用例。
+
+### 补测试时又抓到一条:sanitizer 会吃掉 API 路由名
+
+写那条 RET_ERROR 用例时发现 `/api/iam/users/2023123456/role-assignments` 被掩码成
+`/api/iam/users/:id/:id`——`role-assignments` 恰好 16 字符,而
+`sanitizeUrl` 的「≥16 视为不透明标识」规则把它当成了行 id。
+
+**不是个别案例。** 对着冻结路由表数了一遍:**13 个合法 API 段 ≥ 16 字符**,
+最长 `formula-binding-options`(23)。也就是说 Phase 3 会把几乎所有有意思的路由都记成 `:id`,
+§42 验收第一条(duration 按路由对照)根本无从做起。
+
+根因是这条规则当初是**按页面路径**定的——sanitize.ts 的注释自己列的例子是
+`batches` / `review` / `user-types` / `role-assignments`,而 `role-assignments` 正好卡在边界上。
+Phase 3 第一次把它用到 API 路径,数量级就不对了。
+
+改法不是抬阈值(明天一条更长的路由照样破),而是换判据:**本产品的路由名是小写词加连字符,
+而它生成的东西不是**(uuid 有数字且形状固定,学号是数字,不透明 token 带大小写或数字)。
+所以纯小写词的段无论多长都保留,其余照旧走 UUID / 长数字 / 转义 / 长度四条规则。
+
+新门禁 `tools/tests/observed-routes.test.ts` **对着冻结路由表本身**断言,而不是对着这里写的清单:
+明天新增的路由当天就被覆盖,而且那张表本来就是改名必须经过的地方。
+三条用例:每个路由词都保住、表里确实有会被旧规则吃掉的段(防止空转)、每个带参数的路由
+仍然把行掩掉且参数个数不变。**反向验证过**:退掉修复,它点名全部 13 个段。
+
+一个连带的坑:这条测试最初把 `@qualy/browser-observability` 加进根 devDependencies 来导入,
+结果把浏览器包拉进了根 program(`types: ["node"]`、无 DOM lib),`context.ts` / `queue.ts` 里的
+`window` / `location` 当场 10 个错——正是 CLAUDE.md 警告的那条。改成直接相对导入
+`sanitize.ts` 这个**纯字符串**模块(仓库里已有同样写法),根 program 不再看到它的兄弟文件。
+
+**下一步是人的**:按 docs/notes/rum-rollout.md 走。代码侧的 RUM 接入到此为止。

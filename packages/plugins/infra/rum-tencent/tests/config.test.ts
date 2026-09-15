@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { ConfigProvider, Effect, Layer } from 'effect'
 import { TencentRumConfig, config } from '../src/server/config.ts'
 import { rumVersionForRelease } from '../src/version.ts'
+import { explainRefusal } from '../src/cli/preflight.ts'
 
 // Which project this deployment reports to, and under what name the reports
 // arrive.
@@ -95,5 +96,46 @@ describe('the version a report is filed under', () => {
     // pinned, because the browser and the source map uploader have to agree
     // across processes and across machines
     expect(rumVersionForRelease('a'.repeat(61))).toBe('q-f9bf3487d17c93f0')
+  })
+})
+
+// Whether a deployment would be allowed to report, asked before it is one.
+//
+// The platform decides per origin, and a browser it refuses gets a 403 - at
+// which point the sdk destroys its own instance and the page reports nothing
+// for the rest of its life, with no error anybody could see. So the order is
+// "origin on the list, then deploy", and the preflight is what makes that
+// checkable rather than remembered.
+//
+// The reading is asserted here and the request is not: the request was run
+// against the real endpoint once, which is how the header turned out not to
+// be the bare code the notes recorded.
+
+describe('what the platform said when it refused', () => {
+  it('names the two causes worth telling apart', () => {
+    // an id that does not exist and an origin that is not allowed are
+    // different problems with different fixes, and the code is the only thing
+    // that separates them
+    expect(
+      explainRefusal('type:business, code:41, msg:project(probe-id) is not exist'),
+    ).toContain('no project has that reporting id')
+    expect(
+      explainRefusal('type:business, code:111, msg:id(x) in origin(y) is not allowed'),
+    ).toContain('that origin is not on the project allow list')
+  })
+
+  it('keeps the platform own words either way', () => {
+    // what this product calls it is a translation; what the platform called
+    // it is the evidence
+    expect(explainRefusal('type:business, code:41, msg:project(probe-id) is not exist')).toContain(
+      'msg:project(probe-id) is not exist',
+    )
+  })
+
+  it('reads out a refusal it has no translation for rather than a number', () => {
+    const said = explainRefusal('type:business, code:999, msg:something new')
+    expect(said).toBe('the platform refused: type:business, code:999, msg:something new')
+    // and one that is not shaped like the others at all
+    expect(explainRefusal('rate limited')).toBe('the platform refused: rate limited')
   })
 })

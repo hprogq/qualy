@@ -57,6 +57,17 @@ const plugin = Plugin.define(
   // capability has no commands of its own and only one provider may be
   // enabled at a time; a different provider would claim it in its turn, with
   // its own platform's upload flow behind the same words.
+  // Whether a deployment would be allowed to report at all, asked before it
+  // is one. The platform decides per origin and a browser refused once stops
+  // reporting for the life of the page, silently - so the order is deploy
+  // AFTER the origin is on the list, and this is what makes that checkable.
+  Cli.command({
+    namespace: 'rum',
+    name: 'preflight',
+    summary: 'ask whether an origin is allowed to report to this project',
+    context: 'assembly',
+    load: () => import('./cli/preflight.ts'),
+  }),
   Cli.command({
     namespace: 'rum',
     name: 'sourcemaps',

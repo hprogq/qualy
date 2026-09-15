@@ -264,6 +264,15 @@ whitelist 则回 `{"retcode":0,"result":{"is_in_white_list":false,"rate":0,"shut
 
 `41` 与 `111` 的区别正好可以用来判断「id 对不对」与「域名允不允许」,不必去控制台猜。
 
+**更正(Phase 4,2026-09-15):上面这张表记的是码值,但 `rum-error` 头本身不是裸码。** 真机再打一次:
+
+```text
+rum-error: type:business, code:41, msg:project(qualy-preflight-does-not-exist) is not exist
+```
+
+按裸码查表永远匹配不上——`qualy rum preflight` 第一版就这么写的,一跑就露馅了。要用
+`/\bcode:\s*(\d+)/` 把码抠出来,并且**把平台原话一并打出来**:翻译是本产品的说法,原话才是证据。
+
 来源允许之后,同一个 whitelist 接口改回 `{"retcode":0,"result":{"is_in_white_list":false,"rate":1,"use_gzip":0}}`,
 数据端点返回 `204`。
 
@@ -502,6 +511,73 @@ function Qe(headers, names, kind){ ... return acc + kind + " header " + name + "
 
 顺带:`msg` 里那行 `fetch req url:` 带的是**完整 api 路径**,Qualy 的 api 路径把行 id 写在
 路径里(`/api/.../batches/<uuid>/entries`),所以只去 query 不够,必须整段掩码。
+
+## 官方文档与 pin 版本产物的两处分歧(Phase 4 核对)
+
+拿到 `docs/aegis-official-docs.md` 之后按 §38 的权威顺序复核了 Phase 3 的实现,两条要记:
+
+### 「需要开两个」不适用于本仓库
+
+官方 `api.retCodeHandler` 与 `api.resourceTypeHandler` 两处示例都注着:
+
+```js
+reportApiSpeed: true, // 需要开两个，不然不会有返回码上报
+reportAssetSpeed: true,
+```
+
+而本仓库 `reportAssetSpeed: false`。读产物,真正的门是**请求被分类成 `fetch` 还是 `static`**,
+与 `reportAssetSpeed` 无关:
+
+```js
+"fetch" === (w = Ze(b, contentType || "", url))
+  ? f.clone().text().then(... $(r, b.api, {url, ctx: f, payload}) ...)   // retCodeHandler 在这里
+  : setTimeout(... type = "static" ... 只发 speed log)
+```
+
+分类依据是扩展名正则 `fe` 与 content-type 片段表 `de`:
+
+```js
+fe = /\.(json|js|css|jpg|...|html|htm|shtml|shtm|)$/i
+de = [
+  'application/xhtml+xml',
+  'application/xml',
+  'application/pdf',
+  'application/pkcs12',
+  'application/javascript',
+  'application/x-javascript',
+  'application/ecmascript',
+  'application/vnd.mspowerpoint',
+  'application/vnd.apple.mpegurl',
+  'application/ogg',
+  'text/css',
+  'text/javascript',
+  'image',
+  'audio',
+  'video',
+  'video/mp2t',
+]
+```
+
+**`application/json` 不在里面**,所以 Qualy 的 API 响应分类成 `fetch`、`retCodeHandler` 会跑。
+官方那句注释描述的是「接口返回 `text/html` 之类被误判成静态资源」的症状,而它给的真正解法是
+`resourceTypeHandler`,不是 assetSpeed。以产物为准。
+
+(顺带:`/api/openapi.json` 会因为扩展名被判成 `static`。它不在测速范围里,不影响。)
+
+### `isErr: true` 会额外产生一条 RET_ERROR
+
+官方明说:「isErr 如果是 true 的话，会上报一条 retcode 异常的日志。」产物印证:
+
+```js
+et(e, t) = e ? AJAX_ERROR : t ? RET_ERROR : API_RESPONSE
+// fetch: et(status<=0 || status>=400, isErr)
+// XHR  : et(!!transportFailure, isErr)
+```
+
+于是同一个 5xx,**走 fetch 是 AJAX_ERROR,走 XHR 是 RET_ERROR**——只有 fetch 路径看 HTTP status。
+两者的 `msg` 形状相同,都带那行完整 api 路径。所以隐私掩码不能只挂在 AJAX_ERROR 上,
+Phase 3 的实现按「这条日志是不是在讲一次 API 调用」来判,覆盖
+`AJAX_ERROR` / `RET_ERROR` / `SLOW_NET_REQUEST` 三个 level。
 
 ## Phase 0 Gate 判定
 

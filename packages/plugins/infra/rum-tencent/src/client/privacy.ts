@@ -29,6 +29,22 @@ const IMAGE_ERROR = '64'
 const AJAX_ERROR = '16'
 
 /**
+ * Every level whose message the sdk assembles out of an api call.
+ *
+ * The three differ by how the call went wrong, not by what they say: each
+ * carries the same `fetch req url:` line with the whole path in it. Which one
+ * a call becomes depends on how it was made - through fetch a 5xx is an ajax
+ * error, through XHR the same 5xx is a retcode error, because only the fetch
+ * path looks at the http status. So the masking is keyed on "this is about an
+ * api call" rather than on the one level this product happens to produce.
+ */
+const API_LEVELS = new Set([
+  AJAX_ERROR,
+  '1024', // RET_ERROR
+  '1027', // SLOW_NET_REQUEST
+])
+
+/**
  * A url inside a message, with its query removed.
  *
  * Narrow on purpose: anchored to a url so that a message which merely ends in
@@ -71,7 +87,9 @@ export const beforeReport = (log: ReportedLog): boolean => {
     if ('originFrom' in log) log.originFrom = observedPageUrl()
     if (typeof log.msg === 'string') {
       log.msg =
-        log.level === AJAX_ERROR ? withoutAddresses(log.msg) : withoutQueryStrings(log.msg)
+        typeof log.level === 'string' && API_LEVELS.has(log.level)
+          ? withoutAddresses(log.msg)
+          : withoutQueryStrings(log.msg)
     }
   } catch {
     // a scrub that failed is not a reason to lose the batch; the report goes
