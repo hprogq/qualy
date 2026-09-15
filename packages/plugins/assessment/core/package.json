@@ -27,11 +27,11 @@
     "./client/review/ReviewInboxPage": "./src/client/review/ReviewInboxPage.tsx",
     "./client/review/ReviewInstancePage": "./src/client/review/ReviewInstancePage.tsx",
     "./db": "./src/db/entities.ts",
+    "./errors": "./src/errors.ts",
     "./package.json": "./package.json",
     "./permissions": "./src/permissions.ts",
     "./plugin": "./src/plugin.ts",
     "./server/configuration-access": "./src/server/configuration-access.ts",
-    "./server/errors": "./src/server/errors.ts",
     "./server/scoring-authoring-access": "./src/server/scoring-authoring-access.ts",
     "./surfaces": "./src/surfaces.ts",
     "./testkit": "./src/testkit.ts"

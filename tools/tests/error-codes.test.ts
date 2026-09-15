@@ -13,7 +13,7 @@ import * as auth from '../../packages/plugins/base/auth/src/server/errors.ts'
 import * as org from '../../packages/plugins/base/org/src/server/errors.ts'
 import * as rbac from '../../packages/plugins/base/rbac/src/server/errors.ts'
 import * as authLocal from '../../packages/plugins/base/auth-local/src/api.ts'
-import * as assessment from '../../packages/plugins/assessment/core/src/server/errors.ts'
+import * as assessment from '../../packages/plugins/assessment/core/src/errors.ts'
 import * as assessmentFormula from '../../packages/plugins/assessment/formula/src/server/errors.ts'
 import { errorMessages as authMessages } from '../../packages/plugins/base/auth/src/client/i18n.ts'
 import { errorMessages as authLocalMessages } from '../../packages/plugins/base/auth-local/src/client/i18n.ts'
@@ -84,7 +84,7 @@ const SOURCES = [
   {
     module: assessment,
     owner: '@qualy/plugin-assessment',
-    file: 'packages/plugins/assessment/core/src/server/errors.ts',
+    file: 'packages/plugins/assessment/core/src/errors.ts',
   },
 ] as const
 

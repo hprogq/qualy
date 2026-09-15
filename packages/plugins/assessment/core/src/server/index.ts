@@ -89,7 +89,7 @@ import {
   type SetBatchStatusError,
   type DeleteBatchError,
   type UpdateBatchError,
-} from './errors.ts'
+} from '../errors.ts'
 import {
   db,
   activeElsewhere,

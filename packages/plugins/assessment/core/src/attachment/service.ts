@@ -3,7 +3,7 @@ import type { Orm } from '@qualy/plugin-database/server'
 import type { Principal } from '@qualy/rbac-contract'
 import type { AttachmentMeta, AttachmentOpen, Storage } from '@qualy/plugin-storage/server'
 import type { UploadTicket } from '@qualy/plugin-storage/upload'
-import { AttachmentUnavailable, EntryActionRefused, ItemNotFound } from '../server/errors.ts'
+import { AttachmentUnavailable, EntryActionRefused, ItemNotFound } from '../errors.ts'
 import { itemOf } from '../item/db.ts'
 import { userMayReadReview } from '../review/db.ts'
 import {

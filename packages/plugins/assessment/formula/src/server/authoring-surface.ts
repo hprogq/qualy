@@ -1,7 +1,7 @@
 import { Effect, Layer } from 'effect'
 import { message } from '@qualy/i18n-contract'
 import { permissionOf } from '@qualy/ui-contract'
-import { Ui } from '@qualy/plugin-ui-registry/server/registry'
+import { Ui } from '@qualy/plugin-ui-registry/service'
 import { calculatorAuthoringOptions } from '@qualy/plugin-assessment/surfaces'
 import { FormulaSettings } from './config.ts'
 

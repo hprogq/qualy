@@ -4,7 +4,7 @@ import {
   type ErrorsByCode,
 } from '@qualy/i18n-contract'
 import { defineMessage } from '@qualy/i18n-contract'
-import type * as assessmentErrors from '../server/errors.ts'
+import type * as assessmentErrors from '../errors.ts'
 
 // Everything the assessment plugin says to a human: the batch administration
 // screen's copy, one label per gated permission, one sentence per refusal the

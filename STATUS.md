@@ -15038,3 +15038,39 @@ rollback 不回收写入时创建的空目录,那是它唯一不撤的东西(空
 
 **门禁(实际执行)**:`pnpm typecheck` exit 0;`plugin-cli` 13 例全过;
 真实清单 `resolve` → `disable` → `enable` 往返后 `git status` 干净。
+
+## post-H 验收修复(二):两条自认 implementation 的跨插件边,收掉(2026-09-15)
+
+`plugin-isolation` 的具名清单里自己写着「still implementation」的那两条,现在都不是了。
+生产侧的 importer 各只有一个(门禁只扫 `src`),所以两条都是小改而不是大重构。
+
+**`@qualy/plugin-assessment/server/errors` → `@qualy/plugin-assessment/errors`**。
+formula 的 **`src/api.ts`(一份契约)** 直接 import 了 assessment 的**服务端实现路径**去拿
+`BatchNotFound`。真正的问题不在 formula 而在 assessment:那 30 个 `Schema.TaggedError` 全都带着
+稳定 wire code 与 httpApiStatus,由 assessment 自己的 `src/api.ts` 声明在端点上——**它们从来就是契约,
+只是住在 `server/` 下面**。整个模块上移一层成为 `src/errors.ts`,导出子路径改名,
+包内 13 个 importer 一并改指;`error-codes.test` 的两处路径同步。
+顺带修掉一个副作用:`src/client/i18n.ts`(浏览器代码)以前也在 import `../server/errors.ts`。
+
+**`@qualy/plugin-ui-registry/server/registry` → `@qualy/plugin-ui-registry/service`**。
+这一条我按第二种裁决办:它**本来就是 UI 能力对贡献者公开的服务接口**,与
+`@qualy/plugin-storage/server`、`@qualy/plugin-rum/server`、`@qualy/plugin-sandbox/service` 同类。
+但公开的不该是实现模块,于是按「tag 是表面,layer 是实现」拆开:`Ui` 服务标签与
+`Owned` / `OwnedSurfaces` 移到 `src/service.ts`,`uiLayer` 与 boot 期注册留在 `server/registry.ts`。
+**ABI 写在 service.ts 的头注里**:它给的是 `addPage` / `registerLayout` / `contribute` / `fillSlot` /
+`surfaces`,用途限于「少数依赖运行时值才能决定的 surface」——绝大多数 surface 仍是描述器上的静态声明,
+注册发生在贡献者自己的 layer 构建期,Scope 负责撤销。formula 的 `authoring-surface.ts` 是唯一的生产
+consumer,改指新叶子;测试里 `uiLayer` 照旧从实现模块取,那是「在测试里搭真实栈」,不是跨插件消费。
+
+于是清单里**带 `/server/` 的从四条减到两条**,且剩下两条都是基础设施能力的单槽 service 表面
+(`database/server/constraints`、`ui-registry/server/authorizer`),用例改成钉住这两条。
+**清单没有变长,implementation 类目整个消失。**
+
+**门禁验证过会红**:把两处 import 分别改回旧路径 → 门禁逐条点名该文件。
+
+**门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm test` 235 passed | 3 skipped (238),
+Tests 1698 passed | 17 skipped (1715);plugin-isolation / error-codes / package-exports 40 例全过。
+
+顺带:`docs/plugin-refactor.md` §108 的标题 `Phase G/H/I/J` 改成 `Phase G/H`,并写明
+**不存在被定义过的 Phase I 或 J**——那四组里只有两组有目标与 DoD,另外两组(descriptor purity、SDK)
+连同 `purge` 都是想法而非计划。那个标题是「Phase I」这个疑问的唯一来源。

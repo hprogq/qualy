@@ -293,6 +293,8 @@ const CROSS_PLUGIN_SURFACES: Readonly<Record<string, string>> = {
   '@qualy/plugin-sandbox/service': 'the sandbox capability',
   '@qualy/plugin-ui-registry/server/authorizer':
     'the single authorizer slot rbac fills; the shell fails closed without it',
+  '@qualy/plugin-ui-registry/service':
+    'the ui capability, for the few surfaces a running assembly decides',
 
   // contract leaves: what a plugin publishes FOR its neighbours
   '@qualy/plugin-auth/api': 'a neighbour api group, which is a contract leaf',
@@ -301,12 +303,7 @@ const CROSS_PLUGIN_SURFACES: Readonly<Record<string, string>> = {
   '@qualy/plugin-org/db': 'a table closure',
   '@qualy/plugin-rbac/db': 'a table closure',
   '@qualy/plugin-assessment/surfaces': 'the slot tokens assessment publishes',
-
-  // still implementation, and named so it can be taken away rather than
-  // forgotten: both are inside one product area whose contract package does
-  // not exist yet
-  '@qualy/plugin-assessment/server/errors': 'formula raises assessment’s own failures',
-  '@qualy/plugin-ui-registry/server/registry': 'formula reads the surface registry directly',
+  '@qualy/plugin-assessment/errors': 'the failures its api declares, which a neighbour api reuses',
 }
 
 describe('one plugin reaching into another', () => {
@@ -330,13 +327,18 @@ describe('one plugin reaching into another', () => {
   })
 
   it('names the surfaces it allows, so the list cannot grow by accident', () => {
-    // two of these are implementation and say so; the rest are how a
-    // capability is consumed at all
+    // Every entry is now a surface its owner publishes for this. The two that
+    // were implementation and said so are gone: assessment's api errors moved
+    // to a leaf of their own, and the ui capability publishes its service tag
+    // rather than having contributors reach into the registry behind it.
+    //
+    // These two still spell `/server/`, and are the whole of what does. Both
+    // are single-slot service surfaces of an infrastructure capability, named
+    // where their owner already keeps them; a third appearing means somebody
+    // reached past a published surface again.
     expect(Object.keys(CROSS_PLUGIN_SURFACES).filter((one) => one.includes('/server/'))).toEqual([
       '@qualy/plugin-database/server/constraints',
       '@qualy/plugin-ui-registry/server/authorizer',
-      '@qualy/plugin-assessment/server/errors',
-      '@qualy/plugin-ui-registry/server/registry',
     ])
   })
 })

@@ -19,7 +19,7 @@ import type {
   CalculatorRuntimeError,
   ScoringRuntimeCatalog,
 } from '../plugin.ts'
-import { DeterminationRefused, ScoringUnavailable } from '../server/errors.ts'
+import { DeterminationRefused, ScoringUnavailable } from '../errors.ts'
 import { evaluateRecognition, type ScoringEvaluationFailed } from './evaluate.ts'
 import { frozenCalculatorOf, type ScoringPlan } from './plan.ts'
 

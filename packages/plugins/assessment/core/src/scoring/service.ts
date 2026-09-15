@@ -7,7 +7,7 @@ import {
 } from '../plugin.ts'
 import type { Principal } from '@qualy/rbac-contract'
 import type { AccessDenied } from '@qualy/rbac-contract/effect'
-import { BatchNotFound, ParticipantNotFound, ScoringUnavailable } from '../server/errors.ts'
+import { BatchNotFound, ParticipantNotFound, ScoringUnavailable } from '../errors.ts'
 import { oneBatch } from '../server/db.ts'
 import { groupsOf, itemsOf, revisionsByIdOf } from '../item/db.ts'
 import {

@@ -5213,40 +5213,39 @@ plugin-ui-registry/api
 
 ---
 
-# 108. Phase G/H/I/J 不与 Runtime 重构混 commit
+# 108. Phase G/H 不与 Runtime 重构混 commit
 
-Browser tests：
+本计划定义到 Phase H 为止。标题原本写作 “G/H/I/J”，但下文四组里只有两组有目标、文件清单与
+DoD，另外两组从头到尾没有——**不存在被定义过的 Phase I 或 J**，不要按这个标题去开发一个。
+
+有 Phase 的两组:
+
+Browser tests(Phase G)：
 
 ```text
 物理归属迁移
 testkit
 ```
 
-Descriptor purity：
-
-```text
-lazy runtime refs
-```
-
-SDK：
-
-```text
-compiled packages
-semver
-plugin API version
-```
-
-Plugin manager：
+Plugin manager(Phase H)：
 
 ```text
 add
 enable
 disable
 remove
-purge
 ```
 
-这些分别提交。
+没有 Phase 的两组。它们是想法,不是计划;真要做,各自先写自己的目标与 DoD:
+
+```text
+Descriptor purity   lazy runtime refs
+SDK                 compiled packages / semver / plugin API version
+```
+
+`purge` 同样属于这一类——本轮明确不实现,`disable` 与 `remove` 都不删数据(§2.1)。
+
+有 Phase 的这些分别提交。
 
 ---
 

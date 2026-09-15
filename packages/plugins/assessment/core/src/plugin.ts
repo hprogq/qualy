@@ -2,7 +2,7 @@ import { Context, Layer } from 'effect'
 import type { Effect, Schema } from 'effect'
 import type { Principal } from '@qualy/rbac-contract'
 import type { AccessDenied } from '@qualy/rbac-contract/effect'
-import type { BatchNotFound, ItemNotFound } from './server/errors.ts'
+import type { BatchNotFound, ItemNotFound } from './errors.ts'
 import type {
   AtomicSchema,
   NormalizedAtomicSchema,

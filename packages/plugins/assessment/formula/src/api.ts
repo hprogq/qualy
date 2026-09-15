@@ -26,7 +26,7 @@ import {
   FormulaCompileUnavailable,
   FormulaVersionNotFound,
 } from './server/errors.ts'
-import { BatchNotFound } from '@qualy/plugin-assessment/server/errors'
+import { BatchNotFound } from '@qualy/plugin-assessment/errors'
 
 const id = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64))
 

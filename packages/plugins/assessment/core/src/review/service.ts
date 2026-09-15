@@ -46,7 +46,7 @@ import {
   ReviewConflict,
   ReviewNotFound,
   ScoringUnavailable,
-} from '../server/errors.ts'
+} from '../errors.ts'
 import { lockBatch, oneBatch } from '../server/db.ts'
 import { itemOf, revisionOf } from '../item/db.ts'
 import {

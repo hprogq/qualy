@@ -5,7 +5,7 @@ import type { Principal } from '@qualy/rbac-contract'
 import { withDatabase } from '@qualy/plugin-database/server'
 import { AssessmentConfigurationAccess } from '../plugin.ts'
 import { batchWithinReach, managementAnchors, oneBatch } from './db.ts'
-import { BatchNotFound } from './errors.ts'
+import { BatchNotFound } from '../errors.ts'
 
 /** the one spelling of the batch-administration permission */
 export const BATCH_MANAGE = 'assessment.batch.manage'

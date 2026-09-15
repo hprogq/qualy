@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Schema, Scope } from 'effect'
+import { Effect, Layer, Schema, Scope } from 'effect'
 import type {
   CollectionDeclaration,
   LayoutDeclaration,
@@ -6,66 +6,13 @@ import type {
   SlotDeclaration,
   UiSurfaces,
 } from '@qualy/ui-contract'
+import { Ui, type Owned, type OwnedSurfaces } from '../service.ts'
 
-/** a declaration paired with the plugin that made it, for key derivation */
-export interface Owned<T> {
-  readonly declaration: T
-  readonly owner: string
-}
+// The registry behind the capability: what `Ui` does when a contributor
+// calls it, and the boot-time registration of everything declared statically.
+// The service tag itself is a surface and lives next door.
 
-/** everything registered, with owners: the manifest derives registry keys */
-export interface OwnedSurfaces {
-  readonly pages: readonly Owned<PageDeclaration>[]
-  readonly layouts: readonly Owned<LayoutDeclaration>[]
-  readonly collections: readonly CollectionDeclaration[]
-  readonly slots: readonly Owned<SlotDeclaration>[]
-}
-
-// What the shell is made of, as its plugins put it there.
-//
-// This is the cordis registry back, in a shape a static graph can express: a
-// plugin calls `addPage` while its own layer is built, and the manifest reads
-// the registry per request rather than being constructed out of it. Nothing
-// has to be built after everything else to be complete, because nothing reads
-// it until a request arrives.
-//
-// The declarations stay descriptors, which is what makes this safe: adding a
-// page runs no query and touches no service, so registration order carries no
-// meaning and the layer graph never has to encode one. What order does decide
-// is display order, and that is an explicit `order` field.
-//
-// The method names say what is being contributed rather than that something is
-// being registered. A shell has four kinds of surface and they are not
-// interchangeable - a slot takes a renderer, a collection takes data - so one
-// `register` taking a union would be a worse type and a worse sentence.
-
-export class Ui extends Context.Service<
-  Ui,
-  {
-    /** one routable screen, with the layout contract that frames it */
-    readonly addPage: (
-      declaration: PageDeclaration,
-      owner?: string,
-    ) => Effect.Effect<void, never, Scope.Scope>
-    /** an implementation of a layout contract, which only a layout plugin ships */
-    readonly registerLayout: (
-      declaration: LayoutDeclaration,
-      owner?: string,
-    ) => Effect.Effect<void, never, Scope.Scope>
-    /** an item in a collection the layout renders, navigation being the one everybody uses */
-    readonly contribute: (
-      declaration: CollectionDeclaration,
-      owner?: string,
-    ) => Effect.Effect<void, never, Scope.Scope>
-    /** a renderer for a named slot */
-    readonly fillSlot: (
-      declaration: SlotDeclaration,
-      owner?: string,
-    ) => Effect.Effect<void, never, Scope.Scope>
-    /** everything registered with its declaring plugin, read per request by the manifest */
-    readonly surfaces: Effect.Effect<OwnedSurfaces>
-  }
->()('@qualy/plugin-ui-registry/Ui') {}
+export { Ui, type Owned, type OwnedSurfaces } from '../service.ts'
 
 /**
  * The registry itself.

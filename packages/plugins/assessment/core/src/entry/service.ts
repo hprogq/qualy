@@ -38,7 +38,7 @@ import {
   ItemRevisionConflict,
   ScoringUnavailable,
   ParticipantNotFound,
-} from '../server/errors.ts'
+} from '../errors.ts'
 import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
 import { cursorUnusable, type BadRequest, pageSize } from '@qualy/api-kit/schema'
 import { participantRowByUser } from '../scoring/db.ts'

@@ -11,7 +11,8 @@
     "./plugin": "./src/plugin.ts",
     "./server": "./src/server/index.ts",
     "./server/authorizer": "./src/server/authorizer.ts",
-    "./server/registry": "./src/server/registry.ts"
+    "./server/registry": "./src/server/registry.ts",
+    "./service": "./src/service.ts"
   },
   "dependencies": {
     "@qualy/api-kit": "workspace:*",

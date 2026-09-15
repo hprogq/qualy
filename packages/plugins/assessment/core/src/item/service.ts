@@ -20,7 +20,7 @@ import {
   ScoreGroupInvalid,
   ScoreGroupVersionConflict,
   ScoringUnavailable,
-} from '../server/errors.ts'
+} from '../errors.ts'
 import { lockBatch, oneBatch } from '../server/db.ts'
 import { announce } from '../live/events.ts'
 import { bumpParticipantAttention } from '../entry/db.ts'

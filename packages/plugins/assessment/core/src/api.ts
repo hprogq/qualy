@@ -67,7 +67,7 @@ import {
   PlanInvalid,
   TemplateConflict,
   TemplateNotFound,
-} from './server/errors.ts'
+} from './errors.ts'
 
 // The assessment endpoints, as definitions only: batches, the phase plan and
 // its advancement, the derived timeline, and the tenant's phase templates.

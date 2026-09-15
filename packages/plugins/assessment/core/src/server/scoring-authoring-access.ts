@@ -17,7 +17,7 @@ import { AssessmentScoringAuthoringAccess } from '../plugin.ts'
 import { itemOf, revisionOf } from '../item/db.ts'
 import { oneBatch } from './db.ts'
 import { frozenCalculatorOf, readScoringPlan } from '../scoring/plan.ts'
-import { BatchNotFound, ItemNotFound } from './errors.ts'
+import { BatchNotFound, ItemNotFound } from '../errors.ts'
 
 export const make = Effect.fn('AssessmentScoringAuthoringAccess.make')(function* () {
   const database = yield* withDatabase

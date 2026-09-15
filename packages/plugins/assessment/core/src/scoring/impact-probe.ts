@@ -13,7 +13,7 @@
 
 import { Effect } from 'effect'
 import type { PreparedCalculator, ScoringRuntimeCatalog } from '../plugin.ts'
-import { ScoringUnavailable } from '../server/errors.ts'
+import { ScoringUnavailable } from '../errors.ts'
 import { evaluateRecognition, type ScoringEvaluationFailed } from './evaluate.ts'
 import {
   countEvaluation,
