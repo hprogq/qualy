@@ -1,3 +1,4 @@
+import { registerApiRoutes } from '@qualy/browser-observability/api-routes'
 import type { BrowserPlugin } from '@qualy/plugin-kit/browser'
 import {
   registerUploadDriver,
@@ -41,6 +42,21 @@ export const localUploadDriver = {
 // is a seat in a registry, which is what setup is for
 const plugin: BrowserPlugin = {
   setup: () => registerUploadDriver(localUploadDriver),
+
+  // What this call will be reported as, told to reporting once the page is up.
+  //
+  // Every other api call in the browser is dispatched by `clientFor`, which
+  // hands the contract's routes over as it builds each client. This one is an
+  // XHR, for the progress events, so nobody would otherwise declare it - and
+  // reporting refuses an api address no contract claims, which would make the
+  // upload the one call in the product with no timing and say nothing about
+  // why. The import is deferred because the contract module carries the api
+  // kit with it, and this module runs on every page load whether or not
+  // anybody uploads anything.
+  start: async () => {
+    const { localUploadRoutes } = await import('../urls.ts')
+    registerApiRoutes(localUploadRoutes)
+  },
 }
 
 export default plugin

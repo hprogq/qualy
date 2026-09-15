@@ -1110,6 +1110,47 @@ UUID → :id
 
 但具体 normalization 规则由 Qualy 定义，Tencent adapter 只调用它。
 
+> **2026-09-16 修订：上面这套 fallback sanitizer 只管页面，API 地址改由契约回答。**
+>
+> Phase 3 打开 API 测速之后，同一套按形状猜的规则同时管了页面和 `/api/**`，
+> 而它在两个方向上都错了：
+>
+> - 把 13 个**自己的路由名**当成 token 掩掉（最长的 `formula-binding-options`
+>   有 23 个字符），报告里就不再指向任何 endpoint；
+> - 反过来会把 `school-cas`（`:providerCode`）、`review-entry`（`:permission`）、
+>   `1`（`:versionNo`）原样送出去，因为参数完全可以长得像一个词。
+>
+> 结论是没有任何「长度 / 字符集 / 大小写」规则能分开路由名与参数值——本产品给
+> 两者起名的方式就是同一种。**只有声明那条路由的契约知道哪一段是行。**
+>
+> 所以：
+>
+> - `packages/core/api-kit/src/local.ts` 的 `apiRouteTemplates(api)` 用公开的
+>   `HttpApi.reflect` 走一遍 endpoint，取公开字段 `endpoint.method` /
+>   `endpoint.path`，产出 `{method, template}` 纯数据（`Api.local` 已经把
+>   `/api` 前缀加在 `path` 上了）；
+> - `packages/web/observability/src/api-routes.ts` 是纯字符串匹配器
+>   （`registerApiRoutes` / `apiRouteFor`），**不依赖 Effect**，通过
+>   `@qualy/browser-observability/api-routes` 这个叶子子路径暴露；
+> - 注册点是 `clientFor(api)`——浏览器里每一个 typed client 的唯一出口；
+>   唯一绕开它的 API 调用是 storage-local 的 XHR 上传（要进度事件），
+>   它在自己的 `start()` 里 dynamic import 契约后注册（静态 import 会把
+>   api kit 拖进每页必加载的 boot graph，browser-graph 门禁实测 126 KB）。
+> - 匹配顺序：先同源，再 method + pathname；literal 必须字面相等，`:param`
+>   吃一段且不问内容；literal 多者胜；两个不同 template 打平 = 不回答。
+> - **匹配不到就 fail closed**：`/api/**` 的 speed record 直接丢弃，错误日志里
+>   的地址换成 `/api/<unclaimed>`，**不退回 heuristic sanitize**。宁可少一条
+>   telemetry，也不能把未知动态段送出去。
+>
+> 页面、静态资源、早期 boot error 仍然走上面这套 fallback sanitizer，并且
+> `WORDS` 那条为 API 加的特判已经撤回——它现在只面对本产品 router 塑造的页面
+> 地址，回到原来更保守的语义。
+>
+> 门禁：`tools/tests/observed-routes.test.ts` 直接从**真实装配的 aggregate**
+> 取全部 111 条 template（不再有第二份手写 route truth），对每条 endpoint 用
+> 十种参数形状回代并断言回答就是它自己的 template，外加「没有任何两条 template
+> 打平」这条自维护的检查。
+
 ---
 
 # 19. 页面上下文接入
@@ -1837,7 +1878,9 @@ Phase 3 不启用 API speed
 >
 > 连带两条实查（细节在 docs/notes/aegis-web-sdk.md）：`reportApiSpeed.urlHandler` 在
 > `beforeReportSpeed` **之前**跑且只对 fetch 类跑，所以同源判断必须放在它里面
-> （sanitizer 会去掉 origin），而过滤器要再 sanitize 一次兜住被分类成 static 的请求；
+> （它之后 origin 就没了），而被分类成 static 的请求会带着完整地址直接到过滤器——
+> 所以真正决定路由的是 `beforeReportSpeed`（也只有它拿得到 `method`），
+> urlHandler 只负责同源那一半；
 > `resHeaders` 只落在 error/slow log 的 `msg` 里、不在 SpeedLog 上，所以 requestId 关联
 > 只对「错误或慢请求」成立——那也正是需要关联的场合。
 

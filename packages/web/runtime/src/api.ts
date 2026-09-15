@@ -1,6 +1,8 @@
 import { Effect, identity } from 'effect'
 import { FetchHttpClient, HttpClient, HttpClientRequest } from 'effect/unstable/http'
 import { HttpApiClient, type HttpApi, type HttpApiGroup } from 'effect/unstable/httpapi'
+import { apiRouteTemplates } from '@qualy/api-kit/local'
+import { registerApiRoutes } from '@qualy/browser-observability/api-routes'
 import {
   QUALY_CLIENT_PROTOCOL_HEADER,
   QUALY_CLIENT_RELEASE_HEADER,
@@ -104,11 +106,25 @@ export const clientFor = <ApiId extends string, Groups extends HttpApiGroup.Cons
   api: HttpApi.HttpApi<ApiId, Groups>,
   baseUrl?: string,
   options: TransportOptions = {},
-) =>
-  HttpApiClient.make(api, {
+) => {
+  // What the reporting platform will be allowed to call this traffic.
+  //
+  // Here because this is the one place every typed client is built, and
+  // because the answer has to exist before the first request rather than be
+  // guessed from its address afterwards. A path carries the row; only the
+  // declaration knows which segment that is. The port on the other side takes
+  // strings and has never heard of Effect.
+  //
+  // The leaf subpath, not the package: the port's other exports read `window`
+  // and `location`, and this module is also compiled by the node program that
+  // drives the api contract tests. The registry itself is pure string work,
+  // which is why it can be reached that way at all.
+  registerApiRoutes(apiRouteTemplates(api))
+  return HttpApiClient.make(api, {
     ...(baseUrl === undefined ? {} : { baseUrl }),
     transformClient: withIdentity(options),
   }).pipe(Effect.provide(FetchHttpClient.layer))
+}
 
 /** the typed client an api definition derives to */
 export type ClientOf<Api extends HttpApi.Constraint> = HttpApiClient.ForApi<Api>

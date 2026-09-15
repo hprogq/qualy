@@ -1,5 +1,10 @@
 import { observedPageUrl, sanitizeUrl } from '@qualy/browser-observability'
-import { keepsApiErrorLog } from './api-speed.ts'
+import {
+  isApiAddress,
+  keepsApiErrorLog,
+  observedApiRoute,
+  UNCLAIMED_API_ROUTE,
+} from './api-speed.ts'
 
 // What this vendor sends that it should not, removed before it goes.
 //
@@ -56,16 +61,32 @@ const withoutQueryStrings = (text: string): string =>
   text.replaceAll(/(https?:\/\/[^\s)'"]+?)\?[^\s)'"]*/g, '$1')
 
 /**
- * The addresses inside an api error message, masked.
+ * One address, reduced to whatever may be said about it.
+ *
+ * Two kinds reach here and they are answered by two different authorities. An
+ * api address is answered by the contract that declared the route, because
+ * only the declaration knows which segment is the row - and when no contract
+ * claims it, nothing is said about it at all. Everything else is a page or an
+ * asset, where the page sanitizer's guess is the right tool and always was:
+ * it is reading addresses this product's own router shaped.
+ */
+const asAddressMayRead = (address: string): string =>
+  isApiAddress(address) ? (observedApiRoute(address) ?? UNCLAIMED_API_ROUTE) : sanitizeUrl(address)
+
+/**
+ * The addresses inside an api error message, reduced.
  *
  * That message is assembled by the vendor out of lines, and two of them are
  * addresses: the request's own, and whatever the page was. Stripping the
  * query is not enough for an api call the way it is for an asset - this
  * product's api paths carry the row in them, `/api/.../batches/<id>/entries`,
  * and a message is the one place a whole path survives.
+ *
+ * No method is available: the address sits inside a sentence with nothing
+ * beside it, which is why the route lookup accepts a path alone.
  */
 const withoutAddresses = (text: string): string =>
-  text.replaceAll(/(?:https?:\/\/[^\s)'"]*)?\/[^\s)'"]*/g, (match) => sanitizeUrl(match))
+  text.replaceAll(/(?:https?:\/\/[^\s)'"]*)?\/[^\s)'"]*/g, (match) => asAddressMayRead(match))
 
 /**
  * Runs on every log, before it is queued.

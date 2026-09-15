@@ -75,78 +75,77 @@ const oneLine = (context: DiagnosticContext | undefined): string =>
 export const aegisOptions = (
   config: TencentRumPublicConfig,
   release: { readonly releaseId: string },
-) =>
-  ({
-    id: config.id,
-    hostUrl: TENCENT_RUM_HOST,
-    version: rumVersionForRelease(release.releaseId),
-    env: config.environment,
-    random: config.sampleRate,
-    // the sdk's own default is 60 identical reports before it stops; this
-    // product would rather see the first handful and the count
-    repeat: 5,
+) => ({
+  id: config.id,
+  hostUrl: TENCENT_RUM_HOST,
+  version: rumVersionForRelease(release.releaseId),
+  env: config.environment,
+  random: config.sampleRate,
+  // the sdk's own default is 60 identical reports before it stops; this
+  // product would rather see the first handful and the count
+  repeat: 5,
 
-    // no persistent identity for a browser, and never a user's: what is
-    // being diagnosed is a build, not a person
-    aid: false,
-    uin: '',
-    spa: false,
+  // no persistent identity for a browser, and never a user's: what is
+  // being diagnosed is a build, not a person
+  aid: false,
+  uin: '',
+  spa: false,
 
-    onError: true,
-    // verified to arrive even though the sdk starts this late
-    pagePerformance: { urlHandler: observedPageUrl },
-    webVitals: true,
+  onError: true,
+  // verified to arrive even though the sdk starts this late
+  pagePerformance: { urlHandler: observedPageUrl },
+  webVitals: true,
 
-    // How long this product's own api takes, from where a viewer sits.
-    //
-    // The handler runs before every other hook and decides same-origin while
-    // there is still an origin to decide with; everything else is dropped by
-    // the filter rather than remembered in a list. Turning this on also makes
-    // the sdk raise an error log per failed call, and with api speed off it
-    // raised none - measured against 200, 404, 500 and a dropped connection
-    // through both fetch and XHR. Those logs are judged by the status this
-    // deployment records; the whole api policy is in `api-speed.ts`.
-    reportApiSpeed: { urlHandler: apiSpeedUrl },
-    reportAssetSpeed: false,
+  // How long this product's own api takes, from where a viewer sits.
+  //
+  // The handler runs before every other hook and decides same-origin while
+  // there is still an origin to decide with; everything else is dropped by
+  // the filter rather than remembered in a list. Turning this on also makes
+  // the sdk raise an error log per failed call, and with api speed off it
+  // raised none - measured against 200, 404, 500 and a dropped connection
+  // through both fetch and XHR. Those logs are judged by the status this
+  // deployment records; the whole api policy is in `api-speed.ts`.
+  reportApiSpeed: { urlHandler: apiSpeedUrl },
+  reportAssetSpeed: false,
 
-    blankScreen: false,
-    consoleLog: false,
-    clickElementLog: false,
-    websocketHack: false,
-    lagMonitor: { enabled: false },
+  blankScreen: false,
+  consoleLog: false,
+  clickElementLog: false,
+  websocketHack: false,
+  lagMonitor: { enabled: false },
 
-    // never the request or the response: the bodies here are a student's
-    // material and a reviewer's decision. One response header is read back,
-    // and it is the id this process minted for the request - the thread from
-    // a report here to the server's own record of the same call. Same origin,
-    // so nothing has to be exposed for the browser to read it.
-    api: {
-      apiDetail: false,
-      reportRequest: false,
-      reqHeaders: [],
-      resHeaders: [...OBSERVED_RESPONSE_HEADERS],
-      // the sdk's own timing rather than the performance entry: entries are
-      // matched back to calls by url, so two calls to one url at once match
-      // each other's. The documented fix is to make every url unique, which
-      // is not something an api should do for a monitor
-      usePerformanceTiming: false,
-      retCodeHandler,
-    },
+  // never the request or the response: the bodies here are a student's
+  // material and a reviewer's decision. One response header is read back,
+  // and it is the id this process minted for the request - the thread from
+  // a report here to the server's own record of the same call. Same origin,
+  // so nothing has to be exposed for the browser to read it.
+  api: {
+    apiDetail: false,
+    reportRequest: false,
+    reqHeaders: [],
+    resHeaders: [...OBSERVED_RESPONSE_HEADERS],
+    // the sdk's own timing rather than the performance entry: entries are
+    // matched back to calls by url, so two calls to one url at once match
+    // each other's. The documented fix is to make every url unique, which
+    // is not something an api should do for a monitor
+    usePerformanceTiming: false,
+    retCodeHandler,
+  },
 
-    // The compressing worker is built from a blob url, which the shell's
-    // policy refuses - `worker-src 'self'`. The sdk survives it, falling
-    // back to the main thread when the worker errors, but the browser still
-    // records a violation, and this product's policy is enforced with a gate
-    // that reads violations. Widening the policy for a compression detail
-    // would be the wrong trade: the reports are small.
-    gzip: { useWorker: false },
+  // The compressing worker is built from a blob url, which the shell's
+  // policy refuses - `worker-src 'self'`. The sdk survives it, falling
+  // back to the main thread when the worker errors, but the browser still
+  // records a violation, and this product's policy is enforced with a gate
+  // that reads violations. Widening the policy for a compression detail
+  // would be the wrong trade: the reports are small.
+  gzip: { useWorker: false },
 
-    // governs `from` on every report; zero argument, so it reads the page
-    // the runtime last observed
-    urlHandler: observedPageUrl,
-    beforeReport,
-    beforeReportSpeed,
-    beforeRequest,
+  // governs `from` on every report; zero argument, so it reads the page
+  // the runtime last observed
+  urlHandler: observedPageUrl,
+  beforeReport,
+  beforeReportSpeed,
+  beforeRequest,
 })
 
 export const tencentRumProvider: BrowserRumProvider = {

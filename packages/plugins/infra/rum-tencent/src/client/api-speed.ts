@@ -1,5 +1,5 @@
 import { QUALY_API_PREFIX, QUALY_REQUEST_ID_HEADER } from '@qualy/api-kit'
-import { sanitizeUrl } from '@qualy/browser-observability'
+import { apiRouteFor } from '@qualy/browser-observability/api-routes'
 
 // What this deployment is willing to learn about its own api calls, and what
 // it refuses to learn about anything else.
@@ -21,12 +21,28 @@ import { sanitizeUrl } from '@qualy/browser-observability'
 // answers is carried on BOTH records as a structured field. So this file
 // answers with the http status, and everything downstream reads a number that
 // this product put there rather than a sentence it has to parse.
+//
+// The address is the other half, and it is answered by the contract rather
+// than by this file: `apiRouteFor` is told every route the api declares as
+// clients are built, and returns the template or nothing.
 
 /** the path prefix every api call of this product's own shares */
 const API_ROOT = `${QUALY_API_PREFIX}/`
 
 /** what the vendor puts on a log it raised for a transport failure, not a response */
 const TRANSPORT_FAILURE = -400
+
+/**
+ * What stands in a message for an api address no contract claims.
+ *
+ * Not a masked version of the address: masking is what this product stopped
+ * doing, because deciding which segment of `/api/auth/local/school-cas/login`
+ * is a value needs the declaration and nothing else can stand in for it. So
+ * an unclaimed address says only that it was one, which is also the signal
+ * worth acting on - a route reaching here means something makes api calls
+ * through a client nobody registered.
+ */
+export const UNCLAIMED_API_ROUTE = `${QUALY_API_PREFIX}/<unclaimed>`
 
 /**
  * The status a response carried, as this product recorded it.
@@ -58,60 +74,84 @@ const statusOf = (context: unknown): number => {
   return typeof status === 'number' ? status : 0
 }
 
-/**
- * Whether a timing record is one of this product's own api calls.
- *
- * An allowlist, not a blocklist: the reporting host itself, the object store,
- * the release probe, every hashed asset and anything a future dependency
- * calls are all outside it by default rather than by being remembered.
- */
-export const isObservedApiRoute = (url: unknown): boolean =>
-  typeof url === 'string' && url.startsWith(API_ROOT)
-
-/**
- * The address a timing record is filed under.
- *
- * Runs before the record reaches any other hook, so what the rest of this
- * file sees is already a route rather than a row. Same-origin is decided
- * here, while the origin is still there to decide it with - the sanitizer
- * drops it, and afterwards nothing could tell this deployment's api from
- * somebody else's.
- */
-export const apiSpeedUrl = (url: string): string => {
-  const path = samePathOf(url)
-  // not ours: it carries nothing, and the filter below drops it. Answering
-  // with the address would put a third party's url on a record this
-  // deployment is about to throw away
-  return path === undefined ? '/' : sanitizeUrl(path)
-}
-
 /** the path, when the address is this origin's; otherwise nothing */
 const samePathOf = (url: string): string | undefined => {
-  if (url.startsWith('/')) return url
+  const withoutQuery = (path: string): string => path.replace(/[?#].*$/, '')
+  if (url.startsWith('/')) return withoutQuery(url)
   try {
     const parsed = new URL(url, location.href)
-    return parsed.origin === location.origin ? `${parsed.pathname}${parsed.search}` : undefined
+    return parsed.origin === location.origin ? parsed.pathname : undefined
   } catch {
     return undefined
   }
 }
 
+/**
+ * Whether an address is this deployment's own api, whatever route it names.
+ *
+ * Same-origin first, and the origin is only there to ask while the address
+ * still carries one - a third party's `/api/...` is somebody else's product.
+ */
+export const isApiAddress = (url: string): boolean => {
+  const path = samePathOf(url)
+  return path !== undefined && path.startsWith(API_ROOT)
+}
+
+/**
+ * Which endpoint an address is, according to the contract that declared it.
+ *
+ * Nothing means one of three things and they deliberately share an answer:
+ * another origin's, not under the api prefix, or an api address no registered
+ * route claims. All three are addresses this file cannot describe without
+ * repeating them, and repeating them is the thing being avoided.
+ *
+ * The method is optional because one caller has it and the other does not:
+ * the timing record carries `method` as a field, while an error log carries
+ * the address inside a sentence with nothing beside it.
+ */
+export const observedApiRoute = (url: unknown, method?: unknown): string | undefined => {
+  if (typeof url !== 'string') return undefined
+  const path = samePathOf(url)
+  if (path === undefined || !path.startsWith(API_ROOT)) return undefined
+  return apiRouteFor(path, typeof method === 'string' ? method : undefined)
+}
+
+/**
+ * The address a timing record is filed under, on its way in.
+ *
+ * Runs before every other hook, and its one job is the origin: the vendor
+ * applies it only to records it classified as a request rather than an asset,
+ * so it is not a chokepoint and must not be treated as one. What it does do
+ * is decide same-origin while the origin is still there to decide with, and
+ * answer with a path that carries nothing when it was not this deployment's.
+ * The route itself is decided in `beforeReportSpeed`, which is the hook every
+ * record passes through and the one that knows the method.
+ */
+export const apiSpeedUrl = (url: string): string => samePathOf(url) ?? '/'
+
 /** the header the browser is allowed to read back, so a report names its request */
 export const OBSERVED_RESPONSE_HEADERS: readonly string[] = [QUALY_REQUEST_ID_HEADER]
 
 /**
- * Runs on every timing record on its way out.
+ * Runs on every timing record on its way out, and decides both questions.
  *
- * The sanitizing repeats what `apiSpeedUrl` already did, and deliberately:
- * the vendor applies that handler only to records it classified as a request
- * rather than an asset, and the classification is by file extension. An api
- * that answers a document would arrive here with its real path. Sanitizing
- * twice costs nothing - a masked path masks to itself.
+ * Fail closed, by design: a record whose address no contract claims is not
+ * sanitized and sent, it is dropped. The alternative was guessing which of
+ * its segments were values, which this product tried and got wrong in both
+ * directions - it masked thirteen of its own route names, and it would have
+ * passed on `school-cas`, `review-entry` and `1` as if they were names. One
+ * missing timing record costs a line on a chart. One leaked segment cannot be
+ * taken back.
  */
-export const beforeReportSpeed = (log: { url?: unknown; [key: string]: unknown }): boolean => {
+export const beforeReportSpeed = (log: {
+  url?: unknown
+  method?: unknown
+  [key: string]: unknown
+}): boolean => {
   try {
-    if (!isObservedApiRoute(log.url)) return false
-    log.url = sanitizeUrl(log.url as string)
+    const route = observedApiRoute(log.url, log.method)
+    if (route === undefined) return false
+    log.url = route
   } catch {
     // a record this file could not judge is one it does not send
     return false

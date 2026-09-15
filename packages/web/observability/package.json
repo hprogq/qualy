@@ -9,6 +9,7 @@
   ],
   "exports": {
     ".": "./src/index.ts",
+    "./api-routes": "./src/api-routes.ts",
     "./bootstrap": "./src/bootstrap.ts",
     "./package.json": "./package.json"
   },

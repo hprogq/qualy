@@ -7,9 +7,17 @@
 // usefully anyway - a thousand distinct urls are a thousand issues nobody can
 // read.
 //
-// This runs when the manifest has not loaded yet, or on an address no page
-// pattern matched. When a page pattern IS known its route template is used
-// instead and none of the guessing below happens.
+// This runs on PAGE addresses: when the manifest has not loaded yet, or on an
+// address no page pattern matched. When a page pattern IS known its route
+// template is used instead and none of the guessing below happens.
+//
+// It is deliberately not asked about api addresses. Guessing which segment of
+// a path is a value works only while the values and the names look different,
+// and this product's api names them the same way it names its parameters: a
+// parameter may be `school-cas` or `review-entry` or `1`, and a route segment
+// may be `formula-binding-options`. Those calls are answered by the contract
+// that declared the route instead - `api-routes.ts` - which knows rather than
+// guesses, and refuses when it does not.
 
 /** `019a2f3e-...`, in any case */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -20,24 +28,11 @@ const PLAIN = /^[A-Za-z0-9._~-]+$/
 /**
  * Long enough to be an identifier rather than a word.
  *
- * Sixteen was chosen against the segments PAGE routes use - `batches`,
- * `review`, `user-types` - and it was wrong the moment api routes were
- * sanitized too: thirteen of this product's own api segments are longer than
- * that, up to `formula-binding-options` at twenty-three. Length alone cannot
- * tell them from a token, so it is no longer asked to.
+ * Sixteen because that is past every segment this product's routes actually
+ * use - `batches`, `review`, `user-types`, `role-assignments` - and short of
+ * nothing a generated id would be.
  */
 const OPAQUE_LENGTH = 16
-
-/**
- * A segment that reads as words rather than as a value.
- *
- * This product names its routes in lower-case words joined by hyphens, and
- * nothing it generates looks like that: a uuid has digits and a fixed shape,
- * a business number is digits, an opaque token carries case or digits or
- * both. So a segment of nothing but lower-case words is kept however long it
- * is, and everything else still has to get past the rules below.
- */
-const WORDS = /^[a-z]+(?:-[a-z]+)*$/
 
 const decoded = (segment: string): string => {
   try {
@@ -57,8 +52,6 @@ const identifies = (segment: string): boolean => {
   // anything that had to be escaped, or that carries a character a route
   // never would: a name, an address, something somebody typed
   if (plain !== segment || !PLAIN.test(plain)) return true
-  // a route word, whatever its length
-  if (WORDS.test(plain)) return false
   return plain.length >= OPAQUE_LENGTH
 }
 

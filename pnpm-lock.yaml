@@ -201,6 +201,9 @@ importers:
       '@qualy/auth-contract':
         specifier: workspace:*
         version: link:packages/contracts/auth
+      '@qualy/browser-observability':
+        specifier: workspace:*
+        version: link:packages/web/observability
       '@qualy/cli':
         specifier: workspace:*
         version: link:apps/cli
@@ -1662,6 +1665,9 @@ importers:
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../core/api-kit
+      '@qualy/browser-observability':
+        specifier: workspace:*
+        version: link:../../../web/observability
       '@qualy/plugin-database':
         specifier: workspace:*
         version: link:../database

@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { setObservedPage } from '@qualy/browser-observability'
+import { registerApiRoutes, resetApiRoutes } from '@qualy/browser-observability/api-routes'
 import { resetBrowserRum } from '@qualy/plugin-rum/client'
 import { beforeReport, beforeRequest } from '@qualy/plugin-rum-tencent/client/privacy'
 import { aegisOptions } from '@qualy/plugin-rum-tencent/client/provider'
@@ -8,6 +9,7 @@ import {
   beforeReportSpeed,
   keepsApiErrorLog,
   retCodeHandler,
+  UNCLAIMED_API_ROUTE,
 } from '@qualy/plugin-rum-tencent/client/api-speed'
 
 // The three leaks this vendor's sdk has, and the levers that close them.
@@ -23,7 +25,32 @@ import {
 // three levers are these hooks; the third is a call made once at construction
 // and is covered by the provider using it.
 
+// The routes these hooks are told about, which in the product arrive from the
+// contract as each typed client is built.
+//
+// Written here because this file is about the hooks, not about the api: what
+// is under test is what they do with a registry, and the registry's answers
+// against the REAL surface - every endpoint, every parameter shape, the ties
+// and the refusals - are `tools/tests/observed-routes.test.ts`, which reads
+// the assembled api itself. These four are the shapes that matter to a
+// reader: a uuid parameter, a slug, a small number, and one route with no
+// parameter at all.
+const DECLARED = [
+  { method: 'GET', template: '/api/assessment/batches/:batchId/entries' },
+  { method: 'POST', template: '/api/auth/local/:providerCode/login' },
+  { method: 'GET', template: '/api/assessment/formula-functions/:functionId/versions/:versionNo' },
+  { method: 'GET', template: '/api/iam/users/:userId/role-grants' },
+  { method: 'DELETE', template: '/api/iam/users/:userId/role-grants' },
+  { method: 'GET', template: '/api/iam/roles' },
+]
+
+beforeEach(() => {
+  resetApiRoutes()
+  registerApiRoutes(DECLARED)
+})
+
 afterEach(() => {
+  resetApiRoutes()
   resetBrowserRum()
 })
 
@@ -101,26 +128,64 @@ describe('what is allowed to leave at all', () => {
 // for every 4xx, which here is mostly the product answering.
 
 describe('which api calls are timed at all', () => {
-  it('files this origin api under its route, not its row', () => {
-    expect(apiSpeedUrl('/api/assessment/batches/0199f03e-1111-7abc-8def-000000000001/entries')).toBe(
-      '/api/assessment/batches/:id/entries',
-    )
-    // whole address, same origin: the origin goes, the route stays
-    expect(apiSpeedUrl(`${location.origin}/api/iam/users/2023123456`)).toBe('/api/iam/users/:id')
-  })
-
-  it('carries no address at all for anything that is not this origin', () => {
-    // decided here on purpose, while there is still an origin to decide with:
-    // the sanitizer drops it, and after that nothing could tell this
+  it('reduces an address to its path while the origin is still there to judge', () => {
+    // the one thing this handler decides, and the only place it can be
+    // decided: after it the origin is gone, and nothing could tell this
     // deployment's api from somebody else's
+    expect(apiSpeedUrl(`${location.origin}/api/iam/roles?page=2`)).toBe('/api/iam/roles')
+    expect(apiSpeedUrl('/api/iam/roles?page=2')).toBe('/api/iam/roles')
     expect(apiSpeedUrl('https://rumt-zh.com/collect')).toBe('/')
     expect(apiSpeedUrl('https://files.example.com/api/upload')).toBe('/')
   })
 
-  it('keeps this product api and drops everything else', () => {
-    const kept = { url: '/api/assessment/batches/:id/entries', status: 200 }
-    expect(beforeReportSpeed(kept)).toBe(true)
+  it('files a call under the route its contract declared', () => {
+    const log = {
+      url: '/api/assessment/batches/0199f03e-1111-7abc-8def-000000000001/entries',
+      method: 'GET',
+      status: 200,
+    }
+    expect(beforeReportSpeed(log)).toBe(true)
+    expect(log.url).toBe('/api/assessment/batches/:batchId/entries')
+  })
 
+  it('hides a parameter that reads as a word, which no shape rule could', () => {
+    // the three the old rule would have passed on untouched: a provider code,
+    // a version number, a permission. Each is a parameter because the
+    // declaration says so, and for no other reason
+    const login = { url: '/api/auth/local/school-cas/login', method: 'POST' }
+    expect(beforeReportSpeed(login)).toBe(true)
+    expect(login.url).toBe('/api/auth/local/:providerCode/login')
+
+    const version = {
+      url: '/api/assessment/formula-functions/0199f03e-1111-7abc-8def-000000000001/versions/1',
+      method: 'GET',
+    }
+    expect(beforeReportSpeed(version)).toBe(true)
+    expect(version.url).toBe('/api/assessment/formula-functions/:functionId/versions/:versionNo')
+  })
+
+  it('keeps a route word this deployment would once have masked', () => {
+    const log = { url: '/api/iam/users/2023123456/role-grants', method: 'DELETE' }
+    expect(beforeReportSpeed(log)).toBe(true)
+    // thirteen segments of this api are past the old sixteen-character bound;
+    // every one of them used to be reported as `:id`
+    expect(log.url).toBe('/api/iam/users/:userId/role-grants')
+  })
+
+  it('drops a record no contract claims, rather than guessing at it', () => {
+    // fail closed. The alternative was masking by shape, which got both
+    // halves wrong; one missing timing record costs a line on a chart
+    for (const log of [
+      { url: '/api/iam/users/0199f03e-1111-7abc-8def-000000000001/invented', method: 'GET' },
+      { url: '/api/not-a-plugin/anything', method: 'GET' },
+      // declared, but not for this method
+      { url: '/api/auth/local/school-cas/login', method: 'GET' },
+    ]) {
+      expect(beforeReportSpeed(log), log.url).toBe(false)
+    }
+  })
+
+  it('keeps this product api and drops everything else', () => {
     for (const url of [
       '/',
       '/assets/e-abc123.js',
@@ -128,17 +193,32 @@ describe('which api calls are timed at all', () => {
       '/__qualy/release',
       undefined,
     ]) {
-      expect(beforeReportSpeed({ url })).toBe(false)
+      expect(beforeReportSpeed({ url, method: 'GET' })).toBe(false)
     }
+    // another origin serving the same path is not this deployment's api
+    expect(
+      beforeReportSpeed({ url: 'https://elsewhere.example/api/iam/roles', method: 'GET' }),
+    ).toBe(false)
   })
 
-  it('masks a record the vendor classified as an asset and never handled', () => {
-    // the handler above runs only on records the sdk called a request, and it
+  it('judges a record the vendor classified as an asset and never handled', () => {
+    // the url handler runs only on records the sdk called a request, and it
     // decides that by file extension; one that answers a document arrives here
-    // with its real path still on it
-    const log = { url: '/api/storage/attachments/0199f03e-1111-7abc-8def-000000000001/file.pdf' }
+    // with its whole address still on it, query included
+    const log = {
+      url: `${location.origin}/api/iam/users/0199f03e-1111-7abc-8def-000000000001/role-grants?student=QUALY_PRIVATE_SENTINEL`,
+      method: 'GET',
+    }
     expect(beforeReportSpeed(log)).toBe(true)
-    expect(log.url).toBe('/api/storage/attachments/:id/file.pdf')
+    expect(log.url).toBe('/api/iam/users/:userId/role-grants')
+  })
+
+  it('answers the same when the sdk never told it the method', () => {
+    // a record that carries no method still has one right answer here,
+    // because the endpoints sharing a path share its shape
+    const log = { url: '/api/iam/users/0199f03e-1111-7abc-8def-000000000001/role-grants' }
+    expect(beforeReportSpeed(log)).toBe(true)
+    expect(log.url).toBe('/api/iam/users/:userId/role-grants')
   })
 })
 
@@ -202,11 +282,52 @@ describe('which api failures reach the error panel', () => {
     // the row is gone and the route is not
     expect(failed.msg).not.toContain('QUALY_PRIVATE_SENTINEL')
     expect(failed.msg).not.toContain('0199f03e-1111')
-    expect(failed.msg).toContain('/api/assessment/batches/:id/entries')
+    expect(failed.msg).toContain('/api/assessment/batches/:batchId/entries')
     // and the thread back to the server's own record of this call survives,
     // which is the whole reason the header is read at all
     expect(failed.msg).toContain('x-qualy-request-id: 0199f03e-2222-7abc-8def-000000000002')
   })
+
+  it('says nothing about an api address no contract claims', () => {
+    // fail closed inside the prose too: the message is the one place a whole
+    // path survives, and masking it by shape is what stopped being allowed
+    const failed = {
+      level: '16',
+      code: '500',
+      msg: `fetch req url: ${location.origin}/api/iam/users/2023123456/invented`,
+    }
+    expect(beforeReport(failed)).toBe(true)
+    expect(failed.msg).not.toContain('2023123456')
+    expect(failed.msg).not.toContain('invented')
+    expect(failed.msg).toContain(UNCLAIMED_API_ROUTE)
+  })
+
+  it('still reads a page address with the page sanitizer, which is its job', () => {
+    // pages are the one address a guess is right about: this product's router
+    // shaped them, and a page pattern replaces the guess whenever one is known
+    const failed = {
+      level: '1027',
+      code: '408',
+      msg: `fetch req url: ${location.origin}/assessment/batches/0199f03e-1111-7abc-8def-000000000001/review`,
+    }
+    expect(beforeReport(failed)).toBe(true)
+    expect(failed.msg).toContain('/assessment/batches/:id/review')
+  })
+
+  it('reduces the same address when the call failed the other way round', () => {
+    // through fetch a 5xx is an ajax error; through XHR the same 5xx is a
+    // retcode error, because only the fetch path reads the http status. The
+    // message is the same either way, and so is what has to come out of it
+    const retcode = {
+      level: '1024',
+      code: '500',
+      msg: `fetch req url: ${location.origin}/api/iam/users/2023123456/role-grants`,
+    }
+    expect(beforeReport(retcode)).toBe(true)
+    expect(retcode.msg).toContain('/api/iam/users/:userId/role-grants')
+    expect(retcode.msg).not.toContain('2023123456')
+  })
+})
 
 describe('what this deployment asks the vendor to do', () => {
   const options = aegisOptions(
@@ -245,20 +366,5 @@ describe('what this deployment asks the vendor to do', () => {
     expect(options.spa).toBe(false)
     // the compressing worker is built from a blob url, which the shell refuses
     expect(options.gzip).toEqual({ useWorker: false })
-  })
-})
-
-  it('masks the same address when the call failed the other way round', () => {
-    // through fetch a 5xx is an ajax error; through XHR the same 5xx is a
-    // retcode error, because only the fetch path reads the http status. The
-    // message is the same either way, and so is what has to come out of it
-    const retcode = {
-      level: '1024',
-      code: '500',
-      msg: `fetch req url: ${location.origin}/api/iam/users/2023123456/role-assignments`,
-    }
-    expect(beforeReport(retcode)).toBe(true)
-    expect(retcode.msg).toContain('/api/iam/users/:id/role-assignments')
-    expect(retcode.msg).not.toContain('2023123456')
   })
 })

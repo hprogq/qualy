@@ -33,3 +33,37 @@ export const Api = {
       .add(...groups)
       .prefix(QUALY_API_PREFIX),
 }
+
+/** one endpoint as the contract declares it: the method and the path with its parameters named */
+export interface ApiRouteTemplate {
+  readonly method: string
+  readonly template: string
+}
+
+/**
+ * Every route an api declares, as plain data.
+ *
+ * Here because this is where a browser gets an api value at all, and because
+ * the walk is about the contract rather than about whoever wants it. What
+ * wants it is browser reporting: a request's address carries the row, and the
+ * only thing that knows which segment IS the row is the declaration that
+ * named it. Handing over `{method, template}` keeps that knowledge on this
+ * side of the line - nothing downstream has to know what Effect is.
+ *
+ * `HttpApi.reflect` is the published way to enumerate an api, and the two
+ * fields read off each endpoint - `method` and `path` - are declared on the
+ * public `HttpApiEndpoint` interface. The prefix is already in `path`,
+ * because `local` applied it before anybody could ask.
+ */
+export const apiRouteTemplates = <Id extends string, Groups extends HttpApiGroup.Constraint>(
+  api: HttpApi.HttpApi<Id, Groups>,
+): readonly ApiRouteTemplate[] => {
+  const routes: ApiRouteTemplate[] = []
+  HttpApi.reflect(api, {
+    onGroup: () => undefined,
+    onEndpoint: ({ endpoint }) => {
+      routes.push({ method: endpoint.method, template: endpoint.path })
+    },
+  })
+  return routes
+}
