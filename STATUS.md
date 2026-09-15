@@ -15095,6 +15095,7 @@ resolutionHash 纹丝不动。于是「只更新 server、复用旧 web store」
 放进去就会把 crypto 带进 bundle——跟上一节私有 release 文档同一个教训)。
 
 **两道门禁替我纠正了两次放错位置**,如实记:
+
 - 第一版 host 走 `resolution.descriptors` 全集 → 新门禁 `browser-contract.test.ts` 立刻红:
   多出 `page:ping/page`,因为 ping 是 **detached**。改成 `runtimePlugins`(active 选集)。
 - 第二版让 `apps/server/src/runtime.ts` 直接 import 两个 capability facade →
@@ -15583,14 +15584,14 @@ warm    6.83s →  4.43s
 
 ### 量过但没做的
 
-| 建议 | 实测 | 结论 |
-| --- | --- | --- |
-| `reportCompressedSize: false` | 8.40/8.75s vs 8.42/8.46s | **噪声内**。Vite 8 这一步已经够快,不改 |
-| `collectWebPlugins` 一轮三次 | 首次 681ms,之后 16–22ms | 冗余真实但**只值 40ms**,不为此重构 |
-| `experimental.viteModuleRunner: false` | 11.1s vs 10.4s,**且 8 条用例红** | 更慢,而且无扩展名的 export 子路径 Node 解析不了 |
-| `experimental.fsModuleCache` | 9.66–10.35s vs 9.62–9.74s | 量不出 |
-| `pool: 'threads'`(保持 isolate) | 16.5–17.1s vs 16.8–19.0s | 几乎没有区别 |
-| `pool: 'threads'` + `isolate: false` | 15.2–15.4s,import CPU 29.7s → 14.2s | **赢的是 `isolate: false`,不是 threads** |
+| 建议                                   | 实测                                | 结论                                            |
+| -------------------------------------- | ----------------------------------- | ----------------------------------------------- |
+| `reportCompressedSize: false`          | 8.40/8.75s vs 8.42/8.46s            | **噪声内**。Vite 8 这一步已经够快,不改          |
+| `collectWebPlugins` 一轮三次           | 首次 681ms,之后 16–22ms             | 冗余真实但**只值 40ms**,不为此重构              |
+| `experimental.viteModuleRunner: false` | 11.1s vs 10.4s,**且 8 条用例红**    | 更慢,而且无扩展名的 export 子路径 Node 解析不了 |
+| `experimental.fsModuleCache`           | 9.66–10.35s vs 9.62–9.74s           | 量不出                                          |
+| `pool: 'threads'`(保持 isolate)        | 16.5–17.1s vs 16.8–19.0s            | 几乎没有区别                                    |
+| `pool: 'threads'` + `isolate: false`   | 15.2–15.4s,import CPU 29.7s → 14.2s | **赢的是 `isolate: false`,不是 threads**        |
 
 最后一条是唯一有量的杠杆(非 DB 那 83 个文件省约 10%),**但没有采用**:`isolate: false` 让同一 worker
 里的测试文件共享模块状态,而这个仓库到处是模块级注册表(observability sink、rum registry、
@@ -15616,3 +15617,221 @@ config 里有注释记着。要试得单独一轮,带着浏览器套件反复验
 **门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm test` 238 passed | 3 skipped (241),
 Tests 1709 passed | 17 skipped (1726);`pnpm test:browser` 52 / 379;`pnpm build` exit 0(13.46s,
 原 15.7s);`check-staged-web`、`check-chunks`、`check-public-web`、`smoke-production` 全过。
+
+## 测试基建升级:Vitest 5 + Effect rc.115 + Effect 原生测试语义(2026-09-15)
+
+三件事一轮做完:runner 升到 Vitest 5.0.1,Effect 全家从 rc.111 走到 rc.115(vendored 树同步),
+以及把真正 Effect-heavy 的测试挪到 Effect 自己的测试生命周期上。顺带修了一条 CI 红和一条
+在升级中**被 cast 藏住**的诊断退化。
+
+### 为什么两件升级必须同一笔
+
+`@effect/vitest` 对 Effect 是 exact prerelease peer。要采用它,runtime 必须已经在同一个 RC 上。
+所以顺序只有一种:先把两边一起挪到 rc.115,再谈采用。
+
+### Effect rc.111 → rc.115:真正打到本仓库的变化
+
+类型系统一次点名 81 处、17 个文件,全部是真 drift:
+
+| 变化                                              | 落点                                                      |
+| ------------------------------------------------- | --------------------------------------------------------- |
+| Config 构造器 PascalCase(`string`→`String` 等)    | 34 处 / 11 文件,编译器逐点给出 "Did you mean"             |
+| `Config.Record` 从 Schema 变成自带 path 的 Config | telemetry 的 `OTEL_RESOURCE_ATTRIBUTES`(分隔串解码要靠它) |
+| fiber 的当前 span 迁到 `fiber.cache.span`         | 日志的 trace 关联;**以及池账本(见下)**                    |
+| `FileSystem.Size` 让位给新的 `ByteSize` 模块      | csp-report 的 `MaxBodySize`                               |
+| `Socket` 重做成 scoped、pull-based reader         | 语言服务桥:`runRaw` 回调换成 pull 循环,`writer` 成了对象  |
+| 新增 `effect/unstable/arbitrary`                  | property test 的前提                                      |
+
+Socket 那条是唯一需要重新想的:原来的同步回调是为了**保住到达顺序**(effect 结果跑在无序 fiber 集上)。
+pull 循环天然给出同一保证——一条 fiber、一次一批、分类完才取下一批——所以不变量是由构造保住的,
+而不是靠注释提醒。
+
+### Vitest 4.1.10 → 5.0.1:逐条审计
+
+| breaking change                | 本仓库                                                      | 处置                                                                                              |
+| ------------------------------ | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `.sequential` 移除             | **命中 3 处**(含一处 `describe.runIf(...).sequential(...)`) | 改 `{ concurrent: false }`,语义不变                                                               |
+| 文本 locator 默认 whole-string | **命中 55 处 / 8 文件**                                     | 逐点写 `{ exact: false }`,**不动全局配置**                                                        |
+| `clearMocks` 默认 true         | 未命中                                                      | 无测试依赖跨 case mock 历史                                                                       |
+| `toHaveTextContent` 变严格     | 13 处**本就是精确**                                         | 不改;无一处需要 `toMatchTextContent`                                                              |
+| BrowserCommand locator 序列化  | 未命中                                                      | 仅 `emulateMedia`,不收 locator                                                                    |
+| worker/pool id 改 1-based      | 未命中                                                      | 全仓无引用                                                                                        |
+| `testNamePattern` 用 `>` 连接  | 未命中                                                      | 无 `-t` 用法                                                                                      |
+| snapshot / pretty-format       | 未命中                                                      | 无 `toMatchSnapshot`                                                                              |
+| 移除的 entrypoint              | 未命中                                                      | 无 deep import                                                                                    |
+| reporter 产物迁到 `.vitest/`   | **命中**                                                    | `QUALY_TEST_REPORT` 的显式 `outputFile` 实测仍生效;gitignore 跟上,清掉 759 个旧 runner 的残留截图 |
+| hoisted mock 必须顶层          | 未命中                                                      | 全仓无 `vi.mock`                                                                                  |
+| fake timer 也 mock Temporal    | 未命中                                                      | 现有调用都显式列了 `toFake`                                                                       |
+
+locator 那 55 处的真相是实测出来的,不是猜的:把 DOM 里的 label 直接打出来,`申报级别` 的
+`textContent` 是 `"申报级别*"` —— 必填星号带 `aria-hidden`,所以 ARIA 树里看不见,而
+`getByLabelText` 匹配的是 label 文本。同类还有「卡片的可及名字 = 标签 + 描述」与
+「按钮文案比测试写的片段长」(`存为草稿` 的真实文案是 `保存为草稿`)。
+
+顺带挖出一条**潜伏多年的竞态**:shell 的导航 loader 在 `pending` 落下之后的 **effect** 里才清除,
+比属性移除晚一个 commit,而测试那句是裸同步断言。Vitest 4 的轮询恰好慢到能赢,Vitest 5 不会。
+改成与兄弟断言一致的等待。
+
+### 采用 `@effect/vitest`:只在它能接管手写工作的地方
+
+原则一句话:**`@effect/vitest` 接管测试原本手写的东西(scope、layer 生命周期、exit)才改;
+单纯「跑一个程序看结果」的 `Effect.runPromise` 不动。**
+
+| 形态         | 数量        | 落点                                                                                                    |
+| ------------ | ----------- | ------------------------------------------------------------------------------------------------------- |
+| `layer(...)` | 2           | sandbox service、formula artifact——两者 `beforeAll` 里建同一个 QuickJS 引擎层,还带 `as Scope.Closeable` |
+| `it.effect`  | 19 / 5 文件 | 原本 `Effect.scoped(...)` + `runPromise(Exit)` 包一层的用例                                             |
+| `it.prop`    | 5           | decimal 契约(新增覆盖)                                                                                  |
+| `it.live`    | 0           | 见下                                                                                                    |
+
+手写生命周期:`Scope.make` 40→38、`Layer.buildWithScope` 41→39、`Scope.close` 36→34、
+`Effect.runPromiseExit` 95→90、`Effect.runPromise` 335→319。
+
+**`it.live` 是 0,这是结论不是遗漏**:`layer()` 交出的是 `MethodsNonLive`(里面没有 `it.live`),
+需要真实时钟的共享层用 `layer(l, { excludeTestServices: true })` —— 那才是 sandbox 这种
+「引擎 deadline 是墙上时间」的正解。而独立的真实 IO 测试没有改,因为那里 `Effect.runPromise`
+本来就没有多余动作可以交出去。
+
+**没有采用 `layer()` 的地方,原因也是实测的**:25 个带手写 `Layer.buildWithScope` 的文件里,
+二十多个的用途是**立一台真 HTTP server、然后用 `fetch` 打它**。`layer()` 要求块内是 `it.effect`,
+把这些改过去等于把普通测试 Effect 化——那正是不该做的事。
+
+**TestClock 的机会比想象小**:全仓的 `Effect.sleep` / `setTimeout` 几乎全是等真实 IO
+(LISTEN/NOTIFY 投递、子进程、socket),而真正的时间逻辑(phase scheduler、storage cleanup)
+**本来就已经在用 `TestClock`**,还用了 `TestClock.withLive` 处理「fiber 走测试时钟、事务走墙上时间」。
+这一轮没有新的真实 sleep 可以消除。
+
+### property test:5 条,且证明过可证伪
+
+decimal 的三层(词法/语义/规范)原本由 22 个手写例子钉住。例子够不到的恰恰是真出过问题的地方:
+只在第 17 位之后才不同的 scale、没人会手写的负零、超出 float 范围的整数部分。
+5 条不变量:只写自己词法层认的串、规范化是不动点且仍被接纳、规范化不移动值、
+`fractionalDigits` 等于规范形保留的位数、比较对任意两值反对称且与规范形的相等一致。
+
+**反写验证过**:把两条规范性质取反,3ms 内红并给出反例——不是空转。
+
+### 两条顺带修的缺陷
+
+**CI 红(`plugin-isolation` 30s 超时)**:套件声明了 `describe.concurrent`,但每个用例用
+**同步** spawn 编译插件,把线程占满整个编译期。于是用例从未真正重叠——它们只是一起开表、然后排队,
+每个用例的 30s 预算实际是整个文件的预算。两核 runner 上队尾必然超时,连那条只数目录、
+什么都不等的用例也超时。改成异步 spawn 后,冷跑从「串行约 70s 的编译」变成 8.67s,
+每个用例的时钟只覆盖自己那次编译。
+
+**池账本的 span 归属静默失效**:`ownerOnFiber` 通过 cast 读 `fiber.currentSpan`,而 rc.115 把它
+迁到了 `fiber.cache.span`——cast 让代码继续编译,属性却已经不存在,**升级之后记下的每一条签出
+都没有 span**。是在读一份「本该点名操作、却只点名了插件」的验尸报告时发现的。
+
+### 一条既有 flake 的新证据(未定罪,未扩大范围)
+
+`effect-api manifest` 的 teardown 双阶段挂死(STATUS 2026-08-31 起有记录,Vitest 4 下本地与 CI
+都出现过)。这一轮的两次出现都在**资源压力**下:装完依赖的首跑(Vite 依赖预构建冷缓存),
+以及 `vitest doctor` 的第 2 遍(同时爆了 QuickJS 的 2GB WASM 上限)。
+
+内建的验尸诊断这次点名到了具体位置:
+
+```text
+outstanding: [ 'pid 602119 held 5s by query #3206 for @qualy/plugin-assessment' ]
+pid 602119 (ours): idle waiting on Client/ClientRead, no transaction, 5s since state change
+```
+
+**数据库没有卡**:backend 是 idle、无事务、在等客户端发下一条。也就是说查询早已结束,
+**连接从未归还**——database 的 finalizer 在等一个不会回来的连接。这把根因域从
+「装配 finalizer 链」收窄到「assessment 的一次池签出泄漏」。
+
+已验证的排除项:pg 的 `_release` 必定发 `release` 事件(账本不会误报);全仓没有流式查询;
+`transaction` 的 release 走 `acquireUseRelease`(不可中断);`forkIn` 的 scope finalizer
+**会 await** 被中断 fiber 的退出。
+
+**复现失败**:暖缓存 7 次连跑 + 清空 Vite 缓存 1 次,全绿。根因调查仍待授权,但下一次出现时,
+修好的 span 归属会直接点出是哪个操作签出的。
+
+### 性能:先控制漂移,再谈数字
+
+分块 benchmark(A=Vitest4+rc.111,B=Vitest5+rc.115,C=B+Effect 原生改写)给出的 node 全量
+中位数是 58.16 / 61.02 / 66.59s,看起来一路变慢。**这个读法是错的。**
+
+同一时刻交错跑的控制实验:
+
+```text
+B(c5388749) vs C(HEAD)   69.28s vs 69.23s    −0.1%
+A(2a8268f1) vs C(HEAD)   69.39s vs 68.27s    −1.6%(且 C 多跑 9 条)
+```
+
+两臂现在都在 ~69s,而 B 当时测得 61s —— 这台机器在这几小时里漂移了约 13%。
+**分块之间的差全部是漂移;Vitest 5 实际略快。**
+
+逐文件差分同样支持这个结论:阶段 C 改过的 6 个文件合计约 **−20ms**
+(artifact −68ms、sandbox −21ms,都是 `layer()` 只建一次引擎的收益;property test +25ms),
+而那 +59s CPU 全部落在**它没碰过的 DB 文件**上,且有慢有快。
+
+WebKit 与 build 三轮都在噪声内(22.6–22.8s / 12.4–12.6s)。typecheck 因为 6 个测试文件
+多了 `@effect/vitest` 的 .d.ts,warm 6.24→6.71s。
+
+### `vitest doctor`(Vitest 5 才有的命令)
+
+**全量**:
+
+```text
+baseline (pool: forks · isolate: true)  56.48s
+pool: 'threads'                         failed
+isolate: false                          failed
+fsModuleCache: true                     54.35s (-4%)
+maxWorkers: 5                           67.86s (+20%)
+Recommendation: keep the current configuration
+```
+
+三条结论,都比上一轮的推理更硬:
+
+- **`isolate: false` 现在是直接红 26 条**(含 DB 事务 30s 超时)。上一轮是「有模块状态串扰风险,
+  不值 2–3 秒」;现在是它根本跑不过。
+- **`pool: 'threads'` 失败**于 `process.chdir() is not supported in workers` —— 一条真实用例要切目录。
+  这是永久性阻断,不是调参问题。
+- **`maxWorkers: 5` 在非 DB 子集上是 −10%,在全量上是 +20%**。DB 文件要靠并行把 I/O 等待叠起来。
+  子集上的推荐不能外推——这也是为什么只跑子集的 doctor 结论必须标注范围。
+
+`fsModuleCache` 的 −4% 低于 doctor 自己的 10% 阈值,不采用。
+
+### 门禁(实际执行,2026-09-15)
+
+```text
+pnpm vendor:check                      exit=0   4 tree(s) match repos/vendor-lock.json
+pnpm qualy resolve --frozen-lockfile   exit=0
+pnpm typecheck                         exit=0
+pnpm test   ×3                         exit=0   239 passed | 3 skipped (242)
+                                                1717 passed | 17 skipped (1734)   三轮逐字相同
+pnpm test:browser   ×3                 exit=0   52 passed (52) / 379 passed (379)  三轮全绿
+pnpm test:browser:webkit               exit=0   2 passed (2) / 14 passed (14)
+pnpm build                             exit=0
+check-staged-web                       exit=0
+check-chunks                           exit=0
+check-csp-build                        exit=0
+check-public-web                       exit=0
+smoke-production                       exit=0   含新增的 production SIGINT 探针
+pnpm qualy database check              exit=0
+pnpm qualy database drop-guard         exit=0
+```
+
+**发现数上升而非下降**:241 → 242 文件、1709 → 1717 条(+5 property、+3 shutdown 文案矩阵)。
+
+本轮唯一一次浏览器红出现在 benchmark C 的第一次 Chromium(tooltip 在 `blur()` 后未及时离场,
+重试两次都红),之后 11 次 Chromium 全绿。该用例不在本轮改动面内(阶段 C 未碰任何浏览器测试),
+记作既有抖动。
+
+### shutdown 文案矩阵
+
+```text
+DEV  + SIGINT   shutting down; press Ctrl+C again to give up waiting
+PROD + SIGINT   SIGINT: shutting down
+DEV  + SIGTERM  SIGTERM: shutting down
+PROD + SIGTERM  SIGTERM: shutting down
+```
+
+只有这一句变。二次独立信号仍然放弃 graceful、仍然在发生时说出来(那句是在报告操作者做了什么,
+不是在给他建议);1 秒内重复信号抑制、`QUALY_SHUTDOWN_TIMEOUT` deadline、`still releasing:` 诊断、
+130/143/1/0 四个退出码、`shutdown complete` 语义、`traceLayerLifecycle` —— 逐条未动
+(`main.ts` 的 diff 只有那一次 `logLine` 调用加一行 import)。
+
+production smoke 现在会**再起一个实例、用 SIGINT 停它**:必须退 0、报告 finalizer、
+说出 `SIGINT: shutting down`、且不含 `press Ctrl+C again`。**反向验证过**:
+把条件里的 mode 判断拿掉,smoke 立刻红在 `SIGINT did not name itself`。
