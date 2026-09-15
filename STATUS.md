@@ -15411,3 +15411,41 @@ removed   → detached,`retainedBy: ['database']`,其余同上
 
 **门禁(实际执行)**:`pnpm typecheck` exit 0;`plugin-lifecycle` 2 例;
 `smoke-production` 五条旧 tab 用例全部命中并通过;`check-staged-web` exit 0(植入的 release 已清理)。
+
+## 设计符合性收口(五):真的 pack 一次,当场发现 fixture 打出来是空的(2026-09-15)
+
+§87 要的是一条**真实 package-manager 安装**的验收,而不是把 fixture 目录 symlink 进临时 workspace。
+做出来第一次运行就答了「不行」:
+
+```text
+pnpm pack tools/fixtures/acme-dist-probe
+→ package/LICENSE
+→ package/package.json
+（没有 dist/）
+```
+
+因为这个包没声明 `files`,而 npm 在没有 `.npmignore` 时**拿 `.gitignore` 当忽略规则**——
+本仓库的 `.gitignore` 里正有 `dist/`。也就是说:**那个 dist-only fixture 作为一个真正发布的包是空的**,
+之前所有关于它的结论,证明的是一个不可能存在的包。两个 fixture 都补上 `"files": ["dist"]`。
+
+(这与前几天那次 `.gitignore` 修复是两件事:那次是它没进版本库,这次是它进不了 tarball。)
+
+新增 `tools/tests/packed-plugin.test.ts`,离线走完整条:
+
+```text
+pnpm pack                    → tgz
+package.json file: 依赖       → pnpm install(自己的 workspace root,autoInstallPeers 关)
+peers 按宿主磁盘形态 link
+qualy plugin add             → 真 CLI
+resolveAssembly              → 描述器来自**安装位置**,不是 fixture 目录
+loadAssembly                 → 装配得起来
+collectWebPlugins            → 每个模块都在安装目录的 dist/ 下,没有 src/
+vite build                   → 产物里有 page marker 与 boot marker
+qualy plugin remove          → 干净离开 lock,且不删数据
+```
+
+浏览器那一段仍归 `acme-browser-probe`(另一个包、另一个 fixture),测试头注里写明了。
+
+**实测过会红**:把 `files` 去掉 → 两条用例同时红。
+
+**门禁(实际执行)**:`pnpm typecheck` exit 0;`packed-plugin` 2 例。

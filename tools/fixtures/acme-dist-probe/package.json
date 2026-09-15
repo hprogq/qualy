@@ -1,6 +1,9 @@
 {
   "name": "@acme/qualy-dist-probe",
   "version": "1.4.2",
+  "files": [
+    "dist"
+  ],
   "private": true,
   "type": "module",
   "sideEffects": [

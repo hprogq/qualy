@@ -1,6 +1,9 @@
 {
   "name": "@acme/qualy-browser-probe",
   "version": "2.0.1",
+  "files": [
+    "dist"
+  ],
   "private": true,
   "license": "AGPL-3.0-only",
   "type": "module",
