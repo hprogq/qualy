@@ -28,13 +28,43 @@ export const RUM_ENVIRONMENTS = ['production', 'pre', 'gray', 'daily', 'test', '
 
 export type RumEnvironment = (typeof RUM_ENVIRONMENTS)[number]
 
-export interface TencentRumPublicConfig {
+/**
+ * What this deployment tells its own process about reporting.
+ *
+ * Kept apart from what goes to a browser even though the two happen to carry
+ * the same three fields today. They are different documents with different
+ * readers, and a spread from one into the other is a promise that they will
+ * stay identical - a promise nobody would remember making on the day a
+ * secret, an internal host or an operator's note is added here.
+ */
+export interface TencentRumServerConfig {
   /** the browser reporting id, which is not the numeric source map project id */
   readonly id: string
   readonly environment: RumEnvironment
   /** 0 to 1 */
   readonly sampleRate: number
 }
+
+/** what a browser is given, and the whole of it */
+export interface TencentRumPublicConfig {
+  readonly id: string
+  readonly environment: RumEnvironment
+  readonly sampleRate: number
+}
+
+/**
+ * The browser's half, named field by field.
+ *
+ * Written out rather than spread: a spread makes the decision once, silently,
+ * and then makes it again for every field anybody adds to the server's
+ * configuration afterwards. This way adding one is a decision with a place to
+ * make it, and the compiler asks.
+ */
+export const publicConfigOf = (settings: TencentRumServerConfig): TencentRumPublicConfig => ({
+  id: settings.id,
+  environment: settings.environment,
+  sampleRate: settings.sampleRate,
+})
 
 /**
  * Whether what the capability handed over is this provider's configuration.

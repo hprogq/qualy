@@ -34,8 +34,6 @@ export interface ObservedRelease {
 }
 
 export interface BrowserRumProvider {
-  /** the code its plugin declared to the assembly */
-  readonly provider: string
   /**
    * Brings the vendor sdk up with this deployment's settings.
    *
@@ -49,7 +47,17 @@ export interface BrowserRumProvider {
   ): Promise<ObservabilitySink | null>
 }
 
-const providers = new Map<string, BrowserRumProvider>()
+/**
+ * One slot, because a build carries one.
+ *
+ * It was a map keyed by the vendor's name, which only made sense while the
+ * server named a vendor for the browser to look up. A production build is
+ * the active selection's browser code and nothing else, and the assembly
+ * refuses two reporting providers - so whatever registers here is the one
+ * this deployment chose. A second registration is a bug in the build, not a
+ * choice to be made at run time.
+ */
+let registered: BrowserRumProvider | null = null
 let started = false
 let reporting = false
 
@@ -69,14 +77,13 @@ const warnOnce = (key: string, cause: unknown): void => {
  * whether this deployment reports at all is decided in `startBrowserRum`.
  */
 export const registerRumProvider = (provider: BrowserRumProvider): Dispose => {
-  const existing = providers.get(provider.provider)
-  if (existing !== undefined && existing !== provider) {
-    warnOnce(provider.provider, 'registered twice; the second registration was ignored')
+  if (registered !== null && registered !== provider) {
+    warnOnce('registration', 'a second reporting provider registered; it was ignored')
     return () => undefined
   }
-  providers.set(provider.provider, provider)
+  registered = provider
   return () => {
-    if (providers.get(provider.provider) === provider) providers.delete(provider.provider)
+    if (registered === provider) registered = null
   }
 }
 
@@ -89,27 +96,25 @@ export const registerRumProvider = (provider: BrowserRumProvider): Dispose => {
  * A failure here is warned about once and changes nothing else.
  */
 export const activateRumProvider = async (
-  selected: string | null,
-  config: Record<string, unknown>,
+  config: Record<string, unknown> | null,
   release: ObservedRelease,
-): Promise<void> => {
-  if (started) return
+): Promise<Dispose> => {
+  if (started) return () => undefined
   started = true
+  let dispose: Dispose = () => undefined
   try {
-    if (selected !== null) {
-      const provider = providers.get(selected)
-      if (provider === undefined) {
-        // the assembly selected a provider whose browser half is not in this
-        // build, which is a deployment fault rather than anything a viewer did
-        warnOnce(selected, 'the selected provider is not part of this build')
+    if (config !== null) {
+      if (registered === null) {
+        // the deployment turned reporting on and this build carries no
+        // provider to do it with, which is a deployment fault rather than
+        // anything a viewer did
+        warnOnce('provider', 'this deployment reports, but no provider is part of this build')
       } else {
-        const sink = await provider.start(config, release)
+        const sink = await registered.start(config, release)
         // installing replays what failed before the sink existed; a provider
-        // that decided it has nothing to do leaves that to the line below.
-        // The disposer it hands back has nowhere to be called yet - browser
-        // plugins have no teardown - so it is deliberately not kept.
+        // that decided it has nothing to do leaves that to the line below
         if (sink !== null) {
-          installSink(sink)
+          dispose = installSink(sink)
           reporting = true
         }
       }
@@ -118,11 +123,12 @@ export const activateRumProvider = async (
     warnOnce('start', cause)
   }
   if (!reporting) noSinkArriving()
+  return dispose
 }
 
 /** test seam: module state is per page in a browser and per file in a suite */
 export const resetBrowserRum = (): void => {
-  providers.clear()
+  registered = null
   started = false
   warned.clear()
   reporting = false

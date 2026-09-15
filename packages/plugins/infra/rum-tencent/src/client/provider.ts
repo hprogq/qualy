@@ -6,7 +6,7 @@ import {
   type ObservabilitySink,
 } from '@qualy/browser-observability'
 import type { BrowserRumProvider } from '@qualy/plugin-rum/client'
-import { isTencentRumPublicConfig, TENCENT_RUM_HOST, TENCENT_RUM_PROVIDER } from '../settings.ts'
+import { isTencentRumPublicConfig, TENCENT_RUM_HOST } from '../settings.ts'
 import { rumVersionForRelease } from '../version.ts'
 import { beforeReport, beforeRequest } from './privacy.ts'
 
@@ -53,8 +53,6 @@ const oneLine = (context: DiagnosticContext | undefined): string =>
         .join(';')
 
 export const tencentRumProvider: BrowserRumProvider = {
-  provider: TENCENT_RUM_PROVIDER,
-
   async start(config, release): Promise<ObservabilitySink | null> {
     // the capability hands the provider's settings over verbatim; a
     // deployment whose configuration does not decode is one that reports

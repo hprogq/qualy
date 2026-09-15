@@ -1,6 +1,7 @@
 import { HttpApiClient } from 'effect/unstable/httpapi'
 import { Api } from '@qualy/api-kit/local'
 import { rumApiGroup, RUM_SETTINGS_SCHEMA } from '../api.ts'
+import type { Dispose } from '@qualy/plugin-kit/browser'
 import { activateRumProvider, type ObservedRelease } from './registry.ts'
 
 // Asking the deployment whether it reports, and to whom.
@@ -17,45 +18,49 @@ import { activateRumProvider, type ObservedRelease } from './registry.ts'
 
 const settingsUrl = HttpApiClient.urlBuilder(Api.local(rumApiGroup)).rum.getRumSettings()
 
-/** what the deployment answered, or nothing at all - which is not an error */
-const readSettings = async (): Promise<{
-  provider: string | null
-  config: Record<string, unknown>
-}> => {
+/**
+ * The settings this deployment answered with, or null for "reports nowhere".
+ *
+ * Every way of not getting an answer means the same thing and is not a
+ * failure: an assembly without the reporting capability answers the api's
+ * tagged 404, and a build older or newer than the server reads a generation
+ * it does not know. A page that cannot tell what it was told reports nothing,
+ * which is the only safe reading of a document about where data goes.
+ */
+const readSettings = async (): Promise<Record<string, unknown> | null> => {
   const response = await fetch(settingsUrl, {
     headers: { accept: 'application/json' },
     credentials: 'omit',
   })
-  // An assembly without the reporting capability answers the api's tagged 404.
-  // That is an answer, not a failure: reporting is not part of this deployment.
-  if (!response.ok) return { provider: null, config: {} }
+  if (!response.ok) return null
   const body: unknown = await response.json()
-  if (typeof body !== 'object' || body === null) return { provider: null, config: {} }
-  const candidate = body as { schema?: unknown; provider?: unknown; config?: unknown }
-  if (candidate.schema !== RUM_SETTINGS_SCHEMA) return { provider: null, config: {} }
-  const provider = typeof candidate.provider === 'string' ? candidate.provider : null
-  const config =
-    typeof candidate.config === 'object' && candidate.config !== null
-      ? (candidate.config as Record<string, unknown>)
-      : {}
-  return { provider, config }
+  if (typeof body !== 'object' || body === null) return null
+  const candidate = body as { schema?: unknown; config?: unknown }
+  if (candidate.schema !== RUM_SETTINGS_SCHEMA) return null
+  return typeof candidate.config === 'object' && candidate.config !== null
+    ? (candidate.config as Record<string, unknown>)
+    : null
 }
 
 /**
- * Brings reporting up, if this deployment has any.
+ * Brings reporting up, if this deployment has any, and hands back the way to
+ * take it down again.
  *
  * Not awaited by the composition root: nothing renders any sooner for having
  * waited, and a deployment whose answer never arrives must not be able to hold
  * the first screen. Every failure inside is swallowed by the registry, which
  * warns once.
+ *
+ * The disposer matters because this is the one thing here that outlives the
+ * call: a sink installed into the platform stays installed. Its caller is the
+ * browser module, which holds it for the lifetime the host gave it.
  */
-export const startBrowserRum = async (release: ObservedRelease): Promise<void> => {
+export const startBrowserRum = async (release: ObservedRelease): Promise<Dispose> => {
   try {
-    const settings = await readSettings()
-    await activateRumProvider(settings.provider, settings.config, release)
+    return await activateRumProvider(await readSettings(), release)
   } catch {
     // the answer never came: no reporting, and nothing else about the page
     // changes. The registry's own warning covers the cases worth a line.
-    await activateRumProvider(null, {}, release)
+    return await activateRumProvider(null, release)
   }
 }

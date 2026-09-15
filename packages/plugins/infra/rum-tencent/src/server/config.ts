@@ -1,5 +1,5 @@
 import { Config, Effect, Layer, Schema, Context } from 'effect'
-import { RUM_ENVIRONMENTS, type TencentRumPublicConfig } from '../settings.ts'
+import { RUM_ENVIRONMENTS, type TencentRumServerConfig } from '../settings.ts'
 import { decodePluginConfig } from '@qualy/plugin-kit/config'
 
 // Which reporting project this deployment writes to.
@@ -12,7 +12,7 @@ import { decodePluginConfig } from '@qualy/plugin-kit/config'
 // process that came up quietly reporting nowhere is the failure that is only
 // noticed when somebody goes looking for an incident nobody recorded.
 
-export class TencentRumConfig extends Context.Service<TencentRumConfig, TencentRumPublicConfig>()(
+export class TencentRumConfig extends Context.Service<TencentRumConfig, TencentRumServerConfig>()(
   '@qualy/plugin-rum-tencent/TencentRumConfig',
 ) {}
 

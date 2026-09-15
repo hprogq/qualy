@@ -7,7 +7,7 @@ import { RumProviders } from '@qualy/plugin-rum/server'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Cli } from '@qualy/plugin-kit/cli'
 import { config, TencentRumConfig } from './server/config.ts'
-import { TENCENT_RUM_HOST, TENCENT_RUM_PROVIDER } from './settings.ts'
+import { publicConfigOf, TENCENT_RUM_HOST, TENCENT_RUM_PROVIDER } from './settings.ts'
 
 // Reporting browser failures to a Tencent Cloud RUM project.
 //
@@ -27,9 +27,10 @@ const registration: Layer.Layer<never, never, RumProviders | TencentRumConfig | 
       const registry = yield* RumProviders
       yield* registry.register({
         code: TENCENT_RUM_PROVIDER,
-        // verbatim to the browser; the capability does not read it, and
-        // nothing that a browser may not see belongs in it
-        publicConfig: { ...settings },
+        // projected field by field, never spread: what a browser receives is
+        // a decision, and a decision that reads `...settings` is made again,
+        // silently, every time this deployment's configuration grows a field
+        publicConfig: { ...publicConfigOf(settings) },
       })
       // the browser talks to the reporting host directly, so the shell's
       // policy has to allow it - and only while this plugin is selected, which

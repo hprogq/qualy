@@ -15203,3 +15203,61 @@ renderer 只能经描述器到达浏览器(collector 读 `uiSurfacesOf` / `login
 
 **门禁(实际执行)**:`pnpm typecheck` exit 0(七个 `*/tests` 工程逐一编译);
 `plugin-isolation` + `browser-contract` 34 例;`pnpm test:browser` 52 / 377。
+
+## 设计符合性收口(一):RUM 的公开面,与它的生命周期(2026-09-15)
+
+复审逐条对 `docs/plugin-refactor.md` 查源码,点出 §15/§16/§95/§96 与 Phase E 的四处未落地。核实属实,本节修前三处 + Phase E 那一处。
+
+### §15/§16:浏览器不再被告知 vendor 的名字
+
+`/app/observability` 从
+
+```json
+{ "schema": 1, "provider": "tencent", "config": {} }
+```
+
+变成
+
+```json
+{ "schema": 2, "config": { ... } }     或     { "schema": 2, "config": null }
+```
+
+理由是 active-only artifact 已经决定了这台浏览器里有哪个 provider——**页面手上就那一个**,
+再在线上报出 `provider=tencent`,等于告诉每个访客这套部署把失败寄给谁,换来的是一次它不需要做的查表。
+`config: null` 与 `config: {}` 是两件事:前者「本部署不上报」,后者「上报,但没有设置」。
+
+**浏览器注册表随之变单槽**:`Map<string, BrowserRumProvider>` → 一个槽。
+`BrowserRumProvider` 去掉 `provider` 字段——装配已经拒绝了两个 provider,构建只带 active 集,
+所以注册进来的就是选中的那个;第二个注册是构建的 bug,不是运行时该做的选择。
+
+**旧 tab 的兼容路径是文档自己的代次号**,不是 client protocol:读到不认识的 schema → 当作「不上报」,
+与「本部署不上报」同一个答案,也是唯一安全的读法(它的 bundle 没法去匹配一份没见过的文档)。
+因此不动 `CURRENT_CLIENT_PROTOCOL`。
+
+`smoke-production` 以前**正把旧设计钉死**(`body.schema !== 1`、`body.provider === null`),
+现在改断 schema 2 并且**断键集恰好是 `config,schema`**——这份文档多一个字段就是每个访客多拿一个字段。
+
+### §95/§96:server config 与 public config 分家
+
+被点名的反例确实在:`publicConfig: { ...settings }`,而且 `TencentRumConfig` 这个服务端 service
+直接拿 public config 当自己的类型。今天没泄漏只是因为两边字段恰好一样。
+现在是两个接口(`TencentRumServerConfig` / `TencentRumPublicConfig`)加一个显式投影
+`publicConfigOf()`——**spread 是「它们永远一样」的承诺,而没人会在加字段那天记得自己许过**。
+
+### Phase E 漏项:sink 的 disposer 被扔掉了
+
+这条比前三条实质。`installSink()` 一直返回 disposer,`activateRumProvider()` 直接丢弃,
+注释还写着「browser plugins have no teardown」——那句话在 Phase E 落地当天就过期了。
+后果是开发态热重载撤掉 provider 的 setup 注册,**已经装进平台的 sink 还在**,
+下一次重载再装一个并排放着;更糟的是异步竞态:lifetime 结束时答复还在路上,
+晚到的 sink 会装进一个已经拆掉的页面。
+
+修法按复审的建议:不让 `start()` 返回 `Promise<Dispose>`(host 有意不 await start),
+而是在 browser module 的 `setup()` 里建 lifetime holder——`stopped` 标志 + 迟到的 disposer。
+`startBrowserRum()` / `activateRumProvider()` 一路把 disposer 交出来。
+
+**两条回归,都实测过会红**:①正常路径 teardown 后再 `captureException`,sink 不得再收到;
+②lifetime 先结束、sink 后到达,必须被就地 dispose 而不是装上。把 holder 去掉 → 两条同时红。
+
+**门禁(实际执行)**:`pnpm typecheck` exit 0;rum + rum-tencent + api-paths + effect-api-parity
+4 文件 26 例;rum 浏览器套件 20 例(含两条新回归)。

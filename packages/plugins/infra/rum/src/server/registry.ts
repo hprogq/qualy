@@ -20,25 +20,26 @@ export class RumProviders extends Context.Service<
   RumProviders,
   {
     /** the provider offering its public settings, once, during its own layer's build */
-    readonly register: (
-      entry: {
-        readonly code: string
-        /** what the browser receives verbatim; nothing secret has any business here */
-        readonly publicConfig: Record<string, unknown>
-      },
-    ) => Effect.Effect<void>
+    readonly register: (entry: {
+      readonly code: string
+      /** what the browser receives verbatim; nothing secret has any business here */
+      readonly publicConfig: Record<string, unknown>
+    }) => Effect.Effect<void>
     /** what to serve, or nothing when this deployment reports nowhere */
-    readonly selected: Effect.Effect<
-      { readonly code: string; readonly publicConfig: Record<string, unknown> } | null
-    >
+    readonly selected: Effect.Effect<{
+      readonly code: string
+      readonly publicConfig: Record<string, unknown>
+    } | null>
   }
 >()('@qualy/plugin-rum/RumProviders') {}
 
 export const registryLayer: Layer.Layer<RumProviders> = Layer.effect(
   RumProviders,
   Effect.sync(() => {
-    let registered: { readonly code: string; readonly publicConfig: Record<string, unknown> } | null =
-      null
+    let registered: {
+      readonly code: string
+      readonly publicConfig: Record<string, unknown>
+    } | null = null
     return RumProviders.of({
       register: (entry) =>
         Effect.suspend(() => {

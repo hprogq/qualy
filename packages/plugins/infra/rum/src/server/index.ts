@@ -17,13 +17,10 @@ export const rumApiHandlers = HttpApiBuilder.group(local, 'rum', (handlers) =>
     'getRumSettings',
     Effect.fn('rum.getRumSettings.handler')(function* () {
       const selected = yield* (yield* RumProviders).selected
-      return selected === null
-        ? { schema: RUM_SETTINGS_SCHEMA, provider: null, config: {} }
-        : {
-            schema: RUM_SETTINGS_SCHEMA,
-            provider: selected.code,
-            config: selected.publicConfig,
-          }
+      // the code stays here: it is how the assembly refuses two providers and
+      // how a boot failure names the one that never registered, and none of
+      // that is a browser's business
+      return { schema: RUM_SETTINGS_SCHEMA, config: selected?.publicConfig ?? null }
     }),
   ),
 )

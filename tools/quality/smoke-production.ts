@@ -141,11 +141,17 @@ await check('/api/app/manifest', async (response) => {
 // which is the answer that has to be as clear as the other one: a page that
 // cannot tell "nobody" from "the request failed" either reports nowhere for
 // the wrong reason or keeps asking.
+// Whether this deployment reports browser failures, and with what settings -
+// and nothing about WHICH vendor, which a build already decided. The keys are
+// asserted rather than only the values: a field added to this document is a
+// field every visitor is handed.
 await check('/api/app/observability', async (response) => {
   if (response.status !== 200) return `status ${response.status}`
-  const body = (await response.json()) as { schema?: number; provider?: unknown }
-  if (body.schema !== 1) return `schema ${String(body.schema)}`
-  return body.provider === null ? undefined : `provider ${String(body.provider)}`
+  const body = (await response.json()) as { schema?: number; config?: unknown }
+  if (body.schema !== 2) return `schema ${String(body.schema)}`
+  const keys = Object.keys(body as object).sort()
+  if (keys.join(',') !== 'config,schema') return `keys ${keys.join(',')}`
+  return body.config === null ? undefined : `reporting is configured on in this smoke`
 })
 // an icon is a public file of the release, not a hashed asset: never cached
 // as immutable (it was, by the single server this replaced)

@@ -4,6 +4,7 @@ import type { Contributed, ProvideExtension } from '@qualy/plugin-kit'
 import { assembledLayer, runBootHooks } from '@qualy/api-kit/assembled'
 import { DeclaredRumProvider, Rum, type RumProviderDeclaration } from '../src/plugin.ts'
 import { barrierLayer, registryLayer, RumProviders } from '../src/server/registry.ts'
+import { RUM_SETTINGS_SCHEMA } from '../src/api.ts'
 
 // Who reports, and what happens when the answer is nobody - or two.
 //
@@ -20,9 +21,7 @@ const compileOf = (provider: unknown) => (provider as ProvideExtension).compile
 const declaredOf = (contributions: readonly Contributed<RumProviderDeclaration>[]) =>
   Effect.runSync(
     DeclaredRumProvider.pipe(
-      Effect.provide(
-        compileOf(Rum.owner)(contributions) as Layer.Layer<DeclaredRumProvider>,
-      ),
+      Effect.provide(compileOf(Rum.owner)(contributions) as Layer.Layer<DeclaredRumProvider>),
     ),
   )
 
@@ -128,5 +127,35 @@ describe('starting up', () => {
       ),
     )
     expect(Exit.isSuccess(exit)).toBe(true)
+  })
+})
+
+describe('what the browser is told', () => {
+  // The vendor's name is not on it. A build carries the browser half of the
+  // active selection and nothing else, so the page asking already holds the
+  // one provider there is; naming it here told every visitor which company
+  // stores this deployment's failures, in exchange for a lookup the browser
+  // does not need to do.
+  const answered = (registered: { code: string; publicConfig: Record<string, unknown> } | null) =>
+    Effect.runSync(
+      Effect.gen(function* () {
+        const registry = yield* RumProviders
+        if (registered !== null) yield* registry.register(registered)
+        const selected = yield* registry.selected
+        return { schema: RUM_SETTINGS_SCHEMA, config: selected?.publicConfig ?? null }
+      }).pipe(Effect.provide(registryLayer)),
+    )
+
+  it('carries the selected provider settings and no vendor name', () => {
+    const body = answered({ code: 'tencent', publicConfig: { id: 'abc', sampleRate: 1 } })
+    expect(Object.keys(body).sort()).toEqual(['config', 'schema'])
+    expect(body).toEqual({ schema: 2, config: { id: 'abc', sampleRate: 1 } })
+    expect(JSON.stringify(body)).not.toContain('tencent')
+  })
+
+  it('says so with null rather than an empty object when nobody reports', () => {
+    // told apart from "reports, with no settings", which a provider may
+    // legitimately answer: one brings a vendor up and the other does not
+    expect(answered(null)).toEqual({ schema: 2, config: null })
   })
 })

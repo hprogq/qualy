@@ -16,6 +16,8 @@ import {
 } from '@qualy/browser-observability'
 import { registerRumProvider, resetBrowserRum } from '@qualy/plugin-rum/client'
 import { startBrowserRum } from '@qualy/plugin-rum/client/start'
+import { startBrowserPlugins } from '@qualy/plugin-kit/browser'
+import rumBrowserPlugin from '@qualy/plugin-rum/client/browser'
 
 // Browser failure reporting, from the two seams the runtime reports at to the
 // sink a provider hands over.
@@ -40,10 +42,7 @@ const fakeProvider = (over: { start?: BrowserRumProviderStart } = {}) => {
     captureDiagnostic: (code, context) => diagnostics.push({ code, context }),
     setPage: (page) => pages.push(page),
   }
-  registerRumProvider({
-    provider: 'fake',
-    start: over.start ?? (() => Promise.resolve(sink)),
-  })
+  registerRumProvider({ start: over.start ?? (() => Promise.resolve(sink)) })
   return { exceptions, diagnostics, pages, sink }
 }
 
@@ -72,7 +71,7 @@ afterEach(() => {
 
 describe('starting up', () => {
   it('reports through the provider the deployment selected', async () => {
-    answering({ schema: 1, provider: 'fake', config: { id: 'x' } })
+    answering({ schema: 2, config: { id: 'x' } })
     const seen = fakeProvider()
     await startBrowserRum(release)
     captureException(new Error('boom'))
@@ -80,7 +79,7 @@ describe('starting up', () => {
   })
 
   it('reports nowhere when the deployment named no provider', async () => {
-    answering({ schema: 1, provider: null, config: {} })
+    answering({ schema: 2, config: null })
     const seen = fakeProvider()
     await startBrowserRum(release)
     captureException(new Error('boom'))
@@ -93,7 +92,7 @@ describe('starting up', () => {
     // since bringing one up needs a request and a chunk. The entry arms these
     // two listeners first; the suite arms them the same way, because a reset
     // stood them down after the last case.
-    answering({ schema: 1, provider: 'fake', config: {} })
+    answering({ schema: 2, config: {} })
     const seen = fakeProvider()
     installEarlyListeners()
     window.dispatchEvent(
@@ -116,7 +115,7 @@ describe('starting up', () => {
     // AND be marked as already reported on the way out, so no later path
     // could report it either. The window listeners do not cover it: a React
     // boundary's report never reaches the window.
-    answering({ schema: 1, provider: 'fake', config: {} })
+    answering({ schema: 2, config: {} })
     let arrive!: (sink: ObservabilitySink) => void
     const onItsWay = new Promise<ObservabilitySink>((resolve) => {
       arrive = resolve
@@ -143,7 +142,7 @@ describe('starting up', () => {
   })
 
   it('lets go of what it held once the answer is that nobody reports', async () => {
-    answering({ schema: 1, provider: null, config: {} })
+    answering({ schema: 2, config: null })
     captureException(new Error('held for a sink that never comes'))
     await startBrowserRum(release)
     // a sink installed afterwards is the only way to look at what was kept,
@@ -162,23 +161,22 @@ describe('starting up', () => {
     // a deployment without the plugin answers the api's tagged 404
     answering({ _tag: 'API_ROUTE_NOT_FOUND' }, false)
     const seen = fakeProvider()
-    await expect(startBrowserRum(release)).resolves.toBeUndefined()
+    await expect(startBrowserRum(release)).resolves.toBeInstanceOf(Function)
     captureException(new Error('boom'))
     expect(seen.exceptions).toHaveLength(0)
   })
 
   it('survives a provider that fails to start', async () => {
-    answering({ schema: 1, provider: 'fake', config: {} })
+    answering({ schema: 2, config: {} })
     fakeProvider({ start: () => Promise.reject(new Error('the sdk chunk never loaded')) })
-    await expect(startBrowserRum(release)).resolves.toBeUndefined()
+    await expect(startBrowserRum(release)).resolves.toBeInstanceOf(Function)
     // and reporting afterwards is a no-op rather than a second failure
     expect(() => captureException(new Error('boom'))).not.toThrow()
   })
 
   it('survives a sink that throws on every report', async () => {
-    answering({ schema: 1, provider: 'fake', config: {} })
+    answering({ schema: 2, config: {} })
     registerRumProvider({
-      provider: 'fake',
       start: () =>
         Promise.resolve({
           captureException: () => {
@@ -204,14 +202,14 @@ describe('starting up', () => {
       Promise.resolve(new Response('<html>gateway</html>', { status: 200 })),
     )
     const seen = fakeProvider()
-    await expect(startBrowserRum(release)).resolves.toBeUndefined()
+    await expect(startBrowserRum(release)).resolves.toBeInstanceOf(Function)
     expect(seen.exceptions).toHaveLength(0)
   })
 })
 
 describe('what a report carries', () => {
   const started = async () => {
-    answering({ schema: 1, provider: 'fake', config: {} })
+    answering({ schema: 2, config: {} })
     const seen = fakeProvider()
     await startBrowserRum(release)
     return seen
@@ -276,7 +274,7 @@ describe('the seams the runtime reports at', () => {
   })
 
   it('reports the surface a plugin component threw on, and shows the fallback', async () => {
-    answering({ schema: 1, provider: 'fake', config: {} })
+    answering({ schema: 2, config: {} })
     const seen = fakeProvider()
     await startBrowserRum(release)
     render(
@@ -304,7 +302,7 @@ describe('the seams the runtime reports at', () => {
   })
 
   it('reports a sign-in renderer by its driver type, like any other surface', async () => {
-    answering({ schema: 1, provider: 'fake', config: {} })
+    answering({ schema: 2, config: {} })
     const seen = fakeProvider()
     await startBrowserRum(release)
     render(
@@ -326,7 +324,7 @@ describe('the seams the runtime reports at', () => {
   })
 
   it('reports a surface the manifest promised and the build does not have', async () => {
-    answering({ schema: 1, provider: 'fake', config: {} })
+    answering({ schema: 2, config: {} })
     const seen = fakeProvider()
     await startBrowserRum(release)
     render(
@@ -350,5 +348,75 @@ describe('the seams the runtime reports at', () => {
         context: { surfaceKind: 'slot', surface: 'slot:demo/bar:demo/gone' },
       },
     ])
+  })
+})
+
+describe('reporting ends when the lifetime it was started in ends', () => {
+  // What `start` leaves behind outlives the call. The host does not await it,
+  // so the teardown the host collected cannot be the one start produced - and
+  // for a while nothing kept it at all: a development reload tore the
+  // provider's registration down and left its sink installed in the platform,
+  // where the next reload installed a second one beside it.
+  const context = { release: { releaseId: 'test-release', clientProtocol: 2 } }
+
+  /** a provider whose sink is handed over when the test says so */
+  const reporting = () => {
+    const exceptions: Reported[] = []
+    let hold: ((sink: ObservabilitySink) => void) | undefined
+    const state = {
+      exceptions,
+      asked: false,
+      /** resolves this provider's start, as an answer arriving late would */
+      handOver: () => hold?.(sink),
+    }
+    const sink: ObservabilitySink = {
+      captureException: (error, context) => exceptions.push({ error, context }),
+      captureDiagnostic: () => undefined,
+      setPage: () => undefined,
+    }
+    registerRumProvider({
+      start: () =>
+        new Promise<ObservabilitySink>((resolve) => {
+          state.asked = true
+          hold = resolve
+        }),
+    })
+    return state
+  }
+
+  /** what the host does, minus the awaiting it deliberately does not do */
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
+
+  it('takes the sink down with it', async () => {
+    const seen = reporting()
+    answering({ schema: 2, config: {} })
+
+    const stop = startBrowserPlugins([rumBrowserPlugin], context)
+    await vi.waitFor(() => expect(seen.asked).toBe(true))
+    seen.handOver()
+    await settle()
+
+    captureException(new Error('while reporting'))
+    expect(seen.exceptions).toHaveLength(1)
+
+    stop()
+    captureException(new Error('after the lifetime ended'))
+    expect(seen.exceptions).toHaveLength(1)
+  })
+
+  it('disposes a sink that arrives after the lifetime already ended', async () => {
+    // the race every reload runs: the answer is still in flight when the
+    // lifetime ends, and the sink that lands afterwards belongs to nobody
+    const seen = reporting()
+    answering({ schema: 2, config: {} })
+
+    const stop = startBrowserPlugins([rumBrowserPlugin], context)
+    await vi.waitFor(() => expect(seen.asked).toBe(true))
+    stop()
+    seen.handOver()
+    await settle()
+
+    captureException(new Error('into a torn-down page'))
+    expect(seen.exceptions).toHaveLength(0)
   })
 })
