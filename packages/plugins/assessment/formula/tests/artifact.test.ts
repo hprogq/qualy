@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
-import { Effect, Exit, Layer, Result, Scope, type Context } from 'effect'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { layer } from '@effect/vitest'
+import { Effect, Result } from 'effect'
+import { describe, expect } from 'vitest'
 import { Sandbox } from '@qualy/plugin-sandbox/service'
 import { sandboxLocalLayer } from '@qualy/plugin-sandbox/testkit'
 import { validateAtomicProfile, validateInputProfile } from '@qualy/value-schema'
@@ -56,112 +57,110 @@ const INPUT = {
   floor: '0.00',
 }
 
-let scope: Scope.Scope
-let context: Context.Context<Sandbox>
-
-beforeAll(async () => {
-  scope = await Effect.runPromise(Scope.make())
-  context = await Effect.runPromise(
-    Layer.buildWithScope(sandboxLocalLayer({ size: 1, variant: 'release' }), scope),
+const invoke = (artifact: string, entrypoint: string, args: readonly unknown[]) =>
+  Effect.flatMap(Sandbox, (sandbox) =>
+    Effect.result(
+      sandbox.invoke({
+        artifact,
+        artifactHash: createHash('sha256').update(artifact, 'utf8').digest('hex'),
+        entrypoint,
+        arguments: args as never,
+        // this suite EXPECTS completion; the 50ms scoring soft deadline is a
+        // design value, not a wait budget, and cold ci machines miss it
+        limits: { softDeadlineMs: 5_000, hardDeadlineMs: 10_000 },
+      }),
+    ),
+  ).pipe(
+    Effect.map((outcome) => {
+      if (!Result.isSuccess(outcome)) throw new Error(`sandbox refused: ${JSON.stringify(outcome)}`)
+      return outcome.success.output
+    }),
   )
-})
 
-afterAll(() => Effect.runPromise(Scope.close(scope as Scope.Closeable, Exit.void)))
+const bundled = (source: string) => Effect.promise(() => bundleFormula(source))
 
-const invoke = async (artifact: string, entrypoint: string, args: readonly unknown[]) => {
-  const outcome = await Effect.runPromise(
-    Effect.flatMap(Sandbox, (sandbox) =>
-      Effect.result(
-        sandbox.invoke({
-          artifact,
-          artifactHash: createHash('sha256').update(artifact, 'utf8').digest('hex'),
-          entrypoint,
-          arguments: args as never,
-          // this suite EXPECTS completion; the 50ms scoring soft deadline is a
-          // design value, not a wait budget, and cold ci machines miss it
-          limits: { softDeadlineMs: 5_000, hardDeadlineMs: 10_000 },
-        }),
-      ),
-    ).pipe(Effect.provide(context)),
-  )
-  if (!Result.isSuccess(outcome)) throw new Error(`sandbox refused: ${JSON.stringify(outcome)}`)
-  return outcome.success.output
-}
+// One engine for the whole file, built and closed by `layer`. The anonymous
+// form adds no suite of its own, so the two groups below keep their names;
+// `excludeTestServices` keeps the real clock, which is the only kind a
+// QuickJS deadline answers to.
+layer(sandboxLocalLayer({ size: 1, variant: 'release' }), { excludeTestServices: true })((it) => {
+  describe('a bundled artifact in the real sandbox', () => {
+    it.effect('hands out a profile-legal contract and scores exactly', () =>
+      Effect.gen(function* () {
+        const { artifact } = yield* bundled(COMPETITION)
+        // the wrapper stringifies the contract itself, with intrinsics captured
+        // before any user code ran - one bounded string is all that crosses
+        const contract = JSON.parse(yield* invoke(artifact, '__qualyContract', [])) as {
+          input: unknown
+          output: unknown
+        }
+        expect(validateInputProfile(contract.input)).toEqual([])
+        expect(validateAtomicProfile(contract.output)).toEqual([])
 
-describe('a bundled artifact in the real sandbox', () => {
-  it('hands out a profile-legal contract and scores exactly', async () => {
-    const { artifact } = await bundleFormula(COMPETITION)
-    // the wrapper stringifies the contract itself, with intrinsics captured
-    // before any user code ran - one bounded string is all that crosses
-    const contract = JSON.parse(await invoke(artifact, '__qualyContract', [])) as {
-      input: unknown
-      output: unknown
-    }
-    expect(validateInputProfile(contract.input)).toEqual([])
-    expect(validateAtomicProfile(contract.output)).toEqual([])
+        const answer = JSON.parse(
+          yield* invoke(artifact, '__qualyInvoke', [JSON.stringify(INPUT)]),
+        ) as { ok: boolean; amount?: string }
+        expect(answer).toEqual({ ok: true, amount: '0.9' })
+      }))
 
-    const answer = JSON.parse(await invoke(artifact, '__qualyInvoke', [JSON.stringify(INPUT)])) as {
-      ok: boolean
-      amount?: string
-    }
-    expect(answer).toEqual({ ok: true, amount: '0.9' })
+    it.effect('carries q.fail out as an envelope, not a defect', () =>
+      Effect.gen(function* () {
+        const { artifact } = yield* bundled(COMPETITION)
+        const answer = JSON.parse(
+          yield* invoke(artifact, '__qualyInvoke', [JSON.stringify({ ...INPUT, ordinal: 101 })]),
+        ) as { ok: boolean; failure?: { message: string } }
+        expect(answer).toEqual({ ok: false, failure: { message: 'ordinal is out of policy' } })
+      }))
   })
 
-  it('carries q.fail out as an envelope, not a defect', async () => {
-    const { artifact } = await bundleFormula(COMPETITION)
-    const answer = JSON.parse(
-      await invoke(artifact, '__qualyInvoke', [JSON.stringify({ ...INPUT, ordinal: 101 })]),
-    ) as { ok: boolean; failure?: { message: string } }
-    expect(answer).toEqual({ ok: false, failure: { message: 'ordinal is out of policy' } })
-  })
-})
-
-describe('the entrypoints cannot be hijacked by the module they wrap', () => {
-  // Every attack runs as user TOP-LEVEL code - before the wrapper installs
-  // anything - and is swallowed by its own try/catch so the module still
-  // evaluates. The claim under test: whatever the author's code did to the
-  // two reserved globals, what the host calls is still the wrapper's.
-  const MINIMAL_RUN = `export default defineFormula({
+  describe('the entrypoints cannot be hijacked by the module they wrap', () => {
+    // Every attack runs as user TOP-LEVEL code - before the wrapper installs
+    // anything - and is swallowed by its own try/catch so the module still
+    // evaluates. The claim under test: whatever the author's code did to the
+    // two reserved globals, what the host calls is still the wrapper's.
+    const MINIMAL_RUN = `export default defineFormula({
   input: Schema.input({ value: Schema.decimal({ maxScale: 2 }) }),
   output: Schema.scoreAmount({ maxScale: 2 }),
   run(input) {
     return input.value
   },
 })`
-  const hostile = (attack: string) => `import { Schema, defineFormula } from '@qualy/formula'
+    const hostile = (attack: string) => `import { Schema, defineFormula } from '@qualy/formula'
 try {
   ${attack}
 } catch {}
 ${MINIMAL_RUN}
 `
-  const attacks: readonly (readonly [string, string])[] = [
-    ['assigns over the invoke entrypoint', `globalThis.__qualyInvoke = () => '"evil"'`],
-    ['assigns over the contract entrypoint', `globalThis.__qualyContract = () => '"evil"'`],
-    ['deletes the invoke entrypoint', `delete globalThis.__qualyInvoke`],
-    ['deletes the contract entrypoint', `delete globalThis.__qualyContract`],
-    [
-      'redefines the invoke entrypoint',
-      `Object.defineProperty(globalThis, '__qualyInvoke', { value: () => '"evil"' })`,
-    ],
-    [
-      'redefines the contract entrypoint',
-      `Object.defineProperty(globalThis, '__qualyContract', { value: () => '"evil"' })`,
-    ],
-  ]
+    const attacks: readonly (readonly [string, string])[] = [
+      ['assigns over the invoke entrypoint', `globalThis.__qualyInvoke = () => '"evil"'`],
+      ['assigns over the contract entrypoint', `globalThis.__qualyContract = () => '"evil"'`],
+      ['deletes the invoke entrypoint', `delete globalThis.__qualyInvoke`],
+      ['deletes the contract entrypoint', `delete globalThis.__qualyContract`],
+      [
+        'redefines the invoke entrypoint',
+        `Object.defineProperty(globalThis, '__qualyInvoke', { value: () => '"evil"' })`,
+      ],
+      [
+        'redefines the contract entrypoint',
+        `Object.defineProperty(globalThis, '__qualyContract', { value: () => '"evil"' })`,
+      ],
+    ]
 
-  for (const [name, attack] of attacks) {
-    it(`stays itself when the module ${name}`, async () => {
-      const { artifact } = await bundleFormula(hostile(attack))
-      const contract = JSON.parse(await invoke(artifact, '__qualyContract', [])) as {
-        input: unknown
-        output: unknown
-      }
-      // the real contract, not an attacker's string
-      expect(validateInputProfile(contract.input)).toEqual([])
-      const answer = JSON.parse(
-        await invoke(artifact, '__qualyInvoke', [JSON.stringify({ value: '2.50' })]),
-      ) as { ok: boolean; amount?: string }
-      expect(answer).toEqual({ ok: true, amount: '2.5' })
-    })
-  }
+    for (const [name, attack] of attacks) {
+      it.effect(`stays itself when the module ${name}`, () =>
+        Effect.gen(function* () {
+          const { artifact } = yield* bundled(hostile(attack))
+          const contract = JSON.parse(yield* invoke(artifact, '__qualyContract', [])) as {
+            input: unknown
+            output: unknown
+          }
+          // the real contract, not an attacker's string
+          expect(validateInputProfile(contract.input)).toEqual([])
+          const answer = JSON.parse(
+            yield* invoke(artifact, '__qualyInvoke', [JSON.stringify({ value: '2.50' })]),
+          ) as { ok: boolean; amount?: string }
+          expect(answer).toEqual({ ok: true, amount: '2.5' })
+        }))
+    }
+  })
 })

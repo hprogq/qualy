@@ -3,7 +3,8 @@ import { Cause, Effect, Exit, Layer, Scope } from 'effect'
 import { HttpRouter } from 'effect/unstable/http'
 import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
 import { createServer } from 'node:http'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { it } from '@effect/vitest'
+import { afterAll, beforeAll, describe, expect } from 'vitest'
 import {
   APP_SHELL,
   AUTHENTICATED,
@@ -380,88 +381,92 @@ describe('the manifest a viewer receives', () => {
 describe('a claim made twice', () => {
   const page = definePage({ id: 'probe/page', path: '/probe' })
   const other = definePage({ id: 'probe/other', path: '/probe' })
+  // the scope is the test's now: `it.effect` opens one per case and closes
+  // it after, so a registry that refuses half way through is released where
+  // it was built rather than inside the assertion that caught it
   const build = (surfaces: UiSurfaces) =>
-    Effect.runPromiseExit(
-      Effect.scoped(Layer.build(registerSurfaces(surfaces).pipe(Layer.provideMerge(uiLayer)))),
-    )
+    Effect.exit(Layer.build(registerSurfaces(surfaces).pipe(Layer.provideMerge(uiLayer))))
 
-  it('refuses one page id claimed by two registrations', async () => {
-    const declaration = {
-      page,
-      component: reactComponent('./client/P'),
-      layout: APP_SHELL,
-      visibility: PUBLIC,
-    }
-    const exit = await build({ pages: [declaration, declaration] })
-    expect(Exit.isFailure(exit)).toBe(true)
-  })
+  it.effect('refuses one page id claimed by two registrations', () =>
+    Effect.gen(function* () {
+      const declaration = {
+        page,
+        component: reactComponent('./client/P'),
+        layout: APP_SHELL,
+        visibility: PUBLIC,
+      }
+      const exit = yield* build({ pages: [declaration, declaration] })
+      expect(Exit.isFailure(exit)).toBe(true)
+    }))
 
-  it('names both plugins when they claim one page id', async () => {
-    // the assembler tells the registry who declared what; the refusal must
-    // say which two plugins collided, not just which id
-    const declaration = {
-      page,
-      component: reactComponent('./client/P'),
-      layout: APP_SHELL,
-      visibility: PUBLIC,
-    }
-    const exit = await Effect.runPromiseExit(
-      Effect.scoped(
+  it.effect('names both plugins when they claim one page id', () =>
+    Effect.gen(function* () {
+      // the assembler tells the registry who declared what; the refusal must
+      // say which two plugins collided, not just which id
+      const declaration = {
+        page,
+        component: reactComponent('./client/P'),
+        layout: APP_SHELL,
+        visibility: PUBLIC,
+      }
+      const exit = yield* Effect.exit(
         Layer.build(
           Layer.mergeAll(
             registerSurfaces({ pages: [declaration] }, '@fake/plugin-first'),
             registerSurfaces({ pages: [declaration] }, '@fake/plugin-second'),
           ).pipe(Layer.provideMerge(uiLayer)),
         ),
-      ),
-    )
-    expect(Exit.isFailure(exit)).toBe(true)
-    const defect = Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined
-    expect(String(defect)).toMatch(
-      /page probe\/page is declared by both @fake\/plugin-(first|second) and @fake\/plugin-(first|second)/,
-    )
-  })
+      )
+      expect(Exit.isFailure(exit)).toBe(true)
+      const defect = Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined
+      expect(String(defect)).toMatch(
+        /page probe\/page is declared by both @fake\/plugin-(first|second) and @fake\/plugin-(first|second)/,
+      )
+    }))
 
-  it('refuses one path claimed by two pages', async () => {
-    const exit = await build({
-      pages: [
-        {
-          page,
-          component: reactComponent('./client/P'),
-          layout: APP_SHELL,
-          visibility: PUBLIC,
-        },
-        {
-          page: other,
-          component: reactComponent('./client/O'),
-          layout: APP_SHELL,
-          visibility: PUBLIC,
-        },
-      ],
-    })
-    expect(Exit.isFailure(exit)).toBe(true)
-  })
+  it.effect('refuses one path claimed by two pages', () =>
+    Effect.gen(function* () {
+      const exit = yield* build({
+        pages: [
+          {
+            page,
+            component: reactComponent('./client/P'),
+            layout: APP_SHELL,
+            visibility: PUBLIC,
+          },
+          {
+            page: other,
+            component: reactComponent('./client/O'),
+            layout: APP_SHELL,
+            visibility: PUBLIC,
+          },
+        ],
+      })
+      expect(Exit.isFailure(exit)).toBe(true)
+    }))
 
-  it('refuses one layout contract claimed twice', async () => {
-    const exit = await build({
-      layouts: [
-        { contract: APP_SHELL, component: reactComponent('./client/Shell') },
-        { contract: APP_SHELL, component: reactComponent('./client/Other') },
-      ],
-    })
-    expect(Exit.isFailure(exit)).toBe(true)
-  })
+  it.effect('refuses one layout contract claimed twice', () =>
+    Effect.gen(function* () {
+      const exit = yield* build({
+        layouts: [
+          { contract: APP_SHELL, component: reactComponent('./client/Shell') },
+          { contract: APP_SHELL, component: reactComponent('./client/Other') },
+        ],
+      })
+      expect(Exit.isFailure(exit)).toBe(true)
+    }))
 
-  it('refuses one id claimed twice under the same slot, and allows it across slots', async () => {
-    const item = (key: string) => ({
-      key,
-      id: 'test/thing' as const,
-      component: reactComponent('./client/Thing'),
-      visibility: PUBLIC,
-    })
-    // the browser resolves a renderer by slot AND id, so the pair is the
-    // claim; the same id under another slot is a different seat
-    expect(Exit.isFailure(await build({ slots: [item('a/one'), item('a/one')] }))).toBe(true)
-    expect(Exit.isFailure(await build({ slots: [item('a/one'), item('b/two')] }))).toBe(false)
-  })
+  it.effect('refuses one id claimed twice under the same slot, and allows it across slots', () =>
+    Effect.gen(function* () {
+      const item = (key: string) => ({
+        key,
+        id: 'test/thing' as const,
+        component: reactComponent('./client/Thing'),
+        visibility: PUBLIC,
+      })
+      // the browser resolves a renderer by slot AND id, so the pair is the
+      // claim; the same id under another slot is a different seat
+      expect(Exit.isFailure(yield* build({ slots: [item('a/one'), item('a/one')] }))).toBe(true)
+      expect(Exit.isFailure(yield* build({ slots: [item('a/one'), item('b/two')] }))).toBe(false)
+    }))
 })

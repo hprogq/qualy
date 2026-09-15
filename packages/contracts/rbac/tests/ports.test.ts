@@ -1,6 +1,7 @@
 import { literal } from '@qualy/i18n-contract'
+import { it } from '@effect/vitest'
 import { Effect, Layer } from 'effect'
-import { describe, expect, it } from 'vitest'
+import { describe, expect } from 'vitest'
 import { Placement } from '@qualy/auth-contract'
 import { AccessDenied, Rbac } from '../src/effect.ts'
 import { compileCatalog } from '../src/plugin.ts'
@@ -58,23 +59,25 @@ const placementStub = Layer.succeed(Placement, {
 })
 
 describe('the port packages', () => {
-  it('lets a consumer hold both peers without importing either plugin', async () => {
-    const result = await Effect.runPromise(
-      readSubtree('node-1').pipe(Effect.provide(Layer.mergeAll(rbacStub(true), placementStub))),
-    )
-    expect(result).toBe(3)
-  })
+  it.effect('lets a consumer hold both peers without importing either plugin', () =>
+    Effect.gen(function* () {
+      const result = yield* readSubtree('node-1').pipe(
+        Effect.provide(Layer.mergeAll(rbacStub(true), placementStub)),
+      )
+      expect(result).toBe(3)
+    }))
 
-  it('carries a denial as a failure the caller can see in its type', async () => {
-    const exit = await Effect.runPromiseExit(
-      readSubtree('node-1').pipe(Effect.provide(Layer.mergeAll(rbacStub(false), placementStub))),
-    )
-    expect(exit._tag).toBe('Failure')
-    // and it arrives as the declared failure rather than a defect, which is
-    // what makes a handler that ignores it fail to compile
-    const reason = (exit as Extract<typeof exit, { _tag: 'Failure' }>).cause.reasons[0]
-    expect((reason as { error?: { _tag?: string } }).error?._tag).toBe('ACCESS_DENIED')
-  })
+  it.effect('carries a denial as a failure the caller can see in its type', () =>
+    Effect.gen(function* () {
+      const exit = yield* Effect.exit(
+        readSubtree('node-1').pipe(Effect.provide(Layer.mergeAll(rbacStub(false), placementStub))),
+      )
+      expect(exit._tag).toBe('Failure')
+      // and it arrives as the declared failure rather than a defect, which is
+      // what makes a handler that ignores it fail to compile
+      const reason = (exit as Extract<typeof exit, { _tag: 'Failure' }>).cause.reasons[0]
+      expect((reason as { error?: { _tag?: string } }).error?._tag).toBe('ACCESS_DENIED')
+    }))
 
   it('compiles declarations into a catalog with owners stamped, refusing duplicates', () => {
     const catalog = compileCatalog([

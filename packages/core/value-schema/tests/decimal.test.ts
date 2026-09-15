@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { it } from '@effect/vitest'
+import { Schema } from 'effect'
+import { describe, expect } from 'vitest'
 import {
   canonicalDecimal,
   compareDecimal,
@@ -72,4 +74,72 @@ describe('the canonical layer', () => {
       expect(canonicalDecimal(once)).toBe(once)
     }
   })
+})
+
+// The same three layers, asked about their whole input space rather than
+// about nine examples.
+//
+// These are here because the examples above cannot reach the cases that
+// actually broke this module: a scale that differs only past the 17th digit,
+// a negative zero at a scale nobody wrote by hand, an integer part long
+// enough to leave float range. The generator writes those; the properties
+// below say what must hold whatever it writes.
+
+/** a decimal string built out of whatever integers the generator produced */
+const decimalOf = (whole: number, fraction: number, scale: number, negative: boolean): string => {
+  const places = Math.abs(scale) % 12
+  const digits = String(Math.abs(fraction) % 10 ** places).padStart(places, '0')
+  const integer = String(Math.abs(whole) % 10 ** 12)
+  return `${negative ? '-' : ''}${integer}${places === 0 ? '' : `.${digits}`}`
+}
+
+const PARTS = {
+  whole: Schema.Int,
+  fraction: Schema.Int,
+  scale: Schema.Int,
+  negative: Schema.Boolean,
+}
+
+describe('the three layers, over the whole input space', () => {
+  it.prop('writes only strings its own lexical layer admits', PARTS, (parts) =>
+    isDecimalString(decimalOf(parts.whole, parts.fraction, parts.scale, parts.negative)),
+  )
+
+  it.prop('canonicalizes to a fixed point, still admitted', PARTS, (parts) => {
+    const written = decimalOf(parts.whole, parts.fraction, parts.scale, parts.negative)
+    const once = canonicalDecimal(written)
+    if (once === null) return false
+    // admitted, and canonical about itself: a second pass changes nothing
+    return isDecimalString(once) && canonicalDecimal(once) === once
+  })
+
+  it.prop('canonicalizes without moving the value', PARTS, (parts) => {
+    const written = decimalOf(parts.whole, parts.fraction, parts.scale, parts.negative)
+    const once = canonicalDecimal(written)!
+    return compareDecimal(parseDecimal(written)!, parseDecimal(once)!) === 0
+  })
+
+  it.prop('counts the fractional digits the canonical form keeps', PARTS, (parts) => {
+    const written = decimalOf(parts.whole, parts.fraction, parts.scale, parts.negative)
+    const once = canonicalDecimal(written)!
+    const kept = once.includes('.') ? once.split('.')[1]!.length : 0
+    return fractionalDigits(parseDecimal(written)!) === kept
+  })
+
+  it.prop(
+    'orders any two the way their canonical forms compare, in both directions',
+    // flat, because the generator takes one schema per name rather than a
+    // tree of them
+    { ...PARTS, otherWhole: Schema.Int, otherFraction: Schema.Int, otherScale: Schema.Int },
+    (parts) => {
+      const a = decimalOf(parts.whole, parts.fraction, parts.scale, parts.negative)
+      const b = decimalOf(parts.otherWhole, parts.otherFraction, parts.otherScale, !parts.negative)
+      const order = compareDecimal(parseDecimal(a)!, parseDecimal(b)!)
+      // antisymmetric, and agreeing with the canonical spelling on equality
+      return (
+        order === -compareDecimal(parseDecimal(b)!, parseDecimal(a)!) &&
+        (order === 0) === (canonicalDecimal(a) === canonicalDecimal(b))
+      )
+    },
+  )
 })
