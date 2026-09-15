@@ -43,6 +43,9 @@ export const requestShutdown = (): void => {
  *
  * Raced against the launched application in the entry point, so that the
  * request interrupts the root fiber exactly the way a signal does - the same
- * scope closes and the same finalizers run.
+ * scope closes and the same finalizers run. It never completes on its own,
+ * which is why that race has to be one decided by the first COMPLETION: a
+ * race for the first success would wait here forever after the application
+ * had already failed.
  */
 export const shutdownRequested: Effect.Effect<void> = Deferred.await(stopping)

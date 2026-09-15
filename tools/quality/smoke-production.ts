@@ -286,3 +286,70 @@ const stopped = await server.stop()
 if (stopped.timedOut) fail(`SIGTERM did not stop the process within ${String(stopped.ms)}ms`)
 if (stopped.exitCode !== 0) fail(`shutdown exited ${String(stopped.exitCode)}`)
 console.log('smoke: shutdown clean (exit 0)')
+
+// A boot that refuses has to end, and say why.
+//
+// Both halves of the artifact check raise from inside the launched
+// application, and for a long time neither reached a reader: the entry point
+// raced the launch against the stop request for the first SUCCESS, so a
+// launch that died left the race waiting on a request only a signal would
+// ever send. The process stayed alive, never became ready, printed nothing,
+// and on SIGTERM reported an ordinary shutdown - a misconfigured instance
+// that an orchestrator keeps rather than replaces, with empty logs.
+//
+// So this asserts the process outcome rather than the layer's: the layer's
+// refusal is the web plugin's own suite, and what could not be seen there is
+// that nothing carried it to the exit. The two fields are tampered in the
+// installed metadata, which is exactly the shape of the deployment this
+// guards - a server updated over a store whose release was built from
+// something else.
+const pinned = path.join(
+  repoRoot,
+  'packages/plugins/infra/web/client-dist/releases',
+  staged!.releaseId,
+  '.qualy-release.json',
+)
+const original = fs.readFileSync(pinned, 'utf8')
+const refusalPort = String(Number(PORT) + 1)
+
+/** boots with one field of the pinned release spoiled, and returns how it ended */
+const refuses = async (field: 'resolutionHash' | 'browserContractHash') => {
+  fs.writeFileSync(
+    pinned,
+    `${JSON.stringify({ ...JSON.parse(original), [field]: 'sha256:not-this-one' }, null, 2)}\n`,
+  )
+  const refused = startQualyServer({
+    port: refusalPort,
+    env: {
+      DATABASE_URL: process.env.DATABASE_URL ?? 'postgres://qualy:qualy@localhost:5432/qualy',
+    },
+  })
+  try {
+    const deadline = Date.now() + 60_000
+    while (refused.exited() === null && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 200))
+    }
+    return { exited: refused.exited(), output: refused.output() }
+  } finally {
+    refused.kill()
+    fs.writeFileSync(pinned, original)
+  }
+}
+
+for (const field of ['resolutionHash', 'browserContractHash'] as const) {
+  const outcome = await refuses(field)
+  if (outcome.exited === null) {
+    fail(`a release with the wrong ${field} left the process running instead of refusing`)
+  }
+  if (outcome.exited !== '1') {
+    fail(`a release with the wrong ${field} exited ${outcome.exited!}, expected 1`)
+  }
+  const said = outcome.output
+    .split('\n')
+    .find((line) => line.includes('startup failed') && line.includes(staged!.releaseId))
+  if (!said) {
+    console.error(outcome.output)
+    fail(`a release with the wrong ${field} exited 1 without saying which release it refused`)
+  }
+  console.log(`smoke: a release with the wrong ${field} is refused, and named (exit 1)`)
+}

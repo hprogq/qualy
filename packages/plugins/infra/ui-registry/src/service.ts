@@ -20,6 +20,17 @@ import type {
 // running assembly has - a plugin's own configuration deciding whether to
 // offer an option at all. Those register while their own layer is built, and
 // a Scope carries the removal.
+//
+// Which is also the one thing this surface is still too wide for. A renderer
+// reaches the browser only through a descriptor: the collector reads
+// `uiSurfacesOf` and `loginSurfacesOf`, writes a loader for each and hashes
+// the set into the release's browser contract. So a page, a layout or a slot
+// filled HERE, at runtime, would be named by the server's manifest with no
+// loader in any bundle and no place in any contract. Nothing does it - the
+// only caller outside this plugin contributes a collection item, which
+// carries no renderer - and the narrowing is a later job: `contribute` public,
+// `addPage` / `registerLayout` / `fillSlot` / `surfaces` internal, so the api
+// says exactly what an active-only build can carry.
 
 /** a declaration paired with the plugin that made it, for key derivation */
 export interface Owned<T> {

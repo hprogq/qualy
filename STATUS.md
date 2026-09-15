@@ -15128,3 +15128,56 @@ resolutionHash 纹丝不动。于是「只更新 server、复用旧 web store」
 **门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm test` 236 passed | 3 skipped (239),
 Tests 1700 passed | 17 skipped (1717);`pnpm test:browser` 52 / 377;`pnpm test:browser:webkit` 2 / 14;
 `pnpm build` exit 0 → `r_88AkbU8zgM-y5o7QfjMtDg`;`check-staged-web`、`smoke-production` 全过。
+
+## 启动失败被 race 吃掉(2026-09-15)
+
+上一节记的「`WebUnservable` 静默挂起」不是 finalizer 阻塞,是入口的一个词。
+
+```ts
+Layer.launch(application).pipe(Effect.race(shutdownRequested), ...)
+```
+
+`shutdownRequested` 是 `Deferred.await`,**自己永远不会完成**。而 `Effect.race` 取的是
+**第一个成功**:一边失败它会继续等另一边。实查上游(catalog 同版本 4.0.0-rc.111):
+`repos/effect/packages/effect/src/Effect.ts:4837` 的 `race` 写明「returns the first **successful**
+result … If both fail, the race fails」,其 doctest 里 `fastFail` 输给 `slowSuccess`;
+`:4894` 的 `raceFirst` 是「the first one to complete, **whether it succeeds or fails**」,
+doctest 正是 `fail` vs `never`;`internal/effect.ts:1549` 的 `raceAllFirst` 拿到**任何** exit
+就 resume 并打断其余。
+
+于是整条链是:launch 里 die → race 不结束 → 继续等一个只有信号才会发的停止请求 → 进程**既不
+ready、也不退出、也不报告** → SIGTERM 到来 → 请求成功 → race 整体变 Success →
+`onExit` 看到 Success → 打印「shutdown complete」,把真正的 cause 盖掉。
+
+**这不只是 web release 检查的问题**:`Layer.launch(application)` 里的**任何**启动失败都会被吃掉——
+端口被占、某个 layer 拒绝自己的配置,都一样。main.ts 里那两层写得很完整的 startup failure reporter,
+恰恰被这个 race 挡在了外面。
+
+修法是一个词:`Effect.race` → `Effect.raceFirst`。
+
+**验证(实际执行)**:把 pinned release 的 `resolutionHash` / `browserContractHash` 分别篡改后
+`pnpm start`——修之前两者都挂到 60s 被 timeout 杀掉、日志里只有「shutdown complete」;
+修之后**都 exit 1 并打印具体原因**:
+
+```text
+startup failed: web release r_88Akb… carries browser contract sha256:deliberately-wrong, but this process declares sha256:46…
+startup failed: web release r_88Akb… was built from assembly sha256:deliberately-wrong, but this process runs sha256:5d87566…
+```
+
+**回归钉在 `smoke-production`**(CI 里跑在 build 之后,正是它需要真实 store 的地方):
+两个字段各篡改一次、另起端口真启动,断言 60s 内退出、退出码 1、且输出里有一行 `startup failed`
+**点名那个 release**;跑完恢复原文件。正常 SIGTERM 收尾仍是既有的 `shutdown clean (exit 0)`。
+**门禁验证过会红**:把 `raceFirst` 换回 `race` → smoke exit 1,停在
+`a release with the wrong resolutionHash left the process running instead of refusing`。
+
+**门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm test` 236 passed | 3 skipped (239),
+Tests 1700 passed | 17 skipped (1717);`smoke-production` 全过(含两条新用例)。
+
+### 技术债:`@qualy/plugin-ui-registry/service` 的表面还是宽了
+
+renderer 只能经描述器到达浏览器(collector 读 `uiSurfacesOf` / `loginSurfacesOf`,为每个写 loader
+并算进 browser contract)。所以在运行期调用 `addPage` / `registerLayout` / `fillSlot` 注册的 surface,
+会出现在服务端 manifest 里,**却没有任何 bundle 有它的 loader、也不在 contract 里**。
+当前仓库没有触发:唯一的外部 consumer(formula)只 `contribute` 一个 collection item,不带 renderer。
+以后收窄成「`contribute` 公开,其余内部」,让 api 与 active-only build 的物理能力一致。
+已写进 `service.ts` 的头注,不在本次展开。

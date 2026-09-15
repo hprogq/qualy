@@ -196,7 +196,19 @@ const launched = Layer.launch(application).pipe(
   // A stop asked for by anything other than a signal - a supervisor over the
   // channel - interrupts the root fiber exactly as a signal does: same scope,
   // same finalizers, same report below.
-  Effect.race(shutdownRequested),
+  //
+  // `raceFirst`, not `race`. `race` answers with the first SUCCESS and goes
+  // on waiting when one side fails, and this side never succeeds on its own:
+  // a launch that died - a web release built from another assembly, a port
+  // already taken, any layer refusing inside the application - left the race
+  // waiting on a stop request that only a signal would ever send. The process
+  // then sat there: not ready, not exited, and saying nothing, because the
+  // cause never reached either reporter below. When the signal finally came,
+  // the request succeeded, the race reported success, and the exit read as an
+  // ordinary shutdown - so the one thing an operator needed was also the one
+  // thing that was swallowed. `raceFirst` lets the first COMPLETION win,
+  // which is what "whichever ends this process" always meant.
+  Effect.raceFirst(shutdownRequested),
   Effect.onExit((exit) =>
     Exit.isSuccess(exit) || Cause.hasInterruptsOnly(exit.cause)
       ? Effect.sync(() => mark('shutdown complete')).pipe(
