@@ -264,6 +264,11 @@ export function editManifest(text: string, source: string): ManifestEdit {
       } else {
         entry.flow = false
         entry.set('enabled', false)
+        // first, where this file already puts it. Appended, a round trip
+        // through disable and enable rewrote an entry that had a `config`
+        // block - same meaning, different bytes, and a diff nobody asked for
+        const added = entry.items.findIndex((item) => String(item.key) === 'enabled')
+        if (added > 0) entry.items.unshift(...entry.items.splice(added, 1))
       }
       parsed.plugins.set(id, { ...parsed.plugins.get(id)!, enabled })
     },

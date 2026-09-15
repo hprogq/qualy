@@ -1,6 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { repoRoot } from '../lib/manifest.ts'
+import { manifestPath, repoRoot } from '../lib/manifest.ts'
+import { currentResolution, resolvePackageDir } from '@qualy/assembly/host'
+import { collectWebPlugins } from '@qualy/web-build/collect'
 import { storeAt, readCurrentWebRelease } from '../../packages/build/web/src/release-store.ts'
 import { BROWSER_SURFACE_MAP } from '../../packages/build/web/src/release-vite.ts'
 import { releaseProbeOf } from '@qualy/release-contract/private'
@@ -94,14 +96,57 @@ const shellBody = fs.existsSync(shell) ? fs.readFileSync(shell, 'utf8') : ''
   }
 }
 
-// A plugin this deployment did not select contributes zero bytes. The other
-// half of this - that the same fixture DOES appear when it is selected - is
-// proven by the dist-only plugin suite, which builds it for real.
+// A plugin this deployment did not select contributes zero bytes.
+//
+// Two ways of not being selected, and both are asked. A plugin that was never
+// installed is the fixture, whose other half - that the same sentinel DOES
+// appear once it is selected - is proven by the dist-only plugin suite, which
+// builds it for real. A plugin that IS installed and turned off is the case a
+// deployment actually has, and it is asked of this deployment's own manifest
+// rather than of a list written here: every surface a disabled plugin
+// declares, against every byte the release serves.
 {
   const SENTINELS = ['acme-dist-probe-page-8f21c6', 'acme-dist-probe-boot-4d90ab']
   const found = text.filter((one) => SENTINELS.some((sentinel) => one.body.includes(sentinel)))
-  if (found.length > 0) fail(`an unselected plugin reached the artifact: ${found[0]!.asset}`)
-  else ok('no unselected plugin left a byte in the artifact')
+  if (found.length > 0) fail(`an uninstalled plugin reached the artifact: ${found[0]!.asset}`)
+  else ok('no uninstalled plugin left a byte in the artifact')
+
+  // A disabled plugin is the case a deployment actually has, and it is asked
+  // of this deployment's own manifest rather than of a list written here.
+  //
+  // Two kinds of marker, because a plugin reaches the browser two ways: the
+  // surfaces it declares, whose ids key the loader tables, and the vendor
+  // packages it depends on, whose names survive into their own bundles. The
+  // reporting and object-store providers have no surface at all - they
+  // contribute a browser module - so surfaces alone would have asked nothing
+  // about the two plugins this deployment actually has turned off.
+  const resolution = await currentResolution(manifestPath())
+  const markersOf = new Map<string, string[]>()
+  for (const entry of await collectWebPlugins({ all: true })) {
+    const manifest = path.join(resolvePackageDir(entry.name, manifestPath()), 'package.json')
+    const vendors = Object.keys(
+      (JSON.parse(fs.readFileSync(manifest, 'utf8')) as { dependencies?: object }).dependencies ??
+        {},
+    ).filter((name) => !name.startsWith('@qualy/'))
+    markersOf.set(entry.name, [...entry.surfaces.map((one) => one.surface.id), ...vendors])
+  }
+  const carries = (marker: string) => text.some((one) => one.body.includes(marker))
+  const off = [...resolution.plugins.values()].filter((one) => one.state !== 'active')
+  const onMarkers = [...resolution.plugins.values()]
+    .filter((one) => one.state === 'active')
+    .flatMap((one) => markersOf.get(one.id) ?? [])
+  // a marker a selected plugin shares says nothing either way: every plugin
+  // depends on the same framework, and it is in the bundle because they do
+  const shared = new Set(onMarkers)
+  const leaked = off.flatMap((one) =>
+    (markersOf.get(one.id) ?? []).filter((marker) => !shared.has(marker) && carries(marker)),
+  )
+  if (leaked.length > 0) fail(`a plugin that is off reached the artifact: ${leaked.join(', ')}`)
+  else if (!onMarkers.some(carries)) {
+    fail('no selected plugin is recognisable in the artifact either; this check proves nothing')
+  } else {
+    ok(`${String(off.length)} plugin(s) off, and nothing of any of them is in the artifact`)
+  }
 }
 
 // The shell describes the product, not how it is built.

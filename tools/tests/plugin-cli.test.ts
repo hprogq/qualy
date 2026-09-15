@@ -298,6 +298,45 @@ describe('qualy plugin enable and disable', () => {
     }
   })
 
+  it('puts the key where the file already puts it, so a round trip is byte-for-byte', async () => {
+    // an entry with configuration under it: `enabled` appended after the
+    // config block means the same thing and different bytes, and a diff
+    // nobody asked for is how a hand-maintained file stops being trusted
+    const workspace = createWorkspace(INFRA, { linked: KIT })
+    try {
+      // written the way the product's own manifest is written - a comment, a
+      // block mapping under an entry - rather than the testkit's flow JSON
+      fs.writeFileSync(
+        workspace.manifestPath,
+        [
+          'version: 2',
+          '',
+          'application:',
+          '  workspace: .',
+          '',
+          'plugins:',
+          '  # the one with something under it',
+          "  '@qualy/plugin-database':",
+          '    config:',
+          '      migrationsFolder: ./db',
+          "  '@qualy/plugin-ui-registry': {}",
+          '',
+        ].join('\n'),
+      )
+      await commitLock(workspace)
+      const before = manifestOf(workspace)
+      expect(run(workspace, ['disable', '@qualy/plugin-database']).ok).toBe(true)
+      const off = manifestOf(workspace)
+      expect(off).toContain('enabled: false')
+      expect(off.indexOf('enabled: false')).toBeLessThan(off.indexOf('migrationsFolder'))
+      expect(run(workspace, ['enable', '@qualy/plugin-database']).ok).toBe(true)
+      expect(manifestOf(workspace)).toBe(before)
+      expect(manifestOf(workspace)).toContain('# the one with something under it')
+    } finally {
+      workspace.dispose()
+    }
+  })
+
   it('is a no-op when the plugin is already in that state', async () => {
     const workspace = await ready()
     try {

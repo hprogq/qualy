@@ -15321,3 +15321,19 @@ OpenAPI 文档。断言方式也改了:不是过滤敏感词(那会误伤 `auth 
 **门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm test` 236 passed | 3 skipped (239),
 Tests 1703 passed | 17 skipped (1720);`pnpm test:browser` 52 / 379;`pnpm build` exit 0;
 `check-chunks`、`check-public-web`、`check-staged-web`、`check-csp-build`、`smoke-production` 全过。
+
+### 收口(二)补:disabled 插件的产物证明,与一处 CLI 字节churn
+
+上一节的 sentinel 只证明了「**从未安装**的插件 0 字节」。本部署真正关掉的两个插件
+(`rum-tencent`、`storage-cos`)**一个 surface 都不声明**——它们贡献的是 browser module,
+所以按 surface 找等于什么都没问。改成两类标记一起找:**surface id ∪ 该插件非 `@qualy/` 的依赖包名**,
+并且**排除与 active 插件共享的标记**(每个插件都依赖 `effect`,它在包里是因为别人也要它)。
+非空性由 active 侧自证:`monaco-editor` 确实在产物里。
+
+**实测过会红**:把 `storage-cos` 打开重建、再关掉后跑门禁 →
+`a plugin that is off reached the artifact: cos-nodejs-sdk-v5, cos-js-sdk-v5, qcloud-cos-sts`。
+
+**顺手修一处 CLI 的字节 churn**:`plugin disable` 把 `enabled: false` **追加**在条目末尾,
+于是带 `config:` 块的条目在 disable→enable 往返后位置变了——意思一样、字节不同,
+而一份手维护的文件一旦开始产生没人要求的 diff 就不再被信任。现在插在条目最前,与文件既有写法一致。
+新增一条用例(按产品自己的写法写 fixture:注释 + 块状 config),**去掉那几行会红**。
