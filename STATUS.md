@@ -15835,3 +15835,79 @@ PROD + SIGTERM  SIGTERM: shutting down
 production smoke 现在会**再起一个实例、用 SIGINT 停它**:必须退 0、报告 finalizer、
 说出 `SIGINT: shutting down`、且不含 `press Ctrl+C again`。**反向验证过**:
 把条件里的 mode 判断拿掉,smoke 立刻红在 `SIGINT did not name itself`。
+
+### 追记(2026-09-15 晚):两个独立问题,都定罪了
+
+远端 `c37eafac` 的 CI 并不是全绿。Chromium 与 WebKit job 过了,主 ci job 在 `pnpm test` 红,
+后面的 build / smoke 被跳过。拉日志看清楚了,而且**它不是那条 DB flake**:
+
+```text
+FAIL tools/tests/plugin-isolation.test.ts > core needs no other plugin in its program
+FAIL tools/tests/plugin-isolation.test.ts > rbac needs no other plugin in its program
+Error: Test timed out in 30000ms.
+Test Files  1 failed | 238 passed | 3 skipped (242)
+```
+
+**问题一:编译并发没有按机器容量限流。** `9b6792f5` 把假并发修成真并发是对的,但只做完了一半:
+路数交给了 runner 的默认值 5。一整个 TypeScript program 不是小活,两核 runner 上的实测是
+
+```text
+core      30042ms  TIMEOUT
+rbac      30008ms  TIMEOUT
+auth      22562ms
+formula   20296ms
+storage   16047ms
+```
+
+本地冷跑量了三档:5 路 9.2s / 单例最慢 2.5s;**2 路 10.1s / 单例最慢 1.3s**;1 路 15.9s。
+买的是单例时间减半,付的是一秒墙钟。`vi.setConfig({ maxConcurrency: 2 })` 写在文件里而不是根配置,
+因为全仓**只有这一处** `describe.concurrent`。**timeout 一个字没动** —— 为了迁就过载的机器
+去调高预算,是把问题藏起来而不是修掉。
+
+顺带实测掉一个担心:排队中的用例**不烧 timeout**。单例耗时随路数收紧而**下降**
+(2.5 → 1.3 → 0.9s),如果计时从入队就开始,这个方向不可能出现。
+
+**问题二:`query()` 允许 fiber 跑在它启动的 promise 前面。** 这才是池不退的真机制,
+而且**不是 rc.115 引入的** —— rc.111 的 `tryPromise` 行为完全一样。
+
+`Effect.tryPromise` 只有在回调**接受它提供的 AbortSignal** 时才会挂 cancellation finalizer:
+
+```ts
+callbackOptions(..., f.length !== 0)           // internal/effect.ts:1134
+...
+if (controller === undefined && onCancel === undefined) {
+  return Yield                                  // internal/effect.ts:1177
+}
+```
+
+而 `query` 传的是零参回调,于是 `withSignal = false`、没有 onCancel、**不压任何 async finalizer**。
+fiber 的中断当场完成,它启动的 Kysely/pg promise 继续在 JS 世界里跑并**仍持有签出**。
+接着 scope 关闭 → database layer 释放 → `pool.end()` 等一个主人已经被回收的连接。
+
+这解释了之前那份验尸报告为什么长这样:**PostgreSQL 显示 idle / ClientRead / 无事务**,
+只能证明服务端做完了、在等客户端下一条消息 —— **不能**证明 Node 侧的 promise 已 settle、
+更不能证明 Kysely 的 `finally { releaseConnection }` 已经拿到执行机会。上一轮写成
+「查询早已结束,连接从未归还」是说过头了。
+
+**修法**:effect 持住它启动的**那一个** promise,中断完成前 drain 同一个(`run()` 只调用一次)。
+不走「把回调改成接收 signal」那条:那只是让 `f.length` 变成 1、造一个没人消费的 AbortController,
+看起来修了 interruption,实际上没修资源生命周期。
+
+不设上限是有意的:一条永不 settle 的语句本来就会卡住 `pool.end()`;变的是它**显示在哪里** ——
+显示在发起它、且仍带着 owner 的那条 fiber 上,而不是一个只能点名插件的 finalizer 里。
+兜底仍然是进程的 `QUALY_SHUTDOWN_TIMEOUT`。
+
+`transaction` 不需要改:它的签出在 `acquireUseRelease` 里取和放,而 acquire 不被
+`uninterruptibleMask` 的 restore 覆盖,两端本来就够不着中断。
+
+**两条测试,都先证明过会红**:一条是纯契约、不碰数据库、**5ms 内确定性失败**;
+一条用真 PostgreSQL 把一条语句按在中断上,再要求池关闭。拿掉 `onInterrupt` 两条同时红。
+
+原触发链(assessment scheduler 的后台 fiber + effect-api teardown)**连跑 10 次全绿**,
+无 `teardown stuck`、无 `still releasing`。
+
+**关于 `fiber.cache.span`**:它在**已发布的** `Fiber.d.ts` 里(`readonly cache: Fiber.Cache`、
+`readonly span: AnySpan | undefined`),是公开且带类型的 API。旧代码之所以会静默失效,
+是因为它**经 cast** 读 `fiber.currentSpan` —— 漂移对编译器隐形。现在这条受类型检查,
+上游再挪一次就是 typecheck 红。同一文件里 `ownerOf` 用 `Effect.currentParentSpan`(每事务一次)、
+`ownerOnFiber` 读 fiber cache(每语句一次),差别是有意的,已封成 `spanNameOnFiber` 并把理由写在那里。
