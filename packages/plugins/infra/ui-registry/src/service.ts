@@ -1,93 +1,37 @@
 import { Context, Effect, Scope } from 'effect'
-import type {
-  CollectionDeclaration,
-  LayoutDeclaration,
-  PageDeclaration,
-  SlotDeclaration,
-} from '@qualy/ui-contract'
+import type { CollectionDeclaration } from '@qualy/ui-contract'
 
-// The UI capability, as a contributor consumes it.
+// The UI capability, as a contributor consumes it at RUN TIME.
 //
-// A plugin that has a surface to add reaches for this and nothing else: the
-// service tag, and the shapes its methods take. The registry that implements
-// it is this plugin's own business and lives beside it, which is the same
-// line every other infrastructure capability draws - `@qualy/plugin-storage`
-// publishes what a backend implements, not the store it keeps.
-//
-// The line matters because of WHEN this is used. Almost every surface is a
+// One method, and the narrowness is the point. Almost every surface is a
 // static declaration on a descriptor, compiled before anything is built; this
 // is for the few that cannot be, because they depend on a value only the
 // running assembly has - a plugin's own configuration deciding whether to
 // offer an option at all. Those register while their own layer is built, and
 // a Scope carries the removal.
 //
-// Which is also the one thing this surface is still too wide for. A renderer
-// reaches the browser only through a descriptor: the collector reads
-// `uiSurfacesOf` and `loginSurfacesOf`, writes a loader for each and hashes
-// the set into the release's browser contract. So a page, a layout or a slot
-// filled HERE, at runtime, would be named by the server's manifest with no
-// loader in any bundle and no place in any contract. Nothing does it - the
-// only caller outside this plugin contributes a collection item, which
-// carries no renderer - and the narrowing is a later job: `contribute` public,
-// `addPage` / `registerLayout` / `fillSlot` / `surfaces` internal, so the api
-// says exactly what an active-only build can carry.
-
-/** a declaration paired with the plugin that made it, for key derivation */
-export interface Owned<T> {
-  readonly declaration: T
-  readonly owner: string
-}
-
-/** everything registered, with owners: the manifest derives registry keys */
-export interface OwnedSurfaces {
-  readonly pages: readonly Owned<PageDeclaration>[]
-  readonly layouts: readonly Owned<LayoutDeclaration>[]
-  readonly collections: readonly CollectionDeclaration[]
-  readonly slots: readonly Owned<SlotDeclaration>[]
-}
-
-// What the shell is made of, as its plugins put it there.
+// A page, a layout or a slot may NOT be added this way, which is why they are
+// not here. A renderer reaches a browser through the descriptor and only
+// through it: the collector reads the declarations, writes a loader for each
+// and hashes the set into the release's browser contract. One added at run
+// time would be named by the server's manifest with no loader in any bundle
+// and no place in any contract - a screen the shell resolves to nothing, on a
+// release that believes it is intact. The registry behind this can still do
+// it, because boot-time registration of what the descriptors declared is how
+// anything gets registered at all; what changed is that the ability is no
+// longer published.
 //
-// This is the cordis registry back, in a shape a static graph can express: a
-// plugin calls `addPage` while its own layer is built, and the manifest reads
-// the registry per request rather than being constructed out of it. Nothing
-// has to be built after everything else to be complete, because nothing reads
-// it until a request arrives.
-//
-// The declarations stay descriptors, which is what makes this safe: adding a
-// page runs no query and touches no service, so registration order carries no
-// meaning and the layer graph never has to encode one. What order does decide
-// is display order, and that is an explicit `order` field.
-//
-// The method names say what is being contributed rather than that something is
-// being registered. A shell has four kinds of surface and they are not
-// interchangeable - a slot takes a renderer, a collection takes data - so one
-// `register` taking a union would be a worse type and a worse sentence.
+// A collection item carries no renderer. It is data the layout already knows
+// how to draw, which is why it is the one contribution a running assembly can
+// safely make.
 
-export class Ui extends Context.Service<
-  Ui,
+export class UiContributions extends Context.Service<
+  UiContributions,
   {
-    /** one routable screen, with the layout contract that frames it */
-    readonly addPage: (
-      declaration: PageDeclaration,
-      owner?: string,
-    ) => Effect.Effect<void, never, Scope.Scope>
-    /** an implementation of a layout contract, which only a layout plugin ships */
-    readonly registerLayout: (
-      declaration: LayoutDeclaration,
-      owner?: string,
-    ) => Effect.Effect<void, never, Scope.Scope>
-    /** an item in a collection the layout renders, navigation being the one everybody uses */
+    /** an item in a collection the layout renders, for a surface a value decides */
     readonly contribute: (
       declaration: CollectionDeclaration,
       owner?: string,
     ) => Effect.Effect<void, never, Scope.Scope>
-    /** a renderer for a named slot */
-    readonly fillSlot: (
-      declaration: SlotDeclaration,
-      owner?: string,
-    ) => Effect.Effect<void, never, Scope.Scope>
-    /** everything registered with its declaring plugin, read per request by the manifest */
-    readonly surfaces: Effect.Effect<OwnedSurfaces>
   }
->()('@qualy/plugin-ui-registry/Ui') {}
+>()('@qualy/plugin-ui-registry/UiContributions') {}

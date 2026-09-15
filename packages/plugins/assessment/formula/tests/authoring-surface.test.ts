@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { Effect, Exit, Layer, Scope } from 'effect'
 import { permissionOf } from '@qualy/ui-contract'
 import { Ui, uiLayer } from '@qualy/plugin-ui-registry/server/registry'
+import { UiContributions } from '@qualy/plugin-ui-registry/service'
 import { calculatorAuthoringOptions } from '@qualy/plugin-assessment/surfaces'
 import { FormulaSettings } from '../src/server/config.ts'
 import { formulaAuthoringSurfaceLayer } from '../src/server/authoring-surface.ts'
@@ -27,7 +28,10 @@ const under = (authoring: boolean) =>
       yield* Layer.buildWithScope(
         formulaAuthoringSurfaceLayer.pipe(
           Layer.provide(Layer.succeed(FormulaSettings, FormulaSettings.of({ authoring }))),
-          Layer.provide(Layer.succeed(Ui, ui)),
+          // the published view, which is what a contributor is handed
+          Layer.provide(
+            Layer.succeed(UiContributions, UiContributions.of({ contribute: ui.contribute })),
+          ),
         ),
         scope,
       )
@@ -56,5 +60,17 @@ describe('the formula option in the calculator chooser', () => {
     })
     // the registration is scoped to the layer: gone when it is
     expect(after).toEqual([])
+  })
+})
+
+describe('what a running assembly may contribute', () => {
+  // The published capability is one method. A page, a layout or a slot added
+  // at run time would be named by the server's manifest with no loader in any
+  // bundle and no place in the release's browser contract - a screen the shell
+  // resolves to nothing, on a release that believes it is intact. Those come
+  // from a descriptor, where the build can see them.
+  it('offers a collection item, and nothing that carries a renderer', () => {
+    const view = UiContributions.of({ contribute: () => Effect.void })
+    expect(Object.keys(view).sort()).toEqual(['contribute'])
   })
 })

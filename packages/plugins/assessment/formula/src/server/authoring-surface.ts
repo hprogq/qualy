@@ -1,7 +1,7 @@
 import { Effect, Layer } from 'effect'
 import { message } from '@qualy/i18n-contract'
 import { permissionOf } from '@qualy/ui-contract'
-import { Ui } from '@qualy/plugin-ui-registry/service'
+import { UiContributions } from '@qualy/plugin-ui-registry/service'
 import { calculatorAuthoringOptions } from '@qualy/plugin-assessment/surfaces'
 import { FormulaSettings } from './config.ts'
 
@@ -22,24 +22,27 @@ import { FormulaSettings } from './config.ts'
 // capability report a rolling deployment compares across instances is the
 // boot audit's, not this file's.
 
-export const formulaAuthoringSurfaceLayer: Layer.Layer<never, never, Ui | FormulaSettings> =
-  Layer.effectDiscard(
-    Effect.gen(function* () {
-      const settings = yield* FormulaSettings
-      yield* Effect.logInfo(
-        `formula binding authoring ${settings.authoring ? 'enabled' : 'disabled'}`,
-      )
-      if (!settings.authoring) return
-      const ui = yield* Ui
-      yield* ui.contribute({
-        collection: calculatorAuthoringOptions,
-        id: 'assessment-formula/calculator',
-        value: {
-          ref: 'formula@1',
-          label: message('assessment-formula/binding/calculator', 'A published formula'),
-          order: 20,
-        },
-        visibility: permissionOf('assessment.batch.manage'),
-      })
-    }),
-  )
+export const formulaAuthoringSurfaceLayer: Layer.Layer<
+  never,
+  never,
+  UiContributions | FormulaSettings
+> = Layer.effectDiscard(
+  Effect.gen(function* () {
+    const settings = yield* FormulaSettings
+    yield* Effect.logInfo(
+      `formula binding authoring ${settings.authoring ? 'enabled' : 'disabled'}`,
+    )
+    if (!settings.authoring) return
+    const ui = yield* UiContributions
+    yield* ui.contribute({
+      collection: calculatorAuthoringOptions,
+      id: 'assessment-formula/calculator',
+      value: {
+        ref: 'formula@1',
+        label: message('assessment-formula/binding/calculator', 'A published formula'),
+        order: 20,
+      },
+      visibility: permissionOf('assessment.batch.manage'),
+    })
+  }),
+)

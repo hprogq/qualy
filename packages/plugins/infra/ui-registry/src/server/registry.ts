@@ -1,4 +1,4 @@
-import { Effect, Layer, Schema, Scope } from 'effect'
+import { Context, Effect, Layer, Schema, Scope } from 'effect'
 import type {
   CollectionDeclaration,
   LayoutDeclaration,
@@ -6,13 +6,65 @@ import type {
   SlotDeclaration,
   UiSurfaces,
 } from '@qualy/ui-contract'
-import { Ui, type Owned, type OwnedSurfaces } from '../service.ts'
+import { UiContributions } from '../service.ts'
 
 // The registry behind the capability: what `Ui` does when a contributor
 // calls it, and the boot-time registration of everything declared statically.
-// The service tag itself is a surface and lives next door.
+//
+// `Ui` is this plugin's own. What a contributor may reach for at run time is
+// the narrow view next door, which is one method: everything that carries a
+// renderer has to come from a descriptor, or the build has no loader for it.
 
-export { Ui, type Owned, type OwnedSurfaces } from '../service.ts'
+/** a declaration paired with the plugin that made it, for key derivation */
+export interface Owned<T> {
+  readonly declaration: T
+  readonly owner: string
+}
+
+/** everything registered, with owners: the manifest derives registry keys */
+export interface OwnedSurfaces {
+  readonly pages: readonly Owned<PageDeclaration>[]
+  readonly layouts: readonly Owned<LayoutDeclaration>[]
+  readonly collections: readonly CollectionDeclaration[]
+  readonly slots: readonly Owned<SlotDeclaration>[]
+}
+
+export class Ui extends Context.Service<
+  Ui,
+  {
+    /** one routable screen, with the layout contract that frames it */
+    readonly addPage: (
+      declaration: PageDeclaration,
+      owner?: string,
+    ) => Effect.Effect<void, never, Scope.Scope>
+    /** an implementation of a layout contract, which only a layout plugin ships */
+    readonly registerLayout: (
+      declaration: LayoutDeclaration,
+      owner?: string,
+    ) => Effect.Effect<void, never, Scope.Scope>
+    /** an item in a collection the layout renders, navigation being the one everybody uses */
+    readonly contribute: (
+      declaration: CollectionDeclaration,
+      owner?: string,
+    ) => Effect.Effect<void, never, Scope.Scope>
+    /** a renderer for a named slot */
+    readonly fillSlot: (
+      declaration: SlotDeclaration,
+      owner?: string,
+    ) => Effect.Effect<void, never, Scope.Scope>
+    /** everything registered with its declaring plugin, read per request by the manifest */
+    readonly surfaces: Effect.Effect<OwnedSurfaces>
+  }
+>()('@qualy/plugin-ui-registry/Ui') {}
+
+/**
+ * The published view of the registry: the one contribution a running
+ * assembly may make, backed by the registry it is a view of.
+ */
+export const uiContributionsLayer: Layer.Layer<UiContributions, never, Ui> = Layer.effect(
+  UiContributions,
+  Effect.map(Ui, (ui) => UiContributions.of({ contribute: ui.contribute })),
+)
 
 /**
  * The registry itself.

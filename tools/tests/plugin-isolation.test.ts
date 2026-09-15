@@ -294,7 +294,7 @@ const CROSS_PLUGIN_SURFACES: Readonly<Record<string, string>> = {
   '@qualy/plugin-ui-registry/server/authorizer':
     'the single authorizer slot rbac fills; the shell fails closed without it',
   '@qualy/plugin-ui-registry/service':
-    'the ui capability, for the few surfaces a running assembly decides',
+    'the ui capability, and the one contribution a running assembly may make',
 
   // contract leaves: what a plugin publishes FOR its neighbours
   '@qualy/plugin-auth/api': 'a neighbour api group, which is a contract leaf',

@@ -15337,3 +15337,32 @@ Tests 1703 passed | 17 skipped (1720);`pnpm test:browser` 52 / 379;`pnpm build` 
 于是带 `config:` 块的条目在 disable→enable 往返后位置变了——意思一样、字节不同,
 而一份手维护的文件一旦开始产生没人要求的 diff 就不再被信任。现在插在条目最前,与文件既有写法一致。
 新增一条用例(按产品自己的写法写 fixture:注释 + 块状 config),**去掉那几行会红**。
+
+## 设计符合性收口(三):运行期能加的,只剩不带渲染器的那一种(2026-09-15)
+
+复审提出的潜在 correctness hole:`@qualy/plugin-ui-registry/service` 公开了
+`addPage` / `registerLayout` / `fillSlot` / `surfaces`,而**渲染器只能经描述器到达浏览器**——
+collector 读描述器声明、为每个写 loader、把集合算进 release 的 browser contract。
+于是第三方插件合法调用公开 API 就能造出:
+
+```text
+服务端 manifest 有一个带渲染器的 surface
+  ↓
+描述器/构建没有 → 任何 bundle 里都没有它的 loader
+  ↓
+browserContractHash 也不知道它
+```
+
+一块 shell 解析不出来的屏,而那个 release 认为自己是完整的。当前没被触发(唯一的外部 consumer
+formula 只 `contribute` 一个 collection item,不带渲染器),但公开面比 active-only build 的物理能力宽。
+
+**收窄**:按「tag 是表面,layer 是实现」的同一条线再切一次——`Ui`(五个方法)回到
+`server/registry.ts` 归本插件自己;公开叶子只剩 `UiContributions`,**一个方法**:
+`contribute(collection item)`。boot 期注册描述器声明的那一切照旧走 `Ui`,那是内部的。
+理由写在 `service.ts` 头注里:**collection item 不携带渲染器,是布局已经知道怎么画的数据,
+所以它是运行期唯一安全的贡献**。
+
+`plugin-isolation` 的具名清单条目仍是一条(描述改了),**没有变长**。
+新增一条用例钉住这个视图的形状恰好是 `['contribute']`。
+
+**门禁(实际执行)**:`pnpm typecheck` exit 0;formula 全套 + `plugin-isolation` 25 文件 134 例。

@@ -21,7 +21,7 @@ import {
   type PluginDescriptor,
   type PluginFeature,
 } from '@qualy/plugin-kit'
-import { registerSurfaces, uiLayer } from './server/registry.ts'
+import { registerSurfaces, uiContributionsLayer, uiLayer } from './server/registry.ts'
 
 // The shell's face in the descriptor model.
 //
@@ -173,6 +173,10 @@ export const Ui = {
         ...contributions.map((contribution) =>
           registerSurfaces(contribution.value, contribution.pluginId),
         ),
-      ).pipe(Layer.provideMerge(uiLayer)),
+      ).pipe(
+        // the registry, and beside it the one view of it a contributor may
+        // reach for while its own layer builds
+        Layer.provideMerge(uiContributionsLayer.pipe(Layer.provideMerge(uiLayer))),
+      ),
   }),
 }
