@@ -235,17 +235,18 @@ const settle = async (
  * current span and its log annotations are both kept on the fiber itself.
  */
 const ownerOnFiber = (kind: CheckoutOwner['kind']): CheckoutOwner => {
-  const fiber = Fiber.getCurrent() as
-    | (Fiber.Fiber<unknown, unknown> & {
-        readonly currentSpan?: { readonly _tag: string; readonly name?: string }
-      })
-    | undefined
+  const fiber = Fiber.getCurrent()
   const source = fiber?.getRef(References.CurrentLogAnnotations)['source']
+  // the span lives on the fiber's cache; it used to be reachable as
+  // `fiber.currentSpan`, and reading it through a cast is how that stopped
+  // being true without anything saying so - every checkout this ledger
+  // recorded after the runtime moved it was recorded with no span at all
+  const span = fiber?.cache.span
   return {
     kind,
     token: {},
     fiber: fiber?.id,
-    span: fiber?.currentSpan?._tag === 'Span' ? fiber.currentSpan.name : undefined,
+    span: span?._tag === 'Span' ? span.name : undefined,
     source: typeof source === 'string' ? source : undefined,
   }
 }
