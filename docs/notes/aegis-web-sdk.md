@@ -34,12 +34,12 @@ PoC 不进仓库,建在会话临时目录里,构成:
 
 ## 与 docs/rum.md 不一致的地方(以本文为准)
 
-| docs/rum.md 的说法                              | 实查结果                                                                       |
-| ----------------------------------------------- | ------------------------------------------------------------------------------ |
-| `repeat` 默认 5                                 | 默认 **60**                                                                    |
-| `hostUrl` 需显式配国内域名                      | 默认已经是 `https://rumt-zh.com`                                               |
-| `beforeRequest` 是上报前的最后一道,可改可拦     | `beforeRequest` 收到的是 `{logs, logType}`,**改不到 URL**;真正的 wire 级钩子叫 `onBeforeRequest`(见下) |
-| §39 建议配置                                    | 少了 `gzip`,而 gzip 默认开且默认起 Worker,直接撞 CSP(见下)                  |
+| docs/rum.md 的说法                          | 实查结果                                                                                               |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `repeat` 默认 5                             | 默认 **60**                                                                                            |
+| `hostUrl` 需显式配国内域名                  | 默认已经是 `https://rumt-zh.com`                                                                       |
+| `beforeRequest` 是上报前的最后一道,可改可拦 | `beforeRequest` 收到的是 `{logs, logType}`,**改不到 URL**;真正的 wire 级钩子叫 `onBeforeRequest`(见下) |
+| §39 建议配置                                | 少了 `gzip`,而 gzip 默认开且默认起 Worker,直接撞 CSP(见下)                                             |
 
 实测到的默认值(从产物里 `this.config = {...}` 读出):`delay: 1000`、`onError: true`、
 `repeat: 60`、`random: 1`、`aid: true`、`device: true`、`pagePerformance: true`、
@@ -141,9 +141,9 @@ PoC 不进仓库,建在会话临时目录里,构成:
 三层修完之后哨兵 **0 次**,Chromium 与 WebKit 一致:
 
 ```ts
-beforeReport(log)        // 就地改写 log.originFrom,并把 msg 里的 query 去掉
-beforeRequest(entry)     // entry.logType === 'pv' 时返回 false
-aegis.extendBean('referer', '')   // 构造完立刻覆盖
+beforeReport(log) // 就地改写 log.originFrom,并把 msg 里的 query 去掉
+beforeRequest(entry) // entry.logType === 'pv' 时返回 false
+aegis.extendBean('referer', '') // 构造完立刻覆盖
 ```
 
 只做 wire 级 `onBeforeRequest` 改 URL **不够**:日志体里的 `originFrom` 还在,实测仍有 7 次命中。
@@ -165,15 +165,15 @@ aegis.extendBean('referer', '')   // 构造完立刻覆盖
 
 一次页面加载里,`beforeReport` 收到的 `level`:
 
-| level | 事件                       | 用例                             |
-| ----- | -------------------------- | -------------------------------- |
-| 4     | ERROR                      | 未捕获同步异常                   |
-| 8     | PROMISE_ERROR              | 未处理 rejection(另带 `errorMsg`)|
-| 32    | SCRIPT_ERROR               | `<script>` 404                   |
-| 128   | CSS_ERROR                  | `<link rel=stylesheet>` 404      |
-| 64    | IMAGE_ERROR                | `<img>` 404                      |
-| 4     | ERROR(主动上报)           | ErrorBoundary catch 后 `aegis.error({msg, ext1..3})` |
-| 4     | ERROR                      | 超长 message                     |
+| level | 事件            | 用例                                                 |
+| ----- | --------------- | ---------------------------------------------------- |
+| 4     | ERROR           | 未捕获同步异常                                       |
+| 8     | PROMISE_ERROR   | 未处理 rejection(另带 `errorMsg`)                    |
+| 32    | SCRIPT_ERROR    | `<script>` 404                                       |
+| 128   | CSS_ERROR       | `<link rel=stylesheet>` 404                          |
+| 64    | IMAGE_ERROR     | `<img>` 404                                          |
+| 4     | ERROR(主动上报) | ErrorBoundary catch 后 `aegis.error({msg, ext1..3})` |
+| 4     | ERROR           | 超长 message                                         |
 
 `IMAGE_ERROR` 默认是会上报的,docs/rum.md §13 想要的「默认过滤」得自己在 `beforeReport` 里做。
 
@@ -256,11 +256,11 @@ whitelist 则回 `{"retcode":0,"result":{"is_in_white_list":false,"rate":0,"shut
 
 真正的诊断在**响应头** `rum-error` 里,它带业务错误码:
 
-| 码       | 含义                                                      |
-| -------- | --------------------------------------------------------- |
-| `111`    | `id(...) in referer(...)/origin(...) is not allowed to report from this origin`——来源域名不在该应用的白名单里 |
-| `41`     | `project(...) is not exist`——id 不存在                    |
-| `12`     | `failed to match any pattern`——路径/方法不对(例如 GET /collect) |
+| 码    | 含义                                                                                                          |
+| ----- | ------------------------------------------------------------------------------------------------------------- |
+| `111` | `id(...) in referer(...)/origin(...) is not allowed to report from this origin`——来源域名不在该应用的白名单里 |
+| `41`  | `project(...) is not exist`——id 不存在                                                                        |
+| `12`  | `failed to match any pattern`——路径/方法不对(例如 GET /collect)                                               |
 
 `41` 与 `111` 的区别正好可以用来判断「id 对不对」与「域名允不允许」,不必去控制台猜。
 
@@ -275,7 +275,10 @@ whitelist 则回 `{"retcode":0,"result":{"is_in_white_list":false,"rate":0,"shut
 产物里对这个字符串有专门处理(`FORBIDDEN_RESPONSE_DATA`):
 
 ```js
-if ((''+response).indexOf('403 forbidden') > -1) { isErr = true; core.destroy() }
+if (('' + response).indexOf('403 forbidden') > -1) {
+  isErr = true
+  core.destroy()
+}
 ```
 
 所以**第一条被拒的请求就会把 Aegis 实例销毁**,之后整页不再尝试任何上报。排查时看到「只发了一轮就没了」
@@ -349,24 +352,29 @@ Bucket: rumprod-1258344699    Region: ap-guangzhou
 
 ```ts
 new Aegis({
-  id, hostUrl: 'https://rumt-zh.com',
+  id,
+  hostUrl: 'https://rumt-zh.com',
   version: rumVersionForRelease(webRelease.releaseId),
-  env, random: config.sampleRate,
-  repeat: 5,              // 默认是 60,要压噪必须显式写
+  env,
+  random: config.sampleRate,
+  repeat: 5, // 默认是 60,要压噪必须显式写
   aid: false,
   spa: false,
   onError: true,
-  pagePerformance: { urlHandler: observedPageUrl },  // 零参函数,返回值替换 from
+  pagePerformance: { urlHandler: observedPageUrl }, // 零参函数,返回值替换 from
   webVitals: true,
   reportApiSpeed: false,
   reportAssetSpeed: false,
-  blankScreen: false, consoleLog: false, clickElementLog: false, websocketHack: false,
+  blankScreen: false,
+  consoleLog: false,
+  clickElementLog: false,
+  websocketHack: false,
   lagMonitor: { enabled: false },
-  gzip: { useWorker: false },        // 新增:否则撞 worker-src
+  gzip: { useWorker: false }, // 新增:否则撞 worker-src
   api: { apiDetail: false, reportRequest: false, reqHeaders: [] },
-  urlHandler: observedPageUrl,       // 全局,管每条日志的 from
-  beforeReport,                      // 改写 originFrom、去 msg 里的 query、丢弃 IMAGE_ERROR
-  beforeRequest,                     // logType === 'pv' 返回 false
+  urlHandler: observedPageUrl, // 全局,管每条日志的 from
+  beforeReport, // 改写 originFrom、去 msg 里的 query、丢弃 IMAGE_ERROR
+  beforeRequest, // logType === 'pv' 返回 false
 })
 // 构造之后立刻:
 aegis.extendBean('referer', '')
@@ -374,13 +382,126 @@ aegis.extendBean('referer', '')
 
 一共有三个同名的 `urlHandler`,签名不同,读产物确认过:
 
-| 位置                       | 签名                    | 管什么                                   |
-| -------------------------- | ----------------------- | ---------------------------------------- |
-| 顶层 `urlHandler`          | `() => string`          | 每条日志的 `from`,返回假值回退原始 URL   |
-| `pagePerformance.urlHandler` | `() => string`        | 页面性能日志的页面地址                   |
-| `reportApiSpeed.urlHandler`  | `(url, payload) => string` | API 测速的 URL,Phase 3 才用          |
+| 位置                         | 签名                       | 管什么                                 |
+| ---------------------------- | -------------------------- | -------------------------------------- |
+| 顶层 `urlHandler`            | `() => string`             | 每条日志的 `from`,返回假值回退原始 URL |
+| `pagePerformance.urlHandler` | `() => string`             | 页面性能日志的页面地址                 |
+| `reportApiSpeed.urlHandler`  | `(url, payload) => string` | API 测速的 URL,Phase 3 才用            |
 
 前两个都是**零参**的,必须从当前 observed page 读,不能指望入参。三个都**管不到 `originFrom`**。
+
+## 开启 API speed 之后的两条管线(Phase 3 实查,读 1.41.15 产物)
+
+Phase 0 只证明了「`reportApiSpeed: false` 时一条 `AJAX_ERROR` 都不产生」。开启之后,
+**一次请求产生两条记录,走两条不同的管线,形状不一样**——这是 Phase 3 全部设计的前提。
+
+fetch 路径(`aegis.min.js` 内,`publishSpeed` / `publishNormalLog` 成对调用):
+
+```js
+var i = f.status <= 0 || 400 <= f.status // 决定是不是 AJAX_ERROR
+var t = $(r, b.api, { url: p, ctx: f, payload }) // retCodeHandler
+var l = t.code,
+  c = t.isErr
+// SpeedLog :  {url, isHttps, method, type, status, duration, ret: l, isErr: +c, payload, from}
+// NormalLog:  {msg, code: l, trace, errorMsg, from, originFrom, level: et(i, c)}
+```
+
+`et(e,t) = e ? AJAX_ERROR : t ? RET_ERROR : API_RESPONSE`。
+
+### HTTP status **不在** error log 的结构化字段里
+
+NormalLog 上只有 `code`,而 `code` 是 `retCodeHandler` 的产物,不是 HTTP status。
+真实 status 只出现在 `msg` 这段散文里:
+
+```text
+AJAX_ERROR: ...
+
+fetch req url: <url>
+
+res status: 404
+
+res duration: 12ms
+...
+```
+
+所以 docs/rum.md §34「禁止 parse log.msg 去猜 HTTP status」这条禁令,如果照字面走,
+就等于 Phase 3 不能按状态码过滤。
+
+**出路是 `retCodeHandler`**,而且它是官方配置项、不是内部实现:
+
+```js
+function $(e,t,n){ if (typeof t?.retCodeHandler === 'function')
+  return {code: (i = t.retCodeHandler(e, n?.url, n?.ctx, n?.payload) || {}).code ?? R, isErr: i.isErr} ... }
+```
+
+签名 `(responseText, url, ctx, payload) => {code, isErr}`,`ctx` 是 fetch 的 `Response`
+或 XHR 对象(都带 `.status`),整体包在 `try/catch` 里(抛了回 `{code: 'unknown', isErr: false}`)。
+它的返回值**同时**落到 `SpeedLog.ret` 和 `NormalLog.code`——两条管线各一份、都是结构化字段。
+
+于是 Qualy 的做法是:`retCodeHandler` 只读 `ctx.status`(**永不读 body**),把 HTTP status
+作为 `code` 返回。此后 `beforeReport` 读的是**本产品自己写进去的数字**,不是厂商的句子。
+默认行为反而没用:默认 handler 在 body 里找 `ret`/`code`/`retcode` 之类字段,而 Qualy 的
+错误体是 `{_tag, ...}`,一个都不匹配,每条都会是 `unknown`。
+
+### 网络失败那条是硬编码 `code: -400`
+
+`catch` 分支不走 `retCodeHandler`:
+
+```js
+S.publishNormalLog({
+  msg: 'AJAX_ERROR: ...\nres status: 0\n...',
+  level: AJAX_ERROR,
+  code: -400,
+  trace,
+  errorMsg: '',
+  from,
+  originFrom,
+})
+```
+
+所以「请求根本没到达」这一类也是结构化可判的,不必解析字符串。
+
+### fetch 与 XHR 不同构
+
+- fetch:`et(i, c)`,`i = status<=0 || status>=400` → **任何 4xx/5xx 都是 AJAX_ERROR**;
+- XHR:`et(!!c, e)`,`c` 是传输失败原因(abort/error/timeout) → **404 走 RET_ERROR 或
+  API_RESPONSE,不是 AJAX_ERROR**。
+
+Qualy 浏览器客户端走 fetch,所以 fetch 那条是实际路径。
+
+### `reportApiSpeed.urlHandler` 在 `beforeReportSpeed` **之前**跑,而且只对 fetch 类跑
+
+```js
+publishSpeed: function(n){ this.$walk(function(e){ var t = r.$getConfig(e)
+  "fetch" !== n.type || typeof t?.urlHandler != "function"
+    ? (n.url = V(n.url), e.speedLogPipeline(n))
+    : e.speedLogPipeline({...n, url: V(t.urlHandler(n.url, n.payload))}) }) }
+```
+
+两条结论:
+
+1. `beforeReportSpeed` 拿到的 url **已经被 urlHandler 处理过**,白名单判据必须建立在这一点上;
+   同源判断只能放在 urlHandler 里做,因为 Qualy 的 sanitizer 会把 origin 去掉。
+2. 被分类成 `static` 的请求**不走 urlHandler**,原始路径会直接到 `beforeReportSpeed`。
+   所以过滤器自己还要再 sanitize 一次(掩码是幂等的,代价为零)。
+
+`$getConfig(e) { return e.config?.[this.name] }` ——按插件名取自己那一片,所以这里的
+`t.urlHandler` 确实是 `reportApiSpeed.urlHandler`(`(url, payload) => string`),
+**与顶层那个零参的 `urlHandler` 不冲突**。`V(e)` 就是 `e.split('?')[0]`。
+
+### `resHeaders` 只落在 error/slow log 的 `msg` 里
+
+```js
+function Qe(headers, names, kind){ ... return acc + kind + " header " + name + ": " + value }
+```
+
+产出 `res header x-qualy-request-id: <uuid>`,拼进 `msg`。**它不在 SpeedLog 上。**
+所以 requestId 关联只对「错误或慢请求」成立——而那正好是需要关联的场合:在控制台看一条
+异常时能读到 requestId,再去后端日志。成功请求的 NormalLog 只在 `isWhiteList` 或
+`reportRequest` 时才发,而 `reportRequest` 是禁项。
+
+顺带:`msg` 里那行 `fetch req url:` 带的是**完整 api 路径**,Qualy 的 api 路径把行 id 写在
+路径里(`/api/.../batches/<uuid>/entries`),所以只去 query 不够,必须整段掩码。
 
 ## Phase 0 Gate 判定
 

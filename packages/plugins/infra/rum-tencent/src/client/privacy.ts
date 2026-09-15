@@ -1,4 +1,5 @@
-import { observedPageUrl } from '@qualy/browser-observability'
+import { observedPageUrl, sanitizeUrl } from '@qualy/browser-observability'
+import { keepsApiErrorLog } from './api-speed.ts'
 
 // What this vendor sends that it should not, removed before it goes.
 //
@@ -24,6 +25,9 @@ interface ReportedLog {
 /** LogType.IMAGE_ERROR, from the sdk's own enum */
 const IMAGE_ERROR = '64'
 
+/** LogType.AJAX_ERROR: an api call the sdk decided was a failure */
+const AJAX_ERROR = '16'
+
 /**
  * A url inside a message, with its query removed.
  *
@@ -34,6 +38,18 @@ const IMAGE_ERROR = '64'
  */
 const withoutQueryStrings = (text: string): string =>
   text.replaceAll(/(https?:\/\/[^\s)'"]+?)\?[^\s)'"]*/g, '$1')
+
+/**
+ * The addresses inside an api error message, masked.
+ *
+ * That message is assembled by the vendor out of lines, and two of them are
+ * addresses: the request's own, and whatever the page was. Stripping the
+ * query is not enough for an api call the way it is for an asset - this
+ * product's api paths carry the row in them, `/api/.../batches/<id>/entries`,
+ * and a message is the one place a whole path survives.
+ */
+const withoutAddresses = (text: string): string =>
+  text.replaceAll(/(?:https?:\/\/[^\s)'"]*)?\/[^\s)'"]*/g, (match) => sanitizeUrl(match))
 
 /**
  * Runs on every log, before it is queued.
@@ -49,8 +65,14 @@ export const beforeReport = (log: ReportedLog): boolean => {
     // an image that failed to load says more about a url than about the page,
     // and this product's pages do not depend on one
     if (log.level === IMAGE_ERROR) return false
+    // an api call this product answered on purpose is not a failure; the
+    // decision reads the status off the record rather than out of the prose
+    if (log.level === AJAX_ERROR && !keepsApiErrorLog(log.code)) return false
     if ('originFrom' in log) log.originFrom = observedPageUrl()
-    if (typeof log.msg === 'string') log.msg = withoutQueryStrings(log.msg)
+    if (typeof log.msg === 'string') {
+      log.msg =
+        log.level === AJAX_ERROR ? withoutAddresses(log.msg) : withoutQueryStrings(log.msg)
+    }
   } catch {
     // a scrub that failed is not a reason to lose the batch; the report goes
     // as it is, and the wire-level checks in the browser suite are what would

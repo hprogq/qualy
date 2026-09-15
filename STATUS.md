@@ -15911,3 +15911,92 @@ fiber 的中断当场完成,它启动的 Kysely/pg promise 继续在 JS 世界�
 是因为它**经 cast** 读 `fiber.currentSpan` —— 漂移对编译器隐形。现在这条受类型检查,
 上游再挪一次就是 typecheck 红。同一文件里 `ownerOf` 用 `Effect.currentParentSpan`(每事务一次)、
 `ownerOnFiber` 读 fiber cache(每语句一次),差别是有意的,已封成 `spanNameOnFiber` 并把理由写在那里。
+
+## 浏览器可观测性 Phase 3:API 测速与 requestId 关联(2026-09-15)
+
+docs/rum.md §42 的 Phase 3。开启 `reportApiSpeed`,只收本产品自己的 `/api/**`,
+返回头只读 `x-qualy-request-id`,request/response body 与自己的请求头一律不采。
+
+### 先决条件其实不成立,但有第三条路
+
+§34 写着「只有在 pinned SDK 的 public hook payload 能可靠判断状态时才实现」,
+并给了退路「若无法可靠过滤:Phase 3 不启用 API speed」。
+
+读 1.41.15 产物的结论是:**这个前提确实不成立**。开启 API 测速后一次请求产生两条记录、
+走两条管线:`SpeedLog` 带 `status/isErr/url/method/duration`,而 error log(`NormalLog`)
+上只有 `msg`/`level`/`code`,**真实 HTTP status 只在 `msg` 那段散文的 `res status: 404` 一行里**。
+照字面走就该停在这里。
+
+但 `retCodeHandler` 是官方配置项,签名 `(responseText, url, ctx, payload) => {code, isErr}`,
+`ctx` 是 `Response`/XHR,而返回值**同时**落到 `SpeedLog.ret` 与 `NormalLog.code` 两个结构化字段。
+于是由本产品把 HTTP status 自己写进 `code`(只读 `ctx.status`,**永不读 body**),
+之后过滤读的是**自己写进去的数字**,不是厂商的句子——§34 禁的是「解析 msg 去猜」,这里没有猜。
+
+网络失败那类更简单:`catch` 分支硬编码 `code: -400`,本来就结构化。
+
+### 落地
+
+`client/api-speed.ts` 一个文件装下整套 API 策略:
+
+| 钩子                                       | 做什么                                                                              |
+| ------------------------------------------ | ----------------------------------------------------------------------------------- |
+| `retCodeHandler`                           | 只读 `ctx.status` → `{code: String(status), isErr: status <= 0 \|\| status >= 500}` |
+| `apiSpeedUrl`(`reportApiSpeed.urlHandler`) | 同源判断 + `sanitizeUrl`;非同源返回 `/`(不带走第三方地址)                           |
+| `beforeReportSpeed`                        | 白名单:只留 `/api/` 开头;留下的再 sanitize 一次                                     |
+| `beforeReport`(AJAX_ERROR 分支)            | 按 `code` 丢 4xx(**429 除外**),留 5xx / `-400` / 读不懂的                           |
+
+`isErr` 只标 5xx 与网络失败:4xx 是本产品在回答,把拒绝算成失败会让成功率失去意义,
+而 status 本来就在记录上,要看随时能切。
+
+两条只有读产物才知道的坑,都记进了 docs/notes/aegis-web-sdk.md:
+
+- **`reportApiSpeed.urlHandler` 在 `beforeReportSpeed` 之前跑,且只对 fetch 类跑。**
+  所以同源判断只能放在它里面(sanitizer 会去掉 origin,之后就分不出是不是自己的 api 了);
+  被分类成 `static` 的请求绕过它,原始路径会直接到过滤器,所以过滤器要再 sanitize 一次
+  (掩码幂等,代价为零)。
+- **`resHeaders` 只落在 error/slow log 的 `msg` 里,不在 SpeedLog 上。**
+  所以 requestId 关联只对「错误或慢请求」成立——那正好是需要关联的场合。成功请求的
+  NormalLog 只在 `isWhiteList` 或 `reportRequest` 时才发,而后者是禁项。
+
+另外 fetch 与 XHR 不同构:fetch 对任何 4xx/5xx 都发 AJAX_ERROR,XHR 只在传输失败时发。
+浏览器客户端走 fetch,所以 fetch 那条是实际路径。
+
+### msg 里的地址必须整段掩码,不能只去 query
+
+Phase 1 的 `withoutQueryStrings` 对资源失败够用(产物是哈希名),对 api 不够:
+Qualy 的 api 路径把行 id 写在路径里(`/api/.../batches/<uuid>/entries`)。AJAX_ERROR 的 msg
+改走 `withoutAddresses`,整段过 `sanitizeUrl`。实测 requestId 那行不受影响(它没有 `/`)。
+
+### 顺带让配置可断言
+
+`aegisOptions(config, release)` 从 `start()` 里抽出来成了纯函数。理由不是整洁:
+SDK 的 `Config` 末尾是 `[key: string]: any`,**拼错或漏掉一个键 TypeScript 不报**,
+而套件里没有任何地方构造真 SDK。现在有 4 条用例钉住「关掉的那些」——
+`apiDetail`/`reportRequest`/`reqHeaders`/`uin`/`aid`/`blankScreen`/`consoleLog`/
+`clickElementLog`/`websocketHack`/`lagMonitor`/`spa`/`gzip.useWorker`/`usePerformanceTiming`,
+以及 `resHeaders` 恰好只有 request-id 一个。
+
+### 门禁(实际执行)
+
+```text
+pnpm vendor:check / qualy resolve --frozen-lockfile / typecheck      exit=0
+pnpm test   ×3      240 passed | 3 skipped (243) / 1722 passed | 17 skipped (1739)
+pnpm test:browser ×3   52 passed (52) / 392 passed (392)     ← 379 → 392,+13 条 Phase 3
+pnpm test:browser:webkit               2 (2) / 14 (14)
+build / check-staged-web / check-chunks / check-csp-build / check-public-web
+smoke-production / database check / drop-guard                       exit=0
+```
+
+CSP 没有变化:上报仍然只连 `https://rumt-zh.com` 一个 host,开 API 测速不增加端点。
+
+### manual acceptance pending(不算绿)
+
+需要真实腾讯项目与真实部署才能答,与 Phase 2 同类:
+
+- RUM 的 API duration 与服务端 access log 的 duration 能否对上(§42 验收第一条);
+- 从 RUM 的 requestId 走到 CLS、再到 traceId、再到 APM 这条链(§42 验收第二条);
+- 控制台的 API 面板在 `isErr` 只标 5xx 的口径下读起来是否合用。
+
+**下一步**:docs/rum.md §42 的 Phase 4(上线前 rollout:正式项目、secrets、告警阈值、
+费用告警、staging soak)。上线前仍必须把真实部署域名加进 RUM 应用的来源白名单,
+否则线上一条都收不到(Phase 1 已实测,`rum-error: 111`)。

@@ -1820,6 +1820,27 @@ Phase 3 不启用 API speed
 
 比错误数据污染更好。
 
+> **实施裁决（2026-09-15，Phase 3）**：这条的前提在实查后是**成立的**——error log 上确实没有
+> 结构化的 HTTP status。读 pin 版本产物：一次请求产生两条记录，`SpeedLog` 带
+> `status/isErr/url/method/duration`，而 `NormalLog` 上只有 `msg`、`level` 与 `code`，
+> 真实 status 只出现在 `msg` 那段散文的 `res status: 404` 一行里。照字面走，本条的结论就是
+> 「Phase 3 不启用 API speed」。
+>
+> 但还有第三条路，而且它不碰禁令：**`retCodeHandler` 是官方配置项**，签名
+> `(responseText, url, ctx, payload) => {code, isErr}`，`ctx` 是 `Response`/XHR，
+> 而它的返回值**同时**落到 `SpeedLog.ret` 与 `NormalLog.code` 两个结构化字段。
+> 于是由本产品自己把 HTTP status 写进 `code`（只读 `ctx.status`，**永不读 body**），
+> 此后过滤读的是自己写进去的数字，不是厂商的句子。禁令针对的是「解析 msg 去猜」，
+> 这里没有猜。
+>
+> 网络失败那一类更简单：`catch` 分支硬编码 `code: -400`，本来就是结构化的。
+>
+> 连带两条实查（细节在 docs/notes/aegis-web-sdk.md）：`reportApiSpeed.urlHandler` 在
+> `beforeReportSpeed` **之前**跑且只对 fetch 类跑，所以同源判断必须放在它里面
+> （sanitizer 会去掉 origin），而过滤器要再 sanitize 一次兜住被分类成 static 的请求；
+> `resHeaders` 只落在 error/slow log 的 `msg` 里、不在 SpeedLog 上，所以 requestId 关联
+> 只对「错误或慢请求」成立——那也正是需要关联的场合。
+
 ---
 
 # 35. Browser traceparent：暂缓

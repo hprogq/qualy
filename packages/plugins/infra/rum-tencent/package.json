@@ -10,7 +10,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./client": "./src/client/register.ts",
+    "./client/api-speed": "./src/client/api-speed.ts",
     "./client/privacy": "./src/client/privacy.ts",
+    "./client/provider": "./src/client/provider.ts",
     "./client/register": "./src/client/register.ts",
     "./package.json": "./package.json",
     "./settings": "./src/settings.ts",

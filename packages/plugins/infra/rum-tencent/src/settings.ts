@@ -24,7 +24,16 @@ export const TENCENT_RUM_PROVIDER = 'tencent'
 export const TENCENT_RUM_HOST = 'https://rumt-zh.com'
 
 /** the environments the vendor's sdk knows; a deployment picks one */
-export const RUM_ENVIRONMENTS = ['production', 'pre', 'gray', 'daily', 'test', 'local'] as const
+export const RUM_ENVIRONMENTS = [
+  'production',
+  'development',
+  'gray',
+  'pre',
+  'daily',
+  'test',
+  'local',
+  'others',
+] as const
 
 export type RumEnvironment = (typeof RUM_ENVIRONMENTS)[number]
 
