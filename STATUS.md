@@ -17720,6 +17720,17 @@ node tools/quality/release-smoke.ts local
   release-smoke: local ok
 ```
 
+### CI 首跑(run 35156624516)三处红,修正记录
+
+- `ci` / typecheck:`release-smoke.ts` 里 `refuse` 是 const 箭头函数,`never` 返回不参与后续收窄,`body.pages.length` 报 possibly undefined。
+  改成函数声明。**本地此前的「typecheck exit=0」是假的**:本机 Bash 工具实际是 zsh,`${PIPESTATUS[0]}` 为空、管道后的 `$?` 是 tail 的——
+  已改为重定向到文件再读 `$?`,真实结果 exit=0。
+- `image` / setup-node@v5:默认按 package.json 的 `packageManager` 字段开 pnpm 缓存,runner 上没有 pnpm 直接失败;加 `package-manager-cache: false`
+  (输入名从 actions/setup-node v5 的 action.yml 核对)。
+- `browser`:`overlay-widgets` 的 tooltip「键盘聚焦显示」两次尝试都超时(上一次成功的 run 也是 retry 才过)。本地 13/13 一次过。
+  排序后的假设:指针停在上一条测试留下的位置,Chromium 会对在静止指针下挂载的元素派发 hover,hover 打开的 tip 在 blur 后仍由 hover 撑着。
+  测试先把指针停到旁边一段文字上再聚焦,让「只有焦点能打开它」成为事实;若 CI 仍红,再取证。
+
 ### 基础设施重构到此结束
 
 P1–P4 → P4.5 收敛 → P5 构建 → P6 部署 → P7 验证。原 `docs/osi.md` P5–P9 不再执行。之后的改动只由真实需求、生产缺陷或可复现 regression 触发

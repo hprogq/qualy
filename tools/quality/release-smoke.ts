@@ -92,7 +92,9 @@ const compose = (
 let failed = false
 const step = (line: string) => console.log(`release-smoke: ${line}`)
 class SmokeFailed extends Error {}
-const refuse = (line: string): never => {
+// a declaration, not an arrow in a const: only a name with an explicit type
+// narrows the code after the call, and `never` is what the callers lean on
+function refuse(line: string): never {
   throw new SmokeFailed(line)
 }
 const expectCode = (label: string, ran: Ran, want: number) => {

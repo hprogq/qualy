@@ -77,6 +77,7 @@ describe('the tooltip', () => {
   it('shows on keyboard focus, not only on hover', async () => {
     mount(
       <TooltipProvider>
+        <p>elsewhere</p>
         <Tooltip>
           <TooltipTrigger asChild>
             <Button variant="outline">why not</Button>
@@ -87,6 +88,13 @@ describe('the tooltip', () => {
     )
     const trigger = page.getByRole('button', { name: 'why not' })
     await expect.element(trigger).toBeVisible()
+    // The pointer rests where the previous test left it, and Chromium tells
+    // an element that mounts under a resting pointer that it is hovered. A
+    // hover that opens the tip would then keep it open through the blur
+    // below, which is how this case failed on the CI runner while passing
+    // on a developer machine: park the pointer on something else first, so
+    // the only thing that can open the tip here is the focus this is about.
+    await userEvent.hover(page.getByText('elsewhere'))
     ;(trigger.element() as HTMLElement).focus()
     await expect.element(page.getByText('submissions are closed')).toBeVisible()
     // the trigger is described by the tip, which is how a reader hears it
