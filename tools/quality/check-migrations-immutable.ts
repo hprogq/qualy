@@ -33,6 +33,32 @@ try {
   process.exit(2)
 }
 
+/**
+ * Renames made on purpose, each with why it was safe when it was made.
+ *
+ * A rename is refused because the ledger remembers the old name: a database
+ * that applied the file finds the new name pending and runs it a second
+ * time. It is safe only while no deployment has applied the file, and even
+ * then a development database that did has its ledger row renamed by hand -
+ * which is why each entry says how. Only a pure rename passes: git has to
+ * report the content identical (R100), so the pair cannot hide an edit.
+ */
+const ACKNOWLEDGED_RENAMES: readonly { from: string; to: string; why: string }[] = [
+  {
+    from: 'db/migrations/20260916143334.sql',
+    to: 'db/migrations/20260916143334_administrative-imports.sql',
+    why: "the only migration committed without a name. No deployment had applied it; a development database that did runs: update mikro_orm_migrations set name = '20260916143334_administrative-imports.sql' where name = '20260916143334.sql'",
+  },
+]
+
+const acknowledged = (line: string) => {
+  const [status, from, to] = line.split('\t')
+  return (
+    status === 'R100' &&
+    ACKNOWLEDGED_RENAMES.some((rename) => rename.from === from && rename.to === to)
+  )
+}
+
 // modified, deleted, renamed, type-changed: everything but an addition
 const changed = git([
   'diff',
@@ -44,6 +70,7 @@ const changed = git([
 ])
   .split('\n')
   .filter((line) => line !== '')
+  .filter((line) => !acknowledged(line))
 
 if (changed.length > 0) {
   console.error(
