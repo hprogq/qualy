@@ -1088,6 +1088,104 @@ const i18n = definePluginMessages({
       defaultMessage: 'Submission content',
     },
     // ------------------------------------------------------------------
+    // one participant's whole account, as whoever runs the round reads it
+    participantResultsTab: {
+      id: 'assessment/participant-results/tab',
+      defaultMessage: 'Participant results',
+    },
+    participantResultsHint: {
+      id: 'assessment/participant-results/hint',
+      defaultMessage: "Check one participant's entries, determinations and current score.",
+    },
+    participantResultsPick: {
+      id: 'assessment/participant-results/pick',
+      defaultMessage: 'Select a participant to see their account.',
+    },
+    participantResultsScoreTab: {
+      id: 'assessment/participant-results/score-tab',
+      defaultMessage: 'Score breakdown',
+    },
+    participantResultsEntriesTab: {
+      id: 'assessment/participant-results/entries-tab',
+      defaultMessage: 'Entries and determinations',
+    },
+    participantResultsBack: {
+      id: 'assessment/participant-results/back',
+      defaultMessage: 'Back to participants',
+    },
+    participantResultsEntriesEmpty: {
+      id: 'assessment/participant-results/entries-empty',
+      defaultMessage: 'This participant has not filed anything yet.',
+    },
+    participantResultsMore: {
+      id: 'assessment/participant-results/more',
+      defaultMessage: 'Show more',
+    },
+    // where a claim came from, in the product's words rather than the wire's
+    entrySourceSelf: { id: 'assessment/entry/source-self', defaultMessage: 'Filed by participant' },
+    entrySourceProxy: {
+      id: 'assessment/entry/source-proxy',
+      defaultMessage: 'Filed on their behalf',
+    },
+    entrySourceRecord: {
+      id: 'assessment/entry/source-record',
+      defaultMessage: 'Recorded by staff',
+    },
+    entrySourceImport: { id: 'assessment/entry/source-import', defaultMessage: 'Imported in bulk' },
+    entrySourceSystem: {
+      id: 'assessment/entry/source-system',
+      defaultMessage: 'Created by system',
+    },
+    // the determination in force, and where it came from
+    recognitionTitle: {
+      id: 'assessment/recognition/title',
+      defaultMessage: 'Current determination',
+    },
+    recognitionNone: {
+      id: 'assessment/recognition/none',
+      defaultMessage: 'Nothing has been determined on this entry yet.',
+    },
+    recognitionBy: {
+      id: 'assessment/recognition/by',
+      defaultMessage: '{who} · {when}',
+    },
+    recognitionStale: {
+      id: 'assessment/recognition/stale',
+      defaultMessage: 'Determined on an earlier version of this entry.',
+    },
+    // what staff may do about a claim that is wrong
+    staffReturnEntry: {
+      id: 'assessment/staff/return-entry',
+      defaultMessage: 'Return for revision',
+    },
+    staffReturnTitle: {
+      id: 'assessment/staff/return-title',
+      defaultMessage: 'Return this entry to the participant?',
+    },
+    staffReturnHint: {
+      id: 'assessment/staff/return-hint',
+      defaultMessage:
+        'They will be able to change it and hand it in again. Nothing already recorded is deleted.',
+    },
+    staffVoidEntry: { id: 'assessment/staff/void-entry', defaultMessage: 'Withdraw determination' },
+    staffVoidTitle: {
+      id: 'assessment/staff/void-title',
+      defaultMessage: 'Withdraw this administrative entry?',
+    },
+    staffVoidHint: {
+      id: 'assessment/staff/void-hint',
+      defaultMessage:
+        'The entry stops counting towards the score. The determination and its history are kept.',
+    },
+    staffReasonLabel: { id: 'assessment/staff/reason-label', defaultMessage: 'Reason' },
+    staffReasonRequired: {
+      id: 'assessment/staff/reason-required',
+      defaultMessage: 'Say why, so the participant and the next reader can see it.',
+    },
+    staffReturned: { id: 'assessment/staff/returned', defaultMessage: 'Returned for revision' },
+    staffVoided: { id: 'assessment/staff/voided', defaultMessage: 'Determination withdrawn' },
+
+    // ------------------------------------------------------------------
     // one's own provisional standing
     resultTab: { id: 'assessment/result/tab', defaultMessage: 'My score' },
     resultHint: {

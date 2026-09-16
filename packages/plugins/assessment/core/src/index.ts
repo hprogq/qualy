@@ -228,6 +228,20 @@ const plugin = Plugin.define(
     visibility: permissionOf('assessment.batch.manage'),
   }),
   Ui.page({
+    id: 'assessment/batch-results',
+    path: '/assessment/batches/:batchId/results',
+    component: Ui.react('./client/result/ParticipantResultsPage'),
+    layout: WORKSPACE_SHELL,
+    title: message('assessment/participant-results/tab', 'Participant results'),
+    // Administering the roster, the same door the roster itself is behind.
+    // Not the permission that opens other people's PUBLISHED results: that
+    // one is about a round that has published, and this is an internal
+    // provisional account. When a role appears that may read accounts
+    // without running the round, it gets a code of its own rather than
+    // borrowing the meaning of that one.
+    visibility: permissionOf('assessment.batch.manage'),
+  }),
+  Ui.page({
     id: 'assessment/batch-access',
     path: '/assessment/batches/:batchId/access',
     component: Ui.react('./client/BatchAccessPage'),
@@ -409,6 +423,20 @@ const plugin = Plugin.define(
           icon: 'users',
           capability: 'assessment/manage',
           order: 20,
+          group: 'assessment/batch-admin',
+        },
+        visibility: permissionOf('assessment.batch.manage'),
+      },
+      {
+        collection: workspaceNavigation,
+        id: 'assessment/batch-results/rail',
+        value: {
+          id: 'assessment/batch-results/rail',
+          label: message('assessment/participant-results/tab', 'Participant results'),
+          target: { kind: 'page', pageId: 'assessment/batch-results' },
+          icon: 'clipboard-list',
+          capability: 'assessment/manage',
+          order: 25,
           group: 'assessment/batch-admin',
         },
         visibility: permissionOf('assessment.batch.manage'),

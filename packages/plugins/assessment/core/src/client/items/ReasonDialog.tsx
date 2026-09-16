@@ -26,6 +26,7 @@ export function ReasonDialog({
   open,
   title,
   description,
+  confirmLabel,
   busy,
   onConfirm,
   onClose,
@@ -34,6 +35,13 @@ export function ReasonDialog({
   open: boolean
   title: string
   description: string
+  /**
+   * The act, in its own words. Defaults to saving, which is what the
+   * question editor is doing; a dialog that sends a claim back to somebody
+   * is not saving anything, and a button that says so reads as the wrong
+   * act at the moment of committing to it.
+   */
+  confirmLabel?: string
   busy: boolean
   onConfirm: (reason: string) => void
   onClose: () => void
@@ -53,7 +61,7 @@ export function ReasonDialog({
             {format(commonMessages.cancel)}
           </Button>
           <Button disabled={busy || reason.trim() === ''} onClick={() => onConfirm(reason.trim())}>
-            {format(m.entrySave)}
+            {confirmLabel ?? format(m.entrySave)}
           </Button>
         </div>
       }

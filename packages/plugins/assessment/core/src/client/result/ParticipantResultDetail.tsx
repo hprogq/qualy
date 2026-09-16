@@ -1,0 +1,294 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import * as stylex from '@stylexjs/stylex'
+import { ArrowLeftIcon } from 'lucide-react'
+import { useApiQuery } from '@qualy/web-runtime'
+import { isApiErrorCode, useI18n } from '@qualy/web-i18n'
+import { commonMessages } from '@qualy/web-i18n/messages'
+import { AsyncSection, PageHeader } from '@qualy/ui/admin'
+import { Badge } from '@qualy/ui/badge'
+import { Button } from '@qualy/ui/button'
+import { Count } from '@qualy/ui/count'
+import { Skeleton } from '@qualy/ui/skeleton'
+import { Swap } from '@qualy/ui/reveal'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { assessmentApi } from '../api.ts'
+import { assessmentMessages as m } from '../i18n.ts'
+import { BatchBanner } from '../batch/BatchScreen.tsx'
+import { useBatchLive } from '../live.ts'
+import { ResultLedger, type LedgerItem } from './ResultLedger.tsx'
+import { ParticipantEntries } from './ParticipantEntries.tsx'
+
+// One participant's whole account, in the page the list came from.
+//
+// The band at the top of the screen becomes this person: their name, their
+// number, whether they still count. That is what `BatchBanner` is for, and
+// it is why there is no second heading here - a page that says "Guo Hangqi"
+// twice, once in the band and once above the tabs, has drawn the same fact
+// in two places and moved everything down to do it.
+//
+// Two halves, because there are two questions: what the total came to, and
+// what was filed and decided. They are the same facts read two ways, so
+// either one can hand off to the other - a score line leads to the filing
+// that earned it, and a filing says what it came to.
+
+const styles = stylex.create({
+  column: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 16 },
+  backButton: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: tokens.radiusSm,
+    color: tokens.mutedForeground,
+    backgroundColor: { default: 'transparent', ':hover': tokens.surfaceMuted },
+    cursor: 'pointer',
+    borderWidth: 0,
+    padding: 2,
+    marginInlineEnd: 4,
+  },
+  icon14: { width: 14, height: 14 },
+  truncate: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  tabBar: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+  },
+  tab: {
+    position: 'relative',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+    paddingInline: 12,
+    paddingBlock: 10,
+    fontSize: 14,
+    color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
+    cursor: 'pointer',
+  },
+  tabOn: { color: tokens.foreground, fontWeight: 600 },
+  tabInk: {
+    position: 'absolute',
+    insetInline: 8,
+    bottom: -1,
+    height: 2,
+    borderRadius: 999,
+    backgroundColor: tokens.foreground,
+  },
+  waiting: { height: 220, width: '100%' },
+  unavailable: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 10,
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    paddingInline: 20,
+    paddingBlock: 20,
+  },
+  unavailableTitle: { fontSize: 15, fontWeight: 600 },
+  unavailableHint: { fontSize: 13, lineHeight: 1.625, color: tokens.mutedForeground },
+})
+
+export function ParticipantResultDetail({
+  batchId,
+  participantId,
+  view,
+  entryId,
+  onView,
+  onEntry,
+  onFollow,
+  onBack,
+}: {
+  batchId: string
+  participantId: string
+  view: 'score' | 'entries'
+  /** which claim is open, if any; the drawer over either half */
+  entryId: string
+  onView: (next: 'score' | 'entries') => void
+  onEntry: (entryId: string) => void
+  /** open a claim AND the half it lives on, in one move */
+  onFollow: (entryId: string) => void
+  onBack: () => void
+}) {
+  const query = useApiQuery(assessmentApi)
+  const queryClient = useQueryClient()
+  const { format, formatError } = useI18n()
+
+  // Wake-ups carry no facts - they say "read again" - so each kind names
+  // exactly what it could have changed. Invalidating everything on every
+  // event would throw away the roster, the paper and the batch on a wake-up
+  // about one claim, which is a page that flickers for no reason.
+  useBatchLive(batchId, (kind) => {
+    const stale = (key: readonly unknown[]) => void queryClient.invalidateQueries({ queryKey: key })
+    const account = () => {
+      stale(
+        query.assessment.listParticipantEntries.key({
+          params: { batchId, participantId },
+          query: {},
+        }),
+      )
+      stale(query.assessment.getParticipantResult.key({ params: { batchId, participantId } }))
+    }
+    switch (kind) {
+      // a fresh connection, or a phase that may have moved what staff may do
+      case 'sync':
+      case 'phase-changed':
+        stale(query.assessment.key())
+        return
+      // a decision changes both what the claim says and what it counts for
+      case 'entries-changed':
+      case 'review-instance-changed':
+      case 'result-changed':
+        account()
+        return
+      // the paper itself moved: the ledger is grouped by it, and every
+      // amount is computed from the arithmetic it carries
+      case 'item-changed':
+        stale(query.assessment.listItems.key({ params: { batchId } }))
+        stale(query.assessment.listScoreGroups.key({ params: { batchId } }))
+        stale(query.assessment.getParticipantResult.key({ params: { batchId, participantId } }))
+        return
+      default:
+        return
+    }
+  })
+
+  const who = useQuery(
+    query.assessment.getParticipant.queryOptions({ params: { batchId, participantId } }),
+  )
+  const result = useQuery(
+    query.assessment.getParticipantResult.queryOptions({ params: { batchId, participantId } }),
+  )
+  const items = useQuery(query.assessment.listItems.queryOptions({ params: { batchId } }))
+  const entries = useQuery(
+    query.assessment.listParticipantEntries.queryOptions({
+      params: { batchId, participantId },
+      query: {},
+    }),
+  )
+
+  const participant = who.data?.participant
+  const claims = entries.data?.entries ?? []
+  // The arithmetic behind the account is out of reach. Not an error to read
+  // past: the last total it gave is not the current one, so the ledger is
+  // not drawn at all and the one thing offered is to ask again.
+  const unavailable =
+    result.error !== null && isApiErrorCode(result.error, 'ASSESSMENT_SCORING_UNAVAILABLE')
+
+  return (
+    <div {...stylex.props(styles.column)}>
+      {/* the band above stops being the section and becomes this person */}
+      {participant !== undefined && (
+        <BatchBanner>
+          <PageHeader
+            variant="banner"
+            title={
+              <>
+                <span {...stylex.props(styles.truncate)}>{participant.displayName}</span>
+                {participant.status === 'excluded' ? (
+                  <Badge variant="secondary">{format(m.excludedBadge)}</Badge>
+                ) : (
+                  <Badge variant="outline">{format(m.participantActive)}</Badge>
+                )}
+              </>
+            }
+            description={
+              <>
+                {/* text-sized rather than a button's own size: a control as
+                    tall as a control in a line of prose makes that line
+                    taller than the same line in the heading it took over */}
+                <button
+                  type="button"
+                  aria-label={format(m.participantResultsBack)}
+                  {...stylex.props(styles.backButton)}
+                  onClick={onBack}
+                >
+                  <ArrowLeftIcon aria-hidden {...stylex.props(styles.icon14)} />
+                </button>
+                <span {...stylex.props(styles.truncate)}>
+                  {participant.businessNo ?? format(m.noBusinessNoShort)}
+                </span>
+              </>
+            }
+          />
+        </BatchBanner>
+      )}
+
+      <div {...stylex.props(styles.tabBar)}>
+        {(
+          [
+            ['score', m.participantResultsScoreTab, null],
+            ['entries', m.participantResultsEntriesTab, claims.length],
+          ] as const
+        ).map(([key, label, count]) => (
+          <button
+            key={key}
+            type="button"
+            data-testid={`participant-tab-${key}`}
+            aria-current={view === key}
+            onClick={() => onView(key)}
+            {...stylex.props(styles.tab, view === key && styles.tabOn)}
+          >
+            {format(label)}
+            {count !== null && <Count>{String(count)}</Count>}
+            {view === key && <span aria-hidden {...stylex.props(styles.tabInk)} />}
+          </button>
+        ))}
+      </div>
+
+      {/* the two halves replace each other in place, seen to change */}
+      <Swap swapKey={view}>
+        {view === 'entries' ? (
+          <ParticipantEntries
+            batchId={batchId}
+            participantId={participantId}
+            entryId={entryId}
+            onEntry={onEntry}
+          />
+        ) : unavailable ? (
+          <section {...stylex.props(styles.unavailable)} data-testid="result-unavailable">
+            <p {...stylex.props(styles.unavailableTitle)}>{format(m.resultUnavailableTitle)}</p>
+            <p {...stylex.props(styles.unavailableHint)}>{format(m.resultUnavailableHint)}</p>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={result.isFetching}
+              onClick={() => void result.refetch()}
+            >
+              {format(m.resultRecalculate)}
+            </Button>
+          </section>
+        ) : (
+          <AsyncSection
+            pending={result.isPending || items.isPending || entries.isPending || who.isPending}
+            error={result.error ? formatError(result.error) : null}
+            loadingLabel={format(commonMessages.loading)}
+            retryLabel={format(commonMessages.retry)}
+            onRetry={() => {
+              void result.refetch()
+              void items.refetch()
+              void entries.refetch()
+            }}
+            skeleton={<Skeleton className={stylex.props(styles.waiting).className} />}
+          >
+            {result.data !== undefined && (
+              <ResultLedger
+                result={result.data}
+                items={(items.data?.items ?? []) as readonly LedgerItem[]}
+                entries={claims.map((one) => one.entry)}
+                // a number leads back to the filing it came from; this is
+                // the reason the two halves are one page
+                onEntryOpen={onFollow}
+              />
+            )}
+          </AsyncSection>
+        )}
+      </Swap>
+    </div>
+  )
+}
