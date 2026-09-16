@@ -141,6 +141,9 @@ describe('the lifecycle in a standalone product', () => {
         DATABASE_URL: undefined,
         QUALY_TEST_DATABASE_URL: undefined,
         NODE_ENV: 'production',
+        // production keeps its state under /var/lib/qualy, which this test may
+        // not write; the instance here is the product's own directory
+        QUALY_STATE_DIR: 'state',
       })
       expect(deployed.ok).toBe(false)
       expect(deployed.output).toMatch(/127\.0\.0\.1:1\b|ECONNREFUSED/)

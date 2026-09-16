@@ -8,6 +8,7 @@
     "@effect/platform-node": "catalog:",
     "@qualy/api-kit": "workspace:*",
     "@qualy/assembly": "workspace:*",
+    "@qualy/deployment-state": "workspace:*",
     "@qualy/plugin-kit": "workspace:*",
     "@qualy/release-contract": "workspace:*",
     "@qualy/telemetry": "workspace:*",

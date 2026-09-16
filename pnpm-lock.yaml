@@ -267,6 +267,9 @@ importers:
       '@qualy/cli':
         specifier: workspace:*
         version: link:apps/cli
+      '@qualy/deployment-state':
+        specifier: workspace:*
+        version: link:packages/core/deployment-state
       '@qualy/i18n-contract':
         specifier: workspace:*
         version: link:packages/contracts/i18n
@@ -342,6 +345,9 @@ importers:
       '@qualy/assembly':
         specifier: workspace:*
         version: link:../../packages/core/assembly
+      '@qualy/deployment-state':
+        specifier: workspace:*
+        version: link:../../packages/core/deployment-state
       '@qualy/plugin-kit':
         specifier: workspace:*
         version: link:../../packages/core/plugin-kit
@@ -396,6 +402,9 @@ importers:
       '@qualy/assembly':
         specifier: workspace:*
         version: link:../../packages/core/assembly
+      '@qualy/deployment-state':
+        specifier: workspace:*
+        version: link:../../packages/core/deployment-state
       '@qualy/plugin-kit':
         specifier: workspace:*
         version: link:../../packages/core/plugin-kit
@@ -668,6 +677,12 @@ importers:
       yaml:
         specifier: 'catalog:'
         version: 2.9.0
+
+  packages/core/deployment-state:
+    dependencies:
+      '@qualy/assembly':
+        specifier: workspace:*
+        version: link:../assembly
 
   packages/core/formula:
     dependencies:

@@ -13,7 +13,7 @@ import {
 } from './shutdown.ts'
 import { devTopology, pluginRoots } from './dev/topology.ts'
 import { supervisedPrepareFence } from './dev/fence.ts'
-import { verifyAssembly } from './verify-assembly.ts'
+import { verifyAssembly, verifyDeployed } from './verify-assembly.ts'
 import { manifestPath } from './manifest.ts'
 import { stillFinalizing, traceLayerLifecycle } from '@qualy/plugin-kit/shutdown-trace'
 
@@ -103,6 +103,9 @@ const prepare = Effect.gen(function* () {
     verifyAssembly(manifestPath(), (message) => warnings.push(message)),
   )
   for (const warning of warnings) yield* Effect.logWarning(warning)
+  // and that this instance was deployed to that assembly: production refuses
+  // a target its state directory does not record as deployed
+  verifyDeployed(manifestPath(), resolution, mode)
   return resolution
 })
 

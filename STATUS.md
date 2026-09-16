@@ -17317,3 +17317,83 @@ smoke-production(不重建,server 发现规则已变) exit=0
 ### 6. 推后
 
 `tools/lib/manifest.ts`(仓库工具)与 `packages/build/web/src/manifest.ts`(P5)仍以 repoRoot 为默认。
+
+## 构建/装配/部署重构 P3:Deployment State(2026-09-17)
+
+规格 `docs/osi.md` §17–§21、§28–§30、§60。此前只有一个 lock 概念;部署与启动之间没有「这个实例上次真正部署成了什么」
+的记录,生产启动只校验 manifest ↔ lock,不校验实例。
+
+### 1. 架构变化
+
+- 新平台包 **`@qualy/deployment-state`**(`packages/core/deployment-state`,只依赖 `@qualy/assembly`,不进 database 插件):
+  `deploymentPaths({productRoot, mode, env})`(`QUALY_STATE_DIR` 相对 product root 解析 > production `/var/lib/qualy` >
+  development `<productRoot>/.qualy/state`)、`ensureStateLayout`(建 `assembly/`、`database/migrations/`,并**真写一个探针文件**
+  证明可写,否则 fail-fast 点名目录)、`readDeployedLock` / `promoteDeployedLock`(复用 lock 的 `readLock`(自哈希校验,
+  被改过的 deployed lock 一样拒绝)与 `writeAtomic`)、`verifyDeployment(paths, target)`(无 state / 未部署过 /
+  resolutionHash 或 manifestHash 不同,各一句)、`withDeploymentLock`(`deploy.lock` `O_EXCL` 文件锁,记 pid/host/startedAt;
+  冲突**立即**拒绝并点名持有者——同机进程活着说「still running」,死了说「remove the file」,异机不猜;
+  body 无论成败都释放)。
+- **两把 lock 两个名字**:`qualy.lock.json`(target,镜像/仓库按哪个 Assembly 构建)与
+  `<state>/assembly/deployed.lock.json`(applied,实例上次成功部署的 Assembly),路径永不共用。
+- **`qualy deploy` 成为事务**:verify target(既有 drift 门)→ `ensureStateLayout` → 拿 deployment lock →
+  各 capability `deploy` → **全部成功后** `promoteDeployedLock` → 释放锁。任一步失败:deployed lock 不动,
+  错误连同 cause 链与 AggregateError 内层逐行打印(pg 的 `AggregateError` message 为空,ECONNREFUSED 在 `errors` 里,
+  P2 那条 `.env` 测试正是这样抓到的)。`generate` 与 `deploy` 从同一分支拆开,generate 不变。
+  mode 取 `NODE_ENV`,与 server 同一读法。
+- **production start 多一道 `verifyDeployed`**(`apps/server/src/verify-assembly.ts`,在 lock 门之后):
+  deployed lock ≠ target → `deployment required: … Run qualy deploy … A start never deploys.` 退出 1;
+  server 不写 state、不 resolve、不 apply。development 不查(dev boot 自己 apply 迁移是既有工作流,§60「不强迫有 /var/lib/qualy」)。
+- 仓库工具(smoke、CSP enforce、brand、benchmark)起 production server 一律经 `tools/lib/qualy-server.ts`,
+  它把 `QUALY_STATE_DIR` 默认为 `.qualy/state`(开发实例,`pnpm qualy deploy` 写的地方);benchmark 的实例是另一个库,
+  用自己的 `.qualy/benchmarks/state`(deploy 与 server 两边都传)。
+- `.env.example` 记 `QUALY_STATE_DIR`;`.gitignore` 加 `.qualy/state/`。CI 无需改:`pnpm qualy deploy`(dev mode)
+  写 `.qualy/state`,smoke 经 qualy-server 读同一处。
+
+### 2. 改动文件
+
+新增 `packages/core/deployment-state/{package.json,src/index.ts,tests/deployment-state.test.ts}`、
+`tools/tests/deployment.test.ts`、`apps/server/tests/deployment-refusal.test.ts`;
+改 `apps/cli/src/main.ts`、`apps/cli/package.json`、`apps/server/src/{main,verify-assembly}.ts`、`apps/server/package.json`、
+`package.json`、`pnpm-lock.yaml`、`tools/lib/qualy-server.ts`、`tools/benchmarks/{formula-provisional-scoring.ts,support/server.ts}`、
+`tools/tests/standalone-product.test.ts`(production 模式下要给可写的 `QUALY_STATE_DIR`)、`.env.example`、`.gitignore`、`CLAUDE.md`。
+
+### 3. 新不变量与测试
+
+- 单元(9 条):路径优先级;布局与只读目录 fail-fast;promote 幂等、读回相同;verify 三种理由;被改过的 deployed lock 拒绝;
+  锁释放(含 body 失败);二次进入立即拒绝并点名(活进程 / 死进程 / 异机三种措辞)。
+- CLI 事务(§60 的 A→B 序列,用一个本仓库没有的 `flaky` capability,其 deploy 见到某文件即拒绝):
+  target A 部署 → deployed=A;换 target B 且 capability 拒绝 → 退出非 0、输出含 `deployed.lock.json unchanged`、
+  deployed 仍 = A、`deploy.lock` 未留下;去掉拒绝再 deploy → deployed=B。另:别的部署持锁时立即拒绝(< 15s,实测 ~0.7s,
+  capability 未运行、无 deployed lock、别人的锁原样留着);state 目录不可写 → 在任何 capability 运行**之前**失败;
+  `QUALY_STATE_DIR` 相对路径按 product root 解析,在子目录里敲也一样。
+- production 启动(4 条,真起 `run.ts production`):无 state → `deployment required` + `no deployment state at` + `qualy deploy`;
+  部署的是别的 Assembly → 两个 hash 都点名;部署的正是这个 Assembly → 越过这道门(看到 `application composed` 的 boot mark,
+  然后死在 127.0.0.1:1 的数据库上,这是预期);被拒绝的启动**不写** state(never repairs)。
+
+反向验证(各断一处,只有对应那条红):promote 挪到 capability 之前 → 「keeps A while B fails」红(deployed 变成 B);
+去掉 `ensureStateLayout` → 「fails before any work」红(capability 已跑、错误从 promote 抛出);
+`withDeploymentLock` 遇 EEXIST 直接跑 body → 「refuses a second deployment」红;
+server 跳过 `verifyDeployed` → 无 state 那条红(死在读迁移目录);`verifyDeployment` 不比 resolutionHash → 「另一个 Assembly」那条红。
+
+### 4. 命令与结果(实际执行)
+
+```text
+pnpm typecheck                     exit=0
+pnpm test                          255 passed | 3 skipped (258) / 1839 passed | 17 skipped (1856)
+pnpm qualy deploy(development)     deployed sha256:7a06…ffe0 to .qualy/state/assembly/deployed.lock.json
+smoke-production                   exit=0(经 qualy-server 默认 QUALY_STATE_DIR=.qualy/state)
+run.ts production + QUALY_STATE_DIR=/nonexistent/qualy-state
+                                   exit=1:startup failed: deployment required: there is no deployment state at …
+pnpm test:browser                  57 passed / 424 passed,1 failed:auth person-card「leaves the row unpainted」(再次读到过渡中的颜色;
+                                   本阶段未动任何客户端代码;下一条提交单独修这条测试的断言时机)
+```
+
+### 5. 与规格的偏离、推后
+
+- §29 的 PostgreSQL advisory lock 没有做:规格写的是「最好」,而 CLAUDE.md 的数据层冻结规则要求任何数据层机制由已发生的事故触发
+  (`docs/notes/data-layer-retrospective.md` 触发表里「advisory lock(迁移互斥)」的条件是真实多副本部署,尚未发生)。
+  两者冲突时按宪法:只做规格的「最低要求」——state 目录文件锁。触发条件出现时再加。
+- deploy 里的「generate pending local artifacts」与「destructive gates」归 P4:lineage 还在仓库 `db/migrations` 时,
+  让 deploy 写迁移会写进版本库。
+- development 模式的启动不比对 deployed lock(§60);P4 把 lineage 搬进 state 后,dev 启动会在 deployed lock 与 target
+  不同时给一条 warning(便宜、有用),届时一起做。

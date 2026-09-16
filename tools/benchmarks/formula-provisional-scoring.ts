@@ -26,6 +26,7 @@ import {
 import {
   assertStagedAssets,
   benchDir,
+  benchStateDir,
   cli,
   counterOf,
   histogramOf,
@@ -223,6 +224,8 @@ const main = async () => {
   runOrThrow('deploy', cli, ['deploy', '--yml', manifest], {
     ...inherited,
     DATABASE_URL: databaseUrl,
+    // the benchmark instance's own state, which the server below is checked against
+    QUALY_STATE_DIR: benchStateDir,
   })
   runOrThrow('seed', path.join(repoRoot, 'tools/fixtures/seed-cli.ts'), [], {
     ...inherited,

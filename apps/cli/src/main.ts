@@ -19,8 +19,15 @@ import {
   type Resolution,
   runtimeLayers,
 } from '@qualy/assembly'
+import {
+  deploymentPaths,
+  ensureStateLayout,
+  promoteDeployedLock,
+  withDeploymentLock,
+  type DeploymentMode,
+} from '@qualy/deployment-state'
 import { PLUGIN_USAGE, runPluginCommand } from './plugin.ts'
-import { openFileSet, writeResolution } from './resolution.ts'
+import { openFileSet, relativeToCwd, writeResolution } from './resolution.ts'
 
 // The assembly commands.
 //
@@ -89,6 +96,29 @@ const lockPath = lockPathFor(manifestPath)
 }
 
 const relative = (file: string) => path.relative(process.cwd(), file)
+
+/** which instance layout a deployment addresses: the runner's mode, as the server reads it */
+const deploymentMode = (): DeploymentMode =>
+  process.env.NODE_ENV === 'production' ? 'production' : 'development'
+
+/**
+ * Everything an error has to say, on one line per link.
+ *
+ * A refused deployment is reported by message rather than by stack, and a
+ * message alone loses the part that matters most often: a driver's
+ * `AggregateError` carries an empty message and the refused address in its
+ * `errors`, and a wrapper carries the real reason in its `cause`.
+ */
+const describeError = (error: unknown, seen = new Set<unknown>()): string[] => {
+  if (!(error instanceof Error) || seen.has(error)) return [String(error)]
+  seen.add(error)
+  const lines = [error.message === '' ? error.name : error.message]
+  if (error instanceof AggregateError) {
+    for (const inner of error.errors) lines.push(...describeError(inner, seen))
+  }
+  if (error.cause !== undefined) lines.push(...describeError(error.cause, seen))
+  return lines
+}
 
 const resolve = async (): Promise<{
   resolution: Resolution
@@ -213,13 +243,45 @@ async function main(): Promise<void> {
     return
   }
 
-  if (command === 'generate' || command === 'deploy') {
+  if (command === 'generate') {
     const resolution = await resolveCurrent(command)
     const ran: string[] = []
     for (const capability of capabilityWork(resolution)) {
-      if (await capability.run(command, rest)) ran.push(capability.key)
+      if (await capability.run('generate', rest)) ran.push(capability.key)
     }
-    console.log(ran.length > 0 ? `${command}: ${ran.join(', ')}` : `${command}: nothing to do`)
+    console.log(ran.length > 0 ? `generate: ${ran.join(', ')}` : 'generate: nothing to do')
+    return
+  }
+
+  if (command === 'deploy') {
+    // One transaction over the instance. The target is verified against the
+    // lock, the instance's deployment lock is taken so two deployments cannot
+    // interleave, every capability applies its work, and only then is the
+    // target recorded as what this instance deployed. A capability that
+    // refuses leaves the deployed lock where it was - the instance is then
+    // neither assembly, and the next production start says so rather than
+    // serving it. Build != Deploy != Start: nothing here builds anything, and
+    // nothing at start repeats any of this.
+    const resolution = await resolveCurrent(command)
+    const paths = deploymentPaths({ productRoot, mode: deploymentMode(), env: process.env })
+    const target = lockFromResolution(resolution)
+    try {
+      ensureStateLayout(paths)
+      const ran = await withDeploymentLock(paths, async () => {
+        const applied: string[] = []
+        for (const capability of capabilityWork(resolution)) {
+          if (await capability.run('deploy', rest)) applied.push(capability.key)
+        }
+        promoteDeployedLock(paths, target)
+        return applied
+      })
+      console.log(ran.length > 0 ? `deploy: ${ran.join(', ')}` : 'deploy: nothing to do')
+      console.log(`deployed ${target.resolutionHash} to ${relativeToCwd(paths.deployedLock)}`)
+    } catch (error) {
+      die(
+        `deploy failed, ${relativeToCwd(paths.deployedLock)} unchanged:\n  ${describeError(error).join('\n  ')}`,
+      )
+    }
     return
   }
 

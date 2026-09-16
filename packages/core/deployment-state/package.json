@@ -1,0 +1,14 @@
+{
+  "name": "@qualy/deployment-state",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@qualy/assembly": "workspace:*"
+  }
+}
