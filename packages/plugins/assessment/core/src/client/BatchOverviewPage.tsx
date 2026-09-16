@@ -29,6 +29,11 @@ import { assessmentMessages as m } from './i18n.ts'
 
 const wide = '@media (min-width: 1024px)'
 const narrow = '@media (max-width: 1023.98px)'
+// Between a phone and the two-column desk. Stated as a closed range so it
+// cannot overlap `wide` - two conditions that both match leave which one
+// wins up to the order they were written in, which is not something a
+// stylesheet should have to remember.
+const roomy = '@media (min-width: 640px) and (max-width: 1023.98px)'
 
 const styles = stylex.create({
   desk: {
@@ -105,10 +110,7 @@ const styles = stylex.create({
     display: 'flex',
     flexDirection: 'column',
     gap: 12,
-    order: {
-      default: null,
-      [narrow]: 1,
-    },
+    order: { default: null, [narrow]: 1 },
   },
   actionsHead: {
     display: 'flex',
@@ -159,48 +161,83 @@ const styles = stylex.create({
     fontSize: 14,
     fontWeight: 500,
   },
-  todoGroups: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 16,
-  },
-  todoGroup: {
-    display: 'flex',
-    minWidth: 0,
-    flexDirection: 'column',
-    gap: 8,
-  },
-  laneHead: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-  },
-  laneWord: {
-    fontSize: 12,
-    fontWeight: 500,
-    color: tokens.mutedForeground,
-  },
-  laneCount: {
-    fontSize: 12,
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 80%, transparent)`,
-    fontVariantNumeric: 'tabular-nums',
-  },
-  laneRule: {
-    height: 1,
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: '0%',
-    backgroundColor: tokens.border,
-  },
-  todoBox: {
+  // One card per section, and the only white on the page.
+  //
+  // The shell is 0.99 throughout - top bar, batch bar, rail, band - so a
+  // content area that is also 0.99 reads as one undifferentiated field. The
+  // white is what says "this is the work"; the strips inside it are 0.985,
+  // a shade the eye reads as a fold in the same sheet rather than a second
+  // surface. Rows rule against each other and never carry their own box.
+  card: {
     display: 'flex',
     minWidth: 0,
     flexDirection: 'column',
     overflow: 'hidden',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: tokens.border,
+    borderRadius: tokens.radiusLg,
+    backgroundColor: tokens.surface,
+    boxShadow: tokens.elevation1,
+  },
+  // The upright plan indents its own text to clear the rail, which is not the
+  // same thing as standing off the card: the mark sits ON the column's leading
+  // edge, so without this the dot rides the card's border and every note wraps
+  // against it.
+  cardPlan: {
+    paddingBlock: 20,
+    paddingInline: 20,
+  },
+  // The strip scrolls, so its air goes INSIDE the scroller (see the rail's own
+  // lead-in) rather than around it. Padding here would end every stage short
+  // of the card's own edge, which reads as a row that failed to fit rather
+  // than as a rail there is more of.
+  cardStrip: {
+    paddingBlock: 16,
+  },
+  // what needs a hand sits a little proud of what merely happened
+  cardRaised: {
+    boxShadow: tokens.elevation2,
+  },
+  lane: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+  },
+  laneRows: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+  },
+  // the fold: a lane's standing, or a day, named inside the card
+  strip: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    borderTopWidth: { default: 1, ':first-child': 0 },
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.divider,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
+    backgroundColor: tokens.surfaceMuted,
+    paddingInline: { default: 16, [wide]: 20 },
+    paddingBlock: { default: 9, [wide]: 10 },
+  },
+  stripWord: {
+    fontSize: 12,
+    fontWeight: 500,
+    color: tokens.mutedForeground,
+  },
+  // the day's other half: the date beside a word, or the weekday beside a
+  // date. Carried by spacing, which is what this page uses for two facts
+  // that sit side by side rather than one qualifying the other.
+  stripAside: {
+    fontSize: 12,
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 75%, transparent)`,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  stripCount: {
+    fontSize: 12,
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 80%, transparent)`,
+    fontVariantNumeric: 'tabular-nums',
   },
   // the whole line is the way in; the verb inside is the same door with a
   // keyboard-reachable handle
@@ -211,29 +248,14 @@ const styles = stylex.create({
       default: 'minmax(0, 1fr) auto',
       [wide]: 'minmax(0, 1fr) 3.5rem 7rem',
     },
-    columnGap: {
-      default: 16,
-      [wide]: 20,
-    },
-    rowGap: 4,
-    alignItems: {
-      default: null,
-      [wide]: 'center',
-    },
-    borderTopWidth: {
-      default: 1,
-      ':first-child': 0,
-    },
+    columnGap: { default: 12, [wide]: 20 },
+    rowGap: { default: 8, [wide]: 4 },
+    alignItems: { default: null, [wide]: 'center' },
+    borderTopWidth: { default: 1, ':first-child': 0 },
     borderTopStyle: 'solid',
-    borderTopColor: tokens.border,
-    paddingInline: {
-      default: 16,
-      [wide]: 20,
-    },
-    paddingBlock: {
-      default: 14,
-      [wide]: 16,
-    },
+    borderTopColor: tokens.divider,
+    paddingInline: { default: 16, [wide]: 20 },
+    paddingBlock: { default: 14, [wide]: 16 },
     backgroundColor: {
       default: 'transparent',
       ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
@@ -252,14 +274,8 @@ const styles = stylex.create({
   todoAt: {
     gridColumnStart: 2,
     gridRowStart: 1,
-    gridRowEnd: {
-      default: null,
-      [wide]: 'span 2',
-    },
-    alignSelf: {
-      default: null,
-      [wide]: 'center',
-    },
+    gridRowEnd: { default: null, [wide]: 'span 2' },
+    alignSelf: { default: 'baseline', [wide]: 'center' },
     textAlign: 'right',
     fontSize: 12,
     whiteSpace: 'nowrap',
@@ -268,6 +284,7 @@ const styles = stylex.create({
   },
   todoDetail: {
     gridColumnStart: 1,
+    gridColumnEnd: { default: 'span 2', [wide]: 'auto' },
     gridRowStart: 2,
     display: '-webkit-box',
     WebkitBoxOrient: 'vertical',
@@ -279,90 +296,53 @@ const styles = stylex.create({
     textWrap: 'pretty',
     color: tokens.mutedForeground,
   },
+  // A phone puts the act on a line of its own, full width of the words above
+  // it: at 390 a button sharing a row with a sentence is a target the thumb
+  // has to aim for. A tablet keeps the line but not the width - a 700px
+  // button is not a bigger target, only a louder one - so there it shrinks to
+  // its words and sits at the end, where the desk's own column will put it.
   todoVerbSeat: {
-    gridColumnStart: {
-      default: 2,
-      [wide]: 3,
-    },
-    gridRowStart: {
-      default: 2,
-      [wide]: 1,
-    },
-    gridRowEnd: {
-      default: null,
-      [wide]: 'span 2',
-    },
-    alignSelf: {
-      default: 'flex-end',
-      [wide]: 'center',
-    },
+    gridColumnStart: { default: 1, [wide]: 3 },
+    gridColumnEnd: { default: 'span 2', [wide]: 'auto' },
+    gridRowStart: { default: 3, [wide]: 1 },
+    gridRowEnd: { default: null, [wide]: 'span 2' },
+    alignSelf: { default: 'stretch', [wide]: 'center' },
+    justifySelf: { default: null, [roomy]: 'end' },
   },
   todoVerb: {
     display: 'inline-flex',
     cursor: 'pointer',
     alignItems: 'center',
-    gap: {
-      default: 2,
-      [wide]: 4,
-    },
+    justifyContent: 'center',
+    gap: 4,
+    height: 36,
+    width: { default: '100%', [roomy]: 'auto' },
+    minWidth: { default: null, [roomy]: '7rem' },
+    paddingInline: 16,
     fontSize: 13,
     fontWeight: 500,
     whiteSpace: 'nowrap',
-    height: {
-      default: null,
-      [wide]: 36,
-    },
-    width: {
-      default: null,
-      [wide]: '100%',
-    },
-    justifyContent: {
-      default: null,
-      [wide]: 'center',
-    },
-    borderRadius: {
-      default: null,
-      [wide]: tokens.radiusLg,
-    },
-    borderWidth: {
-      default: 0,
-      [wide]: 1,
-    },
+    borderRadius: { default: tokens.radiusMd, [wide]: tokens.radiusLg },
+    borderWidth: 1,
     borderStyle: 'solid',
     borderColor: tokens.border,
     backgroundColor: {
-      default: null,
-      [wide]: tokens.background,
+      default: tokens.background,
       ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
     },
-    transitionProperty: {
-      default: null,
-      [wide]: 'color, background-color',
-    },
+    transitionProperty: 'color, background-color',
   },
   todoVerbIcon: {
-    width: {
-      default: 14,
-      [wide]: 12,
-    },
-    height: {
-      default: 14,
-      [wide]: 12,
-    },
+    width: 12,
+    height: 12,
   },
   activity: {
     display: 'flex',
     minWidth: 0,
     flexDirection: 'column',
-    gap: 20,
-    order: {
-      default: null,
-      [narrow]: 3,
-    },
-    marginTop: {
-      default: null,
-      [wide]: 16,
-    },
+    gap: 12,
+    order: { default: null, [narrow]: 3 },
+    marginTop: { default: null, [wide]: 16 },
   },
   // the header holds the filter, and on a phone it stays put while the days
   // scroll under it
@@ -405,6 +385,27 @@ const styles = stylex.create({
     flexShrink: 1,
     flexBasis: '0%',
   },
+  // the way on, as the card's last row rather than a link adrift under it
+  moreRow: {
+    display: 'flex',
+    cursor: 'pointer',
+    height: 44,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.divider,
+    borderInlineWidth: 0,
+    borderBottomWidth: 0,
+    fontSize: 12,
+    backgroundColor: {
+      default: 'transparent',
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
+    },
+    color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
+    transitionProperty: 'color, background-color',
+  },
   activitySkeleton: {
     height: 96,
     width: '100%',
@@ -413,39 +414,24 @@ const styles = stylex.create({
     fontSize: 14,
     color: tokens.mutedForeground,
   },
-  feed: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 28,
-  },
   day: {
     display: 'flex',
+    minWidth: 0,
     flexDirection: 'column',
-    gap: 6,
-  },
-  dayHead: {
-    marginBottom: 6,
-    display: 'flex',
-    alignItems: 'center',
-    gap: 10,
-  },
-  dayLabel: {
-    flexShrink: 0,
-    fontSize: 12,
-    fontWeight: 500,
-    color: tokens.mutedForeground,
   },
   feedRow: {
-    marginInline: -12,
     display: 'grid',
+    width: '100%',
     gridTemplateColumns: {
       default: 'minmax(0, 1fr)',
       [wide]: '3.25rem minmax(0, 1fr)',
     },
     columnGap: 20,
-    borderRadius: tokens.radiusLg,
-    paddingInline: 12,
-    paddingBlock: 6,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.divider,
+    paddingInline: { default: 16, [wide]: 20 },
+    paddingBlock: 12,
     textAlign: 'left',
   },
   feedRowOpenable: {
@@ -520,13 +506,31 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
     fontVariantNumeric: 'tabular-nums',
   },
+  // the parts of one claim's identity, told apart by a rule rather than by
+  // punctuation: a comma between two nouns reads as prose, and this is not
   feedIdentity: {
-    display: '-webkit-box',
-    WebkitBoxOrient: 'vertical',
-    WebkitLineClamp: 1,
-    overflow: 'hidden',
+    display: 'flex',
+    minWidth: 0,
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    // the air on the near side of a rule; the far side is the crumb's own
+    // gap, and the two together are what make it read as a separator rather
+    // than as a stroke stuck to the word before it
+    columnGap: 9,
+    rowGap: 2,
     fontSize: 12,
     color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
+  },
+  crumb: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 9,
+  },
+  crumbRule: {
+    width: 1,
+    height: 11,
+    flexShrink: 0,
+    backgroundColor: `color-mix(in oklab, ${tokens.mutedForeground} 35%, transparent)`,
   },
   feedSentence: {
     fontSize: 13,
@@ -551,23 +555,6 @@ const styles = stylex.create({
     WebkitBoxOrient: 'vertical',
     WebkitLineClamp: 2,
     overflow: 'hidden',
-  },
-  moreButton: {
-    display: 'inline-flex',
-    cursor: 'pointer',
-    alignItems: 'center',
-    gap: 2,
-    alignSelf: 'flex-start',
-    fontSize: 12,
-    color: {
-      default: tokens.mutedForeground,
-      ':hover': tokens.foreground,
-    },
-    transitionProperty: 'color',
-  },
-  moreIcon: {
-    width: 12,
-    height: 12,
   },
 })
 
@@ -616,7 +603,13 @@ export default function BatchOverviewPage() {
               {plan.isPending ? (
                 <Skeleton className={stylex.props(styles.planSkeleton).className} />
               ) : (
-                <BatchFlowStrip timeline={timeline} />
+                // the same card the other two sections sit in: three parts of
+                // one desk, each on its own sheet. The strip scrolls inside it
+                // rather than running to the screen edge - a row that escapes
+                // its card reads as a fourth thing, not as this one continuing
+                <div {...stylex.props(styles.card, styles.cardStrip)}>
+                  <BatchFlowStrip timeline={timeline} />
+                </div>
               )}
             </section>
 
@@ -632,7 +625,9 @@ export default function BatchOverviewPage() {
                 <Skeleton className={stylex.props(styles.asideSkeletonLine).className} />
               </div>
             ) : (
-              <BatchFlow timeline={timeline} keepPast={1} />
+              <div {...stylex.props(styles.card, styles.cardPlan)}>
+                <BatchFlow timeline={timeline} keepPast={1} />
+              </div>
             )}
           </aside>
         </div>
@@ -858,17 +853,19 @@ function MyDesk({
             <p {...stylex.props(styles.clearWord)}>{format(m.overviewActionsNone)}</p>
           </div>
         ) : (
-          <div {...stylex.props(styles.todoGroups)} data-testid="overview-actions">
+          <div {...stylex.props(styles.card, styles.cardRaised)} data-testid="overview-actions">
             {todoGroups.map((group) => (
-              <div key={group.which ?? 'all'} {...stylex.props(styles.todoGroup)}>
+              <div key={group.which ?? 'all'} {...stylex.props(styles.lane)}>
+                {/* the standing each row speaks to, as a ruled strip inside the
+                    card rather than a heading above a box of its own: two
+                    standings are two parts of one desk, not two desks */}
                 {group.which !== null && (
-                  <div {...stylex.props(styles.laneHead)}>
-                    <span {...stylex.props(styles.laneWord)}>{laneWord(group.which)}</span>
-                    <span {...stylex.props(styles.laneCount)}>{group.rows.length}</span>
-                    <span aria-hidden {...stylex.props(styles.laneRule)} />
+                  <div {...stylex.props(styles.strip)}>
+                    <span {...stylex.props(styles.stripWord)}>{laneWord(group.which)}</span>
+                    <span {...stylex.props(styles.stripCount)}>{group.rows.length}</span>
                   </div>
                 )}
-                <div {...stylex.props(styles.todoBox)}>
+                <div {...stylex.props(styles.laneRows)}>
                   {group.rows.map((row) => (
                     <div
                       key={row.key}
@@ -941,12 +938,14 @@ function MyDesk({
         ) : rows.length === 0 ? (
           <p {...stylex.props(styles.quietNote)}>{format(m.overviewActivityNone)}</p>
         ) : (
-          <div {...stylex.props(styles.feed)} data-testid="overview-activity">
+          <div {...stylex.props(styles.card)} data-testid="overview-activity">
             {groups.map((group) => (
-              <section key={group.label} {...stylex.props(styles.day)}>
-                <div {...stylex.props(styles.dayHead)}>
-                  <span {...stylex.props(styles.dayLabel)}>{group.label}</span>
-                  <span aria-hidden {...stylex.props(styles.laneRule)} />
+              <section key={group.key} {...stylex.props(styles.day)}>
+                <div {...stylex.props(styles.strip)}>
+                  <span {...stylex.props(styles.stripWord)}>{group.label}</span>
+                  {group.aside !== null && (
+                    <span {...stylex.props(styles.stripAside)}>{group.aside}</span>
+                  )}
                 </div>
                 {group.items.map((row) => {
                   const sentence = SAID[row.perspective][row.kind]
@@ -956,10 +955,13 @@ function MyDesk({
                   // the server already judged which rounds are still this
                   // reader's to open; everything else is a plain line
                   const openable = row.perspective === 'participant' || row.instanceId !== null
+                  // Kept as parts rather than joined into a sentence: these
+                  // are coordinate facts about one claim - the group, the
+                  // question, the level - and a separator between them is a
+                  // rule, not a comma somebody has to read past.
                   const identity = row.summary
                     .filter((part) => part.value !== '')
                     .map((part) => part.value)
-                    .join(listJoin)
                   return (
                     <button
                       key={row.id + row.kind}
@@ -1003,8 +1005,15 @@ function MyDesk({
                             {clockOf(row.at, locale)}
                           </span>
                         </span>
-                        {identity !== '' && (
-                          <span {...stylex.props(styles.feedIdentity)}>{identity}</span>
+                        {identity.length > 0 && (
+                          <span {...stylex.props(styles.feedIdentity)}>
+                            {identity.map((part, at) => (
+                              <span key={part + String(at)} {...stylex.props(styles.crumb)}>
+                                {at > 0 && <span aria-hidden {...stylex.props(styles.crumbRule)} />}
+                                {part}
+                              </span>
+                            ))}
+                          </span>
                         )}
                         <span {...stylex.props(styles.feedSentence)}>
                           {sentence !== undefined &&
@@ -1029,10 +1038,9 @@ function MyDesk({
                 type="button"
                 disabled={activity.isFetchingNextPage}
                 onClick={() => void activity.fetchNextPage()}
-                {...stylex.props(styles.moreButton)}
+                {...stylex.props(styles.moreRow)}
               >
                 {format(m.overviewActivityMore)}
-                <ChevronRightIcon aria-hidden className={stylex.props(styles.moreIcon).className} />
               </button>
             )}
           </div>
@@ -1049,28 +1057,42 @@ function groupByDay(
   rows: readonly ActivityItem[],
   locale: string,
   format: ReturnType<typeof useI18n>['format'],
-): readonly { label: string; items: ActivityItem[] }[] {
+): readonly { key: string; label: string; aside: string | null; items: ActivityItem[] }[] {
   const today = new Date()
   const floor = (date: Date) =>
     new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
   const todayFloor = floor(today)
-  const labelOf = (iso: string) => {
+  /**
+   * Which day a row belongs to, said the way a person says it.
+   *
+   * `9/1` was the wrong answer twice over: it is the shape of a clock time,
+   * which is what every row under it already carries, and a bare pair of
+   * numbers is not how anybody names a day out loud. So the date is spelled
+   * (`9月1日`, `September 1`) and the weekday rides beside it in a quieter
+   * tone - reading a feed, which weekday something happened on is most of
+   * what "when" means. Today and yesterday keep their words and take the
+   * date as the quiet half instead, because those two are the days a reader
+   * does not have to work out.
+   */
+  const dayOf = (iso: string) => {
     const at = new Date(iso)
     const diff = Math.round((todayFloor - floor(at)) / 86_400_000)
-    if (diff === 0) return format(m.overviewToday)
-    if (diff === 1) return format(m.overviewYesterday)
-    return new Intl.DateTimeFormat(locale, {
-      month: 'numeric',
+    const spelled = new Intl.DateTimeFormat(locale, {
+      month: 'long',
       day: 'numeric',
       ...(at.getFullYear() === today.getFullYear() ? {} : { year: 'numeric' }),
     }).format(at)
+    const weekday = new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(at)
+    if (diff === 0) return { key: 'today', label: format(m.overviewToday), aside: spelled }
+    if (diff === 1) return { key: 'yesterday', label: format(m.overviewYesterday), aside: spelled }
+    return { key: spelled, label: spelled, aside: weekday }
   }
-  const groups: { label: string; items: ActivityItem[] }[] = []
+  const groups: { key: string; label: string; aside: string | null; items: ActivityItem[] }[] = []
   for (const row of rows) {
-    const label = labelOf(row.at)
+    const day = dayOf(row.at)
     const last = groups[groups.length - 1]
-    if (last !== undefined && last.label === label) last.items.push(row)
-    else groups.push({ label, items: [row] })
+    if (last !== undefined && last.key === day.key) last.items.push(row)
+    else groups.push({ ...day, items: [row] })
   }
   return groups
 }

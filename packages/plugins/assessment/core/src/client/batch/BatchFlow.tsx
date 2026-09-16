@@ -252,8 +252,13 @@ const styles = stylex.create({
       display: 'none',
     },
   },
+  // The lead-in belongs to the scrolled content, not to the box around it.
+  // Padding on the viewport would stop every stage short of the edge it is
+  // scrolling past; padding here gives the first and last stage the same
+  // standoff from whatever holds the strip, and scrolls away with them.
   rail: {
     width: 'max-content',
+    paddingInline: 16,
   },
 })
 

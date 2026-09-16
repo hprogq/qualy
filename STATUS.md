@@ -16474,3 +16474,72 @@ check-csp-build / smoke-production / check-csp-enforce                     exit=
 门禁重跑:typecheck 0;`pnpm test` 1745 通过;`pnpm test:browser` 412 通过(第一轮有一条
 `overlay-widgets` 的 tooltip 在并行下超时,单独跑 3/3 通过、整套重跑 412/412 全绿,
 是既有 flake,与本次改动无关);webkit 14;build / staged-web / chunks / CSP enforce 全过。
+
+## 批次概览页:左半边改成三张卡(2026-09-16)
+
+设计稿(Claude Design 的「测评批次页 定稿」4a/4e/4f)把概览页的三块内容各放进一张白卡。
+本轮只改左侧内容区的表现层,**没有动任何数据、路由、权限或文案 id**;顶栏、侧边栏、
+右侧阶段进度的**内容**都不动——阶段进度只是被同一张卡包了起来。
+
+### 为什么是卡片
+
+外壳(顶栏、批次条、rail、band)整体是 0.99 的灰,内容区如果也是 0.99,读起来就是一整片
+没有层次的场。白色才是「这里是要干的活」。所以:
+
+- 三个区块各一张 `styles.card`(白底 + `elevation1` + `radiusLg` + `overflow: hidden`);
+  「需要你处理」多一档 `elevation2`,比「最近动态」稍微浮起来一点——要动手的事和已经发生的事
+  不该一样重;
+- 卡片内部的分组头(申报/审核、今天/昨天/某月某日)是 0.985 的**折痕**而不是第二张卡:
+  同一张纸上的一道折,不是另一个面;
+- 行与行之间只有细线(`tokens.divider`),没有任何行自带盒子。原来「每组一个圆角框」的写法
+  在一个区块里画出三四个盒子,信息层级反而被框数量淹没。
+
+### 顺手改掉的四处
+
+1. **日期不能长得像时间**。原来分组头写 `9/1`、`8/31`,而它底下每行右侧就是 `18:00` —
+   两个都是「数字/数字」,眼睛分不开。改成**本地化拼写**(`9月1日` / `September 1`),
+   旁边跟一个更淡的星期(`周二`);今天/昨天保留词,把日期让给那个更淡的位置。
+   跨年才带年份。
+2. **面包屑用竖线不用标点**。一条动态的身份是「分值组 · 题目 · 等级」这类**并列事实**,
+   中间点个顿号读起来像散文。改成细竖线分隔,两侧各 9px。
+   (第一版只在右侧留了间距,竖线贴死在前一个词上,像一道笔画;实测截图放大后才看见。)
+3. **「查看更多」变成卡片的最后一行**(44px 通栏,带上边线),不再是飘在卡片下面的一个小链接。
+4. **待办行的按钮**:390 下独占一行、通栏,是给拇指的目标;640–1023 之间收成贴右的普通按钮
+   ——834 下一条 750px 宽的按钮不是更大的目标,只是更吵。1024 以上进第三列,
+   对着它作用的那两行垂直居中。
+
+### 阶段进度进卡片:两种方向,两种留白
+
+`BatchFlow`(竖排,宽屏侧栏)和 `BatchFlowStrip`(横滑,窄屏)的留白**不能用同一种做法**:
+
+- **竖排**:Timeline 的标记点圆心正好落在列的前缘上(item 的 `marginInlineStart: 24` 抵消
+  marker 的 `insetInlineStart: -24`),卡片不给内边距,那个点就骑在卡片边框上,每条说明也
+  直接撞右边。`cardPlan` 给 20/20。
+- **横滑**:留白如果给在卡片上,滚动视口就被内缩,每个阶段都会在**卡片边缘被截断**——
+  读起来像「没放下」而不是「往右还有」。所以留白挪进被滚动的内容里:
+  `BatchFlow` 的 `styles.rail` 加 `paddingInline: 16`。首尾阶段因此有同样的站位,
+  而且会跟着一起滚走。`centreOf` 用的 `offsetLeft` / `scrollWidth` 都把这段算进去,居中不受影响。
+
+### 门禁(实际执行,2026-09-16)
+
+```text
+pnpm typecheck                                              exit=0
+pnpm test                       243 passed | 3 skipped (246) / 1745 passed | 17 skipped (1762)
+pnpm test:browser               55 passed (55) / 412 passed (412)
+pnpm test:browser:webkit        2 passed (2) / 14 passed (14)
+pnpm build / check-staged-web / check-chunks / check-csp-build / check-public-web   exit=0
+smoke-production                            exit=0(含两处 hash 不符被拒的反向断言)
+check-csp-enforce               /login、/assessment/batches、/library/formulas 各 0 violation
+```
+
+没有新增测试:本轮全部是表现层,既有的 `entry-workflow.browser.test.tsx` 已经按
+`overview-actions` / `overview-activity` 这两个 testid 和行上的 `data-action`、`data-count`、
+`data-kind`、`data-perspective`、`data-unread` 断言事实,**这些钩子一个没动**——
+这正是「业务断言不绑界面文案」那条纪律买到的东西:整块改版,测试一行没改。
+
+### 过程记录:用截图当验收
+
+改版期间临时加了一个只截图的浏览器用例(1280 / 834 / 390 三档,夹具照着真实批次的阶段数据
+写:六个阶段、带折叠行、说明是整段中文),提交前删除。它抓到两个**光读代码看不出来的**问题:
+`todoVerbSeat` 在宽屏误写 `gridColumnStart: 1`,按钮压在标题上;以及上面第 2 条里那根
+贴死在字上的竖线。
