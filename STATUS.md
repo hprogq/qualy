@@ -17789,3 +17789,84 @@ pnpm qualy database drop-guard                            61 file(s) scanned, ok
 pnpm test(全量,改名后)                                    252 passed | 2 failed | 3 skipped;失败的是 supervisor 三条(本机开发库旧 ledger 名,见上)
                                                           与导入列表一条(fixture 插入无原文件的导入,新约束正确拒绝;已改 fixture,单文件重跑 17 passed)
 ```
+
+## 基础设施收尾:P4.5–P7 评审的六条(2026-09-17)
+
+外部评审核对 P4.5–P7 后给出结论「主架构可以收口」,并列了六条收尾。全部做了,逐条带反向验证。
+
+### 1. 删除 `migrationsFolder` 配置自由度
+
+单一产品只有一份提交的 lineage,「同一 lock、同一镜像、改一行配置就部署另一段历史」不该存在。`qualy.yml` 的 database 块改为 `{}`
+(`qualy resolve` 只改了 lock 的 manifestHash);运行时 `server/config.ts` 与 CLI 的 `databaseWork` 都固定解析
+产品根(清单所在目录,`productRootFor`)下的 `db/migrations`,**任何清单键都拒绝**并分别指路(`migrationsFolder` → lineage 的绝对路径,
+`url` → DATABASE_URL)。空 `Schema.Struct({})` 不拒多余键(docs/notes/effect.md),所以手写拒绝。测试运行时的 `DatabaseConfig.migrationsFolder`
+服务字段保留(testkit 与升级测试直接构造它,不经清单)。
+
+### 2. 镜像检查真正逐字节
+
+`check-release-image.ts` 原先对 lineage 只比文件名、对 qualy.yml/lock 比 `trimEnd()` 后的文本。现在同一段脚本分别由宿主 node 与镜像内 node
+执行,对 qualy.yml、qualy.lock.json 与每个迁移算 SHA-256 后比对,不一致时点名文件并区分「只在镜像里 / 镜像缺失 / 内容不同」。
+反向验证:基于 `qualy-server:local` 追加一行到 `20260806105442_initial.sql` 做出 tampered 镜像 → `FAIL db/migrations differ ... (different content)`。
+
+### 3. 命名 release 必须是一个 checkout
+
+`build-images.ts`:给了名字而构建输入有改动 → 拒绝(列出改动),`--allow-dirty` 显式放行;「构建输入」按 `.dockerignore` 判断,
+所以本机常驻的未跟踪笔记(docs/ 下)不会让守卫变成习惯性加参数。第一次构建前取指纹(HEAD + 输入内已跟踪改动的 diff + 未跟踪文件名与内容),
+每个后续构建前与最后一次构建后比对,变了就删除本次打出的 tag 并失败;每个镜像带 `org.opencontainers.image.revision`。
+反向验证:脏树 `release:build v9.9.9` 被拒并列出 18 个文件;干净树 `release:build probe` 构建 server 镜像期间新建一个文件 →
+`the checkout changed before qualy-sandbox-runtime was built`、`removed the tags this run made: qualy-server:probe`、exit 1,无残留 tag。
+
+### 4. 基础镜像按 digest 固定
+
+三个 Dockerfile:`node:24.20.0-bookworm-slim@sha256:ba849c60…` / `node:24.20.0-alpine@sha256:e67514e5…`(与 `mise.toml`、CI setup-node 同为 24.20.0);
+`deploy/compose.yaml`、开发 compose 两个集群、CI postgres service:同一个 `pgvector/pgvector:pg18-bookworm@sha256:2ba9ca5f…`。
+镜像检查断言 node 版本等于 Dockerfile 固定版本。新门禁 `tools/tests/release-inputs.test.ts`:Dockerfile 的每个 FROM 只能是固定参数或前面的 stage,
+版本等于 mise,CI 的 node-version 全部相同,四处 postgres 镜像同一 digest。反向验证:把 sandbox-runtime 最终 stage 改回 `FROM node:24-alpine` → 红。
+注意:开发 compose 的镜像引用变了,下次 `docker compose up` 会按 digest 重建 postgres 容器(数据卷保留,pg18 同大版本)。
+
+### 5. 生产闭包只有一个答案
+
+`tools/release/runtime-closure.ts` 以 `pnpm --filter-prod qualy... --filter-prod @qualy/app... --filter-prod @qualy/cli... ls --depth -1 --json`
+取闭包(实测与原 `pnpm exec` 同为 44 个项目,不必逐包起进程)。镜像修剪器与 `workspace-deps` 第二条门禁都经它取,原先门禁里手写的
+dependencies BFS 删除;门禁新增一条断言 Dockerfile runtime 阶段的 install filter 与它完全一致。镜像内修剪器照常得到 43 个包。
+
+### 6. 只有 database 有 deploy 副作用
+
+`tools/tests/deploy-capabilities.test.ts` 导入仓库全部插件描述器,经 `loadProviders` 取 provider,实现 `deploy` 的只能是 `database`
+(且断言它确实实现,门禁不空转)。反向验证:给 permissions provider 加一个空 `deploy` → 红并提示「先设计启动如何验证它执行过」。
+
+### 另两条
+
+- **历史升级测试钉到真实发布**:`tests/fixtures/lineage-deployment-b.json` 记 Deployment B 提交 `05714cf2` 实际携带的 59 个迁移名与 SHA-256
+  (从 `git show` 生成);新增一条断言这些文件逐字节仍在且是当前 lineage 的前缀,升级用例改用这份名单建旧库。反向验证:改掉记录里一个哈希 → 点名
+  `20260809085658_batch-scope-node-set.sql` 红。
+- **TS + node strip-types 定为正式生产执行模型**:写入 docs/deployment.md §2.1 与 CLAUDE.md,重议预编译 JS 的触发条件是冷启动、镜像体积、
+  TS 解析 CPU 或源码分发出现实测问题。
+
+### 本机开发库(需要你动手)
+
+评审建议与本轮改名叠加:开发库 ledger 里有 `20260916143334.sql` 旧名,另有历史漂移(一个索引定义、缺 `fk_entries_current_recognition`、两条旧 ledger 名)。
+二选一:执行 `update mikro_orm_migrations set name = '20260916143334_administrative-imports.sql' where name = '20260916143334.sql';`
+后照常 `pnpm dev`(会再应用新的约束迁移);或按评审建议备份后删库重建、`pnpm qualy deploy`、必要时 seed。**在此之前本机 `pnpm dev` 与
+`apps/server/tests/supervisor.test.ts` 三条会失败**(CI 不受影响,用的是空库)。我没有写你的库。
+
+### 命令与结果(实际执行)
+
+```text
+pnpm typecheck                                  exit=0
+pnpm test                                       255 passed | 1 failed | 3 skipped (259) / 1843 passed | 3 failed | 17 skipped (1863)
+                                                失败的只有 supervisor 三条:本机开发库旧 ledger 名,`relation "administrative_entry_import_events" already exists`
+pnpm qualy resolve --frozen-lockfile            up to date(qualy.yml 改后 resolve 一次,lock 只变 manifestHash)
+node tools/release/build-images.ts local --check    干净树;node v24.20.0, as the Dockerfile pins;qualy.yml / lock sha256 相同;
+                                                61 committed migration(s), every one byte for byte;image size 135 MB;revision label 107b09fe…
+node tools/quality/release-smoke.ts local       applied 61 migration(s);ready;sandbox status 两条 ok;backup 239492 bytes;restore 后 ready 且 marker 在;local ok
+check-release-image(tampered 镜像)             exit=1:20260806105442_initial.sql (different content)
+build-images probe(构建中新增文件)              exit=1:the checkout changed before qualy-sandbox-runtime was built;tag 已删除
+pnpm test:browser                               本轮未重跑:没有改动浏览器代码
+```
+
+### 下一步
+
+基础设施主重构到此结束。之后这条线只由真实需求、生产缺陷或可复现 regression 触发;`qualy database doctor`(只读巡检 ledger 与关键 schema 指纹)
+按评审意见记为以后的运维命令,不在本轮。行政认定剩一条需要你裁决:**导入记录属于上传者个人的工作历史,还是批次/机构的审计记录**
+(决定谁能看、谁能下载原文件、谁能整批撤回,以及参与人 inactive 时的可见性)。
