@@ -1,0 +1,184 @@
+# One Qualy deployment: the three release images of one release, PostgreSQL,
+# and the volumes that outlive them.
+#
+# Everything here runs from images built by `pnpm release:build <release>`
+# (tools/release/build-images.ts). Nothing is built here, no source is
+# mounted, no host node_modules is seen: what runs is what the release
+# carries. `.env` beside this file (copy .env.example) names the release and
+# the deployment's own settings.
+#
+# The four moves, in order (deploy/README.md spells them out):
+#
+#   docker compose up -d postgres            the database, once
+#   docker compose run --rm migrate          apply the release's committed
+#                                            lineage - one writer, once per
+#                                            release, before the server
+#   docker compose up -d                     the server and both sandboxes
+#   curl -sf http://127.0.0.1:3000/health/ready
+#
+# The server never migrates: the image's production command defaults
+# QUALY_MIGRATIONS to off, and `migrate` is the only place the lineage is
+# applied. A start against a database behind the release refuses; a start
+# against a database ahead of it (a rolled-back image) is the case
+# docs/deployment.md is about - an image rollback is not a schema rollback.
+#
+# The edge (TLS, HSTS, forwarded headers) is not here: ops/reverse-proxy has
+# the Caddy and nginx shapes, both pointed at the port published below.
+# There is no Redis: nothing in the application uses one.
+
+name: qualy
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg18-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set in .env}
+      TZ: ${TZ:-Asia/Shanghai}
+      LANG: en_US.utf8
+    volumes:
+      # the pg18 image keeps the cluster at /var/lib/postgresql itself
+      - pg_data:/var/lib/postgresql
+      # where `pg_dump` output lands (deploy/README.md, backup and restore)
+      - pg_backups:/backups
+    # no `ports`: the database is reachable from this project's network only
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # The one-off migration job: the same image as the server, running the
+  # deploy CLI once. `docker compose run --rm migrate` starts it on demand
+  # (its profile keeps `up` from starting it); the migrator takes the
+  # database's migration lock, so a second run waits and then finds nothing
+  # to do. A failed migration is not recorded and the job exits non-zero;
+  # nothing else is started until it passes.
+  migrate:
+    image: qualy-server:${QUALY_RELEASE:?set in .env}
+    profiles: [deploy]
+    restart: 'no'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # the deployment's own settings; the release smoke points this at a file
+    # of its own, a deployment leaves it at .env
+    env_file: ${QUALY_ENV_FILE:-.env}
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid,nodev
+    command: ['node', 'apps/cli/src/main.ts', 'deploy']
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '2'
+
+  server:
+    image: qualy-server:${QUALY_RELEASE:?set in .env}
+    restart: unless-stopped
+    init: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: ${QUALY_ENV_FILE:-.env}
+    environment:
+      # the container's own view of the deployment; these win over .env
+      PORT: '3000'
+      QUALY_STORAGE_LOCAL_ROOT: /var/lib/qualy/storage
+      QUALY_SANDBOX_RUNTIME_SOCKET: /run/qualy-sandbox/runtime/runtime.sock
+      QUALY_SANDBOX_AUTHORING_SOCKET: /run/qualy-sandbox/authoring/authoring.sock
+      QUALY_VERSION: ${QUALY_RELEASE}
+    ports:
+      # loopback by default: the edge proxy on this host is the public face
+      - '${QUALY_BIND:-127.0.0.1}:${QUALY_PORT:-3000}:3000'
+    volumes:
+      - storage:/var/lib/qualy/storage
+      # The sandbox sockets. The server only connects; connect() on a unix
+      # socket needs write permission on the socket inode, which a read-only
+      # mount refuses (EROFS), so both are mounted read-write here as well.
+      # The two stay separate volumes: neither sandbox sees the other's.
+      - sandbox_runtime:/run/qualy-sandbox/runtime
+      - sandbox_authoring:/run/qualy-sandbox/authoring
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid,nodev
+    security_opt:
+      - no-new-privileges:true
+    # liveness is the image's HEALTHCHECK (/health/live); readiness is asked
+    # from outside at /health/ready, once the assembly has finished starting
+    logging:
+      driver: json-file
+      options:
+        max-size: '20m'
+        max-file: '10'
+
+  # The sandbox pair, hardened as docs/sandbox-process-isolation.md requires:
+  # no network, read-only root, no capabilities, non-root, one unix socket
+  # each on a volume of its own. Neither is given .env: a sandbox's
+  # environment is its own socket path and limits, never a business secret.
+  sandbox-runtime:
+    image: qualy-sandbox-runtime:${QUALY_RELEASE:?set in .env}
+    restart: unless-stopped
+    init: true
+    network_mode: none
+    read_only: true
+    user: '1000:1000'
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    tmpfs:
+      - /tmp:size=32m,noexec,nosuid,nodev
+    mem_limit: 256m
+    cpus: 1
+    environment:
+      # one QuickJS worker per CPU of quota: the scoring deadline is
+      # wall-clock, and two workers on one core interrupted healthy formulas
+      QUALY_SANDBOX_POOL_SIZE: ${QUALY_SANDBOX_POOL_SIZE:-1}
+    volumes:
+      - sandbox_runtime:/run/qualy-sandbox/runtime
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'
+
+  sandbox-authoring:
+    image: qualy-sandbox-authoring:${QUALY_RELEASE:?set in .env}
+    restart: unless-stopped
+    init: true
+    network_mode: none
+    read_only: true
+    user: '1000:1000'
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    tmpfs:
+      - /tmp:size=256m,noexec,nosuid,nodev
+    mem_limit: 512m
+    cpus: 2
+    volumes:
+      - sandbox_authoring:/run/qualy-sandbox/authoring
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'
+
+volumes:
+  pg_data: {}
+  pg_backups: {}
+  # attachments written by @qualy/plugin-storage-local
+  storage: {}
+  sandbox_runtime: {}
+  sandbox_authoring: {}

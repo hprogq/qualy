@@ -20,7 +20,7 @@
 - Store 布局:`current.json`、`assets/`(所有保留 release 的 hashed 资源共存)、`releases/<id>/`(shell、public 文件、`.qualy-release.json`)。安装顺序 assets → shell(临时目录整体 rename)→ pointer;同名 asset 字节不同硬失败;同 release 重装幂等;`current` 永远指向完整的 release。
 - 保留策略:最近 `QUALY_WEB_RELEASE_RETAIN_COUNT`(默认 5)个 ∪ 最近 `QUALY_WEB_RELEASE_RETAIN_HOURS`(默认 72)小时;current 永不删;任何 release 的 metadata 读不出来则整个不 GC。
 - `node tools/quality/check-staged-web.ts [store]`:校验 current release 完整(index.html、所有 declared assets、resolutionHash = lock)并打印 releaseId;CI 在 build 后跑它。
-- 未来部署:CI 产出 `apps/web/dist`,部署侧对持久化的 store(host volume,例如 `/var/lib/qualy/web`)调用同一个 `installWebRelease`,再启动新进程;asset 历史不得只放在容器可写层。
+- 部署(2026-09-17 定,见 docs/deployment.md):release store 随 server 镜像一起构建并只装着当前 release——server 与 web release 是同一个 immutable 镜像,换镜像即换 release,旧 tab 在下一次请求拿到 release 不匹配后自行 reload。曾设想的「部署侧对持久化 host volume 调 `installWebRelease`、保留 asset 历史」不再需要:没有第二个进程会去服务旧 release 的 chunk。保留策略与 GC 仍是开发机 `pnpm build` 反复安装时的事。
 
 ## 生产服务(`@qualy/plugin-web`)
 

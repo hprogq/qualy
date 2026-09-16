@@ -1139,6 +1139,10 @@ authoring volume
 
 Qualy Server 不需要向 socket directory 创建文件。
 
+> 实测修正(2026-09-17,deploy/compose.yaml):unix socket 的 `connect()` 需要 socket inode 的**写**权限,
+> 卷以 `:ro` 挂进 server 容器时 connect 返回 EROFS。所以 server 侧的两个卷也是读写挂载,「server 只 connect、
+> 不创建文件」靠 server 代码自身保证,不靠挂载标志;两个卷仍然分开,谁也看不到对方的 socket。
+
 ---
 
 # 29. Dev 模式

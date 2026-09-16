@@ -139,7 +139,8 @@ describe('what a package says it depends on', () => {
       for (const source of walkSources(path.join(dir, 'src'), ['client', 'dev'])) {
         if (!source.endsWith('.ts')) continue
         if (source === testSupport) continue
-        if (testSupportDir !== undefined && source.startsWith(`${testSupportDir}${path.sep}`)) continue
+        if (testSupportDir !== undefined && source.startsWith(`${testSupportDir}${path.sep}`))
+          continue
         for (const used of runtimeImports(fs.readFileSync(source, 'utf8'))) {
           if (used.startsWith('.') || used.startsWith('/') || used.startsWith('virtual:')) continue
           if (used.startsWith('node:') || builtins.has(used)) continue

@@ -63,8 +63,12 @@ for (const file of ['qualy.yml', 'qualy.lock.json']) {
     .sort()
   const { out } = inside('ls /app/db/migrations | grep "\\.sql$" | sort')
   const shipped = out.split('\n').filter((line) => line !== '')
-  if (shipped.join('\n') === local.join('\n')) ok(`db/migrations: ${String(local.length)} committed migration(s)`)
-  else fail(`db/migrations differ: image ships ${String(shipped.length)}, checkout has ${String(local.length)}`)
+  if (shipped.join('\n') === local.join('\n'))
+    ok(`db/migrations: ${String(local.length)} committed migration(s)`)
+  else
+    fail(
+      `db/migrations differ: image ships ${String(shipped.length)}, checkout has ${String(local.length)}`,
+    )
 }
 expectOut(
   'the web release store points at a release',
@@ -107,8 +111,10 @@ expectOut('no .env baked in', 'test -e /app/.env && echo present || echo absent'
 // --- the assembly resolves from inside the image, against its own lock, with nothing mounted
 {
   const { code, out } = inside('node apps/cli/src/main.ts resolve --frozen-lockfile')
-  if (code === 0 && out.includes('is up to date')) ok('the assembly resolves inside the image and matches its lock')
-  else fail(`resolve --frozen-lockfile inside the image exited ${String(code)}: ${out.slice(0, 300)}`)
+  if (code === 0 && out.includes('is up to date'))
+    ok('the assembly resolves inside the image and matches its lock')
+  else
+    fail(`resolve --frozen-lockfile inside the image exited ${String(code)}: ${out.slice(0, 300)}`)
 }
 
 // --- a start gets as far as the database, and says so when it is not there
@@ -127,8 +133,14 @@ expectOut('no .env baked in', 'test -e /app/.env && echo present || echo absent'
     { encoding: 'utf8', timeout: 120_000 },
   )
   const out = `${ran.stdout}${ran.stderr}`
-  if (ran.status === 1 && out.includes('startup failed') && out.includes('postgres is not reachable')) {
-    ok('a start without a database gets past the lock and the web release, and refuses at the database')
+  if (
+    ran.status === 1 &&
+    out.includes('startup failed') &&
+    out.includes('postgres is not reachable')
+  ) {
+    ok(
+      'a start without a database gets past the lock and the web release, and refuses at the database',
+    )
   } else {
     fail(
       `a start without a database exited ${String(ran.status)} with:\n${out.split('\n').slice(-8).join('\n')}`,

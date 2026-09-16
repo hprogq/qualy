@@ -18,9 +18,9 @@ coverage
 **/.vitest
 **/__screenshots__
 *.log
-.env
-.env.*
-!.env.example
+**/.env
+**/.env.*
+!**/.env.example
 data
 db/data
 .claude

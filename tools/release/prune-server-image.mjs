@@ -99,7 +99,8 @@ pruneFamily('packages')
 // from its built bundle), and files only a development checkout reads. The
 // server side has no .tsx; a .tsx anywhere here is browser code.
 const PRUNED_DIRS = new Set(['tests', '__screenshots__', '.vitest'])
-const PRUNED_FILES = /(\.test\.tsx?|\.browser\.test\.tsx|\.tsx|tsconfig[\w.-]*\.json|vitest[\w.-]*\.ts|README\.md)$/
+const PRUNED_FILES =
+  /(\.test\.tsx?|\.browser\.test\.tsx|\.tsx|tsconfig[\w.-]*\.json|vitest[\w.-]*\.ts|README\.md)$/
 let removedFiles = 0
 
 // A package's test support is published under its `./testkit` export and
@@ -121,7 +122,10 @@ const sweep = (dir) => {
     if (entry.isSymbolicLink()) continue
     if (entry.isDirectory()) {
       if (entry.name === 'node_modules') continue
-      if (PRUNED_DIRS.has(entry.name) || (entry.name === 'client' && path.basename(dir) === 'src')) {
+      if (
+        PRUNED_DIRS.has(entry.name) ||
+        (entry.name === 'client' && path.basename(dir) === 'src')
+      ) {
         remove(at)
         continue
       }
@@ -136,4 +140,6 @@ const sweep = (dir) => {
 }
 for (const dir of keep) sweep(path.join(root, dir))
 
-console.log(`pruned to ${String(keep.size)} workspace package(s); removed ${String(removedFiles)} development file(s)`)
+console.log(
+  `pruned to ${String(keep.size)} workspace package(s); removed ${String(removedFiles)} development file(s)`,
+)

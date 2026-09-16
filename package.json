@@ -90,6 +90,7 @@
     "start": "node --env-file-if-exists=.env apps/server/src/run.ts production",
     "image:build": "docker build --build-arg QUALY_RELEASE=local -t qualy-server:local .",
     "image:check": "node tools/quality/check-release-image.ts qualy-server:local",
+    "release:build": "node tools/release/build-images.ts",
     "sandbox:gate": "node tools/quality/sandbox-uds-gate.ts",
     "sandbox:build": "docker compose --profile sandbox build",
     "sandbox:up": "node tools/quality/sandbox-uds-gate.ts && docker compose --profile sandbox up -d sandbox-runtime sandbox-authoring",
