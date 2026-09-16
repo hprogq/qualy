@@ -16173,14 +16173,14 @@ template,且先断言这些值不是任何路由 literal;按参数**名**从契�
 
 **可证伪(逐条实测):**
 
-| 故意破坏                                   | 结果                                  |
-| ------------------------------------------ | ------------------------------------- |
-| literal 不再要求相等                        | observed-routes 5 例红                |
-| 忽略 specificity、先到先得                  | 第一版**没红**(真实注册顺序恰好对)→ 加反序后 1 例红 |
-| 匹配不到时回退原路径                        | 3 例红                                |
-| `observedApiRoute` 匹配不到回退 `sanitizePath` | 浏览器 2 例红                       |
-| 忽略 method                                 | 浏览器 1 例红                         |
-| 去掉同源判断                                | 浏览器 2 例红                         |
+| 故意破坏                                       | 结果                                                |
+| ---------------------------------------------- | --------------------------------------------------- |
+| literal 不再要求相等                           | observed-routes 5 例红                              |
+| 忽略 specificity、先到先得                     | 第一版**没红**(真实注册顺序恰好对)→ 加反序后 1 例红 |
+| 匹配不到时回退原路径                           | 3 例红                                              |
+| `observedApiRoute` 匹配不到回退 `sanitizePath` | 浏览器 2 例红                                       |
+| 忽略 method                                    | 浏览器 1 例红                                       |
+| 去掉同源判断                                   | 浏览器 2 例红                                       |
 
 顺带:`rum-tencent.browser.test.tsx` 里 provider 配置那组 `describe` 被上一轮误嵌进了
 「api failures」组内,已提回顶层;原用例用的 `/api/iam/users/.../role-assignments`、
@@ -16303,15 +16303,15 @@ Qualy 使用标准 `.env` / process environment,普通磁盘 `.env` 是默认且
 
 **反向验证(逐条实测):**
 
-| 故意破坏                                        | 结果                               |
-| ----------------------------------------------- | ---------------------------------- |
-| 回到 `start()` 后台注册、upload 不等待           | 6/6 红                             |
-| 不 memoize                                      | 「declared once」红                |
-| await 后不检查取消                              | 3 例红(含 cancelled、route known) |
-| 失败后不清空 memo                               | 「asks again」红                   |
-| 失败时让上传一起失败                            | 2 例红                             |
-| 恢复原 `.then(ok, fail)` 写法                   | 2 例红                             |
-| `setup()` 里预加载契约(无 `start`)             | 「costs a page … nothing」红,resource timing 读数 1 |
+| 故意破坏                               | 结果                                                |
+| -------------------------------------- | --------------------------------------------------- |
+| 回到 `start()` 后台注册、upload 不等待 | 6/6 红                                              |
+| 不 memoize                             | 「declared once」红                                 |
+| await 后不检查取消                     | 3 例红(含 cancelled、route known)                   |
+| 失败后不清空 memo                      | 「asks again」红                                    |
+| 失败时让上传一起失败                   | 2 例红                                              |
+| 恢复原 `.then(ok, fail)` 写法          | 2 例红                                              |
+| `setup()` 里预加载契约(无 `start`)     | 「costs a page … nothing」红,resource timing 读数 1 |
 
 **生产产物实测**(`pnpm build` 后分析 `apps/web/dist`):契约 chunk `c-DDcqIr072.js` 284 字节,
 不在 `index.html`、不在首屏静态可达图(11 个 chunk)里;入口中为
@@ -16367,11 +16367,11 @@ recognition + scoring 之上的一个 staff read/inspection surface。
 
 ### 后端:三个读端点 + 两处抽取
 
-| 端点 | 说明 |
-| --- | --- |
+| 端点                                                             | 说明                                         |
+| ---------------------------------------------------------------- | -------------------------------------------- |
 | `GET /assessment/batches/{batchId}/participants/{participantId}` | 直接读一行,刷新 `?participant=` 不必翻页找人 |
-| `.../participants/{participantId}/entries` | 一个人的申报 + **当前认定**,keyset 分页 |
-| `.../participants/{participantId}/result` | 与 `getMyResult` **同一 shape、同一算术** |
+| `.../participants/{participantId}/entries`                       | 一个人的申报 + **当前认定**,keyset 分页      |
+| `.../participants/{participantId}/result`                        | 与 `getMyResult` **同一 shape、同一算术**    |
 
 - `scoring/service.ts` 抽出 `accountOf(tenantId, batchId, participantId, runtime)`,
   `getMyResult` 与 `getParticipantResult` 只差一道门(自己的 membership 行 vs roster reach)。
@@ -16409,12 +16409,12 @@ recognition + scoring 之上的一个 staff read/inspection surface。
 
 ### 反向验证(逐条实测)
 
-| 故意破坏 | 结果 |
-| --- | --- |
-| 管理员结果改读自己的 participant | 服务层 2 例红 |
-| 去掉 `requireRosterReach` | 「refuses everyone…」红 |
-| 三个地址键分开写 | 浏览器 2 例红 |
-| 分数行不可下钻 | 「follows a scored line」红 |
+| 故意破坏                         | 结果                        |
+| -------------------------------- | --------------------------- |
+| 管理员结果改读自己的 participant | 服务层 2 例红               |
+| 去掉 `requireRosterReach`        | 「refuses everyone…」红     |
+| 三个地址键分开写                 | 浏览器 2 例红               |
+| 分数行不可下钻                   | 「follows a scored line」红 |
 
 ### 门禁(实际执行,2026-09-16)
 
@@ -16543,3 +16543,57 @@ check-csp-enforce               /login、/assessment/batches、/library/formulas
 写:六个阶段、带折叠行、说明是整段中文),提交前删除。它抓到两个**光读代码看不出来的**问题:
 `todoVerbSeat` 在宽屏误写 `gridColumnStart: 1`,按钮压在标题上;以及上面第 2 条里那根
 贴死在字上的竖线。
+
+## 顶栏:workspace shell 里两条 bar 之间没有线(2026-09-16)
+
+用户报「Qualy 主菜单栏和批次名子栏中间没有横线」,并且判断这是一种**特殊情况**——判断对了。
+
+### 根因不是漏写,是一条规则用错了壳
+
+`TopBar` 静止时**故意不画线**(`borderBottomColor: 'transparent'`),只有 `scrolled` 为真才变
+glass + 细线。这条规则是给 `app-shell/v1` 写的:那里两条 bar **浮在**滚动的 `<main>` 之上,
+页面从底下经过才「挣得」那条线,所以静止时没有线是对的——此刻 bar 的底色和页面底色本来就连续。
+
+`workspace-shell/v1` 的结构完全不同,两条 bar 都在**正常流**里:
+
+```
+topFold 56px    TopBar          scrolled 从未传过 → 永远 transparent
+contextBar 52px 批次名 slot     自带 border-bottom: tokens.border
+body            rail + 页面
+```
+
+批次栏不动,所以**没有任何东西会从 TopBar 底下经过**——glass 机制在这个壳里是**结构性死代码**。
+结果是 108px 同色连续带,唯一一条线在最下面,两行读成一行。
+
+### 设计:两档线重已经在 token 里了
+
+这两条 bar 不是平级的:上面是「在哪个应用、你是谁」(永不变),下面是「在做哪个批次」(跟路由走)。
+它们是**同一块 chrome 的两行**,不是两块 chrome。`tokens.css` 里两档线重的原话正是为这个区别
+写的——_"the edge of a card or a table, and the lighter rule between its rows"_:
+
+- `divider`(6%)画在两行之间——同一块东西的行间线
+- `border`(10%)画在这一对下面——chrome 结束、工作开始的边
+
+实测取色(1280 截图,x=400):底色 252 / 上线 237 / 下线 226,轻重关系成立且都可见。
+
+### 接口:壳说事实,bar 决定画法
+
+新增 `TopBar` 的 `stacked` prop,由**叠了第二条 bar 的那个壳**来说(`TopBar` 没有办法看自己
+底下是什么,而猜错的代价就是在 app-shell 里画出一条不该有的线)。样式顺序 `stacked` 在前、
+`scrolled` 在后:页面真到了 bar 底下时,glass 那一档接管这条线。
+
+**`app-shell` 没有跟着改**,这是判断不是遗漏:它的第二条 bar(`SectionBar`)是 13px 弱化的
+平级词,靠字重就分得开,而且整对会一起变 glass;批次栏是 15px 半粗的标题按钮,两行标题级的
+东西叠在一起才读不出层次。
+
+### 门禁(实际执行,2026-09-16)
+
+```text
+pnpm typecheck              exit=0
+pnpm test                   243 passed | 3 skipped (246) / 1745 passed | 17 skipped (1762)
+pnpm test:browser           55 passed (55) / 413 passed (413)
+```
+
+`apps/web/tests/shell.browser.test.tsx` 加了一条、改了一条,断言的是「有没有线」而不是哪一档灰
+(线重归主题,会动)。**反向验证**:摘掉 `stacked` → workspace 那条红、且只红那一条;给
+app-shell 也加上 `stacked` → 「静止时不画线」那条红。

@@ -744,7 +744,12 @@ function CapableWorkspaceShell() {
         {...(narrow ? { inert: true, 'aria-hidden': true } : {})}
         {...stylex.props(styles.topFold, narrow && styles.topFolded)}
       >
-        <TopBar apps={apps} activeApp={activeApp} />
+        {/* Ruled, because here the bar can never earn its line. The one it
+            draws at rest is earned by the page passing underneath, and in
+            this shell nothing passes underneath: the bar below is in the
+            flow and never moves. Two bars of the same ground with no rule
+            between them read as one crowded band. */}
+        <TopBar apps={apps} activeApp={activeApp} stacked />
       </div>
       {/* its height is fixed rather than found: the slot arrives a moment after
           the shell does, and a bar that grows from empty to filled moves every

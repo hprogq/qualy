@@ -19,6 +19,9 @@ const WorkspaceShell = (await layoutComponents['workspace-shell/v1']!()).default
 
 const BATCH_ID = '11111111-1111-4111-8111-111111111111'
 
+/** what a computed colour reads as when nothing is drawn */
+const BLANK = 'rgba(0, 0, 0, 0)'
+
 const text = (value: string) => ({ kind: 'literal' as const, value })
 
 const manifest = () => ({
@@ -189,9 +192,16 @@ describe('the application shell', () => {
     await expect.element(page.getByTestId('tall')).toBeInTheDocument()
     const head = document.querySelector('[data-shell-head]')!
     await vi.waitFor(() => expect(head.hasAttribute('data-scrolled')).toBe(false))
+    // and until it has, the bar draws no line at all: here the page is what
+    // lies underneath, so the hairline is earned rather than stated. The
+    // workspace shell, where a second bar lies underneath instead and never
+    // moves, states it - the case further down.
+    const bar = (await page.getByRole('link', { name: 'Qualy' }).element()).parentElement!
+    expect(getComputedStyle(bar).borderBottomColor).toBe(BLANK)
     const main = document.querySelector('main')!
     main.scrollTo({ top: 400 })
     await vi.waitFor(() => expect(head.hasAttribute('data-scrolled')).toBe(true))
+    await vi.waitFor(() => expect(getComputedStyle(bar).borderBottomColor).not.toBe(BLANK))
     // the bars are still where they were: stuck to the top of the scrollport
     expect(head.getBoundingClientRect().top).toBeCloseTo(main.getBoundingClientRect().top, 0)
     main.scrollTo({ top: 0 })
@@ -278,6 +288,29 @@ describe('the workspace shell', () => {
     // the applications stay above it: a workspace is somewhere inside the
     // product, not a place the product disappears from
     await expect.element(page.getByRole('link', { name: '组织与权限' })).toBeVisible()
+  })
+
+  it('rules its top bar off from the bar stacked under it', async () => {
+    // The bar draws no line at rest, because in the shell it was written
+    // for what lies under it is the page, and the page passing beneath is
+    // what earns one - the case above. Here nothing ever passes beneath:
+    // the context bar is in the flow and never moves. Two bars on the same
+    // ground with no rule between them read as one band, which is the
+    // defect this pins.
+    //
+    // Which grey is not asserted, only that there is one: the weight is the
+    // theme's business and may move.
+    await page.viewport(1280, 800)
+    shell(
+      <WorkspaceShell />,
+      '/assessment/batches/:batchId/phases',
+      `/assessment/batches/${BATCH_ID}/phases`,
+    )
+    const brand = page.getByRole('link', { name: 'Qualy' })
+    await expect.element(brand).toBeVisible()
+    expect(getComputedStyle((await brand.element()).parentElement!).borderBottomColor).not.toBe(
+      BLANK,
+    )
   })
 
   it('folds the top bar away on a phone and hands navigation to the capsule', async () => {

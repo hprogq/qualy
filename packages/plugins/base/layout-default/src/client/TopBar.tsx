@@ -61,6 +61,24 @@ const styles = stylex.create({
     transitionDuration: '180ms',
     transitionTimingFunction: 'ease',
   },
+  /**
+   * The rule this bar draws where it cannot earn one.
+   *
+   * At rest the bar has no line because in the shell it was written for the
+   * only thing under it is the page, and the page moving beneath is what
+   * earns the hairline. A shell that stacks a second bar under this one
+   * never has that moment - the bar below is in the flow and never moves -
+   * so the rule is stated instead of earned.
+   *
+   * It is the lighter of the two weights on purpose. Two bars stacked like
+   * that are two rows of ONE piece of chrome, not two pieces: the rule
+   * between them is the same kind of rule as the one between two rows of a
+   * table, and the heavier line belongs at the bottom of the pair, where
+   * the chrome ends and the work begins.
+   */
+  barStacked: {
+    borderBottomColor: tokens.divider,
+  },
   barScrolled: {
     backgroundColor: `color-mix(in oklch, ${tokens.background} 62%, transparent)`,
     backdropFilter: 'blur(18px)',
@@ -324,6 +342,7 @@ export function TopBar({
   apps,
   activeApp,
   scrolled = false,
+  stacked = false,
   title = null,
   titleShown = false,
 }: {
@@ -331,6 +350,15 @@ export function TopBar({
   activeApp?: string
   /** the page has moved under the bar: it turns to glass */
   scrolled?: boolean
+  /**
+   * There is more chrome under this bar, in the flow, that never moves.
+   *
+   * The caller states the fact; the bar decides what to draw for it. Said
+   * by whoever stacked the bars, because only that shell knows - this one
+   * has no way to look below itself, and guessing would be wrong in the
+   * shell where the page is what lies underneath.
+   */
+  stacked?: boolean
   /**
    * The open page's name, shown once the page's own heading has scrolled
    * away. Only where the applications are not drawn beside it, which is
@@ -340,7 +368,10 @@ export function TopBar({
   titleShown?: boolean
 }) {
   return (
-    <div {...stylex.props(styles.bar, scrolled && styles.barScrolled)}>
+    // glass last: once the page is under the bar, that state owns the line
+    <div
+      {...stylex.props(styles.bar, stacked && styles.barStacked, scrolled && styles.barScrolled)}
+    >
       {/* the mark leads to the first application this viewer has, rather
           than to a literal origin: where "home" is depends on who is
           reading, and only the manifest knows */}
