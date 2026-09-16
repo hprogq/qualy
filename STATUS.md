@@ -17266,3 +17266,54 @@ pnpm test:browser(单独重跑)          58 passed (58) / 425 passed (425),exit=
 - §13 说 testkit「从 repository root/default product root 取 host」:取的是仓库根(以模块位置锚定),
   没有再去找 qualy.yml——testkit 链接的是包,和清单无关。
 - benchmark 清单的位置(§ 无规定):从 `.qualy/benchmarks/` 移到根旁,原因见第 1 节。
+
+## 构建/装配/部署重构 P2:可移植的 CLI 与 Dev Product(2026-09-17)
+
+规格 `docs/osi.md` §15/§59。P1 之后 CLI 仍默认「本仓库根/qualy.yml」,server 仍从自己的包向上找,
+`.env` 从 cwd 读——三处各一套规则。
+
+### 1. 架构变化
+
+- **清单发现只有一条规则**:`locateManifest({ explicit, env, from })`(`@qualy/assembly`):
+  `--yml` > `QUALY_CONFIG` > 从 `from` 向上找最近的 `qualy.yml`。CLI 的 `from` 是 cwd
+  (它是装在产品里的一个包,自己的位置说不出该读谁的清单);server 的 `from` 仍是自己的包目录
+  (从任何 cwd 启动都要找到自己的产品),两边同一个函数。找不到时的错误一句话点名 `--yml <path>` 与
+  `QUALY_CONFIG`,**不猜**。
+- CLI 先定位清单、再算 `productRootFor`(无 package.json 直接 `die`),再从 **product root** 读 `.env`
+  (不是 cwd;已在环境里的变量优先——`process.loadEnvFile` 实测不覆盖既有变量)。
+- `QUALY_GEN_OUT` 的默认改为 product root(与 P1 的派生模块路径一致)。
+- `apps/server/src/manifest.ts` 改为调用同一 helper;`packages/build/web` 的 repoRoot 默认归 P5,未动。
+
+### 2. 改动文件
+
+`packages/core/assembly/src/{manifest,index}.ts`、`apps/cli/src/main.ts`、`apps/server/src/manifest.ts`、
+`CLAUDE.md`;新增 `tools/tests/standalone-product.test.ts`。
+
+### 3. 新不变量(§59 standalone smoke)
+
+临时产品(`createWorkspace`:package.json + node_modules + qualy.yml,三个插件)里以 cwd 运行 CLI 进程,
+不传 `--yml`、环境无 `QUALY_CONFIG`:`resolve` 把 lock 写在产品旁且本仓库 lock 不受影响;`plan` 打
+`no changes`;`list` 列出 lifecycle 与 `database check`;在产品的子目录里 `resolve --frozen-lockfile`
+仍找到它;在没有任何 qualy.yml 的目录里拒绝(不写任何文件);清单不在包里拒绝;`.env` 只写在产品根、
+命令在子目录里敲,`deploy` 仍按 `.env` 里的 `DATABASE_URL`(127.0.0.1:1)连接并被拒——证明读的是
+product root 的 `.env`。
+
+反向验证:CLI 改回按自身位置找 → 「无产品目录」那条红;去掉向上遍历 → 「子目录」那条红;
+`.env` 改回 cwd → `.env` 那条红(`DATABASE_URL is not set`)。
+
+### 4. 移除的旧假设
+
+CLI 的 `repoRoot`;server 与 CLI 各自的发现逻辑;`.env` 等于 cwd。
+
+### 5. 命令与结果(实际执行)
+
+```text
+pnpm typecheck                     exit=0
+pnpm test                          252 passed | 3 skipped (255) / 1822 passed | 17 skipped (1839)
+pnpm test:browser                  58 passed (58) / 425 passed (425)
+smoke-production(不重建,server 发现规则已变) exit=0
+```
+
+### 6. 推后
+
+`tools/lib/manifest.ts`(仓库工具)与 `packages/build/web/src/manifest.ts`(P5)仍以 repoRoot 为默认。

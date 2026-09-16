@@ -1,6 +1,5 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { isPluginDescriptor } from '@qualy/plugin-kit'
 import { collectCliCommands } from '@qualy/plugin-kit/cli'
 import { resolvePluginModuleUrl } from '@qualy/assembly/host'
@@ -8,10 +7,12 @@ import {
   capabilityContext,
   capabilityModules,
   capabilityWork,
+  locateManifest,
   lockDrift,
   moduleDrift,
   lockFromResolution,
   lockPathFor,
+  productRootFor,
   readLock,
   resolveAssembly,
   type AssemblyLock,
@@ -21,29 +22,26 @@ import {
 import { PLUGIN_USAGE, runPluginCommand } from './plugin.ts'
 import { openFileSet, writeResolution } from './resolution.ts'
 
-// deploy and the capability commands reach real systems, and the connection
-// details for them live in .env exactly as they do for `pnpm dev`
-try {
-  process.loadEnvFile()
-} catch {}
-
 // The assembly commands.
 //
 // The core owns when things happen and each capability owns what happens:
-// resolve and plan never touch anything outside this repository, generate
-// writes local artifacts, deploy applies them. A capability with nothing to do
-// in a phase has no handler for it, so an assembly with no database plugin
-// runs every one of these and never mentions a database.
+// resolve and plan never touch anything outside the product, generate writes
+// local artifacts, deploy applies them. A capability with nothing to do in a
+// phase has no handler for it, so an assembly with no database plugin runs
+// every one of these and never mentions a database.
 
 const USAGE = [
   'usage:',
-  '  pnpm qualy resolve [--frozen-lockfile] [--yml <path>]',
+  '  pnpm qualy resolve [--frozen-lockfile]',
   '  pnpm qualy plan',
   '  pnpm qualy generate [capability args]',
   '  pnpm qualy deploy',
   '  pnpm qualy list',
   PLUGIN_USAGE,
   '  pnpm qualy <namespace> <command> [args]',
+  '',
+  'the product is the nearest qualy.yml above the working directory;',
+  '--yml <path> or QUALY_CONFIG name another one',
 ].join('\n')
 
 /** the lifecycle's own verbs; a plugin namespace may not shadow one */
@@ -57,14 +55,37 @@ const option = (name: string) => {
   return at >= 0 ? argv[at + 1] : undefined
 }
 
-// the CLI is this repository's; an explicit --yml still points anywhere
-const repoRoot = path.resolve(fileURLToPath(new URL('.', import.meta.url)), '../../..')
-const manifestPath = option('yml') ? path.resolve(option('yml')!) : path.join(repoRoot, 'qualy.yml')
-const lockPath = lockPathFor(manifestPath)
-
 const die = (message: string): never => {
   console.error(message)
   process.exit(1)
+}
+
+// Which product this command is about: the one the working directory is in,
+// unless told otherwise. The CLI is installed as a package like any other, so
+// its own location says nothing about whose manifest to read.
+const manifestPath = ((): string => {
+  try {
+    return locateManifest({ explicit: option('yml'), env: process.env, from: process.cwd() })
+  } catch (error) {
+    return die(error instanceof Error ? error.message : String(error))
+  }
+})()
+const productRoot = ((): string => {
+  try {
+    return productRootFor(manifestPath)
+  } catch (error) {
+    return die(error instanceof Error ? error.message : String(error))
+  }
+})()
+const lockPath = lockPathFor(manifestPath)
+
+// deploy and the capability commands reach real systems, and the connection
+// details for them live in the product's .env exactly as they do for `pnpm
+// dev` - the product's, not the working directory's, since a command may be
+// run from anywhere inside it. Variables already in the environment win.
+{
+  const envFile = path.join(productRoot, '.env')
+  if (fs.existsSync(envFile)) process.loadEnvFile(envFile)
 }
 
 const relative = (file: string) => path.relative(process.cwd(), file)
@@ -82,10 +103,10 @@ const drift = (previous: AssemblyLock | undefined, resolution: Resolution): stri
   // there is no generated composition to drift any more: the host assembles
   // at boot from this same resolution, so the lock is the whole story
   const reasons = lockDrift(previous, resolution)
-  // capability-derived modules land relative to the manifest, like every
+  // capability-derived modules land relative to the product root, like every
   // other generated artifact; QUALY_GEN_OUT redirects a test run's tree
   const read = (module: string) => {
-    const root = process.env.QUALY_GEN_OUT ?? path.dirname(manifestPath)
+    const root = process.env.QUALY_GEN_OUT ?? productRoot
     const file = path.resolve(root, module)
     return fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : undefined
   }

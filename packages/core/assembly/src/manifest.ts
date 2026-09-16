@@ -128,6 +128,46 @@ export function readManifest(file: string): AssemblyManifest {
   return parseManifest(fs.readFileSync(file, 'utf8'), file)
 }
 
+export const MANIFEST_FILENAME = 'qualy.yml'
+
+/**
+ * Where the manifest is, for a process that was not handed the path.
+ *
+ * One rule for every entry point, so the CLI and the server cannot disagree
+ * about which product they are working on: an explicit path wins (`--yml`),
+ * then `QUALY_CONFIG`, then the nearest `qualy.yml` walking up from `from` -
+ * the working directory for a command somebody typed, the host's own package
+ * for a server that may have been started from anywhere. The CLI used to
+ * default to the manifest beside its own source, which is right in this
+ * repository and wrong in every product that installs the CLI as a package:
+ * `qualy resolve` in a customer's product directory would have resolved the
+ * SDK's manifest.
+ */
+export function locateManifest(options: {
+  /** an explicit path, which wins over everything */
+  explicit?: string | undefined
+  /** where QUALY_CONFIG is read from; defaults to this process's environment */
+  env?: NodeJS.ProcessEnv
+  /** the directory to walk up from when nothing named the file */
+  from: string
+}): string {
+  if (options.explicit) return path.resolve(options.explicit)
+  const named = (options.env ?? process.env).QUALY_CONFIG
+  if (named) return path.resolve(named)
+  let dir = path.resolve(options.from)
+  for (;;) {
+    const candidate = path.join(dir, MANIFEST_FILENAME)
+    if (fs.existsSync(candidate)) return candidate
+    const parent = path.dirname(dir)
+    if (parent === dir) {
+      throw new Error(
+        `no ${MANIFEST_FILENAME} found in ${options.from} or any directory above it; run inside a product, pass --yml <path>, or set QUALY_CONFIG`,
+      )
+    }
+    dir = parent
+  }
+}
+
 /**
  * A hash of what the manifest says, not of how it was written.
  *

@@ -2,8 +2,10 @@ export { topoSort, CycleError, type TopoResult } from './graph.ts'
 export { runtimeLayers, runtimeLevels, type RuntimeLayer } from './runtime-plan.ts'
 export { canonicalHash, shortId } from './hash.ts'
 export {
+  MANIFEST_FILENAME,
   MANIFEST_VERSION,
   editManifest,
+  locateManifest,
   lockPathFor,
   manifestHash,
   parseManifest,

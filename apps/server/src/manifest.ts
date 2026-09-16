@@ -1,6 +1,5 @@
-import fs from 'node:fs'
-import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { locateManifest } from '@qualy/assembly'
 
 // Where the assembly's manifest is.
 //
@@ -17,24 +16,11 @@ const appRoot = fileURLToPath(new URL('../', import.meta.url))
 /**
  * The manifest this process was started with, the same one main.ts verifies.
  *
- * Found by walking up from this package rather than named at a fixed depth,
- * because the two layouts put it in different places: in this repository it
- * sits at the root, beside the apps it configures, while a standalone
- * deployment has it next to the host and its node_modules. Walking up answers
- * both, and QUALY_CONFIG overrides it outright.
+ * The one discovery rule every entry point shares (`locateManifest`):
+ * QUALY_CONFIG names it outright, otherwise the nearest qualy.yml walking up -
+ * from this package rather than from a fixed depth, because the two layouts
+ * put it in different places: in this repository it sits at the root, beside
+ * the apps it configures, while a standalone product has it beside the
+ * node_modules this package was installed into.
  */
-export const manifestPath = (): string => {
-  if (process.env.QUALY_CONFIG) return path.resolve(process.env.QUALY_CONFIG)
-  let dir = appRoot
-  for (;;) {
-    const candidate = path.join(dir, 'qualy.yml')
-    if (fs.existsSync(candidate)) return candidate
-    const parent = path.dirname(dir)
-    if (parent === dir) {
-      throw new Error(
-        `no qualy.yml found in ${appRoot} or any directory above it; set QUALY_CONFIG to name one`,
-      )
-    }
-    dir = parent
-  }
-}
+export const manifestPath = (): string => locateManifest({ env: process.env, from: appRoot })
