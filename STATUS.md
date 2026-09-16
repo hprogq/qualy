@@ -16344,3 +16344,97 @@ smoke-production / check-csp-enforce                                            
 (根 tsconfig 排除 tests 下的 `.tsx`),上表是修复后完整的一轮。
 
 **不含腾讯 staging rollout。**
+
+## 参评结果:管理员按人检查一名参评人员的完整账户(2026-09-16)
+
+按用户给定的方案实施。它不是新 workflow,也不是第二个审核工作台,而是 roster + entry +
+recognition + scoring 之上的一个 staff read/inspection surface。
+
+### 信息架构与交互(冻结)
+
+- 侧边栏「管理」组新增**参评结果**(`assessment/batch-results`,rail order 25,
+  `permissionOf('assessment.batch.manage')`);
+- **不新建权限码,也不借用 `assessment.result.view-peers`**——后者的语义是「看他人公示」,
+  属于结果公开阶段,与管理员查看内部暂定账户不是一回事。沿用
+  `assessment.batch.manage → requireRosterReach` 这条既有管理边界。出现「只看结果不改批次」
+  的角色时再独立加码;
+- **一个 Page + URL query drill-down**,与 `ItemSettingsPage` 同型:
+  `/results` → `?participant=` → `&view=entries` → `&entry=`。侧栏常驻 active、浏览器 back
+  天然是「详情 → 列表」、刷新与分享链接都能恢复;打开一个人由 `BatchBanner` 原位接管顶部
+  band(姓名/学号/在册),内容区不再出现第二个标题;
+- 人员列表**不算总分**:`getMyResult` 不是读一个存好的数,而是每人开一次 repeatable-read
+  快照跑一遍全批次算术,列表 25 人就是 25 次。列表只负责找人。
+
+### 后端:三个读端点 + 两处抽取
+
+| 端点 | 说明 |
+| --- | --- |
+| `GET /assessment/batches/{batchId}/participants/{participantId}` | 直接读一行,刷新 `?participant=` 不必翻页找人 |
+| `.../participants/{participantId}/entries` | 一个人的申报 + **当前认定**,keyset 分页 |
+| `.../participants/{participantId}/result` | 与 `getMyResult` **同一 shape、同一算术** |
+
+- `scoring/service.ts` 抽出 `accountOf(tenantId, batchId, participantId, runtime)`,
+  `getMyResult` 与 `getParticipantResult` 只差一道门(自己的 membership 行 vs roster reach)。
+  **repeatable-read 快照读完即结束事务、再跑 calculator** 这条边界原样保留;
+- `entry/service.ts` 新增 `listParticipantEntries`:复用同一条 entry 分页核心,
+  **不返回 filing gates 与 unread attention**(那是参与者自己的工作状态),改为带上认定;
+- `recognition-db.ts` 新增 `currentRecognitionsOfEntries` 批量读(含 source/时间/操作人),避免 N+1;
+  `EntryRecognition` 仍是 append-only,没有迁移;
+- 授权在查 participant **之前**:没有 reach 的读者连「这个 id 是不是本批次的人」都问不出来。
+
+### 前端:抽取而不是复制
+
+- `ResultLedger.tsx` 从 `MyResultPage` 抽出(754 → 133 行),纯展示,不知道读者是谁、
+  API 从哪来。**同一个人的成绩不会在学生页和管理员页各有一套解释代码**;
+- `EntryDetail.tsx` 从 `EntrySheet` 抽出共享阅读面(正文/材料/补充/完整历史),
+  `EntrySheet` 只剩参与者动作,新增 `ManagedEntrySheet` 只加 staff 动作与「当前认定」卡片;
+- 分数行带 provenance 就可点:`91.42 → CET-6 +1.00 → 具体申报 → 材料/认定/历史`;
+- 纠错动作按来源分:学生申报 → **退回修改**(`interveneOnEntry(return-for-revision)`),
+  行政登记/导入 → **撤销认定**(`void`,历史保留)。**`review.reopen` 本轮不做**——模型已备
+  (`ReviewInstance.origin = 'reopen'` + `assessment.review.reopen`),但 ReviewMethods 还没有
+  真正的 reopen,按「不要为了点亮按钮做错误状态转换」留到独立一笔;
+- live 失效按事件精确到 key,不 `invalidateQueries(assessment.key())` 全量炸。
+
+### 过程中踩到并修掉的三件事
+
+1. **一次点击写三个 query key 会互相覆盖**。`usePageQueryState` 的 setter 读的是本次渲染的
+   location,连写三次后两次会吞掉第一次——运行时注释早就写了这条,并给了 `usePageQueryUpdate`。
+   开人、跟随分数行、返回都改成一次写入多键。**反向验证**:改回分开写,浏览器 2 例红。
+2. **`ReasonDialog` 的确认按钮写死「保存」**。在「退回修改」的语境里这个词不对;加了可选
+   `confirmLabel`,默认不变,既有调用点零改动。
+3. **测试自身的两个错误前提**:`window.location` 在 harness 里是 iframe 的地址,
+   MemoryRouter 的地址要用 `addressNow()`;fixture 的 admin 本身持有 `entry.record`,
+   所以「管理员越权撤销」这个前提不成立,改成钉住真正的不变量——**记录的当事人永远不能
+   自己撤销**(`self-record-refused`)。
+
+### 反向验证(逐条实测)
+
+| 故意破坏 | 结果 |
+| --- | --- |
+| 管理员结果改读自己的 participant | 服务层 2 例红 |
+| 去掉 `requireRosterReach` | 「refuses everyone…」红 |
+| 三个地址键分开写 | 浏览器 2 例红 |
+| 分数行不可下钻 | 「follows a scored line」红 |
+
+### 门禁(实际执行,2026-09-16)
+
+```text
+pnpm typecheck                                exit=0
+pnpm test                 243 passed | 3 skipped (246) / 1745 passed | 17 skipped (1762)
+pnpm test:browser         55 passed (55) / 410 passed (410)
+pnpm test:browser:webkit  2 passed (2) / 14 passed (14)
+qualy resolve --frozen-lockfile / build / check-staged-web / check-chunks /
+check-csp-build / smoke-production / check-csp-enforce                     exit=0
+```
+
+新增测试:`tests/participant-account.test.ts`(5 条服务边界)、
+`tests/participant-results.browser.test.tsx`(5 条交互)。冻结路由表同笔更新。
+
+### 已知边界(未做,已记)
+
+- 「撤销认定」的按钮对所有 batch 管理员可见,而服务端要求的是 `assessment.entry.record`
+  授权;没有该授权时按下会收到结构化拒绝(有翻译)。要做到「不给就不显示」需要 EntryView
+  带上 staff 侧 capability,属于新契约字段,本轮没加;
+- 申报列表只展示第一页(`nextCursor` 存在时「加载更多」为禁用占位),真实数据量出现再补;
+- participant-level 的全局操作记录(§四的第三个 Tab)没做:每条 entry 已有完整 `EntryHistory`,
+  聚合成新的 activity read model 目前没有需求支撑。
