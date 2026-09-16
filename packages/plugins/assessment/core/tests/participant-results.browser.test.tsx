@@ -175,7 +175,7 @@ const screen = (
                   id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
                   source: 'review' as const,
                   entryRevisionId: REVISION_ID,
-                  values: { level: '省级' },
+                  values: { 'dddddddd-dddd-4ddd-8ddd-dddddddddddd': '省级' },
                   createdAt: Date.parse('2026-03-02T00:00:00.000Z'),
                   createdByName: '王老师',
                 },
@@ -198,6 +198,19 @@ const screen = (
               },
             ],
             version: 1,
+          }),
+        getRecognitionContract: () =>
+          Effect.succeed({
+            contract: {
+              itemRevisionId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+              fields: [
+                {
+                  id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+                  schema: { type: 'string', title: '等级' },
+                },
+              ],
+              defaults: [],
+            },
           }),
         getEntryHistory: () =>
           Effect.succeed({ entryId: ENTRY_ID, revisions: [], rounds: [], events: [] }),
@@ -259,6 +272,34 @@ describe('the participant results screen', () => {
     const sent = interveneOnEntry.mock.calls[0]![0] as Request
     expect(sent.params?.['entryId']).toBe(ENTRY_ID)
     expect(sent.payload).toEqual({ kind: 'return-for-revision', reason: '证书与本人不符' })
+  })
+
+  it('never hands the band over to an empty heading', async () => {
+    // the band becomes the person the moment one is chosen, so a banner that
+    // waited for the name would leave the heading blank for the length of a
+    // request - the page visibly losing its title and getting it back
+    screen({
+      getParticipant: () => Effect.never as never,
+    })
+    await page.getByTestId('participant-row').first().click()
+    // the section's own heading is gone and something stands in its place,
+    // with the way back already usable
+    await expect.element(page.getByRole('button', { name: '返回参评人员' })).toBeVisible()
+  })
+
+  it('names a determination by the words the question uses, never by its id', async () => {
+    screen(
+      {},
+      `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_ID}&view=entries&entry=${ENTRY_ID}`,
+    )
+    const card = page.getByTestId('entry-recognition')
+    await expect.element(card).toBeVisible()
+    const words = (await card.element()).textContent ?? ''
+    // the question's own word for the field, and the value under it
+    expect(words).toContain('等级')
+    expect(words).toContain('省级')
+    // the opaque address the contract stores it under is nobody's to read
+    expect(words).not.toContain('dddddddd')
   })
 
   it('says a score cannot be read rather than showing an old one', async () => {

@@ -1,9 +1,13 @@
 import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
+import { choiceLabel, displayTitle, kindOf, type AtomicSchema } from '@qualy/value-schema'
+import { useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { EntryDetail } from './EntryDetail.tsx'
 import { ReasonDialog } from '../items/ReasonDialog.tsx'
@@ -47,10 +51,10 @@ const styles = stylex.create({
   cardHead: { display: 'flex', alignItems: 'center', gap: 8 },
   cardTitle: { fontSize: 13, fontWeight: 600 },
   cardWhen: { fontSize: 12, color: tokens.mutedForeground },
-  values: { display: 'flex', flexDirection: 'column', gap: 6 },
-  valueRow: { display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 13 },
-  valueKey: { color: tokens.mutedForeground },
-  valueOne: { minWidth: 0, overflowWrap: 'anywhere' },
+  values: { display: 'flex', flexDirection: 'column', gap: 6, margin: 0 },
+  valueRow: { display: 'flex', alignItems: 'baseline', gap: 10, fontSize: 13 },
+  valueKey: { flexShrink: 0, minWidth: '5rem', color: tokens.mutedForeground },
+  valueOne: { minWidth: 0, margin: 0, overflowWrap: 'anywhere', fontWeight: 500 },
   quiet: { fontSize: 13, color: tokens.mutedForeground },
   stale: { fontSize: 12, color: tokens.warning },
 })
@@ -105,7 +109,7 @@ export function ManagedEntrySheet({
         item={item}
         trail={trail}
         onClose={onClose}
-        aside={<Determination recognition={recognition} entry={entry} />}
+        aside={<Determination recognition={recognition} entry={entry} itemId={item.id} />}
         footer={
           <>
             <span {...stylex.props(styles.spacer)} />
@@ -153,18 +157,35 @@ export function ManagedEntrySheet({
  *
  * First in the drawer, above the claim's own fields, because it is what the
  * reader came to check: the filing says what was claimed, and this says what
- * the round decided about it. The values are printed as the rule named them,
- * with no amount beside them - what a determination is worth is the ledger's
- * to say, and a second number here would be a second answer.
+ * the round decided about it. No amount beside it - what a determination is
+ * worth is the ledger's to say, and a second number here would be a second
+ * answer.
+ *
+ * The values are addressed by opaque recognition ids, which is how the
+ * contract stores them and exactly what a reader must never be shown: a
+ * question scored by a formula answers `01a05acf-… 0.88`, which names
+ * nothing. The question's own frozen contract is what turns those ids back
+ * into the words the person determining saw, so it is read here and the
+ * fields are drawn in its order. An id the contract does not know is not
+ * printed at all: a value whose meaning is gone says less than nothing.
  */
 function Determination({
   recognition,
   entry,
+  itemId,
 }: {
   recognition: RecognitionDto | null
   entry: EntryDto
+  itemId: string
 }) {
-  const { format } = useI18n()
+  const query = useApiQuery(assessmentApi)
+  const { format, locale } = useI18n()
+  const contract = useQuery({
+    ...query.assessment.getRecognitionContract.queryOptions({ params: { itemId } }),
+    enabled: recognition !== null,
+    staleTime: 60_000,
+  })
+
   if (recognition === null) {
     return (
       <div {...stylex.props(styles.card)} data-testid="entry-recognition" data-state="none">
@@ -173,12 +194,34 @@ function Determination({
       </div>
     )
   }
+
   const values = (recognition.values ?? {}) as Record<string, unknown>
-  const shown = Object.entries(values).filter(([, value]) => value !== null && value !== undefined)
+  const fields = contract.data?.contract?.fields ?? []
+  // in the contract's own order, which is the order the determination was
+  // made in; anything the contract does not name is left out
+  const shown = fields.flatMap((field) => {
+    if (!Object.hasOwn(values, field.id)) return []
+    const value = values[field.id]
+    if (value === null || value === undefined || value === '') return []
+    const schema = field.schema as AtomicSchema
+    return [
+      {
+        id: field.id,
+        label: displayTitle(schema, field.id, locale),
+        text:
+          kindOf(schema) === 'choice'
+            ? choiceLabel(schema as never, String(value), locale)
+            : typeof value === 'boolean'
+              ? format(value ? m.recognitionYes : m.recognitionNo)
+              : String(value),
+      },
+    ]
+  })
   // a determination judges one version of a filing; if the participant has
   // revised since, the reader is looking at a decision about older material
   const stale =
     entry.currentRevision !== null && entry.currentRevision.id !== recognition.entryRevisionId
+
   return (
     <div
       {...stylex.props(styles.card)}
@@ -196,15 +239,19 @@ function Determination({
           })}
         </span>
       </div>
-      {shown.length > 0 && (
-        <div {...stylex.props(styles.values)}>
-          {shown.map(([key, value]) => (
-            <p key={key} {...stylex.props(styles.valueRow)}>
-              <span {...stylex.props(styles.valueKey)}>{key}</span>
-              <span {...stylex.props(styles.valueOne)}>{String(value)}</span>
-            </p>
+      {shown.length > 0 ? (
+        <dl {...stylex.props(styles.values)}>
+          {shown.map((field) => (
+            <div key={field.id} {...stylex.props(styles.valueRow)}>
+              <dt {...stylex.props(styles.valueKey)}>{field.label}</dt>
+              <dd {...stylex.props(styles.valueOne)}>{field.text}</dd>
+            </div>
           ))}
-        </div>
+        </dl>
+      ) : (
+        // determined, but nothing the contract still names: the fact stands
+        // and its detail no longer has words, which is worth saying plainly
+        !contract.isPending && <p {...stylex.props(styles.quiet)}>{format(m.recognitionOpaque)}</p>
       )}
       {stale && <p {...stylex.props(styles.stale)}>{format(m.recognitionStale)}</p>}
     </div>

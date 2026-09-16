@@ -77,6 +77,10 @@ const styles = stylex.create({
     borderRadius: 999,
     backgroundColor: tokens.foreground,
   },
+  // the same shape the name and the number take, so nothing moves when the
+  // words arrive
+  nameBone: { height: 22, width: 128 },
+  numberBone: { height: 14, width: 88 },
   waiting: { height: 220, width: '100%' },
   unavailable: {
     display: 'flex',
@@ -182,12 +186,19 @@ export function ParticipantResultDetail({
 
   return (
     <div {...stylex.props(styles.column)}>
-      {/* the band above stops being the section and becomes this person */}
-      {participant !== undefined && (
-        <BatchBanner>
-          <PageHeader
-            variant="banner"
-            title={
+      {/* The band above stops being the section and becomes this person.
+          Always rendered, never waited for: the page hands the band over the
+          moment somebody is chosen, so a banner that only appeared once the
+          name had loaded would leave the band empty for as long as the
+          request took - the heading vanishing and coming back. The shape is
+          the same either way; only the words arrive late. */}
+      <BatchBanner>
+        <PageHeader
+          variant="banner"
+          title={
+            participant === undefined ? (
+              <Skeleton className={stylex.props(styles.nameBone).className} />
+            ) : (
               <>
                 <span {...stylex.props(styles.truncate)}>{participant.displayName}</span>
                 {participant.status === 'excluded' ? (
@@ -196,28 +207,32 @@ export function ParticipantResultDetail({
                   <Badge variant="outline">{format(m.participantActive)}</Badge>
                 )}
               </>
-            }
-            description={
-              <>
-                {/* text-sized rather than a button's own size: a control as
-                    tall as a control in a line of prose makes that line
-                    taller than the same line in the heading it took over */}
-                <button
-                  type="button"
-                  aria-label={format(m.participantResultsBack)}
-                  {...stylex.props(styles.backButton)}
-                  onClick={onBack}
-                >
-                  <ArrowLeftIcon aria-hidden {...stylex.props(styles.icon14)} />
-                </button>
+            )
+          }
+          description={
+            <>
+              {/* text-sized rather than a button's own size: a control as
+                  tall as a control in a line of prose makes that line taller
+                  than the same line in the heading it took over */}
+              <button
+                type="button"
+                aria-label={format(m.participantResultsBack)}
+                {...stylex.props(styles.backButton)}
+                onClick={onBack}
+              >
+                <ArrowLeftIcon aria-hidden {...stylex.props(styles.icon14)} />
+              </button>
+              {participant === undefined ? (
+                <Skeleton className={stylex.props(styles.numberBone).className} />
+              ) : (
                 <span {...stylex.props(styles.truncate)}>
                   {participant.businessNo ?? format(m.noBusinessNoShort)}
                 </span>
-              </>
-            }
-          />
-        </BatchBanner>
-      )}
+              )}
+            </>
+          }
+        />
+      </BatchBanner>
 
       <div {...stylex.props(styles.tabBar)}>
         {(

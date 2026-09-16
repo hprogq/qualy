@@ -1117,6 +1117,14 @@ const i18n = definePluginMessages({
       id: 'assessment/participant-results/entries-empty',
       defaultMessage: 'This participant has not filed anything yet.',
     },
+    participantResultsUngrouped: {
+      id: 'assessment/participant-results/ungrouped',
+      defaultMessage: 'Other',
+    },
+    participantResultsClaimCount: {
+      id: 'assessment/participant-results/claim-count',
+      defaultMessage: '{count, plural, other {# entries}}',
+    },
     participantResultsMore: {
       id: 'assessment/participant-results/more',
       defaultMessage: 'Show more',
@@ -1148,6 +1156,13 @@ const i18n = definePluginMessages({
     recognitionBy: {
       id: 'assessment/recognition/by',
       defaultMessage: '{who} · {when}',
+    },
+    recognitionYes: { id: 'assessment/recognition/yes', defaultMessage: 'Yes' },
+    recognitionNo: { id: 'assessment/recognition/no', defaultMessage: 'No' },
+    recognitionOpaque: {
+      id: 'assessment/recognition/opaque',
+      defaultMessage:
+        'This determination was made against a version of the question it no longer has.',
     },
     recognitionStale: {
       id: 'assessment/recognition/stale',

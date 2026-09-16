@@ -5,7 +5,7 @@ import { ChevronDownIcon, ChevronRightIcon } from 'lucide-react'
 import { UiSlot, useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import { orgNodePicker, personCard } from '@qualy/ui-contract'
+import { orgNodePicker } from '@qualy/ui-contract'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
@@ -56,8 +56,12 @@ const styles = stylex.create({
   },
   unitsChevronOpen: { transform: 'rotate(180deg)' },
   unitsSeat: { minWidth: 0 },
-  treeSkeleton: { height: 240, width: '100%' },
-  listColumn: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 12 },
+  treeWaiting: { display: 'flex', flexDirection: 'column', gap: 10, paddingBlock: 8 },
+  bone: { height: 14, borderRadius: 4 },
+  listColumn: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 10 },
+  listHead: { display: 'flex', alignItems: 'baseline', gap: 8 },
+  listTitle: { fontSize: 14, fontWeight: 600 },
+  listCount: { fontSize: 12, color: tokens.mutedForeground },
   rows: {
     display: 'flex',
     flexDirection: 'column',
@@ -73,26 +77,39 @@ const styles = stylex.create({
     display: 'flex',
     alignItems: 'center',
     gap: 12,
+    borderWidth: 0,
     borderBottomWidth: 1,
     borderBottomStyle: 'solid',
     borderBottomColor: tokens.border,
-    backgroundColor: { default: tokens.background, ':hover': tokens.surfaceMuted },
-    paddingInline: 16,
-    paddingBlock: 10,
+    backgroundColor: { default: 'transparent', ':hover': tokens.surfaceMuted },
+    paddingInline: 14,
+    paddingBlock: 12,
     textAlign: 'start',
     cursor: 'pointer',
+    transitionProperty: 'background-color',
+    transitionDuration: '120ms',
     ':last-child': { borderBottomWidth: 0 },
   },
   who: { minWidth: 0, flexGrow: 1 },
-  chevron: { width: 16, height: 16, flexShrink: 0, color: tokens.mutedForeground },
+  chevron: {
+    width: 16,
+    height: 16,
+    flexShrink: 0,
+    color: tokens.mutedForeground,
+    opacity: { default: 0.35, ':is(button:hover *)': 1 },
+  },
   empty: {
-    paddingBlock: 32,
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: tokens.border,
+    paddingBlock: 40,
     textAlign: 'center',
     fontSize: 13,
     color: tokens.mutedForeground,
   },
   pagerRow: { display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 },
-  listSkeleton: { height: 320, width: '100%' },
+  listSkeleton: { height: 320, width: '100%', borderRadius: 12 },
 })
 
 export function ParticipantResultList({
@@ -139,53 +156,78 @@ export function ParticipantResultList({
 
   const rows = participants.data?.items ?? []
 
+  const tree = (
+    <UiSlot
+      token={orgNodePicker}
+      context={{
+        // one unit, pointed at rather than collected, plus how far down to
+        // look: a filter is not a shopping list
+        single: true,
+        fill: true,
+        value: units,
+        onChange: setUnits,
+        scope: unitScope,
+        onScopeChange: setUnitScope,
+      }}
+      fallback={null}
+      // the shape of a tree, not a block the size of one: a grey rectangle
+      // where a list of units will be says only that something is missing
+      loading={
+        <div {...stylex.props(styles.treeWaiting)}>
+          {[0, 1, 2, 3, 4].map((depth) => (
+            <Skeleton
+              key={depth}
+              className={stylex.props(styles.bone).className}
+              style={{
+                width: `${[68, 84, 56, 76, 48][depth]!}%`,
+                marginInlineStart: depth % 2 === 0 ? 0 : 14,
+              }}
+            />
+          ))}
+        </div>
+      }
+    />
+  )
+
   return (
     <div {...stylex.props(styles.panel)}>
       <div {...stylex.props(styles.columns)}>
-        {/* on a phone the tree is a second screenful in front of the list
-            somebody came for, so it starts folded and says what it is */}
-        <Collapsible
-          open={unitsOpen}
-          onOpenChange={setUnitsOpen}
-          className={stylex.props(styles.unitsAside).className}
-          asChild
-        >
-          <aside>
-            <CollapsibleTrigger asChild>
-              <Button
-                variant="ghost"
-                className={stylex.props(styles.unitsTrigger).className}
-                aria-label={format(m.rosterUnits)}
-              >
-                <span {...stylex.props(styles.unitsWord)}>{format(m.rosterUnits)}</span>
-                <ChevronDownIcon
-                  aria-hidden
-                  className={
-                    stylex.props(styles.unitsChevron, unitsOpen && styles.unitsChevronOpen)
-                      .className
-                  }
-                />
-              </Button>
-            </CollapsibleTrigger>
-            <CollapsibleContent className={stylex.props(styles.unitsSeat).className}>
-              <UiSlot
-                token={orgNodePicker}
-                context={{
-                  single: true,
-                  fill: true,
-                  value: units,
-                  onChange: setUnits,
-                  scope: unitScope,
-                  onScopeChange: setUnitScope,
-                }}
-                fallback={null}
-                loading={<Skeleton className={stylex.props(styles.treeSkeleton).className} />}
-              />
-            </CollapsibleContent>
-          </aside>
-        </Collapsible>
+        {/* On a phone the tree is a second screenful in front of the list
+            somebody came for, so it folds behind a disclosure that says what
+            it is. With room for two columns it is simply there: a heading
+            over a tree that is already open is a word doing no work, and a
+            control that cannot be pressed is worse than one that is absent. */}
+        <aside {...stylex.props(styles.unitsAside)}>
+          {narrow ? (
+            <Collapsible open={unitsOpen} onOpenChange={setUnitsOpen}>
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" className={stylex.props(styles.unitsTrigger).className}>
+                  <span {...stylex.props(styles.unitsWord)}>{format(m.rosterUnits)}</span>
+                  <ChevronDownIcon
+                    aria-hidden
+                    className={
+                      stylex.props(styles.unitsChevron, unitsOpen && styles.unitsChevronOpen)
+                        .className
+                    }
+                  />
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className={stylex.props(styles.unitsSeat).className}>
+                {tree}
+              </CollapsibleContent>
+            </Collapsible>
+          ) : (
+            tree
+          )}
+        </aside>
 
         <section aria-label={format(m.participantResultsTab)} {...stylex.props(styles.listColumn)}>
+          <div {...stylex.props(styles.listHead)}>
+            <h3 {...stylex.props(styles.listTitle)}>{format(m.tabRoster)}</h3>
+            <span {...stylex.props(styles.listCount)}>
+              {format(m.participantCount, { count: rows.length })}
+            </span>
+          </div>
           <AsyncSection
             pending={participants.isPending}
             error={participants.isError ? formatError(participants.error) : null}
@@ -208,15 +250,14 @@ export function ParticipantResultList({
                     onClick={() => onOpen(row.id)}
                   >
                     <span {...stylex.props(styles.who)}>
-                      <UiSlot
-                        token={personCard}
-                        context={{ userId: row.userId, name: row.displayName }}
-                        fallback={
-                          <PersonCell
-                            name={row.displayName}
-                            secondary={row.businessNo ?? format(m.noBusinessNoShort)}
-                          />
-                        }
+                      {/* the plain cell, not the person card: this row IS the
+                          way to look somebody up, and the card is a second
+                          button - nested inside this one, which is not a
+                          thing a browser will draw. The roster's rows are not
+                          pressable, which is why the card belongs there. */}
+                      <PersonCell
+                        name={row.displayName}
+                        secondary={row.businessNo ?? format(m.noBusinessNoShort)}
                       />
                     </span>
                     {row.status === 'excluded' ? (

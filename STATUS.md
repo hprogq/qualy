@@ -16438,3 +16438,39 @@ check-csp-build / smoke-production / check-csp-enforce                     exit=
 - 申报列表只展示第一页(`nextCursor` 存在时「加载更多」为禁用占位),真实数据量出现再补;
 - participant-level 的全局操作记录(§四的第三个 Tab)没做:每条 entry 已有完整 `EntryHistory`,
   聚合成新的 activity read model 目前没有需求支撑。
+
+### 追记(2026-09-16 晚):真机走查后的五处修正
+
+用户实际打开页面后报了五条,逐条查证后都不是观感问题而是缺陷:
+
+1. **rail 没有图标**。`icon: 'clipboard-list'` 不在 `layout-default` 的 `ICONS` 表里,
+   而未知名字是**静默画不出来**(设计如此:少一个图标不该挡住入口)。已把 `clipboard-list`
+   加进表里——那张表本来就是「谁要用谁加」。
+2. **打开一个人时,顶部标题闪一下就空了**。`banner` 由 `participantId !== ''` 立即决定,
+   于是 band 在 `getParticipant` 回来之前就交给了空插槽。改成**始终渲染**,加载时是同形状的
+   骨架(名字 128×22、学号 88×14),只有字来得晚,位置不动。
+3. **公式题的认定显示成 `01a05acf-… / 0.88`**。认定的值是按**不透明 recognition id** 存的,
+   我直接 `Object.entries` 打了出来。改为读该题冻结的 `getRecognitionContract`,用
+   `displayTitle(schema, id, locale)` 取题目自己的字,按契约顺序渲染;契约不认识的 id
+   **一个都不打印**(意义已经没有的值,打出来比不打更糟),并对「认定还在、字没了」单独出话。
+4. **申报列表把题目标题印了两遍**——分组头一次、行里一次,因为我按「题目」分的组。改为按
+   **分值组**分组(与试卷一致),行里才是题目,并把该条计入的分数从**同一份 ledger**取来显示
+   (不另算一遍,两处算不会打架)。
+5. **层级选择器**:「所在单位」那行触发器在 PC 上也画,而且按不动(`pointerEvents: none`);
+   骨架是一整块 240px 灰矩形。改为**窄屏才折叠**(宽屏树直接在那儿),骨架换成五根宽度不一、
+   带缩进的条——树的形状。
+
+**过程中真机还炸出一个崩溃**:`PersonCell` 里 `initialsOf(undefined)`。根因是
+`personCard` 槽的 context 契约是 `{userId, displayName, businessNo}`,我传的是 `{userId, name}`——
+`UiSlot` 的 `context` 类型是 `unknown`(插件之间的线),**编译器管不到**。修的时候发现更深一层:
+`PersonCard` 自己是个 `<button>`(带悬浮卡),而我的行也是 `<button>`,**按钮套按钮**浏览器不会照画。
+这个列表的行本身就是「打开这个人」,悬浮卡是第二条路径、多余;名单页的行不可点,卡片才属于那里。
+所以这里直接用 `PersonCell`,嵌套交互一并消失。
+
+新增两条浏览器用例钉住 2 与 3(**反向验证**:banner 改回「等人加载出来才渲染」→ 红;
+认定改回打印原始 key → 红)。`ReasonDialog` 顺带加了可选 `confirmLabel`,
+「退回修改」的确认按钮不再写着「保存」。
+
+门禁重跑:typecheck 0;`pnpm test` 1745 通过;`pnpm test:browser` 412 通过(第一轮有一条
+`overlay-widgets` 的 tooltip 在并行下超时,单独跑 3/3 通过、整套重跑 412/412 全绿,
+是既有 flake,与本次改动无关);webkit 14;build / staged-web / chunks / CSP enforce 全过。

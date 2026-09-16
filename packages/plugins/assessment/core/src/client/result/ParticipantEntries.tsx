@@ -40,7 +40,9 @@ const styles = stylex.create({
     borderBottomColor: tokens.border,
     paddingBottom: 6,
   },
-  groupName: { fontSize: 13, fontWeight: 600 },
+  groupName: { flexShrink: 0, fontSize: 13, fontWeight: 600 },
+  groupRule: { height: 1, flexGrow: 1, backgroundColor: tokens.border },
+  groupCount: { flexShrink: 0, fontSize: 12, color: tokens.mutedForeground },
   rows: { display: 'flex', flexDirection: 'column' },
   row: {
     display: 'flex',
@@ -65,6 +67,13 @@ const styles = stylex.create({
     fontSize: 14,
   },
   under: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 },
+  rowOpen: { backgroundColor: tokens.surfaceMuted },
+  amount: {
+    flexShrink: 0,
+    fontSize: 14,
+    fontWeight: 600,
+    fontVariantNumeric: 'tabular-nums',
+  },
   source: { color: tokens.mutedForeground },
   chevron: { width: 16, height: 16, flexShrink: 0, color: tokens.mutedForeground },
   empty: { paddingBlock: 32, textAlign: 'center', fontSize: 13, color: tokens.mutedForeground },
@@ -96,9 +105,23 @@ export function ParticipantEntries({
     }),
   )
   const items = useQuery(query.assessment.listItems.queryOptions({ params: { batchId } }))
+  // read, not fetched twice: the detail above has it open already, so this
+  // is the cache it filled
+  const result = useQuery(
+    query.assessment.getParticipantResult.queryOptions({ params: { batchId, participantId } }),
+  )
   const groups = useQuery(query.assessment.listScoreGroups.queryOptions({ params: { batchId } }))
 
   const rows = entries.data?.entries ?? []
+  // the amount each claim contributed, taken from the ledger rather than
+  // computed here: an amount worked out twice is an amount that can disagree
+  const countedBy = new Map(
+    (result.data?.lines ?? []).flatMap((line) =>
+      line.provenance?.entryId === undefined || line.kind !== 'entry'
+        ? []
+        : [[line.provenance.entryId, line.value] as const],
+    ),
+  )
   const itemsById = new Map((items.data?.items ?? []).map((item) => [item.id, item as ItemDto]))
   const groupsById = new Map((groups.data?.groups ?? []).map((group) => [group.id, group]))
 
@@ -138,20 +161,31 @@ export function ParticipantEntries({
   // kept mounted while the drawer shuts, or it would vanish rather than close
   const lingering = useLingering(open)
 
-  // by question, in the paper's own order; a claim whose question is gone
-  // from the paper still has to appear, so it falls into its own bucket
+  // Grouped the way the paper is grouped, by score group: a claim without
+  // the part of the round it belongs to is a sentence without its subject.
+  // Grouping by question instead printed the question's title twice - once
+  // as the heading and again on the row under it.
+  const groupOf = (row: (typeof rows)[number]) =>
+    itemsById.get(row.entry.itemId)?.scoreGroupId ?? ''
   type Claim = (typeof rows)[number]
-  const byItem = new Map<string, Claim[]>()
+  const byGroup = new Map<string, Claim[]>()
   for (const row of rows) {
-    const bucket = byItem.get(row.entry.itemId)
-    if (bucket === undefined) byItem.set(row.entry.itemId, [row])
+    const key = groupOf(row)
+    const bucket = byGroup.get(key)
+    if (bucket === undefined) byGroup.set(key, [row])
     else bucket.push(row)
   }
-  const buckets = [...byItem.entries()].sort(([left], [right]) => {
-    const a = itemsById.get(left)
-    const b = itemsById.get(right)
-    return (a?.sortOrder ?? 0) - (b?.sortOrder ?? 0)
-  })
+  for (const bucket of byGroup.values()) {
+    bucket.sort(
+      (a, b) =>
+        (itemsById.get(a.entry.itemId)?.sortOrder ?? 0) -
+        (itemsById.get(b.entry.itemId)?.sortOrder ?? 0),
+    )
+  }
+  const buckets = [...byGroup.entries()].sort(
+    ([left], [right]) =>
+      (groupsById.get(left)?.sortOrder ?? 0) - (groupsById.get(right)?.sortOrder ?? 0),
+  )
 
   return (
     <>
@@ -170,47 +204,57 @@ export function ParticipantEntries({
           <p {...stylex.props(styles.empty)}>{format(m.participantResultsEntriesEmpty)}</p>
         ) : (
           <div {...stylex.props(styles.column)}>
-            {buckets.map(([itemId, claims]) => {
-              const item = itemsById.get(itemId)
-              const group = item === undefined ? undefined : groupsById.get(item.scoreGroupId)
+            {buckets.map(([groupId, claims]) => {
+              const group = groupsById.get(groupId)
               return (
-                <section key={itemId} {...stylex.props(styles.group)}>
+                <section key={groupId || 'ungrouped'} {...stylex.props(styles.group)}>
                   <div {...stylex.props(styles.groupHead)}>
                     <h3 {...stylex.props(styles.groupName)}>
-                      {item?.title ?? format(m.itemsUntitled)}
+                      {group?.name ?? format(m.participantResultsUngrouped)}
                     </h3>
-                    {group !== undefined && (
-                      <span {...stylex.props(styles.source)}>{group.name}</span>
-                    )}
+                    <span aria-hidden {...stylex.props(styles.groupRule)} />
+                    <span {...stylex.props(styles.groupCount)}>
+                      {format(m.participantResultsClaimCount, { count: claims.length })}
+                    </span>
                   </div>
                   <div {...stylex.props(styles.rows)}>
-                    {claims.map(({ entry }) => (
-                      <button
-                        key={entry.id}
-                        type="button"
-                        data-testid="participant-entry"
-                        data-entry={entry.id}
-                        {...stylex.props(styles.row)}
-                        onClick={() => onEntry(entry.id)}
-                      >
-                        <span {...stylex.props(styles.words)}>
-                          <span {...stylex.props(styles.title)}>
-                            {item?.title ?? format(m.itemsUntitled)}
-                          </span>
-                          <span {...stylex.props(styles.under)}>
-                            <span {...stylex.props(styles.source)}>
-                              {format(sourceLabelOf(entry.source))}
+                    {claims.map(({ entry }) => {
+                      const item = itemsById.get(entry.itemId)
+                      const counted = countedBy.get(entry.id)
+                      return (
+                        <button
+                          key={entry.id}
+                          type="button"
+                          data-testid="participant-entry"
+                          data-entry={entry.id}
+                          {...stylex.props(styles.row, entry.id === entryId && styles.rowOpen)}
+                          onClick={() => onEntry(entry.id)}
+                        >
+                          <span {...stylex.props(styles.words)}>
+                            <span {...stylex.props(styles.title)}>
+                              {item?.title ?? format(m.itemsUntitled)}
                             </span>
-                            <EntryStanding
-                              status={entry.status}
-                              revised={entry.currentReviewInstanceId !== null}
-                              asked={entry.supplement !== null}
-                            />
+                            <span {...stylex.props(styles.under)}>
+                              <span {...stylex.props(styles.source)}>
+                                {format(sourceLabelOf(entry.source))}
+                              </span>
+                              <EntryStanding
+                                status={entry.status}
+                                revised={entry.currentReviewInstanceId !== null}
+                                asked={entry.supplement !== null}
+                              />
+                            </span>
                           </span>
-                        </span>
-                        <ChevronRightIcon aria-hidden {...stylex.props(styles.chevron)} />
-                      </button>
-                    ))}
+                          {/* what it came to, when the ledger says it came to
+                              anything: the two halves of this account answer
+                              each other rather than sitting side by side */}
+                          {counted !== undefined && (
+                            <span {...stylex.props(styles.amount)}>{counted}</span>
+                          )}
+                          <ChevronRightIcon aria-hidden {...stylex.props(styles.chevron)} />
+                        </button>
+                      )
+                    })}
                   </div>
                 </section>
               )
