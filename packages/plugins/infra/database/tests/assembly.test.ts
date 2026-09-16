@@ -19,7 +19,7 @@ import {
   changedMigrationFiles,
   scanDestructive,
 } from '../src/assembly/drop-guard.ts'
-import { guardDestructive } from '../src/assembly/generate.ts'
+import { guardDestructive, nextStamp } from '../src/assembly/generate.ts'
 import { asState } from '../src/assembly/state.ts'
 import { databaseTarget, databaseWork, LOCAL_FALLBACK } from '../src/assembly/work.ts'
 import { diffAgainstDeclared } from '../src/assembly/diff.ts'
@@ -312,6 +312,28 @@ describe('database dependency graph', () => {
       )
     } finally {
       cyclic.dispose()
+    }
+  })
+})
+
+describe('the instant a migration is named by', () => {
+  // Two generations inside one second used to share a name, and the second
+  // rename landed on the first file: a migration replaced rather than added,
+  // with nothing said. Generation was a hand-typed command then; deploy runs
+  // it, and a suite runs it twice in a row.
+  it('is strictly after every migration already in the lineage', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-stamp-'))
+    try {
+      const now = new Date().toISOString().replace(/\D/g, '').slice(0, 14)
+      expect(nextStamp(dir)).toMatch(/^\d{14}$/)
+      // a migration stamped this very second pushes the next one a second on
+      fs.writeFileSync(path.join(dir, `${now}_current.sql`), '')
+      expect(nextStamp(dir) > now).toBe(true)
+      // and a lineage from a clock ahead of this one is still ordered after
+      fs.writeFileSync(path.join(dir, '20991231235959_future.sql'), '')
+      expect(nextStamp(dir)).toBe('21000101000000')
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
     }
   })
 })

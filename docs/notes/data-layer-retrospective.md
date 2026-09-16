@@ -73,3 +73,23 @@ run 33481203308):`@qualy/plugin-database` 的 release 不返回,池计数只能�
 - 顺手证明并修掉一条真实泄漏:COMMIT 被拒后连接永不归还(见 notes/mikro-orm.md)。
 
 **未做**:acquire 等待时间指标、按持有时长的告警、任何缩短等待的超时——放弃等待会把泄漏变成静默成功。
+
+## 2026-09-17:transition(插件自带一次性数据步骤)已触发
+
+触发它的是构建/装配/部署重构(`docs/osi.md`,P3/P4):迁移 lineage 从仓库 `db/migrations` 搬进**每个实例**的
+Deployment State(`<state>/database/migrations`),全新安装自己生成 initial,不再继承仓库的开发历史。
+这样一来,22 条带 `-- owner:` 的手写迁移(19 条含 UPDATE/INSERT/DELETE 数据步骤,四个插件各有 `migration-upgrade.test.ts`)
+所依赖的「共享 lineage 文件」不复存在:结构 diff 推不出「先把列里的值搬进新表再删列」,而 `qualy database custom`
+只写进本机实例。也就是说,**不是**多副本或第三方生态触发了它,而是数据步骤失去了跨实例的承载入口——
+与 2026-08-04 baseline 的触发同型:归属早就声明在插件里,只缺承载。
+
+落地范围刻意保持窄:`Db.entities(entities, { transitionsDir })` + 复用 baseline 的 marker/collect/pending/compile
+基础设施(`fragments.ts`)+ 「空 lineage 只记 `satisfied` 不执行」+ expand/contract 两次发布约定 + 五条测试。
+**未做**:transition 的条件执行 DSL、跨插件 transition 依赖图、每插件独立 ledger、自动把历史手写迁移改写成 transition
+(它们是 legacy lineage 的历史,原样保留)。
+
+顺带修掉一处潜伏缺陷:同一秒内两次 generate 生成同名迁移,后一次 rename 覆盖前一次(此前 generate 是人手敲的命令,
+从未在一秒内跑两次;deploy 内置 generate 之后会)。现在 stamp 取「当前时刻」与「lineage 最新一条 + 1 秒」的较大者。
+
+触发表里「advisory lock(迁移互斥)」**仍未触发**:`docs/osi.md` §29 写的是「最好有」,而其「最低要求」——
+同一 state 目录同一时间只允许一个 deployment job——已由 `@qualy/deployment-state` 的文件锁满足。

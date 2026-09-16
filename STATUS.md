@@ -17397,3 +17397,46 @@ pnpm test:browser                  57 passed / 424 passed,1 failed:auth person-c
   让 deploy 写迁移会写进版本库。
 - development 模式的启动不比对 deployed lock(§60);P4 把 lineage 搬进 state 后,dev 启动会在 deployed lock 与 target
   不同时给一条 warning(便宜、有用),届时一起做。
+
+## 构建/装配/部署重构 P4(上):插件自带 transition(2026-09-17)
+
+进 P4 之前发现规格 §27 的前提不成立:本仓库已有 22 条 `-- owner:` 手写迁移(19 条含数据步骤),四个插件各有
+`migration-upgrade.test.ts`。lineage 归实例之后,这类步骤没有跨实例发布通道。已向用户提问并按其裁决实施:
+**先做最小 transition 机制,再搬 lineage**;transition 不是 baseline,只复用 baseline 的 marker/collect/pending/compile
+基础设施;fresh install 把已有 transition 标为 satisfied 不执行,upgrade 实例只把尚未编译的 SQL 编入自己的 lineage。
+
+### 1. 架构变化
+
+- `Db.entities(entities, { transitionsDir })`;lock contribution 多一个 `transitionsDir`,`ownsObjects` 把它算作「在库里留了东西」
+  (transition 编入过某实例的 lineage 就是那个实例的历史,插件被移除也要 detached 保留,marker 才有可比对的源文件)。
+- 新 `assembly/fragments.ts`:`collectFragments / compiledFragments / pendingFragments / renderFragment / renderSatisfied`,
+  kind ∈ {baseline, transition},marker 分别 `-- qualy-baseline:` / `-- qualy-transition:`;`baseline.ts` 与新 `transitions.ts`
+  变成语义命名的薄封装。marker 里的目录统一 posix 规范化(`./transitions` → `transitions`)。
+- `generate.ts` 抽出 `planMigration(context, work)`(纯计算,不写文件;P4 下半的 testkit 用它按当前声明建模板库):
+  顺序 = baseline pre → transition pre → 结构 diff → baseline post → transition post;`fresh = lineage 里没有 .sql`,
+  fresh 时 transition 只在文件末尾写 `… satisfied` 标记。只有 transition 的变更也生成一条迁移。
+- 顺带修掉一处潜伏缺陷:同一秒内两次 generate 同名覆盖(`nextStamp` 取 now 与 lineage 最新 + 1s 的较大者,并处理跨分钟进位)。
+
+### 2. 测试(`tests/transitions.test.ts` 5 条 + `assembly.test.ts` 1 条)
+
+fresh:初始迁移含 `satisfied` 标记、不含 UPDATE、能部署到空库、再 generate 为 nothing;
+upgrade:先无该插件建库并放入旧形态行,加插件后 generate 产出「标记 + SQL」的第二条迁移,`runMigrations` 后行被改写,
+再 generate 为 nothing,改动已编译的 transition 文件被拒(`transitions changed after they were compiled`);
+fresh 之后再来的新 transition 会执行(只含 transition、无结构语句);pre/post 相位分别落在结构语句前/后;
+`transitionsDir` 指向包外被拒;`nextStamp` 严格晚于 lineage 已有的一切(含时钟提前)。
+
+反向验证:fresh 也执行 → 「never run」红;fresh 不写标记 → 同一条红(第二次 generate 又编译了);去掉 transition 的 drift 检查
+→ upgrade 那条红(编辑后 generate 没拒);pre 相位排到结构后 → 相位那条红(280 > 14);`ownsObjects` 不算 transitionsDir
+→ fresh 那条红(插件不在 order 里,什么都没收集);stamp 回退为 now → 真实 generate 各耗 ~0.8s,两次落在不同秒,
+用 generate 的测试**绿**(不构成证据),改为对 `nextStamp` 直接建同秒文件的单元测试,该测试在回退下红(见下一行的验证)。
+`nextStamp` 回退为 now → `is strictly after every migration already in the lineage` 红(`expected false to be true`)。
+
+### 3. 命令与结果(实际执行)
+
+```text
+pnpm typecheck                     exit=0
+pnpm test                          256 passed | 3 skipped (259) / 1845 passed | 17 skipped (1862)
+pnpm qualy resolve --frozen-lockfile   up to date(contribution 多了可选字段,本仓库无插件声明 transitionsDir,lock 不变)
+```
+
+浏览器套件未动客户端代码,留到 P4(下)一起跑。

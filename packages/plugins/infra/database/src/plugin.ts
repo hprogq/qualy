@@ -42,6 +42,14 @@ export interface DatabaseOptions {
    * compiled into the lineage by `qualy generate`.
    */
   readonly baselineDir?: string
+  /**
+   * Package-relative directory of one-time data transitions: numbered SQL
+   * files written for the shape a previous release left behind, compiled
+   * once into an instance's lineage. A fresh instance records them as
+   * satisfied and runs none. Ship the new structure and the transition that
+   * fills it in one release, and drop the old structure in the next.
+   */
+  readonly transitionsDir?: string
 }
 
 /** one plugin's whole database declaration */
