@@ -291,16 +291,21 @@ const MANIFEST = 'qualy.yml'
 
 const pluginPackageNames = pluginDirs.map(
   (dir) =>
-    (JSON.parse(fs.readFileSync(path.join(repoRoot, dir, 'package.json'), 'utf8')) as { name: string })
-      .name,
+    (
+      JSON.parse(fs.readFileSync(path.join(repoRoot, dir, 'package.json'), 'utf8')) as {
+        name: string
+      }
+    ).name,
 )
 
 describe('the product package installs the plugins, the server installs none', () => {
   const dependenciesOf = (file: string) =>
     Object.keys(
-      (JSON.parse(fs.readFileSync(path.join(repoRoot, file), 'utf8')) as {
-        dependencies?: Record<string, string>
-      }).dependencies ?? {},
+      (
+        JSON.parse(fs.readFileSync(path.join(repoRoot, file), 'utf8')) as {
+          dependencies?: Record<string, string>
+        }
+      ).dependencies ?? {},
     )
 
   it('found the plugin packages it is about', () => {
@@ -527,20 +532,33 @@ describe('a browser test outside the host reaches for neither aggregate nor host
 // 0.9s), which they could not do if the clock started at queue time.
 vi.setConfig({ maxConcurrency: 2 })
 
+// A whole program's compile is not a unit of work the suite's 30s budget was
+// sized for. On the two-core runner, with the rest of the suite's files
+// compiling and querying alongside, the largest plugin measured 14.7s, 28.8s
+// and then 30.0s across three consecutive runs of main and died on the
+// budget the third time; the same case is under 3s on a developer machine.
+// The budget here is for a compiler that hangs, not for a runner that is
+// busy - so it is sized well past the slowest run seen.
+const COMPILE_BUDGET_MS = 120_000
+
 describe.concurrent('every plugin typechecks on its own', () => {
   it('found plugins to check', () => {
     expect(pluginDirs.length).toBeGreaterThan(5)
   })
 
   for (const dir of pluginDirs) {
-    it(`${dir.split('/').slice(-1)[0]} needs no other plugin in its program`, async () => {
-      const output = await typecheckAlone(dir)
-      // the failure this guards reads as "Property 'auth' does not exist on
-      // type 'Context'", so point at the fix rather than only the symptom
-      expect(
-        output,
-        `${dir} does not typecheck alone. A service reached as ctx.<name> needs the owning plugin's module augmentation in this program: add \`import type {} from '@qualy/plugin-<name>'\`.\n${output}`,
-      ).toBe('')
-    })
+    it(
+      `${dir.split('/').slice(-1)[0]} needs no other plugin in its program`,
+      { timeout: COMPILE_BUDGET_MS },
+      async () => {
+        const output = await typecheckAlone(dir)
+        // the failure this guards reads as "Property 'auth' does not exist on
+        // type 'Context'", so point at the fix rather than only the symptom
+        expect(
+          output,
+          `${dir} does not typecheck alone. A service reached as ctx.<name> needs the owning plugin's module augmentation in this program: add \`import type {} from '@qualy/plugin-<name>'\`.\n${output}`,
+        ).toBe('')
+      },
+    )
   }
 })
