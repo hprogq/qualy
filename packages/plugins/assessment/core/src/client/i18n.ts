@@ -4804,6 +4804,16 @@ const i18n = definePluginMessages({
       id: 'assessment/error/scoring-unavailable',
       defaultMessage: 'Scoring is temporarily unavailable. Try again in a moment.',
     },
+    ASSESSMENT_ADMINISTRATIVE_IMPORT_NOT_FOUND: {
+      id: 'assessment/error/administrative-import-not-found',
+      defaultMessage: 'That import no longer exists.',
+    },
+    // the issues themselves are drawn row by row on the preview; this is the
+    // sentence for the moment the api refuses, which is a different place
+    ASSESSMENT_ADMINISTRATIVE_IMPORT_INVALID: {
+      id: 'assessment/error/administrative-import-invalid',
+      defaultMessage: 'This file cannot be imported as it stands.',
+    },
     ASSESSMENT_ITEM_SCORING_INCOMPATIBLE: {
       message: scoringIncompatible,
       values: (data) => {

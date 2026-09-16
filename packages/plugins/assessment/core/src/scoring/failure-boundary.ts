@@ -212,3 +212,107 @@ export const settleWithProbe = <A, E, R, Moved>(
     }
     return yield* Effect.fail(second.failure as E)
   })
+
+/**
+ * Proves many determinations against one question's arithmetic, at once.
+ *
+ * A bulk administrative act cannot be a loop over `settleWithProbe`: that
+ * shape runs the writer, rolls it back, proves, and runs it again - once per
+ * row, each attempt taking the batch lock. Two thousand of those is a lock
+ * held for the length of two thousand sandbox runs, which is how a scoring
+ * boundary becomes an outage.
+ *
+ * So the order is inverted. Everything is proven FIRST, outside any
+ * transaction, and the write that follows carries identities it already
+ * has. Three things make that affordable:
+ *
+ *   - the runtime is prepared once. Every row of one import answers the same
+ *     question version, so it is the same calculator and the same plan.
+ *   - determinations are deduplicated by what they say. A hundred students
+ *     recorded at the same level are one piece of arithmetic.
+ *   - the concurrency is the one the rest of scoring already uses, because
+ *     the sandbox is the same sandbox.
+ *
+ * What comes back is per distinct determination: an identity to carry into
+ * the write, or the refusal that determination earned. A refusal belongs to
+ * the rows that asked for it and does not stop the others being reported -
+ * the caller decides what to do with a partial answer, and for an import
+ * that decision is "show every bad row at once". An outage is different and
+ * is raised: nothing can be proven, so nothing can be written.
+ */
+export const proveSettlements = (
+  runtime: ScoringRuntimeCatalog['Service'],
+  site: FailureSite & { readonly revisionId: string },
+  recognitions: readonly Readonly<Record<string, unknown>>[],
+): Effect.Effect<
+  ReadonlyMap<string, { readonly identity: string } | { readonly refused: DeterminationRefused }>,
+  ScoringUnavailable
+> =>
+  Effect.gen(function* () {
+    // one determination per distinct thing said, keyed by the hash the
+    // writer's own identity is built from
+    const distinct = new Map<string, Readonly<Record<string, unknown>>>()
+    for (const values of recognitions) {
+      const key = hashCanonicalJson(values)
+      if (!distinct.has(key)) distinct.set(key, values)
+    }
+    const out = new Map<
+      string,
+      { readonly identity: string } | { readonly refused: DeterminationRefused }
+    >()
+    if (distinct.size === 0) return out
+
+    // prepared once for the whole import: same question version, same plan
+    const prepared = yield* runtime
+      .prepare(site.plan.calculator.ref, frozenCalculatorOf(site.plan), {
+        tenantId: site.tenantId,
+        batchId: site.batchId,
+      })
+      .pipe(Effect.catch((error) => mapRuntimeFailure('settlement', site, error)))
+
+    const judged = yield* Effect.forEach(
+      [...distinct.entries()],
+      ([key, values]) =>
+        evaluateRecognition(prepared, {
+          itemId: site.itemId,
+          plan: site.plan,
+          recognition: values,
+        }).pipe(
+          countEvaluation('settlement'),
+          Effect.catch((error) =>
+            mapEvaluationFailure('settlement', site, error).pipe(
+              // a refusal is this determination's answer, not the import's:
+              // the reader is owed every bad row, not the first one
+              Effect.catchTag('ASSESSMENT_DETERMINATION_REFUSED', (refused) =>
+                Effect.succeed({ key, refused }),
+              ),
+            ),
+          ),
+          Effect.map((result) =>
+            result !== undefined && typeof result === 'object' && 'refused' in result
+              ? (result as { key: string; refused: DeterminationRefused })
+              : { key, identity: identityOf(site, key, values) },
+          ),
+        ),
+      { concurrency: PROOF_CONCURRENCY },
+    )
+    for (const one of judged) {
+      out.set(one.key, 'refused' in one ? { refused: one.refused } : { identity: one.identity })
+    }
+    return out
+  })
+
+/** the same summary a single write proves itself against */
+const identityOf = (
+  site: FailureSite & { readonly revisionId: string },
+  recognitionHash: string,
+  _values: Readonly<Record<string, unknown>>,
+): string =>
+  probeIdentity({
+    revisionId: site.revisionId,
+    planHash: site.plan.planHash,
+    recognition: recognitionHash,
+  })
+
+/** the sandbox is the same sandbox the rest of scoring bounds at four */
+const PROOF_CONCURRENCY = 4

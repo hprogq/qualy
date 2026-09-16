@@ -32,10 +32,93 @@ import { gateAllows, type GateContext, type GateDecision } from '../phase/gate.t
 import { PARTICIPANT_ACTION_CODES, BATCH_STAFF_CODES } from '../permissions.ts'
 import { ItemTypeCatalog, ScoringDefinitionCatalog } from '../plugin.ts'
 import { makeItemMethods, type ItemMethods, type ItemView } from '../item/service.ts'
-import { currentBatchConfigs, liveBatchPayloads, revisionsByIdOf } from '../item/db.ts'
+import {
+  currentBatchConfigs,
+  itemOf,
+  liveBatchPayloads,
+  revisionOf as itemRevisionOf,
+  revisionsByIdOf,
+} from '../item/db.ts'
+import {
+  buildAdministrativeWorkbook,
+  parseAdministrativeWorkbook,
+  WorkbookUnreadable,
+} from '../administrative-import/workbook.ts'
+import { readSourceBytes, SourceUnreadable } from '../administrative-import/read-source.ts'
+import { judgeRows, summarise } from '../administrative-import/preview.ts'
+import { effectiveEntryCounts, resolveImportParticipants } from '../administrative-import/db.ts'
 import { currentRecognitionsOfEntries } from '../scoring/recognition-db.ts'
 import { readScoringPlan } from '../scoring/plan.ts'
 import { recognitionFormFields } from '../scoring/recognition.ts'
+import { proveSettlements } from '../scoring/failure-boundary.ts'
+import { ScoringRuntimeCatalog } from '../plugin.ts'
+import type { UploadTicket } from '@qualy/plugin-storage/upload'
+
+/**
+ * The fields an evidence form declares, as schemas.
+ *
+ * The form config is a list of specs whose shape the item type driver owns;
+ * a workbook only needs the key and enough of the schema to print a column
+ * header and read a cell back, which every kind of spec carries.
+ */
+const evidenceFieldsOf = (
+  formConfig: unknown,
+): readonly { key: string; schema: import('@qualy/value-schema').AtomicSchema }[] => {
+  const fields = (formConfig as { fields?: unknown } | null)?.fields
+  if (!Array.isArray(fields)) return []
+  return fields.flatMap((raw) => {
+    const field = raw as { key?: unknown; type?: unknown; label?: unknown; schema?: unknown }
+    if (typeof field.key !== 'string') return []
+    const schema =
+      field.schema !== undefined && field.schema !== null
+        ? (field.schema as import('@qualy/value-schema').AtomicSchema)
+        : ({
+            type: field.type === 'integer' ? 'integer' : 'string',
+            ...(typeof field.label === 'string' ? { title: field.label } : {}),
+          } as import('@qualy/value-schema').AtomicSchema)
+    return [{ key: field.key, schema }]
+  })
+}
+
+/** whether the question insists on material a workbook cannot carry */
+const requiresAttachment = (formConfig: unknown): boolean => {
+  const fields = (formConfig as { fields?: unknown } | null)?.fields
+  if (!Array.isArray(fields)) return false
+  return fields.some((raw) => {
+    const field = raw as { type?: unknown; required?: unknown }
+    return field.type === 'attachment' && field.required === true
+  })
+}
+
+/** what a preview answers, assembled */
+interface AdministrativeImportPreview {
+  readonly item: { readonly id: string; readonly title: string; readonly revisionId: string }
+  readonly summary: {
+    readonly rows: number
+    readonly valid: number
+    readonly warnings: number
+    readonly errors: number
+  }
+  readonly rows: readonly {
+    readonly rowNo: number
+    readonly businessNo: string
+    readonly displayNameFromFile: string
+    readonly matchedParticipant: {
+      readonly id: string
+      readonly displayName: string
+      readonly businessNo: string | null
+    } | null
+    readonly payloadPreview: Record<string, unknown>
+    readonly recognitionPreview: Record<string, unknown>
+    readonly basis: string
+    readonly issues: readonly {
+      readonly severity: 'error' | 'warning'
+      readonly field: string | null
+      readonly reason: string
+    }[]
+  }[]
+  readonly canCommit: boolean
+}
 
 /**
  * One row of the administrative record book, assembled.
@@ -109,17 +192,22 @@ import { Storage } from '@qualy/plugin-storage/server'
 import {
   AttachmentUnavailable,
   AccessInvalid,
+  AdministrativeImportInvalid,
   AdvanceInvalid,
   BatchNoParticipants,
   BatchNotFound,
   BatchReadOnly,
   BatchReferenceInvalid,
   BatchStatusInvalid,
+  EntryActionRefused,
+  ItemNotFound,
+  ItemRevisionConflict,
   MaterialRangeInvalid,
   ParticipantInvalid,
   ParticipantNotFound,
   PhaseNotFound,
   PlanInvalid,
+  ScoringUnavailable,
   TemplateConflict,
   TemplateNotFound,
   batchConstraints,
@@ -882,6 +970,75 @@ export class Assessment extends Context.Service<
       participantId: string,
       as: Principal,
     ) => Effect.Effect<ParticipantRow, BatchNotFound | ParticipantNotFound | AccessDenied>
+    /**
+     * The workbook for one question as it stands, built rather than stored.
+     *
+     * Admission is the same one the recording itself asks for: a live
+     * administrative question in a round this caller may record on. A
+     * template is a projection of the current version and carries which
+     * version that was, which is what lets the import refuse a file filled
+     * in against a question that has since moved.
+     */
+    readonly administrativeImportTemplate: (
+      tenantId: string,
+      itemId: string,
+      locale: string,
+      as: Principal,
+    ) => Effect.Effect<Uint8Array, ItemNotFound | EntryActionRefused | AccessDenied>
+    /** a door for the workbook itself, which is not evidence backing a claim */
+    readonly prepareAdministrativeImportUpload: (
+      tenantId: string,
+      batchId: string,
+      input: {
+        itemId: string
+        filename: string
+        declaredMime: string
+        size: string
+      },
+      as: Principal,
+    ) => Effect.Effect<
+      UploadTicket,
+      BatchNotFound | ItemNotFound | BatchReadOnly | EntryActionRefused | AccessDenied
+    >
+    readonly completeAdministrativeImportUpload: (
+      tenantId: string,
+      reservationId: string,
+      as: Principal,
+    ) => Effect.Effect<
+      { id: string; filename: string; declaredMime: string; size: string; status: string },
+      AttachmentUnavailable | EntryActionRefused
+    >
+    /**
+     * What a workbook would do, worked out and thrown away.
+     *
+     * Creates no import: an import is a thing that happened, and nothing has
+     * happened yet. The file is re-read from the staged attachment rather
+     * than taken from the browser, or the original kept as provenance and
+     * the rows actually written are two different documents.
+     */
+    readonly previewAdministrativeImport: (
+      tenantId: string,
+      batchId: string,
+      input: {
+        attachmentId: string
+        itemId: string
+        expectedItemRevisionId: string
+        defaultBasis?: string
+      },
+      as: Principal,
+    ) => Effect.Effect<
+      AdministrativeImportPreview,
+      | BatchNotFound
+      | ItemNotFound
+      | ItemRevisionConflict
+      | BatchReadOnly
+      | EntryActionRefused
+      | AttachmentUnavailable
+      | AdministrativeImportInvalid
+      | ScoringUnavailable
+      | AccessDenied,
+      ScoringRuntimeCatalog
+    >
     /**
      * The book of administrative facts in one round, newest first.
      *
@@ -2080,6 +2237,48 @@ export const make = Effect.fn('Assessment.make')(function* () {
       calculators: scoring.calculators,
       aggregators: scoring.aggregators,
     },
+  })
+
+  /**
+   * The one admission every bulk administrative act passes through.
+   *
+   * Asked once, before a file is read, rather than per row: a live
+   * administrative question in a round this caller may record on, with a
+   * compiled plan to judge determinations against. Everything downstream is
+   * about VALUES, and a value cannot be judged until it is known whose
+   * question it answers.
+   *
+   * The phase gate is in here too, which is what stops a closed round being
+   * written to through a spreadsheet after the form has stopped offering it.
+   */
+  const administrativeQuestion = Effect.fn('Assessment.administrativeQuestion')(function* (
+    tenantId: string,
+    itemId: string,
+    as: Principal,
+  ) {
+    const item = yield* dieQuery(withDb(itemOf(tenantId, itemId)))
+    if (item === null) return yield* new ItemNotFound()
+    if (item.status !== 'active') {
+      return yield* new EntryActionRefused({ action: 'import', reason: 'item-not-active' })
+    }
+    const revision =
+      item.currentRevisionId === null
+        ? null
+        : yield* dieQuery(withDb(itemRevisionOf(tenantId, item.currentRevisionId)))
+    if (revision === null) {
+      return yield* new EntryActionRefused({ action: 'import', reason: 'item-not-configured' })
+    }
+    if (revision.entrySource !== 'administrative') {
+      return yield* new EntryActionRefused({ action: 'import', reason: 'item-not-administrative' })
+    }
+    const decision = yield* authorizeAction(as, 'assessment.entry.record', item.batchId, {
+      itemId,
+    }).pipe(Effect.catchTag('ASSESSMENT_BATCH_NOT_FOUND', Effect.die))
+    if (!decision.allowed) {
+      return yield* new EntryActionRefused({ action: 'import', reason: decision.reason })
+    }
+    const plan = yield* Effect.orDie(readScoringPlan(revision))
+    return { item, revision, plan }
   })
 
   const entryMethods = makeEntryMethods({
@@ -3550,6 +3749,246 @@ export const make = Effect.fn('Assessment.make')(function* () {
       },
     ),
 
+    administrativeImportTemplate: Effect.fn('Assessment.administrativeImportTemplate')(
+      function* (tenantId, itemId, locale, as) {
+        const ready = yield* administrativeQuestion(tenantId, itemId, as)
+        const fields = recognitionFormFields(ready.plan) ?? []
+        const evidence = Object.entries(
+          (ready.revision.formConfig as { fields?: Record<string, unknown> })?.fields ?? {},
+        )
+        return yield* Effect.promise(() =>
+          buildAdministrativeWorkbook({
+            batchId: ready.item.batchId,
+            itemId: ready.item.id,
+            itemRevisionId: ready.revision.id,
+            itemTitle: ready.item.title,
+            locale,
+            evidence: evidenceFieldsOf(ready.revision.formConfig),
+            recognition: fields.map((field) => ({ id: field.id, schema: field.schema })),
+          }),
+        ).pipe(Effect.map((bytes) => (void evidence, bytes)))
+      },
+    ),
+
+    prepareAdministrativeImportUpload: Effect.fn('Assessment.prepareAdministrativeImportUpload')(
+      function* (tenantId, batchId, input, as) {
+        const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
+        if (!batch) return yield* new BatchNotFound()
+        if (batch.status === 'archived') return yield* new BatchReadOnly()
+        const ready = yield* administrativeQuestion(tenantId, input.itemId, as)
+        if (ready.item.batchId !== batchId) return yield* new ItemNotFound()
+        return yield* storage
+          .prepareUpload({
+            tenantId,
+            ownerUserId: as.userId,
+            filename: input.filename,
+            declaredMime: input.declaredMime,
+            size: BigInt(input.size),
+          })
+          .pipe(
+            Effect.catchTags({
+              STORAGE_UPLOAD_REFUSED: (refused) =>
+                new EntryActionRefused({ action: 'import', reason: refused.reason }),
+              STORAGE_BACKEND_UNAVAILABLE: (error) => Effect.die(error),
+            }),
+          )
+      },
+    ),
+
+    completeAdministrativeImportUpload: Effect.fn('Assessment.completeAdministrativeImportUpload')(
+      function* (tenantId, reservationId, as) {
+        return yield* storage
+          .completeUpload({ tenantId, ownerUserId: as.userId, reservationId })
+          .pipe(
+            Effect.map((meta) => ({
+              id: meta.id,
+              filename: meta.filename,
+              declaredMime: meta.declaredMime,
+              size: meta.size.toString(),
+              status: meta.status,
+            })),
+            Effect.catchTags({
+              STORAGE_RESERVATION_NOT_FOUND: () => new AttachmentUnavailable(),
+              STORAGE_RESERVATION_INVALID: (refused) =>
+                new EntryActionRefused({ action: 'import', reason: refused.reason }),
+              STORAGE_BACKEND_UNAVAILABLE: (error) => Effect.die(error),
+            }),
+          )
+      },
+    ),
+
+    previewAdministrativeImport: Effect.fn('Assessment.previewAdministrativeImport')(
+      function* (tenantId, batchId, input, as) {
+        const runtime = yield* ScoringRuntimeCatalog
+        const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
+        if (!batch) return yield* new BatchNotFound()
+        if (batch.status === 'archived') return yield* new BatchReadOnly()
+        const ready = yield* administrativeQuestion(tenantId, input.itemId, as)
+        if (ready.item.batchId !== batchId) return yield* new ItemNotFound()
+        // the question the file was filled in against, before its contents
+        // are read: a newly required field must say "the paper moved", not
+        // "this cell is missing"
+        if (ready.revision.id !== input.expectedItemRevisionId) {
+          return yield* new ItemRevisionConflict({
+            itemId: ready.item.id,
+            currentRevisionId: ready.item.currentRevisionId,
+          })
+        }
+        // no import can carry a file it cannot attach material for
+        if (requiresAttachment(ready.revision.formConfig)) {
+          return yield* new EntryActionRefused({
+            action: 'import',
+            reason: 'attachment-required',
+          })
+        }
+
+        // the bytes, read back from the store rather than taken from anybody
+        const opened = yield* storage
+          .open({ tenantId, attachmentId: input.attachmentId }, (meta) =>
+            meta.ownerUserId === as.userId ? Effect.void : Effect.fail(new AttachmentUnavailable()),
+          )
+          .pipe(
+            Effect.catchTags({
+              STORAGE_ATTACHMENT_NOT_FOUND: () => new AttachmentUnavailable(),
+              STORAGE_BACKEND_UNAVAILABLE: (error) => Effect.die(error),
+            }),
+          )
+        const bytes = yield* readSourceBytes(opened).pipe(
+          Effect.catch((error: SourceUnreadable) =>
+            Effect.fail(
+              new AdministrativeImportInvalid({
+                issues: [{ rowNo: null, field: null, severity: 'error', reason: error.reason }],
+              }),
+            ),
+          ),
+        )
+        const parsed = yield* Effect.tryPromise({
+          try: () => parseAdministrativeWorkbook(bytes),
+          catch: (error) =>
+            new AdministrativeImportInvalid({
+              issues: [
+                {
+                  rowNo: error instanceof WorkbookUnreadable ? error.rowNo : null,
+                  field: error instanceof WorkbookUnreadable ? error.column : null,
+                  severity: 'error',
+                  reason: error instanceof WorkbookUnreadable ? error.reason : 'not-xlsx',
+                },
+              ],
+            }),
+        })
+        // the metadata is not a credential, but it does say which question
+        // the file believes it answers, and disagreement is the reader's
+        // mistake rather than something to reconcile
+        if (
+          parsed.metadata.batchId !== batchId ||
+          parsed.metadata.itemId !== ready.item.id ||
+          parsed.metadata.itemRevisionId !== ready.revision.id
+        ) {
+          return yield* new ItemRevisionConflict({
+            itemId: ready.item.id,
+            currentRevisionId: ready.item.currentRevisionId,
+          })
+        }
+
+        const numbers = [
+          ...new Set(parsed.rows.map((row) => row.businessNo).filter((one) => one !== '')),
+        ]
+        const found = yield* dieQuery(
+          withDb(
+            resolveImportParticipants({
+              tenantId,
+              batchId,
+              actorId: as.userId,
+              businessNos: numbers,
+            }),
+          ),
+        )
+        const reachable = new Map(
+          found.map((one) => [
+            one.businessNo,
+            { id: one.participantId, displayName: one.displayName, businessNo: one.businessNo },
+          ]),
+        )
+        const held = yield* dieQuery(
+          withDb(
+            effectiveEntryCounts({
+              tenantId,
+              itemId: ready.item.id,
+              participantIds: found.map((one) => one.participantId),
+            }),
+          ),
+        )
+
+        const recognitionFields = recognitionFormFields(ready.plan) ?? []
+        const rows = judgeRows({
+          parsed,
+          defaultBasis: input.defaultBasis ?? '',
+          reachable,
+          evidenceSchemas: new Map(
+            evidenceFieldsOf(ready.revision.formConfig).map((one) => [one.key, one.schema]),
+          ),
+          recognitionSchemas: new Map(
+            recognitionFields.map((one) => [one.id, one.schema as never]),
+          ),
+          requiredRecognitionIds: recognitionFields.map((one) => one.id),
+          held,
+          maxEntries: ready.item.maxEntries,
+          actorUserId: as.userId,
+          participantUserIds: new Map(found.map((one) => [one.participantId, one.userId])),
+        })
+
+        // the arithmetic, proven for every distinct determination before any
+        // of it could be written - never inside a transaction, never once
+        // per row
+        const provable = rows
+          .filter((row) => !row.issues.some((one) => one.severity === 'error'))
+          .map((row) => row.recognition)
+        const proven = yield* proveSettlements(
+          runtime,
+          {
+            tenantId,
+            batchId,
+            itemId: ready.item.id,
+            revisionId: ready.revision.id,
+            plan: ready.plan,
+          },
+          provable,
+        )
+        const judged = rows.map((row) => {
+          const answer = proven.get(row.recognitionHash)
+          if (answer === undefined || 'identity' in answer) return row
+          return {
+            ...row,
+            issues: [
+              ...row.issues,
+              {
+                severity: 'error' as const,
+                field: null,
+                reason: `determination-refused: ${answer.refused.reason}`,
+              },
+            ],
+          }
+        })
+
+        const summary = summarise(judged)
+        return {
+          item: { id: ready.item.id, title: ready.item.title, revisionId: ready.revision.id },
+          summary,
+          rows: judged.map((row) => ({
+            rowNo: row.rowNo,
+            businessNo: row.businessNo,
+            displayNameFromFile: row.displayNameFromFile,
+            matchedParticipant: row.matchedParticipant,
+            payloadPreview: row.payload,
+            recognitionPreview: row.recognition,
+            basis: row.basis,
+            issues: row.issues,
+          })),
+          canCommit: summary.errors === 0 && summary.rows > 0,
+        }
+      },
+    ),
+
     listAdministrativeEntries: Effect.fn('Assessment.listAdministrativeEntries')(
       function* (tenantId, batchId, filter, as) {
         const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
@@ -4942,6 +5381,67 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
             },
           })),
         }
+      }),
+    )
+    .handle(
+      'administrativeImportTemplate',
+      Effect.fn('assessment.administrativeImportTemplate.handler')(function* ({ params }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const bytes = yield* assessment.administrativeImportTemplate(
+          principal.tenantId,
+          params.itemId,
+          'zh-CN',
+          principal,
+        )
+        return Stream.make(bytes)
+      }),
+    )
+    .handle(
+      'prepareAdministrativeImportUpload',
+      Effect.fn('assessment.prepareAdministrativeImportUpload.handler')(function* ({
+        params,
+        payload,
+      }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const ticket = yield* assessment.prepareAdministrativeImportUpload(
+          principal.tenantId,
+          params.batchId,
+          payload,
+          principal,
+        )
+        return {
+          reservationId: ticket.reservationId,
+          attachmentId: ticket.attachmentId,
+          grant: { driver: ticket.grant.driver, payload: ticket.grant.payload },
+          expiresAt: new Date(ticket.expiresAt).toISOString(),
+        }
+      }),
+    )
+    .handle(
+      'completeAdministrativeImportUpload',
+      Effect.fn('assessment.completeAdministrativeImportUpload.handler')(function* ({ params }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        return yield* assessment.completeAdministrativeImportUpload(
+          principal.tenantId,
+          params.reservationId,
+          principal,
+        )
+      }),
+    )
+    .handle(
+      'previewAdministrativeImport',
+      Effect.fn('assessment.previewAdministrativeImport.handler')(function* ({ params, payload }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        return yield* assessment.previewAdministrativeImport(
+          principal.tenantId,
+          params.batchId,
+          payload,
+          principal,
+        )
       }),
     )
     .handle(

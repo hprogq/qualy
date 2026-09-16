@@ -1448,6 +1448,8 @@ export default {
   'assessment/error/score-group-version-conflict': '分组已被其他人员修改，请刷新后重新操作。',
   'assessment/error/determination-refused': '该认定不符合当前计分规则：{reason}',
   'assessment/error/scoring-unavailable': '暂时无法计分，请稍后重试。',
+  'assessment/error/administrative-import-not-found': '该导入记录已不存在。',
+  'assessment/error/administrative-import-invalid': '该文件当前无法导入。',
   'assessment/error/item-scoring-incompatible':
     '新的计分规则无法处理 {affected} 条已生效认定（{refused} 条被规则拒绝，{executionFailed} 条计算失败），请修正计分规则后重试。',
   'assessment/error/access-invalid': '权限变更失败，请检查相关设置后重试。',

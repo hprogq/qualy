@@ -1699,11 +1699,143 @@ export const ReviewSupplementAttachment = defineEntity({
  * plain SET NULL would null tenant_id too, and because the projection must
  * not block deleting a draft batch's phases.
  */
+/**
+ * One bulk administrative act that actually happened.
+ *
+ * There is no draft state and no failed row, because there is no row until
+ * a whole import has been written: a preview is arithmetic, not history.
+ * That is what keeps the table honest - every row in it names a file that
+ * was read, a question version it was read against, and a number of facts
+ * that exist.
+ *
+ * It is provenance and nothing else. It never scores, and the count it
+ * carries is what WAS imported, never what is currently in effect: the
+ * current effect is the entries' own status, aggregated when somebody asks,
+ * so the two can never drift into disagreeing.
+ */
+export const AdministrativeEntryImport = defineEntity({
+  name: 'AdministrativeEntryImport',
+  tableName: 'administrative_entry_imports',
+  properties: {
+    id: p.uuid().primary().defaultRaw('uuidv7()'),
+    tenantId: tenantOf('administrative_entry_imports_tenant_id_tenants_id_fkey'),
+    batchId: p.uuid(),
+    itemId: p.uuid(),
+    // frozen: the question version every row in this import was read against
+    itemRevisionId: p.uuid(),
+    // the workbook as it was sent, bound only once the import succeeded
+    sourceAttachmentId: p.uuid().nullable(),
+    // the file's own name and size as they were, so the record survives the
+    // attachment being retired
+    filenameSnapshot: p.string().length(255),
+    sizeBytes: p.bigint(),
+    contentHashAlgorithm: p.string().length(32).nullable(),
+    contentHash: p.string().length(128).nullable(),
+    actorId: p.uuid().nullable(),
+    defaultBasis: p.string().length(500).nullable(),
+    importedCount: p.integer(),
+    createdAt: p.datetime().defaultRaw('now()'),
+  },
+  indexes: [
+    {
+      // (tenant_id, id) backs the tenant-scoped composite foreign keys the
+      // rows and the events hang off: a plain primary key on id alone is not
+      // something a composite reference can name
+      name: 'uq_administrative_entry_imports_tenant_id_id',
+      expression:
+        'create unique index uq_administrative_entry_imports_tenant_id_id on administrative_entry_imports (tenant_id, id)',
+    },
+    {
+      name: 'idx_administrative_entry_imports_batch',
+      expression:
+        'create index idx_administrative_entry_imports_batch on administrative_entry_imports (tenant_id, batch_id, created_at desc, id)',
+    },
+  ],
+})
+
+/**
+ * Which row of which workbook became which fact.
+ *
+ * Only provenance: the payload, the determination and the basis already
+ * live on the entry's own revision and recognition, and a second copy here
+ * would be a second truth to keep in step. This answers one question -
+ * "row 37 of that file became entry abc" - and nothing else.
+ */
+export const AdministrativeEntryImportRow = defineEntity({
+  name: 'AdministrativeEntryImportRow',
+  tableName: 'administrative_entry_import_rows',
+  properties: {
+    id: p.uuid().primary().defaultRaw('uuidv7()'),
+    tenantId: tenantOf('administrative_entry_import_rows_tenant_id_tenants_id_fkey'),
+    importId: p.uuid(),
+    sourceRowNo: p.integer(),
+    participantId: p.uuid(),
+    entryId: p.uuid(),
+    // what the file said the person was called, kept as it was written: it
+    // is how a reader recognises the row they filled in
+    businessNoSnapshot: p.string().length(100).nullable(),
+    displayNameSnapshot: p.string().length(255).nullable(),
+    createdAt: p.datetime().defaultRaw('now()'),
+  },
+  indexes: [
+    {
+      name: 'uq_administrative_entry_import_rows_row',
+      expression:
+        'create unique index uq_administrative_entry_import_rows_row on administrative_entry_import_rows (tenant_id, import_id, source_row_no)',
+    },
+    {
+      // one fact comes from one row of one file, or provenance means nothing
+      name: 'uq_administrative_entry_import_rows_entry',
+      expression:
+        'create unique index uq_administrative_entry_import_rows_entry on administrative_entry_import_rows (tenant_id, entry_id)',
+    },
+  ],
+})
+
+/**
+ * Something done to a whole import, as opposed to something done to one
+ * fact inside it.
+ *
+ * A single withdrawal already writes its own entry event. This answers the
+ * question that one cannot: why these hundred and twenty went together.
+ */
+export const AdministrativeEntryImportEvent = defineEntity({
+  name: 'AdministrativeEntryImportEvent',
+  tableName: 'administrative_entry_import_events',
+  properties: {
+    id: p.uuid().primary().defaultRaw('uuidv7()'),
+    tenantId: tenantOf('administrative_entry_import_events_tenant_id_tenants_id_fkey'),
+    importId: p.uuid(),
+    kind: p.string().length(32),
+    actorId: p.uuid().nullable(),
+    reason: p.string().length(500).nullable(),
+    affectedCount: p.integer(),
+    createdAt: p.datetime().defaultRaw('now()'),
+  },
+  indexes: [
+    {
+      name: 'idx_administrative_entry_import_events_import',
+      expression:
+        'create index idx_administrative_entry_import_events_import on administrative_entry_import_events (tenant_id, import_id, created_at desc)',
+    },
+  ],
+})
+
 export const compositeForeignKeys = [
   `alter table assessment_batches add constraint fk_assessment_batches_current_phase
      foreign key (tenant_id, id, current_phase_id) references batch_phases (tenant_id, batch_id, id) on delete set null (current_phase_id)`,
   `alter table roster_imports add constraint fk_roster_imports_batch
      foreign key (tenant_id, batch_id) references assessment_batches (tenant_id, id) on delete cascade`,
+  `alter table administrative_entry_imports add constraint fk_administrative_entry_imports_batch
+     foreign key (tenant_id, batch_id) references assessment_batches (tenant_id, id) on delete cascade`,
+  `alter table administrative_entry_imports add constraint fk_administrative_entry_imports_item
+     foreign key (tenant_id, item_id) references assessment_items (tenant_id, id) on delete cascade`,
+  `alter table administrative_entry_import_rows add constraint fk_administrative_entry_import_rows_import
+     foreign key (tenant_id, import_id) references administrative_entry_imports (tenant_id, id) on delete cascade`,
+  `alter table administrative_entry_import_rows add constraint fk_administrative_entry_import_rows_entry
+     foreign key (tenant_id, entry_id) references entries (tenant_id, id) on delete cascade`,
+  `alter table administrative_entry_import_events add constraint fk_administrative_entry_import_events_import
+     foreign key (tenant_id, import_id) references administrative_entry_imports (tenant_id, id) on delete cascade`,
   `alter table batch_management_anchors add constraint fk_batch_management_anchors_batch
      foreign key (tenant_id, batch_id) references assessment_batches (tenant_id, id) on delete cascade`,
   `alter table batch_management_anchors add constraint fk_batch_management_anchors_node
@@ -1862,6 +1994,9 @@ export const entities = [
   AssessmentBatch,
   BatchManagementAnchor,
   RosterImport,
+  AdministrativeEntryImport,
+  AdministrativeEntryImportRow,
+  AdministrativeEntryImportEvent,
   BatchPhase,
   PhaseEvent,
   BatchLifecycleEvent,

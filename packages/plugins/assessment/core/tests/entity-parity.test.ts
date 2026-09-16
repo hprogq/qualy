@@ -46,6 +46,9 @@ const DEPENDENCY_TABLES = [
 ]
 
 const TABLES = [
+  'administrative_entry_import_events',
+  'administrative_entry_import_rows',
+  'administrative_entry_imports',
   'assessment_batches',
   'assessment_item_revisions',
   'assessment_items',

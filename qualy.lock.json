@@ -1,7 +1,7 @@
 {
   "lockfileVersion": 2,
   "manifestHash": "sha256:b13c8ce27647511208c322b5c8f86b6f2a77b8a0f19f36cab4290c883eb35191",
-  "resolutionHash": "sha256:5d875660e56e2f37af9b868581cb7529915d5a7d914a7164d0f921ff73fa1f13",
+  "resolutionHash": "sha256:7a067b961b4f0ae286388744d1884f94720c6838a0122f21fbe88dd9c416ffe0",
   "plugins": {
     "@qualy/plugin-assessment": {
       "version": "0.0.0",
@@ -9,6 +9,9 @@
       "contributions": {
         "database": {
           "entities": [
+            "AdministrativeEntryImport",
+            "AdministrativeEntryImportEvent",
+            "AdministrativeEntryImportRow",
             "AssessmentBatch",
             "AssessmentItem",
             "AssessmentItemRevision",

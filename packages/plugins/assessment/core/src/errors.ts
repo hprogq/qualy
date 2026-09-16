@@ -466,3 +466,39 @@ export class ScoringUnavailable extends Schema.TaggedError<ScoringUnavailable>()
   {},
   { httpApiStatus: 503, identifier: 'AssessmentScoringUnavailable' },
 ) {}
+
+/** the bulk act named does not exist, or is not this reader's to see */
+export class AdministrativeImportNotFound extends Schema.TaggedError<AdministrativeImportNotFound>()(
+  'ASSESSMENT_ADMINISTRATIVE_IMPORT_NOT_FOUND',
+  {},
+  { httpApiStatus: 404, identifier: 'AssessmentAdministrativeImportNotFound' },
+) {}
+
+/**
+ * The workbook cannot become facts, and here is everything wrong with it.
+ *
+ * One error carrying many issues rather than the first thing that failed:
+ * somebody who has filled in a hundred and twenty rows is owed the whole
+ * list, not one round trip per mistake. `rowNo` is the spreadsheet's own row
+ * number so they can look at it; `severity` distinguishes what blocks the
+ * import from what it only wants confirmed.
+ *
+ * A malformed FILE is said this way too - not a workbook, a template from a
+ * version no longer read, hand-edited metadata, more rows than one request
+ * carries - because all of them mean the same thing to the reader: this
+ * file, as it stands, is not importable.
+ */
+export class AdministrativeImportInvalid extends Schema.TaggedError<AdministrativeImportInvalid>()(
+  'ASSESSMENT_ADMINISTRATIVE_IMPORT_INVALID',
+  {
+    issues: Schema.Array(
+      Schema.Struct({
+        rowNo: Schema.NullOr(Schema.Number),
+        field: Schema.NullOr(Schema.String),
+        severity: Schema.Literals(['error', 'warning']),
+        reason: Schema.String,
+      }),
+    ),
+  },
+  { httpApiStatus: 422, identifier: 'AssessmentAdministrativeImportInvalid' },
+) {}

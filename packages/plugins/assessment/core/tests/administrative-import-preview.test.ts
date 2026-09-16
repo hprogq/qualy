@@ -1,0 +1,286 @@
+import { describe, expect, it } from 'vitest'
+import {
+  judgeRows,
+  readCell,
+  summarise,
+  type PreviewInput,
+} from '../src/administrative-import/preview.ts'
+import type { ParsedWorkbook, TemplateColumn } from '../src/administrative-import/workbook.ts'
+
+// Judging a workbook without writing anything.
+//
+// The rule this suite exists for is that a preview and the write that
+// follows must reach the same answer. Everything here is the part of that
+// answer which depends only on values - the part a person can get wrong a
+// hundred and twenty times in one file, and is owed all at once.
+
+const column = (over: Partial<TemplateColumn> & Pick<TemplateColumn, 'key' | 'type'>) =>
+  ({ column: 'C', kind: 'evidence', ...over }) as TemplateColumn
+
+const parsed = (
+  columns: readonly TemplateColumn[],
+  rows: readonly {
+    rowNo: number
+    businessNo: string
+    displayName: string
+    cells: Record<string, string>
+    basis: string
+  }[],
+): ParsedWorkbook => ({
+  metadata: {
+    templateVersion: 1,
+    batchId: 'b',
+    itemId: 'i',
+    itemRevisionId: 'r',
+    columns,
+  },
+  rows,
+})
+
+const base = (over: Partial<PreviewInput> & Pick<PreviewInput, 'parsed'>): PreviewInput => ({
+  defaultBasis: '校发〔2026〕7 号',
+  reachable: new Map(),
+  evidenceSchemas: new Map(),
+  recognitionSchemas: new Map(),
+  requiredRecognitionIds: [],
+  held: new Map(),
+  maxEntries: null,
+  actorUserId: 'staff',
+  participantUserIds: new Map(),
+  ...over,
+})
+
+const reachable = (businessNo: string, id: string, displayName: string) =>
+  new Map([[businessNo, { id, displayName, businessNo }]])
+
+const reasonsOf = (rows: ReturnType<typeof judgeRows>) =>
+  rows.flatMap((row) => row.issues.map((one) => one.reason))
+
+describe('reading one cell as the type its column declares', () => {
+  it('keeps a decimal as text all the way through', () => {
+    // a calculator handed an IEEE double has already lost the question
+    expect(readCell(column({ key: 'x', type: 'decimal' }), undefined, '0.10')).toEqual({
+      value: '0.10',
+    })
+    expect(readCell(column({ key: 'x', type: 'decimal' }), undefined, '1e3')).toEqual({
+      reason: 'decimal-syntax',
+    })
+  })
+
+  it('refuses an integer that is not safe rather than rounding it', () => {
+    expect(readCell(column({ key: 'x', type: 'integer' }), undefined, '12')).toEqual({ value: 12 })
+    expect(
+      readCell(column({ key: 'x', type: 'integer' }), undefined, '900719925474099100'),
+    ).toEqual({ reason: 'integer-range' })
+    expect(readCell(column({ key: 'x', type: 'integer' }), undefined, '1.5')).toEqual({
+      reason: 'integer-syntax',
+    })
+  })
+
+  it('holds a date to the shape the template asked for', () => {
+    expect(readCell(column({ key: 'x', type: 'date' }), undefined, '2026-03-01')).toEqual({
+      value: '2026-03-01',
+    })
+    expect(readCell(column({ key: 'x', type: 'date' }), undefined, '2026/3/1')).toEqual({
+      reason: 'date-syntax',
+    })
+  })
+
+  it('reads a choice by the word the file shows, and by its stable value', () => {
+    const choice = column({
+      key: 'x',
+      type: 'choice',
+      choices: [
+        { label: '国家级 [national]', value: 'national' },
+        { label: '省级', value: 'provincial' },
+      ],
+    })
+    // the disambiguated label is what the template printed
+    expect(readCell(choice, undefined, '国家级 [national]')).toEqual({ value: 'national' })
+    expect(readCell(choice, undefined, '省级')).toEqual({ value: 'provincial' })
+    // somebody who pasted a column out of another system has not erred
+    expect(readCell(choice, undefined, 'national')).toEqual({ value: 'national' })
+    expect(readCell(choice, undefined, '国家级')).toEqual({ reason: 'choice-unknown' })
+  })
+
+  it('reads a boolean as the two words the template offers', () => {
+    const flag = column({ key: 'x', type: 'boolean' })
+    expect(readCell(flag, undefined, '是')).toEqual({ value: true })
+    expect(readCell(flag, undefined, '否')).toEqual({ value: false })
+    expect(readCell(flag, undefined, '1')).toEqual({ reason: 'boolean-syntax' })
+  })
+})
+
+describe('judging a whole workbook', () => {
+  it('says the same thing for unknown, excluded and out of reach', () => {
+    const rows = judgeRows(
+      base({
+        parsed: parsed(
+          [],
+          [
+            { rowNo: 2, businessNo: '0001', displayName: '张三', cells: {}, basis: '' },
+            { rowNo: 3, businessNo: '', displayName: '', cells: {}, basis: '' },
+          ],
+        ),
+        reachable: new Map(),
+      }),
+    )
+    // one answer for all three refusals, or the import door is a directory
+    expect(rows[0]!.issues.map((one) => one.reason)).toEqual(['participant-not-found'])
+    expect(rows[0]!.matchedParticipant).toBeNull()
+    expect(rows[1]!.issues.map((one) => one.reason)).toEqual(['business-no-required'])
+  })
+
+  it('refuses a row about the person filing it', () => {
+    const rows = judgeRows(
+      base({
+        parsed: parsed(
+          [],
+          [{ rowNo: 2, businessNo: '0001', displayName: '张三', cells: {}, basis: '文件' }],
+        ),
+        reachable: reachable('0001', 'p1', '张三'),
+        participantUserIds: new Map([['p1', 'staff']]),
+      }),
+    )
+    // approved on write with no reviewer, so the two people must be two
+    expect(reasonsOf(rows)).toContain('self-record-refused')
+  })
+
+  it('warns about a name that does not match, and does not block on it', () => {
+    const rows = judgeRows(
+      base({
+        parsed: parsed(
+          [],
+          [{ rowNo: 2, businessNo: '0001', displayName: '张山', cells: {}, basis: '文件' }],
+        ),
+        reachable: reachable('0001', 'p1', '张三'),
+        participantUserIds: new Map([['p1', 'u1']]),
+      }),
+    )
+    expect(rows[0]!.issues).toEqual([
+      { severity: 'warning', field: 'displayName', reason: 'name-mismatch' },
+    ])
+    expect(summarise(rows)).toEqual({ rows: 1, valid: 1, warnings: 1, errors: 0 })
+  })
+
+  it('takes the row basis over the shared one, and refuses when neither is there', () => {
+    const input = base({
+      parsed: parsed(
+        [],
+        [
+          { rowNo: 2, businessNo: '0001', displayName: '张三', cells: {}, basis: '本行依据' },
+          { rowNo: 3, businessNo: '0001', displayName: '张三', cells: {}, basis: '' },
+        ],
+      ),
+      reachable: reachable('0001', 'p1', '张三'),
+      participantUserIds: new Map([['p1', 'u1']]),
+    })
+    const withShared = judgeRows(input)
+    expect(withShared[0]!.basis).toBe('本行依据')
+    expect(withShared[1]!.basis).toBe('校发〔2026〕7 号')
+
+    const without = judgeRows({ ...input, defaultBasis: '   ' })
+    // an administrative fact nobody can check is an assertion
+    expect(without[1]!.issues.map((one) => one.reason)).toContain('basis-required')
+  })
+
+  it('refuses a determination the question requires and the file left out', () => {
+    const rows = judgeRows(
+      base({
+        parsed: parsed(
+          [column({ key: 'rec-level', type: 'choice', kind: 'recognition', choices: [] })],
+          [{ rowNo: 2, businessNo: '0001', displayName: '张三', cells: {}, basis: '文件' }],
+        ),
+        reachable: reachable('0001', 'p1', '张三'),
+        participantUserIds: new Map([['p1', 'u1']]),
+        requiredRecognitionIds: ['rec-level'],
+      }),
+    )
+    expect(reasonsOf(rows)).toContain('recognition-required')
+  })
+
+  it('counts quota across the file as well as against the database', () => {
+    const rows = judgeRows(
+      base({
+        parsed: parsed(
+          [],
+          [
+            { rowNo: 2, businessNo: '0001', displayName: '张三', cells: {}, basis: '甲' },
+            { rowNo: 3, businessNo: '0001', displayName: '张三', cells: {}, basis: '乙' },
+            { rowNo: 4, businessNo: '0001', displayName: '张三', cells: {}, basis: '丙' },
+          ],
+        ),
+        reachable: reachable('0001', 'p1', '张三'),
+        participantUserIds: new Map([['p1', 'u1']]),
+        maxEntries: 2,
+        held: new Map([['p1', 1]]),
+      }),
+    )
+    // one already held plus two in the file is one too many, and the row it
+    // is too many AT is the one named
+    expect(rows[0]!.issues.map((one) => one.reason)).not.toContain('max-entries-reached')
+    expect(rows[1]!.issues.map((one) => one.reason)).toContain('max-entries-reached')
+    expect(rows[2]!.issues.map((one) => one.reason)).toContain('max-entries-reached')
+  })
+
+  it('warns about the same fact twice, and is not fooled by a different basis', () => {
+    const rows = judgeRows(
+      base({
+        parsed: parsed(
+          [column({ key: 'summary', type: 'text' })],
+          [
+            {
+              rowNo: 2,
+              businessNo: '0001',
+              displayName: '张三',
+              cells: { summary: '入伍' },
+              basis: '甲',
+            },
+            {
+              rowNo: 3,
+              businessNo: '0001',
+              displayName: '张三',
+              cells: { summary: '入伍' },
+              // a different basis is not a different fact
+              basis: '乙',
+            },
+          ],
+        ),
+        reachable: reachable('0001', 'p1', '张三'),
+        participantUserIds: new Map([['p1', 'u1']]),
+      }),
+    )
+    expect(rows[0]!.issues).toEqual([])
+    expect(rows[1]!.issues.map((one) => one.reason)).toEqual(['duplicate-in-file'])
+    // a warning, never a refusal: some questions are won more than once
+    expect(summarise(rows).errors).toBe(0)
+  })
+
+  it('collects every mistake rather than stopping at the first', () => {
+    const rows = judgeRows(
+      base({
+        parsed: parsed(
+          [column({ key: 'when', type: 'date' }), column({ key: 'score', type: 'integer' })],
+          [
+            {
+              rowNo: 2,
+              businessNo: '9999',
+              displayName: '',
+              cells: { when: '2026/3/1', score: 'x' },
+              basis: '',
+            },
+          ],
+        ),
+        reachable: new Map(),
+        defaultBasis: '',
+      }),
+    )
+    // somebody who filled in a hundred rows is owed the whole list
+    expect(rows[0]!.issues.map((one) => one.reason).sort()).toEqual([
+      'basis-required',
+      'date-syntax',
+      'integer-syntax',
+      'participant-not-found',
+    ])
+  })
+})

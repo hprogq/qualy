@@ -41,6 +41,7 @@ import {
   AdvanceInvalid,
   EntryActionRefused,
   EntryNotFound,
+  AdministrativeImportInvalid,
   DeterminationRefused,
   EntryPayloadInvalid,
   ItemActionRefused,
@@ -556,6 +557,40 @@ const administrativeStatus = Schema.Literals([
   'rejected',
   'voided',
 ])
+
+/** what is wrong with one row, or with the file as a whole */
+const importIssue = Schema.Struct({
+  severity: Schema.Literals(['error', 'warning']),
+  /** the field it is about, when it is about one */
+  field: Schema.NullOr(Schema.String),
+  reason: Schema.String,
+})
+
+/**
+ * One row of the workbook as the server reads it.
+ *
+ * `matchedParticipant` is null for every refusal a business number can earn
+ * - unknown, excluded, out of the caller's reach - deliberately: telling
+ * them apart would make the import door a directory of other people's
+ * students, readable a spreadsheet at a time.
+ */
+const importPreviewRow = Schema.Struct({
+  rowNo: Schema.Number,
+  businessNo: Schema.String,
+  /** what the file calls them, for the reader to check against the match */
+  displayNameFromFile: Schema.String,
+  matchedParticipant: Schema.NullOr(
+    Schema.Struct({
+      id: Schema.String,
+      displayName: Schema.String,
+      businessNo: Schema.NullOr(Schema.String),
+    }),
+  ),
+  payloadPreview: configJson,
+  recognitionPreview: configJson,
+  basis: Schema.String,
+  issues: Schema.Array(importIssue),
+})
 
 /** one row of the administrative record book */
 const administrativeEntryView = Schema.Struct({
@@ -2174,6 +2209,127 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
      * read through a schema it was not made against is a determination
      * misread.
      */
+    /**
+     * The workbook a recorder fills in, for one question as it stands today.
+     *
+     * Built rather than stored: a template is a projection of the question's
+     * current version, and a stored one is a copy that goes stale the moment
+     * somebody edits the paper. The version it was built from rides inside
+     * it, which is what lets the import refuse a file filled in against a
+     * question that has since moved.
+     */
+    HttpApiEndpoint.get(
+      'administrativeImportTemplate',
+      '/assessment/items/:itemId/administrative-import-template',
+      {
+        params: Schema.Struct({ itemId: uuidInput }),
+        success: HttpApiSchema.StreamUint8Array(),
+        error: [ItemNotFound, EntryActionRefused, AccessDenied],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
+    /**
+     * A door for the workbook itself, separate from the one evidence uses.
+     *
+     * An import's source file is not material backing a claim: nothing cites
+     * it, the attachment authorizer would not know what to make of it, and
+     * putting it through the evidence door would mean pretending it is
+     * evidence to get it stored.
+     */
+    HttpApiEndpoint.post(
+      'prepareAdministrativeImportUpload',
+      '/assessment/batches/:batchId/administrative-import-uploads',
+      {
+        params: Schema.Struct({ batchId: uuidInput }),
+        payload: Schema.Struct({
+          itemId: uuidInput,
+          filename: trimmedName(255),
+          declaredMime: boundedText(127),
+          /** decimal bytes; a string because numbers this size deserve exactness */
+          size: Schema.String.check(Schema.isPattern(/^[1-9]\d{0,11}$/)),
+        }),
+        success: Schema.Struct({
+          reservationId: Schema.String,
+          attachmentId: Schema.String,
+          grant: Schema.Struct({ driver: Schema.String, payload: configJson }),
+          expiresAt: Schema.String,
+        }),
+        error: [BatchNotFound, ItemNotFound, BatchReadOnly, EntryActionRefused, AccessDenied],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
+    // the bytes have arrived; the ticket becomes a staged file, bound to
+    // nothing until an import actually succeeds
+    HttpApiEndpoint.post(
+      'completeAdministrativeImportUpload',
+      '/assessment/administrative-import-uploads/:reservationId/complete',
+      {
+        params: Schema.Struct({ reservationId: uuidInput }),
+        success: Schema.Struct({
+          id: Schema.String,
+          filename: Schema.String,
+          declaredMime: Schema.String,
+          size: Schema.String,
+          status: Schema.String,
+        }),
+        error: [AttachmentUnavailable, EntryActionRefused, AccessDenied, BadRequest],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
+    /**
+     * What this file would do, worked out and thrown away.
+     *
+     * A preview creates no import: an import is a thing that happened, and
+     * nothing has happened yet. The server re-reads the workbook from the
+     * staged file rather than taking the browser's word for what is in it -
+     * otherwise the original kept as provenance and the rows actually
+     * written are two different documents.
+     */
+    HttpApiEndpoint.post(
+      'previewAdministrativeImport',
+      '/assessment/batches/:batchId/administrative-import-previews',
+      {
+        params: Schema.Struct({ batchId: uuidInput }),
+        payload: Schema.Struct({
+          attachmentId: uuidInput,
+          itemId: uuidInput,
+          expectedItemRevisionId: uuidInput,
+          defaultBasis: Schema.optional(boundedText(500)),
+        }),
+        success: Schema.Struct({
+          item: Schema.Struct({
+            id: Schema.String,
+            title: Schema.String,
+            revisionId: Schema.String,
+          }),
+          summary: Schema.Struct({
+            rows: Schema.Number,
+            valid: Schema.Number,
+            warnings: Schema.Number,
+            errors: Schema.Number,
+          }),
+          rows: Schema.Array(importPreviewRow),
+          /** whether committing is offered at all; warnings do not withhold it */
+          canCommit: Schema.Boolean,
+        }),
+        error: [
+          BatchNotFound,
+          ItemNotFound,
+          ItemRevisionConflict,
+          BatchReadOnly,
+          EntryActionRefused,
+          AttachmentUnavailable,
+          AdministrativeImportInvalid,
+          ScoringUnavailable,
+          AccessDenied,
+        ],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
     HttpApiEndpoint.get(
       'listAdministrativeEntries',
       '/assessment/batches/:batchId/administrative-entries',

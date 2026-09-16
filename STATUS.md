@@ -16788,3 +16788,109 @@ _qualy 隐藏 sheet          veryHidden 往返保真
 
 最后一条是 §61 的前提:能判别才能实现 `formula-not-allowed`。
 build / server bundle / 不进浏览器 chunk 三条要等真加进仓库后跑门禁验。
+
+## 行政认定 Phase B:Excel 依赖、workbook 解析器、Import 数据层与预览(2026-09-16)
+
+规格 `docs/administrative.md` §73 的 Phase B。此阶段做到「下载模板 / 上传 / 看到完整 preview」,
+**不 commit**——Import 行要到 Phase C 才第一次写进数据库。
+
+### XLSX 依赖:先验证再采用
+
+§17 要求验证而不是查文档。`exceljs@4.4.0` 在隔离环境实测六条:
+
+```text
+Node 24 ESM 导入        ok
+license / engines       MIT / >=8.3.0
+_qualy 隐藏 sheet       veryHidden 往返保真
+学号前导零 0012340      读回仍是文本
+公式 cell               读回 {formula, result},库不求值
+build 后浏览器包        apps/web/dist/assets 里搜不到 exceljs
+```
+
+第 5 条是 §61 的前提:**能判别才能拒绝**。解析器塞一个
+`{formula:'B2&"!"', result:'张三!'}` 进去会被拒,并指出第 2 行 C 列——
+缓存的 result 是上一个打开这个文件的程序算的,不是任何人签过的事实。
+
+### workbook.ts 是纯的
+
+§56:不查库、不查权限、不写 Entry、不跑评分。进去是字节,出来是 metadata 和 typed raw rows。
+这样 Excel 的边界全部可以用普通单元测试覆盖(13 条):公式、前导零、日期读成日历日而非
+瞬时、空白尾行、标签歧义消解、模板版本、篡改 metadata、行数与文件大小上限、列名 A→AA→BA。
+
+**标签歧义**那条值得单说:两个 enum value 的 label 都是「国家级」时,模板必须印成
+`国家级 [national]` / `国家级 [national-special]`,否则文件本身已经把区别销毁了,
+导回来只能猜。
+
+### 三张表,没有 draft 状态
+
+`administrative_entry_imports` / `_rows` / `_events`。按 §13 **没有 state 列**:
+只有成功 commit 才有行,所以不存在 `draft/failed`。按 §15 **不存 activeCount**:
+当前有多少还生效是 `entries.status` 聚合出来的,存第二份就会漂移。
+
+两处 gate 抓到的真实问题(不是事后发现):
+
+1. `administrative_entry_imports` 缺 `(tenant_id, id)` 唯一索引 →
+   `qualy generate` 直接拒绝建复合外键;
+2. entity 写 `id desc`、生成器渲染成 `id` → entity-parity 报 indexes differ。
+   统一成 `id` 后重新生成 migration。
+
+### §30:批量证明必须把顺序倒过来
+
+单条认定现在是「写 → ProbeNeeded → 回滚 → 事务外 prove → 二次写」。
+2000 行照这个做,就是 batch lock 被按住 2000 次 sandbox 运行的时间。
+
+`proveSettlements` 改成:**先在事务外证明全部**,再带着 identity 进写事务。
+三条约束各有测试,去掉去重会红:
+
+```text
+runtime 只 prepare 一次     50 行 → prepared === 1
+按内容去重                  50 行说两种话 → evaluated === 2
+拒绝归行、不炸整批          三行一拒 → 1 refused + 2 identity
+```
+
+最后一条是给预览的读者的:填了一百二十行的人应该**一次看到所有坏行**,
+而不是第一行然后沉默。ScoringUnavailable 仍然整批抛出——什么都证明不了,
+就什么都不能写。
+
+### 预览:先全局后逐行,收集而不抛出
+
+`preview.ts` 的 `judgeRows` 是纯函数,13 条单测。三条做了反向验证:
+
+1. **三种拒绝表现一致**(§27):不存在 / 已排除 / 越界都是 `participant-not-found`。
+   改成泄露 `participant-out-of-reach` → 红。
+   否则导入门就是一份别人学院的学生名册,一次一个表格地读出来。
+2. **配额跨文件计**(§28):库里已有 1 + 文件里 2 行、maxEntries=2 → 第 2、3 行超限。
+   只看数据库 → 红。等到 commit 才说,就是在人按下按钮之后才告诉他。
+3. **重复指纹不含依据**(§29):同一事实换一段依据仍然是重复。
+   把 basis 放进指纹 → 红。
+
+### Import 专用上传门,不借用 evidence 的
+
+§23:workbook 不是支撑某条申报的材料,没有任何 Entry 引用它,现有 attachment
+authorizer 也不认识它。硬塞进 evidence 门就是「为了能存下来假装它是证据」。
+
+§24:**服务端重新读文件**。`read-source.ts` 处理两种 backend target
+(content 流 / signed URL),都带上限——上限取 attachment 自己声明的 size,
+因为「store 说完大小之后还在继续来的 body」已经不是上传的那个文件了;
+signed URL 不进日志,非 2xx 视为 store 故障。
+
+浏览器解析 Excel 再把 JSON 交给服务器的做法被明确排除:那样存下来的原件
+和实际写入的行是两份文件,provenance 就是装饰。
+
+### 门禁(实际执行,2026-09-16)
+
+```text
+pnpm typecheck              exit=0
+pnpm test                   247 passed | 3 skipped (250) / 1781 passed | 17 skipped (1798)
+effect-api-parity           4 passed(四条新路由同笔进 frozen-routes)
+entity-parity / schema      passed
+```
+
+新增单元测试:`administrative-import-workbook.test.ts`(13)、
+`administrative-import-preview.test.ts`(13)、`bulk-settlement-proof.test.ts`(6)。
+
+### 下一步
+
+Phase C 的原子提交(§32 的 A–K 十一步、事务内九项二次检查、all-or-nothing 回滚)。
+最需要小心的是「preview 结果不是授权凭据」——commit 必须重新打开原文件、
+重新解析、重新做完整 preview 检查,再进写事务。
