@@ -627,6 +627,31 @@ const administrativeEntryView = Schema.Struct({
   importId: Schema.NullOr(Schema.String),
 })
 
+/**
+ * One import, as the history lists it.
+ *
+ * What it currently comes to is counted from its entries whenever somebody
+ * asks rather than stored on the import: the entries already know, and a
+ * second copy is a copy that can disagree with them.
+ */
+const administrativeImportView = Schema.Struct({
+  id: Schema.String,
+  item: Schema.Struct({ id: Schema.String, title: Schema.String }),
+  /** the workbook's name as it was uploaded */
+  filename: Schema.String,
+  actor: Schema.NullOr(Schema.Struct({ id: Schema.String, name: Schema.String })),
+  createdAt: Schema.String,
+  importedCount: Schema.Number,
+  standing: Schema.Struct({
+    approved: Schema.Number,
+    inReview: Schema.Number,
+    rejected: Schema.Number,
+    voided: Schema.Number,
+    /** anything else, so the parts always add up to what was imported */
+    other: Schema.Number,
+  }),
+})
+
 const entryView = Schema.Struct({
   id: Schema.String,
   batchId: Schema.String,
@@ -2196,20 +2221,6 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   )
   .add(
     /**
-     * The book of what the institution has recorded in this round.
-     *
-     * Its own read rather than the general claim list with a filter: the
-     * question here is "what has been decided", and the answer wants the
-     * person, the question, who signed it and what it was determined to be -
-     * none of which a claim-centred view carries. Only `record` and `import`
-     * are ever in it.
-     *
-     * The determination's fields come from the question version it was
-     * judged under, never the question as it stands today: a determination
-     * read through a schema it was not made against is a determination
-     * misread.
-     */
-    /**
      * The workbook a recorder fills in, for one question as it stands today.
      *
      * Built rather than stored: a template is a projection of the question's
@@ -2330,6 +2341,84 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     ).middleware(Authenticated),
   )
   .add(
+    /**
+     * The import itself: every row, or none of them.
+     *
+     * Takes no rows from the client. The preview is a courtesy to the person
+     * filling the file in, never an authorization to write what it said - so
+     * the server opens the stored workbook again, parses it again, judges it
+     * again, and only then writes. All-or-nothing on purpose: an import that
+     * skipped the rows it could not manage is an import nobody can explain
+     * afterwards.
+     */
+    HttpApiEndpoint.post(
+      'commitAdministrativeImport',
+      '/assessment/batches/:batchId/administrative-imports',
+      {
+        params: Schema.Struct({ batchId: uuidInput }),
+        payload: Schema.Struct({
+          attachmentId: uuidInput,
+          itemId: uuidInput,
+          expectedItemRevisionId: uuidInput,
+          defaultBasis: Schema.optional(boundedText(500)),
+          /** the reader has seen the warnings and still wants this */
+          confirmWarnings: Schema.optional(Schema.Boolean),
+        }),
+        success: Schema.Struct({
+          importId: Schema.String,
+          importedCount: Schema.Number,
+        }),
+        error: [
+          BatchNotFound,
+          ItemNotFound,
+          ItemRevisionConflict,
+          BatchReadOnly,
+          EntryActionRefused,
+          AttachmentUnavailable,
+          AdministrativeImportInvalid,
+          DeterminationRefused,
+          ScoringUnavailable,
+          AccessDenied,
+        ],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
+    /**
+     * The imports of this round that the reader may still look back on.
+     *
+     * Narrower than the record book on purpose. A workbook is a list of
+     * people, so an import is listed only to the person who made it, and only
+     * while every person in it is still somebody they may record on: having
+     * uploaded a class list once is not a standing licence to read it after
+     * the reach that justified it has gone.
+     */
+    HttpApiEndpoint.get(
+      'listAdministrativeImports',
+      '/assessment/batches/:batchId/administrative-imports',
+      {
+        params: Schema.Struct({ batchId: uuidInput }),
+        query: Schema.Struct({ ...pageQuery }),
+        success: pageOf(administrativeImportView),
+        error: [BatchNotFound, AccessDenied, BadRequest],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
+    /**
+     * The book of what the institution has recorded in this round.
+     *
+     * Its own read rather than the general claim list with a filter: the
+     * question here is "what has been decided", and the answer wants the
+     * person, the question, who signed it and what it was determined to be -
+     * none of which a claim-centred view carries. Only `record` and `import`
+     * are ever in it.
+     *
+     * The determination's fields come from the question version it was
+     * judged under, never the question as it stands today: a determination
+     * read through a schema it was not made against is a determination
+     * misread.
+     */
     HttpApiEndpoint.get(
       'listAdministrativeEntries',
       '/assessment/batches/:batchId/administrative-entries',

@@ -344,6 +344,14 @@ export const entriesOfImport = (tenantId: string, importId: string) =>
 export const importsOfBatchPage = (input: {
   tenantId: string
   batchId: string
+  /**
+   * The conservative rule for somebody here on recording authority alone:
+   * only imports they made, and only while every person in them is still
+   * someone they may record on. A file of names is a list of people, and
+   * having uploaded it once is not a standing licence to read it after the
+   * reach that justified it has been taken away.
+   */
+  reader?: { userId: string } | undefined
   after?: readonly [string, string] | undefined
   limit: number
 }) =>
@@ -369,8 +377,31 @@ export const importsOfBatchPage = (input: {
           'a.displayName as actorName',
         ])
         .select([epoch('i.created_at').as('createdMs')])
+        .select([sql<string>`i.created_at::text`.as('cursorAt')])
         .where('i.tenantId', '=', input.tenantId)
         .where('i.batchId', '=', input.batchId)
+      if (input.reader !== undefined) {
+        const reader = input.reader
+        query = query.where('i.actorId', '=', reader.userId).where(
+          // not one person in it outside the reader's current reach
+          sql<boolean>`not exists (
+            select 1
+              from administrative_entry_import_rows r
+              join batch_participants p
+                on p.tenant_id = r.tenant_id and p.id = r.participant_id
+             where r.tenant_id = i.tenant_id
+               and r.import_id = i.id
+               and not ${staffReachOver({
+                 tenantId: input.tenantId,
+                 batchId: input.batchId,
+                 userId: reader.userId,
+                 permissionCode: 'assessment.entry.record',
+                 anchorNodeId: sql.ref('p.assessment_anchor_node_id'),
+                 anchorPath: sql.ref('p.anchor_path'),
+               })}
+          )`,
+        )
+      }
       if (input.after !== undefined) {
         query = query.where(
           sql<boolean>`(i.created_at, i.id) < (${input.after[0]}::timestamptz, ${input.after[1]}::uuid)`,
@@ -395,6 +426,7 @@ export const importsOfBatchPage = (input: {
           actorId: row['actorId'] == null ? null : String(row['actorId']),
           actorName: row['actorName'] == null ? null : String(row['actorName']),
           createdAt: msOf(row['createdMs']),
+          cursorAt: String(row['cursorAt']),
         })),
       ),
     )

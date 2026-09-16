@@ -4,6 +4,7 @@ import {
   currentRecognitionOf,
   currentRecognitionsOfEntries,
 } from '../scoring/recognition-db.ts'
+import { recordAdministrativeEntryTx } from './administrative-write.ts'
 import {
   canonicalRecognition,
   judgeRecognition,
@@ -1012,63 +1013,66 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                 }
               }
 
-              // An administrative record is approved the moment it is filed,
-              // but it becomes approved in the statement below rather than in
-              // this one: the row has to have a determination before it can
-              // call itself approved, and the determination needs the row.
-              const entryId = yield* insertEntry({
-                tenantId,
-                batchId: item.batchId,
-                itemId: item.id,
-                participantId: participant.id,
-                source: administrative ? 'record' : 'self',
-                status: 'draft',
-              })
-              const revisionId = yield* insertEntryRevision({
-                tenantId,
-                entryId,
-                itemId: item.id,
-                itemRevisionId: revision.id,
-                revisionNo: 1,
-                payload: decoded,
-                actorId: as.userId,
-                subjectId: participant.userId,
-                source: administrative ? 'record' : 'self',
-                note: input.note?.trim() || null,
-              })
               const refs = driver.attachmentRefs(revision.formConfig, decoded)
               yield* bindAttachments({ tenantId, entryId: null, actorId: as.userId, refs })
-              yield* insertRevisionAttachments(
-                tenantId,
-                revisionId,
-                refs.map((ref, position) => ({ attachmentId: ref.attachmentId, position })),
-              )
-              const recognitionId =
-                determined === undefined
-                  ? undefined
-                  : yield* insertRecognition({
+              // An administrative fact goes through the one writer both doors
+              // use, so a record and an import cannot drift into writing the
+              // same thing differently. A participant's own filing does not:
+              // it is a draft with no determination, which is a different
+              // sequence and not a special case of this one.
+              const { entryId, revisionId } = administrative
+                ? yield* recordAdministrativeEntryTx({
+                    tenantId,
+                    batchId: item.batchId,
+                    itemId: item.id,
+                    itemRevisionId: revision.id,
+                    participantId: participant.id,
+                    subjectUserId: participant.userId,
+                    actorUserId: as.userId,
+                    payload: decoded,
+                    recognition: determined,
+                    basis: input.note ?? '',
+                    source: 'record',
+                    attachments: refs,
+                  })
+                : yield* Effect.gen(function* () {
+                    const id = yield* insertEntry({
                       tenantId,
                       batchId: item.batchId,
-                      entryId,
-                      entryRevisionId: revisionId,
+                      itemId: item.id,
+                      participantId: participant.id,
+                      source: 'self',
+                      status: 'draft',
+                    })
+                    const written = yield* insertEntryRevision({
+                      tenantId,
+                      entryId: id,
                       itemId: item.id,
                       itemRevisionId: revision.id,
-                      values: determined,
-                      source: 'record',
-                      createdBy: as.userId,
+                      revisionNo: 1,
+                      payload: decoded,
+                      actorId: as.userId,
+                      subjectId: participant.userId,
+                      source: 'self',
+                      note: input.note?.trim() || null,
                     })
-              yield* setEntryState({
-                tenantId,
-                entryId,
-                from: ['draft'],
-                to: administrative ? 'approved' : 'draft',
-                currentRevisionId: revisionId,
-                ...(recognitionId === undefined ? {} : { currentRecognitionId: recognitionId }),
-              })
-              // a fact somebody else just added to their account is exactly
-              // what the unread marker exists for: the broadcast reaches whoever
-              // is looking, this reaches whoever is not
-              if (administrative) yield* bumpParticipantAttention(tenantId, entryId)
+                    yield* insertRevisionAttachments(
+                      tenantId,
+                      written,
+                      refs.map((ref, position) => ({
+                        attachmentId: ref.attachmentId,
+                        position,
+                      })),
+                    )
+                    yield* setEntryState({
+                      tenantId,
+                      entryId: id,
+                      from: ['draft'],
+                      to: 'draft',
+                      currentRevisionId: written,
+                    })
+                    return { entryId: id, revisionId: written }
+                  })
               yield* announce(tenantId, item.batchId, [
                 { kind: 'entries-changed', subjectUserId: participant.userId },
                 ...(administrative

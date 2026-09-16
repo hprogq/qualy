@@ -46,10 +46,23 @@ import {
 } from '../administrative-import/workbook.ts'
 import { readSourceBytes, SourceUnreadable } from '../administrative-import/read-source.ts'
 import { judgeRows, summarise } from '../administrative-import/preview.ts'
-import { effectiveEntryCounts, resolveImportParticipants } from '../administrative-import/db.ts'
+import {
+  effectiveEntryCounts,
+  importsOfBatchPage,
+  insertImport,
+  insertImportRows,
+  resolveImportParticipants,
+  standingOfImports,
+} from '../administrative-import/db.ts'
 import { currentRecognitionsOfEntries } from '../scoring/recognition-db.ts'
 import { readScoringPlan } from '../scoring/plan.ts'
-import { recognitionFormFields } from '../scoring/recognition.ts'
+import {
+  canonicalRecognition,
+  judgeRecognition,
+  recognitionFormFields,
+} from '../scoring/recognition.ts'
+import { hashCanonicalJson } from '@qualy/value-schema/hash'
+import { recordAdministrativeEntryTx } from '../entry/administrative-write.ts'
 import { proveSettlements } from '../scoring/failure-boundary.ts'
 import { ScoringRuntimeCatalog } from '../plugin.ts'
 import type { UploadTicket } from '@qualy/plugin-storage/upload'
@@ -154,7 +167,26 @@ interface AdministrativeEntryView {
   } | null
   readonly importId: string | null
   /** what the next page starts after, in the order this list is read */
-  readonly cursor: readonly [number, string]
+  readonly cursor: readonly [string, string]
+}
+
+/** one import in the history of a round */
+export interface AdministrativeImportView {
+  readonly id: string
+  readonly item: { readonly id: string; readonly title: string }
+  readonly filename: string
+  readonly actor: { readonly id: string; readonly name: string } | null
+  readonly createdAt: string
+  readonly importedCount: number
+  readonly standing: {
+    readonly approved: number
+    readonly inReview: number
+    readonly rejected: number
+    readonly voided: number
+    readonly other: number
+  }
+  /** what the next page starts after, in the order this list is read */
+  readonly cursor: readonly [string, string]
 }
 import { makeEntryMethods, type EntryMethods, type EntryView } from '../entry/service.ts'
 import { makeReviewMethods, type ReviewDetailView, type ReviewMethods } from '../review/service.ts'
@@ -207,6 +239,7 @@ import {
   ParticipantNotFound,
   PhaseNotFound,
   PlanInvalid,
+  DeterminationRefused,
   ScoringUnavailable,
   TemplateConflict,
   TemplateNotFound,
@@ -1008,6 +1041,53 @@ export class Assessment extends Context.Service<
       { id: string; filename: string; declaredMime: string; size: string; status: string },
       AttachmentUnavailable | EntryActionRefused
     >
+    /**
+     * The import itself: every row, or none of them.
+     *
+     * The preview is a courtesy to whoever filled the file in, never an
+     * authorization to write what it said - so the workbook is opened,
+     * parsed and judged again here, and everything that could have moved
+     * while it was being read is asked a second time under the batch lock.
+     */
+    readonly commitAdministrativeImport: (
+      tenantId: string,
+      batchId: string,
+      input: {
+        attachmentId: string
+        itemId: string
+        expectedItemRevisionId: string
+        defaultBasis?: string
+        confirmWarnings?: boolean
+      },
+      as: Principal,
+    ) => Effect.Effect<
+      { importId: string; importedCount: number },
+      | BatchNotFound
+      | ItemNotFound
+      | ItemRevisionConflict
+      | BatchReadOnly
+      | EntryActionRefused
+      | AttachmentUnavailable
+      | AdministrativeImportInvalid
+      | DeterminationRefused
+      | ScoringUnavailable
+      | AccessDenied,
+      ScoringRuntimeCatalog
+    >
+    /**
+     * The imports this reader may still look back on, newest first.
+     *
+     * Their own, and only while every person in them is still somebody they
+     * may record on. Administering the round does not widen it: overseeing
+     * every import would be a read-only surface of its own, not a side
+     * effect of the recording desk.
+     */
+    readonly listAdministrativeImports: (
+      tenantId: string,
+      batchId: string,
+      page: { after?: readonly [string, string]; limit: number },
+      as: Principal,
+    ) => Effect.Effect<readonly AdministrativeImportView[], BatchNotFound | AccessDenied>
     /**
      * What a workbook would do, worked out and thrown away.
      *
@@ -2279,6 +2359,222 @@ export const make = Effect.fn('Assessment.make')(function* () {
     }
     const plan = yield* Effect.orDie(readScoringPlan(revision))
     return { item, revision, plan }
+  })
+
+  /**
+   * The part of an import a preview stops after and a commit carries on
+   * from.
+   *
+   * Reading the file, judging every row and proving the arithmetic all
+   * happen here, outside any transaction. That is the whole reason a commit
+   * can afford to hold the batch lock: by the time it takes one, the only
+   * work left is writing and one more look at what could have moved.
+   */
+  const previewOf = Effect.fn('Assessment.administrativeImportPreview')(function* (
+    tenantId: string,
+    batchId: string,
+    input: {
+      attachmentId: string
+      itemId: string
+      expectedItemRevisionId: string
+      defaultBasis?: string
+    },
+    as: Principal,
+    runtime: ScoringRuntimeCatalog['Service'],
+  ) {
+      const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
+      if (!batch) return yield* new BatchNotFound()
+      if (batch.status === 'archived') return yield* new BatchReadOnly()
+      const ready = yield* administrativeQuestion(tenantId, input.itemId, as)
+      if (ready.item.batchId !== batchId) return yield* new ItemNotFound()
+      // the question the file was filled in against, before its contents
+      // are read: a newly required field must say "the paper moved", not
+      // "this cell is missing"
+      if (ready.revision.id !== input.expectedItemRevisionId) {
+        return yield* new ItemRevisionConflict({
+          itemId: ready.item.id,
+          currentRevisionId: ready.item.currentRevisionId,
+        })
+      }
+      // no import can carry a file it cannot attach material for
+      if (requiresAttachment(ready.revision.formConfig)) {
+        return yield* new EntryActionRefused({
+          action: 'import',
+          reason: 'attachment-required',
+        })
+      }
+
+      // the bytes, read back from the store rather than taken from anybody
+      const opened = yield* storage
+        .open({ tenantId, attachmentId: input.attachmentId }, (meta) =>
+          meta.ownerUserId === as.userId ? Effect.void : Effect.fail(new AttachmentUnavailable()),
+        )
+        .pipe(
+          Effect.catchTags({
+            STORAGE_ATTACHMENT_NOT_FOUND: () => new AttachmentUnavailable(),
+            STORAGE_BACKEND_UNAVAILABLE: (error) => Effect.die(error),
+          }),
+        )
+      const bytes = yield* readSourceBytes(opened).pipe(
+        Effect.catch((error: SourceUnreadable) =>
+          Effect.fail(
+            new AdministrativeImportInvalid({
+              issues: [{ rowNo: null, field: null, severity: 'error', reason: error.reason }],
+            }),
+          ),
+        ),
+      )
+      const parsed = yield* Effect.tryPromise({
+        try: () => parseAdministrativeWorkbook(bytes),
+        catch: (error) =>
+          new AdministrativeImportInvalid({
+            issues: [
+              {
+                rowNo: error instanceof WorkbookUnreadable ? error.rowNo : null,
+                field: error instanceof WorkbookUnreadable ? error.column : null,
+                severity: 'error',
+                reason: error instanceof WorkbookUnreadable ? error.reason : 'not-xlsx',
+              },
+            ],
+          }),
+      })
+      // the metadata is not a credential, but it does say which question
+      // the file believes it answers, and disagreement is the reader's
+      // mistake rather than something to reconcile
+      if (
+        parsed.metadata.batchId !== batchId ||
+        parsed.metadata.itemId !== ready.item.id ||
+        parsed.metadata.itemRevisionId !== ready.revision.id
+      ) {
+        return yield* new ItemRevisionConflict({
+          itemId: ready.item.id,
+          currentRevisionId: ready.item.currentRevisionId,
+        })
+      }
+
+      const numbers = [
+        ...new Set(parsed.rows.map((row) => row.businessNo).filter((one) => one !== '')),
+      ]
+      const found = yield* dieQuery(
+        withDb(
+          resolveImportParticipants({
+            tenantId,
+            batchId,
+            actorId: as.userId,
+            businessNos: numbers,
+          }),
+        ),
+      )
+      const reachable = new Map(
+        found.map((one) => [
+          one.businessNo,
+          { id: one.participantId, displayName: one.displayName, businessNo: one.businessNo },
+        ]),
+      )
+      const held = yield* dieQuery(
+        withDb(
+          effectiveEntryCounts({
+            tenantId,
+            itemId: ready.item.id,
+            participantIds: found.map((one) => one.participantId),
+          }),
+        ),
+      )
+
+      const recognitionFields = recognitionFormFields(ready.plan) ?? []
+      const rows = judgeRows({
+        parsed,
+        defaultBasis: input.defaultBasis ?? '',
+        reachable,
+        evidenceSchemas: new Map(
+          evidenceFieldsOf(ready.revision.formConfig).map((one) => [one.key, one.schema]),
+        ),
+        recognitionSchemas: new Map(
+          recognitionFields.map((one) => [one.id, one.schema as never]),
+        ),
+        requiredRecognitionIds: recognitionFields.map((one) => one.id),
+        held,
+        maxEntries: ready.item.maxEntries,
+        actorUserId: as.userId,
+        participantUserIds: new Map(found.map((one) => [one.participantId, one.userId])),
+      })
+
+      // The determination held to the question's own contract, the one way the
+      // single record is: judged by the same judge, then stored the one way it
+      // means. A spreadsheet does not get a second validator - "3.0" and "3.00"
+      // written by two doors would make every later comparison a fact about who
+      // typed it. And a question that asks nothing still gets a determination,
+      // `{}`, because the table refuses an approved fact without one.
+      const settled = rows.map((row) => {
+        if (row.issues.some((one) => one.severity === 'error')) return row
+        const wrong = judgeRecognition(ready.plan.recognitionSchemas, row.recognition)
+        if (wrong.length > 0) {
+          return {
+            ...row,
+            issues: [
+              ...row.issues,
+              ...wrong.map((issue) => ({
+                severity: 'error' as const,
+                field:
+                  issue.recognitionId === '' ? 'recognition' : `recognition.${issue.recognitionId}`,
+                reason: issue.reason,
+              })),
+            ],
+          }
+        }
+        const canonical = canonicalRecognition(ready.plan.recognitionSchemas, row.recognition)
+        return { ...row, recognition: canonical, recognitionHash: hashCanonicalJson(canonical) }
+      })
+
+      // the arithmetic, proven for every distinct determination before any
+      // of it could be written - never inside a transaction, never once
+      // per row. What is proven is exactly what will be written.
+      const provable = settled
+        .filter((row) => !row.issues.some((one) => one.severity === 'error'))
+        .map((row) => row.recognition)
+      const proven = yield* proveSettlements(
+        runtime,
+        {
+          tenantId,
+          batchId,
+          itemId: ready.item.id,
+          revisionId: ready.revision.id,
+          plan: ready.plan,
+        },
+        provable,
+      )
+      const judged = settled.map((row) => {
+        const answer = proven.get(row.recognitionHash)
+        if (answer === undefined || 'identity' in answer) return row
+        return {
+          ...row,
+          issues: [
+            ...row.issues,
+            {
+              severity: 'error' as const,
+              field: null,
+              reason: `determination-refused: ${answer.refused.reason}`,
+            },
+          ],
+        }
+      })
+
+      const summary = summarise(judged)
+      return {
+        item: { id: ready.item.id, title: ready.item.title, revisionId: ready.revision.id },
+        summary,
+        rows: judged.map((row) => ({
+          rowNo: row.rowNo,
+          businessNo: row.businessNo,
+          displayNameFromFile: row.displayNameFromFile,
+          matchedParticipant: row.matchedParticipant,
+          payloadPreview: row.payload,
+          recognitionPreview: row.recognition,
+          basis: row.basis,
+          issues: row.issues,
+        })),
+        canCommit: summary.errors === 0 && summary.rows > 0,
+      }
   })
 
   const entryMethods = makeEntryMethods({
@@ -3820,172 +4116,276 @@ export const make = Effect.fn('Assessment.make')(function* () {
     previewAdministrativeImport: Effect.fn('Assessment.previewAdministrativeImport')(
       function* (tenantId, batchId, input, as) {
         const runtime = yield* ScoringRuntimeCatalog
-        const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
-        if (!batch) return yield* new BatchNotFound()
-        if (batch.status === 'archived') return yield* new BatchReadOnly()
-        const ready = yield* administrativeQuestion(tenantId, input.itemId, as)
-        if (ready.item.batchId !== batchId) return yield* new ItemNotFound()
-        // the question the file was filled in against, before its contents
-        // are read: a newly required field must say "the paper moved", not
-        // "this cell is missing"
-        if (ready.revision.id !== input.expectedItemRevisionId) {
-          return yield* new ItemRevisionConflict({
-            itemId: ready.item.id,
-            currentRevisionId: ready.item.currentRevisionId,
+        return yield* previewOf(tenantId, batchId, input, as, runtime)
+      },
+    ),
+
+    commitAdministrativeImport: Effect.fn('Assessment.commitAdministrativeImport')(
+      function* (tenantId, batchId, input, as) {
+        const runtime = yield* ScoringRuntimeCatalog
+        // All outside any transaction: reading the file, judging it and
+        // proving the arithmetic are the expensive parts, and none of them
+        // may be done holding the batch lock.
+        const judged = yield* previewOf(tenantId, batchId, input, as, runtime)
+        if (judged.summary.errors > 0) {
+          return yield* new AdministrativeImportInvalid({
+            issues: judged.rows.flatMap((row) =>
+              row.issues
+                .filter((one) => one.severity === 'error')
+                .map((one) => ({
+                  rowNo: row.rowNo,
+                  field: one.field,
+                  severity: one.severity,
+                  reason: one.reason,
+                })),
+            ),
           })
         }
-        // no import can carry a file it cannot attach material for
-        if (requiresAttachment(ready.revision.formConfig)) {
-          return yield* new EntryActionRefused({
-            action: 'import',
-            reason: 'attachment-required',
+        if (judged.summary.rows === 0) {
+          return yield* new AdministrativeImportInvalid({
+            issues: [{ rowNo: null, field: null, severity: 'error', reason: 'no-rows' }],
+          })
+        }
+        // A file the server still has warnings about, that nobody confirmed,
+        // is refused here rather than silently imported: the confirmation is
+        // about what the SERVER read, not about what the browser drew.
+        if (judged.summary.warnings > 0 && input.confirmWarnings !== true) {
+          return yield* new AdministrativeImportInvalid({
+            issues: judged.rows.flatMap((row) =>
+              row.issues
+                .filter((one) => one.severity === 'warning')
+                .map((one) => ({
+                  rowNo: row.rowNo,
+                  field: one.field,
+                  severity: one.severity,
+                  reason: one.reason,
+                })),
+            ),
           })
         }
 
-        // the bytes, read back from the store rather than taken from anybody
-        const opened = yield* storage
-          .open({ tenantId, attachmentId: input.attachmentId }, (meta) =>
-            meta.ownerUserId === as.userId ? Effect.void : Effect.fail(new AttachmentUnavailable()),
-          )
-          .pipe(
-            Effect.catchTags({
-              STORAGE_ATTACHMENT_NOT_FOUND: () => new AttachmentUnavailable(),
-              STORAGE_BACKEND_UNAVAILABLE: (error) => Effect.die(error),
+        const meta = yield* storage
+          .metadata({ tenantId, attachmentId: input.attachmentId })
+          .pipe(Effect.catch(() => Effect.fail(new AttachmentUnavailable())))
+
+        // Everything inside is deterministic writing plus the second look at
+        // whatever could have moved while the file was being read.
+        return yield* withDb(
+          transaction(
+            Effect.gen(function* () {
+              const locked = yield* lockBatch(tenantId, batchId)
+              if (!locked) return yield* new BatchNotFound()
+              if (locked.status === 'archived') return yield* new BatchReadOnly()
+              // the question, again: a revision that moved while the reader
+              // was filling in the file makes every determination in it
+              // answer a question that no longer exists
+              const ready = yield* administrativeQuestion(tenantId, input.itemId, as)
+              if (ready.item.batchId !== batchId) return yield* new ItemNotFound()
+              if (ready.revision.id !== input.expectedItemRevisionId) {
+                return yield* new ItemRevisionConflict({
+                  itemId: ready.item.id,
+                  currentRevisionId: ready.item.currentRevisionId,
+                })
+              }
+              // who the caller may still record on, and how much room each
+              // of them still has: both read again under the lock, because
+              // a scope can shrink and a quota can fill while a file is open
+              const numbers = [...new Set(judged.rows.map((row) => row.businessNo))]
+              const found = yield* resolveImportParticipants({
+                tenantId,
+                batchId,
+                actorId: as.userId,
+                businessNos: numbers,
+              })
+              const byNumber = new Map(found.map((one) => [one.businessNo, one]))
+              const held = yield* effectiveEntryCounts({
+                tenantId,
+                itemId: ready.item.id,
+                participantIds: found.map((one) => one.participantId),
+              })
+              const takenHere = new Map<string, number>()
+
+              const written: {
+                sourceRowNo: number
+                participantId: string
+                entryId: string
+                businessNoSnapshot: string | null
+                displayNameSnapshot: string | null
+              }[] = []
+              const subjects = new Set<string>()
+
+              for (const row of judged.rows) {
+                const person = byNumber.get(row.businessNo)
+                // every refusal the first pass could have reached, asked
+                // again; any of them now means nothing is written at all
+                if (person === undefined) {
+                  return yield* new AdministrativeImportInvalid({
+                    issues: [
+                      {
+                        rowNo: row.rowNo,
+                        field: 'businessNo',
+                        severity: 'error',
+                        reason: 'participant-not-found',
+                      },
+                    ],
+                  })
+                }
+                if (person.userId === as.userId) {
+                  return yield* new AdministrativeImportInvalid({
+                    issues: [
+                      {
+                        rowNo: row.rowNo,
+                        field: 'businessNo',
+                        severity: 'error',
+                        reason: 'self-record-refused',
+                      },
+                    ],
+                  })
+                }
+                if (ready.item.maxEntries !== null) {
+                  const already = held.get(person.participantId) ?? 0
+                  const here = takenHere.get(person.participantId) ?? 0
+                  if (already + here >= ready.item.maxEntries) {
+                    return yield* new AdministrativeImportInvalid({
+                      issues: [
+                        {
+                          rowNo: row.rowNo,
+                          field: null,
+                          severity: 'error',
+                          reason: 'max-entries-reached',
+                        },
+                      ],
+                    })
+                  }
+                  takenHere.set(person.participantId, here + 1)
+                }
+                if (row.basis.trim() === '') {
+                  return yield* new AdministrativeImportInvalid({
+                    issues: [
+                      { rowNo: row.rowNo, field: 'basis', severity: 'error', reason: 'basis-required' },
+                    ],
+                  })
+                }
+
+                const { entryId } = yield* recordAdministrativeEntryTx({
+                  tenantId,
+                  batchId,
+                  itemId: ready.item.id,
+                  itemRevisionId: ready.revision.id,
+                  participantId: person.participantId,
+                  subjectUserId: person.userId,
+                  actorUserId: as.userId,
+                  payload: row.payloadPreview,
+                  // `{}` for a question that determines nothing, never
+                  // absent: an approved fact always carries a determination
+                  recognition: row.recognitionPreview,
+                  basis: row.basis,
+                  // the provenance of the fact and of its determination are
+                  // one thing: an import writes 'import' on both
+                  source: 'import',
+                  attachments: [],
+                })
+                written.push({
+                  sourceRowNo: row.rowNo,
+                  participantId: person.participantId,
+                  entryId,
+                  businessNoSnapshot: row.businessNo,
+                  displayNameSnapshot: row.displayNameFromFile || null,
+                })
+                subjects.add(person.userId)
+              }
+
+              // the original file enters history in the same transaction the
+              // facts do, so a committed import always has the workbook it
+              // was read from
+              yield* storage
+                .bind({ tenantId, attachmentId: input.attachmentId, ownerUserId: as.userId })
+                .pipe(Effect.catch(() => Effect.fail(new AttachmentUnavailable())))
+
+              const importId = yield* insertImport({
+                tenantId,
+                batchId,
+                itemId: ready.item.id,
+                itemRevisionId: ready.revision.id,
+                sourceAttachmentId: input.attachmentId,
+                filenameSnapshot: meta.filename,
+                sizeBytes: meta.size.toString(),
+                contentHashAlgorithm: null,
+                contentHash: null,
+                actorId: as.userId,
+                defaultBasis: input.defaultBasis?.trim() || null,
+                importedCount: written.length,
+              })
+              yield* insertImportRows(tenantId, importId, written)
+
+              // One wake-up for the whole import, not two thousand. The
+              // unread marks are already on each owner's row - those are
+              // durable state and were written per entry - so what is left
+              // to say is only "this round changed", once.
+              yield* announce(tenantId, batchId, [
+                { kind: 'entries-changed' },
+                { kind: 'result-changed' },
+              ])
+              return { importId, importedCount: written.length }
             }),
-          )
-        const bytes = yield* readSourceBytes(opened).pipe(
-          Effect.catch((error: SourceUnreadable) =>
-            Effect.fail(
-              new AdministrativeImportInvalid({
-                issues: [{ rowNo: null, field: null, severity: 'error', reason: error.reason }],
-              }),
+          ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error))),
+        )
+      },
+    ),
+
+    listAdministrativeImports: Effect.fn('Assessment.listAdministrativeImports')(
+      function* (tenantId, batchId, page, as) {
+        const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
+        if (!batch) return yield* new BatchNotFound()
+        // the recording desk's history, so the recording authority is the
+        // door; the rows are then narrowed in sql to what this reader made
+        // and still reaches
+        const records = (yield* batchAuthority(tenantId, batchId, as.userId)).has(
+          'assessment.entry.record',
+        )
+        if (!records) return yield* new AccessDenied({ reason: 'cannot record on this batch' })
+        const rows = yield* dieQuery(
+          withDb(
+            importsOfBatchPage({
+              tenantId,
+              batchId,
+              reader: { userId: as.userId },
+              ...(page.after !== undefined ? { after: page.after } : {}),
+              limit: page.limit,
+            }),
+          ),
+        )
+        if (rows.length === 0) return []
+        const standing = yield* dieQuery(
+          withDb(
+            standingOfImports(
+              tenantId,
+              rows.map((row) => row.id),
             ),
           ),
         )
-        const parsed = yield* Effect.tryPromise({
-          try: () => parseAdministrativeWorkbook(bytes),
-          catch: (error) =>
-            new AdministrativeImportInvalid({
-              issues: [
-                {
-                  rowNo: error instanceof WorkbookUnreadable ? error.rowNo : null,
-                  field: error instanceof WorkbookUnreadable ? error.column : null,
-                  severity: 'error',
-                  reason: error instanceof WorkbookUnreadable ? error.reason : 'not-xlsx',
-                },
-              ],
-            }),
-        })
-        // the metadata is not a credential, but it does say which question
-        // the file believes it answers, and disagreement is the reader's
-        // mistake rather than something to reconcile
-        if (
-          parsed.metadata.batchId !== batchId ||
-          parsed.metadata.itemId !== ready.item.id ||
-          parsed.metadata.itemRevisionId !== ready.revision.id
-        ) {
-          return yield* new ItemRevisionConflict({
-            itemId: ready.item.id,
-            currentRevisionId: ready.item.currentRevisionId,
-          })
-        }
-
-        const numbers = [
-          ...new Set(parsed.rows.map((row) => row.businessNo).filter((one) => one !== '')),
-        ]
-        const found = yield* dieQuery(
-          withDb(
-            resolveImportParticipants({
-              tenantId,
-              batchId,
-              actorId: as.userId,
-              businessNos: numbers,
-            }),
-          ),
-        )
-        const reachable = new Map(
-          found.map((one) => [
-            one.businessNo,
-            { id: one.participantId, displayName: one.displayName, businessNo: one.businessNo },
-          ]),
-        )
-        const held = yield* dieQuery(
-          withDb(
-            effectiveEntryCounts({
-              tenantId,
-              itemId: ready.item.id,
-              participantIds: found.map((one) => one.participantId),
-            }),
-          ),
-        )
-
-        const recognitionFields = recognitionFormFields(ready.plan) ?? []
-        const rows = judgeRows({
-          parsed,
-          defaultBasis: input.defaultBasis ?? '',
-          reachable,
-          evidenceSchemas: new Map(
-            evidenceFieldsOf(ready.revision.formConfig).map((one) => [one.key, one.schema]),
-          ),
-          recognitionSchemas: new Map(
-            recognitionFields.map((one) => [one.id, one.schema as never]),
-          ),
-          requiredRecognitionIds: recognitionFields.map((one) => one.id),
-          held,
-          maxEntries: ready.item.maxEntries,
-          actorUserId: as.userId,
-          participantUserIds: new Map(found.map((one) => [one.participantId, one.userId])),
-        })
-
-        // the arithmetic, proven for every distinct determination before any
-        // of it could be written - never inside a transaction, never once
-        // per row
-        const provable = rows
-          .filter((row) => !row.issues.some((one) => one.severity === 'error'))
-          .map((row) => row.recognition)
-        const proven = yield* proveSettlements(
-          runtime,
-          {
-            tenantId,
-            batchId,
-            itemId: ready.item.id,
-            revisionId: ready.revision.id,
-            plan: ready.plan,
-          },
-          provable,
-        )
-        const judged = rows.map((row) => {
-          const answer = proven.get(row.recognitionHash)
-          if (answer === undefined || 'identity' in answer) return row
+        return rows.map((row): AdministrativeImportView => {
+          const counted = standing.get(row.id)
           return {
-            ...row,
-            issues: [
-              ...row.issues,
-              {
-                severity: 'error' as const,
-                field: null,
-                reason: `determination-refused: ${answer.refused.reason}`,
-              },
-            ],
+            id: row.id,
+            item: { id: row.itemId, title: row.itemTitle },
+            filename: row.filename,
+            actor:
+              row.actorId === null
+                ? null
+                : { id: row.actorId, name: row.actorName ?? '' },
+            createdAt: new Date(row.createdAt).toISOString(),
+            importedCount: row.importedCount,
+            standing: {
+              approved: counted?.approved ?? 0,
+              inReview: counted?.inReview ?? 0,
+              rejected: counted?.rejected ?? 0,
+              voided: counted?.voided ?? 0,
+              other: counted?.other ?? 0,
+            },
+            cursor: [row.cursorAt, row.id] as const,
           }
         })
-
-        const summary = summarise(judged)
-        return {
-          item: { id: ready.item.id, title: ready.item.title, revisionId: ready.revision.id },
-          summary,
-          rows: judged.map((row) => ({
-            rowNo: row.rowNo,
-            businessNo: row.businessNo,
-            displayNameFromFile: row.displayNameFromFile,
-            matchedParticipant: row.matchedParticipant,
-            payloadPreview: row.payload,
-            recognitionPreview: row.recognition,
-            basis: row.basis,
-            issues: row.issues,
-          })),
-          canCommit: summary.errors === 0 && summary.rows > 0,
-        }
       },
     ),
 
@@ -4076,9 +4476,8 @@ export const make = Effect.fn('Assessment.make')(function* () {
                     values: determined.values,
                     fields: fieldsOfRevision.get(row.itemRevisionId) ?? [],
                   },
-            // the bulk act it arrived in; nothing records one yet
-            importId: null,
-            cursor: [row.createdAt, row.entryId] as const,
+            importId: row.importId,
+            cursor: [row.cursorAt, row.entryId] as const,
           }
         })
       },
@@ -5432,6 +5831,19 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
       }),
     )
     .handle(
+      'commitAdministrativeImport',
+      Effect.fn('assessment.commitAdministrativeImport.handler')(function* ({ params, payload }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        return yield* assessment.commitAdministrativeImport(
+          principal.tenantId,
+          params.batchId,
+          payload,
+          principal,
+        )
+      }),
+    )
+    .handle(
       'previewAdministrativeImport',
       Effect.fn('assessment.previewAdministrativeImport.handler')(function* ({ params, payload }) {
         const assessment = yield* Assessment
@@ -5442,6 +5854,33 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           payload,
           principal,
         )
+      }),
+    )
+    .handle(
+      'listAdministrativeImports',
+      Effect.fn('assessment.listAdministrativeImports.handler')(function* ({ params, query }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const limit = pageSize(query.limit, DEFAULT_PAGE_SIZE)
+        const fingerprint = `assessment.administrative-imports:${params.batchId}`
+        const key = readQueryCursor(query.cursor, fingerprint, ['timestamp', 'uuid'])
+        if (key === null) return yield* cursorUnusable()
+        const found = yield* assessment.listAdministrativeImports(
+          principal.tenantId,
+          params.batchId,
+          {
+            ...(key !== undefined ? { after: [key[0]!, key[1]!] as const } : {}),
+            limit: limit + 1,
+          },
+          principal,
+        )
+        const page = found.slice(0, limit)
+        const last = page[page.length - 1]
+        return {
+          items: page.map(({ cursor: _cursor, ...row }) => row),
+          nextCursor:
+            found.length > limit && last ? encodeQueryCursor(fingerprint, [...last.cursor]) : null,
+        }
       }),
     )
     .handle(
@@ -5477,10 +5916,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           entries: page.map(({ cursor: _cursor, ...row }) => row),
           nextCursor:
             found.length > limit && last
-              ? encodeQueryCursor(fingerprint, [
-                  new Date(last.cursor[0]).toISOString(),
-                  last.cursor[1],
-                ])
+              ? encodeQueryCursor(fingerprint, [...last.cursor])
               : null,
         }
       }),

@@ -106,6 +106,8 @@ export const FROZEN_ROUTES = [
   'POST /assessment/batches/{batchId}/administrative-import-uploads',
   'POST /assessment/administrative-import-uploads/{reservationId}/complete',
   'POST /assessment/batches/{batchId}/administrative-import-previews',
+  'POST /assessment/batches/{batchId}/administrative-imports',
+  'GET /assessment/batches/{batchId}/administrative-imports',
   'GET /assessment/batches/{batchId}/participants',
   'POST /assessment/batches/{batchId}/participants',
   'GET /assessment/batches/{batchId}/import-candidates',

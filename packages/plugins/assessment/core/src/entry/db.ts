@@ -1720,6 +1720,8 @@ export interface AdministrativeEntryRow {
   readonly status: EntryStatus
   readonly source: 'record' | 'import'
   readonly createdAt: number
+  /** the creation instant as postgres prints it, microseconds included */
+  readonly cursorAt: string
   readonly participantId: string
   readonly participantUserId: string
   readonly participantName: string
@@ -1733,6 +1735,8 @@ export interface AdministrativeEntryRow {
   readonly actorId: string
   readonly actorName: string | null
   readonly recordedAt: number
+  /** the import it arrived in, when it arrived in one */
+  readonly importId: string | null
 }
 
 /**
@@ -1780,10 +1784,15 @@ export const listAdministrativeEntriesPage = (input: {
         .leftJoin('User as a', (join) =>
           join.onRef('a.tenantId', '=', 'v.tenantId').onRef('a.id', '=', 'v.actorId'),
         )
+        // at most one: a fact comes from one row of one file
+        .leftJoin('AdministrativeEntryImportRow as ir', (join) =>
+          join.onRef('ir.tenantId', '=', 'e.tenantId').onRef('ir.entryId', '=', 'e.id'),
+        )
         .select([
           'e.id as entryId',
           'e.status',
           'e.source',
+          'ir.importId',
           'e.participantId',
           'e.itemId',
           'p.userId as participantUserId',
@@ -1798,6 +1807,10 @@ export const listAdministrativeEntriesPage = (input: {
           'a.displayName as actorName',
         ])
         .select([epoch('e.created_at').as('createdMs'), epoch('v.created_at').as('recordedMs')])
+        // the cursor keeps the instant to the microsecond: every row of one
+        // import shares its transaction's instant, and a millisecond cursor
+        // sorts before all of them
+        .select([sql<string>`e.created_at::text`.as('cursorAt')])
         .where('e.tenantId', '=', input.tenantId)
         .where('e.batchId', '=', input.batchId)
         // the book is what the institution wrote, never what a participant filed
@@ -1859,6 +1872,7 @@ export const listAdministrativeEntriesPage = (input: {
           status: String(row['status']) as EntryStatus,
           source: String(row['source']) as 'record' | 'import',
           createdAt: msOf(row['createdMs']),
+          cursorAt: String(row['cursorAt']),
           participantId: String(row['participantId']),
           participantUserId: String(row['participantUserId']),
           participantName: String(row['participantName'] ?? ''),
@@ -1873,6 +1887,7 @@ export const listAdministrativeEntriesPage = (input: {
           actorId: String(row['actorId']),
           actorName: row['actorName'] == null ? null : String(row['actorName']),
           recordedAt: msOf(row['recordedMs']),
+          importId: row['importId'] == null ? null : String(row['importId']),
         })),
       ),
     )

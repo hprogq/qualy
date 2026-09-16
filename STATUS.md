@@ -16894,3 +16894,154 @@ entity-parity / schema      passed
 Phase C 的原子提交(§32 的 A–K 十一步、事务内九项二次检查、all-or-nothing 回滚)。
 最需要小心的是「preview 结果不是授权凭据」——commit 必须重新打开原文件、
 重新解析、重新做完整 preview 检查,再进写事务。
+
+## 行政认定 Phase C:原子导入提交与导入记录(2026-09-16)
+
+规格 `docs/administrative.md` §73 的 Phase C。做到「整份 workbook 要么全部写入、要么一条不写」,
+以及导入记录列表。仍然**没有任何前端**:导入向导、导入记录 Tab、导入详情都归下一阶段。
+
+### 一个写入原语,两扇门
+
+`entry/administrative-write.ts` 的 `recordAdministrativeEntryTx`。手动认定(`createEntry` 的
+administrative 分支)与导入逐行都走它;学生自己的草稿**不走**——没有认定、不直接生效,
+是另一段序列,不是它的特例。
+
+顺序是被约束逼出来的,两份拷贝一定会漂:先以 `draft` 插入 Entry(认定要引用 entry id),
+再插 Revision / 附件 / Recognition,最后**一条语句**同时置 `approved` 与 `currentRecognitionId`
+——表上有 `chk_entries_approved_has_recognition`。`source` 一次传入,同时写进 Entry、
+Revision、Recognition(§34),拆开写成 `record` 的反向验证会红。
+
+原语只写、不判断:授权、reach、阶段闸、payload 形状、认定可证明性全在事务开之前由调用方决定。
+
+### 提交:先在事务外把贵的做完,再在锁里看一眼会变的
+
+`previewOf` 抽出来给预览与提交共用:重新读原文件 → 解析 → 逐行判定 → 规范化认定 →
+事务外批量证明计分。提交在它之后:有 error 拒、零行拒、**服务端读到 warning 而请求没确认也拒**
+(确认的是服务端读到的,不是浏览器画出来的)。
+
+然后进事务:`lockBatch` → 归档拒 → 题目 / 版本 / 行政属性 / 阶段闸 / 权限重读 →
+参评人与配额**在锁里重查** → 逐行写 → `Storage.bind` 原文件 → Import 行与 ImportRow →
+**整次只广播一次** `entries-changed` + `result-changed`。
+
+预览里顺手修掉一个真问题:认定值在证明与计哈希之前必须先过 `judgeRecognition` +
+`canonicalRecognition`,否则同一个决定两种写法会被当成两个;无认定的题提交时写 `{}`
+而不是省略,否则撞上面那条约束——这是跑测试时数据库直接拒出来的。
+
+### 测试与反向验证
+
+`tests/administrative-import.test.ts` 14 条,`tests/administrative-import-scale.test.ts` 1 条。
+逐条确认「拿掉守卫 → 且只有对应那条红」:
+
+```text
+Revision.source 写成 record          → provenance 那条红
+依据不写进 revision.note             → provenance 那条红
+去掉包在外面的 transaction           → 「写到一半失败什么都不留」那条红
+认定记录的 importId 恒为 null        → provenance 那条红
+按人广播(带 subjectUserId)          → 「整次只广播一次」那条红(收到 4 条)
+不 bump 未读标记                     → 同一条红
+锁内配额复查拿掉                     → 「有人先占了最后一个名额」那条红(导入成功)
+锁内版本复查拿掉                     → 「题目改了版本」那条红(导入成功)
+参评人解析去掉 reach 条件            → 「有人被移出范围」那条红(导入成功)
+```
+
+### 锁内复查:让预览通过、再在锁上等
+
+§32 的九项事务内复查,只有「预览之后、拿锁之前」状态变了才走得到;普通测试在预览闸就被拦下,
+覆盖不到。三条竞态测试(配额被抢、参评人移出 reach、题目换了版本)用同一个做法:
+
+1. 测试开一个事务,**先拿批次行锁**(`for update`,与 `lockBatch` 同一把),再做改动,不提交;
+2. 发起提交。预览不加锁,看不到未提交的改动,于是通过;进事务后卡在 `lockBatch`;
+3. 从 `pg_stat_activity` 确认**确实有人在等锁**,才放行持锁事务;
+4. 提交在锁里重读,必须拒绝,且 0 import / 0 entry。
+
+第 3 步断言 `queued === true`,证明拒绝不是预览给的;三处破坏各自让导入成功,证明拒绝来自锁内。
+
+第一次写这个的时候配额那条挂死 30 秒,另外两条是时序上侥幸过的:**测试库连接池只有 2**
+(`TEST_POOL_SIZE`),持锁事务占一条、卡在锁上的提交占一条,在主 fiber 里轮询
+`pg_stat_activity` 要第三条,永远拿不到,而只有它的答案才能放锁——死锁。
+改成在持锁事务**自己的连接**里轮询;事务内的统计视图会缓存第一次读到的快照,
+每次先 `select pg_stat_clear_snapshot()`。改后连跑 3 遍稳定通过。
+
+「写到一半失败」用测试内建的 plpgsql trigger 让第二行 insert 报错:两行都合法,
+第一行已经写进同一个事务,最后必须 0 import / 0 entry,原文件仍是 `staged`。
+
+**四次无效的反向验证,记下来免得再犯:**
+
+1. 删掉事务内的越界复查,测试不红——文件在预览闸就被拒了,根本没进事务。
+   所以那条测试改名为「一行越界整份拒绝」,不再声称它守着事务内复查。
+2. 每行套一层 `transaction()`,测试不红——嵌套事务**加入**外层,不是独立提交。
+3. 两次「改完就红」其实是语法错(一次 vitest 报 no tests,一次 SQL `syntax error at or near "order"`)。
+   **红了要读原因**,红在语法上什么都没证明。
+4. 按行重复广播**不带** subjectUserId 的整轮事件,测试不红——PostgreSQL 会合并同一事务内
+   载荷完全相同的 NOTIFY。真正会退化的是手动认定那种按人广播,测试守的是它,注释里写明了。
+
+### Phase A 的真缺陷:认定记录翻页整段漏掉一次导入
+
+`listAdministrativeEntries` 的游标是 `new Date(epoch 毫秒).toISOString()`。
+一次导入的所有行在同一事务里写,`created_at` 都是事务开始的 `now()`,**精确到微秒且完全相同**;
+毫秒游标比它们都小,行比较 `(created_at, id) < (游标)` 对剩下所有行都为假——
+**第二页是空的**。改为本仓库既有写法 `created_at::text`。
+
+先写测试(两行导入、每页 1 条),反向验证:游标改回毫秒 → 第二页 `[]`,红。
+批次列表(`listBatches`)也是毫秒游标,但批次一次建一个,不会同事务成批出现,没动。
+
+### 导入记录列表(§39 / §42)
+
+`GET /assessment/batches/{batchId}/administrative-imports`,keyset,frozen-routes 同笔更新。
+门是 `assessment.entry.record`;行在 SQL 里收窄到 §42 的保守规则:
+**本人发起** 且 **文件里每一个人当前仍在其 record reach 内**。批次管理员不因此看到全部——
+监督全部导入应是另一个只读面,不是记录台的副作用。
+
+当前情况按 Entry 状态现算(approved / inReview / rejected / voided / other),不存。
+三处守卫各自反向验证:去掉 reach 条件、去掉本人条件、去掉权限门,各只红对应的断言。
+
+认定记录每行的 `importId` 现在真实填写(ImportRow 上 `(tenant_id, entry_id)` 唯一,left join 至多一行)。
+
+### §35:1000 行实测
+
+本机 PostgreSQL,顺序逐行写,无批量 insert:
+
+```text
+行数   文件     预览     提交(含一遍完整复判)
+1000   32 KB    136 ms   2775 ms
+2000   56 KB    126 ms   5396 ms
+```
+
+约 2.7 ms/行,线性。上限 2000 行时批次锁持有约 5 秒,期间同批次的写入排队。
+按 §35「先顺序写,明显过慢再改批量」,暂不改。套件里保留 1000 行那条,**不断言耗时**
+(那是机器的属性),只断言整份作为一个事务写入且完整。
+
+### 已知缺口(没做,不是做了没说)
+
+- **§37 完整性元数据**:`content_hash` / `content_hash_algorithm` 写的是 `null`。
+  §37 要求优先用存储后端已校验的值,当前 Storage 接口没有暴露,需要先确认后端能提供什么。
+- 锁内复查里「阶段闸已关」「权限已被收回」两项没有竞态测试(代码复用 `authorizeAction`,
+  与手动认定同一条路径);「参评人被排除」由 `resolveImportParticipants` 的 `status = 'active'` 承担,
+  与 reach 同一条查询,没有单独的竞态用例。
+- 前端:导入向导、导入记录 Tab、导入详情,全部未做。
+
+### 门禁(实际执行,2026-09-16)
+
+```text
+pnpm typecheck                   exit=0
+pnpm test                        249 passed | 3 skipped (252) / 1796 passed | 17 skipped (1813)
+pnpm test:browser(第一次)      1 failed | 417 passed (418)
+pnpm test:browser(第二次)      57 passed (57) / 418 passed (418)
+pnpm build                       exit=0
+check-staged-web                 exit=0
+check-chunks                     exit=0
+check-csp-build                  exit=0
+smoke-production                 exit=0
+exceljs 进浏览器包               apps/web/dist/assets 251 个文件里搜不到
+```
+
+浏览器第一次失败的是 `apps/web/tests/overlay-widgets.browser.test.tsx` 的
+「tooltip 键盘聚焦显示」:blur 之后 tooltip 仍在(含一次重试)。本阶段没改任何前端代码;
+单独跑该文件 13/13 通过,第二次全量通过。**原因未证实**——猜测是前序用例留下的指针位置
+恰好悬停在触发按钮上,没有去验证。再出现时先看失败截图里指针的位置。
+
+### 下一步
+
+Phase D:导入详情与行列表、原文件下载(§41/§43,比列表再严一级:仍覆盖全部参评人)、
+整批撤销(§44–§48,原子、只动 ImportRow 指向的 Entry、跳过已撤销、申诉中的取消、
+ImportEvent 记 affectedCount),以及全部前端:导入向导、导入记录 Tab、导入详情、互相跳转。
