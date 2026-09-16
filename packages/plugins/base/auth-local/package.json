@@ -22,16 +22,17 @@
     "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-auth": "workspace:*",
     "@qualy/plugin-kit": "workspace:*",
+    "@qualy/plugin-ui-registry": "workspace:*",
     "@qualy/ui": "workspace:*",
     "@qualy/web-i18n": "workspace:*",
     "@qualy/web-runtime": "workspace:*",
     "@stylexjs/stylex": "catalog:",
-    "argon2": "catalog:"
+    "argon2": "catalog:",
+    "effect": "catalog:"
   },
   "devDependencies": {
     "@qualy/plugin-database": "workspace:*",
     "@qualy/plugin-rbac": "workspace:*",
-    "@qualy/plugin-ui-registry": "workspace:*",
     "@qualy/tsconfig": "workspace:*",
     "@types/react": "catalog:"
   }

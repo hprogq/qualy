@@ -22,7 +22,6 @@
   "devDependencies": {
     "@qualy/plugin-audit": "workspace:*",
     "@qualy/plugin-auth": "workspace:*",
-    "@qualy/plugin-database": "workspace:*",
     "@qualy/plugin-rbac": "workspace:*",
     "@qualy/testkit": "workspace:*",
     "@qualy/tsconfig": "workspace:*",
@@ -35,6 +34,7 @@
     "@qualy/auth-contract": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-auth": "workspace:*",
+    "@qualy/plugin-database": "workspace:*",
     "@qualy/plugin-kit": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
     "@qualy/rbac-contract": "workspace:*",

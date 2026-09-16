@@ -17532,3 +17532,77 @@ P4.5 完成。按新计划依次做:**新 P5 Production Build**(pnpm + Docker mu
 服务端与插件按现有 sandbox 镜像的做法以 TS 源码 + node strip-types 运行,不另建 dist 布局——若坚持预编译 JS 需单独裁决)
 → **新 P6 Production Deployment**(server / sandbox 三镜像 + production compose + 一次性 `qualy deploy` job)
 → **新 P7 Release Verification**。原 P5–P9 不再执行。
+
+## 构建/装配/部署重构 P5:Production Build(2026-09-17)
+
+一个 immutable 的 `qualy-server` release image,由根目录 `Dockerfile` 从仓库状态构建:输入只有 package.json / pnpm-lock.yaml /
+qualy.yml / 提交的 qualy.lock.json / 提交的 db/migrations / 源码;不读任何部署状态、不生成迁移、不改 lock、不随客户变化。
+pnpm + Docker multi-stage,没有第二个包管理器,没有新的 dist 布局。
+
+### 镜像的形状
+
+- 三阶段:`web`(全量安装 → `qualy resolve --frozen-lockfile` → vite build → stage 进 web 插件 release store → `check-staged-web`)、
+  `runtime`(`pnpm install --prod --filter-prod 'qualy...' --filter-prod '@qualy/app...' --filter-prod '@qualy/cli...'` →
+  `tools/release/prune-server-image.mjs` → 拷入 staged client-dist)、final(`node:24-bookworm-slim`、`USER node`、
+  `NODE_ENV=production`、HEALTHCHECK `/health/live`、`CMD node apps/server/src/run.ts production`)。
+  deploy 用同一镜像跑 `node apps/cli/src/main.ts deploy`。
+- **服务端以 TS 源码 + node strip-types 运行**,与 sandbox 镜像同一做法:仓库没有 emit 步骤,workspace 包必须是 node_modules
+  之外的真实目录(node 只对 realpath 在 node_modules 外的源码擦类型)。若坚持预编译 JS 需另行裁决,本轮不做。
+- glibc 而非 alpine:argon2 只有 linux-x64/arm64 glibc 预编译包,这样 `--ignore-scripts` 安装才成立
+  (根 `prepare` 只是把 Effect 语言服务 patch 进 tsc,镜像不需要)。
+- 修剪器按 pnpm filter 现算闭包(不手写清单):留 apps / packages / node_modules / package.json / pnpm-lock.yaml /
+  pnpm-workspace.yaml / qualy.yml / qualy.lock.json / db/migrations / LICENSE;删闭包外的 workspace 包(含 `packages/testkit` 整包)、
+  `tests/`、`src/client/`、`*.tsx`、tsconfig、vitest 配置、README、以及每个包 `./testkit` 导出指向的文件或目录。
+  结果:43 个 workspace 包,88 个开发文件删除,store 359 项,镜像 135 MB。
+- `.dockerignore` 重写为「任何镜像构建都不读的东西」:.git、node_modules、web 产物、`.qualy`、legacy、repos、docs、coverage、
+  测试快照、`.env*`(保留 `.env.example`)、data、个人开发配置目录、STATUS.md。
+
+### 镜像抓出的真缺陷(开发态一直被全量安装掩盖)
+
+第一版镜像 `resolve --frozen-lockfile` 与无库启动都在 `failed to load the descriptor of @qualy/plugin-auth` 处倒下,根因是
+`Cannot find package '@qualy/api-kit' imported from packages/plugins/base/auth/src/index.ts`:**运行时确实 import 的包只写在
+devDependencies 里**。开发态全量安装把 devDependencies 也链接进包的 node_modules,`--prod` 安装不链接,node 从包自己的
+node_modules 向上找不到就炸。逐个扫闭包后修正:
+
+- `@qualy/plugin-auth`:`@qualy/api-kit` dev → dependencies(顺手删掉 `@qualy/plugin-ui-registry` 在两处的重复声明)
+- `@qualy/plugin-auth-local`:`@qualy/plugin-ui-registry` dev → dependencies;`effect` 之前**完全没有声明**,靠 pnpm 的 hoist 凑巧解析
+- `@qualy/plugin-org`:`@qualy/plugin-database` dev → dependencies
+- `@qualy/plugin-assessment`:`@qualy/plugin-ui-registry` dev → dependencies
+- `@qualy/plugin-database`:`@qualy/assembly` dev → dependencies(`assembly/state.ts` 的 `topoSort` 是 CLI 期真实 import)
+- 根 package.json:`tsx` 从 dependencies 移到 devDependencies(它只是 Vite 加载自身 TS 配置的可选 peer),否则 tsx + esbuild 进镜像
+
+第二个真问题:`pnpm --filter 'qualy...'` 沿 **devDependencies** 也跟进,把 `@qualy/formula-compiler`(formula 插件的 devDependency)
+连同 typescript 6/7 拖进了 store。改为 `--filter-prod`(Dockerfile 与修剪器同一选择),闭包从 49 包降到 43 包。
+
+### 新门禁
+
+- `tools/tests/workspace-deps.test.ts` 第二条:按同一规则(根包 + `@qualy/app` + `@qualy/cli` 沿 dependencies 的闭包)扫每个包
+  `src/` 下的 `.ts`(排除 `src/client/`、`src/dev/`、`./testkit` 导出目标),去掉 `import type` / `export type` 语句后,
+  每个裸 specifier 所属的包必须在 dependencies / peerDependencies / optionalDependencies 里,否则点名文件、包与「只声明为开发依赖」
+  或「完全未声明」。反向验证:把 org 与 auth-local 的 package.json 换回 HEAD 版本 → 6 条红,分别点名 `@qualy/plugin-database`
+  (declares it for development only)与 `effect`(does not declare it);换回后全绿。
+- `tools/quality/check-release-image.ts`(CI 新 `image` job,无 postgres):镜像内 uid 1000、node v24;qualy.yml / qualy.lock.json
+  与 checkout 逐字节相同;db/migrations 60 个文件同名;release store 有 current.json;无 tests 目录 / `*.test.ts` / `src/client` /
+  `*.tsx`;store 里无 vitest / vite / typescript / @effect+tsgo / playwright / @vitest+browser / tsx / esbuild;无 /app/{tools,docs,
+  apps/web,packages/testkit,.git,legacy,repos} 与 `.env`;镜像内 `resolve --frozen-lockfile` 报 up to date;
+  `DATABASE_URL` 指向不可达地址启动 → 退出码 1、日志 `startup failed` + `postgres is not reachable`(说明 lock 校验与 web release
+  校验都已通过,停在数据库)。
+  第一版修剪器把 `packages/testkit` 当成「包家族」目录逐项删除,留下空壳目录;改为「有 package.json 即整包判定,否则递归当家族」
+  后消失,门禁加了对应断言。
+
+### 命令与结果(实际执行)
+
+```text
+pnpm typecheck                     exit=0
+pnpm test                          253 passed | 3 skipped (256) / 1828 passed | 17 skipped (1845)
+pnpm vitest run tools/tests/workspace-deps.test.ts   2 passed(换回 HEAD 的 org / auth-local 清单 → 1 failed,6 条点名)
+pnpm install                       lock 更新(importers 的 dev/prod 归类),之后 --frozen-lockfile --offline 报 Already up to date
+docker build -t qualy-server:local .    exit=0;pruned to 43 workspace package(s); removed 88 development file(s)
+node tools/quality/check-release-image.ts qualy-server:local    全部 ok,image size 135 MB
+```
+
+### 下一步
+
+**新 P6 Production Deployment**:`deploy/` 目录下的 production compose(`qualy-server:<release>`、`qualy-sandbox-runtime`、
+`qualy-sandbox-authoring`、postgres、持久卷、sandbox UDS 卷、健康探针、一次性 `qualy deploy` job)与 `.env.example`;
+compose 只用 `image:`,不 bind 源码,不挂宿主 node_modules。源码里没有任何 Redis 使用,不加未用的服务。

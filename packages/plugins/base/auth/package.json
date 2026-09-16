@@ -37,6 +37,7 @@
   },
   "dependencies": {
     "@mikro-orm/core": "catalog:",
+    "@qualy/api-kit": "workspace:*",
     "@qualy/audit-contract": "workspace:*",
     "@qualy/auth-contract": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
@@ -59,11 +60,9 @@
   },
   "devDependencies": {
     "@effect/platform-node": "catalog:",
-    "@qualy/api-kit": "workspace:*",
     "@qualy/plugin-audit": "workspace:*",
     "@qualy/plugin-auth-local": "workspace:*",
     "@qualy/plugin-rbac": "workspace:*",
-    "@qualy/plugin-ui-registry": "workspace:*",
     "@qualy/testkit": "workspace:*",
     "@qualy/tsconfig": "workspace:*",
     "@types/react": "catalog:"

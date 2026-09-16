@@ -186,3 +186,20 @@ jobs:
       - name: install webkit
         run: pnpm exec playwright install --with-deps webkit
       - run: pnpm test:browser:webkit
+
+  # The release image, built the way a release is built and inspected from
+  # the outside: this checkout's manifest, lock and lineage inside, nothing of
+  # the development toolchain, the assembly resolving against its own lock
+  # with nothing mounted, and a start that reaches the database. No postgres
+  # here on purpose - a build never needs one.
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24.20.0
+      - name: build the server release image
+        run: docker build --build-arg QUALY_RELEASE=${{ github.sha }} -t qualy-server:ci .
+      - name: the image carries the release and nothing else
+        run: node tools/quality/check-release-image.ts qualy-server:ci

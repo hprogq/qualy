@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import { builtinModules } from 'node:module'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { walkSources } from '../lib/walk.ts'
@@ -21,9 +22,11 @@ const ROOTS = ['packages', 'apps']
 
 interface Manifest {
   readonly name?: string
+  readonly exports?: Record<string, unknown>
   readonly dependencies?: Record<string, string>
   readonly devDependencies?: Record<string, string>
   readonly peerDependencies?: Record<string, string>
+  readonly optionalDependencies?: Record<string, string>
 }
 
 const manifestPaths = (): string[] => {
@@ -78,4 +81,90 @@ describe('what a package says it depends on', () => {
     }
     expect([...new Set(offenders)]).toEqual([])
   })
+
+  // The release image installs the runtime closure with production
+  // dependencies only, and node resolves a workspace package's imports from
+  // its own node_modules. So an import a package needs at runtime but declares
+  // for development resolves in every checkout, where the development
+  // dependencies are linked too, and fails on the first start of the image.
+  // This walks the closure the image installs and reads the sources the image
+  // keeps: not the browser halves, not the development supervisor's process
+  // modules, not the test support a package publishes under `./testkit`.
+  it('declares what its runtime sources import as a dependency, not a development one', () => {
+    const manifests = manifestPaths().map((file) => ({ file, manifest: read(file) }))
+    const byName = new Map(
+      manifests.flatMap(({ file, manifest }) =>
+        manifest.name === undefined ? [] : [[manifest.name, { file, manifest }] as const],
+      ),
+    )
+    const root = read(path.join(ROOT, 'package.json'))
+    byName.set('qualy', { file: path.join(ROOT, 'package.json'), manifest: root })
+
+    // the closure `pnpm --filter-prod` selects: production edges from the
+    // application, the server host and the deploy CLI
+    const closure = new Set<string>()
+    const pending = ['qualy', '@qualy/app', '@qualy/cli']
+    while (pending.length > 0) {
+      const name = pending.pop()!
+      if (closure.has(name)) continue
+      const found = byName.get(name)
+      if (found === undefined) continue
+      closure.add(name)
+      for (const dependency of Object.keys(found.manifest.dependencies ?? {})) {
+        if (byName.has(dependency)) pending.push(dependency)
+      }
+    }
+    expect(closure.size).toBeGreaterThan(3)
+
+    const builtins = new Set(builtinModules)
+    const offenders: string[] = []
+    for (const name of closure) {
+      if (name === 'qualy') continue
+      const { file, manifest } = byName.get(name)!
+      const dir = path.dirname(file)
+      const declared = new Set([
+        ...Object.keys(manifest.dependencies ?? {}),
+        ...Object.keys(manifest.peerDependencies ?? {}),
+        ...Object.keys(manifest.optionalDependencies ?? {}),
+        name,
+      ])
+      // the test support: the exported file, or the whole directory when the
+      // export is that directory's index
+      const testkit = manifest.exports?.['./testkit']
+      const testSupport = typeof testkit === 'string' ? path.resolve(dir, testkit) : undefined
+      const testSupportDir =
+        testSupport !== undefined && path.basename(path.dirname(testSupport)) === 'testkit'
+          ? path.dirname(testSupport)
+          : undefined
+      for (const source of walkSources(path.join(dir, 'src'), ['client', 'dev'])) {
+        if (!source.endsWith('.ts')) continue
+        if (source === testSupport) continue
+        if (testSupportDir !== undefined && source.startsWith(`${testSupportDir}${path.sep}`)) continue
+        for (const used of runtimeImports(fs.readFileSync(source, 'utf8'))) {
+          if (used.startsWith('.') || used.startsWith('/') || used.startsWith('virtual:')) continue
+          if (used.startsWith('node:') || builtins.has(used)) continue
+          const dependency = used.startsWith('@')
+            ? used.split('/').slice(0, 2).join('/')
+            : used.split('/')[0]!
+          if (declared.has(dependency)) continue
+          const how =
+            manifest.devDependencies?.[dependency] === undefined
+              ? 'does not declare it'
+              : 'declares it for development only'
+          offenders.push(`${path.relative(ROOT, source)} imports ${dependency}; ${name} ${how}`)
+        }
+      }
+    }
+    expect([...new Set(offenders)]).toEqual([])
+  })
 })
+
+/** what a module loads when node runs it: every specifier bar the type-only statements */
+const runtimeImports = (source: string): string[] => {
+  const runtime = source.replace(/^\s*(?:import|export)\s+type\s[^;]*?\bfrom\s+'[^']+'/gm, '')
+  const found: string[] = []
+  for (const match of runtime.matchAll(/(?:\bfrom\s+|\bimport\s*\(\s*|^import\s+)'([^']+)'/gm)) {
+    found.push(match[1]!)
+  }
+  return found
+}

@@ -1,17 +1,31 @@
-# the sandbox images build from workspace SOURCE; everything heavy or
-# host-only stays out of the context
+# What no image build reads. Every Dockerfile in this repository builds from
+# the root context; the images install their own dependencies from the
+# lockfile and build their own artifacts, so nothing installed or built on the
+# host may ride along - a host node_modules alone is gigabytes and the wrong
+# platform's binaries.
+.git
 node_modules
 **/node_modules
-.git
-repos
-legacy
-data
-.qualy
+apps/web/dist
 apps/web/.qualy
-**/client-dist
-db/data
+packages/plugins/infra/web/client-dist
+.qualy
+legacy
+repos
+docs
+coverage
+.vitest
+**/.vitest
+**/__screenshots__
 *.log
 .env
 .env.*
+!.env.example
+data
+db/data
+.claude
+.agents
 .mcp.json
-docs
+.vscode
+.idea
+STATUS.md

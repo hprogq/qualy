@@ -26,8 +26,7 @@
     "@qualy/plugin-storage-cos": "workspace:*",
     "@qualy/plugin-storage-local": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
-    "@qualy/plugin-web": "workspace:*",
-    "tsx": "catalog:"
+    "@qualy/plugin-web": "workspace:*"
   },
   "devDependencies": {
     "@effect/platform-node": "catalog:",
@@ -58,6 +57,7 @@
     "pg": "catalog:",
     "playwright": "catalog:",
     "prettier": "catalog:",
+    "tsx": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vitest": "catalog:",
@@ -88,6 +88,8 @@
     "vendor:restore": "node tools/repo/vendor-sync.ts restore",
     "vendor:check": "node tools/repo/vendor-sync.ts check",
     "start": "node --env-file-if-exists=.env apps/server/src/run.ts production",
+    "image:build": "docker build --build-arg QUALY_RELEASE=local -t qualy-server:local .",
+    "image:check": "node tools/quality/check-release-image.ts qualy-server:local",
     "sandbox:gate": "node tools/quality/sandbox-uds-gate.ts",
     "sandbox:build": "docker compose --profile sandbox build",
     "sandbox:up": "node tools/quality/sandbox-uds-gate.ts && docker compose --profile sandbox up -d sandbox-runtime sandbox-authoring",
