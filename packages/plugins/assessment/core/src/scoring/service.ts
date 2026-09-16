@@ -8,7 +8,7 @@ import {
 import type { Principal } from '@qualy/rbac-contract'
 import type { AccessDenied } from '@qualy/rbac-contract/effect'
 import { BatchNotFound, ParticipantNotFound, ScoringUnavailable } from '../errors.ts'
-import { oneBatch } from '../server/db.ts'
+import { oneBatch, oneParticipant } from '../server/db.ts'
 import { groupsOf, itemsOf, revisionsByIdOf } from '../item/db.ts'
 import {
   calcParticipant,
@@ -53,6 +53,25 @@ export interface ScoringMethods {
     BatchNotFound | ParticipantNotFound | ScoringUnavailable | AccessDenied,
     ScoringRuntimeCatalog
   >
+  /**
+   * One named participant's account, for whoever administers the round.
+   *
+   * The same arithmetic as `getMyResult` and deliberately the same shape: a
+   * participant reading their own standing and an administrator checking it
+   * must not be looking at two explanations of one number. What differs is
+   * only which door it comes through - a membership row of one's own there,
+   * administrative reach over this roster here.
+   */
+  readonly getParticipantResult: (
+    tenantId: string,
+    batchId: string,
+    participantId: string,
+    as: Principal,
+  ) => Effect.Effect<
+    MyResultView,
+    BatchNotFound | ParticipantNotFound | ScoringUnavailable | AccessDenied,
+    ScoringRuntimeCatalog
+  >
 }
 
 export interface ScoringDeps {
@@ -62,6 +81,12 @@ export interface ScoringDeps {
     tenantId: string,
     batchId: string,
     as: Principal,
+  ) => Effect.Effect<void, AccessDenied>
+  /** administrative reach over this round's roster: the staff account's door */
+  readonly requireRosterReach: (
+    as: Principal,
+    tenantId: string,
+    batchId: string,
   ) => Effect.Effect<void, AccessDenied>
   readonly itemTypes: ReadonlyMap<string, { readonly interaction: string }>
   readonly catalogs: {
@@ -294,6 +319,61 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
       return { groups: collected.groups, items, entries } satisfies ScoreInput
     })
 
+  /**
+   * One participant's account, once the reader has been let in.
+   *
+   * Both doors end here, and that is the point: the number a participant
+   * reads and the number an administrator checks are produced by one piece
+   * of arithmetic, so there is no second explanation of the same total to
+   * drift from the first. The doors differ and nothing after them does.
+   */
+  const accountOf = (
+    tenantId: string,
+    batchId: string,
+    participantId: string,
+    runtime: typeof ScoringRuntimeCatalog.Service,
+  ) =>
+    Effect.gen(function* () {
+      const collected = yield* collectParticipantScoreInput(tenantId, batchId, participantId)
+      // One prepared calculator per item, resolved lazily and only on the
+      // paths that actually run arithmetic: an inactive question, or an
+      // active one with nothing approved, prepares nothing - a question
+      // whose runtime fact cannot be prepared must not be able to take down
+      // a page it never contributes to. The cache is request-local; the loop
+      // below is sequential, so a plain map is the whole synchronization
+      // story.
+      const prepared = new Map<string, PreparedCalculator>()
+      const preparedFor = (item: { readonly id: string; readonly plan: ScoringPlan }) =>
+        Effect.gen(function* () {
+          const hit = prepared.get(item.id)
+          if (hit !== undefined) return hit
+          const built = yield* runtime
+            .prepare(item.plan.calculator.ref, frozenCalculatorOf(item.plan), {
+              tenantId,
+              batchId,
+            })
+            .pipe(
+              Effect.catch((error) =>
+                mapRuntimeFailure(
+                  'result',
+                  { tenantId, batchId, itemId: item.id, plan: item.plan },
+                  error,
+                ),
+              ),
+            )
+          prepared.set(item.id, built)
+          return built
+        })
+      // An evaluation that fails is not a state a reader can be in: every
+      // determination in force was proven against the rule before it stood,
+      // and the rule was tried against them before it took effect. So only
+      // an outage is anybody's to retry - it is said as one, and the whole
+      // account waits for it rather than printing part of one - and anything
+      // else dies naming the question rather than quietly scoring it at zero.
+      const input = yield* evaluateInput(tenantId, batchId, preparedFor, collected)
+      return { mode: 'provisional' as const, ...calcParticipant(deps.catalogs, input) }
+    })
+
   const getMyResult: ScoringMethods['getMyResult'] = Effect.fn('Assessment.getMyResult')(
     function* (tenantId, batchId, as) {
       const runtime = yield* ScoringRuntimeCatalog
@@ -309,49 +389,33 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
           yield* deps.requireBatchVisible(tenantId, batchId, as)
           const participant = yield* participantRowByUser(tenantId, batchId, as.userId)
           if (participant === null) return yield* new ParticipantNotFound()
-          const collected = yield* collectParticipantScoreInput(tenantId, batchId, participant.id)
-          // One prepared calculator per item, resolved lazily and only on
-          // the paths that actually run arithmetic: an inactive question, or
-          // an active one with nothing approved, prepares nothing - a
-          // question whose runtime fact cannot be prepared must not be able
-          // to take down a page it never contributes to. The cache is
-          // request-local; the loop below is sequential, so a plain map is
-          // the whole synchronization story.
-          const prepared = new Map<string, PreparedCalculator>()
-          const preparedFor = (item: { readonly id: string; readonly plan: ScoringPlan }) =>
-            Effect.gen(function* () {
-              const hit = prepared.get(item.id)
-              if (hit !== undefined) return hit
-              const built = yield* runtime
-                .prepare(item.plan.calculator.ref, frozenCalculatorOf(item.plan), {
-                  tenantId,
-                  batchId,
-                })
-                .pipe(
-                  Effect.catch((error) =>
-                    mapRuntimeFailure(
-                      'result',
-                      { tenantId, batchId, itemId: item.id, plan: item.plan },
-                      error,
-                    ),
-                  ),
-                )
-              prepared.set(item.id, built)
-              return built
-            })
-          // An evaluation that fails is not a state a reader can be in:
-          // every determination in force was proven against the rule before
-          // it stood, and the rule was tried against them before it took
-          // effect. So only an outage is anybody's to retry - it is said as
-          // one, and the whole account waits for it rather than printing
-          // part of one - and anything else dies naming the question rather
-          // than quietly scoring it at zero.
-          const input = yield* evaluateInput(tenantId, batchId, preparedFor, collected)
-          return { mode: 'provisional' as const, ...calcParticipant(deps.catalogs, input) }
+          return yield* accountOf(tenantId, batchId, participant.id, runtime)
         }).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error))),
       )
     },
   )
 
-  return { getMyResult }
+  const getParticipantResult: ScoringMethods['getParticipantResult'] = Effect.fn(
+    'Assessment.getParticipantResult',
+  )(function* (tenantId, batchId, participantId, as) {
+    const runtime = yield* ScoringRuntimeCatalog
+    return yield* withDb(
+      Effect.gen(function* () {
+        const batch = yield* oneBatch(tenantId, batchId)
+        if (!batch) return yield* new BatchNotFound()
+        // Administering this roster is the whole authorization, and it is
+        // asked before the participant is looked up: a reader without reach
+        // learns nothing about who is on somebody else's roster, not even
+        // whether the id they guessed is one.
+        yield* deps.requireRosterReach(as, tenantId, batchId)
+        // scoped to this batch by the query itself, so an id from another
+        // round reads as no such participant rather than as somebody else's
+        const participant = yield* oneParticipant(tenantId, batchId, participantId)
+        if (participant === null) return yield* new ParticipantNotFound()
+        return yield* accountOf(tenantId, batchId, participant.id, runtime)
+      }).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error))),
+    )
+  })
+
+  return { getMyResult, getParticipantResult }
 }

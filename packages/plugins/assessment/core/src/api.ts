@@ -75,7 +75,6 @@ import {
 // discipline: product-domain first segment, nouns, no action segments, state
 // as an idempotent subresource PUT.
 
-
 /** an instant on the wire; the service parses it and refuses the unreadable */
 const isoInstant = Schema.String.check(Schema.isMaxLength(64))
 /**
@@ -841,6 +840,31 @@ const breakdownLine = Schema.Struct({
       calculatorRef: Schema.optional(Schema.String),
     }),
   ),
+})
+
+/**
+ * What one claim currently stands recognised as.
+ *
+ * Only ever read beside a claim somebody administers. The values are the
+ * determination itself - the level, the grade, whatever the question's rule
+ * asked of it - and never an amount: what a determination is worth is the
+ * ledger's to say, from the arithmetic in force, and a second number here
+ * would be a second answer to the same question.
+ */
+const recognitionView = Schema.Struct({
+  id: Schema.String,
+  source: Schema.Literals(['review', 'record', 'import', 'system']),
+  /** the filing this determination judged, which is not always the current one */
+  entryRevisionId: Schema.String,
+  values: configJson,
+  createdAt: Schema.Number,
+  createdByName: Schema.NullOr(Schema.String),
+})
+
+/** one claim as a staff account reads it: the claim, and where it stands */
+const participantEntryView = Schema.Struct({
+  entry: entryView,
+  recognition: Schema.NullOr(recognitionView),
 })
 
 const myResultView = Schema.Struct({
@@ -2188,6 +2212,69 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
           ParticipantInvalid,
           AccessDenied,
         ],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
+    /**
+     * One person on this roster, by name of the membership row.
+     *
+     * The staff account is addressable - the participant is in the url, so
+     * a reload or a shared link lands on the same person - and an address
+     * has to be readable without walking the roster to the page they happen
+     * to be on. Administering the roster is the door; the same door the
+     * list itself is behind.
+     */
+    HttpApiEndpoint.get(
+      'getParticipant',
+      '/assessment/batches/:batchId/participants/:participantId',
+      {
+        params: Schema.Struct({ batchId: uuidInput, participantId: uuidInput }),
+        success: Schema.Struct({ participant: participantView }),
+        error: [BatchNotFound, ParticipantNotFound, AccessDenied],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
+    /**
+     * One person's claims, and what each currently stands recognised as.
+     *
+     * Not the participant's own page with a different subject: the filing
+     * gates and the unread marks that page carries are the owner's working
+     * state, and an account being checked has neither. The determination is
+     * here instead, which is what a reader checking one needs and the owner
+     * never asked for.
+     */
+    HttpApiEndpoint.get(
+      'listParticipantEntries',
+      '/assessment/batches/:batchId/participants/:participantId/entries',
+      {
+        params: Schema.Struct({ batchId: uuidInput, participantId: uuidInput }),
+        query: Schema.Struct(pageQuery),
+        success: Schema.Struct({
+          participantId: Schema.String,
+          entries: Schema.Array(participantEntryView),
+          nextCursor: Schema.NullOr(Schema.String),
+        }),
+        error: [BatchNotFound, ParticipantNotFound, AccessDenied, BadRequest],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
+    /**
+     * One person's standing, computed the way their own page computes it.
+     *
+     * The same view shape as `getMyResult` on purpose: an administrator
+     * checking a total and the participant reading it must not be given two
+     * explanations of one number.
+     */
+    HttpApiEndpoint.get(
+      'getParticipantResult',
+      '/assessment/batches/:batchId/participants/:participantId/result',
+      {
+        params: Schema.Struct({ batchId: uuidInput, participantId: uuidInput }),
+        success: myResultView,
+        error: [BatchNotFound, ParticipantNotFound, ScoringUnavailable, AccessDenied],
       },
     ).middleware(Authenticated),
   )

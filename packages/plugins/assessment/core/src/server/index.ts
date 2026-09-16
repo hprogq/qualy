@@ -828,6 +828,18 @@ export class Assessment extends Context.Service<
       templateId: string,
       as: Principal,
     ) => Effect.Effect<void, AccessDenied | TemplateNotFound>
+    /**
+     * One person on the roster, by the membership row's own id.
+     *
+     * Beside the list rather than inside it: an account is addressable, and
+     * an address must open without paging the roster until the row appears.
+     */
+    readonly getParticipant: (
+      tenantId: string,
+      batchId: string,
+      participantId: string,
+      as: Principal,
+    ) => Effect.Effect<ParticipantRow, BatchNotFound | ParticipantNotFound | AccessDenied>
     readonly listParticipants: (
       tenantId: string,
       batchId: string,
@@ -980,6 +992,8 @@ export class Assessment extends Context.Service<
     >
     /** one person's claims on the round's questions, and their lifecycle */
     readonly listMyEntries: EntryMethods['listMyEntries']
+    /** one named participant's claims and determinations, for whoever administers the round */
+    readonly listParticipantEntries: EntryMethods['listParticipantEntries']
     readonly getEntryHistory: EntryMethods['getEntryHistory']
     readonly createEntry: EntryMethods['createEntry']
     readonly getEntry: EntryMethods['getEntry']
@@ -1021,6 +1035,8 @@ export class Assessment extends Context.Service<
     readonly answerSupplement: ReviewMethods['answerSupplement']
     /** one's own provisional standing, from the one scorer */
     readonly getMyResult: ScoringMethods['getMyResult']
+    /** the same standing for a named participant, behind administrative reach */
+    readonly getParticipantResult: ScoringMethods['getParticipantResult']
     /** the bytes of a business material, for whoever its story admits */
     readonly openAttachment: AttachmentMethods['openAttachment']
     readonly prepareAttachmentUpload: AttachmentMethods['prepareAttachmentUpload']
@@ -2042,6 +2058,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
   const scoringMethods = makeScoringMethods({
     withDb,
     requireBatchVisible,
+    requireRosterReach,
     itemTypes,
     catalogs: { aggregators: scoring.aggregators },
   })
@@ -3450,6 +3467,22 @@ export const make = Effect.fn('Assessment.make')(function* () {
       if (!deleted) return yield* new TemplateNotFound()
     }),
 
+    getParticipant: Effect.fn('Assessment.getParticipant')(
+      function* (tenantId, batchId, participantId, as) {
+        const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
+        if (!batch) return yield* new BatchNotFound()
+        // administering the roster is the door, asked before the row is
+        // looked up: a reader without reach learns nothing about who is on
+        // it, not even whether an id they hold is one of them
+        yield* requireRosterReach(as, tenantId, batchId)
+        const participant = yield* dieQuery(
+          withDb(oneParticipant(tenantId, batchId, participantId)),
+        )
+        if (participant === null) return yield* new ParticipantNotFound()
+        return participant
+      },
+    ),
+
     listParticipants: Effect.fn('Assessment.listParticipants')(
       function* (tenantId, batchId, filter, as) {
         const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
@@ -4781,6 +4814,64 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
             found.length > limit && last
               ? encodeQueryCursor(fingerprint, [last.anchorPath, last.id])
               : null,
+        }
+      }),
+    )
+    .handle(
+      'getParticipant',
+      Effect.fn('assessment.getParticipant.handler')(function* ({ params }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const participant = yield* assessment.getParticipant(
+          principal.tenantId,
+          params.batchId,
+          params.participantId,
+          principal,
+        )
+        return { participant: toParticipantDto(participant) }
+      }),
+    )
+    .handle(
+      'listParticipantEntries',
+      Effect.fn('assessment.listParticipantEntries.handler')(function* ({ params, query }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const page = yield* assessment.listParticipantEntries(
+          principal.tenantId,
+          params.batchId,
+          params.participantId,
+          {
+            ...(query.cursor !== undefined ? { cursor: query.cursor } : {}),
+            ...(query.limit !== undefined ? { limit: query.limit } : {}),
+          },
+          principal,
+        )
+        return {
+          participantId: page.participantId,
+          entries: page.entries.map((one) => ({
+            entry: entryDto(one.entry),
+            recognition: one.recognition,
+          })),
+          nextCursor: page.nextCursor,
+        }
+      }),
+    )
+    .handle(
+      'getParticipantResult',
+      Effect.fn('assessment.getParticipantResult.handler')(function* ({ params }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const result = yield* assessment.getParticipantResult(
+          principal.tenantId,
+          params.batchId,
+          params.participantId,
+          principal,
+        )
+        return {
+          mode: result.mode,
+          total: result.total,
+          groups: result.groups,
+          lines: result.lines,
         }
       }),
     )

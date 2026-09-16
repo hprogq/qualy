@@ -14,6 +14,9 @@ import { db } from '../server/db.ts'
 
 const jsonb = (value: unknown) => sql`${JSON.stringify(value)}::jsonb`
 
+const epoch = (column: string) =>
+  sql<number | null>`(extract(epoch from ${sql.ref(column)}) * 1000)::float8`
+
 export interface RecognitionWrite {
   readonly tenantId: string
   readonly batchId: string
@@ -123,3 +126,71 @@ export const recognitionById = (tenantId: string, entryId: string, recognitionId
             } satisfies RecognitionRow),
       ),
     )
+
+/**
+ * What each of these claims currently stands recognised as, in one query.
+ *
+ * The staff account reads a page of claims and says what each was
+ * determined to be, so asking per claim would be a query per row. Claims
+ * with no determination simply do not come back - "nothing has been decided
+ * yet" is the absence of a row, not a row saying nothing.
+ *
+ * It carries who and when, which `currentRecognitionOf` deliberately does
+ * not: that one feeds arithmetic, and arithmetic has no use for an actor.
+ */
+export interface RecognitionDetail extends RecognitionRow {
+  readonly entryId: string
+  readonly source: 'review' | 'record' | 'import' | 'system'
+  readonly createdAt: number
+  readonly createdBy: string | null
+  readonly createdByName: string | null
+}
+
+export const currentRecognitionsOfEntries = (tenantId: string, entryIds: readonly string[]) =>
+  entryIds.length === 0
+    ? Effect.succeed([] as readonly RecognitionDetail[])
+    : db
+        .query((k) =>
+          k
+            .selectFrom('EntryRecognition as r')
+            .innerJoin('Entry as e', (join) =>
+              join
+                .onRef('e.tenantId', '=', 'r.tenantId')
+                .onRef('e.currentRecognitionId', '=', 'r.id'),
+            )
+            .leftJoin('User as u', (join) =>
+              join.onRef('u.tenantId', '=', 'r.tenantId').onRef('u.id', '=', 'r.createdBy'),
+            )
+            .select([
+              'r.id',
+              'r.entryId',
+              'r.values',
+              'r.supersedesId',
+              'r.entryRevisionId',
+              'r.source',
+              'r.createdBy',
+              'u.displayName as createdByName',
+            ])
+            .select([epoch('r.created_at').as('createdMs')])
+            .where('r.tenantId', '=', tenantId)
+            .where('r.entryId', 'in', [...entryIds])
+            .execute(),
+        )
+        .pipe(
+          Effect.map((rows) =>
+            rows.map((row) => {
+              const one = row as Record<string, unknown>
+              return {
+                id: String(one['id']),
+                entryId: String(one['entryId']),
+                values: (one['values'] ?? {}) as Record<string, unknown>,
+                supersedesId: one['supersedesId'] == null ? null : String(one['supersedesId']),
+                entryRevisionId: String(one['entryRevisionId']),
+                source: String(one['source']) as RecognitionDetail['source'],
+                createdAt: Number(one['createdMs'] ?? 0),
+                createdBy: one['createdBy'] == null ? null : String(one['createdBy']),
+                createdByName: one['createdByName'] == null ? null : String(one['createdByName']),
+              } satisfies RecognitionDetail
+            }),
+          ),
+        )

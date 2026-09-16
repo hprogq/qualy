@@ -1,5 +1,9 @@
 import { Effect, Result } from 'effect'
-import { insertRecognition, currentRecognitionOf } from '../scoring/recognition-db.ts'
+import {
+  insertRecognition,
+  currentRecognitionOf,
+  currentRecognitionsOfEntries,
+} from '../scoring/recognition-db.ts'
 import {
   canonicalRecognition,
   judgeRecognition,
@@ -331,6 +335,28 @@ export interface EntryHistoryView {
   }[]
 }
 
+/**
+ * One claim as a staff account reads it: the claim, and what it currently
+ * stands recognised as.
+ *
+ * The determination is its own field rather than folded into the claim,
+ * because who may read it is a different question from who may read the
+ * claim - the review service has said so all along, and this is the first
+ * screen with an answer. Nothing here is computed: the amount a
+ * determination leads to belongs to the ledger, which is scoring's to say.
+ */
+export interface ParticipantEntryView {
+  readonly entry: EntryView
+  readonly recognition: {
+    readonly id: string
+    readonly source: 'review' | 'record' | 'import' | 'system'
+    readonly entryRevisionId: string
+    readonly values: Record<string, unknown>
+    readonly createdAt: number
+    readonly createdByName: string | null
+  } | null
+}
+
 export interface EntryMethods {
   readonly listMyEntries: (
     tenantId: string,
@@ -349,6 +375,31 @@ export interface EntryMethods {
       }[]
       nextCursor: string | null
       attention: { unreadItemIds: readonly string[] }
+    },
+    BatchNotFound | ParticipantNotFound | AccessDenied | BadRequest
+  >
+  /**
+   * One named participant's claims, for whoever administers the round.
+   *
+   * Deliberately not `listMyEntries` with a different subject. That one
+   * also answers what its reader may do next - the phase gate per question,
+   * the unread marks - and none of that is a fact about the participant: it
+   * is the participant's own working state, and an administrator reading an
+   * account has no use for it and no business seeing it. What this adds
+   * instead is the determination each claim currently stands on, which is
+   * the half the owner's own page never needed.
+   */
+  readonly listParticipantEntries: (
+    tenantId: string,
+    batchId: string,
+    participantId: string,
+    page: { cursor?: string; limit?: string },
+    as: Principal,
+  ) => Effect.Effect<
+    {
+      participantId: string
+      entries: readonly ParticipantEntryView[]
+      nextCursor: string | null
     },
     BatchNotFound | ParticipantNotFound | AccessDenied | BadRequest
   >
@@ -1663,6 +1714,108 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
     },
   )
 
+  const listParticipantEntries: EntryMethods['listParticipantEntries'] = Effect.fn(
+    'Assessment.listParticipantEntries',
+  )(function* (tenantId, batchId, participantId, page, as) {
+    // the cursor is bound to this batch AND this participant: a cursor is
+    // only meaningful against the question it came from, and "the same page
+    // of somebody else's claims" is a different question
+    const fingerprint = `participant-entries:${batchId}:${participantId}`
+    const key = readQueryCursor(page.cursor, fingerprint, ['timestamp', 'uuid'])
+    if (key === null) return yield* cursorUnusable()
+    const limit = pageSize(page.limit, DEFAULT_PAGE_SIZE)
+    return yield* withDb(
+      Effect.gen(function* () {
+        const batch = yield* oneBatch(tenantId, batchId)
+        if (!batch) return yield* new BatchNotFound()
+        // asked before the participant is looked up, so a reader without
+        // reach cannot learn whether an id is on this roster
+        yield* deps.requireRosterReach(as, tenantId, batchId)
+        const participant = yield* participantOf(tenantId, batchId, participantId)
+        if (participant === null) return yield* new ParticipantNotFound()
+        const rows = yield* entriesOfParticipantPage({
+          tenantId,
+          batchId,
+          participantId,
+          after: key === undefined ? undefined : [key[0]!, key[1]!],
+          limit: limit + 1,
+        })
+        const pageRows = rows.slice(0, limit)
+        // one query per page for each thing a row needs, never one per row
+        const askedByEntry = new Map(
+          (yield* openSupplementsOfEntries(
+            tenantId,
+            pageRows.map((entry) => entry.id),
+          )).map((asked) => [asked.entryId, asked]),
+        )
+        const standings = yield* withdrawStandingsOf(
+          tenantId,
+          pageRows
+            .filter((one) => one.status === 'in_review' && one.currentReviewInstanceId !== null)
+            .map((one) => one.currentReviewInstanceId!),
+        )
+        const saidByEntry = yield* latestRefusalOf(
+          tenantId,
+          pageRows
+            .filter((one) => one.status === 'rejected' || one.status === 'needs_revision')
+            .map((one) => one.id),
+        )
+        const recognitions = new Map(
+          (yield* currentRecognitionsOfEntries(
+            tenantId,
+            pageRows.map((entry) => entry.id),
+          )).map((one) => [one.entryId, one]),
+        )
+        const entries: ParticipantEntryView[] = []
+        for (const entry of pageRows) {
+          const standing = recognitions.get(entry.id)
+          entries.push({
+            // no gates: the acts this view carries are the participant's own,
+            // and the reader is not the participant. `view` answers `hidden`
+            // for every one of them on its own, from the same ownership test
+            // every other reader passes through.
+            entry: view(
+              entry,
+              yield* revisionView(tenantId, entry.currentRevisionId),
+              as,
+              participant,
+              undefined,
+              askedByEntry.get(entry.id) ?? null,
+              saidByEntry.get(entry.id) ?? null,
+              entry.currentReviewInstanceId === null
+                ? undefined
+                : standings.get(entry.currentReviewInstanceId),
+            ),
+            recognition:
+              standing === undefined
+                ? null
+                : {
+                    id: standing.id,
+                    source: standing.source,
+                    entryRevisionId: standing.entryRevisionId,
+                    values: standing.values,
+                    createdAt: standing.createdAt,
+                    createdByName: standing.createdByName,
+                  },
+          })
+        }
+        const last = pageRows[pageRows.length - 1]
+        const lastIso =
+          rows.length > limit && last !== undefined
+            ? yield* entryCreatedIso(tenantId, last.id)
+            : null
+        return {
+          participantId,
+          entries,
+          nextCursor:
+            lastIso !== null && last !== undefined
+              ? encodeQueryCursor(fingerprint, [lastIso, last.id])
+              : null,
+        }
+      }).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
+    )
+  })
+
   const getEntryHistory: EntryMethods['getEntryHistory'] = Effect.fn('Assessment.getEntryHistory')(
     function* (tenantId, entryId, as) {
       return yield* withDb(
@@ -2031,6 +2184,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
 
   return {
     listMyEntries,
+    listParticipantEntries,
     getEntryHistory,
     createEntry,
     getEntry,
