@@ -17735,3 +17735,57 @@ node tools/quality/release-smoke.ts local
 
 P1–P4 → P4.5 收敛 → P5 构建 → P6 部署 → P7 验证。原 `docs/osi.md` P5–P9 不再执行。之后的改动只由真实需求、生产缺陷或可复现 regression 触发
 (CLAUDE.md「禁止」最后一条同样适用于这条线)。
+
+## 行政认定 A–D 评审收口:长度、压缩包、数据库引用(2026-09-17)
+
+外部评审 A–D 全链路后提了六条。本轮只修确定的缺陷,**权限模型那条(导入记录是个人工作历史还是机构审计)留给用户裁决**,
+参与人 inactive 的权限测试依赖那条裁决,一并暂缓。逐条实证后:
+
+### 已修
+
+- **预检通过、提交 500(评审第 3 条,已复现)**:姓名超过 255、认定依据超过 500 时,预检 `canCommit: true`,提交在事务里被列宽拒绝,
+  以缺陷结束(`value too long for type character varying(500)`),零写入但读者看到的是服务异常。
+  修法:`preview.ts` 的 `WRITTEN_TEXT_WIDTHS`(姓名 255 / 依据 500,**按字符计,不按 UTF-16 单元**,与 varchar 同口径),
+  超宽是该行的 `too-long` 错误(姓名超宽是错误而非 name-mismatch 警告,因为写不进去);共享依据同样受限。
+  解析器的 4000 字符资源上限原先只管题目自己的列,现在业务编号、姓名、依据三列也受同一上限(`cell-too-long` 点名列字母)。
+  门禁:单测断言两个宽度等于实体元数据(`EntryRevision.note`、`AdministrativeEntryImportRow.displayNameSnapshot`),防止漂移。
+- **xlsx 解压前没有资源上限(评审第 4 条)**:ExcelJS 4.4 经 JSZip 整段解压,不设上限。新增 `administrative-import/archive.ts`,
+  交给 ExcelJS 之前按 JSZip 同一方式读中央目录:条目数 ≤ 512、声明解压总量 ≤ 64 MB,**每个条目用 node 的 `maxOutputLength`
+  按其声明大小解压核对**(声明大小是文件里写的数字,敌意文件可以随便写,只核对总和不够)。比读取器更严:前置数据、分卷、
+  ZIP64 结束记录、非 stored/deflate、加密一律当 `not-xlsx`;超量当 `file-too-large`(复用现有文案)。
+  反向验证:去掉按声明解压 → 「声明 10 字节、实际 1 MB」两条红;去掉解析器里的调用 → 经解析器那条红。
+- **导入的数据库引用弱于 Assessment 其他表(评审第 2、6 条)**:新迁移 `20260916230042_administrative-import-references.sql`:
+  导入的题目必须属于同一批次(复合外键替换原单列外键)、冻结版本必须属于该题目、原文件 `source_attachment_id` **NOT NULL** 且
+  外键到 `storage_attachments`(`on delete restrict`,与条目修订附件同规则;storage 只删 staged 行,bound/retired 行从不删除);
+  导入行 `(entry_id, participant_id)` 复合外键到 `entries` 新增的 `uq_entries_tenant_id_participant`,行记录的人不能与条目的人不一致。
+  保留 `participant_id` 列(可见性查询按它 join),由外键保证不漂移;删列是破坏性变更,不为此做。读侧 `sourceAttachmentId` 收紧为非空,
+  删掉原文件下载里那条不可能再成立的分支。`item-entry-schema.test.ts` 新增两条原生 SQL 用例,在旧 lineage 上实测为红。
+- **`qualy generate` 的语句顺序错误(本轮新发现)**:生成物把引用唯一索引的外键排在索引之前,`database verify` 重放报
+  `there is no unique constraint matching given keys`(实测复现)。人工把建索引挪到最前,文件头注释说明;不建机制,
+  记入 `docs/notes/data-layer-retrospective.md` 触发条件。
+- **唯一未命名的迁移改名(用户要求)**:`20260916143334.sql` → `20260916143334_administrative-imports.sql`,内容不变。
+  migrator 按完整文件名记账,**已应用过旧名的库会把新名当待执行并在建表时失败**。已知只有本机开发库应用过(没有部署过它);
+  `check-migrations-immutable.ts` 新增显式放行表 `ACKNOWLEDGED_RENAMES`,只放行 git 判定为 R100(内容完全相同)且点名的这一对。
+  本机开发库需要执行一次(或按评审建议整库重建后 `pnpm qualy deploy`):
+  `update mikro_orm_migrations set name = '20260916143334_administrative-imports.sql' where name = '20260916143334.sql';`
+  在此之前本机 `pnpm dev` 与 `apps/server/tests/supervisor.test.ts` 的三条会失败(它们用 `.env` 的开发库启动后端,已实测;
+  失败发生在该迁移的第一条语句,迁移在事务内,没有写入)。
+
+### 实证后不改
+
+- **评审第 5 条「STATUS 里没有实测耗时」不成立**:STATUS「§35:1000 行实测」记录了 1000 行提交 2775 ms、2000 行 5396 ms,线性,
+  批次锁持有约 5 秒。按评审自己的判据(2000 行只有几秒就不动),顺序写保持不变。
+
+### 命令与结果(实际执行)
+
+```text
+pnpm typecheck                                            exit=0
+pnpm vitest run <行政认定 7 个文件 + item-entry-schema>     7 passed / 85 passed
+pnpm qualy generate                                       20260916230042.sql(随后人工重排并命名)
+pnpm qualy database verify                                61 committed migration(s) build the declared schema, zero drift
+pnpm qualy database verify(把生成原序放回去)              exit=1: there is no unique constraint matching given keys for referenced table "entries"
+pnpm qualy database check                                 lineage ok
+pnpm qualy database drop-guard                            61 file(s) scanned, ok
+pnpm test(全量,改名后)                                    252 passed | 2 failed | 3 skipped;失败的是 supervisor 三条(本机开发库旧 ledger 名,见上)
+                                                          与导入列表一条(fixture 插入无原文件的导入,新约束正确拒绝;已改 fixture,单文件重跑 17 passed)
+```

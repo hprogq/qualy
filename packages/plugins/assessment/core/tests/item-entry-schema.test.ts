@@ -438,6 +438,111 @@ describe.runIf(postgresAvailable)('assessment item and entry schema', () => {
     ).toBe('23001')
   })
 
+  // An administrative import is provenance other code decides things by -
+  // who may look back on it joins through the people its rows name - so the
+  // references it holds are held by the database the way an entry's are,
+  // not only by the one service that writes them today.
+  describe('an administrative import', () => {
+    const storedFile = async (f: Fixture) => {
+      const id = randomUUID()
+      await db.query(
+        `insert into storage_attachments
+           (id, tenant_id, owner_user_id, backend, filename, declared_mime, size, integrity_algorithm, integrity_value, storage_key, status)
+         values ($1, $2, $3, 'local', 'import.xlsx', 'application/octet-stream', 2048, 'sha256', 'abc', $4, 'staged')`,
+        [id, f.tenantId, f.userId, `attachments/${f.tenantId}/${id}`],
+      )
+      return id
+    }
+
+    const insertImport = (
+      f: Fixture,
+      over: {
+        batchId: string
+        itemId: string
+        itemRevisionId: string
+        attachmentId: string | null
+      },
+    ) =>
+      db.row<{ id: string }>(
+        `insert into administrative_entry_imports
+           (tenant_id, batch_id, item_id, item_revision_id, source_attachment_id, filename_snapshot, size_bytes, actor_id, imported_count)
+         values ($1, $2, $3, $4, $5, 'import.xlsx', 2048, $6, 1) returning id`,
+        [f.tenantId, over.batchId, over.itemId, over.itemRevisionId, over.attachmentId, f.userId],
+      )
+
+    it('names a question of its own round, a version of that question, and a file that exists', async () => {
+      const f = await createFixture('ie-import-refs')
+      const a = await createBatchGraph(f, 'Round A')
+      const b = await createBatchGraph(f, 'Round B')
+      const file = await storedFile(f)
+      const lawful = { batchId: a.batchId, itemId: a.itemId, itemRevisionId: a.itemRevisionId }
+
+      await insertImport(f, { ...lawful, attachmentId: file })
+      // a real question, from another round
+      expect(
+        await pgCode(insertImport(f, { ...lawful, itemId: b.itemId, attachmentId: file })),
+      ).toBe('23503')
+      // this round's question, frozen at another question's version
+      expect(
+        await pgCode(
+          insertImport(f, { ...lawful, itemRevisionId: b.itemRevisionId, attachmentId: file }),
+        ),
+      ).toBe('23503')
+      // no file, and a file that was never stored
+      expect(await pgCode(insertImport(f, { ...lawful, attachmentId: null }))).toBe('23502')
+      expect(await pgCode(insertImport(f, { ...lawful, attachmentId: randomUUID() }))).toBe('23503')
+      // and the workbook an import names cannot be deleted out from under it
+      expect(await pgCode(db.query(`delete from storage_attachments where id = $1`, [file]))).toBe(
+        '23001',
+      )
+    })
+
+    it('ties each row to the person its entry is about, not to anybody the row says', async () => {
+      const f = await createFixture('ie-import-rows')
+      const g = await createBatchGraph(f, 'Round A')
+      const e = await createEntry(f, g)
+      // a second person in the same round
+      const otherUserId = (
+        await db.row<{ id: string }>(
+          `insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+           values ($1, 'Li Si', $2, $3) returning id`,
+          [f.tenantId, f.userTypeId, f.nodeId],
+        )
+      ).id
+      const otherParticipantId = (
+        await db.row<{ id: string }>(
+          `insert into batch_participants (tenant_id, batch_id, user_id, assessment_anchor_node_id, anchor_path, anchor_lineage, user_type_id)
+           values ($1, $2, $3, $4, (select path from org_nodes where id = $4), $5::jsonb, $6)
+           returning id`,
+          [
+            f.tenantId,
+            g.batchId,
+            otherUserId,
+            f.nodeId,
+            JSON.stringify([{ nodeId: f.nodeId, nodeTypeId: f.orgTypeId }]),
+            f.userTypeId,
+          ],
+        )
+      ).id
+      const imported = await insertImport(f, {
+        batchId: g.batchId,
+        itemId: g.itemId,
+        itemRevisionId: g.itemRevisionId,
+        attachmentId: await storedFile(f),
+      })
+      const insertRow = (rowNo: number, participantId: string) =>
+        db.query(
+          `insert into administrative_entry_import_rows (tenant_id, import_id, source_row_no, participant_id, entry_id)
+           values ($1, $2, $3, $4, $5)`,
+          [f.tenantId, imported.id, rowNo, participantId, e.entryId],
+        )
+
+      // Zhang San's fact, said to be Li Si's
+      expect(await pgCode(insertRow(2, otherParticipantId))).toBe('23503')
+      await insertRow(2, g.participantId)
+    })
+  })
+
   it('refuses the states and shapes nothing should ever write', async () => {
     const f = await createFixture('ie-checks')
     const g = await createBatchGraph(f, 'Round A')

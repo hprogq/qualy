@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs'
 import { choiceLabel, displayTitle, kindOf, type AtomicSchema } from '@qualy/value-schema'
+import { ArchiveRefused, inspectArchive } from './archive.ts'
 
 // Bytes in, typed rows out - and nothing else.
 //
@@ -18,7 +19,9 @@ import { choiceLabel, displayTitle, kindOf, type AtomicSchema } from '@qualy/val
 //     executes anything; but a cached result is whatever was last saved,
 //     which is not a fact anybody signed.
 //   - the resource limits, so a hostile workbook cannot be answered with
-//     memory instead of an error.
+//     memory instead of an error. The file's own size is checked first, then
+//     what the archive inflates to (archive.ts), and only then is the reader
+//     handed the bytes; the sheet, row, column and cell ceilings follow.
 
 /** what a single workbook may cost before it is refused outright */
 export const ADMIN_IMPORT_LIMITS = {
@@ -249,6 +252,14 @@ export const parseAdministrativeWorkbook = async (
   if (bytes.byteLength > ADMIN_IMPORT_LIMITS.maxFileBytes) {
     throw new WorkbookUnreadable('file-too-large')
   }
+  // the size of the file is not the size of the workbook: what it inflates
+  // to is found out before the reader inflates any of it
+  try {
+    inspectArchive(bytes)
+  } catch (error) {
+    if (!(error instanceof ArchiveRefused)) throw error
+    throw new WorkbookUnreadable(error.reason === 'too-large' ? 'file-too-large' : 'not-xlsx')
+  }
   const book = new ExcelJS.Workbook()
   try {
     await book.xlsx.load(bytes as unknown as ArrayBuffer)
@@ -291,8 +302,18 @@ export const parseAdministrativeWorkbook = async (
     throw new WorkbookUnreadable('too-many-columns')
   }
 
-  const at = (row: ExcelJS.Row, letter: string, rowNo: number) =>
-    textOf(row.getCell(letter), rowNo).trim()
+  // Every cell this reads is held to the same ceiling, the identity and basis
+  // columns included: they are text somebody typed like any other, and the
+  // ceiling is about what a file may cost, not about what a column means.
+  // How wide each one may be once written is the domain's question, asked
+  // row by row where the reader is told which row to fix.
+  const at = (row: ExcelJS.Row, letter: string, rowNo: number) => {
+    const text = textOf(row.getCell(letter), rowNo).trim()
+    if (text.length > ADMIN_IMPORT_LIMITS.maxCellChars) {
+      throw new WorkbookUnreadable('cell-too-long', { rowNo, column: letter })
+    }
+    return text
+  }
   // the basis is whatever sits after the declared columns, which is where
   // the template put it
   const basisColumn = columnLetter(metadata.columns.length + 3)
@@ -307,9 +328,6 @@ export const parseAdministrativeWorkbook = async (
     let anything = businessNo !== '' || displayName !== ''
     for (const column of metadata.columns) {
       const text = at(row, column.column, rowNo)
-      if (text.length > ADMIN_IMPORT_LIMITS.maxCellChars) {
-        throw new WorkbookUnreadable('cell-too-long', { rowNo, column: column.column })
-      }
       if (text !== '') {
         cells[column.key] = text
         anything = true

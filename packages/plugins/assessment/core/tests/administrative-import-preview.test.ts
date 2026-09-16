@@ -3,9 +3,11 @@ import {
   judgeRows,
   readCell,
   summarise,
+  WRITTEN_TEXT_WIDTHS,
   type PreviewInput,
 } from '../src/administrative-import/preview.ts'
 import type { ParsedWorkbook, TemplateColumn } from '../src/administrative-import/workbook.ts'
+import { AdministrativeEntryImportRow, EntryRevision } from '../src/db/entities.ts'
 
 // Judging a workbook without writing anything.
 //
@@ -182,6 +184,63 @@ describe('judging a whole workbook', () => {
     const without = judgeRows({ ...input, defaultBasis: '   ' })
     // an administrative fact nobody can check is an assertion
     expect(without[1]!.issues.map((one) => one.reason)).toContain('basis-required')
+  })
+
+  it('holds the name and the basis to the columns they are written into', () => {
+    const person = {
+      reachable: reachable('0001', 'p1', '张三'),
+      participantUserIds: new Map([['p1', 'u1']]),
+    }
+    const row = (rowNo: number, displayName: string, basis: string) => ({
+      rowNo,
+      businessNo: '0001',
+      displayName,
+      cells: {},
+      basis,
+    })
+    const rows = judgeRows(
+      base({
+        ...person,
+        parsed: parsed(
+          [],
+          [
+            row(2, '张三', '依'.repeat(WRITTEN_TEXT_WIDTHS.basis)),
+            row(3, '张三', '依'.repeat(WRITTEN_TEXT_WIDTHS.basis + 1)),
+            row(4, '李'.repeat(WRITTEN_TEXT_WIDTHS.displayName + 1), '文件'),
+            // a column counts characters: an emoji is one, not the two
+            // units a string's length would call it
+            row(5, '张三', '🎖'.repeat(WRITTEN_TEXT_WIDTHS.basis)),
+          ],
+        ),
+      }),
+    )
+    // the four rows are one fact about one person, which is a warning of its
+    // own and not what this is about
+    const errors = rows.map((one) => one.issues.filter((found) => found.severity === 'error'))
+    // exactly as wide as the column is written as it is
+    expect(errors[0]).toEqual([])
+    expect(errors[1]).toEqual([{ severity: 'error', field: 'basis', reason: 'too-long' }])
+    // an error, not the name-mismatch warning: it could not be kept either way
+    expect(errors[2]).toEqual([{ severity: 'error', field: 'displayName', reason: 'too-long' }])
+    expect(rows[2]!.issues.map((one) => one.reason)).not.toContain('name-mismatch')
+    expect(errors[3]).toEqual([])
+
+    // the shared basis lands in the same column as a row's own
+    const shared = judgeRows(
+      base({
+        ...person,
+        parsed: parsed([], [row(2, '张三', '')]),
+        defaultBasis: '依'.repeat(WRITTEN_TEXT_WIDTHS.basis + 1),
+      }),
+    )
+    expect(shared[0]!.issues).toEqual([{ severity: 'error', field: 'basis', reason: 'too-long' }])
+  })
+
+  it('knows the widths the entities declare, not a copy that could drift from them', () => {
+    expect(WRITTEN_TEXT_WIDTHS).toEqual({
+      displayName: AdministrativeEntryImportRow.meta.properties.displayNameSnapshot.length,
+      basis: EntryRevision.meta.properties.note.length,
+    })
   })
 
   it('refuses a determination the question requires and the file left out', () => {

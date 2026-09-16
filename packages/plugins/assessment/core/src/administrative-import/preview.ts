@@ -45,6 +45,35 @@ const issue = (
 ): PreviewIssue => ({ severity, field, reason })
 
 /**
+ * How wide the columns are that a row's own text is written into.
+ *
+ * The question's fields are held to their schema by the payload decoder, but
+ * the name as the file spells it and the basis go straight into columns of
+ * their own. Past these widths a row passed every judgment here and was
+ * refused only by the database, inside the commit's transaction - which the
+ * reader saw as the service failing rather than as a row to shorten. The
+ * entity declarations are the source of both numbers; a test keeps these
+ * equal to them.
+ */
+export const WRITTEN_TEXT_WIDTHS = {
+  /** administrative_entry_import_rows.display_name_snapshot */
+  displayName: 255,
+  /** entry_revisions.note, where the basis of the fact is kept */
+  basis: 500,
+} as const
+
+/**
+ * A text's width the way a varchar column counts it: in characters, not in
+ * the UTF-16 units `length` counts, or a name with an emoji in it would be
+ * refused for a width it does not take.
+ */
+const widthOf = (text: string) => {
+  let width = 0
+  for (const _ of text) width += 1
+  return width
+}
+
+/**
  * A cell's text as the value its column declares.
  *
  * Text arrives as text; everything else is a narrow, explicit reading. A
@@ -153,6 +182,10 @@ export const judgeRows = (input: PreviewInput): readonly PreviewRow[] => {
       issues.push(issue('error', 'businessNo', 'participant-not-found'))
     } else if (input.participantUserIds.get(matched.id) === input.actorUserId) {
       issues.push(issue('error', 'businessNo', 'self-record-refused'))
+    } else if (widthOf(row.displayName) > WRITTEN_TEXT_WIDTHS.displayName) {
+      // kept as the file spelled it, so it has to fit where it is kept; a
+      // warning here would be a promise the commit cannot keep
+      issues.push(issue('error', 'displayName', 'too-long'))
     } else if (row.displayName !== '' && row.displayName !== matched.displayName) {
       // not a blocker: a nickname in the file is a person being careless,
       // not a person being wrong about who they meant
@@ -184,6 +217,9 @@ export const judgeRows = (input: PreviewInput): readonly PreviewRow[] => {
 
     const basis = row.basis.trim() !== '' ? row.basis.trim() : input.defaultBasis.trim()
     if (basis === '') issues.push(issue('error', 'basis', 'basis-required'))
+    else if (widthOf(basis) > WRITTEN_TEXT_WIDTHS.basis) {
+      issues.push(issue('error', 'basis', 'too-long'))
+    }
 
     if (matched !== undefined && input.maxEntries !== null) {
       const already = input.held.get(matched.id) ?? 0

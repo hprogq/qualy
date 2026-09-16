@@ -914,6 +914,13 @@ export const Entry = defineEntity({
       expression:
         'create unique index uq_entries_tenant_id_item on entries (tenant_id, id, item_id)',
     },
+    // the target of the import row's participant-binding key: a row names
+    // its entry together with the person that entry is about
+    {
+      name: 'uq_entries_tenant_id_participant',
+      expression:
+        'create unique index uq_entries_tenant_id_participant on entries (tenant_id, id, participant_id)',
+    },
     // one participant's entries on one item: the max_entries count and the
     // filing screen both read down this path
     {
@@ -1723,10 +1730,12 @@ export const AdministrativeEntryImport = defineEntity({
     itemId: p.uuid(),
     // frozen: the question version every row in this import was read against
     itemRevisionId: p.uuid(),
-    // the workbook as it was sent, bound only once the import succeeded
-    sourceAttachmentId: p.uuid().nullable(),
-    // the file's own name and size as they were, so the record survives the
-    // attachment being retired
+    // the workbook as it was sent, bound in the same transaction that writes
+    // this row - so there is never an import without one, and the file cannot
+    // be deleted out from under the import that names it
+    sourceAttachmentId: p.uuid(),
+    // the file's own name and size as they were, so the record still reads
+    // once the attachment is retired
     filenameSnapshot: p.string().length(255),
     sizeBytes: p.bigint(),
     contentHashAlgorithm: p.string().length(32).nullable(),
@@ -1769,6 +1778,9 @@ export const AdministrativeEntryImportRow = defineEntity({
     tenantId: tenantOf('administrative_entry_import_rows_tenant_id_tenants_id_fkey'),
     importId: p.uuid(),
     sourceRowNo: p.integer(),
+    // the entry's own participant, and the key refuses any other: this is
+    // what deciding who may read the import joins through, so a row naming
+    // one person and pointing at another's fact would change who can see it
     participantId: p.uuid(),
     entryId: p.uuid(),
     // what the file said the person was called, kept as it was written: it
@@ -1828,12 +1840,20 @@ export const compositeForeignKeys = [
      foreign key (tenant_id, batch_id) references assessment_batches (tenant_id, id) on delete cascade`,
   `alter table administrative_entry_imports add constraint fk_administrative_entry_imports_batch
      foreign key (tenant_id, batch_id) references assessment_batches (tenant_id, id) on delete cascade`,
+  // the question is one of this round's, and the version frozen on the import
+  // is one of that question's: the same two keys an entry revision carries
   `alter table administrative_entry_imports add constraint fk_administrative_entry_imports_item
-     foreign key (tenant_id, item_id) references assessment_items (tenant_id, id) on delete cascade`,
+     foreign key (tenant_id, batch_id, item_id) references assessment_items (tenant_id, batch_id, id) on delete cascade`,
+  `alter table administrative_entry_imports add constraint fk_administrative_entry_imports_item_revision
+     foreign key (tenant_id, item_id, item_revision_id) references assessment_item_revisions (tenant_id, item_id, id) on delete restrict`,
+  // the workbook an import was read from is history, held the way an entry
+  // revision holds its attachments
+  `alter table administrative_entry_imports add constraint fk_administrative_entry_imports_source_attachment
+     foreign key (tenant_id, source_attachment_id) references storage_attachments (tenant_id, id) on delete restrict`,
   `alter table administrative_entry_import_rows add constraint fk_administrative_entry_import_rows_import
      foreign key (tenant_id, import_id) references administrative_entry_imports (tenant_id, id) on delete cascade`,
   `alter table administrative_entry_import_rows add constraint fk_administrative_entry_import_rows_entry
-     foreign key (tenant_id, entry_id) references entries (tenant_id, id) on delete cascade`,
+     foreign key (tenant_id, entry_id, participant_id) references entries (tenant_id, id, participant_id) on delete cascade`,
   `alter table administrative_entry_import_events add constraint fk_administrative_entry_import_events_import
      foreign key (tenant_id, import_id) references administrative_entry_imports (tenant_id, id) on delete cascade`,
   `alter table batch_management_anchors add constraint fk_batch_management_anchors_batch

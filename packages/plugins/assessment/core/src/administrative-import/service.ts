@@ -1209,7 +1209,6 @@ export const makeAdministrativeImportMethods = (
   const openAdministrativeImportSource: AdministrativeImportMethods['openAdministrativeImportSource'] =
     Effect.fn('Assessment.openAdministrativeImportSource')(function* (tenantId, importId, as) {
       const found = yield* readableImport(tenantId, importId, as)
-      if (found.sourceAttachmentId === null) return yield* new AttachmentUnavailable()
       // the import has already answered who may read it; the store is only
       // asked whether the bytes are still there
       return yield* storage

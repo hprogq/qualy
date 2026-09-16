@@ -126,7 +126,7 @@ export interface ImportRow {
   readonly batchId: string
   readonly itemId: string
   readonly itemRevisionId: string
-  readonly sourceAttachmentId: string | null
+  readonly sourceAttachmentId: string
   readonly filenameSnapshot: string
   readonly sizeBytes: string
   readonly contentHashAlgorithm: string | null
@@ -227,8 +227,7 @@ const toImport = (row: Record<string, unknown>): ImportRow => ({
   batchId: String(row['batchId']),
   itemId: String(row['itemId']),
   itemRevisionId: String(row['itemRevisionId']),
-  sourceAttachmentId:
-    row['sourceAttachmentId'] == null ? null : String(row['sourceAttachmentId']),
+  sourceAttachmentId: String(row['sourceAttachmentId']),
   filenameSnapshot: String(row['filenameSnapshot'] ?? ''),
   sizeBytes: String(row['sizeBytes'] ?? '0'),
   contentHashAlgorithm:

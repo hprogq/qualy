@@ -1,5 +1,7 @@
+import zlib from 'node:zlib'
 import ExcelJS from 'exceljs'
 import { describe, expect, it } from 'vitest'
+import { ArchiveRefused, inspectArchive } from '../src/administrative-import/archive.ts'
 import {
   ADMIN_IMPORT_LIMITS,
   buildAdministrativeWorkbook,
@@ -242,6 +244,23 @@ describe('the administrative import workbook', () => {
     expect((refused as WorkbookUnreadable).reason).toBe('file-too-large')
   })
 
+  it('holds the name and the basis to the cell ceiling like every other column', async () => {
+    const template = await buildAdministrativeWorkbook(spec())
+    const tooLong = 'x'.repeat(ADMIN_IMPORT_LIMITS.maxCellChars + 1)
+    // the template's columns: A number, B name, C summary, D level, E basis
+    for (const [row, column] of [
+      [['0012340', tooLong, '入伍', 'national', '文件'], 'B'],
+      [['0012340', '张三', '入伍', 'national', tooLong], 'E'],
+    ] as const) {
+      const refused = await parseAdministrativeWorkbook(await filled(template, [row])).catch(
+        (error: unknown) => error,
+      )
+      expect((refused as WorkbookUnreadable).reason).toBe('cell-too-long')
+      expect((refused as WorkbookUnreadable).column).toBe(column)
+      expect((refused as WorkbookUnreadable).rowNo).toBe(2)
+    }
+  })
+
   it('names columns the way a spreadsheet does', () => {
     expect([1, 2, 26, 27, 28, 52, 53].map(columnLetter)).toEqual([
       'A',
@@ -252,5 +271,139 @@ describe('the administrative import workbook', () => {
       'AZ',
       'BA',
     ])
+  })
+})
+
+/**
+ * A zip archive written by hand, so a test can say what the directory claims
+ * separately from what the data is. `declared` overrides the inflated size
+ * the directory states; `flags` and `method` go into both headers as given.
+ */
+const archiveOf = (
+  parts: readonly {
+    name: string
+    data: Uint8Array
+    declared?: number
+    method?: number
+    flags?: number
+  }[],
+) => {
+  const chunks: Buffer[] = []
+  const directory: Buffer[] = []
+  let offset = 0
+  for (const part of parts) {
+    const name = Buffer.from(part.name)
+    const method = part.method ?? 8
+    const body = method === 8 ? zlib.deflateRawSync(part.data) : Buffer.from(part.data)
+    const inflated = part.declared ?? part.data.byteLength
+    const local = Buffer.alloc(30)
+    local.writeUInt32LE(0x04034b50, 0)
+    local.writeUInt16LE(20, 4)
+    local.writeUInt16LE(part.flags ?? 0, 6)
+    local.writeUInt16LE(method, 8)
+    local.writeUInt32LE(body.byteLength, 18)
+    local.writeUInt32LE(inflated, 22)
+    local.writeUInt16LE(name.byteLength, 26)
+    chunks.push(local, name, body)
+    const central = Buffer.alloc(46)
+    central.writeUInt32LE(0x02014b50, 0)
+    central.writeUInt16LE(20, 4)
+    central.writeUInt16LE(20, 6)
+    central.writeUInt16LE(part.flags ?? 0, 8)
+    central.writeUInt16LE(method, 10)
+    central.writeUInt32LE(body.byteLength, 20)
+    central.writeUInt32LE(inflated, 24)
+    central.writeUInt16LE(name.byteLength, 28)
+    central.writeUInt32LE(offset, 42)
+    directory.push(central, name)
+    offset += local.byteLength + name.byteLength + body.byteLength
+  }
+  const listing = Buffer.concat(directory)
+  const end = Buffer.alloc(22)
+  end.writeUInt32LE(0x06054b50, 0)
+  end.writeUInt16LE(parts.length, 8)
+  end.writeUInt16LE(parts.length, 10)
+  end.writeUInt32LE(listing.byteLength, 12)
+  end.writeUInt32LE(offset, 16)
+  return new Uint8Array(Buffer.concat([...chunks, listing, end]))
+}
+
+const refusalOf = (run: () => void) => {
+  try {
+    run()
+  } catch (error) {
+    return error instanceof ArchiveRefused ? error.reason : error
+  }
+  return null
+}
+
+// Ten megabytes of zip is not ten megabytes of workbook, and the reader under
+// the parser inflates whatever it is handed. So the archive answers for its
+// size before the reader sees a byte of it.
+describe('the archive a workbook arrives in', () => {
+  const small = { maxEntries: 4, maxInflatedBytes: 64 * 1024 }
+
+  it('lets through the workbook the template writes', async () => {
+    const template = await filled(await buildAdministrativeWorkbook(spec()), [
+      ['0012340', '张三', '入伍', 'national', '校发〔2026〕7 号'],
+    ])
+    expect(refusalOf(() => inspectArchive(template))).toBeNull()
+    // and an archive written by hand, so the refusals below are about what
+    // they change and not about the hand-written shape
+    const plain = archiveOf([
+      { name: 'a.xml', data: Buffer.alloc(1000, 0x61) },
+      { name: 'b.xml', data: Buffer.from('stored as it is'), method: 0 },
+    ])
+    expect(refusalOf(() => inspectArchive(plain, small))).toBeNull()
+  })
+
+  it('refuses parts that say they add up to more than the ceiling, inflating none of them', () => {
+    // a declaration alone, backed by a handful of real bytes: nothing about
+    // it needs inflating to be refused
+    const claimed = archiveOf([
+      { name: 'xl/sharedStrings.xml', data: Buffer.from('<sst/>'), declared: 65 * 1024 },
+    ])
+    expect(refusalOf(() => inspectArchive(claimed, small))).toBe('too-large')
+    const many = archiveOf(
+      Array.from({ length: small.maxEntries + 1 }, (_, at) => ({
+        name: `part-${String(at)}.xml`,
+        data: Buffer.from('<x/>'),
+      })),
+    )
+    expect(refusalOf(() => inspectArchive(many, small))).toBe('too-large')
+  })
+
+  it('refuses a part that inflates past what the directory declared for it', () => {
+    // a megabyte of nothing, compressed to about a kilobyte, declared as ten
+    // bytes: the sum is well under the ceiling and the data is the bomb
+    const lying = archiveOf([
+      { name: 'xl/worksheets/sheet1.xml', data: Buffer.alloc(1024 * 1024), declared: 10 },
+    ])
+    expect(refusalOf(() => inspectArchive(lying))).toBe('too-large')
+  })
+
+  it('refuses what the reader would reinterpret rather than guess along with it', async () => {
+    const template = await buildAdministrativeWorkbook(spec())
+    // data before the archive: the reader shifts every offset to cope
+    const prefixed = new Uint8Array([...Buffer.from('#!prepended'), ...template])
+    const encrypted = archiveOf([{ name: 'a.xml', data: Buffer.from('<a/>'), flags: 0x0001 }])
+    const bzip2 = archiveOf([{ name: 'a.xml', data: Buffer.from('<a/>'), method: 12 }])
+    const stored = archiveOf([
+      { name: 'a.xml', data: Buffer.from('<a/>'), method: 0, declared: 400 },
+    ])
+    for (const bytes of [prefixed, encrypted, bzip2, stored]) {
+      expect(refusalOf(() => inspectArchive(bytes))).toBe('malformed')
+    }
+  })
+
+  it('says so through the parser, in the words a reader is shown', async () => {
+    const lying = archiveOf([
+      { name: 'xl/worksheets/sheet1.xml', data: Buffer.alloc(1024 * 1024), declared: 10 },
+    ])
+    const tooLarge = await parseAdministrativeWorkbook(lying).catch((error: unknown) => error)
+    expect((tooLarge as WorkbookUnreadable).reason).toBe('file-too-large')
+    const encrypted = archiveOf([{ name: 'a.xml', data: Buffer.from('<a/>'), flags: 0x0001 }])
+    const malformed = await parseAdministrativeWorkbook(encrypted).catch((error: unknown) => error)
+    expect((malformed as WorkbookUnreadable).reason).toBe('not-xlsx')
   })
 })

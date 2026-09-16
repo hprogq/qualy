@@ -111,3 +111,14 @@ Deployment State(`<state>/database/migrations`),全新安装自己生成 initial
 
 同时撤回的 P3 机制:`@qualy/deployment-state`(state 目录、deployed.lock、target/applied 比对、atomic promotion、文件锁)。
 审计依据:当前分支只有 database capability 有 deploy 副作用,PostgreSQL ledger 已是实例的 applied state。
+
+## 2026-09-17:generate 把外键排在它引用的唯一索引之前(记录,不建机制)
+
+行政认定导入补外键时,新增的 `uq_entries_tenant_id_participant`(entries 上的三列唯一索引)与引用它的
+`fk_administrative_entry_import_rows_entry` 同时出现在一次 diff 里,`qualy generate` 输出的顺序是先 drop/add 外键、最后才建索引。
+这份文件在任何库上都执行不了:`qualy database verify` 重放时报 `there is no unique constraint matching given keys for referenced table "entries"`
+(已实测,把生成原序放回去即复现)。按开发流程人工把 `create unique index` 挪到最前,`verify` 零漂移通过
+(`db/migrations/20260916230042_administrative-import-references.sql` 顶部注释写明了原因)。
+
+**不建机制**:生成物本来就要人工审查,CI 的 `database verify` 与本地同一命令已经能在提交前拦住这类文件,没有漏到任何库上。
+触发条件记在这里:若同类顺序错误再次出现,或某一次没有被 `verify` 拦住,再考虑在 generate 里把「被外键引用的唯一索引」前置。

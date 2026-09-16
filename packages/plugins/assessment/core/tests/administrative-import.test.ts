@@ -621,6 +621,68 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
     expect(found.payload).toEqual({ 'claimed-level-slot': 'national' })
   })
 
+  // A basis or a name the database has no room for passed every judgment the
+  // preview made and failed only inside the commit's transaction, where the
+  // column refused it: nothing was written, but the reader was told the
+  // service had failed instead of which row to shorten. The preview holds the
+  // text to the columns it lands in, so the same file is a row to fix.
+  it('says which text is too long for where it is kept, before anything is written', async () => {
+    const found = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('ai-too-long')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f)
+          yield* numbered(f)
+          const item = yield* recordItem(f, g.batch.id)
+          const revision = one<{ id: string }>(
+            yield* runSql(
+              sql`select current_revision_id as id from assessment_items where id = ${item.id}`,
+            ),
+          ).id
+          const attachmentId = yield* workbook(f, item.id, f.recorder, [
+            // entry_revisions.note is 500 wide
+            ['2023001', 'Zhang San', '依'.repeat(501)],
+            // the row's name snapshot is 255 wide; a mismatch alone is a warning
+            ['2023002', '李'.repeat(256), '校发〔2026〕12 号'],
+          ])
+          const input = { attachmentId, itemId: item.id, expectedItemRevisionId: revision }
+          const preview = yield* assessment.previewAdministrativeImport(
+            f.t,
+            g.batch.id,
+            input,
+            f.principal(f.recorder),
+          )
+          const refused = yield* Effect.exit(
+            assessment.commitAdministrativeImport(
+              f.t,
+              g.batch.id,
+              { ...input, confirmWarnings: true },
+              f.principal(f.recorder),
+            ),
+          )
+          return { preview, refused, after: yield* counts(f) }
+        }),
+      ),
+    )
+    expect(found.preview.rows.map((row) => row.issues)).toEqual([
+      [{ severity: 'error', field: 'basis', reason: 'too-long' }],
+      [{ severity: 'error', field: 'displayName', reason: 'too-long' }],
+    ])
+    expect(found.preview.canCommit).toBe(false)
+    // a refusal naming the rows, not a defect out of the transaction
+    const error = errorOf<{ _tag: string; issues: { rowNo: number; reason: string }[] }>(
+      found.refused,
+    )
+    expect(error?._tag).toBe('ASSESSMENT_ADMINISTRATIVE_IMPORT_INVALID')
+    expect(error?.issues).toEqual([
+      expect.objectContaining({ rowNo: 2, field: 'basis', reason: 'too-long' }),
+      expect.objectContaining({ rowNo: 3, field: 'displayName', reason: 'too-long' }),
+    ])
+    expect(found.after).toEqual({ imports: 0, entries: 0 })
+  })
+
   // A supplementary phase that admits only some people is a different answer
   // for each row. Refusing the whole question would shut the admitted people
   // out; admitting it would let the others in through a spreadsheet.
@@ -822,13 +884,22 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
             ['2023002', 'Li Si', '乙'],
           ])
           const liSiOnly = yield* commit([['2023002', 'Li Si', '丙']])
-          // somebody else's import in the same round
+          // somebody else's import in the same round, with the file it names
+          const theirFile = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into storage_attachments
+                (id, tenant_id, owner_user_id, backend, filename, declared_mime, size,
+                 integrity_algorithm, integrity_value, storage_key, status)
+              values (uuidv7(), ${f.t}, ${f.admin}, 'local', 'theirs.xlsx', 'application/octet-stream', 1,
+                      'sha256', 'abc', ${`attachments/${f.t}/theirs`}, 'staged')
+              returning id`),
+          ).id
           yield* runSql(sql`
             insert into administrative_entry_imports
-              (tenant_id, batch_id, item_id, item_revision_id, filename_snapshot,
-               size_bytes, actor_id, imported_count)
-            values (${f.t}, ${g.batch.id}, ${item.id}, ${revision}, 'theirs.xlsx',
-                    1, ${f.admin}, 0)`)
+              (tenant_id, batch_id, item_id, item_revision_id, source_attachment_id,
+               filename_snapshot, size_bytes, actor_id, imported_count)
+            values (${f.t}, ${g.batch.id}, ${item.id}, ${revision}, ${theirFile},
+                    'theirs.xlsx', 1, ${f.admin}, 0)`)
           // one of the first import's facts withdrawn on its own
           const zhangSan = one<{ id: string }>(
             yield* runSql(sql`
