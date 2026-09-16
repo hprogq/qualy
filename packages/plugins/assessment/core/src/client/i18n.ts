@@ -1344,6 +1344,366 @@ const i18n = definePluginMessages({
     recordSubmit: { id: 'assessment/record/submit', defaultMessage: 'Confirm the record' },
     recordDone: { id: 'assessment/record/done', defaultMessage: 'Recorded.' },
     // ------------------------------------------------------------------
+    // importing a workbook of them, and looking back on what was imported
+    importAction: { id: 'assessment/record/import/action', defaultMessage: 'Import' },
+    importTab: { id: 'assessment/record/import/tab', defaultMessage: 'Imports' },
+    importBack: { id: 'assessment/record/import/back', defaultMessage: 'Back to the imports' },
+    importItemHint: {
+      id: 'assessment/record/import/item-hint',
+      defaultMessage: 'One file imports one item.',
+    },
+    importTemplate: {
+      id: 'assessment/record/import/template',
+      defaultMessage: 'Download the template',
+    },
+    importTemplateHint: {
+      id: 'assessment/record/import/template-hint',
+      defaultMessage: 'One row per person. Leave the header row as it is.',
+    },
+    importFile: { id: 'assessment/record/import/file', defaultMessage: 'List to import' },
+    importFileHint: {
+      id: 'assessment/record/import/file-hint',
+      defaultMessage: 'The .xlsx filled in from this item\'s template.',
+    },
+    importChooseFile: {
+      id: 'assessment/record/import/choose-file',
+      defaultMessage: 'Choose a file',
+    },
+    importUploading: { id: 'assessment/record/import/uploading', defaultMessage: 'Uploading…' },
+    importChooseAnother: {
+      id: 'assessment/record/import/choose-another',
+      defaultMessage: 'Choose another file',
+    },
+    importDefaultBasis: {
+      id: 'assessment/record/import/default-basis',
+      defaultMessage: 'Shared basis',
+    },
+    importDefaultBasisHint: {
+      id: 'assessment/record/import/default-basis-hint',
+      defaultMessage: 'Used for every row that leaves its basis blank.',
+    },
+    importChecking: {
+      id: 'assessment/record/import/checking',
+      defaultMessage: 'Checking the file…',
+    },
+    importRecheck: { id: 'assessment/record/import/recheck', defaultMessage: 'Check again' },
+    importResult: { id: 'assessment/record/import/result', defaultMessage: 'Check result' },
+    importSummaryRows: {
+      id: 'assessment/record/import/summary-rows',
+      defaultMessage: '{count, plural, one {# row} other {# rows}}',
+    },
+    importSummaryValid: {
+      id: 'assessment/record/import/summary-valid',
+      defaultMessage: '{count} ready',
+    },
+    importSummaryWarnings: {
+      id: 'assessment/record/import/summary-warnings',
+      defaultMessage: '{count} to check',
+    },
+    importSummaryErrors: {
+      id: 'assessment/record/import/summary-errors',
+      defaultMessage: '{count} with errors',
+    },
+    importFixAndRetry: {
+      id: 'assessment/record/import/fix-and-retry',
+      defaultMessage: 'Correct the rows with errors in the file, then upload it again.',
+    },
+    importAllReady: {
+      id: 'assessment/record/import/all-ready',
+      defaultMessage: 'Every row can be imported.',
+    },
+    importConfirmWarnings: {
+      id: 'assessment/record/import/confirm-warnings',
+      defaultMessage: 'I have checked the rows marked to check',
+    },
+    importCommit: {
+      id: 'assessment/record/import/commit',
+      defaultMessage: '{count, plural, one {Import # record} other {Import # records}}',
+    },
+    importDone: {
+      id: 'assessment/record/import/done',
+      defaultMessage: '{count, plural, one {Imported # record.} other {Imported # records.}}',
+    },
+    importColumnRow: { id: 'assessment/record/import/column-row', defaultMessage: 'Row' },
+    importColumnBusinessNo: {
+      id: 'assessment/record/import/column-business-no',
+      defaultMessage: 'Number',
+    },
+    importColumnName: { id: 'assessment/record/import/column-name', defaultMessage: 'Name' },
+    importColumnIssues: {
+      id: 'assessment/record/import/column-issues',
+      defaultMessage: 'What to check',
+    },
+    importShowAll: {
+      id: 'assessment/record/import/show-all',
+      defaultMessage: 'Show all {count} rows',
+    },
+    importShowProblems: {
+      id: 'assessment/record/import/show-problems',
+      defaultMessage: 'Show only rows to check',
+    },
+    importSeverityWarning: {
+      id: 'assessment/record/import/severity-warning',
+      defaultMessage: 'Check',
+    },
+    importSeverityError: { id: 'assessment/record/import/severity-error', defaultMessage: 'Error' },
+    importIssueAt: { id: 'assessment/record/import/issue-at', defaultMessage: '{field}: {reason}' },
+    importFileUnreadable: {
+      id: 'assessment/record/import/file-unreadable',
+      defaultMessage: 'This file cannot be imported',
+    },
+    importReasonBusinessNoRequired: {
+      id: 'assessment/record/import/reason/business-no-required',
+      defaultMessage: 'No number',
+    },
+    importReasonParticipantNotFound: {
+      id: 'assessment/record/import/reason/participant-not-found',
+      defaultMessage: 'Nobody you can record on has this number here',
+    },
+    importReasonSelfRecord: {
+      id: 'assessment/record/import/reason/self-record-refused',
+      defaultMessage: 'You cannot record on yourself',
+    },
+    importReasonNameMismatch: {
+      id: 'assessment/record/import/reason/name-mismatch',
+      defaultMessage: 'The name differs from the roster',
+    },
+    importReasonBasisRequired: {
+      id: 'assessment/record/import/reason/basis-required',
+      defaultMessage: 'No basis',
+    },
+    importReasonRecognitionRequired: {
+      id: 'assessment/record/import/reason/recognition-required',
+      defaultMessage: 'No determination',
+    },
+    importReasonMaxEntries: {
+      id: 'assessment/record/import/reason/max-entries-reached',
+      defaultMessage: 'This person has reached the limit for this item',
+    },
+    importReasonDuplicate: {
+      id: 'assessment/record/import/reason/duplicate-in-file',
+      defaultMessage: 'The same as another row in this file',
+    },
+    importReasonDecimal: {
+      id: 'assessment/record/import/reason/decimal-syntax',
+      defaultMessage: 'Not a number',
+    },
+    importReasonInteger: {
+      id: 'assessment/record/import/reason/integer-syntax',
+      defaultMessage: 'Not a whole number',
+    },
+    importReasonIntegerRange: {
+      id: 'assessment/record/import/reason/integer-range',
+      defaultMessage: 'The number is too large',
+    },
+    importReasonDate: {
+      id: 'assessment/record/import/reason/date-syntax',
+      defaultMessage: 'Write the date as 2026-03-01',
+    },
+    importReasonChoice: {
+      id: 'assessment/record/import/reason/choice-unknown',
+      defaultMessage: 'Not one of the choices',
+    },
+    importReasonBoolean: {
+      id: 'assessment/record/import/reason/boolean-syntax',
+      defaultMessage: 'Write 是 or 否',
+    },
+    importReasonRequired: {
+      id: 'assessment/record/import/reason/required',
+      defaultMessage: 'Required',
+    },
+    importReasonOutOfRange: {
+      id: 'assessment/record/import/reason/out-of-range',
+      defaultMessage: 'Outside the dates this round covers',
+    },
+    importReasonTooLong: {
+      id: 'assessment/record/import/reason/too-long',
+      defaultMessage: 'Too long',
+    },
+    importReasonDetermination: {
+      id: 'assessment/record/import/reason/determination-refused',
+      defaultMessage: 'The scoring rule does not accept this determination: {detail}',
+    },
+    importReasonOutOfScope: {
+      id: 'assessment/record/import/reason/participant-out-of-scope',
+      defaultMessage: 'The current stage does not include this person',
+    },
+    importReasonPhaseClosed: {
+      id: 'assessment/record/import/reason/phase-closed',
+      defaultMessage: 'The current stage does not allow recording',
+    },
+    importReasonNoPhase: {
+      id: 'assessment/record/import/reason/no-active-phase',
+      defaultMessage: 'No stage is under way',
+    },
+    importReasonItemOutOfScope: {
+      id: 'assessment/record/import/reason/item-out-of-scope',
+      defaultMessage: 'The current stage does not include this item',
+    },
+    importReasonNotHeld: {
+      id: 'assessment/record/import/reason/permission-not-held',
+      defaultMessage: 'You cannot record in this round',
+    },
+    importReasonNotAbandonable: {
+      id: 'assessment/record/import/reason/entry-not-abandonable',
+      defaultMessage: 'This record cannot be withdrawn now',
+    },
+    importReasonNotXlsx: {
+      id: 'assessment/record/import/reason/not-xlsx',
+      defaultMessage: 'Not an .xlsx file',
+    },
+    importReasonTooLarge: {
+      id: 'assessment/record/import/reason/file-too-large',
+      defaultMessage: 'The file is too large',
+    },
+    importReasonTooManyRows: {
+      id: 'assessment/record/import/reason/too-many-rows',
+      defaultMessage: 'More than 2,000 rows',
+    },
+    importReasonTooManyColumns: {
+      id: 'assessment/record/import/reason/too-many-columns',
+      defaultMessage: 'Too many columns',
+    },
+    importReasonTooManySheets: {
+      id: 'assessment/record/import/reason/too-many-sheets',
+      defaultMessage: 'Too many sheets',
+    },
+    importReasonSheetMissing: {
+      id: 'assessment/record/import/reason/data-sheet-missing',
+      defaultMessage: 'The 行政认定 sheet is missing',
+    },
+    importReasonMetadataMissing: {
+      id: 'assessment/record/import/reason/metadata-missing',
+      defaultMessage: 'Not a template downloaded from here',
+    },
+    importReasonMetadataCorrupt: {
+      id: 'assessment/record/import/reason/metadata-corrupt',
+      defaultMessage: 'The template\'s hidden details were changed. Download it again.',
+    },
+    importReasonOldTemplate: {
+      id: 'assessment/record/import/reason/unsupported-template-version',
+      defaultMessage: 'An old template. Download it again.',
+    },
+    importReasonFormula: {
+      id: 'assessment/record/import/reason/formula-not-allowed',
+      defaultMessage: 'A cell holds a formula. Paste the values instead.',
+    },
+    importReasonCellTooLong: {
+      id: 'assessment/record/import/reason/cell-too-long',
+      defaultMessage: 'A cell is too long',
+    },
+    importReasonCellError: {
+      id: 'assessment/record/import/reason/cell-error',
+      defaultMessage: 'A cell holds an error value',
+    },
+    importReasonUnavailable: {
+      id: 'assessment/record/import/reason/source-unavailable',
+      defaultMessage: 'The file cannot be read right now. Try again.',
+    },
+    importReasonNoRows: {
+      id: 'assessment/record/import/reason/no-rows',
+      defaultMessage: 'The file has no rows',
+    },
+    importReasonUnreadable: {
+      id: 'assessment/record/import/reason/unreadable',
+      defaultMessage: 'This cell cannot be read',
+    },
+    importReasonOther: {
+      id: 'assessment/record/import/reason/other',
+      defaultMessage: 'Something is wrong here ({reason})',
+    },
+    importHistoryEmpty: {
+      id: 'assessment/record/import/history-empty',
+      defaultMessage: 'No imports yet.',
+    },
+    importColumnFile: { id: 'assessment/record/import/column-file', defaultMessage: 'File' },
+    importColumnStanding: { id: 'assessment/record/import/column-standing', defaultMessage: 'Now' },
+    importStandingCount: {
+      id: 'assessment/record/import/standing-count',
+      defaultMessage: '{count, plural, one {# record} other {# records}}',
+    },
+    importStandingVoided: {
+      id: 'assessment/record/import/standing-voided',
+      defaultMessage: '{count} withdrawn',
+    },
+    importDetailBy: {
+      id: 'assessment/record/import/detail-by',
+      defaultMessage: '{when} · {actor}',
+    },
+    importDetailRevision: {
+      id: 'assessment/record/import/detail-revision',
+      defaultMessage: 'Item version',
+    },
+    importDetailRevisionNo: {
+      id: 'assessment/record/import/detail-revision-no',
+      defaultMessage: 'Version {no}',
+    },
+    importDetailBasisNone: {
+      id: 'assessment/record/import/detail-basis-none',
+      defaultMessage: 'None',
+    },
+    importDetailSource: {
+      id: 'assessment/record/import/detail-source',
+      defaultMessage: 'Original file',
+    },
+    importDetailDownload: {
+      id: 'assessment/record/import/detail-download',
+      defaultMessage: 'Download',
+    },
+    importDetailCount: { id: 'assessment/record/import/detail-count', defaultMessage: 'Imported' },
+    importDetailNow: { id: 'assessment/record/import/detail-now', defaultMessage: 'Now' },
+    importNowApproved: {
+      id: 'assessment/record/import/now-approved',
+      defaultMessage: '{count} in effect',
+    },
+    importNowInReview: {
+      id: 'assessment/record/import/now-in-review',
+      defaultMessage: '{count} under appeal',
+    },
+    importNowRejected: {
+      id: 'assessment/record/import/now-rejected',
+      defaultMessage: '{count} not upheld',
+    },
+    importNowVoided: {
+      id: 'assessment/record/import/now-voided',
+      defaultMessage: '{count} withdrawn',
+    },
+    importReverse: {
+      id: 'assessment/record/import/reverse',
+      defaultMessage: 'Withdraw this import',
+    },
+    importReverseTitle: {
+      id: 'assessment/record/import/reverse-title',
+      defaultMessage: 'Withdraw this import?',
+    },
+    importReverseHint: {
+      id: 'assessment/record/import/reverse-hint',
+      defaultMessage: 'Records from this import that are still in effect will stop counting. The records and their history stay.',
+    },
+    importReversed: {
+      id: 'assessment/record/import/reversed',
+      defaultMessage: '{count, plural, =0 {Nothing was left to withdraw.} one {Withdrew # record.} other {Withdrew # records.}}',
+    },
+    importReverseRefused: {
+      id: 'assessment/record/import/reverse-refused',
+      defaultMessage: '{count, plural, one {# record in this import cannot be withdrawn now.} other {# records in this import cannot be withdrawn now.}} Handle them one by one, then try again.',
+    },
+    importReversals: { id: 'assessment/record/import/reversals', defaultMessage: 'Withdrawals' },
+    importReversalLine: {
+      id: 'assessment/record/import/reversal-line',
+      defaultMessage: '{when} · {actor} withdrew {count}: {reason}',
+    },
+    importRows: { id: 'assessment/record/import/rows', defaultMessage: 'Rows' },
+    importColumnStatus: { id: 'assessment/record/import/column-status', defaultMessage: 'Status' },
+    importColumnDetermination: {
+      id: 'assessment/record/import/column-determination',
+      defaultMessage: 'Determination',
+    },
+    importViewImport: {
+      id: 'assessment/record/import/view-import',
+      defaultMessage: 'View its import',
+    },
+    // ------------------------------------------------------------------
     // configuring the questions
     itemsTab: { id: 'assessment/items/tab', defaultMessage: 'Item configuration' },
     itemsHint: {

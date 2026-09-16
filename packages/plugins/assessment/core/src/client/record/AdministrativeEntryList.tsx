@@ -208,6 +208,10 @@ export function AdministrativeEntryList({
                     <span {...stylex.props(styles.name)}>{row.participant.displayName}</span>
                     <span {...stylex.props(styles.under)}>
                       {row.participant.businessNo ?? format(m.noBusinessNoShort)}
+                      <span aria-hidden>·</span>
+                      {format(
+                        row.source === 'import' ? m.recordSourceImport : m.recordSourceManual,
+                      )}
                     </span>
                   </span>
                   <span {...stylex.props(styles.itemCell)}>{row.item.title}</span>

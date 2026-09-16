@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { choiceLabel, displayTitle, kindOf, type AtomicSchema } from '@qualy/value-schema'
@@ -78,6 +78,7 @@ export function ManagedEntrySheet({
   busy,
   onClose,
   onIntervene,
+  provenance,
 }: {
   open: boolean
   entry: EntryDto
@@ -90,6 +91,8 @@ export function ManagedEntrySheet({
   onClose: () => void
   /** both acts take a reason, and the api refuses an empty one */
   onIntervene: (kind: 'return-for-revision' | 'void', reason: string) => void
+  /** where the claim came from, as a way to go there: the import it arrived in */
+  provenance?: ReactNode
 }) {
   const { format } = useI18n()
   const [asking, setAsking] = useState<'return-for-revision' | 'void' | null>(null)
@@ -112,6 +115,7 @@ export function ManagedEntrySheet({
         aside={<Determination recognition={recognition} entry={entry} itemId={item.id} />}
         footer={
           <>
+            {provenance}
             <span {...stylex.props(styles.spacer)} />
             {settled && administrative && (
               <Button

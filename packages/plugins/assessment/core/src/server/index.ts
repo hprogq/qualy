@@ -32,162 +32,15 @@ import { gateAllows, type GateContext, type GateDecision } from '../phase/gate.t
 import { PARTICIPANT_ACTION_CODES, BATCH_STAFF_CODES } from '../permissions.ts'
 import { ItemTypeCatalog, ScoringDefinitionCatalog } from '../plugin.ts'
 import { makeItemMethods, type ItemMethods, type ItemView } from '../item/service.ts'
+import { currentBatchConfigs, liveBatchPayloads, revisionsByIdOf } from '../item/db.ts'
 import {
-  currentBatchConfigs,
-  itemOf,
-  liveBatchPayloads,
-  revisionOf as itemRevisionOf,
-  revisionsByIdOf,
-} from '../item/db.ts'
-import {
-  buildAdministrativeWorkbook,
-  parseAdministrativeWorkbook,
-  WorkbookUnreadable,
-} from '../administrative-import/workbook.ts'
-import { readSourceBytes, SourceUnreadable } from '../administrative-import/read-source.ts'
-import { judgeRows, summarise } from '../administrative-import/preview.ts'
-import {
-  effectiveEntryCounts,
-  importsOfBatchPage,
-  insertImport,
-  insertImportRows,
-  resolveImportParticipants,
-  standingOfImports,
-} from '../administrative-import/db.ts'
+  makeAdministrativeImportMethods,
+  type AdministrativeImportMethods,
+} from '../administrative-import/service.ts'
 import { currentRecognitionsOfEntries } from '../scoring/recognition-db.ts'
 import { readScoringPlan } from '../scoring/plan.ts'
-import {
-  canonicalRecognition,
-  judgeRecognition,
-  recognitionFormFields,
-} from '../scoring/recognition.ts'
-import { hashCanonicalJson } from '@qualy/value-schema/hash'
-import { recordAdministrativeEntryTx } from '../entry/administrative-write.ts'
-import { proveSettlements } from '../scoring/failure-boundary.ts'
-import { ScoringRuntimeCatalog } from '../plugin.ts'
-import type { UploadTicket } from '@qualy/plugin-storage/upload'
+import { recognitionFormFields } from '../scoring/recognition.ts'
 
-/**
- * The fields an evidence form declares, as schemas.
- *
- * The form config is a list of specs whose shape the item type driver owns;
- * a workbook only needs the key and enough of the schema to print a column
- * header and read a cell back, which every kind of spec carries.
- */
-const evidenceFieldsOf = (
-  formConfig: unknown,
-): readonly { key: string; schema: import('@qualy/value-schema').AtomicSchema }[] => {
-  const fields = (formConfig as { fields?: unknown } | null)?.fields
-  if (!Array.isArray(fields)) return []
-  return fields.flatMap((raw) => {
-    const field = raw as { key?: unknown; type?: unknown; label?: unknown; schema?: unknown }
-    if (typeof field.key !== 'string') return []
-    const schema =
-      field.schema !== undefined && field.schema !== null
-        ? (field.schema as import('@qualy/value-schema').AtomicSchema)
-        : ({
-            type: field.type === 'integer' ? 'integer' : 'string',
-            ...(typeof field.label === 'string' ? { title: field.label } : {}),
-          } as import('@qualy/value-schema').AtomicSchema)
-    return [{ key: field.key, schema }]
-  })
-}
-
-/** whether the question insists on material a workbook cannot carry */
-const requiresAttachment = (formConfig: unknown): boolean => {
-  const fields = (formConfig as { fields?: unknown } | null)?.fields
-  if (!Array.isArray(fields)) return false
-  return fields.some((raw) => {
-    const field = raw as { type?: unknown; required?: unknown }
-    return field.type === 'attachment' && field.required === true
-  })
-}
-
-/** what a preview answers, assembled */
-interface AdministrativeImportPreview {
-  readonly item: { readonly id: string; readonly title: string; readonly revisionId: string }
-  readonly summary: {
-    readonly rows: number
-    readonly valid: number
-    readonly warnings: number
-    readonly errors: number
-  }
-  readonly rows: readonly {
-    readonly rowNo: number
-    readonly businessNo: string
-    readonly displayNameFromFile: string
-    readonly matchedParticipant: {
-      readonly id: string
-      readonly displayName: string
-      readonly businessNo: string | null
-    } | null
-    readonly payloadPreview: Record<string, unknown>
-    readonly recognitionPreview: Record<string, unknown>
-    readonly basis: string
-    readonly issues: readonly {
-      readonly severity: 'error' | 'warning'
-      readonly field: string | null
-      readonly reason: string
-    }[]
-  }[]
-  readonly canCommit: boolean
-}
-
-/**
- * One row of the administrative record book, assembled.
- *
- * The cursor rides with the row rather than being recomputed by the handler:
- * the keyset is the row's own creation instant, and the handler has no
- * business knowing which two columns that is.
- */
-interface AdministrativeEntryView {
-  readonly entryId: string
-  readonly participant: {
-    readonly id: string
-    readonly userId: string
-    readonly displayName: string
-    readonly businessNo: string | null
-  }
-  readonly item: { readonly id: string; readonly title: string }
-  readonly source: 'record' | 'import'
-  readonly status: AdministrativeEntryRow['status']
-  readonly revision: {
-    readonly id: string
-    readonly payload: Record<string, unknown>
-    readonly note: string | null
-    readonly actorId: string
-    readonly actorName: string | null
-    readonly createdAt: string
-  }
-  readonly recognition: {
-    readonly id: string
-    readonly itemRevisionId: string
-    readonly values: Record<string, unknown>
-    readonly fields: readonly { readonly id: string; readonly schema: unknown }[]
-  } | null
-  readonly importId: string | null
-  /** what the next page starts after, in the order this list is read */
-  readonly cursor: readonly [string, string]
-}
-
-/** one import in the history of a round */
-export interface AdministrativeImportView {
-  readonly id: string
-  readonly item: { readonly id: string; readonly title: string }
-  readonly filename: string
-  readonly actor: { readonly id: string; readonly name: string } | null
-  readonly createdAt: string
-  readonly importedCount: number
-  readonly standing: {
-    readonly approved: number
-    readonly inReview: number
-    readonly rejected: number
-    readonly voided: number
-    readonly other: number
-  }
-  /** what the next page starts after, in the order this list is read */
-  readonly cursor: readonly [string, string]
-}
 import { makeEntryMethods, type EntryMethods, type EntryView } from '../entry/service.ts'
 import { makeReviewMethods, type ReviewDetailView, type ReviewMethods } from '../review/service.ts'
 import {
@@ -224,23 +77,17 @@ import { Storage } from '@qualy/plugin-storage/server'
 import {
   AttachmentUnavailable,
   AccessInvalid,
-  AdministrativeImportInvalid,
   AdvanceInvalid,
   BatchNoParticipants,
   BatchNotFound,
   BatchReadOnly,
   BatchReferenceInvalid,
   BatchStatusInvalid,
-  EntryActionRefused,
-  ItemNotFound,
-  ItemRevisionConflict,
   MaterialRangeInvalid,
   ParticipantInvalid,
   ParticipantNotFound,
   PhaseNotFound,
   PlanInvalid,
-  DeterminationRefused,
-  ScoringUnavailable,
   TemplateConflict,
   TemplateNotFound,
   batchConstraints,
@@ -331,6 +178,43 @@ import { DEFAULT_REVIEW_REASONS } from '../review/reasons.ts'
 // The assessment service: the engine's answers, wired to rows. Every write
 // serializes on its batch row, "entered" is decided by the clock, and the
 // engine's structured refusals go to the wire as they are.
+
+/**
+ * One row of the administrative record book, assembled.
+ *
+ * The cursor rides with the row rather than being recomputed by the handler:
+ * the keyset is the row's own creation instant, and the handler has no
+ * business knowing which two columns that is.
+ */
+interface AdministrativeEntryView {
+  readonly entryId: string
+  readonly participant: {
+    readonly id: string
+    readonly userId: string
+    readonly displayName: string
+    readonly businessNo: string | null
+  }
+  readonly item: { readonly id: string; readonly title: string }
+  readonly source: 'record' | 'import'
+  readonly status: AdministrativeEntryRow['status']
+  readonly revision: {
+    readonly id: string
+    readonly payload: Record<string, unknown>
+    readonly note: string | null
+    readonly actorId: string
+    readonly actorName: string | null
+    readonly createdAt: string
+  }
+  readonly recognition: {
+    readonly id: string
+    readonly itemRevisionId: string
+    readonly values: Record<string, unknown>
+    readonly fields: readonly { readonly id: string; readonly schema: unknown }[]
+  } | null
+  readonly importId: string | null
+  /** what the next page starts after, in the order this list is read */
+  readonly cursor: readonly [string, string]
+}
 
 export interface MaterialRange {
   readonly start: string
@@ -1003,122 +887,18 @@ export class Assessment extends Context.Service<
       participantId: string,
       as: Principal,
     ) => Effect.Effect<ParticipantRow, BatchNotFound | ParticipantNotFound | AccessDenied>
-    /**
-     * The workbook for one question as it stands, built rather than stored.
-     *
-     * Admission is the same one the recording itself asks for: a live
-     * administrative question in a round this caller may record on. A
-     * template is a projection of the current version and carries which
-     * version that was, which is what lets the import refuse a file filled
-     * in against a question that has since moved.
-     */
-    readonly administrativeImportTemplate: (
-      tenantId: string,
-      itemId: string,
-      locale: string,
-      as: Principal,
-    ) => Effect.Effect<Uint8Array, ItemNotFound | EntryActionRefused | AccessDenied>
-    /** a door for the workbook itself, which is not evidence backing a claim */
-    readonly prepareAdministrativeImportUpload: (
-      tenantId: string,
-      batchId: string,
-      input: {
-        itemId: string
-        filename: string
-        declaredMime: string
-        size: string
-      },
-      as: Principal,
-    ) => Effect.Effect<
-      UploadTicket,
-      BatchNotFound | ItemNotFound | BatchReadOnly | EntryActionRefused | AccessDenied
-    >
-    readonly completeAdministrativeImportUpload: (
-      tenantId: string,
-      reservationId: string,
-      as: Principal,
-    ) => Effect.Effect<
-      { id: string; filename: string; declaredMime: string; size: string; status: string },
-      AttachmentUnavailable | EntryActionRefused
-    >
-    /**
-     * The import itself: every row, or none of them.
-     *
-     * The preview is a courtesy to whoever filled the file in, never an
-     * authorization to write what it said - so the workbook is opened,
-     * parsed and judged again here, and everything that could have moved
-     * while it was being read is asked a second time under the batch lock.
-     */
-    readonly commitAdministrativeImport: (
-      tenantId: string,
-      batchId: string,
-      input: {
-        attachmentId: string
-        itemId: string
-        expectedItemRevisionId: string
-        defaultBasis?: string
-        confirmWarnings?: boolean
-      },
-      as: Principal,
-    ) => Effect.Effect<
-      { importId: string; importedCount: number },
-      | BatchNotFound
-      | ItemNotFound
-      | ItemRevisionConflict
-      | BatchReadOnly
-      | EntryActionRefused
-      | AttachmentUnavailable
-      | AdministrativeImportInvalid
-      | DeterminationRefused
-      | ScoringUnavailable
-      | AccessDenied,
-      ScoringRuntimeCatalog
-    >
-    /**
-     * The imports this reader may still look back on, newest first.
-     *
-     * Their own, and only while every person in them is still somebody they
-     * may record on. Administering the round does not widen it: overseeing
-     * every import would be a read-only surface of its own, not a side
-     * effect of the recording desk.
-     */
-    readonly listAdministrativeImports: (
-      tenantId: string,
-      batchId: string,
-      page: { after?: readonly [string, string]; limit: number },
-      as: Principal,
-    ) => Effect.Effect<readonly AdministrativeImportView[], BatchNotFound | AccessDenied>
-    /**
-     * What a workbook would do, worked out and thrown away.
-     *
-     * Creates no import: an import is a thing that happened, and nothing has
-     * happened yet. The file is re-read from the staged attachment rather
-     * than taken from the browser, or the original kept as provenance and
-     * the rows actually written are two different documents.
-     */
-    readonly previewAdministrativeImport: (
-      tenantId: string,
-      batchId: string,
-      input: {
-        attachmentId: string
-        itemId: string
-        expectedItemRevisionId: string
-        defaultBasis?: string
-      },
-      as: Principal,
-    ) => Effect.Effect<
-      AdministrativeImportPreview,
-      | BatchNotFound
-      | ItemNotFound
-      | ItemRevisionConflict
-      | BatchReadOnly
-      | EntryActionRefused
-      | AttachmentUnavailable
-      | AdministrativeImportInvalid
-      | ScoringUnavailable
-      | AccessDenied,
-      ScoringRuntimeCatalog
-    >
+    /** administrative facts in bulk: a workbook in, an import out, and taking one back */
+    readonly administrativeImportTemplate: AdministrativeImportMethods['administrativeImportTemplate']
+    readonly prepareAdministrativeImportUpload: AdministrativeImportMethods['prepareAdministrativeImportUpload']
+    readonly completeAdministrativeImportUpload: AdministrativeImportMethods['completeAdministrativeImportUpload']
+    readonly previewAdministrativeImport: AdministrativeImportMethods['previewAdministrativeImport']
+    readonly commitAdministrativeImport: AdministrativeImportMethods['commitAdministrativeImport']
+    readonly listAdministrativeImports: AdministrativeImportMethods['listAdministrativeImports']
+    readonly getAdministrativeImport: AdministrativeImportMethods['getAdministrativeImport']
+    readonly listAdministrativeImportRows: AdministrativeImportMethods['listAdministrativeImportRows']
+    readonly openAdministrativeImportSource: AdministrativeImportMethods['openAdministrativeImportSource']
+    readonly describeAdministrativeImportSource: AdministrativeImportMethods['describeAdministrativeImportSource']
+    readonly reverseAdministrativeImport: AdministrativeImportMethods['reverseAdministrativeImport']
     /**
      * The book of administrative facts in one round, newest first.
      *
@@ -1132,6 +912,7 @@ export class Assessment extends Context.Service<
       batchId: string,
       filter: {
         q?: string
+        entryId?: string
         itemId?: string
         source?: 'record' | 'import'
         status?: AdministrativeEntryRow['status']
@@ -2319,264 +2100,6 @@ export const make = Effect.fn('Assessment.make')(function* () {
     },
   })
 
-  /**
-   * The one admission every bulk administrative act passes through.
-   *
-   * Asked once, before a file is read, rather than per row: a live
-   * administrative question in a round this caller may record on, with a
-   * compiled plan to judge determinations against. Everything downstream is
-   * about VALUES, and a value cannot be judged until it is known whose
-   * question it answers.
-   *
-   * The phase gate is in here too, which is what stops a closed round being
-   * written to through a spreadsheet after the form has stopped offering it.
-   */
-  const administrativeQuestion = Effect.fn('Assessment.administrativeQuestion')(function* (
-    tenantId: string,
-    itemId: string,
-    as: Principal,
-  ) {
-    const item = yield* dieQuery(withDb(itemOf(tenantId, itemId)))
-    if (item === null) return yield* new ItemNotFound()
-    if (item.status !== 'active') {
-      return yield* new EntryActionRefused({ action: 'import', reason: 'item-not-active' })
-    }
-    const revision =
-      item.currentRevisionId === null
-        ? null
-        : yield* dieQuery(withDb(itemRevisionOf(tenantId, item.currentRevisionId)))
-    if (revision === null) {
-      return yield* new EntryActionRefused({ action: 'import', reason: 'item-not-configured' })
-    }
-    if (revision.entrySource !== 'administrative') {
-      return yield* new EntryActionRefused({ action: 'import', reason: 'item-not-administrative' })
-    }
-    const decision = yield* authorizeAction(as, 'assessment.entry.record', item.batchId, {
-      itemId,
-    }).pipe(Effect.catchTag('ASSESSMENT_BATCH_NOT_FOUND', Effect.die))
-    if (!decision.allowed) {
-      return yield* new EntryActionRefused({ action: 'import', reason: decision.reason })
-    }
-    const plan = yield* Effect.orDie(readScoringPlan(revision))
-    return { item, revision, plan }
-  })
-
-  /**
-   * The part of an import a preview stops after and a commit carries on
-   * from.
-   *
-   * Reading the file, judging every row and proving the arithmetic all
-   * happen here, outside any transaction. That is the whole reason a commit
-   * can afford to hold the batch lock: by the time it takes one, the only
-   * work left is writing and one more look at what could have moved.
-   */
-  const previewOf = Effect.fn('Assessment.administrativeImportPreview')(function* (
-    tenantId: string,
-    batchId: string,
-    input: {
-      attachmentId: string
-      itemId: string
-      expectedItemRevisionId: string
-      defaultBasis?: string
-    },
-    as: Principal,
-    runtime: ScoringRuntimeCatalog['Service'],
-  ) {
-      const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
-      if (!batch) return yield* new BatchNotFound()
-      if (batch.status === 'archived') return yield* new BatchReadOnly()
-      const ready = yield* administrativeQuestion(tenantId, input.itemId, as)
-      if (ready.item.batchId !== batchId) return yield* new ItemNotFound()
-      // the question the file was filled in against, before its contents
-      // are read: a newly required field must say "the paper moved", not
-      // "this cell is missing"
-      if (ready.revision.id !== input.expectedItemRevisionId) {
-        return yield* new ItemRevisionConflict({
-          itemId: ready.item.id,
-          currentRevisionId: ready.item.currentRevisionId,
-        })
-      }
-      // no import can carry a file it cannot attach material for
-      if (requiresAttachment(ready.revision.formConfig)) {
-        return yield* new EntryActionRefused({
-          action: 'import',
-          reason: 'attachment-required',
-        })
-      }
-
-      // the bytes, read back from the store rather than taken from anybody
-      const opened = yield* storage
-        .open({ tenantId, attachmentId: input.attachmentId }, (meta) =>
-          meta.ownerUserId === as.userId ? Effect.void : Effect.fail(new AttachmentUnavailable()),
-        )
-        .pipe(
-          Effect.catchTags({
-            STORAGE_ATTACHMENT_NOT_FOUND: () => new AttachmentUnavailable(),
-            STORAGE_BACKEND_UNAVAILABLE: (error) => Effect.die(error),
-          }),
-        )
-      const bytes = yield* readSourceBytes(opened).pipe(
-        Effect.catch((error: SourceUnreadable) =>
-          Effect.fail(
-            new AdministrativeImportInvalid({
-              issues: [{ rowNo: null, field: null, severity: 'error', reason: error.reason }],
-            }),
-          ),
-        ),
-      )
-      const parsed = yield* Effect.tryPromise({
-        try: () => parseAdministrativeWorkbook(bytes),
-        catch: (error) =>
-          new AdministrativeImportInvalid({
-            issues: [
-              {
-                rowNo: error instanceof WorkbookUnreadable ? error.rowNo : null,
-                field: error instanceof WorkbookUnreadable ? error.column : null,
-                severity: 'error',
-                reason: error instanceof WorkbookUnreadable ? error.reason : 'not-xlsx',
-              },
-            ],
-          }),
-      })
-      // the metadata is not a credential, but it does say which question
-      // the file believes it answers, and disagreement is the reader's
-      // mistake rather than something to reconcile
-      if (
-        parsed.metadata.batchId !== batchId ||
-        parsed.metadata.itemId !== ready.item.id ||
-        parsed.metadata.itemRevisionId !== ready.revision.id
-      ) {
-        return yield* new ItemRevisionConflict({
-          itemId: ready.item.id,
-          currentRevisionId: ready.item.currentRevisionId,
-        })
-      }
-
-      const numbers = [
-        ...new Set(parsed.rows.map((row) => row.businessNo).filter((one) => one !== '')),
-      ]
-      const found = yield* dieQuery(
-        withDb(
-          resolveImportParticipants({
-            tenantId,
-            batchId,
-            actorId: as.userId,
-            businessNos: numbers,
-          }),
-        ),
-      )
-      const reachable = new Map(
-        found.map((one) => [
-          one.businessNo,
-          { id: one.participantId, displayName: one.displayName, businessNo: one.businessNo },
-        ]),
-      )
-      const held = yield* dieQuery(
-        withDb(
-          effectiveEntryCounts({
-            tenantId,
-            itemId: ready.item.id,
-            participantIds: found.map((one) => one.participantId),
-          }),
-        ),
-      )
-
-      const recognitionFields = recognitionFormFields(ready.plan) ?? []
-      const rows = judgeRows({
-        parsed,
-        defaultBasis: input.defaultBasis ?? '',
-        reachable,
-        evidenceSchemas: new Map(
-          evidenceFieldsOf(ready.revision.formConfig).map((one) => [one.key, one.schema]),
-        ),
-        recognitionSchemas: new Map(
-          recognitionFields.map((one) => [one.id, one.schema as never]),
-        ),
-        requiredRecognitionIds: recognitionFields.map((one) => one.id),
-        held,
-        maxEntries: ready.item.maxEntries,
-        actorUserId: as.userId,
-        participantUserIds: new Map(found.map((one) => [one.participantId, one.userId])),
-      })
-
-      // The determination held to the question's own contract, the one way the
-      // single record is: judged by the same judge, then stored the one way it
-      // means. A spreadsheet does not get a second validator - "3.0" and "3.00"
-      // written by two doors would make every later comparison a fact about who
-      // typed it. And a question that asks nothing still gets a determination,
-      // `{}`, because the table refuses an approved fact without one.
-      const settled = rows.map((row) => {
-        if (row.issues.some((one) => one.severity === 'error')) return row
-        const wrong = judgeRecognition(ready.plan.recognitionSchemas, row.recognition)
-        if (wrong.length > 0) {
-          return {
-            ...row,
-            issues: [
-              ...row.issues,
-              ...wrong.map((issue) => ({
-                severity: 'error' as const,
-                field:
-                  issue.recognitionId === '' ? 'recognition' : `recognition.${issue.recognitionId}`,
-                reason: issue.reason,
-              })),
-            ],
-          }
-        }
-        const canonical = canonicalRecognition(ready.plan.recognitionSchemas, row.recognition)
-        return { ...row, recognition: canonical, recognitionHash: hashCanonicalJson(canonical) }
-      })
-
-      // the arithmetic, proven for every distinct determination before any
-      // of it could be written - never inside a transaction, never once
-      // per row. What is proven is exactly what will be written.
-      const provable = settled
-        .filter((row) => !row.issues.some((one) => one.severity === 'error'))
-        .map((row) => row.recognition)
-      const proven = yield* proveSettlements(
-        runtime,
-        {
-          tenantId,
-          batchId,
-          itemId: ready.item.id,
-          revisionId: ready.revision.id,
-          plan: ready.plan,
-        },
-        provable,
-      )
-      const judged = settled.map((row) => {
-        const answer = proven.get(row.recognitionHash)
-        if (answer === undefined || 'identity' in answer) return row
-        return {
-          ...row,
-          issues: [
-            ...row.issues,
-            {
-              severity: 'error' as const,
-              field: null,
-              reason: `determination-refused: ${answer.refused.reason}`,
-            },
-          ],
-        }
-      })
-
-      const summary = summarise(judged)
-      return {
-        item: { id: ready.item.id, title: ready.item.title, revisionId: ready.revision.id },
-        summary,
-        rows: judged.map((row) => ({
-          rowNo: row.rowNo,
-          businessNo: row.businessNo,
-          displayNameFromFile: row.displayNameFromFile,
-          matchedParticipant: row.matchedParticipant,
-          payloadPreview: row.payload,
-          recognitionPreview: row.recognition,
-          basis: row.basis,
-          issues: row.issues,
-        })),
-        canCommit: summary.errors === 0 && summary.rows > 0,
-      }
-  })
-
   const entryMethods = makeEntryMethods({
     withDb,
     authorize: authorizeAction,
@@ -2642,9 +2165,51 @@ export const make = Effect.fn('Assessment.make')(function* () {
       }),
   })
 
+  /**
+   * The recording authority and the phase gate for one question, read once
+   * and answered per person - the same two layers `authorizeAction` asks,
+   * without asking the database again for every row of a file.
+   */
+  const recordGate = Effect.fn('Assessment.recordGate')(function* (
+    principal: Principal,
+    batchId: string,
+    itemId: string,
+  ) {
+    const held = (yield* batchAuthority(principal.tenantId, batchId, principal.userId)).has(
+      'assessment.entry.record',
+    )
+    const batch = yield* dieQuery(withDb(oneBatch(principal.tenantId, batchId)))
+    if (!batch) return yield* new BatchNotFound()
+    const now = yield* Clock.currentTimeMillis
+    const view = yield* dieQuery(withDb(gateView(principal.tenantId, batch, now)))
+    return (participantId: string) => {
+      if (!held) {
+        return { allowed: false, layer: 'authority', reason: 'permission-not-held' } as const
+      }
+      const decision = decide(view, 'assessment.entry.record', { itemId, participantId })
+      return decision.allowed
+        ? ({ allowed: true } as const)
+        : ({ allowed: false, layer: 'gate', reason: decision.reason } as const)
+    }
+  })
+
+  const importMethods = makeAdministrativeImportMethods({
+    withDb,
+    authorize: authorizeAction,
+    recordGate,
+    holdsRecord: (tenantId, batchId, userId) =>
+      Effect.map(batchAuthority(tenantId, batchId, userId), (authority) =>
+        authority.has('assessment.entry.record'),
+      ),
+    storage,
+    itemTypes,
+    parseRange,
+  })
+
   return Assessment.of({
     ...itemMethods,
     ...entryMethods,
+    ...importMethods,
     ...reviewMethods,
     ...scoringMethods,
     ...attachmentMethods,
@@ -4045,350 +3610,6 @@ export const make = Effect.fn('Assessment.make')(function* () {
       },
     ),
 
-    administrativeImportTemplate: Effect.fn('Assessment.administrativeImportTemplate')(
-      function* (tenantId, itemId, locale, as) {
-        const ready = yield* administrativeQuestion(tenantId, itemId, as)
-        const fields = recognitionFormFields(ready.plan) ?? []
-        const evidence = Object.entries(
-          (ready.revision.formConfig as { fields?: Record<string, unknown> })?.fields ?? {},
-        )
-        return yield* Effect.promise(() =>
-          buildAdministrativeWorkbook({
-            batchId: ready.item.batchId,
-            itemId: ready.item.id,
-            itemRevisionId: ready.revision.id,
-            itemTitle: ready.item.title,
-            locale,
-            evidence: evidenceFieldsOf(ready.revision.formConfig),
-            recognition: fields.map((field) => ({ id: field.id, schema: field.schema })),
-          }),
-        ).pipe(Effect.map((bytes) => (void evidence, bytes)))
-      },
-    ),
-
-    prepareAdministrativeImportUpload: Effect.fn('Assessment.prepareAdministrativeImportUpload')(
-      function* (tenantId, batchId, input, as) {
-        const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
-        if (!batch) return yield* new BatchNotFound()
-        if (batch.status === 'archived') return yield* new BatchReadOnly()
-        const ready = yield* administrativeQuestion(tenantId, input.itemId, as)
-        if (ready.item.batchId !== batchId) return yield* new ItemNotFound()
-        return yield* storage
-          .prepareUpload({
-            tenantId,
-            ownerUserId: as.userId,
-            filename: input.filename,
-            declaredMime: input.declaredMime,
-            size: BigInt(input.size),
-          })
-          .pipe(
-            Effect.catchTags({
-              STORAGE_UPLOAD_REFUSED: (refused) =>
-                new EntryActionRefused({ action: 'import', reason: refused.reason }),
-              STORAGE_BACKEND_UNAVAILABLE: (error) => Effect.die(error),
-            }),
-          )
-      },
-    ),
-
-    completeAdministrativeImportUpload: Effect.fn('Assessment.completeAdministrativeImportUpload')(
-      function* (tenantId, reservationId, as) {
-        return yield* storage
-          .completeUpload({ tenantId, ownerUserId: as.userId, reservationId })
-          .pipe(
-            Effect.map((meta) => ({
-              id: meta.id,
-              filename: meta.filename,
-              declaredMime: meta.declaredMime,
-              size: meta.size.toString(),
-              status: meta.status,
-            })),
-            Effect.catchTags({
-              STORAGE_RESERVATION_NOT_FOUND: () => new AttachmentUnavailable(),
-              STORAGE_RESERVATION_INVALID: (refused) =>
-                new EntryActionRefused({ action: 'import', reason: refused.reason }),
-              STORAGE_BACKEND_UNAVAILABLE: (error) => Effect.die(error),
-            }),
-          )
-      },
-    ),
-
-    previewAdministrativeImport: Effect.fn('Assessment.previewAdministrativeImport')(
-      function* (tenantId, batchId, input, as) {
-        const runtime = yield* ScoringRuntimeCatalog
-        return yield* previewOf(tenantId, batchId, input, as, runtime)
-      },
-    ),
-
-    commitAdministrativeImport: Effect.fn('Assessment.commitAdministrativeImport')(
-      function* (tenantId, batchId, input, as) {
-        const runtime = yield* ScoringRuntimeCatalog
-        // All outside any transaction: reading the file, judging it and
-        // proving the arithmetic are the expensive parts, and none of them
-        // may be done holding the batch lock.
-        const judged = yield* previewOf(tenantId, batchId, input, as, runtime)
-        if (judged.summary.errors > 0) {
-          return yield* new AdministrativeImportInvalid({
-            issues: judged.rows.flatMap((row) =>
-              row.issues
-                .filter((one) => one.severity === 'error')
-                .map((one) => ({
-                  rowNo: row.rowNo,
-                  field: one.field,
-                  severity: one.severity,
-                  reason: one.reason,
-                })),
-            ),
-          })
-        }
-        if (judged.summary.rows === 0) {
-          return yield* new AdministrativeImportInvalid({
-            issues: [{ rowNo: null, field: null, severity: 'error', reason: 'no-rows' }],
-          })
-        }
-        // A file the server still has warnings about, that nobody confirmed,
-        // is refused here rather than silently imported: the confirmation is
-        // about what the SERVER read, not about what the browser drew.
-        if (judged.summary.warnings > 0 && input.confirmWarnings !== true) {
-          return yield* new AdministrativeImportInvalid({
-            issues: judged.rows.flatMap((row) =>
-              row.issues
-                .filter((one) => one.severity === 'warning')
-                .map((one) => ({
-                  rowNo: row.rowNo,
-                  field: one.field,
-                  severity: one.severity,
-                  reason: one.reason,
-                })),
-            ),
-          })
-        }
-
-        const meta = yield* storage
-          .metadata({ tenantId, attachmentId: input.attachmentId })
-          .pipe(Effect.catch(() => Effect.fail(new AttachmentUnavailable())))
-
-        // Everything inside is deterministic writing plus the second look at
-        // whatever could have moved while the file was being read.
-        return yield* withDb(
-          transaction(
-            Effect.gen(function* () {
-              const locked = yield* lockBatch(tenantId, batchId)
-              if (!locked) return yield* new BatchNotFound()
-              if (locked.status === 'archived') return yield* new BatchReadOnly()
-              // the question, again: a revision that moved while the reader
-              // was filling in the file makes every determination in it
-              // answer a question that no longer exists
-              const ready = yield* administrativeQuestion(tenantId, input.itemId, as)
-              if (ready.item.batchId !== batchId) return yield* new ItemNotFound()
-              if (ready.revision.id !== input.expectedItemRevisionId) {
-                return yield* new ItemRevisionConflict({
-                  itemId: ready.item.id,
-                  currentRevisionId: ready.item.currentRevisionId,
-                })
-              }
-              // who the caller may still record on, and how much room each
-              // of them still has: both read again under the lock, because
-              // a scope can shrink and a quota can fill while a file is open
-              const numbers = [...new Set(judged.rows.map((row) => row.businessNo))]
-              const found = yield* resolveImportParticipants({
-                tenantId,
-                batchId,
-                actorId: as.userId,
-                businessNos: numbers,
-              })
-              const byNumber = new Map(found.map((one) => [one.businessNo, one]))
-              const held = yield* effectiveEntryCounts({
-                tenantId,
-                itemId: ready.item.id,
-                participantIds: found.map((one) => one.participantId),
-              })
-              const takenHere = new Map<string, number>()
-
-              const written: {
-                sourceRowNo: number
-                participantId: string
-                entryId: string
-                businessNoSnapshot: string | null
-                displayNameSnapshot: string | null
-              }[] = []
-              const subjects = new Set<string>()
-
-              for (const row of judged.rows) {
-                const person = byNumber.get(row.businessNo)
-                // every refusal the first pass could have reached, asked
-                // again; any of them now means nothing is written at all
-                if (person === undefined) {
-                  return yield* new AdministrativeImportInvalid({
-                    issues: [
-                      {
-                        rowNo: row.rowNo,
-                        field: 'businessNo',
-                        severity: 'error',
-                        reason: 'participant-not-found',
-                      },
-                    ],
-                  })
-                }
-                if (person.userId === as.userId) {
-                  return yield* new AdministrativeImportInvalid({
-                    issues: [
-                      {
-                        rowNo: row.rowNo,
-                        field: 'businessNo',
-                        severity: 'error',
-                        reason: 'self-record-refused',
-                      },
-                    ],
-                  })
-                }
-                if (ready.item.maxEntries !== null) {
-                  const already = held.get(person.participantId) ?? 0
-                  const here = takenHere.get(person.participantId) ?? 0
-                  if (already + here >= ready.item.maxEntries) {
-                    return yield* new AdministrativeImportInvalid({
-                      issues: [
-                        {
-                          rowNo: row.rowNo,
-                          field: null,
-                          severity: 'error',
-                          reason: 'max-entries-reached',
-                        },
-                      ],
-                    })
-                  }
-                  takenHere.set(person.participantId, here + 1)
-                }
-                if (row.basis.trim() === '') {
-                  return yield* new AdministrativeImportInvalid({
-                    issues: [
-                      { rowNo: row.rowNo, field: 'basis', severity: 'error', reason: 'basis-required' },
-                    ],
-                  })
-                }
-
-                const { entryId } = yield* recordAdministrativeEntryTx({
-                  tenantId,
-                  batchId,
-                  itemId: ready.item.id,
-                  itemRevisionId: ready.revision.id,
-                  participantId: person.participantId,
-                  subjectUserId: person.userId,
-                  actorUserId: as.userId,
-                  payload: row.payloadPreview,
-                  // `{}` for a question that determines nothing, never
-                  // absent: an approved fact always carries a determination
-                  recognition: row.recognitionPreview,
-                  basis: row.basis,
-                  // the provenance of the fact and of its determination are
-                  // one thing: an import writes 'import' on both
-                  source: 'import',
-                  attachments: [],
-                })
-                written.push({
-                  sourceRowNo: row.rowNo,
-                  participantId: person.participantId,
-                  entryId,
-                  businessNoSnapshot: row.businessNo,
-                  displayNameSnapshot: row.displayNameFromFile || null,
-                })
-                subjects.add(person.userId)
-              }
-
-              // the original file enters history in the same transaction the
-              // facts do, so a committed import always has the workbook it
-              // was read from
-              yield* storage
-                .bind({ tenantId, attachmentId: input.attachmentId, ownerUserId: as.userId })
-                .pipe(Effect.catch(() => Effect.fail(new AttachmentUnavailable())))
-
-              const importId = yield* insertImport({
-                tenantId,
-                batchId,
-                itemId: ready.item.id,
-                itemRevisionId: ready.revision.id,
-                sourceAttachmentId: input.attachmentId,
-                filenameSnapshot: meta.filename,
-                sizeBytes: meta.size.toString(),
-                contentHashAlgorithm: null,
-                contentHash: null,
-                actorId: as.userId,
-                defaultBasis: input.defaultBasis?.trim() || null,
-                importedCount: written.length,
-              })
-              yield* insertImportRows(tenantId, importId, written)
-
-              // One wake-up for the whole import, not two thousand. The
-              // unread marks are already on each owner's row - those are
-              // durable state and were written per entry - so what is left
-              // to say is only "this round changed", once.
-              yield* announce(tenantId, batchId, [
-                { kind: 'entries-changed' },
-                { kind: 'result-changed' },
-              ])
-              return { importId, importedCount: written.length }
-            }),
-          ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error))),
-        )
-      },
-    ),
-
-    listAdministrativeImports: Effect.fn('Assessment.listAdministrativeImports')(
-      function* (tenantId, batchId, page, as) {
-        const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
-        if (!batch) return yield* new BatchNotFound()
-        // the recording desk's history, so the recording authority is the
-        // door; the rows are then narrowed in sql to what this reader made
-        // and still reaches
-        const records = (yield* batchAuthority(tenantId, batchId, as.userId)).has(
-          'assessment.entry.record',
-        )
-        if (!records) return yield* new AccessDenied({ reason: 'cannot record on this batch' })
-        const rows = yield* dieQuery(
-          withDb(
-            importsOfBatchPage({
-              tenantId,
-              batchId,
-              reader: { userId: as.userId },
-              ...(page.after !== undefined ? { after: page.after } : {}),
-              limit: page.limit,
-            }),
-          ),
-        )
-        if (rows.length === 0) return []
-        const standing = yield* dieQuery(
-          withDb(
-            standingOfImports(
-              tenantId,
-              rows.map((row) => row.id),
-            ),
-          ),
-        )
-        return rows.map((row): AdministrativeImportView => {
-          const counted = standing.get(row.id)
-          return {
-            id: row.id,
-            item: { id: row.itemId, title: row.itemTitle },
-            filename: row.filename,
-            actor:
-              row.actorId === null
-                ? null
-                : { id: row.actorId, name: row.actorName ?? '' },
-            createdAt: new Date(row.createdAt).toISOString(),
-            importedCount: row.importedCount,
-            standing: {
-              approved: counted?.approved ?? 0,
-              inReview: counted?.inReview ?? 0,
-              rejected: counted?.rejected ?? 0,
-              voided: counted?.voided ?? 0,
-              other: counted?.other ?? 0,
-            },
-            cursor: [row.cursorAt, row.id] as const,
-          }
-        })
-      },
-    ),
-
     listAdministrativeEntries: Effect.fn('Assessment.listAdministrativeEntries')(
       function* (tenantId, batchId, filter, as) {
         const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
@@ -5357,6 +4578,43 @@ const templateDto = (row: TemplateRow) => ({
   phases: (row.phases as unknown as readonly PhaseSpecInput[]).map(specDto),
 })
 
+/**
+ * An opened file as a download.
+ *
+ * The response wears the file's own name: the url ends in /content, and
+ * without a disposition every save would be called "content" with no
+ * extension. A download, never a document, and never in the uploader's own
+ * words about the type (§19) - a cited file is written by whoever is being
+ * reviewed, and a workbook by whoever filled it in. Previewing does not need
+ * the door to relax: a picture draws through `<img>`, which ignores the
+ * disposition, and the document viewer fetches the bytes and types the blob
+ * itself.
+ */
+const downloadOf = (opened: {
+  readonly meta: { readonly filename: string; readonly declaredMime: string; readonly size: bigint }
+  readonly target: { readonly kind: 'stream'; readonly body: AsyncIterable<Uint8Array> }
+}) => {
+  const filename = opened.meta.filename
+  const fallback = filename.replace(/[^\x20-\x7e]/g, '_').replaceAll('"', "'")
+  // RFC 5987: percent-encode everything outside attr-char, including the
+  // quote/paren/star set encodeURIComponent leaves alone
+  const starred = encodeURIComponent(filename).replace(
+    /['()*!]/g,
+    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+  )
+  return HttpServerResponse.stream(
+    Stream.fromAsyncIterable(opened.target.body, (error) => error),
+    {
+      contentType: servedTypeOf(opened.meta.declaredMime),
+      contentLength: Number(opened.meta.size),
+      headers: {
+        'content-disposition': `attachment; filename="${fallback}"; filename*=UTF-8''${starred}`,
+        'x-content-type-options': 'nosniff',
+      },
+    },
+  )
+}
+
 const local = Api.local(assessmentApiGroup)
 
 export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (handlers) =>
@@ -5787,13 +5045,27 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
       Effect.fn('assessment.administrativeImportTemplate.handler')(function* ({ params }) {
         const assessment = yield* Assessment
         const principal = yield* CurrentUser
-        const bytes = yield* assessment.administrativeImportTemplate(
+        // the workbook's own headings are the product's Chinese ones; the
+        // locale only chooses the words for enum choices inside it
+        const template = yield* assessment.administrativeImportTemplate(
           principal.tenantId,
           params.itemId,
           'zh-CN',
           principal,
         )
-        return Stream.make(bytes)
+        return downloadOf({
+          meta: {
+            filename: template.filename,
+            declaredMime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            size: BigInt(template.bytes.byteLength),
+          },
+          target: {
+            kind: 'stream',
+            body: (async function* () {
+              yield template.bytes
+            })(),
+          },
+        })
       }),
     )
     .handle(
@@ -5884,6 +5156,91 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
       }),
     )
     .handle(
+      'getAdministrativeImport',
+      Effect.fn('assessment.getAdministrativeImport.handler')(function* ({ params }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        return yield* assessment.getAdministrativeImport(
+          principal.tenantId,
+          params.importId,
+          principal,
+        )
+      }),
+    )
+    .handle(
+      'listAdministrativeImportRows',
+      Effect.fn('assessment.listAdministrativeImportRows.handler')(function* ({ params, query }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const limit = pageSize(query.limit, DEFAULT_PAGE_SIZE)
+        const fingerprint = `assessment.administrative-import-rows:${params.importId}`
+        const key = readQueryCursor(query.cursor, fingerprint, ['text'])
+        if (key === null) return yield* cursorUnusable()
+        // a row number, and nothing that merely parses as one
+        const after = key === undefined ? undefined : key[0]!
+        if (after !== undefined && !/^\d{1,9}$/.test(after)) return yield* cursorUnusable()
+        const found = yield* assessment.listAdministrativeImportRows(
+          principal.tenantId,
+          params.importId,
+          {
+            ...(after !== undefined ? { afterRowNo: Number(after) } : {}),
+            limit: limit + 1,
+          },
+          principal,
+        )
+        const page = found.slice(0, limit)
+        const last = page[page.length - 1]
+        return {
+          items: page,
+          nextCursor:
+            found.length > limit && last
+              ? encodeQueryCursor(fingerprint, [String(last.rowNo)])
+              : null,
+        }
+      }),
+    )
+    .handle(
+      'describeAdministrativeImportSource',
+      Effect.fn('assessment.describeAdministrativeImportSource.handler')(function* ({ params }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        return yield* assessment.describeAdministrativeImportSource(
+          principal.tenantId,
+          params.importId,
+          principal,
+        )
+      }),
+    )
+    .handle(
+      'getAdministrativeImportSourceContent',
+      Effect.fn('assessment.getAdministrativeImportSourceContent.handler')(function* ({ params }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const opened = yield* assessment.openAdministrativeImportSource(
+          principal.tenantId,
+          params.importId,
+          principal,
+        )
+        // a store that signs its own urls has no bytes to hand this process;
+        // the descriptor already said where to go
+        if (opened.target.kind === 'redirect') return yield* new AttachmentUnavailable()
+        return downloadOf({ meta: opened.meta, target: opened.target })
+      }),
+    )
+    .handle(
+      'reverseAdministrativeImport',
+      Effect.fn('assessment.reverseAdministrativeImport.handler')(function* ({ params, payload }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        return yield* assessment.reverseAdministrativeImport(
+          principal.tenantId,
+          params.importId,
+          payload,
+          principal,
+        )
+      }),
+    )
+    .handle(
       'listAdministrativeEntries',
       Effect.fn('assessment.listAdministrativeEntries.handler')(function* ({ params, query }) {
         const assessment = yield* Assessment
@@ -5892,7 +5249,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         const units = listed(query.orgNodeIds).sort()
         // every filter in the fingerprint, or a cursor from one question
         // applied to another silently skips or repeats rows
-        const fingerprint = `assessment.administrative-entries:${params.batchId}:${query.q ?? ''}:${query.itemId ?? ''}:${query.source ?? ''}:${query.status ?? ''}:${units.join(',')}:${query.orgScope ?? ''}`
+        const fingerprint = `assessment.administrative-entries:${params.batchId}:${query.q ?? ''}:${query.entryId ?? ''}:${query.itemId ?? ''}:${query.source ?? ''}:${query.status ?? ''}:${units.join(',')}:${query.orgScope ?? ''}`
         const key = readQueryCursor(query.cursor, fingerprint, ['timestamp', 'uuid'])
         if (key === null) return yield* cursorUnusable()
         const found = yield* assessment.listAdministrativeEntries(
@@ -5900,6 +5257,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           params.batchId,
           {
             ...(query.q !== undefined ? { q: query.q } : {}),
+            ...(query.entryId !== undefined ? { entryId: query.entryId } : {}),
             ...(query.itemId !== undefined ? { itemId: query.itemId } : {}),
             ...(query.source !== undefined ? { source: query.source } : {}),
             ...(query.status !== undefined ? { status: query.status } : {}),
@@ -6265,33 +5623,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           // process; the descriptor endpoint already said where to go
           return yield* new AttachmentUnavailable()
         }
-        // the response wears the file's own name: the url ends in /content,
-        // and without a disposition every save would be called "content"
-        // with no extension. A download, never a document, and never in
-        // the uploader's own words about the type (§19) - a cited file is
-        // written by whoever is being reviewed. Previewing does not need
-        // the door to relax: a picture draws through `<img>`, which ignores
-        // the disposition, and the document viewer fetches the bytes and
-        // types the blob itself.
-        const filename = opened.meta.filename
-        const fallback = filename.replace(/[^\x20-\x7e]/g, '_').replaceAll('"', "'")
-        // RFC 5987: percent-encode everything outside attr-char, including
-        // the quote/paren/star set encodeURIComponent leaves alone
-        const starred = encodeURIComponent(filename).replace(
-          /['()*!]/g,
-          (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
-        )
-        return HttpServerResponse.stream(
-          Stream.fromAsyncIterable(opened.target.body, (error) => error),
-          {
-            contentType: servedTypeOf(opened.meta.declaredMime),
-            contentLength: Number(opened.meta.size),
-            headers: {
-              'content-disposition': `attachment; filename="${fallback}"; filename*=UTF-8''${starred}`,
-              'x-content-type-options': 'nosniff',
-            },
-          },
-        )
+        return downloadOf({ meta: opened.meta, target: opened.target })
       }),
     )
     .handle(

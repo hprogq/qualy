@@ -6,6 +6,7 @@ import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-data
 import { Storage } from '@qualy/plugin-storage/server'
 import { Assessment } from '../src/server/index.ts'
 import { DATA_SHEET } from '../src/administrative-import/workbook.ts'
+import { laidOut } from './support/administrative.ts'
 import { backend, ok, one, run, runningBatch, seed } from './support/round.ts'
 
 // A workbook the size the import is actually used at, written for real.
@@ -80,10 +81,12 @@ describe.runIf(postgresAvailable)('an administrative import at scale', () => {
             f.principal(f.recorder),
           )
           const book = new ExcelJS.Workbook()
-          yield* Effect.promise(() => book.xlsx.load(template as unknown as ArrayBuffer))
+          yield* Effect.promise(() => book.xlsx.load(template.bytes as unknown as ArrayBuffer))
           const sheet = book.getWorksheet(DATA_SHEET)!
           for (let n = 1; n <= ROWS; n++) {
-            sheet.addRow([`S${String(n).padStart(6, '0')}`, `Student ${n}`, `校发〔2026〕${n} 号`])
+            sheet.addRow(
+              laidOut(sheet, [`S${String(n).padStart(6, '0')}`, `Student ${n}`, `校发〔2026〕${n} 号`]),
+            )
           }
           const bytes = Buffer.from(yield* Effect.promise(() => book.xlsx.writeBuffer()))
           const ticket = yield* storage.prepareUpload({

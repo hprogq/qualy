@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
+import { Button } from '@qualy/ui/button'
 import { toast } from '@qualy/ui/toast'
 import { useLingering } from '@qualy/ui/use-lingering'
 import { assessmentApi } from '../api.ts'
@@ -25,12 +26,15 @@ export function AdministrativeEntrySheet({
   batchId,
   entryId,
   onClose,
+  onOpenImport,
 }: {
   /** false while the sheet is shutting; the caller keeps it mounted for that */
   open: boolean
   batchId: string
   entryId: string
   onClose: () => void
+  /** to the import this fact arrived in, when it arrived in one */
+  onOpenImport: (importId: string) => void
 }) {
   const api = useApi(assessmentApi)
   const run = useRunApi()
@@ -44,15 +48,17 @@ export function AdministrativeEntrySheet({
 
   // the determination comes from the record book, which reads it through the
   // question version it was judged under; the general entry read does not
-  // carry one at all
+  // carry one at all. Asked for this one fact by id, because the one being
+  // read may be the thousandth line of the book.
   const book = useQuery(
     query.assessment.listAdministrativeEntries.queryOptions({
       params: { batchId },
-      query: { limit: '200' },
+      query: { entryId, limit: '1' },
     }),
   )
+  const line = (book.data?.entries ?? []).find((one) => one.entryId === entryId)
   const determined: RecognitionDto | null = (() => {
-    const row = (book.data?.entries ?? []).find((one) => one.entryId === entryId)
+    const row = line
     if (row === undefined || row.recognition === null) return null
     return {
       id: row.recognition.id,
@@ -92,6 +98,13 @@ export function AdministrativeEntrySheet({
         }),
       })
       void queryClient.invalidateQueries({ queryKey: query.assessment.getEntry.key() })
+      void queryClient.invalidateQueries({
+        queryKey: query.assessment.listAdministrativeImports.key({ params: { batchId }, query: {} }),
+      })
+      void queryClient.invalidateQueries({ queryKey: query.assessment.getAdministrativeImport.key() })
+      void queryClient.invalidateQueries({
+        queryKey: query.assessment.listAdministrativeImportRows.key(),
+      })
       onClose()
     },
     onError: (error) => toast.error(formatError(error)),
@@ -112,6 +125,13 @@ export function AdministrativeEntrySheet({
         if (kind !== 'void') return
         withdraw.mutate({ entryId: lingering.entry.id, reason })
       }}
+      provenance={
+        line !== undefined && line.importId !== null ? (
+          <Button size="sm" variant="ghost" onClick={() => onOpenImport(line.importId!)}>
+            {format(m.importViewImport)}
+          </Button>
+        ) : null
+      }
     />
   )
 }

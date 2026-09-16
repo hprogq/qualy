@@ -1755,6 +1755,7 @@ export const listAdministrativeEntriesPage = (input: {
   tenantId: string
   batchId: string
   q?: string | undefined
+  entryId?: string | undefined
   itemId?: string | undefined
   source?: 'record' | 'import' | undefined
   status?: EntryStatus | undefined
@@ -1815,6 +1816,7 @@ export const listAdministrativeEntriesPage = (input: {
         .where('e.batchId', '=', input.batchId)
         // the book is what the institution wrote, never what a participant filed
         .where('e.source', 'in', ['record', 'import'])
+      if (input.entryId !== undefined) query = query.where('e.id', '=', input.entryId)
       if (input.itemId !== undefined) query = query.where('e.itemId', '=', input.itemId)
       if (input.source !== undefined) query = query.where('e.source', '=', input.source)
       if (input.status !== undefined) query = query.where('e.status', '=', input.status)

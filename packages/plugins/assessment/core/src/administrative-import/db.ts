@@ -1,6 +1,7 @@
 import { Effect } from 'effect'
 import { sql } from 'kysely'
 import { db, staffReachOver } from '../server/db.ts'
+import type { EntryStatus } from '../entry/db.ts'
 
 // The reads a bulk administrative act needs, each of them one statement.
 //
@@ -303,14 +304,162 @@ export const standingOfImports = (tenantId: string, importIds: readonly string[]
           }),
         )
 
-/** every claim one import created, with where it currently stands */
-export const entriesOfImport = (tenantId: string, importId: string) =>
+/**
+ * Whether this reader may still look back on an import, as a predicate on
+ * the import aliased `i`.
+ *
+ * The conservative rule for somebody here on recording authority: only
+ * imports they made, and only while every person in them is still someone
+ * they may record on. A file of names is a list of people, and having
+ * uploaded it once is not a standing licence to read it after the reach
+ * that justified it has been taken away. The list, the detail, its rows,
+ * the original file and the reversal all ask this one question.
+ */
+const readableBy = (input: { tenantId: string; batchId: string; userId: string }) =>
+  sql<boolean>`(
+    i.actor_id = ${input.userId}
+    and not exists (
+      select 1
+        from administrative_entry_import_rows r
+        join batch_participants p
+          on p.tenant_id = r.tenant_id and p.id = r.participant_id
+       where r.tenant_id = i.tenant_id
+         and r.import_id = i.id
+         and not ${staffReachOver({
+           tenantId: input.tenantId,
+           batchId: input.batchId,
+           userId: input.userId,
+           permissionCode: 'assessment.entry.record',
+           anchorNodeId: sql.ref('p.assessment_anchor_node_id'),
+           anchorPath: sql.ref('p.anchor_path'),
+         })}
+    )
+  )`
+
+/** the readability rule above, for one import */
+export const importReadable = (input: {
+  tenantId: string
+  batchId: string
+  importId: string
+  userId: string
+}) =>
   db
     .query((k) =>
       k
+        .selectFrom('AdministrativeEntryImport as i')
+        .select(sql<number>`1`.as('one'))
+        .where('i.tenantId', '=', input.tenantId)
+        .where('i.id', '=', input.importId)
+        .where(readableBy(input))
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => row !== undefined))
+
+export interface ImportDetailRow extends ImportRow {
+  readonly itemTitle: string
+  readonly itemRevisionNo: number
+  readonly actorName: string | null
+}
+
+/** one import with the names a reader recognises it by */
+export const importDetailOf = (tenantId: string, importId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('AdministrativeEntryImport as i')
+        .innerJoin('AssessmentItem as it', (join) =>
+          join.onRef('it.tenantId', '=', 'i.tenantId').onRef('it.id', '=', 'i.itemId'),
+        )
+        .innerJoin('AssessmentItemRevision as v', (join) =>
+          join.onRef('v.tenantId', '=', 'i.tenantId').onRef('v.id', '=', 'i.itemRevisionId'),
+        )
+        .leftJoin('User as a', (join) =>
+          join.onRef('a.tenantId', '=', 'i.tenantId').onRef('a.id', '=', 'i.actorId'),
+        )
+        .selectAll('i')
+        .select([
+          'it.title as itemTitle',
+          'v.revisionNo as itemRevisionNo',
+          'a.displayName as actorName',
+        ])
+        .select([epoch('i.created_at').as('createdMs')])
+        .where('i.tenantId', '=', tenantId)
+        .where('i.id', '=', importId)
+        .executeTakeFirst(),
+    )
+    .pipe(
+      Effect.map((row): ImportDetailRow | null => {
+        if (row === undefined) return null
+        const raw = row as Record<string, unknown>
+        return {
+          ...toImport(raw),
+          itemTitle: String(raw['itemTitle'] ?? ''),
+          itemRevisionNo: Number(raw['itemRevisionNo'] ?? 0),
+          actorName: raw['actorName'] == null ? null : String(raw['actorName']),
+        }
+      }),
+    )
+
+/** what has been done to one import as a whole, oldest first */
+export const eventsOfImport = (tenantId: string, importId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('AdministrativeEntryImportEvent as ev')
+        .leftJoin('User as a', (join) =>
+          join.onRef('a.tenantId', '=', 'ev.tenantId').onRef('a.id', '=', 'ev.actorId'),
+        )
+        .select([
+          'ev.id',
+          'ev.kind',
+          'ev.actorId',
+          'ev.reason',
+          'ev.affectedCount',
+          'a.displayName as actorName',
+        ])
+        .select([epoch('ev.created_at').as('createdMs')])
+        .where('ev.tenantId', '=', tenantId)
+        .where('ev.importId', '=', importId)
+        .orderBy(sql`ev.created_at`)
+        .orderBy(sql`ev.id`)
+        .execute(),
+    )
+    .pipe(
+      Effect.map((rows) =>
+        (rows as unknown as Record<string, unknown>[]).map((row) => ({
+          id: String(row['id']),
+          kind: String(row['kind']),
+          actorId: row['actorId'] == null ? null : String(row['actorId']),
+          actorName: row['actorName'] == null ? null : String(row['actorName']),
+          reason: row['reason'] == null ? null : String(row['reason']),
+          affectedCount: Number(row['affectedCount'] ?? 0),
+          createdAt: msOf(row['createdMs']),
+        })),
+      ),
+    )
+
+/** the rows of one import in the file's own order, keyset-paged on the row number */
+export const importRowsPage = (input: {
+  tenantId: string
+  importId: string
+  afterRowNo?: number | undefined
+  limit: number
+}) =>
+  db
+    .query((k) => {
+      let query = k
         .selectFrom('AdministrativeEntryImportRow as r')
         .innerJoin('Entry as e', (join) =>
           join.onRef('e.tenantId', '=', 'r.tenantId').onRef('e.id', '=', 'r.entryId'),
+        )
+        .innerJoin('EntryRevision as v', (join) =>
+          join.onRef('v.tenantId', '=', 'e.tenantId').onRef('v.id', '=', 'e.currentRevisionId'),
+        )
+        .innerJoin('BatchParticipant as p', (join) =>
+          join.onRef('p.tenantId', '=', 'r.tenantId').onRef('p.id', '=', 'r.participantId'),
+        )
+        .innerJoin('User as u', (join) =>
+          join.onRef('u.tenantId', '=', 'p.tenantId').onRef('u.id', '=', 'p.userId'),
         )
         .select([
           'r.sourceRowNo',
@@ -319,6 +468,61 @@ export const entriesOfImport = (tenantId: string, importId: string) =>
           'r.businessNoSnapshot',
           'r.displayNameSnapshot',
           'e.status',
+          'v.itemRevisionId',
+          'u.displayName',
+          'u.businessNo',
+        ])
+        .where('r.tenantId', '=', input.tenantId)
+        .where('r.importId', '=', input.importId)
+      if (input.afterRowNo !== undefined) {
+        query = query.where('r.sourceRowNo', '>', input.afterRowNo)
+      }
+      return query.orderBy('r.sourceRowNo').limit(input.limit).execute()
+    })
+    .pipe(
+      Effect.map((rows) =>
+        (rows as unknown as Record<string, unknown>[]).map((row) => ({
+          rowNo: Number(row['sourceRowNo'] ?? 0),
+          entryId: String(row['entryId']),
+          participantId: String(row['participantId']),
+          businessNoSnapshot:
+            row['businessNoSnapshot'] == null ? null : String(row['businessNoSnapshot']),
+          displayNameSnapshot:
+            row['displayNameSnapshot'] == null ? null : String(row['displayNameSnapshot']),
+          status: String(row['status']) as EntryStatus,
+          itemRevisionId: String(row['itemRevisionId']),
+          displayName: String(row['displayName'] ?? ''),
+          businessNo: row['businessNo'] == null ? null : String(row['businessNo']),
+        })),
+      ),
+    )
+
+/**
+ * Every fact one import created, with what a withdrawal needs to know about
+ * each - and nothing found by participant and question. A fact recorded
+ * again by hand after one of these was withdrawn is a different entry, and
+ * reaching it through "the current claim for this person" would unmake a
+ * correction.
+ */
+export const reversalCandidatesOf = (tenantId: string, importId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('AdministrativeEntryImportRow as r')
+        .innerJoin('Entry as e', (join) =>
+          join.onRef('e.tenantId', '=', 'r.tenantId').onRef('e.id', '=', 'r.entryId'),
+        )
+        .innerJoin('BatchParticipant as p', (join) =>
+          join.onRef('p.tenantId', '=', 'r.tenantId').onRef('p.id', '=', 'r.participantId'),
+        )
+        .select([
+          'r.sourceRowNo',
+          'r.entryId',
+          'r.participantId',
+          'p.userId as participantUserId',
+          'e.status',
+          'e.source',
+          'e.currentReviewInstanceId',
         ])
         .where('r.tenantId', '=', tenantId)
         .where('r.importId', '=', importId)
@@ -328,14 +532,14 @@ export const entriesOfImport = (tenantId: string, importId: string) =>
     .pipe(
       Effect.map((rows) =>
         (rows as unknown as Record<string, unknown>[]).map((row) => ({
-          sourceRowNo: Number(row['sourceRowNo'] ?? 0),
+          rowNo: Number(row['sourceRowNo'] ?? 0),
           entryId: String(row['entryId']),
           participantId: String(row['participantId']),
-          businessNoSnapshot:
-            row['businessNoSnapshot'] == null ? null : String(row['businessNoSnapshot']),
-          displayNameSnapshot:
-            row['displayNameSnapshot'] == null ? null : String(row['displayNameSnapshot']),
-          status: String(row['status']),
+          participantUserId: String(row['participantUserId']),
+          status: String(row['status']) as EntryStatus,
+          source: String(row['source']),
+          currentReviewInstanceId:
+            row['currentReviewInstanceId'] == null ? null : String(row['currentReviewInstanceId']),
         })),
       ),
     )
@@ -344,13 +548,7 @@ export const entriesOfImport = (tenantId: string, importId: string) =>
 export const importsOfBatchPage = (input: {
   tenantId: string
   batchId: string
-  /**
-   * The conservative rule for somebody here on recording authority alone:
-   * only imports they made, and only while every person in them is still
-   * someone they may record on. A file of names is a list of people, and
-   * having uploaded it once is not a standing licence to read it after the
-   * reach that justified it has been taken away.
-   */
+  /** narrowed to what this reader may still look back on; see `readableBy` */
   reader?: { userId: string } | undefined
   after?: readonly [string, string] | undefined
   limit: number
@@ -381,25 +579,8 @@ export const importsOfBatchPage = (input: {
         .where('i.tenantId', '=', input.tenantId)
         .where('i.batchId', '=', input.batchId)
       if (input.reader !== undefined) {
-        const reader = input.reader
-        query = query.where('i.actorId', '=', reader.userId).where(
-          // not one person in it outside the reader's current reach
-          sql<boolean>`not exists (
-            select 1
-              from administrative_entry_import_rows r
-              join batch_participants p
-                on p.tenant_id = r.tenant_id and p.id = r.participant_id
-             where r.tenant_id = i.tenant_id
-               and r.import_id = i.id
-               and not ${staffReachOver({
-                 tenantId: input.tenantId,
-                 batchId: input.batchId,
-                 userId: reader.userId,
-                 permissionCode: 'assessment.entry.record',
-                 anchorNodeId: sql.ref('p.assessment_anchor_node_id'),
-                 anchorPath: sql.ref('p.anchor_path'),
-               })}
-          )`,
+        query = query.where(
+          readableBy({ tenantId: input.tenantId, batchId: input.batchId, userId: input.reader.userId }),
         )
       }
       if (input.after !== undefined) {

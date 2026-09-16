@@ -1,14 +1,12 @@
-import ExcelJS from 'exceljs'
 import { sql } from 'kysely'
 import { Deferred, Effect, Fiber, Stream } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
 import { DatabaseNotifications, transaction, type Orm } from '@qualy/plugin-database/server'
-import { Storage } from '@qualy/plugin-storage/server'
 import { Assessment } from '../src/server/index.ts'
 import { ASSESSMENT_LIVE_CHANNEL } from '../src/live/events.ts'
-import { DATA_SHEET } from '../src/administrative-import/workbook.ts'
-import { backend, errorOf, ok, one, run, runningBatch, seed, type Seeded } from './support/round.ts'
+import { counts, numbered, recordItem, workbook } from './support/administrative.ts'
+import { errorOf, ok, one, run, runningBatch, seed } from './support/round.ts'
 
 // A whole workbook of administrative facts, written or not written.
 //
@@ -17,110 +15,6 @@ import { backend, errorOf, ok, one, run, runningBatch, seed, type Seeded } from 
 // under the batch lock for whatever could have moved - and that when any row
 // fails, NOTHING is written. An import that kept the rows it could manage is
 // an import nobody can explain afterwards.
-
-/** an administrative question, published and ready */
-const recordItem = (f: Seeded, batchId: string, over?: { maxEntries?: number | null }) =>
-  Effect.gen(function* () {
-    const assessment = yield* Assessment
-    const admin = f.principal(f.admin)
-    const groups = yield* assessment.listScoreGroups(f.t, batchId, admin)
-    const stage = (id: string) => ({
-      id,
-      selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
-      quorum: { type: 'any' },
-    })
-    const item = yield* assessment.createItem(
-      f.t,
-      batchId,
-      {
-        itemType: 'evidence',
-        title: '违纪扣分',
-        scoreGroupId: groups.groups[0]!.id,
-        maxEntries: over?.maxEntries ?? null,
-        config: {
-          entrySource: 'administrative',
-          formConfig: {},
-          scoringConfig: {
-            calculator: { ref: 'fixed@1', config: { value: '-1.00' } },
-            aggregator: { ref: 'sum@1', config: {} },
-          },
-          reviewPolicy: {
-            normal: { stages: [stage('s1')] },
-            escalation: { stages: [stage('appeal')] },
-          },
-        },
-      },
-      admin,
-    )
-    yield* assessment.setItemStatus(f.t, item.id, { status: 'active' }, admin)
-    return item
-  })
-
-/** give the seeded students numbers a workbook can name them by */
-const numbered = (f: Seeded) =>
-  Effect.gen(function* () {
-    yield* runSql(sql`update users set business_no = '2023001' where id = ${f.s1}`)
-    yield* runSql(sql`update users set business_no = '2023002' where id = ${f.s2}`)
-    // college B: outside the recorder's reach
-    yield* runSql(sql`update users set business_no = '2023003' where id = ${f.s3}`)
-    yield* runSql(sql`update users set business_no = '9999999' where id = ${f.recorder}`)
-  })
-
-/**
- * The template for a question, filled in and sent back through the import
- * door - exactly the file a person would produce.
- */
-const workbook = (
-  f: Seeded,
-  itemId: string,
-  who: string,
-  rows: readonly (readonly string[])[],
-) =>
-  Effect.gen(function* () {
-    const assessment = yield* Assessment
-    const storage = yield* Storage
-    const template = yield* assessment.administrativeImportTemplate(
-      f.t,
-      itemId,
-      'zh-CN',
-      f.principal(who),
-    )
-    const book = new ExcelJS.Workbook()
-    yield* Effect.promise(() => book.xlsx.load(template as unknown as ArrayBuffer))
-    const sheet = book.getWorksheet(DATA_SHEET)!
-    for (const row of rows) sheet.addRow([...row])
-    const bytes = Buffer.from(yield* Effect.promise(() => book.xlsx.writeBuffer()))
-    const ticket = yield* storage.prepareUpload({
-      tenantId: f.t,
-      ownerUserId: who,
-      filename: 'import.xlsx',
-      declaredMime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      size: BigInt(bytes.byteLength),
-    })
-    backend.put(`attachments/${f.t}/${ticket.attachmentId}`, bytes)
-    const meta = yield* storage.completeUpload({
-      tenantId: f.t,
-      ownerUserId: who,
-      reservationId: ticket.reservationId,
-    })
-    return meta.id
-  })
-
-/** how many rows each import table holds, for asserting nothing was written */
-const counts = (f: Seeded) =>
-  Effect.gen(function* () {
-    const imports = one<{ n: number }>(
-      yield* runSql(
-        sql`select count(*)::int as n from administrative_entry_imports where tenant_id = ${f.t}`,
-      ),
-    ).n
-    const entries = one<{ n: number }>(
-      yield* runSql(
-        sql`select count(*)::int as n from entries where tenant_id = ${f.t} and source = 'import'`,
-      ),
-    ).n
-    return { imports, entries }
-  })
 
 /**
  * A commit let through its first reading of the file, then made to wait at
@@ -236,7 +130,14 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
             { limit: 10 },
             f.principal(f.recorder),
           )
-          return { done, sources: sources.rows, rows: rows.rows, bound, book }
+          // one fact by its id, for a sheet opened on it from an address
+          const single = yield* assessment.listAdministrativeEntries(
+            f.t,
+            g.batch.id,
+            { entryId: book[1]!.entryId, limit: 10 },
+            f.principal(f.recorder),
+          )
+          return { done, sources: sources.rows, rows: rows.rows, bound, book, single }
         }),
       ),
     )
@@ -260,6 +161,7 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
       found.done.importId,
       found.done.importId,
     ])
+    expect(found.single.map((row) => row.entryId)).toEqual([found.book[1]!.entryId])
   })
 
   // Every row of an import is written in one transaction, so every one of
@@ -659,6 +561,112 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
       ),
     )
     expect(errorOf<{ _tag: string }>(found.refused)?._tag).toBe('ASSESSMENT_BATCH_READ_ONLY')
+    expect(found.after).toEqual({ imports: 0, entries: 0 })
+  })
+
+  // A spreadsheet is not a second form. Each row's material goes through the
+  // same decoder a single record's does, and what gets written is what that
+  // decoder hands back - never the cell text.
+  it("holds every row to the question's own form", async () => {
+    const found = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('ai-own-form')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f)
+          yield* numbered(f)
+          const item = yield* recordItem(f, g.batch.id, {
+            formConfig: { required: ['claimed-level-slot'] },
+          })
+          const revision = one<{ id: string }>(
+            yield* runSql(
+              sql`select current_revision_id as id from assessment_items where id = ${item.id}`,
+            ),
+          ).id
+          const both = yield* workbook(f, item.id, f.recorder, [
+            ['2023001', 'Zhang San', '甲', 'national'],
+            ['2023002', 'Li Si', '乙', ''],
+          ])
+          const preview = yield* assessment.previewAdministrativeImport(
+            f.t,
+            g.batch.id,
+            { attachmentId: both, itemId: item.id, expectedItemRevisionId: revision },
+            f.principal(f.recorder),
+          )
+          const answered = yield* workbook(f, item.id, f.recorder, [
+            ['2023001', 'Zhang San', '甲', 'national'],
+          ])
+          const done = yield* assessment.commitAdministrativeImport(
+            f.t,
+            g.batch.id,
+            { attachmentId: answered, itemId: item.id, expectedItemRevisionId: revision },
+            f.principal(f.recorder),
+          )
+          const payload = one<{ payload: Record<string, unknown> }>(
+            yield* runSql(sql`
+              select v.payload from entries e
+                join entry_revisions v on v.tenant_id = e.tenant_id and v.id = e.current_revision_id
+               where e.item_id = ${item.id}`),
+          ).payload
+          return { preview, done, payload }
+        }),
+      ),
+    )
+    expect(found.preview.rows.map((row) => row.issues)).toEqual([
+      [],
+      [{ severity: 'error', field: 'evidence.claimed-level-slot', reason: 'required' }],
+    ])
+    expect(found.done.importedCount).toBe(1)
+    expect(found.payload).toEqual({ 'claimed-level-slot': 'national' })
+  })
+
+  // A supplementary phase that admits only some people is a different answer
+  // for each row. Refusing the whole question would shut the admitted people
+  // out; admitting it would let the others in through a spreadsheet.
+  it('asks a phase that admits some people about each row by name', async () => {
+    const found = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('ai-phase-scope')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f)
+          yield* numbered(f)
+          const item = yield* recordItem(f, g.batch.id)
+          yield* runSql(sql`
+            insert into phase_participant_scopes (tenant_id, phase_id, participant_id)
+            select tenant_id, id, ${g.p2} from batch_phases where batch_id = ${g.batch.id}`)
+          const attachmentId = yield* workbook(f, item.id, f.recorder, [
+            ['2023001', 'Zhang San', '甲'],
+            ['2023002', 'Li Si', '乙'],
+          ])
+          const revision = one<{ id: string }>(
+            yield* runSql(
+              sql`select current_revision_id as id from assessment_items where id = ${item.id}`,
+            ),
+          ).id
+          const input = { attachmentId, itemId: item.id, expectedItemRevisionId: revision }
+          const preview = yield* assessment.previewAdministrativeImport(
+            f.t,
+            g.batch.id,
+            input,
+            f.principal(f.recorder),
+          )
+          const refused = yield* Effect.exit(
+            assessment.commitAdministrativeImport(f.t, g.batch.id, input, f.principal(f.recorder)),
+          )
+          return { preview, refused, after: yield* counts(f) }
+        }),
+      ),
+    )
+    expect(found.preview.rows.map((row) => row.issues.map((one) => one.reason))).toEqual([
+      ['participant-out-of-scope'],
+      [],
+    ])
+    expect(
+      errorOf<{ issues: { rowNo: number; reason: string }[] }>(found.refused)?.issues,
+    ).toEqual([expect.objectContaining({ rowNo: 2, reason: 'participant-out-of-scope' })])
     expect(found.after).toEqual({ imports: 0, entries: 0 })
   })
 

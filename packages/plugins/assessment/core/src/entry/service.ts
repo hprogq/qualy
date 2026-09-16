@@ -4,7 +4,7 @@ import {
   currentRecognitionOf,
   currentRecognitionsOfEntries,
 } from '../scoring/recognition-db.ts'
-import { recordAdministrativeEntryTx } from './administrative-write.ts'
+import { recordAdministrativeEntryTx, voidAdministrativeEntryTx } from './administrative-write.ts'
 import {
   canonicalRecognition,
   judgeRecognition,
@@ -1994,10 +1994,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           //
           // Its subject cannot abandon it - a student deleting a penalty is
           // the thing that rule exists to stop - so somebody has to be able
-          // to, and it is whoever could have recorded it. The determination
-          // stays exactly as written: the office is not saying it never
-          // decided, it is saying the fact no longer applies, and the scorer
-          // stops counting it because the claim is no longer effective.
+          // to, and it is whoever could have recorded it.
           if (input.kind === 'void') {
             if (!administrative) {
               // a claim its owner filed is theirs to give up; an
@@ -2005,51 +2002,15 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               // one anybody has asked for
               return yield* refuse('abandon', 'entry-not-abandonable')
             }
-            if (entry.status === 'voided') {
-              return yield* refuse('abandon', 'entry-not-abandonable')
-            }
-            // The same lifecycle discipline as its owner walking away: a
-            // live round - an appeal against this record - closes first, and
-            // its sitting dissolves with it. Left open, the withdrawn fact
-            // would go on sitting in reviewers' queues, still accepting
-            // decisions about a claim that no longer counts.
-            if (entry.status === 'in_review') {
-              if (entry.currentReviewInstanceId === null) {
-                return yield* refuse('abandon', 'entry-not-abandonable')
-              }
-              const closed = yield* cancelReviewInstance({
-                tenantId,
-                instanceId: entry.currentReviewInstanceId,
-                outcome: 'cancelled',
-              })
-              if (!closed) return yield* refuse('abandon', 'entry-not-abandonable')
-              yield* insertReviewEvent({
-                tenantId,
-                reviewInstanceId: entry.currentReviewInstanceId,
-                kind: 'cancelled-by-staff',
-                actorId: as.userId,
-                comment: reason,
-              })
-            }
-            const gone = yield* setEntryState({
+            const withdrawn = yield* voidAdministrativeEntryTx({
               tenantId,
               entryId,
-              from: ['draft', 'rejected', 'needs_revision', 'in_review', 'approved'],
-              to: 'voided',
-              ...(entry.status === 'in_review' ? { currentReviewInstanceId: null } : {}),
-            })
-            if (!gone) return yield* refuse('abandon', 'entry-not-abandonable')
-            yield* insertEntryEvent({
-              tenantId,
-              entryId,
-              kind: 'voided-by-staff',
-              actorId: as.userId,
+              status: entry.status,
+              currentReviewInstanceId: entry.currentReviewInstanceId,
+              actorUserId: as.userId,
               reason,
             })
-            // their effective facts and their score just changed under them;
-            // the persistent marker is what an offline participant comes
-            // back to
-            yield* bumpParticipantAttention(tenantId, entryId)
+            if (!withdrawn.voided) return yield* refuse('abandon', 'entry-not-abandonable')
             yield* announce(tenantId, entry.batchId, [
               { kind: 'entries-changed', subjectUserId: participant.userId },
               { kind: 'result-changed', subjectUserId: participant.userId },

@@ -2,11 +2,15 @@ import { Effect } from 'effect'
 import { insertRecognition } from '../scoring/recognition-db.ts'
 import {
   bumpParticipantAttention,
+  cancelReviewInstance,
   insertEntry,
+  insertEntryEvent,
   insertEntryRevision,
+  insertReviewEvent,
   insertRevisionAttachments,
   setEntryState,
   type EntrySource,
+  type EntryStatus,
 } from './db.ts'
 
 // Writing one administrative fact, inside a transaction somebody else opened.
@@ -109,4 +113,69 @@ export const recordAdministrativeEntryTx = (input: AdministrativeWrite) =>
     // durable state on the owner's own row rather than a notification.
     yield* bumpParticipantAttention(input.tenantId, entryId)
     return { entryId, revisionId }
+  })
+
+/**
+ * Withdrawing one administrative fact, inside a transaction somebody else
+ * opened: the single withdrawal and the withdrawal of a whole import both
+ * come through here.
+ *
+ * The determination stays exactly as written. The office is not saying it
+ * never decided, it is saying the fact no longer applies, and the scorer
+ * stops counting it because the claim is no longer effective. An appeal
+ * still open against it closes first, and its sitting dissolves with it;
+ * left open, the withdrawn fact would go on sitting in reviewers' queues.
+ *
+ * Decides nothing about who may do this. It answers only whether the entry
+ * was still in a state a withdrawal can move, and the caller turns a `false`
+ * into its own refusal - which fails the transaction, so an appeal closed a
+ * moment earlier is taken back with it.
+ */
+export const voidAdministrativeEntryTx = (input: {
+  readonly tenantId: string
+  readonly entryId: string
+  readonly status: EntryStatus
+  readonly currentReviewInstanceId: string | null
+  readonly actorUserId: string
+  readonly reason: string
+}) =>
+  Effect.gen(function* () {
+    if (input.status === 'voided') return { voided: false } as const
+    let cancelledReview = false
+    if (input.status === 'in_review') {
+      if (input.currentReviewInstanceId === null) return { voided: false } as const
+      const closed = yield* cancelReviewInstance({
+        tenantId: input.tenantId,
+        instanceId: input.currentReviewInstanceId,
+        outcome: 'cancelled',
+      })
+      if (!closed) return { voided: false } as const
+      yield* insertReviewEvent({
+        tenantId: input.tenantId,
+        reviewInstanceId: input.currentReviewInstanceId,
+        kind: 'cancelled-by-staff',
+        actorId: input.actorUserId,
+        comment: input.reason,
+      })
+      cancelledReview = true
+    }
+    const gone = yield* setEntryState({
+      tenantId: input.tenantId,
+      entryId: input.entryId,
+      from: ['draft', 'rejected', 'needs_revision', 'in_review', 'approved'],
+      to: 'voided',
+      ...(input.status === 'in_review' ? { currentReviewInstanceId: null } : {}),
+    })
+    if (!gone) return { voided: false } as const
+    yield* insertEntryEvent({
+      tenantId: input.tenantId,
+      entryId: input.entryId,
+      kind: 'voided-by-staff',
+      actorId: input.actorUserId,
+      reason: input.reason,
+    })
+    // their effective facts and their score just changed under them; the
+    // persistent marker is what an offline participant comes back to
+    yield* bumpParticipantAttention(input.tenantId, input.entryId)
+    return { voided: true, cancelledReview } as const
   })

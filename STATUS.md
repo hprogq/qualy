@@ -17045,3 +17045,128 @@ exceljs 进浏览器包               apps/web/dist/assets 251 个文件里搜�
 Phase D:导入详情与行列表、原文件下载(§41/§43,比列表再严一级:仍覆盖全部参评人)、
 整批撤销(§44–§48,原子、只动 ImportRow 指向的 Entry、跳过已撤销、申诉中的取消、
 ImportEvent 记 affectedCount),以及全部前端:导入向导、导入记录 Tab、导入详情、互相跳转。
+
+## 行政认定 Phase D:导入详情、整批撤销与全部导入界面(2026-09-17)
+
+规格 `docs/administrative.md` §73 的 Phase D,外加 Phase B/C 没有做的导入前端(§4 / §39 / §40 / §71)。
+收尾时回头查出三个前几阶段的真问题,一并记在下面。
+
+### 结构:导入逻辑搬出 server/index.ts
+
+§55:`administrative-import/service.ts` 照 `makeEntryMethods` 的依赖注入模式,持有模板、上传门、
+预览、提交、列表、详情、行、原文件、整批撤销共 11 个方法;`server/index.ts` 只剩接线
+(6854 → 6186 行)。搬迁本身先跑一遍受影响的 10 个测试文件 47 条确认无回归,再加新功能。
+
+### 新端点(frozen-routes 同笔更新)
+
+```text
+GET  /assessment/administrative-imports/{importId}
+GET  /assessment/administrative-imports/{importId}/rows
+GET  /assessment/administrative-imports/{importId}/source
+GET  /assessment/administrative-imports/{importId}/source/content
+POST /assessment/administrative-imports/{importId}/reversals
+```
+
+**§42/§43 的可读性只有一份**:`readableBy` 谓词(本人发起且名单里每个人仍在其 record reach 内)
+被列表、详情、行、原文件、整批撤销共用;读不到一律 `AdministrativeImportNotFound`,
+不区分「不存在」和「不是你的」。原文件走导入自己的门,不借证据附件的 authorizer。
+
+### 整批撤销
+
+- 单条撤销的写入序列抽成 `voidAdministrativeEntryTx`(取消申诉 + cancelled-by-staff、置 voided、
+  voided-by-staff 事件、未读标记),`interveneOnEntry` 与整批撤销共用;
+- 候选**只按 ImportRow 指向的 Entry**(§47),跳过已撤销;
+- 每条规则先对全部候选判完再动任何一条,任何一条被拒 → 整批拒绝、0 条改变(§46);
+- 写 `ImportEvent(kind=reversed, affectedCount)`;再点一次是 0 条且不写事件;
+- 整批只广播一次,取消了申诉才额外广播审核队列。
+
+### 批量判闸:权限与阶段视图读一次,逐人判定
+
+`recordGate` 读一次 batch authority 和 gate view,返回按参评人判定的函数。预览、锁内提交、
+详情的撤销能力、整批撤销都用它。顺带修掉 Phase C 的不一致:导入原来只按题目判闸、不带参评人,
+在「只开放部分人员的补充阶段」里整份文件都被拒;现在逐行判,范围外的行报
+`participant-out-of-scope`。
+
+### 回头查出的三个真问题
+
+1. **导入没有走题目自己的表单校验(Phase B)**。手动认定走 `driver.decodePayload`(必填、日期落在材料
+   范围内、小数位数……),导入预览只按列类型读单元格——导入能写进单条认定会拒绝的材料,
+   违反 §33「同一套校验」。现在逐行过同一个 `decodePayload`,写入的是解码后的规范值而不是单元格文本。
+   同一处:模板列原来靠猜 `formConfig.fields`,选择题不带选项;改用驱动的 `bindableFields`。
+   测试夹具随之改为「依据列固定在最后」。
+2. **§37 完整性元数据写的是 null(Phase C)**。`AttachmentMeta` 本来就带存储后端 `stat()` 算出的
+   `integrityAlgorithm/Value`,提交时直接写入;测试比对 `storage_attachments` 并对下载字节重算 sha256。
+3. **认定详情抽屉只查认定记录前 200 条(Phase A)**。导入 2000 行后,第 200 条之后打开抽屉看不到
+   认定结果。认定记录接口加 `entryId` 过滤,抽屉按 id 精确取。
+
+另:模板下载原来没有 `content-disposition`,另存没有扩展名;现在以题目标题命名。
+模板表头本身是固定中文,语言参数保持 zh-CN。
+
+### 界面
+
+- 行政认定页:`认定记录 / 导入记录` 两个 Tab,右上 `批量导入 / 手动认定`;
+  `?mode=import` 向导、`?import=<id>` 详情、`?entry=<id>` 抽屉,都在一个 page route 里下钻。
+- 向导:选项目 → 下载模板 → 上传 → 服务端重读并校验 → **先只列需要处理的行**(一键看全部)
+  → 有错误不出现导入按钮;只有提醒时须勾选「我已核对」才可导入 → 导入后直接落到该次导入的详情。
+- 详情:文件、时间与操作人、项目及版本、统一依据、原文件下载、导入条数、当前情况、撤销记录、
+  逐行明细;行点开就是认定抽屉,抽屉里「查看所在导入记录」回到导入。
+- 认定记录每行标出手动认定 / 批量导入;`entries-changed` 时刷新记录、导入列表与详情。
+- 参评结果页已按来源显示「批量导入」,**没有加「查看导入记录」链接**:那里的读者多是批次管理员,
+  而导入详情按 §42 只对导入人可读,链接对他们会是 404。
+
+### 测试与反向验证
+
+新增 `administrative-import-history.test.ts`(12 条)、`administrative-import.browser.test.tsx`(7 条),
+导入测试补「按题目自己的表单校验」「补充阶段逐行判闸」「按 id 取一条认定」。
+
+```text
+去掉「先判完再动手」的预检                   → 一条被拒则全不撤 那条红
+预检挪进循环(有事务)                         → 仍绿:事务回滚了先撤的那条
+预检挪进循环且去掉事务                       → 红:['voided','approved']
+候选改为按参评人查(而不是 ImportRow)        → 手工更正那条红(撤销被拒)
+不跳过已撤销                                 → 只计仍有效那条红(撤销被拒)
+申诉进行中不取消                             → 申诉那条红(round 仍 active)
+忽略阶段闸                                   → 阶段关闭那条红
+忽略归档                                     → 归档那条红
+可读性去掉 reach                             → 失去范围那条红
+可读性去掉本人条件                           → 详情那条红
+不要求理由                                   → 理由那条红
+完整性写 null                                → 详情那条红
+行分页忽略 afterRowNo                        → 行分页那条红
+预览跳过 decodePayload                       → 表单校验那条红
+预览忽略逐行判闸                             → 补充阶段那条红
+浏览器:有错误仍显示导入按钮                  → 红
+浏览器:提醒未勾选也可导入 / 不发 confirmWarnings / 导入后不跳转 → 各自红
+浏览器:能力为 false 仍显示撤销 / 抽屉无导入链接 / 返回丢了 Tab / 撤销理由被改 → 各自红
+```
+
+「按参评人查」「不跳过已撤销」两条红在撤销被拒,不在断言上;前者具体是哪条规则拒的没有继续追。
+
+浏览器测试的「按钮不存在」改用 `data-testid` 断言,不再按按钮文字判断(测试纪律第二条)。
+
+### 已知缺口
+
+- 浏览器前进/后退没有测:测试 harness 是 MemoryRouter,外部触发不了;测的是页面内返回按钮。
+  移动端下钻也没有单独的测试。
+- 锁内逐行判闸(预览通过后阶段才关闭)没有竞态测试;配额、reach、版本三项有。
+- `requiresAttachment` 仍直接读 `formConfig`(证据驱动的知识漏进了 core),Phase B 遗留,未动。
+- §77 两条验收链在服务层与打桩界面上都有覆盖,**没有在真实运行的应用里手动走一遍**。
+
+### 门禁(实际执行,2026-09-17)
+
+```text
+pnpm typecheck                   exit=0
+pnpm test                        250 passed | 3 skipped (253) / 1810 passed | 17 skipped (1827)
+pnpm test:browser                58 passed (58) / 425 passed (425)
+pnpm build                       exit=0
+check-staged-web                 exit=0
+check-chunks                     exit=0
+check-csp-build                  exit=0
+smoke-production                 exit=0
+exceljs 进浏览器包               apps/web/dist/assets 247 个文件里搜不到
+```
+
+### 下一步
+
+行政认定 Phase A–D 完成。可以做的:在运行中的应用里按 §77 手动走通两条链;
+补浏览器前进/后退与移动端下钻的测试;把 `requiresAttachment` 改成问驱动。

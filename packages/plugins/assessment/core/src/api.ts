@@ -42,6 +42,7 @@ import {
   EntryActionRefused,
   EntryNotFound,
   AdministrativeImportInvalid,
+  AdministrativeImportNotFound,
   DeterminationRefused,
   EntryPayloadInvalid,
   ItemActionRefused,
@@ -564,6 +565,8 @@ const importIssue = Schema.Struct({
   /** the field it is about, when it is about one */
   field: Schema.NullOr(Schema.String),
   reason: Schema.String,
+  /** a calculator's own words, when the refusal is its */
+  detail: Schema.optional(Schema.String),
 })
 
 /**
@@ -627,6 +630,17 @@ const administrativeEntryView = Schema.Struct({
   importId: Schema.NullOr(Schema.String),
 })
 
+const personRef = Schema.Struct({ id: Schema.String, name: Schema.String })
+
+const importStanding = Schema.Struct({
+  approved: Schema.Number,
+  inReview: Schema.Number,
+  rejected: Schema.Number,
+  voided: Schema.Number,
+  /** anything else, so the parts always add up to what was imported */
+  other: Schema.Number,
+})
+
 /**
  * One import, as the history lists it.
  *
@@ -639,17 +653,63 @@ const administrativeImportView = Schema.Struct({
   item: Schema.Struct({ id: Schema.String, title: Schema.String }),
   /** the workbook's name as it was uploaded */
   filename: Schema.String,
-  actor: Schema.NullOr(Schema.Struct({ id: Schema.String, name: Schema.String })),
+  actor: Schema.NullOr(personRef),
   createdAt: Schema.String,
   importedCount: Schema.Number,
-  standing: Schema.Struct({
-    approved: Schema.Number,
-    inReview: Schema.Number,
-    rejected: Schema.Number,
-    voided: Schema.Number,
-    /** anything else, so the parts always add up to what was imported */
-    other: Schema.Number,
+  standing: importStanding,
+})
+
+/** one import, whole: what it was, what it did, and what it comes to now */
+const administrativeImportDetail = Schema.Struct({
+  id: Schema.String,
+  batchId: Schema.String,
+  item: Schema.Struct({ id: Schema.String, title: Schema.String }),
+  /** the question version every row of it answered */
+  itemRevision: Schema.Struct({ id: Schema.String, revisionNo: Schema.Number }),
+  filename: Schema.String,
+  /** decimal bytes */
+  size: Schema.String,
+  /** what the store verified the original to be when it was imported */
+  integrity: Schema.NullOr(Schema.Struct({ algorithm: Schema.String, value: Schema.String })),
+  actor: Schema.NullOr(personRef),
+  createdAt: Schema.String,
+  defaultBasis: Schema.NullOr(Schema.String),
+  importedCount: Schema.Number,
+  standing: importStanding,
+  reversals: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      actor: Schema.NullOr(personRef),
+      reason: Schema.NullOr(Schema.String),
+      /** how many were still in effect and were withdrawn by it */
+      affectedCount: Schema.Number,
+      createdAt: Schema.String,
+    }),
+  ),
+  capabilities: Schema.Struct({ reverse: Schema.Boolean }),
+})
+
+/** one row of an import, and the fact it became */
+const administrativeImportRowView = Schema.Struct({
+  rowNo: Schema.Number,
+  entryId: Schema.String,
+  participant: Schema.Struct({
+    id: Schema.String,
+    displayName: Schema.String,
+    businessNo: Schema.NullOr(Schema.String),
   }),
+  /** what the file said, kept as it was written */
+  businessNoSnapshot: Schema.NullOr(Schema.String),
+  displayNameSnapshot: Schema.NullOr(Schema.String),
+  status: administrativeStatus,
+  recognition: Schema.NullOr(
+    Schema.Struct({
+      id: Schema.String,
+      itemRevisionId: Schema.String,
+      values: configJson,
+      fields: Schema.Array(Schema.Struct({ id: Schema.String, schema: configJson })),
+    }),
+  ),
 })
 
 const entryView = Schema.Struct({
@@ -2406,6 +2466,89 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   )
   .add(
     /**
+     * One import, read by the same rule as the history. An import this
+     * reader may not look back on answers exactly as one that never
+     * existed.
+     */
+    HttpApiEndpoint.get(
+      'getAdministrativeImport',
+      '/assessment/administrative-imports/:importId',
+      {
+        params: Schema.Struct({ importId: uuidInput }),
+        success: administrativeImportDetail,
+        error: [AdministrativeImportNotFound],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
+    // the file's rows in the file's own order, each with the fact it became
+    HttpApiEndpoint.get(
+      'listAdministrativeImportRows',
+      '/assessment/administrative-imports/:importId/rows',
+      {
+        params: Schema.Struct({ importId: uuidInput }),
+        query: Schema.Struct({ ...pageQuery }),
+        success: pageOf(administrativeImportRowView),
+        error: [AdministrativeImportNotFound, BadRequest],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
+    /**
+     * The original workbook: what it is and how to fetch it.
+     *
+     * The import's own door, not the evidence one. Nothing cites this file,
+     * and the evidence authorizer would have to pretend it is material to
+     * let anybody read it.
+     */
+    HttpApiEndpoint.get(
+      'describeAdministrativeImportSource',
+      '/assessment/administrative-imports/:importId/source',
+      {
+        params: Schema.Struct({ importId: uuidInput }),
+        success: attachmentDescriptor,
+        error: [AdministrativeImportNotFound, AttachmentUnavailable],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
+    // the bytes of it, for deployments whose store has no public door
+    HttpApiEndpoint.get(
+      'getAdministrativeImportSourceContent',
+      '/assessment/administrative-imports/:importId/source/content',
+      {
+        params: Schema.Struct({ importId: uuidInput }),
+        success: HttpApiSchema.StreamUint8Array(),
+        error: [AdministrativeImportNotFound, AttachmentUnavailable],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
+    /**
+     * Withdrawing what is left of an import, all of it or none.
+     *
+     * A reversal is a thing that happens to an import, not the import
+     * going away: the import stays, the facts it created stay as history,
+     * and each of them is withdrawn exactly the way a single one is.
+     */
+    HttpApiEndpoint.post(
+      'reverseAdministrativeImport',
+      '/assessment/administrative-imports/:importId/reversals',
+      {
+        params: Schema.Struct({ importId: uuidInput }),
+        payload: Schema.Struct({ reason: boundedText(500) }),
+        success: Schema.Struct({ affectedCount: Schema.Number }),
+        error: [
+          AdministrativeImportNotFound,
+          BatchReadOnly,
+          EntryActionRefused,
+          AdministrativeImportInvalid,
+        ],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
+    /**
      * The book of what the institution has recorded in this round.
      *
      * Its own read rather than the general claim list with a filter: the
@@ -2428,6 +2571,8 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
           ...pageQuery,
           /** a name or a business number of the person it is about */
           q: Schema.optional(boundedText(100)),
+          /** one fact, for a screen opened on it by address */
+          entryId: Schema.optional(uuidInput),
           itemId: Schema.optional(uuidInput),
           source: Schema.optional(Schema.Literals(['record', 'import'])),
           status: Schema.optional(administrativeStatus),
