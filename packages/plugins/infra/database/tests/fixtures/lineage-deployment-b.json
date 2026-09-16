@@ -1,0 +1,243 @@
+{
+  "release": "Deployment B",
+  "commit": "05714cf280d0b5bde4713b61e280b19770c769dc",
+  "date": "2026-09-12",
+  "migrations": [
+    {
+      "name": "20260806105442_initial.sql",
+      "sha256": "a0eabd58bfc53b39d9e4ad5e74f4b25f16076da6dfb0e594c608d57b127b574b"
+    },
+    {
+      "name": "20260806121440_role-eligibility-mode.sql",
+      "sha256": "e0d4d9dc617e0838e7f634660b8c8e8363b4a65fd2c388d1368844da5f25060a"
+    },
+    {
+      "name": "20260809055103_assessment-batch-phase-roster.sql",
+      "sha256": "27117897d6f82ab99c3fa72374ab46d1a9148db7f53b1b00beb88df22bcd90c2"
+    },
+    {
+      "name": "20260809085658_batch-scope-node-set.sql",
+      "sha256": "f72d2996362d96bdd86fb886ab12e58f4f836863a9c83fb31f7c5e8fe766129b"
+    },
+    {
+      "name": "20260809100142_batch-anchor-auto-sync.sql",
+      "sha256": "847404615fdc8e9fea079bef656e6569d149ea71bee4859192fcf0df1d692bfa"
+    },
+    {
+      "name": "20260809111511_phase-template-kind.sql",
+      "sha256": "c347c75bdccf4d161bc3b91776d32c0288d2022452b44b2c263a76405f4a49df"
+    },
+    {
+      "name": "20260810202600_phase-schedule-model.sql",
+      "sha256": "7598411743238b9849853f8d0c7953159fefd80a462739f85495e9ce79266ad3"
+    },
+    {
+      "name": "20260811124316_batch-lifecycle-events.sql",
+      "sha256": "5fe2d5a1aa754e7149e32006cec379a10f353980f312489e45883d82143774fa"
+    },
+    {
+      "name": "20260811185310_batch-access-baseline.sql",
+      "sha256": "071ce58624abed7302d8252325bf4d942edf0ab13b0a2dd7d0a986fade646c1a"
+    },
+    {
+      "name": "20260811200227_drop-anchor-auto-sync.sql",
+      "sha256": "696c3b0428cd80211bf20e6d5cafdc012b78a1fa6819d21eebee195034239d0a"
+    },
+    {
+      "name": "20260811205602_roster-is-the-population.sql",
+      "sha256": "5bd3a5e66fd4eada14f63918eabe3cbee4c69874313e640b1fba123741f8fb8b"
+    },
+    {
+      "name": "20260811225407_drop-participant-action-permissions.sql",
+      "sha256": "b2efd237f25059304fbbd7a07de78aeef6048141c6d37d01500ad21d344e3c20"
+    },
+    {
+      "name": "20260812123827_phase-entry-note.sql",
+      "sha256": "fd5aad193ab65066f3415ba6554bd04b1c1c0e234da6ed5cc68e43aa119c7f45"
+    },
+    {
+      "name": "20260812164252_participant-membership-events.sql",
+      "sha256": "051f2c217f9c2f0e576c02c7f6b374e64ed7e474e24cb3cf37fbfc095679b76d"
+    },
+    {
+      "name": "20260812175917_batch-management-anchors.sql",
+      "sha256": "a0d54b5b5b887cfc42c0f07e54c476770e94e669fcc3db0317a58a5755237120"
+    },
+    {
+      "name": "20260812183000_drop-resubmit-permission.sql",
+      "sha256": "eccec418882e6b89c27d488e198cd3ddd52e97a4f3bdbdb11ef74b34602a2020"
+    },
+    {
+      "name": "20260813090000_management-anchors-from-first-import.sql",
+      "sha256": "22fc3c97b2705624609d9adb9586e0f28f1ba515fc1da70322084ad4c38bc3f2"
+    },
+    {
+      "name": "20260813090100_storage-attachments.sql",
+      "sha256": "6bd14b033d21fdc860a4fb9474f6e39c54b0b11396d3195837f6994331abcd72"
+    },
+    {
+      "name": "20260813090200_assessment-items-entries-review.sql",
+      "sha256": "8e4a22f863c3adce86b380d1318da3925ca5e90b555eafcbcdf864566d627711"
+    },
+    {
+      "name": "20260813090300_bind-entry-revisions-to-their-item.sql",
+      "sha256": "335696379d9dc966b50a2a3e08c545935a8c6dcf2d2497b38c49d49784da54db"
+    },
+    {
+      "name": "20260813090400_phase-item-scopes-reference-items.sql",
+      "sha256": "7238a38de52dfda984258e8a2e5ac54d1e741fe357e80fc8b16e0f3015657a7f"
+    },
+    {
+      "name": "20260814224400_item-draft-status.sql",
+      "sha256": "f243d5d9c8f29ef59a33c8115968341343a57f0b5804ca8f7485b51456cf6f5a"
+    },
+    {
+      "name": "20260814230550_score-groups-version.sql",
+      "sha256": "89c6426068346b84a4c959fc685bf7e66ba9292bc49de957938f0cc4d800cb2e"
+    },
+    {
+      "name": "20260815070000_review-routes.sql",
+      "sha256": "568c4c4b759a7e2252fee655ff3d779a3a185d9a0e33369223878c68926e4b03"
+    },
+    {
+      "name": "20260815090000_review-policy-revision.sql",
+      "sha256": "4ed4d5ff99f2d988b0234366f99957e7f9f56f6e79fcf5e564a913e043d1d090"
+    },
+    {
+      "name": "20260815100000_entry-needs-revision.sql",
+      "sha256": "bae48079891928cd830b2cd7394fee17a7bca46aff43494c1f7139cdd655cf92"
+    },
+    {
+      "name": "20260815110000_review-reroute.sql",
+      "sha256": "92b2334b3cb8a0e6a00b6820d7c99e89693afba74abe4930c88b33ab7da9210e"
+    },
+    {
+      "name": "20260816000000_review-appeals.sql",
+      "sha256": "e1ce2978cfca01c5f2117ae7c6fa12513023709c67f6172650d869827617430f"
+    },
+    {
+      "name": "20260816010000_review-escalation-naming.sql",
+      "sha256": "1316c9f37b43e2c32e04696a06aa68c2424027042d587c8bedd5f5702b42750b"
+    },
+    {
+      "name": "20260816020000_role-grant-rules.sql",
+      "sha256": "92555d53a4859a9997cf19909f839768810706154fcf74b8da7ac9087ac03741"
+    },
+    {
+      "name": "20260816054833_review-workbench.sql",
+      "sha256": "c4e1e25bde6699b9140c47bdda684a9123949b4d8b7b0061fa7f184ead0a4600"
+    },
+    {
+      "name": "20260816120000_entry-appeal-naming.sql",
+      "sha256": "b24d09115ef3e107605e78e43254fc4a0950effd372dbdc44dca0d4497854879"
+    },
+    {
+      "name": "20260816124329_review-supplements.sql",
+      "sha256": "f83fdd41720edf4efdf8d6e2f000da81fda7299d2f24488753ce7f293e000945"
+    },
+    {
+      "name": "20260819143000_default-review-reasons.sql",
+      "sha256": "0cf57db5648e922b17f509a1868d6d7e4ef4424c9b075c0782bfae0bc7a37426"
+    },
+    {
+      "name": "20260820095421_drop-reject-policy.sql",
+      "sha256": "e86f240fa8300eca2921d979b616dd0ee3ef661065f5b9ae664b615ea345aaf3"
+    },
+    {
+      "name": "20260820131214_review-panels.sql",
+      "sha256": "9bddc5a41e4f33290bab8b3b1b52ac9e05e3a32c32bf3f7044633c77f4657d89"
+    },
+    {
+      "name": "20260820160000_drop-bind-permissions.sql",
+      "sha256": "268c79bc7a500471e7223383349e476705c587830f4dd91951d6fea1fbb46c3a"
+    },
+    {
+      "name": "20260821094426_entry-attention.sql",
+      "sha256": "2d1f5905c9d1acff38377b402f465acde557a3f13e5372104435eb9f9912d5a9"
+    },
+    {
+      "name": "20260822134000_tenant-role-anchor-null.sql",
+      "sha256": "96ea370aa58a64f235acf58012810ea9c3965d9b83c1e82b54239b03eda68df1"
+    },
+    {
+      "name": "20260822140624_org-codes-drop.sql",
+      "sha256": "322416b7d4c83181ddf5e118e319c00fa20357ee1ab49109f037db2623de33aa"
+    },
+    {
+      "name": "20260822150000_provider-audience.sql",
+      "sha256": "4408b4b7251965678819be3f36bcdd3e56d7c8b15e729849b5389e04326841a8"
+    },
+    {
+      "name": "20260822150100_login-flags-drop.sql",
+      "sha256": "aecc5a46b71025bfa72055db9aa9159759099de3cd080a1eb074fca110eac9c1"
+    },
+    {
+      "name": "20260824132054_audit-base.sql",
+      "sha256": "ce87a9ca5d99ab4f2b78132655844e53c1ce86c70bcd5ff4ac94f83ac98b64a7"
+    },
+    {
+      "name": "20260824135549_user-lifecycle.sql",
+      "sha256": "985420e1931187afe571d0fcfd047cfe5ab657432e7d72f1648a7d1fc8cca57e"
+    },
+    {
+      "name": "20260824143226_sign-in-events.sql",
+      "sha256": "204599291bd714e53d940ff4b23ed754514ba59b15375847d32e63112c24fcaa"
+    },
+    {
+      "name": "20260829124446_formula-library.sql",
+      "sha256": "e82818f1c5c2615cd2d183c8cd94632f683ab26449848b52a8e5dcfb265de882"
+    },
+    {
+      "name": "20260829145426_formula-version-identity.sql",
+      "sha256": "ddf848f507d3af5e92b871394c257f43b4357f521802d7173f417afb56370f56"
+    },
+    {
+      "name": "20260829182230_formula-version-provenance.sql",
+      "sha256": "a8321b5aa133de390ea033cab11cf17dd81b85aad996f19693313a9ea8a83bb6"
+    },
+    {
+      "name": "20260830100000_item-scoring-plan.sql",
+      "sha256": "891e812f068c4958d8a09507aa7e09c22a3586c6a18cd4581fc6918f3316fc6b"
+    },
+    {
+      "name": "20260830110000_entry-recognitions.sql",
+      "sha256": "50ebd5a6174e025b779ae4260f5e5396487aa42b6804db8ff638291074ba1f95"
+    },
+    {
+      "name": "20260830140000_recognition-history.sql",
+      "sha256": "f06cedf02de8de02985807dfc5b903a81aae9cdab27eb22cf5f789d7841bfc6e"
+    },
+    {
+      "name": "20260830160000_recognition-history-repair.sql",
+      "sha256": "e69b4e817b9267da71cca32476431371827b74c175529b2bfa834d0017e438dc"
+    },
+    {
+      "name": "20260830180000_appeal-recognition.sql",
+      "sha256": "9bf87b23272e0a2b89c1d210ff7cb1bf40dba79dcbde9ffa578c08ec7db72bd8"
+    },
+    {
+      "name": "20260830200000_appeal-target-exactly-one.sql",
+      "sha256": "423cd4ff8171b3f7dae5ef371506fbaff96c7db3517030abf07aea360ba7f2d6"
+    },
+    {
+      "name": "20260830210000_record-actor-not-subject.sql",
+      "sha256": "134494940e90fda2e30b0dcacf8a6337dadf811c5a8651883e6da1c9f4f1b834"
+    },
+    {
+      "name": "20260831110000_supplement-superseded.sql",
+      "sha256": "119ff14b0c64b6f900db9455545aad801c76c493c8dcf6ce7df1f8138a641786"
+    },
+    {
+      "name": "20260831120000_formula-permanence-same-batch.sql",
+      "sha256": "c09e54c9e87d4865ed32aeb65f3cc7161f2ba091d108f3390b942c5616a08b18"
+    },
+    {
+      "name": "20260901014046_formula-author-ownership.sql",
+      "sha256": "d24576e95b6173be96521192d13291a32d2e10a3d8bd671ade8be38fae4f49fe"
+    },
+    {
+      "name": "20260901064240_formula-version-sharing.sql",
+      "sha256": "fe78412538b2559944d14eeadf1b0ea1e4ab8083091431a8b7903c6fabc6bdec"
+    }
+  ]
+}

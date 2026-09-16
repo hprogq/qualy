@@ -23,8 +23,17 @@
 - `qualy-sandbox-runtime:<release>`:QuickJS 计分沙箱,一条 unix socket;
 - `qualy-sandbox-authoring:<release>`:公式编译沙箱(source policy、TS、esbuild),一条 unix socket。
 
-`pnpm release:build <release> [--check]`(`tools/release/build-images.ts`)顺序构建三者;不给 tag 时用短 commit hash,
-工作树不干净则加 `-dirty` 后缀,让脏树构建的镜像自己说出来。
+`pnpm release:build [<release>] [--check] [--allow-dirty]`(`tools/release/build-images.ts`)顺序构建三者,机器保证「一个 tag = 一个 checkout」:
+
+- 不给 tag 时用短 commit hash,构建输入有改动则加 `-dirty`,让脏树构建的镜像自己说出来;**给了名字(如 `v1.0.0`)而构建输入有改动一律拒绝**,
+  除非显式 `--allow-dirty`。「构建输入」按 `.dockerignore` 判断:docs/、STATUS.md 之类不进构建上下文的改动不算。
+- 第一次构建前对 checkout 取指纹(HEAD + 构建输入内的已跟踪改动内容 + 未跟踪文件名与内容),之后每次构建前与最后一次构建后比对;
+  指纹变了就删除本次打出的 tag 并失败,三个镜像不会来自两棵树。
+- 每个镜像带 `org.opencontainers.image.revision` = 构建时的 commit(脏树加 `-dirty`)。
+
+基础镜像全部**按 digest 固定**:三个 Dockerfile 的 `node:24.20.0-*@sha256:…` 与 `mise.toml`、CI `setup-node` 同一版本;
+`deploy/compose.yaml`、开发 compose 的两个集群、CI 的 postgres service 同一个 `pgvector/pgvector:pg18-bookworm@sha256:…`。
+同一 commit 隔月重建,起点仍是同一批字节;`tools/tests/release-inputs.test.ts` 守住这三处一致与 digest 存在,升级基础镜像就是改这几行并过门禁。
 
 ### 2.1 server 镜像(根 `Dockerfile`)
 
@@ -36,12 +45,19 @@
    (应用 = 根包的插件依赖 + server 宿主 + deploy CLI,**沿生产边**取闭包)→ `tools/release/prune-server-image.mjs`
    (闭包由 pnpm 现算,不手写清单;删闭包外的包、tests、`./testkit` 导出目标、`src/client`、`*.tsx`、tsconfig、vitest 配置、tools、docs)
    → 拷入 staged client-dist。
-3. final:`node:24-bookworm-slim`(argon2 只有 glibc 预编译包)、`USER node`、`NODE_ENV=production`、HEALTHCHECK `/health/live`、
+3. final:`node:24.20.0-bookworm-slim@sha256:…`(argon2 只有 glibc 预编译包)、`USER node`、`NODE_ENV=production`、HEALTHCHECK `/health/live`、
    预建 `/var/lib/qualy/storage` 与两个 socket 目录(归 node,命名卷首次挂载继承所有权)。
 
-服务端**以 TS 源码 + node strip-types 运行**,与 sandbox 镜像同一做法:仓库没有 emit 步骤,workspace 包必须是 node_modules
-之外的真实目录。镜像里没有 tests、浏览器源码、vitest / vite / typescript / tsgo / playwright / tsx / esbuild,没有 tools、docs、apps/web、
-.git,没有 `.env`。`tools/quality/check-release-image.ts` 从外部逐条断言(CI `image` job)。
+服务端**以 TS 源码 + node strip-types 运行,这是正式的生产执行模型**(2026-09-17 裁决,不是过渡方案),与 sandbox 镜像同一做法:
+仓库没有 emit 步骤,workspace 包必须是 node_modules 之外的真实目录。选它的理由:开发、测试、镜像是同一套模块结构与包解析,
+P5 的依赖声明缺陷正是因为没有 bundler/dist 掩盖才暴露;改预编译 JS 要另立 src→dist export 改写、描述器与 CLI 路径、迁移与 baseline
+资产拷贝、源码/产物一致性等一整套不变量,而收益(135 MB 镜像、冷启动)目前没有数据支持。**重新考虑的触发条件**:冷启动、镜像拉取体积、
+TS 解析 CPU 或源码分发要求中任何一项有实测数据证明成了问题。
+
+镜像里没有 tests、浏览器源码、vitest / vite / typescript / tsgo / playwright / tsx / esbuild,没有 tools、docs、apps/web、
+.git,没有 `.env`。`tools/quality/check-release-image.ts` 从外部逐条断言(CI `image` job):node 版本等于 Dockerfile 固定的版本;
+qualy.yml、qualy.lock.json 与 `db/migrations` 每个文件按 **SHA-256** 与 checkout 比对(同一段脚本分别用宿主 node 与镜像内 node 执行,
+名字对而 SQL 不同也会失败)。
 
 ### 2.2 一条从镜像学到的纪律
 
@@ -49,6 +65,15 @@
 devDependencies 里的包,在每个开发机上都能解析,在镜像第一次启动时才炸(第一版镜像就死在 `@qualy/plugin-auth` import
 `@qualy/api-kit`)。因此:**运行时 import 必须声明在 dependencies**,`tools/tests/workspace-deps.test.ts` 按镜像同一闭包扫
 `src/`(排除 `client/`、`dev/`、testkit)守住;`pnpm --filter 'x...'` 会沿 devDependencies 跟进,镜像一律 `--filter-prod`。
+
+闭包只有一个答案:`tools/release/runtime-closure.ts` 以 `pnpm --filter-prod <roots>... ls --json` 问 pnpm,镜像修剪器与上面的门禁都经它取,
+门禁另断言 Dockerfile 的 install filter 与它的根列表一致——不再有一处手写依赖 BFS、一处跑 pnpm 的分叉。
+
+### 2.3 一次部署改变什么
+
+只有 database 能力有 deploy 副作用,而它的 migration ledger 本身就是实例的 applied state,所以没有第二份「已部署」记录(P4.5 删除了
+deployed lock)。这个前提由 `tools/tests/deploy-capabilities.test.ts` 钉住:枚举仓库全部插件的能力 provider,实现 `deploy` 的只能是
+database。出现第二种有持久部署副作用的能力时,先设计启动如何验证它执行过,再改这张表。
 
 ## 3. 部署(`deploy/`)
 
@@ -89,21 +114,21 @@ release 不匹配后自行 reload。
 
 ## 4. 发布验证
 
-| #   | 要求                                                                           | 由谁证明                                                                                                                                                               |
-| --- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | 空 PostgreSQL 重放 committed lineage 到当前                                    | `qualy database verify`(CI 每次)                                                                                                                                       |
-| 2   | 结果与 Assembly Schema Graph(全部 `Db.entities` + 复合外键 + baseline)零 drift | 同上:scratch A 重放、scratch B 按声明建、逐语句比对                                                                                                                    |
-| 3   | 跨插件 / 复合外键正确                                                          | 同上(结构 diff 含约束);各插件 `schema-parity` 测试逐对象比对                                                                                                           |
-| 4   | 有代表性的历史 release 数据库能升级到当前                                      | `packages/plugins/infra/database/tests/lineage-upgrade.test.ts`:在 2026-09-12 部署(Deployment B)时的 lineage 前缀上建库,再用完整 lineage 追平,与一次建成的库逐对象相同 |
-| 5   | 已发布迁移不得悄悄修改                                                         | `tools/quality/check-migrations-immutable.ts <base>`:base..HEAD 之间 `db/migrations` 只许新增(CI 对 PR base / push 前 commit 跑)                                       |
-| 6   | 破坏性迁移需要显式批准                                                         | `qualy database drop-guard`(CI 每次);generate 期自动 guard                                                                                                             |
-| 7   | 迁移执行 single-writer                                                         | migrator 的 `pg_advisory_lock` + `lock_timeout`;`migrator.test.ts` 三条                                                                                                |
-| 8   | 迁移失败不记为成功                                                             | 整文件一个事务,失败不入 ledger;`migrator.test.ts`                                                                                                                      |
-| 9   | 最终 server 镜像无仓库源码 / 开发工具链也能启动                                | `check-release-image.ts`(镜像内 resolve、无库启动停在数据库)+ `release-smoke.ts`(对真库启动到 ready)                                                                   |
-| 10  | Web production build 能加载                                                    | `smoke-production.ts`(CI)+ `release-smoke.ts`(镜像内 shell、manifest、一个哈希资源)                                                                                    |
-| 11  | Sandbox RPC / ABI 冒烟                                                         | `qualy sandbox status`:从 server 容器内对两条 socket 取 capabilities,核对 rpc / abi 版本;`release-smoke.ts` 在 compose 栈上执行它                                      |
-| 12  | 备份 → 恢复 → 启动                                                             | `release-smoke.ts`:`pg_dump -Fc` → dropdb/createdb → `pg_restore` → `migrate`(up to date)→ server 重启到 ready                                                         |
-| 13  | 文档:镜像回滚 ≠ schema 回滚                                                    | 本文 §3.2                                                                                                                                                              |
+| #   | 要求                                                                           | 由谁证明                                                                                                                                                                                                                                                          |
+| --- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | 空 PostgreSQL 重放 committed lineage 到当前                                    | `qualy database verify`(CI 每次)                                                                                                                                                                                                                                  |
+| 2   | 结果与 Assembly Schema Graph(全部 `Db.entities` + 复合外键 + baseline)零 drift | 同上:scratch A 重放、scratch B 按声明建、逐语句比对                                                                                                                                                                                                               |
+| 3   | 跨插件 / 复合外键正确                                                          | 同上(结构 diff 含约束);各插件 `schema-parity` 测试逐对象比对                                                                                                                                                                                                      |
+| 4   | 有代表性的历史 release 数据库能升级到当前                                      | `packages/plugins/infra/database/tests/lineage-upgrade.test.ts`:按 `tests/fixtures/lineage-deployment-b.json`(Deployment B 提交 `05714cf2` 实际携带的 59 个迁移名与 SHA-256)先断言这些文件逐字节仍在,再用它们建旧库、用完整 lineage 追平,与一次建成的库逐对象相同 |
+| 5   | 已发布迁移不得悄悄修改                                                         | `tools/quality/check-migrations-immutable.ts <base>`:base..HEAD 之间 `db/migrations` 只许新增(CI 对 PR base / push 前 commit 跑)                                                                                                                                  |
+| 6   | 破坏性迁移需要显式批准                                                         | `qualy database drop-guard`(CI 每次);generate 期自动 guard                                                                                                                                                                                                        |
+| 7   | 迁移执行 single-writer                                                         | migrator 的 `pg_advisory_lock` + `lock_timeout`;`migrator.test.ts` 三条                                                                                                                                                                                           |
+| 8   | 迁移失败不记为成功                                                             | 整文件一个事务,失败不入 ledger;`migrator.test.ts`                                                                                                                                                                                                                 |
+| 9   | 最终 server 镜像无仓库源码 / 开发工具链也能启动                                | `check-release-image.ts`(镜像内 resolve、无库启动停在数据库)+ `release-smoke.ts`(对真库启动到 ready)                                                                                                                                                              |
+| 10  | Web production build 能加载                                                    | `smoke-production.ts`(CI)+ `release-smoke.ts`(镜像内 shell、manifest、一个哈希资源)                                                                                                                                                                               |
+| 11  | Sandbox RPC / ABI 冒烟                                                         | `qualy sandbox status`:从 server 容器内对两条 socket 取 capabilities,核对 rpc / abi 版本;`release-smoke.ts` 在 compose 栈上执行它                                                                                                                                 |
+| 12  | 备份 → 恢复 → 启动                                                             | `release-smoke.ts`:`pg_dump -Fc` → dropdb/createdb → `pg_restore` → `migrate`(up to date)→ server 重启到 ready                                                                                                                                                    |
+| 13  | 文档:镜像回滚 ≠ schema 回滚                                                    | 本文 §3.2                                                                                                                                                                                                                                                         |
 
 `tools/quality/release-smoke.ts <release>` 在一个一次性的 compose project 上驾驭 `deploy/compose.yaml`:
 postgres 起 → **未迁移就启动 server 必须被拒**(项 9 的另一半)→ `migrate` → server + 两个 sandbox 起 → `/health/ready` →

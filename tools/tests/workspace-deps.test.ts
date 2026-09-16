@@ -3,6 +3,7 @@ import { builtinModules } from 'node:module'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { walkSources } from '../lib/walk.ts'
+import { runtimeClosure, runtimeFilter } from '../release/runtime-closure.ts'
 
 // A package that imports a workspace package has to say so.
 //
@@ -82,6 +83,23 @@ describe('what a package says it depends on', () => {
     expect([...new Set(offenders)]).toEqual([])
   })
 
+  // The image installs with a filter written in the Dockerfile, where no
+  // module can be imported; this is what keeps that filter the one the
+  // pruner and the gate below ask pnpm with.
+  it('installs the image from the closure this gate scans', () => {
+    const dockerfile = fs.readFileSync(path.join(ROOT, 'Dockerfile'), 'utf8')
+    const install =
+      /RUN pnpm install --frozen-lockfile --ignore-scripts --prod\s*\\?\s*([^&]+?)\s*\\?\s*&&/.exec(
+        dockerfile,
+      )?.[1]
+    expect(install, 'the runtime stage installs production dependencies').toBeDefined()
+    const filters = [...install!.matchAll(/--filter-prod\s+'([^']+)'/g)].flatMap((match) => [
+      '--filter-prod',
+      match[1]!,
+    ])
+    expect(filters).toEqual(runtimeFilter())
+  })
+
   // The release image installs the runtime closure with production
   // dependencies only, and node resolves a workspace package's imports from
   // its own node_modules. So an import a package needs at runtime but declares
@@ -91,36 +109,25 @@ describe('what a package says it depends on', () => {
   // keeps: not the browser halves, not the development supervisor's process
   // modules, not the test support a package publishes under `./testkit`.
   it('declares what its runtime sources import as a dependency, not a development one', () => {
-    const manifests = manifestPaths().map((file) => ({ file, manifest: read(file) }))
+    // pnpm's answer, through the module the image's pruner asks through:
+    // a closure walked here by hand could disagree with the install about an
+    // optional or a peer edge, and this would vouch for a tree the image
+    // never had
+    const closure = runtimeClosure(ROOT).filter((project) => project.name !== 'qualy')
+    expect(closure.length).toBeGreaterThan(3)
     const byName = new Map(
-      manifests.flatMap(({ file, manifest }) =>
-        manifest.name === undefined ? [] : [[manifest.name, { file, manifest }] as const],
-      ),
+      closure.map((project) => [
+        project.name,
+        {
+          file: path.join(project.dir, 'package.json'),
+          manifest: read(path.join(project.dir, 'package.json')),
+        },
+      ]),
     )
-    const root = read(path.join(ROOT, 'package.json'))
-    byName.set('qualy', { file: path.join(ROOT, 'package.json'), manifest: root })
-
-    // the closure `pnpm --filter-prod` selects: production edges from the
-    // application, the server host and the deploy CLI
-    const closure = new Set<string>()
-    const pending = ['qualy', '@qualy/app', '@qualy/cli']
-    while (pending.length > 0) {
-      const name = pending.pop()!
-      if (closure.has(name)) continue
-      const found = byName.get(name)
-      if (found === undefined) continue
-      closure.add(name)
-      for (const dependency of Object.keys(found.manifest.dependencies ?? {})) {
-        if (byName.has(dependency)) pending.push(dependency)
-      }
-    }
-    expect(closure.size).toBeGreaterThan(3)
 
     const builtins = new Set(builtinModules)
     const offenders: string[] = []
-    for (const name of closure) {
-      if (name === 'qualy') continue
-      const { file, manifest } = byName.get(name)!
+    for (const [name, { file, manifest }] of byName) {
       const dir = path.dirname(file)
       const declared = new Set([
         ...Object.keys(manifest.dependencies ?? {}),

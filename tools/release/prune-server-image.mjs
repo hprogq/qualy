@@ -7,40 +7,25 @@
 // browser halves' sources, the dev toolchain, the tools, the documents - is
 // removed. The closure is asked of pnpm rather than written down, so a plugin
 // added to the manifest and the root package.json is in the image without
-// anybody editing this file.
+// anybody editing this file - and asked through the one module the dependency
+// gate asks through too (runtime-closure.ts), so the tree the gate vouches for
+// is the tree kept here.
 //
 // Plain .mjs, like the sandbox images' pruner: it is a build step, not part
-// of the application.
-import { execFileSync } from 'node:child_process'
+// of the application. The module it imports is TypeScript node runs directly.
 import fs from 'node:fs'
 import path from 'node:path'
+import { runtimeClosure } from './runtime-closure.ts'
 
 const root = process.cwd()
 
 /** the workspace packages the runtime is made of, as directories relative to the root */
-const closure = execFileSync(
-  'pnpm',
-  [
-    // the same selection the install was made with: production edges only
-    '--filter-prod',
-    'qualy...',
-    '--filter-prod',
-    '@qualy/app...',
-    '--filter-prod',
-    '@qualy/cli...',
-    'exec',
-    'node',
-    '-e',
-    'console.log(process.cwd())',
-  ],
-  { encoding: 'utf8' },
+const keep = new Set(
+  runtimeClosure(root)
+    .map((project) => path.relative(root, project.dir))
+    .filter((dir) => dir !== '')
+    .map((dir) => path.normalize(dir)),
 )
-  .split('\n')
-  .map((line) => line.trim())
-  .filter((line) => line !== '')
-  .map((dir) => path.relative(root, dir))
-  .filter((dir) => dir !== '')
-const keep = new Set(closure.map((dir) => path.normalize(dir)))
 if (keep.size === 0) throw new Error('the runtime closure is empty; is this the workspace root?')
 
 // The root files a release is: what installed it, what selected it, and the

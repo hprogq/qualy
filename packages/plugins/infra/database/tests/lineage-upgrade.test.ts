@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -16,24 +17,40 @@ import { createTestContext, postgresAvailable } from '../src/testkit.ts'
 // compare it object by object with one built in a single pass. The ledger
 // must name every migration, and the schema must not know the difference.
 //
-// Two cuts: the release that was deployed on 2026-09-12, which is the
-// database that actually exists somewhere, and the midpoint of the lineage,
-// which makes the upgrade long enough to cross most of its history.
+// Two cuts. The first is the release deployed as Deployment B, named by the
+// lineage that release actually carried: tests/fixtures/lineage-deployment-b.json
+// lists its migrations and their SHA-256 as `git show 05714cf2` has them, and
+// this checks that every one of them is still here, byte for byte, before
+// building the old database from them. A cut by timestamp would have used
+// today's copies of those files, which proves a historical upgrade only as
+// long as nobody has edited one. The second cut is the midpoint of the
+// lineage, which makes the upgrade long enough to cross most of its history.
 
 const LINEAGE = fileURLToPath(new URL('../../../../../db/migrations', import.meta.url))
-const DEPLOYED_STAMP = '20260912235959'
 
 const migrations = fs
   .readdirSync(LINEAGE)
   .filter((name) => name.endsWith('.sql'))
   .sort()
 
+interface HistoricalLineage {
+  readonly release: string
+  readonly commit: string
+  readonly migrations: readonly { readonly name: string; readonly sha256: string }[]
+}
+const deploymentB = JSON.parse(
+  fs.readFileSync(new URL('./fixtures/lineage-deployment-b.json', import.meta.url), 'utf8'),
+) as HistoricalLineage
+
 const cuts = [
   {
-    label: 'the release deployed on 2026-09-12',
-    count: migrations.filter((name) => name.slice(0, 14) <= DEPLOYED_STAMP).length,
+    label: `the lineage ${deploymentB.release} deployed`,
+    names: deploymentB.migrations.map((one) => one.name),
   },
-  { label: 'the midpoint of the lineage', count: Math.floor(migrations.length / 2) },
+  {
+    label: 'the midpoint of the lineage',
+    names: migrations.slice(0, Math.floor(migrations.length / 2)),
+  },
 ]
 
 interface Db {
@@ -74,25 +91,46 @@ const describeSchema = async (db: Db) => {
   }
 }
 
+describe('the lineage a past release carried', () => {
+  it(`is still here, byte for byte: ${deploymentB.release}`, () => {
+    // the fixture is only worth something while it names the current files
+    expect(deploymentB.migrations.length).toBeGreaterThan(0)
+    const drifted = deploymentB.migrations
+      .filter((one) => {
+        const at = path.join(LINEAGE, one.name)
+        return (
+          !fs.existsSync(at) ||
+          createHash('sha256').update(fs.readFileSync(at)).digest('hex') !== one.sha256
+        )
+      })
+      .map((one) => one.name)
+    expect(drifted, 'a migration an earlier release applied was edited or removed').toEqual([])
+    // and the release's lineage is a prefix of today's, in today's order
+    expect(migrations.slice(0, deploymentB.migrations.length)).toEqual(
+      deploymentB.migrations.map((one) => one.name),
+    )
+  })
+})
+
 describe.runIf(postgresAvailable)('upgrading a database from an earlier release', () => {
-  it.each(cuts)('$label: applying the rest ends where one pass ends', async ({ count }) => {
-    expect(count).toBeGreaterThan(0)
-    expect(count).toBeLessThan(migrations.length)
+  it.each(cuts)('$label: applying the rest ends where one pass ends', async ({ names }) => {
+    expect(names.length).toBeGreaterThan(0)
+    expect(names.length).toBeLessThan(migrations.length)
     const prefix = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-lineage-prefix-'))
-    for (const name of migrations.slice(0, count)) {
+    for (const name of names) {
       fs.copyFileSync(path.join(LINEAGE, name), path.join(prefix, name))
     }
-    const old = await createTestContext(`lineage-upgrade-${String(count)}`, {
+    const old = await createTestContext(`lineage-upgrade-${String(names.length)}`, {
       migrationsFolder: prefix,
     })
-    const fresh = await createTestContext(`lineage-fresh-${String(count)}`)
+    const fresh = await createTestContext(`lineage-fresh-${String(names.length)}`)
     try {
       const before = await describeSchema(old)
-      expect(before.ledger).toEqual(migrations.slice(0, count))
+      expect(before.ledger).toEqual([...names])
 
       // the migration job, against a database whose ledger stops early
       const { applied } = await runMigrations(old.url, { folder: LINEAGE, entities: [] })
-      expect(applied).toBe(migrations.length - count)
+      expect(applied).toBe(migrations.length - names.length)
 
       const upgraded = await describeSchema(old)
       const single = await describeSchema(fresh)
