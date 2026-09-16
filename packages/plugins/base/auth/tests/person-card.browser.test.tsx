@@ -1,6 +1,6 @@
 import PersonCard from '../src/client/iam/PersonCard.tsx'
 import { describe, expect, it } from 'vitest'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
 import { Table, TableBody, TableCell, TableRow } from '@qualy/ui/table'
 import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
@@ -50,6 +50,11 @@ describe('a person in a table row', () => {
     // before anybody points at anything
     await expect.element(trigger).toHaveAttribute('aria-expanded', 'false')
     const row = await page.getByTestId('person-row').element()
-    expect(getComputedStyle(row).backgroundColor).toBe(BLANK)
+    // The row also tints under the pointer, and the pointer is wherever the
+    // last test left it - over this row often enough that the assertion read
+    // a hover tint, or the 150ms transition out of one, as the card's doing.
+    // Move it away, then wait for the transition to finish before reading.
+    await userEvent.unhover(row)
+    await expect.poll(() => getComputedStyle(row).backgroundColor, { timeout: 2_000 }).toBe(BLANK)
   })
 })
