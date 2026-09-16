@@ -78,6 +78,11 @@ jobs:
           psql -h localhost -U qualy -d qualy -c 'select pg_reload_conf()'
       - name: assembly lock must describe this tree
         run: pnpm qualy resolve --frozen-lockfile
+      # A committed migration is history: between the base of this change and
+      # its head the lineage may only grow. Editing or removing one is a new
+      # migration's job (docs/deployment.md, release verification 5).
+      - name: committed migrations only grow
+        run: node tools/quality/check-migrations-immutable.ts ${{ github.event.pull_request.base.sha || github.event.before }}
       - run: pnpm typecheck
       - name: capability artifacts must be conflict free
         run: pnpm qualy database check
@@ -187,11 +192,15 @@ jobs:
         run: pnpm exec playwright install --with-deps webkit
       - run: pnpm test:browser:webkit
 
-  # The release image, built the way a release is built and inspected from
-  # the outside: this checkout's manifest, lock and lineage inside, nothing of
-  # the development toolchain, the assembly resolving against its own lock
-  # with nothing mounted, and a start that reaches the database. No postgres
-  # here on purpose - a build never needs one.
+  # The release, built the way a release is built - the server image and the
+  # two sandbox images, one tag - and then treated the way a deployment
+  # treats it. The server image is inspected from the outside first: this
+  # checkout's manifest, lock and lineage inside, nothing of the development
+  # toolchain, the assembly resolving against its own lock with nothing
+  # mounted. Then deploy/compose.yaml runs the release on a throwaway
+  # project: migrate, serve, reach both sandboxes, back up, restore, serve
+  # again. No pnpm install here on purpose: a release is used, not built
+  # upon, and the three scripts import nothing beyond node.
   image:
     runs-on: ubuntu-latest
     steps:
@@ -199,7 +208,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 24.20.0
-      - name: build the server release image
-        run: docker build --build-arg QUALY_RELEASE=${{ github.sha }} -t qualy-server:ci .
-      - name: the image carries the release and nothing else
-        run: node tools/quality/check-release-image.ts qualy-server:ci
+      - name: build the release images, and inspect the server image
+        run: node tools/release/build-images.ts ci --check
+      - name: the release deploys, migrates, serves, backs up and restores
+        run: node tools/quality/release-smoke.ts ci

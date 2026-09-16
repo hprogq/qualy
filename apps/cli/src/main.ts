@@ -296,13 +296,24 @@ async function main(): Promise<void> {
       return
     }
     const implementation = await entry.command.load()
-    await implementation.run({
-      args,
-      capability:
-        entry.command.context === 'capability'
-          ? capabilityContext(resolution, capabilityKeyOf(resolution, entry.plugin), args)
-          : undefined,
-    })
+    try {
+      await implementation.run({
+        args,
+        capability:
+          entry.command.context === 'capability'
+            ? capabilityContext(resolution, capabilityKeyOf(resolution, entry.plugin), args)
+            : undefined,
+      })
+    } catch (error) {
+      // a command's own refusal has said its piece and chosen its exit code;
+      // anything else is a failure, reported cause by cause
+      if (isCliRefused(error)) {
+        console.error(error.message)
+        process.exitCode = error.exitCode
+        return
+      }
+      die(`${namespace} ${name} failed:\n  ${describeError(error).join('\n  ')}`)
+    }
     return
   }
 
@@ -325,6 +336,12 @@ async function main(): Promise<void> {
   )
   die(`no capability or namespace ${key} in this assembly; available: ${available || '(none)'}`)
 }
+
+/** a command's declared refusal (@qualy/plugin-kit/cli CliRefused), recognised by shape */
+const isCliRefused = (error: unknown): error is Error & { exitCode: number } =>
+  error instanceof Error &&
+  (error as { _tag?: unknown })._tag === 'CliRefused' &&
+  typeof (error as { exitCode?: unknown }).exitCode === 'number'
 
 /** the capability a plugin provides, for commands that asked for its work context */
 function capabilityKeyOf(resolution: Resolution, pluginId: string): string {

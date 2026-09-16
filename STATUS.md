@@ -17606,3 +17606,121 @@ node tools/quality/check-release-image.ts qualy-server:local    全部 ok,image 
 **新 P6 Production Deployment**:`deploy/` 目录下的 production compose(`qualy-server:<release>`、`qualy-sandbox-runtime`、
 `qualy-sandbox-authoring`、postgres、持久卷、sandbox UDS 卷、健康探针、一次性 `qualy deploy` job)与 `.env.example`;
 compose 只用 `image:`,不 bind 源码,不挂宿主 node_modules。源码里没有任何 Redis 使用,不加未用的服务。
+
+## 构建/装配/部署重构 P6:Production Deployment(2026-09-17)
+
+`deploy/` 是部署单元:`compose.yaml` + 从 `.env.example` 填出的 `.env`。全文与不变量见 `docs/deployment.md`,命令序列见 `deploy/README.md`。
+
+### 发布物与构建
+
+- 一个 release = 同一 checkout、同一 tag 的三个镜像:`qualy-server`、`qualy-sandbox-runtime`、`qualy-sandbox-authoring`。
+  `pnpm release:build <tag> [--check]`(`tools/release/build-images.ts`)顺序构建;不给 tag 用短 commit hash,脏树加 `-dirty`。
+  两个 sandbox Dockerfile 加 `ARG QUALY_RELEASE` + OCI label,预建各自的 socket 目录归 node;server 镜像预建 `/var/lib/qualy/storage`
+  与两个 socket 目录归 node——命名卷首次挂载继承镜像目录的所有权,否则 root-owned 不可写。
+- **sandbox 镜像瘦身(顺手抓到的第二个 pnpm 事实)**:`pnpm install --filter <app>...` 无论 filter 怎么写都会装 **workspace root 的依赖**
+  (`--filter-prod '!qualy'` 也一样,Scope 显示 3 个项目、store 却 258 项),而 P1 之后 root 的 dependencies 就是全部插件——
+  于是 sandbox-runtime 镜像从 P1 前的 89 MB 涨到 292 MB,里面躺着 monaco-editor、react、mikro-orm、exceljs。
+  `tools/quality/prune-image-tree.mjs` 现在从保留的包出发沿 node_modules 符号链接算 store 可达集,删掉其余(runtime 留 18 项删 238,
+  authoring 留 22 项删 238),再清悬空链接;sandbox 安装也改 `--filter-prod`。结果 runtime 76.9 MB、authoring 145.6 MB,
+  容器起得来、socket 归 node。家族目录遍历改成与 server 修剪器同一规则(有 package.json 即整包判定)。
+- `.dockerignore` 的 `.env` 模式改为 `**/.env`、`**/.env.*`(留 `!**/.env.example`):`deploy/.env` 绝不能进任何构建上下文。
+
+### compose 的形状
+
+- `postgres`(pgvector pg18,卷 `pg_data` / `pg_backups`,不发布端口)。
+- `migrate`(profile `deploy`):server 镜像跑 `node apps/cli/src/main.ts deploy`,`docker compose run --rm migrate` 按需执行,
+  `read_only` + tmpfs;这是唯一应用迁移的地方。
+- `server`:`env_file: ${QUALY_ENV_FILE:-.env}`,容器内路径由 `environment` 覆盖(`PORT`、`QUALY_STORAGE_LOCAL_ROOT`、两条 socket、
+  `QUALY_VERSION=<release>`);发布到 `${QUALY_BIND:-127.0.0.1}:${QUALY_PORT:-3000}`;`read_only` 根 + tmpfs `/tmp`;
+  `no-new-privileges`;卷 `storage`、`sandbox_runtime`、`sandbox_authoring`(读写:unix socket 的 connect() 需要 inode 写权限,
+  `:ro` 挂载返回 EROFS;isolation spec §28 加了实测修正)。
+- `sandbox-runtime` / `sandbox-authoring`:`network_mode: none`、只读根、`user 1000:1000`、`cap_drop ALL`、pids / mem / cpu 限额、
+  各自一个卷、**不给 .env**。
+- 没有 Redis(源码零使用);边缘代理不在 compose 里(`ops/reverse-proxy/`)。
+
+### 新命令 `qualy sandbox status`
+
+readiness 刻意不含 sandbox(boot 不依赖执行进程在线),所以部署后没有任何东西回答「两个沙箱可达且协议对得上吗」。
+`@qualy/plugin-sandbox` 新增 `Cli.command`(namespace `sandbox`,`assembly` 档,惰性加载 `status-command.ts`):用 server 同一条传输
+(`RpcClient.layerProtocolSocket` + `NodeSocket.layerNet` + NDJSON)对两条 socket 各取 capabilities,核对 rpc / abi 版本,5 秒不答视为不可达;
+两条都汇报,任一不 ok 以 `CliRefused` 退出 1。**顺带修了 CLI 宿主**:hosted 命令抛出的 `CliRefused` 之前直接变成未处理异常的栈,
+现在按 `_tag` 识别、只打消息、按其 exitCode 退出,其余错误走 `describeError` 逐 cause 打印。
+
+```text
+node apps/cli/src/main.ts sandbox status   (本机 dev 沙箱)
+sandbox status: runtime ok at .qualy/run/sandbox/runtime/runtime.sock (rpc 1, abi 1, quickjs @jitl/quickjs-wasmfile-release-sync@0.32.0, build b49decf130d6)
+sandbox status: authoring ok at .qualy/run/sandbox/authoring/authoring.sock (rpc 1, formula abi 1, typescript 7.0.2, esbuild 0.28.2, build f091d2cdb527)
+QUALY_SANDBOX_RUNTIME_SOCKET=/nonexistent/runtime.sock ... sandbox status
+sandbox status: runtime unreachable at /nonexistent/runtime.sock: SocketOpenError: An error occurred during Open
+sandbox status: 1 of 2 processes not ok        exit=1
+```
+
+### 文档
+
+`docs/deployment.md`(新,中文:分工、发布物、部署、升级、**镜像回滚 ≠ schema 回滚**、验证清单、明确不做);`deploy/README.md`(英文命令序列);
+CLAUDE.md 新增 Production Deployment / Release Verification 一条;`docs/web-release.md` 的「未来部署:持久化 store」段改为「release store 随镜像」;
+根 `.env.example` 指向 `deploy/.env.example`。
+
+## 构建/装配/部署重构 P7:Release Verification(2026-09-17)
+
+13 条要求逐条落到已有或新增的门禁上,对照表在 `docs/deployment.md` §4。新增的四件:
+
+- **`tools/quality/release-smoke.ts <release>`**:在一次性 compose project(`qualy-smoke-<pid>`,`QUALY_ENV_FILE` 指向临时 env,随机端口)上驾驭
+  `deploy/compose.yaml`:postgres 起 → **未迁移就 `run server` 必须非零退出并说 `migration(s) behind`** → `migrate` 报 `applied N` →
+  server + 两个 sandbox 起、`/health/ready` 200 → shell + 一个哈希资源 + `/api/app/manifest` → `exec server qualy sandbox status` 两条 ok →
+  第二次 `migrate` 报 up to date → 写一行 marker、`pg_dump -Fc`、`stop server`、`dropdb --force` + `createdb`、`pg_restore`、
+  `migrate` 报 up to date、`start server` 到 ready、marker 仍在 → `down -v`。失败时打 server / postgres 日志尾。
+- **`tools/quality/check-migrations-immutable.ts <base>`**:`base...HEAD` 之间 `db/migrations` 只许新增(diff-filter MDRT 非空即败);
+  零 sha(新分支)直接通过。CI `ci` job 对 `pull_request.base.sha || event.before` 跑。
+- **`packages/plugins/infra/database/tests/lineage-upgrade.test.ts`**:两个历史切点(2026-09-12 部署时的 59 条;lineage 中点 30 条)
+  各建一个库,再用完整 lineage 追平(`runMigrations` 报 applied 1 / 30),与一次建成的库比 extensions / functions / tables / columns /
+  constraints / indexes / triggers / ledger 全部相等。
+- CI `image` job 改为 `build-images.ts ci --check` + `release-smoke.ts ci`(不 pnpm install:三个脚本只依赖 node 内建模块)。
+
+### 反向验证
+
+- `check-migrations-immutable.ts '834a3cff^'`(历史上一次真的回改迁移的提交之前)→ 退出 1,点名 `M db/migrations/20260830160000_recognition-history-repair.sql`;
+  `HEAD~3` → 通过(0 added);零 sha → 通过。
+- `sandbox status` 指向不存在的 socket → `runtime unreachable ...`、`1 of 2 processes not ok`、exit 1。
+- release smoke 第一步就是否定式:未迁移启动 server 必须被拒,拒绝语必须点名迁移 job。
+
+### 三条门禁抓到的新命令(记下来,免得下次再踩)
+
+第一次全量:`runtime-imports`(sandbox 描述器惰性 `import('./status-command.ts')` 不在登记表)、`test-layers`(`status-command.ts`
+在入口之外 `Effect.runPromise`)、`plugin-isolation` 的逐插件独立 typecheck(`RpcClient.make` 还要 `Scope`,`ask` 的参数类型漏了它——
+根 `pnpm typecheck` 没报,说明 sandbox 的 src 只在这条门禁里被单独编译)。处理:登记表加一条(assembly 档 CLI 命令,由命令 runner 加载);
+`RUNS_EFFECTS` 加 `status-command.ts` 并写明理由(hosted 命令没有服务图,自建传输、跑一个探测、交回宿主的 promise;runtime 档会让
+「沙箱在不在」依赖数据库);参数类型补 `Scope.Scope`。三条都是门禁在做该做的事,不是放宽。
+
+### 命令与结果(实际执行)
+
+```text
+pnpm typecheck                                    exit=0
+pnpm test                                         254 passed | 3 skipped (257) / 1830 passed | 17 skipped (1847)
+                                                  (第一次全量 3 条红,见上;修后重跑全绿)
+pnpm test:browser                                 本轮未重跑:P5–P7 没有改任何浏览器代码,P4.5 的 58/425 仍然有效
+pnpm vitest run lineage-upgrade / workspace-deps / sandbox-isolation   8 passed
+pnpm release:build local --check                  三镜像构建;check-release-image 全部 ok(含新加的 tsx / esbuild / packages/testkit 断言)
+                                                  server 135 MB(43 包 / 359 store 项);sandbox-runtime store kept 18 removed 238;authoring kept 22 removed 238
+node tools/quality/release-smoke.ts local
+  release-smoke: postgres up
+  release-smoke: a server started before the migration job refuses, naming the job
+  release-smoke: migrate: database: applied 60 migration(s) to postgres:5432/qualy (274ms)
+  release-smoke: first start: /health/ready 200
+  release-smoke: shell and /assets/e-nsEa2iPF.js served
+  release-smoke: manifest: 1 page(s) for an anonymous visitor
+  release-smoke: sandbox status: runtime ok at /run/qualy-sandbox/runtime/runtime.sock (rpc 1, abi 1, ...)
+  release-smoke: sandbox status: authoring ok at /run/qualy-sandbox/authoring/authoring.sock (rpc 1, formula abi 1, typescript 7.0.2, esbuild 0.28.2, ...)
+  release-smoke: migrate again: up to date
+  release-smoke: backup: 237768 bytes
+  release-smoke: database dropped and recreated empty
+  release-smoke: restored: the ledger is complete, migrate has nothing to do
+  release-smoke: after restore: /health/ready 200
+  release-smoke: after restore: served, and the row written before the backup is there
+  release-smoke: local ok
+```
+
+### 基础设施重构到此结束
+
+P1–P4 → P4.5 收敛 → P5 构建 → P6 部署 → P7 验证。原 `docs/osi.md` P5–P9 不再执行。之后的改动只由真实需求、生产缺陷或可复现 regression 触发
+(CLAUDE.md「禁止」最后一条同样适用于这条线)。
