@@ -27,7 +27,10 @@
 # glibc rather than alpine: argon2 ships prebuilt binaries for linux-x64 and
 # linux-arm64 (glibc), which is what lets the install run with scripts off.
 
-ARG NODE_IMAGE=node:24-bookworm-slim
+# the exact node the repository's toolchain pins (mise.toml, CI), by digest:
+# a tag is a name somebody can move, and a release rebuilt from the same
+# commit has to start from the same bytes
+ARG NODE_IMAGE=node:24.20.0-bookworm-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e
 
 FROM ${NODE_IMAGE} AS source
 RUN corepack enable
@@ -59,8 +62,10 @@ COPY --from=web /app/packages/plugins/infra/web/client-dist /app/packages/plugin
 # --- the image ------------------------------------------------------------------
 FROM ${NODE_IMAGE}
 ARG QUALY_RELEASE=dev
+ARG QUALY_REVISION=unknown
 LABEL org.opencontainers.image.title="qualy-server" \
       org.opencontainers.image.version="${QUALY_RELEASE}" \
+      org.opencontainers.image.revision="${QUALY_REVISION}" \
       org.opencontainers.image.licenses="AGPL-3.0-only"
 COPY --from=runtime --chown=node:node /app /app
 # The paths a deployment mounts (deploy/compose.yaml): the attachment store

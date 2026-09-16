@@ -6,8 +6,9 @@ import { repoRoot } from '../lib/manifest.ts'
 // The server release image, inspected from the outside.
 //
 // A Dockerfile says what goes in; this says what came out, on the image a
-// release actually ships. The claims: it carries this checkout's manifest,
-// lock and lineage byte for byte; it carries no tests, no browser sources and
+// release actually ships. The claims: it runs the node the Dockerfile pins; it
+// carries this checkout's manifest, lock and lineage byte for byte (compared
+// by SHA-256); it carries no tests, no browser sources and
 // no development toolchain; the assembly resolves from inside it against its
 // own lock with nothing mounted; and a start reaches the database before it
 // stops - which is as far as a start can get without one.
@@ -44,31 +45,88 @@ const expectOut = (label: string, command: string, want: string) => {
 // --- who runs, on what
 expectOut('runs as the unprivileged node user', 'id -u', '1000')
 {
+  // the version the Dockerfile pins, not merely the major line: a base image
+  // that moved within 24.x is a different release input
+  const pinned = /^ARG NODE_IMAGE=node:(\d+\.\d+\.\d+)-[\w.-]+@sha256:[0-9a-f]{64}$/m.exec(
+    fs.readFileSync(path.join(repoRoot, 'Dockerfile'), 'utf8'),
+  )?.[1]
   const { out } = inside('node --version')
-  if (out.startsWith('v24.')) ok(`node ${out}`)
-  else fail(`node is ${out}, expected the v24 line`)
+  if (pinned === undefined) fail('the Dockerfile pins no node image by version and digest')
+  else if (out === `v${pinned}`) ok(`node ${out}, as the Dockerfile pins`)
+  else fail(`node is ${out}, the Dockerfile pins v${pinned}`)
 }
 
 // --- what a release is: this checkout's manifest, lock and lineage
-for (const file of ['qualy.yml', 'qualy.lock.json']) {
-  const local = fs.readFileSync(path.join(repoRoot, file), 'utf8')
-  const { out } = inside(`cat /app/${file}`)
-  if (out === local.trimEnd()) ok(`${file} is this checkout's, byte for byte`)
-  else fail(`${file} in the image differs from the checkout`)
+//
+// Compared by SHA-256 of the bytes, and computed by one script run twice - by
+// this node against the checkout and by the image's node against /app - so
+// the two sides cannot differ in how they read, sort or hash. A lineage with
+// the right names and different SQL is a different release.
+const RELEASE_DIGEST = `
+const fs = require('node:fs')
+const path = require('node:path')
+const crypto = require('node:crypto')
+const root = process.argv[1]
+const sha = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')
+const lineage = path.join(root, 'db/migrations')
+const migrations = {}
+for (const name of fs.readdirSync(lineage).filter((one) => one.endsWith('.sql')).sort()) {
+  migrations[name] = sha(path.join(lineage, name))
+}
+process.stdout.write(JSON.stringify({
+  'qualy.yml': sha(path.join(root, 'qualy.yml')),
+  'qualy.lock.json': sha(path.join(root, 'qualy.lock.json')),
+  migrations,
+}))
+`
+interface ReleaseDigest {
+  readonly 'qualy.yml': string
+  readonly 'qualy.lock.json': string
+  readonly migrations: Readonly<Record<string, string>>
 }
 {
-  const local = fs
-    .readdirSync(path.join(repoRoot, 'db/migrations'))
-    .filter((entry) => entry.endsWith('.sql'))
-    .sort()
-  const { out } = inside('ls /app/db/migrations | grep "\\.sql$" | sort')
-  const shipped = out.split('\n').filter((line) => line !== '')
-  if (shipped.join('\n') === local.join('\n'))
-    ok(`db/migrations: ${String(local.length)} committed migration(s)`)
-  else
+  const local = JSON.parse(
+    execFileSync(process.execPath, ['-e', RELEASE_DIGEST, repoRoot], { encoding: 'utf8' }),
+  ) as ReleaseDigest
+  const ran = spawnSync(
+    'docker',
+    ['run', '--rm', '--entrypoint', 'node', image, '-e', RELEASE_DIGEST, '/app'],
+    { encoding: 'utf8' },
+  )
+  let shipped: ReleaseDigest | undefined
+  try {
+    shipped = JSON.parse(ran.stdout) as ReleaseDigest
+  } catch {
     fail(
-      `db/migrations differ: image ships ${String(shipped.length)}, checkout has ${String(local.length)}`,
+      `could not digest the release inside the image: ${`${ran.stdout}${ran.stderr}`.slice(0, 300)}`,
     )
+  }
+  if (shipped !== undefined) {
+    for (const file of ['qualy.yml', 'qualy.lock.json'] as const) {
+      if (shipped[file] === local[file])
+        ok(`${file} is this checkout's (sha256 ${local[file].slice(0, 12)})`)
+      else fail(`${file} in the image differs from the checkout`)
+    }
+    const names = new Set([...Object.keys(local.migrations), ...Object.keys(shipped.migrations)])
+    const differing = [...names]
+      .sort()
+      .filter((name) => local.migrations[name] !== shipped.migrations[name])
+    if (differing.length === 0) {
+      ok(`db/migrations: ${String(names.size)} committed migration(s), every one byte for byte`)
+    } else {
+      fail(
+        `db/migrations differ from the checkout in ${String(differing.length)} file(s): ${differing
+          .map((name) =>
+            local.migrations[name] === undefined
+              ? `${name} (only in the image)`
+              : shipped.migrations[name] === undefined
+                ? `${name} (missing from the image)`
+                : `${name} (different content)`,
+          )
+          .join(', ')}`,
+      )
+    }
+  }
 }
 expectOut(
   'the web release store points at a release',

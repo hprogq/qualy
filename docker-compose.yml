@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: pgvector/pgvector:pg18-bookworm
+    image: pgvector/pgvector:pg18-bookworm@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a
     container_name: qualy-postgres
     restart: unless-stopped
     env_file:
@@ -36,7 +36,7 @@ services:
   # it holds only scratch databases the tests build and drop, keeps no volume,
   # and the development data next door stays durable.
   postgres-test:
-    image: pgvector/pgvector:pg18-bookworm
+    image: pgvector/pgvector:pg18-bookworm@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a
     container_name: qualy-postgres-test
     restart: unless-stopped
     environment:

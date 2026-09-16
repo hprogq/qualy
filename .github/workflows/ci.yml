@@ -26,7 +26,7 @@ jobs:
     services:
       postgres:
         # same image as the local compose stack
-        image: pgvector/pgvector:pg18-bookworm
+        image: pgvector/pgvector:pg18-bookworm@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a
         env:
           POSTGRES_USER: qualy
           POSTGRES_PASSWORD: qualy
