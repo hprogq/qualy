@@ -141,7 +141,6 @@ export type TypeConstraintError = TypeConflict | TypeInUse
 export const nodeConstraints: Record<string, () => NodeConstraintError> = {
   uq_org_nodes_tenant_parent_name: () => new NodeConflict(),
   uq_org_nodes_tenant_root_name: () => new NodeConflict(),
-  uq_org_nodes_tenant_code: () => new NodeConflict(),
   uq_org_nodes_tenant_single_root: () => new NodeConflict(),
   // restrict foreign keys owned by auth and rbac; the constraint-name gate
   // checks these still exist in the deployed lineage
@@ -162,7 +161,6 @@ export const nodeConstraints: Record<string, () => NodeConstraintError> = {
  * key is the race the doc comment above describes. An unnamed one is a 500.
  */
 export const typeConstraints: Record<string, () => TypeConstraintError> = {
-  uq_org_types_tenant_code: () => new TypeConflict(),
   uq_org_types_tenant_name: () => new TypeConflict(),
   fk_role_allowed_org_types_type: () =>
     new TypeInUse({ reason: 'roles still allow this org type' }),

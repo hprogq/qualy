@@ -4,9 +4,10 @@ import type { CapabilityWorkContext } from '@qualy/assembly-contract'
 import type { DatabaseContribution } from './contribution.ts'
 import { declaredEntityModules, type EntityModule } from './entities.ts'
 import { asState, type DatabaseState } from './state.ts'
-import { LOCAL_FALLBACK, MIGRATIONS_FOLDER } from '../defaults.ts'
+import { GENERATION_URL_VARIABLE, LOCAL_FALLBACK, MIGRATIONS_FOLDER } from '../defaults.ts'
 
-// Where this assembly keeps its lineage, and what the lineage is built from.
+// Where this assembly keeps its lineage, what the lineage is built from, and
+// which databases the work addresses.
 
 export { LOCAL_FALLBACK } from '../defaults.ts'
 
@@ -14,7 +15,14 @@ export interface DatabaseWork {
   migrations: string
   /** every retained plugin's declared entities, in database dependency order */
   modules: EntityModule[]
+  /** the database deploy applies to */
   url: string
+  /**
+   * The server generation builds its two scratch databases on, asked for
+   * only when generation runs: a deploy never needs it, and a work context
+   * can be built without deciding it.
+   */
+  generationUrl: () => string
 }
 
 /**
@@ -35,6 +43,20 @@ function targetUrl(): string {
   }
   console.warn(`database: DATABASE_URL is not set, addressing ${LOCAL_FALLBACK}`)
   return LOCAL_FALLBACK
+}
+
+/**
+ * Where generation creates its scratch databases.
+ *
+ * `QUALY_GENERATION_DATABASE_URL` first; otherwise the server DATABASE_URL
+ * names, which is what a developer's machine and CI want. Generation is
+ * theirs alone - a production deployment applies what was committed and
+ * never generates - so there is nothing to warn about here. A role that may
+ * not CREATE DATABASE is told about the variable by the refusal itself.
+ */
+export function generationUrl(target: string, env: NodeJS.ProcessEnv = process.env): string {
+  const declared = env[GENERATION_URL_VARIABLE]
+  return declared !== undefined && declared !== '' ? declared : target
 }
 
 /**
@@ -78,10 +100,12 @@ export function databaseWork(
   const migrations = path.isAbsolute(declared)
     ? declared
     : path.resolve(path.dirname(context.manifestPath), declared)
+  const url = targetUrl()
   return {
     migrations,
     modules: declaredEntityModules(context, asState(context.state)),
-    url: targetUrl(),
+    url,
+    generationUrl: () => generationUrl(url),
   }
 }
 

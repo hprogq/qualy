@@ -79,18 +79,7 @@ export const startQualyServer = (options: QualyServerOptions): QualyServer => {
     ],
     {
       cwd: repoRoot,
-      env: {
-        ...process.env,
-        PORT: port,
-        // A production start refuses an instance whose deployment state does
-        // not record this assembly as deployed. The instance these tools
-        // start is the development one - the repository's database, deployed
-        // by `pnpm qualy deploy` in development mode - so its state is where
-        // a development deploy writes it, not /var/lib/qualy. A caller with an
-        // instance of its own names it.
-        QUALY_STATE_DIR: process.env.QUALY_STATE_DIR ?? path.join(repoRoot, '.qualy/state'),
-        ...options.env,
-      },
+      env: { ...process.env, PORT: port, ...options.env },
       stdio: ['ignore', 'pipe', 'pipe'],
     },
   )

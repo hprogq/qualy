@@ -81,14 +81,13 @@ jobs:
       - run: pnpm typecheck
       - name: capability artifacts must be conflict free
         run: pnpm qualy database check
-      - name: no-op generate must leave artifacts clean
-        run: |
-          pnpm qualy generate
-          status="$(git status --porcelain)"
-          if [ -n "$status" ]; then
-            printf '%s\n' "$status"
-            exit 1
-          fi
+      # CI generates nothing. It replays the committed lineage onto a scratch
+      # database, builds the declared schema on another, and requires the two
+      # to be identical with no baseline fragment left uncompiled: a developer
+      # who changed an entity generates the migration, reviews it and commits
+      # it, and this is where forgetting that fails.
+      - name: the committed lineage must build the declared schema
+        run: pnpm qualy database verify
       - name: drop guard
         run: pnpm qualy database drop-guard
       # Before the build, deliberately. A suite that needs the frontend built
@@ -111,8 +110,8 @@ jobs:
       # production boot is the trust boundary now. Staged assets carry the
       # assembly's resolutionHash and the process refuses a mismatch, so this
       # also proves the bundle and the assembly agree.
-      # a production start applies nothing; the lineage lands the way a
-      # deployment lands it, then the boot is asserted against the result
+      # a production start applies nothing; the committed lineage lands the
+      # way a deployment lands it, then the boot is asserted against the result
       - name: deploy the lineage
         env:
           DATABASE_URL: postgres://qualy:qualy@localhost:5432/qualy

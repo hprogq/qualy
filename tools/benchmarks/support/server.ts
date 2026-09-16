@@ -15,13 +15,6 @@ import { startQualyServer } from '../../lib/qualy-server.ts'
 
 export const benchDir = path.join(repoRoot, '.qualy', 'benchmarks')
 export const cli = path.join(repoRoot, 'apps/cli/src/main.ts')
-/**
- * The benchmark database is an instance of its own, so it keeps its own
- * deployment state: deploying the benchmark assembly must not overwrite what
- * the development instance last deployed, and the server started over it
- * must be checked against the benchmark's own deployed lock.
- */
-export const benchStateDir = path.join(benchDir, 'state')
 
 const RUNTIME_SOCKET = '.qualy/run/sandbox/runtime/runtime.sock'
 const AUTHORING_SOCKET = '.qualy/run/sandbox/authoring/authoring.sock'
@@ -178,7 +171,6 @@ export const startServer = (options: {
       NODE_ENV: undefined,
       QUALY_MIGRATIONS: undefined,
       QUALY_CONFIG: options.manifest,
-      QUALY_STATE_DIR: benchStateDir,
       DATABASE_URL: options.databaseUrl,
       QUALY_LOG_FORMAT: 'json',
       QUALY_LOG_LEVEL: options.level,

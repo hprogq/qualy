@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { Migration, Migrator } from '@mikro-orm/migrations'
@@ -23,6 +24,17 @@ import { QualyNamingStrategy } from './naming.ts'
 // Generation does not live here. It compares two databases and needs the whole
 // assembly to say what the second one contains, so it belongs to the capability
 // provider; this module is what an application process is allowed to run.
+//
+// One writer at a time. Two deployments of the same release racing to apply
+// the same lineage, or a deployment beside a development boot that also
+// applies, would each run the migrator's own transaction and one of them
+// would fail halfway with a duplicate object. So a run that writes takes a
+// database-scoped advisory lock first, on a session of its own. A second run
+// WAITS for the first - it then finds nothing pending and reports itself up
+// to date, which is what a boot racing a deploy, or two suites building a
+// layer over one database, want - and only a wait past the bound is a
+// refusal, naming the target. The lock lives where the side effect lives:
+// in the database.
 
 export { MIGRATIONS_FOLDER } from './defaults.ts'
 
@@ -30,6 +42,62 @@ export interface MigrationOptions {
   folder: string
   /** the entity set the lineage builds; the migrator needs metadata to connect */
   entities: readonly EntitySchema[]
+}
+
+/**
+ * The advisory lock every migration run of a database takes: one fixed key,
+ * derived from a name rather than configured, so two processes cannot be
+ * told two different keys for one database.
+ */
+export const MIGRATION_LOCK_KEY = BigInt.asIntN(
+  64,
+  BigInt(`0x${createHash('sha256').update('qualy:migrations').digest('hex').slice(0, 15)}`),
+).toString()
+
+/**
+ * How long a run waits for another run to release the lock before it gives
+ * up. Long enough for any migration this lineage has ever carried, short
+ * enough that a holder that died without releasing - a killed deploy whose
+ * session postgres has not yet reaped - is a reported failure rather than a
+ * hang. Overridable for a suite that asserts the refusal.
+ */
+export const MIGRATION_LOCK_TIMEOUT_VARIABLE = 'QUALY_MIGRATION_LOCK_TIMEOUT_MS'
+const DEFAULT_LOCK_TIMEOUT_MS = 120_000
+
+const lockTimeoutMs = (): number => {
+  const declared = Number(process.env[MIGRATION_LOCK_TIMEOUT_VARIABLE])
+  return Number.isFinite(declared) && declared > 0 ? declared : DEFAULT_LOCK_TIMEOUT_MS
+}
+
+/** the body under the database's migration lock, waiting its turn, or a refusal that names the target */
+async function withMigrationLock<A>(url: string, body: () => Promise<A>): Promise<A> {
+  const client = new Client({ connectionString: url })
+  await client.connect()
+  try {
+    // `lock_timeout` bounds the wait on the advisory lock itself; the value
+    // is a whole number of milliseconds and cannot be bound as a parameter
+    await client.query(`set lock_timeout = ${Math.round(lockTimeoutMs())}`)
+    try {
+      await client.query('select pg_advisory_lock($1)', [MIGRATION_LOCK_KEY])
+    } catch (error) {
+      // 55P03 lock_not_available: the wait ran out
+      if ((error as { code?: string }).code === '55P03') {
+        const target = new URL(url)
+        throw new Error(
+          `another migration run has held the lock on ${target.host}${target.pathname} for ${String(lockTimeoutMs())}ms; if it is still running, wait for it and retry - if it died, its session will be released by the server`,
+          { cause: error },
+        )
+      }
+      throw error
+    }
+    try {
+      return await body()
+    } finally {
+      await client.query('select pg_advisory_unlock($1)', [MIGRATION_LOCK_KEY]).catch(() => {})
+    }
+  } finally {
+    await client.end().catch(() => {})
+  }
 }
 
 /**
@@ -143,16 +211,18 @@ export interface MigrationResult {
  * over a database that does not match hides the mismatch instead of fixing it.
  */
 export const adoptMigrations = (url: string, options: MigrationOptions): Promise<string[]> =>
-  withMigrator(url, options, async (migrator) => {
-    const storage = migrator.getStorage()
-    await storage.ensureTable()
-    const executed = new Set(await storage.executed())
-    const pending = migrationsIn(options.folder).filter((entry) => !executed.has(entry.name))
-    for (const entry of pending) {
-      await storage.logMigration({ name: entry.name })
-    }
-    return pending.map((entry) => entry.name)
-  })
+  withMigrationLock(url, () =>
+    withMigrator(url, options, async (migrator) => {
+      const storage = migrator.getStorage()
+      await storage.ensureTable()
+      const executed = new Set(await storage.executed())
+      const pending = migrationsIn(options.folder).filter((entry) => !executed.has(entry.name))
+      for (const entry of pending) {
+        await storage.logMigration({ name: entry.name })
+      }
+      return pending.map((entry) => entry.name)
+    }),
+  )
 
 /** how many committed migrations this database has not run yet */
 export const pendingMigrations = (url: string, options: MigrationOptions): Promise<number> =>
@@ -163,6 +233,11 @@ export const runMigrations = async (
   options: MigrationOptions,
 ): Promise<MigrationResult> => {
   const started = performance.now()
-  const applied = await withMigrator(url, options, async (migrator) => (await migrator.up()).length)
+  // the database has to be there before a lock session can be opened on it,
+  // and the refusal for a missing one is the one that names DATABASE_URL
+  await assertDatabaseExists(url)
+  const applied = await withMigrationLock(url, () =>
+    withMigrator(url, options, async (migrator) => (await migrator.up()).length),
+  )
   return { applied, elapsed: Math.round(performance.now() - started) }
 }

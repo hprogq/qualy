@@ -1,4 +1,5 @@
-// The two answers a machine with nothing configured is assumed to want.
+// The answers a machine with nothing configured is assumed to want, and the
+// names of the variables that override them.
 //
 // One definition each, in a module with no dependencies, because both are read
 // from two sides that must agree: the CLI resolves the lineage folder while
@@ -12,3 +13,10 @@ export const MIGRATIONS_FOLDER = 'db/migrations'
 
 /** the database a development machine is assumed to have */
 export const LOCAL_FALLBACK = 'postgres://qualy:qualy@localhost:5432/qualy'
+
+/**
+ * The server generation builds its two scratch databases on, when it is not
+ * the one DATABASE_URL names. Development and CI only: a production
+ * deployment applies the committed lineage and never generates.
+ */
+export const GENERATION_URL_VARIABLE = 'QUALY_GENERATION_DATABASE_URL'

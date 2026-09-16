@@ -41,7 +41,6 @@
     "@qualy/auth-contract": "workspace:*",
     "@qualy/browser-observability": "workspace:*",
     "@qualy/cli": "workspace:*",
-    "@qualy/deployment-state": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-kit": "workspace:*",
     "@qualy/rbac-contract": "workspace:*",

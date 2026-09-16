@@ -100,6 +100,34 @@ export default defineCapabilityProvider<DatabaseContribution, DatabaseState>({
       console.log('database: lineage ok')
     },
 
+    // The committed lineage builds exactly the declared schema, or CI fails.
+    // Generation's comparison without generation's file: the lineage replayed
+    // on one scratch database, the declaration built on another, and nothing
+    // may differ - no structural statement, no baseline fragment left
+    // uncompiled. A developer who changed an entity generates the migration,
+    // reviews it and commits it; this is where forgetting that is caught.
+    verify: async (context) => {
+      const [{ structuralDiff }, { collectBaseline, compiledBaseline, pendingBaseline }] =
+        await Promise.all([import('./diff.ts'), import('./baseline.ts')])
+      const work = databaseWork(context)
+      const state = asState(context.state)
+      const fragments = collectBaseline(context, state)
+      const pending = pendingBaseline(fragments, compiledBaseline(work.migrations), state.order)
+      const diff = await structuralDiff(work, work.modules, fragments)
+      if (pending.length > 0 || diff.up.length > 0) {
+        throw new Error(
+          `database: the committed lineage does not build the declared schema:\n` +
+            [
+              ...pending.map((fragment) => `  baseline not compiled: ${fragment.plugin} ${fragment.file}`),
+              ...diff.up.map((statement) => `  ${statement}`),
+            ].join('\n') +
+            '\nRun `pnpm qualy generate`, review the migration it writes, and commit it.',
+        )
+      }
+      const count = (await import('./drop-guard.ts')).allMigrationFiles(work.migrations).length
+      console.log(`database: ${count} committed migration(s) build the declared schema, zero drift`)
+    },
+
     // an empty migration for SQL that records one historical step, as opposed
     // to a baseline fragment, which states a plugin's current shape
     custom: async (context) => {
@@ -121,7 +149,7 @@ export default defineCapabilityProvider<DatabaseContribution, DatabaseState>({
       const state = asState(context.state)
       const difference = await diffAgainstDeclared(
         work.url,
-        work.url,
+        work.generationUrl(),
         work.modules,
         collectBaseline(context, state),
       )

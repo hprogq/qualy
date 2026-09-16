@@ -4,18 +4,22 @@ import type { EntitySchema } from '@mikro-orm/core'
 import { Pool } from 'pg'
 import { QualyNamingStrategy } from '../naming.ts'
 import { closeAll, withCleanup } from '../cleanup.ts'
+import { GENERATION_URL_VARIABLE } from '../defaults.ts'
 import { runMigrations } from '../migrator.ts'
 import type { BaselineFragment } from './baseline.ts'
 import type { EntityModule } from './entities.ts'
 import type { DatabaseWork } from './work.ts'
 
-// What it would take to turn the committed lineage into the schema this
+// What it would take to turn an instance's lineage into the schema this
 // assembly declares.
 //
 // Both sides are real databases. One has the lineage applied, exactly as a
 // deployment applies it; the other is built from the entities the way a fresh
 // install would get it. The migration is the difference between two things
-// that exist, rather than between a database and a description of one.
+// that exist, rather than between a database and a description of one - and
+// never the difference against the instance's real database, which would
+// answer "what does this machine need" instead of "what does the lineage
+// need" and make the migration a function of one machine.
 //
 // That is not a detail of how it is implemented. Some of the schema is not
 // expressible as entity metadata - the tenant-scoped foreign keys point at a
@@ -51,6 +55,17 @@ async function scratchDatabase(baseUrl: string, label: string): Promise<Scratch>
   const admin = new Pool({ connectionString: baseUrl })
   try {
     await admin.query(`create database "${name}"`)
+  } catch (error) {
+    // 42501 insufficient_privilege: the role may not CREATE DATABASE, which
+    // is the ordinary shape of a managed database. The fix is a different
+    // server for generation, not a different role for the target.
+    if ((error as { code?: string }).code === '42501') {
+      throw new Error(
+        `database: the role at ${new URL(baseUrl).host} may not create databases, and generation needs two scratch ones. Set ${GENERATION_URL_VARIABLE} to a server this deployment may create databases on; the target database is only ever applied to`,
+        { cause: error },
+      )
+    }
+    throw error
   } finally {
     await admin.end()
   }
@@ -175,6 +190,10 @@ export interface StructuralDiff {
 /**
  * The lineage as it is, against the schema as it is declared.
  *
+ * Both scratch databases live on the generation server (`work.generationUrl`),
+ * which is the target's own only when nothing named another: the target is
+ * applied to, never used as a substrate for building two throwaway databases.
+ *
  * Destructive statements are not suppressed here. A dropped table is a real
  * answer to a real change, and hiding it would make generation quietly
  * disagree with the schema; the drop guard is what makes it deliberate.
@@ -185,10 +204,11 @@ export async function structuralDiff(
   baseline: readonly BaselineFragment[],
 ): Promise<StructuralDiff> {
   const entities = modules.flatMap((module) => [...module.entities])
-  const lineage = await scratchDatabase(work.url, 'lineage')
+  const generation = work.generationUrl()
+  const lineage = await scratchDatabase(generation, 'lineage')
   return withScratch(lineage, async () => {
     await runMigrations(lineage.url, { folder: work.migrations, entities })
-    return diffAgainstDeclared(lineage.url, work.url, modules, baseline)
+    return diffAgainstDeclared(lineage.url, generation, modules, baseline)
   })
 }
 
@@ -198,16 +218,16 @@ export async function structuralDiff(
  * The subject can be any database - a scratch one with the lineage applied,
  * which is what generation asks about, or a real one somebody wants to know
  * about. The declared side is built the way a fresh install gets it, in a
- * scratch database of its own.
+ * scratch database of its own on the generation server.
  */
 export async function diffAgainstDeclared(
   subjectUrl: string,
-  adminUrl: string,
+  generationUrl: string,
   modules: readonly EntityModule[],
   baseline: readonly BaselineFragment[],
 ): Promise<StructuralDiff> {
   const entities = modules.flatMap((module) => [...module.entities])
-  const declared = await scratchDatabase(adminUrl, 'declared')
+  const declared = await scratchDatabase(generationUrl, 'declared')
   return withScratch(declared, async () => {
     const declaredOrm = await open(declared.url, entities)
     const lineageOrm = await open(subjectUrl, entities)

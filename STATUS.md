@@ -17440,3 +17440,95 @@ pnpm qualy resolve --frozen-lockfile   up to date(contribution 多了可选字�
 ```
 
 浏览器套件未动客户端代码,留到 P4(下)一起跑。
+
+## 构建/装配/部署重构 P4.5:架构收敛(2026-09-17)
+
+用户重新明确产品定位:**Qualy 是单一代码库、单一产品、单一发布物**;Plugin 的价值是内部模块化、能力组合、依赖隔离、
+开发扩展与架构展示,不以「客户任意装卸插件、拼装自己的 Product」为目标。据此对 P1–P4 逐项 KEEP / ADAPT / REMOVE,
+直接最小修改,不整体 revert;原 `docs/osi.md` P5–P9 作废,后续只剩新 P5(Production Build)、P6(Production Deployment)、
+P7(Release Verification)。定位与取舍已写进 CLAUDE.md、`docs/osi.md` §84(顶部加了作废横幅)、`docs/notes/data-layer-retrospective.md`。
+
+### KEEP(原样保留)
+
+P1 全部:仓库根 = Qualy 自己的 Composition Root(不再解释为面向客户的 Product Host);Manifest v3 无 `application.workspace`;
+`apps/server` 通用宿主;descriptor / capability / resolver / retention / `qualy plugin *`;隔离与洁净室门禁。
+P2 全部:`locateManifest`、product root 的 `.env`、dev supervisor 按 resolved root 监听、packed 第三方插件与 standalone smoke——
+简单、正确、无维护成本,但**停止继续泛化**。
+P3 之中:`qualy deploy` 显式部署、启动不安装/不生成/不迁移/不修复、失败测试、`describeError`(pg 的 AggregateError 内层逐行打印)。
+P4 之中:统一 schema graph、`Db.entities`、`dependsOn` DAG、复合外键、baseline、retention、collision 校验、scratch 比较器、
+`qualy generate`、`database custom`、drop guard、ledger、migrator、`nextStamp`(同秒两次 generate 不再互相覆盖)、
+`QUALY_GENERATION_DATABASE_URL`(只给开发/CI 的 scratch 服务器,production 不需要)、org 两条早已删除约束的翻译清理、
+`docs/notes/effect.md` 的空 Struct 实查。
+
+### REMOVE(审计后删除)
+
+- `@qualy/deployment-state` 整包、`.qualy/state`、`deployed.lock.json`、target/applied 比对、atomic promotion、`deploy.lock` 文件锁、
+  production 启动的 `deployment required` 校验、`tools/lib/qualy-server.ts` 与 benchmark 的 `QUALY_STATE_DIR`、`.env.example` 的对应段。
+  **审计依据**:`grep defineCapabilityProvider` → 只有 database(2 个 generate/deploy hook)与 rbac(0 个)两个 provider;
+  只有数据库有持久化 deploy 副作用,PostgreSQL ledger 已是实例的 applied state,image + committed `qualy.lock.json` 已是 target state,
+  不需要第二份记录。
+- P4 下半(未提交)的 per-instance lineage 全部:`import-lineage`、fresh 实例动态 initial、deploy 内 generate、
+  按声明生成测试库模板的 globalSetup、`declaredLineageFolder`、state 内 lineage 的 dev 监听。
+- P4 上半(已提交 `7a540c9c`)的 transition 机制:`transitionsDir`、`fragments.ts` / `transitions.ts`、`satisfied` 标记、
+  `transitions.test.ts`——lineage 回到仓库后,迁移文件本身就是数据步骤的最终表达。
+- 尚未开始的 P5–P9 假设(customer previous lock 参与构建、`--previous-lock`、按客户历史出镜像)不再实施。
+
+### ADAPT(改造)
+
+- **single-writer 放到迁移层**:`migrator.ts` 的 `withMigrationLock`——固定 key 的阻塞式 `pg_advisory_lock`(库级)+ `lock_timeout`:
+  第二个写者排队,等前者结束后发现无事可做即「up to date」;等待超过 `QUALY_MIGRATION_LOCK_TIMEOUT_MS`(默认 120s)才拒绝并点名目标。
+  第一版写成「立即拒绝」,全量一跑 31 条红——assessment 的多条套件在同一个 scratch 库上并发建两三个数据库层,
+  第二个 apply 就被拒;开发态 boot 撞上 `qualy deploy` 也应排队而非失败。`runMigrations` 与 `adoptMigrations` 持有,
+  只读的 `pendingMigrations` 不持有;`retrospective` 触发表「advisory lock」由产品要求(P7 第 7 条)触发。
+- **CI 禁止生成**:新命令 `qualy database verify`——committed lineage 重放到 scratch A、声明建 scratch B、逐语句比对,
+  零 drift 且无未编译 baseline 才通过,否则列出缺的语句并指路 `qualy generate`;CI 用它取代「no-op generate 后 git status」。
+- `qualy deploy` 回到「只应用 committed lineage」;`generate`/`deploy` 与 capability 命令失败时按 cause 链逐行打印。
+- lineage 回到 `db/migrations`(config `migrationsFolder` 保持 HEAD 的可选写法,默认 `db/migrations`,改动最小);
+  `qualy.yml` / `qualy.lock.json` 回到 P1 提交的内容。
+
+### 测试
+
+- 新增 `packages/plugins/infra/database/tests/migrator.test.ts`(3 条):别的会话持锁时 `runMigrations` 排队(700ms 后仍未落任何表)、
+  释放后应用、跑完自己也释放(第三次运行不等待);把超时调到 500ms 时对不放手的持有者拒绝并点名目标;
+  失败的迁移不进 ledger,修好后再跑两条都进。
+- `assembly.test.ts` 新增 `verify` 用例:按声明生成的 lineage 通过;声明多一个插件后同一 lineage 被拒并点名 `ping_logs`,目录不动。
+- 删除:`deployment.test.ts`、`deployment-refusal.test.ts`、`deployment-state.test.ts`、`transitions.test.ts`、`instance-lineage.test.ts`;
+  `assembly-config` / `watch-classification` / `clean-room-parity` / `constraint-names` / `seed` / `descriptor-prototype` / `effect-api` /
+  四个插件的 `migration-upgrade.test.ts` 回到 committed lineage 的版本。
+
+### 对本机开发库的说明
+
+P4 下半走通链时对你的开发库跑过 `qualy database import-lineage`(被拒:ledger 里有 `20260822134000_tenant-role-anchor-null`
+无后缀与 `20260829145426.sql` 两条与目录对不上的旧名)与 `qualy database adopt`(被拒:库与声明差一个索引定义与
+`fk_entries_current_recognition` 外键)。**两者都没有写入你的库**;ledger 末条仍是 `20260916143334.sql`。
+这说明本机开发库与 committed lineage 有历史漂移,与本次改动无关,留给你判断。
+
+### 反向验证
+
+`verify` 忽略结构 diff → verify 用例红(不再拒绝);不取 advisory lock → 「排队」用例红(持锁期间就落了表);
+不把 55P03 映射成人话 → 超时用例拿到裸的 `canceling statement due to lock timeout`;锁不释放且会话不关 → 独立 node 探针里
+下一次运行 13ms 内被拒(机制正确),vitest 里同一用例因泄漏会话在 teardown 被 force drop 时抛 unhandled error 而超时,
+不算干净的红,记在这里。
+
+### 命令与结果(实际执行)
+
+```text
+pnpm typecheck                     exit=0
+pnpm test                          253 passed | 3 skipped (256) / 1827 passed | 17 skipped (1844)
+                                   (第一版「立即拒绝」的锁:4 个 assessment 套件 31 条红,改为排队后全绿)
+pnpm test:browser                  58 passed (58) / 425 passed (425)
+pnpm qualy resolve --frozen-lockfile   up to date(qualy.yml / lock 回到 P1 提交的内容)
+pnpm qualy database check          lineage ok
+pnpm qualy database verify         60 committed migration(s) build the declared schema, zero drift
+pnpm qualy database drop-guard     60 file(s) scanned, ok
+pnpm qualy deploy(开发库)          up to date
+smoke-production                   exit=0
+grep deployment-state|deployed.lock|QUALY_STATE_DIR|transitionsDir|import-lineage|declaredLineage   源码零命中
+```
+
+### 下一步
+
+P4.5 完成。按新计划依次做:**新 P5 Production Build**(pnpm + Docker multi-stage,一个 immutable release image;
+服务端与插件按现有 sandbox 镜像的做法以 TS 源码 + node strip-types 运行,不另建 dist 布局——若坚持预编译 JS 需单独裁决)
+→ **新 P6 Production Deployment**(server / sandbox 三镜像 + production compose + 一次性 `qualy deploy` job)
+→ **新 P7 Release Verification**。原 P5–P9 不再执行。

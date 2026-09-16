@@ -141,13 +141,12 @@ describe('the lifecycle in a standalone product', () => {
         DATABASE_URL: undefined,
         QUALY_TEST_DATABASE_URL: undefined,
         NODE_ENV: 'production',
-        // production keeps its state under /var/lib/qualy, which this test may
-        // not write; the instance here is the product's own directory
-        QUALY_STATE_DIR: 'state',
       })
       expect(deployed.ok).toBe(false)
       expect(deployed.output).toMatch(/127\.0\.0\.1:1\b|ECONNREFUSED/)
-      expect(deployed.output).not.toContain('DATABASE_URL is not set')
+      // the target variable itself, not the generation server's, which a
+      // production run is told about in the same words
+      expect(deployed.output).not.toMatch(/(?<!_)DATABASE_URL is not set/)
     } finally {
       at.dispose()
     }

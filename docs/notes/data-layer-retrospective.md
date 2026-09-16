@@ -93,3 +93,21 @@ Deployment State(`<state>/database/migrations`),全新安装自己生成 initial
 
 触发表里「advisory lock(迁移互斥)」**仍未触发**:`docs/osi.md` §29 写的是「最好有」,而其「最低要求」——
 同一 state 目录同一时间只允许一个 deployment job——已由 `@qualy/deployment-state` 的文件锁满足。
+
+## 2026-09-17(同日):transition 撤回,advisory lock 触发
+
+产品定位当天重新明确(P4.5 架构收敛):Qualy 是单一代码库、单一产品、单一发布物,不以客户任意拼装 Product 为目标。
+于是「lineage 归实例」不再成立,lineage 回到仓库 `db/migrations` 并提交;**transition 机制随之撤回**——迁移文件本身
+就是数据步骤的最终表达,不需要第二种载体。当天早先那一节的触发理由(数据步骤失去跨实例载体)前提已消失。
+保留下来的:`nextStamp`(同秒两次 generate 不再互相覆盖)、`QUALY_GENERATION_DATABASE_URL`(开发/CI 的 scratch 服务器)、
+`qualy database verify`(CI 不生成只比对)。
+
+**advisory lock(迁移互斥)已触发**:不是多副本部署,而是产品要求「migration/deploy 的 single-writer 保护」放在真正产生
+副作用的数据库迁移层(P7 验收第 7 条),取代原先文件锁 + deployed lock 的 state 目录。落地:`migrator.ts` 的
+`withMigrationLock`(固定 key 的阻塞式 `pg_advisory_lock` + `lock_timeout`,第二个写者排队,等待超过
+`QUALY_MIGRATION_LOCK_TIMEOUT_MS`(默认 120s)才拒绝并点名目标——「立即拒绝」的第一版让同一 scratch 库上并发建层的 31 条
+测试全红,开发态 boot 撞上 deploy 也该排队而不是失败;`runMigrations` 与 `adoptMigrations` 持有,只读的 `pendingMigrations`
+不持有),`tests/migrator.test.ts` 三条(排队后执行 + 超时拒绝 + 失败不记账)。
+
+同时撤回的 P3 机制:`@qualy/deployment-state`(state 目录、deployed.lock、target/applied 比对、atomic promotion、文件锁)。
+审计依据:当前分支只有 database capability 有 deploy 副作用,PostgreSQL ledger 已是实例的 applied state。

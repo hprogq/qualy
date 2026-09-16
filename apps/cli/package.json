@@ -7,7 +7,6 @@
   "dependencies": {
     "@qualy/api-kit": "workspace:*",
     "@qualy/assembly": "workspace:*",
-    "@qualy/deployment-state": "workspace:*",
     "@qualy/plugin-kit": "workspace:*",
     "effect": "catalog:"
   }

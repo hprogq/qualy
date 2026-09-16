@@ -22,8 +22,6 @@ export interface DatabaseContribution {
   entities: string[]
   /** directory of SQL fragments no schema comparison can see */
   baselineDir?: string
-  /** directory of one-time data transitions, compiled once into an instance's lineage */
-  transitionsDir?: string
   /** plugins whose tables this plugin's schema references */
   dependsOn: string[]
 }
@@ -83,27 +81,24 @@ export function parseDeclaration(
     }
   }
 
-  /** a package-relative directory the declaration names, checked to exist inside the package */
-  const directory = (key: 'baselineDir' | 'transitionsDir'): string | undefined => {
-    const value = declaration[key]
-    if (value === undefined) return undefined
+  let baselineDir: string | undefined
+  if (declaration.baselineDir !== undefined) {
+    const value = declaration.baselineDir
     if (typeof value !== 'string' || !value.trim()) {
-      throw new Error(`${where}: ${key} must be a path inside the package`)
+      throw new Error(`${where}: baselineDir must be a path inside the package`)
     }
     if (path.isAbsolute(value)) {
-      throw new Error(`${where}: ${key} must be relative to the package, got ${value}`)
+      throw new Error(`${where}: baselineDir must be relative to the package, got ${value}`)
     }
     const target = path.resolve(packageRoot, value)
     if (!target.startsWith(packageRoot + path.sep)) {
-      throw new Error(`${where}: ${key} points outside the package: ${value}`)
+      throw new Error(`${where}: baselineDir points outside the package: ${value}`)
     }
     if (!fs.existsSync(target)) {
-      throw new Error(`${where}: ${key} does not exist: ${value}`)
+      throw new Error(`${where}: baselineDir does not exist: ${value}`)
     }
-    return value
+    baselineDir = value
   }
-  const baselineDir = directory('baselineDir')
-  const transitionsDir = directory('transitionsDir')
 
   const dependsOn = declaration.dependsOn ?? []
   if (!Array.isArray(dependsOn) || dependsOn.some((id) => typeof id !== 'string')) {
@@ -113,24 +108,13 @@ export function parseDeclaration(
   return {
     entities: [...entities].sort(),
     ...(baselineDir === undefined ? {} : { baselineDir }),
-    ...(transitionsDir === undefined ? {} : { transitionsDir }),
     dependsOn: [...dependsOn].sort(),
   }
 }
 
-/**
- * Whether this declaration means the plugin put something into a database.
- *
- * Tables and baseline objects, and transitions too: a data step compiled into
- * an instance's lineage is that instance's history, and the plugin that
- * shipped it stays accounted for so the lineage can keep checking the step
- * against the file it came from.
- */
+/** whether this declaration means the plugin put something into a database */
 export const ownsObjects = (contribution: DatabaseContribution | undefined) =>
-  Boolean(
-    contribution &&
-      (contribution.entities.length > 0 || contribution.baselineDir || contribution.transitionsDir),
-  )
+  Boolean(contribution && (contribution.entities.length > 0 || contribution.baselineDir))
 
 /**
  * The same question asked of a contribution that came back out of the lock.
@@ -147,12 +131,10 @@ export const lockedOwnsObjects = (value: unknown): boolean => {
     entities?: unknown
     entitiesEntry?: unknown
     baselineDir?: unknown
-    transitionsDir?: unknown
   }
   return (
     (Array.isArray(record.entities) && record.entities.length > 0) ||
     typeof record.entitiesEntry === 'string' ||
-    typeof record.baselineDir === 'string' ||
-    typeof record.transitionsDir === 'string'
+    typeof record.baselineDir === 'string'
   )
 }

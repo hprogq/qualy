@@ -440,6 +440,35 @@ describe.runIf(postgresAvailable).concurrent('assembly deployment', () => {
     })
   }
 
+  it('verifies that the committed lineage builds the declared schema, and names what it lacks', async () => {
+    // CI generates nothing: it asks this question and fails on the answer.
+    // A lineage generated from the declaration passes; move the declaration
+    // - one more plugin with a table - and the same lineage is refused with
+    // the statement it is missing, while the folder is left untouched
+    const workspace = workspaceFor([...INFRA, ...AUTHORIZED])
+    try {
+      await generateFromNothing(workspace)
+      const said: string[] = []
+      const log = console.log
+      console.log = (line: string) => said.push(String(line))
+      try {
+        await provider.commands!.verify!(await context(workspace))
+      } finally {
+        console.log = log
+      }
+      expect(said.at(-1)).toMatch(/1 committed migration\(s\) build the declared schema, zero drift/)
+
+      workspace.writeManifest([...INFRA, ...AUTHORIZED, '@qualy/plugin-ping'])
+      const before = fs.readdirSync(migrationsOf(workspace))
+      await expect(provider.commands!.verify!(await context(workspace))).rejects.toThrow(
+        /does not build the declared schema[\s\S]*ping_logs[\s\S]*qualy generate/,
+      )
+      expect(fs.readdirSync(migrationsOf(workspace))).toEqual(before)
+    } finally {
+      workspace.dispose()
+    }
+  })
+
   it('refuses a destructive migration without leaving it behind', async () => {
     // the guard used to run on the file it had just written, so a refused
     // migration stayed in the lineage: the next deploy would apply it, and the

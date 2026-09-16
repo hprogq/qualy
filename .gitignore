@@ -81,9 +81,6 @@ cordis.gen.yml
 apps/web/.qualy/
 # sandbox process sockets and runtime scratch, owned by the sandbox apps
 .qualy/run/
-# the development instance's deployment state: the lock of what was last
-# deployed to this machine's database, and later its own migration lineage
-.qualy/state/
 # the benchmark's own assembly, dataset record and run summaries
 .qualy/benchmarks/
 

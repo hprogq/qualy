@@ -19,23 +19,17 @@ import {
   type Resolution,
   runtimeLayers,
 } from '@qualy/assembly'
-import {
-  deploymentPaths,
-  ensureStateLayout,
-  promoteDeployedLock,
-  withDeploymentLock,
-  type DeploymentMode,
-} from '@qualy/deployment-state'
 import { PLUGIN_USAGE, runPluginCommand } from './plugin.ts'
 import { openFileSet, relativeToCwd, writeResolution } from './resolution.ts'
 
 // The assembly commands.
 //
 // The core owns when things happen and each capability owns what happens:
-// resolve and plan never touch anything outside the product, generate writes
-// local artifacts, deploy applies them. A capability with nothing to do in a
-// phase has no handler for it, so an assembly with no database plugin runs
-// every one of these and never mentions a database.
+// resolve and plan never touch anything outside the repository, generate
+// writes local artifacts a developer reviews and commits, deploy applies the
+// committed ones. A capability with nothing to do in a phase has no handler
+// for it, so an assembly with no database plugin runs every one of these and
+// never mentions a database.
 
 const USAGE = [
   'usage:',
@@ -47,7 +41,7 @@ const USAGE = [
   PLUGIN_USAGE,
   '  pnpm qualy <namespace> <command> [args]',
   '',
-  'the product is the nearest qualy.yml above the working directory;',
+  'the manifest is the nearest qualy.yml above the working directory;',
   '--yml <path> or QUALY_CONFIG name another one',
 ].join('\n')
 
@@ -67,7 +61,7 @@ const die = (message: string): never => {
   process.exit(1)
 }
 
-// Which product this command is about: the one the working directory is in,
+// Which manifest this command is about: the one the working directory is in,
 // unless told otherwise. The CLI is installed as a package like any other, so
 // its own location says nothing about whose manifest to read.
 const manifestPath = ((): string => {
@@ -87,19 +81,15 @@ const productRoot = ((): string => {
 const lockPath = lockPathFor(manifestPath)
 
 // deploy and the capability commands reach real systems, and the connection
-// details for them live in the product's .env exactly as they do for `pnpm
-// dev` - the product's, not the working directory's, since a command may be
-// run from anywhere inside it. Variables already in the environment win.
+// details for them live in the application's .env exactly as they do for
+// `pnpm dev` - the application's, not the working directory's, since a command
+// may be run from anywhere inside it. Variables already in the environment win.
 {
   const envFile = path.join(productRoot, '.env')
   if (fs.existsSync(envFile)) process.loadEnvFile(envFile)
 }
 
 const relative = (file: string) => path.relative(process.cwd(), file)
-
-/** which instance layout a deployment addresses: the runner's mode, as the server reads it */
-const deploymentMode = (): DeploymentMode =>
-  process.env.NODE_ENV === 'production' ? 'production' : 'development'
 
 /**
  * Everything an error has to say, on one line per link.
@@ -133,8 +123,8 @@ const drift = (previous: AssemblyLock | undefined, resolution: Resolution): stri
   // there is no generated composition to drift any more: the host assembles
   // at boot from this same resolution, so the lock is the whole story
   const reasons = lockDrift(previous, resolution)
-  // capability-derived modules land relative to the product root, like every
-  // other generated artifact; QUALY_GEN_OUT redirects a test run's tree
+  // capability-derived modules land relative to the manifest's directory,
+  // like every other generated artifact; QUALY_GEN_OUT redirects a test run
   const read = (module: string) => {
     const root = process.env.QUALY_GEN_OUT ?? productRoot
     const file = path.resolve(root, module)
@@ -243,45 +233,21 @@ async function main(): Promise<void> {
     return
   }
 
-  if (command === 'generate') {
+  if (command === 'generate' || command === 'deploy') {
+    // Generate writes local artifacts for a developer to review and commit;
+    // deploy applies the committed ones to real systems. Build != Deploy !=
+    // Start: nothing here builds anything, a start repeats none of this, and
+    // a deployment never generates - what it applies was reviewed before.
     const resolution = await resolveCurrent(command)
     const ran: string[] = []
-    for (const capability of capabilityWork(resolution)) {
-      if (await capability.run('generate', rest)) ran.push(capability.key)
-    }
-    console.log(ran.length > 0 ? `generate: ${ran.join(', ')}` : 'generate: nothing to do')
-    return
-  }
-
-  if (command === 'deploy') {
-    // One transaction over the instance. The target is verified against the
-    // lock, the instance's deployment lock is taken so two deployments cannot
-    // interleave, every capability applies its work, and only then is the
-    // target recorded as what this instance deployed. A capability that
-    // refuses leaves the deployed lock where it was - the instance is then
-    // neither assembly, and the next production start says so rather than
-    // serving it. Build != Deploy != Start: nothing here builds anything, and
-    // nothing at start repeats any of this.
-    const resolution = await resolveCurrent(command)
-    const paths = deploymentPaths({ productRoot, mode: deploymentMode(), env: process.env })
-    const target = lockFromResolution(resolution)
     try {
-      ensureStateLayout(paths)
-      const ran = await withDeploymentLock(paths, async () => {
-        const applied: string[] = []
-        for (const capability of capabilityWork(resolution)) {
-          if (await capability.run('deploy', rest)) applied.push(capability.key)
-        }
-        promoteDeployedLock(paths, target)
-        return applied
-      })
-      console.log(ran.length > 0 ? `deploy: ${ran.join(', ')}` : 'deploy: nothing to do')
-      console.log(`deployed ${target.resolutionHash} to ${relativeToCwd(paths.deployedLock)}`)
+      for (const capability of capabilityWork(resolution)) {
+        if (await capability.run(command, rest)) ran.push(capability.key)
+      }
     } catch (error) {
-      die(
-        `deploy failed, ${relativeToCwd(paths.deployedLock)} unchanged:\n  ${describeError(error).join('\n  ')}`,
-      )
+      die(`${command} failed:\n  ${describeError(error).join('\n  ')}`)
     }
+    console.log(ran.length > 0 ? `${command}: ${ran.join(', ')}` : `${command}: nothing to do`)
     return
   }
 
@@ -342,7 +308,11 @@ async function main(): Promise<void> {
 
   const capability = capabilityWork(resolution).find((work) => work.key === namespace)
   if (capability) {
-    if (await capability.command(name!, args)) return
+    try {
+      if (await capability.command(name!, args)) return
+    } catch (error) {
+      die(`${namespace} ${name} failed:\n  ${describeError(error).join('\n  ')}`)
+    }
     die(`namespace ${namespace} has no command ${name}`)
     return
   }
@@ -374,8 +344,9 @@ function capabilityKeyOf(resolution: Resolution, pluginId: string): string {
 async function descriptorCommands(resolution: Resolution) {
   const descriptors = []
   for (const entry of runtimeLayers(resolution)) {
-    // resolved through the host package, like every other plugin import the
-    // scripts make: the repo root deliberately depends on no business plugin
+    // resolved through the application's package, like every other plugin
+    // import the scripts make: the repo root deliberately depends on no
+    // business plugin
     const module = (await import(resolvePluginModuleUrl(entry.specifier, manifestPath))) as {
       default?: unknown
     }

@@ -1,14 +1,11 @@
 import {
   frozenLockfile,
   lockDrift,
-  lockFromResolution,
   lockPathFor,
-  productRootFor,
   readLock,
   resolveAssembly,
   type Resolution,
 } from '@qualy/assembly'
-import { deploymentPaths, verifyDeployment } from '@qualy/deployment-state'
 
 // Start validates and starts; it never repairs.
 //
@@ -41,31 +38,4 @@ export async function verifyAssembly(
   }
   warn(`${summary}; starting anyway because this is not a frozen-lockfile environment`)
   return resolution
-}
-
-/**
- * The other half of what a production start checks: not only that the
- * software targets a reviewed assembly, but that THIS instance has been
- * brought up to it. The deployed lock in the instance's state directory says
- * what was last fully deployed; a target that differs means a database and
- * external resources that are neither the old assembly nor the new one, and
- * the only correct answer is to refuse until `qualy deploy` has run.
- *
- * Production only. A developer's database is migrated by the development
- * boot itself, and forcing a deploy between every entity change would be the
- * repair-at-start this file exists to keep out of production, moved into the
- * development loop as friction.
- */
-export function verifyDeployed(
-  manifestPath: string,
-  resolution: Resolution,
-  mode: 'production' | 'development',
-): void {
-  if (mode !== 'production') return
-  const paths = deploymentPaths({ productRoot: productRootFor(manifestPath), mode, env: process.env })
-  const problems = verifyDeployment(paths, lockFromResolution(resolution))
-  if (problems.length === 0) return
-  throw new Error(
-    `deployment required:\n  ${problems.join('\n  ')}\nRun \`qualy deploy\` against this instance (state at ${paths.root}), then start again. A start never deploys.`,
-  )
 }
