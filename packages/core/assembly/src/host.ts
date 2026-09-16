@@ -1,14 +1,14 @@
 import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { createPackageResolver, type PackageResolver } from './metadata.ts'
-import { hostDirFor, lockPathFor, readManifest } from './manifest.ts'
+import { lockPathFor, productRootFor } from './manifest.ts'
 import { readLock } from './lock.ts'
 import { resolveAssembly, type Resolution } from './resolve.ts'
 
-// Host-anchored resolution, for every tool that works ON an assembly: the
+// Product-anchored resolution, for every tool that works ON an assembly: the
 // CLI, the browser build, the quality gates and the fixtures. Plugin ids
-// resolve from the workspace the manifest names - resolving from anywhere
-// else finds packages the host never declared, which pnpm's isolation then
+// resolve from the package the manifest sits in - resolving from anywhere
+// else finds packages the product never declared, which pnpm's isolation then
 // fails to load. The manifest path is always the caller's: this module has
 // no idea where a repository keeps its qualy.yml, and pretending otherwise
 // is how a build run from another directory reads the wrong assembly.
@@ -16,11 +16,11 @@ import { resolveAssembly, type Resolution } from './resolve.ts'
 const resolvers = new Map<string, PackageResolver>()
 
 export function hostResolver(manifestPath: string): PackageResolver {
-  const host = hostDirFor(readManifest(manifestPath))
-  const cached = resolvers.get(host)
+  const root = productRootFor(manifestPath)
+  const cached = resolvers.get(root)
   if (cached) return cached
-  const resolver = createPackageResolver(host)
-  resolvers.set(host, resolver)
+  const resolver = createPackageResolver(root)
+  resolvers.set(root, resolver)
   return resolver
 }
 

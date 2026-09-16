@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { afterAll, describe, expect, it, vi } from 'vitest'
+import { lockPathFor, productRootFor, readLock, readManifest } from '@qualy/assembly'
 import { walkSources } from '../lib/walk.ts'
 
 // A plugin must typecheck on its own, not merely in company.
@@ -264,6 +265,72 @@ describe('the composition root names no plugin it does not import', () => {
       // comments may still explain why it does not; code may not do it
       .replaceAll(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, '')
     expect(collector).not.toContain('apps/web')
+  })
+})
+
+/**
+ * Who installs the plugins: the product package, and nobody else.
+ *
+ * The server used to declare every product plugin as a dependency, which made
+ * it the product in all but name - a deployment that wanted a different
+ * selection had to edit the server's manifest, and a plugin installed from
+ * outside this repository had nowhere to be declared but there. Now the
+ * manifest resolves its plugins from the package it sits in, so that package
+ * (this repository's root, the development product) declares them and the
+ * server is a generic host that names none.
+ *
+ * Three facts, each its own case: the server declares no plugin from
+ * packages/plugins; the product declares at least what its manifest selects
+ * and what its lock still keeps - a superset is fine, a plugin installed
+ * ahead of being selected is an ordinary state; and the manifest sits inside
+ * a package at all.
+ */
+const SERVER = 'apps/server/package.json'
+const PRODUCT = 'package.json'
+const MANIFEST = 'qualy.yml'
+
+const pluginPackageNames = pluginDirs.map(
+  (dir) =>
+    (JSON.parse(fs.readFileSync(path.join(repoRoot, dir, 'package.json'), 'utf8')) as { name: string })
+      .name,
+)
+
+describe('the product package installs the plugins, the server installs none', () => {
+  const dependenciesOf = (file: string) =>
+    Object.keys(
+      (JSON.parse(fs.readFileSync(path.join(repoRoot, file), 'utf8')) as {
+        dependencies?: Record<string, string>
+      }).dependencies ?? {},
+    )
+
+  it('found the plugin packages it is about', () => {
+    expect(pluginPackageNames.length).toBeGreaterThan(10)
+  })
+
+  it('the server declares no plugin under packages/plugins', () => {
+    // the kit a plugin is written with lives under packages/core and is not
+    // in this list; everything that is in it is a product decision
+    const declared = dependenciesOf(SERVER).filter((name) => pluginPackageNames.includes(name))
+    expect(declared).toEqual([])
+  })
+
+  it('the product declares every plugin its manifest selects and its lock still keeps', () => {
+    const manifest = readManifest(path.join(repoRoot, MANIFEST))
+    const lock = readLock(lockPathFor(path.join(repoRoot, MANIFEST)))
+    // manifest ids cover active and disabled; the lock adds what left the
+    // manifest but is still accounted for, and the plugins providing the
+    // capabilities that keep them
+    const required = new Set([
+      ...manifest.plugins.keys(),
+      ...Object.keys(lock?.plugins ?? {}),
+      ...Object.values(lock?.capabilities ?? {}).map((capability) => capability.provider),
+    ])
+    const declared = new Set(dependenciesOf(PRODUCT))
+    expect([...required].filter((id) => !declared.has(id)).sort()).toEqual([])
+  })
+
+  it('the manifest sits inside the package that installs its plugins', () => {
+    expect(productRootFor(path.join(repoRoot, MANIFEST))).toBe(repoRoot)
   })
 })
 

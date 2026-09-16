@@ -4,10 +4,10 @@ export { canonicalHash, shortId } from './hash.ts'
 export {
   MANIFEST_VERSION,
   editManifest,
-  hostDirFor,
   lockPathFor,
   manifestHash,
   parseManifest,
+  productRootFor,
   readManifest,
   renderManifest,
   type AssemblyManifest,

@@ -1,6 +1,5 @@
 import path from 'node:path'
 import type { CapabilityModule } from '@qualy/assembly-contract'
-import { normalizeWorkspace } from './manifest.ts'
 import type { Resolution } from './resolve.ts'
 
 // The modules capabilities derive, collected so the core can write them and
@@ -12,25 +11,30 @@ import type { Resolution } from './resolve.ts'
 // every tree as current.
 
 export interface GeneratedModule {
-  /** relative to the manifest's directory, like every other generated artifact */
+  /** relative to the product root, the manifest's directory, like every other generated artifact */
   path: string
   content: string
   /** the Layer this module exports, for the runtime module to import and merge */
   layerExport?: string
 }
 
-/** where a capability's module lands, given the workspace the host lives in */
-const locate = (workspace: string, key: string, declared: string): string => {
+/**
+ * Where a capability's module lands.
+ *
+ * Relative to the product root and nowhere else: the package that installs
+ * the plugins is the one that imports what they derive. A module reached by
+ * `..` is outside that package, and writing there is the same operation as
+ * writing anywhere on the disk.
+ */
+const locate = (key: string, declared: string): string => {
   if (path.isAbsolute(declared)) {
     throw new Error(`capability ${key} generates an absolute path: ${declared}`)
   }
   const inside = path.posix.normalize(declared.split(path.sep).join('/'))
-  // a module reached by `..` is outside the workspace that imports it, and
-  // writing there is the same operation as writing anywhere on the disk
   if (inside === '..' || inside.startsWith('../')) {
-    throw new Error(`capability ${key} generates outside the workspace: ${declared}`)
+    throw new Error(`capability ${key} generates outside the product root: ${declared}`)
   }
-  return workspace === '.' ? inside : `${workspace}/${inside}`
+  return inside
 }
 
 /**
@@ -41,7 +45,6 @@ const locate = (workspace: string, key: string, declared: string): string => {
  * key.
  */
 export function capabilityModules(resolution: Resolution): GeneratedModule[] {
-  const workspace = normalizeWorkspace(resolution.manifest.workspace)
   const owners = new Map<string, string>()
   const modules: GeneratedModule[] = []
   for (const key of [...resolution.providers.keys()].sort()) {
@@ -56,7 +59,7 @@ export function capabilityModules(resolution: Resolution): GeneratedModule[] {
       state: resolution.capabilities.get(key)?.state,
     })
     for (const module of declared) {
-      const at = locate(workspace, key, module.path)
+      const at = locate(key, module.path)
       const owner = owners.get(at)
       if (owner) throw new Error(`capabilities ${owner} and ${key} both generate ${at}`)
       owners.set(at, key)

@@ -51,11 +51,12 @@ const lock = path.join(repoRoot, 'qualy.supervisor-test.lock.json')
 // to save. It contributes nothing - an id and no features - because what is
 // being exercised is the watcher's answer to a save under a plugin root, not
 // anything the plugin does. Its package is a temporary directory, linked into
-// the host's node_modules the way any installed plugin is; node_modules is
-// never watched, so the link itself is invisible to every watcher including
-// the one under test.
+// the product package's node_modules - the repository root, where the
+// manifest sits - the way any installed plugin is; node_modules is never
+// watched, so the link itself is invisible to every watcher including the
+// one under test.
 const triggerId = '@qualy/plugin-supervisor-test-trigger'
-const linkedAt = path.join(repoRoot, 'apps/server/node_modules', ...triggerId.split('/'))
+const linkedAt = path.join(repoRoot, 'node_modules', ...triggerId.split('/'))
 
 let intact = ''
 let manifestText = ''

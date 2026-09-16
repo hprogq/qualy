@@ -3,7 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { FSWatcher } from 'chokidar'
 import type { DevServiceSpec } from '@qualy/plugin-kit/dev'
-import { readManifest } from '@qualy/assembly'
+import { lockPathFor, productRootFor, readManifest } from '@qualy/assembly'
 import { manifestPath } from '../manifest.ts'
 import { logLine, resolveLogging } from '../logging.ts'
 import { PROTOCOL, type PluginRoot } from './protocol.ts'
@@ -109,10 +109,15 @@ let stopping = false
 let watcher: FSWatcher | null = null
 
 const manifest = manifestPath()
+// The product package: where the manifest sits, and therefore where its
+// plugins are installed and where a developer's `.env` lives. In this
+// repository it is the root; a standalone product is the same layout in a
+// directory of its own.
+const productRoot = productRootFor(manifest)
 // The session's environment, fixed here: every backend, every development
 // service and every reload of either inherits this one reading of `.env`.
 const env = developmentEnv({
-  envFile: path.join(repoRoot, '.env'),
+  envFile: path.join(productRoot, '.env'),
   manifest,
   notice: (message) => say(message),
 })
@@ -120,15 +125,22 @@ const origin = originOf(env)
 
 const plan = (): WatchPlan => ({
   bootstrap: [
-    manifest,
-    `${manifest.slice(0, -path.extname(manifest).length)}.lock.json`,
-    path.join(repoRoot, 'qualy.lock.json'),
-    // `.env` is deliberately absent: it is read once and the session is that
-    // reading, so an event here could only rebuild everything around values
-    // nobody would re-read
-    path.join(repoRoot, 'package.json'),
-    path.join(repoRoot, 'pnpm-lock.yaml'),
-    path.join(repoRoot, 'pnpm-workspace.yaml'),
+    ...new Set([
+      // the product's own inputs: the selection, its lock, and the package
+      // graph the selection resolves against - a package installed or removed
+      // can change which plugins exist, so either is a whole new session
+      manifest,
+      lockPathFor(manifest),
+      path.join(productRoot, 'package.json'),
+      path.join(productRoot, 'pnpm-lock.yaml'),
+      // `.env` is deliberately absent: it is read once and the session is that
+      // reading, so an event here could only rebuild everything around values
+      // nobody would re-read
+      //
+      // this repository's own layout, which decides where a workspace package
+      // is; the same file as the product's when the product is the repository
+      path.join(repoRoot, 'pnpm-workspace.yaml'),
+    ]),
   ],
   roots: active.roots,
   services: active.topology,
@@ -470,7 +482,7 @@ const saw = (action: Action | 'restart-host', files: readonly string[]) => {
   }
   const what = action === 'session' ? 'session' : action === 'backend' ? 'backend' : action.service
   say(
-    `${path.relative(repoRoot, files[0] ?? '')}${files.length > 1 ? ` (+${String(files.length - 1)})` : ''} -> ${what}`,
+    `${path.relative(productRoot, files[0] ?? '')}${files.length > 1 ? ` (+${String(files.length - 1)})` : ''} -> ${what}`,
   )
   post({ kind: 'change', action })
 }

@@ -23,6 +23,10 @@ const AUTHORING_SOCKET = '.qualy/run/sandbox/authoring/authoring.sock'
  * The assembly the benchmark runs: the repository's, with the formula
  * writer open. Configuration is outside the resolution hash, so the staged
  * browser assets built for the repository's manifest serve this one too.
+ *
+ * Written beside the product's own manifest rather than under the benchmark
+ * directory: a manifest resolves its plugins from the package it sits in,
+ * and the repository root is that package. Both files are gitignored.
  */
 export const writeBenchManifest = (): { manifest: string; resolutionHash: string } => {
   const source = readManifest(path.join(repoRoot, 'qualy.yml'))
@@ -33,12 +37,10 @@ export const writeBenchManifest = (): { manifest: string; resolutionHash: string
     const current = (entry.config ?? {}) as Record<string, unknown>
     plugins.set(id, { ...entry, config: { ...current, ...config } })
   }
-  // both paths are relative to the manifest, which now lives two levels down
-  configure('@qualy/plugin-database', { migrationsFolder: '../../db/migrations' })
   configure('@qualy/plugin-assessment-formula', { authoring: true })
   fs.mkdirSync(benchDir, { recursive: true })
-  const manifest = path.join(benchDir, 'qualy.yml')
-  writeAtomic(manifest, renderManifest({ ...source, workspace: '../../apps/server', plugins }))
+  const manifest = path.join(repoRoot, 'qualy.benchmark.yml')
+  writeAtomic(manifest, renderManifest({ ...source, plugins }))
   const resolved = spawnSync(process.execPath, [cli, 'resolve', '--yml', manifest], {
     cwd: repoRoot,
     encoding: 'utf8',

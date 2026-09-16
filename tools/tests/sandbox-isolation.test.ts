@@ -34,6 +34,9 @@ const workspaceDirs = (): Map<string, string> => {
     const dir = path.join(root, 'apps', entry)
     if (fs.existsSync(path.join(dir, 'package.json'))) found.set(manifestOf(dir).name, dir)
   }
+  // the product package: the repository root, whose dependencies are the
+  // plugins the product installs
+  found.set(manifestOf(root).name, root)
   return found
 }
 
@@ -76,8 +79,16 @@ describe('the sandbox dependency gate', () => {
       expect(deps, banned).not.toContain(banned)
   })
 
-  it('keeps guest execution and compilation out of the server closure', () => {
-    const closure = closureOf('@qualy/app')
+  // Two closures, because the plugins moved. The server is a generic host and
+  // depends on no product plugin any more, so its closure alone would pass
+  // this gate whatever the plugins pulled in; the product package - the
+  // repository root - is where the plugins are declared, and its closure is
+  // what a deployment actually installs.
+  it.each([
+    ['server', '@qualy/app'],
+    ['product', manifestOf(root).name],
+  ])('keeps guest execution and compilation out of the %s closure', (_, start) => {
+    const closure = closureOf(start)
     for (const banned of [
       '@qualy/sandbox-engine',
       '@qualy/formula-compiler',

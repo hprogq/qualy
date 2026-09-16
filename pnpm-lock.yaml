@@ -173,6 +173,63 @@ importers:
 
   .:
     dependencies:
+      '@qualy/plugin-assessment':
+        specifier: workspace:*
+        version: link:packages/plugins/assessment/core
+      '@qualy/plugin-assessment-evidence':
+        specifier: workspace:*
+        version: link:packages/plugins/assessment/evidence
+      '@qualy/plugin-assessment-formula':
+        specifier: workspace:*
+        version: link:packages/plugins/assessment/formula
+      '@qualy/plugin-audit':
+        specifier: workspace:*
+        version: link:packages/plugins/base/audit
+      '@qualy/plugin-auth':
+        specifier: workspace:*
+        version: link:packages/plugins/base/auth
+      '@qualy/plugin-auth-local':
+        specifier: workspace:*
+        version: link:packages/plugins/base/auth-local
+      '@qualy/plugin-database':
+        specifier: workspace:*
+        version: link:packages/plugins/infra/database
+      '@qualy/plugin-layout-default':
+        specifier: workspace:*
+        version: link:packages/plugins/base/layout-default
+      '@qualy/plugin-org':
+        specifier: workspace:*
+        version: link:packages/plugins/base/org
+      '@qualy/plugin-ping':
+        specifier: workspace:*
+        version: link:packages/plugins/demo/ping
+      '@qualy/plugin-rbac':
+        specifier: workspace:*
+        version: link:packages/plugins/base/rbac
+      '@qualy/plugin-rum':
+        specifier: workspace:*
+        version: link:packages/plugins/infra/rum
+      '@qualy/plugin-rum-tencent':
+        specifier: workspace:*
+        version: link:packages/plugins/infra/rum-tencent
+      '@qualy/plugin-sandbox':
+        specifier: workspace:*
+        version: link:packages/plugins/infra/sandbox
+      '@qualy/plugin-storage':
+        specifier: workspace:*
+        version: link:packages/plugins/infra/storage
+      '@qualy/plugin-storage-cos':
+        specifier: workspace:*
+        version: link:packages/plugins/infra/storage-cos
+      '@qualy/plugin-storage-local':
+        specifier: workspace:*
+        version: link:packages/plugins/infra/storage-local
+      '@qualy/plugin-ui-registry':
+        specifier: workspace:*
+        version: link:packages/plugins/infra/ui-registry
+      '@qualy/plugin-web':
+        specifier: workspace:*
+        version: link:packages/plugins/infra/web
       tsx:
         specifier: 'catalog:'
         version: 4.23.1
@@ -213,24 +270,9 @@ importers:
       '@qualy/i18n-contract':
         specifier: workspace:*
         version: link:packages/contracts/i18n
-      '@qualy/plugin-auth':
-        specifier: workspace:*
-        version: link:packages/plugins/base/auth
-      '@qualy/plugin-database':
-        specifier: workspace:*
-        version: link:packages/plugins/infra/database
       '@qualy/plugin-kit':
         specifier: workspace:*
         version: link:packages/core/plugin-kit
-      '@qualy/plugin-org':
-        specifier: workspace:*
-        version: link:packages/plugins/base/org
-      '@qualy/plugin-ping':
-        specifier: workspace:*
-        version: link:packages/plugins/demo/ping
-      '@qualy/plugin-ui-registry':
-        specifier: workspace:*
-        version: link:packages/plugins/infra/ui-registry
       '@qualy/rbac-contract':
         specifier: workspace:*
         version: link:packages/contracts/rbac
@@ -354,90 +396,18 @@ importers:
       '@qualy/assembly':
         specifier: workspace:*
         version: link:../../packages/core/assembly
-      '@qualy/assembly-contract':
-        specifier: workspace:*
-        version: link:../../packages/contracts/assembly
-      '@qualy/auth-contract':
-        specifier: workspace:*
-        version: link:../../packages/contracts/auth
-      '@qualy/plugin-assessment':
-        specifier: workspace:*
-        version: link:../../packages/plugins/assessment/core
-      '@qualy/plugin-assessment-evidence':
-        specifier: workspace:*
-        version: link:../../packages/plugins/assessment/evidence
-      '@qualy/plugin-assessment-formula':
-        specifier: workspace:*
-        version: link:../../packages/plugins/assessment/formula
-      '@qualy/plugin-audit':
-        specifier: workspace:*
-        version: link:../../packages/plugins/base/audit
-      '@qualy/plugin-auth':
-        specifier: workspace:*
-        version: link:../../packages/plugins/base/auth
-      '@qualy/plugin-auth-local':
-        specifier: workspace:*
-        version: link:../../packages/plugins/base/auth-local
-      '@qualy/plugin-database':
-        specifier: workspace:*
-        version: link:../../packages/plugins/infra/database
       '@qualy/plugin-kit':
         specifier: workspace:*
         version: link:../../packages/core/plugin-kit
-      '@qualy/plugin-layout-default':
-        specifier: workspace:*
-        version: link:../../packages/plugins/base/layout-default
-      '@qualy/plugin-org':
-        specifier: workspace:*
-        version: link:../../packages/plugins/base/org
-      '@qualy/plugin-ping':
-        specifier: workspace:*
-        version: link:../../packages/plugins/demo/ping
-      '@qualy/plugin-rbac':
-        specifier: workspace:*
-        version: link:../../packages/plugins/base/rbac
-      '@qualy/plugin-rum':
-        specifier: workspace:*
-        version: link:../../packages/plugins/infra/rum
-      '@qualy/plugin-rum-tencent':
-        specifier: workspace:*
-        version: link:../../packages/plugins/infra/rum-tencent
-      '@qualy/plugin-sandbox':
-        specifier: workspace:*
-        version: link:../../packages/plugins/infra/sandbox
-      '@qualy/plugin-storage':
-        specifier: workspace:*
-        version: link:../../packages/plugins/infra/storage
-      '@qualy/plugin-storage-cos':
-        specifier: workspace:*
-        version: link:../../packages/plugins/infra/storage-cos
-      '@qualy/plugin-storage-local':
-        specifier: workspace:*
-        version: link:../../packages/plugins/infra/storage-local
-      '@qualy/plugin-ui-registry':
-        specifier: workspace:*
-        version: link:../../packages/plugins/infra/ui-registry
-      '@qualy/plugin-web':
-        specifier: workspace:*
-        version: link:../../packages/plugins/infra/web
-      '@qualy/rbac-contract':
-        specifier: workspace:*
-        version: link:../../packages/contracts/rbac
       '@qualy/release-contract':
         specifier: workspace:*
         version: link:../../packages/contracts/release
       '@qualy/telemetry':
         specifier: workspace:*
         version: link:../../packages/core/telemetry
-      '@qualy/ui-contract':
-        specifier: workspace:*
-        version: link:../../packages/contracts/ui
       '@qualy/web-build':
         specifier: workspace:*
         version: link:../../packages/build/web
-      '@qualy/web-runtime':
-        specifier: workspace:*
-        version: link:../../packages/web/runtime
       chalk:
         specifier: ^6.0.0
         version: 6.0.0
@@ -448,6 +418,30 @@ importers:
         specifier: 'catalog:'
         version: 4.0.0-rc.115
     devDependencies:
+      '@qualy/plugin-assessment':
+        specifier: workspace:*
+        version: link:../../packages/plugins/assessment/core
+      '@qualy/plugin-assessment-formula':
+        specifier: workspace:*
+        version: link:../../packages/plugins/assessment/formula
+      '@qualy/plugin-auth':
+        specifier: workspace:*
+        version: link:../../packages/plugins/base/auth
+      '@qualy/plugin-database':
+        specifier: workspace:*
+        version: link:../../packages/plugins/infra/database
+      '@qualy/plugin-ping':
+        specifier: workspace:*
+        version: link:../../packages/plugins/demo/ping
+      '@qualy/plugin-storage':
+        specifier: workspace:*
+        version: link:../../packages/plugins/infra/storage
+      '@qualy/plugin-storage-local':
+        specifier: workspace:*
+        version: link:../../packages/plugins/infra/storage-local
+      '@qualy/web-runtime':
+        specifier: workspace:*
+        version: link:../../packages/web/runtime
       kysely:
         specifier: 'catalog:'
         version: 0.29.5

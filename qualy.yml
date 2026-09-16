@@ -1,12 +1,11 @@
-version: 2
+version: 3
 
-# The package whose dependencies these plugin ids resolve against. It is the
-# deployment root, not this file's directory: configuration belongs where
-# somebody changing a port would look for it, and which package declares the
-# plugins is a different question. Omit it and the two are the same directory,
-# which is the standalone layout.
-application:
-  workspace: ./apps/server
+# The product manifest: which of the installed plugins form this product, and
+# how each is configured. Where the plugins are installed is not this file's
+# to say - they resolve from the package this file sits in, whose
+# package.json declares them. Configuration that changes the assembly lives
+# here and is hashed into the lock; settings that only change how the
+# process behaves belong under `application` or in the environment.
 
 plugins:
   '@qualy/plugin-database':

@@ -2,7 +2,7 @@ import { execSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
-// convenience scaffold for a new workspace plugin: host workspace dependency
+// convenience scaffold for a new workspace plugin: product package dependency
 // plus qualy.yml entry, then install and resolve.
 //
 // Every path here is a path this repository moved once already, and the last
@@ -37,7 +37,10 @@ function workspacePackageExists(id: string): boolean {
 
 if (!workspacePackageExists(name)) throw new Error(`${name} not found under packages/`)
 
-const rootManifestPath = 'apps/server/package.json'
+// The product package is the repository root: the package holding qualy.yml
+// is the one whose dependencies its plugin ids resolve against, and the
+// server is a generic host that names no product plugin.
+const rootManifestPath = 'package.json'
 const rootManifest = JSON.parse(fs.readFileSync(rootManifestPath, 'utf8'))
 rootManifest.dependencies = Object.fromEntries(
   Object.entries({ ...rootManifest.dependencies, [name]: 'workspace:*' }).sort(([a], [b]) =>
@@ -73,7 +76,7 @@ const pluginManifest = (() => {
 })()
 
 // The browser half needs no declaration anywhere. A plugin's modules are
-// found through the assembly - the manifest names a workspace, the resolver
+// found through the assembly - the product package installs it, the resolver
 // finds the package, the collector writes relative imports - so the
 // composition root never has to name a plugin for one to be built. It used
 // to, and that list was a second copy of what the resolution already knew.

@@ -108,3 +108,9 @@ skills-lock.json
 # behind only by a run that was killed
 qualy.supervisor-test.yml
 qualy.supervisor-test.lock.json
+
+# the benchmark's assembly: the product's manifest with the formula writer
+# open, written beside it because a manifest resolves from the package it
+# sits in
+qualy.benchmark.yml
+qualy.benchmark.lock.json

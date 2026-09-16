@@ -20,7 +20,7 @@ import { FormulaSettings } from '@qualy/plugin-assessment-formula/config'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { Api } from '@qualy/api-kit/plugin'
 import { Plugin } from '@qualy/plugin-kit'
-import { hostDirFor, lockPathFor, readLock, readManifest, resolveAssembly } from '@qualy/assembly'
+import { lockPathFor, productRootFor, readLock, resolveAssembly } from '@qualy/assembly'
 import { clientFor } from '@qualy/web-runtime/api'
 import { loadAssembly } from '@qualy/assembly/runtime'
 import { manifestPath } from '../src/manifest.ts'
@@ -152,7 +152,9 @@ const assembled = await (async () => {
   fs.writeFileSync(scratch, withPing)
   const resolution = await resolveAssembly({
     manifestPath: scratch,
-    hostDir: hostDirFor(readManifest(manifest)),
+    // the scratch manifest lives in a temporary directory; its plugins are the
+    // product's, so they resolve from the product's own package
+    hostDir: productRootFor(manifest),
     previousLock: readLock(lockPathFor(manifest)),
   })
   resolution.runtimePlugins = resolution.runtimePlugins.filter((id) => id !== '@qualy/plugin-web')

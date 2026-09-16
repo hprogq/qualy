@@ -33,8 +33,6 @@ export interface Workspace {
 export interface ManifestOptions {
   disabled?: readonly string[]
   configs?: Record<string, unknown>
-  /** where the plugins are installed, relative to the manifest; defaults to '.' */
-  workspace?: string
   /**
    * Packages to install besides the selection.
    *
@@ -68,25 +66,21 @@ export interface SyntheticPackage {
   exports?: Record<string, string>
 }
 
-// anchored at this module rather than at the cwd, so a suite run from
-// anywhere links the same packages - through the real host's dependencies,
-// the same resolution the product uses
-const HOST = fileURLToPath(new URL('../../../../apps/server/', import.meta.url))
+// The package the linked plugins come from: this repository's root, which is
+// the development product - its package.json declares every plugin the
+// product installs, and its qualy.yml sits beside it. Anchored at this module
+// rather than at the cwd, so a suite run from anywhere links the same
+// packages through the same resolution the product uses.
+const PRODUCT_ROOT = fileURLToPath(new URL('../../../../', import.meta.url))
 
 export const renderManifestText = (
   plugins: readonly string[],
   options: ManifestOptions = {},
 ): string => {
-  // '.' because a throwaway workspace IS the standalone layout: the manifest,
-  // the lock and node_modules all sit in the same temporary directory
-  const lines = [
-    'version: 2',
-    '',
-    'application:',
-    `  workspace: ${options.workspace ?? '.'}`,
-    '',
-    'plugins:',
-  ]
+  // no application block: a throwaway workspace IS the product layout - the
+  // manifest, the lock, package.json and node_modules all sit in the same
+  // temporary directory, which is where the plugins resolve from
+  const lines = ['version: 3', '', 'plugins:']
   for (const id of plugins) {
     const body: string[] = []
     if (options.disabled?.includes(id)) body.push('    enabled: false')
@@ -110,14 +104,14 @@ export function createWorkspace(
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-workspace-'))
   const modules = path.join(dir, 'node_modules')
   fs.mkdirSync(modules, { recursive: true })
-  // the host the manifest points at has to be a package: resolution reads its
+  // the manifest's directory has to be a package: resolution reads its
   // package.json to build the require that plugin ids resolve through
   fs.writeFileSync(
     path.join(dir, 'package.json'),
     `${JSON.stringify({ name: 'qualy-test-workspace', version: '0.0.0', private: true }, null, 2)}\n`,
   )
 
-  const host = createPackageResolver(HOST)
+  const host = createPackageResolver(PRODUCT_ROOT)
   const link = (id: string, target: string) => {
     const at = path.join(modules, ...id.split('/'))
     fs.mkdirSync(path.dirname(at), { recursive: true })

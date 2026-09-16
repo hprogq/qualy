@@ -83,22 +83,22 @@ const installed = () => {
   )
   pnpm(['install'], dir)
 
-  // the peers, linked the way a host has them on disk
-  const host = createPackageResolver(path.join(repoRoot, 'apps/server'))
+  // the peers, linked the way a product has them on disk: from this
+  // repository's root, which is the development product package
+  const host = createPackageResolver(repoRoot)
   for (const id of PEERS) {
     const at = path.join(dir, 'node_modules', ...id.split('/'))
     fs.mkdirSync(path.dirname(at), { recursive: true })
     if (!fs.existsSync(at)) fs.symlinkSync(host.resolvePackageDir(id), at, 'dir')
   }
 
+  // the manifest sits in the package that installed the plugin, which is
+  // the whole of what a product layout is
   const manifestPath = path.join(dir, 'qualy.yml')
   fs.writeFileSync(
     manifestPath,
     [
-      'version: 2',
-      '',
-      'application:',
-      '  workspace: .',
+      'version: 3',
       '',
       'plugins:',
       "  '@qualy/plugin-database': {}",

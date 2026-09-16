@@ -44,7 +44,7 @@ const withManifest = <T>(text: string, run: (file: string) => T): T => {
   }
 }
 
-const manifest = (body: string) => `version: 2\n\napplication:\n  workspace: .\n\nplugins:\n${body}`
+const manifest = (body: string) => `version: 3\n\nplugins:\n${body}`
 
 /**
  * What the plugin makes of a manifest block, without opening a database.

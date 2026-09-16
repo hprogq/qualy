@@ -17170,3 +17170,99 @@ exceljs 进浏览器包               apps/web/dist/assets 247 个文件里搜�
 
 行政认定 Phase A–D 完成。可以做的:在运行中的应用里按 §77 手动走通两条链;
 补浏览器前进/后退与移动端下钻的测试;把 `requiresAttachment` 改成问驱动。
+
+## 构建/装配/部署重构 P1:Product Package 与 Runtime Host 分离(2026-09-17)
+
+规格 `docs/osi.md`(用户本地文件,未提交)§57/§76 的 P1。目标只有一个:说清「谁装插件」。
+此前 `apps/server/package.json` 依赖全部产品插件,`qualy.yml` 用 `application.workspace: ./apps/server`
+指过去——server 事实上就是产品,而清单知道了包的目录布局。现在四层分立:pnpm 管包,Qualy 管装配,
+OCI 管运行时软件,Deployment State 管实例历史(后两层在 P3+)。
+
+### 1. 架构变化
+
+- **Manifest v3**:删掉 `application.workspace`。规则只有一条:插件 id 从**放着 qualy.yml 的那个包**
+  (`productRootFor(manifestPath) = dirname(manifestPath)`,要求有 package.json)的依赖解析。
+  `manifestHash` 只哈希 `version + plugins`;`renderManifest` 只在有 logging 时写 `application`。
+  v2 文件(或任何写了 `application.workspace` 的文件)得到一句迁移提示,而不是「version must be 3」加
+  「unknown key」两条错。
+- **根 package.json 成为 Product Package**:`dependencies` 列出清单全部插件 ∪ lock 里 detached 的
+  `@qualy/plugin-ping`(19 个)。`apps/server` 的 production deps 只剩 src 真 import 的平台包
+  (api-kit / assembly / plugin-kit / release-contract / telemetry / web-build / effect / platform-node /
+  chalk / chokidar),测试 import 的 7 个插件 + web-runtime 进 devDependencies(按源码扫描,
+  含一处动态 `import('@qualy/plugin-ping/api')`,第一轮扫漏被 workspace-deps 门禁抓出)。
+- `hostResolver` / `resolveAssembly` 默认从 product root 建 resolver;`hostDir` 保留为测试/构建器的显式覆盖。
+- capability 派生模块路径改为相对 product root(`modules.ts` 不再拼 workspace 前缀;
+  实查:当前无 provider 实现 `modules()`,无生产模块依赖旧路径)。
+- testkit 的 `HOST` 从 `apps/server` 改为仓库根;`renderManifestText` 输出 v3、无 application 块;
+  `ManifestOptions.workspace` 删除。
+- dev 监督器:`productRoot = productRootFor(manifest)`,`.env` 与 bootstrap 输入
+  (manifest、lock、`package.json`、`pnpm-lock.yaml`)都按 product root 取,`pnpm-workspace.yaml`
+  作为本仓库额外输入;package/lock 变化归 session replacement(bootstrap 命中即 session,原有分类)。
+- `pnpm plugin:add` 改写根 package.json。基准测试的清单从 `.qualy/benchmarks/qualy.yml`
+  搬到根旁的 `qualy.benchmark.yml`(gitignored):清单必须在包里,而 `.qualy/benchmarks/` 不是包。
+- PackageResolver 一字未动:`installedUnder` 的祖先 node_modules 规则保留(§6/错误 11)。
+
+### 2. 改动文件
+
+`packages/core/assembly/src/{manifest,host,resolve,modules,testkit,index}.ts`、
+`packages/contracts/assembly/src/index.ts`(注释)、`qualy.yml`、`qualy.lock.json`(仅 manifestHash)、
+`package.json`、`apps/server/package.json`、`pnpm-lock.yaml`、`apps/server/src/dev/host.ts`、
+`tools/repo/plugin-add.ts`、`tools/benchmarks/support/server.ts`、`.gitignore`、`CLAUDE.md`;
+测试:`tools/tests/{assembly-resolve,packed-plugin,plugin-cli,plugin-isolation,sandbox-isolation}.test.ts`、
+`apps/server/tests/{assembly-config,effect-api,supervisor}.test.ts`,新增 `tools/tests/product-host.test.ts`。
+
+### 3. 新不变量(门禁)
+
+- `plugin-isolation`:apps/server 的 dependencies 不含任何 `packages/plugins/*/*` 包(Gate A);
+  根 package.json 的 dependencies ⊇ 清单插件 ∪ lock 全部插件 ∪ lock 各 capability 的 provider(Gate B,
+  允许超集);`productRootFor(qualy.yml) === repoRoot`(Gate C);apps/web 不列插件(Gate D,原有)。
+- `product-host`(§53 洁净室):临时目录只链接根 package.json 声明的包 + 复制 qualy.yml,
+  用仓库 lock 作 previousLock → `resolveAssembly` / `loadAssembly`(带 server 同款 host 描述器)/
+  `collectWebPlugins`(与仓库收集到的插件集相同)全部成功。monorepo 根 node_modules 会掩盖漏声明,这条不会。
+- `sandbox-isolation`:server 闭包与**产品闭包**都不含编译器/引擎(插件搬家后只查 server 闭包等于没查)。
+- `assembly-resolve`:v2 迁移提示;`productRootFor` 对无 package.json 的目录拒绝;hash 只看选择。
+
+反向验证(各断一处,只有对应那条红):server 加 plugin-audit → Gate A 红;根删 plugin-audit → Gate B 红、
+洁净室红(`cannot be resolved from …`);根删 plugin-ping → Gate B 红、洁净室红
+(`gone from … packages are no longer installed`,即 detached 保留链);去掉 v2 提示分支 → 只剩
+`version must be 3, got 2`,那条红;去掉 package.json 检查 → `sits inside the package` 红。
+
+### 4. 移除的旧假设
+
+`application.workspace`、`hostDirFor`、`normalizeWorkspace`、testkit 的 apps/server 硬编码、
+plugin-add 写 apps/server、清单 hash 含 host 路径、benchmark 清单可以放在非包目录。
+
+### 5. 命令与结果(实际执行)
+
+```text
+pnpm install                       ok(19 个插件从 apps/server 移到根;server 增 8 个 devDependencies)
+pnpm qualy resolve                 qualy.lock.json written;只有 manifestHash 变,resolutionHash 不变
+                                   detached: @qualy/plugin-ping (kept by database)
+                                   disabled: @qualy/plugin-rum-tencent, @qualy/plugin-storage-cos
+pnpm typecheck                     exit=0
+pnpm test                          251 passed | 3 skipped (254) / 1817 passed | 17 skipped (1834)
+                                   (含 supervisor 三条:reload / 只换 backend / 整组 SIGINT,即「dev supervisor reload works」;
+                                    含 packed-plugin、dist-only-plugin、sandbox-isolation)
+pnpm build → check-staged-web → check-chunks → check-csp-build → check-public-web   全部 exit=0
+pnpm qualy deploy                  exit=0
+smoke-production                   exit=0
+pnpm test:browser(与 build 并行跑)  57 passed / 424 passed,1 failed:auth person-card
+                                   「leaves the row unpainted」读到过渡中的 oklab 颜色串;与本阶段无关(未动任何 CSS/客户端),
+                                   单独重跑见下一行
+pnpm test:browser(单独重跑)          58 passed (58) / 425 passed (425),exit=0
+```
+
+### 6. 已知限制与推后
+
+- `person-card` 那条浏览器测试在机器忙时会读到颜色过渡中的值(`oklab(... / 0.0167)`),是断言时机问题,
+  不在本阶段范围;重跑即绿,先记下。
+- CLI 默认清单仍是「本仓库根/qualy.yml」,server 仍从自己的包向上找;`.env` 仍从 cwd 读——这三项归 P2。
+- `packages/build/web` 的 repoRoot / `apps/web/dist` / `client-dist` 硬编码归 P5,本阶段未动。
+- `@qualy/web-build → @qualy/plugin-ui-registry/plugin` 这类 facade 边保留(§72),不为口号重构。
+- `docs/plugin-refactor.md` 等历史设计文档里对 `application.workspace` 的叙述未改,它们记录当时的决定。
+
+### 7. 与规格的偏离
+
+- §13 说 testkit「从 repository root/default product root 取 host」:取的是仓库根(以模块位置锚定),
+  没有再去找 qualy.yml——testkit 链接的是包,和清单无关。
+- benchmark 清单的位置(§ 无规定):从 `.qualy/benchmarks/` 移到根旁,原因见第 1 节。

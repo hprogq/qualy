@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
@@ -8,6 +9,7 @@ import {
   lockPathFor,
   manifestHash,
   parseManifest,
+  productRootFor,
   renderManifest,
   readLock,
   renderLock,
@@ -91,8 +93,8 @@ describe('clean room', () => {
 
 describe('manifest', () => {
   const parse = (text: string) => () => parseManifest(text, 'qualy.yml')
-  /** a v2 body, so a case about one rule is not also a case about the header */
-  const v2 = (body: string) => `version: 2\napplication:\n  workspace: .\n${body}`
+  /** a v3 body, so a case about one rule is not also a case about the header */
+  const v3 = (body: string) => `version: 3\n${body}`
 
   it('refuses the entry-array form it replaced', () => {
     // the old file is valid yaml, so without this it would parse as a manifest
@@ -103,72 +105,67 @@ describe('manifest', () => {
   it('refuses one plugin declared twice', () => {
     // yaml's own answer is last-one-wins, which leaves no single answer for the
     // plugin's config
-    expect(parse(v2("plugins:\n  '@a': {}\n  '@a': {}\n"))).toThrow()
+    expect(parse(v3("plugins:\n  '@a': {}\n  '@a': {}\n"))).toThrow()
   })
 
   it('refuses keys it does not understand', () => {
-    expect(parse(v2('plugins: {}\nsetup: {}\n'))).toThrow(/unknown top-level key setup/)
-    expect(parse(v2("plugins:\n  '@a':\n    enable: true\n"))).toThrow(/unknown key enable/)
-    expect(parse('version: 2\napplication:\n  root: .\nplugins: {}\n')).toThrow(
+    expect(parse(v3('plugins: {}\nsetup: {}\n'))).toThrow(/unknown top-level key setup/)
+    expect(parse(v3("plugins:\n  '@a':\n    enable: true\n"))).toThrow(/unknown key enable/)
+    expect(parse(v3('application:\n  root: .\nplugins: {}\n'))).toThrow(
       /application: unknown key root/,
     )
-    expect(parse('version: 3\nplugins: {}\n')).toThrow(/version must be 2/)
+    expect(parse('version: 4\nplugins: {}\n')).toThrow(/version must be 3/)
   })
 
-  it('refuses a manifest that will not say where its plugins are installed', () => {
-    // The version bump exists for this. A v1 parser refuses `application` as an
-    // unknown top-level key, so a file carrying one was never readable as v1 -
-    // and leaving the field optional would have kept the guess it replaces:
-    // that the manifest's own directory is the host, which is right until
-    // somebody puts the manifest where its readers can find it.
-    expect(parse('version: 2\nplugins: {}\n')).toThrow(/application.workspace is required/)
-    expect(parse('version: 2\napplication: {}\nplugins: {}\n')).toThrow(
-      /application.workspace is required/,
-    )
-    expect(parse('version: 2\napplication:\n  workspace: /srv\nplugins: {}\n')).toThrow(
-      /must be relative/,
-    )
+  it('tells a version 2 manifest what changed, in one sentence', () => {
+    // v2 carried application.workspace, the package its plugins resolved from.
+    // A file still saying so would otherwise fail on the version, then - once
+    // that was edited - on an unknown key: two errors for one change, neither
+    // naming the rule that replaced the field
+    for (const text of [
+      'version: 2\napplication:\n  workspace: ./apps/server\nplugins: {}\n',
+      'version: 2\nplugins: {}\n',
+      'version: 3\napplication:\n  workspace: .\nplugins: {}\n',
+    ]) {
+      expect(parse(text)).toThrow(/version 2 used application\.workspace/)
+      expect(parse(text)).toThrow(/package containing qualy\.yml/)
+    }
   })
 
-  it('reads the host it names', () => {
-    const manifest = parseManifest(v2('plugins: {}\n'), 'qualy.yml')
-    expect(manifest.version).toBe(2)
-    expect(manifest.workspace).toBe('.')
+  it('reads a version 3 manifest, with or without an application block', () => {
+    expect(parseManifest(v3('plugins: {}\n'), 'qualy.yml').version).toBe(3)
+    expect(parseManifest(v3('application: {}\nplugins: {}\n'), 'qualy.yml').version).toBe(3)
   })
 
   it('reads a plugin with nothing after the colon as selected', () => {
-    const manifest = parseManifest(v2("plugins:\n  '@a':\n  '@b': {}\n"), 'qualy.yml')
+    const manifest = parseManifest(v3("plugins:\n  '@a':\n  '@b': {}\n"), 'qualy.yml')
     expect([...manifest.plugins.keys()]).toEqual(['@a', '@b'])
     expect(manifest.plugins.get('@a')!.enabled).toBe(true)
   })
 
-  it('hashes the host it names, and spells it one way', () => {
-    // Pointing the workspace at another package selects different installed
-    // versions of the same plugin ids, so a hash that ignored it would call
-    // that the same assembly and a frozen start would accept it. Equivalent
-    // spellings must NOT drift, or a whitespace-level edit reads as a change.
-    const hashOf = (workspace: string) =>
-      manifestHash(
-        parseManifest(
-          `version: 2\napplication:\n  workspace: ${workspace}\nplugins: {}\n`,
-          'qualy.yml',
-        ),
-      )
-    expect(hashOf('./apps/server')).toBe(hashOf('apps/server'))
-    expect(hashOf('./apps/server')).toBe(hashOf('./apps/./server'))
-    expect(hashOf('./apps/server')).toBe(hashOf('apps/server/'))
-    expect(hashOf('./apps/server')).not.toBe(hashOf('./apps/web'))
-    expect(hashOf('.')).toBe(hashOf('./'))
+  it('hashes what it selects and nothing about how the file is written', () => {
+    // a reordered, re-quoted or re-commented file is the same selection; a
+    // plugin toggled or reconfigured is not
+    const hashOf = (text: string) => manifestHash(parseManifest(text, 'qualy.yml'))
+    expect(hashOf(v3("plugins:\n  '@a': {}\n  '@b': {}\n"))).toBe(
+      hashOf(v3('# selected\nplugins:\n  "@b": {}\n  "@a":\n')),
+    )
+    expect(hashOf(v3("plugins:\n  '@a': {}\n"))).not.toBe(
+      hashOf(v3("plugins:\n  '@a':\n    enabled: false\n")),
+    )
+    expect(hashOf(v3("plugins:\n  '@a': {}\n"))).not.toBe(
+      hashOf(v3("plugins:\n  '@a':\n    config: { x: 1 }\n")),
+    )
   })
 
   it('carries application.logging without hashing it', () => {
     // one file, two views: logging is how the process behaves, not what the
     // assembly is - turning a level up must never read as drift
     const quiet = parseManifest(
-      'version: 2\napplication:\n  workspace: .\n  logging:\n    level: warn\nplugins: {}\n',
+      v3('application:\n  logging:\n    level: warn\nplugins: {}\n'),
       'qualy.yml',
     )
-    const loud = parseManifest(v2('plugins: {}\n'), 'qualy.yml')
+    const loud = parseManifest(v3('plugins: {}\n'), 'qualy.yml')
     expect(quiet.logging).toEqual({ level: 'warn' })
     expect(manifestHash(quiet)).toBe(manifestHash(loud))
     // and the renderer keeps it, or a rewrite would silently reset the levels
@@ -176,15 +173,16 @@ describe('manifest', () => {
   })
 
   it('survives a round trip through the renderer', () => {
-    // renderManifest is what rewrites a manifest; dropping the application
-    // block would silently turn a hosted assembly into a standalone one
     const original = parseManifest(
-      v2("plugins:\n  '@a': {}\n  '@b':\n    enabled: false\n"),
+      v3("plugins:\n  '@a': {}\n  '@b':\n    enabled: false\n"),
       'qualy.yml',
     )
-    const again = parseManifest(renderManifest(original), 'qualy.yml')
-    expect(again.workspace).toBe(original.workspace)
-    expect(again.version).toBe(2)
+    const rendered = renderManifest(original)
+    // nothing about where packages live is written back: the file describes
+    // a selection, and the directory it sits in answers the rest
+    expect(rendered).not.toContain('application')
+    const again = parseManifest(rendered, 'qualy.yml')
+    expect(again.version).toBe(3)
     expect(manifestHash(again)).toBe(manifestHash(original))
   })
 
@@ -621,12 +619,12 @@ describe('the modules capabilities derive', () => {
     )
   })
 
-  it('refuses one that reaches outside the workspace', async () => {
+  it('refuses one that reaches outside the product root', async () => {
     // the core writes these paths, so a capability naming `..` is naming a
     // file anywhere on the disk
     await expect(
       modulesOf([provider('escape', "[{ path: '../outside.gen.ts', content: 'x' }]")]),
-    ).rejects.toThrow(/capability escape generates outside the workspace/)
+    ).rejects.toThrow(/capability escape generates outside the product root/)
     await expect(
       modulesOf([provider('absolute', "[{ path: '/etc/outside.gen.ts', content: 'x' }]")]),
     ).rejects.toThrow(/capability absolute generates an absolute path/)
@@ -711,5 +709,18 @@ describe('the manifest this repository ships', () => {
     // every frozen start into a puzzle
     const file = path.resolve('qualy.yml')
     expect(lockDrift(readLock(lockPathFor(file)), await resolve(file))).toEqual([])
+  })
+
+  it('sits inside the package that installs its plugins', () => {
+    // the product root is the manifest's directory by rule, and a manifest
+    // outside any package has nothing to resolve its plugins from
+    expect(productRootFor(manifestPath())).toBe(path.dirname(manifestPath()))
+    const orphan = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-orphan-')), 'qualy.yml')
+    try {
+      fs.writeFileSync(orphan, 'version: 3\nplugins: {}\n')
+      expect(() => productRootFor(orphan)).toThrow(/no package\.json at/)
+    } finally {
+      fs.rmSync(path.dirname(orphan), { recursive: true, force: true })
+    }
   })
 })

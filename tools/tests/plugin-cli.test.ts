@@ -231,7 +231,7 @@ describe('the files a selection owns are written together or not at all', () => 
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-file-set-'))
     try {
       const at = (name: string) => path.join(dir, name)
-      fs.writeFileSync(at('qualy.yml'), 'version: 2\n')
+      fs.writeFileSync(at('qualy.yml'), 'version: 3\n')
       fs.writeFileSync(at('qualy.lock.json'), '{"old":true}\n')
       fs.writeFileSync(at('one.ts'), 'export const one = 1\n')
       // the fourth write cannot succeed: its path is a directory
@@ -239,7 +239,7 @@ describe('the files a selection owns are written together or not at all', () => 
 
       const files = openFileSet()
       expect(() => {
-        files.write(at('qualy.yml'), 'version: 2\nplugins:\n  a: {}\n')
+        files.write(at('qualy.yml'), 'version: 3\nplugins:\n  a: {}\n')
         files.write(at('qualy.lock.json'), '{"new":true}\n')
         files.write(at('one.ts'), 'export const one = 2\n')
         files.write(at('three.ts'), 'export const three = 3\n')
@@ -248,7 +248,7 @@ describe('the files a selection owns are written together or not at all', () => 
 
       files.rollback()
 
-      expect(fs.readFileSync(at('qualy.yml'), 'utf8')).toBe('version: 2\n')
+      expect(fs.readFileSync(at('qualy.yml'), 'utf8')).toBe('version: 3\n')
       expect(fs.readFileSync(at('qualy.lock.json'), 'utf8')).toBe('{"old":true}\n')
       expect(fs.readFileSync(at('one.ts'), 'utf8')).toBe('export const one = 1\n')
       // one the set created rather than replaced: it goes away entirely
@@ -309,10 +309,7 @@ describe('qualy plugin enable and disable', () => {
       fs.writeFileSync(
         workspace.manifestPath,
         [
-          'version: 2',
-          '',
-          'application:',
-          '  workspace: .',
+          'version: 3',
           '',
           'plugins:',
           '  # the one with something under it',

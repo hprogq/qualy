@@ -1,7 +1,7 @@
 import type { AssemblyPlugin, PluginState } from '@qualy/assembly-contract'
 import { isPluginDescriptor, Plugin, type PluginDescriptor } from '@qualy/plugin-kit'
 import { CliCommands } from '@qualy/plugin-kit/cli'
-import { hostDirFor, manifestHash, readManifest, type AssemblyManifest } from './manifest.ts'
+import { manifestHash, productRootFor, readManifest, type AssemblyManifest } from './manifest.ts'
 import { createPackageResolver, type PackageResolver, type PluginMetadata } from './metadata.ts'
 import { loadProviders, type LoadedProvider } from './registry.ts'
 import type { AssemblyLock } from './lock.ts'
@@ -74,14 +74,22 @@ export interface Resolution {
 
 export interface ResolveOptions {
   manifestPath: string
-  /** defaults to the manifest's own directory, which is where the loader anchors */
+  /**
+   * The package to resolve plugin ids from, when it is not the one the
+   * manifest sits in.
+   *
+   * The product root is the rule; this is the exception for tools that
+   * resolve a scratch manifest against a real install - a test writing a
+   * variant of the product's manifest into a temporary directory, a builder
+   * staging one. A deployment never sets it.
+   */
   hostDir?: string
   previousLock?: AssemblyLock
 }
 
 export async function resolveAssembly(options: ResolveOptions): Promise<Resolution> {
   const manifest = readManifest(options.manifestPath)
-  const resolver = createPackageResolver(options.hostDir ?? hostDirFor(manifest))
+  const resolver = createPackageResolver(options.hostDir ?? productRootFor(options.manifestPath))
   const previous = options.previousLock
 
   const states = new Map<string, PluginState>()

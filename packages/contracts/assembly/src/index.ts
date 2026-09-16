@@ -87,7 +87,7 @@ export interface CapabilityWorkContext<Contribution, State> extends Omit<
  * never heard of one.
  */
 export interface CapabilityModule {
-  /** relative to the host workspace, which is where the host imports it from */
+  /** relative to the product root - the manifest's directory - which is where the host imports it from */
   path: string
   content: string
   /**
