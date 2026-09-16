@@ -21,7 +21,7 @@
     "./client/i18n": "./src/client/i18n.ts",
     "./client/items/FixedCalculatorEditor": "./src/client/items/FixedCalculatorEditor.tsx",
     "./client/items/ItemSettingsPage": "./src/client/items/ItemSettingsPage.tsx",
-    "./client/record/RecordPage": "./src/client/record/RecordPage.tsx",
+    "./client/record/AdministrativeRecordsPage": "./src/client/record/AdministrativeRecordsPage.tsx",
     "./client/result/MyResultPage": "./src/client/result/MyResultPage.tsx",
     "./client/result/ParticipantResultsPage": "./src/client/result/ParticipantResultsPage.tsx",
     "./client/review/QueueBadge": "./src/client/review/QueueBadge.tsx",

@@ -547,6 +547,51 @@ const reviewSupplementView = Schema.Struct({
   ),
 })
 
+/** the standings an administrative fact can currently be in */
+const administrativeStatus = Schema.Literals([
+  'draft',
+  'in_review',
+  'needs_revision',
+  'approved',
+  'rejected',
+  'voided',
+])
+
+/** one row of the administrative record book */
+const administrativeEntryView = Schema.Struct({
+  entryId: Schema.String,
+  participant: Schema.Struct({
+    id: Schema.String,
+    userId: Schema.String,
+    displayName: Schema.String,
+    businessNo: Schema.NullOr(Schema.String),
+  }),
+  item: Schema.Struct({ id: Schema.String, title: Schema.String }),
+  source: Schema.Literals(['record', 'import']),
+  status: administrativeStatus,
+  revision: Schema.Struct({
+    id: Schema.String,
+    payload: configJson,
+    /** the basis, which an administrative fact is never written without */
+    note: Schema.NullOr(Schema.String),
+    actorId: Schema.String,
+    actorName: Schema.NullOr(Schema.String),
+    createdAt: Schema.String,
+  }),
+  recognition: Schema.NullOr(
+    Schema.Struct({
+      id: Schema.String,
+      /** the question version this determination was judged under */
+      itemRevisionId: Schema.String,
+      values: configJson,
+      /** that version's own fields, in the order it declares them */
+      fields: Schema.Array(Schema.Struct({ id: Schema.String, schema: configJson })),
+    }),
+  ),
+  /** the bulk act it arrived in, when it arrived in one */
+  importId: Schema.NullOr(Schema.String),
+})
+
 const entryView = Schema.Struct({
   id: Schema.String,
   batchId: Schema.String,
@@ -2115,11 +2160,51 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     }).middleware(Authenticated),
   )
   .add(
+    /**
+     * The book of what the institution has recorded in this round.
+     *
+     * Its own read rather than the general claim list with a filter: the
+     * question here is "what has been decided", and the answer wants the
+     * person, the question, who signed it and what it was determined to be -
+     * none of which a claim-centred view carries. Only `record` and `import`
+     * are ever in it.
+     *
+     * The determination's fields come from the question version it was
+     * judged under, never the question as it stands today: a determination
+     * read through a schema it was not made against is a determination
+     * misread.
+     */
+    HttpApiEndpoint.get(
+      'listAdministrativeEntries',
+      '/assessment/batches/:batchId/administrative-entries',
+      {
+        params: Schema.Struct({ batchId: uuidInput }),
+        query: Schema.Struct({
+          ...pageQuery,
+          /** a name or a business number of the person it is about */
+          q: Schema.optional(boundedText(100)),
+          itemId: Schema.optional(uuidInput),
+          source: Schema.optional(Schema.Literals(['record', 'import'])),
+          status: Schema.optional(administrativeStatus),
+          orgNodeIds: Schema.optional(idList),
+          orgScope: Schema.optional(Schema.Literals(['self', 'subtree'])),
+        }),
+        success: Schema.Struct({
+          entries: Schema.Array(administrativeEntryView),
+          nextCursor: Schema.NullOr(Schema.String),
+        }),
+        error: [BatchNotFound, AccessDenied, BadRequest],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
     HttpApiEndpoint.get('listParticipants', '/assessment/batches/:batchId/participants', {
       params: Schema.Struct({ batchId: uuidInput }),
       query: Schema.Struct({
         ...pageQuery,
         status: Schema.optional(Schema.Literals(['active', 'excluded'])),
+        /** a name or a business number; matched in sql, so the walk holds */
+        q: Schema.optional(boundedText(100)),
         /** narrowed to the people this round admitted from these units */
         orgNodeIds: Schema.optional(idList),
         /** that unit only, or everything under it; under it when absent */

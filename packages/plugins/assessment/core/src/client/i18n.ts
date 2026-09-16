@@ -913,7 +913,7 @@ const i18n = definePluginMessages({
     // the review queue
     recordNoStanding: {
       id: 'assessment/record/no-standing',
-      defaultMessage: 'You do not have permission to record entries in this batch.',
+      defaultMessage: 'You may not make administrative records in this batch.',
     },
     reviewTab: { id: 'assessment/review/tab', defaultMessage: 'Review' },
     reviewHint: {
@@ -1295,24 +1295,53 @@ const i18n = definePluginMessages({
     },
     // ------------------------------------------------------------------
     // recording on someone's behalf
-    recordTab: { id: 'assessment/record/tab', defaultMessage: 'Record on behalf' },
+    recordTab: { id: 'assessment/record/tab', defaultMessage: 'Administrative records' },
     recordHint: {
       id: 'assessment/record/hint',
       defaultMessage:
-        'Record an item for a participant. A basis is required, and the entry takes effect immediately.',
+        'Record the additions, deductions and other findings the institution has already settled.',
     },
     recordEmpty: {
       id: 'assessment/record/empty',
-      defaultMessage: 'No staff-recorded items are configured for this batch.',
+      defaultMessage: 'This batch has no item the institution records directly.',
     },
-    recordWho: { id: 'assessment/record/who', defaultMessage: 'Participant' },
+    recordItem: { id: 'assessment/record/item', defaultMessage: 'Which item' },
+    recordWho: { id: 'assessment/record/who', defaultMessage: 'Who' },
+    recordListTab: { id: 'assessment/record/list-tab', defaultMessage: 'Records' },
+    recordNewAction: { id: 'assessment/record/new-action', defaultMessage: 'Record one' },
+    recordBack: { id: 'assessment/record/back', defaultMessage: 'Back to the records' },
+    recordListEmpty: {
+      id: 'assessment/record/list-empty',
+      defaultMessage: 'Nothing has been recorded in this round yet.',
+    },
+    recordSearchList: {
+      id: 'assessment/record/search-list',
+      defaultMessage: 'Name or number',
+    },
+    recordColumnWho: { id: 'assessment/record/column-who', defaultMessage: 'Participant' },
+    recordColumnItem: { id: 'assessment/record/column-item', defaultMessage: 'Item' },
+    recordColumnSource: { id: 'assessment/record/column-source', defaultMessage: 'How' },
+    recordColumnActor: { id: 'assessment/record/column-actor', defaultMessage: 'Recorded by' },
+    recordColumnWhen: { id: 'assessment/record/column-when', defaultMessage: 'When' },
+    recordSourceManual: { id: 'assessment/record/source-manual', defaultMessage: 'Recorded' },
+    recordSourceImport: { id: 'assessment/record/source-import', defaultMessage: 'Imported' },
+    recordPickWho: { id: 'assessment/record/pick-who', defaultMessage: 'Choose a participant' },
+    recordSearchWho: {
+      id: 'assessment/record/search-who',
+      defaultMessage: 'Name or number',
+    },
+    recordNobodyFound: {
+      id: 'assessment/record/nobody-found',
+      defaultMessage: 'Nobody in this round matches.',
+    },
+    recordMoreWho: { id: 'assessment/record/more-who', defaultMessage: 'Load more' },
     recordBasis: { id: 'assessment/record/basis', defaultMessage: 'Basis' },
     recordBasisHint: {
       id: 'assessment/record/basis-hint',
       defaultMessage:
         'Provide a verifiable source, such as a document title or reference number. Required.',
     },
-    recordSubmit: { id: 'assessment/record/submit', defaultMessage: 'Record' },
+    recordSubmit: { id: 'assessment/record/submit', defaultMessage: 'Confirm the record' },
     recordDone: { id: 'assessment/record/done', defaultMessage: 'Recorded.' },
     // ------------------------------------------------------------------
     // configuring the questions

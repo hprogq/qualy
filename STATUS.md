@@ -16696,3 +16696,95 @@ pnpm test:browser:webkit    2 passed (2) / 14 passed (14)
 `:has([aria-expanded="true"])` 改回不带值 → person-card 那条红。
 
 界面样式的断言只问「有没有」不问「是哪一档灰」——线重与底色归主题,会动。
+
+## 行政认定 Phase A:页面重构与认定记录读模型(2026-09-16)
+
+规格见 `docs/administrative.md`。本阶段只做 §73 的 Phase A,不碰 Excel、不建新表。
+
+### 命名:只改用户可见的那一层
+
+`代为登记` → `行政认定`。按 §1/§3,**权限码、`Entry.source`、route、page id 一律不动**——
+它们是活得比 UI 久的东西,为了中文改名迁移稳定标识是净亏损。
+
+同时把 §1 强调的两条路径在文案上分清楚:`entry.proxy` 是**代录**(替学生提交其本可自提的
+材料,照常走审核链),`entry.record` 是**行政认定**(机构形成正式事实,直接生效)。
+docs/assessment-design.md 一直是这么分的,只有 UI 在混。图标从 `pen-line` 换成 `stamp`
+(lucide 有,顺手进 icon registry;没有的话按 §3 就不换)。
+
+### 参评人员搜索必须进 SQL
+
+原 `RecordPage` 只调一次 `listParticipants({query:{}})`,把**第一页**塞进 `<NativeSelect>`。
+roster 一大,后面的人根本选不到。
+
+`listParticipants` 新增 `q`,匹配 `display_name` 与 `business_no`:
+
+- 进 **where 子句**,不是前端过滤——名单是 keyset 走的,前端过滤等于"五十个里显示三个,
+  下一页却从那五十个之后开始";
+- 进 **cursor fingerprint**——少了它,一个搜索的游标用到另一个搜索上会静默跳行或重复;
+- `ilike` 的 `%` `_` `\` 三个通配符转义,所以搜 `%` 是搜一个字符而不是匹配所有人;
+- record-only staff 的 reach 下推**原样保留**。
+
+### 行政认定记录:专用读端点,不硬扩 EntryView
+
+`GET /assessment/batches/{batchId}/administrative-entries`。按 §8 不复用通用 EntryView:
+这里要的是人、题目、签字人、依据与认定结果,通用条目视图一个都不带。
+
+两条不变量,各自做了**反向验证**:
+
+1. **只含行政事实**:`where e.source in ('record','import')`。改成放进 `self` → 那条红。
+2. **越界不可见**:非管理员按 `assessment.entry.record` 的 reach 下推 SQL。去掉下推 → 那条红。
+   且两次各自只红对应的一条。
+
+§8 最要紧的一条是**认定字段读冻结版本**:`recognition.fields` 来自该认定判定时的
+ItemRevision(`revisionsByIdOf` → `readScoringPlan` → `recognitionFormFields`),不是题目
+当前版本。三个月前的认定配上今天改过的 schema,会被讲成另一件事。
+
+### 页面:先回答"已经认定了什么"
+
+`RecordPage` → `AdministrativeRecordsPage`,首页是认定记录而不是空表单。
+按 §5 只有一个 Page route,状态全在 address 里(`mode=manual` / `entry=<id>`),
+content drill 而不是 Dialog。
+
+抽出 `AdministrativeRecordForm` / `ManualRecordForm` / `ParticipantPicker` /
+`AdministrativeEntryList` / `AdministrativeEntrySheet`,§54 的 2000 行单文件没有出现。
+
+单条详情与单条撤销**没有新建任何东西**:`ManagedEntrySheet` 早就认识 `record`/`import`
+并且只对行政条目提供"撤销"(自填条目是本人的,工作人员拿走是没人要求过的权力);
+撤销走既有 `POST /assessment/entries/{entryId}/interventions`,§11 明确禁止再开
+`DELETE /administrative-record`。
+
+一处顺手修掉的浪费:sheet 原本无条件挂载,没打开任何条目时也会发四个请求。改成
+按需挂载 + `useLingering` 保住关闭动画。
+
+### §67:既有断言全部迁移,一条没删
+
+`record-recognition.browser.test.tsx` 那五条钉的正是这次重构最容易碰坏的东西——
+认定跟随材料、recorder 改过之后不再被覆盖、换人/换题/提交成功三种重置。
+参评人员的选择从 `<select>` 变成搜索式 picker,所以测试换了**定位方式**,
+断言本身逐条保留。
+
+### 门禁(实际执行,2026-09-16)
+
+```text
+pnpm typecheck                exit=0
+pnpm test                     244 passed | 3 skipped (247) / 1749 passed | 17 skipped (1766)
+pnpm test:browser             57 passed (57) / 418 passed (418)
+effect-api-parity             4 passed(新路由已同笔写进 frozen-routes)
+```
+
+新增 `tests/administrative-records.test.ts`(4 条服务边界)。
+
+### Phase B 前置:XLSX 依赖已按 §17 验证
+
+`exceljs@4.4.0`,隔离环境实测(不是查文档):
+
+```text
+Node 24 ESM 导入           ok
+license / engines          MIT / >=8.3.0
+_qualy 隐藏 sheet          veryHidden 往返保真
+学号前导零 0012340         读回仍是文本,没被吃成 12340
+公式 cell                  读回 {formula, result},可判别且库不求值
+```
+
+最后一条是 §61 的前提:能判别才能实现 `formula-not-allowed`。
+build / server bundle / 不进浏览器 chunk 三条要等真加进仓库后跑门禁验。

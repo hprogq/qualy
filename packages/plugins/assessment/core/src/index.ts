@@ -296,9 +296,9 @@ const plugin = Plugin.define(
   Ui.page({
     id: 'assessment/batch-record',
     path: '/assessment/batches/:batchId/record',
-    component: Ui.react('./client/record/RecordPage'),
+    component: Ui.react('./client/record/AdministrativeRecordsPage'),
     layout: WORKSPACE_SHELL,
-    title: message('assessment/record/tab', 'Record for someone'),
+    title: message('assessment/record/tab', 'Administrative records'),
     visibility: permissionOf('assessment.entry.record'),
   }),
   Ui.page({
@@ -376,9 +376,9 @@ const plugin = Plugin.define(
         id: 'assessment/batch-record/rail',
         value: {
           id: 'assessment/batch-record/rail',
-          label: message('assessment/record/tab', 'Record for someone'),
+          label: message('assessment/record/tab', 'Administrative records'),
           target: { kind: 'page', pageId: 'assessment/batch-record' },
-          icon: 'pen-line',
+          icon: 'stamp',
           capability: 'assessment/record',
           order: 8,
           group: 'assessment/batch-work',

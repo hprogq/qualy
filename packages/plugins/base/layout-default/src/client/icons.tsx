@@ -13,6 +13,7 @@ import {
   Settings2Icon,
   SettingsIcon,
   ShieldCheckIcon,
+  StampIcon,
   UserRoundIcon,
   UsersIcon,
 } from 'lucide-react'
@@ -43,6 +44,7 @@ const ICONS: Record<string, ComponentType<SVGProps<SVGSVGElement>>> = {
   'settings-2': Settings2Icon,
   settings: SettingsIcon,
   'shield-check': ShieldCheckIcon,
+  stamp: StampIcon,
   'user-round': UserRoundIcon,
   users: UsersIcon,
 }

@@ -32,7 +32,47 @@ import { gateAllows, type GateContext, type GateDecision } from '../phase/gate.t
 import { PARTICIPANT_ACTION_CODES, BATCH_STAFF_CODES } from '../permissions.ts'
 import { ItemTypeCatalog, ScoringDefinitionCatalog } from '../plugin.ts'
 import { makeItemMethods, type ItemMethods, type ItemView } from '../item/service.ts'
-import { currentBatchConfigs, liveBatchPayloads } from '../item/db.ts'
+import { currentBatchConfigs, liveBatchPayloads, revisionsByIdOf } from '../item/db.ts'
+import { currentRecognitionsOfEntries } from '../scoring/recognition-db.ts'
+import { readScoringPlan } from '../scoring/plan.ts'
+import { recognitionFormFields } from '../scoring/recognition.ts'
+
+/**
+ * One row of the administrative record book, assembled.
+ *
+ * The cursor rides with the row rather than being recomputed by the handler:
+ * the keyset is the row's own creation instant, and the handler has no
+ * business knowing which two columns that is.
+ */
+interface AdministrativeEntryView {
+  readonly entryId: string
+  readonly participant: {
+    readonly id: string
+    readonly userId: string
+    readonly displayName: string
+    readonly businessNo: string | null
+  }
+  readonly item: { readonly id: string; readonly title: string }
+  readonly source: 'record' | 'import'
+  readonly status: AdministrativeEntryRow['status']
+  readonly revision: {
+    readonly id: string
+    readonly payload: Record<string, unknown>
+    readonly note: string | null
+    readonly actorId: string
+    readonly actorName: string | null
+    readonly createdAt: string
+  }
+  readonly recognition: {
+    readonly id: string
+    readonly itemRevisionId: string
+    readonly values: Record<string, unknown>
+    readonly fields: readonly { readonly id: string; readonly schema: unknown }[]
+  } | null
+  readonly importId: string | null
+  /** what the next page starts after, in the order this list is read */
+  readonly cursor: readonly [number, string]
+}
 import { makeEntryMethods, type EntryMethods, type EntryView } from '../entry/service.ts'
 import { makeReviewMethods, type ReviewDetailView, type ReviewMethods } from '../review/service.ts'
 import {
@@ -40,7 +80,9 @@ import {
   participatingBatchIdsOf,
   entrySummaryRowsOf,
   insertReviewEvent,
+  listAdministrativeEntriesPage,
   userActivityPage,
+  type AdministrativeEntryRow,
 } from '../entry/db.ts'
 import {
   blockedGroups,
@@ -840,11 +882,36 @@ export class Assessment extends Context.Service<
       participantId: string,
       as: Principal,
     ) => Effect.Effect<ParticipantRow, BatchNotFound | ParticipantNotFound | AccessDenied>
+    /**
+     * The book of administrative facts in one round, newest first.
+     *
+     * Read by the same two doors the roster is: whoever administers the
+     * round sees all of it, and whoever is here on recording authority sees
+     * the part they may record on - intersected in sql, because a page
+     * filtered afterwards has already read and counted other people's.
+     */
+    readonly listAdministrativeEntries: (
+      tenantId: string,
+      batchId: string,
+      filter: {
+        q?: string
+        itemId?: string
+        source?: 'record' | 'import'
+        status?: AdministrativeEntryRow['status']
+        orgNodeIds?: readonly string[]
+        orgScope?: 'self' | 'subtree'
+        after?: readonly [string, string]
+        limit: number
+      },
+      as: Principal,
+    ) => Effect.Effect<readonly AdministrativeEntryView[], BatchNotFound | AccessDenied>
     readonly listParticipants: (
       tenantId: string,
       batchId: string,
       filter: {
         status?: 'active' | 'excluded'
+        /** a name or a business number, matched in sql rather than after the page */
+        q?: string
         orgNodeIds?: readonly string[]
         orgScope?: 'self' | 'subtree'
         after?: { path: string; id: string }
@@ -3483,6 +3550,101 @@ export const make = Effect.fn('Assessment.make')(function* () {
       },
     ),
 
+    listAdministrativeEntries: Effect.fn('Assessment.listAdministrativeEntries')(
+      function* (tenantId, batchId, filter, as) {
+        const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
+        if (!batch) return yield* new BatchNotFound()
+        // the same two doors the roster has: administering the round reads
+        // all of it, recording on it reads what may be recorded on
+        const administers = yield* Effect.match(requireRosterReach(as, tenantId, batchId), {
+          onSuccess: () => true,
+          onFailure: () => false,
+        })
+        if (!administers) {
+          const records = (yield* batchAuthority(tenantId, batchId, as.userId)).has(
+            'assessment.entry.record',
+          )
+          if (!records) yield* requireRosterReach(as, tenantId, batchId)
+        }
+        const rows = yield* dieQuery(
+          withDb(
+            listAdministrativeEntriesPage({
+              tenantId,
+              batchId,
+              ...filter,
+              ...(administers
+                ? {}
+                : { reach: { userId: as.userId, permissionCode: 'assessment.entry.record' } }),
+            }),
+          ),
+        )
+        if (rows.length === 0) return []
+        // What each fact currently stands determined as, read through the
+        // question version it was JUDGED under - never the question as it
+        // stands today. A determination read through a schema it was not
+        // made against is a determination misread, and three months is long
+        // enough for a paper to have moved.
+        const determinations = yield* dieQuery(
+          withDb(
+            currentRecognitionsOfEntries(
+              tenantId,
+              rows.map((row) => row.entryId),
+            ),
+          ),
+        )
+        const byEntry = new Map(determinations.map((one) => [one.entryId, one]))
+        const revisionIds = [...new Set(rows.map((row) => row.itemRevisionId))]
+        const revisions = yield* dieQuery(withDb(revisionsByIdOf(tenantId, revisionIds)))
+        const fieldsOfRevision = new Map<
+          string,
+          readonly { readonly id: string; readonly schema: unknown }[]
+        >()
+        for (const [id, revision] of revisions) {
+          // a revision whose plan will not read is an operational defect, not
+          // a reason this page cannot be drawn: it shows the values without
+          // the words for them rather than refusing the whole book
+          const plan = yield* Effect.option(readScoringPlan(revision))
+          const fields = plan._tag === 'Some' ? recognitionFormFields(plan.value) : null
+          fieldsOfRevision.set(id, fields ?? [])
+        }
+        return rows.map((row): AdministrativeEntryView => {
+          const determined = byEntry.get(row.entryId)
+          return {
+            entryId: row.entryId,
+            participant: {
+              id: row.participantId,
+              userId: row.participantUserId,
+              displayName: row.participantName,
+              businessNo: row.participantBusinessNo,
+            },
+            item: { id: row.itemId, title: row.itemTitle },
+            source: row.source,
+            status: row.status,
+            revision: {
+              id: row.revisionId,
+              payload: row.payload,
+              note: row.note,
+              actorId: row.actorId,
+              actorName: row.actorName,
+              createdAt: new Date(row.recordedAt).toISOString(),
+            },
+            recognition:
+              determined === undefined
+                ? null
+                : {
+                    id: determined.id,
+                    itemRevisionId: row.itemRevisionId,
+                    values: determined.values,
+                    fields: fieldsOfRevision.get(row.itemRevisionId) ?? [],
+                  },
+            // the bulk act it arrived in; nothing records one yet
+            importId: null,
+            cursor: [row.createdAt, row.entryId] as const,
+          }
+        })
+      },
+    ),
+
     listParticipants: Effect.fn('Assessment.listParticipants')(
       function* (tenantId, batchId, filter, as) {
         const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
@@ -4783,6 +4945,47 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
       }),
     )
     .handle(
+      'listAdministrativeEntries',
+      Effect.fn('assessment.listAdministrativeEntries.handler')(function* ({ params, query }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const limit = pageSize(query.limit, DEFAULT_PAGE_SIZE)
+        const units = listed(query.orgNodeIds).sort()
+        // every filter in the fingerprint, or a cursor from one question
+        // applied to another silently skips or repeats rows
+        const fingerprint = `assessment.administrative-entries:${params.batchId}:${query.q ?? ''}:${query.itemId ?? ''}:${query.source ?? ''}:${query.status ?? ''}:${units.join(',')}:${query.orgScope ?? ''}`
+        const key = readQueryCursor(query.cursor, fingerprint, ['timestamp', 'uuid'])
+        if (key === null) return yield* cursorUnusable()
+        const found = yield* assessment.listAdministrativeEntries(
+          principal.tenantId,
+          params.batchId,
+          {
+            ...(query.q !== undefined ? { q: query.q } : {}),
+            ...(query.itemId !== undefined ? { itemId: query.itemId } : {}),
+            ...(query.source !== undefined ? { source: query.source } : {}),
+            ...(query.status !== undefined ? { status: query.status } : {}),
+            ...(units.length > 0 ? { orgNodeIds: units } : {}),
+            ...(query.orgScope !== undefined ? { orgScope: query.orgScope } : {}),
+            ...(key !== undefined ? { after: [key[0]!, key[1]!] as const } : {}),
+            limit: limit + 1,
+          },
+          principal,
+        )
+        const page = found.slice(0, limit)
+        const last = page[page.length - 1]
+        return {
+          entries: page.map(({ cursor: _cursor, ...row }) => row),
+          nextCursor:
+            found.length > limit && last
+              ? encodeQueryCursor(fingerprint, [
+                  new Date(last.cursor[0]).toISOString(),
+                  last.cursor[1],
+                ])
+              : null,
+        }
+      }),
+    )
+    .handle(
       'listParticipants',
       Effect.fn('assessment.listParticipants.handler')(function* ({ params, query }) {
         const assessment = yield* Assessment
@@ -4791,7 +4994,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         // every filter in the fingerprint: a cursor from one question applied
         // to another silently skips or repeats people
         const units = listed(query.orgNodeIds).sort()
-        const fingerprint = `assessment.participants:${params.batchId}:${query.status ?? ''}:${units.join(',')}:${query.orgScope ?? ''}`
+        const fingerprint = `assessment.participants:${params.batchId}:${query.status ?? ''}:${query.q ?? ''}:${units.join(',')}:${query.orgScope ?? ''}`
         const key = readQueryCursor(query.cursor, fingerprint, ['text', 'uuid'])
         if (key === null) return yield* cursorUnusable()
         const found = yield* assessment.listParticipants(
@@ -4799,6 +5002,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           params.batchId,
           {
             ...(query.status !== undefined ? { status: query.status } : {}),
+            ...(query.q !== undefined ? { q: query.q } : {}),
             ...(units.length > 0 ? { orgNodeIds: units } : {}),
             ...(query.orgScope !== undefined ? { orgScope: query.orgScope } : {}),
             ...(key !== undefined ? { after: { path: key[0]!, id: key[1]! } } : {}),

@@ -1713,3 +1713,166 @@ export const userActivityPage = (input: {
       ),
     )
 }
+
+/** one row of the administrative record book, as its list needs it */
+export interface AdministrativeEntryRow {
+  readonly entryId: string
+  readonly status: EntryStatus
+  readonly source: 'record' | 'import'
+  readonly createdAt: number
+  readonly participantId: string
+  readonly participantUserId: string
+  readonly participantName: string
+  readonly participantBusinessNo: string | null
+  readonly itemId: string
+  readonly itemTitle: string
+  readonly revisionId: string
+  readonly itemRevisionId: string
+  readonly payload: Record<string, unknown>
+  readonly note: string | null
+  readonly actorId: string
+  readonly actorName: string | null
+  readonly recordedAt: number
+}
+
+/**
+ * What the institution has recorded in this round, newest first.
+ *
+ * Its own read rather than a filter bolted onto the general entry list: the
+ * question is "what has been decided here", and the answer is a book of
+ * facts with the person, the question and who signed each one - none of
+ * which the claim-centred view carries. Only `record` and `import` are ever
+ * in it; a participant's own filing is not an administrative act.
+ *
+ * Newest first, because this is a log of what was done rather than a roster
+ * to be walked to the end.
+ */
+export const listAdministrativeEntriesPage = (input: {
+  tenantId: string
+  batchId: string
+  q?: string | undefined
+  itemId?: string | undefined
+  source?: 'record' | 'import' | undefined
+  status?: EntryStatus | undefined
+  orgNodeIds?: readonly string[] | undefined
+  orgScope?: 'self' | 'subtree' | undefined
+  /** the reader's own recording reach, when they are not the roster's administrator */
+  reach?: { userId: string; permissionCode: string } | undefined
+  after?: readonly [string, string] | undefined
+  limit: number
+}) =>
+  db
+    .query((k) => {
+      let query = k
+        .selectFrom('Entry as e')
+        .innerJoin('EntryRevision as v', (join) =>
+          join.onRef('v.tenantId', '=', 'e.tenantId').onRef('v.id', '=', 'e.currentRevisionId'),
+        )
+        .innerJoin('AssessmentItem as i', (join) =>
+          join.onRef('i.tenantId', '=', 'e.tenantId').onRef('i.id', '=', 'e.itemId'),
+        )
+        .innerJoin('BatchParticipant as p', (join) =>
+          join.onRef('p.tenantId', '=', 'e.tenantId').onRef('p.id', '=', 'e.participantId'),
+        )
+        .innerJoin('User as u', (join) =>
+          join.onRef('u.tenantId', '=', 'p.tenantId').onRef('u.id', '=', 'p.userId'),
+        )
+        .leftJoin('User as a', (join) =>
+          join.onRef('a.tenantId', '=', 'v.tenantId').onRef('a.id', '=', 'v.actorId'),
+        )
+        .select([
+          'e.id as entryId',
+          'e.status',
+          'e.source',
+          'e.participantId',
+          'e.itemId',
+          'p.userId as participantUserId',
+          'u.displayName as participantName',
+          'u.businessNo as participantBusinessNo',
+          'i.title as itemTitle',
+          'v.id as revisionId',
+          'v.itemRevisionId',
+          'v.payload',
+          'v.note',
+          'v.actorId',
+          'a.displayName as actorName',
+        ])
+        .select([epoch('e.created_at').as('createdMs'), epoch('v.created_at').as('recordedMs')])
+        .where('e.tenantId', '=', input.tenantId)
+        .where('e.batchId', '=', input.batchId)
+        // the book is what the institution wrote, never what a participant filed
+        .where('e.source', 'in', ['record', 'import'])
+      if (input.itemId !== undefined) query = query.where('e.itemId', '=', input.itemId)
+      if (input.source !== undefined) query = query.where('e.source', '=', input.source)
+      if (input.status !== undefined) query = query.where('e.status', '=', input.status)
+      if (input.q !== undefined && input.q.trim() !== '') {
+        const needle = `%${input.q
+          .trim()
+          .replaceAll('\\', '\\\\')
+          .replaceAll('%', '\\%')
+          .replaceAll('_', '\\_')}%`
+        query = query.where(
+          sql<boolean>`(u.display_name ilike ${needle} or u.business_no ilike ${needle})`,
+        )
+      }
+      if (input.reach !== undefined) {
+        query = query.where(
+          staffReachOver({
+            tenantId: input.tenantId,
+            batchId: input.batchId,
+            userId: input.reach.userId,
+            permissionCode: input.reach.permissionCode,
+            anchorNodeId: sql.ref('p.assessment_anchor_node_id'),
+            anchorPath: sql.ref('p.anchor_path'),
+          }),
+        )
+      }
+      if (input.orgNodeIds !== undefined && input.orgNodeIds.length > 0) {
+        query = query.where(
+          sql<boolean>`exists (
+            select 1 from org_nodes scope
+             where scope.tenant_id = p.tenant_id
+               and scope.id = any(${input.orgNodeIds as string[]}::uuid[])
+               and ${
+                 input.orgScope === 'self'
+                   ? sql<boolean>`p.assessment_anchor_node_id = scope.id`
+                   : sql<boolean>`p.anchor_path <@ scope.path`
+               }
+          )`,
+        )
+      }
+      if (input.after !== undefined) {
+        query = query.where(
+          sql<boolean>`(e.created_at, e.id) < (${input.after[0]}::timestamptz, ${input.after[1]}::uuid)`,
+        )
+      }
+      return query
+        .orderBy(sql`e.created_at desc`)
+        .orderBy(sql`e.id desc`)
+        .limit(input.limit)
+        .execute()
+    })
+    .pipe(
+      Effect.map((rows) =>
+        (rows as unknown as Record<string, unknown>[]).map((row): AdministrativeEntryRow => ({
+          entryId: String(row['entryId']),
+          status: String(row['status']) as EntryStatus,
+          source: String(row['source']) as 'record' | 'import',
+          createdAt: msOf(row['createdMs']),
+          participantId: String(row['participantId']),
+          participantUserId: String(row['participantUserId']),
+          participantName: String(row['participantName'] ?? ''),
+          participantBusinessNo:
+            row['participantBusinessNo'] == null ? null : String(row['participantBusinessNo']),
+          itemId: String(row['itemId']),
+          itemTitle: String(row['itemTitle'] ?? ''),
+          revisionId: String(row['revisionId']),
+          itemRevisionId: String(row['itemRevisionId']),
+          payload: (row['payload'] ?? {}) as Record<string, unknown>,
+          note: row['note'] == null ? null : String(row['note']),
+          actorId: String(row['actorId']),
+          actorName: row['actorName'] == null ? null : String(row['actorName']),
+          recordedAt: msOf(row['recordedMs']),
+        })),
+      ),
+    )

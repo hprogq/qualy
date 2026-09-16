@@ -2018,6 +2018,15 @@ export const listParticipantsPage = (
   batchId: string,
   filter: {
     status?: string
+    /**
+     * A name or a business number, matched here rather than after the page.
+     *
+     * A roster is walked by cursor, so a page filtered in the browser is a
+     * page of fifty that shows three - and the next press asks for the fifty
+     * after those fifty, not after the three. The needle has to reach the
+     * where clause or the walk means nothing.
+     */
+    q?: string
     /** narrowed to the people frozen at, or under, these units */
     orgNodeIds?: readonly string[]
     orgScope?: 'self' | 'subtree'
@@ -2038,6 +2047,16 @@ export const listParticipantsPage = (
         .where('BatchParticipant.batchId', '=', batchId)
       if (filter.status !== undefined) {
         query = query.where('BatchParticipant.status', '=', filter.status)
+      }
+      if (filter.q !== undefined && filter.q.trim() !== '') {
+        // Both halves of how somebody is named here, because a reader types
+        // whichever one they have in front of them. `ilike` rather than a
+        // text search configuration: these are names and numbers, not prose,
+        // and a stemmer has nothing to offer them.
+        const needle = `%${filter.q.trim().replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_')}%`
+        query = query.where(
+          sql<boolean>`(u.display_name ilike ${needle} or u.business_no ilike ${needle})`,
+        )
       }
       if (filter.reach !== undefined) {
         query = query.where(

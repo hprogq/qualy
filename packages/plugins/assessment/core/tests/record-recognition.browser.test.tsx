@@ -1,4 +1,4 @@
-import RecordPage from '../src/client/record/RecordPage.tsx'
+import AdministrativeRecordsPage from '../src/client/record/AdministrativeRecordsPage.tsx'
 import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
@@ -142,6 +142,8 @@ const open = (stubs: Record<string, unknown>) =>
             ],
             nextCursor: null,
           }),
+        listScoreGroups: () => Effect.succeed({ groups: [], version: 1 }),
+        listAdministrativeEntries: () => Effect.succeed({ entries: [], nextCursor: null }),
         getRecognitionContract: ((request: { params: { itemId: string } }) =>
           Effect.succeed({
             contract: contractOf(request?.params?.itemId === ITEM_B ? REVISION_B : REVISION_A),
@@ -149,8 +151,10 @@ const open = (stubs: Record<string, unknown>) =>
         ...stubs,
       },
     } as never),
-    routes: [{ path: '/assessment/batches/:batchId/record', element: <RecordPage /> }] as never,
-    route: `/assessment/batches/${BATCH_ID}/record`,
+    routes: [
+      { path: '/assessment/batches/:batchId/record', element: <AdministrativeRecordsPage /> },
+    ] as never,
+    route: `/assessment/batches/${BATCH_ID}/record?mode=manual`,
   })
 
 /** an option inside a closed select is real but "not visible": wait on it */
@@ -164,6 +168,27 @@ const chooseItem = async (title: string) => {
   const { userEvent } = await import('vitest/browser')
   const selects = document.querySelectorAll('select')
   await userEvent.selectOptions(selects[0]!, title)
+}
+
+/**
+ * Naming a participant, which is a search now rather than a dropdown.
+ *
+ * The roster is walked by cursor and filtered in sql, so the picker opens,
+ * asks, and offers what came back - the same two presses a person makes.
+ */
+const choosePerson = async (name: string) => {
+  const { userEvent } = await import('vitest/browser')
+  await userEvent.click(page.getByTestId('participant-picker').element())
+  await vi.waitFor(() => {
+    const found = [...document.querySelectorAll('[data-testid="participant-option"]')].find(
+      (option) => (option.textContent ?? '').includes(name),
+    )
+    if (!found) throw new Error(`${name} is not offered yet`)
+  })
+  const option = [...document.querySelectorAll('[data-testid="participant-option"]')].find((one) =>
+    (one.textContent ?? '').includes(name),
+  )!
+  await userEvent.click(option)
 }
 
 describe('recording with a determination', () => {
@@ -185,7 +210,10 @@ describe('recording with a determination', () => {
     })
     const { userEvent } = await import('vitest/browser')
     // the evidence choice seeds the determination
-    await userEvent.selectOptions(page.getByLabelText('申报级别', { exact: false }).element(), '国家级')
+    await userEvent.selectOptions(
+      page.getByLabelText('申报级别', { exact: false }).element(),
+      '国家级',
+    )
     const recognition = () =>
       document.querySelector(
         '[data-testid="record-recognition"] [data-parameter="rec-level"] select',
@@ -194,15 +222,24 @@ describe('recording with a determination', () => {
       if (recognition().value !== 'national') throw new Error('seed not followed yet')
     })
     // material changes, untouched determination follows
-    await userEvent.selectOptions(page.getByLabelText('申报级别', { exact: false }).element(), '省部级')
+    await userEvent.selectOptions(
+      page.getByLabelText('申报级别', { exact: false }).element(),
+      '省部级',
+    )
     await vi.waitFor(() => {
       if (recognition().value !== 'provincial') throw new Error('still following')
     })
     // the registrar judges otherwise; the material moving again must not
     // overwrite their word
     await userEvent.selectOptions(recognition(), 'national')
-    await userEvent.selectOptions(page.getByLabelText('申报级别', { exact: false }).element(), '国家级')
-    await userEvent.selectOptions(page.getByLabelText('申报级别', { exact: false }).element(), '省部级')
+    await userEvent.selectOptions(
+      page.getByLabelText('申报级别', { exact: false }).element(),
+      '国家级',
+    )
+    await userEvent.selectOptions(
+      page.getByLabelText('申报级别', { exact: false }).element(),
+      '省部级',
+    )
     expect(recognition().value).toBe('national')
   })
 
@@ -248,20 +285,22 @@ describe('recording with a determination', () => {
     await waitForItems()
     await chooseItem('竞赛获奖登记')
     const { userEvent } = await import('vitest/browser')
-    const selects = () => document.querySelectorAll('select')
-    await userEvent.selectOptions(selects()[1]!, '周予安')
+    await choosePerson('周予安')
     await vi.waitFor(() => {
       if (document.querySelector('[data-testid="record-recognition"]') === null)
         throw new Error('no recognition section yet')
     })
-    await userEvent.selectOptions(page.getByLabelText('申报级别', { exact: false }).element(), '国家级')
+    await userEvent.selectOptions(
+      page.getByLabelText('申报级别', { exact: false }).element(),
+      '国家级',
+    )
     const recognition = () =>
       document.querySelector('[data-testid="record-recognition"] select') as HTMLSelectElement
     await vi.waitFor(() => {
       if (recognition().value !== 'national') throw new Error('seed not followed yet')
     })
     await userEvent.fill(page.getByLabelText('认定依据').element(), '校运会秩序册第 3 页')
-    await userEvent.click(page.getByRole('button', { name: '登记' }).element())
+    await userEvent.click(page.getByRole('button', { name: '确认认定' }).element())
     await vi.waitFor(() => {
       if (created.mock.calls.length === 0) throw new Error('not submitted yet')
     })
@@ -280,22 +319,26 @@ describe('recording with a determination', () => {
     await waitForItems()
     await chooseItem('竞赛获奖登记')
     const { userEvent } = await import('vitest/browser')
-    const selects = () => document.querySelectorAll('select')
-    await userEvent.selectOptions(selects()[1]!, '周予安')
+    await choosePerson('周予安')
     await vi.waitFor(() => {
       if (document.querySelector('[data-testid="record-recognition"]') === null)
         throw new Error('no recognition section yet')
     })
-    await userEvent.selectOptions(page.getByLabelText('申报级别', { exact: false }).element(), '国家级')
+    await userEvent.selectOptions(
+      page.getByLabelText('申报级别', { exact: false }).element(),
+      '国家级',
+    )
     const recognition = () =>
       document.querySelector(
         '[data-testid="record-recognition"] [data-parameter="rec-level"] select',
       ) as HTMLSelectElement
     await userEvent.selectOptions(recognition(), 'provincial')
     // a different subject: evidence and determination both start over
-    await userEvent.selectOptions(selects()[1]!, '林晚舟')
+    await choosePerson('林晚舟')
     await vi.waitFor(() => {
-      const evidence = page.getByLabelText('申报级别', { exact: false }).element() as HTMLSelectElement
+      const evidence = page
+        .getByLabelText('申报级别', { exact: false })
+        .element() as HTMLSelectElement
       if (evidence.value !== '' || recognition().value !== '')
         throw new Error('the previous person\u2019s sheet is still standing')
     })
@@ -307,29 +350,33 @@ describe('recording with a determination', () => {
     await waitForItems()
     await chooseItem('竞赛获奖登记')
     const { userEvent } = await import('vitest/browser')
-    const selects = () => document.querySelectorAll('select')
-    await userEvent.selectOptions(selects()[1]!, '周予安')
+    await choosePerson('周予安')
     await vi.waitFor(() => {
       if (document.querySelector('[data-testid="record-recognition"]') === null)
         throw new Error('no recognition section yet')
     })
-    await userEvent.selectOptions(page.getByLabelText('申报级别', { exact: false }).element(), '国家级')
+    await userEvent.selectOptions(
+      page.getByLabelText('申报级别', { exact: false }).element(),
+      '国家级',
+    )
     const recognition = () =>
       document.querySelector(
         '[data-testid="record-recognition"] [data-parameter="rec-level"] select',
       ) as HTMLSelectElement
     await userEvent.selectOptions(recognition(), 'provincial')
     await userEvent.fill(page.getByLabelText('认定依据').element(), '校运会秩序册第 3 页')
-    await userEvent.click(page.getByRole('button', { name: '登记' }).element())
+    await userEvent.click(page.getByRole('button', { name: '确认认定' }).element())
     await vi.waitFor(() => {
       if (created.mock.calls.length === 0) throw new Error('not filed yet')
     })
     // the filing is done; what was typed for it dies with it - the next
     // record, even for the same question and person, starts from nothing
     await vi.waitFor(() => {
-      const who = selects()[1] as HTMLSelectElement
-      if (who.value !== '') throw new Error('subject still selected')
-      const evidence = page.getByLabelText('申报级别', { exact: false }).element() as HTMLSelectElement
+      const who = page.getByTestId('participant-picker').element()
+      if ((who.textContent ?? '').includes('周予安')) throw new Error('subject still selected')
+      const evidence = page
+        .getByLabelText('申报级别', { exact: false })
+        .element() as HTMLSelectElement
       if (evidence.value !== '') throw new Error('evidence survived the filing')
       if (recognition().value !== '') throw new Error('determination survived the filing')
     })
