@@ -5,7 +5,6 @@ import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
-import { Button } from '@qualy/ui/button'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { toast } from '@qualy/ui/toast'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -28,57 +27,114 @@ import type { EntryDto, ItemDto } from '../entry/model.ts'
 // Opening one is a drawer over this list, not a page: the sibling claims are
 // the context it is being read against, and a page would take them away.
 
+// One sheet, the way the rest of the product draws a list now: white is what
+// says "this is the record", the score groups are 0.985 folds in that sheet
+// rather than headings floating above it, and the claims rule against each
+// other instead of each carrying a box. A column of amounts is worth
+// aligning, so it gets a column.
 const styles = stylex.create({
-  column: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 18 },
-  group: { display: 'flex', flexDirection: 'column', gap: 6 },
-  groupHead: {
+  card: {
     display: 'flex',
-    alignItems: 'baseline',
-    gap: 8,
-    borderBottomWidth: 1,
-    borderBottomStyle: 'solid',
-    borderBottomColor: tokens.border,
-    paddingBottom: 6,
+    minWidth: 0,
+    flexDirection: 'column',
+    overflow: 'hidden',
+    borderRadius: tokens.radiusLg,
+    backgroundColor: tokens.surface,
+    boxShadow: tokens.elevation1,
   },
-  groupName: { flexShrink: 0, fontSize: 13, fontWeight: 600 },
-  groupRule: { height: 1, flexGrow: 1, backgroundColor: tokens.border },
-  groupCount: { flexShrink: 0, fontSize: 12, color: tokens.mutedForeground },
-  rows: { display: 'flex', flexDirection: 'column' },
-  row: {
+  group: { display: 'flex', minWidth: 0, flexDirection: 'column' },
+  // the fold: which part of the paper the claims under it answer
+  strip: {
     display: 'flex',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
+    borderTopWidth: { default: 1, ':first-child': 0 },
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.divider,
     borderBottomWidth: 1,
     borderBottomStyle: 'solid',
-    borderBottomColor: tokens.border,
-    backgroundColor: { default: 'transparent', ':hover': tokens.surfaceMuted },
-    paddingInline: 8,
-    paddingBlock: 10,
+    borderBottomColor: tokens.divider,
+    backgroundColor: tokens.surfaceMuted,
+    paddingInline: 16,
+    paddingBlock: 9,
+  },
+  stripWord: { fontSize: 12, fontWeight: 500, color: tokens.mutedForeground },
+  stripCount: {
+    marginLeft: 'auto',
+    fontSize: 12,
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 80%, transparent)`,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  rows: { display: 'flex', minWidth: 0, flexDirection: 'column' },
+  row: {
+    display: 'grid',
+    width: '100%',
+    gridTemplateColumns: 'minmax(0, 1fr) 4.5rem 1rem',
+    alignItems: 'center',
+    columnGap: 12,
+    borderTopWidth: { default: 1, ':first-child': 0 },
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.divider,
+    backgroundColor: {
+      default: 'transparent',
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
+    },
+    paddingInline: 16,
+    paddingBlock: 12,
     textAlign: 'start',
     cursor: 'pointer',
-    ':last-child': { borderBottomWidth: 0 },
+    transitionProperty: 'background-color',
   },
-  words: { display: 'flex', minWidth: 0, flexGrow: 1, flexDirection: 'column', gap: 2 },
+  words: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 4 },
   title: {
     minWidth: 0,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
     fontSize: 14,
+    fontWeight: 500,
   },
   under: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 },
-  rowOpen: { backgroundColor: tokens.surfaceMuted },
+  rowOpen: {
+    backgroundColor: { default: tokens.surfaceMuted, ':hover': tokens.surfaceMuted },
+  },
+  // its own column, so the numbers line up against each other rather than
+  // against whatever length the titles happen to be
   amount: {
-    flexShrink: 0,
+    textAlign: 'right',
     fontSize: 14,
     fontWeight: 600,
     fontVariantNumeric: 'tabular-nums',
   },
   source: { color: tokens.mutedForeground },
-  chevron: { width: 16, height: 16, flexShrink: 0, color: tokens.mutedForeground },
-  empty: { paddingBlock: 32, textAlign: 'center', fontSize: 13, color: tokens.mutedForeground },
+  chevron: {
+    width: 16,
+    height: 16,
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)`,
+  },
+  empty: {
+    borderRadius: tokens.radiusLg,
+    backgroundColor: tokens.surface,
+    boxShadow: tokens.elevation1,
+    paddingBlock: 48,
+    textAlign: 'center',
+    fontSize: 13,
+    color: tokens.mutedForeground,
+  },
   waiting: { height: 260, width: '100%' },
-  more: { display: 'flex', justifyContent: 'center' },
+  // the way on, as the card's last row rather than a control adrift under it
+  moreRow: {
+    display: 'flex',
+    height: 44,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.divider,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
 })
 
 export function ParticipantEntries({
@@ -203,17 +259,16 @@ export function ParticipantEntries({
         {rows.length === 0 ? (
           <p {...stylex.props(styles.empty)}>{format(m.participantResultsEntriesEmpty)}</p>
         ) : (
-          <div {...stylex.props(styles.column)}>
+          <div {...stylex.props(styles.card)}>
             {buckets.map(([groupId, claims]) => {
               const group = groupsById.get(groupId)
               return (
                 <section key={groupId || 'ungrouped'} {...stylex.props(styles.group)}>
-                  <div {...stylex.props(styles.groupHead)}>
-                    <h3 {...stylex.props(styles.groupName)}>
+                  <div {...stylex.props(styles.strip)}>
+                    <h3 {...stylex.props(styles.stripWord)}>
                       {group?.name ?? format(m.participantResultsUngrouped)}
                     </h3>
-                    <span aria-hidden {...stylex.props(styles.groupRule)} />
-                    <span {...stylex.props(styles.groupCount)}>
+                    <span {...stylex.props(styles.stripCount)}>
                       {format(m.participantResultsClaimCount, { count: claims.length })}
                     </span>
                   </div>
@@ -247,10 +302,10 @@ export function ParticipantEntries({
                           </span>
                           {/* what it came to, when the ledger says it came to
                               anything: the two halves of this account answer
-                              each other rather than sitting side by side */}
-                          {counted !== undefined && (
-                            <span {...stylex.props(styles.amount)}>{counted}</span>
-                          )}
+                              each other rather than sitting side by side. The
+                              seat is kept either way, so the chevrons stay in
+                              one line down the card. */}
+                          <span {...stylex.props(styles.amount)}>{counted ?? ''}</span>
                           <ChevronRightIcon aria-hidden {...stylex.props(styles.chevron)} />
                         </button>
                       )
@@ -260,11 +315,7 @@ export function ParticipantEntries({
               )
             })}
             {entries.data?.nextCursor != null && (
-              <div {...stylex.props(styles.more)}>
-                <Button size="sm" variant="ghost" disabled>
-                  {format(m.participantResultsMore)}
-                </Button>
-              </div>
+              <p {...stylex.props(styles.moreRow)}>{format(m.participantResultsMore)}</p>
             )}
           </div>
         )}

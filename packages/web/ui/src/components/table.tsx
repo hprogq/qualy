@@ -41,12 +41,18 @@ const styles = stylex.create({
     transitionProperty: 'color, background-color, border-color',
     transitionDuration: '150ms',
     transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
-    // standing, not only pointing: a row holding the control that opens it,
-    // and a row that has been picked, read as the hovered one does
+    // Standing, not only pointing: a row whose control is OPEN, and a row
+    // that has been picked, read as the hovered one does.
+    //
+    // The value is part of the test on purpose. `[aria-expanded]` alone
+    // matches a closed control too, and every row holding one - a hover card
+    // over a person's name, say - tinted the moment that control mounted. A
+    // table of names went grey a beat after it had drawn white, for no
+    // reason a reader could see.
     backgroundColor: {
       default: null,
       ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
-      ':has([aria-expanded])': `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
+      ':has([aria-expanded="true"])': `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
       '[data-state="selected"]': `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
     },
   },

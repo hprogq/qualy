@@ -17,9 +17,23 @@ import OrgNodePicker from './OrgNodePicker.tsx'
 // person are the other half of the query. What running it does is the asking
 // screen's business.
 
+// Two scrollbars inside one dialog is one too many, and the reader has to
+// work out which is which before either of them helps. So this takes the
+// whole height the dialog gives it and hands it out: the kinds of person are
+// a short, always-needed choice and keep their natural height at the foot,
+// and the tree takes what is left and scrolls on its own. The dialog body
+// then never overflows, which is what removes the outer bar.
 const styles = stylex.create({
-  page: { display: 'flex', flexDirection: 'column', gap: 20 },
+  page: {
+    display: 'flex',
+    minHeight: 0,
+    flexGrow: 1,
+    flexDirection: 'column',
+    gap: 20,
+  },
   section: { display: 'flex', flexDirection: 'column', gap: 8 },
+  units: { minHeight: 0, flexGrow: 1 },
+  kinds: { flexShrink: 0 },
   head: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   title: { fontSize: 14, lineHeight: '1.25rem', fontWeight: 500 },
 })
@@ -34,7 +48,7 @@ export default function PeopleImportPicker({ context }: { context: PeopleImportC
 
   return (
     <div {...stylex.props(styles.page)}>
-      <div {...stylex.props(styles.section)}>
+      <div {...stylex.props(styles.section, styles.units)}>
         <p {...stylex.props(styles.title)}>{format(m.importUnits)}</p>
         <OrgNodePicker
           context={{
@@ -44,7 +58,7 @@ export default function PeopleImportPicker({ context }: { context: PeopleImportC
         />
       </div>
 
-      <div {...stylex.props(styles.section)}>
+      <div {...stylex.props(styles.section, styles.kinds)}>
         <div {...stylex.props(styles.head)}>
           <p {...stylex.props(styles.title)}>{format(m.importTypes)}</p>
           {types.length > 0 && (
@@ -64,7 +78,11 @@ export default function PeopleImportPicker({ context }: { context: PeopleImportC
             </Button>
           )}
         </div>
+        {/* the heading above says these words already, beside the control
+            that ticks them all; a fieldset still needs a name, and this is
+            where it stops being drawn twice */}
         <CheckboxGroup
+          hideLegend
           legend={format(m.importTypes)}
           options={types.map((type) => ({ value: type.id, label: type.name }))}
           selected={[...context.value.userTypeIds]}

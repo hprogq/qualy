@@ -2,6 +2,7 @@ import { useId, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '../../theme/tokens.stylex.ts'
 import { breakpoints } from '../../theme/breakpoints.stylex.ts'
+import { a11yStyles } from '../../lib/visually-hidden.tsx'
 import { Checkbox } from '../checkbox.tsx'
 import {
   Field as FormField,
@@ -213,6 +214,7 @@ export function CheckboxGroup({
   onChange,
   disabled,
   emptyLabel,
+  hideLegend = false,
 }: {
   legend: string
   options: readonly CheckboxOption[]
@@ -220,6 +222,14 @@ export function CheckboxGroup({
   onChange: (next: string[]) => void
   disabled?: boolean
   emptyLabel: string
+  /**
+   * Keep the legend spoken but not drawn.
+   *
+   * For a group whose caller already prints the same words - beside a
+   * select-all, say, which cannot sit inside the fieldset's legend. A
+   * fieldset still needs a name; what it does not need is to say it twice.
+   */
+  hideLegend?: boolean
 }) {
   const chosen = new Set(selected)
   const toggle = (value: string) => {
@@ -230,7 +240,9 @@ export function CheckboxGroup({
   }
   return (
     <fieldset {...stylex.props(styles.group)} disabled={disabled}>
-      <legend {...stylex.props(styles.legend)}>{legend}</legend>
+      <legend {...stylex.props(hideLegend ? a11yStyles.visuallyHidden : styles.legend)}>
+        {legend}
+      </legend>
       {options.length === 0 ? (
         <p {...stylex.props(styles.emptyNote)}>{emptyLabel}</p>
       ) : (

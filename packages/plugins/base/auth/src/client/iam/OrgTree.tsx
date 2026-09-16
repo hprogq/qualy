@@ -30,12 +30,36 @@ const styles = stylex.create({
     flexDirection: 'column',
     gap: 2,
   },
+  // The row is the seat; the two controls inside it are what answer. It
+  // carries the hover and the current tint so that a pointer anywhere along
+  // it lights the whole line, the way a single button used to.
+  row: {
+    display: 'flex',
+    width: '100%',
+    alignItems: 'center',
+    borderRadius: tokens.radiusMd,
+    whiteSpace: 'nowrap',
+    transitionProperty: 'background-color',
+    transitionDuration: '150ms',
+    transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+    backgroundColor: {
+      default: null,
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
+    },
+  },
+  rowCurrent: {
+    backgroundColor: {
+      default: tokens.surfaceMuted,
+      ':hover': tokens.surfaceMuted,
+    },
+  },
   // no truncation: five levels in, a truncated name is an ellipsis and
   // nothing else. The box scrolls sideways instead, which at least
   // leaves the name readable by moving to it.
-  rowButton: {
+  nameButton: {
     display: 'flex',
-    width: '100%',
+    minWidth: 0,
+    flexGrow: 1,
     alignItems: 'center',
     gap: 6,
     borderRadius: tokens.radiusMd,
@@ -45,33 +69,40 @@ const styles = stylex.create({
     fontSize: '0.875rem',
     lineHeight: '1.25rem',
     whiteSpace: 'nowrap',
-    transitionProperty: 'color, background-color, border-color',
-    transitionDuration: '150ms',
-    transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
     outline: 'none',
-    backgroundColor: {
-      default: null,
-      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
-    },
     boxShadow: {
       default: 'none',
       ':focus-visible': `0 0 0 2px ${tokens.focusRing}`,
     },
   },
-  rowCurrent: {
-    backgroundColor: {
-      default: tokens.surfaceMuted,
-      ':hover': tokens.surfaceMuted,
-    },
-  },
   rowMarked: {
     fontWeight: 500,
+  },
+  // Its own control, sized for a pointer rather than for the 14px glyph it
+  // draws - and seated at the indent so that the strip in front of a deep
+  // name belongs to the name, not to this.
+  twistie: {
+    display: 'flex',
+    width: 20,
+    height: 20,
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: tokens.radiusSm,
+    color: {
+      default: `color-mix(in oklab, ${tokens.mutedForeground} 70%, transparent)`,
+      ':hover': tokens.foreground,
+    },
+    backgroundColor: { default: null, ':hover': tokens.surfaceMuted },
+    outline: 'none',
+    boxShadow: {
+      default: 'none',
+      ':focus-visible': `0 0 0 2px ${tokens.focusRing}`,
+    },
   },
   glyph: {
     width: 14,
     height: 14,
-    flexShrink: 0,
-    color: tokens.mutedForeground,
     transitionProperty: 'transform',
     transitionDuration: '150ms',
     transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
@@ -80,8 +111,8 @@ const styles = stylex.create({
     transform: 'rotate(90deg)',
   },
   glyphSeat: {
-    width: 14,
-    height: 14,
+    width: 20,
+    height: 20,
     flexShrink: 0,
   },
 })
@@ -184,19 +215,27 @@ export function OrgTree({
 }
 
 /**
- * A row, which is one button from edge to edge.
+ * A row: the twistie and the name, which answer different questions.
  *
- * The chevron is drawn inside it rather than laid over it: a separate
- * control on top of the left end meant that the further down the tree a node
- * sat, the wider the strip in front of its name that looked pressable and
- * did something else. Pressing a row with children opens it and selects it,
- * so no part of the row is dead and none of it surprises anybody.
+ * They used to be one button that did both, and pressing a branch to look at
+ * what is under it collapsed the branch instead - the one thing the reader
+ * was certainly not asking for. So the twistie owns opening and closing, and
+ * the name owns choosing.
+ *
+ * Choosing may still open, and never closes. Nothing the reader can see is
+ * taken away by picking something, and a branch they deliberately shut stays
+ * shut until they press the twistie again.
+ *
+ * The indent belongs to the name, not to the twistie: that was the original
+ * complaint against a separate control, and it is answered by where the
+ * padding sits rather than by merging the two.
  */
 function Name({
   node,
   depth,
   selected,
   onSelect,
+  onToggle,
   marked,
   meta,
   open,
@@ -207,6 +246,7 @@ function Name({
   depth: number
   selected: string | null
   onSelect: (node: OrgTreeNode) => void
+  onToggle?: () => void
   marked?: ReadonlySet<string>
   meta?: (node: OrgTreeNode) => ReactNode
   open?: boolean
@@ -214,34 +254,34 @@ function Name({
   expandLabel?: string
 }) {
   return (
-    <button
-      type="button"
-      aria-current={selected === node.id}
-      {...(hasChildren === true
-        ? {
-            'aria-expanded': open === true,
-            'aria-label': `${node.name} ${expandLabel ?? ''}`.trim(),
-          }
-        : {})}
-      {...stylex.props(
-        styles.rowButton,
-        selected === node.id && styles.rowCurrent,
-        marked?.has(node.id) === true && styles.rowMarked,
-      )}
-      style={{ paddingLeft: `${String(depth * 0.75 + 0.5)}rem` }}
-      onClick={() => onSelect(node)}
-    >
-      {hasChildren === true ? (
-        <ChevronRightIcon
-          aria-hidden
-          {...stylex.props(styles.glyph, open === true && styles.glyphOpen)}
-        />
+    <div {...stylex.props(styles.row, selected === node.id && styles.rowCurrent)}>
+      <span aria-hidden style={{ width: `${String(depth * 0.75 + 0.25)}rem`, flexShrink: 0 }} />
+      {hasChildren === true && onToggle !== undefined ? (
+        <button
+          type="button"
+          aria-expanded={open === true}
+          aria-label={`${expandLabel ?? ''} ${node.name}`.trim()}
+          {...stylex.props(styles.twistie)}
+          onClick={onToggle}
+        >
+          <ChevronRightIcon
+            aria-hidden
+            {...stylex.props(styles.glyph, open === true && styles.glyphOpen)}
+          />
+        </button>
       ) : (
         <span aria-hidden {...stylex.props(styles.glyphSeat)} />
       )}
-      <span>{node.name}</span>
-      {meta?.(node)}
-    </button>
+      <button
+        type="button"
+        aria-current={selected === node.id}
+        {...stylex.props(styles.nameButton, marked?.has(node.id) === true && styles.rowMarked)}
+        onClick={() => onSelect(node)}
+      >
+        <span>{node.name}</span>
+        {meta?.(node)}
+      </button>
+    </div>
   )
 }
 
@@ -278,8 +318,11 @@ function Row({
         expandLabel={expandLabel}
         hasChildren={children.length > 0}
         open={open}
+        onToggle={() => setOpen((was) => !was)}
+        // opens, never closes: choosing a branch is a reason to see what is
+        // under it, and never a reason to hide what already is
         onSelect={(picked) => {
-          if (children.length > 0) setOpen((was) => !was)
+          if (children.length > 0) setOpen(true)
           onSelect(picked)
         }}
         marked={marked}

@@ -60,7 +60,6 @@ export default function ParticipantResultsPage() {
     <BatchScreen
       title={format(m.participantResultsTab)}
       description={format(m.participantResultsHint)}
-      size="wide"
       // an open account speaks through the band at the top, the way an open
       // question does on the questions page
       banner={participantId === '' ? 'section' : 'open'}

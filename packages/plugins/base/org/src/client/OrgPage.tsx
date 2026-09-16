@@ -184,17 +184,20 @@ const styles = stylex.create({
     flexShrink: 1,
     flexBasis: '0%',
   },
+  // the seat both controls sit in; it carries the hover and the open tint so
+  // a pointer anywhere along the line lights the whole line
   nodeRow: {
     display: 'flex',
     height: 32,
     width: '100%',
     minWidth: 0,
     alignItems: 'center',
-    gap: 6,
+    gap: 2,
     borderRadius: tokens.radiusMd,
+    paddingLeft: 4,
     paddingRight: 8,
     textAlign: 'left',
-    transitionProperty: 'color, background-color, border-color',
+    transitionProperty: 'background-color',
     transitionDuration: '150ms',
     transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
     backgroundColor: {
@@ -208,16 +211,48 @@ const styles = stylex.create({
       ':hover': tokens.surfaceMuted,
     },
   },
+  // sized for a pointer rather than for the 12px glyph it draws
+  twistie: {
+    display: 'flex',
+    width: 20,
+    height: 20,
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: tokens.radiusSm,
+    color: {
+      default: `color-mix(in oklab, ${tokens.mutedForeground} 70%, transparent)`,
+      ':hover': tokens.foreground,
+    },
+    backgroundColor: { default: null, ':hover': tokens.surfaceMuted },
+  },
+  twistieSeat: {
+    width: 20,
+    height: 20,
+    flexShrink: 0,
+  },
+  nodeName: {
+    display: 'flex',
+    height: '100%',
+    minWidth: 0,
+    flexGrow: 1,
+    alignItems: 'center',
+    gap: 6,
+    paddingLeft: 4,
+    textAlign: 'left',
+  },
+  // no colour of its own: inside the twistie it takes the twistie's, which
+  // is what lets the control darken under the pointer
   rowGlyph: {
     width: 12,
     height: 12,
     flexShrink: 0,
-    color: tokens.mutedForeground,
   },
-  rowGlyphSeat: {
+  lockGlyph: {
     width: 12,
     height: 12,
     flexShrink: 0,
+    color: tokens.mutedForeground,
   },
   rowName: {
     minWidth: 0,
@@ -682,6 +717,7 @@ export default function OrgPage() {
                 icon={<ShapesIcon />}
                 title={format(m.pickTypeTitle)}
                 description={format(m.pickTypeBody)}
+                fill
               />
             )}
             <TypeLadder shape={shape} />
@@ -709,6 +745,7 @@ export default function OrgPage() {
                 icon={<Building2Icon />}
                 title={format(m.pickNodeTitle)}
                 description={format(m.pickNodeBody)}
+                fill
               />
             )}
           </div>
@@ -788,6 +825,7 @@ function NodeRail({
                   open={openId === node.id}
                   childCount={(shape.childrenOf.get(node.id) ?? []).length}
                   headcount={headcountOf(node.id)}
+                  expandLabel={format(m.foldBranch)}
                   onOpen={() => onOpen(node.id)}
                 />
               ))
@@ -803,6 +841,7 @@ function NodeRail({
                 open={openId === node.id}
                 childCount={(shape.childrenOf.get(node.id) ?? []).length}
                 headcount={headcountOf(node.id)}
+                expandLabel={format(m.foldBranch)}
                 collapsed={collapsed.has(node.id)}
                 onToggle={() => {
                   const next = new Set(collapsed)
@@ -829,12 +868,21 @@ function NodeRail({
 }
 
 /**
- * One unit in the rail: a single button from edge to edge.
+ * One unit in the rail: a twistie and a name, which answer different
+ * questions.
  *
- * The chevron used to be a control of its own laid before the name, which
- * meant the indent and the arrow together formed a strip that looked
- * pressable and did something other than open the unit. Pressing a row now
- * opens it and expands it, so every pixel of the row does what it looks like.
+ * They used to be one button that did both, and pressing a branch to read it
+ * folded the branch away instead - the one thing the reader was certainly
+ * not asking for. So the twistie owns folding and the name owns opening.
+ *
+ * Opening may unfold, and never folds: nothing the reader can see is taken
+ * away by choosing something, and a branch they deliberately shut stays shut
+ * until they press the twistie again.
+ *
+ * The indent belongs to the name. That was the whole complaint against a
+ * separate control - the deeper the unit, the wider the strip in front of it
+ * that looked pressable and did something else - and it is answered by where
+ * the padding sits rather than by merging the two.
  */
 function NodeRow({
   node,
@@ -843,6 +891,7 @@ function NodeRow({
   childCount,
   headcount,
   collapsed,
+  expandLabel,
   onToggle,
   onOpen,
 }: {
@@ -852,38 +901,48 @@ function NodeRow({
   childCount: number
   headcount: number
   collapsed?: boolean
+  expandLabel: string
   onToggle?: () => void
   onOpen: () => void
 }) {
   const expandable = childCount > 0 && onToggle !== undefined
   return (
-    <button
-      type="button"
-      aria-current={open}
-      data-node-name={node.name}
-      {...(expandable ? { 'aria-expanded': collapsed !== true } : {})}
-      onClick={() => {
-        if (expandable) onToggle()
-        onOpen()
-      }}
-      {...stylex.props(styles.nodeRow, open && styles.nodeRowOpen)}
-      style={{ paddingLeft: 4 + depth * 14 }}
-    >
+    <div {...stylex.props(styles.nodeRow, open && styles.nodeRowOpen)}>
+      <span aria-hidden style={{ width: depth * 14, flexShrink: 0 }} />
       {expandable ? (
-        collapsed === true ? (
-          <ChevronRightIcon aria-hidden {...stylex.props(styles.rowGlyph)} />
-        ) : (
-          <ChevronDownIcon aria-hidden {...stylex.props(styles.rowGlyph)} />
-        )
+        <button
+          type="button"
+          aria-expanded={collapsed !== true}
+          aria-label={`${expandLabel} ${node.name}`}
+          {...stylex.props(styles.twistie)}
+          onClick={onToggle}
+        >
+          {collapsed === true ? (
+            <ChevronRightIcon aria-hidden {...stylex.props(styles.rowGlyph)} />
+          ) : (
+            <ChevronDownIcon aria-hidden {...stylex.props(styles.rowGlyph)} />
+          )}
+        </button>
       ) : (
-        <span aria-hidden {...stylex.props(styles.rowGlyphSeat)} />
+        <span aria-hidden {...stylex.props(styles.twistieSeat)} />
       )}
-      <span {...stylex.props(styles.rowName, open && styles.rowNameOpen)}>{node.name}</span>
-      {!node.manageable && <LockIcon aria-hidden {...stylex.props(styles.rowGlyph)} />}
-      <span {...stylex.props(styles.rowTally)} data-headcount={headcount}>
-        {headcount > 0 ? headcount : ''}
-      </span>
-    </button>
+      <button
+        type="button"
+        aria-current={open}
+        data-node-name={node.name}
+        onClick={() => {
+          if (expandable && collapsed === true) onToggle()
+          onOpen()
+        }}
+        {...stylex.props(styles.nodeName)}
+      >
+        <span {...stylex.props(styles.rowName, open && styles.rowNameOpen)}>{node.name}</span>
+        {!node.manageable && <LockIcon aria-hidden {...stylex.props(styles.lockGlyph)} />}
+        <span {...stylex.props(styles.rowTally)} data-headcount={headcount}>
+          {headcount > 0 ? headcount : ''}
+        </span>
+      </button>
+    </div>
   )
 }
 

@@ -1,7 +1,14 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { Building2Icon, PlusIcon, SearchIcon, UserRoundIcon } from 'lucide-react'
-import { PageLink, useApi, useRunApi, useApiQuery, usePageQueryState, cursorPages} from '@qualy/web-runtime'
+import {
+  PageLink,
+  useApi,
+  useRunApi,
+  useApiQuery,
+  usePageQueryState,
+  cursorPages,
+} from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import * as stylex from '@stylexjs/stylex'
@@ -660,6 +667,7 @@ function PersonPane({ userId, nodes }: { userId: string; nodes: readonly Pickabl
         title={format(m.pickSomeoneTitle)}
         description={format(m.pickSomeone)}
         xstyle={styles.deskOnly}
+        fill
       />
     )
   }

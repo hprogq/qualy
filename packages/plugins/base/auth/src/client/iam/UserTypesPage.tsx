@@ -174,6 +174,7 @@ export default function UserTypesPage() {
               icon={<UsersRoundIcon />}
               title={format(m.pickTypeTitle)}
               description={format(m.pickTypeBody)}
+              fill
             />
           )}
         </div>

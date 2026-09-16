@@ -40,6 +40,12 @@ const styles = stylex.create({
     flexDirection: 'column',
     gap: 8,
   },
+  // passes on whatever height it was given, so the box below can grow into
+  // it; inert where nobody gives it one
+  fills: {
+    minHeight: 0,
+    flexGrow: 1,
+  },
   searchInput: {
     height: 32,
     width: '100%',
@@ -54,6 +60,12 @@ const styles = stylex.create({
   },
   quietBadge: {
     fontWeight: 400,
+  },
+  kindWord: {
+    flexShrink: 0,
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 70%, transparent)`,
   },
   chosenBadge: {
     gap: 4,
@@ -71,9 +83,18 @@ const styles = stylex.create({
     height: 'calc(100dvh - 24rem)',
     minHeight: '14rem',
   },
+  // Takes the height its container hands out, down to a floor.
+  //
+  // It used to be a flat 42vh, which inside a dialog body of its own fixed
+  // height simply overflowed - and the reader got two scrollbars, one of
+  // them the dialog's, with nothing saying which moved what. Growing into
+  // the room instead means the body never overflows, so only this one is
+  // drawn. In a container with no height to give, the floor is what shows,
+  // which is what every caller outside a dialog gets.
   listBoxShort: {
-    height: '42vh',
     minHeight: '16rem',
+    flexGrow: 1,
+    flexBasis: 0,
   },
   skeletonStack: {
     display: 'flex',
@@ -183,13 +204,13 @@ export default function OrgNodePicker({ context }: { context: OrgNodePickerConte
   const chosen = new Set(context.value)
   const named = new Map(nodes.map((node) => [node.id, node.name]))
 
+  // What kind of unit a row is, said as a word beside the name rather than
+  // as a pill around it. Every row carries one, and an outlined badge on
+  // every row of a tree is a column of frames the reader has to look past to
+  // read the names - which are the thing they came for.
   const badge = (node: { id: string }) => {
     const kind = kindOf(nodes.find((row) => row.id === node.id) ?? {})
-    return kind === undefined ? null : (
-      <Badge variant="outline" className={stylex.props(styles.pinned, styles.quietBadge).className}>
-        {kind}
-      </Badge>
-    )
+    return kind === undefined ? null : <span {...stylex.props(styles.kindWord)}>{kind}</span>
   }
 
   const toggle = (nodeId: string) => {
@@ -200,7 +221,7 @@ export default function OrgNodePicker({ context }: { context: OrgNodePickerConte
   }
 
   return (
-    <div {...stylex.props(styles.stack)}>
+    <div {...stylex.props(styles.stack, styles.fills)}>
       {/* the search takes the whole width and the two narrow controls share
           the next line: side by side in a pane this wide, the last one was
           forever being pushed onto a line of its own */}
@@ -310,8 +331,12 @@ export default function OrgNodePicker({ context }: { context: OrgNodePickerConte
         <p {...stylex.props(styles.moreNote)}>{format(commonMessages.moreResults)}</p>
       )}
 
-      {context.value.length > 0 && (
-        <div {...stylex.props(styles.chosenRow)}>
+      {/* What a SET of units comes to, which a set needs and one unit does
+          not: a single choice is already said by the row it is on, and
+          repeating it underneath states the same fact twice and offers a
+          second way to undo it - pressing the chosen row does that. */}
+      {context.single !== true && context.value.length > 0 && (
+        <div data-testid="chosen-units" {...stylex.props(styles.chosenRow)}>
           {context.value.map((nodeId) => (
             <Badge key={nodeId} className={stylex.props(styles.chosenBadge).className}>
               {named.get(nodeId) ?? nodeId}

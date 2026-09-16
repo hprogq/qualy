@@ -45,10 +45,12 @@ const styles = stylex.create({
     flexBasis: '0%',
     flexDirection: 'column',
   },
-  stepWords: { display: 'flex', flexDirection: 'column', gap: 8 },
+  // takes the height the step gives it, so the picker inside can grow into
+  // the dialog rather than overflow it and raise a second scrollbar
+  stepWords: { display: 'flex', minHeight: 0, flexGrow: 1, flexDirection: 'column', gap: 8 },
   quiet: { fontSize: 14, lineHeight: '1.25rem', color: tokens.mutedForeground },
   waitingFill: { minHeight: 0, width: '100%', flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
-  waitingTree: { height: '42vh', width: '100%' },
+  waitingTree: { minHeight: '16rem', width: '100%', flexGrow: 1 },
   foot: {
     justifyContent: {
       default: null,

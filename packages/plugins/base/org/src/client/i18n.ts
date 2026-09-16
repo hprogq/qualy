@@ -212,6 +212,9 @@ const i18n = definePluginMessages({
     saved: { id: 'org/state/saved', defaultMessage: 'Saved.' },
     save: { id: 'org/action/save', defaultMessage: 'Save' },
     expandAll: { id: 'org/tree/expand-all', defaultMessage: 'Expand all' },
+    // the twistie's spoken name; the unit's own name is appended to it, so
+    // a screen reader hears which branch is being folded
+    foldBranch: { id: 'org/tree/fold-branch', defaultMessage: 'Fold or unfold' },
     manageableCount: {
       id: 'org/tree/manageable-count',
       defaultMessage: '{count} you may manage',

@@ -153,6 +153,7 @@ export default function RolesPage() {
               icon={<ShieldIcon />}
               title={format(m.pickRoleTitle)}
               description={format(m.pickRoleBody)}
+              fill
             />
           )}
         </div>

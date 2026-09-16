@@ -191,7 +191,8 @@ const i18n = definePluginMessages({
     // choosing people, and choosing a slice of the organization instead
     pickerUnits: { id: 'auth/picker/units', defaultMessage: 'Organization' },
     pickerNoUnits: { id: 'auth/picker/no-units', defaultMessage: 'No units you can browse.' },
-    pickerExpand: { id: 'auth/picker/expand', defaultMessage: 'Expand' },
+    // the twistie's spoken name; the unit's own name is appended to it
+    pickerExpand: { id: 'auth/picker/expand', defaultMessage: 'Fold or unfold' },
     pickerSearch: { id: 'auth/picker/search', defaultMessage: 'Name or ID' },
     pickerAnyType: { id: 'auth/picker/any-type', defaultMessage: 'Any type' },
     pickerScopeSelf: { id: 'auth/picker/scope-self', defaultMessage: 'This unit' },

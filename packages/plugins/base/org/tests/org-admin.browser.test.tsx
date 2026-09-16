@@ -140,7 +140,9 @@ describe('the organization screen', () => {
     // the one legal destination, and none of the illegal ones
     await expect.element(listbox.getByRole('option', { name: '外国语学院' })).toBeVisible()
     expect(await listbox.getByRole('option', { name: '软件2301班' }).elements()).toHaveLength(0)
-    expect(await listbox.getByRole('option', { name: '软件学院', exact: false }).elements()).toHaveLength(0)
+    expect(
+      await listbox.getByRole('option', { name: '软件学院', exact: false }).elements(),
+    ).toHaveLength(0)
     expect(await listbox.getByRole('option', { name: '示例大学' }).elements()).toHaveLength(0)
 
     await listbox.getByRole('option', { name: '外国语学院' }).click()
@@ -219,6 +221,30 @@ describe('the organization screen', () => {
     expect(create).toHaveBeenCalledWith({
       payload: { parentId: COLLEGE, orgTypeId: CLASS_TYPE, name: '软件2302班' },
     })
+  })
+
+  // Reading a unit and folding its branch are different errands, and the
+  // rail used to do both on one press: choosing a college to look at it
+  // folded the college away, taking the classes under it off the screen.
+  it('opens a branch without folding it, and folds only from the twistie', async () => {
+    renderScreen({ client: fakeClient(world()), route: '/admin/org', children: <OrgPage /> })
+
+    const college = page.getByRole('button', { name: '软件学院' })
+    await expect.element(college).toBeVisible()
+    // pressing the name twice leaves what is under it on screen both times
+    await college.click()
+    await expect.element(page.getByRole('button', { name: '软件2301班' })).toBeVisible()
+    await college.click()
+    await expect.element(page.getByRole('button', { name: '软件2301班' })).toBeVisible()
+    // and the unit it opened is the one the panel is showing
+    await expect.element(page.getByRole('heading', { name: /软件学院/ })).toBeInTheDocument()
+
+    // the twistie is what folds, and it leaves the open unit open
+    await page.getByRole('button', { name: '展开或收起 软件学院' }).click()
+    await vi.waitFor(async () =>
+      expect(await page.getByRole('button', { name: '软件2301班' }).elements()).toHaveLength(0),
+    )
+    await expect.element(page.getByRole('heading', { name: /软件学院/ })).toBeInTheDocument()
   })
 
   it('edits the grammar per type and saves the pair diff', async () => {

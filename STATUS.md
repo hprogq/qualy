@@ -16597,3 +16597,102 @@ pnpm test:browser           55 passed (55) / 413 passed (413)
 `apps/web/tests/shell.browser.test.tsx` 加了一条、改了一条,断言的是「有没有线」而不是哪一档灰
 (线重归主题,会动)。**反向验证**:摘掉 `stacked` → workspace 那条红、且只红那一条;给
 app-shell 也加上 `stacked` → 「静止时不画线」那条红。
+
+## 组织与权限:树的点击语义、文案、两处布局,以及一条 CSS 事故(2026-09-16)
+
+用户一次报了八条,其中三条是真缺陷(行为、布局、样式),其余是观感与文案。
+
+### 一、点组织树的一项,本意是筛选,结果是折叠
+
+两个组件各有一份同样的写法:`auth` 的 `OrgTree.Row` 与 `org` 的 `OrgPage.NodeRow`,
+整行是**一个按钮**,`onClick` 里先 `onToggle()` 再 `onOpen()`。于是"点学院想看它"变成
+"把学院收起来",正好把读者要看的东西拿走。两处的注释还都在为这个写法辩护——
+理由是「分开画的箭头会让缩进那条带子看起来可点、却干着别的事」。
+
+那个理由成立,但**答案不是把两者合并,而是把缩进归给名字**:
+
+- 小箭头是自己的按钮(20×20 的指针目标,画 12–14px 的字形),坐在缩进之后;
+- 名字是另一个按钮,缩进作为它的 padding,所以行首那条带子属于名字;
+- 行本身是个 `div`,承载 hover 与选中底色,指针落在行上任意位置整行都亮 ——
+  与从前单按钮的观感一致。
+
+**选中可以展开,永不收起**:选一个分支是想看它下面有什么,从来不是想把已经看得见的
+藏起来;读者自己收起的分支,不按箭头就一直收着。
+
+### 二、单选树底下那排「已选」徽章
+
+`OrgNodePicker` 在 `single` 模式下仍然渲染选中汇总。一个选择由它所在那一行说了就够,
+再列一遍是把同一事实说两次,还多给一条撤销路径(点已选中的行本来就能取消)。
+改为只有集合模式才汇总;汇总行加 `data-testid="chosen-units"` 作稳定钩子。
+
+### 三、文案:一批英译中腔
+
+`点开一个组织` / `在此设置该类人可以归属到哪些组织。` 这类是英文默认值的直译。按
+「陈述当前状态或所需动作,一句话说完,用产品词」重写;避免方位词(窄屏两栏会堆叠,
+「左侧」就成了假话)。另外两处术语归一:`授予规则` → `任命关系`(`任命` 是既有术语,
+`授予规则` 是孤例);`从以下组织取人` → `组织单位`(与同一弹窗底部的
+「请选择组织单位和人员类型」一致)。
+
+### 四、右半边空态短一大截
+
+`Blank` 固定 `minHeight: 22rem`,而左边的树可以长到 60vh。示例数据看不出来,
+真实组织树下右边就空一截,读起来像没加载出来。新增 `fill`:`alignSelf: stretch` +
+`height: 100%`,吃掉整行高度。五个贴着 rail 的空态都加上(org 两处、登录方式、
+用户类型、用户、角色);`UserDetailPage` 那个是 section 内的紧凑空态,不动。
+
+### 五、导入弹窗里的两层滚动条
+
+`DialogBody` 是 `height: 58vh` 的定高 flex 列,里面的树盒子写死 `height: 42vh`——
+加上人员类型那一段必然溢出,于是外层也长出一条。**弹窗里只应有一条**,而且应该是树的那条:
+人员类型是短的、总要看的选择,不该被推到滚动区外面。
+
+改法是让高度一路传下去:`page` 与 `units` 拿 `flexGrow: 1 / minHeight: 0`,
+`kinds` 不收缩,`listBoxShort` 从 `height: 42vh` 改成 `flexGrow: 1 / flexBasis: 0 / minHeight: 16rem`。
+容器不给高度时就是那个 16rem 下限,所以弹窗外的调用方不受影响。`AddStaffDialog`
+是同一形状,一并修了(`stepWords` 撑高,`waitingTree` 跟着改)。
+
+### 六、「人员类型」在弹窗里出现两次
+
+`CheckboxGroup` 自己会画 `<legend>`,而 `PeopleImportPicker` 外面又写了一遍同样的字
+(因为「全选」按钮要和标题同排,进不了 legend)。加 `hideLegend`:fieldset 仍然有名字
+可被读屏读到,只是不画第二遍。
+
+### 七、参评结果页与「申报与认定」
+
+页宽从 `wide`(1440)回到默认 72rem,与「我的成绩」一致。
+「申报与认定」原来没有任何容器:行直接浮在页面底色上,分组头还拖一条长横线。
+改为概览页刚确立的那套语言——白卡 + 0.985 折痕分组条 + 细线分行,金额单独成列对齐,
+「加载更多」是卡片的最后一行。
+
+### 八、表格画完白的,一秒后整片变灰
+
+这条不是观感,是 `packages/web/ui/src/components/table.tsx` 的选择器漏了值:
+
+```
+':has([aria-expanded])'        ← 匹配任何值,含 "false"
+```
+
+注释写的意图是「行里的展开控件**处于打开状态**时着色」。但 Mantine 的 `PopoverTarget`
+无条件设 `aria-expanded={ctx.opened}`(实查 `node_modules/@mantine/core/esm/components/
+Popover/PopoverTarget/PopoverTarget.mjs:24`,关闭时就是 `false`)。时序因此是:
+表格先用 `UiSlot` 的 fallback(纯 `PersonCell`,无按钮)画成白色 → 约 1 秒后
+`personCard` 的 chunk 落地 → `PersonCard` 挂载,Mantine 给触发器加上
+`aria-expanded="false"` → **每一行**同时命中那条规则变灰。
+
+改成 `:has([aria-expanded="true"])`。
+
+### 门禁(实际执行,2026-09-16)
+
+```text
+pnpm typecheck              exit=0
+pnpm test                   243 passed | 3 skipped (246) / 1745 passed | 17 skipped (1762)
+pnpm test:browser           57 passed (57) / 418 passed (418)
+pnpm test:browser:webkit    2 passed (2) / 14 passed (14)
+```
+
+新增 `packages/plugins/base/auth/tests/org-picker.browser.test.tsx`(3 条)与
+`person-card.browser.test.tsx`(1 条),`org-admin.browser.test.tsx` 加 1 条。
+**反向验证**逐条做过:点名称改回也 toggle → org-admin 那条红且只红那条;
+`:has([aria-expanded="true"])` 改回不带值 → person-card 那条红。
+
+界面样式的断言只问「有没有」不问「是哪一档灰」——线重与底色归主题,会动。

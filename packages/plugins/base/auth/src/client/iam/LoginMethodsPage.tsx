@@ -156,6 +156,7 @@ export default function LoginMethodsPage() {
                 icon={<DoorOpenIcon />}
                 title={format(m.pickProviderTitle)}
                 description={format(m.pickProviderBody)}
+                fill
               />
             ) : (
               <div {...stylex.props(styles.column)}>

@@ -10,6 +10,18 @@ const styles = stylex.create({
     minHeight: '22rem',
     borderWidth: 1,
   },
+  // Beside a rail, it takes the rail's height rather than its own.
+  //
+  // The minimum is a floor for a screen with three units in it; on a real
+  // organization the rail runs to the bottom of the window and a panel that
+  // stopped at 22rem left a third of the page empty under it, which reads as
+  // the page having failed to load rather than as nothing being chosen.
+  // `stretch` because these grids align their items to the start, so a panel
+  // has to ask for the row's full height.
+  filling: {
+    alignSelf: 'stretch',
+    height: '100%',
+  },
 })
 
 /**
@@ -25,16 +37,19 @@ export function Blank({
   title,
   description,
   action,
+  fill = false,
   xstyle,
 }: {
   icon?: ReactNode
   title: string
   description?: ReactNode
   action?: ReactNode
+  /** take the full height of the row, for a panel that sits beside a rail */
+  fill?: boolean
   xstyle?: StyleXStyles
 }) {
   return (
-    <Empty xstyle={[styles.shape, xstyle]}>
+    <Empty xstyle={[styles.shape, fill && styles.filling, xstyle]}>
       <EmptyHeader>
         {icon !== undefined && <EmptyMedia variant="icon">{icon}</EmptyMedia>}
         <EmptyTitle>{title}</EmptyTitle>
