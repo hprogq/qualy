@@ -1,7 +1,6 @@
 import path from 'node:path'
-import { Config, Context, Effect, Layer, Option, Redacted, Schema } from 'effect'
+import { Config, Context, Effect, Layer, Option, Redacted } from 'effect'
 import { LOCAL_FALLBACK, MIGRATIONS_FOLDER } from '../defaults.ts'
-import { decodePluginConfig } from '@qualy/plugin-kit/config'
 
 /**
  * What the database needs to know.
@@ -32,41 +31,49 @@ export class DatabaseConfig extends Context.Service<
 >()('@qualy/plugin-database/DatabaseConfig') {}
 
 /**
- * What this plugin accepts in `qualy.yml`.
+ * What this plugin accepts in `qualy.yml`: nothing.
  *
- * Where the lineage lives, and nothing else. It belongs in the manifest rather
- * than the environment because `qualy generate` and `qualy deploy` read the
- * same key: a second copy in an environment variable is how a CLI comes to
- * write one lineage while the process applies another. The connection string
- * is the opposite - a credential, and a manifest is committed - so it is
- * refused here and read from the environment below.
+ * The lineage is the product's, committed at `db/migrations` beside the
+ * manifest (the manifest sits at the product root), and there is one product:
+ * a key that moved it would let one lock and one image deploy a different
+ * history depending on a line of configuration. The connection string is a
+ * credential, and a manifest is committed, so it comes from the environment.
+ * Everything else this plugin reads comes from there too.
+ *
+ * Refused by hand rather than by an empty schema: `Schema.Struct({})` lets any
+ * object through even with excess properties set to error (docs/notes/effect.md).
  */
-export const DatabaseManifestConfig = Schema.Struct({
-  migrationsFolder: Schema.optional(Schema.String),
-})
-export type DatabaseManifestConfig = typeof DatabaseManifestConfig.Type
+const refuseManifestBlock = (manifest: unknown, manifestDir: string): string | undefined => {
+  if (manifest === undefined || manifest === null) return undefined
+  const keys = typeof manifest === 'object' ? Object.keys(manifest) : [String(manifest)]
+  if (keys.length === 0) return undefined
+  const hint = keys.includes('url')
+    ? ' Set DATABASE_URL in the environment: a manifest is committed, so a connection string in it is a credential in version control.'
+    : keys.includes('migrationsFolder')
+      ? ` The lineage is always ${path.join(manifestDir, MIGRATIONS_FOLDER)}, the product's own committed history.`
+      : ' It reads everything from the environment.'
+  return `@qualy/plugin-database takes no configuration in the manifest, and was given config.${keys.join(', config.')}.${hint}`
+}
 
 /**
  * The configuration layer the generated runtime module builds.
  *
  * The host used to assemble this, which is why the composition root had to
- * name this plugin. It reads its own environment now, and resolves its own
- * relative path against the manifest it was configured from.
+ * name this plugin. It reads its own environment now, and finds the lineage
+ * beside the manifest it was configured from.
  */
 export const config = (
-  // the block as the manifest parses it: unknown until the schema says
+  // the block as the manifest parses it, which has to be empty
   manifest: unknown,
   context: { readonly manifestDir: string },
-): Layer.Layer<DatabaseConfig, Schema.SchemaError | Config.ConfigError> =>
+): Layer.Layer<DatabaseConfig, Config.ConfigError> =>
   Layer.effect(
     DatabaseConfig,
     Effect.gen(function* () {
-      // `error` rather than the default `ignore`: a key this plugin does not
-      // read is a setting that looks applied and is not, which is the failure
-      // the whole channel exists to prevent. `url` is the one that would hurt
-      // - a manifest is committed, so a connection string in it is a
-      // credential in version control, and it is read from the environment.
-      const declared = yield* decodePluginConfig(DatabaseManifestConfig, manifest)
+      // a key this plugin does not read is a setting that looks applied and is
+      // not, which is the failure the whole config channel exists to prevent
+      const refused = refuseManifestBlock(manifest, context.manifestDir)
+      if (refused !== undefined) return yield* Effect.die(new Error(refused))
       const environment = yield* Config.String('NODE_ENV').pipe(Config.withDefault('development'))
       // asking whether it was set, rather than comparing the value: the local
       // default is a real connection string somebody may well have configured
@@ -84,7 +91,6 @@ export const config = (
         }
         yield* Effect.logWarning(`DATABASE_URL is not set, falling back to ${LOCAL_FALLBACK}`)
       }
-      const folder = declared.migrationsFolder ?? MIGRATIONS_FOLDER
       return DatabaseConfig.of({
         url: Redacted.make(Option.getOrElse(configured, () => LOCAL_FALLBACK)),
         // 'off' leaves the lineage to a deployment job; the layer then refuses
@@ -92,11 +98,9 @@ export const config = (
         migrations: yield* Config.Literals(['apply', 'off'], 'QUALY_MIGRATIONS').pipe(
           Config.withDefault('apply' as const),
         ),
-        // relative to the manifest, never to the working directory: the CLI
-        // resolves it the same way, and the two must mean one folder
-        migrationsFolder: path.isAbsolute(folder)
-          ? folder
-          : path.resolve(context.manifestDir, folder),
+        // beside the manifest, never relative to the working directory: the
+        // CLI finds it the same way, and the two must mean one folder
+        migrationsFolder: path.resolve(context.manifestDir, MIGRATIONS_FOLDER),
       })
     }),
   )

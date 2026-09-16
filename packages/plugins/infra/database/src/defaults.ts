@@ -8,7 +8,11 @@
 // deploy` writing one lineage while the application applies another, or the
 // two reaching different databases - neither of which anything would notice.
 
-/** where the lineage lives when the manifest does not say, relative to it */
+/**
+ * Where the product's lineage lives, relative to the product root (the
+ * manifest's directory). Not configurable: one product has one committed
+ * history.
+ */
 export const MIGRATIONS_FOLDER = 'db/migrations'
 
 /** the database a development machine is assumed to have */

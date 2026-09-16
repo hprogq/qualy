@@ -6,6 +6,7 @@ import { lockPathFor, readLock, readManifest } from '@qualy/assembly'
 import type { CapabilityWorkContext } from '@qualy/assembly-contract'
 import provider, { type DatabaseContribution, type DatabaseState } from '../src/assembly/index.ts'
 import { createTestContext, postgresAvailable } from '../src/testkit.ts'
+import { MIGRATIONS_FOLDER } from '../src/defaults.ts'
 
 // The lineage you can regenerate has to be the lineage you have.
 //
@@ -95,9 +96,7 @@ const CATALOG = {
 
 describe.runIf(postgresAvailable)('a lineage rebuilt from the plugins alone', () => {
   it('produces the same database as the committed lineage', async () => {
-    const workspace = createWorkspace(productSelection(), {
-      configs: { '@qualy/plugin-database': { migrationsFolder: 'migrations' } },
-    })
+    const workspace = createWorkspace(productSelection())
     try {
       await commitLock(workspace)
       const work = (await capabilityWorkContext(workspace, 'database')) as CapabilityWorkContext<
@@ -109,7 +108,7 @@ describe.runIf(postgresAvailable)('a lineage rebuilt from the plugins alone', ()
       // both applied the way production applies them, so this compares
       // deployments rather than a replay written for the test
       const fresh = await createTestContext('parity-fresh', {
-        migrationsFolder: path.join(workspace.dir, 'migrations'),
+        migrationsFolder: path.join(workspace.dir, MIGRATIONS_FOLDER),
       })
       const committed = await createTestContext('parity-committed', {
         migrationsFolder: committedLineage,

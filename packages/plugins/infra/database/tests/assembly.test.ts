@@ -22,6 +22,7 @@ import {
 import { guardDestructive, nextStamp } from '../src/assembly/generate.ts'
 import { asState } from '../src/assembly/state.ts'
 import { databaseTarget, databaseWork, LOCAL_FALLBACK } from '../src/assembly/work.ts'
+import { MIGRATIONS_FOLDER } from '../src/defaults.ts'
 import { diffAgainstDeclared } from '../src/assembly/diff.ts'
 import { defineEntity } from '@mikro-orm/core'
 import type { EntityModule } from '../src/assembly/entities.ts'
@@ -61,14 +62,11 @@ const withDatabaseUrl = async <A>(url: string, body: () => Promise<A>): Promise<
     else process.env.DATABASE_URL = before
   }
 }
-const MIGRATIONS = 'migrations'
+// the product's lineage, where the provider always looks for it
 const workspaceFor = (plugins: readonly string[], options: { disabled?: readonly string[] } = {}) =>
-  createWorkspace(plugins, {
-    ...options,
-    configs: { '@qualy/plugin-database': { migrationsFolder: MIGRATIONS } },
-  })
+  createWorkspace(plugins, options)
 const migrationsOf = (workspace: ReturnType<typeof createWorkspace>) =>
-  path.join(workspace.dir, MIGRATIONS)
+  path.join(workspace.dir, MIGRATIONS_FOLDER)
 
 const context = async (workspace: ReturnType<typeof createWorkspace>) => {
   await commitLock(workspace)
@@ -235,6 +233,38 @@ describe('the target of a work phase', () => {
     }
   })
 
+  it("works on the product's own lineage, and refuses to be told another", async () => {
+    // the folder the runtime resolves too (src/server/config.ts); a manifest
+    // that could move it would let one lock deploy a different history
+    const plain = workspaceFor(INFRA)
+    const pointed = createWorkspace(INFRA, {
+      configs: { '@qualy/plugin-database': { migrationsFolder: 'elsewhere' } },
+    })
+    try {
+      const work = withEnv(
+        { DATABASE_URL: 'postgres://qualy:qualy@localhost:5432/qualy' },
+        async () => databaseWork(await context(plain)),
+      )
+      expect((await work).migrations).toBe(migrationsOf(plain))
+      const refused = await context(pointed).then(
+        (given) => {
+          try {
+            databaseWork(given)
+            return null
+          } catch (error) {
+            return (error as Error).message
+          }
+        },
+        (error: unknown) => `resolve refused: ${String(error)}`,
+      )
+      expect(refused).toMatch(/takes no configuration, and was given config\.migrationsFolder/)
+      expect(refused).toContain(`lineage is always ${path.join(pointed.dir, MIGRATIONS_FOLDER)}`)
+    } finally {
+      plain.dispose()
+      pointed.dispose()
+    }
+  })
+
   it('renders a target a success line can carry, without the password', () => {
     expect(databaseTarget('postgres://qualy:hunter2@db.internal:5432/staging')).toBe(
       'db.internal:5432/staging',
@@ -300,7 +330,6 @@ describe('database dependency graph', () => {
       },
     })
     const cyclic = createWorkspace([...INFRA, '@fake/plugin-a', '@fake/plugin-b'], {
-      configs: { '@qualy/plugin-database': { migrationsFolder: MIGRATIONS } },
       synthetic: [
         declaring('@fake/plugin-a', '@fake/plugin-b'),
         declaring('@fake/plugin-b', '@fake/plugin-a'),
@@ -475,7 +504,6 @@ describe.runIf(postgresAvailable).concurrent('assembly deployment', () => {
     // next generation would read its baseline markers as already compiled and
     // never emit those fragments again
     const workspace = createWorkspace([...INFRA, '@fake/plugin-drops'], {
-      configs: { '@qualy/plugin-database': { migrationsFolder: MIGRATIONS } },
       synthetic: [
         {
           id: '@fake/plugin-drops',

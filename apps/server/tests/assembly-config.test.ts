@@ -21,8 +21,9 @@ import { manifestPath } from '../src/config.ts'
 // process applied another. Removing the declaration from the manifest entirely
 // broke nothing that any test could see, which is how it came to be removed.
 //
-// The plugin resolves it now, from the block the assembly hands it and the
-// manifest's own directory, so these ask the plugin rather than the host.
+// The plugin resolves it now, from the manifest's own directory, so these ask
+// the plugin rather than the host. And since there is one product with one
+// committed history, the folder is no longer the manifest's to choose at all.
 //
 // The lock path had the matching problem from the other direction: it was
 // derived from the manifest's DIRECTORY and not its name, so resolving any
@@ -73,29 +74,24 @@ const configured = (
 const HERE = '/somewhere'
 
 describe('what the manifest decides and the database plugin reads', () => {
-  it('takes the lineage folder from the manifest, resolved against it', async () => {
-    const read = await configured({ migrationsFolder: '../elsewhere' }, HERE)
-    expect(read.migrationsFolder).toBe(path.resolve(HERE, '../elsewhere'))
-  })
-
-  it('falls back to the same default the CLI uses when the manifest is silent', async () => {
-    // a manifest need not say; what it must not do is mean one folder in the
-    // process and another in `qualy generate`. There is one definition of the
-    // default now - src/defaults.ts, imported by the plugin and by its
-    // assembly - so this asserts the resolution rather than the agreement.
+  it("finds the lineage beside the manifest, the product's one committed history", async () => {
+    // One product has one lineage, so the manifest does not get to say where
+    // it is: a key that moved it would let one lock and one image deploy a
+    // different history. The CLI resolves the same folder from the same
+    // definition (src/defaults.ts), so this asserts the resolution.
     const read = await configured({}, HERE)
     expect(read.migrationsFolder).toBe(path.resolve(HERE, MIGRATIONS_FOLDER))
   })
 
-  it('honours an absolute declaration as given', async () => {
-    const absolute = path.join(os.tmpdir(), 'qualy-absolute-lineage')
-    expect((await configured({ migrationsFolder: absolute }, HERE)).migrationsFolder).toBe(absolute)
-  })
-
-  it('refuses a manifest block it cannot read', async () => {
+  it('refuses every manifest block, the old lineage key included', async () => {
     // the alternative is a key that looks applied and is not, which is the
     // failure the whole config channel exists to prevent
-    await expect(configured({ url: 'postgres://elsewhere/db' }, HERE)).rejects.toThrow()
+    await expect(configured({ migrationsFolder: '../elsewhere' }, HERE)).rejects.toThrow(
+      /takes no configuration[\s\S]*lineage is always/,
+    )
+    await expect(configured({ url: 'postgres://elsewhere/db' }, HERE)).rejects.toThrow(
+      /takes no configuration[\s\S]*DATABASE_URL/,
+    )
   })
 
   it('assumes a local database only outside production', async () => {

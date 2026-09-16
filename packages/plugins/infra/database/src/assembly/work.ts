@@ -74,32 +74,31 @@ export function databaseTarget(url: string): string {
 }
 
 /**
- * The folder is the provider plugin's own manifest config, the same
- * declaration the runtime reads, so generation and application can never
- * disagree about which lineage they mean.
+ * The lineage is the product's committed `db/migrations`, beside the manifest
+ * at the product root - the same folder the runtime resolves - so generation
+ * and application can never disagree about which history they mean.
  */
 export function databaseWork(
   context: CapabilityWorkContext<DatabaseContribution, DatabaseState>,
 ): DatabaseWork {
-  const config = (context.providerConfig ?? {}) as { migrationsFolder?: string; url?: string }
-  // Every key this provider reads. Anything else is refused rather than
-  // ignored: an unrecognised key in the manifest changes the manifest hash, so
-  // resolve succeeds and a frozen start passes, and the setting reads as
-  // applied when nothing consumed it. `migrations: off` is the one that would
-  // hurt - the mode is real, it just belongs in QUALY_MIGRATIONS.
-  const unknown = Object.keys(config).filter((key) => key !== 'migrationsFolder')
-  if (unknown.length > 0) {
-    const hint = unknown.includes('url')
+  const config = (context.providerConfig ?? {}) as Record<string, unknown>
+  // This provider reads no manifest configuration, and a key is refused rather
+  // than ignored: an unrecognised key changes the manifest hash, so resolve
+  // succeeds and a frozen start passes, and the setting reads as applied when
+  // nothing consumed it. `migrationsFolder` was one, until there was one
+  // product with one committed history and nothing left for it to choose.
+  const given = Object.keys(config)
+  if (given.length > 0) {
+    const hint = given.includes('url')
       ? '. Set DATABASE_URL in the environment instead, so the lineage and the application cannot address different databases; a manifest is committed, so a connection string in it is a credential in version control'
-      : '. This plugin reads everything else from the environment'
+      : given.includes('migrationsFolder')
+        ? `. The lineage is always ${path.join(path.dirname(context.manifestPath), MIGRATIONS_FOLDER)}, the product's own committed history`
+        : '. This plugin reads everything from the environment'
     throw new Error(
-      `${context.manifestPath}: @qualy/plugin-database does not read config.${unknown.join(', config.')}${hint}`,
+      `${context.manifestPath}: @qualy/plugin-database takes no configuration, and was given config.${given.join(', config.')}${hint}`,
     )
   }
-  const declared = config.migrationsFolder ?? MIGRATIONS_FOLDER
-  const migrations = path.isAbsolute(declared)
-    ? declared
-    : path.resolve(path.dirname(context.manifestPath), declared)
+  const migrations = path.resolve(path.dirname(context.manifestPath), MIGRATIONS_FOLDER)
   const url = targetUrl()
   return {
     migrations,

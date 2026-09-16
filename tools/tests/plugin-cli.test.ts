@@ -305,7 +305,10 @@ describe('qualy plugin enable and disable', () => {
     const workspace = createWorkspace(INFRA, { linked: KIT })
     try {
       // written the way the product's own manifest is written - a comment, a
-      // block mapping under an entry - rather than the testkit's flow JSON
+      // block mapping under an entry - rather than the testkit's flow JSON.
+      // The key is only something to sit under the entry: the database plugin
+      // reads no configuration and would refuse it at start, which this test,
+      // about where `enabled` is written, never reaches
       fs.writeFileSync(
         workspace.manifestPath,
         [
@@ -315,7 +318,7 @@ describe('qualy plugin enable and disable', () => {
           '  # the one with something under it',
           "  '@qualy/plugin-database':",
           '    config:',
-          '      migrationsFolder: ./db',
+          '      poolSize: 4',
           "  '@qualy/plugin-ui-registry': {}",
           '',
         ].join('\n'),
@@ -325,7 +328,7 @@ describe('qualy plugin enable and disable', () => {
       expect(run(workspace, ['disable', '@qualy/plugin-database']).ok).toBe(true)
       const off = manifestOf(workspace)
       expect(off).toContain('enabled: false')
-      expect(off.indexOf('enabled: false')).toBeLessThan(off.indexOf('migrationsFolder'))
+      expect(off.indexOf('enabled: false')).toBeLessThan(off.indexOf('poolSize'))
       expect(run(workspace, ['enable', '@qualy/plugin-database']).ok).toBe(true)
       expect(manifestOf(workspace)).toBe(before)
       expect(manifestOf(workspace)).toContain('# the one with something under it')

@@ -8,9 +8,9 @@ version: 3
 # process behaves belong under `application` or in the environment.
 
 plugins:
-  '@qualy/plugin-database':
-    config:
-      migrationsFolder: ./db/migrations
+  # The product's one lineage is db/migrations beside this file, and the
+  # connection is DATABASE_URL; neither is configured here.
+  '@qualy/plugin-database': {}
 
   '@qualy/plugin-ui-registry': {}
   '@qualy/plugin-web': {}

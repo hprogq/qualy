@@ -1857,6 +1857,8 @@ require 注册表服务（缺拥有方 = 编译错，而非静默不激活）。
   参数类型在 typecheck 期检查——yml 形状错 = 编译错，与 runtime.gen 现有的
   「缺包挂在 build 不挂在 boot」同一性质。
 - **核心不解释 config**：路径类字段（migrationsFolder）由插件自己按 `manifestDir` resolve；
+  (2026-09-17 注:`migrationsFolder` 已删除——单一产品只有一份提交的 lineage,固定为产品根下 `db/migrations`,
+  database 插件不再接受任何清单配置,见 STATUS「基础设施收尾」。)
   生成器只负责 `const manifestDir = fileURLToPath(new URL('<相对>', import.meta.url))` 一行锚定，
   不知道哪个键是路径。
 - 硬失败：清单里给了 `config:` 但插件既无 capabilityProvider 也未声明 `runtime.config` →
