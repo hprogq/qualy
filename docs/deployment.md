@@ -23,13 +23,19 @@
 - `qualy-sandbox-runtime:<release>`:QuickJS 计分沙箱,一条 unix socket;
 - `qualy-sandbox-authoring:<release>`:公式编译沙箱(source policy、TS、esbuild),一条 unix socket。
 
-`pnpm release:build [<release>] [--check] [--allow-dirty]`(`tools/release/build-images.ts`)顺序构建三者,机器保证「一个 tag = 一个 checkout」:
+`pnpm release:build [<release>] [--check] [--allow-dirty] [--platform <os/arch>]`(`tools/release/build-images.ts`)顺序构建三者,
+机器保证「一个 tag = 一个 commit、一个平台」:
 
-- 不给 tag 时用短 commit hash,构建输入有改动则加 `-dirty`,让脏树构建的镜像自己说出来;**给了名字(如 `v1.0.0`)而构建输入有改动一律拒绝**,
-  除非显式 `--allow-dirty`。「构建输入」按 `.dockerignore` 判断:docs/、STATUS.md 之类不进构建上下文的改动不算。
-- 第一次构建前对 checkout 取指纹(HEAD + 构建输入内的已跟踪改动内容 + 未跟踪文件名与内容),之后每次构建前与最后一次构建后比对;
-  指纹变了就删除本次打出的 tag 并失败,三个镜像不会来自两棵树。
-- 每个镜像带 `org.opencontainers.image.revision` = 构建时的 commit(脏树加 `-dirty`)。
+- **命名 release 从 commit 的快照构建,不从工作目录**:`git worktree add --detach` 出一棵只含该 commit 的临时树作为三次 `docker build`
+  的 context,构建完删除。工作目录里 git 忽略而 docker 不忽略的文件、构建期间的改动,都到不了镜像里。给了名字(如 `v1.0.0`)而构建输入
+  有改动一律拒绝,除非显式 `--allow-dirty`(此时和无名构建一样从工作目录构建)。「构建输入」按 `.dockerignore` 判断:docs/、STATUS.md
+  之类不进构建上下文的改动不算。
+- 不给 tag 是开发构建:tag 用短 commit hash,构建输入有改动则加 `-dirty`;第一次构建前对工作目录取指纹(HEAD + 构建输入内的已跟踪改动
+  内容 + 未跟踪文件名与内容),之后每次构建前与最后一次构建后比对,指纹变了就删除本次打出的 tag 并失败,三个镜像不会来自两棵树。
+- **一个目标平台**:`--platform` 缺省 `linux/amd64`(服务器的平台,不是构建机的;Apple Silicon 上本机验证用 `--platform linux/arm64`)。
+  三个镜像建完后逐个 `docker image inspect`:Os/Architecture 等于目标平台、`org.opencontainers.image.revision` 等于 commit(脏树加 `-dirty`)、
+  `org.opencontainers.image.version` 等于 release,任一不符删除全部 tag 并失败。
+- `--check` 在三者建完后对 server 镜像跑 `check-release-image.ts`,不通过同样删除本次打出的 tag:一个 release 要么完整可用,要么不存在。
 
 基础镜像全部**按 digest 固定**:三个 Dockerfile 的 `node:24.20.0-*@sha256:…` 与 `mise.toml`、CI `setup-node` 同一版本;
 `deploy/compose.yaml`、开发 compose 的两个集群、CI 的 postgres service 同一个 `pgvector/pgvector:pg18-bookworm@sha256:…`。
@@ -67,9 +73,27 @@ devDependencies 里的包,在每个开发机上都能解析,在镜像第一次�
 `src/`(排除 `client/`、`dev/`、testkit)守住;`pnpm --filter 'x...'` 会沿 devDependencies 跟进,镜像一律 `--filter-prod`。
 
 闭包只有一个答案:`tools/release/runtime-closure.ts` 以 `pnpm --filter-prod <roots>... ls --json` 问 pnpm,镜像修剪器与上面的门禁都经它取,
-门禁另断言 Dockerfile 的 install filter 与它的根列表一致——不再有一处手写依赖 BFS、一处跑 pnpm 的分叉。
+门禁另断言 Dockerfile 的 install filter 与它的根列表一致——不再有一处手写依赖 BFS、一处跑 pnpm 的分叉。两个 sandbox 镜像同一做法:
+`prune-image-tree.mjs <app 包名>` 从它点名的那个 app 现算生产闭包(`workspaceClosure(root, [app])`),不再手写保留清单;
+`pnpm install --filter` 总会顺带装上 workspace 根的依赖,修剪器再按 store 可达性删掉闭包外的包(实测 sandbox 镜像 292 MB → 闭包内 18 个 store 条目)。
 
-### 2.3 一次部署改变什么
+### 2.3 构建之前的三条装配不变量
+
+镜像只是 checkout 的投影,所以这三条在 resolve / generate / CI 就拒绝,不等到镜像里发现:
+
+- **产品必须自己安装它选的插件**:`qualy.yml` 选的每个插件都要在放着清单的包(仓库根)的 `dependencies` 里。node 解析能从祖先目录、或从
+  devDependencies 凑巧找到包,而 `pnpm install --prod` 两者都不链接,镜像第一次启动才炸。resolve 对两种情况分别点名
+  (`is not in dependencies; pnpm add X` / `is only in devDependencies; a production install links dependencies alone`),
+  `tools/tests/product-dependencies.test.ts` 守。
+- **`Db.entities` 的 `dependsOn` 只能指向拥有数据库对象的插件**(有 `Db.entities` 或 baseline):指向一个什么表都没有的插件,
+  是复制粘贴留下的死边或写错了目标,resolve 拒绝并点名。
+- **lineage 只在末尾生长**:`db/migrations` 里已提交的文件不改、不删、不改名,新文件的时间戳必须晚于 lineage 现有的一切
+  (`nextStamp` 取 head 之后而不是「现在」,时钟回拨也不会插到历史中间;`writeMigration` 以 `link(2)` 排他写入,同名即拒,
+  一条迁移永不替换另一条)。CI 的 `check-migrations-immutable.ts <base>` 对 base..HEAD 断言:没有 M/D/R/T 变更(唯一例外是登记过的
+  `20260916143334.sql → 20260916143334_administrative-imports.sql` 改名),新增文件名合规且时间戳晚于 base 的 head。
+  反向实证:回填一个早于 head 的文件、与 head 同一秒的文件、名字不合规的文件都 exit 1,晚于 head 的 exit 0。
+
+### 2.4 一次部署改变什么
 
 只有 database 能力有 deploy 副作用,而它的 migration ledger 本身就是实例的 applied state,所以没有第二份「已部署」记录(P4.5 删除了
 deployed lock)。这个前提由 `tools/tests/deploy-capabilities.test.ts` 钉住:枚举仓库全部插件的能力 provider,实现 `deploy` 的只能是
@@ -86,7 +110,7 @@ database。出现第二种有持久部署副作用的能力时,先设计启动�
   第二个 writer 排队后发现无事可做;失败的迁移不进 ledger,job 非零退出,旧 server 继续跑。
 - `server`:`env_file: .env`,容器内路径由 compose 覆盖(`PORT`、存储根、两条 socket 路径、`QUALY_VERSION=<release>`);
   只发布到 `127.0.0.1:3000`(边缘代理见 `ops/reverse-proxy/`);`read_only` 根 + tmpfs `/tmp`;卷:`storage`(附件)、
-  `sandbox_runtime`、`sandbox_authoring`(读写挂载:unix socket 的 connect() 需要 socket inode 的写权限,只读挂载返回 EROFS)。
+  `sandbox_runtime`、`sandbox_authoring`(**只读挂载**:server 只 connect;Linux 对只读挂载的 EROFS 写检查不覆盖 unix socket,实测 `:ro` 客户端照常连通、写文件报 EROFS;创建与删除 socket 归沙箱自己的读写挂载)。
 - `sandbox-runtime` / `sandbox-authoring`:按 `docs/sandbox-process-isolation.md`:`network_mode: none`、只读根、`cap_drop: ALL`、
   非 root、pids / mem / cpu 限额、各自一个卷;**不给 `.env`**——沙箱环境只有自己的 socket 路径与限额,没有业务 secret。
   两个卷分开,runtime 看不到 authoring 的 socket,反之亦然。没有 TCP fallback:socket 不可达时公式发布 / 计分失败,不退回主进程。
@@ -119,8 +143,8 @@ release 不匹配后自行 reload。
 | 1   | 空 PostgreSQL 重放 committed lineage 到当前                                    | `qualy database verify`(CI 每次)                                                                                                                                                                                                                                  |
 | 2   | 结果与 Assembly Schema Graph(全部 `Db.entities` + 复合外键 + baseline)零 drift | 同上:scratch A 重放、scratch B 按声明建、逐语句比对                                                                                                                                                                                                               |
 | 3   | 跨插件 / 复合外键正确                                                          | 同上(结构 diff 含约束);各插件 `schema-parity` 测试逐对象比对                                                                                                                                                                                                      |
-| 4   | 有代表性的历史 release 数据库能升级到当前                                      | `packages/plugins/infra/database/tests/lineage-upgrade.test.ts`:按 `tests/fixtures/lineage-deployment-b.json`(Deployment B 提交 `05714cf2` 实际携带的 59 个迁移名与 SHA-256)先断言这些文件逐字节仍在,再用它们建旧库、用完整 lineage 追平,与一次建成的库逐对象相同 |
-| 5   | 已发布迁移不得悄悄修改                                                         | `tools/quality/check-migrations-immutable.ts <base>`:base..HEAD 之间 `db/migrations` 只许新增(CI 对 PR base / push 前 commit 跑)                                                                                                                                  |
+| 4   | 有代表性的历史 release 数据库能升级到当前                                      | `packages/plugins/infra/database/tests/lineage-upgrade.test.ts`:按 `tests/fixtures/lineage-deployment-b.json`(Deployment B 提交 `05714cf2` 实际携带的 59 个迁移名与 SHA-256)先断言这些文件逐字节仍在,再用它们建旧库、用完整 lineage 追平,与一次建成的库逐对象相同;fixture 本身在克隆里有该 commit 时对 `git ls-tree` / `git show` 逐个核对,记录不能悄悄漂离它声称的提交。各插件的 migration-upgrade 测试用 `lineageBefore(target)` 取目标迁移之前的**真实历史前缀**建旧库,不再用「当前实体减一步」的近似 |
+| 5   | 已发布迁移不得悄悄修改                                                         | `tools/quality/check-migrations-immutable.ts <base>`:base..HEAD 之间 `db/migrations` 只在末尾生长——不改、不删、不改名、不回填早于 head 的时间戳(§2.3;CI 对 PR base / push 前 commit 跑)                                                                                    |
 | 6   | 破坏性迁移需要显式批准                                                         | `qualy database drop-guard`(CI 每次);generate 期自动 guard                                                                                                                                                                                                        |
 | 7   | 迁移执行 single-writer                                                         | migrator 的 `pg_advisory_lock` + `lock_timeout`;`migrator.test.ts` 三条                                                                                                                                                                                           |
 | 8   | 迁移失败不记为成功                                                             | 整文件一个事务,失败不入 ledger;`migrator.test.ts`                                                                                                                                                                                                                 |

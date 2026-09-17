@@ -1,5 +1,12 @@
 # Qualy 可组合插件装配系统设计说明
 
+> **ARCHIVED / SUPERSEDED(2026-09-17,P4.5 架构收敛)**
+>
+> 本文是 2026-08 装配体系的设计推演,其中「用户可自由选配的 Product」「deployment state」「实例级 lineage」
+> 等前提已被 P4.5 撤回:Qualy 是单一代码库、单一产品、单一发布物;lineage 是产品提交在 `db/migrations` 的一份历史;
+> 没有 deployed lock / state 目录。**现行架构以 `CLAUDE.md`(装配层一节)与 `docs/deployment.md` 为准**,
+> 本文只作历史保留,不再是实施依据;文中与现行不符处以现行为准。
+
 ## 0. 文档状态
 
 本文定义 Qualy 从“源码仓库内的插件聚合”演进为“用户可自由选配、可持续升级、可部署和可恢复的插件化产品”所需的完整装配体系。
