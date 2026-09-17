@@ -17633,7 +17633,7 @@ compose 只用 `image:`,不 bind 源码,不挂宿主 node_modules。源码里没
 - `server`:`env_file: ${QUALY_ENV_FILE:-.env}`,容器内路径由 `environment` 覆盖(`PORT`、`QUALY_STORAGE_LOCAL_ROOT`、两条 socket、
   `QUALY_VERSION=<release>`);发布到 `${QUALY_BIND:-127.0.0.1}:${QUALY_PORT:-3000}`;`read_only` 根 + tmpfs `/tmp`;
   `no-new-privileges`;卷 `storage`、`sandbox_runtime`、`sandbox_authoring`(读写:unix socket 的 connect() 需要 inode 写权限,
-  `:ro` 挂载返回 EROFS;isolation spec §28 加了实测修正)。
+  `:ro` 挂载返回 EROFS;isolation spec §28 加了实测修正)。**后记(同日):这条是推理没实测,错了。**实测 `:ro` 挂载上 connect() 成功、写文件才 EROFS(Linux 的只读写检查不覆盖 socket),server 侧已改回 `:ro`,spec 注记已纠正,见下方「基础设施收尾(二)」。
 - `sandbox-runtime` / `sandbox-authoring`:`network_mode: none`、只读根、`user 1000:1000`、`cap_drop ALL`、pids / mem / cpu 限额、
   各自一个卷、**不给 .env**。
 - 没有 Redis(源码零使用);边缘代理不在 compose 里(`ops/reverse-proxy/`)。
@@ -17870,3 +17870,122 @@ pnpm test:browser                               本轮未重跑:没有改动浏�
 基础设施主重构到此结束。之后这条线只由真实需求、生产缺陷或可复现 regression 触发;`qualy database doctor`(只读巡检 ledger 与关键 schema 指纹)
 按评审意见记为以后的运维命令,不在本轮。行政认定剩一条需要你裁决:**导入记录属于上传者个人的工作历史,还是批次/机构的审计记录**
 (决定谁能看、谁能下载原文件、谁能整批撤回,以及参与人 inactive 时的可见性)。
+
+## 基础设施收尾(二):P1→P7 闭合门禁与行政导入的归属(2026-09-17)
+
+外部评审对 P1→P7 做整体核对,给出九条闭合门禁,随后追加四条与一个裁决(行政导入是批次/机构的审计记录)。全部做了,逐条带反向验证。
+
+### 1. lineage 只在末尾生长
+
+- `nextStamp` 取 lineage head 之后而不是「现在」:时钟回拨、两台机器同秒,都不会插进历史中间。`writeMigration` 抽出成排他写入
+  (tmp + fsync → `link(2)` 落名,EEXIST 即拒「a migration never replaces another」→ 目录 fsync),`blankMigration`(`database custom`)与
+  generate 共用。`MIGRATION_FILE` 正则归 `defaults.ts`,`assertMigrationNames` 在 `database check` 里对每个文件名把关。
+- CI 门禁 `check-migrations-immutable.ts <base>` 从「只许新增」收紧为「只在末尾生长」:M/D/R/T 一律拒绝(唯一例外是登记在
+  `ACKNOWLEDGED_RENAMES` 的 `20260916143334.sql → 20260916143334_administrative-imports.sql`,R100 才算),新增文件名必须合规且时间戳晚于
+  base 的 head。反向验证(临时 worktree):回填早于 head 的文件、与 head 同秒的文件、名字不合规的文件 → exit 1;晚于 head → exit 0。
+- `databaseWork` / 运行时都固定解析产品根的 `db/migrations`,清单 database 块任何键都拒绝(上一节已做,本轮加了 assembly 测试:
+  custom 迁移排在 head 之后、同名不覆盖)。
+
+### 2. 产品必须自己安装它选的插件
+
+`resolve.ts` 读放着 qualy.yml 的包的 `package.json`:清单选的插件不在 `dependencies` → 拒绝并指路 `pnpm add X`;只在 devDependencies →
+拒绝并说明生产安装只链接 dependencies。上一份 lock 里 retained 的候选也只在「声明且已安装」时算已安装。`@qualy/assembly/testkit` 的
+`createWorkspace` 因此为每个链接/合成的包写 `dependencies`;`plugin add` 的 CLI 测试改为像 `pnpm add` 一样先写 package.json;
+`packed-plugin.test.ts` 的临时产品把符号链接进来的四个 peer 也写进 `dependencies`(它们本来就代表「产品装了」)。新门禁
+`tools/tests/product-dependencies.test.ts`:删掉一条依赖 / 挪到 devDependencies → 两种消息各自命中。
+
+### 3. 升级测试用真实历史前缀
+
+`@qualy/plugin-database/testkit` 新增 `lineageBefore(target)` / `lineageThrough(target)`:从 committed lineage 取目标迁移之前(或含目标)的真实
+文件序列。四个插件的 migration-upgrade 测试(assessment core、formula、rbac、auth)全部改用它建旧库,不再「当前实体减一步」。
+改完 3 条红:`org_types.code` 在 `20260822140624` 之前就已 NOT NULL(seed 补 `code`);`batch_scope_nodes` 被更晚的迁移删掉
+(scope 那步用 `lineageThrough` 到目标再跑全量)。这些红是测试原先没测到历史真形态的证据。17/17 绿。
+
+### 4. `dependsOn` 必须指向拥有数据库对象的插件
+
+`state.ts`:`Db.entities` 的 `dependsOn` 目标若既无实体也无 baseline,resolve 报
+`X declares a database dependency on Y, which owns no database objects`。assembly 测试用 `@fake/plugin-tables` → `@fake/plugin-nothing` 反向验证。
+
+### 5. 命名 release 是一个 commit 的快照,一个平台
+
+`build-images.ts`:命名 release 且树干净时 `git worktree add --detach --force <tmp> <commit>` 作为三次 docker build 的 context,构建完删除;
+`--platform` 缺省 `linux/amd64`(本机 Apple Silicon 验证用 `linux/arm64`);三个镜像建完逐个 `docker image inspect`,Os/Architecture、
+`org.opencontainers.image.revision`、`org.opencontainers.image.version` 任一不符 → `abandon`(删全部 tag 并失败);`--check` 不过同样 `abandon`
+(此前只 exit 1、tag 残留)。无名开发构建照旧从工作目录构建、指纹前后比对。
+
+### 6. 生产闭包一处算,sandbox 也一样;server 侧 socket 卷 `:ro`
+
+`runtime-closure.ts` 泛化为 `workspaceClosure(root, roots)`;`prune-image-tree.mjs <app 包名>` 由它现算保留集(不再手写清单),
+两个 sandbox Dockerfile 各传自己的 app 名;`workspace-deps.test.ts` 新增一条按同一算法核对 sandbox Dockerfile 的 install filter 与修剪器参数。
+`deploy/compose.yaml` server 的两条 socket 卷改回 `:ro`——上一节写的「connect() 需要写权限、`:ro` 返 EROFS」是推理没实测,错了:
+实测只读挂载上 connect() 成功、创建文件才 EROFS。`docs/sandbox-process-isolation.md` §28、`docs/deployment.md` §3 已纠正,上一节原文加了后记。
+
+### 7. `check-release-image` 同 revision / 同平台
+
+已在上一节做成 SHA-256 逐字节;本轮 build-images 的 inspect 补上 revision/version/platform 三标签一致,`--check` 失败 abandon。
+
+### 8. `docs/assembly-design.md` 标为已被取代
+
+顶部加 ARCHIVED 横幅(2026-09-17,P4.5 架构收敛),指向 CLAUDE.md 装配层与 docs/deployment.md;正文保留作历史。
+
+### 9. Deployment B fixture 对着它声称的提交自验
+
+`lineage-upgrade.test.ts` 新增一组:克隆里有 `05714cf2` 时,fixture 的文件名集合与 `git ls-tree` 相同、每个 SHA-256 与 `git show` 相同
+(`cwd` 是仓库根,pathspec 才对)。fixture 不能悄悄漂离它说的提交。
+
+### 10. 行政导入是批次/机构的审计记录(用户裁决)
+
+原模型把导入当作上传者的私人工作历史(`actor_id = userId` 且仍触达每个人才可见)。按裁决改为**机构记录**:
+
+- `actor_id` 只是出处。列表 / 详情:对批次持有当前 `assessment.entry.record` 权限的任何人可见,不看是谁上传的,不受上传者或参与人
+  之后失权 / 停用 / 被排除影响(`visibleImport` = `importDetailOf` + `holdsRecord`,否则 NotFound)。
+- 行 / 原始 XLSX:是一份名单,读者必须触达导入命名的**全部**参与人(`reachesEveryoneIn` 对冻结锚点算 `staffReachOver`,不看 roster 现状),
+  否则 `ACCESS_DENIED`(`reachableImport`)。
+- 整批撤回:不要求是上传者;逐条以撤回者的 reach + phase gate + 可撤回来源判定,任一拒绝整批拒绝(新增拒绝理由 `participant-out-of-scope`),
+  事件记录新的 actor 与 reason。详情的 `capabilities.reverse` 用同一判定预告。
+- db.ts:`readableBy`/`importReadable` → `reachesEveryoneIn` / `importReachable`;`reversalCandidatesOf(tenantId, importId, reader)` 逐行带 `reached`;
+  `importsOfBatchPage` 不再按 reader 收窄。api.ts 三个端点的错误联合加 `AccessDenied`。
+- 测试:history 套件第一条改为「任何可在本轮记录的人都能看,别人什么都看不到」;新增「属于本轮,不属于做它的人」(管理员撤回记录者的导入、
+  记录者停用、参与人排除后历史照常可见,撤回人显示为 Admin);scope-lost 一条改为「记录保留、名单收回」(详情 ok、reverse false、
+  rows/source ACCESS_DENIED、撤回 → INVALID rowNo 2 participant-out-of-scope);列表套件的「只列自己的」改为「列本轮全部、最新在前」。
+
+### 另记(hardening backlog,不在本轮)
+
+- ExcelJS 对象放大:zip 预检挡的是解压字节数(64 MB XML),但 XML → 对象图仍可能数倍放大;真出问题再加 worker 或流式解析。
+- release-smoke 的备份 / 恢复只盖 PostgreSQL,不盖 `storage` 卷。
+- sandbox 安全 smoke(无网络、只读根、非 root)在 deploy compose 上没有自动断言,只有 dev compose 的隔离测试。
+- `qualy database doctor`(只读巡检 ledger 与 schema 指纹),按评审意见记为以后的运维命令。
+
+### 本机开发库(仍需要你动手)
+
+与上一节相同:`update mikro_orm_migrations set name = '20260916143334_administrative-imports.sql' where name = '20260916143334.sql';`
+或备份后重建。我没有写你的库。
+
+### 命令与结果(实际执行)
+
+```text
+pnpm typecheck                                  exit=0
+pnpm test                                       跑在本轮全部改动上(最后两处改动另行重跑):
+                                                256 passed | 2 failed | 3 skipped (261) / 1856 passed | 4 failed | 17 skipped (1877)
+                                                两个红文件都是新不变量「产品必须自己安装它选的插件」碰到的测试装置,已改并单独重跑:
+                                                tools/tests/packed-plugin.test.ts               2/2 passed(临时产品把符号链接的 peer 写进 dependencies)
+                                                apps/server/tests/supervisor.test.ts            3/3 passed(临时产品包 + 一次性 scratch 库 qualy_supervisor_probe,建后即删;
+                                                                                                 对着本机开发库它仍会因旧 ledger 名失败,见上)
+pnpm vitest run packages/plugins/assessment/core/tests/administrative-import*   5 files, 65/65 passed(含 history 13、import 17)
+migration-upgrade(assessment/formula/rbac/auth) 17/17 passed(真实历史前缀)
+node tools/release/build-images.ts local --check --platform linux/arm64
+                                                building local from a snapshot of 1b2e2fa5…(git worktree list 期间可见 detached 树,结束后已删)
+                                                check-release-image: node v24.20.0;qualy.yml / lock sha256 相同;61 committed migration(s), every one byte for byte;
+                                                image size 135 MB;qualy-server:local ok;local built for linux/arm64 at 1b2e2fa5…
+docker image inspect(三镜像)                     linux/arm64  revision 1b2e2fa5…  version local(三者一致)
+node tools/quality/release-smoke.ts local       applied 61 migration(s);ready;sandbox status runtime ok / authoring ok(socket 卷 :ro 下);
+                                                backup 239483 bytes;restore 后 ready 且 marker 在;local ok
+check-migrations-immutable(临时 worktree 反证)   回填早于 head / 同秒 / 名字不合规 → exit 1;晚于 head → exit 0
+pnpm test:browser                               本轮未重跑:没有改动浏览器代码;上一轮 Chromium 修复在 b95e4090(未推送)
+```
+
+### CI
+
+远端 main 仍停在 42562f53(那次 run 红在 Chromium `participant-results` 一条,原因与修法见上一节)。修复 b95e4090 与本轮 10 个提交都在本地,
+推送后 CI 才会重跑;`image` job 走 `--platform linux/amd64` 缺省。
+
