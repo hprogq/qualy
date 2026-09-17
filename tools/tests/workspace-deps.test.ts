@@ -100,6 +100,22 @@ describe('what a package says it depends on', () => {
     expect(filters).toEqual(runtimeFilter())
   })
 
+  // Each sandbox image installs one app's production closure and prunes to
+  // it; the install filter in the Dockerfile and the app the pruner is told
+  // about are two spellings of one name, kept equal here.
+  it('installs and prunes each sandbox image from the one app it names', () => {
+    for (const dockerfile of [
+      'apps/sandbox-runtime/Dockerfile',
+      'apps/sandbox-authoring/Dockerfile',
+    ]) {
+      const text = fs.readFileSync(path.join(ROOT, dockerfile), 'utf8')
+      const installed = /--filter-prod\s+'?(@qualy\/[a-z-]+)\.\.\.'?/.exec(text)?.[1]
+      const pruned = /prune-image-tree\.mjs\s+(@qualy\/[a-z-]+)/.exec(text)?.[1]
+      expect(installed, `${dockerfile} installs one app's closure`).toBeDefined()
+      expect(pruned, `${dockerfile} prunes to one app's closure`).toBe(installed)
+    }
+  })
+
   // The release image installs the runtime closure with production
   // dependencies only, and node resolves a workspace package's imports from
   // its own node_modules. So an import a package needs at runtime but declares

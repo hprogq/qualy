@@ -102,12 +102,15 @@ services:
       - '${QUALY_BIND:-127.0.0.1}:${QUALY_PORT:-3000}:3000'
     volumes:
       - storage:/var/lib/qualy/storage
-      # The sandbox sockets. The server only connects; connect() on a unix
-      # socket needs write permission on the socket inode, which a read-only
-      # mount refuses (EROFS), so both are mounted read-write here as well.
-      # The two stay separate volumes: neither sandbox sees the other's.
-      - sandbox_runtime:/run/qualy-sandbox/runtime
-      - sandbox_authoring:/run/qualy-sandbox/authoring
+      # The sandbox sockets, read-only: the server only connects, and Linux
+      # lets a unix socket on a read-only mount be connected to (the EROFS
+      # check on write covers files, directories and links, not sockets;
+      # measured: a client on an :ro mount gets its answer, a write there
+      # gets EROFS). Creating and removing the socket is the sandbox's, on
+      # its read-write mount. The two stay separate volumes: neither sandbox
+      # sees the other's.
+      - sandbox_runtime:/run/qualy-sandbox/runtime:ro
+      - sandbox_authoring:/run/qualy-sandbox/authoring:ro
     read_only: true
     tmpfs:
       - /tmp:size=64m,noexec,nosuid,nodev

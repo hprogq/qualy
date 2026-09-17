@@ -12,12 +12,7 @@ COPY . .
 # --ignore-scripts on purpose: the repo root's prepare patches a dev-only
 # toolchain that is not (and must not be) in this closure
 RUN pnpm install --frozen-lockfile --ignore-scripts --prod --filter-prod @qualy/sandbox-authoring... \
- && node tools/quality/prune-image-tree.mjs \
-      apps/sandbox-authoring \
-      packages/core/formula \
-      packages/core/formula-compiler \
-      packages/core/sandbox-rpc \
-      packages/core/value-schema
+ && node tools/quality/prune-image-tree.mjs @qualy/sandbox-authoring
 
 FROM ${NODE_IMAGE}
 ARG QUALY_RELEASE=dev

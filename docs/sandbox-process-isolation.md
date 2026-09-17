@@ -1139,9 +1139,10 @@ authoring volume
 
 Qualy Server 不需要向 socket directory 创建文件。
 
-> 实测修正(2026-09-17,deploy/compose.yaml):unix socket 的 `connect()` 需要 socket inode 的**写**权限,
-> 卷以 `:ro` 挂进 server 容器时 connect 返回 EROFS。所以 server 侧的两个卷也是读写挂载,「server 只 connect、
-> 不创建文件」靠 server 代码自身保证,不靠挂载标志;两个卷仍然分开,谁也看不到对方的 socket。
+> 实测确认(2026-09-17,deploy/compose.yaml):server 侧两个 socket 卷按本节建议 `:ro` 挂载。Linux 对只读挂载的
+> EROFS 写检查只覆盖普通文件、目录与符号链接,unix socket 不在其列,所以 `connect()` 在 `:ro` 挂载上照常成功
+> (实测:`:ro` 客户端拿到 PONG,同一挂载上写文件报 EROFS)。同日早先一版曾误写成「connect 需要写权限、只能读写挂载」,
+> 那是推理没有实测,已纠正。
 
 ---
 

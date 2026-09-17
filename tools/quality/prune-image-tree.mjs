@@ -1,15 +1,28 @@
-// Prunes a sandbox image's build tree down to an allow-list of workspace
-// directories (isolation spec §14: the image carries its own closure, not
-// the repository). Everything outside apps/, packages/ and the pnpm
-// machinery goes too. Plain .mjs: it runs inside the image build, where no
-// TypeScript loader exists yet.
+// Prunes a sandbox image's build tree down to the app's production closure
+// (isolation spec §14: the image carries its own closure, not the
+// repository). Everything outside apps/, packages/ and the pnpm machinery
+// goes too. The closure is asked of pnpm through the same module the server
+// image's pruner and the dependency gate use, from the one app package the
+// Dockerfile names: a workspace dependency the app gains is in the image
+// without anybody editing an allow-list here, and one the app drops leaves.
+// Plain .mjs: it runs inside the image build; the module it imports is
+// TypeScript node runs directly.
 import fs from 'node:fs'
 import path from 'node:path'
+import { workspaceClosure } from '../release/runtime-closure.ts'
 
-const keep = new Set(process.argv.slice(2).map((p) => path.normalize(p)))
-if (keep.size === 0) throw new Error('nothing to keep?')
+const [app] = process.argv.slice(2)
+if (!app || process.argv.length !== 3) {
+  throw new Error('usage: node tools/quality/prune-image-tree.mjs <app package name>')
+}
 
 const root = process.cwd()
+const keep = new Set(
+  workspaceClosure(root, [app])
+    .map((project) => path.relative(root, project.dir))
+    .filter((dir) => dir !== '')
+    .map((dir) => path.normalize(dir)),
+)
 const TOP_KEEP = new Set([
   'apps',
   'packages',
