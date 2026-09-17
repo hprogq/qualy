@@ -2,7 +2,11 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
+import {
+  createTestContext,
+  lineageBefore,
+  postgresAvailable,
+} from '@qualy/plugin-database/testkit'
 import { MIGRATIONS_FOLDER, runMigrations } from '@qualy/plugin-database/migrator'
 
 // The upgrade a database that already holds formulas actually takes.
@@ -18,25 +22,6 @@ import { MIGRATIONS_FOLDER, runMigrations } from '@qualy/plugin-database/migrato
 // and meant "administer this unit's formulas"; the new one is tenant-wide
 // and means "may write formulas of your own". Turning one into the other
 // would hand somebody authority nobody granted.
-
-/**
- * The lineage up to, but not including, one migration - which the migrator's
- * ledger then completes with exactly the remainder.
- *
- * Everything that sorts BEFORE the target, not "everything except it": a
- * suite written the second way passes only while its target happens to be
- * the newest file in the folder, and quietly starts applying the lineage out
- * of order the day another migration lands after it.
- */
-const lineageBefore = (target: string, label: string): string => {
-  const folder = fs.mkdtempSync(path.join(os.tmpdir(), `qualy-${label}-`))
-  for (const file of fs.readdirSync(MIGRATIONS_FOLDER).sort()) {
-    if (file.endsWith('.sql') && file < target) {
-      fs.copyFileSync(path.join(MIGRATIONS_FOLDER, file), path.join(folder, file))
-    }
-  }
-  return folder
-}
 
 const OWNERSHIP = '20260901014046_formula-author-ownership.sql'
 const SHARING = '20260901064240_formula-version-sharing.sql'

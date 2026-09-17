@@ -2,7 +2,11 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
+import {
+  createTestContext,
+  lineageBefore,
+  postgresAvailable,
+} from '@qualy/plugin-database/testkit'
 import { MIGRATIONS_FOLDER, runMigrations } from '@qualy/plugin-database/migrator'
 
 // The anchor-mode migration carries a data step - every tenant role's
@@ -18,12 +22,7 @@ describe.runIf(postgresAvailable)('the tenant-role-anchor-null migration', () =>
     expect(fs.existsSync(path.join(MIGRATIONS_FOLDER, TARGET))).toBe(true)
     // the lineage up to, but not including, the migration under test; the
     // migrator's ledger makes the later full run apply exactly the remainder
-    const before = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-anchor-upgrade-'))
-    for (const file of fs.readdirSync(MIGRATIONS_FOLDER).sort()) {
-      if (file.endsWith('.sql') && file !== TARGET) {
-        fs.copyFileSync(path.join(MIGRATIONS_FOLDER, file), path.join(before, file))
-      }
-    }
+    const before = lineageBefore(TARGET, 'anchor-upgrade')
     const db = await createTestContext('anchor-upgrade', {
       migrations: 'apply',
       migrationsFolder: before,

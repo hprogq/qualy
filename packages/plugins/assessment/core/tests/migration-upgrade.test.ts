@@ -2,7 +2,12 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
+import {
+  createTestContext,
+  lineageBefore,
+  lineageThrough,
+  postgresAvailable,
+} from '@qualy/plugin-database/testkit'
 import { MIGRATIONS_FOLDER, runMigrations } from '@qualy/plugin-database/migrator'
 import { Effect, Exit, Schema } from 'effect'
 import { inspect } from 'node:util'
@@ -25,14 +30,8 @@ const TARGET = '20260809085658_batch-scope-node-set.sql'
 describe.runIf(postgresAvailable)('the batch-scope-node-set migration', () => {
   it('carries an existing batch scope into the join table before dropping it', async () => {
     expect(fs.existsSync(path.join(MIGRATIONS_FOLDER, TARGET))).toBe(true)
-    // the lineage up to, but not including, the migration under test; the
-    // migrator's ledger makes the later full run apply exactly the remainder
-    const before = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-scope-upgrade-'))
-    for (const file of fs.readdirSync(MIGRATIONS_FOLDER).sort()) {
-      if (file.endsWith('.sql') && file !== TARGET) {
-        fs.copyFileSync(path.join(MIGRATIONS_FOLDER, file), path.join(before, file))
-      }
-    }
+    // the lineage as it stood before the migration under test
+    const before = lineageBefore(TARGET, 'scope-upgrade')
     const db = await createTestContext('scope-upgrade', {
       migrations: 'apply',
       migrationsFolder: before,
@@ -45,7 +44,8 @@ describe.runIf(postgresAvailable)('the batch-scope-node-set migration', () => {
       ).id
       const orgType = (
         await db.row<{ id: string }>(
-          `insert into org_types (tenant_id, name) values ($1, 'College') returning id`,
+          // the shape before 20260822140624_org-codes-drop: a type still had a code
+          `insert into org_types (tenant_id, code, name) values ($1, 'college', 'College') returning id`,
           [tenant],
         )
       ).id
@@ -64,7 +64,13 @@ describe.runIf(postgresAvailable)('the batch-scope-node-set migration', () => {
         )
       ).id
 
-      await runMigrations(db.url, { folder: MIGRATIONS_FOLDER, entities: [] })
+      // the step, and only the step: two migrations later
+      // (20260811205602_roster-is-the-population) retires the scope tables on
+      // purpose, so what the step carried is only observable right after it
+      await runMigrations(db.url, {
+        folder: lineageThrough(TARGET, 'scope-through'),
+        entities: [],
+      })
 
       const moved = await db.row<{ node_id: string }>(
         `select node_id from batch_scope_nodes where tenant_id = $1 and batch_id = $2`,
@@ -76,6 +82,10 @@ describe.runIf(postgresAvailable)('the batch-scope-node-set migration', () => {
          where table_name = 'assessment_batches' and column_name in ('scope_node_id', 'scope_path')`,
       )
       expect(leftover.rows).toHaveLength(0)
+
+      // and the rest of the lineage applies over the database the step left
+      const { applied } = await runMigrations(db.url, { folder: MIGRATIONS_FOLDER, entities: [] })
+      expect(applied).toBeGreaterThan(0)
     } finally {
       await db.dispose()
     }
@@ -92,12 +102,7 @@ const CLEANUP = '20260811225407_drop-participant-action-permissions.sql'
 describe.runIf(postgresAvailable)('the participant-action cleanup migration', () => {
   it('takes the codes off the roles that had them, and out of the catalog', async () => {
     expect(fs.existsSync(path.join(MIGRATIONS_FOLDER, CLEANUP))).toBe(true)
-    const before = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-participant-actions-'))
-    for (const file of fs.readdirSync(MIGRATIONS_FOLDER).sort()) {
-      if (file.endsWith('.sql') && file !== CLEANUP) {
-        fs.copyFileSync(path.join(MIGRATIONS_FOLDER, file), path.join(before, file))
-      }
-    }
+    const before = lineageBefore(CLEANUP, 'participant-actions')
     const db = await createTestContext('participant-action-cleanup', {
       migrations: 'apply',
       migrationsFolder: before,
@@ -166,12 +171,7 @@ const RESUBMIT = '20260812183000_drop-resubmit-permission.sql'
 describe.runIf(postgresAvailable)('the resubmit cleanup migration', () => {
   it('takes the code out of the catalog, the roles and the batches that held it', async () => {
     expect(fs.existsSync(path.join(MIGRATIONS_FOLDER, RESUBMIT))).toBe(true)
-    const before = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-resubmit-'))
-    for (const file of fs.readdirSync(MIGRATIONS_FOLDER).sort()) {
-      if (file.endsWith('.sql') && file !== RESUBMIT) {
-        fs.copyFileSync(path.join(MIGRATIONS_FOLDER, file), path.join(before, file))
-      }
-    }
+    const before = lineageBefore(RESUBMIT, 'resubmit')
     const db = await createTestContext('resubmit-cleanup', {
       migrations: 'apply',
       migrationsFolder: before,
@@ -184,7 +184,8 @@ describe.runIf(postgresAvailable)('the resubmit cleanup migration', () => {
       ).id
       const orgType = (
         await db.row<{ id: string }>(
-          `insert into org_types (tenant_id, name) values ($1, 'College') returning id`,
+          // the shape before 20260822140624_org-codes-drop: a type still had a code
+          `insert into org_types (tenant_id, code, name) values ($1, 'college', 'College') returning id`,
           [tenant],
         )
       ).id
@@ -309,12 +310,7 @@ const ANCHORS = '20260813090000_management-anchors-from-first-import.sql'
 describe.runIf(postgresAvailable)('the management-anchor rebuild', () => {
   it('keeps the units a round was created with, and drops the ones it imported later', async () => {
     expect(fs.existsSync(path.join(MIGRATIONS_FOLDER, ANCHORS))).toBe(true)
-    const before = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-anchors-'))
-    for (const file of fs.readdirSync(MIGRATIONS_FOLDER).sort()) {
-      if (file.endsWith('.sql') && file !== ANCHORS) {
-        fs.copyFileSync(path.join(MIGRATIONS_FOLDER, file), path.join(before, file))
-      }
-    }
+    const before = lineageBefore(ANCHORS, 'anchors')
     const db = await createTestContext('anchor-rebuild', {
       migrations: 'apply',
       migrationsFolder: before,
@@ -327,7 +323,8 @@ describe.runIf(postgresAvailable)('the management-anchor rebuild', () => {
       ).id
       const orgType = (
         await db.row<{ id: string }>(
-          `insert into org_types (tenant_id, name) values ($1, 'College') returning id`,
+          // the shape before 20260822140624_org-codes-drop: a type still had a code
+          `insert into org_types (tenant_id, code, name) values ($1, 'college', 'College') returning id`,
           [tenant],
         )
       ).id
@@ -400,14 +397,9 @@ const ROUTES = '20260815070000_review-routes.sql'
 describe.runIf(postgresAvailable)('the review-routes migration', () => {
   it('lands every open round on the route and step it was already standing at', async () => {
     expect(fs.existsSync(path.join(MIGRATIONS_FOLDER, ROUTES))).toBe(true)
-    const before = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-review-routes-'))
-    for (const file of fs.readdirSync(MIGRATIONS_FOLDER).sort()) {
-      // everything before the one under test; the two that follow it are
-      // part of the run being proved, not of the shape it starts from
-      if (file.endsWith('.sql') && file < ROUTES) {
-        fs.copyFileSync(path.join(MIGRATIONS_FOLDER, file), path.join(before, file))
-      }
-    }
+    // everything before the one under test; the two that follow it are part
+    // of the run being proved, not of the shape it starts from
+    const before = lineageBefore(ROUTES, 'review-routes')
     const db = await createTestContext('review-routes-upgrade', {
       migrations: 'apply',
       migrationsFolder: before,
@@ -543,12 +535,7 @@ describe.runIf(postgresAvailable)('the entry-appeal-naming migration', () => {
 
   it('moves the appeal gate out of the resubmit name wherever a phase stored it', async () => {
     expect(fs.existsSync(path.join(MIGRATIONS_FOLDER, RENAME))).toBe(true)
-    const before = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-appeal-upgrade-'))
-    for (const file of fs.readdirSync(MIGRATIONS_FOLDER).sort()) {
-      if (file.endsWith('.sql') && file !== RENAME) {
-        fs.copyFileSync(path.join(MIGRATIONS_FOLDER, file), path.join(before, file))
-      }
-    }
+    const before = lineageBefore(RENAME, 'appeal-upgrade')
     const db = await createTestContext('appeal-upgrade', {
       migrations: 'apply',
       migrationsFolder: before,
@@ -611,12 +598,7 @@ const REASONS = '20260819143000_default-review-reasons.sql'
 describe.runIf(postgresAvailable)('the default-review-reasons migration', () => {
   it('fills the never-initialised shape and leaves every decision alone', async () => {
     expect(fs.existsSync(path.join(MIGRATIONS_FOLDER, REASONS))).toBe(true)
-    const before = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-review-reasons-'))
-    for (const file of fs.readdirSync(MIGRATIONS_FOLDER).sort()) {
-      if (file.endsWith('.sql') && file !== REASONS) {
-        fs.copyFileSync(path.join(MIGRATIONS_FOLDER, file), path.join(before, file))
-      }
-    }
+    const before = lineageBefore(REASONS, 'review-reasons')
     const db = await createTestContext('review-reasons-upgrade', {
       migrations: 'apply',
       migrationsFolder: before,
@@ -667,12 +649,7 @@ describe.runIf(postgresAvailable)('the review-panels migration', () => {
 
   it('backfills the one reason every already-blocked round had', async () => {
     expect(fs.existsSync(path.join(MIGRATIONS_FOLDER, PANELS))).toBe(true)
-    const before = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-panels-upgrade-'))
-    for (const file of fs.readdirSync(MIGRATIONS_FOLDER).sort()) {
-      if (file.endsWith('.sql') && file < PANELS) {
-        fs.copyFileSync(path.join(MIGRATIONS_FOLDER, file), path.join(before, file))
-      }
-    }
+    const before = lineageBefore(PANELS, 'panels-upgrade')
     const db = await createTestContext('panels-upgrade', {
       migrations: 'apply',
       migrationsFolder: before,
@@ -781,12 +758,7 @@ describe.runIf(postgresAvailable)('the drop-bind-permissions migration', () => {
 
   it('takes both escape hatches out of the catalog and off the roles that had them', async () => {
     expect(fs.existsSync(path.join(MIGRATIONS_FOLDER, BINDS))).toBe(true)
-    const before = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-binds-upgrade-'))
-    for (const file of fs.readdirSync(MIGRATIONS_FOLDER).sort()) {
-      if (file.endsWith('.sql') && file !== BINDS) {
-        fs.copyFileSync(path.join(MIGRATIONS_FOLDER, file), path.join(before, file))
-      }
-    }
+    const before = lineageBefore(BINDS, 'binds-upgrade')
     const db = await createTestContext('binds-upgrade', {
       migrations: 'apply',
       migrationsFolder: before,
@@ -841,12 +813,7 @@ describe.runIf(postgresAvailable)('the scoring-plan column and its backfill', ()
 
   it('adds the column empty and fills it through the one compiler', async () => {
     expect(fs.existsSync(path.join(MIGRATIONS_FOLDER, PLAN))).toBe(true)
-    const before = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-plan-upgrade-'))
-    for (const file of fs.readdirSync(MIGRATIONS_FOLDER).sort()) {
-      if (file.endsWith('.sql') && file < PLAN) {
-        fs.copyFileSync(path.join(MIGRATIONS_FOLDER, file), path.join(before, file))
-      }
-    }
+    const before = lineageBefore(PLAN, 'plan-upgrade')
     const db = await createTestContext('plan-upgrade', {
       migrations: 'apply',
       migrationsFolder: before,
@@ -1166,12 +1133,7 @@ describe.runIf(postgresAvailable)('the recognition-history migration', () => {
 
   it('recovers every approval, names the one in force, and chains them', async () => {
     expect(fs.existsSync(path.join(MIGRATIONS_FOLDER, HISTORY))).toBe(true)
-    const before = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-recognition-history-'))
-    for (const file of fs.readdirSync(MIGRATIONS_FOLDER).sort()) {
-      if (file.endsWith('.sql') && file < HISTORY) {
-        fs.copyFileSync(path.join(MIGRATIONS_FOLDER, file), path.join(before, file))
-      }
-    }
+    const before = lineageBefore(HISTORY, 'recognition-history')
     const db = await createTestContext('recognition-history', {
       migrations: 'apply',
       migrationsFolder: before,
@@ -1399,12 +1361,7 @@ describe.runIf(postgresAvailable)('the recognition-history repair', () => {
 
   it('leaves one determination per decision, and one for every decision', async () => {
     expect(fs.existsSync(path.join(MIGRATIONS_FOLDER, REPAIR))).toBe(true)
-    const before = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-recognition-repair-'))
-    for (const file of fs.readdirSync(MIGRATIONS_FOLDER).sort()) {
-      if (file.endsWith('.sql') && file < REPAIR) {
-        fs.copyFileSync(path.join(MIGRATIONS_FOLDER, file), path.join(before, file))
-      }
-    }
+    const before = lineageBefore(REPAIR, 'recognition-repair')
     const db = await createTestContext('recognition-repair', {
       migrations: 'apply',
       migrationsFolder: before,

@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Context, Effect, Exit, Layer, Redacted, Scope } from 'effect'
@@ -310,6 +311,45 @@ async function teardown(options: {
  * scratch name readable while a test is running; uniqueness comes from the
  * uuid, so parallel suites never share one.
  */
+/**
+ * The committed lineage as it stood just before one migration: a folder of
+ * every migration that sorts before the target, for a test of the data step
+ * the target carries - build the database a release had, seed the shape that
+ * step upgrades FROM, then apply the rest.
+ *
+ * Before, never "everything but": a lineage with only the target left out is
+ * today's schema minus one file, not a release that ever existed, and a later
+ * migration that already reshaped the target's tables makes such a test pass
+ * or fail for reasons that have nothing to do with the step under test.
+ */
+export function lineageBefore(target: string, label: string): string {
+  return lineagePrefix(target, label, (file) => file < target)
+}
+
+/**
+ * The committed lineage up to and including one migration, for a data step
+ * whose effect a later migration retires on purpose: apply this, assert what
+ * the step did, then apply the whole lineage over it.
+ */
+export function lineageThrough(target: string, label: string): string {
+  return lineagePrefix(target, label, (file) => file <= target)
+}
+
+const lineagePrefix = (target: string, label: string, keep: (file: string) => boolean) => {
+  const all = fs
+    .readdirSync(migrationsFolder)
+    .filter((file) => file.endsWith('.sql'))
+    .sort()
+  if (!all.includes(target)) {
+    throw new Error(`${target} is not in the committed lineage`)
+  }
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), `qualy-${label}-`))
+  for (const file of all) {
+    if (keep(file)) fs.copyFileSync(path.join(migrationsFolder, file), path.join(folder, file))
+  }
+  return folder
+}
+
 export async function createTestContext(
   label: string,
   options: TestContextOptions = {},

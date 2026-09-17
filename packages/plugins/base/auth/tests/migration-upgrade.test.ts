@@ -2,7 +2,11 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
+import {
+  createTestContext,
+  lineageBefore,
+  postgresAvailable,
+} from '@qualy/plugin-database/testkit'
 import { MIGRATIONS_FOLDER, runMigrations } from '@qualy/plugin-database/migrator'
 
 // The audience migration carries a data step - each local provider inherits
@@ -18,12 +22,7 @@ describe.runIf(postgresAvailable)('the provider-audience migration', () => {
   it('inherits the password flags as the local door audience', async () => {
     expect(fs.existsSync(path.join(MIGRATIONS_FOLDER, AUDIENCE))).toBe(true)
     expect(fs.existsSync(path.join(MIGRATIONS_FOLDER, DROP))).toBe(true)
-    const before = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-audience-upgrade-'))
-    for (const file of fs.readdirSync(MIGRATIONS_FOLDER).sort()) {
-      if (file.endsWith('.sql') && file < AUDIENCE) {
-        fs.copyFileSync(path.join(MIGRATIONS_FOLDER, file), path.join(before, file))
-      }
-    }
+    const before = lineageBefore(AUDIENCE, 'audience-upgrade')
     const db = await createTestContext('audience-upgrade', {
       migrations: 'apply',
       migrationsFolder: before,
