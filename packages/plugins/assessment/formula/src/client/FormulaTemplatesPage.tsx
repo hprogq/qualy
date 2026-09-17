@@ -36,13 +36,17 @@ import { libraryStyles as l, shortWhen } from './library-styles.ts'
 const styles = stylex.create({
   columns: {
     gridTemplateColumns: {
-      default: 'minmax(0, 1fr) 4rem 7rem 6rem 1.25rem',
+      default: 'minmax(0, 1fr) 9rem 7rem 6rem 1.25rem',
       [breakpoints.phone]: 'minmax(0, 1fr) 1.25rem',
     },
   },
   words: { gap: 6 },
   version: {
     display: { default: null, [breakpoints.phone]: 'none' },
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
     fontSize: 13,
     fontVariantNumeric: 'tabular-nums',
     color: tokens.foreground,
@@ -129,7 +133,8 @@ export default function FormulaTemplatesPage() {
                     const archived = row.sourceStatus === 'archived'
                     const author = row.authorName ?? format(m.templatesAuthorUnknown)
                     const published = shortWhen(row.publishedAt, format, locale)
-                    const version = format(m.versionNumber, { number: row.versionNo })
+                    const version =
+                      row.releaseName ?? format(m.releaseOrdinal, { number: row.versionNo })
                     return (
                       <div
                         key={row.versionId}

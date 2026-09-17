@@ -83,6 +83,7 @@ const screenFor = (
     app: { getManifest: emptyManifest() },
     assessmentFormula: {
       getFormulaFunction: detail(tests),
+      listFormulaDraftRevisions: { items: [], nextCursor: null },
       previewFormulaDraft: (request: { payload: { sourceTs: string } }) => {
         wire.previews.push(request.payload.sourceTs)
         return Effect.succeed(contract)
@@ -248,7 +249,7 @@ describe('the formula authoring tools', () => {
       // a CLEAN save is a business no-op: the button is disabled and no
       // request leaves the browser
       const saveButton = [...view.container.querySelectorAll('button')].find(
-        (button) => button.textContent === '保存草稿',
+        (button) => button.textContent === '保存',
       )!
       expect(saveButton.disabled).toBe(true)
       expect(wire.saves.length).toBe(0)

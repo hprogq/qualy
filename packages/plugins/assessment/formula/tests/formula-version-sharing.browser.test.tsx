@@ -5,7 +5,8 @@ import { page } from 'vitest/browser'
 import { normalizeAtomicSchema, normalizeInputSchema } from '@qualy/value-schema'
 import { apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
-// Offering one published version to somebody, and taking it back.
+// Offering one published version to somebody, and taking it back, from the
+// publication's own read-only view where its audience is managed.
 //
 // The two directions are not symmetric on purpose. Widening needs the
 // permission where it widens to, so an author who no longer holds it is
@@ -42,6 +43,7 @@ const detail = {
     status: 'active',
     draftRevision: 1,
     latestVersionNo: 1,
+    latestReleaseName: '2026 秋季正式规则',
     updatedAt: new Date().toISOString(),
     draftSourceTs: '// draft\n',
     draftTests: [],
@@ -50,6 +52,10 @@ const detail = {
     {
       versionNo: 1,
       versionId: '01920000-0000-7000-8000-0000000000f1',
+      releaseName: '2026 秋季正式规则',
+      releaseNotes: null,
+      publishedBy: '01920000-0000-7000-8000-0000000000a1',
+      publishedByName: '张老师',
       publishedAt: '2026-02-01T00:00:00.000Z',
       sourceSha256: 'a'.repeat(64),
       runtimeSha256: 'c'.repeat(64),
@@ -57,6 +63,27 @@ const detail = {
     },
   ],
   copiedFrom: null,
+}
+
+const frozen = {
+  ...detail.versions[0]!,
+  sourceTs: '// published\n',
+  inputSchema: contract.inputSchema,
+  outputSchema: contract.outputSchema,
+  typescriptVersion: '7.0.2',
+  esbuildVersion: '0.28.0',
+  formulaAbiVersion: 1,
+  formulaRuntimeSha256: 'd'.repeat(64),
+  quickjsEngineVersion: 'quickjs-test',
+  valueSchemaProfileVersion: 1,
+  regexProfileVersion: 1,
+  sandboxAbiVersion: 1,
+  sourcePolicyVersion: 1,
+  sourcePolicyParserVersion: 'parser-1',
+  authoringBuildId: 'authoring-1',
+  sandboxRuntimeBuildId: 'runtime-1',
+  tests: [],
+  testReport: [],
 }
 
 /** what one screen sees and what it asked the server to make true */
@@ -74,7 +101,9 @@ const open = (
       app: { getManifest: emptyManifest() },
       assessmentFormula: {
         getFormulaFunction: () => Effect.succeed(detail),
+        listFormulaDraftRevisions: { items: [], nextCursor: null },
         previewFormulaDraft: () => Effect.succeed(contract),
+        getFormulaVersion: () => Effect.succeed({ version: frozen }),
         getFormulaVersionSharing: () => Effect.succeed({ scopes, token: 'token-1' }),
         listFormulaShareOptions: () =>
           Effect.succeed({ nodes: had.options ?? [], truncated: false }),
@@ -90,7 +119,7 @@ const open = (
         },
       },
     } as never),
-    route: `/assessment/formulas/${FN_ID}`,
+    route: `/assessment/formulas/${FN_ID}?view=release-1`,
     path: '/assessment/formulas/:functionId',
     children: <FormulaEditorPage />,
   })

@@ -1,0 +1,159 @@
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
+
+// The pieces every state of the formula workbench is drawn with - the draft,
+// a publication, a saved revision - so the three read as one tool that shows
+// different things, never as three screens that happen to look alike.
+
+export const MONO = 'ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace'
+
+export const workbenchStyles = stylex.create({
+  spring: { flexGrow: 1 },
+  standing: {
+    display: 'inline-flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    height: 20,
+    paddingInline: 7,
+    borderRadius: 5,
+    fontSize: 11,
+    fontWeight: 500,
+    whiteSpace: 'nowrap',
+  },
+  standingGood: {
+    backgroundColor: `color-mix(in oklab, ${tokens.success} 15%, transparent)`,
+    color: tokens.successForeground,
+  },
+  standingQuiet: { backgroundColor: tokens.surfaceMuted, color: tokens.mutedForeground },
+  standingOutline: {
+    boxShadow: `inset 0 0 0 1px ${tokens.border}`,
+    color: tokens.mutedForeground,
+  },
+  title: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: { default: 15, [breakpoints.phone]: 17 },
+    fontWeight: 600,
+    letterSpacing: '-0.01em',
+  },
+  sideSection: { display: 'flex', minHeight: 0, flexDirection: 'column' },
+  sideEmpty: {
+    margin: 0,
+    paddingInline: 16,
+    paddingBottom: 14,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  panelScroll: { minHeight: 0, flexGrow: 1, overflowY: 'auto' },
+  paneHead: {
+    display: 'flex',
+    height: 38,
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 10,
+    paddingInline: 16,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
+  },
+  paneLabel: { flexShrink: 0, fontSize: 12, fontWeight: 500, color: tokens.surfaceMutedForeground },
+  paneNote: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 11,
+    color: tokens.mutedForeground,
+  },
+  paneSource: { minHeight: 0, flexGrow: 1, overflow: 'auto' },
+  reportTable: { width: '100%', borderCollapse: 'collapse', fontSize: 12.5 },
+  reportCell: {
+    paddingBlock: 7,
+    paddingInline: 16,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.divider,
+    verticalAlign: 'top',
+  },
+  reportHead: {
+    height: 30,
+    paddingInline: 16,
+    textAlign: 'left',
+    fontSize: 11,
+    fontWeight: 500,
+    color: tokens.mutedForeground,
+    backgroundColor: tokens.surfaceInset,
+    whiteSpace: 'nowrap',
+  },
+  // a column as wide as what it holds, leaving the rest to the message
+  fit: { width: '1%' },
+  mono: { fontFamily: MONO, fontSize: 11.5, whiteSpace: 'nowrap' },
+  wrapMono: { fontFamily: MONO, fontSize: 11.5, wordBreak: 'break-all' },
+  quiet: { color: tokens.mutedForeground },
+  good: { color: tokens.successForeground },
+  bad: { color: tokens.danger },
+  detail: {
+    margin: 0,
+    paddingBlock: 10,
+    paddingInline: 16,
+    whiteSpace: 'pre-wrap',
+    fontFamily: MONO,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  note: {
+    margin: 0,
+    paddingBlock: 8,
+    paddingInline: 16,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  // the panel's one line when there is nothing to list, in the middle of it
+  emptyFill: {
+    display: 'flex',
+    minHeight: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingBlock: 16,
+  },
+  // a verdict stated in one mark, where there is nothing to list
+  verdictBlock: {
+    display: 'flex',
+    minHeight: '100%',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingBlock: 16,
+    paddingInline: 16,
+    textAlign: 'center',
+  },
+  verdictGood: { color: tokens.success },
+  verdictWords: { fontSize: 13, fontWeight: 500, color: tokens.foreground },
+  verdictQuiet: { fontSize: 12, color: tokens.mutedForeground },
+  verdictSpinner: { width: 20, height: 20 },
+  // facts as label over value, in as many columns as the room allows
+  facts: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(12rem, 1fr))',
+    gap: 14,
+    margin: 0,
+    paddingBlock: 14,
+    paddingInline: 16,
+  },
+  fact: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 3 },
+  factLabel: {
+    fontSize: 11,
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
+  },
+  factValue: {
+    margin: 0,
+    minWidth: 0,
+    fontSize: 12.5,
+    overflowWrap: 'anywhere',
+    fontVariantNumeric: 'tabular-nums',
+  },
+})

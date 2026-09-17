@@ -45,19 +45,22 @@ import { libraryStyles as l, shortWhen } from './library-styles.ts'
 const styles = stylex.create({
   columns: {
     gridTemplateColumns: {
-      default: 'minmax(0, 1fr) 7rem 6.5rem 1.25rem',
+      default: 'minmax(0, 1fr) 10rem 6.5rem 1.25rem',
       [breakpoints.phone]: 'minmax(0, 1fr) 1.25rem',
     },
   },
   published: {
     display: { default: 'flex', [breakpoints.phone]: 'none' },
+    minWidth: 0,
     alignItems: 'center',
     gap: 6,
     fontSize: 12,
     fontVariantNumeric: 'tabular-nums',
     color: tokens.foreground,
   },
-  standing: { display: 'inline-flex', alignItems: 'center', gap: 6 },
+  standing: { display: 'inline-flex', minWidth: 0, alignItems: 'center', gap: 6 },
+  // a publication's name is its author's words, and may run long
+  releaseName: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   draftOnly: { color: tokens.mutedForeground },
   dot: {
     width: 6,
@@ -258,7 +261,10 @@ export default function FormulaListPage() {
                       ) : (
                         <span {...stylex.props(styles.standing)}>
                           <span aria-hidden {...stylex.props(styles.dot)} />
-                          {format(m.versionNumber, { number: row.latestVersionNo })}
+                          <span {...stylex.props(styles.releaseName)}>
+                            {row.latestReleaseName ??
+                              format(m.releaseOrdinal, { number: row.latestVersionNo })}
+                          </span>
                         </span>
                       )
                     const updated = shortWhen(row.updatedAt, format, locale)

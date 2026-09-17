@@ -13,6 +13,9 @@
  *             CONVENIENCE - a typo mid-edit must not unmake the form, so
  *             screens keep rendering from here.
  *
+ * A source with nothing in it is not asked about at all: it is `blank`, not
+ * refused - an author who has not started has made no mistake to report.
+ *
  * `ensureFresh` retries a refusal for the same source on purpose: a 503
  * from the sandbox is not a property of the code, and an explicit Run
  * click deserves a fresh attempt. The idle loop does not loop on refusals.
@@ -30,6 +33,7 @@ export interface DraftContract {
 
 export type PreviewCurrent =
   | { readonly status: 'idle' }
+  | { readonly status: 'blank'; readonly source: string }
   | { readonly status: 'loading'; readonly source: string }
   | { readonly status: 'ready'; readonly source: string; readonly contract: DraftContract }
   | {
@@ -46,6 +50,9 @@ export interface LastGoodContract {
 }
 
 const IDLE_MS = 900
+
+/** a source with nothing but whitespace in it */
+export const isBlankSource = (source: string): boolean => source.trim() === ''
 
 export interface DraftPreviewHandle {
   readonly current: PreviewCurrent
@@ -70,6 +77,11 @@ export const useDraftPreview = (
   const launch = useCallback((): Promise<PreviewCurrent> => {
     const wanted = sourceRef.current
     if (wanted === null) return Promise.resolve({ status: 'idle' })
+    if (isBlankSource(wanted)) {
+      const blank: PreviewCurrent = { status: 'blank', source: wanted }
+      if (!disposed.current) setCurrent(blank)
+      return Promise.resolve(blank)
+    }
     if (inFlight.current !== null) return inFlight.current
     if (!disposed.current) setCurrent({ status: 'loading', source: wanted })
     const flight = fetchPreview(wanted)
@@ -103,6 +115,12 @@ export const useDraftPreview = (
   useEffect(() => {
     if (source === null) return
     if (timer.current !== null) clearTimeout(timer.current)
+    // nothing to compile: say so at once rather than after the idle wait
+    if (isBlankSource(source)) {
+      timer.current = null
+      setCurrent({ status: 'blank', source })
+      return
+    }
     timer.current = setTimeout(() => {
       timer.current = null
       void launchRef.current()
@@ -141,7 +159,8 @@ export const useDraftPreview = (
     return launchRef
       .current()
       .then((outcome) =>
-        outcome.status !== 'idle' && outcome.source === sourceRef.current
+        outcome.status === 'blank' ||
+        (outcome.status !== 'idle' && outcome.source === sourceRef.current)
           ? outcome
           : launchRef.current(),
       )

@@ -186,7 +186,8 @@ export default function FormulaTemplatePage() {
                 <div {...stylex.props(styles.fact)}>
                   <dt {...stylex.props(styles.factLabel)}>{format(m.versionLabel)}</dt>
                   <dd {...stylex.props(styles.factValue)}>
-                    {format(m.versionNumber, { number: template.versionNo })}
+                    {template.releaseName ??
+                      format(m.releaseOrdinal, { number: template.versionNo })}
                   </dd>
                 </div>
                 <div {...stylex.props(styles.fact)}>

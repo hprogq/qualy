@@ -45,6 +45,7 @@ interface Option {
   readonly versionId: string
   readonly functionName: string
   readonly versionNo: number
+  readonly releaseName: string | null
   readonly parameters: readonly string[]
   readonly bindableForNew: boolean
   readonly current: boolean
@@ -123,7 +124,7 @@ export default function CalculatorEditor({ context }: { context: CalculatorEdito
               >
                 <span {...stylex.props(styles.name)}>{option.functionName}</span>
                 <span {...stylex.props(styles.meta)}>
-                  {format(m.versionNumber, { number: option.versionNo })}
+                  {option.releaseName ?? format(m.releaseOrdinal, { number: option.versionNo })}
                 </span>
                 <span {...stylex.props(styles.meta)}>
                   {format(m.bindingParameters, { names: option.parameters.join('、') })}
