@@ -2445,13 +2445,13 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   )
   .add(
     /**
-     * The imports of this round that the reader may still look back on.
+     * The imports of this round, to anybody who may record in it.
      *
-     * Narrower than the record book on purpose. A workbook is a list of
-     * people, so an import is listed only to the person who made it, and only
-     * while every person in it is still somebody they may record on: having
-     * uploaded a class list once is not a standing licence to read it after
-     * the reach that justified it has gone.
+     * An import is the round's record - the office decided these facts, the
+     * uploader is its provenance - so its history is the round's, whoever
+     * made it and whatever became of them. Reading the names in one is a
+     * narrower door: the rows and the file ask that the reader reach every
+     * person the import names.
      */
     HttpApiEndpoint.get(
       'listAdministrativeImports',
@@ -2466,8 +2466,8 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   )
   .add(
     /**
-     * One import, read by the same rule as the history. An import this
-     * reader may not look back on answers exactly as one that never
+     * One import, read by the same rule as the history. An import in a
+     * round this reader may not record in answers exactly as one that never
      * existed.
      */
     HttpApiEndpoint.get(
@@ -2489,7 +2489,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         params: Schema.Struct({ importId: uuidInput }),
         query: Schema.Struct({ ...pageQuery }),
         success: pageOf(administrativeImportRowView),
-        error: [AdministrativeImportNotFound, BadRequest],
+        error: [AdministrativeImportNotFound, AccessDenied, BadRequest],
       },
     ).middleware(Authenticated),
   )
@@ -2507,7 +2507,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       {
         params: Schema.Struct({ importId: uuidInput }),
         success: attachmentDescriptor,
-        error: [AdministrativeImportNotFound, AttachmentUnavailable],
+        error: [AdministrativeImportNotFound, AccessDenied, AttachmentUnavailable],
       },
     ).middleware(Authenticated),
   )
@@ -2519,7 +2519,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       {
         params: Schema.Struct({ importId: uuidInput }),
         success: HttpApiSchema.StreamUint8Array(),
-        error: [AdministrativeImportNotFound, AttachmentUnavailable],
+        error: [AdministrativeImportNotFound, AccessDenied, AttachmentUnavailable],
       },
     ).middleware(Authenticated),
   )

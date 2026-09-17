@@ -304,39 +304,39 @@ export const standingOfImports = (tenantId: string, importIds: readonly string[]
         )
 
 /**
- * Whether this reader may still look back on an import, as a predicate on
+ * Whether this reader reaches every person an import names, as a predicate on
  * the import aliased `i`.
  *
- * The conservative rule for somebody here on recording authority: only
- * imports they made, and only while every person in them is still someone
- * they may record on. A file of names is a list of people, and having
- * uploaded it once is not a standing licence to read it after the reach
- * that justified it has been taken away. The list, the detail, its rows,
- * the original file and the reversal all ask this one question.
+ * An import is the round's record - the office decided these facts, and the
+ * person who uploaded the file is its provenance, not its owner - so who may
+ * look back on it is who may record in the round, not who made it. But the
+ * file itself is a list of people, and a reader whose reach covers part of the
+ * round must not read the rest of the list through it: the rows and the
+ * original workbook ask this, and a reversal asks it of every fact it would
+ * withdraw. A participant later excluded from the round is still someone
+ * the import named: the reach is over the frozen anchor, not the roster's
+ * present state, because history does not change when a roster does.
  */
-const readableBy = (input: { tenantId: string; batchId: string; userId: string }) =>
-  sql<boolean>`(
-    i.actor_id = ${input.userId}
-    and not exists (
-      select 1
-        from administrative_entry_import_rows r
-        join batch_participants p
-          on p.tenant_id = r.tenant_id and p.id = r.participant_id
-       where r.tenant_id = i.tenant_id
-         and r.import_id = i.id
-         and not ${staffReachOver({
-           tenantId: input.tenantId,
-           batchId: input.batchId,
-           userId: input.userId,
-           permissionCode: 'assessment.entry.record',
-           anchorNodeId: sql.ref('p.assessment_anchor_node_id'),
-           anchorPath: sql.ref('p.anchor_path'),
-         })}
-    )
+const reachesEveryoneIn = (input: { tenantId: string; batchId: string; userId: string }) =>
+  sql<boolean>`not exists (
+    select 1
+      from administrative_entry_import_rows r
+      join batch_participants p
+        on p.tenant_id = r.tenant_id and p.id = r.participant_id
+     where r.tenant_id = i.tenant_id
+       and r.import_id = i.id
+       and not ${staffReachOver({
+         tenantId: input.tenantId,
+         batchId: input.batchId,
+         userId: input.userId,
+         permissionCode: 'assessment.entry.record',
+         anchorNodeId: sql.ref('p.assessment_anchor_node_id'),
+         anchorPath: sql.ref('p.anchor_path'),
+       })}
   )`
 
-/** the readability rule above, for one import */
-export const importReadable = (input: {
+/** the reach rule above, for one import */
+export const importReachable = (input: {
   tenantId: string
   batchId: string
   importId: string
@@ -349,7 +349,7 @@ export const importReadable = (input: {
         .select(sql<number>`1`.as('one'))
         .where('i.tenantId', '=', input.tenantId)
         .where('i.id', '=', input.importId)
-        .where(readableBy(input))
+        .where(reachesEveryoneIn(input))
         .executeTakeFirst(),
     )
     .pipe(Effect.map((row) => row !== undefined))
@@ -503,7 +503,12 @@ export const importRowsPage = (input: {
  * reaching it through "the current claim for this person" would unmake a
  * correction.
  */
-export const reversalCandidatesOf = (tenantId: string, importId: string) =>
+export const reversalCandidatesOf = (
+  tenantId: string,
+  importId: string,
+  /** whose reach each person is judged against, for the withdrawal that reader would make */
+  reader: { batchId: string; userId: string },
+) =>
   db
     .query((k) =>
       k
@@ -523,6 +528,16 @@ export const reversalCandidatesOf = (tenantId: string, importId: string) =>
           'e.source',
           'e.currentReviewInstanceId',
         ])
+        .select(
+          staffReachOver({
+            tenantId,
+            batchId: reader.batchId,
+            userId: reader.userId,
+            permissionCode: 'assessment.entry.record',
+            anchorNodeId: sql.ref('p.assessment_anchor_node_id'),
+            anchorPath: sql.ref('p.anchor_path'),
+          }).as('reached'),
+        )
         .where('r.tenantId', '=', tenantId)
         .where('r.importId', '=', importId)
         .orderBy('r.sourceRowNo')
@@ -539,6 +554,7 @@ export const reversalCandidatesOf = (tenantId: string, importId: string) =>
           source: String(row['source']),
           currentReviewInstanceId:
             row['currentReviewInstanceId'] == null ? null : String(row['currentReviewInstanceId']),
+          reached: Boolean(row['reached']),
         })),
       ),
     )
@@ -547,8 +563,6 @@ export const reversalCandidatesOf = (tenantId: string, importId: string) =>
 export const importsOfBatchPage = (input: {
   tenantId: string
   batchId: string
-  /** narrowed to what this reader may still look back on; see `readableBy` */
-  reader?: { userId: string } | undefined
   after?: readonly [string, string] | undefined
   limit: number
 }) =>
@@ -577,11 +591,6 @@ export const importsOfBatchPage = (input: {
         .select([sql<string>`i.created_at::text`.as('cursorAt')])
         .where('i.tenantId', '=', input.tenantId)
         .where('i.batchId', '=', input.batchId)
-      if (input.reader !== undefined) {
-        query = query.where(
-          readableBy({ tenantId: input.tenantId, batchId: input.batchId, userId: input.reader.userId }),
-        )
-      }
       if (input.after !== undefined) {
         query = query.where(
           sql<boolean>`(i.created_at, i.id) < (${input.after[0]}::timestamptz, ${input.after[1]}::uuid)`,

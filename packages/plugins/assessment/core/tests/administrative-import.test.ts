@@ -848,7 +848,7 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
     })
   })
 
-  it('lists an import to the person who made it, while everyone in it is still theirs', async () => {
+  it('lists every import of the round to whoever may record in it, newest first', async () => {
     const found = ok(
       await run(
         db.url,
@@ -884,7 +884,8 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
             ['2023002', 'Li Si', '乙'],
           ])
           const liSiOnly = yield* commit([['2023002', 'Li Si', '丙']])
-          // somebody else's import in the same round, with the file it names
+          // somebody else's import in the same round, with the file it names:
+          // the round's history too, not only what this reader made
           const theirFile = one<{ id: string }>(
             yield* runSql(sql`
               insert into storage_attachments
@@ -894,12 +895,15 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
                       'sha256', 'abc', ${`attachments/${f.t}/theirs`}, 'staged')
               returning id`),
           ).id
-          yield* runSql(sql`
-            insert into administrative_entry_imports
-              (tenant_id, batch_id, item_id, item_revision_id, source_attachment_id,
-               filename_snapshot, size_bytes, actor_id, imported_count)
-            values (${f.t}, ${g.batch.id}, ${item.id}, ${revision}, ${theirFile},
-                    'theirs.xlsx', 1, ${f.admin}, 0)`)
+          const theirs = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into administrative_entry_imports
+                (tenant_id, batch_id, item_id, item_revision_id, source_attachment_id,
+                 filename_snapshot, size_bytes, actor_id, imported_count)
+              values (${f.t}, ${g.batch.id}, ${item.id}, ${revision}, ${theirFile},
+                      'theirs.xlsx', 1, ${f.admin}, 0)
+              returning id`),
+          ).id
           // one of the first import's facts withdrawn on its own
           const zhangSan = one<{ id: string }>(
             yield* runSql(sql`
@@ -928,7 +932,7 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
           const second = yield* assessment.listAdministrativeImports(
             f.t,
             g.batch.id,
-            { limit: 1, after: first[0]!.cursor },
+            { limit: 10, after: first[0]!.cursor },
             reader,
           )
           const student = yield* Effect.exit(
@@ -954,14 +958,19 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
             { limit: 10 },
             reader,
           )
-          return { both, liSiOnly, all, first, second, student, afterMove }
+          return { both, liSiOnly, theirs, all, first, second, student, afterMove }
         }),
       ),
     )
 
-    // newest first, and only the recorder's own two
-    expect(found.all.map((row) => row.id)).toEqual([found.liSiOnly.importId, found.both.importId])
-    const first = found.all[1]!
+    // newest first, and the administrator's as well as the recorder's own
+    expect(found.all.map((row) => row.id)).toEqual([
+      found.theirs,
+      found.liSiOnly.importId,
+      found.both.importId,
+    ])
+    expect(found.all[0]!.actor?.name).toBe('Admin')
+    const first = found.all[2]!
     expect(first.importedCount).toBe(2)
     // what it comes to now, counted from its entries: one withdrawn since
     expect(first.standing).toEqual({ approved: 1, inReview: 0, rejected: 0, voided: 1, other: 0 })
@@ -974,9 +983,10 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
     )
     // not a recorder here at all: refused, rather than an empty history
     expect(errorOf<{ _tag: string }>(found.student)?._tag).toBe('ACCESS_DENIED')
-    // an import with one person now out of reach leaves the list entirely;
-    // the one that never named them stays
-    expect(found.afterMove.map((row) => row.id)).toEqual([found.liSiOnly.importId])
+    // an import with one person now out of reach is still the round's
+    // history: it stays listed; only its names are withheld (see the history
+    // suite)
+    expect(found.afterMove.map((row) => row.id)).toEqual(found.all.map((row) => row.id))
   })
 
   it('will not import a file whose warnings nobody confirmed', async () => {

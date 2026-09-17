@@ -45,7 +45,7 @@ import {
   eventsOfImport,
   importDetailOf,
   importOf,
-  importReadable,
+  importReachable,
   importRowsPage,
   importsOfBatchPage,
   insertImport,
@@ -318,12 +318,12 @@ export interface AdministrativeImportMethods {
     ScoringRuntimeCatalog
   >
   /**
-   * The imports this reader may still look back on, newest first.
+   * The imports of a round, newest first, to anybody who may record in it.
    *
-   * Their own, and only while every person in them is still somebody they
-   * may record on. Administering the round does not widen it: overseeing
-   * every import would be a read-only surface of its own, not a side
-   * effect of the recording desk.
+   * An import is the round's record: the office decided these facts, and the
+   * person who uploaded the file is its provenance, not its owner. A later
+   * administrator sees what was imported before their time, and the person
+   * who imported it losing their post or their account changes nothing here.
    */
   readonly listAdministrativeImports: (
     tenantId: string,
@@ -332,9 +332,9 @@ export interface AdministrativeImportMethods {
     as: Principal,
   ) => Effect.Effect<readonly AdministrativeImportView[], BatchNotFound | AccessDenied>
   /**
-   * One import, by the same rule the history is read by. An import this
-   * reader may not look back on does not exist for them: telling "not
-   * yours" from "no such import" would say whose files are where.
+   * One import, by the same rule the history is read by. An import in a
+   * round this reader may not record in does not exist for them: telling
+   * "not yours" from "no such import" would say where files are.
    */
   readonly getAdministrativeImport: (
     tenantId: string,
@@ -347,24 +347,34 @@ export interface AdministrativeImportMethods {
     importId: string,
     page: { afterRowNo?: number; limit: number },
     as: Principal,
-  ) => Effect.Effect<readonly AdministrativeImportRowView[], AdministrativeImportNotFound>
+  ) => Effect.Effect<
+    readonly AdministrativeImportRowView[],
+    AdministrativeImportNotFound | AccessDenied
+  >
   /**
    * The original workbook, opened.
    *
    * A class list is personal data a spreadsheet at a time, so the door is
-   * the import's own and stricter than having uploaded it: the reader must
-   * still reach every person in it, today.
+   * stricter than the import's own: the reader must reach every person in
+   * it, today. Knowing the import happened is the round's history; reading
+   * the names is not, for somebody whose reach covers only part of the round.
    */
   readonly openAdministrativeImportSource: (
     tenantId: string,
     importId: string,
     as: Principal,
-  ) => Effect.Effect<AttachmentOpen, AdministrativeImportNotFound | AttachmentUnavailable>
+  ) => Effect.Effect<
+    AttachmentOpen,
+    AdministrativeImportNotFound | AccessDenied | AttachmentUnavailable
+  >
   readonly describeAdministrativeImportSource: (
     tenantId: string,
     importId: string,
     as: Principal,
-  ) => Effect.Effect<AttachmentDescriptor, AdministrativeImportNotFound | AttachmentUnavailable>
+  ) => Effect.Effect<
+    AttachmentDescriptor,
+    AdministrativeImportNotFound | AccessDenied | AttachmentUnavailable
+  >
   /**
    * Withdrawing everything an import created that is still in effect, all
    * of it or none.
@@ -768,27 +778,43 @@ export const makeAdministrativeImportMethods = (
   /**
    * An import this reader may look back on, or nothing.
    *
-   * Recording authority in its round, and the import's own rule on top: made
-   * by them, and every person in it still theirs to record on.
+   * An import is the round's record, not the uploader's: the office decided
+   * these facts, and whoever pressed the button is provenance. So the door is
+   * the recording authority in the round, held now - by whoever holds it now,
+   * whatever became of the person who made the import or of the people in
+   * it. Somebody without it is told the import does not exist, because
+   * telling "not yours" from "no such import" would say where files are.
    */
-  const readableImport = (tenantId: string, importId: string, as: Principal) =>
+  const visibleImport = (tenantId: string, importId: string, as: Principal) =>
     Effect.gen(function* () {
       const found = yield* dieQuery(withDb(importDetailOf(tenantId, importId)))
       if (found === null) return yield* new AdministrativeImportNotFound()
-      const records = yield* deps.holdsRecord(tenantId, found.batchId, as.userId)
-      const readable =
-        records &&
-        (yield* dieQuery(
-          withDb(
-            importReadable({
-              tenantId,
-              batchId: found.batchId,
-              importId,
-              userId: as.userId,
-            }),
-          ),
-        ))
-      if (!readable) return yield* new AdministrativeImportNotFound()
+      if (!(yield* deps.holdsRecord(tenantId, found.batchId, as.userId))) {
+        return yield* new AdministrativeImportNotFound()
+      }
+      return found
+    })
+
+  /**
+   * An import whose people this reader all reaches, or a refusal.
+   *
+   * The rows and the original workbook are a list of names. A reader whose
+   * reach covers part of the round may know the import happened - it is the
+   * round's history - but may not read the rest of the list through it.
+   */
+  const reachableImport = (tenantId: string, importId: string, as: Principal) =>
+    Effect.gen(function* () {
+      const found = yield* visibleImport(tenantId, importId, as)
+      const reaches = yield* dieQuery(
+        withDb(
+          importReachable({ tenantId, batchId: found.batchId, importId, userId: as.userId }),
+        ),
+      )
+      if (!reaches) {
+        return yield* new AccessDenied({
+          reason: 'the import names people outside your recording reach',
+        })
+      }
       return found
     })
 
@@ -1049,9 +1075,8 @@ export const makeAdministrativeImportMethods = (
     Effect.fn('Assessment.listAdministrativeImports')(function* (tenantId, batchId, page, as) {
       const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
       if (!batch) return yield* new BatchNotFound()
-      // the recording desk's history, so the recording authority is the
-      // door; the rows are then narrowed in sql to what this reader made
-      // and still reaches
+      // the round's history, so the recording authority is the door and the
+      // whole of it: every import of the round, whoever made it
       if (!(yield* deps.holdsRecord(tenantId, batchId, as.userId))) {
         return yield* new AccessDenied({ reason: 'cannot record on this batch' })
       }
@@ -1060,7 +1085,6 @@ export const makeAdministrativeImportMethods = (
           importsOfBatchPage({
             tenantId,
             batchId,
-            reader: { userId: as.userId },
             ...(page.after !== undefined ? { after: page.after } : {}),
             limit: page.limit,
           }),
@@ -1091,16 +1115,21 @@ export const makeAdministrativeImportMethods = (
 
   const getAdministrativeImport: AdministrativeImportMethods['getAdministrativeImport'] =
     Effect.fn('Assessment.getAdministrativeImport')(function* (tenantId, importId, as) {
-      const found = yield* readableImport(tenantId, importId, as)
+      const found = yield* visibleImport(tenantId, importId, as)
       const [standing, events, candidates] = yield* Effect.all([
         dieQuery(withDb(standingOfImports(tenantId, [importId]))),
         dieQuery(withDb(eventsOfImport(tenantId, importId))),
-        dieQuery(withDb(reversalCandidatesOf(tenantId, importId))),
+        dieQuery(
+          withDb(
+            reversalCandidatesOf(tenantId, importId, { batchId: found.batchId, userId: as.userId }),
+          ),
+        ),
       ])
       // Offered only when pressing it could work: something still in effect,
-      // a round that is not archived, and a phase that admits every person
-      // it would touch. The reversal asks all of it again; this only keeps
-      // a button off the screen that would certainly be refused.
+      // a round that is not archived, every person it would touch within
+      // this reader's reach and admitted by the phase. The reversal asks all
+      // of it again; this only keeps a button off the screen that would
+      // certainly be refused.
       const live = candidates.filter((one) => one.status !== 'voided')
       const batch = yield* dieQuery(withDb(oneBatch(tenantId, found.batchId)))
       const gate = yield* deps
@@ -1110,7 +1139,10 @@ export const makeAdministrativeImportMethods = (
         live.length > 0 &&
         batch !== null &&
         batch.status !== 'archived' &&
-        live.every((one) => one.participantUserId !== as.userId && gate(one.participantId).allowed)
+        live.every(
+          (one) =>
+            one.reached && one.participantUserId !== as.userId && gate(one.participantId).allowed,
+        )
       return {
         id: found.id,
         batchId: found.batchId,
@@ -1142,7 +1174,7 @@ export const makeAdministrativeImportMethods = (
 
   const listAdministrativeImportRows: AdministrativeImportMethods['listAdministrativeImportRows'] =
     Effect.fn('Assessment.listAdministrativeImportRows')(function* (tenantId, importId, page, as) {
-      yield* readableImport(tenantId, importId, as)
+      yield* reachableImport(tenantId, importId, as)
       const rows = yield* dieQuery(
         withDb(
           importRowsPage({
@@ -1208,7 +1240,7 @@ export const makeAdministrativeImportMethods = (
 
   const openAdministrativeImportSource: AdministrativeImportMethods['openAdministrativeImportSource'] =
     Effect.fn('Assessment.openAdministrativeImportSource')(function* (tenantId, importId, as) {
-      const found = yield* readableImport(tenantId, importId, as)
+      const found = yield* reachableImport(tenantId, importId, as)
       // the import has already answered who may read it; the store is only
       // asked whether the bytes are still there
       return yield* storage
@@ -1256,17 +1288,20 @@ export const makeAdministrativeImportMethods = (
             if (located === null) return yield* new AdministrativeImportNotFound()
             const locked = yield* lockBatch(tenantId, located.batchId)
             if (!locked) return yield* new AdministrativeImportNotFound()
-            // read again under the lock: whoever can no longer look back on
-            // an import cannot unmake it either, and one person in it gone
-            // out of reach is exactly that
-            yield* readableImport(tenantId, importId, as)
+            // read again under the lock: the authority to record in this
+            // round, held now by whoever is pressing - not by whoever made
+            // the import
+            yield* visibleImport(tenantId, importId, as)
             if (locked.status === 'archived') return yield* new BatchReadOnly()
             const reason = input.reason.trim()
             if (reason === '') {
               return yield* new EntryActionRefused({ action: 'abandon', reason: 'reason-required' })
             }
 
-            const linked = yield* reversalCandidatesOf(tenantId, importId)
+            const linked = yield* reversalCandidatesOf(tenantId, importId, {
+              batchId: located.batchId,
+              userId: as.userId,
+            })
             const candidates = linked.filter((one) => one.status !== 'voided')
             // withdrawn one by one already, or withdrawn whole before: there
             // is nothing left for a reversal to say, and saying nothing is
@@ -1274,9 +1309,9 @@ export const makeAdministrativeImportMethods = (
             if (candidates.length === 0) return { affectedCount: 0 }
 
             // Every rule the single withdrawal asks, asked of every row
-            // before any row moves. Reach needs no second asking: being able
-            // to read this import at all already means reaching everybody
-            // in it.
+            // before any row moves: this person's reach over the person the
+            // fact is about, the phase, and the fact being one an office
+            // recorded. Any refusal is the whole file's.
             const gate = yield* deps
               .recordGate(as, located.batchId, located.itemId)
               .pipe(Effect.catchTag('ASSESSMENT_BATCH_NOT_FOUND', Effect.die))
@@ -1287,6 +1322,7 @@ export const makeAdministrativeImportMethods = (
               if (one.source !== 'record' && one.source !== 'import') {
                 return refused('entry-not-abandonable')
               }
+              if (!one.reached) return refused('participant-out-of-scope')
               if (one.participantUserId === as.userId) return refused('self-record-refused')
               const decision = gate(one.participantId)
               return decision.allowed ? [] : refused(decision.reason)

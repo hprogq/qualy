@@ -31,7 +31,9 @@ const factsOf = (importId: string) =>
         join entries e on e.tenant_id = r.tenant_id and e.id = r.entry_id
        where r.import_id = ${importId}
        order by r.source_row_no`),
-    (result) => (result as unknown as { rows: { participant: string; entry: string; status: string }[] }).rows,
+    (result) =>
+      (result as unknown as { rows: { participant: string; entry: string; status: string }[] })
+        .rows,
   )
 
 const eventsOf = (importId: string) =>
@@ -39,7 +41,8 @@ const eventsOf = (importId: string) =>
     runSql(sql`
       select kind, reason, affected_count as affected from administrative_entry_import_events
        where import_id = ${importId} order by created_at`),
-    (result) => (result as unknown as { rows: { kind: string; reason: string; affected: number }[] }).rows,
+    (result) =>
+      (result as unknown as { rows: { kind: string; reason: string; affected: number }[] }).rows,
   )
 
 /** a round with an administrative question, and Zhang San and Li Si imported into it */
@@ -85,7 +88,7 @@ describe.runIf(postgresAvailable)('an import, looked back on', () => {
     await db?.dispose()
   })
 
-  it('shows the person who made it what it was, and nobody else anything', async () => {
+  it('shows anybody who may record in the round what it was, and nobody else anything', async () => {
     const found = ok(
       await run(
         db.url,
@@ -102,8 +105,12 @@ describe.runIf(postgresAvailable)('an import, looked back on', () => {
               select integrity_algorithm as algorithm, integrity_value as value
                 from storage_attachments where id = ${done.attachmentId}`),
           )
-          const asAdmin = yield* Effect.exit(
-            assessment.getAdministrativeImport(f.t, done.importId, f.principal(f.admin)),
+          // the round's administrator did not make this import and sees it
+          // all the same: it is the round's record, not the recorder's
+          const asAdmin = yield* assessment.getAdministrativeImport(
+            f.t,
+            done.importId,
+            f.principal(f.admin),
           )
           const asStudent = yield* Effect.exit(
             assessment.getAdministrativeImport(f.t, done.importId, f.principal(f.s1)),
@@ -128,11 +135,12 @@ describe.runIf(postgresAvailable)('an import, looked back on', () => {
     expect(found.detail.capabilities.reverse).toBe(true)
     // what the store verified the original to be, never a browser's word
     expect(found.detail.integrity).toEqual(found.stored)
-    // administering the round is not having made the import, and a
-    // participant is nobody here: both are told it does not exist
-    expect(errorOf<{ _tag: string }>(found.asAdmin)?._tag).toBe(
-      'ASSESSMENT_ADMINISTRATIVE_IMPORT_NOT_FOUND',
-    )
+    // the same import, with the same provenance, for whoever holds the
+    // recording authority now
+    expect(found.asAdmin.actor?.name).toBe('Recorder')
+    expect(found.asAdmin.importedCount).toBe(2)
+    expect(found.asAdmin.capabilities.reverse).toBe(true)
+    // a participant is nobody here, and is told it does not exist
     expect(errorOf<{ _tag: string }>(found.asStudent)?._tag).toBe(
       'ASSESSMENT_ADMINISTRATIVE_IMPORT_NOT_FOUND',
     )
@@ -206,8 +214,12 @@ describe.runIf(postgresAvailable)('an import, looked back on', () => {
             })
           }
           const detail = yield* assessment.getAdministrativeImport(f.t, done.importId, reader)
-          const asAdmin = yield* Effect.exit(
-            assessment.describeAdministrativeImportSource(f.t, done.importId, f.principal(f.admin)),
+          // the administrator reaches everybody in the round, so the file is
+          // theirs to read too; the door is reach, not having uploaded it
+          const asAdmin = yield* assessment.describeAdministrativeImportSource(
+            f.t,
+            done.importId,
+            f.principal(f.admin),
           )
           return {
             described,
@@ -223,9 +235,60 @@ describe.runIf(postgresAvailable)('an import, looked back on', () => {
     // the bytes that come back are the bytes the store verified at import
     expect(found.integrity?.algorithm).toBe('sha256')
     expect(found.digest).toBe(found.integrity?.value)
-    expect(errorOf<{ _tag: string }>(found.asAdmin)?._tag).toBe(
-      'ASSESSMENT_ADMINISTRATIVE_IMPORT_NOT_FOUND',
+    expect(found.asAdmin.filename).toBe('import.xlsx')
+  })
+
+  // An import belongs to the round. The person who made it may lose their
+  // post, their reach or their account, and a person in it may leave the
+  // roster; none of that rewrites what happened, and none of it takes the
+  // record away from whoever holds the recording authority now.
+  it('belongs to the round, not to the person who made it', async () => {
+    const found = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const { f, g, done } = yield* importedPair('aih-institutional')
+          const assessment = yield* Assessment
+          const admin = f.principal(f.admin)
+          // somebody else takes the whole import back, for the round
+          const reversed = yield* reverse(f, done.importId, '名单有误,整批撤回', f.admin)
+          // the uploader's account is disabled, and one of the people leaves the roster
+          yield* runSql(sql`update users set enabled = false where id = ${f.recorder}`)
+          yield* runSql(sql`update batch_participants set status = 'excluded' where id = ${g.p2}`)
+          const listed = yield* assessment.listAdministrativeImports(
+            f.t,
+            g.batch.id,
+            { limit: 10 },
+            admin,
+          )
+          const detail = yield* assessment.getAdministrativeImport(f.t, done.importId, admin)
+          const rows = yield* assessment.listAdministrativeImportRows(
+            f.t,
+            done.importId,
+            { limit: 10 },
+            admin,
+          )
+          const source = yield* assessment.describeAdministrativeImportSource(
+            f.t,
+            done.importId,
+            admin,
+          )
+          return { reversed, listed, detail, rows, source, facts: yield* factsOf(done.importId) }
+        }),
+      ),
     )
+    expect(found.reversed.affectedCount).toBe(2)
+    expect(found.facts.map((one) => one.status)).toEqual(['voided', 'voided'])
+    // the history is whole: who made it, who took it back, every row, the file
+    expect(found.listed.map((one) => one.id)).toEqual([found.detail.id])
+    expect(found.detail.actor?.name).toBe('Recorder')
+    expect(found.detail.reversals.map((one) => [one.actor?.name, one.affectedCount])).toEqual([
+      ['Admin', 2],
+    ])
+    expect(found.rows.map((one) => one.rowNo)).toEqual([2, 3])
+    expect(found.source.filename).toBe('import.xlsx')
+    // and nothing is left to take back
+    expect(found.detail.capabilities.reverse).toBe(false)
   })
 
   describe('taken back', () => {
@@ -333,7 +396,12 @@ describe.runIf(postgresAvailable)('an import, looked back on', () => {
             const cancelled = (yield* runSql(sql`
               select kind from review_events where review_instance_id = ${appealed.id}
                and kind = 'cancelled-by-staff'`)) as unknown as { rows: unknown[] }
-            return { reversed, round, cancelled: cancelled.rows.length, facts: yield* factsOf(done.importId) }
+            return {
+              reversed,
+              round,
+              cancelled: cancelled.rows.length,
+              facts: yield* factsOf(done.importId),
+            }
           }),
         ),
       )
@@ -397,9 +465,9 @@ describe.runIf(postgresAvailable)('an import, looked back on', () => {
           }),
         ),
       )
-      expect(errorOf<{ issues: { rowNo: number; reason: string }[] }>(found.refused)?.issues).toEqual([
-        expect.objectContaining({ rowNo: 3, reason: 'participant-out-of-scope' }),
-      ])
+      expect(
+        errorOf<{ issues: { rowNo: number; reason: string }[] }>(found.refused)?.issues,
+      ).toEqual([expect.objectContaining({ rowNo: 3, reason: 'participant-out-of-scope' })])
       // Zhang San's fact could have been withdrawn, and was not
       expect(found.facts.map((one) => one.status)).toEqual(['approved', 'approved'])
       expect(found.events).toEqual([])
@@ -452,7 +520,7 @@ describe.runIf(postgresAvailable)('an import, looked back on', () => {
       expect(found.facts.map((one) => one.status)).toEqual(['approved', 'approved'])
     })
 
-    it('is gone for a reader who no longer reaches everybody in it', async () => {
+    it('keeps the record for a reader who no longer reaches everybody in it, and withholds the names', async () => {
       const found = ok(
         await run(
           db.url,
@@ -466,8 +534,20 @@ describe.runIf(postgresAvailable)('an import, looked back on', () => {
                 from batch_participants moved
                where moved.id = ${g.p3} and p.id = ${g.p1}`)
             const refused = yield* Effect.exit(reverse(f, done.importId, '文件撤回'))
-            const detail = yield* Effect.exit(
-              assessment.getAdministrativeImport(f.t, done.importId, f.principal(f.recorder)),
+            // the import is still the round's history to them
+            const detail = yield* assessment.getAdministrativeImport(
+              f.t,
+              done.importId,
+              f.principal(f.recorder),
+            )
+            // the names in it are not: one of them is now somebody else's
+            const rows = yield* Effect.exit(
+              assessment.listAdministrativeImportRows(
+                f.t,
+                done.importId,
+                { limit: 10 },
+                f.principal(f.recorder),
+              ),
             )
             const source = yield* Effect.exit(
               assessment.describeAdministrativeImportSource(
@@ -476,13 +556,23 @@ describe.runIf(postgresAvailable)('an import, looked back on', () => {
                 f.principal(f.recorder),
               ),
             )
-            return { refused, detail, source, facts: yield* factsOf(done.importId) }
+            return { refused, detail, rows, source, facts: yield* factsOf(done.importId) }
           }),
         ),
       )
-      for (const exit of [found.refused, found.detail, found.source]) {
-        expect(errorOf<{ _tag: string }>(exit)?._tag).toBe('ASSESSMENT_ADMINISTRATIVE_IMPORT_NOT_FOUND')
+      expect(found.detail.importedCount).toBe(2)
+      expect(found.detail.capabilities.reverse).toBe(false)
+      for (const exit of [found.rows, found.source]) {
+        expect(errorOf<{ _tag: string }>(exit)?._tag).toBe('ACCESS_DENIED')
       }
+      // the reversal names the row it cannot touch, and touches none
+      const refusal = errorOf<{ _tag: string; issues: { rowNo: number; reason: string }[] }>(
+        found.refused,
+      )
+      expect(refusal?._tag).toBe('ASSESSMENT_ADMINISTRATIVE_IMPORT_INVALID')
+      expect(refusal?.issues).toEqual([
+        expect.objectContaining({ rowNo: 2, reason: 'participant-out-of-scope' }),
+      ])
       expect(found.facts.map((one) => one.status)).toEqual(['approved', 'approved'])
     })
 
