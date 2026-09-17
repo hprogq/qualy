@@ -871,7 +871,7 @@ const i18n = definePluginMessages({
     },
     historyTitle: {
       id: 'assessment-formula/history/title',
-      defaultMessage: 'History',
+      defaultMessage: 'Versions',
     },
     historyReleases: {
       id: 'assessment-formula/history/releases',
@@ -1166,6 +1166,74 @@ const i18n = definePluginMessages({
     localDraftDrop: {
       id: 'assessment-formula/editor/local-draft-drop',
       defaultMessage: 'Discard',
+    },
+    tryRecordsTitle: {
+      id: 'assessment-formula/try/records-title',
+      defaultMessage: 'Recent runs',
+    },
+    tryRecordsClear: {
+      id: 'assessment-formula/try/records-clear',
+      defaultMessage: 'Clear',
+    },
+    tryRecordsEmpty: {
+      id: 'assessment-formula/try/records-empty',
+      defaultMessage: 'Runs you try show up here',
+    },
+    tryRecordPick: {
+      id: 'assessment-formula/try/record-pick',
+      defaultMessage: 'Load these inputs again',
+    },
+    tryRecordOld: {
+      id: 'assessment-formula/try/record-old',
+      defaultMessage: 'Older code',
+    },
+    tryRecordRefused: {
+      id: 'assessment-formula/try/record-refused',
+      defaultMessage: 'Refused',
+    },
+    tryRecordCrashed: {
+      id: 'assessment-formula/try/record-crashed',
+      defaultMessage: 'Crashed',
+    },
+    tryRecordInvalid: {
+      id: 'assessment-formula/try/record-invalid',
+      defaultMessage: 'Did not validate',
+    },
+    draftMatchesRelease: {
+      id: 'assessment-formula/editor/draft-matches-release',
+      defaultMessage: 'Same as the latest release',
+    },
+    draftUnpublished: {
+      id: 'assessment-formula/editor/draft-unpublished',
+      defaultMessage: 'Draft has unpublished changes',
+    },
+    resizeTry: {
+      id: 'assessment-formula/workbench/resize-try',
+      defaultMessage: 'Resize the try-run column',
+    },
+    resizeHistory: {
+      id: 'assessment-formula/workbench/resize-history',
+      defaultMessage: 'Resize the versions column',
+    },
+    resizeSide: {
+      id: 'assessment-formula/workbench/resize-side',
+      defaultMessage: 'Resize the side column',
+    },
+    resizePanel: {
+      id: 'assessment-formula/workbench/resize-panel',
+      defaultMessage: 'Resize the bottom panel',
+    },
+    formatCode: {
+      id: 'assessment-formula/editor/format-code',
+      defaultMessage: 'Format',
+    },
+    formatCodeHint: {
+      id: 'assessment-formula/editor/format-code-hint',
+      defaultMessage: 'Format the whole source, or press Shift+Alt+F',
+    },
+    formatCodeWaiting: {
+      id: 'assessment-formula/editor/format-code-waiting',
+      defaultMessage: 'Formatting waits for language assistance to connect',
     },
   },
   errors: defineErrorTranslations<ErrorsByCode<typeof formulaErrors>>()({

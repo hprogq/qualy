@@ -16,10 +16,12 @@ import {
   DropdownMenuTrigger,
 } from '@qualy/ui/dropdown-menu'
 import type { NormalizedAtomicSchema, NormalizedInputSchema } from '@qualy/value-schema'
-import { materializeInput, type FieldDraft } from '@qualy/web-value-form/model'
+import { draftsFromStored, materializeInput, type FieldDraft } from '@qualy/web-value-form/model'
+import { useTryRecords } from './try-records.ts'
 import {
   DownloadIcon,
   FilePenLineIcon,
+  FlaskConicalIcon,
   LockIcon,
   MoreHorizontalIcon,
   Undo2Icon,
@@ -32,7 +34,6 @@ import { ContractTable } from './ContractTable.tsx'
 import { TryRunPanel, type TryOutcome } from './TryRunPanel.tsx'
 import {
   SideHead,
-  SideNote,
   WorkbenchBar,
   WorkbenchLayout,
   type SideTab,
@@ -124,6 +125,8 @@ export function ReleaseView({
   const [result, setResult] = useState<{ outcome: TryOutcome; forCase: string } | null>(null)
   const [running, setRunning] = useState(false)
 
+  // what this browser remembers trying against this publication
+  const tryRecords = useTryRecords(`${functionId}/release-${String(versionNo)}`)
   const detail = useQuery(
     query.assessmentFormula.getFormulaVersion.queryOptions({
       params: { functionId, versionNo: String(versionNo) },
@@ -162,7 +165,9 @@ export function ReleaseView({
           payload: { cases: [{ clientId: 'try', input: materialized.value }] },
         }),
       )) as { cases: readonly TryOutcome[] }
-      setResult({ outcome: answered.cases[0] ?? {}, forCase: JSON.stringify(frozenDrafts) })
+      const outcome = answered.cases[0] ?? {}
+      tryRecords.add({ input: materialized.value, outcome })
+      setResult({ outcome, forCase: JSON.stringify(frozenDrafts) })
     } catch (error) {
       toast.error(formatError(error))
     } finally {
@@ -208,9 +213,10 @@ export function ReleaseView({
       <SideHead
         title={format(m.tryTitle)}
         column
-        note={<SideNote>{format(m.releaseTryNote)}</SideNote>}
+        icon={<FlaskConicalIcon size={14} aria-hidden />}
       />
       <TryRunPanel
+        status={{ state: 'frozen', tone: 'quiet', words: format(m.releaseTryNote) }}
         schema={inputSchema}
         pending={{
           state: detail.isError ? 'refused' : 'loading',
@@ -229,6 +235,15 @@ export function ReleaseView({
             : { outcome: result.outcome, fresh: result.forCase === JSON.stringify(drafts) }
         }
         onRun={() => void runTry()}
+        records={tryRecords.records}
+        onPick={(record) => {
+          if (inputSchema === null) return
+          const picked = draftsFromStored(inputSchema, record.input)
+          setDrafts(picked)
+          setIssues(undefined)
+          setResult({ outcome: record.outcome, forCase: JSON.stringify(picked) })
+        }}
+        onClearRecords={tryRecords.clear}
       />
     </>
   )

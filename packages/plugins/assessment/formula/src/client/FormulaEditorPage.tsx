@@ -43,8 +43,10 @@ import {
 } from '@qualy/ui/sheet'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@qualy/ui/tooltip'
 import {
+  CheckIcon,
   CircleCheckIcon,
   CircleXIcon,
+  FlaskConicalIcon,
   FileCodeIcon,
   ListChecksIcon,
   MoreHorizontalIcon,
@@ -85,6 +87,7 @@ import {
   type Tone,
 } from './WorkbenchLayout.tsx'
 import { TryRunPanel } from './TryRunPanel.tsx'
+import { sourceMark, useTryRecords } from './try-records.ts'
 import { NewExampleDialog } from './NewExampleDialog.tsx'
 import { LazyFormulaCodeEditor } from './lazy-editors.ts'
 import { holdEditorLease } from './editor-lease.ts'
@@ -161,6 +164,15 @@ const styles = stylex.create({
   },
   nameGlyph: { flexShrink: 0 },
   statusLabel: { flexShrink: 0 },
+  statusGroup: { display: 'inline-flex', alignItems: 'center', gap: 4 },
+  // a rule between groups on one line; a phone wraps them, where a rule would hang at a line's end
+  statusRule: {
+    display: { default: 'inline-block', [breakpoints.phone]: 'none' },
+    width: 1,
+    height: 10,
+    flexShrink: 0,
+    backgroundColor: tokens.border,
+  },
   chip: {
     display: 'inline-flex',
     minWidth: 0,
@@ -488,6 +500,18 @@ const nameWidth = (name: string): string => {
   return `calc(${ems.toFixed(1)}em + 14px)`
 }
 
+/** JSON with object keys in a fixed order, so equal values compare equal */
+const canonicalJson = (value: unknown): string =>
+  JSON.stringify(value, (_key, held: unknown) =>
+    held !== null && typeof held === 'object' && !Array.isArray(held)
+      ? Object.fromEntries(
+          Object.keys(held)
+            .sort()
+            .map((key) => [key, (held as Record<string, unknown>)[key]]),
+        )
+      : held,
+  )
+
 /** a refusal raised by this screen's own checks, worded here, never generic */
 class LocalFinding extends Error {}
 
@@ -576,6 +600,15 @@ export default function FormulaEditorPage() {
     query.assessmentFormula.getFormulaFunction.queryOptions({ params: { functionId } }),
   )
   const fn = detail.data?.function
+  const latestNo = fn?.latestVersionNo ?? null
+  const latestRelease = useQuery({
+    ...query.assessmentFormula.getFormulaVersion.queryOptions({
+      params: { functionId, versionNo: String(latestNo ?? 0) },
+    }),
+    enabled: latestNo !== null,
+  })
+  // the tries this browser remembers for the draft
+  const tryRecords = useTryRecords(`${functionId}/draft`)
   const versions = detail.data?.versions ?? []
   // Where this draft was started from, when it was started from somebody
   // else's. A note about how it came to exist and nothing more: there is
@@ -595,8 +628,9 @@ export default function FormulaEditorPage() {
   // as this page does, not as long as whatever currently draws them
   const [editorLease] = useState(() => `formula-page-${newTestKey()}`)
   useEffect(() => holdEditorLease(editorLease), [editorLease])
-  // which of the try-run and the history shows where the two share a column
-  const [sideTab, setSideTab] = useState<SideTab>('try')
+  // which of the versions and the try-run shows where the two share a column;
+  // versions first, since publishing is what the page is for
+  const [sideTab, setSideTab] = useState<SideTab>('history')
   const [addingExample, setAddingExample] = useState(false)
 
   // which state of the formula is on screen - the draft, or a piece of its
@@ -877,6 +911,16 @@ export default function FormulaEditorPage() {
       const answers = await evaluate(snapshot.sourceTs, [
         { clientId: 'try', input: materialized.value },
       ])
+      const answer = answers[0]!
+      tryRecords.add({
+        input: materialized.value,
+        outcome: {
+          ...(answer.actual === undefined ? {} : { actual: answer.actual }),
+          ...(answer.refusal === undefined ? {} : { refusal: answer.refusal }),
+          ...(answer.defect === undefined ? {} : { defect: answer.defect }),
+        },
+        mark: sourceMark(snapshot.sourceTs),
+      })
       setTryResult({
         ...answers[0]!,
         forSource: snapshot.sourceTs,
@@ -1620,6 +1664,18 @@ export default function FormulaEditorPage() {
               ? format(m.examplesNotRun, { count: notRun })
               : format(m.examplesAllPassed)
 
+  // Whether the SAVED draft is exactly what was last published - source and
+  // examples both. Said beside the draft's own state, and apart from the
+  // name of the latest publication, so a saved draft is never read as the
+  // publication itself.
+  const releaseRelation: 'same' | 'ahead' | 'none' =
+    fn.latestVersionNo === null || latestRelease.data === undefined
+      ? 'none'
+      : latestRelease.data.version.sourceTs === fn.draftSourceTs &&
+          canonicalJson(latestRelease.data.version.tests) === canonicalJson(fn.draftTests)
+        ? 'same'
+        : 'ahead'
+
   const saveState = publish.isPending
     ? 'publishing'
     : save.isPending
@@ -1824,44 +1880,59 @@ export default function FormulaEditorPage() {
           <span
             data-testid="formula-save-state"
             data-state={saveState}
-            {...stylex.props(saveState === 'dirty' && styles.statusDirty)}
+            data-release={releaseRelation}
+            {...stylex.props(styles.statusGroup, saveState === 'dirty' && styles.statusDirty)}
           >
+            {saveState === 'clean' && releaseRelation === 'same' ? (
+              <CheckIcon size={12} aria-hidden />
+            ) : null}
             {format(
-              {
-                publishing: m.draftPublishing,
-                saving: m.draftSaving,
-                dirty: m.draftDirty,
-                clean: m.draftClean,
-              }[saveState],
+              saveState !== 'clean'
+                ? {
+                    publishing: m.draftPublishing,
+                    saving: m.draftSaving,
+                    dirty: m.draftDirty,
+                  }[saveState]
+                : releaseRelation === 'same'
+                  ? m.draftMatchesRelease
+                  : releaseRelation === 'ahead'
+                    ? m.draftUnpublished
+                    : m.draftClean,
             )}
           </span>
           {fn.latestVersionNo === null ? null : (
             <>
-              <span {...stylex.props(styles.statusLabel)}>{format(m.latestRelease)}</span>
-              <button
-                type="button"
-                data-testid="formula-latest-release"
-                title={format(m.openRelease)}
-                onClick={() => showView({ kind: 'release', versionNo: fn.latestVersionNo! })}
-                {...stylex.props(styles.chip)}
-              >
-                <TagIcon size={11} aria-hidden />
-                <span {...stylex.props(styles.chipWords)}>
-                  {releaseWords({
-                    versionNo: fn.latestVersionNo,
-                    releaseName: fn.latestReleaseName,
-                  })}
-                </span>
-              </button>
+              <span aria-hidden {...stylex.props(styles.statusRule)} />
+              <span {...stylex.props(styles.statusGroup)}>
+                <span {...stylex.props(styles.statusLabel)}>{format(m.latestRelease)}</span>
+                <button
+                  type="button"
+                  data-testid="formula-latest-release"
+                  title={format(m.openRelease)}
+                  onClick={() => showView({ kind: 'release', versionNo: fn.latestVersionNo! })}
+                  {...stylex.props(styles.chip)}
+                >
+                  <TagIcon size={11} aria-hidden />
+                  <span {...stylex.props(styles.chipWords)}>
+                    {releaseWords({
+                      versionNo: fn.latestVersionNo,
+                      releaseName: fn.latestReleaseName,
+                    })}
+                  </span>
+                </button>
+              </span>
             </>
           )}
           {copiedFrom === null ? null : (
             <>
-              <span {...stylex.props(styles.statusLabel)}>{format(m.templatesCopiedFrom)}</span>
-              <span {...stylex.props(styles.chip, styles.chipStill)}>
-                <span {...stylex.props(styles.chipWords)}>{copiedFrom.functionName}</span>
-                <span {...stylex.props(styles.chipWords, styles.chipQuiet)}>
-                  {releaseWords(copiedFrom)}
+              <span aria-hidden {...stylex.props(styles.statusRule)} />
+              <span {...stylex.props(styles.statusGroup)}>
+                <span {...stylex.props(styles.statusLabel)}>{format(m.templatesCopiedFrom)}</span>
+                <span {...stylex.props(styles.chip, styles.chipStill)}>
+                  <span {...stylex.props(styles.chipWords)}>{copiedFrom.functionName}</span>
+                  <span {...stylex.props(styles.chipWords, styles.chipQuiet)}>
+                    {releaseWords(copiedFrom)}
+                  </span>
                 </span>
               </span>
             </>
@@ -2079,18 +2150,22 @@ export default function FormulaEditorPage() {
       <SideHead
         title={format(m.tryTitle)}
         column
-        note={
-          <span
-            data-testid="formula-structure"
-            data-state={structure}
-            {...stylex.props(styles.sideNote, structure === 'refused' && styles.sideNoteOff)}
-          >
-            {/* with no form yet, the room below says it instead */}
-            {contract === null ? null : structureWords}
-          </span>
-        }
+        icon={<FlaskConicalIcon size={14} aria-hidden />}
       />
       <TryRunPanel
+        status={{
+          testId: 'formula-structure',
+          state: structure,
+          tone:
+            structure === 'synced'
+              ? 'good'
+              : structure === 'refused'
+                ? 'warn'
+                : structure === 'blank'
+                  ? 'quiet'
+                  : 'working',
+          words: structureWords,
+        }}
         schema={contract?.inputSchema ?? null}
         pending={{
           state: structure,
@@ -2109,6 +2184,20 @@ export default function FormulaEditorPage() {
           saveTryAsCase(expected)
           setTab('examples')
         }}
+        records={tryRecords.records}
+        mark={sourceMark(source)}
+        onPick={(record) => {
+          if (contract === null) return
+          const picked = draftsFromStored(contract.inputSchema, record.input)
+          setTryDrafts(picked)
+          setTryIssues(undefined)
+          setTryResult({
+            ...record.outcome,
+            forSource: record.mark === sourceMark(source) ? source : '',
+            forCase: JSON.stringify(picked),
+          })
+        }}
+        onClearRecords={tryRecords.clear}
       />
     </>
   )

@@ -84,6 +84,7 @@ const screenFor = (
     assessmentFormula: {
       getFormulaFunction: detail(tests),
       listFormulaDraftRevisions: { items: [], nextCursor: null },
+      getFormulaVersion: { version: { versionNo: 1, sourceTs: '', tests: [] } },
       previewFormulaDraft: (request: { payload: { sourceTs: string } }) => {
         wire.previews.push(request.payload.sourceTs)
         return Effect.succeed(contract)

@@ -1,26 +1,39 @@
 import * as stylex from '@stylexjs/stylex'
-import { createContext, use, type ReactNode } from 'react'
+import { createContext, use, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { PageLink } from '@qualy/web-runtime'
+import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { layout } from '@qualy/ui/theme/layout.stylex'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@qualy/ui/tabs'
 import { useIsBelow } from '@qualy/ui/use-mobile'
 import { ArrowLeftIcon } from 'lucide-react'
 import { workbenchStyles as w } from './workbench-styles.ts'
+import { formulaMessages as m } from './i18n.ts'
+import {
+  DEFAULT_WORKBENCH_SIZES,
+  useWorkbenchSizes,
+  type WorkbenchSizes,
+} from './workbench-sizes.ts'
 
 // The formula workbench's frame, whatever it is showing.
 //
-// On a wide screen: a bar, the source on the left, then two columns of the
-// same width - the try-run, and the formula's history - each scrolling in
-// its own place, and a panel of tabs under all three. Where two columns do
-// not fit beside the source, they share one and a pair of tabs switches
-// between them. On a phone the same parts are spread over tabs, one at a
-// time, and whatever stands between the state and its next step stays at
-// the foot of the screen.
+// On a wide screen: a bar, the source on the left, then two columns - the
+// try-run, and the formula's versions - each scrolling in its own place, and
+// a panel of tabs under all three. Every edge between them can be dragged,
+// and the sizes are remembered. Where two columns do not fit beside the
+// source, they share one, versions first, behind a pair of tabs. On a phone
+// the same parts are spread over tabs, one at a time, and whatever stands
+// between the state and its next step stays at the foot of the screen.
 
-/** below this viewport width the try-run and the history share one column */
+/** below this viewport width the try-run and the versions share one column */
 const SPLIT_COLUMNS_MIN_WIDTH = 1200
+/** the least room a dragged edge leaves the source, a column and the upper area */
+const SOURCE_MIN_WIDTH = 320
+const COLUMN_MIN_WIDTH = 240
+const UPPER_MIN_HEIGHT = 200
+const PANEL_MIN_HEIGHT = 120
+/** how far one arrow key moves an edge */
+const KEY_STEP = 16
 
 export type SideTab = 'try' | 'history'
 
@@ -111,9 +124,11 @@ const styles = stylex.create({
   sourcePane: {
     position: 'relative',
     display: 'flex',
-    minWidth: 0,
+    minWidth: SOURCE_MIN_WIDTH,
     minHeight: 0,
     flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
     flexDirection: 'column',
     backgroundColor: tokens.surface,
     borderRightWidth: 1,
@@ -122,9 +137,9 @@ const styles = stylex.create({
   },
   column: {
     display: 'flex',
-    width: { default: 324, [breakpoints.tablet]: 300 },
+    minWidth: COLUMN_MIN_WIDTH,
     minHeight: 0,
-    flexShrink: 0,
+    flexShrink: 1,
     flexDirection: 'column',
     overflow: 'hidden',
     backgroundColor: tokens.background,
@@ -144,7 +159,7 @@ const styles = stylex.create({
 
   panel: {
     display: 'flex',
-    height: 268,
+    minHeight: PANEL_MIN_HEIGHT,
     flexShrink: 0,
     flexDirection: 'column',
     backgroundColor: tokens.surface,
@@ -220,7 +235,68 @@ const styles = stylex.create({
   dotGood: { backgroundColor: tokens.success },
   dotBad: { backgroundColor: tokens.danger },
 
-  sideHeadGap: { height: 12, flexShrink: 0 },
+  // a column's name, as a bar the column hangs from: as tall as the source
+  // pane's head beside it, on the same rule, so the three read as one row
+  columnHead: {
+    display: 'flex',
+    height: 38,
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 8,
+    paddingInline: 16,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
+    backgroundColor: tokens.surface,
+  },
+  columnHeadIcon: { display: 'inline-flex', flexShrink: 0, color: tokens.mutedForeground },
+  columnHeadTitle: {
+    flexShrink: 0,
+    margin: 0,
+    fontSize: 13,
+    fontWeight: 600,
+    color: tokens.foreground,
+  },
+  edgeX: { position: 'relative', flexShrink: 0, width: 0, zIndex: 3 },
+  edgeY: { position: 'relative', flexShrink: 0, height: 0, zIndex: 3 },
+  // The hit area straddles the rule it moves; the rule lights up under the
+  // pointer, under the keyboard and while it is being dragged.
+  handle: {
+    position: 'absolute',
+    borderWidth: 0,
+    padding: 0,
+    outlineStyle: 'none',
+    backgroundColor: 'transparent',
+    touchAction: 'none',
+    transitionProperty: 'background-color',
+    transitionDuration: '120ms',
+  },
+  handleX: {
+    top: 0,
+    bottom: 0,
+    left: -4,
+    width: 9,
+    cursor: 'col-resize',
+    backgroundImage: {
+      default: 'none',
+      ':hover': `linear-gradient(to right, transparent 3px, ${tokens.focusRing} 3px, ${tokens.focusRing} 6px, transparent 6px)`,
+      ':focus-visible': `linear-gradient(to right, transparent 3px, ${tokens.focusRing} 3px, ${tokens.focusRing} 6px, transparent 6px)`,
+      '[data-dragging]': `linear-gradient(to right, transparent 3px, ${tokens.focusRing} 3px, ${tokens.focusRing} 6px, transparent 6px)`,
+    },
+  },
+  handleY: {
+    left: 0,
+    right: 0,
+    top: -4,
+    height: 9,
+    cursor: 'row-resize',
+    backgroundImage: {
+      default: 'none',
+      ':hover': `linear-gradient(to bottom, transparent 3px, ${tokens.focusRing} 3px, ${tokens.focusRing} 6px, transparent 6px)`,
+      ':focus-visible': `linear-gradient(to bottom, transparent 3px, ${tokens.focusRing} 3px, ${tokens.focusRing} 6px, transparent 6px)`,
+      '[data-dragging]': `linear-gradient(to bottom, transparent 3px, ${tokens.focusRing} 3px, ${tokens.focusRing} 6px, transparent 6px)`,
+    },
+  },
   sideHead: {
     display: 'flex',
     alignItems: 'center',
@@ -260,25 +336,40 @@ export function ToneDot({ tone }: { readonly tone: Tone }) {
   )
 }
 
-/** a section of the right-hand column: its name, a note, an action */
+/**
+ * A section's name, with a note and an action beside it. A head that names a
+ * whole column is drawn as the column's bar, with an icon; where columns
+ * share room behind tabs, the tab says the name and the bar steps aside.
+ */
 export function SideHead({
   title,
   note,
   action,
+  icon,
   column = false,
 }: {
   readonly title: string
   readonly note?: ReactNode
   readonly action?: ReactNode
-  /** this head names a whole column, which a tab names instead where columns share room */
+  readonly icon?: ReactNode
+  /** this head names a whole column */
   readonly column?: boolean
 }) {
   const tabbed = use(TabbedColumns)
-  if (column && tabbed && note === undefined && action === undefined)
-    return <div aria-hidden {...stylex.props(styles.sideHeadGap)} />
+  if (column && tabbed) return null
+  if (column)
+    return (
+      <div {...stylex.props(styles.columnHead)}>
+        {icon === undefined ? null : <span {...stylex.props(styles.columnHeadIcon)}>{icon}</span>}
+        <h2 {...stylex.props(styles.columnHeadTitle)}>{title}</h2>
+        <span {...stylex.props(w.spring)} />
+        {note}
+        {action}
+      </div>
+    )
   return (
     <div {...stylex.props(styles.sideHead)}>
-      {column && tabbed ? null : <h2 {...stylex.props(styles.sideTitle)}>{title}</h2>}
+      <h2 {...stylex.props(styles.sideTitle)}>{title}</h2>
       <span {...stylex.props(w.spring)} />
       {note}
       {action}
@@ -364,6 +455,102 @@ export function WorkbenchBar({
   )
 }
 
+/**
+ * A draggable edge between two regions. It sizes the region AFTER it - the
+ * column to its right, the panel below - so moving it toward that region
+ * makes the region smaller. Arrow keys move it a step at a time, and a
+ * double press puts the region back to its default size.
+ */
+function Edge({
+  name,
+  axis,
+  label,
+  value,
+  fallback,
+  limits,
+  onResize,
+}: {
+  /** which size the edge moves, for a test to find it by */
+  readonly name: keyof WorkbenchSizes
+  readonly axis: 'x' | 'y'
+  readonly label: string
+  readonly value: number
+  readonly fallback: number
+  /** measured when a drag starts, since the room around it may have changed */
+  readonly limits: () => { readonly min: number; readonly max: number }
+  readonly onResize: (value: number, settle: boolean) => void
+}) {
+  const [dragging, setDragging] = useState(false)
+  const origin = useRef<{ pointer: number; value: number; min: number; max: number } | null>(null)
+  const clamp = (next: number, min: number, max: number) => Math.min(Math.max(next, min), max)
+  const at = (event: { clientX: number; clientY: number }) =>
+    axis === 'x' ? event.clientX : event.clientY
+
+  const settleKey = (delta: number) => {
+    const { min, max } = limits()
+    onResize(clamp(value + delta, min, Math.max(min, max)), true)
+  }
+
+  return (
+    <div {...stylex.props(axis === 'x' ? styles.edgeX : styles.edgeY)}>
+      <div
+        role="separator"
+        tabIndex={0}
+        aria-label={label}
+        aria-orientation={axis === 'x' ? 'vertical' : 'horizontal'}
+        aria-valuenow={value}
+        data-testid="workbench-edge"
+        data-size={name}
+        data-dragging={dragging ? true : undefined}
+        onPointerDown={(event) => {
+          if (event.button !== 0) return
+          event.preventDefault()
+          const { min, max } = limits()
+          origin.current = { pointer: at(event), value, min, max: Math.max(min, max) }
+          try {
+            event.currentTarget.setPointerCapture(event.pointerId)
+          } catch {
+            // a pointer the browser no longer tracks still drags while it moves over the edge
+          }
+          setDragging(true)
+          document.body.style.cursor = axis === 'x' ? 'col-resize' : 'row-resize'
+          document.body.style.userSelect = 'none'
+        }}
+        onPointerMove={(event) => {
+          const start = origin.current
+          if (start === null) return
+          onResize(clamp(start.value - (at(event) - start.pointer), start.min, start.max), false)
+        }}
+        onPointerUp={(event) => {
+          const start = origin.current
+          if (start === null) return
+          origin.current = null
+          if (event.currentTarget.hasPointerCapture(event.pointerId))
+            event.currentTarget.releasePointerCapture(event.pointerId)
+          setDragging(false)
+          document.body.style.cursor = ''
+          document.body.style.userSelect = ''
+          onResize(clamp(start.value - (at(event) - start.pointer), start.min, start.max), true)
+        }}
+        onDoubleClick={() => onResize(fallback, true)}
+        onKeyDown={(event) => {
+          const grow = axis === 'x' ? 'ArrowLeft' : 'ArrowUp'
+          const shrink = axis === 'x' ? 'ArrowRight' : 'ArrowDown'
+          if (event.key === grow) settleKey(KEY_STEP)
+          else if (event.key === shrink) settleKey(-KEY_STEP)
+          else return
+          event.preventDefault()
+        }}
+        {...stylex.props(styles.handle, axis === 'x' ? styles.handleX : styles.handleY)}
+      />
+    </div>
+  )
+}
+
+/** the room a region may take, measured against what is around it now */
+const widthOf = (ref: RefObject<HTMLElement | null>): number =>
+  ref.current?.getBoundingClientRect().width ?? 0
+
 function TabWords({ tab }: { readonly tab: WorkbenchTab }) {
   return (
     <span {...stylex.props(styles.tabWords)}>
@@ -426,7 +613,13 @@ export function WorkbenchLayout({
   /** sheets and dialogs that belong to the view */
   readonly children?: ReactNode
 }) {
+  const { format } = useI18n()
   const shared = useIsBelow(SPLIT_COLUMNS_MIN_WIDTH)
+  const { sizes, resize } = useWorkbenchSizes()
+  const workbenchRef = useRef<HTMLDivElement | null>(null)
+  const upperRef = useRef<HTMLDivElement | null>(null)
+  const size = (key: keyof WorkbenchSizes) => (value: number, settle: boolean) =>
+    resize(key, value, settle)
   if (narrow) {
     return (
       <TabbedColumns value>
@@ -455,52 +648,124 @@ export function WorkbenchLayout({
       </TabbedColumns>
     )
   }
+  const panelLimits = () => {
+    const whole = workbenchRef.current?.getBoundingClientRect()
+    const upper = upperRef.current?.getBoundingClientRect()
+    if (whole === undefined || upper === undefined) return { min: PANEL_MIN_HEIGHT, max: 600 }
+    return {
+      min: PANEL_MIN_HEIGHT,
+      max: whole.bottom - upper.top - UPPER_MIN_HEIGHT,
+    }
+  }
+  const columnLimits = (others: number) => () => ({
+    min: COLUMN_MIN_WIDTH,
+    max: widthOf(upperRef) - SOURCE_MIN_WIDTH - others,
+  })
+
   return (
-    <div data-testid={testId} data-status={status} {...stylex.props(styles.workbench)}>
+    <div
+      ref={workbenchRef}
+      data-testid={testId}
+      data-status={status}
+      {...stylex.props(styles.workbench)}
+    >
       {bar}
       {notices}
-      <div {...stylex.props(styles.upper)} data-columns={shared ? 'shared' : 'split'}>
+      <div
+        ref={upperRef}
+        {...stylex.props(styles.upper)}
+        data-columns={shared ? 'shared' : 'split'}
+      >
         {/* first on either width, so the source is never rebuilt when the columns fold */}
         <div {...stylex.props(styles.sourcePane)}>{source}</div>
         {shared ? (
           <TabbedColumns value>
-            <aside {...stylex.props(styles.column)}>
+            <Edge
+              axis="x"
+              label={format(m.resizeSide)}
+              value={sizes.sideWidth}
+              fallback={DEFAULT_WORKBENCH_SIZES.sideWidth}
+              limits={columnLimits(0)}
+              name="sideWidth"
+              onResize={size('sideWidth')}
+            />
+            <aside {...stylex.props(styles.column)} style={{ flexBasis: sizes.sideWidth }}>
               <Tabs
                 value={sideTab}
                 onValueChange={(next) => onSideTab(next as SideTab)}
                 xstyle={styles.columnFill}
               >
                 <div {...stylex.props(styles.columnTabs)}>
-                  <TabsList aria-label={`${tryLabel} ${historyLabel}`} xstyle={styles.tabList}>
-                    <TabsTrigger value="try" xstyle={styles.tab}>
-                      {tryLabel}
-                    </TabsTrigger>
+                  <TabsList aria-label={`${historyLabel} ${tryLabel}`} xstyle={styles.tabList}>
                     <TabsTrigger value="history" xstyle={styles.tab}>
                       {historyLabel}
                     </TabsTrigger>
+                    <TabsTrigger value="try" xstyle={styles.tab}>
+                      {tryLabel}
+                    </TabsTrigger>
                   </TabsList>
                 </div>
-                <TabsContent value="try" xstyle={styles.columnScroll}>
-                  {tryRun}
-                </TabsContent>
                 <TabsContent value="history" xstyle={styles.columnFill}>
                   {history}
+                </TabsContent>
+                <TabsContent value="try" xstyle={styles.columnScroll}>
+                  {tryRun}
                 </TabsContent>
               </Tabs>
             </aside>
           </TabbedColumns>
         ) : (
           <>
-            <section aria-label={tryLabel} {...stylex.props(styles.column)}>
+            <Edge
+              axis="x"
+              label={format(m.resizeTry)}
+              value={sizes.tryWidth}
+              fallback={DEFAULT_WORKBENCH_SIZES.tryWidth}
+              limits={columnLimits(sizes.historyWidth)}
+              name="tryWidth"
+              onResize={size('tryWidth')}
+            />
+            <section
+              aria-label={tryLabel}
+              {...stylex.props(styles.column)}
+              style={{ flexBasis: sizes.tryWidth }}
+            >
               <div {...stylex.props(styles.columnScroll)}>{tryRun}</div>
             </section>
-            <section aria-label={historyLabel} {...stylex.props(styles.column, styles.columnRuled)}>
+            <Edge
+              axis="x"
+              label={format(m.resizeHistory)}
+              value={sizes.historyWidth}
+              fallback={DEFAULT_WORKBENCH_SIZES.historyWidth}
+              limits={columnLimits(sizes.tryWidth)}
+              name="historyWidth"
+              onResize={size('historyWidth')}
+            />
+            <section
+              aria-label={historyLabel}
+              {...stylex.props(styles.column, styles.columnRuled)}
+              style={{ flexBasis: sizes.historyWidth }}
+            >
               {history}
             </section>
           </>
         )}
       </div>
-      <Tabs value={panelTab} onValueChange={onPanelTab} xstyle={styles.panel}>
+      <Edge
+        axis="y"
+        label={format(m.resizePanel)}
+        value={sizes.panelHeight}
+        fallback={DEFAULT_WORKBENCH_SIZES.panelHeight}
+        limits={panelLimits}
+        name="panelHeight"
+        onResize={size('panelHeight')}
+      />
+      <Tabs
+        value={panelTab}
+        onValueChange={onPanelTab}
+        xstyle={styles.panel}
+        style={{ height: sizes.panelHeight }}
+      >
         <div {...stylex.props(styles.panelBar)}>
           <TabsList aria-label={panelLabel} xstyle={styles.tabList}>
             {panelTabs.map((tab) => (

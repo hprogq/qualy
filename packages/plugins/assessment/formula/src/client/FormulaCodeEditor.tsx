@@ -20,6 +20,9 @@ import { useEffect, useRef, useState, useSyncExternalStore, type RefObject } fro
 import * as stylex from '@stylexjs/stylex'
 import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { Button } from '@qualy/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@qualy/ui/tooltip'
+import { CodeXmlIcon, WandSparklesIcon } from 'lucide-react'
 import { monaco } from './monaco-setup.ts'
 import { holdEditorLease } from './editor-lease.ts'
 import { editorSession, type EditorSession, type SessionState } from './editor-session.ts'
@@ -43,13 +46,16 @@ const styles = stylex.create({
     height: 38,
     flexShrink: 0,
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
     paddingInline: 16,
     borderBottomWidth: 1,
     borderBottomStyle: 'solid',
     borderBottomColor: tokens.divider,
   },
-  label: { flexShrink: 0, fontSize: 12, fontWeight: 500, color: tokens.surfaceMutedForeground },
+  // named like the columns beside it, so the three heads read as one row
+  label: { flexShrink: 0, fontSize: 13, fontWeight: 600, color: tokens.foreground },
+  labelIcon: { display: 'inline-flex', flexShrink: 0, color: tokens.mutedForeground },
+  tipHost: { display: 'inline-flex' },
   readOnly: {
     flexShrink: 0,
     paddingInline: 6,
@@ -134,6 +140,39 @@ function LanguageStatus({ session }: { readonly session: EditorSession | null })
       />
       <span {...stylex.props(styles.statusWords)}>{words}</span>
     </p>
+  )
+}
+
+/**
+ * Formats the whole source through the language service - the same thing the
+ * editor's context menu offers, where few people look for it.
+ */
+function FormatButton({
+  ready,
+  onFormat,
+}: {
+  readonly ready: boolean
+  readonly onFormat: () => void
+}) {
+  const { format } = useI18n()
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span tabIndex={ready ? -1 : 0} {...stylex.props(styles.tipHost)}>
+          <Button
+            variant="ghost"
+            size="xs"
+            data-testid="formula-format"
+            disabled={!ready}
+            onClick={onFormat}
+          >
+            <WandSparklesIcon aria-hidden />
+            {format(m.formatCode)}
+          </Button>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{format(ready ? m.formatCodeHint : m.formatCodeWaiting)}</TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -254,12 +293,28 @@ export default function FormulaCodeEditor(props: FormulaCodeEditorProps) {
     editorRef.current?.updateOptions({ readOnly: props.readOnly })
   }, [props.readOnly, editorRef, session])
 
+  const state = useSyncExternalStore(session?.subscribe ?? silent, session?.state ?? connecting)
+
   return (
     <div {...stylex.props(styles.frame)}>
       <div {...stylex.props(styles.head)}>
+        <span {...stylex.props(styles.labelIcon)}>
+          <CodeXmlIcon size={14} aria-hidden />
+        </span>
         <span {...stylex.props(styles.label)}>{props.label ?? props.ariaLabel}</span>
         <span {...stylex.props(styles.spring)} />
         <LanguageStatus session={session} />
+        {props.readOnly ? null : (
+          <FormatButton
+            ready={session !== null && state === 'ready'}
+            onFormat={() => {
+              const editor = editorRef.current
+              if (editor === null) return
+              editor.focus()
+              void editor.getAction('editor.action.formatDocument')?.run()
+            }}
+          />
+        )}
       </div>
       <div ref={containerRef} {...stylex.props(styles.editor)} data-testid="formula-code-editor" />
     </div>
@@ -298,6 +353,9 @@ export function FormulaSourceViewer(props: FormulaSourceViewerProps) {
   return (
     <div {...stylex.props(styles.frame)}>
       <div {...stylex.props(styles.head)}>
+        <span {...stylex.props(styles.labelIcon)}>
+          <CodeXmlIcon size={14} aria-hidden />
+        </span>
         <span {...stylex.props(styles.label)}>{props.label}</span>
         <span {...stylex.props(styles.readOnly)}>{props.readOnlyLabel}</span>
         <span {...stylex.props(styles.spring)} />

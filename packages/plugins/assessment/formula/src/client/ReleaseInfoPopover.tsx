@@ -44,8 +44,12 @@ const styles = stylex.create({
     cursor: 'pointer',
   },
   triggerOpen: { backgroundColor: tokens.border, color: tokens.foreground },
-  body: { display: 'flex', flexDirection: 'column', gap: 10 },
+  // the card's own padding belongs to the hover area too, or the pointer
+  // crossing the margin between text and edge would read as leaving
+  body: { display: 'flex', flexDirection: 'column', gap: 12, margin: -14, padding: 14 },
+  header: { display: 'flex', flexDirection: 'column', gap: 4 },
   name: { margin: 0, fontSize: 14, fontWeight: 600, overflowWrap: 'anywhere' },
+  rule: { height: 1, marginInline: -14, backgroundColor: tokens.divider },
   unnamed: { color: tokens.mutedForeground, fontWeight: 500 },
   notes: {
     margin: 0,
@@ -55,10 +59,17 @@ const styles = stylex.create({
     overflowWrap: 'anywhere',
     color: tokens.surfaceMutedForeground,
   },
-  facts: { display: 'flex', flexDirection: 'column', gap: 6, margin: 0 },
-  fact: { display: 'flex', gap: 10, fontSize: 12.5 },
-  factLabel: { flexShrink: 0, width: '4.5rem', color: tokens.mutedForeground },
+  facts: {
+    display: 'grid',
+    gridTemplateColumns: 'auto minmax(0, 1fr)',
+    columnGap: 14,
+    rowGap: 6,
+    margin: 0,
+    fontSize: 12.5,
+  },
+  factLabel: { color: tokens.mutedForeground },
   factValue: { margin: 0, minWidth: 0, overflowWrap: 'anywhere' },
+  section: { display: 'flex', flexDirection: 'column', gap: 8 },
   sub: { margin: 0, fontSize: 12, fontWeight: 600, color: tokens.surfaceMutedForeground },
 })
 
@@ -136,7 +147,7 @@ export function ReleaseInfoPopover({
           <InfoIcon size={15} aria-hidden />
         </button>
       </PopoverTrigger>
-      <PopoverContent side="left" align="start" width={300}>
+      <PopoverContent side="bottom" align="end" width={300}>
         <div
           data-testid="formula-release-card"
           onMouseEnter={cancel}
@@ -147,12 +158,15 @@ export function ReleaseInfoPopover({
           onFocusCapture={() => setPinned(true)}
           {...stylex.props(styles.body)}
         >
-          <p {...stylex.props(styles.name, release.releaseName === null && styles.unnamed)}>
-            {name}
-          </p>
-          {release.releaseNotes === null ? null : (
-            <p {...stylex.props(styles.notes)}>{release.releaseNotes}</p>
-          )}
+          <div {...stylex.props(styles.header)}>
+            <p {...stylex.props(styles.name, release.releaseName === null && styles.unnamed)}>
+              {name}
+            </p>
+            {release.releaseNotes === null ? null : (
+              <p {...stylex.props(styles.notes)}>{release.releaseNotes}</p>
+            )}
+          </div>
+          <div aria-hidden {...stylex.props(styles.rule)} />
           <dl {...stylex.props(styles.facts)}>
             {(
               [
@@ -160,15 +174,20 @@ export function ReleaseInfoPopover({
                 [m.templatesPublishedColumn, fullWhen(release.publishedAt, locale)],
                 [m.releasePublisher, release.publishedByName ?? format(m.templatesAuthorUnknown)],
               ] as const
-            ).map(([label, value]) => (
-              <div key={label.id} {...stylex.props(styles.fact)}>
-                <dt {...stylex.props(styles.factLabel)}>{format(label)}</dt>
-                <dd {...stylex.props(styles.factValue)}>{value}</dd>
-              </div>
-            ))}
+            ).flatMap(([label, value]) => [
+              <dt key={`${label.id}-label`} {...stylex.props(styles.factLabel)}>
+                {format(label)}
+              </dt>,
+              <dd key={`${label.id}-value`} {...stylex.props(styles.factValue)}>
+                {value}
+              </dd>,
+            ])}
           </dl>
-          <h3 {...stylex.props(styles.sub)}>{format(m.releaseSharing)}</h3>
-          <VersionSharing functionId={functionId} versionNo={release.versionNo} />
+          <div aria-hidden {...stylex.props(styles.rule)} />
+          <div {...stylex.props(styles.section)}>
+            <h3 {...stylex.props(styles.sub)}>{format(m.releaseSharing)}</h3>
+            <VersionSharing functionId={functionId} versionNo={release.versionNo} />
+          </div>
         </div>
       </PopoverContent>
     </Popover>

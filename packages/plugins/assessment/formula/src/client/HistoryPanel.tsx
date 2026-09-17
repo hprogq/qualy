@@ -13,6 +13,7 @@ import { shortWhen } from './library-styles.ts'
 import { ReleaseInfoPopover, type ReleaseInfo } from './ReleaseInfoPopover.tsx'
 import type { WorkbenchView } from './workbench-view.ts'
 import { SideHead } from './WorkbenchLayout.tsx'
+import { TagsIcon } from 'lucide-react'
 import { workbenchStyles as w } from './workbench-styles.ts'
 
 // A formula's history, as a place to go rather than a record to read.
@@ -27,8 +28,8 @@ export type HistoryList = 'releases' | 'revisions'
 
 const styles = stylex.create({
   frame: { display: 'flex', minHeight: 0, flexGrow: 1, flexDirection: 'column' },
-  primary: { display: 'flex', flexShrink: 0, paddingInline: 16, paddingBottom: 10 },
-  switch: { paddingInline: 16, paddingBottom: 8, flexShrink: 0 },
+  primary: { display: 'flex', flexShrink: 0, paddingInline: 16, paddingTop: 12, paddingBottom: 10 },
+  switch: { paddingInline: 16, paddingTop: 4, paddingBottom: 8, flexShrink: 0 },
   switchList: { width: '100%' },
   switchTab: { flexGrow: 1, justifyContent: 'center', fontSize: 12.5 },
   count: {
@@ -307,7 +308,7 @@ export function HistoryPanel({
 
   return (
     <div {...stylex.props(styles.frame)}>
-      <SideHead title={format(m.historyTitle)} column />
+      <SideHead title={format(m.historyTitle)} column icon={<TagsIcon size={14} aria-hidden />} />
       {primary === undefined || primary === null ? null : (
         <div {...stylex.props(styles.primary)}>{primary}</div>
       )}

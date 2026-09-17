@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { describe, expect, it, vi, afterEach } from 'vitest'
 import { render } from 'vitest-browser-react'
 import { I18nProvider } from '@qualy/web-i18n'
+import { UiProvider } from '@qualy/ui/provider'
 import { catalogs, errorMessages } from './support/screen.tsx'
 import { monaco } from '@qualy/plugin-assessment-formula/client/monaco-setup'
 import FormulaCodeEditor from '@qualy/plugin-assessment-formula/client/FormulaCodeEditor'
@@ -83,7 +84,7 @@ const mount = (element: React.ReactElement) =>
   render(
     <StrictMode>
       <I18nProvider catalogs={catalogs} errorMessages={errorMessages} fallback={null}>
-        {element}
+        <UiProvider scheme="light">{element}</UiProvider>
       </I18nProvider>
     </StrictMode>,
   )
@@ -157,7 +158,9 @@ describe('the formula code editor', () => {
       await screen.rerender(
         <StrictMode>
           <I18nProvider catalogs={catalogs} errorMessages={errorMessages} fallback={null}>
-            <FormulaCodeEditor {...editorProps('a stale echo\n', { onChange })} />
+            <UiProvider scheme="light">
+              <FormulaCodeEditor {...editorProps('a stale echo\n', { onChange })} />
+            </UiProvider>
           </I18nProvider>
         </StrictMode>,
       )
@@ -169,7 +172,9 @@ describe('the formula code editor', () => {
       await screen.rerender(
         <StrictMode>
           <I18nProvider catalogs={catalogs} errorMessages={errorMessages} fallback={null}>
-            <FormulaCodeEditor {...editorProps('the server draft\n', { onChange, seed: 1 })} />
+            <UiProvider scheme="light">
+              <FormulaCodeEditor {...editorProps('the server draft\n', { onChange, seed: 1 })} />
+            </UiProvider>
           </I18nProvider>
         </StrictMode>,
       )

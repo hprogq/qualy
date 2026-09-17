@@ -51,14 +51,37 @@ const draft = {
   draftTests: [{ name: 'seed', input: { base: '1', bonus: 0 }, expected: '1' }],
 }
 
-const open = (wrote: { status: unknown[] } = { status: [] }) =>
+const open = (
+  wrote: { status: unknown[]; tries?: unknown[] } = { status: [] },
+  published?: { readonly source: string; readonly tests: unknown },
+) =>
   renderScreen({
     client: fakeClient({
       app: { getManifest: emptyManifest() },
       assessmentFormula: {
         getFormulaFunction: () =>
-          Effect.succeed({ function: draft, versions: [], copiedFrom: null }),
+          Effect.succeed({
+            function:
+              published === undefined
+                ? draft
+                : { ...draft, latestVersionNo: 1, latestReleaseName: '秋季规则' },
+            versions: [],
+            copiedFrom: null,
+          }),
+        getFormulaVersion: () =>
+          Effect.succeed({
+            version: {
+              versionNo: 1,
+              releaseName: '秋季规则',
+              sourceTs: published?.source ?? '',
+              tests: published?.tests ?? [],
+            },
+          }),
         previewFormulaDraft: () => Effect.succeed(contract),
+        evaluateFormulaDraft: (request: { payload: { cases: { input: unknown }[] } }) => {
+          wrote.tries?.push(request.payload.cases[0]!.input)
+          return Effect.succeed({ ...contract, cases: [{ clientId: 'try', actual: '3.5' }] })
+        },
         listFormulaDraftRevisions: {
           items: [
             {
@@ -278,7 +301,7 @@ describe('the formula workbench', () => {
     }
   }, 60_000)
 
-  it('gives the try-run and the history a column each where they fit, and tabs where they do not', async () => {
+  it('gives the try-run and the versions a column each where they fit, and tabs where they do not', async () => {
     const wide = await open()
     try {
       await vi.waitFor(
@@ -301,10 +324,119 @@ describe('the formula workbench', () => {
           ),
         { timeout: 10_000 },
       )
-      await page.getByRole('tab', { name: '历史' }).click()
+      // versions come first, and show first
       await expect.element(page.getByTestId('formula-publish-open')).toBeVisible()
+      await page.getByRole('tab', { name: '试运行' }).click()
+      await expect.element(page.getByTestId('formula-structure')).toBeVisible()
     } finally {
       narrow.unmount()
+    }
+  }, 60_000)
+
+  it('remembers the tries it ran, and loads one back', async () => {
+    const wrote = { status: [] as unknown[], tries: [] as unknown[] }
+    const view = await open(wrote)
+    try {
+      await vi.waitFor(
+        () =>
+          expect(
+            document.querySelector('[data-testid="formula-structure"]')?.getAttribute('data-state'),
+          ).toBe('synced'),
+        { timeout: 15_000 },
+      )
+      const inputs = () => [
+        ...document.querySelectorAll<HTMLInputElement>('[data-testid="value-form-try"] input'),
+      ]
+      await userEvent.fill(inputs()[0]!, '1.5')
+      await userEvent.fill(inputs()[1]!, '2')
+      await page.getByRole('button', { name: '运行' }).click()
+      await vi.waitFor(() => expect(wrote.tries.length).toBe(1), { timeout: 5_000 })
+      await expect.element(page.getByTestId('formula-try-record')).toBeVisible()
+      await vi.waitFor(() =>
+        expect(
+          document.querySelector('[data-testid="formula-try-record"]')?.textContent ?? '',
+        ).toContain('3.5'),
+      )
+
+      await userEvent.fill(inputs()[0]!, '9')
+      await page.getByTestId('formula-try-record').click()
+      await vi.waitFor(() => expect(inputs()[0]!.value).toBe('1.5'), { timeout: 5_000 })
+      expect(inputs()[1]!.value).toBe('2')
+    } finally {
+      view.unmount()
+    }
+  }, 60_000)
+
+  it('lets the edges between regions be moved, and remembers where they were left', async () => {
+    const view = await open()
+    try {
+      const edge = () =>
+        document.querySelector<HTMLElement>('[data-testid="workbench-edge"][data-size="tryWidth"]')!
+      await vi.waitFor(() => expect(edge()).not.toBeNull(), { timeout: 10_000 })
+      const before = Number(edge().getAttribute('aria-valuenow'))
+
+      // a drag to the left widens the column to its right
+      const box = edge().getBoundingClientRect()
+      const at = (x: number) => ({
+        bubbles: true,
+        button: 0,
+        pointerId: 7,
+        clientX: x,
+        clientY: box.top + 50,
+      })
+      edge().dispatchEvent(new PointerEvent('pointerdown', at(box.left)))
+      edge().dispatchEvent(new PointerEvent('pointermove', at(box.left - 40)))
+      edge().dispatchEvent(new PointerEvent('pointerup', at(box.left - 60)))
+      await vi.waitFor(
+        () => expect(Number(edge().getAttribute('aria-valuenow'))).toBe(before + 60),
+        { timeout: 5_000 },
+      )
+      expect(
+        JSON.parse(localStorage.getItem('qualy.formula-workbench.sizes') ?? '{}').tryWidth,
+      ).toBe(before + 60)
+
+      // a step at a time from the keyboard, and back to the default on a double press
+      edge().focus()
+      await userEvent.keyboard('{ArrowRight}')
+      await vi.waitFor(() => expect(Number(edge().getAttribute('aria-valuenow'))).toBe(before + 44))
+      edge().dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
+      await vi.waitFor(() => expect(Number(edge().getAttribute('aria-valuenow'))).toBe(before))
+    } finally {
+      view.unmount()
+    }
+  }, 60_000)
+
+  it('says whether the saved draft is exactly what was last published', async () => {
+    const same = await open(
+      { status: [] },
+      { source: SAVED, tests: [{ expected: '1', input: { bonus: 0, base: '1' }, name: 'seed' }] },
+    )
+    try {
+      await vi.waitFor(
+        () =>
+          expect(
+            document
+              .querySelector('[data-testid="formula-save-state"]')
+              ?.getAttribute('data-release'),
+          ).toBe('same'),
+        { timeout: 10_000 },
+      )
+    } finally {
+      same.unmount()
+    }
+    const ahead = await open({ status: [] }, { source: 'const older = 0\n', tests: [] })
+    try {
+      await vi.waitFor(
+        () =>
+          expect(
+            document
+              .querySelector('[data-testid="formula-save-state"]')
+              ?.getAttribute('data-release'),
+          ).toBe('ahead'),
+        { timeout: 10_000 },
+      )
+    } finally {
+      ahead.unmount()
     }
   }, 60_000)
 })

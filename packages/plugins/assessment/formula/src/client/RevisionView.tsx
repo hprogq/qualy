@@ -16,8 +16,16 @@ import {
   DropdownMenuTrigger,
 } from '@qualy/ui/dropdown-menu'
 import type { NormalizedInputSchema } from '@qualy/value-schema'
-import { materializeInput, type FieldDraft } from '@qualy/web-value-form/model'
-import { DownloadIcon, HistoryIcon, LockIcon, MoreHorizontalIcon, Undo2Icon } from 'lucide-react'
+import { draftsFromStored, materializeInput, type FieldDraft } from '@qualy/web-value-form/model'
+import { useTryRecords } from './try-records.ts'
+import {
+  DownloadIcon,
+  FlaskConicalIcon,
+  HistoryIcon,
+  LockIcon,
+  MoreHorizontalIcon,
+  Undo2Icon,
+} from 'lucide-react'
 import { formulaApi } from './api.ts'
 import { formulaMessages as m } from './i18n.ts'
 import { fullWhen } from './library-styles.ts'
@@ -101,6 +109,8 @@ export function RevisionView({
   const [result, setResult] = useState<{ outcome: TryOutcome; forCase: string } | null>(null)
   const [running, setRunning] = useState(false)
 
+  // what this browser remembers trying against this saved revision
+  const tryRecords = useTryRecords(`${functionId}/revision-${String(revisionNo)}`)
   const detail = useQuery(
     query.assessmentFormula.getFormulaDraftRevision.queryOptions({
       params: { functionId, revisionNo: String(revisionNo) },
@@ -154,7 +164,9 @@ export function RevisionView({
           },
         }),
       )) as { cases: readonly TryOutcome[] }
-      setResult({ outcome: answered.cases[0] ?? {}, forCase: JSON.stringify(frozenDrafts) })
+      const outcome = answered.cases[0] ?? {}
+      tryRecords.add({ input: materialized.value, outcome })
+      setResult({ outcome, forCase: JSON.stringify(frozenDrafts) })
     } catch (error) {
       toast.error(formatError(error))
     } finally {
@@ -221,8 +233,17 @@ export function RevisionView({
 
   const tryRun = (
     <>
-      <SideHead title={format(m.tryTitle)} column />
+      <SideHead
+        title={format(m.tryTitle)}
+        column
+        icon={<FlaskConicalIcon size={14} aria-hidden />}
+      />
       <TryRunPanel
+        status={
+          compiled.data === undefined
+            ? { state: 'loading', tone: 'working', words: format(m.structureLoading) }
+            : { state: 'synced', tone: 'good', words: format(m.structureSynced) }
+        }
         schema={compiled.data?.inputSchema ?? null}
         pending={
           blank
@@ -252,6 +273,16 @@ export function RevisionView({
             : { outcome: result.outcome, fresh: result.forCase === JSON.stringify(drafts) }
         }
         onRun={() => void runTry()}
+        records={tryRecords.records}
+        onPick={(record) => {
+          const schema = compiled.data?.inputSchema
+          if (schema === undefined) return
+          const picked = draftsFromStored(schema, record.input)
+          setDrafts(picked)
+          setIssues(undefined)
+          setResult({ outcome: record.outcome, forCase: JSON.stringify(picked) })
+        }}
+        onClearRecords={tryRecords.clear}
       />
     </>
   )
