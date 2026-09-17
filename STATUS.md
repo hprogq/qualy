@@ -18030,3 +18030,56 @@ pnpm exec vitest run --config vitest.browser.config.ts \
 ```
 formula-editor-tools 浏览器用例随交互调整:示例经行菜单运行/移除,示例字段在侧拉 Sheet 里编辑,试运行「存为示例并设预期」按 `data-testid` 断言而不是按文案。
 
+
+## 计分公式的草稿修订、发布命名与手机工作台(2026-09-17)
+
+需求来源:用户给出的公式生命周期模型(一个草稿 + 不可变草稿修订 + 带名字的不可变发布),以及 Claude Design 项目「测评批次页 定稿」的 5d(公式编辑页 · 手机 390)。
+5d 画于生命周期改动之前,手机布局在新模型之上实现,桌面有的功能手机上都在。设计与规则全文见 `docs/assessment-formula-recognition.md` §14.3。
+
+### 做了什么
+
+- **数据与迁移**:新表 `assessment_formula_draft_revisions`(完整快照 + origin + 来源版本/修订号,`(tenant_id, function_id, revision_no)` 唯一,随函数级联删除);
+  `assessment_formula_versions` 增 `release_name`(≤100,非空白 check,函数内部分唯一索引)与 `release_notes`。迁移 `20260917132924_formula-draft-revisions.sql`
+  在生成的 DDL 后追加数据步骤:每个已有函数按当前草稿补一条 `migration` 基线修订;旧版本名称保持 null,不伪造。升级测试覆盖该数据步骤。
+- **服务端**:新建公式草稿为空(修订 1 `created`);保存只在源码或示例变化时递增 `draft_revision` 并追加 `saved` 修订,改名/改说明记 `assessment.formula.details.change` 审计,
+  `FormulaDraftReplaced` 不再记录(目录项保留以读旧行);发布必须带 `releaseName`,指纹含名称与说明,同名不同内容拒绝为 `ASSESSMENT_FORMULA_RELEASE_NAME_TAKEN`;
+  新端点 `GET .../draft/revisions`(keyset 分页)、`GET .../draft/revisions/:revisionNo`、`POST .../draft/restores`(追加 `restored-from-version` / `restored-from-draft` 修订,从不回退);
+  模板复制写 `copied-from-template` 修订;绑定选项、模板库、复制来源、函数列表都带发布名称。frozen routes 与错误码表同步。
+- **编辑页**:工作台拆为 `WorkbenchLayout`(桌面:源码 | 右栏上半当前视图的操作、下半「历史」,底部标签面板;手机:两行顶栏 + 四个页签 + 常驻底栏)。
+  三种视图共用它,地址记为 `?view=release-N` / `?view=revision-N`:草稿(可编辑)、发布版本(`ReleaseView`,只读版本行,不调用草稿预览;测试结果/契约/发布环境,共享范围移到这里)、
+  草稿记录(`RevisionView`,示例/修订信息)。「基于此版本修改」「恢复此草稿」在有未保存修改时先确认。
+- **空公式**:编辑器中央空状态「还没有编写计分公式」+「载入最小示例」/「浏览公式模板」;空源码不发预览请求,编译标签显示「尚未编写公式」,试运行、全部运行与发布不可用。
+  载入示例只改编辑器内容(变为未保存),编辑器非空时先确认。
+- **发布**:「发布…」在历史标题行(手机在底栏与 ⋯ 菜单),对话框填发布名称(必填)与说明,列出保存/示例/编译/参数四项自查;草稿有未保存修改时按钮为「保存并发布」;名称已被占用时对话框不关。
+- **顶栏**:桌面只剩「保存」与 ⋯(载入最小示例、下载当前代码、归档/恢复公式);下载在浏览器端生成(`@qualy/ui/download`),当前草稿下载编辑器内容且不触发保存,版本下载冻结源码。
+- **5d 手机**:页签 源码(编辑器 + 编译结论一行,失败时列诊断)/ 试运行(表单 + 参数检查)/ 示例(全部运行、添加示例、示例表与小结)/ 历史;底栏为第一个阻碍发布的原因 +「保存」+「发布…」;
+  示例编辑用底部 Sheet;发布版本与草稿记录视图在手机上同样是页签 + 底栏恢复按钮。
+- **发布名称接到其他页面**:公式列表「已发布」列、模板列表与详情的版本、题目绑定选择器、复制来源(「基于「函数名 · 发布名」创建」)都显示发布名称,旧版本退回「第 N 次发布」。
+- **审计门禁**:`tools/tests/audit-actions.test.ts` 增退役清单(当前仅 `assessment.formula.draft.update`):声明保留以便旧行有名称可筛选,门禁同时拒绝「退役却又被记录」与「清单里已不存在的动作」。
+- 上一节「待用户裁决」的默认示例源码已按用户决定改为空源码 + 载入最小示例。
+
+### 开发库注意
+
+`qualy generate` 先写出无名的 `20260917132924.sql`,当时开着的 `pnpm dev` 在 21:29 自动应用了它(建表、加列,账本记为 `20260917132924.sql`);
+之后文件改名为 `20260917132924_formula-draft-revisions.sql` 并追加了基线修订数据步骤。开发库因此把改名后的文件当作新迁移,启动时报 `relation "assessment_formula_draft_revisions" already exists`。
+只读核对:账本尾行是 `20260917132924.sql`,新表存在且 0 行,两列已加。开发库归用户所有,未做任何修改;处理方式待用户决定。
+教训:生成迁移、改名或追加数据步骤之前,先确认 dev 已停,或在确认文件定稿后再保存会触发后端重载的源码。
+
+### 命令与结果(实际执行)
+
+```text
+pnpm typecheck                                   exit=0(含 formula client 与 tests 工程)
+pnpm vitest run tools/tests                      50 files / 317 passed(audit-actions、catalogs、error-codes、effect-api-parity、fast-refresh、client-paths、api-paths 等)
+pnpm vitest run packages/plugins/assessment/formula/tests
+                                                 25 files / 108 passed(formula-history、template-copy、migration-upgrade、entity-parity 等)
+pnpm exec vitest run --config vitest.browser.config.ts packages/plugins/assessment/formula/tests \
+  apps/web/tests/shell.browser.test.tsx apps/web/tests/value-form.browser.test.tsx \
+  apps/web/tests/localization.browser.test.tsx packages/plugins/assessment/core/tests/item-chain.browser.test.tsx
+                                                 11 files / 89 passed(新增 formula-editor-history 5 条:空公式、发布命名、发布版本只读且不编译、未保存修改先确认、按修订号恢复)
+pnpm qualy database verify                       62 committed migration(s) build the declared schema, zero drift(scratch 库)
+node tools/quality/check-migrations-immutable.ts origin/main
+                                                 exit=0
+视觉核对                                          临时浏览器用例在真实 AppShell 内截图(1440 与 390 宽):草稿、运行结果、空公式、发布对话框、发布版本与发布环境;
+                                                 手机源码/试运行/示例/历史/⋯ 菜单/空公式/发布版本与发布信息。据截图修了三处:⋯ 菜单项图标与文字错行(去掉图标)、
+                                                 手机示例页底部小结与常驻底栏重复、空公式时编译行与底栏重复;临时用例已删除
+```
