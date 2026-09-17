@@ -28,6 +28,17 @@ export function resolveDatabase(
       // generated, by the name of what is missing.
       if (!context.plugins.has(required)) {
         missing.push(`${pluginId} needs ${required}, which this assembly does not include`)
+        continue
+      }
+      // Being in the assembly is not owning tables. The declaration means "my
+      // objects reference that plugin's objects", so the plugin it names has
+      // to bring some: one that declares no entities and no baseline has
+      // nothing to be built before this one, and the reference would fail at
+      // the same foreign key, later, with the plugin present all along.
+      if (!ownsObjects(context.contributions.get(required))) {
+        missing.push(
+          `${pluginId} declares a database dependency on ${required}, which owns no database objects (no Db.entities, no baseline)`,
+        )
       }
     }
     edges.set(

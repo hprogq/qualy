@@ -19,9 +19,19 @@ import {
   changedMigrationFiles,
   scanDestructive,
 } from '../src/assembly/drop-guard.ts'
-import { guardDestructive, nextStamp } from '../src/assembly/generate.ts'
+import {
+  blankMigration,
+  guardDestructive,
+  nextStamp,
+  writeMigration,
+} from '../src/assembly/generate.ts'
 import { asState } from '../src/assembly/state.ts'
-import { databaseTarget, databaseWork, LOCAL_FALLBACK } from '../src/assembly/work.ts'
+import {
+  assertMigrationNames,
+  databaseTarget,
+  databaseWork,
+  LOCAL_FALLBACK,
+} from '../src/assembly/work.ts'
 import { MIGRATIONS_FOLDER } from '../src/defaults.ts'
 import { diffAgainstDeclared } from '../src/assembly/diff.ts'
 import { defineEntity } from '@mikro-orm/core'
@@ -281,6 +291,37 @@ describe('database dependency graph', () => {
   const orderOf = async (workspace: ReturnType<typeof createWorkspace>) =>
     asState((await context(workspace)).state).order
 
+  it('refuses a database dependency on a plugin that owns no database objects', async () => {
+    // `dependsOn` means "my objects reference that plugin's objects"; a plugin
+    // that is in the assembly but brings no entities and no baseline has none
+    // to reference, and the foreign key would fail later with the plugin
+    // present all along. Refused by name here instead.
+    const workspace = createWorkspace([...INFRA, '@fake/plugin-tables', '@fake/plugin-nothing'], {
+      synthetic: [
+        {
+          id: '@fake/plugin-tables',
+          files: {
+            'index.js': [
+              "export default { _tag: 'Plugin', id: '@fake/plugin-tables', dependsOn: [], features: [{",
+              "  _tag: 'Contribute', point: { id: '@qualy/plugin-database/entities' },",
+              "  value: { entities: [{ meta: { className: 'tables', tableName: 'tables' } }], dependsOn: ['@fake/plugin-nothing'] },",
+              '}] }',
+            ].join('\n'),
+          },
+        },
+        // in the assembly, contributing nothing to the database
+        { id: '@fake/plugin-nothing' },
+      ],
+    })
+    try {
+      await expect(orderOf(workspace)).rejects.toThrow(
+        /@fake\/plugin-tables declares a database dependency on @fake\/plugin-nothing, which owns no database objects/,
+      )
+    } finally {
+      workspace.dispose()
+    }
+  })
+
   it('refuses a selection that leaves a schema dependency behind', async () => {
     // rbac's tables reference auth's. Without this the failure arrives from
     // postgres midway through applying a migration, naming a relation rather
@@ -361,6 +402,53 @@ describe('the instant a migration is named by', () => {
       // and a lineage from a clock ahead of this one is still ordered after
       fs.writeFileSync(path.join(dir, '20991231235959_future.sql'), '')
       expect(nextStamp(dir)).toBe('21000101000000')
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  // `qualy database custom` named its file by the clock alone and wrote it in
+  // place: a clock behind the lineage put the step before migrations already
+  // run, and a second call in the same second with the same name overwrote
+  // the first file.
+  it('orders a hand-written migration the same way, and never lets one replace another', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-custom-'))
+    try {
+      fs.writeFileSync(path.join(dir, '20991231235959_future.sql'), 'select 1;\n')
+      const first = path.basename(blankMigration(dir, 'backfill'))
+      const second = path.basename(blankMigration(dir, 'backfill'))
+      expect(first).toBe('21000101000000_backfill.sql')
+      expect(second).toBe('21000101000001_backfill.sql')
+      expect(fs.readdirSync(dir).sort()).toEqual([
+        '20991231235959_future.sql',
+        '21000101000000_backfill.sql',
+        '21000101000001_backfill.sql',
+      ])
+      // the writer refuses a name that is taken rather than replacing it, and
+      // leaves no temporary file behind
+      expect(() => writeMigration(path.join(dir, first), 'drop table everything;\n')).toThrow(
+        /already exists; a migration never replaces another/,
+      )
+      expect(fs.readFileSync(path.join(dir, first), 'utf8')).toBe(
+        '-- owner: @qualy/plugin-<name>\n',
+      )
+      expect(fs.readdirSync(dir).filter((name) => name.endsWith('.tmp'))).toEqual([])
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('is the only shape a lineage file may have', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-names-'))
+    try {
+      fs.writeFileSync(path.join(dir, '20260101000000_fine-name.sql'), '')
+      fs.writeFileSync(path.join(dir, '20260101000001.sql'), '')
+      expect(() => assertMigrationNames(dir)).not.toThrow()
+      fs.writeFileSync(path.join(dir, 'V2__flyway_style.sql'), '')
+      fs.writeFileSync(path.join(dir, '20260101000002_Upper Case.sql'), '')
+      expect(() => assertMigrationNames(dir)).toThrow(
+        /20260101000002_Upper Case\.sql\n {2}V2__flyway_style\.sql/,
+      )
     } finally {
       fs.rmSync(dir, { recursive: true, force: true })
     }
@@ -485,7 +573,9 @@ describe.runIf(postgresAvailable).concurrent('assembly deployment', () => {
       } finally {
         console.log = log
       }
-      expect(said.at(-1)).toMatch(/1 committed migration\(s\) build the declared schema, zero drift/)
+      expect(said.at(-1)).toMatch(
+        /1 committed migration\(s\) build the declared schema, zero drift/,
+      )
 
       workspace.writeManifest([...INFRA, ...AUTHORIZED, '@qualy/plugin-ping'])
       const before = fs.readdirSync(migrationsOf(workspace))
