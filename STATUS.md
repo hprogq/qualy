@@ -18083,3 +18083,51 @@ node tools/quality/check-migrations-immutable.ts origin/main
                                                  手机源码/试运行/示例/历史/⋯ 菜单/空公式/发布版本与发布信息。据截图修了三处:⋯ 菜单项图标与文字错行(去掉图标)、
                                                  手机示例页底部小结与常驻底栏重复、空公式时编译行与底栏重复;临时用例已删除
 ```
+
+## 计分公式工作台第二轮反馈:撤销历史、分栏、发布版本试运行与交互细节(2026-09-18)
+
+来源:用户对上一节工作台的逐条反馈(约二十条),设计与规则补在 `docs/assessment-formula-recognition.md` §14.3.1。
+
+### 做了什么
+
+- **Monaco 撤销历史不再丢失**:根因是 Mantine 9 的 Tabs 默认 `keepMountedMode: activity`,React Activity 隐藏面板时运行 effect 清理,
+  编辑器在清理里销毁 model;打开历史版本、窗口跨过手机宽度也是同一条路径。model 与 LSP 连接改挂页面级租约(`editor-lease.ts` / `editor-session.ts`),
+  视图可反复重建;载入示例、恢复、放弃本地修改一律 `pushEditOperations`,作为一步可撤销的编辑。另修两处:自己保存时若继续输入会被误判为「别处更新」,
+  以及已加载的页面在一次重取失败时整页被替换成加载失败。
+- **分栏**:视口 ≥1200 时源码 | 试运行 | 历史三栏(后两栏等宽),更窄时后两栏合为一栏用选项卡切换;选项卡下列标题不再重复。手机仍为四个页签。
+- **历史**:发布版本每行右侧信息图标,悬停打开、点击固定的浮层里查看名称、说明、发布次序/时间/发布人并编辑共享范围;草稿记录为空、加载中、失败都有明确状态;
+  再点一次已打开的条目、历史栏顶部「返回当前草稿」按钮、Esc(捕获阶段判断,不抢对话框/菜单/浮层/编辑器的 Esc)都可回到草稿。
+  发布按钮加宽置于历史栏顶部,悬停提示「发布后才能在题目中引用该公式」(手机底栏已有发布,历史页不再重复)。
+- **发布版本与草稿记录**:源码改为只读 Monaco(悬浮类型/签名,只读会话不拉诊断);右栏试运行,发布版本运行冻结产物(新端点见下),草稿记录按草稿编译该次源码。
+  顶栏徽标统一为锁形「只读」,与草稿的「已发布」同高,标题行固定 30px,打开历史不再跳动。
+- **顶栏**:名称左侧铅笔图标;「最新发布」改为可点击的标签(打开该版本),「复制自」同样用标签,去掉「」与「·」;保存按钮禁用时悬停说明原因
+  (无修改 / 已归档),可用时提示 Ctrl+S / ⌘S;归档先弹确认并说明后果(不能编辑发布、题目不能再新选用、已选用照常计分、已共享版本仍在模板中、可恢复);
+  下载后 toast 提示文件名。
+- **试运行与示例**:输入字段标题旁显示代码字段名 Badge,无 title 的字段显示「未命名字段」而不是借用字段名(值表单新增 `authoring` 选项,其他调用方不变);
+  「存为示例，预期 X」图标换成靶心;「添加示例」改为模态框,确认才加入;手机源码页编译结论改用对勾/叉图标,不再与底栏的圆点重复。
+- **本地暂存**:未保存的名称、源码与示例写入浏览器 IndexedDB(停止编辑约 0.8 秒后、窗口转入后台时),保存或与服务端一致时删除;再次打开时顶部提示「恢复修改 / 丢弃」。
+- **服务端**:新端点 `POST .../versions/:versionNo/evaluations`(`FormulaRuntimeStore` 校验冻结产物后交同一求值器,不重编译;篡改或不支持为
+  `ASSESSMENT_FORMULA_VERSION_UNRUNNABLE` 409);LSP 每人 3 个会话(`FORMULA_LSP_SEATS_PER_PERSON`),超出时升级后以 4429 `seat-limit` 关闭,
+  浏览器提示「打开的公式窗口过多」;客户端窗口转后台 2 分钟释放连接、回前台重连。frozen routes 与错误码译文同步。
+- **平台小改**:`@qualy/ui` Popover 增 `trapFocus`(默认 true);admin `Field` 增 `aside`;`@qualy/value-schema` 增 `declaredTitle`。
+
+### 仍待用户决定
+
+开发库迁移账本记的是改名前的 `20260917132924.sql`(见上一节「开发库注意」),`pnpm dev` 启动仍会报表已存在;未改动开发库。
+
+### 命令与结果(实际执行)
+
+```text
+pnpm typecheck                                   exit=0
+pnpm vitest run tools/tests                      50 files / 317 passed
+pnpm vitest run packages/plugins/assessment/formula/tests
+                                                 26 files / 111 passed(新增 version-evaluation;lsp-bridge 座位用例;formula-http 新端点用例)
+pnpm test:browser                                60 files / 439 passed(列标题、铅笔间距、手机历史页调整之前的全量)
+pnpm exec vitest run --config vitest.browser.config.ts packages/plugins/assessment/formula/tests \
+  apps/web/tests/value-form.browser.test.tsx apps/web/tests/localization.browser.test.tsx apps/web/tests/shell.browser.test.tsx
+                                                 11 files / 68 passed(最终改动之后;新增 formula-workbench 7 条:手机切页签与打开草稿记录后撤销历史仍在、
+                                                 载入示例可撤销、添加示例需确认、归档需确认、本地暂存恢复、三栏/合栏;formula-editor-history 增至 7 条)
+视觉核对                                          临时用例在真实 AppShell 内截图(1440 / 1100 / 390 宽):三栏、合栏两个选项卡、发布信息浮层、添加示例、归档确认、
+                                                 保存提示、草稿记录为空、发布版本只读 Monaco 与试运行、本地暂存提示、手机源码/试运行/历史/发布版本;据截图修了
+                                                 列标题重复、铅笔压住标题、手机历史页发布按钮重复;临时用例已删除
+```
