@@ -102,7 +102,20 @@ describe.runIf(postgresAvailable)('forking a template', () => {
               where version_id in (select id from assessment_formula_versions
                                    where function_id = ${copied.functionId})`),
           ).count
-          return { draft, source, versions, shares, authorB: f.authorB, published }
+          const history = (
+            (yield* runSql(sql`
+              select revision_no, origin, source_version_id, saved_by
+                from assessment_formula_draft_revisions
+               where function_id = ${copied.functionId}`)) as {
+              rows: {
+                revision_no: number
+                origin: string
+                source_version_id: string
+                saved_by: string
+              }[]
+            }
+          ).rows
+          return { draft, source, versions, shares, history, authorB: f.authorB, published }
         }),
       ),
     )
@@ -118,6 +131,15 @@ describe.runIf(postgresAvailable)('forking a template', () => {
     expect(outcome.draft.draft_revision).toBe(1)
     // and it says where it came from, exactly
     expect(outcome.draft.copied_from_version_id).toBe(outcome.published.versionId)
+    // its history starts at what it was copied from
+    expect(outcome.history).toEqual([
+      {
+        revision_no: 1,
+        origin: 'copied-from-template',
+        source_version_id: outcome.published.versionId,
+        saved_by: outcome.authorB,
+      },
+    ])
     // a draft, not a publication: nothing ran, nothing was minted
     expect(outcome.versions).toBe('0')
     expect(outcome.shares).toBe('0')

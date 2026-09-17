@@ -1,10 +1,12 @@
 import { defineEntity } from '@mikro-orm/core'
 import { Tenant } from '@qualy/plugin-org/db'
 
-// The formula library's tables: a function is a business identity with one
-// mutable draft; a published version is an immutable execution contract —
-// sources, artifact, schemas, toolchain identity and its own test report.
-// Versions are never updated or deleted; archiving a function only hides it
+// The formula library's tables. A function is a business identity with one
+// mutable draft; every save of that draft's source or examples leaves an
+// immutable draft revision behind it; a published version is an immutable
+// execution contract - sources, artifact, schemas, toolchain identity, its
+// own test report and the name its author published it under. Revisions and
+// versions are never updated or deleted; archiving a function only hides it
 // from new configuration.
 
 const p = defineEntity.properties
@@ -119,7 +121,20 @@ export const FormulaVersion = defineEntity({
     testReport: p.json<readonly Record<string, unknown>[]>(),
     publishedBy: p.uuid(),
     publishedAt: p.datetime().defaultRaw('now()'),
+    // What its author called this publication, and why they made it. Part of
+    // the frozen record like everything above: a name somebody could change
+    // afterwards would rewrite what a round was scored under. Null only on
+    // rows published before publications were named - their history is not
+    // invented after the fact.
+    releaseName: p.string().length(100).nullable(),
+    releaseNotes: p.text().nullable(),
   },
+  checks: [
+    {
+      name: 'chk_assessment_formula_versions_release_name_not_blank',
+      expression: `release_name is null or btrim(release_name) <> ''`,
+    },
+  ],
   indexes: [
     {
       name: 'uq_assessment_formula_versions_tenant_function_no',
@@ -137,12 +152,66 @@ export const FormulaVersion = defineEntity({
         'create unique index uq_assessment_formula_versions_fingerprint on assessment_formula_versions (tenant_id, function_id, publish_fingerprint)',
     },
     {
+      // one name, one publication: a name worn twice leaves the reader to
+      // tell them apart by the number the name was meant to replace
+      name: 'uq_assessment_formula_versions_release_name',
+      expression:
+        'create unique index uq_assessment_formula_versions_release_name on assessment_formula_versions (tenant_id, function_id, release_name) where release_name is not null',
+    },
+    {
       // the template library's keyset: newest published first, the id
       // breaking ties. Declared ascending and read backwards, which a btree
       // does natively - the same handling as the library list's own index.
       name: 'idx_assessment_formula_versions_tenant_published',
       expression:
         'create index idx_assessment_formula_versions_tenant_published on assessment_formula_versions (tenant_id, published_at, id)',
+    },
+  ],
+})
+
+/**
+ * One saved state of a function's draft: its source and examples, whole.
+ *
+ * A row per save that changed either of them, and never a diff - a formula
+ * is kilobytes, and a snapshot reads, restores and audits without replaying
+ * anything. Renaming the function is not a revision: nothing that could be
+ * published moved. Restoring an older state appends a new revision naming
+ * where it came from; history only grows.
+ *
+ * `origin` says how the revision came to be. `sourceVersionId` and
+ * `sourceDraftRevisionNo` name what it was restored or copied from, and like
+ * the function's own provenance carry no foreign key: they are facts about
+ * how this state arose, not live references.
+ */
+export const FormulaDraftRevision = defineEntity({
+  name: 'FormulaDraftRevision',
+  tableName: 'assessment_formula_draft_revisions',
+  properties: {
+    id: p.uuid().primary().defaultRaw('uuidv7()'),
+    tenantId: tenantOf('assessment_formula_draft_revisions_tenant_id_tenants_id_fkey'),
+    functionId: p.uuid(),
+    revisionNo: p.integer(),
+    sourceTs: p.text(),
+    tests: p.json<readonly Record<string, unknown>[]>(),
+    sourceSha256: p.string().length(64),
+    savedBy: p.uuid(),
+    savedAt: p.datetime().defaultRaw('now()'),
+    origin: p.string().length(32),
+    sourceVersionId: p.uuid().nullable(),
+    sourceDraftRevisionNo: p.integer().nullable(),
+  },
+  checks: [
+    {
+      name: 'chk_assessment_formula_draft_revisions_origin',
+      expression: `origin in ('created', 'saved', 'restored-from-version', 'restored-from-draft', 'copied-from-template', 'migration')`,
+    },
+  ],
+  indexes: [
+    {
+      // the revision list's own keyset as well: one function, newest first
+      name: 'uq_assessment_formula_draft_revisions_no',
+      expression:
+        'create unique index uq_assessment_formula_draft_revisions_no on assessment_formula_draft_revisions (tenant_id, function_id, revision_no)',
     },
   ],
 })
@@ -187,7 +256,12 @@ export const FormulaShareScope = defineEntity({
   ],
 })
 
-export const entities = [FormulaFunction, FormulaVersion, FormulaShareScope] as const
+export const entities = [
+  FormulaFunction,
+  FormulaVersion,
+  FormulaDraftRevision,
+  FormulaShareScope,
+] as const
 
 export const compositeForeignKeys = [
   // RESTRICT, not CASCADE: a published version is a permanent execution
@@ -206,6 +280,10 @@ export const compositeForeignKeys = [
   // can only ever mislead a reader.
   `alter table assessment_formula_share_scopes add constraint fk_assessment_formula_share_scopes_version
      foreign key (tenant_id, version_id) references assessment_formula_versions (tenant_id, id) on delete cascade`,
+  // CASCADE: a draft's history belongs to the function it drafted, and goes
+  // with it - which a published version, above, never allows while it stands
+  `alter table assessment_formula_draft_revisions add constraint fk_assessment_formula_draft_revisions_function
+     foreign key (tenant_id, function_id) references assessment_formula_functions (tenant_id, id) on delete cascade`,
   `alter table assessment_formula_share_scopes add constraint fk_assessment_formula_share_scopes_node
      foreign key (tenant_id, org_node_id) references org_nodes (tenant_id, id) on delete cascade`,
 ]

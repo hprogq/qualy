@@ -25,6 +25,7 @@ export interface BindableFormulaVersion {
   readonly functionId: string
   readonly functionName: string
   readonly versionNo: number
+  readonly releaseName: string | null
   readonly publishedAt: Date | string
   readonly contractSha256: string
   readonly inputSchema: NormalizedInputSchema
@@ -108,6 +109,7 @@ interface CandidateRow {
   readonly functionId: string
   readonly functionName: string
   readonly versionNo: number
+  readonly releaseName: string | null
   readonly publishedAt: Date | string
   readonly contractSha256: string
   readonly inputSchema: unknown
@@ -119,6 +121,7 @@ const toBindable = (row: CandidateRow): BindableFormulaVersion => ({
   functionId: row.functionId,
   functionName: row.functionName,
   versionNo: Number(row.versionNo),
+  releaseName: row.releaseName ?? null,
   publishedAt: row.publishedAt,
   contractSha256: row.contractSha256,
   inputSchema: row.inputSchema as NormalizedInputSchema,
@@ -145,6 +148,7 @@ export const make = Effect.fn('BindableFormulaCatalog.make')(function* () {
                 'v.functionId as functionId',
                 'f.name as functionName',
                 'v.versionNo as versionNo',
+                'v.releaseName as releaseName',
                 'v.publishedAt as publishedAt',
                 'v.contractSha256 as contractSha256',
                 'v.inputSchema as inputSchema',
@@ -212,6 +216,7 @@ export const make = Effect.fn('BindableFormulaCatalog.make')(function* () {
                 'v.functionId as functionId',
                 'f.name as functionName',
                 'v.versionNo as versionNo',
+                'v.releaseName as releaseName',
                 'v.publishedAt as publishedAt',
                 'v.contractSha256 as contractSha256',
                 'v.inputSchema as inputSchema',
@@ -251,6 +256,7 @@ export const make = Effect.fn('BindableFormulaCatalog.make')(function* () {
                 'v.id as versionId',
                 'v.functionId as functionId',
                 'v.versionNo as versionNo',
+                'v.releaseName as releaseName',
                 'v.publishedAt as publishedAt',
                 'v.contractSha256 as contractSha256',
                 'v.inputSchema as inputSchema',

@@ -1,7 +1,7 @@
 {
   "lockfileVersion": 2,
   "manifestHash": "sha256:62d9d1a1195af77831e4b3f8bc29b5053da37b60d8a2c45032a7c63453e8cb25",
-  "resolutionHash": "sha256:7a067b961b4f0ae286388744d1884f94720c6838a0122f21fbe88dd9c416ffe0",
+  "resolutionHash": "sha256:ea77ea3f67b1fc4bd38b4fc0241cad98c8d8d7ce0123d2ac53daa10bf416ab3d",
   "plugins": {
     "@qualy/plugin-assessment": {
       "version": "0.0.0",
@@ -77,6 +77,7 @@
       "contributions": {
         "database": {
           "entities": [
+            "FormulaDraftRevision",
             "FormulaFunction",
             "FormulaShareScope",
             "FormulaVersion"

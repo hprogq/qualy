@@ -235,7 +235,15 @@ const publishFormula = (
       },
       as,
     )
-    yield* library.publish(tenantId, created.id, drafted.draftRevision, as)
+    yield* library.publish(
+      tenantId,
+      created.id,
+      {
+        expectedDraftRevision: drafted.draftRevision,
+        releaseName: `release ${drafted.draftRevision}`,
+      },
+      as,
+    )
     const versionId = one<{ id: string }>(
       yield* runSql(
         sql`select id from assessment_formula_versions where function_id = ${created.id}`,
@@ -383,7 +391,15 @@ describe.runIf(postgresAvailable)('formula scoring, end to end', () => {
               },
               as,
             )
-            yield* library.publish(f.t, created.id, drafted.draftRevision, as)
+            yield* library.publish(
+              f.t,
+              created.id,
+              {
+                expectedDraftRevision: drafted.draftRevision,
+                releaseName: `release ${drafted.draftRevision}`,
+              },
+              as,
+            )
             const versionId = one<{ id: string }>(
               yield* runSql(
                 sql`select id from assessment_formula_versions where function_id = ${created.id}`,
@@ -857,7 +873,15 @@ describe.runIf(postgresAvailable)('formula scoring, end to end', () => {
               },
               as,
             )
-            yield* library.publish(f.t, created.id, drafted.draftRevision, as)
+            yield* library.publish(
+              f.t,
+              created.id,
+              {
+                expectedDraftRevision: drafted.draftRevision,
+                releaseName: `release ${drafted.draftRevision}`,
+              },
+              as,
+            )
             const row = one<{ id: string; bytes: number }>(
               yield* runSql(sql`
                 select id, octet_length(runtime_js) as bytes

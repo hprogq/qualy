@@ -145,7 +145,15 @@ describe.runIf(postgresAvailable)('the formula calculator', () => {
             },
             as,
           )
-          const published = yield* library.publish(f.t, created.id, drafted.draftRevision, as)
+          const published = yield* library.publish(
+            f.t,
+            created.id,
+            {
+              expectedDraftRevision: drafted.draftRevision,
+              releaseName: `release ${drafted.draftRevision}`,
+            },
+            as,
+          )
           void published
           const versionId = one<{ id: string }>(
             yield* runSql(
@@ -276,7 +284,15 @@ describe.runIf(postgresAvailable)('the formula calculator', () => {
             },
             as,
           )
-          yield* library.publish(f.t, created.id, drafted.draftRevision, as)
+          yield* library.publish(
+            f.t,
+            created.id,
+            {
+              expectedDraftRevision: drafted.draftRevision,
+              releaseName: `release ${drafted.draftRevision}`,
+            },
+            as,
+          )
           const versionId = one<{ id: string }>(
             yield* runSql(
               sql`select id from assessment_formula_versions where function_id = ${created.id}`,
@@ -351,7 +367,15 @@ describe.runIf(postgresAvailable)('the formula calculator', () => {
             },
             as,
           )
-          const published = yield* library.publish(f.t, created.id, drafted.draftRevision, as)
+          const published = yield* library.publish(
+            f.t,
+            created.id,
+            {
+              expectedDraftRevision: drafted.draftRevision,
+              releaseName: `release ${drafted.draftRevision}`,
+            },
+            as,
+          )
           void published
           const versionId = one<{ id: string }>(
             yield* runSql(
@@ -463,7 +487,15 @@ describe.runIf(postgresAvailable)('the formula calculator', () => {
             },
             as,
           )
-          const published = yield* library.publish(f.t, created.id, drafted.draftRevision, as)
+          const published = yield* library.publish(
+            f.t,
+            created.id,
+            {
+              expectedDraftRevision: drafted.draftRevision,
+              releaseName: `release ${drafted.draftRevision}`,
+            },
+            as,
+          )
           void published
           const versionId = one<{ id: string }>(
             yield* runSql(

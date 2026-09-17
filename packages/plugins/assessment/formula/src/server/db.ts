@@ -3,7 +3,7 @@ import { entities as orgEntities } from '@qualy/plugin-org/db'
 import { entities as authEntities } from '@qualy/plugin-auth/db'
 import { entities } from '../db/entities.ts'
 
-// The library's queries reach its own three tables plus two neighbours'.
+// The library's queries reach its own four tables plus two neighbours'.
 // org because an audience IS a place: a share scope points at a node, and
 // deciding who it reaches is a question about the tree it hangs on (and
 // tenants anchors the tenant foreign key). auth because a template names

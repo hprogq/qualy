@@ -15,6 +15,7 @@ import {
   FormulaContractInvalid,
   FormulaExecutionLimitExceeded,
   FormulaDraftConflict,
+  FormulaDraftRevisionNotFound,
   FormulaFunctionArchived,
   FormulaFunctionNotFound,
   FormulaSourceRefused,
@@ -25,6 +26,7 @@ import {
   FormulaTypecheckFailed,
   FormulaCompileUnavailable,
   FormulaVersionNotFound,
+  FormulaReleaseNameTaken,
 } from './server/errors.ts'
 import { BatchNotFound } from '@qualy/plugin-assessment/errors'
 
@@ -49,6 +51,9 @@ const functionView = Schema.Struct({
   status: Schema.Literals(['active', 'archived']),
   draftRevision: Schema.Number,
   latestVersionNo: Schema.NullOr(Schema.Number),
+  /** what the latest publication was called; null before any, or when it
+   *  predates named publications */
+  latestReleaseName: Schema.NullOr(Schema.String),
   updatedAt: Schema.String,
 })
 
@@ -59,10 +64,16 @@ const functionDetail = Schema.Struct({
 })
 
 const versionView = Schema.Struct({
+  versionId: Schema.String,
+  /** the internal order of publication; a screen shows the name */
   versionNo: Schema.Number,
+  releaseName: Schema.NullOr(Schema.String),
+  releaseNotes: Schema.NullOr(Schema.String),
   contractSha256: Schema.String,
   runtimeSha256: Schema.String,
   publishedBy: Schema.String,
+  /** null when the publisher's row is gone; a version does not depend on it */
+  publishedByName: Schema.NullOr(Schema.String),
   publishedAt: Schema.String,
 })
 
@@ -102,8 +113,47 @@ const versionDetail = Schema.Struct({
   formulaAbiVersion: Schema.Number,
   formulaRuntimeSha256: Schema.String,
   quickjsEngineVersion: Schema.String,
+  valueSchemaProfileVersion: Schema.Number,
+  regexProfileVersion: Schema.Number,
+  sandboxAbiVersion: Schema.Number,
+  sourcePolicyVersion: Schema.Number,
+  sourcePolicyParserVersion: Schema.String,
+  authoringBuildId: Schema.String,
+  sandboxRuntimeBuildId: Schema.String,
   tests: Schema.Array(formulaTest),
   testReport: Schema.Unknown,
+})
+
+/** where a draft revision came from, as a screen needs to say it */
+const revisionOrigin = Schema.Literals([
+  'created',
+  'saved',
+  'restored-from-version',
+  'restored-from-draft',
+  'copied-from-template',
+  'migration',
+])
+
+/** one saved state of the draft, as the history list shows it */
+const draftRevisionView = Schema.Struct({
+  revisionNo: Schema.Number,
+  origin: revisionOrigin,
+  sourceSha256: Schema.String,
+  savedBy: Schema.String,
+  savedByName: Schema.NullOr(Schema.String),
+  savedAt: Schema.String,
+  /** the publication of this function it was restored from */
+  sourceVersion: Schema.NullOr(
+    Schema.Struct({ versionNo: Schema.Number, releaseName: Schema.NullOr(Schema.String) }),
+  ),
+  /** the revision of this function it was restored from */
+  sourceDraftRevisionNo: Schema.NullOr(Schema.Number),
+})
+
+const draftRevisionDetail = Schema.Struct({
+  ...draftRevisionView.fields,
+  sourceTs: Schema.String,
+  tests: Schema.Array(formulaTest),
 })
 
 /** one template as a library row shows it: never the artifact, never the source */
@@ -113,6 +163,7 @@ const templateSummary = Schema.Struct({
   functionName: Schema.String,
   description: Schema.NullOr(Schema.String),
   versionNo: Schema.Number,
+  releaseName: Schema.NullOr(Schema.String),
   publishedAt: Schema.String,
   authorUserId: Schema.String,
   /** null when the author's row is gone; a template does not depend on it */
@@ -152,6 +203,7 @@ const bindingOptionView = Schema.Struct({
   functionId: Schema.String,
   functionName: Schema.String,
   versionNo: Schema.Number,
+  releaseName: Schema.NullOr(Schema.String),
   publishedAt: Schema.String,
   /** the parameter names this version takes, for a one-line summary */
   parameters: Schema.Array(Schema.String),
@@ -294,7 +346,12 @@ export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
          * offer must not disturb somebody's own copy.
          */
         copiedFrom: Schema.NullOr(
-          Schema.Struct({ versionId: Schema.String, versionNo: Schema.Number }),
+          Schema.Struct({
+            versionId: Schema.String,
+            versionNo: Schema.Number,
+            functionName: Schema.String,
+            releaseName: Schema.NullOr(Schema.String),
+          }),
         ),
       }),
       error: [FormulaFunctionNotFound, AccessDenied],
@@ -322,6 +379,68 @@ export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
     }).middleware(Authenticated),
   )
   .add(
+    // every saved state of the draft, newest first: what the source and the
+    // examples were at each save, restorable but never editable
+    HttpApiEndpoint.get(
+      'listFormulaDraftRevisions',
+      '/assessment/formula-functions/:functionId/draft/revisions',
+      {
+        params: Schema.Struct({ functionId: id }),
+        query: Schema.Struct({ ...pageQuery }),
+        success: pageOf(draftRevisionView),
+        error: [FormulaFunctionNotFound, AccessDenied, BadRequest],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.get(
+      'getFormulaDraftRevision',
+      '/assessment/formula-functions/:functionId/draft/revisions/:revisionNo',
+      {
+        params: Schema.Struct({ functionId: id, revisionNo: Schema.String }),
+        success: Schema.Struct({ revision: draftRevisionDetail }),
+        error: [FormulaFunctionNotFound, FormulaDraftRevisionNotFound, AccessDenied, BadRequest],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
+    // Replacing the draft with an earlier state - a publication's or a saved
+    // revision's. The server reads the source it restores, so the revision
+    // it appends names where it came from truthfully; the earlier state is
+    // untouched, and the history grows rather than rewinds.
+    HttpApiEndpoint.post(
+      'restoreFormulaDraft',
+      '/assessment/formula-functions/:functionId/draft/restores',
+      {
+        params: Schema.Struct({ functionId: id }),
+        payload: Schema.Struct({
+          expectedDraftRevision: expectedVersion,
+          from: Schema.Union([
+            Schema.Struct({
+              kind: Schema.Literal('published-version'),
+              versionNo: expectedVersion,
+            }),
+            Schema.Struct({
+              kind: Schema.Literal('draft-revision'),
+              revisionNo: expectedVersion,
+            }),
+          ]),
+        }),
+        success: Schema.Struct({ function: functionDetail }),
+        error: [
+          BadRequest,
+          FormulaFunctionNotFound,
+          FormulaFunctionArchived,
+          FormulaDraftConflict,
+          FormulaVersionNotFound,
+          FormulaDraftRevisionNotFound,
+          FormulaSourceTooLarge,
+          AccessDenied,
+        ],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
     HttpApiEndpoint.put(
       'setFormulaFunctionStatus',
       '/assessment/formula-functions/:functionId/status',
@@ -341,12 +460,19 @@ export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
       '/assessment/formula-functions/:functionId/versions',
       {
         params: Schema.Struct({ functionId: id }),
-        payload: Schema.Struct({ expectedDraftRevision: expectedVersion }),
+        payload: Schema.Struct({
+          expectedDraftRevision: expectedVersion,
+          /** what the publication is called, for good: it cannot be renamed */
+          releaseName: trimmedName(100),
+          releaseNotes: Schema.optional(boundedText(1000)),
+        }),
         success: Schema.Struct({ version: versionDetail }),
         error: [
+          BadRequest,
           FormulaFunctionNotFound,
           FormulaFunctionArchived,
           FormulaDraftConflict,
+          FormulaReleaseNameTaken,
           FormulaSourceTooLarge,
           FormulaSourceRefused,
           FormulaTypecheckFailed,

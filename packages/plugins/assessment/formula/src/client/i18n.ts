@@ -48,6 +48,10 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/audit/template-copy',
       defaultMessage: 'Copy formula template',
     },
+    'audit.details-change': {
+      id: 'assessment-formula/audit/details-change',
+      defaultMessage: 'Change scoring formula details',
+    },
     'audit.archive': {
       id: 'assessment-formula/audit/archive',
       defaultMessage: 'Archive scoring formula',
@@ -106,7 +110,7 @@ const i18n = definePluginMessages({
     },
     templatesCopiedFrom: {
       id: 'assessment-formula/templates/copied-from',
-      defaultMessage: 'Started from version {number} of another formula',
+      defaultMessage: 'Started from “{name}”',
     },
     navigationTemplates: {
       id: 'assessment-formula/navigation/templates',
@@ -163,10 +167,6 @@ const i18n = definePluginMessages({
     versionNone: {
       id: 'assessment-formula/list/version-none',
       defaultMessage: 'Draft only',
-    },
-    versionNumber: {
-      id: 'assessment-formula/version/number',
-      defaultMessage: 'v{number}',
     },
     updatedColumn: {
       id: 'assessment-formula/list/updated-column',
@@ -310,27 +310,11 @@ const i18n = definePluginMessages({
     },
     save: {
       id: 'assessment-formula/editor/save',
-      defaultMessage: 'Save draft',
+      defaultMessage: 'Save',
     },
     saved: {
       id: 'assessment-formula/editor/saved',
       defaultMessage: 'Draft saved.',
-    },
-    publish: {
-      id: 'assessment-formula/editor/publish',
-      defaultMessage: 'Publish version',
-    },
-    published: {
-      id: 'assessment-formula/editor/published',
-      defaultMessage: 'Published v{number}.',
-    },
-    archive: {
-      id: 'assessment-formula/editor/archive',
-      defaultMessage: 'Archive',
-    },
-    restore: {
-      id: 'assessment-formula/editor/restore',
-      defaultMessage: 'Restore',
     },
     diagnosticsTitle: {
       id: 'assessment-formula/report/diagnostics',
@@ -482,10 +466,6 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/sharing/remove',
       defaultMessage: 'Stop sharing with {name}',
     },
-    versionsTitle: {
-      id: 'assessment-formula/editor/versions',
-      defaultMessage: 'Published versions',
-    },
     versionsEmpty: {
       id: 'assessment-formula/editor/versions-empty',
       defaultMessage: 'Nothing published yet',
@@ -555,10 +535,6 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/version/latest',
       defaultMessage: 'Latest',
     },
-    versionPublishedOn: {
-      id: 'assessment-formula/version/published-on',
-      defaultMessage: 'Published {date}',
-    },
     parametersLabel: {
       id: 'assessment-formula/parameters/label',
       defaultMessage: 'Parameters',
@@ -621,7 +597,7 @@ const i18n = definePluginMessages({
     },
     headerPublished: {
       id: 'assessment-formula/editor/header-published',
-      defaultMessage: 'Published v{number}',
+      defaultMessage: 'Published',
     },
     draftClean: {
       id: 'assessment-formula/editor/draft-clean',
@@ -757,6 +733,346 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/binding/more',
       defaultMessage: 'Show more',
     },
+    archiveFormula: {
+      id: 'assessment-formula/editor/archive-formula',
+      defaultMessage: 'Archive formula',
+    },
+    restoreFormula: {
+      id: 'assessment-formula/editor/restore-formula',
+      defaultMessage: 'Restore formula',
+    },
+    moreActions: {
+      id: 'assessment-formula/editor/more-actions',
+      defaultMessage: 'More actions',
+    },
+    downloadCurrent: {
+      id: 'assessment-formula/editor/download-current',
+      defaultMessage: 'Download current code',
+    },
+    emptySourceTitle: {
+      id: 'assessment-formula/editor/empty-source-title',
+      defaultMessage: 'No scoring formula written yet',
+    },
+    emptySourceHint: {
+      id: 'assessment-formula/editor/empty-source-hint',
+      defaultMessage:
+        'Start from a blank page, or load a minimal example to see how the Formula API works',
+    },
+    loadExample: {
+      id: 'assessment-formula/editor/load-example',
+      defaultMessage: 'Load a minimal example',
+    },
+    loadExampleMenu: {
+      id: 'assessment-formula/editor/load-example-menu',
+      defaultMessage: 'Load a minimal example…',
+    },
+    loadExampleTitle: {
+      id: 'assessment-formula/editor/load-example-title',
+      defaultMessage: 'Replace the editor content?',
+    },
+    loadExampleDescription: {
+      id: 'assessment-formula/editor/load-example-description',
+      defaultMessage:
+        'Loading the example replaces what is in the editor, including anything not yet saved.',
+    },
+    loadExampleConfirm: {
+      id: 'assessment-formula/editor/load-example-confirm',
+      defaultMessage: 'Load example',
+    },
+    browseTemplates: {
+      id: 'assessment-formula/editor/browse-templates',
+      defaultMessage: 'Browse formula templates',
+    },
+    compileBlank: {
+      id: 'assessment-formula/editor/compile-blank',
+      defaultMessage: 'No formula written yet',
+    },
+    tryBlank: {
+      id: 'assessment-formula/editor/try-blank',
+      defaultMessage: 'Write the formula, then try it here',
+    },
+    contractReady: {
+      id: 'assessment-formula/editor/contract-ready',
+      defaultMessage: 'Parameters read from the code',
+    },
+    contractFailed: {
+      id: 'assessment-formula/editor/contract-failed',
+      defaultMessage: 'The parameter check did not pass',
+    },
+    latestRelease: {
+      id: 'assessment-formula/editor/latest-release',
+      defaultMessage: 'Latest: {name}',
+    },
+    phoneSourceTab: {
+      id: 'assessment-formula/editor/phone-source-tab',
+      defaultMessage: 'Source',
+    },
+    publishOpen: {
+      id: 'assessment-formula/editor/publish-open',
+      defaultMessage: 'Publish…',
+    },
+    publishVersionMenu: {
+      id: 'assessment-formula/editor/publish-version-menu',
+      defaultMessage: 'Publish a version…',
+    },
+    publishedAs: {
+      id: 'assessment-formula/editor/published-as',
+      defaultMessage: 'Published “{name}”.',
+    },
+    replaceDraftTitle: {
+      id: 'assessment-formula/editor/replace-draft-title',
+      defaultMessage: 'Replace the current draft?',
+    },
+    replaceDraftDescription: {
+      id: 'assessment-formula/editor/replace-draft-description',
+      defaultMessage:
+        'The current draft has unsaved changes. Using “{name}” replaces the draft; the publications themselves stay as they are.',
+    },
+    replaceDraftConfirm: {
+      id: 'assessment-formula/editor/replace-draft-confirm',
+      defaultMessage: 'Replace current draft',
+    },
+    restored: {
+      id: 'assessment-formula/editor/restored',
+      defaultMessage: 'Put back as the current draft.',
+    },
+    publishTitle: {
+      id: 'assessment-formula/publish/title',
+      defaultMessage: 'Publish a version',
+    },
+    releaseNameLabel: {
+      id: 'assessment-formula/publish/name',
+      defaultMessage: 'Release name',
+    },
+    releaseNamePlaceholder: {
+      id: 'assessment-formula/publish/name-placeholder',
+      defaultMessage: 'For example: 2026 autumn rules',
+    },
+    releaseNotesLabel: {
+      id: 'assessment-formula/publish/notes',
+      defaultMessage: 'Release notes',
+    },
+    publishLasting: {
+      id: 'assessment-formula/publish/lasting',
+      defaultMessage:
+        'Publishing freezes the code, examples and contract; the name and notes cannot be changed afterwards',
+    },
+    publishConfirm: {
+      id: 'assessment-formula/publish/confirm',
+      defaultMessage: 'Publish',
+    },
+    publishSaveAndConfirm: {
+      id: 'assessment-formula/publish/save-and-confirm',
+      defaultMessage: 'Save and publish',
+    },
+    publishCheckUnsaved: {
+      id: 'assessment-formula/publish/check-unsaved',
+      defaultMessage: 'Unsaved changes are saved first',
+    },
+    historyTitle: {
+      id: 'assessment-formula/history/title',
+      defaultMessage: 'History',
+    },
+    historyReleases: {
+      id: 'assessment-formula/history/releases',
+      defaultMessage: 'Publications',
+    },
+    historyRevisions: {
+      id: 'assessment-formula/history/revisions',
+      defaultMessage: 'Draft saves',
+    },
+    releaseOrdinal: {
+      id: 'assessment-formula/history/release-ordinal',
+      defaultMessage: 'Publication #{number}',
+    },
+    releaseUnnamed: {
+      id: 'assessment-formula/history/release-unnamed',
+      defaultMessage: 'Untitled publication',
+    },
+    revisionNumber: {
+      id: 'assessment-formula/history/revision-number',
+      defaultMessage: 'Revision {number}',
+    },
+    revisionCurrent: {
+      id: 'assessment-formula/history/revision-current',
+      defaultMessage: 'Current',
+    },
+    revisionCreated: {
+      id: 'assessment-formula/history/revision-created',
+      defaultMessage: 'Created',
+    },
+    revisionSaved: {
+      id: 'assessment-formula/history/revision-saved',
+      defaultMessage: 'Saved',
+    },
+    revisionCopied: {
+      id: 'assessment-formula/history/revision-copied',
+      defaultMessage: 'Copied from a template',
+    },
+    revisionMigration: {
+      id: 'assessment-formula/history/revision-migration',
+      defaultMessage: 'Kept at a system upgrade',
+    },
+    revisionRestoredRelease: {
+      id: 'assessment-formula/history/revision-restored-release',
+      defaultMessage: 'Restored from “{name}”',
+    },
+    revisionRestoredRevision: {
+      id: 'assessment-formula/history/revision-restored-revision',
+      defaultMessage: 'Restored from revision {number}',
+    },
+    backToDraft: {
+      id: 'assessment-formula/history/back-to-draft',
+      defaultMessage: 'Back to the draft',
+    },
+    downloadCode: {
+      id: 'assessment-formula/history/download-code',
+      defaultMessage: 'Download code',
+    },
+    readOnly: {
+      id: 'assessment-formula/history/read-only',
+      defaultMessage: 'Read-only',
+    },
+    releaseSource: {
+      id: 'assessment-formula/release/source',
+      defaultMessage: 'Source as published',
+    },
+    releaseInfo: {
+      id: 'assessment-formula/release/info',
+      defaultMessage: 'Publication',
+    },
+    releaseOrdinalLabel: {
+      id: 'assessment-formula/release/ordinal-label',
+      defaultMessage: 'Order',
+    },
+    releasePublisher: {
+      id: 'assessment-formula/release/publisher',
+      defaultMessage: 'Published by',
+    },
+    releaseSharing: {
+      id: 'assessment-formula/release/sharing',
+      defaultMessage: 'Sharing',
+    },
+    releaseNoReport: {
+      id: 'assessment-formula/release/no-report',
+      defaultMessage: 'No test results were kept for this publication',
+    },
+    releaseReportTab: {
+      id: 'assessment-formula/release/report-tab',
+      defaultMessage: 'Test results',
+    },
+    releaseContractTab: {
+      id: 'assessment-formula/release/contract-tab',
+      defaultMessage: 'Contract',
+    },
+    releaseEnvironmentTab: {
+      id: 'assessment-formula/release/environment-tab',
+      defaultMessage: 'Environment',
+    },
+    releaseReadOnlyBadge: {
+      id: 'assessment-formula/release/read-only-badge',
+      defaultMessage: 'Publication · read-only',
+    },
+    releaseRestore: {
+      id: 'assessment-formula/release/restore',
+      defaultMessage: 'Edit from this version',
+    },
+    envTypescript: {
+      id: 'assessment-formula/release/env-typescript',
+      defaultMessage: 'TypeScript',
+    },
+    envEsbuild: {
+      id: 'assessment-formula/release/env-esbuild',
+      defaultMessage: 'esbuild',
+    },
+    envQuickjs: {
+      id: 'assessment-formula/release/env-quickjs',
+      defaultMessage: 'QuickJS engine',
+    },
+    envFormulaAbi: {
+      id: 'assessment-formula/release/env-formula-abi',
+      defaultMessage: 'Formula ABI',
+    },
+    envSandboxAbi: {
+      id: 'assessment-formula/release/env-sandbox-abi',
+      defaultMessage: 'Sandbox ABI',
+    },
+    envValueSchema: {
+      id: 'assessment-formula/release/env-value-schema',
+      defaultMessage: 'Value schema profile',
+    },
+    envRegex: {
+      id: 'assessment-formula/release/env-regex',
+      defaultMessage: 'Pattern profile',
+    },
+    envSourcePolicy: {
+      id: 'assessment-formula/release/env-source-policy',
+      defaultMessage: 'Source policy',
+    },
+    envAuthoringBuild: {
+      id: 'assessment-formula/release/env-authoring-build',
+      defaultMessage: 'Compiler build',
+    },
+    envRuntimeBuild: {
+      id: 'assessment-formula/release/env-runtime-build',
+      defaultMessage: 'Runtime build',
+    },
+    envSourceSha: {
+      id: 'assessment-formula/release/env-source-sha',
+      defaultMessage: 'Source SHA-256',
+    },
+    envRuntimeSha: {
+      id: 'assessment-formula/release/env-runtime-sha',
+      defaultMessage: 'Bundle SHA-256',
+    },
+    envContractSha: {
+      id: 'assessment-formula/release/env-contract-sha',
+      defaultMessage: 'Contract SHA-256',
+    },
+    envFormulaRuntimeSha: {
+      id: 'assessment-formula/release/env-formula-runtime-sha',
+      defaultMessage: 'Formula runtime SHA-256',
+    },
+    revisionEmptySource: {
+      id: 'assessment-formula/revision/empty-source',
+      defaultMessage: 'No code in this save',
+    },
+    revisionSource: {
+      id: 'assessment-formula/revision/source',
+      defaultMessage: 'Source as saved',
+    },
+    revisionLabel: {
+      id: 'assessment-formula/revision/label',
+      defaultMessage: 'Revision',
+    },
+    revisionSavedAt: {
+      id: 'assessment-formula/revision/saved-at',
+      defaultMessage: 'Saved at',
+    },
+    revisionSavedBy: {
+      id: 'assessment-formula/revision/saved-by',
+      defaultMessage: 'Saved by',
+    },
+    revisionOrigin: {
+      id: 'assessment-formula/revision/origin',
+      defaultMessage: 'Came from',
+    },
+    revisionNoExamples: {
+      id: 'assessment-formula/revision/no-examples',
+      defaultMessage: 'No examples in this save',
+    },
+    revisionInfo: {
+      id: 'assessment-formula/revision/info',
+      defaultMessage: 'Save details',
+    },
+    revisionReadOnlyBadge: {
+      id: 'assessment-formula/revision/read-only-badge',
+      defaultMessage: 'Draft save · read-only',
+    },
+    revisionRestore: {
+      id: 'assessment-formula/revision/restore',
+      defaultMessage: 'Restore this draft',
+    },
   },
   errors: defineErrorTranslations<ErrorsByCode<typeof formulaErrors>>()({
     ASSESSMENT_FORMULA_FUNCTION_NOT_FOUND: {
@@ -774,6 +1090,14 @@ const i18n = definePluginMessages({
     ASSESSMENT_FORMULA_VERSION_NOT_FOUND: {
       id: 'assessment-formula/error/version-not-found',
       defaultMessage: 'That version could not be found.',
+    },
+    ASSESSMENT_FORMULA_DRAFT_REVISION_NOT_FOUND: {
+      id: 'assessment-formula/error/draft-revision-not-found',
+      defaultMessage: 'That saved draft could not be found.',
+    },
+    ASSESSMENT_FORMULA_RELEASE_NAME_TAKEN: {
+      id: 'assessment-formula/error/release-name-taken',
+      defaultMessage: 'Another publication of this formula already has that name. Choose another.',
     },
     ASSESSMENT_FORMULA_FUNCTION_ARCHIVED: {
       id: 'assessment-formula/error/function-archived',

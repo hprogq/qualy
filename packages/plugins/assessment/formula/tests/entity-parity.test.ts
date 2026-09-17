@@ -7,12 +7,13 @@ import { entities, compositeForeignKeys } from '../src/db/entities.ts'
 // on? The version table is the immutable execution record: a delete rule
 // that drifted between the declared entities and the committed lineage
 // would quietly change what "published" promises. Both databases start
-// from the lineage; only the two formula tables are dropped and rebuilt
+// from the lineage; only the formula tables are dropped and rebuilt
 // from the entities, org keeps its own.
 
 const TABLES = [
   'assessment_formula_functions',
   'assessment_formula_versions',
+  'assessment_formula_draft_revisions',
   'assessment_formula_share_scopes',
 ]
 

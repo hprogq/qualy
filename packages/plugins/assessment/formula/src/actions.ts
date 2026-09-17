@@ -4,9 +4,10 @@ import { AuditAction } from '@qualy/audit-contract/action'
 
 // Only what leaves no other trace. Publication is deliberately absent: a
 // published version IS the domain history - immutable row, publisher and
-// instant on it - and history is not copied into the trail. The draft, by
-// contrast, is mutable in place, and archiving flips one column; without
-// these actions neither would be answerable later.
+// instant on it - and history is not copied into the trail. So is saving the
+// draft: every save that changes the source or the examples leaves a draft
+// revision holding both, with who saved it and when. What still leaves
+// nothing behind is renaming a formula and archiving it, and those are here.
 
 export const FormulaFunctionCreated = AuditAction.define({
   code: 'assessment.formula.create',
@@ -18,12 +19,37 @@ export const FormulaFunctionCreated = AuditAction.define({
   details: Schema.Struct({}),
 })
 
+/**
+ * A draft save, as it was recorded before draft revisions existed.
+ *
+ * No longer recorded: the revision row is that history now, and a second
+ * account of the same save would be two sources for one fact. Kept in the
+ * catalog so the rows written before still read with a name.
+ */
 export const FormulaDraftReplaced = AuditAction.define({
   code: 'assessment.formula.draft.update',
   target: 'assessment.formula',
   version: 1,
   name: message('assessment-formula/audit/draft-update', 'Update formula draft'),
   details: Schema.Struct({ draftRevision: Schema.Number }),
+})
+
+/**
+ * What a formula is called, or how it is described, changed.
+ *
+ * Not a draft revision - nothing that could be published moved - and the
+ * function row keeps only the latest words, so the trail is the one record
+ * that a formula was renamed and from what.
+ */
+export const FormulaFunctionDetailsChanged = AuditAction.define({
+  code: 'assessment.formula.details.change',
+  target: 'assessment.formula',
+  version: 1,
+  name: message('assessment-formula/audit/details-change', 'Change scoring formula details'),
+  details: Schema.Struct({
+    name: Schema.optional(Schema.Struct({ from: Schema.String, to: Schema.String })),
+    descriptionChanged: Schema.Boolean,
+  }),
 })
 
 export const FormulaFunctionArchived = AuditAction.define({
@@ -80,6 +106,7 @@ export const FormulaTemplateCopied = AuditAction.define({
 export const formulaActions = [
   FormulaFunctionCreated,
   FormulaDraftReplaced,
+  FormulaFunctionDetailsChanged,
   FormulaFunctionArchived,
   FormulaFunctionRestored,
   FormulaVersionSharingChanged,

@@ -77,6 +77,27 @@ export class FormulaTemplateNotFound extends Schema.TaggedError<FormulaTemplateN
   { httpApiStatus: 404, identifier: 'AssessmentFormulaTemplateNotFound' },
 ) {}
 
+/**
+ * The draft revision asked for is not one this function has.
+ */
+export class FormulaDraftRevisionNotFound extends Schema.TaggedError<FormulaDraftRevisionNotFound>()(
+  'ASSESSMENT_FORMULA_DRAFT_REVISION_NOT_FOUND',
+  {},
+  { httpApiStatus: 404, identifier: 'AssessmentFormulaDraftRevisionNotFound' },
+) {}
+
+/**
+ * Another publication of this formula already carries the name.
+ *
+ * A publication is told apart by its name; two wearing one name leave the
+ * reader nothing but the number the name was meant to replace.
+ */
+export class FormulaReleaseNameTaken extends Schema.TaggedError<FormulaReleaseNameTaken>()(
+  'ASSESSMENT_FORMULA_RELEASE_NAME_TAKEN',
+  {},
+  { httpApiStatus: 409, identifier: 'AssessmentFormulaReleaseNameTaken' },
+) {}
+
 export class FormulaFunctionArchived extends Schema.TaggedError<FormulaFunctionArchived>()(
   'ASSESSMENT_FORMULA_FUNCTION_ARCHIVED',
   {},

@@ -10,12 +10,12 @@ import { isoInstant } from './instant.ts'
 // as history only: nobody may bind anything afresh today, whatever the
 // catalog would have said about this one version.
 
-
 export const bindingOptionDto = (version: BindableFormulaVersion) => ({
   versionId: version.versionId,
   functionId: version.functionId,
   functionName: version.functionName,
   versionNo: version.versionNo,
+  releaseName: version.releaseName,
   publishedAt: isoInstant(version.publishedAt),
   parameters: Object.keys(version.inputSchema.properties).sort(),
 })

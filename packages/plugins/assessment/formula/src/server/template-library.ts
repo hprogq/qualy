@@ -18,6 +18,7 @@
 import { Effect, Layer, Context } from 'effect'
 import { createHash } from 'node:crypto'
 import { sql, type RawBuilder } from 'kysely'
+import { sha256Hex } from './contract-identity.ts'
 import { transaction, withDatabase } from '@qualy/plugin-database/server'
 import { Rbac } from '@qualy/rbac-contract/effect'
 import { scopeCoverage } from '@qualy/rbac-contract'
@@ -68,6 +69,7 @@ export interface TemplateSummary {
   readonly functionName: string
   readonly description: string | null
   readonly versionNo: number
+  readonly releaseName: string | null
   readonly publishedAt: Date | string
   /** null when the author's row is gone; a template does not depend on it */
   readonly authorUserId: string
@@ -177,6 +179,7 @@ const TEMPLATE_COLUMNS = [
   'f.name as functionName',
   'f.description as description',
   'v.versionNo as versionNo',
+  'v.releaseName as releaseName',
   'v.publishedAt as publishedAt',
   'v.inputSchema as inputSchema',
   'f.createdBy as authorUserId',
@@ -190,6 +193,7 @@ interface TemplateRow {
   readonly functionName: string
   readonly description: string | null
   readonly versionNo: number
+  readonly releaseName: string | null
   readonly publishedAt: Date | string
   readonly inputSchema: unknown
   readonly authorUserId: string
@@ -323,6 +327,7 @@ export const make = Effect.fn('FormulaTemplateLibrary.make')(function* () {
     functionName: row.functionName,
     description: row.description,
     versionNo: Number(row.versionNo),
+    releaseName: row.releaseName,
     publishedAt: row.publishedAt,
     authorUserId: row.authorUserId,
     authorName: row.authorName,
@@ -492,6 +497,25 @@ export const make = Effect.fn('FormulaTemplateLibrary.make')(function* () {
               )
               .pipe(Effect.orDie)
             const functionId = (created as { id: string }).id
+            // the new draft's history starts with what it was copied from
+            yield* db
+              .query((k) =>
+                k
+                  .insertInto('FormulaDraftRevision')
+                  .values({
+                    tenantId,
+                    functionId,
+                    revisionNo: 1,
+                    sourceTs: found.sourceTs,
+                    tests: sql`${JSON.stringify(found.tests)}::jsonb`,
+                    sourceSha256: sha256Hex(found.sourceTs),
+                    savedBy: viewer.userId,
+                    origin: 'copied-from-template',
+                    sourceVersionId: versionId,
+                  } as never)
+                  .execute(),
+              )
+              .pipe(Effect.orDie)
             // one act, recorded once: this IS how the function came to
             // exist, so a separate creation entry beside it would say the
             // same thing twice

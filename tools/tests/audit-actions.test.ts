@@ -36,6 +36,16 @@ import type { AuditAction } from '../../packages/contracts/audit/src/action.ts'
 // `UserDeleted as UserDeletedAction`, because an error class in the same module
 // already holds that name.
 
+// Retired actions: declared so the rows written before still read with a name
+// and can still be filtered for, and recorded by nothing any more. Each one is
+// named here with where its history went; the check below also refuses a
+// retired action that something records again, so this list cannot hide a
+// live one.
+const RETIRED: ReadonlyMap<string, string> = new Map([
+  // a draft save is a draft revision row now, with the source and examples it saved
+  ['assessment.formula.draft.update', 'assessment_formula_draft_revisions'],
+])
+
 const root = fileURLToPath(new URL('../..', import.meta.url))
 const pluginsDir = path.join(root, 'packages/plugins')
 
@@ -102,17 +112,27 @@ describe('the audit action catalog', () => {
       return [name, ...renamed]
     }
 
-    const orphans = declared
-      .filter(
-        ({ name }) =>
-          !sources.some(({ text }) =>
-            localNames(text, name).some((local) =>
-              new RegExp(`record\\([^)]*\\b${local}\\b`).test(text),
-            ),
-          ),
+    const recorded = ({ name }: Declared): boolean =>
+      sources.some(({ text }) =>
+        localNames(text, name).some((local) =>
+          new RegExp(`record\\([^)]*\\b${local}\\b`).test(text),
+        ),
       )
-      .map(({ code, name, declaredIn }) => `${code} (${name}, declared in ${declaredIn})`)
+    const described = ({ code, name, declaredIn }: Declared) =>
+      `${code} (${name}, declared in ${declaredIn})`
 
+    const orphans = declared
+      .filter((one) => !RETIRED.has(one.code) && !recorded(one))
+      .map(described)
     expect(orphans).toEqual([])
+
+    // retired means recorded by nothing; one recorded again is live, and
+    // belongs off the list
+    const revived = declared.filter((one) => RETIRED.has(one.code) && recorded(one)).map(described)
+    expect(revived).toEqual([])
+    // and a name on the list is still declared, or the list is stale
+    expect(
+      [...RETIRED.keys()].filter((code) => !declared.some((one) => one.code === code)),
+    ).toEqual([])
   })
 })

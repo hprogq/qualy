@@ -45,9 +45,9 @@ import {
 import { validateValue } from '@qualy/value-schema/validate'
 import { REGEX_PROFILE_VERSION, patternIssues } from '@qualy/value-schema/regex'
 import {
-  FormulaDraftReplaced,
   FormulaFunctionArchived as FormulaFunctionArchivedAction,
   FormulaFunctionCreated,
+  FormulaFunctionDetailsChanged,
   FormulaFunctionRestored,
 } from '../actions.ts'
 import { formulaApiGroup } from '../api.ts'
@@ -65,6 +65,7 @@ import {
   FormulaCompileUnavailable,
   FormulaContractInvalid,
   FormulaDraftConflict,
+  FormulaDraftRevisionNotFound,
   FormulaExecutionLimitExceeded,
   FormulaFunctionArchived,
   FormulaFunctionNotFound,
@@ -73,6 +74,7 @@ import {
   FormulaTestFailed,
   FormulaTypecheckFailed,
   FormulaVersionNotFound,
+  FormulaReleaseNameTaken,
 } from './errors.ts'
 import {
   AssessmentConfigurationAccess,
@@ -108,6 +110,10 @@ const LIST_FINGERPRINT = 'assessment-formula-functions'
 /** the template library is one list for everybody who can see it */
 const TEMPLATE_FINGERPRINT = 'assessment-formula-templates'
 
+/** one function's revisions are their own list */
+const revisionFingerprint = (functionId: string) =>
+  `assessment-formula-draft-revisions:${functionId}`
+
 /** one batch's options are their own query: a cursor from another round's
  *  page describes a position in a different list */
 const bindingFingerprint = (batchId: string) => `assessment-formula-binding-options:${batchId}`
@@ -122,6 +128,7 @@ const templateSummaryDto = (row: TemplateSummary) => ({
   functionName: row.functionName,
   description: row.description,
   versionNo: Number(row.versionNo),
+  releaseName: row.releaseName,
   publishedAt: isoInstant(row.publishedAt),
   authorUserId: row.authorUserId,
   authorName: row.authorName,
@@ -161,11 +168,22 @@ interface FunctionRow {
   archivedAt: Date | null
   updatedAt: Date
   latestVersionNo: number | null
+  latestReleaseName: string | null
 }
 
 interface VersionRow {
   id: string
   versionNo: number
+  releaseName: string | null
+  releaseNotes: string | null
+  publishedByName: string | null
+  valueSchemaProfileVersion: number
+  regexProfileVersion: number
+  sandboxAbiVersion: number
+  sourcePolicyVersion: number
+  sourcePolicyParserVersion: string
+  authoringBuildId: string
+  sandboxRuntimeBuildId: string
   sourceTs: string
   runtimeJs: string
   inputSchema: unknown
@@ -183,6 +201,47 @@ interface VersionRow {
   publishedBy: string
   publishedAt: Date
 }
+
+/** how a saved state of the draft came to be */
+export type RevisionOrigin =
+  | 'created'
+  | 'saved'
+  | 'restored-from-version'
+  | 'restored-from-draft'
+  | 'copied-from-template'
+  | 'migration'
+
+interface RevisionRow {
+  revisionNo: number
+  origin: RevisionOrigin
+  sourceSha256: string
+  savedBy: string
+  savedByName: string | null
+  savedAt: Date
+  sourceVersionNo: number | null
+  sourceReleaseName: string | null
+  sourceDraftRevisionNo: number | null
+}
+
+/** where a restore reads the state it puts back */
+export type RestoreSource =
+  | { readonly kind: 'published-version'; readonly versionNo: number }
+  | { readonly kind: 'draft-revision'; readonly revisionNo: number }
+
+/**
+ * JSON with its object keys in one order, for telling whether two example
+ * lists say the same thing. jsonb gives keys back in an order of its own, so
+ * a stored list and the same list sent again differ byte for byte and agree
+ * in meaning.
+ */
+const canonicalJson = (value: unknown): string =>
+  JSON.stringify(value, (_key, held: unknown) =>
+    held !== null && typeof held === 'object' && !Array.isArray(held)
+      ? Object.fromEntries(
+          Object.entries(held as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : 1)),
+        )
+      : held,
+  )
 
 export interface TestProblem {
   readonly at: 'input' | 'expected' | 'output'
@@ -217,7 +276,6 @@ export interface EvaluatedCase {
   readonly defect?: string
 }
 
-
 const functionDto = (row: FunctionRow) => ({
   id: row.id,
   name: row.name,
@@ -226,6 +284,7 @@ const functionDto = (row: FunctionRow) => ({
   status: (row.archivedAt === null ? 'active' : 'archived') as 'active' | 'archived',
   draftRevision: row.draftRevision,
   latestVersionNo: row.latestVersionNo === null ? null : Number(row.latestVersionNo),
+  latestReleaseName: row.latestReleaseName ?? null,
   updatedAt: isoInstant(row.updatedAt),
 })
 
@@ -236,10 +295,14 @@ const functionDetailDto = (row: FunctionRow) => ({
 })
 
 const versionViewDto = (row: VersionRow) => ({
-  versionNo: row.versionNo,
+  versionId: row.id,
+  versionNo: Number(row.versionNo),
+  releaseName: row.releaseName ?? null,
+  releaseNotes: row.releaseNotes ?? null,
   contractSha256: row.contractSha256,
   runtimeSha256: row.runtimeSha256,
   publishedBy: row.publishedBy,
+  publishedByName: row.publishedByName ?? null,
   publishedAt: isoInstant(row.publishedAt),
 })
 
@@ -254,8 +317,30 @@ const versionDetailDto = (row: VersionRow) => ({
   formulaAbiVersion: row.formulaAbiVersion,
   formulaRuntimeSha256: row.formulaRuntimeSha256,
   quickjsEngineVersion: row.quickjsEngineVersion,
+  valueSchemaProfileVersion: Number(row.valueSchemaProfileVersion),
+  regexProfileVersion: Number(row.regexProfileVersion),
+  sandboxAbiVersion: Number(row.sandboxAbiVersion),
+  sourcePolicyVersion: Number(row.sourcePolicyVersion),
+  sourcePolicyParserVersion: row.sourcePolicyParserVersion,
+  authoringBuildId: row.authoringBuildId,
+  sandboxRuntimeBuildId: row.sandboxRuntimeBuildId,
   tests: row.tests,
   testReport: row.testReport,
+})
+
+const revisionViewDto = (row: RevisionRow) => ({
+  revisionNo: Number(row.revisionNo),
+  origin: row.origin,
+  sourceSha256: row.sourceSha256,
+  savedBy: row.savedBy,
+  savedByName: row.savedByName ?? null,
+  savedAt: isoInstant(row.savedAt),
+  sourceVersion:
+    row.sourceVersionNo === null
+      ? null
+      : { versionNo: Number(row.sourceVersionNo), releaseName: row.sourceReleaseName ?? null },
+  sourceDraftRevisionNo:
+    row.sourceDraftRevisionNo === null ? null : Number(row.sourceDraftRevisionNo),
 })
 
 /** a compiled draft: everything a version row needs except its number */
@@ -373,7 +458,12 @@ interface FormulaLibraryShape {
       function: ReturnType<typeof functionDetailDto>
       versions: ReturnType<typeof versionViewDto>[]
       /** where this draft was forked from, if it was */
-      copiedFrom: { versionId: string; versionNo: number } | null
+      copiedFrom: {
+        versionId: string
+        versionNo: number
+        functionName: string
+        releaseName: string | null
+      } | null
     },
     AccessDenied | FormulaFunctionNotFound
   >
@@ -405,7 +495,11 @@ interface FormulaLibraryShape {
   readonly publish: (
     tenantId: string,
     functionId: string,
-    expectedDraftRevision: number,
+    request: {
+      readonly expectedDraftRevision: number
+      readonly releaseName: string
+      readonly releaseNotes?: string | null
+    },
     as: Principal,
   ) => Effect.Effect<
     ReturnType<typeof versionDetailDto>,
@@ -413,7 +507,44 @@ interface FormulaLibraryShape {
     | FormulaFunctionNotFound
     | FormulaFunctionArchived
     | FormulaDraftConflict
+    | FormulaReleaseNameTaken
     | CompileRefusal
+  >
+  readonly listDraftRevisions: (
+    tenantId: string,
+    functionId: string,
+    page: { cursor?: string; limit?: string },
+    as: Principal,
+  ) => Effect.Effect<
+    { items: ReturnType<typeof revisionViewDto>[]; nextCursor: string | null },
+    AccessDenied | FormulaFunctionNotFound | BadRequest
+  >
+  readonly getDraftRevision: (
+    tenantId: string,
+    functionId: string,
+    revisionNo: number,
+    as: Principal,
+  ) => Effect.Effect<
+    ReturnType<typeof revisionViewDto> & {
+      sourceTs: string
+      tests: readonly FormulaTestInput[]
+    },
+    AccessDenied | FormulaFunctionNotFound | FormulaDraftRevisionNotFound
+  >
+  readonly restoreDraft: (
+    tenantId: string,
+    functionId: string,
+    request: { readonly expectedDraftRevision: number; readonly from: RestoreSource },
+    as: Principal,
+  ) => Effect.Effect<
+    ReturnType<typeof functionDetailDto>,
+    | AccessDenied
+    | FormulaFunctionNotFound
+    | FormulaFunctionArchived
+    | FormulaDraftConflict
+    | FormulaVersionNotFound
+    | FormulaDraftRevisionNotFound
+    | FormulaSourceTooLarge
   >
   readonly getVersion: (
     tenantId: string,
@@ -430,17 +561,6 @@ export class FormulaLibrary extends Context.Service<FormulaLibrary, FormulaLibra
   '@qualy/plugin-assessment-formula/FormulaLibrary',
 ) {}
 
-const DEFAULT_SOURCE = `import { Schema, defineFormula } from '@qualy/formula'
-
-export default defineFormula({
-  input: Schema.input({
-    value: Schema.decimal({ minimum: '0.00', maximum: '10.00', maxScale: 2 }),
-  }),
-  output: Schema.scoreAmount({ maxScale: 2 }),
-  run: (input) => input.value,
-})
-`
-
 export const make = Effect.fn('FormulaLibrary.make')(function* () {
   const withDb = yield* withDatabase
   const rbac = yield* Rbac
@@ -456,6 +576,76 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
       and v.function_id = assessment_formula_functions.id
   )`
 
+  const latestReleaseSubquery = sql<string | null>`(
+    select v.release_name from assessment_formula_versions v
+    where v.tenant_id = assessment_formula_functions.tenant_id
+      and v.function_id = assessment_formula_functions.id
+    order by v.version_no desc
+    limit 1
+  )`
+
+  /** one published version with the publisher's name a screen shows */
+  const versionRow = (
+    tenantId: string,
+    where:
+      { readonly functionId: string; readonly versionNo: number } | { readonly versionId: string },
+  ) =>
+    db
+      .query((k) => {
+        const query = k
+          .selectFrom('FormulaVersion as v')
+          // LEFT: publishing carries no foreign key to the publisher
+          .leftJoin('User as u', (join) =>
+            join.onRef('u.tenantId', '=', 'v.tenantId').onRef('u.id', '=', 'v.publishedBy'),
+          )
+          .selectAll('v')
+          .select('u.displayName as publishedByName')
+          .where('v.tenantId', '=', tenantId)
+        return (
+          'versionId' in where
+            ? query.where('v.id', '=', where.versionId)
+            : query
+                .where('v.functionId', '=', where.functionId)
+                .where('v.versionNo', '=', where.versionNo)
+        ).executeTakeFirst()
+      })
+      .pipe(
+        Effect.orDie,
+        Effect.map((row) => (row === undefined ? undefined : (row as unknown as VersionRow))),
+      )
+
+  /** appends one saved state of a draft; the caller holds the function row */
+  const appendRevision = (input: {
+    readonly tenantId: string
+    readonly functionId: string
+    readonly revisionNo: number
+    readonly sourceTs: string
+    readonly tests: readonly unknown[]
+    readonly savedBy: string
+    readonly origin: RevisionOrigin
+    readonly sourceVersionId?: string
+    readonly sourceDraftRevisionNo?: number
+  }) =>
+    db
+      .query((k) =>
+        k
+          .insertInto('FormulaDraftRevision')
+          .values({
+            tenantId: input.tenantId,
+            functionId: input.functionId,
+            revisionNo: input.revisionNo,
+            sourceTs: input.sourceTs,
+            tests: sql`${JSON.stringify(input.tests)}::jsonb`,
+            sourceSha256: sha256Hex(input.sourceTs),
+            savedBy: input.savedBy,
+            origin: input.origin,
+            sourceVersionId: input.sourceVersionId ?? null,
+            sourceDraftRevisionNo: input.sourceDraftRevisionNo ?? null,
+          } as never)
+          .execute(),
+      )
+      .pipe(Effect.orDie, Effect.asVoid)
+
   const foundRow = (
     tenantId: string,
     functionId: string,
@@ -466,6 +656,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
           .selectFrom('FormulaFunction')
           .selectAll()
           .select(latestNoSubquery.as('latestVersionNo'))
+          .select(latestReleaseSubquery.as('latestReleaseName'))
           .where('tenantId', '=', tenantId)
           .where('id', '=', functionId)
           .executeTakeFirst(),
@@ -918,6 +1109,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
             'FormulaFunction.updatedAt',
           ])
           .select(latestNoSubquery.as('latestVersionNo'))
+          .select(latestReleaseSubquery.as('latestReleaseName'))
           .where('FormulaFunction.tenantId', '=', tenantId)
           // what this author wrote, and nothing else: there is no
           // organizational range to a formula any more
@@ -955,8 +1147,10 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
   ) {
     yield* requireAuthor(as)
     // the byte gate is a service invariant, identical at create, update and
-    // compile - the api's character-length check is not a byte check
-    const seed = input.draftSourceTs ?? DEFAULT_SOURCE
+    // compile - the api's character-length check is not a byte check.
+    // Nothing is written in for the author: a formula that runs is a scoring
+    // decision, and a new one has made none yet.
+    const seed = input.draftSourceTs ?? ''
     if (Buffer.byteLength(seed, 'utf8') > SOURCE_LIMIT)
       return yield* new FormulaSourceTooLarge({ limit: SOURCE_LIMIT })
     const created = yield* withDb(
@@ -979,6 +1173,15 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
                 .executeTakeFirstOrThrow(),
             )
             .pipe(Effect.orDie)
+          yield* appendRevision({
+            tenantId,
+            functionId: row.id as string,
+            revisionNo: 1,
+            sourceTs: seed,
+            tests: [],
+            savedBy: as.userId,
+            origin: 'created',
+          })
           // in the transaction on purpose: an auditable write commits with
           // its audit event or not at all (the audit contract's invariant)
           yield* audit.record(FormulaFunctionCreated, {
@@ -1006,11 +1209,24 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     const versions = yield* db
       .query((k) =>
         k
-          .selectFrom('FormulaVersion')
-          .select(['versionNo', 'contractSha256', 'runtimeSha256', 'publishedBy', 'publishedAt'])
-          .where('tenantId', '=', tenantId)
-          .where('functionId', '=', functionId)
-          .orderBy('versionNo', 'desc')
+          .selectFrom('FormulaVersion as v')
+          .leftJoin('User as u', (join) =>
+            join.onRef('u.tenantId', '=', 'v.tenantId').onRef('u.id', '=', 'v.publishedBy'),
+          )
+          .select([
+            'v.id as id',
+            'v.versionNo as versionNo',
+            'v.releaseName as releaseName',
+            'v.releaseNotes as releaseNotes',
+            'v.contractSha256 as contractSha256',
+            'v.runtimeSha256 as runtimeSha256',
+            'v.publishedBy as publishedBy',
+            'u.displayName as publishedByName',
+            'v.publishedAt as publishedAt',
+          ])
+          .where('v.tenantId', '=', tenantId)
+          .where('v.functionId', '=', functionId)
+          .orderBy('v.versionNo', 'desc')
           .execute(),
       )
       .pipe(Effect.orDie)
@@ -1025,19 +1241,39 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
         : yield* db
             .query((k) =>
               k
-                .selectFrom('FormulaVersion')
-                .select(['id', 'versionNo'])
-                .where('tenantId', '=', tenantId)
-                .where('id', '=', row.copiedFromVersionId as string)
+                .selectFrom('FormulaVersion as v')
+                .innerJoin('FormulaFunction as f', (join) =>
+                  join.onRef('f.tenantId', '=', 'v.tenantId').onRef('f.id', '=', 'v.functionId'),
+                )
+                .select([
+                  'v.id as id',
+                  'v.versionNo as versionNo',
+                  'v.releaseName as releaseName',
+                  'f.name as functionName',
+                ])
+                .where('v.tenantId', '=', tenantId)
+                .where('v.id', '=', row.copiedFromVersionId as string)
                 .executeTakeFirst(),
             )
             .pipe(
               Effect.orDie,
               Effect.map((source) => {
-                const found = source as { id: string; versionNo: number } | undefined
+                const found = source as
+                  | {
+                      id: string
+                      versionNo: number
+                      releaseName: string | null
+                      functionName: string
+                    }
+                  | undefined
                 return found === undefined
                   ? null
-                  : { versionId: found.id, versionNo: Number(found.versionNo) }
+                  : {
+                      versionId: found.id,
+                      versionNo: Number(found.versionNo),
+                      functionName: found.functionName,
+                      releaseName: found.releaseName,
+                    }
               }),
             )
     return {
@@ -1066,8 +1302,8 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
       Buffer.byteLength(patch.draftSourceTs, 'utf8') > SOURCE_LIMIT
     )
       return yield* new FormulaSourceTooLarge({ limit: SOURCE_LIMIT })
-    // a patch that names no field changes nothing: no revision bump, no
-    // audit event to explain later
+    // a patch that names no field changes nothing: no revision, no audit
+    // event to explain later
     if (
       patch.name === undefined &&
       patch.description === undefined &&
@@ -1075,62 +1311,107 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
       patch.draftTests === undefined
     )
       return functionDetailDto(row)
-    yield* withDb(
+    const changed = yield* withDb(
       transaction(
         Effect.gen(function* () {
-          const updated = yield* db
+          const locked = yield* db
+            .query((k) =>
+              k
+                .selectFrom('FormulaFunction')
+                .select([
+                  'name',
+                  'description',
+                  'draftSourceTs',
+                  'draftTests',
+                  'draftRevision',
+                  'archivedAt',
+                ])
+                .where('tenantId', '=', tenantId)
+                .where('id', '=', functionId)
+                .forUpdate()
+                .executeTakeFirst(),
+            )
+            .pipe(Effect.orDie)
+          if (locked === undefined) return yield* new FormulaFunctionNotFound()
+          // judged under the lock: the read above ran before this transaction,
+          // and a concurrent archive or save between the two must not see its
+          // draft edited
+          if (locked.archivedAt !== null) return yield* new FormulaFunctionArchived()
+          if (Number(locked.draftRevision) !== patch.expectedDraftRevision)
+            return yield* new FormulaDraftConflict({ draftRevision: Number(locked.draftRevision) })
+          // A revision is a change to what could be published - the source or
+          // the examples - and nothing else. A save that repeats them, or only
+          // renames the formula, moves no revision and leaves no snapshot of
+          // a state that already has one.
+          const sourceTs =
+            patch.draftSourceTs !== undefined && patch.draftSourceTs !== locked.draftSourceTs
+              ? patch.draftSourceTs
+              : undefined
+          const tests =
+            patch.draftTests !== undefined &&
+            canonicalJson(patch.draftTests) !== canonicalJson(locked.draftTests)
+              ? patch.draftTests
+              : undefined
+          const name =
+            patch.name !== undefined && patch.name !== locked.name ? patch.name : undefined
+          const description =
+            patch.description !== undefined && patch.description !== locked.description
+              ? patch.description
+              : undefined
+          const content = sourceTs !== undefined || tests !== undefined
+          if (!content && name === undefined && description === undefined) return false
+          const revisionNo = patch.expectedDraftRevision + (content ? 1 : 0)
+          yield* db
             .query((k) =>
               k
                 .updateTable('FormulaFunction')
                 .set({
-                  ...(patch.name === undefined ? {} : { name: patch.name }),
-                  ...(patch.description === undefined ? {} : { description: patch.description }),
-                  ...(patch.draftSourceTs === undefined
+                  ...(name === undefined ? {} : { name }),
+                  ...(description === undefined ? {} : { description }),
+                  ...(sourceTs === undefined ? {} : { draftSourceTs: sourceTs }),
+                  ...(tests === undefined
                     ? {}
-                    : { draftSourceTs: patch.draftSourceTs }),
-                  ...(patch.draftTests === undefined
-                    ? {}
-                    : { draftTests: sql`${JSON.stringify(patch.draftTests)}::jsonb` }),
-                  draftRevision: sql`draft_revision + 1`,
+                    : { draftTests: sql`${JSON.stringify(tests)}::jsonb` }),
+                  draftRevision: revisionNo,
                   updatedBy: as.userId,
                   updatedAt: sql`now()`,
                 })
                 .where('tenantId', '=', tenantId)
                 .where('id', '=', functionId)
-                .where('draftRevision', '=', patch.expectedDraftRevision)
-                // the archive check rides IN the update: the read above ran
-                // before this transaction, and a concurrent archive between
-                // the two must not see its frozen draft edited
-                .where('archivedAt', 'is', null)
-                .executeTakeFirst(),
+                .execute(),
             )
             .pipe(Effect.orDie)
-          if (Number(updated.numUpdatedRows ?? 0) === 0)
-            return yield* new FormulaDraftConflict({ draftRevision: -1 })
-          // with the mutation, or not at all: the audit contract's invariant
-          yield* audit.record(FormulaDraftReplaced, {
-            tenantId,
-            actor: actorOf(as),
-            target: { id: functionId, label: patch.name ?? row.name },
-            details: { draftRevision: patch.expectedDraftRevision + 1 },
-          })
+          // the draft's own history is the revision row; nothing about a save
+          // goes to the audit trail twice
+          if (content) {
+            yield* appendRevision({
+              tenantId,
+              functionId,
+              revisionNo,
+              sourceTs: sourceTs ?? (locked.draftSourceTs as string),
+              tests: tests ?? (locked.draftTests as readonly unknown[]),
+              savedBy: as.userId,
+              origin: 'saved',
+            })
+          }
+          // what a formula is called leaves no trace of its own, so a rename
+          // is recorded; with the mutation, or not at all
+          if (name !== undefined || description !== undefined) {
+            yield* audit.record(FormulaFunctionDetailsChanged, {
+              tenantId,
+              actor: actorOf(as),
+              target: { id: functionId, label: name ?? (locked.name as string) },
+              details: {
+                ...(name === undefined ? {} : { name: { from: locked.name as string, to: name } }),
+                descriptionChanged: description !== undefined,
+              },
+            })
+          }
+          return true
         }),
       ),
-    ).pipe(
-      // zero rows updated means EITHER a stale revision or a concurrent
-      // archive; the reread tells the caller which refusal is theirs
-      Effect.catchTag('ASSESSMENT_FORMULA_DRAFT_CONFLICT', () =>
-        foundRow(tenantId, functionId).pipe(
-          Effect.flatMap((current) =>
-            Effect.fail(
-              current.archivedAt !== null
-                ? new FormulaFunctionArchived()
-                : new FormulaDraftConflict({ draftRevision: current.draftRevision }),
-            ),
-          ),
-        ),
-      ),
     )
+    if (!changed) return functionDetailDto(row)
     const fresh = yield* foundRow(tenantId, functionId)
     return functionDetailDto(fresh)
   })
@@ -1181,9 +1462,21 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
   const publish = Effect.fn('FormulaLibrary.publish')(function* (
     tenantId: string,
     functionId: string,
-    expectedDraftRevision: number,
+    request: {
+      readonly expectedDraftRevision: number
+      readonly releaseName: string
+      readonly releaseNotes?: string | null
+    },
     as: Principal,
   ) {
+    const expectedDraftRevision = request.expectedDraftRevision
+    const releaseName = request.releaseName.trim()
+    const releaseNotes =
+      request.releaseNotes === undefined || request.releaseNotes === null
+        ? null
+        : request.releaseNotes.trim() === ''
+          ? null
+          : request.releaseNotes.trim()
     const row = yield* authoringRow(tenantId, functionId, as)
     if (row.archivedAt !== null) return yield* new FormulaFunctionArchived()
     if (row.draftRevision !== expectedDraftRevision)
@@ -1195,9 +1488,12 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     const compiled = yield* compile(row.draftSourceTs, row.draftTests)
 
     // what publication is idempotent over: the executable identity - source,
-    // examples and the whole toolchain. A double click or a retried request
-    // answers with the version that already exists; a toolchain upgrade
-    // changes the fingerprint and may legitimately mint a new version.
+    // examples and the whole toolchain - and what the author called it. A
+    // double click or a retried request answers with the version that
+    // already exists; a toolchain upgrade changes the fingerprint and may
+    // legitimately mint a new version, and so does the same source published
+    // again under another name: that is a second publication somebody asked
+    // for, and answering with the first would quietly drop the name they gave.
     // draftRevision stays what it is: the EDITING concurrency token.
     // The engine identity is what the answers themselves carried: reading
     // it anywhere else could name a process that served none of this work.
@@ -1220,6 +1516,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
         String(VALUE_SCHEMA_PROFILE_VERSION),
         String(REGEX_PROFILE_VERSION),
         engine,
+        sha256Hex(JSON.stringify([releaseName, releaseNotes])),
       ].join('|'),
     )
 
@@ -1264,6 +1561,20 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
             )
             .pipe(Effect.orDie)
           if (existing !== undefined) return existing
+          // a different publication wearing the name already: the function
+          // row is held, so no second publish can take it meanwhile
+          const named = yield* db
+            .query((k) =>
+              k
+                .selectFrom('FormulaVersion')
+                .select('id')
+                .where('tenantId', '=', tenantId)
+                .where('functionId', '=', functionId)
+                .where('releaseName', '=', releaseName)
+                .executeTakeFirst(),
+            )
+            .pipe(Effect.orDie)
+          if (named !== undefined) return yield* new FormulaReleaseNameTaken()
           const top = yield* db
             .query((k) =>
               k
@@ -1305,15 +1616,19 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
                   tests: sql`${JSON.stringify(row.draftTests)}::jsonb`,
                   testReport: sql`${JSON.stringify(compiled.report)}::jsonb`,
                   publishedBy: as.userId,
-                })
-                .returningAll()
+                  releaseName,
+                  releaseNotes,
+                } as never)
+                .returning('id')
                 .executeTakeFirstOrThrow(),
             )
             .pipe(Effect.orDie)
         }),
       ),
     )
-    return versionDetailDto(inserted as unknown as VersionRow)
+    const published = yield* versionRow(tenantId, { versionId: inserted.id as string })
+    if (published === undefined) return yield* Effect.die(new Error('a published version vanished'))
+    return versionDetailDto(published)
   })
 
   const getVersion = Effect.fn('FormulaLibrary.getVersion')(function* (
@@ -1323,19 +1638,229 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     as: Principal,
   ) {
     yield* authoringRow(tenantId, functionId, as)
-    const version = yield* db
+    const version = yield* versionRow(tenantId, { functionId, versionNo })
+    if (version === undefined) return yield* new FormulaVersionNotFound()
+    return versionDetailDto(version)
+  })
+
+  const listDraftRevisions = Effect.fn('FormulaLibrary.listDraftRevisions')(function* (
+    tenantId: string,
+    functionId: string,
+    page: { cursor?: string; limit?: string },
+    as: Principal,
+  ) {
+    yield* authoringRow(tenantId, functionId, as)
+    const size = pageSize(page.limit, DEFAULT_PAGE_SIZE)
+    const cursor = readQueryCursor(page.cursor, revisionFingerprint(functionId), ['text'])
+    if (cursor === null) return yield* cursorUnusable()
+    const before = cursor === undefined ? undefined : Number(cursor[0])
+    if (before !== undefined && !(Number.isSafeInteger(before) && before > 0))
+      return yield* cursorUnusable()
+    const rows = yield* db
+      .query((k) => {
+        let query = k
+          .selectFrom('FormulaDraftRevision as r')
+          .leftJoin('User as u', (join) =>
+            join.onRef('u.tenantId', '=', 'r.tenantId').onRef('u.id', '=', 'r.savedBy'),
+          )
+          .leftJoin('FormulaVersion as v', (join) =>
+            join.onRef('v.tenantId', '=', 'r.tenantId').onRef('v.id', '=', 'r.sourceVersionId'),
+          )
+          .select([
+            'r.revisionNo as revisionNo',
+            'r.origin as origin',
+            'r.sourceSha256 as sourceSha256',
+            'r.savedBy as savedBy',
+            'u.displayName as savedByName',
+            'r.savedAt as savedAt',
+            'v.versionNo as sourceVersionNo',
+            'v.releaseName as sourceReleaseName',
+            'r.sourceDraftRevisionNo as sourceDraftRevisionNo',
+          ])
+          .where('r.tenantId', '=', tenantId)
+          .where('r.functionId', '=', functionId)
+        if (before !== undefined) query = query.where('r.revisionNo', '<', before)
+        return query
+          .orderBy('r.revisionNo', 'desc')
+          .limit(size + 1)
+          .execute()
+      })
+      .pipe(Effect.orDie)
+    const all = rows as unknown as RevisionRow[]
+    const sliced = all.slice(0, size)
+    return {
+      items: sliced.map(revisionViewDto),
+      nextCursor:
+        all.length > size
+          ? encodeQueryCursor(revisionFingerprint(functionId), [
+              String(sliced[sliced.length - 1]!.revisionNo),
+            ])
+          : null,
+    }
+  })
+
+  const getDraftRevision = Effect.fn('FormulaLibrary.getDraftRevision')(function* (
+    tenantId: string,
+    functionId: string,
+    revisionNo: number,
+    as: Principal,
+  ) {
+    yield* authoringRow(tenantId, functionId, as)
+    const row = yield* db
       .query((k) =>
         k
-          .selectFrom('FormulaVersion')
-          .selectAll()
-          .where('tenantId', '=', tenantId)
-          .where('functionId', '=', functionId)
-          .where('versionNo', '=', versionNo)
+          .selectFrom('FormulaDraftRevision as r')
+          .leftJoin('User as u', (join) =>
+            join.onRef('u.tenantId', '=', 'r.tenantId').onRef('u.id', '=', 'r.savedBy'),
+          )
+          .leftJoin('FormulaVersion as v', (join) =>
+            join.onRef('v.tenantId', '=', 'r.tenantId').onRef('v.id', '=', 'r.sourceVersionId'),
+          )
+          .select([
+            'r.revisionNo as revisionNo',
+            'r.origin as origin',
+            'r.sourceSha256 as sourceSha256',
+            'r.savedBy as savedBy',
+            'u.displayName as savedByName',
+            'r.savedAt as savedAt',
+            'v.versionNo as sourceVersionNo',
+            'v.releaseName as sourceReleaseName',
+            'r.sourceDraftRevisionNo as sourceDraftRevisionNo',
+            'r.sourceTs as sourceTs',
+            'r.tests as tests',
+          ])
+          .where('r.tenantId', '=', tenantId)
+          .where('r.functionId', '=', functionId)
+          .where('r.revisionNo', '=', revisionNo)
           .executeTakeFirst(),
       )
       .pipe(Effect.orDie)
-    if (version === undefined) return yield* new FormulaVersionNotFound()
-    return versionDetailDto(version as unknown as VersionRow)
+    if (row === undefined) return yield* new FormulaDraftRevisionNotFound()
+    const found = row as unknown as RevisionRow & {
+      sourceTs: string
+      tests: readonly FormulaTestInput[]
+    }
+    return { ...revisionViewDto(found), sourceTs: found.sourceTs, tests: found.tests }
+  })
+
+  const restoreDraft = Effect.fn('FormulaLibrary.restoreDraft')(function* (
+    tenantId: string,
+    functionId: string,
+    request: { readonly expectedDraftRevision: number; readonly from: RestoreSource },
+    as: Principal,
+  ) {
+    yield* authoringRow(tenantId, functionId, as)
+    yield* withDb(
+      transaction(
+        Effect.gen(function* () {
+          const locked = yield* db
+            .query((k) =>
+              k
+                .selectFrom('FormulaFunction')
+                .select(['draftSourceTs', 'draftTests', 'draftRevision', 'archivedAt'])
+                .where('tenantId', '=', tenantId)
+                .where('id', '=', functionId)
+                .forUpdate()
+                .executeTakeFirst(),
+            )
+            .pipe(Effect.orDie)
+          if (locked === undefined) return yield* new FormulaFunctionNotFound()
+          if (locked.archivedAt !== null) return yield* new FormulaFunctionArchived()
+          if (Number(locked.draftRevision) !== request.expectedDraftRevision)
+            return yield* new FormulaDraftConflict({ draftRevision: Number(locked.draftRevision) })
+          // the state put back is read here, from the immutable row itself:
+          // what the new revision says it came from is what it holds
+          const from = request.from
+          const source =
+            from.kind === 'published-version'
+              ? yield* db
+                  .query((k) =>
+                    k
+                      .selectFrom('FormulaVersion')
+                      .select(['id', 'sourceTs', 'tests'])
+                      .where('tenantId', '=', tenantId)
+                      .where('functionId', '=', functionId)
+                      .where('versionNo', '=', from.versionNo)
+                      .executeTakeFirst(),
+                  )
+                  .pipe(
+                    Effect.orDie,
+                    Effect.flatMap((found) =>
+                      found === undefined
+                        ? Effect.fail(new FormulaVersionNotFound())
+                        : Effect.succeed({
+                            sourceTs: found.sourceTs as string,
+                            tests: found.tests as readonly unknown[],
+                            provenance: { sourceVersionId: found.id as string },
+                            origin: 'restored-from-version' as const,
+                          }),
+                    ),
+                  )
+              : yield* db
+                  .query((k) =>
+                    k
+                      .selectFrom('FormulaDraftRevision')
+                      .select(['sourceTs', 'tests'])
+                      .where('tenantId', '=', tenantId)
+                      .where('functionId', '=', functionId)
+                      .where('revisionNo', '=', from.revisionNo)
+                      .executeTakeFirst(),
+                  )
+                  .pipe(
+                    Effect.orDie,
+                    Effect.flatMap((found) =>
+                      found === undefined
+                        ? Effect.fail(new FormulaDraftRevisionNotFound())
+                        : Effect.succeed({
+                            sourceTs: found.sourceTs as string,
+                            tests: found.tests as readonly unknown[],
+                            provenance: { sourceDraftRevisionNo: from.revisionNo },
+                            origin: 'restored-from-draft' as const,
+                          }),
+                    ),
+                  )
+          // the ceiling drafts are held to today, whatever a publication was
+          // once allowed
+          if (Buffer.byteLength(source.sourceTs, 'utf8') > SOURCE_LIMIT)
+            return yield* new FormulaSourceTooLarge({ limit: SOURCE_LIMIT })
+          // putting back exactly what is already there is not a change
+          if (
+            source.sourceTs === locked.draftSourceTs &&
+            canonicalJson(source.tests) === canonicalJson(locked.draftTests)
+          )
+            return
+          const revisionNo = request.expectedDraftRevision + 1
+          yield* db
+            .query((k) =>
+              k
+                .updateTable('FormulaFunction')
+                .set({
+                  draftSourceTs: source.sourceTs,
+                  draftTests: sql`${JSON.stringify(source.tests)}::jsonb`,
+                  draftRevision: revisionNo,
+                  updatedBy: as.userId,
+                  updatedAt: sql`now()`,
+                })
+                .where('tenantId', '=', tenantId)
+                .where('id', '=', functionId)
+                .execute(),
+            )
+            .pipe(Effect.orDie)
+          yield* appendRevision({
+            tenantId,
+            functionId,
+            revisionNo,
+            sourceTs: source.sourceTs,
+            tests: source.tests,
+            savedBy: as.userId,
+            origin: source.origin,
+            ...source.provenance,
+          })
+        }),
+      ),
+    )
+    const fresh = yield* foundRow(tenantId, functionId)
+    return functionDetailDto(fresh)
   })
 
   // every method runs with the database provided once, here: the bodies
@@ -1354,10 +1879,16 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
       withDb(updateDraft(tenantId, functionId, patch, as)),
     setStatus: (tenantId, functionId, status, as) =>
       withDb(setStatus(tenantId, functionId, status, as)),
-    publish: (tenantId, functionId, expected, as) =>
-      withDb(publish(tenantId, functionId, expected, as)),
+    publish: (tenantId, functionId, request, as) =>
+      withDb(publish(tenantId, functionId, request, as)),
     getVersion: (tenantId, functionId, versionNo, as) =>
       withDb(getVersion(tenantId, functionId, versionNo, as)),
+    listDraftRevisions: (tenantId, functionId, page, as) =>
+      withDb(listDraftRevisions(tenantId, functionId, page, as)),
+    getDraftRevision: (tenantId, functionId, revisionNo, as) =>
+      withDb(getDraftRevision(tenantId, functionId, revisionNo, as)),
+    restoreDraft: (tenantId, functionId, request, as) =>
+      withDb(restoreDraft(tenantId, functionId, request, as)),
   }
   return service
 })
@@ -1522,10 +2053,61 @@ export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula
         const version = yield* library.publish(
           principal.tenantId,
           params.functionId,
-          payload.expectedDraftRevision,
+          {
+            expectedDraftRevision: payload.expectedDraftRevision,
+            releaseName: payload.releaseName,
+            ...(payload.releaseNotes === undefined ? {} : { releaseNotes: payload.releaseNotes }),
+          },
           principal,
         )
         return { version }
+      }),
+    )
+    .handle(
+      'listFormulaDraftRevisions',
+      Effect.fn('assessmentFormula.listRevisions.handler')(function* ({ params, query }) {
+        const library = yield* FormulaLibrary
+        const principal = yield* CurrentUser
+        return yield* library.listDraftRevisions(
+          principal.tenantId,
+          params.functionId,
+          query,
+          principal,
+        )
+      }),
+    )
+    .handle(
+      'getFormulaDraftRevision',
+      Effect.fn('assessmentFormula.getRevision.handler')(function* ({ params }) {
+        const library = yield* FormulaLibrary
+        const principal = yield* CurrentUser
+        const revisionNo = Number(params.revisionNo)
+        if (!Number.isSafeInteger(revisionNo) || revisionNo < 1)
+          return yield* new BadRequest({
+            message: 'the revision number must be a positive integer',
+          })
+        return {
+          revision: yield* library.getDraftRevision(
+            principal.tenantId,
+            params.functionId,
+            revisionNo,
+            principal,
+          ),
+        }
+      }),
+    )
+    .handle(
+      'restoreFormulaDraft',
+      Effect.fn('assessmentFormula.restoreDraft.handler')(function* ({ params, payload }) {
+        const library = yield* FormulaLibrary
+        const principal = yield* CurrentUser
+        const restored = yield* library.restoreDraft(
+          principal.tenantId,
+          params.functionId,
+          { expectedDraftRevision: payload.expectedDraftRevision, from: payload.from },
+          principal,
+        )
+        return { function: restored }
       }),
     )
     .handle(

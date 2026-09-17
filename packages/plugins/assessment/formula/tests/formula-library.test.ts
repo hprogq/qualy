@@ -84,7 +84,15 @@ describe.runIf(postgresAvailable)('the formula library', () => {
             },
             as,
           )
-          const version = yield* library.publish(f.t, created.id, drafted.draftRevision, as)
+          const version = yield* library.publish(
+            f.t,
+            created.id,
+            {
+              expectedDraftRevision: drafted.draftRevision,
+              releaseName: `release ${drafted.draftRevision}`,
+            },
+            as,
+          )
           const detail = yield* library.getFunction(f.t, created.id, as)
           const listed = yield* library.listFunctions(f.t, {}, as)
           return { created, version, detail, listed }
@@ -120,23 +128,46 @@ describe.runIf(postgresAvailable)('the formula library', () => {
           const as = f.principal(f.admin)
           const created = yield* library.createFunction(f.t, { name: 'Broken' }, as)
 
-          // the default draft carries no examples: publishing has nothing proven
+          // a draft that compiles and carries no examples: publishing has
+          // nothing proven
+          const exampleless = yield* library.updateDraft(
+            f.t,
+            created.id,
+            { expectedDraftRevision: created.draftRevision, draftSourceTs: IDENTITY },
+            as,
+          )
           const untested = yield* Effect.flip(
-            library.publish(f.t, created.id, created.draftRevision, as),
+            library.publish(
+              f.t,
+              created.id,
+              {
+                expectedDraftRevision: exampleless.draftRevision,
+                releaseName: `release ${exampleless.draftRevision}`,
+              },
+              as,
+            ),
           )
 
           const badTyped = yield* library.updateDraft(
             f.t,
             created.id,
             {
-              expectedDraftRevision: created.draftRevision,
+              expectedDraftRevision: exampleless.draftRevision,
               draftSourceTs: IDENTITY.replace('(input) => input.value', '(input) => true'),
               draftTests: [{ name: 'three', input: { value: '3.00' }, expected: '3' }],
             },
             as,
           )
           const misTyped = yield* Effect.flip(
-            library.publish(f.t, created.id, badTyped.draftRevision, as),
+            library.publish(
+              f.t,
+              created.id,
+              {
+                expectedDraftRevision: badTyped.draftRevision,
+                releaseName: `release ${badTyped.draftRevision}`,
+              },
+              as,
+            ),
           )
 
           const wrongAnswer = yield* library.updateDraft(
@@ -150,7 +181,15 @@ describe.runIf(postgresAvailable)('the formula library', () => {
             as,
           )
           const failing = yield* Effect.flip(
-            library.publish(f.t, created.id, wrongAnswer.draftRevision, as),
+            library.publish(
+              f.t,
+              created.id,
+              {
+                expectedDraftRevision: wrongAnswer.draftRevision,
+                releaseName: `release ${wrongAnswer.draftRevision}`,
+              },
+              as,
+            ),
           )
 
           const smuggling = yield* library.updateDraft(
@@ -164,7 +203,15 @@ describe.runIf(postgresAvailable)('the formula library', () => {
             as,
           )
           const smuggled = yield* Effect.flip(
-            library.publish(f.t, created.id, smuggling.draftRevision, as),
+            library.publish(
+              f.t,
+              created.id,
+              {
+                expectedDraftRevision: smuggling.draftRevision,
+                releaseName: `release ${smuggling.draftRevision}`,
+              },
+              as,
+            ),
           )
 
           const stale = yield* Effect.flip(
@@ -225,7 +272,17 @@ export default { ...definition, input: undefined } as unknown as typeof definiti
             },
             as,
           )
-          return yield* Effect.flip(library.publish(f.t, created.id, drafted.draftRevision, as))
+          return yield* Effect.flip(
+            library.publish(
+              f.t,
+              created.id,
+              {
+                expectedDraftRevision: drafted.draftRevision,
+                releaseName: `release ${drafted.draftRevision}`,
+              },
+              as,
+            ),
+          )
         }),
       ),
     )
@@ -376,7 +433,17 @@ export default defineFormula({
             ),
           )
           const archived = yield* Effect.flip(library.setStatus(f.t, mine.id, 'archived', b))
-          const published = yield* Effect.flip(library.publish(f.t, mine.id, mine.draftRevision, b))
+          const published = yield* Effect.flip(
+            library.publish(
+              f.t,
+              mine.id,
+              {
+                expectedDraftRevision: mine.draftRevision,
+                releaseName: `release ${mine.draftRevision}`,
+              },
+              b,
+            ),
+          )
           // and somebody with no capability at all
           const outsider = yield* Effect.flip(
             library.listFunctions(f.t, {}, f.principal(f.bystander)),
@@ -433,7 +500,15 @@ export default defineFormula({
             },
             a,
           )
-          const version = yield* library.publish(f.t, created.id, drafted.draftRevision, a)
+          const version = yield* library.publish(
+            f.t,
+            created.id,
+            {
+              expectedDraftRevision: drafted.draftRevision,
+              releaseName: `release ${drafted.draftRevision}`,
+            },
+            a,
+          )
           const versionId = one<{ id: string }>(
             yield* runSql(sql`
               select id from assessment_formula_versions
@@ -454,7 +529,15 @@ export default defineFormula({
           )
           const archived = yield* Effect.flip(library.setStatus(f.t, created.id, 'archived', a))
           const republished = yield* Effect.flip(
-            library.publish(f.t, created.id, drafted.draftRevision, a),
+            library.publish(
+              f.t,
+              created.id,
+              {
+                expectedDraftRevision: drafted.draftRevision,
+                releaseName: `release ${drafted.draftRevision}`,
+              },
+              a,
+            ),
           )
           const createdAgain = yield* Effect.flip(library.createFunction(f.t, { name: 'Next' }, a))
           // the published fact itself, read the way a scorer reads it

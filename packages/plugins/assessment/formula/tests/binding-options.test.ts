@@ -11,6 +11,7 @@ const version = (versionId: string): BindableFormulaVersion => ({
   functionId: '01920000-0000-7000-8000-0000000000f1',
   functionName: 'Sum',
   versionNo: 2,
+  releaseName: '2026 秋季',
   publishedAt: '2026-09-01T00:00:00.000Z',
   contractSha256: 'c'.repeat(64),
   inputSchema: {
@@ -25,6 +26,7 @@ const dto = (versionId: string) => ({
   functionId: '01920000-0000-7000-8000-0000000000f1',
   functionName: 'Sum',
   versionNo: 2,
+  releaseName: '2026 秋季',
   publishedAt: '2026-09-01T00:00:00.000Z',
   parameters: ['a', 'b'],
 })

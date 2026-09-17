@@ -95,7 +95,15 @@ describe.runIf(postgresAvailable)('the formula runtime store', () => {
             },
             as,
           )
-          yield* library.publish(f.t, created.id, drafted.draftRevision, as)
+          yield* library.publish(
+            f.t,
+            created.id,
+            {
+              expectedDraftRevision: drafted.draftRevision,
+              releaseName: `release ${drafted.draftRevision}`,
+            },
+            as,
+          )
           const row = one<{
             id: string
             runtime_sha256: string

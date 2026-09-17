@@ -338,6 +338,7 @@ describe.runIf(postgresAvailable)('the formula api over http', () => {
 
     const published = await call('POST', `/api/assessment/formula-functions/${id}/versions`, {
       expectedDraftRevision: 2,
+      releaseName: '2026 秋季正式规则',
     })
     expect(published.status, inspect(published.body)).toBe(200)
     expect(
@@ -512,6 +513,7 @@ describe.runIf(postgresAvailable)('the versions a batch may bind, over http', ()
     expect(saved.status, inspect(saved.body)).toBe(200)
     const published = await call('POST', `/api/assessment/formula-functions/${id}/versions`, {
       expectedDraftRevision: 2,
+      releaseName: '2026 秋季正式规则',
     })
     expect(published.status, inspect(published.body)).toBe(200)
 

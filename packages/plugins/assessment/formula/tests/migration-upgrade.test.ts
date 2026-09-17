@@ -1,12 +1,9 @@
+import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import {
-  createTestContext,
-  lineageBefore,
-  postgresAvailable,
-} from '@qualy/plugin-database/testkit'
+import { createTestContext, lineageBefore, postgresAvailable } from '@qualy/plugin-database/testkit'
 import { MIGRATIONS_FOLDER, runMigrations } from '@qualy/plugin-database/migrator'
 
 // The upgrade a database that already holds formulas actually takes.
@@ -25,6 +22,7 @@ import { MIGRATIONS_FOLDER, runMigrations } from '@qualy/plugin-database/migrato
 
 const OWNERSHIP = '20260901014046_formula-author-ownership.sql'
 const SHARING = '20260901064240_formula-version-sharing.sql'
+const REVISIONS = '20260917132924_formula-draft-revisions.sql'
 
 describe.runIf(postgresAvailable)('the formula author-ownership migration', () => {
   it('drops the owning node, retires its permission, and keeps every author', async () => {
@@ -293,6 +291,118 @@ describe.runIf(postgresAvailable)('the formula version-sharing migration', () =>
         )
         expect({ table, count: left.rows[0]?.count }).toEqual({ table, count: '0' })
       }
+    } finally {
+      await db.dispose()
+    }
+  }, 180_000)
+})
+
+// A draft history arriving where formulas already exist.
+//
+// Nothing earlier than today's draft was ever kept, so the history cannot
+// start earlier than today's draft. What the upgrade owes is exactly one
+// honest starting point per formula - its current source and examples under
+// the revision number the draft already carries, marked as coming from the
+// upgrade - and publications named after nobody, since none of them were.
+describe.runIf(postgresAvailable)('the formula draft-revision migration', () => {
+  it('starts each formula history at its current draft, and names no old publication', async () => {
+    expect(fs.existsSync(path.join(MIGRATIONS_FOLDER, REVISIONS))).toBe(true)
+    const before = lineageBefore(REVISIONS, 'formula-revisions')
+    const db = await createTestContext('formula-revisions-upgrade', {
+      migrations: 'apply',
+      migrationsFolder: before,
+    })
+    try {
+      const tenantId = (
+        await db.row<{ id: string }>(
+          `insert into tenants (slug, name) values ('rev-up', 'Rev') returning id`,
+        )
+      ).id
+      const orgTypeId = (
+        await db.row<{ id: string }>(
+          `insert into org_types (tenant_id, name) values ($1, 'College') returning id`,
+          [tenantId],
+        )
+      ).id
+      const rootId = (
+        await db.row<{ id: string }>(
+          `insert into org_nodes (tenant_id, org_type_id, name, path, depth)
+           values ($1, $2, 'Root', 'rev_up', 0) returning id`,
+          [tenantId, orgTypeId],
+        )
+      ).id
+      const userTypeId = (
+        await db.row<{ id: string }>(
+          `insert into user_types (tenant_id, code, name, placement_mode)
+           values ($1, 'staff', 'Staff', 'unrestricted') returning id`,
+          [tenantId],
+        )
+      ).id
+      const authorId = (
+        await db.row<{ id: string }>(
+          `insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+           values ($1, 'Author', $2, $3) returning id`,
+          [tenantId, userTypeId, rootId],
+        )
+      ).id
+      // a formula saved several times already, and one publication of it
+      const functionId = (
+        await db.row<{ id: string }>(
+          `insert into assessment_formula_functions
+             (tenant_id, name, draft_source_ts, draft_tests, draft_revision,
+              created_by, updated_by, updated_at)
+           values ($1, 'Existing', 'export {}', '[{"name":"one","input":{},"expected":"1"}]'::jsonb, 7,
+                   $2, $2, '2026-09-01T08:00:00Z') returning id`,
+          [tenantId, authorId],
+        )
+      ).id
+      await db.query(
+        `insert into assessment_formula_versions
+           (tenant_id, function_id, version_no, source_ts, runtime_js, input_schema,
+            output_schema, source_sha256, runtime_sha256, contract_sha256,
+            typescript_version, esbuild_version, formula_abi_version,
+            formula_runtime_sha256, quickjs_engine_version, tests, test_report, published_by)
+         values ($1, $2, 1, 'export {}', '/*a*/', '{}'::jsonb, '{}'::jsonb,
+                 repeat('a', 64), repeat('b', 64), repeat('c', 64),
+                 '7.0.0', '0.28.0', 1, repeat('d', 64), 'quickjs-test',
+                 '[]'::jsonb, '[]'::jsonb, $3)`,
+        [tenantId, functionId, authorId],
+      )
+
+      await runMigrations(db.url, { folder: MIGRATIONS_FOLDER, entities: [] })
+
+      const revisions = await db.query<{
+        revision_no: number
+        source_ts: string
+        tests: unknown
+        source_sha256: string
+        saved_by: string
+        saved_at: Date
+        origin: string
+      }>(
+        `select revision_no, source_ts, tests, source_sha256, saved_by, saved_at, origin
+           from assessment_formula_draft_revisions where function_id = $1`,
+        [functionId],
+      )
+      expect(revisions.rows).toHaveLength(1)
+      const baseline = revisions.rows[0]!
+      expect(baseline).toMatchObject({
+        revision_no: 7,
+        source_ts: 'export {}',
+        tests: [{ name: 'one', input: {}, expected: '1' }],
+        saved_by: authorId,
+        origin: 'migration',
+      })
+      // the digest a save would have written for the same bytes
+      expect(baseline.source_sha256).toBe(createHash('sha256').update('export {}').digest('hex'))
+      expect(new Date(baseline.saved_at).toISOString()).toBe('2026-09-01T08:00:00.000Z')
+
+      // the old publication is not given a name it never had
+      const named = await db.row<{ release_name: string | null }>(
+        `select release_name from assessment_formula_versions where function_id = $1`,
+        [functionId],
+      )
+      expect(named.release_name).toBeNull()
     } finally {
       await db.dispose()
     }

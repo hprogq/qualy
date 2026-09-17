@@ -108,7 +108,15 @@ describe.runIf(postgresAvailable)('publication through the real sandbox processe
         },
         as,
       )
-      const version = yield* library.publish(f.t, created.id, drafted.draftRevision, as)
+      const version = yield* library.publish(
+        f.t,
+        created.id,
+        {
+          expectedDraftRevision: drafted.draftRevision,
+          releaseName: `release ${drafted.draftRevision}`,
+        },
+        as,
+      )
       const refused = yield* Effect.flip(
         library
           .updateDraft(
@@ -121,7 +129,17 @@ describe.runIf(postgresAvailable)('publication through the real sandbox processe
             as,
           )
           .pipe(
-            Effect.flatMap((moved) => library.publish(f.t, created.id, moved.draftRevision, as)),
+            Effect.flatMap((moved) =>
+              library.publish(
+                f.t,
+                created.id,
+                {
+                  expectedDraftRevision: moved.draftRevision,
+                  releaseName: `release ${moved.draftRevision}`,
+                },
+                as,
+              ),
+            ),
           ),
       )
       return { version, refused }
