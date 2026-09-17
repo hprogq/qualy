@@ -82,11 +82,18 @@ function Popover({
   open,
   defaultOpen,
   onOpenChange,
+  trapFocus = true,
   children,
 }: {
   open?: boolean
   defaultOpen?: boolean
   onOpenChange?: (open: boolean) => void
+  /**
+   * Whether focus moves into the panel when it opens. Off for a panel that
+   * opens under a resting pointer: a preview must not pull focus away from
+   * wherever the reader was typing.
+   */
+  trapFocus?: boolean
   children?: React.ReactNode
 }) {
   // uncontrolled state stays the library's; the adapter mirrors it so the
@@ -111,8 +118,8 @@ function Popover({
   return (
     <MPopover
       withinPortal
-      trapFocus
-      returnFocus
+      trapFocus={trapFocus}
+      returnFocus={trapFocus}
       // parity with the previous substrate: the dropdown stays visible even
       // if the trigger leaves the viewport (hideDetached would blank it)
       hideDetached={false}

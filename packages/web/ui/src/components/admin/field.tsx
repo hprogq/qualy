@@ -172,10 +172,13 @@ export function Field({
   label,
   hint,
   required = false,
+  aside,
   children,
 }: {
   label: string
   hint?: ReactNode
+  /** a small mark that rides the label's line after it, such as an identifier */
+  aside?: ReactNode
   /**
    * Marks the label with the usual asterisk. Hidden from the accessible
    * name, which is the label itself - a control called "Title *" is what a
@@ -191,6 +194,7 @@ export function Field({
       <FormFieldLabel htmlFor={id}>
         {label}
         {required && <RequiredMark />}
+        {aside}
       </FormFieldLabel>
       {children(id)}
       {hint && <FormFieldDescription>{hint}</FormFieldDescription>}

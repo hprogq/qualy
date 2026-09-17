@@ -40,9 +40,13 @@ const localeEntry = (
 ): SchemaI18nEntry | undefined =>
   own((schema as { [I18N]?: Readonly<Record<string, SchemaI18nEntry>> })[I18N], locale)
 
+/** the title a parameter was given, if it was given one: locale title, then default title */
+export const declaredTitle = (schema: AtomicSchema, locale: string): string | undefined =>
+  localeEntry(schema, locale)?.title ?? schema.title
+
 /** the words for one parameter: locale title, default title, then the key */
 export const displayTitle = (schema: AtomicSchema, key: string, locale: string): string =>
-  localeEntry(schema, locale)?.title ?? schema.title ?? key
+  declaredTitle(schema, locale) ?? key
 
 export const displayDescription = (schema: AtomicSchema, locale: string): string | undefined =>
   localeEntry(schema, locale)?.description ?? schema.description

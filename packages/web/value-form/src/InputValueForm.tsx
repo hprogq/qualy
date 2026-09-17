@@ -9,6 +9,7 @@
 import * as stylex from '@stylexjs/stylex'
 import {
   choiceLabel,
+  declaredTitle,
   displayDescription,
   displayTitle,
   kindOf,
@@ -24,6 +25,18 @@ import { fieldsOfInput, type FieldDraft, type ValueFieldSpec } from './model.ts'
 
 const styles = stylex.create({
   grid: { display: 'flex', flexDirection: 'column', gap: '0.625rem' },
+  key: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    height: 18,
+    paddingInline: 5,
+    borderRadius: 4,
+    backgroundColor: 'var(--q-surface-muted)',
+    fontFamily: 'ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace',
+    fontSize: '0.6875rem',
+    fontWeight: 400,
+    color: 'var(--q-surface-muted-foreground)',
+  },
   description: { fontSize: '0.75rem', color: 'var(--q-surface-muted-foreground)', margin: 0 },
   problem: { fontSize: '0.75rem', color: 'var(--q-danger, #b91c1c)', margin: 0 },
 })
@@ -39,6 +52,17 @@ export interface ValueFieldsFormProps {
   readonly problems?: ReadonlyMap<string, string>
   /** distinguishes multiple forms on one screen for stable test hooks */
   readonly scope: string
+  /** see {@link FieldAuthoring} */
+  readonly authoring?: FieldAuthoring
+}
+
+/**
+ * The form as its contract's author sees it: every field wears the key the
+ * code names it by, and a field the code gave no title says so in the words
+ * given here instead of borrowing the key as its title.
+ */
+export interface FieldAuthoring {
+  readonly unnamedLabel: string
 }
 
 export interface InputValueFormProps {
@@ -51,6 +75,8 @@ export interface InputValueFormProps {
   readonly problems?: ReadonlyMap<string, string>
   /** distinguishes multiple forms on one screen for stable test hooks */
   readonly scope: string
+  /** see {@link FieldAuthoring} */
+  readonly authoring?: FieldAuthoring
 }
 
 const AtomicControl = ({
@@ -123,6 +149,8 @@ export interface AtomicValueFieldProps {
   readonly problem?: string
   /** overrides the annotation/key label (e.g. an output's own caption) */
   readonly label?: string
+  /** see {@link FieldAuthoring}; ignored when a label is given */
+  readonly authoring?: FieldAuthoring
 }
 
 /**
@@ -138,10 +166,33 @@ export function AtomicValueField({
   disabled = false,
   problem,
   label,
+  authoring,
 }: AtomicValueFieldProps) {
   const description = displayDescription(schema, locale)
+  const authored = label === undefined ? authoring : undefined
+  const title = declaredTitle(schema, locale)
   return (
-    <Field label={label ?? displayTitle(schema, name, locale)}>
+    <Field
+      label={
+        label ??
+        (authored === undefined
+          ? displayTitle(schema, name, locale)
+          : (title ?? authored.unnamedLabel))
+      }
+      {...(authored === undefined
+        ? {}
+        : {
+            aside: (
+              <code
+                data-field-key={name}
+                data-titled={title !== undefined}
+                {...stylex.props(styles.key)}
+              >
+                {name}
+              </code>
+            ),
+          })}
+    >
       {(id) => (
         <div data-parameter={name} data-invalid={problem === undefined ? undefined : true}>
           <AtomicControl
@@ -182,6 +233,7 @@ export function ValueFieldsForm({
   disabled = false,
   problems,
   scope,
+  authoring,
 }: ValueFieldsFormProps) {
   return (
     <div {...stylex.props(styles.grid)} data-testid={`value-form-${scope}`}>
@@ -197,6 +249,7 @@ export function ValueFieldsForm({
             locale={locale}
             disabled={disabled}
             {...(problem === undefined ? {} : { problem })}
+            {...(authoring === undefined ? {} : { authoring })}
           />
         )
       })}
