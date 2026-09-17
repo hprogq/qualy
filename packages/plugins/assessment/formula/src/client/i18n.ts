@@ -56,6 +56,10 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/audit/archive',
       defaultMessage: 'Archive scoring formula',
     },
+    'audit.delete': {
+      id: 'assessment-formula/audit/delete',
+      defaultMessage: 'Delete scoring formula',
+    },
     'audit.restore': {
       id: 'assessment-formula/audit/restore',
       defaultMessage: 'Restore scoring formula',
@@ -864,6 +868,27 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/binding/more',
       defaultMessage: 'Show more',
     },
+    deleteFormula: {
+      id: 'assessment-formula/editor/delete-formula',
+      defaultMessage: 'Delete this formula',
+    },
+    deleteTitle: {
+      id: 'assessment-formula/editor/delete-title',
+      defaultMessage: 'Delete this formula?',
+    },
+    deleteDescription: {
+      id: 'assessment-formula/editor/delete-description',
+      defaultMessage:
+        'Nothing has been published from it, so the draft and its saved revisions go with it. This cannot be undone.',
+    },
+    deleteConfirm: {
+      id: 'assessment-formula/editor/delete-confirm',
+      defaultMessage: 'Delete',
+    },
+    deleted: {
+      id: 'assessment-formula/editor/deleted',
+      defaultMessage: 'The formula was deleted.',
+    },
     archiveFormula: {
       id: 'assessment-formula/editor/archive-formula',
       defaultMessage: 'Archive formula',
@@ -1512,6 +1537,10 @@ const i18n = definePluginMessages({
     ASSESSMENT_FORMULA_FUNCTION_ARCHIVED: {
       id: 'assessment-formula/error/function-archived',
       defaultMessage: 'The formula is archived. Restore it before editing.',
+    },
+    ASSESSMENT_FORMULA_FUNCTION_PUBLISHED: {
+      id: 'assessment-formula/error/function-published',
+      defaultMessage: 'The formula has published versions, so it can be archived but not deleted.',
     },
     ASSESSMENT_FORMULA_DRAFT_CONFLICT: {
       id: 'assessment-formula/error/draft-conflict',

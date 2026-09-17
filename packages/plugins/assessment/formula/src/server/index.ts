@@ -46,6 +46,7 @@ import { validateValue } from '@qualy/value-schema/validate'
 import { REGEX_PROFILE_VERSION, patternIssues } from '@qualy/value-schema/regex'
 import {
   FormulaFunctionArchived as FormulaFunctionArchivedAction,
+  FormulaFunctionDeleted,
   FormulaFunctionCreated,
   FormulaFunctionDetailsChanged,
   FormulaFunctionRestored,
@@ -69,6 +70,7 @@ import {
   FormulaExecutionLimitExceeded,
   FormulaFunctionArchived,
   FormulaFunctionNotFound,
+  FormulaFunctionPublished,
   FormulaSourceRefused,
   FormulaSourceTooLarge,
   FormulaTestFailed,
@@ -532,6 +534,14 @@ interface FormulaLibraryShape {
     status: 'active' | 'archived',
     as: Principal,
   ) => Effect.Effect<ReturnType<typeof functionDetailDto>, AccessDenied | FormulaFunctionNotFound>
+  readonly deleteFunction: (
+    tenantId: string,
+    functionId: string,
+    as: Principal,
+  ) => Effect.Effect<
+    { readonly deleted: boolean },
+    AccessDenied | FormulaFunctionNotFound | FormulaFunctionPublished
+  >
   readonly publish: (
     tenantId: string,
     functionId: string,
@@ -1528,6 +1538,57 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     return functionDetailDto(fresh)
   })
 
+  /**
+   * Takes a draft-only formula away for good.
+   *
+   * Only while nothing has been published from it: a publication is what
+   * questions are scored by and what others may have copied, and the
+   * database says so too - versions hold the function with a RESTRICT edge,
+   * while the draft's own revisions cascade with it. The check here is not
+   * the safety, it is the sentence the author gets instead of a constraint.
+   */
+  const deleteFunction = Effect.fn('FormulaLibrary.deleteFunction')(function* (
+    tenantId: string,
+    functionId: string,
+    as: Principal,
+  ) {
+    const row = yield* authoringRow(tenantId, functionId, as)
+    yield* withDb(
+      transaction(
+        Effect.gen(function* () {
+          const published = yield* db
+            .query((k) =>
+              k
+                .selectFrom('FormulaVersion')
+                .select('id')
+                .where('tenantId', '=', tenantId)
+                .where('functionId', '=', functionId)
+                .limit(1)
+                .executeTakeFirst(),
+            )
+            .pipe(Effect.orDie)
+          if (published !== undefined) return yield* new FormulaFunctionPublished()
+          yield* db
+            .query((k) =>
+              k
+                .deleteFrom('FormulaFunction')
+                .where('tenantId', '=', tenantId)
+                .where('id', '=', functionId)
+                .execute(),
+            )
+            .pipe(Effect.orDie)
+          yield* audit.record(FormulaFunctionDeleted, {
+            tenantId,
+            actor: actorOf(as),
+            target: { id: functionId, label: row.name },
+            details: {},
+          })
+        }),
+      ),
+    )
+    return { deleted: true }
+  })
+
   const publish = Effect.fn('FormulaLibrary.publish')(function* (
     tenantId: string,
     functionId: string,
@@ -2003,6 +2064,8 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
       withDb(updateDraft(tenantId, functionId, patch, as)),
     setStatus: (tenantId, functionId, status, as) =>
       withDb(setStatus(tenantId, functionId, status, as)),
+    deleteFunction: (tenantId, functionId, as) =>
+      withDb(deleteFunction(tenantId, functionId, as)),
     publish: (tenantId, functionId, request, as) =>
       withDb(publish(tenantId, functionId, request, as)),
     getVersion: (tenantId, functionId, versionNo, as) =>
@@ -2172,6 +2235,14 @@ export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula
           principal,
         )
         return { function: updated }
+      }),
+    )
+    .handle(
+      'deleteFormulaFunction',
+      Effect.fn('assessmentFormula.deleteFunction.handler')(function* ({ params }) {
+        const library = yield* FormulaLibrary
+        const principal = yield* CurrentUser
+        return yield* library.deleteFunction(principal.tenantId, params.functionId, principal)
       }),
     )
     .handle(

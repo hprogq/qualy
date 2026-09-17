@@ -3,6 +3,7 @@ import TemplatePage from '../src/client/FormulaTemplatePage.tsx'
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
+import { vi } from 'vitest'
 import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The library of formulas other people offered you.
@@ -13,6 +14,25 @@ import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 // product deliberately does not do.
 
 const VERSION_ID = '01920000-0000-7000-8000-0000000000a1'
+// every shape the reader has to render without losing a character: quotes of
+// both kinds, a template with an interpolation in it, both comment forms,
+// numbers and language constants, a type, words in Chinese, and the three
+// characters a page that built HTML out of this would swallow
+const RICH_SOURCE = `import { Schema, defineFormula } from '@qualy/formula'
+
+/* what a batch pays for a place
+   on the list, across two lines */
+type Rank = 1 | 2 | 3
+const LABELS: Record<string, string> = { first: "一等奖", second: '二等奖' }
+
+export default defineFormula({
+  // a & b < c > d, which is text and not markup
+  name: \`\${LABELS.first} 与 \${LABELS.second}\`,
+  input: Schema.input({ rank: Schema.integer({ minimum: 1, maximum: 3 }) }),
+  output: Schema.scoreAmount(),
+  run: ({ rank }) => (rank === 1 ? 5 : rank === 2 ? 3 : null ?? 0),
+})
+`
 const NEW_FUNCTION_ID = '01920000-0000-7000-8000-0000000000b1'
 
 const template = (over: Record<string, unknown> = {}) => ({
@@ -121,6 +141,40 @@ describe('the formula template library', () => {
       .element(page.getByTestId('address'))
       .toHaveTextContent(`/assessment/formulas/${NEW_FUNCTION_ID}`)
   })
+
+  it('reads the source out exactly, whatever the highlighter makes of it', async () => {
+    open({
+      route: `/assessment/formula-templates/${VERSION_ID}`,
+      detail: { sourceTs: RICH_SOURCE },
+    })
+    const view = page.getByTestId('template-source')
+    await expect.element(view).toBeVisible()
+
+    // the lines a reader can copy, without the numbers beside them
+    const code = () =>
+      [...document.querySelectorAll('[data-testid="template-source"] code')]
+        .map((one) => one.textContent ?? '')
+        .join('\n')
+    // before any colour has arrived, the whole source is already on screen
+    expect(code()).toBe(RICH_SOURCE.replace(/\n$/, ''))
+
+    // and once it has, the text is still the text
+    await vi.waitFor(
+      () => {
+        const coloured = document.querySelectorAll(
+          '[data-testid="template-source"] code span[style]',
+        )
+        if (coloured.length === 0) throw new Error('nothing coloured yet')
+      },
+      { timeout: 20_000 },
+    )
+    expect(code()).toBe(RICH_SOURCE.replace(/\n$/, ''))
+    // the angle brackets are characters, not elements somebody built
+    expect(document.querySelectorAll('[data-testid="template-source"] code div')).toHaveLength(0)
+    expect(code()).toContain('a & b < c > d')
+    expect(code()).toContain('一等奖')
+    expect(code()).toContain('${LABELS.first}')
+  }, 30_000)
 
   it('offers no way to follow the source it came from', async () => {
     // a copy is a snapshot: there is nothing to sync, and a control saying

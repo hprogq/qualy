@@ -118,6 +118,20 @@ export class FormulaFunctionArchived extends Schema.TaggedError<FormulaFunctionA
   { httpApiStatus: 409, identifier: 'AssessmentFormulaFunctionArchived' },
 ) {}
 
+/**
+ * A formula that has been published cannot be deleted.
+ *
+ * A publication is what questions are scored by and what other people may
+ * have copied: once one exists, the formula's history is somebody else's
+ * fact too, and taking it away is not the author's alone. Archiving is what
+ * stops it being used from here on.
+ */
+export class FormulaFunctionPublished extends Schema.TaggedError<FormulaFunctionPublished>()(
+  'ASSESSMENT_FORMULA_FUNCTION_PUBLISHED',
+  {},
+  { httpApiStatus: 409, identifier: 'AssessmentFormulaFunctionPublished' },
+) {}
+
 export class FormulaDraftConflict extends Schema.TaggedError<FormulaDraftConflict>()(
   'ASSESSMENT_FORMULA_DRAFT_CONFLICT',
   { draftRevision: Schema.Number },

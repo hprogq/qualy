@@ -118,6 +118,72 @@ describe.runIf(postgresAvailable)('the formula library', () => {
     expect(outcome.listed.items.map((row) => row.latestVersionNo)).toEqual([1])
   }, 120_000)
 
+  it('deletes a draft nobody published, and refuses once one exists', async () => {
+    const outcome = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('fx-delete')
+          const library = yield* FormulaLibrary
+          const as = f.principal(f.admin)
+          // one the author thought better of: a draft and its revisions, and
+          // nothing anybody could have been scored by
+          const draftOnly = yield* library.createFunction(f.t, { name: '试一下' }, as)
+          yield* library.updateDraft(
+            f.t,
+            draftOnly.id,
+            { expectedDraftRevision: draftOnly.draftRevision, draftSourceTs: IDENTITY },
+            as,
+          )
+          const revisionsBefore = yield* library.listDraftRevisions(f.t, draftOnly.id, {}, as)
+          const removed = yield* library.deleteFunction(f.t, draftOnly.id, as)
+          const gone = yield* Effect.flip(library.getFunction(f.t, draftOnly.id, as))
+          const revisionRows = yield* runSql<{ left: number }>(sql`
+            select count(*)::int as left
+            from assessment_formula_draft_revisions
+            where function_id = ${draftOnly.id}
+          `)
+
+          // and one that has been published: archiving is what stops it
+          const published = yield* library.createFunction(f.t, { name: '已发布' }, as)
+          const drafted = yield* library.updateDraft(
+            f.t,
+            published.id,
+            {
+              expectedDraftRevision: published.draftRevision,
+              draftSourceTs: IDENTITY,
+              draftTests: [{ name: 'three', input: { value: '3.00' }, expected: '3' }],
+            },
+            as,
+          )
+          yield* library.publish(
+            f.t,
+            published.id,
+            { expectedDraftRevision: drafted.draftRevision, releaseName: 'first' },
+            as,
+          )
+          const refused = yield* Effect.flip(library.deleteFunction(f.t, published.id, as))
+          const stands = yield* library.getFunction(f.t, published.id, as)
+          return {
+            revisionsBefore: revisionsBefore.items.length,
+            removed,
+            gone: gone._tag,
+            revisionRows: revisionRows.rows,
+            refused: refused._tag,
+            stands: stands.function.latestVersionNo,
+          }
+        }),
+      ),
+    )
+    expect(outcome.revisionsBefore).toBeGreaterThan(0)
+    expect(outcome.removed).toEqual({ deleted: true })
+    expect(outcome.gone).toBe('ASSESSMENT_FORMULA_FUNCTION_NOT_FOUND')
+    // the draft's own history went with it
+    expect(outcome.revisionRows).toEqual([{ left: 0 }])
+    expect(outcome.refused).toBe('ASSESSMENT_FORMULA_FUNCTION_PUBLISHED')
+    expect(outcome.stands).toBe(1)
+  }, 120_000)
+
   it('refuses to publish what does not hold: types, examples, stale drafts', async () => {
     const outcome = ok(
       await run(

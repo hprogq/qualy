@@ -18209,3 +18209,49 @@ pnpm qualy database verify                       62 committed migration(s) build
 
 注:编译与读参数结构跑在 `apps/sandbox-authoring` 容器里(不挂源码),SDK 与 value-schema 烤进镜像,
 因此这两项改动要 `docker compose --profile sandbox build sandbox-authoring` 后才在 dev 中生效。
+
+## 公式模板详情页改用真正的 TypeScript 高亮;仅草稿的公式可删除(2026-09-18)
+
+### 做了什么
+
+- **模板详情页的阅读器**:`SourceView` 原先是手写扫描器(只分 keyword/string/comment),换成 Shiki 4.4.3(MIT)的
+  TypeScript 词法高亮,但仍然是**阅读器**——不连 LSP、不建 Monaco model、不加语义悬浮。发布版本与草稿记录继续用只读 Monaco。
+- **细粒度取用**:`shiki/core` + `shiki/engine/javascript` + `@shikijs/langs/typescript`,不用 `shiki`、`bundle/full`、
+  `bundle/web`,不引 Oniguruma wasm;highlighter 是模块级单例 Promise,三个 import 都在函数内动态取,
+  高亮结果是 token 而不是 HTML,由 React 渲染成文本节点(不用 `dangerouslySetInnerHTML`)。
+- **主题跟着产品走**:自建极克制的 theme,颜色全是 `var(--q-*)` 与基于它的 color-mix(正文 foreground、注释 muted、
+  字符串 successForeground、关键字 surfaceMutedForeground + 中等字重、常量轻微区分),明暗切换不需要重新 tokenize;
+  不使用 danger / warning,这两个颜色在本产品里有错误与警告语义。
+- **渐进增强**:首帧就是带行号的纯文本,Shiki 就绪后只换颜色;tokenize 失败或行数对不上就留在纯文本,不提示任何错误,
+  也不影响复制模板。
+- **仅草稿的公式可删除**:新增 `DELETE /assessment/formula-functions/{functionId}`,已有发布版本时以
+  `ASSESSMENT_FORMULA_FUNCTION_PUBLISHED`(409)拒绝并提示改用归档;数据库本来就是这么说的——版本对函数是 RESTRICT 边,
+  草稿记录是 CASCADE 边,所以删除只落一条语句,草稿历史随之而去。审计新增 `assessment.formula.delete`
+  (删除不留其它痕迹,归属 Audit Trail)。编辑页菜单按 `latestVersionNo` 二选一:仅草稿显示「删除公式」(二次确认后跳回列表),
+  已发布显示「归档公式」。
+
+### 命令与结果(实际执行)
+
+```text
+pnpm typecheck                                   exit=0
+pnpm vitest run packages/plugins/assessment/formula/tests packages/core tools/tests
+                                                 99 files / 649 passed(formula-library 新增「仅草稿可删、已发布拒绝」)
+pnpm test:browser                                60 files / 444 passed(模板页新增「原样读出源码」,工作台新增删除用例,
+                                                 归档用例改用已发布夹具)
+pnpm build                                       exit=0
+pnpm qualy database verify                       62 committed migration(s) build the declared schema, zero drift
+```
+
+### chunk 边界(构建产物实测)
+
+```text
+app shell(11 个 chunk 的静态闭包)               不含任何 shiki chunk,也不含 monaco
+shiki 核心                                       112 KB(动态,由模板页 chunk 按需拉取)
+typescript 语法                                  181 KB(动态,只有这一种语言)
+javascript 正则引擎                              58 KB(动态;无 wasm)
+模板页 chunk                                     9 KB,动态依赖 = shiki 核心
+```
+
+已知遗留(**本次之前就存在**,已用改动前的构建复核):模板页 chunk 静态依赖 Monaco 那个 2.6 MB chunk,
+原因是插件的 typed client `src/client/api.ts` 被 rolldown 归进了 monaco chunk(`editor-session.ts` 也 import 它),
+于是每个用 API 的页面都连上了它。属于分包策略问题,与本次高亮无关,单独一笔处理。

@@ -1567,6 +1567,28 @@ export default function FormulaEditorPage() {
     onError: (error: unknown) => setFailure(formatError(error)),
   })
 
+  // A formula nobody has published is the author's own draft and nothing
+  // else - a copy taken from a template and thought better of, most often -
+  // so it can be taken away. Once a version exists it is what questions are
+  // scored by, and archiving is what stops it being used from here on.
+  const remove = useMutation({
+    mutationFn: () => run(api.assessmentFormula.deleteFormulaFunction({ params: { functionId } })),
+    onSuccess: async () => {
+      toast.success(format(m.deleted))
+      await refresh()
+      goto('assessment-formula/list')
+    },
+    onError: (error: unknown) => setFailure(formatError(error)),
+  })
+
+  const deleteFormula = () =>
+    ask({
+      title: format(m.deleteTitle),
+      description: format(m.deleteDescription),
+      confirmLabel: format(m.deleteConfirm),
+      act: () => remove.mutate(),
+    })
+
   /** archiving takes the formula out of new bindings and out of editing, so it asks first */
   const archiveFormula = () =>
     ask({
@@ -2065,12 +2087,23 @@ export default function FormulaEditorPage() {
           {format(m.downloadCurrent)}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem
-          disabled={setStatus.isPending}
-          onSelect={() => (archived ? setStatus.mutate('active') : archiveFormula())}
-        >
-          {format(archived ? m.restoreFormula : m.archiveFormula)}
-        </DropdownMenuItem>
+        {fn.latestVersionNo === null ? (
+          <DropdownMenuItem
+            variant="destructive"
+            data-testid="formula-delete"
+            disabled={remove.isPending}
+            onSelect={deleteFormula}
+          >
+            {format(m.deleteFormula)}
+          </DropdownMenuItem>
+        ) : (
+          <DropdownMenuItem
+            disabled={setStatus.isPending}
+            onSelect={() => (archived ? setStatus.mutate('active') : archiveFormula())}
+          >
+            {format(archived ? m.restoreFormula : m.archiveFormula)}
+          </DropdownMenuItem>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   )

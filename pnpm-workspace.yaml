@@ -39,6 +39,13 @@ catalog:
   # bundles admin formulas into self-contained sandbox artifacts at publish
   # time; a runtime dependency of the formula plugin, not just tooling
   esbuild: 0.28.2
+  # the reader's syntax highlighting: a formula template is somebody else's
+  # code being read, not edited, and Monaco is the editor's chunk. Taken in
+  # fine grains - the core, the JS regex engine, the TypeScript grammar -
+  # so no other language, theme or wasm engine reaches the browser. The two
+  # packages move as one version: langs are built against the core's types
+  shiki: 4.4.3
+  '@shikijs/langs': 4.4.3
   # reads and writes the administrative import workbook, server-side only:
   # the template a recorder downloads and the file they send back. It never
   # reaches the browser - the parser lives behind the api, because a

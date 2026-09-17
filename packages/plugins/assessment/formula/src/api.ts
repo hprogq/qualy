@@ -18,6 +18,7 @@ import {
   FormulaDraftRevisionNotFound,
   FormulaFunctionArchived,
   FormulaFunctionNotFound,
+  FormulaFunctionPublished,
   FormulaSourceRefused,
   FormulaSharingConflict,
   FormulaSourceTooLarge,
@@ -448,6 +449,15 @@ export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
         ],
       },
     ).middleware(Authenticated),
+  )
+  .add(
+    // a formula nobody has published is the author's own draft and nothing
+    // else, so it can be taken away; one with a publication is archived
+    HttpApiEndpoint.delete('deleteFormulaFunction', '/assessment/formula-functions/:functionId', {
+      params: Schema.Struct({ functionId: id }),
+      success: Schema.Struct({ deleted: Schema.Boolean }),
+      error: [FormulaFunctionNotFound, FormulaFunctionPublished, AccessDenied],
+    }).middleware(Authenticated),
   )
   .add(
     HttpApiEndpoint.put(

@@ -52,7 +52,7 @@ const draft = {
 }
 
 const open = (
-  wrote: { status: unknown[]; tries?: unknown[] } = { status: [] },
+  wrote: { status: unknown[]; tries?: unknown[]; deleted?: unknown[] } = { status: [] },
   published?: { readonly source: string; readonly tests: unknown },
 ) =>
   renderScreen({
@@ -114,6 +114,10 @@ const open = (
         setFormulaFunctionStatus: (request: { payload: unknown }) => {
           wrote.status.push(request.payload)
           return Effect.succeed({ function: { ...draft, status: 'archived' } })
+        },
+        deleteFormulaFunction: (request: { params: unknown }) => {
+          wrote.deleted?.push(request.params)
+          return Effect.succeed({ deleted: true })
         },
       },
     } as never),
@@ -196,6 +200,29 @@ describe('the formula workbench', () => {
     }
   }, 60_000)
 
+  it('deletes a formula nobody published, once the question is answered', async () => {
+    const wrote = { status: [] as unknown[], deleted: [] as unknown[] }
+    const view = await open(wrote)
+    try {
+      await page.getByTestId('formula-more').click()
+      // nothing was published from it, so archiving is not what it offers
+      expect(page.getByRole('menuitem', { name: '归档公式' }).elements()).toHaveLength(0)
+      await page.getByTestId('formula-delete').click()
+      await page.getByRole('button', { name: '取消' }).click()
+      await new Promise((resolve) => setTimeout(resolve, 300))
+      expect(wrote.deleted).toEqual([])
+
+      await page.getByTestId('formula-more').click()
+      await page.getByTestId('formula-delete').click()
+      await page.getByRole('button', { name: '删除', exact: true }).click()
+      await vi.waitFor(() => expect(wrote.deleted).toEqual([{ functionId: FN_ID }]), {
+        timeout: 5_000,
+      })
+    } finally {
+      view.unmount()
+    }
+  }, 60_000)
+
   it('loads the minimal example as one step that undo takes back', async () => {
     const view = await open()
     try {
@@ -256,9 +283,11 @@ describe('the formula workbench', () => {
     }
   }, 60_000)
 
-  it('asks before archiving, and archives only on yes', async () => {
+  it('asks before archiving a published formula, and archives only on yes', async () => {
     const wrote = { status: [] as unknown[] }
-    const view = await open(wrote)
+    // archiving is what a formula somebody could already be scored by offers;
+    // a draft nobody published offers deletion instead, below
+    const view = await open(wrote, { source: 'const published = 1\n', tests: [] })
     try {
       await page.getByTestId('formula-more').click()
       await page.getByRole('menuitem', { name: '归档公式' }).click()

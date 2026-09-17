@@ -1,16 +1,18 @@
 import * as stylex from '@stylexjs/stylex'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { highlightFormulaSource, type SourceToken } from './source-highlight.ts'
 
-// Source to be read, not edited: numbered lines and three inks - words the
-// language owns, text in quotes, and comments.
+// Source to be read, not edited: numbered lines, the code itself, and colour
+// once it arrives.
 //
-// The editor's Monaco is a chunk of its own that a reader deciding whether
-// to copy a template should not wait for, and reading needs none of what it
-// brings. So this is a small scanner rather than a grammar: it knows where a
-// string or a comment starts and ends, across lines where TypeScript lets
-// them run on, and nothing about what the code means. A token it misreads
-// costs a colour, never a character.
+// The editor's Monaco is a chunk of its own that a reader deciding whether to
+// copy a template should not wait for, and reading needs none of what it
+// brings - no language service, no hovers, no session. So this draws the text
+// first and asks for colour after: the lines are on screen from the first
+// paint, and the tokenizer, which arrives as its own chunk, only changes the
+// ink. If it never arrives, or cannot read a grammar, the reader is still a
+// reader; nothing on screen says so, because nothing about the page failed.
 
 const styles = stylex.create({
   frame: {
@@ -32,116 +34,10 @@ const styles = stylex.create({
     userSelect: 'none',
   },
   code: { minWidth: 0, whiteSpace: 'pre' },
-  keyword: { color: tokens.surfaceMutedForeground, fontWeight: 500 },
-  string: { color: tokens.successForeground },
-  comment: { color: `color-mix(in oklab, ${tokens.mutedForeground} 75%, transparent)` },
+  // the weight the theme asks for; the colour rides an inline style, because
+  // it is the tokenizer's answer rather than this file's decision
+  strong: { fontWeight: 500 },
 })
-
-const KEYWORDS = new Set([
-  'as',
-  'async',
-  'await',
-  'break',
-  'case',
-  'catch',
-  'const',
-  'continue',
-  'default',
-  'else',
-  'export',
-  'false',
-  'for',
-  'from',
-  'function',
-  'if',
-  'import',
-  'in',
-  'let',
-  'new',
-  'null',
-  'of',
-  'return',
-  'switch',
-  'throw',
-  'true',
-  'try',
-  'type',
-  'typeof',
-  'undefined',
-  'while',
-])
-
-type Ink = 'plain' | 'keyword' | 'string' | 'comment'
-interface Piece {
-  readonly ink: Ink
-  readonly text: string
-}
-/** what a line ended inside, carried to the next one */
-type Open = null | 'block-comment' | 'template'
-
-const scanLine = (line: string, open: Open): { pieces: Piece[]; open: Open } => {
-  const pieces: Piece[] = []
-  const push = (ink: Ink, text: string) => {
-    if (text === '') return
-    const last = pieces[pieces.length - 1]
-    if (last !== undefined && last.ink === ink)
-      pieces[pieces.length - 1] = { ink, text: last.text + text }
-    else pieces.push({ ink, text })
-  }
-  let at = 0
-  let carried = open
-  if (carried === 'block-comment') {
-    const end = line.indexOf('*/')
-    if (end < 0) return { pieces: [{ ink: 'comment', text: line }], open: carried }
-    push('comment', line.slice(0, end + 2))
-    at = end + 2
-    carried = null
-  } else if (carried === 'template') {
-    const end = line.indexOf('`')
-    if (end < 0) return { pieces: [{ ink: 'string', text: line }], open: carried }
-    push('string', line.slice(0, end + 1))
-    at = end + 1
-    carried = null
-  }
-  while (at < line.length) {
-    const rest = line.slice(at)
-    if (rest.startsWith('//')) {
-      push('comment', rest)
-      break
-    }
-    if (rest.startsWith('/*')) {
-      const end = rest.indexOf('*/', 2)
-      if (end < 0) {
-        push('comment', rest)
-        return { pieces, open: 'block-comment' }
-      }
-      push('comment', rest.slice(0, end + 2))
-      at += end + 2
-      continue
-    }
-    const quote = rest[0]
-    if (quote === "'" || quote === '"' || quote === '`') {
-      let end = 1
-      while (end < rest.length && rest[end] !== quote) end += rest[end] === '\\' ? 2 : 1
-      if (end >= rest.length) {
-        push('string', rest)
-        return { pieces, open: quote === '`' ? 'template' : null }
-      }
-      push('string', rest.slice(0, end + 1))
-      at += end + 1
-      continue
-    }
-    const word = /^[A-Za-z_$][\w$]*/.exec(rest)
-    if (word !== null) {
-      push(KEYWORDS.has(word[0]) ? 'keyword' : 'plain', word[0])
-      at += word[0].length
-      continue
-    }
-    push('plain', rest[0]!)
-    at += 1
-  }
-  return { pieces, open: carried }
-}
 
 export function SourceView({
   source,
@@ -153,34 +49,52 @@ export function SourceView({
   readonly 'data-testid'?: string
   readonly 'aria-label'?: string
 }) {
-  const lines = useMemo(() => {
-    let open: Open = null
-    return source
-      .replace(/\n$/, '')
-      .split('\n')
-      .map((line) => {
-        const scanned = scanLine(line, open)
-        open = scanned.open
-        return scanned.pieces
-      })
-  }, [source])
+  // one trailing newline ends the file rather than starting a line
+  const text = useMemo(() => source.replace(/\n$/, ''), [source])
+  const lines = useMemo(() => text.split('\n'), [text])
+  const [coloured, setColoured] = useState<readonly (readonly SourceToken[])[] | null>(null)
+
+  useEffect(() => {
+    let live = true
+    setColoured(null)
+    void highlightFormulaSource(text).then((got) => {
+      if (live) setColoured(got)
+    })
+    return () => {
+      live = false
+    }
+  }, [text])
+
+  // a tokenization that does not line up with the text is not drawn: the
+  // words on screen are the source, and no colour is worth losing one
+  const inked = coloured !== null && coloured.length === lines.length ? coloured : null
+
   return (
     <pre {...rest} {...stylex.props(styles.frame, xstyle)}>
-      {lines.map((pieces, index) => (
+      {lines.map((line, index) => (
         <div key={index} {...stylex.props(styles.line)}>
           <span aria-hidden {...stylex.props(styles.number)}>
             {index + 1}
           </span>
           <code {...stylex.props(styles.code)}>
-            {pieces.map((piece, at) =>
-              piece.ink === 'plain' ? (
-                piece.text
-              ) : (
-                <span key={at} {...stylex.props(styles[piece.ink])}>
-                  {piece.text}
-                </span>
-              ),
-            )}
+            {inked === null
+              ? line
+              : inked[index]!.map((token, at) => {
+                  if (token.color === undefined && token.strong !== true) return token.text
+                  const sx = stylex.props(token.strong === true && styles.strong)
+                  return (
+                    <span
+                      key={at}
+                      className={sx.className}
+                      style={{
+                        ...sx.style,
+                        ...(token.color === undefined ? {} : { color: token.color }),
+                      }}
+                    >
+                      {token.text}
+                    </span>
+                  )
+                })}
           </code>
         </div>
       ))}

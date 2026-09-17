@@ -80,6 +80,21 @@ export const FormulaVersionSharingChanged = AuditAction.define({
   }),
 })
 
+/**
+ * A draft-only formula, deleted.
+ *
+ * The one action here that leaves nothing at all: the row and its revisions
+ * go, so the trail is the only account that it ever existed. A formula with
+ * a publication is archived instead, and archiving has its own entry.
+ */
+export const FormulaFunctionDeleted = AuditAction.define({
+  code: 'assessment.formula.delete',
+  target: 'assessment.formula',
+  version: 1,
+  name: message('assessment-formula/audit/delete', 'Delete scoring formula'),
+  details: Schema.Struct({}),
+})
+
 export const FormulaFunctionRestored = AuditAction.define({
   code: 'assessment.formula.restore',
   target: 'assessment.formula',
@@ -108,6 +123,7 @@ export const formulaActions = [
   FormulaDraftReplaced,
   FormulaFunctionDetailsChanged,
   FormulaFunctionArchived,
+  FormulaFunctionDeleted,
   FormulaFunctionRestored,
   FormulaVersionSharingChanged,
   FormulaTemplateCopied,

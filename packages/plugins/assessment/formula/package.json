@@ -55,12 +55,14 @@
     "@qualy/web-i18n": "workspace:*",
     "@qualy/web-runtime": "workspace:*",
     "@qualy/web-value-form": "workspace:*",
+    "@shikijs/langs": "catalog:",
     "@stylexjs/stylex": "catalog:",
     "@tanstack/react-query": "catalog:",
     "effect": "catalog:",
     "kysely": "catalog:",
     "lucide-react": "^0.552.0",
-    "monaco-editor": "0.56.0"
+    "monaco-editor": "0.56.0",
+    "shiki": "catalog:"
   },
   "devDependencies": {
     "@qualy/formula-compiler": "workspace:*",

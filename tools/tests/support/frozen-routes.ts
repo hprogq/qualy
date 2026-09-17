@@ -76,6 +76,7 @@ export const FROZEN_ROUTES = [
   'POST /assessment/formula-functions/{functionId}/draft/preview',
   'POST /assessment/formula-functions/{functionId}/draft/evaluation',
   'PATCH /assessment/formula-functions/{functionId}',
+  'DELETE /assessment/formula-functions/{functionId}',
   'GET /assessment/formula-functions/{functionId}/draft/revisions',
   'GET /assessment/formula-functions/{functionId}/draft/revisions/{revisionNo}',
   'POST /assessment/formula-functions/{functionId}/draft/restores',
