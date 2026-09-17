@@ -3,7 +3,12 @@ import { Outlet } from 'react-router'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
-import { PageTitleScope, usePageTitleClaim } from '@qualy/web-runtime'
+import {
+  PageTitleScope,
+  ScreenFillScope,
+  usePageTitleClaim,
+  useScreenFillClaimed,
+} from '@qualy/web-runtime'
 import { SectionBar, TopBar } from './TopBar.tsx'
 import { BottomBar } from './BottomBar.tsx'
 import { AppFooter } from './AppFooter.tsx'
@@ -61,6 +66,11 @@ const styles = stylex.create({
     // named because nothing here wants a say in a sideways edge swipe.
     overscrollBehaviorY: 'contain',
   },
+  // a screen that fills the room scrolls inside itself; the shell does not
+  // scroll around it
+  mainFilled: {
+    overflowY: 'hidden',
+  },
   head: {
     position: 'absolute',
     insetInline: 0,
@@ -96,6 +106,11 @@ const styles = stylex.create({
     flexGrow: 1,
     flexShrink: 0,
   },
+  // exactly the height the bars leave, and no more however much it holds
+  pageFilled: {
+    minHeight: 0,
+    flexShrink: 1,
+  },
   // Room under everything for the bar at the foot of a narrow window. On a
   // window with no such bar the page still keeps the device's own gesture
   // area clear, and nothing more: a strip of empty page under the last row
@@ -128,6 +143,8 @@ function Shell() {
   const { title, node: heading } = usePageTitleClaim()
   const [titleShown, setTitleShown] = useState(false)
   const bottomBar = apps.length >= 2
+  // a workbench fills the room under the bars and has no foot under it
+  const filled = useScreenFillClaimed()
   // The band both observers watch starts where the bars end, so their
   // margin is the bars' measured height - which moves with the section bar
   // and again with the width, since a phone's bar is shorter. Measured
@@ -203,7 +220,11 @@ function Shell() {
       <main
         ref={main}
         style={barHeight === 0 ? undefined : { scrollPaddingTop: barHeight }}
-        {...stylex.props(styles.main, bottomBar ? styles.footRoom : styles.safeRoom)}
+        {...stylex.props(
+          styles.main,
+          bottomBar ? styles.footRoom : styles.safeRoom,
+          filled && styles.mainFilled,
+        )}
       >
         <div
           aria-hidden
@@ -211,10 +232,10 @@ function Shell() {
           {...stylex.props(styles.headRoom, withSections && styles.headRoomSections)}
         />
         <div ref={sentinel} aria-hidden {...stylex.props(styles.sentinel)} />
-        <div {...stylex.props(styles.page)}>
+        <div {...stylex.props(styles.page, filled && styles.pageFilled)}>
           <Outlet />
         </div>
-        <AppFooter />
+        {filled ? null : <AppFooter />}
       </main>
       <BottomBar apps={apps} activeApp={activeApp} />
     </div>
@@ -224,7 +245,9 @@ function Shell() {
 export default function AppShell() {
   return (
     <PageTitleScope>
-      <Shell />
+      <ScreenFillScope>
+        <Shell />
+      </ScreenFillScope>
     </PageTitleScope>
   )
 }
