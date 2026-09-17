@@ -937,6 +937,9 @@ quickjs_engine_version varchar
 tests                  jsonb
 test_report            jsonb
 
+release_name           varchar(100) nullable  -- 作者起的发布名,函数内唯一,不可改;旧版本为 null
+release_notes          text nullable
+
 published_by           uuid
 published_at           timestamptz
 ```
@@ -958,6 +961,48 @@ functionVersion = latest
 ```
 
 题目只能引用确切 UUID。
+
+## 14.3 草稿、草稿修订与发布(生命周期模型,2026-09-17 定)
+
+一个公式只有三种状态,职责不重叠:
+
+```text
+FormulaFunction.draft      唯一可编辑的草稿(draft_source_ts / draft_tests / draft_revision)
+FormulaDraftRevision       草稿每次「源码或示例真的变了」留下的完整快照,只追加
+FormulaVersion             发布出来的不可变版本,带作者起的名字
+```
+
+`assessment_formula_draft_revisions`:
+
+```text
+id                       uuid PK
+tenant_id, function_id   复合 FK → functions,on delete cascade
+revision_no              integer,(tenant_id, function_id, revision_no) 唯一
+source_ts                text
+tests                    jsonb
+source_sha256            char(64)
+saved_by, saved_at
+origin                   created | saved | restored-from-version | restored-from-draft
+                         | copied-from-template | migration
+source_version_id        uuid nullable(restored-from-version / copied-from-template)
+source_draft_revision_no integer nullable(restored-from-draft)
+```
+
+规则:
+
+- `draft_revision` 只在源码或示例变化时递增,并同事务追加一条同号修订;改名、改说明不递增,改为记一条 `assessment.formula.details.change` 审计(改名本身不留别的痕迹)。
+  原 `FormulaDraftReplaced` 审计不再记录,目录项保留以读旧行。修订表就是草稿的领域历史,不再复制进审计。
+- 新建公式的草稿源码为空(修订 1,`created`);从模板复制的修订 1 是 `copied-from-template` 并指向来源版本。空源码不编译、不报错,试运行与发布不可用。
+- **恢复不回退**:`POST .../draft/restores`,`{expectedDraftRevision, from: {kind:'published-version', versionNo} | {kind:'draft-revision', revisionNo}}`,
+  从不可变行读取内容,追加一条新修订并记来源;与当前草稿完全相同时是 no-op。历史版本与旧修订本身永不改动。
+- **发布命名**:`releaseName`(必填,≤100)与 `releaseNotes`(可选,≤1000)随发布冻结,不可改名。同一函数内名称唯一(部分唯一索引,旧版本为 null 不参与)。
+  发布指纹包含名称与说明:同名同内容重试返回已有版本;同一份代码换新名字是第二次发布;同名但内容或说明不同拒绝为 `ASSESSMENT_FORMULA_RELEASE_NAME_TAKEN`。
+  `version_no` 仍是内部发布次序,界面显示名称,次序只作「第 N 次发布」的辅助文字;名称为空的旧版本显示「未命名发布」。
+- **迁移**:`release_name` / `release_notes` 可空,不伪造「v1」之类的名字;每个已有函数按当前草稿补一条 `migration` 基线修订,号码沿用它已有的 `draft_revision`,更早的源码从未保存过,不重建。
+
+界面:编辑页右侧下半是「历史」(发布版本 / 草稿记录)。点开任一项在同一框架里只读显示,地址记为 `?view=release-N` / `?view=revision-N`,未保存的草稿编辑留在页面里等返回。
+发布版本视图只读版本行(源码、示例报告、契约、发布环境、共享范围),不调用草稿预览重编译;「基于此版本修改」与「恢复此草稿」在当前草稿有未保存修改时先确认。
+下载在浏览器端生成:当前草稿下载编辑器里的内容(含未保存,从不触发保存),版本下载冻结的 `source_ts`,文件名「函数名 - 发布名.ts」。
 
 ---
 
