@@ -14,6 +14,7 @@ export const workbenchStyles = stylex.create({
     display: 'inline-flex',
     flexShrink: 0,
     alignItems: 'center',
+    gap: 4,
     height: 20,
     paddingInline: 7,
     borderRadius: 5,

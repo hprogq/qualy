@@ -1,12 +1,13 @@
 import * as stylex from '@stylexjs/stylex'
-import { useState, type ReactNode } from 'react'
+import { Suspense, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useApiQuery } from '@qualy/web-runtime'
+import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Button } from '@qualy/ui/button'
 import { EmptyRow } from '@qualy/ui/empty-row'
 import { Spinner } from '@qualy/ui/spinner'
+import { toast } from '@qualy/ui/toast'
 import { downloadText, fileNameOf } from '@qualy/ui/download'
 import {
   DropdownMenu,
@@ -14,24 +15,25 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@qualy/ui/dropdown-menu'
-import { DownloadIcon, HistoryIcon, MoreHorizontalIcon, Undo2Icon } from 'lucide-react'
+import type { NormalizedInputSchema } from '@qualy/value-schema'
+import { materializeInput, type FieldDraft } from '@qualy/web-value-form/model'
+import { DownloadIcon, HistoryIcon, LockIcon, MoreHorizontalIcon, Undo2Icon } from 'lucide-react'
 import { formulaApi } from './api.ts'
 import { formulaMessages as m } from './i18n.ts'
 import { fullWhen } from './library-styles.ts'
-import { inputSummaryOf } from './report-words.ts'
-import { SourceView } from './SourceView.tsx'
-import { SideHead, WorkbenchBar, WorkbenchLayout } from './WorkbenchLayout.tsx'
+import { LazyFormulaSourceViewer } from './lazy-editors.ts'
+import { inputIssueWords, inputSummaryOf } from './report-words.ts'
+import { TryRunPanel, type TryOutcome } from './TryRunPanel.tsx'
+import { SideHead, WorkbenchBar, WorkbenchLayout, type SideTab } from './WorkbenchLayout.tsx'
 import { workbenchStyles as w } from './workbench-styles.ts'
 
 // One saved state of the draft, as it was saved: its source and its examples,
-// read-only. Restoring it does not rewind anything - it becomes the draft's
-// newest revision, naming this one as where it came from.
+// read-only. It is a draft, not a publication, so a try compiles its source
+// the way the draft's own try does. Restoring it does not rewind anything -
+// it becomes the draft's newest revision, naming this one as where it came
+// from.
 
 const styles = stylex.create({
-  info: { display: 'flex', flexDirection: 'column', gap: 8, paddingInline: 16, paddingBottom: 14 },
-  infoFact: { display: 'flex', gap: 10, fontSize: 12.5 },
-  infoLabel: { flexShrink: 0, width: '4.5rem', color: tokens.mutedForeground },
-  infoValue: { margin: 0, minWidth: 0, overflowWrap: 'anywhere' },
   loading: {
     display: 'flex',
     flexGrow: 1,
@@ -48,7 +50,12 @@ const styles = stylex.create({
     fontSize: 12,
     color: tokens.mutedForeground,
   },
+  sourceFill: { display: 'flex', minHeight: '18rem', flexGrow: 1, flexDirection: 'column' },
 })
+
+interface Compiled {
+  readonly inputSchema: NormalizedInputSchema
+}
 
 export function RevisionView({
   functionId,
@@ -58,7 +65,10 @@ export function RevisionView({
   archived,
   narrow,
   titleRef,
+  lease,
   history,
+  sideTab,
+  onSideTab,
   onBack,
   onRestore,
   restoring,
@@ -71,15 +81,25 @@ export function RevisionView({
   readonly archived: boolean
   readonly narrow: boolean
   readonly titleRef: (node: HTMLElement | null) => void
+  /** the page's editor lease, which the read-only source hangs on */
+  readonly lease: string
   readonly history: ReactNode
+  readonly sideTab: SideTab
+  readonly onSideTab: (tab: SideTab) => void
   readonly onBack: () => void
   readonly onRestore: (revisionNo: number) => void
   readonly restoring: boolean
 }) {
+  const api = useApi(formulaApi)
+  const run = useRunApi()
   const query = useApiQuery(formulaApi)
   const { format, formatError, locale } = useI18n()
   const [panelTab, setPanelTab] = useState('examples')
   const [phoneTab, setPhoneTab] = useState('source')
+  const [drafts, setDrafts] = useState<Record<string, FieldDraft>>({})
+  const [issues, setIssues] = useState<ReadonlyMap<string, string> | undefined>(undefined)
+  const [result, setResult] = useState<{ outcome: TryOutcome; forCase: string } | null>(null)
+  const [running, setRunning] = useState(false)
 
   const detail = useQuery(
     query.assessmentFormula.getFormulaDraftRevision.queryOptions({
@@ -89,14 +109,57 @@ export function RevisionView({
   const revision = detail.data?.revision
   const current = revisionNo === draftRevision
   const label = format(m.revisionNumber, { number: revisionNo })
+  const blank = revision !== undefined && revision.sourceTs.trim() === ''
+
+  // the structure the saved source declares, asked only once it is on screen
+  const compiled = useQuery({
+    queryKey: ['assessment-formula', 'revision-structure', functionId, revisionNo],
+    queryFn: () =>
+      run(
+        api.assessmentFormula.previewFormulaDraft({
+          params: { functionId },
+          payload: { sourceTs: revision!.sourceTs },
+        }),
+      ) as Promise<Compiled>,
+    enabled: revision !== undefined && !blank,
+    retry: false,
+    staleTime: Infinity,
+  })
 
   const download = () => {
     if (revision === undefined) return
-    downloadText({
-      filename: fileNameOf([functionName, label], '.ts'),
-      text: revision.sourceTs,
-      type: 'text/typescript;charset=utf-8',
-    })
+    const filename = fileNameOf([functionName, label], '.ts')
+    downloadText({ filename, text: revision.sourceTs, type: 'text/typescript;charset=utf-8' })
+    toast.success(format(m.downloaded, { file: filename }))
+  }
+
+  const runTry = async () => {
+    const schema = compiled.data?.inputSchema
+    if (schema === undefined || revision === undefined) return
+    const frozenDrafts = { ...drafts }
+    const materialized = materializeInput(schema, frozenDrafts)
+    if (materialized.value === null) {
+      setIssues(inputIssueWords(format, schema, materialized.issues))
+      return
+    }
+    setIssues(undefined)
+    setRunning(true)
+    try {
+      const answered = (await run(
+        api.assessmentFormula.evaluateFormulaDraft({
+          params: { functionId },
+          payload: {
+            sourceTs: revision.sourceTs,
+            cases: [{ clientId: 'try', input: materialized.value }],
+          },
+        }),
+      )) as { cases: readonly TryOutcome[] }
+      setResult({ outcome: answered.cases[0] ?? {}, forCase: JSON.stringify(frozenDrafts) })
+    } catch (error) {
+      toast.error(formatError(error))
+    } finally {
+      setRunning(false)
+    }
   }
 
   const origin = (): string => {
@@ -136,44 +199,62 @@ export function RevisionView({
   const source =
     revision === undefined ? (
       pending
-    ) : revision.sourceTs === '' ? (
+    ) : blank ? (
       <div {...stylex.props(w.emptyFill)}>
         <EmptyRow>{format(m.revisionEmptySource)}</EmptyRow>
       </div>
     ) : (
-      <>
-        <div {...stylex.props(w.paneHead)}>
-          <span {...stylex.props(w.paneLabel)}>{format(m.revisionSource)}</span>
-          <span {...stylex.props(w.spring)} />
-          <span {...stylex.props(w.paneNote)}>{format(m.readOnly)}</span>
-        </div>
-        <SourceView
-          source={revision.sourceTs}
-          data-testid="formula-revision-source"
-          aria-label={format(m.revisionSource)}
-          xstyle={w.paneSource}
-        />
-      </>
+      <div {...stylex.props(styles.sourceFill)}>
+        <Suspense fallback={pending}>
+          <LazyFormulaSourceViewer
+            functionId={functionId}
+            lease={lease}
+            name={`revision-${String(revisionNo)}`}
+            source={revision.sourceTs}
+            label={format(m.revisionSource)}
+            readOnlyLabel={format(m.readOnly)}
+            data-testid="formula-revision-source"
+          />
+        </Suspense>
+      </div>
     )
 
-  const facts =
-    revision === undefined ? null : (
-      <dl {...stylex.props(styles.info)} data-testid="formula-revision-info">
-        {(
-          [
-            [m.revisionLabel, label],
-            [m.revisionSavedAt, fullWhen(revision.savedAt, locale)],
-            [m.revisionSavedBy, revision.savedByName ?? format(m.templatesAuthorUnknown)],
-            [m.revisionOrigin, origin()],
-          ] as const
-        ).map(([name, value]) => (
-          <div key={name.id} {...stylex.props(styles.infoFact)}>
-            <dt {...stylex.props(styles.infoLabel)}>{format(name)}</dt>
-            <dd {...stylex.props(styles.infoValue)}>{value}</dd>
-          </div>
-        ))}
-      </dl>
-    )
+  const tryRun = (
+    <>
+      <SideHead title={format(m.tryTitle)} column />
+      <TryRunPanel
+        schema={compiled.data?.inputSchema ?? null}
+        pending={
+          blank
+            ? { state: 'blank', words: format(m.compileBlank), working: false, off: false }
+            : compiled.isError
+              ? {
+                  state: 'refused',
+                  words: format(m.structureRefused),
+                  working: false,
+                  off: true,
+                }
+              : {
+                  state: 'loading',
+                  words: format(m.structureLoading),
+                  working: true,
+                  off: false,
+                }
+        }
+        drafts={drafts}
+        onDraft={(name, draft) => setDrafts({ ...drafts, [name]: draft })}
+        issues={issues}
+        disabled={false}
+        running={running}
+        result={
+          result === null
+            ? null
+            : { outcome: result.outcome, fresh: result.forCase === JSON.stringify(drafts) }
+        }
+        onRun={() => void runTry()}
+      />
+    </>
+  )
 
   const examples =
     revision === undefined ? null : revision.tests.length === 0 ? (
@@ -209,7 +290,7 @@ export function RevisionView({
 
   const details =
     revision === undefined ? null : (
-      <dl {...stylex.props(w.facts)}>
+      <dl data-testid="formula-revision-details" {...stylex.props(w.facts)}>
         {(
           [
             [m.revisionOrigin, origin()],
@@ -228,6 +309,17 @@ export function RevisionView({
 
   const scroll = (node: ReactNode) => <div {...stylex.props(w.panelScroll)}>{node}</div>
   const restoreDisabled = archived || restoring || current || revision === undefined
+  const restoreButton = (
+    <Button
+      size="sm"
+      data-testid="formula-revision-restore"
+      disabled={restoreDisabled}
+      onClick={() => onRestore(revisionNo)}
+    >
+      <HistoryIcon aria-hidden />
+      {format(m.revisionRestore)}
+    </Button>
+  )
 
   return (
     <WorkbenchLayout
@@ -242,13 +334,18 @@ export function RevisionView({
           title={<span {...stylex.props(w.title)}>{functionName}</span>}
           badge={
             <span {...stylex.props(w.standing, w.standingOutline)}>
-              {format(m.revisionReadOnlyBadge)}
+              <LockIcon size={11} aria-hidden />
+              {format(m.readOnly)}
             </span>
           }
           status={
             <>
               <span>{label}</span>
-              {current ? <span>{format(m.revisionCurrent)}</span> : null}
+              {current ? (
+                <span {...stylex.props(w.standing, w.standingQuiet)}>
+                  {format(m.revisionCurrent)}
+                </span>
+              ) : null}
             </>
           }
           actions={
@@ -260,21 +357,13 @@ export function RevisionView({
               <Button
                 variant="outline"
                 size="sm"
-                disabled={revision === undefined}
+                disabled={revision === undefined || blank}
                 onClick={download}
               >
                 <DownloadIcon aria-hidden />
                 {format(m.downloadCode)}
               </Button>
-              <Button
-                size="sm"
-                data-testid="formula-revision-restore"
-                disabled={restoreDisabled}
-                onClick={() => onRestore(revisionNo)}
-              >
-                <HistoryIcon aria-hidden />
-                {format(m.revisionRestore)}
-              </Button>
+              {restoreButton}
             </>
           }
           phoneMenu={
@@ -286,7 +375,7 @@ export function RevisionView({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onSelect={onBack}>{format(m.backToDraft)}</DropdownMenuItem>
-                <DropdownMenuItem disabled={revision === undefined} onSelect={download}>
+                <DropdownMenuItem disabled={revision === undefined || blank} onSelect={download}>
                   {format(m.downloadCode)}
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -295,13 +384,12 @@ export function RevisionView({
         />
       }
       source={source}
-      side={
-        <>
-          <SideHead title={format(m.revisionInfo)} />
-          {facts}
-        </>
-      }
+      tryRun={tryRun}
       history={history}
+      sideTab={sideTab}
+      onSideTab={onSideTab}
+      tryLabel={format(m.tryTitle)}
+      historyLabel={format(m.historyTitle)}
       panelTabs={[
         {
           value: 'examples',
@@ -316,13 +404,20 @@ export function RevisionView({
       panelLabel={format(m.revisionInfo)}
       phoneTabs={[
         { value: 'source', label: format(m.phoneSourceTab), content: source },
+        { value: 'try', label: format(m.tryTitle), content: tryRun },
         {
-          value: 'examples',
-          label: format(m.testsTitle),
+          value: 'details',
+          label: format(m.revisionInfo),
           count: revision?.tests.length ?? 0,
-          content: examples,
+          content: (
+            <>
+              <SideHead title={format(m.testsTitle)} />
+              {examples}
+              <SideHead title={format(m.revisionInfo)} />
+              {details}
+            </>
+          ),
         },
-        { value: 'info', label: format(m.revisionInfo), content: details },
         { value: 'history', label: format(m.historyTitle), content: history },
       ]}
       phoneTab={phoneTab}
@@ -330,10 +425,7 @@ export function RevisionView({
       gate={
         <>
           <span {...stylex.props(styles.gateText)}>{label}</span>
-          <Button size="sm" disabled={restoreDisabled} onClick={() => onRestore(revisionNo)}>
-            <HistoryIcon aria-hidden />
-            {format(m.revisionRestore)}
-          </Button>
+          {restoreButton}
         </>
       }
     />

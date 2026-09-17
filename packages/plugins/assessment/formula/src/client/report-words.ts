@@ -1,4 +1,10 @@
 import type { useI18n } from '@qualy/web-i18n'
+import {
+  constraintOf,
+  parameterSchemaAt,
+  type AtomicSchema,
+  type NormalizedInputSchema,
+} from '@qualy/value-schema'
 import { formulaMessages as m } from './i18n.ts'
 import { kindWords } from './kind-words.ts'
 
@@ -115,3 +121,44 @@ export const inputSummaryOf = (value: unknown): string => {
   )
   return pairs.length === 0 ? '{}' : `{ ${pairs.join(', ')} }`
 }
+
+/** what stops one field of a try or an example, in the author's words */
+export const fieldIssueWords = (
+  format: Format,
+  schema: AtomicSchema | undefined,
+  reason: string,
+): string => {
+  switch (reason) {
+    case 'required':
+      return format(m.fieldRequired)
+    case 'not-an-integer':
+      return format(m.fieldNotInteger)
+    case 'not-a-decimal':
+      return format(m.fieldNotDecimal)
+    default: {
+      const constraint = schema === undefined ? undefined : constraintOf(schema, reason)
+      return reasonWords(format, {
+        at: 'input',
+        reason,
+        ...(constraint === undefined ? {} : { constraint }),
+      })
+    }
+  }
+}
+
+/** a form's field problems, keyed by parameter, worded against the input contract */
+export const inputIssueWords = (
+  format: Format,
+  schema: NormalizedInputSchema,
+  issues: ReadonlyMap<string, string>,
+): ReadonlyMap<string, string> =>
+  new Map(
+    [...issues].map(([field, reason]) => [
+      field,
+      fieldIssueWords(
+        format,
+        field === '' ? undefined : parameterSchemaAt(schema, `/${field}`),
+        reason,
+      ),
+    ]),
+  )

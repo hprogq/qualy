@@ -16,7 +16,15 @@
  * expose it; refusal, absence and outage all look like a close).
  */
 
-export type ConnectionState = 'connecting' | 'ready' | 'unavailable' | 'disposed'
+/**
+ * `limited`: the server turned the connection away because this person
+ * already holds as many language sessions as one person may (close code
+ * 4429), which is worth telling apart - closing another window frees one.
+ */
+export type ConnectionState = 'connecting' | 'ready' | 'unavailable' | 'limited' | 'disposed'
+
+/** the close code the bridge answers a person over their session allowance with */
+export const SEAT_LIMIT_CLOSE_CODE = 4429
 
 interface Pending {
   readonly resolve: (value: unknown) => void
@@ -36,6 +44,8 @@ export interface LspConnectionOptions {
 
 const REQUEST_TIMEOUT_MS = 10_000
 const BACKOFF_MS = [500, 1_000, 2_000, 5_000, 10_000] as const
+/** a seat frees when another window closes or goes idle; asking often changes nothing */
+const LIMITED_RETRY_MS = 30_000
 
 export interface LspConnection {
   request(method: string, params: unknown): Promise<unknown>
@@ -69,10 +79,12 @@ export const openLspConnection = (options: LspConnectionOptions): LspConnection 
     pending.clear()
   }
 
-  const scheduleReconnect = (): void => {
+  const scheduleReconnect = (limited = false): void => {
     if (state === 'disposed' || reconnectTimer !== null) return
-    setState('unavailable')
-    const backoff = BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)]!
+    setState(limited ? 'limited' : 'unavailable')
+    const backoff = limited
+      ? LIMITED_RETRY_MS
+      : BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)]!
     attempt += 1
     // a little jitter so a fleet of tabs does not knock in unison
     const delay = backoff + Math.floor(Math.random() * 250)
@@ -173,10 +185,10 @@ export const openLspConnection = (options: LspConnectionOptions): LspConnection 
       // server->client REQUESTS never arrive (F1 answers them inside the
       // sandbox service); anything else is ignored by design
     }
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       if (thisGeneration !== generation || state === 'disposed') return
       teardownSocket('the language connection closed')
-      scheduleReconnect()
+      scheduleReconnect(event.code === SEAT_LIMIT_CLOSE_CODE)
     }
     ws.onerror = () => {
       // the close event follows and carries the real teardown

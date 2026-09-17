@@ -1,20 +1,35 @@
 import * as stylex from '@stylexjs/stylex'
-import type { ReactNode } from 'react'
+import { createContext, use, type ReactNode } from 'react'
 import { PageLink } from '@qualy/web-runtime'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { layout } from '@qualy/ui/theme/layout.stylex'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@qualy/ui/tabs'
+import { useIsBelow } from '@qualy/ui/use-mobile'
 import { ArrowLeftIcon } from 'lucide-react'
 import { workbenchStyles as w } from './workbench-styles.ts'
 
 // The formula workbench's frame, whatever it is showing.
 //
-// On a wide screen: a bar, the source on the left, a column on the right -
-// what can be done with this state above, the formula's history below, each
-// scrolling in its own place - and a panel of tabs under both. On a phone the
-// same parts are spread over tabs instead, one at a time, and whatever stands
-// between the state and its next step stays at the foot of the screen.
+// On a wide screen: a bar, the source on the left, then two columns of the
+// same width - the try-run, and the formula's history - each scrolling in
+// its own place, and a panel of tabs under all three. Where two columns do
+// not fit beside the source, they share one and a pair of tabs switches
+// between them. On a phone the same parts are spread over tabs, one at a
+// time, and whatever stands between the state and its next step stays at
+// the foot of the screen.
+
+/** below this viewport width the try-run and the history share one column */
+const SPLIT_COLUMNS_MIN_WIDTH = 1200
+
+export type SideTab = 'try' | 'history'
+
+/**
+ * Whether the columns stand on their own or are reached through tabs. A
+ * column's head repeats its tab's name when a tab already says it, so a head
+ * that names a column steps aside there.
+ */
+const TabbedColumns = createContext(false)
 
 /** how a view stands, for the dot on its tab */
 export type Tone = 'good' | 'bad' | 'quiet'
@@ -77,7 +92,9 @@ const styles = stylex.create({
   rule: { width: 1, height: 16, flexShrink: 0, backgroundColor: tokens.border },
   heading: { display: 'flex', minWidth: 0, flexShrink: 1, flexDirection: 'column', gap: 2 },
   headingPhone: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 4 },
-  titleLine: { display: 'flex', minWidth: 0, alignItems: 'center', gap: 8 },
+  // one height whatever the title is drawn with - an editable name or plain
+  // words - so opening a piece of history does not move the page
+  titleLine: { display: 'flex', minWidth: 0, height: 30, alignItems: 'center', gap: 8 },
   statusLine: {
     display: 'flex',
     minWidth: 0,
@@ -103,21 +120,27 @@ const styles = stylex.create({
     borderRightStyle: 'solid',
     borderRightColor: tokens.border,
   },
-  // The part that says what to do sits still and the history scrolls under
-  // it: a history grows with every save and publication, and it must never
-  // carry the form somebody is typing into out of reach.
-  side: {
+  column: {
     display: 'flex',
-    width: { default: 324, [breakpoints.tablet]: 288 },
+    width: { default: 324, [breakpoints.tablet]: 300 },
     minHeight: 0,
     flexShrink: 0,
     flexDirection: 'column',
     overflow: 'hidden',
     backgroundColor: tokens.background,
   },
-  sideTop: { flexShrink: 0, maxHeight: '62%', overflowY: 'auto' },
-  sideRule: { height: 1, flexShrink: 0, backgroundColor: tokens.border },
-  sideBottom: { display: 'flex', minHeight: 0, flexGrow: 1, flexDirection: 'column' },
+  columnRuled: { borderLeftWidth: 1, borderLeftStyle: 'solid', borderLeftColor: tokens.border },
+  columnScroll: { minHeight: 0, flexGrow: 1, overflowY: 'auto' },
+  columnFill: { display: 'flex', minHeight: 0, flexGrow: 1, flexDirection: 'column' },
+  columnTabs: {
+    display: 'flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    paddingInline: 8,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
+  },
 
   panel: {
     display: 'flex',
@@ -197,6 +220,7 @@ const styles = stylex.create({
   dotGood: { backgroundColor: tokens.success },
   dotBad: { backgroundColor: tokens.danger },
 
+  sideHeadGap: { height: 12, flexShrink: 0 },
   sideHead: {
     display: 'flex',
     alignItems: 'center',
@@ -241,14 +265,20 @@ export function SideHead({
   title,
   note,
   action,
+  column = false,
 }: {
   readonly title: string
   readonly note?: ReactNode
   readonly action?: ReactNode
+  /** this head names a whole column, which a tab names instead where columns share room */
+  readonly column?: boolean
 }) {
+  const tabbed = use(TabbedColumns)
+  if (column && tabbed && note === undefined && action === undefined)
+    return <div aria-hidden {...stylex.props(styles.sideHeadGap)} />
   return (
     <div {...stylex.props(styles.sideHead)}>
-      <h2 {...stylex.props(styles.sideTitle)}>{title}</h2>
+      {column && tabbed ? null : <h2 {...stylex.props(styles.sideTitle)}>{title}</h2>}
       <span {...stylex.props(w.spring)} />
       {note}
       {action}
@@ -351,8 +381,12 @@ export function WorkbenchLayout({
   bar,
   notices,
   source,
-  side,
+  tryRun,
   history,
+  sideTab,
+  onSideTab,
+  tryLabel,
+  historyLabel,
   panelTabs,
   panelTab,
   onPanelTab,
@@ -370,8 +404,15 @@ export function WorkbenchLayout({
   readonly bar: ReactNode
   readonly notices?: ReactNode
   readonly source: ReactNode
-  readonly side: ReactNode
+  /** the try-run column, head included; it scrolls on its own */
+  readonly tryRun: ReactNode
+  /** the history column; it lays out its own scrolling list */
   readonly history: ReactNode
+  /** which of the two shows when they share a column */
+  readonly sideTab: SideTab
+  readonly onSideTab: (tab: SideTab) => void
+  readonly tryLabel: string
+  readonly historyLabel: string
   readonly panelTabs: readonly WorkbenchTab[]
   readonly panelTab: string
   readonly onPanelTab: (value: string) => void
@@ -385,43 +426,79 @@ export function WorkbenchLayout({
   /** sheets and dialogs that belong to the view */
   readonly children?: ReactNode
 }) {
+  const shared = useIsBelow(SPLIT_COLUMNS_MIN_WIDTH)
   if (narrow) {
     return (
-      <div data-testid={testId} data-status={status} {...stylex.props(styles.workbench)}>
-        {bar}
-        {notices}
-        <Tabs value={phoneTab} onValueChange={onPhoneTab} xstyle={styles.phoneTabsFrame}>
-          <div {...stylex.props(styles.phoneTabs)}>
-            <TabsList aria-label={panelLabel} xstyle={styles.tabList}>
-              {phoneTabs.map((tab) => (
-                <TabsTrigger key={tab.value} value={tab.value} xstyle={styles.tabPhone}>
-                  <TabWords tab={tab} />
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </div>
-          {phoneTabs.map((tab) => (
-            <TabsContent key={tab.value} value={tab.value} xstyle={styles.phoneBody}>
-              {tab.content}
-            </TabsContent>
-          ))}
-        </Tabs>
-        {gate === undefined ? null : <div {...stylex.props(styles.gate)}>{gate}</div>}
-        {children}
-      </div>
+      <TabbedColumns value>
+        <div data-testid={testId} data-status={status} {...stylex.props(styles.workbench)}>
+          {bar}
+          {notices}
+          <Tabs value={phoneTab} onValueChange={onPhoneTab} xstyle={styles.phoneTabsFrame}>
+            <div {...stylex.props(styles.phoneTabs)}>
+              <TabsList aria-label={panelLabel} xstyle={styles.tabList}>
+                {phoneTabs.map((tab) => (
+                  <TabsTrigger key={tab.value} value={tab.value} xstyle={styles.tabPhone}>
+                    <TabWords tab={tab} />
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </div>
+            {phoneTabs.map((tab) => (
+              <TabsContent key={tab.value} value={tab.value} xstyle={styles.phoneBody}>
+                {tab.content}
+              </TabsContent>
+            ))}
+          </Tabs>
+          {gate === undefined ? null : <div {...stylex.props(styles.gate)}>{gate}</div>}
+          {children}
+        </div>
+      </TabbedColumns>
     )
   }
   return (
     <div data-testid={testId} data-status={status} {...stylex.props(styles.workbench)}>
       {bar}
       {notices}
-      <div {...stylex.props(styles.upper)}>
+      <div {...stylex.props(styles.upper)} data-columns={shared ? 'shared' : 'split'}>
+        {/* first on either width, so the source is never rebuilt when the columns fold */}
         <div {...stylex.props(styles.sourcePane)}>{source}</div>
-        <aside {...stylex.props(styles.side)}>
-          <section {...stylex.props(styles.sideTop)}>{side}</section>
-          <div aria-hidden {...stylex.props(styles.sideRule)} />
-          <section {...stylex.props(styles.sideBottom)}>{history}</section>
-        </aside>
+        {shared ? (
+          <TabbedColumns value>
+            <aside {...stylex.props(styles.column)}>
+              <Tabs
+                value={sideTab}
+                onValueChange={(next) => onSideTab(next as SideTab)}
+                xstyle={styles.columnFill}
+              >
+                <div {...stylex.props(styles.columnTabs)}>
+                  <TabsList aria-label={`${tryLabel} ${historyLabel}`} xstyle={styles.tabList}>
+                    <TabsTrigger value="try" xstyle={styles.tab}>
+                      {tryLabel}
+                    </TabsTrigger>
+                    <TabsTrigger value="history" xstyle={styles.tab}>
+                      {historyLabel}
+                    </TabsTrigger>
+                  </TabsList>
+                </div>
+                <TabsContent value="try" xstyle={styles.columnScroll}>
+                  {tryRun}
+                </TabsContent>
+                <TabsContent value="history" xstyle={styles.columnFill}>
+                  {history}
+                </TabsContent>
+              </Tabs>
+            </aside>
+          </TabbedColumns>
+        ) : (
+          <>
+            <section aria-label={tryLabel} {...stylex.props(styles.column)}>
+              <div {...stylex.props(styles.columnScroll)}>{tryRun}</div>
+            </section>
+            <section aria-label={historyLabel} {...stylex.props(styles.column, styles.columnRuled)}>
+              {history}
+            </section>
+          </>
+        )}
       </div>
       <Tabs value={panelTab} onValueChange={onPanelTab} xstyle={styles.panel}>
         <div {...stylex.props(styles.panelBar)}>

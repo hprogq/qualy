@@ -6,7 +6,8 @@ import { normalizeAtomicSchema, normalizeInputSchema } from '@qualy/value-schema
 import { apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // Offering one published version to somebody, and taking it back, from the
-// publication's own read-only view where its audience is managed.
+// card beside the publication's line in the history, which keeps itself open
+// while its controls are used.
 //
 // The two directions are not symmetric on purpose. Widening needs the
 // permission where it widens to, so an author who no longer holds it is
@@ -104,6 +105,7 @@ const open = (
         listFormulaDraftRevisions: { items: [], nextCursor: null },
         previewFormulaDraft: () => Effect.succeed(contract),
         getFormulaVersion: () => Effect.succeed({ version: frozen }),
+        evaluateFormulaVersion: { cases: [] },
         getFormulaVersionSharing: () => Effect.succeed({ scopes, token: 'token-1' }),
         listFormulaShareOptions: () =>
           Effect.succeed({ nodes: had.options ?? [], truncated: false }),
@@ -127,6 +129,12 @@ const open = (
 
 const sharingRow = () => page.getByTestId('version-sharing')
 
+/** opens the publication's card, where its audience is managed */
+const openCard = async () => {
+  await page.getByTestId('formula-release-info').click()
+  await expect.element(page.getByTestId('formula-release-card')).toBeVisible()
+}
+
 describe('managing a published version’s audience', () => {
   it('offers a unit and asks the server for the whole audience it means', async () => {
     const wrote: unknown[] = []
@@ -135,6 +143,7 @@ describe('managing a published version’s audience', () => {
       options: [{ id: DEPARTMENT, name: '计算机系', depth: 2 }],
       wrote,
     })
+    await openCard()
     await expect.element(sharingRow()).toBeVisible()
     await expect.element(sharingRow()).toHaveAttribute('data-version', '1')
 
@@ -153,6 +162,7 @@ describe('managing a published version’s audience', () => {
     const wrote: unknown[] = []
     // no options: this author cannot widen anywhere any more
     open({ scopes: [{ orgNodeId: COLLEGE, name: '信息学院' }], options: [], wrote })
+    await openCard()
     await expect.element(sharingRow()).toBeVisible()
     await expect.element(page.getByTestId('sharing-scope')).toBeVisible()
     // nothing to add with
@@ -165,6 +175,7 @@ describe('managing a published version’s audience', () => {
 
   it('says a version nobody was offered is not shared', async () => {
     open({ scopes: [], options: [{ id: DEPARTMENT, name: '计算机系', depth: 2 }] })
+    await openCard()
     await expect.element(page.getByTestId('sharing-private')).toBeVisible()
   }, 30_000)
 
@@ -174,6 +185,7 @@ describe('managing a published version’s audience', () => {
       options: [{ id: DEPARTMENT, name: '计算机系', depth: 2 }],
       replace: () => Effect.fail(apiError('ASSESSMENT_FORMULA_SHARING_CONFLICT')) as never,
     })
+    await openCard()
     await expect.element(sharingRow()).toBeVisible()
     await page.getByRole('combobox', { name: '共享给某个单位' }).click()
     await page.getByRole('option', { name: '计算机系' }).click()

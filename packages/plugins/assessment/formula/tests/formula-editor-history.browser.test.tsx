@@ -2,14 +2,15 @@ import FormulaEditorPage from '../src/client/FormulaEditorPage.tsx'
 import { MINIMAL_EXAMPLE } from '../src/client/starter-source.ts'
 import { Effect } from 'effect'
 import { describe, expect, it, vi } from 'vitest'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import { normalizeAtomicSchema, normalizeInputSchema } from '@qualy/value-schema'
 import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // A formula's life around its one draft: a formula nobody has written a line
 // of yet, naming a publication while it is made, and a piece of history
-// opened read-only - which compiles nothing, and comes back only as the
-// draft's newest state, asking first when that would replace unsaved work.
+// opened read-only - which compiles nothing, runs what was frozen, and comes
+// back only as the draft's newest state, asking first when that would
+// replace unsaved work.
 
 const FN_ID = '01a04f4b-83a1-763f-9fbc-bfa53bc98ecb'
 const AUTHOR = '01920000-0000-7000-8000-0000000000a1'
@@ -100,18 +101,21 @@ interface Wire {
   previews: string[]
   publishes: unknown[]
   restores: unknown[]
+  versionRuns: unknown[]
 }
 
 const open = ({
   source = SAVED,
   route = '',
   publish,
+  revisions = [],
 }: {
   source?: string
   route?: string
   publish?: (attempt: number) => Effect.Effect<unknown, unknown>
+  revisions?: readonly unknown[]
 } = {}) => {
-  const wire: Wire = { previews: [], publishes: [], restores: [] }
+  const wire: Wire = { previews: [], publishes: [], restores: [], versionRuns: [] }
   let draft = draftOf(source, 3)
   const screen = renderScreen({
     client: fakeClient({
@@ -124,7 +128,16 @@ const open = ({
           return Effect.succeed(contract)
         },
         getFormulaVersion: () => Effect.succeed({ version: frozen }),
-        listFormulaDraftRevisions: { items: [], nextCursor: null },
+        evaluateFormulaVersion: (request: { payload: unknown }) => {
+          wire.versionRuns.push(request.payload)
+          return Effect.succeed({
+            contractSha256: contract.contractSha256,
+            inputSchema: contract.inputSchema,
+            outputSchema: contract.outputSchema,
+            cases: [{ clientId: 'try', actual: '7.5' }],
+          })
+        },
+        listFormulaDraftRevisions: { items: revisions, nextCursor: null },
         getFormulaDraftRevision: () => Effect.succeed({ revision: savedRevision }),
         getFormulaVersionSharing: () => Effect.succeed({ scopes: [], token: 'token-1' }),
         listFormulaShareOptions: () => Effect.succeed({ nodes: [], truncated: false }),
@@ -228,14 +241,26 @@ describe('a formula’s draft and its history', () => {
     }
   }, 60_000)
 
-  it('opens a publication as it was frozen, and restores it as the draft', async () => {
+  it('opens a publication as it was frozen, runs its frozen artifact, and restores it', async () => {
     const { wire, screen } = open({ route: '?view=release-1' })
     const view = await screen
     try {
       await showsText('formula-release-source', 'published_source')
-      await showsText('formula-release-info', '2026 秋季正式规则')
       await showsText('formula-release-environment', 'authoring-1')
-      // read off the version row: the compiler is never asked about it
+      // what it is called, and its notes, are beside its line in the history
+      await page.getByTestId('formula-release-info').click()
+      await showsText('formula-release-card', '按学院新规调整')
+      await userEvent.keyboard('{Escape}')
+
+      // a try runs the publication's own artifact; the compiler is never asked
+      const input = document.querySelector<HTMLInputElement>(
+        '[data-testid="value-form-try"] input',
+      )!
+      await userEvent.fill(input, '3')
+      await page.getByRole('button', { name: '运行' }).click()
+      await vi.waitFor(() => expect(wire.versionRuns.length).toBe(1), { timeout: 5_000 })
+      expect(wire.versionRuns[0]).toEqual({ cases: [{ clientId: 'try', input: { base: '3' } }] })
+      await showsText('formula-try-result', '7.5')
       await pastIdle()
       expect(wire.previews).toEqual([])
 
@@ -273,7 +298,7 @@ describe('a formula’s draft and its history', () => {
       await pastIdle()
       expect(wire.restores).toEqual([])
 
-      await page.getByRole('button', { name: '返回当前草稿' }).click()
+      await page.getByTestId('formula-history-back').click()
       await expect.element(name).toHaveValue('认定分值（修订中）')
 
       await page.getByTestId('formula-release').click()
@@ -282,6 +307,36 @@ describe('a formula’s draft and its history', () => {
       await vi.waitFor(() => expect(wire.restores.length).toBe(1), { timeout: 5_000 })
       // the restored draft is the editor's now, the edit it replaced gone
       await expect.element(name).toHaveValue('认定分值')
+    } finally {
+      view.unmount()
+    }
+  }, 60_000)
+
+  it('closes a piece of history by pressing it again, or with Escape', async () => {
+    const { screen } = open()
+    const view = await screen
+    try {
+      await page.getByTestId('formula-release').click()
+      await expect.element(page.getByTestId('formula-release-view')).toBeVisible()
+      await page.getByTestId('formula-release').click()
+      await expect.element(page.getByTestId('formula-editor')).toBeVisible()
+      expect(addressNow()).toBe(`/assessment/formulas/${FN_ID}`)
+
+      await page.getByTestId('formula-release').click()
+      await expect.element(page.getByTestId('formula-release-view')).toBeVisible()
+      await userEvent.keyboard('{Escape}')
+      await expect.element(page.getByTestId('formula-editor')).toBeVisible()
+    } finally {
+      view.unmount()
+    }
+  }, 60_000)
+
+  it('says so when there are no draft saves to list', async () => {
+    const { screen } = open({ revisions: [] })
+    const view = await screen
+    try {
+      await page.getByRole('tab', { name: '草稿记录' }).click()
+      await expect.element(page.getByTestId('formula-revisions-empty')).toBeVisible()
     } finally {
       view.unmount()
     }

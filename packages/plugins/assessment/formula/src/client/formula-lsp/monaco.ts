@@ -136,37 +136,56 @@ export const provideFormattingEdits = async (
   }
 }
 
+export interface ProviderScope {
+  /**
+   * The one model these providers answer for. Several formula editors can be
+   * open on one page - the draft and a read-only publication beside it - each
+   * with its own language session; a provider asked about another's model
+   * stays silent and lets that model's own providers answer.
+   */
+  readonly owns?: (model: monaco.editor.ITextModel) => boolean
+  /** whether to offer formatting at all; a read-only source has nothing to format */
+  readonly formatting?: boolean
+}
+
 export const registerFormulaProviders = (
   monacoApi: typeof monaco,
   deps: ProviderDeps,
   serverCapabilities: LspServerCapabilities,
-): monaco.IDisposable[] => [
-  monacoApi.languages.registerCompletionItemProvider(FILTER, {
-    triggerCharacters: [...(serverCapabilities.completionProvider?.triggerCharacters ?? ['.'])],
-    provideCompletionItems: (model, position) =>
-      provideCompletions(monacoApi, deps, model, position),
-  }),
-  monacoApi.languages.registerHoverProvider(FILTER, {
-    provideHover: (_model, position) => provideHover(deps, position),
-  }),
-  monacoApi.languages.registerSignatureHelpProvider(FILTER, {
-    signatureHelpTriggerCharacters: [
-      ...(serverCapabilities.signatureHelpProvider?.triggerCharacters ?? ['(', ',']),
-    ],
-    signatureHelpRetriggerCharacters: [
-      ...(serverCapabilities.signatureHelpProvider?.retriggerCharacters ?? [')']),
-    ],
-    provideSignatureHelp: (_model, position) => provideSignatureHelp(deps, position),
-  }),
-  ...(serverCapabilities.documentFormattingProvider !== undefined &&
-  serverCapabilities.documentFormattingProvider !== false
-    ? [
-        monacoApi.languages.registerDocumentFormattingEditProvider(FILTER, {
-          provideDocumentFormattingEdits: (model) => provideFormattingEdits(deps, model),
-        }),
-      ]
-    : []),
-]
+  scope: ProviderScope = {},
+): monaco.IDisposable[] => {
+  const owns = scope.owns ?? (() => true)
+  return [
+    monacoApi.languages.registerCompletionItemProvider(FILTER, {
+      triggerCharacters: [...(serverCapabilities.completionProvider?.triggerCharacters ?? ['.'])],
+      provideCompletionItems: (model, position) =>
+        owns(model) ? provideCompletions(monacoApi, deps, model, position) : { suggestions: [] },
+    }),
+    monacoApi.languages.registerHoverProvider(FILTER, {
+      provideHover: (model, position) => (owns(model) ? provideHover(deps, position) : null),
+    }),
+    monacoApi.languages.registerSignatureHelpProvider(FILTER, {
+      signatureHelpTriggerCharacters: [
+        ...(serverCapabilities.signatureHelpProvider?.triggerCharacters ?? ['(', ',']),
+      ],
+      signatureHelpRetriggerCharacters: [
+        ...(serverCapabilities.signatureHelpProvider?.retriggerCharacters ?? [')']),
+      ],
+      provideSignatureHelp: (model, position) =>
+        owns(model) ? provideSignatureHelp(deps, position) : null,
+    }),
+    ...(scope.formatting !== false &&
+    serverCapabilities.documentFormattingProvider !== undefined &&
+    serverCapabilities.documentFormattingProvider !== false
+      ? [
+          monacoApi.languages.registerDocumentFormattingEditProvider(FILTER, {
+            provideDocumentFormattingEdits: (model) =>
+              owns(model) ? provideFormattingEdits(deps, model) : null,
+          }),
+        ]
+      : []),
+  ]
+}
 
 export const applyMarkers = (
   monacoApi: typeof monaco,

@@ -110,7 +110,7 @@ const i18n = definePluginMessages({
     },
     templatesCopiedFrom: {
       id: 'assessment-formula/templates/copied-from',
-      defaultMessage: 'Started from “{name}”',
+      defaultMessage: 'Copied from',
     },
     navigationTemplates: {
       id: 'assessment-formula/navigation/templates',
@@ -801,7 +801,7 @@ const i18n = definePluginMessages({
     },
     latestRelease: {
       id: 'assessment-formula/editor/latest-release',
-      defaultMessage: 'Latest: {name}',
+      defaultMessage: 'Latest release',
     },
     phoneSourceTab: {
       id: 'assessment-formula/editor/phone-source-tab',
@@ -937,10 +937,6 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/release/source',
       defaultMessage: 'Source as published',
     },
-    releaseInfo: {
-      id: 'assessment-formula/release/info',
-      defaultMessage: 'Publication',
-    },
     releaseOrdinalLabel: {
       id: 'assessment-formula/release/ordinal-label',
       defaultMessage: 'Order',
@@ -968,10 +964,6 @@ const i18n = definePluginMessages({
     releaseEnvironmentTab: {
       id: 'assessment-formula/release/environment-tab',
       defaultMessage: 'Environment',
-    },
-    releaseReadOnlyBadge: {
-      id: 'assessment-formula/release/read-only-badge',
-      defaultMessage: 'Publication · read-only',
     },
     releaseRestore: {
       id: 'assessment-formula/release/restore',
@@ -1065,13 +1057,115 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/revision/info',
       defaultMessage: 'Save details',
     },
-    revisionReadOnlyBadge: {
-      id: 'assessment-formula/revision/read-only-badge',
-      defaultMessage: 'Draft save · read-only',
-    },
     revisionRestore: {
       id: 'assessment-formula/revision/restore',
       defaultMessage: 'Restore this draft',
+    },
+    lspLimited: {
+      id: 'assessment-formula/editor/lsp-limited',
+      defaultMessage:
+        'Too many formula windows are open; language assistance returns when one closes',
+    },
+    fieldUnnamed: {
+      id: 'assessment-formula/editor/field-unnamed',
+      defaultMessage: 'Untitled field',
+    },
+    releaseInfoOf: {
+      id: 'assessment-formula/history/release-info-of',
+      defaultMessage: 'About {name}',
+    },
+    revisionsEmpty: {
+      id: 'assessment-formula/history/revisions-empty',
+      defaultMessage: 'No draft saves yet',
+    },
+    releaseTryNote: {
+      id: 'assessment-formula/release/try-note',
+      defaultMessage: 'Runs the published artifact',
+    },
+    releaseDetails: {
+      id: 'assessment-formula/release/details',
+      defaultMessage: 'Details',
+    },
+    downloaded: {
+      id: 'assessment-formula/editor/downloaded',
+      defaultMessage: 'Downloaded {file}.',
+    },
+    exampleNewTitle: {
+      id: 'assessment-formula/examples/new-title',
+      defaultMessage: 'Add an example',
+    },
+    exampleAddConfirm: {
+      id: 'assessment-formula/examples/add-confirm',
+      defaultMessage: 'Add',
+    },
+    exampleNamePlaceholder: {
+      id: 'assessment-formula/examples/name-placeholder',
+      defaultMessage: 'For example: 20 hours at school level',
+    },
+    archived: {
+      id: 'assessment-formula/editor/archived',
+      defaultMessage: 'Formula archived.',
+    },
+    unarchived: {
+      id: 'assessment-formula/editor/unarchived',
+      defaultMessage: 'Formula restored.',
+    },
+    archiveTitle: {
+      id: 'assessment-formula/editor/archive-title',
+      defaultMessage: 'Archive this formula?',
+    },
+    archiveDescription: {
+      id: 'assessment-formula/editor/archive-description',
+      defaultMessage:
+        "An archived formula can no longer be edited or published, and questions can no longer choose it. Questions that already use it keep scoring with it, and versions you shared still appear in other people's templates. You can restore it at any time.",
+    },
+    archiveConfirm: {
+      id: 'assessment-formula/editor/archive-confirm',
+      defaultMessage: 'Archive',
+    },
+    saveArchivedHint: {
+      id: 'assessment-formula/editor/save-archived-hint',
+      defaultMessage: 'The formula is archived; restore it to edit',
+    },
+    saveCleanHint: {
+      id: 'assessment-formula/editor/save-clean-hint',
+      defaultMessage: 'Nothing has changed since the last save',
+    },
+    saveShortcutHint: {
+      id: 'assessment-formula/editor/save-shortcut-hint',
+      defaultMessage: 'Ctrl+S or ⌘S also saves',
+    },
+    publishHint: {
+      id: 'assessment-formula/publish/hint',
+      defaultMessage: 'Questions can only use a formula once it is published',
+    },
+    publishBlankHint: {
+      id: 'assessment-formula/publish/blank-hint',
+      defaultMessage: 'Write the formula before publishing it',
+    },
+    publishNew: {
+      id: 'assessment-formula/publish/new',
+      defaultMessage: 'Publish a new version…',
+    },
+    openRelease: {
+      id: 'assessment-formula/editor/open-release',
+      defaultMessage: 'Open this publication',
+    },
+    localDraftTitle: {
+      id: 'assessment-formula/editor/local-draft-title',
+      defaultMessage: 'Unsaved edits were kept in this browser',
+    },
+    localDraftHint: {
+      id: 'assessment-formula/editor/local-draft-hint',
+      defaultMessage: 'Edited {when} and never saved; put them back in the editor to keep working',
+    },
+    localDraftTake: {
+      id: 'assessment-formula/editor/local-draft-take',
+      defaultMessage: 'Restore edits',
+    },
+    localDraftDrop: {
+      id: 'assessment-formula/editor/local-draft-drop',
+      defaultMessage: 'Discard',
     },
   },
   errors: defineErrorTranslations<ErrorsByCode<typeof formulaErrors>>()({
@@ -1098,6 +1192,10 @@ const i18n = definePluginMessages({
     ASSESSMENT_FORMULA_RELEASE_NAME_TAKEN: {
       id: 'assessment-formula/error/release-name-taken',
       defaultMessage: 'Another publication of this formula already has that name. Choose another.',
+    },
+    ASSESSMENT_FORMULA_VERSION_UNRUNNABLE: {
+      id: 'assessment-formula/error/version-unrunnable',
+      defaultMessage: 'This version cannot run in the current environment.',
     },
     ASSESSMENT_FORMULA_FUNCTION_ARCHIVED: {
       id: 'assessment-formula/error/function-archived',
@@ -1137,7 +1235,7 @@ const i18n = definePluginMessages({
     },
     ASSESSMENT_FORMULA_COMPILE_UNAVAILABLE: {
       id: 'assessment-formula/error/compile-unavailable',
-      defaultMessage: 'Publishing is temporarily unavailable. Try again shortly.',
+      defaultMessage: 'The compile service is unavailable. Try again shortly.',
     },
   }),
   locales: {

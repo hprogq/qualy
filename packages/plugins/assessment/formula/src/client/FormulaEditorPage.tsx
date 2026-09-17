@@ -1,6 +1,6 @@
 import * as stylex from '@stylexjs/stylex'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Suspense, lazy, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   PageLink,
   useApi,
@@ -41,20 +41,23 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@qualy/ui/sheet'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@qualy/ui/tooltip'
 import {
   CircleCheckIcon,
-  EqualIcon,
+  CircleXIcon,
   FileCodeIcon,
   ListChecksIcon,
-  ListPlusIcon,
   MoreHorizontalIcon,
+  PencilIcon,
   PlayIcon,
   PlusIcon,
   SaveIcon,
   SigmaIcon,
+  TagIcon,
+  Undo2Icon,
   UploadIcon,
 } from 'lucide-react'
-import { constraintOf, parameterSchemaAt, type AtomicSchema } from '@qualy/value-schema'
+import type { AtomicSchema } from '@qualy/value-schema'
 import { validateValue } from '@qualy/value-schema/validate'
 import { formulaApi } from './api.ts'
 import { formulaMessages as m } from './i18n.ts'
@@ -62,12 +65,31 @@ import { isBlankSource, useDraftPreview, type DraftContract } from './use-draft-
 import { ContractTable } from './ContractTable.tsx'
 import { ExampleRow, type Verdict } from './ExampleRow.tsx'
 import { exampleStyles } from './example-grid.ts'
-import { contractReasonWords, inputSummaryOf, outcomeWords, reasonWords } from './report-words.ts'
+import {
+  contractReasonWords,
+  fieldIssueWords,
+  inputIssueWords,
+  inputSummaryOf,
+  outcomeWords,
+} from './report-words.ts'
 import { HistoryPanel, type HistoryList } from './HistoryPanel.tsx'
 import { PublishDialog, type PublishCheck } from './PublishDialog.tsx'
 import { ReleaseView } from './ReleaseView.tsx'
 import { RevisionView } from './RevisionView.tsx'
-import { SideHead, ToneDot, WorkbenchBar, WorkbenchLayout, type Tone } from './WorkbenchLayout.tsx'
+import {
+  SideHead,
+  ToneDot,
+  WorkbenchBar,
+  WorkbenchLayout,
+  type SideTab,
+  type Tone,
+} from './WorkbenchLayout.tsx'
+import { TryRunPanel } from './TryRunPanel.tsx'
+import { NewExampleDialog } from './NewExampleDialog.tsx'
+import { LazyFormulaCodeEditor } from './lazy-editors.ts'
+import { holdEditorLease } from './editor-lease.ts'
+import { forgetLocalDraft, keepLocalDraft, readLocalDraft, type LocalDraft } from './local-draft.ts'
+import { shortWhen } from './library-styles.ts'
 import { workbenchStyles as w } from './workbench-styles.ts'
 import { parseView, viewValue, type WorkbenchView } from './workbench-view.ts'
 import { MINIMAL_EXAMPLE } from './starter-source.ts'
@@ -78,11 +100,6 @@ import {
   materializeInput,
   type FieldDraft,
 } from '@qualy/web-value-form/model'
-
-// Monaco rides its own chunk: the list page, the app shell and even this
-// page's first paint stay free of it - the editor arrives when the source
-// panel does
-const FormulaCodeEditor = lazy(() => import('./FormulaCodeEditor.tsx'))
 
 // One formula, laid out like the tool it is.
 //
@@ -113,7 +130,7 @@ const styles = stylex.create({
     flexShrink: 1,
     maxWidth: { default: '24rem', [breakpoints.phone]: '100%' },
     height: { default: 28, [breakpoints.phone]: 30 },
-    marginLeft: -6,
+    marginLeft: 0,
     paddingInline: 6,
     borderWidth: 0,
     borderRadius: 6,
@@ -133,6 +150,39 @@ const styles = stylex.create({
     },
   },
   statusDirty: { color: tokens.warningForeground },
+  // the name is editable, and the pencil says so before a pointer finds out
+  nameEdit: {
+    display: 'inline-flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 0,
+    color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
+    cursor: 'text',
+  },
+  nameGlyph: { flexShrink: 0 },
+  statusLabel: { flexShrink: 0 },
+  chip: {
+    display: 'inline-flex',
+    minWidth: 0,
+    maxWidth: '16rem',
+    alignItems: 'center',
+    gap: 4,
+    height: 20,
+    paddingInline: 6,
+    borderWidth: 0,
+    borderRadius: 5,
+    backgroundColor: { default: tokens.surfaceMuted, ':hover': tokens.border },
+    fontFamily: 'inherit',
+    fontSize: 11.5,
+    color: tokens.surfaceMutedForeground,
+    cursor: 'pointer',
+  },
+  chipStill: { backgroundColor: tokens.surfaceMuted, cursor: 'default' },
+  chipWords: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  chipQuiet: { color: tokens.mutedForeground },
+  tipHost: { display: 'inline-flex' },
+  tipHostWide: { display: 'flex', width: '100%' },
+  wide: { width: '100%' },
   // a name somebody else chose can be long; the line keeps to one row of it
   statusClip: {
     minWidth: 0,
@@ -337,6 +387,8 @@ const styles = stylex.create({
     borderBottomColor: tokens.border,
   },
   failTitle: { fontWeight: 500, color: tokens.danger },
+  lineGood: { flexShrink: 0, color: tokens.success },
+  lineBad: { flexShrink: 0, color: tokens.danger },
   failCount: { fontSize: 12, color: tokens.mutedForeground },
   lineSpinner: { width: 12, height: 12 },
   caseSheet: { width: { default: 420, [breakpoints.phone]: null } },
@@ -489,6 +541,29 @@ const findingsOf = (error: unknown): PublishFindings => {
   }
 }
 
+/** a hint on hover and focus, which a disabled control cannot carry itself */
+function Hinted({
+  hint,
+  wide = false,
+  children,
+}: {
+  readonly hint: string | null
+  readonly wide?: boolean
+  readonly children: ReactNode
+}) {
+  if (hint === null) return <>{children}</>
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span tabIndex={0} {...stylex.props(wide ? styles.tipHostWide : styles.tipHost)}>
+          {children}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{hint}</TooltipContent>
+    </Tooltip>
+  )
+}
+
 export default function FormulaEditorPage() {
   const { functionId } = usePageRouteParams('functionId')
   const api = useApi(formulaApi)
@@ -516,6 +591,13 @@ export default function FormulaEditorPage() {
   // standing at the foot.
   const narrow = useIsMobile()
   useClaimScreenFill(true)
+  // the editors' buffers, undo histories and language sessions live as long
+  // as this page does, not as long as whatever currently draws them
+  const [editorLease] = useState(() => `formula-page-${newTestKey()}`)
+  useEffect(() => holdEditorLease(editorLease), [editorLease])
+  // which of the try-run and the history shows where the two share a column
+  const [sideTab, setSideTab] = useState<SideTab>('try')
+  const [addingExample, setAddingExample] = useState(false)
 
   // which state of the formula is on screen - the draft, or a piece of its
   // history - kept in the address so a reload or back lands on it again
@@ -549,6 +631,8 @@ export default function FormulaEditorPage() {
 
   const [baseRevision, setBaseRevision] = useState<number | null>(null)
   const [remoteMoved, setRemoteMoved] = useState(false)
+  // edits this browser kept from an earlier visit, offered before anything else is kept
+  const [localDraft, setLocalDraft] = useState<LocalDraft | null>(null)
   // bumps exactly when the buffer must ADOPT `source` (discard local, a
   // clean refetch); the editor never infers adoption from value changes
   const [editorSeed, setEditorSeed] = useState(0)
@@ -622,35 +706,13 @@ export default function FormulaEditorPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contract?.contractSha256])
 
-  const fieldIssueText = (schema: AtomicSchema | undefined, reason: string): string => {
-    switch (reason) {
-      case 'required':
-        return format(m.fieldRequired)
-      case 'not-an-integer':
-        return format(m.fieldNotInteger)
-      case 'not-a-decimal':
-        return format(m.fieldNotDecimal)
-      default: {
-        const constraint = schema === undefined ? undefined : constraintOf(schema, reason)
-        return reasonWords(format, {
-          at: 'input',
-          reason,
-          ...(constraint === undefined ? {} : { constraint }),
-        })
-      }
-    }
-  }
+  const fieldIssueText = (schema: AtomicSchema | undefined, reason: string): string =>
+    fieldIssueWords(format, schema, reason)
 
   const translateIssues = (
     schema: DraftContract['inputSchema'],
     issues: ReadonlyMap<string, string>,
-  ): ReadonlyMap<string, string> =>
-    new Map(
-      [...issues].map(([field, reason]) => [
-        field,
-        fieldIssueText(field === '' ? undefined : parameterSchemaAt(schema, `/${field}`), reason),
-      ]),
-    )
+  ): ReadonlyMap<string, string> => inputIssueWords(format, schema, issues)
 
   const rowByKey = (key: string): DraftTest | undefined => tests.find((one) => one.key === key)
 
@@ -860,37 +922,71 @@ export default function FormulaEditorPage() {
       expected: test.expected,
     }))
 
-  // the editor follows the server draft ONLY while it holds nothing of its
-  // own: a refetch that arrives over unsaved edits (another admin saved)
-  // must not overwrite them - it raises the banner and leaves the text alone
+  /** takes the server's draft as the editor's, dropping what was held locally */
+  const adopt = (loaded: NonNullable<typeof fn>) => {
+    setName(loaded.name)
+    setSource(loaded.draftSourceTs)
+    setTests(seededTests(loaded))
+    setBaseRevision(loaded.draftRevision)
+    setRemoteMoved(false)
+    setEditorSeed((seed) => seed + 1)
+  }
+
+  const differsFromServer = (
+    loaded: NonNullable<typeof fn>,
+    held: { readonly name: string; readonly source: string; readonly tests: readonly unknown[] },
+  ): boolean =>
+    held.name.trim() !== loaded.name ||
+    held.source !== loaded.draftSourceTs ||
+    JSON.stringify(held.tests) !== JSON.stringify(bareTests(seededTests(loaded)))
+
+  // The editor follows the server draft only while it holds nothing of its
+  // own. The first arrival is adopted; a revision this page saved itself is
+  // already the editor's; a revision somebody else saved is followed when
+  // there is nothing unsaved here, and otherwise raises the banner and leaves
+  // the text alone.
   useEffect(() => {
     if (fn === undefined) return
-    const holdsEdits =
-      baseRevision !== null &&
-      (name.trim() !== fn.name ||
-        source !== fn.draftSourceTs ||
-        JSON.stringify(bareTests(tests)) !== JSON.stringify(bareTests(seededTests(fn))))
-    if (baseRevision !== null && fn.draftRevision !== baseRevision && holdsEdits) {
+    if (baseRevision === null) {
+      adopt(fn)
+      // edits this browser kept, from a visit that ended before they were saved
+      const loaded = fn
+      void readLocalDraft(loaded.id).then((kept) => {
+        if (kept === null) return
+        if (differsFromServer(loaded, { ...kept, tests: kept.tests })) setLocalDraft(kept)
+        else void forgetLocalDraft(loaded.id)
+      })
+      return
+    }
+    if (fn.draftRevision === baseRevision) return
+    if (differsFromServer(fn, { name, source, tests: bareTests(tests) })) {
       setRemoteMoved(true)
       return
     }
-    setName(fn.name)
-    setSource(fn.draftSourceTs)
-    setTests(seededTests(fn))
-    setBaseRevision(fn.draftRevision)
-    setRemoteMoved(false)
-    setEditorSeed((seed) => seed + 1)
+    adopt(fn)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fn?.id, fn?.draftRevision])
 
   const discardLocal = () => {
     if (fn === undefined) return
-    setName(fn.name)
-    setSource(fn.draftSourceTs)
-    setTests(seededTests(fn))
-    setBaseRevision(fn.draftRevision)
-    setRemoteMoved(false)
+    adopt(fn)
+  }
+
+  /** puts the edits this browser kept back into the editor, as one undoable step */
+  const takeLocalDraft = () => {
+    if (fn === undefined || localDraft === null) return
+    setName(localDraft.name)
+    setSource(localDraft.source)
+    setTests(localDraft.tests.map((test) => ({ key: newTestKey(), ...test })))
+    setBaseRevision(localDraft.baseRevision)
+    setRemoteMoved(localDraft.baseRevision !== fn.draftRevision)
     setEditorSeed((seed) => seed + 1)
+    setLocalDraft(null)
+  }
+
+  const dropLocalDraft = () => {
+    if (fn !== undefined) void forgetLocalDraft(fn.id)
+    setLocalDraft(null)
   }
 
   type ParsedTests =
@@ -961,7 +1057,10 @@ export default function FormulaEditorPage() {
   const save = useMutation({
     mutationFn: (patch: SavePatch) => saveEffect(patch),
     onMutate: () => setFailure(null),
-    onSuccess: async () => {
+    onSuccess: async (result: { function: { draftRevision: number } }) => {
+      // this page's own save: the revision it made is already the editor's,
+      // so the refetch below adopts nothing over what was typed meanwhile
+      setBaseRevision(result.function.draftRevision)
       toast.success(format(m.saved))
       await refresh()
     },
@@ -991,6 +1090,40 @@ export default function FormulaEditorPage() {
     }
     save.mutate({ name: patchName, source: patchSource, tests: collected })
   }
+  // Unsaved edits are kept in this browser a moment after they stop, and let
+  // go once nothing is unsaved. While an earlier visit's edits are still on
+  // offer, they are not overwritten by this one's.
+  const keepNow = useRef<() => void>(() => {})
+  keepNow.current = () => {
+    if (fn === undefined || baseRevision === null || localDraft !== null) return
+    if (dirty())
+      void keepLocalDraft({
+        functionId: fn.id,
+        name,
+        source,
+        tests: bareTests(tests),
+        baseRevision,
+        keptAt: Date.now(),
+      })
+    else void forgetLocalDraft(fn.id)
+  }
+  useEffect(() => {
+    const timer = setTimeout(() => keepNow.current(), 800)
+    return () => clearTimeout(timer)
+  }, [name, source, tests, baseRevision, localDraft, fn])
+  // and at once when the window is put away, which may be the last chance
+  useEffect(() => {
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') keepNow.current()
+    }
+    document.addEventListener('visibilitychange', onHide)
+    window.addEventListener('pagehide', onHide)
+    return () => {
+      document.removeEventListener('visibilitychange', onHide)
+      window.removeEventListener('pagehide', onHide)
+    }
+  }, [])
+
   const saveDraftRef = useRef(saveDraft)
   saveDraftRef.current = saveDraft
   const dirtyRef = useRef(dirty)
@@ -1051,6 +1184,7 @@ export default function FormulaEditorPage() {
           function: { draftRevision: number }
         }
         revision = savedNow.function.draftRevision
+        setBaseRevision(revision)
       }
       return run(
         api.assessmentFormula.publishFormulaVersion({
@@ -1133,16 +1267,6 @@ export default function FormulaEditorPage() {
     },
   })
 
-  /** takes the server's draft as the editor's, dropping what was held locally */
-  const adopt = (loaded: NonNullable<typeof fn>) => {
-    setName(loaded.name)
-    setSource(loaded.draftSourceTs)
-    setTests(seededTests(loaded))
-    setBaseRevision(loaded.draftRevision)
-    setRemoteMoved(false)
-    setEditorSeed((seed) => seed + 1)
-  }
-
   const restore = useMutation({
     mutationFn: (from: RestoreFrom) =>
       run(
@@ -1201,12 +1325,11 @@ export default function FormulaEditorPage() {
     })
   }
 
-  const downloadCurrent = () =>
-    downloadText({
-      filename: fileNameOf([name.trim() === '' ? fn?.name : name], '.ts'),
-      text: source,
-      type: 'text/typescript;charset=utf-8',
-    })
+  const downloadCurrent = () => {
+    const filename = fileNameOf([name.trim() === '' ? fn?.name : name], '.ts')
+    downloadText({ filename, text: source, type: 'text/typescript;charset=utf-8' })
+    toast.success(format(m.downloaded, { file: filename }))
+  }
 
   const setStatus = useMutation({
     mutationFn: (status: 'active' | 'archived') =>
@@ -1216,11 +1339,45 @@ export default function FormulaEditorPage() {
           payload: { status },
         }),
       ),
-    onSuccess: () => refresh(),
+    onSuccess: async (_result: unknown, status: 'active' | 'archived') => {
+      toast.success(format(status === 'archived' ? m.archived : m.unarchived))
+      await refresh()
+    },
     onError: (error: unknown) => setFailure(formatError(error)),
   })
 
-  if (detail.isError) {
+  /** archiving takes the formula out of new bindings and out of editing, so it asks first */
+  const archiveFormula = () =>
+    ask({
+      title: format(m.archiveTitle),
+      description: format(m.archiveDescription),
+      confirmLabel: format(m.archiveConfirm),
+      act: () => setStatus.mutate('archived'),
+    })
+
+  // Escape from a piece of history comes back to the draft, unless a dialog,
+  // menu or card above the page, or the editor itself, is what Escape is for.
+  // Asked in the capture phase, before any of those has closed itself and
+  // left the page to mistake the same press for its own.
+  const viewKindRef = useRef(view.kind)
+  viewKindRef.current = view.kind
+  const backRef = useRef(() => showView({ kind: 'draft' }))
+  backRef.current = () => showView({ kind: 'draft' })
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return
+      if (viewKindRef.current === 'draft') return
+      if (event.target instanceof Element && event.target.closest('.monaco-editor') !== null) return
+      if (document.querySelector('[role="dialog"], [role="menu"], [data-slot="popover-content"]'))
+        return
+      backRef.current()
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [])
+
+  // a load that fails after the formula arrived keeps the page; only a first load that fails replaces it
+  if (detail.isError && fn === undefined) {
     return (
       <PageContainer>
         <EmptyRow role="alert">{format(m.loadFailed)}</EmptyRow>
@@ -1246,7 +1403,7 @@ export default function FormulaEditorPage() {
   const releaseWords = (release: { versionNo: number; releaseName: string | null }): string =>
     release.releaseName ?? format(m.releaseOrdinal, { number: release.versionNo })
 
-  const historyWith = (action?: ReactNode) => (
+  const historyWith = (primary: ReactNode) => (
     <HistoryPanel
       functionId={functionId}
       releases={releases}
@@ -1256,8 +1413,22 @@ export default function FormulaEditorPage() {
       onView={showView}
       list={historyList}
       onList={setHistoryList}
-      {...(action === undefined ? {} : { action })}
+      primary={primary}
     />
+  )
+
+  // while a piece of history is open, the panel's first offer is the way back
+  const backToDraft = (
+    <Button
+      variant="outline"
+      size="sm"
+      data-testid="formula-history-back"
+      className={stylex.props(styles.wide).className}
+      onClick={() => showView({ kind: 'draft' })}
+    >
+      <Undo2Icon aria-hidden />
+      {format(m.backToDraft)}
+    </Button>
   )
 
   const confirmDialog = (
@@ -1289,7 +1460,10 @@ export default function FormulaEditorPage() {
           archived={archived}
           narrow={narrow}
           titleRef={titleRef}
-          history={historyWith()}
+          lease={editorLease}
+          history={historyWith(backToDraft)}
+          sideTab={sideTab}
+          onSideTab={setSideTab}
           onBack={() => showView({ kind: 'draft' })}
           onRestore={(release) =>
             restoreFrom({ kind: 'published-version', versionNo: release.versionNo }, release.name)
@@ -1312,7 +1486,10 @@ export default function FormulaEditorPage() {
           archived={archived}
           narrow={narrow}
           titleRef={titleRef}
-          history={historyWith()}
+          lease={editorLease}
+          history={historyWith(backToDraft)}
+          sideTab={sideTab}
+          onSideTab={setSideTab}
           onBack={() => showView({ kind: 'draft' })}
           onRestore={(revisionNo) =>
             restoreFrom(
@@ -1451,8 +1628,6 @@ export default function FormulaEditorPage() {
         ? 'dirty'
         : 'clean'
 
-  const tryFresh = tryResult !== null && !tryStale(tryResult)
-  const tryActual = tryFresh ? tryResult.actual : undefined
   const canPublish = !archived && !busy && !blank
 
   const openPublish = () => {
@@ -1461,12 +1636,7 @@ export default function FormulaEditorPage() {
     setPublishOpen(true)
   }
 
-  const addCase = () => {
-    const key = newTestKey()
-    setTests([...tests, { key, name: '', inputText: '{}', expected: '' }])
-    openCase(key)
-    setTab('examples')
-  }
+  const addCase = () => setAddingExample(true)
 
   const editCase = (key: string, change: Partial<Omit<DraftTest, 'key'>>) =>
     setTests(tests.map((one) => (one.key === key ? { ...one, ...change } : one)))
@@ -1507,6 +1677,7 @@ export default function FormulaEditorPage() {
               disabled={archived}
               problems={rowIssues[test.key]}
               scope={`case-${test.key}`}
+              authoring={{ unnamedLabel: format(m.fieldUnnamed) }}
             />
           )}
           {contract === null ? (
@@ -1578,7 +1749,7 @@ export default function FormulaEditorPage() {
         <DropdownMenuSeparator />
         <DropdownMenuItem
           disabled={setStatus.isPending}
-          onSelect={() => setStatus.mutate(archived ? 'active' : 'archived')}
+          onSelect={() => (archived ? setStatus.mutate('active') : archiveFormula())}
         >
           {format(archived ? m.restoreFormula : m.archiveFormula)}
         </DropdownMenuItem>
@@ -1586,16 +1757,26 @@ export default function FormulaEditorPage() {
     </DropdownMenu>
   )
 
+  const saveHint = archived
+    ? format(m.saveArchivedHint)
+    : busy
+      ? null
+      : dirty()
+        ? format(m.saveShortcutHint)
+        : format(m.saveCleanHint)
   const saveButton = (
-    <Button
-      variant={narrow ? 'outline' : 'default'}
-      size="sm"
-      disabled={archived || busy || !dirty()}
-      onClick={saveDraft}
-    >
-      <SaveIcon aria-hidden />
-      {format(m.save)}
-    </Button>
+    <Hinted hint={saveHint}>
+      <Button
+        variant={narrow ? 'outline' : 'default'}
+        size="sm"
+        data-testid="formula-save"
+        disabled={archived || busy || !dirty()}
+        onClick={saveDraft}
+      >
+        <SaveIcon aria-hidden />
+        {format(m.save)}
+      </Button>
+    </Hinted>
   )
 
   const bar = (
@@ -1604,15 +1785,20 @@ export default function FormulaEditorPage() {
       backLabel={format(m.listTitle)}
       titleRef={titleRef}
       title={
-        <input
-          aria-label={format(m.nameLabel)}
-          value={name}
-          disabled={archived}
-          spellCheck={false}
-          onChange={(event) => setName(event.target.value)}
-          style={{ width: nameWidth(name) }}
-          {...stylex.props(styles.name)}
-        />
+        <label {...stylex.props(styles.nameEdit)}>
+          {archived ? null : (
+            <PencilIcon size={13} aria-hidden {...stylex.props(styles.nameGlyph)} />
+          )}
+          <input
+            aria-label={format(m.nameLabel)}
+            value={name}
+            disabled={archived}
+            spellCheck={false}
+            onChange={(event) => setName(event.target.value)}
+            style={{ width: nameWidth(name) }}
+            {...stylex.props(styles.name)}
+          />
+        </label>
       }
       badge={
         <span
@@ -1650,21 +1836,35 @@ export default function FormulaEditorPage() {
             )}
           </span>
           {fn.latestVersionNo === null ? null : (
-            <span {...stylex.props(styles.statusClip)}>
-              {format(m.latestRelease, {
-                name: releaseWords({
-                  versionNo: fn.latestVersionNo,
-                  releaseName: fn.latestReleaseName,
-                }),
-              })}
-            </span>
+            <>
+              <span {...stylex.props(styles.statusLabel)}>{format(m.latestRelease)}</span>
+              <button
+                type="button"
+                data-testid="formula-latest-release"
+                title={format(m.openRelease)}
+                onClick={() => showView({ kind: 'release', versionNo: fn.latestVersionNo! })}
+                {...stylex.props(styles.chip)}
+              >
+                <TagIcon size={11} aria-hidden />
+                <span {...stylex.props(styles.chipWords)}>
+                  {releaseWords({
+                    versionNo: fn.latestVersionNo,
+                    releaseName: fn.latestReleaseName,
+                  })}
+                </span>
+              </button>
+            </>
           )}
           {copiedFrom === null ? null : (
-            <span {...stylex.props(styles.statusClip)}>
-              {format(m.templatesCopiedFrom, {
-                name: `${copiedFrom.functionName} · ${releaseWords(copiedFrom)}`,
-              })}
-            </span>
+            <>
+              <span {...stylex.props(styles.statusLabel)}>{format(m.templatesCopiedFrom)}</span>
+              <span {...stylex.props(styles.chip, styles.chipStill)}>
+                <span {...stylex.props(styles.chipWords)}>{copiedFrom.functionName}</span>
+                <span {...stylex.props(styles.chipWords, styles.chipQuiet)}>
+                  {releaseWords(copiedFrom)}
+                </span>
+              </span>
+            </>
           )}
         </>
       }
@@ -1683,6 +1883,31 @@ export default function FormulaEditorPage() {
       {failure === null ? null : (
         <div role="alert" {...stylex.props(styles.notice, styles.noticeDanger)}>
           {failure}
+        </div>
+      )}
+      {localDraft === null ? null : (
+        <div
+          data-testid="formula-local-draft"
+          {...stylex.props(styles.notice, styles.noticeWarning)}
+        >
+          <span {...stylex.props(styles.noticeWords)}>
+            <span {...stylex.props(styles.noticeTitle)}>{format(m.localDraftTitle)}</span>
+            {format(m.localDraftHint, {
+              when: shortWhen(new Date(localDraft.keptAt).toISOString(), format, locale),
+            })}
+          </span>
+          <span {...stylex.props(w.spring)} />
+          <Button variant="ghost" size="xs" onClick={dropLocalDraft}>
+            {format(m.localDraftDrop)}
+          </Button>
+          <Button
+            variant="outline"
+            size="xs"
+            data-testid="formula-local-draft-take"
+            onClick={takeLocalDraft}
+          >
+            {format(m.localDraftTake)}
+          </Button>
         </div>
       )}
       {remoteMoved ? (
@@ -1714,8 +1939,9 @@ export default function FormulaEditorPage() {
         </div>
       }
     >
-      <FormulaCodeEditor
+      <LazyFormulaCodeEditor
         functionId={functionId}
+        lease={editorLease}
         value={source}
         onChange={setSource}
         seed={editorSeed}
@@ -1822,6 +2048,10 @@ export default function FormulaEditorPage() {
       <p {...stylex.props(styles.stateLine)}>
         {compileState === 'working' ? (
           <Spinner aria-hidden xstyle={styles.lineSpinner} />
+        ) : compileState === 'passed' ? (
+          <CircleCheckIcon size={14} aria-hidden {...stylex.props(styles.lineGood)} />
+        ) : compileState === 'failed' ? (
+          <CircleXIcon size={14} aria-hidden {...stylex.props(styles.lineBad)} />
         ) : (
           <ToneDot tone={compileTone} />
         )}
@@ -1848,6 +2078,7 @@ export default function FormulaEditorPage() {
     <>
       <SideHead
         title={format(m.tryTitle)}
+        column
         note={
           <span
             data-testid="formula-structure"
@@ -1859,93 +2090,26 @@ export default function FormulaEditorPage() {
           </span>
         }
       />
-      {contract === null ? (
-        // the form's room, kept while the structure is read: a column that
-        // collapsed and then sprang open pushed the history about
-        <div
-          role="status"
-          data-testid="formula-try-pending"
-          data-state={structure}
-          {...stylex.props(styles.tryPending, structure === 'refused' && styles.tryPendingOff)}
-        >
-          {structure === 'refused' || structure === 'blank' ? null : (
-            <Spinner aria-hidden xstyle={styles.tryPendingSpinner} />
-          )}
-          <span>{structure === 'blank' ? format(m.tryBlank) : structureWords}</span>
-        </div>
-      ) : (
-        <>
-          <div {...stylex.props(styles.tryForm)}>
-            <InputValueForm
-              schema={contract.inputSchema}
-              drafts={tryDrafts}
-              onDraft={(name_, draft) => setTryDrafts({ ...tryDrafts, [name_]: draft })}
-              locale={locale}
-              disabled={archived || running}
-              problems={tryIssues}
-              scope="try"
-            />
-          </div>
-          <div {...stylex.props(styles.tryActions)}>
-            <Button size="sm" disabled={archived || running} onClick={() => void runTry()}>
-              <PlayIcon aria-hidden />
-              {format(running ? m.running : m.run)}
-            </Button>
-            {tryActual === undefined ? null : (
-              <span data-testid="formula-try-result" {...stylex.props(styles.tryInline)}>
-                <span {...stylex.props(styles.tryInlineLabel)}>{format(m.resultLabel)}</span>
-                <span {...stylex.props(styles.tryInlineValue)}>{tryActual}</span>
-              </span>
-            )}
-          </div>
-          {tryResult === null || tryActual !== undefined ? null : (
-            <p
-              data-testid="formula-try-result"
-              data-stale={tryFresh ? undefined : true}
-              {...stylex.props(styles.tryNote)}
-            >
-              {!tryFresh
-                ? format(m.resultStale)
-                : tryResult.refusal !== undefined
-                  ? format(m.refusalPrefix, { message: tryResult.refusal })
-                  : tryResult.defect !== undefined
-                    ? format(m.defectPrefix, { message: tryResult.defect })
-                    : format(m.testInputInvalid, { label: format(m.tryTitle) })}
-            </p>
-          )}
-          <div {...stylex.props(styles.trySaves)}>
-            <button
-              type="button"
-              disabled={archived || running}
-              onClick={() => {
-                saveTryAsCase('')
-                setTab('examples')
-              }}
-              {...stylex.props(styles.tryLink)}
-            >
-              <ListPlusIcon size={13} aria-hidden />
-              {format(m.trySave)}
-            </button>
-            {tryActual === undefined ? null : (
-              // a STALE actual may never become an expectation: the offer
-              // exists only while code and inputs both still match the run
-              <button
-                type="button"
-                data-testid="formula-try-adopt"
-                disabled={archived || running}
-                onClick={() => {
-                  saveTryAsCase(tryActual)
-                  setTab('examples')
-                }}
-                {...stylex.props(styles.tryLink)}
-              >
-                <EqualIcon size={13} aria-hidden />
-                {format(m.trySaveExpecting, { value: tryActual })}
-              </button>
-            )}
-          </div>
-        </>
-      )}
+      <TryRunPanel
+        schema={contract?.inputSchema ?? null}
+        pending={{
+          state: structure,
+          words: structure === 'blank' ? format(m.tryBlank) : structureWords,
+          working: structure !== 'refused' && structure !== 'blank',
+          off: structure === 'refused',
+        }}
+        drafts={tryDrafts}
+        onDraft={(field, draft) => setTryDrafts({ ...tryDrafts, [field]: draft })}
+        issues={tryIssues}
+        disabled={archived}
+        running={running}
+        result={tryResult === null ? null : { outcome: tryResult, fresh: !tryStale(tryResult) }}
+        onRun={() => void runTry()}
+        onKeep={(expected) => {
+          saveTryAsCase(expected)
+          setTab('examples')
+        }}
+      />
     </>
   )
 
@@ -2120,17 +2284,26 @@ export default function FormulaEditorPage() {
         ? { tone: 'bad', words: format(m.contractFailed) }
         : { tone: examplesTone, words: summary }
 
+  const publishHint = archived
+    ? format(m.saveArchivedHint)
+    : blank
+      ? format(m.publishBlankHint)
+      : format(m.publishHint)
   const history = historyWith(
-    <Button
-      variant="outline"
-      size="xs"
-      data-testid="formula-publish-open"
-      disabled={!canPublish}
-      onClick={openPublish}
-    >
-      <UploadIcon aria-hidden />
-      {format(m.publishOpen)}
-    </Button>,
+    narrow ? null : (
+      <Hinted hint={publishHint} wide>
+        <Button
+          size="sm"
+          data-testid="formula-publish-open"
+          disabled={!canPublish}
+          onClick={openPublish}
+          className={stylex.props(styles.wide).className}
+        >
+          <UploadIcon aria-hidden />
+          {format(m.publishNew)}
+        </Button>
+      </Hinted>
+    ),
   )
 
   return (
@@ -2146,8 +2319,12 @@ export default function FormulaEditorPage() {
           {emptySource}
         </>
       }
-      side={trySection}
+      tryRun={trySection}
       history={history}
+      sideTab={sideTab}
+      onSideTab={setSideTab}
+      tryLabel={format(m.tryTitle)}
+      historyLabel={format(m.historyTitle)}
       panelTabs={[
         {
           value: 'examples',
@@ -2309,6 +2486,19 @@ export default function FormulaEditorPage() {
           )}
         </SheetContent>
       </Sheet>
+      <NewExampleDialog
+        open={addingExample}
+        contract={contract}
+        expectedProblem={(expected) =>
+          expectedIssueOf({ key: '', name: '', inputText: '{}', expected }, contract)
+        }
+        onClose={() => setAddingExample(false)}
+        onAdd={(example) => {
+          setTests([...tests, { key: newTestKey(), ...example }])
+          setAddingExample(false)
+          setTab('examples')
+        }}
+      />
       <PublishDialog
         open={publishOpen}
         dirty={dirty()}

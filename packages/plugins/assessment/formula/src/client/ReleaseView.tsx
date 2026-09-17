@@ -1,12 +1,13 @@
 import * as stylex from '@stylexjs/stylex'
-import { useState, type ReactNode } from 'react'
+import { Suspense, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useApiQuery } from '@qualy/web-runtime'
+import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Button } from '@qualy/ui/button'
 import { EmptyRow } from '@qualy/ui/empty-row'
 import { Spinner } from '@qualy/ui/spinner'
+import { toast } from '@qualy/ui/toast'
 import { downloadText, fileNameOf } from '@qualy/ui/download'
 import {
   DropdownMenu,
@@ -15,15 +16,28 @@ import {
   DropdownMenuTrigger,
 } from '@qualy/ui/dropdown-menu'
 import type { NormalizedAtomicSchema, NormalizedInputSchema } from '@qualy/value-schema'
-import { DownloadIcon, FilePenLineIcon, MoreHorizontalIcon, Undo2Icon } from 'lucide-react'
+import { materializeInput, type FieldDraft } from '@qualy/web-value-form/model'
+import {
+  DownloadIcon,
+  FilePenLineIcon,
+  LockIcon,
+  MoreHorizontalIcon,
+  Undo2Icon,
+} from 'lucide-react'
 import { formulaApi } from './api.ts'
 import { formulaMessages as m } from './i18n.ts'
-import { fullWhen } from './library-styles.ts'
-import { inputSummaryOf, outcomeWords, type OutcomeLike } from './report-words.ts'
+import { LazyFormulaSourceViewer } from './lazy-editors.ts'
+import { inputIssueWords, inputSummaryOf, outcomeWords, type OutcomeLike } from './report-words.ts'
 import { ContractTable } from './ContractTable.tsx'
-import { SourceView } from './SourceView.tsx'
-import { VersionSharing } from './VersionSharing.tsx'
-import { SideHead, WorkbenchBar, WorkbenchLayout, type WorkbenchTab } from './WorkbenchLayout.tsx'
+import { TryRunPanel, type TryOutcome } from './TryRunPanel.tsx'
+import {
+  SideHead,
+  SideNote,
+  WorkbenchBar,
+  WorkbenchLayout,
+  type SideTab,
+  type WorkbenchTab,
+} from './WorkbenchLayout.tsx'
 import { workbenchStyles as w } from './workbench-styles.ts'
 
 // One publication of a formula, as it was frozen.
@@ -31,29 +45,11 @@ import { workbenchStyles as w } from './workbench-styles.ts'
 // Everything here is read off the version row: its source, its examples and
 // the report they produced, its contract and the toolchain that proved it.
 // Nothing is compiled again - putting yesterday's source through today's
-// compiler would show a different world and call it this publication.
+// compiler would show a different world and call it this publication - and
+// a try-run runs the very artifact that was frozen. What the publication is
+// called, and who it is shared with, is beside its line in the history.
 
 const styles = stylex.create({
-  info: { display: 'flex', flexDirection: 'column', gap: 10, paddingInline: 16, paddingBottom: 14 },
-  releaseName: { margin: 0, fontSize: 15, fontWeight: 600, overflowWrap: 'anywhere' },
-  releaseNotes: {
-    margin: 0,
-    fontSize: 13,
-    lineHeight: 1.6,
-    whiteSpace: 'pre-wrap',
-    color: tokens.surfaceMutedForeground,
-  },
-  infoFacts: { display: 'flex', flexDirection: 'column', gap: 8, margin: 0 },
-  infoFact: { display: 'flex', gap: 10, fontSize: 12.5 },
-  infoLabel: { flexShrink: 0, width: '4.5rem', color: tokens.mutedForeground },
-  infoValue: { margin: 0, minWidth: 0, overflowWrap: 'anywhere' },
-  sub: {
-    margin: 0,
-    marginTop: 4,
-    fontSize: 12,
-    fontWeight: 600,
-    color: tokens.surfaceMutedForeground,
-  },
   loading: {
     display: 'flex',
     flexGrow: 1,
@@ -70,6 +66,14 @@ const styles = stylex.create({
     fontSize: 12,
     color: tokens.mutedForeground,
   },
+  statusName: {
+    minWidth: 0,
+    maxWidth: '24rem',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  sourceFill: { display: 'flex', minHeight: '18rem', flexGrow: 1, flexDirection: 'column' },
 })
 
 interface ReportRow extends OutcomeLike {
@@ -85,7 +89,10 @@ export function ReleaseView({
   archived,
   narrow,
   titleRef,
+  lease,
   history,
+  sideTab,
+  onSideTab,
   onBack,
   onRestore,
   restoring,
@@ -97,15 +104,25 @@ export function ReleaseView({
   readonly archived: boolean
   readonly narrow: boolean
   readonly titleRef: (node: HTMLElement | null) => void
+  /** the page's editor lease, which the read-only source hangs on */
+  readonly lease: string
   readonly history: ReactNode
+  readonly sideTab: SideTab
+  readonly onSideTab: (tab: SideTab) => void
   readonly onBack: () => void
   readonly onRestore: (release: { versionNo: number; name: string }) => void
   readonly restoring: boolean
 }) {
+  const api = useApi(formulaApi)
+  const run = useRunApi()
   const query = useApiQuery(formulaApi)
-  const { format, formatError, locale } = useI18n()
+  const { format, formatError } = useI18n()
   const [panelTab, setPanelTab] = useState('report')
   const [phoneTab, setPhoneTab] = useState('source')
+  const [drafts, setDrafts] = useState<Record<string, FieldDraft>>({})
+  const [issues, setIssues] = useState<ReadonlyMap<string, string> | undefined>(undefined)
+  const [result, setResult] = useState<{ outcome: TryOutcome; forCase: string } | null>(null)
+  const [running, setRunning] = useState(false)
 
   const detail = useQuery(
     query.assessmentFormula.getFormulaVersion.queryOptions({
@@ -113,21 +130,45 @@ export function ReleaseView({
     }),
   )
   const version = detail.data?.version
-  const title = version?.releaseName ?? (version === undefined ? '' : format(m.releaseUnnamed))
   const displayName =
     version === undefined
       ? ''
       : (version.releaseName ?? format(m.releaseOrdinal, { number: version.versionNo }))
+  const inputSchema = (version?.inputSchema ?? null) as NormalizedInputSchema | null
 
   const download = () => {
     if (version === undefined) return
-    downloadText({
-      filename: fileNameOf([functionName, displayName], '.ts'),
-      text: version.sourceTs,
-      type: 'text/typescript;charset=utf-8',
-    })
+    const filename = fileNameOf([functionName, displayName], '.ts')
+    downloadText({ filename, text: version.sourceTs, type: 'text/typescript;charset=utf-8' })
+    toast.success(format(m.downloaded, { file: filename }))
   }
   const restore = () => onRestore({ versionNo, name: displayName })
+
+  // a try runs the artifact the publication froze, never a new compile
+  const runTry = async () => {
+    if (inputSchema === null) return
+    const frozenDrafts = { ...drafts }
+    const materialized = materializeInput(inputSchema, frozenDrafts)
+    if (materialized.value === null) {
+      setIssues(inputIssueWords(format, inputSchema, materialized.issues))
+      return
+    }
+    setIssues(undefined)
+    setRunning(true)
+    try {
+      const answered = (await run(
+        api.assessmentFormula.evaluateFormulaVersion({
+          params: { functionId, versionNo: String(versionNo) },
+          payload: { cases: [{ clientId: 'try', input: materialized.value }] },
+        }),
+      )) as { cases: readonly TryOutcome[] }
+      setResult({ outcome: answered.cases[0] ?? {}, forCase: JSON.stringify(frozenDrafts) })
+    } catch (error) {
+      toast.error(formatError(error))
+    } finally {
+      setRunning(false)
+    }
+  }
 
   const report = (version?.testReport ?? []) as readonly ReportRow[]
   const tests = version?.tests ?? []
@@ -147,53 +188,50 @@ export function ReleaseView({
     version === undefined ? (
       pending
     ) : (
-      <>
-        <div {...stylex.props(w.paneHead)}>
-          <span {...stylex.props(w.paneLabel)}>{format(m.releaseSource)}</span>
-          <span {...stylex.props(w.spring)} />
-          <span {...stylex.props(w.paneNote)}>{format(m.readOnly)}</span>
-        </div>
-        <SourceView
-          source={version.sourceTs}
-          data-testid="formula-release-source"
-          aria-label={format(m.releaseSource)}
-          xstyle={w.paneSource}
-        />
-      </>
+      <div {...stylex.props(styles.sourceFill)}>
+        <Suspense fallback={pending}>
+          <LazyFormulaSourceViewer
+            functionId={functionId}
+            lease={lease}
+            name={`release-${String(versionNo)}`}
+            source={version.sourceTs}
+            label={format(m.releaseSource)}
+            readOnlyLabel={format(m.readOnly)}
+            data-testid="formula-release-source"
+          />
+        </Suspense>
+      </div>
     )
 
-  const info =
-    version === undefined ? null : (
-      <>
-        <SideHead title={format(m.releaseInfo)} />
-        <div {...stylex.props(styles.info)} data-testid="formula-release-info">
-          <p {...stylex.props(styles.releaseName)}>{title}</p>
-          {version.releaseNotes === null ? null : (
-            <p {...stylex.props(styles.releaseNotes)}>{version.releaseNotes}</p>
-          )}
-          <dl {...stylex.props(styles.infoFacts)}>
-            <div {...stylex.props(styles.infoFact)}>
-              <dt {...stylex.props(styles.infoLabel)}>{format(m.releaseOrdinalLabel)}</dt>
-              <dd {...stylex.props(styles.infoValue)}>
-                {format(m.releaseOrdinal, { number: version.versionNo })}
-              </dd>
-            </div>
-            <div {...stylex.props(styles.infoFact)}>
-              <dt {...stylex.props(styles.infoLabel)}>{format(m.templatesPublishedColumn)}</dt>
-              <dd {...stylex.props(styles.infoValue)}>{fullWhen(version.publishedAt, locale)}</dd>
-            </div>
-            <div {...stylex.props(styles.infoFact)}>
-              <dt {...stylex.props(styles.infoLabel)}>{format(m.releasePublisher)}</dt>
-              <dd {...stylex.props(styles.infoValue)}>
-                {version.publishedByName ?? format(m.templatesAuthorUnknown)}
-              </dd>
-            </div>
-          </dl>
-          <h3 {...stylex.props(styles.sub)}>{format(m.releaseSharing)}</h3>
-          <VersionSharing functionId={functionId} versionNo={version.versionNo} />
-        </div>
-      </>
-    )
+  const tryRun = (
+    <>
+      <SideHead
+        title={format(m.tryTitle)}
+        column
+        note={<SideNote>{format(m.releaseTryNote)}</SideNote>}
+      />
+      <TryRunPanel
+        schema={inputSchema}
+        pending={{
+          state: detail.isError ? 'refused' : 'loading',
+          words: detail.isError ? formatError(detail.error) : format(m.editorLoading),
+          working: !detail.isError,
+          off: detail.isError,
+        }}
+        drafts={drafts}
+        onDraft={(name, draft) => setDrafts({ ...drafts, [name]: draft })}
+        issues={issues}
+        disabled={false}
+        running={running}
+        result={
+          result === null
+            ? null
+            : { outcome: result.outcome, fresh: result.forCase === JSON.stringify(drafts) }
+        }
+        onRun={() => void runTry()}
+      />
+    </>
+  )
 
   const reportTable =
     version === undefined ? null : report.length === 0 ? (
@@ -277,42 +315,16 @@ export function ReleaseView({
 
   const scroll = (node: ReactNode) => <div {...stylex.props(w.panelScroll)}>{node}</div>
 
-  const actions = (
-    <>
-      <Button variant="ghost" size="sm" onClick={onBack}>
-        <Undo2Icon aria-hidden />
-        {format(m.backToDraft)}
-      </Button>
-      <Button variant="outline" size="sm" disabled={version === undefined} onClick={download}>
-        <DownloadIcon aria-hidden />
-        {format(m.downloadCode)}
-      </Button>
-      <Button
-        size="sm"
-        data-testid="formula-release-restore"
-        disabled={archived || restoring || version === undefined}
-        onClick={restore}
-      >
-        <FilePenLineIcon aria-hidden />
-        {format(m.releaseRestore)}
-      </Button>
-    </>
-  )
-
-  const phoneMenu = (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon-sm" aria-label={format(m.moreActions)}>
-          <MoreHorizontalIcon />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem onSelect={onBack}>{format(m.backToDraft)}</DropdownMenuItem>
-        <DropdownMenuItem disabled={version === undefined} onSelect={download}>
-          {format(m.downloadCode)}
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+  const restoreButton = (
+    <Button
+      size="sm"
+      data-testid="formula-release-restore"
+      disabled={archived || restoring || version === undefined}
+      onClick={restore}
+    >
+      <FilePenLineIcon aria-hidden />
+      {format(m.releaseRestore)}
+    </Button>
   )
 
   const panelTabs: WorkbenchTab[] = [
@@ -345,48 +357,85 @@ export function ReleaseView({
           title={<span {...stylex.props(w.title)}>{functionName}</span>}
           badge={
             <span {...stylex.props(w.standing, w.standingOutline)}>
-              {format(m.releaseReadOnlyBadge)}
+              <LockIcon size={11} aria-hidden />
+              {format(m.readOnly)}
             </span>
           }
           status={
             version === undefined ? undefined : (
               <>
-                <span>{displayName}</span>
-                {versionNo === latestVersionNo ? <span>{format(m.versionLatest)}</span> : null}
+                <span {...stylex.props(styles.statusName)}>{displayName}</span>
+                {versionNo === latestVersionNo ? (
+                  <span {...stylex.props(w.standing, w.standingGood)}>
+                    {format(m.versionLatest)}
+                  </span>
+                ) : null}
               </>
             )
           }
-          actions={actions}
-          phoneMenu={phoneMenu}
+          actions={
+            <>
+              <Button variant="ghost" size="sm" onClick={onBack}>
+                <Undo2Icon aria-hidden />
+                {format(m.backToDraft)}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={version === undefined}
+                onClick={download}
+              >
+                <DownloadIcon aria-hidden />
+                {format(m.downloadCode)}
+              </Button>
+              {restoreButton}
+            </>
+          }
+          phoneMenu={
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon-sm" aria-label={format(m.moreActions)}>
+                  <MoreHorizontalIcon />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={onBack}>{format(m.backToDraft)}</DropdownMenuItem>
+                <DropdownMenuItem disabled={version === undefined} onSelect={download}>
+                  {format(m.downloadCode)}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          }
         />
       }
       source={source}
-      side={info}
+      tryRun={tryRun}
       history={history}
+      sideTab={sideTab}
+      onSideTab={onSideTab}
+      tryLabel={format(m.tryTitle)}
+      historyLabel={format(m.historyTitle)}
       panelTabs={panelTabs}
       panelTab={panelTab}
       onPanelTab={setPanelTab}
-      panelLabel={format(m.releaseInfo)}
+      panelLabel={format(m.releaseDetails)}
       phoneTabs={[
         { value: 'source', label: format(m.phoneSourceTab), content: source },
+        { value: 'try', label: format(m.tryTitle), content: tryRun },
         {
-          value: 'info',
-          label: format(m.releaseInfo),
+          value: 'details',
+          label: format(m.releaseDetails),
+          count: report.length,
           content: (
             <>
-              {info}
+              <SideHead title={format(m.releaseReportTab)} />
+              {reportTable}
               <SideHead title={format(m.releaseContractTab)} />
               {contract}
               <SideHead title={format(m.releaseEnvironmentTab)} />
               {environment}
             </>
           ),
-        },
-        {
-          value: 'report',
-          label: format(m.releaseReportTab),
-          count: report.length,
-          content: reportTable,
         },
         { value: 'history', label: format(m.historyTitle), content: history },
       ]}
@@ -395,14 +444,7 @@ export function ReleaseView({
       gate={
         <>
           <span {...stylex.props(styles.gateText)}>{displayName}</span>
-          <Button
-            size="sm"
-            disabled={archived || restoring || version === undefined}
-            onClick={restore}
-          >
-            <FilePenLineIcon aria-hidden />
-            {format(m.releaseRestore)}
-          </Button>
+          {restoreButton}
         </>
       }
     />

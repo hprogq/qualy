@@ -1,43 +1,28 @@
 /**
- * The formula source editor: one Monaco model on the F1 virtual URI, one
- * language connection per mounted editor, and a strictly semi-controlled
- * relationship with React state.
+ * The formula source editors: the draft, editable, and a frozen source,
+ * read-only - both Monaco over an editor session (editor-session.ts), with
+ * the language service's hovers and signatures on either.
  *
- * The model is the editing buffer, never the persistence authority - the
- * page's draft state (source/baseRevision/remoteMoved/save/publish) stays
- * exactly as it was around the old textarea. Ordinary rerenders never call
- * setValue: only a real outside reseed (discarding local edits, a clean
- * refetch adopting the server draft) may replace the buffer, which is
- * detected as "the prop differs from the model AND from what the model
- * itself last emitted".
+ * The editable one is strictly semi-controlled against React state. The
+ * model is the editing buffer, never the persistence authority; ordinary
+ * rerenders never write to it, and only a moved `seed` - a real adoption
+ * from outside (a restore, loading the example, discarding local edits) -
+ * replaces its text, as one undoable step.
  *
  * The language service is assistance, not authority: with the connection
  * down the editor still edits, and saving and publishing never depend on
- * it. The connection status line says connecting / ready / unavailable and
- * nothing finer - the browser WebSocket API cannot see the handshake's
- * HTTP status, so pretending to know why would be fiction.
+ * it. The status line says connecting / ready / unavailable, and when the
+ * server turned a session away because this person holds too many, says
+ * that instead - closing another window is what fixes it.
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore, type RefObject } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { HttpApiClient } from 'effect/unstable/httpapi'
 import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { formulaApi } from './api.ts'
 import { monaco } from './monaco-setup.ts'
-import {
-  openLspConnection,
-  type ConnectionState,
-  type LspConnection,
-} from './formula-lsp/connection.ts'
-import { makeFormulaDocument, type FormulaDocument } from './formula-lsp/document.ts'
-import {
-  POLICY_MARKERS,
-  TYPESCRIPT_MARKERS,
-  applyMarkers,
-  clearAllMarkers,
-  registerFormulaProviders,
-} from './formula-lsp/monaco.ts'
+import { holdEditorLease } from './editor-lease.ts'
+import { editorSession, type EditorSession, type SessionState } from './editor-session.ts'
 import { FORMULA_URI } from './formula-lsp/protocol.ts'
 import { formulaMessages as m } from './i18n.ts'
 
@@ -65,6 +50,17 @@ const styles = stylex.create({
     borderBottomColor: tokens.divider,
   },
   label: { flexShrink: 0, fontSize: 12, fontWeight: 500, color: tokens.surfaceMutedForeground },
+  readOnly: {
+    flexShrink: 0,
+    paddingInline: 6,
+    height: 18,
+    display: 'inline-flex',
+    alignItems: 'center',
+    borderRadius: 4,
+    backgroundColor: tokens.surfaceMuted,
+    fontSize: 11,
+    color: tokens.mutedForeground,
+  },
   spring: { flexGrow: 1 },
   editor: {
     flexGrow: 1,
@@ -92,6 +88,98 @@ const styles = stylex.create({
   dotDown: { backgroundColor: tokens.warning },
 })
 
+const EDITOR_OPTIONS = {
+  automaticLayout: true,
+  minimap: { enabled: false },
+  // the page owns the wheel once the editor has nothing left to scroll;
+  // without this the editor pins the page under the cursor
+  scrollbar: { alwaysConsumeMouseWheel: false },
+  fontSize: 13,
+  lineNumbersMinChars: 3,
+  scrollBeyondLastLine: false,
+  fixedOverflowWidgets: true,
+} as const
+
+const silent = () => () => {}
+const connecting = (): SessionState => 'connecting'
+
+/** how the language connection stands, in the head of either pane */
+function LanguageStatus({ session }: { readonly session: EditorSession | null }) {
+  const { format } = useI18n()
+  const raw = useSyncExternalStore(session?.subscribe ?? silent, session?.state ?? connecting)
+  // no session asked for yet reads as about to connect
+  const state = raw === 'idle' ? 'connecting' : raw
+  const words =
+    state === 'ready'
+      ? format(m.lspReady)
+      : state === 'connecting'
+        ? format(m.lspConnecting)
+        : state === 'limited'
+          ? format(m.lspLimited)
+          : format(m.lspUnavailable)
+  return (
+    <p
+      {...stylex.props(styles.status)}
+      data-testid="formula-lsp-status"
+      data-state={state}
+      title={words}
+    >
+      <span
+        aria-hidden
+        {...stylex.props(
+          styles.dot,
+          state === 'ready' && styles.dotReady,
+          state !== 'ready' && state !== 'connecting' && styles.dotDown,
+        )}
+      />
+      <span {...stylex.props(styles.statusWords)}>{words}</span>
+    </p>
+  )
+}
+
+/**
+ * Draws a session's model in a container for as long as it is mounted; the
+ * session itself outlives it. Returns the session once it exists.
+ */
+const useSessionView = (
+  containerRef: RefObject<HTMLDivElement | null>,
+  open: () => EditorSession,
+  key: string,
+  editorOptions: monaco.editor.IStandaloneEditorConstructionOptions,
+) => {
+  const [session, setSession] = useState<EditorSession | null>(null)
+  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
+  const openRef = useRef(open)
+  openRef.current = open
+  const optionsRef = useRef(editorOptions)
+  optionsRef.current = editorOptions
+
+  useEffect(() => {
+    const container = containerRef.current
+    if (container === null) return
+    const opened = openRef.current()
+    setSession(opened)
+    const editor = monaco.editor.create(container, {
+      ...EDITOR_OPTIONS,
+      ...optionsRef.current,
+      model: opened.model,
+    })
+    if (opened.viewState !== null) editor.restoreViewState(opened.viewState)
+    editorRef.current = editor
+    const detach = opened.attach()
+    return () => {
+      opened.viewState = editor.saveViewState()
+      detach()
+      editor.dispose()
+      editorRef.current = null
+    }
+    // the view belongs to one session; everything else flows through refs
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key])
+
+  return { session, editorRef }
+}
+
 export interface FormulaCodeEditorProps {
   readonly functionId: string
   readonly value: string
@@ -110,158 +198,116 @@ export interface FormulaCodeEditorProps {
   readonly ariaLabel: string
   /** the pane's own name in its head; the accessible name when not given */
   readonly label?: string
-}
-
-// the endpoint's path comes from the same contract the server serves, so a
-// renamed route cannot leave a stale string behind here
-const buildUrl = HttpApiClient.urlBuilder(formulaApi)
-
-const languageUrl = (functionId: string): string => {
-  const path = buildUrl.assessmentFormula.formulaLsp({ params: { functionId } })
-  const scheme = location.protocol === 'https:' ? 'wss' : 'ws'
-  return `${scheme}://${location.host}${path}`
+  /**
+   * The page's editor lease. With one, the buffer and its undo history
+   * outlive this component; without one, the editor owns them and ends them
+   * when it unmounts.
+   */
+  readonly lease?: string
 }
 
 export default function FormulaCodeEditor(props: FormulaCodeEditorProps) {
-  const { format } = useI18n()
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const modelRef = useRef<monaco.editor.ITextModel | null>(null)
+  const [ownLease] = useState(() => `formula-editor-${Math.random().toString(36).slice(2)}`)
+  const lease = props.lease ?? ownLease
   const onChangeRef = useRef(props.onChange)
   onChangeRef.current = props.onChange
-  const [connectionState, setConnectionState] = useState<ConnectionState>('connecting')
-
-  // mount: model, editor, connection, document, providers - one scope,
-  // torn down completely on unmount (mount-unmount-mount must not stack)
-  useEffect(() => {
-    const container = containerRef.current
-    if (container === null) return
-    const uri = monaco.Uri.parse(FORMULA_URI)
-    const model =
-      monaco.editor.getModel(uri) ?? monaco.editor.createModel(props.value, 'typescript', uri)
-    if (model.getValue() !== props.value) model.setValue(props.value)
-    modelRef.current = model
-
-    const editor = monaco.editor.create(container, {
-      model,
-      readOnly: props.readOnly,
-      automaticLayout: true,
-      minimap: { enabled: false },
-      // the page owns the wheel once the editor has nothing left to
-      // scroll; without this the editor pins the page under the cursor
-      scrollbar: { alwaysConsumeMouseWheel: false },
-      fontSize: 13,
-      lineNumbersMinChars: 3,
-      scrollBeyondLastLine: false,
-      fixedOverflowWidgets: true,
-      ariaLabel: props.ariaLabel,
-    })
-
-    const connectionRef: { current: LspConnection | null } = { current: null }
-    const documentRef: { current: FormulaDocument | null } = { current: null }
-
-    const deps = {
-      connection: () => connectionRef.current,
-      document: () => documentRef.current,
-    }
-    // providers register immediately on fallback triggers so the editor is
-    // never dumb, then RE-register from the server's own initialize answer
-    // (trigger characters, and formatting only where the server offers it)
-    let providers = registerFormulaProviders(monaco, deps, {})
-    let torndown = false
-
-    const document = makeFormulaDocument({
-      model,
-      onTypeDiagnostics: (diagnostics) =>
-        applyMarkers(monaco, model, TYPESCRIPT_MARKERS, diagnostics),
-      onPolicyDiagnostics: (diagnostics) =>
-        applyMarkers(monaco, model, POLICY_MARKERS, diagnostics),
-      onServerCapabilities: (capabilities) => {
-        if (torndown) return
-        for (const provider of providers) provider.dispose()
-        providers = registerFormulaProviders(monaco, deps, capabilities)
-      },
-    })
-    documentRef.current = document
-
-    const connection = openLspConnection({
-      url: languageUrl(props.functionId),
-      handshake: (active) => document.handshake(active),
-      onNotification: (method, params) => document.onNotification(method, params),
-      onState: setConnectionState,
-    })
-    connectionRef.current = connection
-
-    const contentListener = model.onDidChangeContent(() => {
-      document.changed()
-      onChangeRef.current(model.getValue())
-    })
-
-    return () => {
-      torndown = true
-      contentListener.dispose()
-      for (const provider of providers) provider.dispose()
-      connection.dispose()
-      document.dispose()
-      clearAllMarkers(monaco, model)
-      editor.dispose()
-      model.dispose()
-      modelRef.current = null
-      connectionRef.current = null
-      documentRef.current = null
-    }
-    // the editor is created once per mounted function; value/readOnly flow
-    // through their own effects below
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.functionId])
-
-  // the buffer follows `value` ONLY when the seed moves - an explicit
-  // adoption (discard local, clean refetch), never a diff guess
   const valueRef = useRef(props.value)
   valueRef.current = props.value
+
+  const { session, editorRef } = useSessionView(
+    containerRef,
+    () => {
+      const opened = editorSession({
+        key: `${lease}/draft`,
+        lease,
+        functionId: props.functionId,
+        value: valueRef.current,
+        frozen: false,
+        // a lone editor keeps the historical address its tests know it by
+        uri: props.lease === undefined ? FORMULA_URI : `qualy-formula:///${lease}/draft/formula.ts`,
+      })
+      opened.onChange = (value) => onChangeRef.current(value)
+      return opened
+    },
+    `${lease}/${props.functionId}`,
+    { readOnly: props.readOnly, ariaLabel: props.ariaLabel },
+  )
+
+  // after the view effect on purpose: on unmount the view lets go of the
+  // model before a lone editor's own lease ends it
   useEffect(() => {
-    const model = modelRef.current
-    if (model === null) return
-    if (valueRef.current === model.getValue()) return
-    model.setValue(valueRef.current)
-  }, [props.seed])
+    if (props.lease !== undefined) return
+    return holdEditorLease(ownLease, { immediate: true })
+  }, [props.lease, ownLease])
+
+  // the buffer follows `value` ONLY when the seed moves - an explicit
+  // adoption, never a diff guess. It also runs when a view is drawn again
+  // over a session whose text moved while nothing was drawing it.
+  useEffect(() => {
+    if (session === null) return
+    if (valueRef.current === session.model.getValue()) return
+    session.replace(valueRef.current)
+  }, [props.seed, session])
 
   useEffect(() => {
-    const model = modelRef.current
-    if (model === null) return
-    const editor = monaco.editor.getEditors().find((one) => one.getModel() === model)
-    editor?.updateOptions({ readOnly: props.readOnly })
-  }, [props.readOnly])
-
-  const statusText =
-    connectionState === 'ready'
-      ? format(m.lspReady)
-      : connectionState === 'connecting'
-        ? format(m.lspConnecting)
-        : format(m.lspUnavailable)
+    editorRef.current?.updateOptions({ readOnly: props.readOnly })
+  }, [props.readOnly, editorRef, session])
 
   return (
     <div {...stylex.props(styles.frame)}>
       <div {...stylex.props(styles.head)}>
         <span {...stylex.props(styles.label)}>{props.label ?? props.ariaLabel}</span>
         <span {...stylex.props(styles.spring)} />
-        <p
-          {...stylex.props(styles.status)}
-          data-testid="formula-lsp-status"
-          data-state={connectionState}
-          title={statusText}
-        >
-          <span
-            aria-hidden
-            {...stylex.props(
-              styles.dot,
-              connectionState === 'ready' && styles.dotReady,
-              connectionState !== 'ready' && connectionState !== 'connecting' && styles.dotDown,
-            )}
-          />
-          <span {...stylex.props(styles.statusWords)}>{statusText}</span>
-        </p>
+        <LanguageStatus session={session} />
       </div>
       <div ref={containerRef} {...stylex.props(styles.editor)} data-testid="formula-code-editor" />
+    </div>
+  )
+}
+
+export interface FormulaSourceViewerProps {
+  readonly functionId: string
+  /** the page's editor lease */
+  readonly lease: string
+  /** which frozen source, unique on the page: `release-3`, `revision-18` */
+  readonly name: string
+  readonly source: string
+  readonly label: string
+  readonly readOnlyLabel: string
+  readonly 'data-testid'?: string
+}
+
+/** a frozen source in Monaco: read-only, with hovers and signatures from the language service */
+export function FormulaSourceViewer(props: FormulaSourceViewerProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const { session } = useSessionView(
+    containerRef,
+    () =>
+      editorSession({
+        key: `${props.lease}/${props.name}`,
+        lease: props.lease,
+        functionId: props.functionId,
+        value: props.source,
+        frozen: true,
+        uri: `qualy-formula:///${props.lease}/${props.name}/formula.ts`,
+      }),
+    `${props.lease}/${props.name}`,
+    { readOnly: true, domReadOnly: true, ariaLabel: props.label },
+  )
+  return (
+    <div {...stylex.props(styles.frame)}>
+      <div {...stylex.props(styles.head)}>
+        <span {...stylex.props(styles.label)}>{props.label}</span>
+        <span {...stylex.props(styles.readOnly)}>{props.readOnlyLabel}</span>
+        <span {...stylex.props(styles.spring)} />
+        <LanguageStatus session={session} />
+      </div>
+      <div
+        ref={containerRef}
+        {...stylex.props(styles.editor)}
+        data-testid={props['data-testid'] ?? 'formula-source-viewer'}
+      />
     </div>
   )
 }

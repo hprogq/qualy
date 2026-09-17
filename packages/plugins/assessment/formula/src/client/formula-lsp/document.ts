@@ -35,6 +35,12 @@ export interface FormulaDocumentOptions {
   /** apply the policy voice's markers (already stale-checked) */
   readonly onPolicyDiagnostics: (diagnostics: readonly LspDiagnostic[]) => void
   readonly onServerCapabilities: (capabilities: LspServerCapabilities) => void
+  /**
+   * Whether this document asks for and paints diagnostics. Off for a frozen,
+   * read-only source: today's compiler judging a publication's code would
+   * speak about a world that publication was never checked against.
+   */
+  readonly diagnostics?: boolean
 }
 
 export interface FormulaDocument {
@@ -46,11 +52,14 @@ export interface FormulaDocument {
   onNotification(method: string, params: unknown): void
   /** a model edit happened; schedules sync and a diagnostics pull */
   changed(): void
+  /** forget the connection without ending the document; the next handshake adopts a new one */
+  detach(): void
   dispose(): void
 }
 
 export const makeFormulaDocument = (options: FormulaDocumentOptions): FormulaDocument => {
   const { model } = options
+  const diagnosing = options.diagnostics ?? true
   let connection: LspConnection | null = null
   let lastSyncedVersion = -1
   let syncTimer: ReturnType<typeof setTimeout> | null = null
@@ -84,7 +93,7 @@ export const makeFormulaDocument = (options: FormulaDocumentOptions): FormulaDoc
   }
 
   const pullDiagnostics = (): void => {
-    if (disposed || connection === null) return
+    if (disposed || connection === null || !diagnosing) return
     syncNow()
     const requestedVersion = model.getVersionId()
     connection
@@ -140,7 +149,7 @@ export const makeFormulaDocument = (options: FormulaDocumentOptions): FormulaDoc
     syncNow,
     onNotification: (method, params) => {
       if (disposed) return
-      if (method !== 'textDocument/publishDiagnostics') return
+      if (method !== 'textDocument/publishDiagnostics' || !diagnosing) return
       const push = (params ?? {}) as {
         readonly version?: number
         readonly diagnostics?: readonly LspDiagnostic[]
@@ -162,6 +171,10 @@ export const makeFormulaDocument = (options: FormulaDocumentOptions): FormulaDoc
       if (syncTimer !== null) clearTimeout(syncTimer)
       syncTimer = setTimeout(syncNow, SYNC_DEBOUNCE_MS)
       scheduleDiagnostics()
+    },
+    detach: () => {
+      clearTimers()
+      connection = null
     },
     dispose: () => {
       disposed = true
