@@ -293,13 +293,17 @@ describe('the participant results screen', () => {
       `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_ID}&view=entries&entry=${ENTRY_ID}`,
     )
     const card = page.getByTestId('entry-recognition')
-    await expect.element(card).toBeVisible()
-    const words = (await card.element()).textContent ?? ''
+    // The card is drawn as soon as the entry is, and the words come from the
+    // question's contract, which is a second request: read once, the card
+    // can still be only its heading, which is how this failed on a slower
+    // runner. So wait for the words, then look for what must be absent.
+    // toMatchTextContent, not toHaveTextContent: in vitest 5 the latter is an
+    // exact comparison of the whole text (docs/notes/vitest.md).
     // the question's own word for the field, and the value under it
-    expect(words).toContain('等级')
-    expect(words).toContain('省级')
+    await expect.element(card).toMatchTextContent('等级')
+    await expect.element(card).toMatchTextContent('省级')
     // the opaque address the contract stores it under is nobody's to read
-    expect(words).not.toContain('dddddddd')
+    expect((await card.element()).textContent ?? '').not.toContain('dddddddd')
   })
 
   it('says a score cannot be read rather than showing an old one', async () => {
