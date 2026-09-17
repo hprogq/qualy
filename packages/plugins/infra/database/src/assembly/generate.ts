@@ -126,12 +126,18 @@ export function nextStamp(migrations: string): string {
 }
 
 /**
- * A migration lands whole or not at all.
+ * A migration lands whole or not at all, and never over another one.
  *
  * A half-written file is worse than a missing one: the lineage would apply the
- * part that made it to disk and record the whole thing as done.
+ * part that made it to disk and record the whole thing as done. So the bytes
+ * go to a temporary file first and are flushed. They then take the migration's
+ * name by a hard link rather than a rename: a rename silently replaces a file
+ * already at that name, and a migration that replaced another would be a
+ * history nobody wrote; a link to an existing name fails instead. The
+ * directory is flushed last, so the name survives a crash as well as the
+ * bytes.
  */
-function writeMigration(file: string, sql: string): void {
+export function writeMigration(file: string, sql: string): void {
   const temp = `${file}.${process.pid}.tmp`
   const handle = fs.openSync(temp, 'wx')
   try {
@@ -141,10 +147,25 @@ function writeMigration(file: string, sql: string): void {
     fs.closeSync(handle)
   }
   try {
-    fs.renameSync(temp, file)
+    fs.linkSync(temp, file)
   } catch (error) {
-    fs.rmSync(temp, { force: true })
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+      throw new Error(
+        `database: ${path.basename(file)} already exists; a migration never replaces another`,
+        {
+          cause: error,
+        },
+      )
+    }
     throw error
+  } finally {
+    fs.rmSync(temp, { force: true })
+  }
+  const directory = fs.openSync(path.dirname(file), 'r')
+  try {
+    fs.fsyncSync(directory)
+  } finally {
+    fs.closeSync(directory)
   }
 }
 
@@ -157,9 +178,12 @@ function writeMigration(file: string, sql: string): void {
  */
 export function blankMigration(migrations: string, name: string | undefined): string {
   fs.mkdirSync(migrations, { recursive: true })
-  const stamp = new Date().toISOString().replace(/\D/g, '').slice(0, 14)
-  const file = path.join(migrations, `${stamp}_${slug(name ?? 'custom')}.sql`)
-  fs.writeFileSync(file, '-- owner: @qualy/plugin-<name>\n')
+  // the same instant rule and the same writer as a generated one: a clock
+  // behind the lineage would otherwise slot this before migrations databases
+  // have already run, and two calls in one second with one name would leave
+  // one file where there should be two
+  const file = path.join(migrations, `${nextStamp(migrations)}_${slug(name ?? 'custom')}.sql`)
+  writeMigration(file, '-- owner: @qualy/plugin-<name>\n')
   return file
 }
 

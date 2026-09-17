@@ -4,7 +4,12 @@ import type { CapabilityWorkContext } from '@qualy/assembly-contract'
 import type { DatabaseContribution } from './contribution.ts'
 import { declaredEntityModules, type EntityModule } from './entities.ts'
 import { asState, type DatabaseState } from './state.ts'
-import { GENERATION_URL_VARIABLE, LOCAL_FALLBACK, MIGRATIONS_FOLDER } from '../defaults.ts'
+import {
+  GENERATION_URL_VARIABLE,
+  LOCAL_FALLBACK,
+  MIGRATION_FILE,
+  MIGRATIONS_FOLDER,
+} from '../defaults.ts'
 
 // Where this assembly keeps its lineage, what the lineage is built from, and
 // which databases the work addresses.
@@ -105,6 +110,22 @@ export function databaseWork(
     modules: declaredEntityModules(context, asState(context.state)),
     url,
     generationUrl: () => generationUrl(url),
+  }
+}
+
+/**
+ * Every file in the lineage is named the way the lineage is ordered. A `.sql`
+ * without an instant, or with one that is not the name's own prefix, has no
+ * place in the order that anybody meant.
+ */
+export function assertMigrationNames(migrations: string): void {
+  const misnamed = (fs.existsSync(migrations) ? fs.readdirSync(migrations) : [])
+    .filter((entry) => entry.endsWith('.sql') && !MIGRATION_FILE.test(entry))
+    .sort()
+  if (misnamed.length > 0) {
+    throw new Error(
+      `database: migrations must be named <yyyyMMddHHmmss>[_lowercase-name].sql:\n  ${misnamed.join('\n  ')}`,
+    )
   }
 }
 

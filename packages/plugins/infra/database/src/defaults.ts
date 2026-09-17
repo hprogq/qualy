@@ -15,6 +15,14 @@
  */
 export const MIGRATIONS_FOLDER = 'db/migrations'
 
+/**
+ * What a migration file is called: a 14-digit UTC instant, then an optional
+ * lowercase name in dashes. The instant is the order; the name is for people.
+ * `qualy database check` holds the lineage to it, and the CI gate on committed
+ * migrations holds every added file to it.
+ */
+export const MIGRATION_FILE = /^(\d{14})(?:_[a-z0-9]+(?:-[a-z0-9]+)*)?\.sql$/
+
 /** the database a development machine is assumed to have */
 export const LOCAL_FALLBACK = 'postgres://qualy:qualy@localhost:5432/qualy'
 

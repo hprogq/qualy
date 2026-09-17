@@ -1,4 +1,6 @@
 import { execFileSync } from 'node:child_process'
+import path from 'node:path'
+import { MIGRATION_FILE } from '../../packages/plugins/infra/database/src/defaults.ts'
 import { repoRoot } from '../lib/manifest.ts'
 
 // A committed migration is history: once it is on main it has been applied
@@ -6,6 +8,15 @@ import { repoRoot } from '../lib/manifest.ts'
 // changes nothing on any database that already ran it and everything on the
 // next fresh one; deleting or renaming it leaves a ledger entry nothing
 // explains. So between a base and HEAD the lineage may only grow.
+//
+// And grow at the end. The ledger records names, not positions: a migration
+// added with an instant earlier than the last one the base already has runs
+// after that one on every database that is already up to date, and before it
+// on a fresh one - two orders for one lineage. That is what a branch opened
+// before somebody else's migration landed produces when it merges, and what a
+// clock behind the lineage produces anywhere. So every added file must be
+// named by the lineage's rule and stamped strictly after the base's last
+// migration. Until it is merged it can still be renamed to a later instant.
 //
 //   node tools/quality/check-migrations-immutable.ts <base-ref>
 //
@@ -80,6 +91,12 @@ if (changed.length > 0) {
   process.exit(1)
 }
 
+const migrationsAt = (ref: string) =>
+  git(['ls-tree', '-r', '--name-only', ref, '--', 'db/migrations'])
+    .split('\n')
+    .filter((line) => line.endsWith('.sql'))
+    .map((line) => path.posix.basename(line))
+
 const added = git([
   'diff',
   '--name-only',
@@ -89,7 +106,35 @@ const added = git([
   'db/migrations',
 ])
   .split('\n')
-  .filter((line) => line !== '').length
+  .filter((line) => line !== '')
+  .map((line) => path.posix.basename(line))
+
+const misnamed = added.filter((name) => !MIGRATION_FILE.test(name))
+if (misnamed.length > 0) {
+  console.error(
+    `check-migrations-immutable: ${String(misnamed.length)} added file(s) under db/migrations are not named <yyyyMMddHHmmss>[_lowercase-name].sql:`,
+  )
+  for (const name of misnamed) console.error(`  ${name}`)
+  process.exit(1)
+}
+
+// the base's head, not the merge base's: a branch opened before another
+// migration landed on the base is exactly the case to catch
+const head = migrationsAt(base)
+  .map((name) => MIGRATION_FILE.exec(name)?.[1])
+  .filter((stamp): stamp is string => stamp !== undefined)
+  .sort()
+  .at(-1)
+const early =
+  head === undefined ? [] : added.filter((name) => MIGRATION_FILE.exec(name)![1]! <= head)
+if (early.length > 0) {
+  console.error(
+    `check-migrations-immutable: ${String(early.length)} added migration(s) are stamped at or before ${head}, the last migration ${base} already has. A database that already ran it would run these after it and a fresh one before it; regenerate them (pnpm qualy generate / pnpm qualy database custom stamp after the lineage) or rename them to a later instant before they merge:`,
+  )
+  for (const name of early) console.error(`  ${name}`)
+  process.exit(1)
+}
+
 console.log(
-  `check-migrations-immutable: the lineage only grew since ${base} (${String(added)} migration(s) added)`,
+  `check-migrations-immutable: the lineage only grew since ${base}, at its end (${String(added.length)} migration(s) added after ${head ?? 'nothing'})`,
 )

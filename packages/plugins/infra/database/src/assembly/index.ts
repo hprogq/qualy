@@ -7,7 +7,13 @@ import {
   parseDeclaration,
   type DatabaseContribution,
 } from './contribution.ts'
-import { assertDistinctPrefixes, databaseTarget, databaseWork, LOCAL_FALLBACK } from './work.ts'
+import {
+  assertDistinctPrefixes,
+  assertMigrationNames,
+  databaseTarget,
+  databaseWork,
+  LOCAL_FALLBACK,
+} from './work.ts'
 import { asState, resolveDatabase, type DatabaseState } from './state.ts'
 
 // Everything the assembly knows about databases lives behind this one module.
@@ -96,6 +102,7 @@ export default defineCapabilityProvider<DatabaseContribution, DatabaseState>({
     // applies in an order that depends on which one you checked out
     check: async (context) => {
       const work = databaseWork(context)
+      assertMigrationNames(work.migrations)
       assertDistinctPrefixes(work.migrations)
       console.log('database: lineage ok')
     },
