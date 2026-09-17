@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -140,5 +141,50 @@ describe.runIf(postgresAvailable)('upgrading a database from an earlier release'
       await Promise.all([old.dispose(), fresh.dispose()])
       fs.rmSync(prefix, { recursive: true, force: true })
     }
+  })
+})
+
+// The fixture names the commit it was taken from. That is only provenance
+// until something checks it: the commit itself, when the clone has it, has to
+// carry exactly these migrations with exactly these bytes, or the fixture has
+// been edited into a release that never was. A shallow clone without the
+// commit skips the check rather than guessing.
+describe('the fixture of a past release', () => {
+  // git pathspecs are relative to the working directory, so the repository
+  // root is the place to ask from
+  const REPO = path.resolve(LINEAGE, '../..')
+  const inClone = (() => {
+    try {
+      execFileSync('git', ['cat-file', '-e', `${deploymentB.commit}^{commit}`], {
+        cwd: REPO,
+        stdio: 'ignore',
+      })
+      return true
+    } catch {
+      return false
+    }
+  })()
+
+  it.runIf(inClone)(`is what commit ${deploymentB.commit.slice(0, 8)} carried`, () => {
+    const listed = execFileSync(
+      'git',
+      ['ls-tree', '-r', '--name-only', deploymentB.commit, '--', 'db/migrations'],
+      { cwd: REPO, encoding: 'utf8' },
+    )
+      .split('\n')
+      .filter((line) => line.endsWith('.sql'))
+      .map((line) => path.posix.basename(line))
+      .sort()
+    const carried = listed.map((name) => ({
+      name,
+      sha256: createHash('sha256')
+        .update(
+          execFileSync('git', ['show', `${deploymentB.commit}:db/migrations/${name}`], {
+            cwd: REPO,
+          }),
+        )
+        .digest('hex'),
+    }))
+    expect(deploymentB.migrations).toEqual(carried)
   })
 })
