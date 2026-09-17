@@ -49,6 +49,20 @@ export class FormulaVersionNotFound extends Schema.TaggedError<FormulaVersionNot
 ) {}
 
 /**
+ * A published version whose stored record cannot be run as it stands.
+ *
+ * Its artifact or its contract no longer matches the hashes it was frozen
+ * with, or this build holds no evidence it executes that record faithfully.
+ * The version can still be read; it cannot be tried. Which of those it was
+ * goes to the log, not to the wire.
+ */
+export class FormulaVersionUnrunnable extends Schema.TaggedError<FormulaVersionUnrunnable>()(
+  'ASSESSMENT_FORMULA_VERSION_UNRUNNABLE',
+  {},
+  { httpApiStatus: 409, identifier: 'AssessmentFormulaVersionUnrunnable' },
+) {}
+
+/**
  * The audience moved while somebody was editing it.
  *
  * Two screens open on the same version's sharing must not let the later

@@ -52,7 +52,7 @@ import {
 } from '../actions.ts'
 import { formulaApiGroup } from '../api.ts'
 import { FormulaLanguage } from './language.ts'
-import { FormulaLspQuota, bridgeSocket } from './lsp-bridge.ts'
+import { FormulaLspQuota, bridgeSocket, refuseSeat } from './lsp-bridge.ts'
 import { db } from './db.ts'
 import { isoInstant } from './instant.ts'
 import {
@@ -74,8 +74,10 @@ import {
   FormulaTestFailed,
   FormulaTypecheckFailed,
   FormulaVersionNotFound,
+  FormulaVersionUnrunnable,
   FormulaReleaseNameTaken,
 } from './errors.ts'
+import { FormulaRuntimeStore, runtimeStoreLayer } from './runtime-store.ts'
 import {
   AssessmentConfigurationAccess,
   AssessmentScoringAuthoringAccess,
@@ -364,6 +366,12 @@ interface PreparedFormula {
   readonly authoringBuildId: string
 }
 
+/** what running cases needs of a formula, compiled just now or frozen long ago */
+type RunnableFormula = Pick<
+  PreparedFormula,
+  'artifact' | 'runtimeSha256' | 'inputSchema' | 'outputSchema'
+>
+
 interface CompiledFormula {
   readonly artifact: string
   readonly inputSchema: NormalizedInputSchema
@@ -401,6 +409,14 @@ export interface DraftPreview {
 }
 
 type DraftRefusal = Exclude<CompileRefusal, FormulaTestFailed>
+
+/** a published version tried: its frozen contract, and what it answered */
+export interface VersionEvaluation {
+  readonly contractSha256: string
+  readonly inputSchema: NormalizedInputSchema
+  readonly outputSchema: NormalizedAtomicSchema
+  readonly results: readonly EvaluatedCase[]
+}
 
 interface FormulaLibraryShape {
   /**
@@ -555,6 +571,20 @@ interface FormulaLibraryShape {
     ReturnType<typeof versionDetailDto>,
     AccessDenied | FormulaFunctionNotFound | FormulaVersionNotFound
   >
+  readonly evaluateVersion: (
+    tenantId: string,
+    functionId: string,
+    versionNo: number,
+    cases: readonly EvaluationCaseInput[],
+    as: Principal,
+  ) => Effect.Effect<
+    VersionEvaluation,
+    | AccessDenied
+    | FormulaFunctionNotFound
+    | FormulaVersionNotFound
+    | FormulaVersionUnrunnable
+    | FormulaCompileUnavailable
+  >
 }
 
 export class FormulaLibrary extends Context.Service<FormulaLibrary, FormulaLibraryShape>()(
@@ -567,6 +597,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
   const audit = yield* Audit
   const sandbox = yield* Sandbox
   const authoring = yield* FormulaAuthoring
+  const runtimeStore = yield* FormulaRuntimeStore
 
   const actorOf = (as: Principal) => ({ kind: 'user', userId: as.userId }) as const
 
@@ -739,19 +770,20 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     return { ...previewOf(prepared), results: evaluated.results }
   })
 
-  // ONE evaluator for every way a formula runs before publication: the
+  // ONE evaluator for every way a formula is tried outside scoring: the
   // ad-hoc try-run (no expectation), a single regression test, the whole
-  // suite, and the publish gate - same validation, same sandbox, same
-  // canonicalization, so no second execution semantics can drift into being
+  // suite, the publish gate, and a published version tried as it was
+  // frozen - same validation, same sandbox, same canonicalization, so no
+  // second execution semantics can drift into being
   const evaluateCases = (
-    prepared: PreparedFormula,
+    runnable: RunnableFormula,
     cases: readonly EvaluationCaseInput[],
   ): Effect.Effect<
     { readonly results: readonly EvaluatedCase[]; readonly runtime: SandboxRuntimeIdentity | null },
     FormulaCompileUnavailable
   > =>
     Effect.gen(function* () {
-      const { artifact, runtimeSha256: artifactHash, inputSchema, outputSchema } = prepared
+      const { artifact, runtimeSha256: artifactHash, inputSchema, outputSchema } = runnable
       const report: EvaluatedCase[] = []
       // the identity of whoever answered; one round must be answered by one
       // process, or its provenance names an instance that ran only part of it
@@ -1643,6 +1675,61 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     return versionDetailDto(version)
   })
 
+  // A published version tried as it was frozen: the stored artifact and
+  // contract, re-proven by the runtime store on the way out, never the
+  // source compiled again. Behind the same gate as reading the version, and
+  // an archived function's versions may still be tried - this writes nothing.
+  const evaluateVersion = Effect.fn('FormulaLibrary.evaluateVersion')(function* (
+    tenantId: string,
+    functionId: string,
+    versionNo: number,
+    cases: readonly EvaluationCaseInput[],
+    as: Principal,
+  ) {
+    yield* authoringRow(tenantId, functionId, as)
+    const found = yield* db
+      .query((k) =>
+        k
+          .selectFrom('FormulaVersion')
+          .select('id')
+          .where('tenantId', '=', tenantId)
+          .where('functionId', '=', functionId)
+          .where('versionNo', '=', versionNo)
+          .executeTakeFirst(),
+      )
+      .pipe(Effect.orDie)
+    if (found === undefined) return yield* new FormulaVersionNotFound()
+    const versionId = found.id as string
+    const frozen = yield* runtimeStore.resolve({ tenantId, versionId }).pipe(
+      Effect.catchTags({
+        ASSESSMENT_FORMULA_RUNTIME_MISSING: () => Effect.fail(new FormulaVersionNotFound()),
+        ASSESSMENT_FORMULA_RUNTIME_TAMPERED: (failure) =>
+          Effect.logWarning(
+            `formula version ${versionId} cannot be tried: its ${failure.field} no longer matches its hash`,
+          ).pipe(Effect.andThen(Effect.fail(new FormulaVersionUnrunnable()))),
+        ASSESSMENT_FORMULA_RUNTIME_UNSUPPORTED: (failure) =>
+          Effect.logWarning(
+            `formula version ${versionId} cannot be tried by this build: ${failure.issues.map((issue) => issue.facet).join(', ')}`,
+          ).pipe(Effect.andThen(Effect.fail(new FormulaVersionUnrunnable()))),
+      }),
+    )
+    const evaluated = yield* evaluateCases(
+      {
+        artifact: frozen.runtimeJs,
+        runtimeSha256: frozen.runtimeSha256,
+        inputSchema: frozen.inputSchema,
+        outputSchema: frozen.outputSchema,
+      },
+      cases,
+    )
+    return {
+      contractSha256: frozen.contractSha256,
+      inputSchema: frozen.inputSchema,
+      outputSchema: frozen.outputSchema,
+      results: evaluated.results,
+    } satisfies VersionEvaluation
+  })
+
   const listDraftRevisions = Effect.fn('FormulaLibrary.listDraftRevisions')(function* (
     tenantId: string,
     functionId: string,
@@ -1883,6 +1970,8 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
       withDb(publish(tenantId, functionId, request, as)),
     getVersion: (tenantId, functionId, versionNo, as) =>
       withDb(getVersion(tenantId, functionId, versionNo, as)),
+    evaluateVersion: (tenantId, functionId, versionNo, cases, as) =>
+      withDb(evaluateVersion(tenantId, functionId, versionNo, cases, as)),
     listDraftRevisions: (tenantId, functionId, page, as) =>
       withDb(listDraftRevisions(tenantId, functionId, page, as)),
     getDraftRevision: (tenantId, functionId, revisionNo, as) =>
@@ -1893,7 +1982,10 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
   return service
 })
 
-export const layer = Layer.effect(FormulaLibrary, make())
+// the runtime store arrives with the library rather than beside it: trying
+// a published version is authoring, gated here, and only the store may say
+// what that version is
+export const layer = Layer.effect(FormulaLibrary, make()).pipe(Layer.provide(runtimeStoreLayer))
 
 const local = Api.local(formulaApiGroup)
 
@@ -2300,6 +2392,37 @@ export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula
         }
       }),
     )
+    .handle(
+      'evaluateFormulaVersion',
+      Effect.fn('assessmentFormula.evaluateVersion.handler')(function* ({ params, payload }) {
+        const library = yield* FormulaLibrary
+        const principal = yield* CurrentUser
+        const versionNo = Number(params.versionNo)
+        if (!Number.isSafeInteger(versionNo) || versionNo < 1)
+          return yield* new BadRequest({
+            message: 'the version number must be a positive integer',
+          })
+        const evaluated = yield* library.evaluateVersion(
+          principal.tenantId,
+          params.functionId,
+          versionNo,
+          payload.cases.map((one) => ({
+            input: one.input,
+            ...(one.expected === undefined ? {} : { expected: one.expected }),
+          })),
+          principal,
+        )
+        return {
+          contractSha256: evaluated.contractSha256,
+          inputSchema: evaluated.inputSchema,
+          outputSchema: evaluated.outputSchema,
+          cases: evaluated.results.map((row, index) => ({
+            clientId: payload.cases[index]!.clientId,
+            ...row,
+          })),
+        }
+      }),
+    )
     .handleRaw(
       'formulaLsp',
       Effect.fn('assessmentFormula.lsp.handler')(function* ({ params }) {
@@ -2321,11 +2444,18 @@ export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula
         const library = yield* FormulaLibrary
         const draft = yield* library.managedDraft(principal.tenantId, params.functionId, principal)
 
-        // one live language server per person, tenant-scoped; a second
-        // browser is refused rather than the first one torn down
+        // a few live language servers per person, tenant-scoped; one past
+        // them is refused rather than an earlier one torn down. The refusal
+        // is a completed upgrade closed with 4429, the only form a browser
+        // can tell apart from an outage, and it opens no language session
         const quota = yield* FormulaLspQuota
         const admitted = yield* quota.acquire(`${principal.tenantId}:${principal.userId}`)
-        if (!admitted) return HttpServerResponse.empty({ status: 429 })
+        if (!admitted) {
+          const refused = yield* request.upgrade.pipe(Effect.orElseSucceed(() => null))
+          if (refused === null) return HttpServerResponse.empty({ status: 429 })
+          yield* refuseSeat(refused)
+          return HttpServerResponse.empty()
+        }
 
         // open BEFORE upgrading: while this is still plain http, refusal can
         // still be a status code instead of an instantly-closed socket

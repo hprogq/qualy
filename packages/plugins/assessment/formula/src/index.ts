@@ -62,9 +62,10 @@ const plugin = Plugin.define(
       libraryLayer.pipe(Layer.provide(formulaAuthoringLayer())),
       formulaLanguageLayer(),
       formulaLspQuotaLayer,
-      // the runtime half: siblings of the library with no edge between
-      // them - resolution consults no authoring state, and 7.3's
-      // calculator bind is where both get consumed together
+      // the runtime half: resolution consults no authoring state. The
+      // library leans on it for one thing only - trying a published
+      // version runs the artifact this store verifies - and 7.3's
+      // calculator bind is where the rest gets consumed
       runtimeStoreLayer,
       bindingCatalogLayer,
       // the audience half: what a published version has been offered to,

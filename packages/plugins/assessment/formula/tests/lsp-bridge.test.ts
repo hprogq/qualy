@@ -47,7 +47,7 @@ import { entities } from '../src/db/entities.ts'
 import { formulaApiGroup } from '../src/api.ts'
 import { formulaApiHandlers, layer as formulaLayer } from '../src/server/index.ts'
 import { formulaLanguageLayer } from '../src/server/language.ts'
-import { formulaLspQuotaLayer } from '../src/server/lsp-bridge.ts'
+import { FORMULA_LSP_SEATS_PER_PERSON, formulaLspQuotaLayer } from '../src/server/lsp-bridge.ts'
 import { FormulaSettings } from '../src/server/config.ts'
 import { configurationAccessLayer } from '@qualy/plugin-assessment/server/configuration-access'
 import { scoringAuthoringAccessLayer } from '@qualy/plugin-assessment/server/scoring-authoring-access'
@@ -603,15 +603,41 @@ describe.runIf(postgresAvailable)('the formula language bridge', { concurrent: f
     }
   }, 120_000)
 
-  it('holds one seat per person and refuses the second browser', async () => {
-    const client = await handshake()
+  it('holds a few seats per person and closes the one past them with 4429', async () => {
+    const seated: Client[] = []
     try {
-      expect(await refusalOf(handshake())).toBe(429)
+      for (let index = 0; index < FORMULA_LSP_SEATS_PER_PERSON; index += 1) {
+        seated.push(await handshake())
+      }
+      expect(seated.length).toBe(3)
+      // every admitted bridge is a live conversation, not just an open socket
+      for (const client of seated) await openDocument(client)
+      expect((await authoringCapabilities()).activeLspSessions).toBe(3)
+
+      // one past the seats: the upgrade completes, so the browser can read
+      // why, and closes at once without a language session behind it
+      const refused = await handshake()
+      expect(await refused.closed).toEqual({ code: 4429, reason: 'seat-limit' })
+      expect((await authoringCapabilities()).activeLspSessions).toBe(3)
+
+      // releasing one gives its seat back
+      const leaving = seated.pop()!
+      leaving.socket.close(1000)
+      await leaving.closed
+      await expect
+        .poll(async () => (await authoringCapabilities()).activeLspSessions, { timeout: 10_000 })
+        .toBe(2)
+      const returning = await handshake()
+      seated.push(returning)
+      await openDocument(returning)
+      expect((await authoringCapabilities()).activeLspSessions).toBe(3)
     } finally {
-      client.socket.close(1000)
-      await client.closed
+      for (const client of seated) {
+        client.socket.close(1000)
+        await client.closed
+      }
     }
-    // the seat comes back once the first connection is gone
+    // every seat comes back once the connections are gone
     await expect
       .poll(async () => (await authoringCapabilities()).activeLspSessions, { timeout: 10_000 })
       .toBe(0)

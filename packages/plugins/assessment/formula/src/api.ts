@@ -26,6 +26,7 @@ import {
   FormulaTypecheckFailed,
   FormulaCompileUnavailable,
   FormulaVersionNotFound,
+  FormulaVersionUnrunnable,
   FormulaReleaseNameTaken,
 } from './server/errors.ts'
 import { BatchNotFound } from '@qualy/plugin-assessment/errors'
@@ -77,12 +78,18 @@ const versionView = Schema.Struct({
   publishedAt: Schema.String,
 })
 
-/** one case for the draft evaluator; the client id is an echo, not identity */
+/** one published version of one function, as its address names it */
+const versionParams = Schema.Struct({ functionId: id, versionNo: Schema.String })
+
+/** one case for an evaluator; the client id is an echo, not identity */
 const evaluationCase = Schema.Struct({
   clientId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
   input: Schema.Unknown,
   expected: Schema.optional(Schema.String.check(Schema.isMaxLength(63))),
 })
+
+/** the cases one evaluation runs, draft or published alike */
+const evaluationCases = Schema.Array(evaluationCase).check(Schema.isMaxLength(50))
 
 const evaluatedCase = Schema.Struct({
   clientId: Schema.String,
@@ -300,7 +307,7 @@ export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
         params: Schema.Struct({ functionId: id }),
         payload: Schema.Struct({
           sourceTs: sourceText,
-          cases: Schema.Array(evaluationCase).check(Schema.isMaxLength(50)),
+          cases: evaluationCases,
         }),
         success: Schema.Struct({
           ...draftPreview.fields,
@@ -491,9 +498,37 @@ export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
       'getFormulaVersion',
       '/assessment/formula-functions/:functionId/versions/:versionNo',
       {
-        params: Schema.Struct({ functionId: id, versionNo: Schema.String }),
+        params: versionParams,
         success: Schema.Struct({ version: versionDetail }),
         error: [FormulaFunctionNotFound, FormulaVersionNotFound, AccessDenied, BadRequest],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
+    // run cases against what a publication FROZE: the stored artifact and
+    // contract, verified on the way out and never recompiled, so the answer
+    // is the version's own whatever today's compiler would make of its
+    // source. Results are ephemeral, like the draft's
+    HttpApiEndpoint.post(
+      'evaluateFormulaVersion',
+      '/assessment/formula-functions/:functionId/versions/:versionNo/evaluations',
+      {
+        params: versionParams,
+        payload: Schema.Struct({ cases: evaluationCases }),
+        success: Schema.Struct({
+          contractSha256: Schema.String,
+          inputSchema: Schema.Unknown,
+          outputSchema: Schema.Unknown,
+          cases: Schema.Array(evaluatedCase),
+        }),
+        error: [
+          FormulaFunctionNotFound,
+          FormulaVersionNotFound,
+          FormulaVersionUnrunnable,
+          FormulaCompileUnavailable,
+          AccessDenied,
+          BadRequest,
+        ],
       },
     ).middleware(Authenticated),
   )
@@ -555,7 +590,7 @@ export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
       'getFormulaVersionSharing',
       '/assessment/formula-functions/:functionId/versions/:versionNo/sharing',
       {
-        params: Schema.Struct({ functionId: id, versionNo: Schema.String }),
+        params: versionParams,
         success: versionSharing,
         error: [FormulaFunctionNotFound, FormulaVersionNotFound, AccessDenied, BadRequest],
       },
@@ -566,7 +601,7 @@ export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
       'replaceFormulaVersionSharing',
       '/assessment/formula-functions/:functionId/versions/:versionNo/sharing',
       {
-        params: Schema.Struct({ functionId: id, versionNo: Schema.String }),
+        params: versionParams,
         payload: Schema.Struct({
           expectedToken: Schema.String,
           orgNodeIds: Schema.Array(id),

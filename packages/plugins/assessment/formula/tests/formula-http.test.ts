@@ -426,6 +426,76 @@ export default defineFormula({
     expect(JSON.stringify(refused.body)).toContain('TYPECHECK')
   }, 120_000)
 
+  it('tries a published version by what it froze, the way the browser asks', async () => {
+    const created = await call('POST', '/api/assessment/formula-functions', {
+      name: 'Version try-run',
+    })
+    expect(created.status, inspect(created.body)).toBe(200)
+    const id = (created.body as { function: { id: string } }).function.id
+    const saved = await call('PATCH', `/api/assessment/formula-functions/${id}`, {
+      expectedDraftRevision: 1,
+      draftSourceTs: IDENTITY,
+      draftTests: [{ name: 'three', input: { value: '3.00' }, expected: '3' }],
+    })
+    expect(saved.status, inspect(saved.body)).toBe(200)
+    const published = await call('POST', `/api/assessment/formula-functions/${id}/versions`, {
+      expectedDraftRevision: 2,
+      releaseName: '2026 秋季正式规则',
+    })
+    expect(published.status, inspect(published.body)).toBe(200)
+    const version = (published.body as { version: { contractSha256: string } }).version
+
+    // the browser's own client, so the contract must encode and decode whole
+    const outcome = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        const client = yield* HttpApiClient.make(Api.local(formulaApiGroup), {
+          baseUrl: base,
+          transformClient: HttpClient.mapRequest(
+            HttpClientRequest.setHeader('cookie', `${sessionCookieName}=${token}`),
+          ),
+        })
+        return yield* client.assessmentFormula.evaluateFormulaVersion({
+          params: { functionId: id, versionNo: '1' },
+          payload: {
+            cases: [
+              { clientId: 'try', input: { value: '3.00' } },
+              { clientId: 'fail', input: { value: '2.00' }, expected: '5' },
+              { clientId: 'bad', input: { value: '11.00' }, expected: '11' },
+            ],
+          },
+        })
+      }).pipe(Effect.provide(FetchHttpClient.layer)),
+    )
+    if (Exit.isFailure(outcome)) throw new Error(inspect(outcome.cause, { depth: 10 }))
+    expect(outcome.value.contractSha256).toBe(version.contractSha256)
+    const byId = new Map(outcome.value.cases.map((row) => [row.clientId, row]))
+    expect(byId.get('try')).toEqual({ clientId: 'try', actual: '3' })
+    expect(byId.get('fail')).toMatchObject({ passed: false, actual: '2', expected: '5' })
+    expect(byId.get('bad')?.passed).toBe(false)
+    expect((byId.get('bad')?.problems as readonly { at: string }[])[0]).toMatchObject({
+      at: 'input',
+      parameter: 'value',
+    })
+
+    const evaluations = (versionNo: string) =>
+      `/api/assessment/formula-functions/${id}/versions/${versionNo}/evaluations`
+    const missing = await call('POST', evaluations('9'), { cases: [] })
+    expect(missing.status, inspect(missing.body)).toBe(404)
+    expect((missing.body as { _tag: string })._tag).toBe('ASSESSMENT_FORMULA_VERSION_NOT_FOUND')
+    const unusable = await call('POST', evaluations('first'), { cases: [] })
+    expect(unusable.status, inspect(unusable.body)).toBe(400)
+
+    // a stored artifact that no longer matches its hash is refused, not run
+    await query(sql`
+      update assessment_formula_versions set runtime_js = runtime_js || '/*tampered*/'
+      where function_id = ${id} and version_no = 1`)
+    const tampered = await call('POST', evaluations('1'), {
+      cases: [{ clientId: 'try', input: { value: '3.00' } }],
+    })
+    expect(tampered.status, inspect(tampered.body)).toBe(409)
+    expect(tampered.body).toEqual({ _tag: 'ASSESSMENT_FORMULA_VERSION_UNRUNNABLE' })
+  }, 120_000)
+
   it('pages the function list with a keyset cursor: no repeats, no gaps', async () => {
     const owner = await rootNode()
     for (let index = 0; index < 12; index += 1) {

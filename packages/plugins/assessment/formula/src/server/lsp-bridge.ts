@@ -14,8 +14,9 @@
  * Close codes are the protocol's whole vocabulary outward: 1003 for
  * binary, 1009 for an oversized text frame, 1008 for a policy refusal,
  * 1013 when the browser floods the queue, 1011 when the authoring side
- * dies, 1000 for a normal goodbye. Reasons are short stable words - no
- * internal paths, no stacks, no sandbox detail.
+ * dies, 4429 when the person already holds every seat, 1000 for a normal
+ * goodbye. Reasons are short stable words - no internal paths, no stacks,
+ * no sandbox detail.
  */
 
 import { Cause, Context, Effect, Layer, Queue, Ref, Result, Stream, type Scope } from 'effect'
@@ -27,15 +28,29 @@ import type { FormulaLanguageSession } from './language.ts'
 const INBOUND_QUEUE_CAPACITY = 64
 
 /**
- * One live bridge per person: keyed by tenant and user, not by the auth
- * session, or one person with two browsers would hold two language
- * servers. Layer-owned state on purpose - a module-global Set has no
+ * How many live bridges one person may hold at once.
+ *
+ * More than one: somebody editing two formulas in two windows, or reading a
+ * published version beside the draft it came from, needs language
+ * assistance in each. Few enough that one person cannot take most of the
+ * authoring sandbox's global sessions, which are shared by everybody
+ * writing formulas and remain the real resource guard.
+ */
+export const FORMULA_LSP_SEATS_PER_PERSON = 3
+
+/** the close a browser reads as "you already hold every seat" */
+const SEAT_LIMIT_CLOSE = { code: 4429, reason: 'seat-limit' } as const
+
+/**
+ * Counted seats per person: keyed by tenant and user, not by the auth
+ * session, or one person with several browsers would multiply their share
+ * of the sandbox. Layer-owned state on purpose - a module-global Map has no
  * lifecycle and no owner.
  */
 export class FormulaLspQuota extends Context.Service<
   FormulaLspQuota,
   {
-    /** true when the slot was taken; released with the scope */
+    /** true when a seat was taken; released with the scope */
     readonly acquire: (key: string) => Effect.Effect<boolean, never, Scope.Scope>
   }
 >()('@qualy/plugin-assessment-formula/FormulaLspQuota') {}
@@ -43,27 +58,47 @@ export class FormulaLspQuota extends Context.Service<
 export const formulaLspQuotaLayer: Layer.Layer<FormulaLspQuota> = Layer.effect(
   FormulaLspQuota,
   Effect.gen(function* () {
-    const holders = yield* Ref.make<ReadonlySet<string>>(new Set())
+    const seats = yield* Ref.make<ReadonlyMap<string, number>>(new Map())
     const acquire = (key: string): Effect.Effect<boolean, never, Scope.Scope> =>
       Effect.acquireRelease(
-        Ref.modify(holders, (held) => {
-          if (held.has(key)) return [false, held] as const
-          const next = new Set(held)
-          next.add(key)
-          return [true, next as ReadonlySet<string>] as const
+        Ref.modify(seats, (held) => {
+          const taken = held.get(key) ?? 0
+          if (taken >= FORMULA_LSP_SEATS_PER_PERSON) return [false, held] as const
+          const next = new Map(held)
+          next.set(key, taken + 1)
+          return [true, next as ReadonlyMap<string, number>] as const
         }),
-        (taken) =>
-          taken
-            ? Ref.update(holders, (held) => {
-                const next = new Set(held)
-                next.delete(key)
-                return next as ReadonlySet<string>
+        (seated) =>
+          seated
+            ? Ref.update(seats, (held) => {
+                const next = new Map(held)
+                const remaining = (held.get(key) ?? 1) - 1
+                if (remaining > 0) next.set(key, remaining)
+                else next.delete(key)
+                return next as ReadonlyMap<string, number>
               })
             : Effect.void,
       )
     return { acquire }
   }),
 )
+
+/**
+ * Refuse an upgraded socket for want of a seat.
+ *
+ * A browser's WebSocket cannot read the status of a refused handshake - it
+ * sees only a failed connection with close code 1006 - so a refusal it must
+ * tell apart from an outage arrives as a completed upgrade closed at once
+ * with an application close code. No language session is opened for it.
+ */
+export const refuseSeat = (socket: Socket.Socket): Effect.Effect<void, never, Scope.Scope> =>
+  Effect.gen(function* () {
+    // the transport only exists once the read half is acquired: the upgrade
+    // itself happens there, and a write before it waits for it
+    yield* socket.reader
+    const { write } = yield* socket.writer
+    yield* write(new Socket.CloseEvent(SEAT_LIMIT_CLOSE.code, SEAT_LIMIT_CLOSE.reason))
+  }).pipe(Effect.ignore)
 
 /** the id of a json-rpc REQUEST, if the frame is one; null otherwise */
 const requestIdOf = (jsonRpc: string): number | string | null => {
