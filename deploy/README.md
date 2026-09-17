@@ -22,11 +22,15 @@ They are built on a machine with the repository checked out:
 pnpm release:build <release> --check     # tools/release/build-images.ts
 ```
 
-A named release is built from a clean checkout: changes to anything the
-build reads are refused (commit them, or build without a name and get a
-`-dirty` tag, or pass `--allow-dirty`), and the build fails if the checkout
-changes while the three images are being built. Each image records the
-commit it came from as `org.opencontainers.image.revision`.
+A named release is built from a snapshot of the commit, not from the working
+directory: a detached git worktree of HEAD is the build context of all three
+images, so nothing the working directory holds beyond the commit can reach
+them. Changes to anything the build reads are refused (commit them, or build
+without a name and get a `-dirty` tag, or pass `--allow-dirty`). The images
+are built for `linux/amd64` unless `--platform` says otherwise, and once
+built they are inspected: same platform, same revision, or the release is
+removed. Each image records the commit it came from as
+`org.opencontainers.image.revision`.
 
 and moved to the host either through a registry or as a file:
 
