@@ -24,27 +24,37 @@ import { seatOf } from '../lib/xstyle.ts'
 // element. A width stated in a caller's xstyle was silently dropped and the
 // panel shrank to whatever it happened to contain.
 const styles = stylex.create({
-  // structure only; the surface is the widget's own under the theme
+  // The product's panel material, a step lighter than a dialog's: the
+  // raised surface, a hairline edge, a soft shadow that says it stands over
+  // the page, and the card radius. The widget's own border, radius and
+  // shadow are stated away here rather than left to show through.
   content: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 16,
-    padding: 16,
+    gap: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: `color-mix(in oklch, ${tokens.foreground} 8%, transparent)`,
+    borderRadius: tokens.radiusLg,
+    backgroundColor: tokens.surfaceElevated,
+    boxShadow: `0 2px 6px -2px oklch(0 0 0 / 0.06), 0 18px 36px -14px oklch(0 0 0 / 0.22), inset 0 1px 0 color-mix(in oklch, ${tokens.surface} 35%, transparent)`,
+    color: tokens.foreground,
     // size and leading travel together, as the utility this replaces did
-    fontSize: 14,
+    fontSize: 13,
     lineHeight: '1.25rem',
     outlineStyle: 'none',
   },
   header: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 4,
-    fontSize: 14,
+    gap: 2,
+    fontSize: 13,
   },
   title: {
-    fontSize: 16,
-    lineHeight: '1.5rem',
-    fontWeight: 500,
+    fontSize: 14,
+    lineHeight: '1.25rem',
+    fontWeight: 600,
   },
   description: {
     color: tokens.mutedForeground,
