@@ -32,7 +32,13 @@ export type PreviewCurrent =
   | { readonly status: 'idle' }
   | { readonly status: 'loading'; readonly source: string }
   | { readonly status: 'ready'; readonly source: string; readonly contract: DraftContract }
-  | { readonly status: 'refused'; readonly source: string; readonly refusal: string }
+  | {
+      readonly status: 'refused'
+      readonly source: string
+      readonly refusal: string
+      /** the refusal as it arrived, for a screen that shows what it carries */
+      readonly cause: unknown
+    }
 
 export interface LastGoodContract {
   readonly source: string
@@ -73,6 +79,7 @@ export const useDraftPreview = (
           status: 'refused',
           source: wanted,
           refusal: describeRefusal(error),
+          cause: error,
         }),
       )
       .then((outcome) => {

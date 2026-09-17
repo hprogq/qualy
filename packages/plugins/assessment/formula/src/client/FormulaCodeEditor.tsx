@@ -22,6 +22,7 @@ import { useEffect, useRef, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { HttpApiClient } from 'effect/unstable/httpapi'
 import { useI18n } from '@qualy/web-i18n'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { formulaApi } from './api.ts'
 import { monaco } from './monaco-setup.ts'
 import {
@@ -40,19 +41,55 @@ import {
 import { FORMULA_URI } from './formula-lsp/protocol.ts'
 import { formulaMessages as m } from './i18n.ts'
 
+// A pane rather than a boxed field: a head naming what is below it and how
+// the language connection stands, and the editor taking every pixel the
+// pane is given. Whoever places it decides the pane's height; standing on
+// its own it keeps a floor, so it is never a line tall.
 const styles = stylex.create({
   frame: {
     display: 'flex',
+    height: '100%',
+    minHeight: 0,
     flexDirection: 'column',
-    gap: '0.375rem',
+    backgroundColor: tokens.surface,
   },
+  head: {
+    display: 'flex',
+    height: 38,
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 10,
+    paddingInline: 16,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
+  },
+  label: { flexShrink: 0, fontSize: 12, fontWeight: 500, color: tokens.surfaceMutedForeground },
+  spring: { flexGrow: 1 },
   editor: {
-    height: '26rem',
-    borderRadius: '0.5rem',
-    border: '1px solid var(--q-border)',
+    flexGrow: 1,
+    minHeight: 240,
     overflow: 'hidden',
   },
-  status: { fontSize: '0.75rem', color: 'var(--q-surface-muted-foreground)' },
+  status: {
+    display: 'inline-flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 6,
+    margin: 0,
+    fontSize: 11,
+    color: tokens.mutedForeground,
+  },
+  statusWords: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  dot: {
+    width: 6,
+    height: 6,
+    flexShrink: 0,
+    borderRadius: '9999px',
+    backgroundColor: `color-mix(in oklab, ${tokens.mutedForeground} 45%, transparent)`,
+  },
+  dotReady: { backgroundColor: tokens.success },
+  dotDown: { backgroundColor: tokens.warning },
 })
 
 export interface FormulaCodeEditorProps {
@@ -71,6 +108,8 @@ export interface FormulaCodeEditorProps {
   readonly seed: number
   readonly readOnly: boolean
   readonly ariaLabel: string
+  /** the pane's own name in its head; the accessible name when not given */
+  readonly label?: string
 }
 
 // the endpoint's path comes from the same contract the server serves, so a
@@ -202,14 +241,27 @@ export default function FormulaCodeEditor(props: FormulaCodeEditorProps) {
 
   return (
     <div {...stylex.props(styles.frame)}>
+      <div {...stylex.props(styles.head)}>
+        <span {...stylex.props(styles.label)}>{props.label ?? props.ariaLabel}</span>
+        <span {...stylex.props(styles.spring)} />
+        <p
+          {...stylex.props(styles.status)}
+          data-testid="formula-lsp-status"
+          data-state={connectionState}
+          title={statusText}
+        >
+          <span
+            aria-hidden
+            {...stylex.props(
+              styles.dot,
+              connectionState === 'ready' && styles.dotReady,
+              connectionState !== 'ready' && connectionState !== 'connecting' && styles.dotDown,
+            )}
+          />
+          <span {...stylex.props(styles.statusWords)}>{statusText}</span>
+        </p>
+      </div>
       <div ref={containerRef} {...stylex.props(styles.editor)} data-testid="formula-code-editor" />
-      <p
-        {...stylex.props(styles.status)}
-        data-testid="formula-lsp-status"
-        data-state={connectionState}
-      >
-        {statusText}
-      </p>
     </div>
   )
 }

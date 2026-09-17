@@ -1,20 +1,61 @@
 import * as stylex from '@stylexjs/stylex'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
-import { useApi, useApiQuery, usePageRouteParams, useRunApi } from '@qualy/web-runtime'
+import {
+  PageLink,
+  useApi,
+  useApiQuery,
+  usePageRouteParams,
+  useClaimScreenFill,
+  usePageTitle,
+  useRunApi,
+} from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
+import { layout } from '@qualy/ui/theme/layout.stylex'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
-import { Badge } from '@qualy/ui/badge'
 import { toast } from '@qualy/ui/toast'
-import { Field, PageHeader, Panel } from '@qualy/ui/admin'
+import { Field } from '@qualy/ui/admin'
 import { Spinner } from '@qualy/ui/spinner'
+import { Skeleton } from '@qualy/ui/skeleton'
+import { EmptyRow } from '@qualy/ui/empty-row'
+import { PageContainer } from '@qualy/ui/page-container'
+import { useIsMobile } from '@qualy/ui/use-mobile'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@qualy/ui/tabs'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from '@qualy/ui/sheet'
+import {
+  ArchiveIcon,
+  ArchiveRestoreIcon,
+  ArrowLeftIcon,
+  CircleCheckIcon,
+  EqualIcon,
+  ListChecksIcon,
+  ListPlusIcon,
+  PlayIcon,
+  PlusIcon,
+  SaveIcon,
+  UploadIcon,
+} from 'lucide-react'
 import { constraintOf, parameterSchemaAt, type AtomicSchema } from '@qualy/value-schema'
 import { validateValue } from '@qualy/value-schema/validate'
 import { formulaApi } from './api.ts'
 import { formulaMessages as m } from './i18n.ts'
 import { useDraftPreview, type DraftContract } from './use-draft-preview.ts'
 import { VersionSharing } from './VersionSharing.tsx'
+import { ContractTable } from './ContractTable.tsx'
+import { kindWords } from './kind-words.ts'
+import { ExampleRow, type Verdict } from './ExampleRow.tsx'
+import { exampleStyles } from './example-grid.ts'
+import { shortWhen } from './library-styles.ts'
 import { AtomicValueField, InputValueForm } from '@qualy/web-value-form/InputValueForm'
 import {
   draftsFromStored,
@@ -28,43 +69,511 @@ import {
 // panel does
 const FormulaCodeEditor = lazy(() => import('./FormulaCodeEditor.tsx'))
 
+// One formula, laid out like the tool it is: write on the left, try on the
+// right, and under both a panel that says whether it can be published - its
+// examples, what the compiler made of it, and the structure it takes.
+//
+// The screen fills the height the application's bars leave, so the source,
+// the try-run and the examples each scroll in their own place and none of
+// them pushes the others off the screen. The bar across the top holds the
+// formula's name, where its draft stands, and the three things that happen
+// to the whole of it: archive, save, publish. On a phone the parts stack
+// and the page scrolls as one.
+
+/** the view the panel under the editor shows */
+type PanelTab = 'examples' | 'compile' | 'contract'
+
+/** how a panel view stands, for the dot on its tab */
+type Tone = 'good' | 'bad' | 'quiet'
+
+const MONO = 'ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace'
+
 const styles = stylex.create({
-  page: { display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.5rem' },
-  source: {
-    width: '100%',
-    minHeight: '26rem',
-    borderRadius: '0.5rem',
-    border: '1px solid var(--q-border)',
-    background: 'var(--q-surface)',
+  workbench: {
     display: 'flex',
+    flexGrow: 1,
+    minHeight: 0,
+    flexDirection: 'column',
+    backgroundColor: tokens.background,
+  },
+  bar: {
+    display: 'flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: { default: 12, [breakpoints.phone]: 8 },
+    minHeight: 56,
+    paddingBlock: 8,
+    paddingInline: { default: 20, [breakpoints.phone]: layout.pageGutter },
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+  },
+  back: {
+    display: 'inline-flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 6,
+    height: 30,
+    paddingInline: 8,
+    marginLeft: -8,
+    borderRadius: tokens.radiusMd,
+    fontSize: 13,
+    color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
+    backgroundColor: { default: null, ':hover': tokens.surfaceMuted },
+    textDecoration: 'none',
+  },
+  backWords: { display: { default: null, [breakpoints.phone]: 'none' } },
+  rule: {
+    width: 1,
+    height: 16,
+    flexShrink: 0,
+    backgroundColor: tokens.border,
+    display: { default: null, [breakpoints.phone]: 'none' },
+  },
+  heading: {
+    display: 'flex',
+    minWidth: 0,
+    flexGrow: { default: 0, [breakpoints.phone]: 1 },
+    flexShrink: 1,
+    flexDirection: 'column',
+    gap: 2,
+  },
+  titleLine: { display: 'flex', minWidth: 0, alignItems: 'center', gap: 8 },
+  // the name edits in place, as a title rather than as a form field: it is
+  // a field only to the pointer resting on it and the caret inside it
+  name: {
+    minWidth: { default: '6em', [breakpoints.phone]: 0 },
+    flexShrink: 1,
+    maxWidth: { default: '24rem', [breakpoints.phone]: '100%' },
+    height: 28,
+    marginLeft: -6,
+    paddingInline: 6,
+    borderWidth: 0,
+    borderRadius: 6,
+    outline: 'none',
+    backgroundColor: 'transparent',
+    fontFamily: 'inherit',
+    fontSize: 15,
+    fontWeight: 600,
+    letterSpacing: '-0.01em',
+    color: tokens.foreground,
+    textOverflow: 'ellipsis',
+    boxShadow: {
+      default: null,
+      ':hover': `inset 0 0 0 1px ${tokens.border}`,
+      ':focus-visible': `0 0 0 2px color-mix(in oklab, ${tokens.focusRing} 60%, transparent)`,
+      ':disabled': 'none',
+    },
+  },
+  standing: {
+    display: 'inline-flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    height: 20,
+    paddingInline: 7,
+    borderRadius: 5,
+    fontSize: 11,
+    fontWeight: 500,
+    whiteSpace: 'nowrap',
+  },
+  standingPublished: {
+    backgroundColor: `color-mix(in oklab, ${tokens.success} 15%, transparent)`,
+    color: tokens.successForeground,
+  },
+  standingDraft: { backgroundColor: tokens.surfaceMuted, color: tokens.mutedForeground },
+  standingArchived: {
+    boxShadow: `inset 0 0 0 1px ${tokens.border}`,
+    color: tokens.mutedForeground,
+  },
+  statusLine: {
+    display: 'flex',
+    minWidth: 0,
+    flexWrap: 'wrap',
+    columnGap: 12,
+    fontSize: 12,
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
+  },
+  statusDirty: { color: tokens.warningForeground },
+  spring: { flexGrow: 1 },
+  springWide: { flexGrow: 1, display: { default: null, [breakpoints.phone]: 'none' } },
+  actions: {
+    display: 'flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: { default: 8, [breakpoints.phone]: 4 },
+  },
+  notice: {
+    display: 'flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 12,
+    paddingBlock: 8,
+    paddingInline: { default: 20, [breakpoints.phone]: layout.pageGutter },
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
+    fontSize: 13,
+  },
+  noticeDanger: { backgroundColor: tokens.dangerSurface, color: tokens.danger },
+  noticeWarning: {
+    backgroundColor: `color-mix(in oklab, ${tokens.warning} 12%, ${tokens.surface})`,
+    color: tokens.foreground,
+  },
+  noticeWords: { minWidth: 0 },
+  noticeTitle: { fontWeight: 600, marginRight: 8 },
+
+  upper: {
+    display: 'flex',
+    flexGrow: 1,
+    minHeight: 0,
+    flexDirection: { default: 'row', [breakpoints.phone]: 'column' },
+  },
+  sourcePane: {
+    display: 'flex',
+    minWidth: 0,
+    // a definite height on a phone, where the page scrolls as one: the editor
+    // inside fills its pane by percentage, which a minimum does not resolve
+    minHeight: 0,
+    height: { default: null, [breakpoints.phone]: '26rem' },
+    flexGrow: { default: 1, [breakpoints.phone]: 0 },
+    flexDirection: 'column',
+    backgroundColor: tokens.surface,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    borderWidth: 0,
+    borderRightWidth: { default: 1, [breakpoints.phone]: 0 },
+    borderBottomWidth: { default: 0, [breakpoints.phone]: 1 },
+  },
+  editorLoading: {
+    display: 'flex',
+    flexGrow: 1,
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: '0.5rem',
-    color: 'var(--q-surface-muted-foreground)',
-    fontSize: '0.8125rem',
+    gap: 8,
+    fontSize: 13,
+    color: tokens.mutedForeground,
   },
-  actions: { display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' },
-  testGrid: { display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '0.75rem' },
-  testRow: {
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr auto',
-    gap: '0.5rem',
+  // The try-run holds still and the versions scroll under it: a version list
+  // grows with every publication, and it must never carry the form the
+  // author is typing into out of reach.
+  side: {
+    display: 'flex',
+    width: { default: 324, [breakpoints.tablet]: 288, [breakpoints.phone]: 'auto' },
+    minHeight: 0,
+    flexShrink: 0,
+    flexDirection: 'column',
+    overflow: { default: 'hidden', [breakpoints.phone]: 'visible' },
+    backgroundColor: tokens.background,
+  },
+  // a form of many parameters still leaves the versions some room
+  tryPart: {
+    flexShrink: 0,
+    maxHeight: { default: '62%', [breakpoints.phone]: null },
+    overflowY: { default: 'auto', [breakpoints.phone]: 'visible' },
+  },
+  versionsPart: {
+    display: 'flex',
+    minHeight: 0,
+    flexGrow: 1,
+    flexDirection: 'column',
+  },
+  versionsScroll: {
+    minHeight: 0,
+    flexGrow: 1,
+    overflowY: { default: 'auto', [breakpoints.phone]: 'visible' },
+  },
+  sideHead: {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: 10,
+    paddingTop: 14,
+    paddingBottom: 8,
+    paddingInline: 16,
+  },
+  sideTitle: {
+    flexShrink: 0,
+    margin: 0,
+    fontSize: 12,
+    fontWeight: 600,
+    letterSpacing: '0.06em',
+    color: tokens.surfaceMutedForeground,
+  },
+  sideNote: {
+    minWidth: 0,
+    fontSize: 11,
+    textAlign: 'right',
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
+  },
+  sideNoteOff: { color: tokens.warningForeground },
+  sideEmpty: {
+    margin: 0,
+    paddingInline: 16,
+    paddingBottom: 14,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  sideRule: { height: 1, flexShrink: 0, backgroundColor: tokens.border },
+  tryForm: { paddingInline: 16, paddingBottom: 12 },
+  tryPending: {
+    display: 'flex',
+    minHeight: 150,
+    flexDirection: 'column',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    marginInline: 16,
+    marginBottom: 14,
+    paddingInline: 16,
+    borderRadius: tokens.radiusMd,
+    backgroundColor: tokens.surfaceInset,
+    fontSize: 12,
+    lineHeight: 1.5,
+    textAlign: 'center',
+    color: tokens.mutedForeground,
   },
-  testCase: {
+  tryPendingOff: { color: tokens.warningForeground },
+  tryPendingSpinner: { width: 18, height: 18 },
+  tryActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    paddingInline: 16,
+    paddingBottom: 8,
+  },
+  tryInline: {
+    display: 'inline-flex',
+    minWidth: 0,
+    alignItems: 'baseline',
+    gap: 6,
+    fontSize: 13,
+  },
+  tryInlineLabel: { flexShrink: 0, color: tokens.mutedForeground },
+  tryInlineValue: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontWeight: 600,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  tryNote: {
+    margin: 0,
+    paddingInline: 16,
+    paddingBottom: 8,
+    fontSize: 12,
+    lineHeight: 1.5,
+    color: tokens.mutedForeground,
+  },
+  // What a try can become, as one quiet line under the run: two ways to keep
+  // it, side by side rather than wrapped under a button that ran out of room.
+  trySaves: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 2,
+    paddingLeft: 10,
+    paddingRight: 16,
+    paddingBottom: 12,
+  },
+  tryLink: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 5,
+    height: 26,
+    paddingInline: 6,
+    borderWidth: 0,
+    borderRadius: 6,
+    backgroundColor: { default: 'transparent', ':hover': tokens.surfaceMuted },
+    fontFamily: 'inherit',
+    fontSize: 12,
+    whiteSpace: 'nowrap',
+    color: {
+      default: tokens.surfaceMutedForeground,
+      ':hover': tokens.foreground,
+      ':disabled': tokens.mutedForeground,
+    },
+    cursor: { default: 'pointer', ':disabled': 'default' },
+  },
+  versions: { margin: 0, padding: 0, paddingBottom: 8, listStyle: 'none' },
+  version: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '0.5rem',
-    padding: '0.75rem',
-    border: '1px solid var(--q-border)',
-    borderRadius: '0.5rem',
+    gap: 6,
+    marginInline: 16,
+    paddingBlock: 10,
+    borderTopWidth: { default: 1, ':first-child': 0 },
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.divider,
   },
-  problemLine: { fontSize: '0.75rem', color: 'var(--q-danger, #b91c1c)', margin: 0 },
-  reportTable: { width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' },
-  reportCell: { padding: '0.375rem 0.5rem', borderTop: '1px solid var(--q-border)' },
-  mono: { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' },
-  hint: { fontSize: '0.8125rem', color: 'var(--q-surface-muted-foreground)' },
+  versionHead: { display: 'flex', alignItems: 'center', gap: 10 },
+  versionNo: { fontSize: 13, fontVariantNumeric: 'tabular-nums', color: tokens.mutedForeground },
+  versionNoLatest: { fontWeight: 600, color: tokens.foreground },
+  versionWhen: {
+    fontSize: 12,
+    fontVariantNumeric: 'tabular-nums',
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
+  },
+
+  panel: {
+    display: 'flex',
+    height: { default: 268, [breakpoints.phone]: 'auto' },
+    flexShrink: 0,
+    flexDirection: 'column',
+    backgroundColor: tokens.surface,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+  },
+  panelBar: {
+    display: 'flex',
+    flexShrink: 0,
+    flexWrap: { default: 'nowrap', [breakpoints.phone]: 'wrap' },
+    alignItems: 'center',
+    gap: 6,
+    paddingLeft: 8,
+    paddingRight: 12,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
+  },
+  tabList: { gap: 0 },
+  tab: {
+    height: 38,
+    gap: 7,
+    paddingInline: 14,
+    borderRadius: 0,
+    fontSize: 12.5,
+  },
+  // the tab wraps what it is given in a label of its own, so the spacing
+  // between the dot, the name and the count has to be inside
+  tabWords: { display: 'inline-flex', alignItems: 'center', gap: 7 },
+  tabCount: {
+    fontWeight: 400,
+    fontVariantNumeric: 'tabular-nums',
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
+  },
+  dot: {
+    display: 'inline-block',
+    width: 6,
+    height: 6,
+    flexShrink: 0,
+    borderRadius: '9999px',
+    backgroundColor: `color-mix(in oklab, ${tokens.mutedForeground} 40%, transparent)`,
+  },
+  dotGood: { backgroundColor: tokens.success },
+  dotBad: { backgroundColor: tokens.danger },
+  panelBody: { display: 'flex', minHeight: 0, flexGrow: 1, flexDirection: 'column' },
+  panelScroll: { minHeight: 0, flexGrow: 1, overflowY: 'auto' },
+  panelFoot: {
+    display: 'flex',
+    minHeight: 36,
+    flexShrink: 0,
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    columnGap: 10,
+    paddingInline: 16,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.divider,
+    backgroundColor: tokens.surfaceInset,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  footRule: { width: 1, height: 12, backgroundColor: tokens.border },
+  footTotal: { fontVariantNumeric: 'tabular-nums' },
+  footAction: {
+    padding: 0,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+    fontFamily: 'inherit',
+    fontSize: 12,
+    fontWeight: 500,
+    color: { default: tokens.surfaceMutedForeground, ':hover': tokens.foreground },
+    textDecoration: { default: 'none', ':hover': 'underline' },
+    cursor: 'pointer',
+  },
+  stateLine: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    margin: 0,
+    paddingBlock: 12,
+    paddingInline: 16,
+    fontSize: 13,
+  },
+  reportTable: { width: '100%', borderCollapse: 'collapse', fontSize: 12.5 },
+  reportCell: {
+    paddingBlock: 7,
+    paddingInline: 16,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.divider,
+    verticalAlign: 'top',
+  },
+  // a column as wide as what it holds, leaving the rest to the message
+  fit: { width: '1%' },
+  mono: { fontFamily: MONO, fontSize: 11.5, whiteSpace: 'nowrap' },
+  detail: {
+    margin: 0,
+    paddingBlock: 10,
+    paddingInline: 16,
+    whiteSpace: 'pre-wrap',
+    fontFamily: MONO,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  issues: {
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+  },
+  contractNote: {
+    margin: 0,
+    paddingBlock: 8,
+    paddingInline: 16,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  // the panel's one line when there is nothing to list, in the middle of it
+  emptyFill: {
+    display: 'flex',
+    minHeight: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  caseSheet: { width: { default: 420, [breakpoints.phone]: null } },
+  caseBody: {
+    display: 'flex',
+    minHeight: 0,
+    flexGrow: 1,
+    flexDirection: 'column',
+    gap: 12,
+    overflowY: 'auto',
+    paddingInline: 24,
+    paddingBottom: 16,
+  },
+  caseFields: { display: 'flex', flexDirection: 'column', gap: 14 },
+  caseFoot: { display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6 },
+  // a verdict the compile view states in one mark, where there is nothing
+  // to list
+  verdictBlock: {
+    display: 'flex',
+    minHeight: '100%',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingBlock: 16,
+  },
+  verdictGood: { color: tokens.success },
+  verdictWords: { fontSize: 13, fontWeight: 500, color: tokens.foreground },
+  verdictQuiet: { fontSize: 12, color: tokens.mutedForeground },
+  verdictSpinner: { width: 20, height: 20 },
+  failTitle: { fontWeight: 500, color: tokens.danger },
+  failCount: { fontSize: 12, color: tokens.mutedForeground },
+  problemLine: { margin: 0, fontSize: 12, color: tokens.danger },
+  notes: { margin: 0, fontSize: 12, color: tokens.mutedForeground },
+  skeleton: { display: 'flex', flexDirection: 'column', gap: 16, padding: 20 },
 })
 
 interface DraftTest {
@@ -84,6 +593,37 @@ const newTestKey = (): string =>
 
 /** the wire/compare projection: identity is local, never sent or compared */
 const bareTests = (tests: readonly DraftTest[]) => tests.map(({ key: _key, ...rest }) => rest)
+
+/**
+ * A case's input in brief, for a table line: the parameters and their
+ * values as the author would write them, without the quotes JSON puts on
+ * every key. Anything that is not an object of values is shown as stored.
+ */
+const inputSummaryOf = (inputText: string): string => {
+  try {
+    const value = JSON.parse(inputText === '' ? '{}' : inputText) as unknown
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return inputText
+    const pairs = Object.entries(value).map(
+      ([key, one]) => `${key}: ${typeof one === 'string' ? one : JSON.stringify(one)}`,
+    )
+    return pairs.length === 0 ? '{}' : `{ ${pairs.join(', ')} }`
+  } catch {
+    return inputText
+  }
+}
+
+/**
+ * How wide the name field is drawn: as wide as the name, so the badge
+ * after it sits where the name ends. A Han character is about an em, a
+ * Latin one a little over half.
+ */
+const nameWidth = (name: string): string => {
+  const ems = [...name].reduce(
+    (sum, character) => sum + (character.charCodeAt(0) > 0x2e80 ? 1 : 0.6),
+    0,
+  )
+  return `calc(${ems.toFixed(1)}em + 14px)`
+}
 
 /** a refusal raised by this screen's own checks, worded here, never generic */
 class LocalFinding extends Error {}
@@ -112,10 +652,18 @@ interface PublishFindings {
   readonly issues?: readonly { path: string; reason: string }[]
   /** the guest's own words when contract extraction itself threw */
   readonly detail?: string
+  /** the packager's own words when bundling failed */
+  readonly packager?: string
 }
 
 type ReportRow = NonNullable<PublishFindings['report']>[number]
 type ReportProblem = NonNullable<ReportRow['problems']>[number]
+
+/** which refusal an error is, when it is one of the api's */
+const tagOf = (error: unknown): string | undefined => {
+  const tag = (error as { _tag?: unknown } | null | undefined)?._tag
+  return typeof tag === 'string' ? tag : undefined
+}
 
 /** the structured data a refused publish carries, whichever refusal it was */
 const findingsOf = (error: unknown): PublishFindings => {
@@ -125,7 +673,27 @@ const findingsOf = (error: unknown): PublishFindings => {
     ...(carried.report === undefined ? {} : { report: carried.report }),
     ...(carried.issues === undefined ? {} : { issues: carried.issues }),
     ...(carried.detail === undefined ? {} : { detail: carried.detail }),
+    // every error has a message; only the packager's refusal carries one worth showing
+    ...(tagOf(error) === 'ASSESSMENT_FORMULA_BUNDLE_FAILED' &&
+    typeof (error as { message?: unknown }).message === 'string'
+      ? { packager: (error as { message: string }).message }
+      : {}),
   }
+}
+
+/** the dot a tab carries */
+function ToneDot({ tone }: { readonly tone: Tone }) {
+  return (
+    <span
+      aria-hidden
+      data-tone={tone}
+      {...stylex.props(
+        styles.dot,
+        tone === 'good' && styles.dotGood,
+        tone === 'bad' && styles.dotBad,
+      )}
+    />
+  )
 }
 
 export default function FormulaEditorPage() {
@@ -145,6 +713,13 @@ export default function FormulaEditorPage() {
   // else's. A note about how it came to exist and nothing more: there is
   // no following the source, and no version of it to be behind.
   const copiedFrom = detail.data?.copiedFrom ?? null
+  // the shell repeats the formula's name once the bar has scrolled away
+  const titleRef = usePageTitle(fn?.name ?? format(m.listTitle))
+  // a workbench wherever the parts sit side by side: it takes the room under
+  // the application's bars and scrolls inside; on a phone the parts stack and
+  // the page scrolls as one, so there is nothing to claim
+  const narrow = useIsMobile()
+  useClaimScreenFill(!narrow)
 
   const [name, setName] = useState('')
   const [source, setSource] = useState('')
@@ -195,6 +770,22 @@ export default function FormulaEditorPage() {
   const [runResults, setRunResults] = useState<Record<string, RunOutcome>>({})
   const [tryResult, setTryResult] = useState<RunOutcome | null>(null)
   const [running, setRunning] = useState(false)
+  // the panel under the editor: which view it shows, and which cases are
+  // open for editing there
+  const [tab, setTab] = useState<PanelTab>('examples')
+  // the case open in the sheet; kept after the sheet closes so its words
+  // stay put while it slides away
+  const [editingKey, setEditingKey] = useState<string | null>(null)
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const openCase = (key: string) => {
+    setEditingKey(key)
+    setSheetOpen(true)
+  }
+  // A refused publish speaks about the source it compiled. Its compiler and
+  // contract findings are shown while that is still the source on screen,
+  // and not once the author has typed past them.
+  const [findingsFor, setFindingsFor] = useState<string | null>(null)
+  const publishedSource = useRef('')
   useEffect(() => {
     setRowDrafts({})
     setRowIssues({})
@@ -608,6 +1199,7 @@ export default function FormulaEditorPage() {
     // publishing compiles the draft the SERVER holds, so unsaved edits are
     // saved first - otherwise the button quietly proves yesterday's bytes
     mutationFn: async () => {
+      publishedSource.current = source
       let revision = baseRevision ?? fn!.draftRevision
       if (dirty()) {
         // publication needs the whole draft coherent: tests that changed
@@ -645,7 +1237,40 @@ export default function FormulaEditorPage() {
     },
     onError: async (error: unknown) => {
       setFailure(error instanceof LocalFinding ? error.message : formatError(error))
-      setFindings(findingsOf(error))
+      const carried = findingsOf(error)
+      setFindings(carried)
+      setFindingsFor(publishedSource.current)
+      // The examples the server ran are the ones on screen - publishing saved
+      // them first - so its verdicts land on their rows, stamped with the
+      // source they ran against like any other run. A list that no longer
+      // lines up by name is left alone rather than guessed onto.
+      const report = carried.report
+      if (
+        report !== undefined &&
+        report.length === tests.length &&
+        report.every((row, index) => row.name === tests[index]!.name)
+      ) {
+        setRunResults((previous) => {
+          const next = { ...previous }
+          report.forEach((row, index) => {
+            const test = tests[index]!
+            next[test.key] = {
+              passed: row.passed,
+              ...(row.actual === undefined ? {} : { actual: row.actual }),
+              ...(row.refusal === undefined ? {} : { refusal: row.refusal }),
+              ...(row.defect === undefined ? {} : { defect: row.defect }),
+              ...(row.problems === undefined ? {} : { problems: row.problems }),
+              forSource: publishedSource.current,
+              forCase: caseFingerprint(test),
+            }
+          })
+          return next
+        })
+      }
+      // open the view that holds the reason
+      if ((carried.diagnostics?.length ?? 0) > 0) setTab('compile')
+      else if ((carried.issues?.length ?? 0) > 0) setTab('contract')
+      else if ((carried.report?.length ?? 0) > 0) setTab('examples')
       // the auto-save may have landed even though publishing was refused;
       // without a refresh the editor still holds the old revision and the
       // next save would conflict with its own work
@@ -664,25 +1289,6 @@ export default function FormulaEditorPage() {
     onSuccess: () => refresh(),
     onError: (error: unknown) => setFailure(formatError(error)),
   })
-
-  const kindName = (kind: string | undefined): string => {
-    switch (kind) {
-      case 'text':
-        return format(m.kindText)
-      case 'integer':
-        return format(m.kindInteger)
-      case 'decimal':
-        return format(m.kindDecimal)
-      case 'choice':
-        return format(m.kindChoice)
-      case 'boolean':
-        return format(m.kindBoolean)
-      case 'date':
-        return format(m.kindDate)
-      default:
-        return kind ?? ''
-    }
-  }
 
   const reasonText = (problem: ReportProblem): string => {
     const constraint = problem.constraint ?? ''
@@ -703,7 +1309,7 @@ export default function FormulaEditorPage() {
         return format(m.reasonEnum, { constraint })
       case 'type':
       case 'format':
-        return format(m.reasonKind, { kind: kindName(problem.constraint) })
+        return format(m.reasonKind, { kind: kindWords(format, problem.constraint) })
       case 'pattern':
         return format(m.reasonPattern, { constraint })
       case 'required':
@@ -739,9 +1345,11 @@ export default function FormulaEditorPage() {
     }
   }
 
-  const reportNotes = (row: ReportRow): string => {
-    if (row.problems !== undefined && row.problems.length > 0)
-      return row.problems
+  /** what a finished run says beyond its verdict, or nothing */
+  const outcomeNotes = (outcome: RunOutcome): string | null => {
+    const problems = Array.isArray(outcome.problems) ? (outcome.problems as ReportProblem[]) : []
+    if (problems.length > 0)
+      return problems
         .map((problem) =>
           problem.at === 'input'
             ? format(m.problemInput, {
@@ -753,431 +1361,829 @@ export default function FormulaEditorPage() {
               : format(m.problemExpected, { detail: reasonText(problem) }),
         )
         .join('; ')
-    if (row.refusal !== undefined) return format(m.refusalPrefix, { message: row.refusal })
-    if (row.defect !== undefined) return format(m.defectPrefix, { message: row.defect })
-    return row.passed ? '' : format(m.reportMismatch)
+    if (outcome.refusal !== undefined) return format(m.refusalPrefix, { message: outcome.refusal })
+    if (outcome.defect !== undefined) return format(m.defectPrefix, { message: outcome.defect })
+    if (outcome.passed === false) return format(m.resultFailed, { actual: outcome.actual ?? '—' })
+    return null
   }
 
   if (detail.isError) {
     return (
-      <div {...stylex.props(styles.page)}>
-        <Panel title={format(m.listTitle)}>
-          <p role="alert">{format(m.loadFailed)}</p>
-        </Panel>
+      <PageContainer>
+        <EmptyRow role="alert">{format(m.loadFailed)}</EmptyRow>
+      </PageContainer>
+    )
+  }
+  if (fn === undefined) {
+    return (
+      <div {...stylex.props(styles.workbench)} aria-busy>
+        <div {...stylex.props(styles.bar)}>
+          <Skeleton height={16} width={220} radius={4} />
+        </div>
+        <div {...stylex.props(styles.skeleton)}>
+          <Skeleton height={14} width="40%" radius={4} />
+          <Skeleton height={14} width="60%" radius={4} />
+          <Skeleton height={14} width="30%" radius={4} />
+        </div>
       </div>
     )
   }
-  if (fn === undefined) return <div {...stylex.props(styles.page)} />
 
   const archived = fn.status === 'archived'
   const busy = save.isPending || publish.isPending
 
-  return (
-    <div {...stylex.props(styles.page)}>
-      <PageHeader
-        title={fn.name}
-        description={
-          copiedFrom === null
-            ? (fn.description ?? undefined)
-            : `${fn.description === null ? '' : `${fn.description} · `}${format(
-                m.templatesCopiedFrom,
-                { number: copiedFrom.versionNo },
-              )}`
-        }
-        actions={
-          <div {...stylex.props(styles.actions)}>
-            {archived ? <Badge variant="outline">{format(m.statusArchived)}</Badge> : null}
-            <Button
-              variant="outline"
-              onClick={() => setStatus.mutate(archived ? 'active' : 'archived')}
-            >
-              {format(archived ? m.restore : m.archive)}
-            </Button>
-            <Button variant="outline" disabled={archived || busy || !dirty()} onClick={saveDraft}>
-              {format(m.save)}
-            </Button>
-            <Button disabled={archived || busy} onClick={() => publish.mutate()}>
-              {format(m.publish)}
-            </Button>
-          </div>
-        }
-      />
+  // the draft contract, as the side panel and the tabs speak of it
+  const structure: 'synced' | 'refused' | 'loading' | 'stale' =
+    preview.current.status === 'ready' && preview.current.source === source
+      ? 'synced'
+      : preview.current.status === 'refused' && preview.current.source === source
+        ? 'refused'
+        : contract === null
+          ? 'loading'
+          : 'stale'
+  const structureWords = format(
+    {
+      synced: m.structureSynced,
+      // a form drawn from the last structure that compiled says so
+      refused: contract === null ? m.structureRefused : m.structureKept,
+      loading: m.structureLoading,
+      stale: m.structureStale,
+    }[structure],
+  )
+  const refusalWords = preview.current.status === 'refused' ? preview.current.refusal : null
 
-      {failure === null ? null : <p role="alert">{failure}</p>}
+  // What stands against the source on screen: the preview's own refusal,
+  // which carries the compiler's findings, and a refused publish of the
+  // same source. A contract refusal means the code compiled and its
+  // parameters did not pass - the compile view is clean, the parameter
+  // view is not.
+  const previewCause =
+    preview.current.status === 'refused' && preview.current.source === source
+      ? preview.current.cause
+      : undefined
+  const previewFindings = previewCause === undefined ? {} : findingsOf(previewCause)
+  const contractRefused = tagOf(previewCause) === 'ASSESSMENT_FORMULA_CONTRACT_INVALID'
+  const findingsHeld = findingsFor === source
+  const held = (pick: (from: PublishFindings) => readonly unknown[] | undefined) =>
+    findingsHeld && (pick(findings)?.length ?? 0) > 0 ? findings : previewFindings
+  const diagnostics = held((from) => from.diagnostics).diagnostics ?? []
+  const issues = held((from) => from.issues).issues ?? []
+  const contractDetail =
+    findingsHeld && findings.detail !== undefined ? findings.detail : previewFindings.detail
+  const packagerWords =
+    findingsHeld && findings.packager !== undefined ? findings.packager : previewFindings.packager
+  const compileState: 'passed' | 'failed' | 'working' =
+    diagnostics.length > 0 || (structure === 'refused' && !contractRefused)
+      ? 'failed'
+      : structure === 'synced' || structure === 'refused'
+        ? 'passed'
+        : 'working'
 
-      {remoteMoved ? (
-        <Panel title={format(m.remoteMovedTitle)}>
-          <p {...stylex.props(styles.hint)}>{format(m.remoteMovedHint)}</p>
-          <Button variant="outline" onClick={discardLocal}>
-            {format(m.discardLocal)}
-          </Button>
-        </Panel>
-      ) : null}
+  // every case with what it came to, once, for the rows, the tab and the foot
+  const cases = tests.map((test, index) => {
+    const outcome = runResults[test.key]
+    const stale =
+      outcome !== undefined &&
+      (outcome.forSource !== source || outcome.forCase !== caseFingerprint(test))
+    const legal = rowLegal(test)
+    const fresh = outcome !== undefined && !stale
+    const verdict: Verdict = fresh
+      ? outcome.passed === true
+        ? 'passed'
+        : outcome.passed === false || outcome.refusal !== undefined || outcome.defect !== undefined
+          ? 'failed'
+          : 'unexpected'
+      : legal
+        ? 'not-run'
+        : 'fix'
+    return {
+      test,
+      index,
+      outcome,
+      stale,
+      legal,
+      verdict,
+      label: test.name === '' ? `#${index + 1}` : test.name,
+    }
+  })
+  const examplesTone: Tone = cases.some((one) => one.verdict === 'failed' || one.verdict === 'fix')
+    ? 'bad'
+    : cases.length > 0 && cases.every((one) => one.verdict === 'passed')
+      ? 'good'
+      : 'quiet'
+  const compileTone: Tone =
+    compileState === 'failed' ? 'bad' : compileState === 'passed' ? 'good' : 'quiet'
+  const contractTone: Tone = issues.length > 0 ? 'bad' : structure === 'synced' ? 'good' : 'quiet'
 
-      <Panel title={format(m.sourceLabel)}>
-        <Field label={format(m.nameLabel)}>
-          {(id) => (
-            <Input
-              id={id}
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              disabled={archived}
-            />
-          )}
-        </Field>
-        <Suspense
-          fallback={
-            <div {...stylex.props(styles.source)} role="status">
-              <Spinner aria-label={format(m.editorLoading)} />
-              <span>{format(m.editorLoading)}</span>
-            </div>
-          }
-        >
-          <FormulaCodeEditor
-            functionId={functionId}
-            value={source}
-            onChange={setSource}
-            seed={editorSeed}
-            readOnly={archived}
-            ariaLabel={format(m.sourceLabel)}
-          />
-        </Suspense>
-      </Panel>
+  // the foot of the examples: the first thing standing between the draft
+  // and a publication, and the one step that settles it when there is one
+  const failed = cases.find((one) => one.verdict === 'failed')
+  const toFix = cases.find((one) => one.verdict === 'fix')
+  const unexpected = cases.find((one) => one.verdict === 'unexpected')
+  const notRun = cases.filter((one) => one.verdict === 'not-run').length
+  const adoptable =
+    failed?.outcome?.actual !== undefined &&
+    failed.outcome.passed === false &&
+    failed.outcome.refusal === undefined &&
+    failed.outcome.defect === undefined
+      ? { key: failed.test.key, actual: failed.outcome.actual }
+      : unexpected?.outcome?.actual !== undefined
+        ? { key: unexpected.test.key, actual: unexpected.outcome.actual }
+        : null
+  const summary =
+    cases.length === 0
+      ? format(m.examplesEmpty)
+      : failed !== undefined
+        ? failed.outcome?.actual !== undefined
+          ? format(m.exampleFailedActual, { name: failed.label, actual: failed.outcome.actual })
+          : format(m.exampleFailed, { name: failed.label })
+        : toFix !== undefined
+          ? format(m.exampleNeedsFixing, { name: toFix.label })
+          : unexpected !== undefined
+            ? format(m.exampleNoExpectation, { name: unexpected.label })
+            : notRun > 0
+              ? format(m.examplesNotRun, { count: notRun })
+              : format(m.examplesAllPassed)
 
-      <Panel title={format(m.tryTitle)} description={format(m.tryHint)}>
-        <p
-          {...stylex.props(styles.hint)}
-          data-testid="formula-structure"
-          data-state={
-            preview.current.status === 'ready' && preview.current.source === source
-              ? 'synced'
-              : preview.current.status === 'refused' && preview.current.source === source
-                ? 'refused'
-                : contract === null
-                  ? 'loading'
-                  : 'stale'
-          }
-        >
-          {preview.current.status === 'ready' && preview.current.source === source
-            ? format(m.structureSynced)
-            : preview.current.status === 'refused' && preview.current.source === source
-              ? format(m.structureRefused)
-              : contract === null
-                ? format(m.structureLoading)
-                : format(m.structureStale)}
-        </p>
-        {contract === null ? null : (
-          <>
+  const saveState = publish.isPending
+    ? 'publishing'
+    : save.isPending
+      ? 'saving'
+      : dirty()
+        ? 'dirty'
+        : 'clean'
+
+  const tryFresh = tryResult !== null && !tryStale(tryResult)
+  const tryActual = tryFresh ? tryResult.actual : undefined
+
+  const addCase = () => {
+    const key = newTestKey()
+    setTests([...tests, { key, name: '', inputText: '{}', expected: '' }])
+    openCase(key)
+    setTab('examples')
+  }
+
+  const editCase = (key: string, change: Partial<Omit<DraftTest, 'key'>>) =>
+    setTests(tests.map((one) => (one.key === key ? { ...one, ...change } : one)))
+
+  const caseFields = (test: DraftTest, legal: boolean, notes: string | null) => {
+    const expectedProblem = expectedIssueOf(test, contract)
+    return (
+      <>
+        <div {...stylex.props(styles.caseFields)}>
+          <Field label={format(m.testName)}>
+            {(id) => (
+              <Input
+                id={id}
+                value={test.name}
+                disabled={archived}
+                onChange={(event) => editCase(test.key, { name: event.target.value })}
+              />
+            )}
+          </Field>
+          {contract === null ? (
+            <Field label={format(m.testInput)}>
+              {(id) => (
+                <Input
+                  id={id}
+                  placeholder={'{"value": "2.34"}'}
+                  value={test.inputText}
+                  disabled={archived}
+                  onChange={(event) => editCase(test.key, { inputText: event.target.value })}
+                />
+              )}
+            </Field>
+          ) : (
             <InputValueForm
               schema={contract.inputSchema}
-              drafts={tryDrafts}
-              onDraft={(name_, draft) => setTryDrafts({ ...tryDrafts, [name_]: draft })}
+              drafts={draftsOfRow(test)}
+              onDraft={(name_, draft) => editRow(test, name_, draft)}
               locale={locale}
-              disabled={archived || running}
-              problems={tryIssues}
-              scope="try"
+              disabled={archived}
+              problems={rowIssues[test.key]}
+              scope={`case-${test.key}`}
             />
-            <div {...stylex.props(styles.actions)}>
-              <Button disabled={archived || running} onClick={() => void runTry()}>
+          )}
+          {contract === null ? (
+            <Field label={format(m.testExpected)}>
+              {(id) => (
+                <Input
+                  id={id}
+                  placeholder={format(m.expectedLabel)}
+                  value={test.expected}
+                  disabled={archived}
+                  onChange={(event) => editCase(test.key, { expected: event.target.value })}
+                />
+              )}
+            </Field>
+          ) : (
+            // the expectation faces the OUTPUT contract like inputs face the
+            // input contract; '' stays legal until publish
+            <AtomicValueField
+              schema={contract.outputSchema}
+              name={`expected-${test.key}`}
+              label={format(m.expectedLabel)}
+              draft={test.expected}
+              onDraft={(draft) =>
+                editCase(test.key, { expected: typeof draft === 'string' ? draft : String(draft) })
+              }
+              locale={locale}
+              disabled={archived}
+              {...(expectedProblem === null ? {} : { problem: expectedProblem })}
+            />
+          )}
+        </div>
+        {legal ? null : (
+          <p {...stylex.props(styles.problemLine)} role="alert">
+            {format(m.testRowInvalid)}
+          </p>
+        )}
+        {notes === null ? null : <p {...stylex.props(styles.notes)}>{notes}</p>}
+      </>
+    )
+  }
+
+  const sortedVersions = [...versions].sort((a, b) => b.versionNo - a.versionNo)
+  const editingCase = cases.find((one) => one.test.key === editingKey)
+
+  return (
+    <div {...stylex.props(styles.workbench)} data-testid="formula-editor" data-status={fn.status}>
+      <header {...stylex.props(styles.bar)}>
+        <PageLink page="assessment-formula/list" className={stylex.props(styles.back).className}>
+          <ArrowLeftIcon size={15} aria-hidden />
+          <span {...stylex.props(styles.backWords)}>{format(m.listTitle)}</span>
+        </PageLink>
+        <span aria-hidden {...stylex.props(styles.rule)} />
+        <div ref={titleRef} {...stylex.props(styles.heading)}>
+          <div {...stylex.props(styles.titleLine)}>
+            <input
+              aria-label={format(m.nameLabel)}
+              value={name}
+              disabled={archived}
+              spellCheck={false}
+              onChange={(event) => setName(event.target.value)}
+              style={{ width: nameWidth(name) }}
+              {...stylex.props(styles.name)}
+            />
+            <span
+              data-testid="formula-standing"
+              {...stylex.props(
+                styles.standing,
+                archived
+                  ? styles.standingArchived
+                  : fn.latestVersionNo === null
+                    ? styles.standingDraft
+                    : styles.standingPublished,
+              )}
+            >
+              {archived
+                ? format(m.statusArchived)
+                : fn.latestVersionNo === null
+                  ? format(m.versionNone)
+                  : format(m.headerPublished, { number: fn.latestVersionNo })}
+            </span>
+          </div>
+          <div {...stylex.props(styles.statusLine)}>
+            <span
+              data-testid="formula-save-state"
+              data-state={saveState}
+              {...stylex.props(saveState === 'dirty' && styles.statusDirty)}
+            >
+              {format(
+                {
+                  publishing: m.draftPublishing,
+                  saving: m.draftSaving,
+                  dirty: m.draftDirty,
+                  clean: m.draftClean,
+                }[saveState],
+              )}
+            </span>
+            {copiedFrom === null ? null : (
+              <span>{format(m.templatesCopiedFrom, { number: copiedFrom.versionNo })}</span>
+            )}
+          </div>
+        </div>
+        <span {...stylex.props(styles.springWide)} />
+        <div {...stylex.props(styles.actions)}>
+          <Button
+            variant="ghost"
+            size={narrow ? 'icon-sm' : 'sm'}
+            disabled={setStatus.isPending}
+            aria-label={narrow ? format(archived ? m.restore : m.archive) : undefined}
+            onClick={() => setStatus.mutate(archived ? 'active' : 'archived')}
+          >
+            {archived ? <ArchiveRestoreIcon aria-hidden /> : <ArchiveIcon aria-hidden />}
+            {narrow ? null : format(archived ? m.restore : m.archive)}
+          </Button>
+          <Button
+            variant="outline"
+            size={narrow ? 'icon-sm' : 'sm'}
+            disabled={archived || busy || !dirty()}
+            aria-label={narrow ? format(m.save) : undefined}
+            onClick={saveDraft}
+          >
+            <SaveIcon aria-hidden />
+            {narrow ? null : format(m.save)}
+          </Button>
+          <Button
+            size={narrow ? 'icon-sm' : 'sm'}
+            disabled={archived || busy}
+            aria-label={narrow ? format(m.publish) : undefined}
+            onClick={() => publish.mutate()}
+          >
+            <UploadIcon aria-hidden />
+            {narrow ? null : format(m.publish)}
+          </Button>
+        </div>
+      </header>
+
+      {failure === null ? null : (
+        <div role="alert" {...stylex.props(styles.notice, styles.noticeDanger)}>
+          {failure}
+        </div>
+      )}
+      {remoteMoved ? (
+        <div
+          data-testid="formula-remote-moved"
+          {...stylex.props(styles.notice, styles.noticeWarning)}
+        >
+          <span {...stylex.props(styles.noticeWords)}>
+            <span {...stylex.props(styles.noticeTitle)}>{format(m.remoteMovedTitle)}</span>
+            {format(m.remoteMovedHint)}
+          </span>
+          <span {...stylex.props(styles.spring)} />
+          <Button variant="outline" size="xs" onClick={discardLocal}>
+            {format(m.discardLocal)}
+          </Button>
+        </div>
+      ) : null}
+
+      <div {...stylex.props(styles.upper)}>
+        <div {...stylex.props(styles.sourcePane)}>
+          <Suspense
+            fallback={
+              <div {...stylex.props(styles.editorLoading)} role="status">
+                <Spinner aria-label={format(m.editorLoading)} />
+                <span>{format(m.editorLoading)}</span>
+              </div>
+            }
+          >
+            <FormulaCodeEditor
+              functionId={functionId}
+              value={source}
+              onChange={setSource}
+              seed={editorSeed}
+              readOnly={archived}
+              ariaLabel={format(m.sourceLabel)}
+            />
+          </Suspense>
+        </div>
+
+        <aside {...stylex.props(styles.side)}>
+          <section {...stylex.props(styles.tryPart)}>
+            <div {...stylex.props(styles.sideHead)}>
+              <h2 {...stylex.props(styles.sideTitle)}>{format(m.tryTitle)}</h2>
+              <span {...stylex.props(styles.spring)} />
+              <span
+                data-testid="formula-structure"
+                data-state={structure}
+                {...stylex.props(styles.sideNote, structure === 'refused' && styles.sideNoteOff)}
+              >
+                {/* with no form yet, the room below says it instead */}
+                {contract === null ? null : structureWords}
+              </span>
+            </div>
+            {contract === null ? (
+              // the form's room, kept while the structure is read: a column
+              // that collapsed and then sprang open pushed the versions about
+              <div
+                role="status"
+                data-testid="formula-try-pending"
+                data-state={structure}
+                {...stylex.props(
+                  styles.tryPending,
+                  structure === 'refused' && styles.tryPendingOff,
+                )}
+              >
+                {structure === 'refused' ? null : (
+                  <Spinner aria-hidden xstyle={styles.tryPendingSpinner} />
+                )}
+                <span>{structureWords}</span>
+              </div>
+            ) : (
+              <>
+                <div {...stylex.props(styles.tryForm)}>
+                  <InputValueForm
+                    schema={contract.inputSchema}
+                    drafts={tryDrafts}
+                    onDraft={(name_, draft) => setTryDrafts({ ...tryDrafts, [name_]: draft })}
+                    locale={locale}
+                    disabled={archived || running}
+                    problems={tryIssues}
+                    scope="try"
+                  />
+                </div>
+                <div {...stylex.props(styles.tryActions)}>
+                  <Button size="sm" disabled={archived || running} onClick={() => void runTry()}>
+                    <PlayIcon aria-hidden />
+                    {format(running ? m.running : m.run)}
+                  </Button>
+                  {tryActual === undefined ? null : (
+                    <span data-testid="formula-try-result" {...stylex.props(styles.tryInline)}>
+                      <span {...stylex.props(styles.tryInlineLabel)}>{format(m.resultLabel)}</span>
+                      <span {...stylex.props(styles.tryInlineValue)}>{tryActual}</span>
+                    </span>
+                  )}
+                </div>
+                {tryResult === null || tryActual !== undefined ? null : (
+                  <p
+                    data-testid="formula-try-result"
+                    data-stale={tryFresh ? undefined : true}
+                    {...stylex.props(styles.tryNote)}
+                  >
+                    {!tryFresh
+                      ? format(m.resultStale)
+                      : tryResult.refusal !== undefined
+                        ? format(m.refusalPrefix, { message: tryResult.refusal })
+                        : tryResult.defect !== undefined
+                          ? format(m.defectPrefix, { message: tryResult.defect })
+                          : format(m.testInputInvalid, { label: format(m.tryTitle) })}
+                  </p>
+                )}
+                <div {...stylex.props(styles.trySaves)}>
+                  <button
+                    type="button"
+                    disabled={archived || running}
+                    onClick={() => {
+                      saveTryAsCase('')
+                      setTab('examples')
+                    }}
+                    {...stylex.props(styles.tryLink)}
+                  >
+                    <ListPlusIcon size={13} aria-hidden />
+                    {format(m.trySave)}
+                  </button>
+                  {tryActual === undefined ? null : (
+                    // a STALE actual may never become an expectation: the offer
+                    // exists only while code and inputs both still match the run
+                    <button
+                      type="button"
+                      data-testid="formula-try-adopt"
+                      disabled={archived || running}
+                      onClick={() => {
+                        saveTryAsCase(tryActual)
+                        setTab('examples')
+                      }}
+                      {...stylex.props(styles.tryLink)}
+                    >
+                      <EqualIcon size={13} aria-hidden />
+                      {format(m.trySaveExpecting, { value: tryActual })}
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </section>
+          <div aria-hidden {...stylex.props(styles.sideRule)} />
+          <section {...stylex.props(styles.versionsPart)}>
+            <div {...stylex.props(styles.sideHead)}>
+              <h2 {...stylex.props(styles.sideTitle)}>{format(m.versionsTitle)}</h2>
+            </div>
+            <div {...stylex.props(styles.versionsScroll)}>
+              {sortedVersions.length === 0 ? (
+                <p {...stylex.props(styles.sideEmpty)}>{format(m.versionsEmpty)}</p>
+              ) : (
+                <ol data-testid="formula-versions" {...stylex.props(styles.versions)}>
+                  {sortedVersions.map((version) => {
+                    const latest = version.versionNo === fn.latestVersionNo
+                    return (
+                      <li
+                        key={version.versionNo}
+                        data-version={version.versionNo}
+                        {...stylex.props(styles.version)}
+                      >
+                        <div {...stylex.props(styles.versionHead)}>
+                          <span
+                            {...stylex.props(styles.versionNo, latest && styles.versionNoLatest)}
+                          >
+                            {format(m.versionNumber, { number: version.versionNo })}
+                          </span>
+                          {latest && (
+                            <span {...stylex.props(styles.standing, styles.standingPublished)}>
+                              {format(m.versionLatest)}
+                            </span>
+                          )}
+                          <span {...stylex.props(styles.spring)} />
+                          <span
+                            title={version.contractSha256.slice(0, 12)}
+                            {...stylex.props(styles.versionWhen)}
+                          >
+                            {format(m.versionPublishedOn, {
+                              date: shortWhen(version.publishedAt, format, locale),
+                            })}
+                          </span>
+                        </div>
+                        <VersionSharing functionId={functionId} versionNo={version.versionNo} />
+                      </li>
+                    )
+                  })}
+                </ol>
+              )}
+            </div>
+          </section>
+        </aside>
+      </div>
+
+      <Tabs value={tab} onValueChange={(next) => setTab(next as PanelTab)} xstyle={styles.panel}>
+        <div {...stylex.props(styles.panelBar)}>
+          <TabsList aria-label={format(m.panelLabel)} xstyle={styles.tabList}>
+            <TabsTrigger value="examples" xstyle={styles.tab}>
+              <span {...stylex.props(styles.tabWords)}>
+                <ToneDot tone={examplesTone} />
+                {format(m.testsTitle)}
+                <span {...stylex.props(styles.tabCount)}>{tests.length}</span>
+              </span>
+            </TabsTrigger>
+            <TabsTrigger value="compile" xstyle={styles.tab}>
+              <span {...stylex.props(styles.tabWords)}>
+                <ToneDot tone={compileTone} />
+                {format(m.diagnosticsTitle)}
+              </span>
+            </TabsTrigger>
+            <TabsTrigger value="contract" xstyle={styles.tab}>
+              <span {...stylex.props(styles.tabWords)}>
+                <ToneDot tone={contractTone} />
+                {format(m.contractIssuesTitle)}
+              </span>
+            </TabsTrigger>
+          </TabsList>
+          <span {...stylex.props(styles.spring)} />
+          <Button
+            variant="outline"
+            size="xs"
+            disabled={archived || running || tests.length === 0}
+            onClick={() => {
+              setTab('examples')
+              void runRows(tests.map((one) => one.key))
+            }}
+          >
+            <ListChecksIcon aria-hidden />
+            {format(running ? m.running : m.runAll)}
+          </Button>
+          <Button variant="ghost" size="xs" disabled={archived} onClick={addCase}>
+            <PlusIcon aria-hidden />
+            {format(m.addTest)}
+          </Button>
+        </div>
+
+        <TabsContent value="examples" xstyle={styles.panelBody}>
+          <div {...stylex.props(exampleStyles.columns, exampleStyles.head)}>
+            <span>{format(m.testName)}</span>
+            <span {...stylex.props(exampleStyles.wide)}>{format(m.examplesInputColumn)}</span>
+            <span {...stylex.props(exampleStyles.wide, exampleStyles.end)}>
+              {format(m.examplesExpectedColumn)}
+            </span>
+            <span {...stylex.props(exampleStyles.wide, exampleStyles.end)}>
+              {format(m.reportActualColumn)}
+            </span>
+            <span>{format(m.reportOutcome)}</span>
+            <span />
+          </div>
+          <div {...stylex.props(styles.panelScroll)}>
+            {cases.length === 0 ? (
+              <div {...stylex.props(styles.emptyFill)}>
+                <EmptyRow>{format(m.examplesEmpty)}</EmptyRow>
+              </div>
+            ) : (
+              cases.map((one) => (
+                <ExampleRow
+                  key={one.test.key}
+                  index={one.index}
+                  name={one.test.name}
+                  inputSummary={inputSummaryOf(one.test.inputText)}
+                  expected={one.test.expected}
+                  outcome={
+                    one.outcome === undefined
+                      ? undefined
+                      : {
+                          ...(one.outcome.passed === undefined
+                            ? {}
+                            : { passed: one.outcome.passed }),
+                          ...(one.outcome.actual === undefined
+                            ? {}
+                            : { actual: one.outcome.actual }),
+                          ...(one.outcome.refusal === undefined
+                            ? {}
+                            : { refusal: one.outcome.refusal }),
+                          ...(one.outcome.defect === undefined
+                            ? {}
+                            : { defect: one.outcome.defect }),
+                          stale: one.stale,
+                        }
+                  }
+                  verdict={one.verdict}
+                  legal={one.legal}
+                  open={sheetOpen && editingKey === one.test.key}
+                  onOpen={() => openCase(one.test.key)}
+                  locked={archived}
+                  running={running}
+                  onRun={() => void runRows([one.test.key])}
+                  onLoadIntoTry={() => loadIntoTry(one.test)}
+                  onDuplicate={() => setTests([...tests, { ...one.test, key: newTestKey() }])}
+                  onRemove={() => setTests(tests.filter((held) => held.key !== one.test.key))}
+                />
+              ))
+            )}
+          </div>
+          {/* with nothing listed, the line in the middle already says it */}
+          {cases.length === 0 ? null : (
+            <div data-testid="formula-examples-summary" {...stylex.props(styles.panelFoot)}>
+              <span>{summary}</span>
+              {adoptable === null || archived ? null : (
+                <button
+                  type="button"
+                  onClick={() => editCase(adoptable.key, { expected: adoptable.actual })}
+                  {...stylex.props(styles.footAction)}
+                >
+                  {format(m.adoptActual, { value: adoptable.actual })}
+                </button>
+              )}
+              <span {...stylex.props(styles.spring)} />
+              {cases.length === 0 ? null : (
+                <>
+                  <span aria-hidden {...stylex.props(styles.footRule)} />
+                  <span {...stylex.props(styles.footTotal)}>
+                    {format(m.examplesTotal, { count: cases.length })}
+                  </span>
+                </>
+              )}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="compile" xstyle={styles.panelBody}>
+          <div
+            data-testid="formula-compile-state"
+            data-state={compileState}
+            {...stylex.props(styles.panelScroll)}
+          >
+            {compileState === 'passed' ? (
+              <div {...stylex.props(styles.verdictBlock)}>
+                <CircleCheckIcon size={30} aria-hidden {...stylex.props(styles.verdictGood)} />
+                <span {...stylex.props(styles.verdictWords)}>{format(m.compileReady)}</span>
+              </div>
+            ) : compileState === 'working' ? (
+              <div role="status" {...stylex.props(styles.verdictBlock)}>
+                <Spinner aria-hidden xstyle={styles.verdictSpinner} />
+                <span {...stylex.props(styles.verdictQuiet)}>{structureWords}</span>
+              </div>
+            ) : (
+              <>
+                <p {...stylex.props(styles.stateLine)}>
+                  <ToneDot tone="bad" />
+                  <span {...stylex.props(styles.failTitle)}>{format(m.compileFailed)}</span>
+                  {diagnostics.length === 0 ? null : (
+                    <span {...stylex.props(styles.failCount)}>
+                      {format(m.compileFindings, { count: diagnostics.length })}
+                    </span>
+                  )}
+                </p>
+                {diagnostics.length === 0 ? (
+                  refusalWords === null ? null : (
+                    <p {...stylex.props(styles.contractNote)}>{refusalWords}</p>
+                  )
+                ) : (
+                  <table {...stylex.props(styles.reportTable)} data-testid="formula-diagnostics">
+                    <tbody>
+                      {diagnostics.map((row, index) => (
+                        <tr key={index}>
+                          <td {...stylex.props(styles.reportCell, styles.mono, styles.fit)}>
+                            {row.line}:{row.column}
+                          </td>
+                          <td {...stylex.props(styles.reportCell, styles.mono, styles.fit)}>
+                            {row.code}
+                          </td>
+                          <td {...stylex.props(styles.reportCell)}>{row.message}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+                {packagerWords === undefined ? null : (
+                  <pre {...stylex.props(styles.detail)}>{packagerWords}</pre>
+                )}
+              </>
+            )}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="contract" xstyle={styles.panelBody}>
+          <div {...stylex.props(styles.panelScroll)}>
+            {issues.length === 0 ? null : (
+              <div {...stylex.props(styles.issues)}>
+                <table {...stylex.props(styles.reportTable)} data-testid="formula-contract-issues">
+                  <tbody>
+                    {issues.map((row, index) => (
+                      <tr key={index} data-reason={row.reason}>
+                        <td {...stylex.props(styles.reportCell, styles.mono)}>{row.path}</td>
+                        <td {...stylex.props(styles.reportCell)}>
+                          {contractReasonText(row.reason)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {contractDetail === undefined ? null : (
+                  <pre {...stylex.props(styles.detail)}>{contractDetail}</pre>
+                )}
+              </div>
+            )}
+            {contract === null ? (
+              <p {...stylex.props(styles.contractNote)}>{structureWords}</p>
+            ) : (
+              <>
+                {structure === 'synced' ? null : (
+                  <p {...stylex.props(styles.contractNote)}>{structureWords}</p>
+                )}
+                <ContractTable
+                  inputSchema={contract.inputSchema}
+                  outputSchema={contract.outputSchema}
+                />
+              </>
+            )}
+          </div>
+        </TabsContent>
+      </Tabs>
+
+      <Sheet
+        open={sheetOpen && editingCase !== undefined}
+        onOpenChange={(open) => {
+          if (!open) setSheetOpen(false)
+        }}
+      >
+        <SheetContent side={narrow ? 'bottom' : 'right'} xstyle={styles.caseSheet}>
+          <SheetHeader>
+            <SheetTitle>{format(m.exampleEditTitle)}</SheetTitle>
+            {editingCase === undefined ? null : (
+              <SheetDescription>
+                {editingCase.outcome === undefined
+                  ? format(m.conclusionNotRun)
+                  : editingCase.stale
+                    ? format(m.resultStale)
+                    : (outcomeNotes(editingCase.outcome) ??
+                      (editingCase.outcome.actual === undefined
+                        ? format(m.resultPassed)
+                        : format(m.resultActual, { value: editingCase.outcome.actual })))}
+              </SheetDescription>
+            )}
+          </SheetHeader>
+          {editingCase === undefined ? null : (
+            <div
+              data-testid="formula-case-editor"
+              data-legal={editingCase.legal}
+              {...stylex.props(styles.caseBody)}
+            >
+              {caseFields(editingCase.test, editingCase.legal, null)}
+            </div>
+          )}
+          {editingCase === undefined ? null : (
+            <SheetFooter xstyle={styles.caseFoot}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={archived || running}
+                onClick={() => void runRows([editingCase.test.key])}
+              >
+                <PlayIcon aria-hidden />
                 {format(running ? m.running : m.run)}
               </Button>
               <Button
-                variant="outline"
-                disabled={archived || running}
-                onClick={() => saveTryAsCase('')}
+                variant="ghost"
+                size="sm"
+                disabled={archived}
+                onClick={() => loadIntoTry(editingCase.test)}
               >
-                {format(m.trySave)}
+                {format(m.loadIntoTry)}
               </Button>
-              {tryResult?.actual === undefined || tryStale(tryResult) ? null : (
-                // a STALE actual may never become an expectation: the button
-                // exists only while code and inputs both still match the run
-                <Button
-                  variant="outline"
-                  disabled={archived || running}
-                  onClick={() => saveTryAsCase(tryResult.actual!)}
-                >
-                  {format(m.adoptActual, { value: tryResult.actual })}
-                </Button>
-              )}
-            </div>
-            {tryResult === null ? null : (
-              <p
-                data-testid="formula-try-result"
-                data-stale={tryStale(tryResult) ? true : undefined}
+              <span {...stylex.props(styles.spring)} />
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={archived}
+                onClick={() => {
+                  setSheetOpen(false)
+                  setTests(tests.filter((one) => one.key !== editingCase.test.key))
+                }}
               >
-                {tryStale(tryResult)
-                  ? format(m.resultStale)
-                  : tryResult.actual !== undefined
-                    ? format(m.resultActual, { value: tryResult.actual })
-                    : tryResult.refusal !== undefined
-                      ? format(m.refusalPrefix, { message: tryResult.refusal })
-                      : tryResult.defect !== undefined
-                        ? format(m.defectPrefix, { message: tryResult.defect })
-                        : format(m.testInputInvalid, { label: format(m.tryTitle) })}
-              </p>
-            )}
-          </>
-        )}
-      </Panel>
-
-      <Panel title={format(m.testsTitle)} description={format(m.testsHint)}>
-        <div {...stylex.props(styles.testGrid)}>
-          {tests.map((test) => {
-            const outcome = runResults[test.key]
-            const stale =
-              outcome !== undefined &&
-              (outcome.forSource !== source || outcome.forCase !== caseFingerprint(test))
-            const expectedProblem = expectedIssueOf(test, contract)
-            const legal = rowLegal(test)
-            return (
-              <div
-                key={test.key}
-                {...stylex.props(styles.testCase)}
-                data-testid="formula-test-case"
-                data-legal={legal}
-              >
-                <div {...stylex.props(styles.testRow)}>
-                  <Input
-                    aria-label={format(m.testName)}
-                    placeholder={format(m.testName)}
-                    value={test.name}
-                    disabled={archived}
-                    onChange={(event) =>
-                      setTests(
-                        tests.map((one) =>
-                          one.key === test.key ? { ...one, name: event.target.value } : one,
-                        ),
-                      )
-                    }
-                  />
-                  <div {...stylex.props(styles.actions)}>
-                    <Button
-                      variant="outline"
-                      disabled={archived || running}
-                      onClick={() => void runRows([test.key])}
-                    >
-                      {format(m.run)}
-                    </Button>
-                    <Button variant="ghost" disabled={archived} onClick={() => loadIntoTry(test)}>
-                      {format(m.loadIntoTry)}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      disabled={archived}
-                      onClick={() => setTests([...tests, { ...test, key: newTestKey() }])}
-                    >
-                      {format(m.copyTest)}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      disabled={archived}
-                      onClick={() => setTests(tests.filter((one) => one.key !== test.key))}
-                    >
-                      {format(m.removeTest)}
-                    </Button>
-                  </div>
-                </div>
-                {contract === null ? (
-                  <Input
-                    aria-label={format(m.testInput)}
-                    placeholder={'{"value": "2.34"}'}
-                    value={test.inputText}
-                    disabled={archived}
-                    onChange={(event) =>
-                      setTests(
-                        tests.map((one) =>
-                          one.key === test.key ? { ...one, inputText: event.target.value } : one,
-                        ),
-                      )
-                    }
-                  />
-                ) : (
-                  <InputValueForm
-                    schema={contract.inputSchema}
-                    drafts={draftsOfRow(test)}
-                    onDraft={(name_, draft) => editRow(test, name_, draft)}
-                    locale={locale}
-                    disabled={archived}
-                    problems={rowIssues[test.key]}
-                    scope={`case-${test.key}`}
-                  />
-                )}
-                {contract === null ? (
-                  <Input
-                    aria-label={format(m.testExpected)}
-                    placeholder={format(m.expectedLabel)}
-                    value={test.expected}
-                    disabled={archived}
-                    onChange={(event) =>
-                      setTests(
-                        tests.map((one) =>
-                          one.key === test.key ? { ...one, expected: event.target.value } : one,
-                        ),
-                      )
-                    }
-                  />
-                ) : (
-                  // the expectation faces the OUTPUT contract like inputs
-                  // face the input contract; '' stays legal until publish
-                  <AtomicValueField
-                    schema={contract.outputSchema}
-                    name={`expected-${test.key}`}
-                    label={format(m.expectedLabel)}
-                    draft={test.expected}
-                    onDraft={(draft) =>
-                      setTests(
-                        tests.map((one) =>
-                          one.key === test.key
-                            ? {
-                                ...one,
-                                expected: typeof draft === 'string' ? draft : String(draft),
-                              }
-                            : one,
-                        ),
-                      )
-                    }
-                    locale={locale}
-                    disabled={archived}
-                    {...(expectedProblem === null ? {} : { problem: expectedProblem })}
-                  />
-                )}
-                {legal ? null : (
-                  <p {...stylex.props(styles.problemLine)} role="alert">
-                    {format(m.testRowInvalid)}
-                  </p>
-                )}
-                {outcome === undefined ? null : (
-                  <p
-                    data-testid="formula-case-result"
-                    data-passed={stale ? undefined : outcome.passed}
-                    data-stale={stale ? true : undefined}
-                  >
-                    {stale
-                      ? format(m.resultStale)
-                      : outcome.passed === true
-                        ? format(m.resultPassed)
-                        : outcome.refusal !== undefined
-                          ? format(m.refusalPrefix, { message: outcome.refusal })
-                          : outcome.defect !== undefined
-                            ? format(m.defectPrefix, { message: outcome.defect })
-                            : format(m.resultFailed, { actual: outcome.actual ?? '—' })}
-                  </p>
-                )}
-              </div>
-            )
-          })}
-        </div>
-        <div {...stylex.props(styles.actions)}>
-          <Button
-            variant="outline"
-            disabled={archived}
-            onClick={() =>
-              setTests([...tests, { key: newTestKey(), name: '', inputText: '{}', expected: '' }])
-            }
-          >
-            {format(m.addTest)}
-          </Button>
-          <Button
-            variant="outline"
-            disabled={archived || running || tests.length === 0}
-            onClick={() => void runRows(tests.map((one) => one.key))}
-          >
-            {format(running ? m.running : m.runAll)}
-          </Button>
-        </div>
-      </Panel>
-
-      {findings.diagnostics === undefined || findings.diagnostics.length === 0 ? null : (
-        <Panel title={format(m.diagnosticsTitle)}>
-          <table {...stylex.props(styles.reportTable)} data-testid="formula-diagnostics">
-            <tbody>
-              {findings.diagnostics.map((row, index) => (
-                <tr key={index}>
-                  <td {...stylex.props(styles.reportCell, styles.mono)}>
-                    {row.line}:{row.column}
-                  </td>
-                  <td {...stylex.props(styles.reportCell, styles.mono)}>{row.code}</td>
-                  <td {...stylex.props(styles.reportCell)}>{row.message}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Panel>
-      )}
-
-      {findings.issues === undefined || findings.issues.length === 0 ? null : (
-        <Panel title={format(m.contractIssuesTitle)}>
-          <table {...stylex.props(styles.reportTable)} data-testid="formula-contract-issues">
-            <tbody>
-              {findings.issues.map((row, index) => (
-                <tr key={index} data-reason={row.reason}>
-                  <td {...stylex.props(styles.reportCell, styles.mono)}>{row.path}</td>
-                  <td {...stylex.props(styles.reportCell)}>{contractReasonText(row.reason)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {findings.detail === undefined ? null : (
-            <p {...stylex.props(styles.hint, styles.mono)}>{findings.detail}</p>
+                {format(m.removeTest)}
+              </Button>
+              <Button size="sm" onClick={() => setSheetOpen(false)}>
+                {format(m.exampleDone)}
+              </Button>
+            </SheetFooter>
           )}
-        </Panel>
-      )}
-
-      {findings.report === undefined || findings.report.length === 0 ? null : (
-        <Panel title={format(m.reportTitle)}>
-          <table {...stylex.props(styles.reportTable)} data-testid="formula-test-report">
-            <thead>
-              <tr>
-                <th {...stylex.props(styles.reportCell)}>{format(m.testName)}</th>
-                <th {...stylex.props(styles.reportCell)}>{format(m.reportOutcome)}</th>
-                <th {...stylex.props(styles.reportCell)}>{format(m.testExpected)}</th>
-                <th {...stylex.props(styles.reportCell)}>{format(m.reportActualColumn)}</th>
-                <th {...stylex.props(styles.reportCell)}>{format(m.reportDetail)}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {findings.report.map((row, index) => (
-                <tr key={index} data-passed={row.passed}>
-                  <td {...stylex.props(styles.reportCell)}>{row.name}</td>
-                  <td {...stylex.props(styles.reportCell)}>
-                    {format(row.passed ? m.reportPassed : m.reportFailed)}
-                  </td>
-                  <td {...stylex.props(styles.reportCell, styles.mono)}>{row.expected}</td>
-                  <td {...stylex.props(styles.reportCell, styles.mono)}>{row.actual ?? '—'}</td>
-                  <td {...stylex.props(styles.reportCell)}>{reportNotes(row)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Panel>
-      )}
-
-      <Panel title={format(m.versionsTitle)}>
-        {versions.length === 0 ? (
-          <p {...stylex.props(styles.hint)}>{format(m.versionsEmpty)}</p>
-        ) : (
-          <table {...stylex.props(styles.reportTable)} data-testid="formula-versions">
-            <tbody>
-              {versions.map((version) => (
-                <tr key={version.versionNo} data-version={version.versionNo}>
-                  <td {...stylex.props(styles.reportCell)}>
-                    {format(m.versionNumber, { number: version.versionNo })}
-                  </td>
-                  <td {...stylex.props(styles.reportCell, styles.mono)}>
-                    {version.contractSha256.slice(0, 12)}
-                  </td>
-                  <td {...stylex.props(styles.reportCell)}>
-                    {new Date(version.publishedAt).toLocaleString()}
-                  </td>
-                  <td {...stylex.props(styles.reportCell)}>
-                    <VersionSharing functionId={functionId} versionNo={version.versionNo} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Panel>
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }

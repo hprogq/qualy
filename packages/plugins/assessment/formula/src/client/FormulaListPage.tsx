@@ -1,28 +1,75 @@
 import * as stylex from '@stylexjs/stylex'
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
-import { useApi, useApiQuery, usePageNavigate, useRunApi, cursorPages} from '@qualy/web-runtime'
+import {
+  PageLink,
+  cursorPages,
+  useApi,
+  useApiQuery,
+  usePageNavigate,
+  usePageTitle,
+  useRunApi,
+} from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
+import { commonMessages } from '@qualy/web-i18n/messages'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { Textarea } from '@qualy/ui/textarea'
-import { Badge } from '@qualy/ui/badge'
-import { Empty } from '@qualy/ui/empty'
-import { Field, FormDialog, PageHeader, Panel } from '@qualy/ui/admin'
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@qualy/ui/empty'
+import { PageContainer } from '@qualy/ui/page-container'
+import { Reveal } from '@qualy/ui/reveal'
+import { AsyncSection, Field, FormDialog } from '@qualy/ui/admin'
+import { ChevronRightIcon, PlusIcon, SigmaIcon } from 'lucide-react'
 import { formulaApi } from './api.ts'
 import { formulaMessages as m } from './i18n.ts'
+import { LibraryMasthead, LibrarySkeleton } from './library.tsx'
+import { libraryStyles as l, shortWhen } from './library-styles.ts'
+
+// Every formula this author has, and the way into one.
+//
+// A row says what a formula is called, what it works out, and whether it
+// can be bound to a question yet - which is the published column, and the
+// reason the list exists. The parameters are left to the editor and the
+// chooser: they matter when you are writing or binding, not when you are
+// finding the formula to do either with.
 
 const styles = stylex.create({
-  page: { display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.5rem' },
-  table: { width: '100%', borderCollapse: 'collapse' },
-  headCell: {
-    textAlign: 'left',
-    padding: '0.5rem 0.75rem',
-    fontSize: '0.8125rem',
-    color: 'var(--q-surface-muted-foreground)',
+  columns: {
+    gridTemplateColumns: {
+      default: 'minmax(0, 1fr) 7rem 6.5rem 1.25rem',
+      [breakpoints.phone]: 'minmax(0, 1fr) 1.25rem',
+    },
   },
-  row: { cursor: 'pointer', borderTop: '1px solid var(--q-border)' },
-  cell: { padding: '0.625rem 0.75rem' },
+  published: {
+    display: { default: 'flex', [breakpoints.phone]: 'none' },
+    alignItems: 'center',
+    gap: 6,
+    fontSize: 12,
+    fontVariantNumeric: 'tabular-nums',
+    color: tokens.foreground,
+  },
+  standing: { display: 'inline-flex', alignItems: 'center', gap: 6 },
+  draftOnly: { color: tokens.mutedForeground },
+  dot: {
+    width: 6,
+    height: 6,
+    flexShrink: 0,
+    borderRadius: '9999px',
+    backgroundColor: tokens.success,
+  },
+  dotQuiet: {
+    backgroundColor: `color-mix(in oklab, ${tokens.mutedForeground} 45%, transparent)`,
+  },
+  newButton: { flexShrink: 0 },
 })
 
 function NewFormulaDialog({
@@ -113,7 +160,8 @@ export default function FormulaListPage() {
   const api = useApi(formulaApi)
   const runApi = useRunApi()
   const query = useApiQuery(formulaApi)
-  const { format } = useI18n()
+  const { format, formatError, locale } = useI18n()
+  const titleRef = usePageTitle(format(m.listTitle))
   const navigate = usePageNavigate()
   const [creating, setCreating] = useState(false)
 
@@ -135,74 +183,156 @@ export default function FormulaListPage() {
   const openEditor = (functionId: string) =>
     navigate('assessment-formula/editor', { params: { functionId } })
 
+  const newButton = (
+    <Button onClick={() => setCreating(true)} className={stylex.props(styles.newButton).className}>
+      <PlusIcon />
+      {format(m.newFormula)}
+    </Button>
+  )
+
   return (
-    <div {...stylex.props(styles.page)}>
-      <PageHeader
-        title={format(m.listTitle)}
-        description={format(m.listHint)}
-        actions={<Button onClick={() => setCreating(true)}>{format(m.newFormula)}</Button>}
-      />
-      <Panel title={format(m.listTitle)}>
-        {functions.isSuccess && items.length === 0 ? (
-          <Empty title={format(m.emptyList)}>
-            <Button onClick={() => setCreating(true)}>{format(m.newFormula)}</Button>
-          </Empty>
-        ) : (
-          <table {...stylex.props(styles.table)}>
-            <thead>
-              <tr>
-                <th {...stylex.props(styles.headCell)}>{format(m.nameLabel)}</th>
-                <th {...stylex.props(styles.headCell)}>{format(m.versionColumn)}</th>
-                <th {...stylex.props(styles.headCell)}>{format(m.updatedColumn)}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((row) => (
-                <tr
-                  key={row.id}
-                  {...stylex.props(styles.row)}
-                  data-testid="formula-row"
-                  data-status={row.status}
-                  onClick={() => openEditor(row.id)}
-                >
-                  <td {...stylex.props(styles.cell)}>
-                    {row.name}{' '}
-                    {row.status === 'archived' ? (
-                      <Badge variant="outline">{format(m.statusArchived)}</Badge>
-                    ) : null}
-                  </td>
-                  <td {...stylex.props(styles.cell)}>
-                    {row.latestVersionNo === null
-                      ? format(m.versionNone)
-                      : format(m.versionNumber, { number: row.latestVersionNo })}
-                  </td>
-                  <td {...stylex.props(styles.cell)}>
-                    {new Date(row.updatedAt).toLocaleDateString()}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        {functions.hasNextPage ? (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={functions.isFetchingNextPage}
-            onClick={() => void functions.fetchNextPage()}
+    <PageContainer>
+      <Reveal className={stylex.props(l.page).className}>
+        <LibraryMasthead
+          title={format(m.listTitle)}
+          hint={format(m.listHint)}
+          titleRef={titleRef}
+          actions={newButton}
+        />
+
+        <section {...stylex.props(l.section)}>
+          <div {...stylex.props(l.sectionHead)}>
+            <span {...stylex.props(l.sectionLabel)}>{format(m.listAll)}</span>
+            <span {...stylex.props(l.spring)} />
+            <PageLink
+              page="assessment-formula/templates"
+              unavailable={null}
+              className={stylex.props(l.elsewhere).className}
+            >
+              {format(m.navigationTemplates)}
+              <ChevronRightIcon size={14} aria-hidden />
+            </PageLink>
+          </div>
+
+          <AsyncSection
+            pending={functions.isPending}
+            error={functions.isError ? formatError(functions.error) : null}
+            loadingLabel={format(commonMessages.loading)}
+            retryLabel={format(commonMessages.retry)}
+            onRetry={() => void functions.refetch()}
+            skeleton={<LibrarySkeleton />}
           >
-            {format(m.loadMore)}
-          </Button>
-        ) : null}
-      </Panel>
-      <NewFormulaDialog
-        open={creating}
-        onClose={() => setCreating(false)}
-        onCreated={(functionId) => {
-          setCreating(false)
-          openEditor(functionId)
-        }}
-      />
-    </div>
+            <div {...stylex.props(l.sheet)}>
+              {items.length === 0 ? (
+                <Empty data-testid="formula-list-empty">
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon">
+                      <SigmaIcon />
+                    </EmptyMedia>
+                    <EmptyTitle>{format(m.emptyList)}</EmptyTitle>
+                    <EmptyDescription>{format(m.emptyListHint)}</EmptyDescription>
+                  </EmptyHeader>
+                  <EmptyContent>
+                    <Button variant="outline" onClick={() => setCreating(true)}>
+                      <PlusIcon />
+                      {format(m.newFormula)}
+                    </Button>
+                  </EmptyContent>
+                </Empty>
+              ) : (
+                <>
+                  <div {...stylex.props(l.grid, l.headRow, styles.columns)}>
+                    <span>{format(m.listNameColumn)}</span>
+                    <span>{format(m.versionColumn)}</span>
+                    <span {...stylex.props(l.end)}>{format(m.updatedColumn)}</span>
+                    <span />
+                  </div>
+                  {items.map((row, index) => {
+                    const archived = row.status === 'archived'
+                    const published =
+                      row.latestVersionNo === null ? (
+                        <span {...stylex.props(styles.standing, styles.draftOnly)}>
+                          <span aria-hidden {...stylex.props(styles.dot, styles.dotQuiet)} />
+                          {format(m.versionNone)}
+                        </span>
+                      ) : (
+                        <span {...stylex.props(styles.standing)}>
+                          <span aria-hidden {...stylex.props(styles.dot)} />
+                          {format(m.versionNumber, { number: row.latestVersionNo })}
+                        </span>
+                      )
+                    const updated = shortWhen(row.updatedAt, format, locale)
+                    return (
+                      <div
+                        key={row.id}
+                        data-testid="formula-row"
+                        data-status={row.status}
+                        data-published={row.latestVersionNo ?? undefined}
+                        onClick={(event) => {
+                          // the name is a real link; a press on it is already on its way
+                          if ((event.target as HTMLElement).closest('a') !== null) return
+                          openEditor(row.id)
+                        }}
+                        {...stylex.props(
+                          l.grid,
+                          l.row,
+                          l.divided,
+                          index === 0 && l.firstOnPhone,
+                          styles.columns,
+                        )}
+                      >
+                        <span {...stylex.props(l.words)}>
+                          <span {...stylex.props(l.nameLine)}>
+                            <PageLink
+                              page="assessment-formula/editor"
+                              params={{ functionId: row.id }}
+                              className={stylex.props(l.name, archived && l.retired).className}
+                            >
+                              {row.name}
+                            </PageLink>
+                            {archived && (
+                              <span {...stylex.props(l.tag)}>{format(m.statusArchived)}</span>
+                            )}
+                          </span>
+                          {row.description !== null && row.description !== '' && (
+                            <span {...stylex.props(l.line)}>{row.description}</span>
+                          )}
+                          <span {...stylex.props(l.phoneMeta)}>
+                            {published}
+                            <span>{updated}</span>
+                          </span>
+                        </span>
+                        <span {...stylex.props(styles.published)}>{published}</span>
+                        <span {...stylex.props(l.cell, l.end)}>{updated}</span>
+                        <ChevronRightIcon size={14} aria-hidden {...stylex.props(l.glyph)} />
+                      </div>
+                    )
+                  })}
+                  {functions.hasNextPage && (
+                    <button
+                      type="button"
+                      disabled={functions.isFetchingNextPage}
+                      onClick={() => void functions.fetchNextPage()}
+                      {...stylex.props(l.more)}
+                    >
+                      {format(m.loadMore)}
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          </AsyncSection>
+        </section>
+
+        <NewFormulaDialog
+          open={creating}
+          onClose={() => setCreating(false)}
+          onCreated={(functionId) => {
+            setCreating(false)
+            openEditor(functionId)
+          }}
+        />
+      </Reveal>
+    </PageContainer>
   )
 }

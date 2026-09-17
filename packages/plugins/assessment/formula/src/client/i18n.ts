@@ -26,7 +26,7 @@ const i18n = definePluginMessages({
     },
     'permission-hint.assessment.formula.share': {
       id: 'assessment-formula/permission-hint/share',
-      defaultMessage: 'Offer your published formulas to the authors working under this unit.',
+      defaultMessage: 'Share your published formulas with the authors working under this unit.',
     },
     'permission-group.assessment': {
       id: 'assessment-formula/permission-group/assessment',
@@ -66,11 +66,11 @@ const i18n = definePluginMessages({
     },
     templatesHint: {
       id: 'assessment-formula/templates/hint',
-      defaultMessage: 'Formulas other people have offered you. Copy one to start your own.',
+      defaultMessage: 'Formulas other people have shared with you; copy one to make it your own',
     },
     templatesEmpty: {
       id: 'assessment-formula/templates/empty',
-      defaultMessage: 'Nobody has offered you a formula yet.',
+      defaultMessage: 'Nobody has shared a formula with you yet',
     },
     templatesAuthorColumn: {
       id: 'assessment-formula/templates/author-column',
@@ -83,10 +83,6 @@ const i18n = definePluginMessages({
     templatesPublishedColumn: {
       id: 'assessment-formula/templates/published-column',
       defaultMessage: 'Published',
-    },
-    templatesParameters: {
-      id: 'assessment-formula/templates/parameters',
-      defaultMessage: 'Takes {names}',
     },
     templatesSourceArchived: {
       id: 'assessment-formula/templates/source-archived',
@@ -108,18 +104,6 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/templates/examples',
       defaultMessage: '{count, plural, one {# example} other {# examples}}',
     },
-    templatesLoadFailed: {
-      id: 'assessment-formula/templates/load-failed',
-      defaultMessage: 'The templates could not be loaded.',
-    },
-    templatesLoading: {
-      id: 'assessment-formula/templates/loading',
-      defaultMessage: 'Loading…',
-    },
-    templatesRetry: {
-      id: 'assessment-formula/templates/retry',
-      defaultMessage: 'Try again',
-    },
     templatesCopiedFrom: {
       id: 'assessment-formula/templates/copied-from',
       defaultMessage: 'Started from version {number} of another formula',
@@ -134,11 +118,11 @@ const i18n = definePluginMessages({
     },
     listHint: {
       id: 'assessment-formula/list/hint',
-      defaultMessage: 'Reusable scoring functions; publish a version before binding it to items.',
+      defaultMessage: 'Reusable scoring functions; publish a version before binding it to items',
     },
     emptyList: {
       id: 'assessment-formula/list/empty',
-      defaultMessage: 'No formulas yet.',
+      defaultMessage: 'No formulas yet',
     },
     newFormula: {
       id: 'assessment-formula/list/new',
@@ -210,15 +194,11 @@ const i18n = definePluginMessages({
     },
     structureRefused: {
       id: 'assessment-formula/editor/structure-refused',
-      defaultMessage: 'The code does not compile yet, so test inputs stay as JSON',
+      defaultMessage: 'The code does not compile, so its input structure cannot be read yet',
     },
     tryTitle: {
       id: 'assessment-formula/editor/try-title',
       defaultMessage: 'Try it',
-    },
-    tryHint: {
-      id: 'assessment-formula/editor/try-hint',
-      defaultMessage: 'Run the current code once; save the case if it is worth keeping.',
     },
     run: {
       id: 'assessment-formula/editor/run',
@@ -234,7 +214,11 @@ const i18n = definePluginMessages({
     },
     trySave: {
       id: 'assessment-formula/editor/try-save',
-      defaultMessage: 'Save as test case',
+      defaultMessage: 'Save as example',
+    },
+    trySaveExpecting: {
+      id: 'assessment-formula/editor/try-save-expecting',
+      defaultMessage: 'Save expecting {value}',
     },
     adoptActual: {
       id: 'assessment-formula/editor/adopt-actual',
@@ -247,10 +231,6 @@ const i18n = definePluginMessages({
     copyTest: {
       id: 'assessment-formula/editor/copy-test',
       defaultMessage: 'Duplicate',
-    },
-    resultActual: {
-      id: 'assessment-formula/editor/result-actual',
-      defaultMessage: 'Result: {value}',
     },
     resultStale: {
       id: 'assessment-formula/editor/result-stale',
@@ -304,10 +284,6 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/editor/tests',
       defaultMessage: 'Examples',
     },
-    testsHint: {
-      id: 'assessment-formula/editor/tests-hint',
-      defaultMessage: 'Publishing runs every example; at least one is required.',
-    },
     testName: {
       id: 'assessment-formula/editor/test-name',
       defaultMessage: 'Name',
@@ -360,14 +336,6 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/report/diagnostics',
       defaultMessage: 'Compiler findings',
     },
-    reportTitle: {
-      id: 'assessment-formula/report/tests',
-      defaultMessage: 'Example results',
-    },
-    reportPassed: {
-      id: 'assessment-formula/report/passed',
-      defaultMessage: 'Passed',
-    },
     reportFailed: {
       id: 'assessment-formula/report/failed',
       defaultMessage: 'Failed',
@@ -379,14 +347,6 @@ const i18n = definePluginMessages({
     reportActualColumn: {
       id: 'assessment-formula/report/actual-column',
       defaultMessage: 'Actual',
-    },
-    reportDetail: {
-      id: 'assessment-formula/report/detail',
-      defaultMessage: 'Notes',
-    },
-    reportMismatch: {
-      id: 'assessment-formula/report/mismatch',
-      defaultMessage: 'The answer differs from the expectation.',
     },
     problemInput: {
       id: 'assessment-formula/report/problem-input',
@@ -528,7 +488,7 @@ const i18n = definePluginMessages({
     },
     versionsEmpty: {
       id: 'assessment-formula/editor/versions-empty',
-      defaultMessage: 'Nothing published yet.',
+      defaultMessage: 'Nothing published yet',
     },
     remoteMovedTitle: {
       id: 'assessment-formula/editor/remote-moved',
@@ -546,6 +506,236 @@ const i18n = definePluginMessages({
     loadFailed: {
       id: 'assessment-formula/editor/load-failed',
       defaultMessage: 'The formula could not be loaded.',
+    },
+    listAll: {
+      id: 'assessment-formula/list/all',
+      defaultMessage: 'All formulas',
+    },
+    listNameColumn: {
+      id: 'assessment-formula/list/name-column',
+      defaultMessage: 'Name and description',
+    },
+    emptyListHint: {
+      id: 'assessment-formula/list/empty-hint',
+      defaultMessage: 'Write one; once published it can score a question',
+    },
+    whenToday: {
+      id: 'assessment-formula/when/today',
+      defaultMessage: 'Today {time}',
+    },
+    whenYesterday: {
+      id: 'assessment-formula/when/yesterday',
+      defaultMessage: 'Yesterday {time}',
+    },
+    templatesOffered: {
+      id: 'assessment-formula/templates/offered',
+      defaultMessage: 'Shared with me',
+    },
+    templatesMine: {
+      id: 'assessment-formula/templates/mine',
+      defaultMessage: 'My scoring formulas',
+    },
+    templatesNameColumn: {
+      id: 'assessment-formula/templates/name-column',
+      defaultMessage: 'Name and parameters',
+    },
+    templatesEmptyHint: {
+      id: 'assessment-formula/templates/empty-hint',
+      defaultMessage: 'A formula someone shares with your unit shows up here',
+    },
+    templatesReadOnly: {
+      id: 'assessment-formula/templates/read-only',
+      defaultMessage: 'Read-only; copy it to edit',
+    },
+    versionLabel: {
+      id: 'assessment-formula/version/label',
+      defaultMessage: 'Version',
+    },
+    versionLatest: {
+      id: 'assessment-formula/version/latest',
+      defaultMessage: 'Latest',
+    },
+    versionPublishedOn: {
+      id: 'assessment-formula/version/published-on',
+      defaultMessage: 'Published {date}',
+    },
+    parametersLabel: {
+      id: 'assessment-formula/parameters/label',
+      defaultMessage: 'Parameters',
+    },
+    parametersNone: {
+      id: 'assessment-formula/parameters/none',
+      defaultMessage: 'None',
+    },
+    parameterTitle: {
+      id: 'assessment-formula/parameters/title',
+      defaultMessage: 'Shown as',
+    },
+    parameterKind: {
+      id: 'assessment-formula/parameters/kind',
+      defaultMessage: 'Kind',
+    },
+    parameterRule: {
+      id: 'assessment-formula/parameters/rule',
+      defaultMessage: 'Allowed values',
+    },
+    parameterOutput: {
+      id: 'assessment-formula/parameters/output',
+      defaultMessage: 'Output',
+    },
+    parameterOptional: {
+      id: 'assessment-formula/parameters/optional',
+      defaultMessage: '(optional)',
+    },
+    constraintRange: {
+      id: 'assessment-formula/constraint/range',
+      defaultMessage: '{min} to {max}',
+    },
+    constraintAtLeast: {
+      id: 'assessment-formula/constraint/at-least',
+      defaultMessage: 'at least {min}',
+    },
+    constraintAtMost: {
+      id: 'assessment-formula/constraint/at-most',
+      defaultMessage: 'at most {max}',
+    },
+    constraintScale: {
+      id: 'assessment-formula/constraint/scale',
+      defaultMessage: 'up to {scale} decimal places',
+    },
+    constraintLength: {
+      id: 'assessment-formula/constraint/length',
+      defaultMessage: '{min} to {max} characters',
+    },
+    constraintMaxLength: {
+      id: 'assessment-formula/constraint/max-length',
+      defaultMessage: 'up to {max} characters',
+    },
+    constraintPattern: {
+      id: 'assessment-formula/constraint/pattern',
+      defaultMessage: 'matches {pattern}',
+    },
+    constraintNone: {
+      id: 'assessment-formula/constraint/none',
+      defaultMessage: 'Any',
+    },
+    headerPublished: {
+      id: 'assessment-formula/editor/header-published',
+      defaultMessage: 'Published v{number}',
+    },
+    draftClean: {
+      id: 'assessment-formula/editor/draft-clean',
+      defaultMessage: 'Draft saved',
+    },
+    draftDirty: {
+      id: 'assessment-formula/editor/draft-dirty',
+      defaultMessage: 'Unsaved changes',
+    },
+    draftSaving: {
+      id: 'assessment-formula/editor/draft-saving',
+      defaultMessage: 'Saving…',
+    },
+    draftPublishing: {
+      id: 'assessment-formula/editor/draft-publishing',
+      defaultMessage: 'Publishing…',
+    },
+    resultLabel: {
+      id: 'assessment-formula/editor/result-label',
+      defaultMessage: 'Result',
+    },
+    panelLabel: {
+      id: 'assessment-formula/editor/panel',
+      defaultMessage: 'Checks before publishing',
+    },
+    compileReady: {
+      id: 'assessment-formula/editor/compile-ready',
+      defaultMessage: 'The current code compiles',
+    },
+    examplesInputColumn: {
+      id: 'assessment-formula/examples/input-column',
+      defaultMessage: 'Input',
+    },
+    examplesExpectedColumn: {
+      id: 'assessment-formula/examples/expected-column',
+      defaultMessage: 'Expected',
+    },
+    exampleMenu: {
+      id: 'assessment-formula/examples/menu',
+      defaultMessage: 'Example actions',
+    },
+    exampleUnnamed: {
+      id: 'assessment-formula/examples/unnamed',
+      defaultMessage: 'Untitled',
+    },
+    examplesEmpty: {
+      id: 'assessment-formula/examples/empty',
+      defaultMessage: 'No examples yet; publishing needs at least one',
+    },
+    conclusionNotRun: {
+      id: 'assessment-formula/examples/not-run',
+      defaultMessage: 'Not run',
+    },
+    conclusionNoExpectation: {
+      id: 'assessment-formula/examples/no-expectation',
+      defaultMessage: 'No expected value',
+    },
+    conclusionNeedsFix: {
+      id: 'assessment-formula/examples/needs-fix',
+      defaultMessage: 'Needs fixing',
+    },
+    exampleFailedActual: {
+      id: 'assessment-formula/examples/failed-actual',
+      defaultMessage: 'Example “{name}” failed; it came to {actual}',
+    },
+    exampleFailed: {
+      id: 'assessment-formula/examples/failed',
+      defaultMessage: 'Example “{name}” failed',
+    },
+    exampleNeedsFixing: {
+      id: 'assessment-formula/examples/needs-fixing',
+      defaultMessage: 'Example “{name}” no longer fits the input structure',
+    },
+    exampleNoExpectation: {
+      id: 'assessment-formula/examples/no-expectation-summary',
+      defaultMessage: 'Example “{name}” has no expected value yet',
+    },
+    examplesAllPassed: {
+      id: 'assessment-formula/examples/all-passed',
+      defaultMessage: 'Every example passes against the current code',
+    },
+    examplesNotRun: {
+      id: 'assessment-formula/examples/not-run-count',
+      defaultMessage:
+        '{count, plural, one {# example has} other {# examples have}} not run against the current code',
+    },
+    examplesTotal: {
+      id: 'assessment-formula/examples/total',
+      defaultMessage:
+        '{count, plural, one {# example} other {# examples}}; all must pass to publish',
+    },
+    structureKept: {
+      id: 'assessment-formula/editor/structure-kept',
+      defaultMessage: 'The code does not compile; showing the last structure that did',
+    },
+    compileFailed: {
+      id: 'assessment-formula/editor/compile-failed',
+      defaultMessage: 'The code does not compile',
+    },
+    compileFindings: {
+      id: 'assessment-formula/editor/compile-findings',
+      defaultMessage: '{count, plural, one {# finding} other {# findings}}',
+    },
+    exampleEditTitle: {
+      id: 'assessment-formula/examples/edit-title',
+      defaultMessage: 'Edit example',
+    },
+    exampleDone: {
+      id: 'assessment-formula/examples/done',
+      defaultMessage: 'Done',
+    },
+    resultActual: {
+      id: 'assessment-formula/editor/result-actual',
+      defaultMessage: 'Result: {value}',
     },
     calculatorOption: {
       id: 'assessment-formula/binding/calculator',
@@ -603,7 +793,7 @@ const i18n = definePluginMessages({
     },
     ASSESSMENT_FORMULA_TYPECHECK_FAILED: {
       id: 'assessment-formula/error/typecheck-failed',
-      defaultMessage: 'The source does not compile. Review the compiler findings below.',
+      defaultMessage: 'The source does not compile; see the compile results.',
     },
     ASSESSMENT_FORMULA_CONTRACT_INVALID: {
       id: 'assessment-formula/error/contract-invalid',
@@ -611,7 +801,7 @@ const i18n = definePluginMessages({
     },
     ASSESSMENT_FORMULA_BUNDLE_FAILED: {
       id: 'assessment-formula/error/bundle-failed',
-      defaultMessage: 'The source could not be packaged. Review the packager message below.',
+      defaultMessage: 'The source could not be packaged; see the compile results.',
     },
     ASSESSMENT_FORMULA_EXECUTION_LIMIT_EXCEEDED: {
       id: 'assessment-formula/error/execution-limit',

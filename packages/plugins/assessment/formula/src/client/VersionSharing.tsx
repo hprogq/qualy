@@ -3,9 +3,9 @@ import { useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { Badge } from '@qualy/ui/badge'
-import { Button } from '@qualy/ui/button'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
+import { XIcon } from 'lucide-react'
 import { formulaApi } from './api.ts'
 import { formulaMessages as m } from './i18n.ts'
 
@@ -13,14 +13,42 @@ import { formulaMessages as m } from './i18n.ts'
 //
 // Widening needs the permission where it widens to; taking an offer back
 // never does. So somebody who no longer holds it still sees what they
-// offered and can still withdraw it - the button that adds is what
+// offered and can still withdraw it - the control that adds is what
 // disappears, not the ones that remove.
 
 const styles = stylex.create({
-  row: { display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' },
-  scopes: { display: 'flex', gap: '0.375rem', flexWrap: 'wrap' },
-  picker: { width: 220 },
-  none: { fontSize: '0.8125rem', color: 'var(--q-surface-muted-foreground)' },
+  row: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
+  scope: {
+    display: 'inline-flex',
+    maxWidth: '100%',
+    alignItems: 'center',
+    gap: 2,
+    height: 22,
+    paddingLeft: 8,
+    paddingRight: 2,
+    borderRadius: 6,
+    backgroundColor: tokens.surfaceMuted,
+    fontSize: 11,
+    color: tokens.surfaceMutedForeground,
+  },
+  scopeName: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  remove: {
+    display: 'inline-flex',
+    width: 18,
+    height: 18,
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 0,
+    borderRadius: 4,
+    padding: 0,
+    backgroundColor: { default: 'transparent', ':hover': tokens.border },
+    color: tokens.mutedForeground,
+    cursor: { default: 'pointer', ':disabled': 'default' },
+  },
+  none: { fontSize: 12, color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)` },
+  picker: { maxWidth: '100%', fontSize: 12 },
+  failure: { flexBasis: '100%', fontSize: 12, color: tokens.danger },
 })
 
 export function VersionSharing({
@@ -62,15 +90,15 @@ export function VersionSharing({
 
   return (
     <div {...stylex.props(styles.row)} data-testid="version-sharing" data-version={versionNo}>
-      <div {...stylex.props(styles.scopes)}>
-        {scopes.length === 0 ? (
-          <span {...stylex.props(styles.none)} data-testid="sharing-private">
-            {format(m.sharingPrivate)}
-          </span>
-        ) : (
-          scopes.map((scope) => (
-            <Badge key={scope.orgNodeId} variant="secondary" data-testid="sharing-scope">
-              {scope.name}{' '}
+      {scopes.length === 0
+        ? sharing.isSuccess && (
+            <span {...stylex.props(styles.none)} data-testid="sharing-private">
+              {format(m.sharingPrivate)}
+            </span>
+          )
+        : scopes.map((scope) => (
+            <span key={scope.orgNodeId} data-testid="sharing-scope" {...stylex.props(styles.scope)}>
+              <span {...stylex.props(styles.scopeName)}>{scope.name}</span>
               <button
                 type="button"
                 aria-label={format(m.sharingRemove, { name: scope.name })}
@@ -82,15 +110,14 @@ export function VersionSharing({
                       .map((held) => held.orgNodeId),
                   )
                 }
+                {...stylex.props(styles.remove)}
               >
-                ×
+                <XIcon size={12} aria-hidden />
               </button>
-            </Badge>
-          ))
-        )}
-      </div>
+            </span>
+          ))}
       {addable.length === 0 ? null : (
-        <div {...stylex.props(styles.picker)} data-testid="sharing-add">
+        <div data-testid="sharing-add">
           <Select
             value=""
             disabled={replace.isPending}
@@ -98,7 +125,7 @@ export function VersionSharing({
               replace.mutate([...scopes.map((scope) => scope.orgNodeId), nodeId])
             }
           >
-            <SelectTrigger aria-label={format(m.sharingAdd)}>
+            <SelectTrigger size="sm" aria-label={format(m.sharingAdd)} xstyle={styles.picker}>
               <SelectValue placeholder={format(m.sharingAdd)} />
             </SelectTrigger>
             <SelectContent>
@@ -112,7 +139,7 @@ export function VersionSharing({
         </div>
       )}
       {failure === null ? null : (
-        <span role="alert" data-testid="sharing-failure" {...stylex.props(styles.none)}>
+        <span role="alert" data-testid="sharing-failure" {...stylex.props(styles.failure)}>
           {failure}
         </span>
       )}

@@ -108,6 +108,37 @@ const screenFor = (
   return { wire, screen }
 }
 
+/** one of a case's own actions, which live in its menu */
+const chooseFromMenu = async (row: Element, words: string) => {
+  ;(row.querySelector('[data-testid="formula-test-menu"]') as HTMLButtonElement).click()
+  let item: HTMLElement | undefined
+  await vi.waitFor(
+    () => {
+      // a menu closing a moment ago may still be leaving; the newest one is last
+      item = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')]
+        .filter((one) => one.textContent === words)
+        .at(-1)
+      if (item === undefined) throw new Error(`no "${words}" in the menu yet`)
+    },
+    { timeout: 5_000 },
+  )
+  item!.click()
+}
+
+/** a case's fields, in the sheet it opens into */
+const openCase = async (row: Element): Promise<HTMLInputElement> => {
+  ;(row.querySelector('[data-testid="formula-test-open"]') as HTMLButtonElement).click()
+  let name: HTMLInputElement | null = null
+  await vi.waitFor(
+    () => {
+      name = document.querySelector('[data-testid="formula-case-editor"] input')
+      if (name === null) throw new Error('case not open yet')
+    },
+    { timeout: 5_000 },
+  )
+  return name!
+}
+
 const waitForForm = async (screen: Awaited<ReturnType<typeof renderScreen>>) => {
   await vi.waitFor(
     () => {
@@ -225,7 +256,7 @@ describe('the formula authoring tools', () => {
       // dirty the tests (rename a case) and the function name; saving then
       // patches the name only - the broken case holds the tests back, and
       // nothing claims they were contract-checked
-      const caseName = rows[0]!.querySelector('input')! as HTMLInputElement
+      const caseName = await openCase(rows[0]!)
       const nameSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
       nameSetter.call(caseName, 'renamed case')
       caseName.dispatchEvent(new Event('input', { bubbles: true }))
@@ -285,12 +316,8 @@ describe('the formula authoring tools', () => {
         },
         { timeout: 10_000 },
       )
-      // fresh: the adopt button offers the actual
-      expect(
-        [...view.container.querySelectorAll('button')].some((button) =>
-          button.textContent?.includes('设为预期值'),
-        ),
-      ).toBe(true)
+      // fresh: the offer to keep the case with its actual as the expectation
+      expect(view.container.querySelector('[data-testid="formula-try-adopt"]')).not.toBeNull()
 
       // the INPUT moves; the result and the adopt offer both go stale,
       // though the code never changed
@@ -303,11 +330,7 @@ describe('the formula authoring tools', () => {
         },
         { timeout: 5_000 },
       )
-      expect(
-        [...view.container.querySelectorAll('button')].some((button) =>
-          button.textContent?.includes('设为预期值'),
-        ),
-      ).toBe(false)
+      expect(view.container.querySelector('[data-testid="formula-try-adopt"]')).toBeNull()
     } finally {
       view.unmount()
     }
@@ -326,10 +349,7 @@ describe('the formula authoring tools', () => {
       await waitForForm(view)
       const rows = () => [...view.container.querySelectorAll('[data-testid="formula-test-case"]')]
       // run the SECOND row only
-      const secondRun = [...rows()[1]!.querySelectorAll('button')].find(
-        (button) => button.textContent === '运行',
-      )!
-      secondRun.click()
+      await chooseFromMenu(rows()[1]!, '运行')
       await vi.waitFor(
         () => {
           if (rows()[1]!.querySelector('[data-testid="formula-case-result"]') === null)
@@ -338,10 +358,7 @@ describe('the formula authoring tools', () => {
         { timeout: 10_000 },
       )
       // delete the FIRST row: the survivor keeps ITS result
-      const firstDelete = [...rows()[0]!.querySelectorAll('button')].find(
-        (button) => button.textContent === '移除',
-      )!
-      firstDelete.click()
+      await chooseFromMenu(rows()[0]!, '移除')
       await vi.waitFor(
         () => {
           if (rows().length !== 1) throw new Error('row not deleted yet')
@@ -349,7 +366,9 @@ describe('the formula authoring tools', () => {
         { timeout: 5_000 },
       )
       const survivor = rows()[0]!
-      expect(survivor.querySelector('input')!.value).toBe('second')
+      expect(survivor.querySelector('[data-testid="formula-test-open"]')!.textContent).toBe(
+        'second',
+      )
       expect(
         survivor.querySelector('[data-testid="formula-case-result"]')?.getAttribute('data-passed'),
       ).toBe('true')
