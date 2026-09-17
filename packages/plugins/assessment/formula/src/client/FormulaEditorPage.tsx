@@ -447,6 +447,8 @@ const styles = stylex.create({
     backgroundColor: { default: null, ':hover': tokens.surfaceInset },
   },
   middle: { verticalAlign: 'middle' },
+  // a head's own action reads at the head's size, not at the body's
+  headAction: { fontSize: 11, fontWeight: 500 },
   monoAction: {
     fontFamily: 'ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace',
     fontSize: 11.5,
@@ -2605,7 +2607,21 @@ export default function FormulaEditorPage() {
               <tr>
                 <th {...stylex.props(w.reportHead, w.fit)}>{format(m.parametersLabel)}</th>
                 <th {...stylex.props(w.reportHead)}>{format(m.contractIssueColumn)}</th>
-                <th {...stylex.props(w.reportHead, w.fit)} />
+                <th {...stylex.props(w.reportHead, w.fit)}>
+                  {/* the guest's own words are about the whole refusal, so the
+                      one press that keeps them belongs to the head */}
+                  {contractDetail === undefined ? null : (
+                    <button
+                      type="button"
+                      data-testid="formula-contract-copy"
+                      onClick={() => copyWords(contractDetail)}
+                      {...stylex.props(styles.quietAction, styles.headAction)}
+                    >
+                      <CopyIcon size={13} aria-hidden />
+                      {format(m.copyTechnicalDetail)}
+                    </button>
+                  )}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -2627,19 +2643,7 @@ export default function FormulaEditorPage() {
                   <td {...stylex.props(w.reportCell, styles.middle)}>
                     {contractReasonWords(format, row.reason)}
                   </td>
-                  <td {...stylex.props(w.reportCell, w.fit, styles.middle)}>
-                    {contractDetail === undefined || index > 0 ? null : (
-                      <button
-                        type="button"
-                        data-testid="formula-contract-copy"
-                        onClick={() => copyWords(contractDetail)}
-                        {...stylex.props(styles.quietAction)}
-                      >
-                        <CopyIcon size={13} aria-hidden />
-                        {format(m.copyTechnicalDetail)}
-                      </button>
-                    )}
-                  </td>
+                  <td {...stylex.props(w.reportCell, w.fit, styles.middle)} />
                 </tr>
               ))}
             </tbody>

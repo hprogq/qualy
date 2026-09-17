@@ -114,7 +114,7 @@ export default {
   'assessment-formula/contract/not-decimal': '输出必须是 decimal。',
   'assessment-formula/contract/too-large': '参数结构过大，请减少参数或选项数量。',
   'assessment-formula/contract/error': '加载公式时有参数定义被拒绝，详情见下方。',
-  'assessment-formula/contract/max-scale': 'maxScale 应为 0 到 4 的整数。',
+  'assessment-formula/contract/max-scale': 'maxScale 应为 0 到 18 的整数。',
   'assessment-formula/contract/bounds-inverted': '下界大于上界。',
   'assessment-formula/contract/integer-bounds': 'minimum 与 maximum 需同时写明。',
   'assessment-formula/contract/integer-unsafe': '取值范围超出整数可精确表示的区间。',

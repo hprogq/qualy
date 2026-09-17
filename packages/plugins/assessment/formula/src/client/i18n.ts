@@ -455,7 +455,7 @@ const i18n = definePluginMessages({
     },
     profileMaxScale: {
       id: 'assessment-formula/contract/max-scale',
-      defaultMessage: 'maxScale must be a whole number from 0 to 4',
+      defaultMessage: 'maxScale must be a whole number from 0 to 18',
     },
     profileBoundsInverted: {
       id: 'assessment-formula/contract/bounds-inverted',

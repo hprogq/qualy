@@ -18166,3 +18166,46 @@ pnpm test:browser                                60 files / 442 passed(formula-w
 ```
 
 开发库迁移账本问题仍待用户决定(见前两节)。
+
+## 计分公式工作台按设计稿重排:版本与运行记录改抽屉、检查回通栏(2026-09-18)
+
+来源:用户提供的设计稿「公式编辑页」1a(电脑 1680)与 1b(手机 390),以及随后在 dev 中的十余轮实测反馈。
+规则写进 `docs/assessment-formula-recognition.md` §14.3.2。
+
+### 做了什么
+
+- **排布**:上半源码 + 试运行(默认 460,边缘可拖),下半通栏「检查结果」(示例 / 编译结果 / 参数检查),
+  最底一条常驻「发布前检查」按发布顺序说第一件挡路的事并给一个当场的动作(跳到编译结果 / 切到参数检查 /
+  把实际值设为预期 / 一键全部运行)。示例面板不再自带页脚,原版本栏从工作台移走。
+- **版本抽屉**(`VersionsDrawer`,取代 HistoryPanel):顶栏「版本 N」打开,发布版本与草稿记录两页签;每行两个动作——
+  共享与查看;打开某个版本时抽屉随即关闭。共享改用组织节点选择器插槽(`iam/org-node-picker`),模态框分「已共享给」
+  与「选择单位」两段;版本行的共享数量由 `getFormulaFunction` 的版本行带出(`sharedCount`,相关子查询)。
+- **只读态**:顶栏换暖色底、标题是该版本的名字并带「只读」,左上角直接是「返回当前草稿」;页内进入从右侧滑入、
+  返回从左侧滑入(动画包在裁剪层内,不产生横向滚动条),直接用地址进入不带动画。
+- **试运行**:结果与运行时刻、运行与存为示例固定在底部;运行记录进抽屉;「存为示例」改为打开与「添加示例」同一个模态框
+  并预填;字段的取值要求写在名称行末(手机放输入框下,平台侧为 `Field` 增 `note` / `hideLabel`,`FieldAuthoring` 增 `noteOf`)。
+- **示例**:输入按声明的显示名称逐项列出并以「另 N 项」收尾;每行可直接运行(运行中转圈,完成后短暂 ✔/✖)与两段式移除;
+  手机改卡片。运行前提不满足时给出提示,不再静默。
+- **报错可操作**:编译结果整行可点跳到行列、可复制单条或全部;参数检查把沙箱里 value profile 的拒绝解析成结构化
+  `{path, reason}` 并按原因给中文,同一处声明的多个问题一次报全(`normalizeAtomicSchema` 改为合并全部 issue,
+  依 golden.test 自述规则在同一笔内再生 `golden-artifacts.json`:identity 25479B / all-kinds 25924B,已发布产物不受影响);
+  参数名可点,在源码中定位。
+- **小数位数的规则只留一处**:一度把 `Schema.decimal/scoreAmount` 的 `maxScale` 类型收窄成 `0 | 1 | 2 | 3 | 4`
+  想在编译期拦下 `2.03`,当天即撤销——profile 允许的是 `0..18`(`PROFILE_LIMITS.decimalMaxScale`),收窄会拒掉合法声明;
+  且 `Type '2.1' is not assignable to type 'MaxScale | undefined'` 说的是内部类型名,不如参数检查那行能说清「应为 0 到 18 的整数」
+  并可点参数名定位。规则归 value-schema 的 profile 所有,类型里不再抄第二份。
+- **平台**:下拉菜单与对话框、警示对话框统一「面板 14 圆角 / 行 8 圆角」。
+
+### 命令与结果(实际执行)
+
+```text
+pnpm typecheck                                   exit=0
+pnpm vitest run tools/tests                      50 files / 317 passed
+pnpm vitest run packages/core packages/plugins/assessment/formula/tests
+                                                 99 files / 648 passed
+pnpm test:browser                                60 files / 442 passed
+pnpm qualy database verify                       62 committed migration(s) build the declared schema, zero drift
+```
+
+注:编译与读参数结构跑在 `apps/sandbox-authoring` 容器里(不挂源码),SDK 与 value-schema 烤进镜像,
+因此这两项改动要 `docker compose --profile sandbox build sandbox-authoring` 后才在 dev 中生效。
