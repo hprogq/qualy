@@ -237,3 +237,40 @@ export const editorSession = (options: EditorSessionOptions): EditorSession => {
   sessions.set(options.key, created)
   return created
 }
+
+/**
+ * Puts the caret on a place in whatever editor is drawing this session, and
+ * scrolls it into view.
+ *
+ * A diagnostic names a line and a column; a reader who presses it means "show
+ * me". Nothing happens when the session has no editor on screen, which is the
+ * honest answer for a phone reading the compiler's list on another tab.
+ */
+export const revealInSession = (key: string, line: number, column: number): boolean => {
+  const session = sessions.get(key)
+  if (session === undefined) return false
+  const model = session.model
+  const editor = monaco.editor.getEditors().find((one) => one.getModel() === model)
+  if (editor === undefined) return false
+  const at = { lineNumber: Math.max(1, line), column: Math.max(1, column) }
+  editor.setPosition(at)
+  editor.revealPositionInCenter(at)
+  editor.focus()
+  return true
+}
+
+/**
+ * Puts the caret on the first place a word appears in the session's text.
+ *
+ * A refused parameter has no line of its own - it is read out of the declared
+ * structure, not out of a position in the file - but its name is written
+ * somewhere, and that is where its author will start looking.
+ */
+export const revealWordInSession = (key: string, word: string): boolean => {
+  const session = sessions.get(key)
+  if (session === undefined || word === '') return false
+  const found = session.model.findMatches(word, true, false, true, null, false, 1)
+  const at = found[0]?.range
+  if (at === undefined) return false
+  return revealInSession(key, at.startLineNumber, at.startColumn)
+}

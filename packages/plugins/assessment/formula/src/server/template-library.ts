@@ -146,6 +146,7 @@ export class FormulaTemplateLibrary extends Context.Service<
         readonly id: string
         readonly name: string
         readonly depth: number
+        readonly parentId: string | null
       }[]
       readonly truncated: boolean
     }>
@@ -548,7 +549,7 @@ export const make = Effect.fn('FormulaTemplateLibrary.make')(function* () {
               // the parent shape a picker needs, never the path: handing
               // over the materialized path publishes the shape of an
               // organization to whoever holds a leaf of it
-              .select(['n.id', 'n.name', 'n.depth'])
+              .select(['n.id', 'n.name', 'n.depth', 'n.parentId'])
               .where('n.tenantId', '=', tenantId)
               .where((eb) =>
                 scopeCoverage(scope, {
@@ -564,7 +565,12 @@ export const make = Effect.fn('FormulaTemplateLibrary.make')(function* () {
               .execute()
           }),
         ).pipe(Effect.orDie)
-        const all = rows as unknown as { id: string; name: string; depth: number }[]
+        const all = rows as unknown as {
+          id: string
+          name: string
+          depth: number
+          parentId: string | null
+        }[]
         return { nodes: all.slice(0, limit), truncated: all.length > limit }
       }),
 

@@ -129,7 +129,7 @@ const chooseFromMenu = async (row: Element, words: string) => {
 
 /** a case's fields, in the sheet it opens into */
 const openCase = async (row: Element): Promise<HTMLInputElement> => {
-  ;(row.querySelector('[data-testid="formula-test-open"]') as HTMLButtonElement).click()
+  ;(row as HTMLElement).click()
   let name: HTMLInputElement | null = null
   await vi.waitFor(
     () => {
@@ -368,9 +368,7 @@ describe('the formula authoring tools', () => {
         { timeout: 5_000 },
       )
       const survivor = rows()[0]!
-      expect(survivor.querySelector('[data-testid="formula-test-open"]')!.textContent).toBe(
-        'second',
-      )
+      expect(survivor.textContent).toContain('second')
       expect(
         survivor.querySelector('[data-testid="formula-case-result"]')?.getAttribute('data-passed'),
       ).toBe('true')

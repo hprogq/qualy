@@ -7,6 +7,7 @@ import {
   useApiQuery,
   useClaimScreenFill,
   usePageHref,
+  usePageNavigate,
   usePageQueryState,
   usePageRouteParams,
   usePageTitle,
@@ -46,8 +47,9 @@ import {
   CheckIcon,
   CircleCheckIcon,
   CircleXIcon,
-  FlaskConicalIcon,
+  CopyIcon,
   FileCodeIcon,
+  HistoryIcon,
   ListChecksIcon,
   MoreHorizontalIcon,
   PencilIcon,
@@ -56,7 +58,6 @@ import {
   SaveIcon,
   SigmaIcon,
   TagIcon,
-  Undo2Icon,
   UploadIcon,
 } from 'lucide-react'
 import type { AtomicSchema } from '@qualy/value-schema'
@@ -67,27 +68,29 @@ import { isBlankSource, useDraftPreview, type DraftContract } from './use-draft-
 import { ContractTable } from './ContractTable.tsx'
 import { ExampleRow, type Verdict } from './ExampleRow.tsx'
 import { exampleStyles } from './example-grid.ts'
+import { constraintNote } from './constraint-words.ts'
 import {
   contractReasonWords,
   fieldIssueWords,
+  inputFactsOf,
   inputIssueWords,
-  inputSummaryOf,
   outcomeWords,
 } from './report-words.ts'
-import { HistoryPanel, type HistoryList } from './HistoryPanel.tsx'
+import { VersionsDrawer, type HistoryList } from './VersionsDrawer.tsx'
+import { VersionSharingDialog } from './VersionSharingDialog.tsx'
 import { PublishDialog, type PublishCheck } from './PublishDialog.tsx'
 import { ReleaseView } from './ReleaseView.tsx'
 import { RevisionView } from './RevisionView.tsx'
 import {
-  SideHead,
   ToneDot,
   WorkbenchBar,
   WorkbenchLayout,
-  type SideTab,
   type Tone,
+  type WorkbenchGate,
 } from './WorkbenchLayout.tsx'
 import { TryRunPanel } from './TryRunPanel.tsx'
-import { sourceMark, useTryRecords } from './try-records.ts'
+import { TryRecordsDrawer } from './TryRecordsDrawer.tsx'
+import { sourceMark, useTryRecords, type TryRecord } from './try-records.ts'
 import { NewExampleDialog } from './NewExampleDialog.tsx'
 import { LazyFormulaCodeEditor } from './lazy-editors.ts'
 import { holdEditorLease } from './editor-lease.ts'
@@ -133,7 +136,7 @@ const styles = stylex.create({
     flexShrink: 1,
     maxWidth: { default: '24rem', [breakpoints.phone]: '100%' },
     height: { default: 28, [breakpoints.phone]: 30 },
-    marginLeft: 0,
+    marginLeft: -7,
     paddingInline: 6,
     borderWidth: 0,
     borderRadius: 6,
@@ -153,18 +156,37 @@ const styles = stylex.create({
     },
   },
   statusDirty: { color: tokens.warningForeground },
-  // the name is editable, and the pencil says so before a pointer finds out
+  // the name is editable, and the pencil after it says so before a pointer
+  // finds out; a name typed over but not saved is underlined like any other
+  // unsaved change on the page
   nameEdit: {
     display: 'inline-flex',
     minWidth: 0,
     alignItems: 'center',
-    gap: 0,
+    gap: 2,
     color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
     cursor: 'text',
   },
+  nameEditDirty: { color: tokens.warningForeground },
   nameGlyph: { flexShrink: 0 },
+  nameDirty: {
+    textDecorationLine: 'underline',
+    textDecorationStyle: 'dotted',
+    textDecorationColor: tokens.warning,
+    textUnderlineOffset: 4,
+  },
   statusLabel: { flexShrink: 0 },
-  statusGroup: { display: 'inline-flex', alignItems: 'center', gap: 4 },
+  statusGroup: { display: 'inline-flex', minWidth: 0, alignItems: 'center', gap: 4 },
+  statusAhead: { color: tokens.warningForeground },
+  statusLink: {
+    padding: 0,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+    fontFamily: 'inherit',
+    fontSize: 'inherit',
+    color: { default: 'inherit', ':hover': tokens.foreground },
+    cursor: 'pointer',
+  },
   // a rule between groups on one line; a phone wraps them, where a rule would hang at a line's end
   statusRule: {
     display: { default: 'inline-block', [breakpoints.phone]: 'none' },
@@ -222,6 +244,26 @@ const styles = stylex.create({
     borderBottomColor: tokens.divider,
     fontSize: 13,
   },
+  // An offer that must be seen and answered, but never at the cost of moving
+  // the code under the caret: it floats at the foot of the source, over it.
+  floating: {
+    position: 'absolute',
+    right: { default: 16, [breakpoints.phone]: 12 },
+    bottom: { default: 16, [breakpoints.phone]: 12 },
+    left: { default: 'auto', [breakpoints.phone]: 12 },
+    zIndex: 4,
+    display: 'flex',
+    maxWidth: { default: '22rem', [breakpoints.phone]: 'none' },
+    flexDirection: 'column',
+    gap: 8,
+    padding: 12,
+    borderRadius: tokens.radiusLg,
+    backgroundColor: tokens.surface,
+    boxShadow: `0 0 0 1px ${tokens.divider}, ${tokens.elevation2}`,
+    fontSize: 12.5,
+  },
+  floatingWords: { display: 'flex', flexDirection: 'column', gap: 2, lineHeight: 1.5 },
+  floatingActions: { display: 'flex', alignItems: 'center', gap: 6 },
   noticeDanger: { backgroundColor: tokens.dangerSurface, color: tokens.danger },
   noticeWarning: {
     backgroundColor: `color-mix(in oklab, ${tokens.warning} 12%, ${tokens.surface})`,
@@ -239,18 +281,16 @@ const styles = stylex.create({
     fontSize: 13,
     color: tokens.mutedForeground,
   },
-  // A formula nobody has written a line of. The card stands in the middle of
-  // the editor and the editor stays live around it: a press anywhere else
-  // starts from a blank page, which is one of the two ways to begin.
-  emptyOverlay: {
-    position: 'absolute',
-    inset: 0,
-    top: 38,
+  // A formula nobody has written a line of: the choice of how to begin takes
+  // the room the editor would have, so nothing is typed into a page that has
+  // not been started
+  emptyFill: {
     display: 'flex',
+    minHeight: 0,
+    flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 16,
-    pointerEvents: 'none',
   },
   emptyCard: {
     display: 'flex',
@@ -262,9 +302,7 @@ const styles = stylex.create({
     paddingInline: 24,
     borderRadius: tokens.radiusLg,
     backgroundColor: tokens.surface,
-    boxShadow: tokens.elevation2,
     textAlign: 'center',
-    pointerEvents: 'auto',
   },
   emptyGlyph: { color: tokens.mutedForeground },
   emptyTitle: { margin: 0, fontSize: 15, fontWeight: 600 },
@@ -356,24 +394,14 @@ const styles = stylex.create({
     },
     cursor: { default: 'pointer', ':disabled': 'default' },
   },
-  panelFoot: {
-    display: 'flex',
-    minHeight: 36,
+  // the one step a standing line offers: words, not a button competing with
+  // the two decisions beside it
+  quietAction: {
+    display: 'inline-flex',
     flexShrink: 0,
-    flexWrap: 'wrap',
     alignItems: 'center',
-    columnGap: 10,
-    paddingInline: 16,
-    borderTopWidth: 1,
-    borderTopStyle: 'solid',
-    borderTopColor: tokens.divider,
-    backgroundColor: tokens.surfaceInset,
-    fontSize: 12,
-    color: tokens.mutedForeground,
-  },
-  footRule: { width: 1, height: 12, backgroundColor: tokens.border },
-  footTotal: { fontVariantNumeric: 'tabular-nums' },
-  footAction: {
+    gap: 4,
+    whiteSpace: 'nowrap',
     padding: 0,
     borderWidth: 0,
     backgroundColor: 'transparent',
@@ -383,6 +411,86 @@ const styles = stylex.create({
     color: { default: tokens.surfaceMutedForeground, ':hover': tokens.foreground },
     textDecoration: { default: 'none', ':hover': 'underline' },
     cursor: 'pointer',
+  },
+  actionCount: {
+    display: 'inline-flex',
+    minWidth: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingInline: 5,
+    borderRadius: '9999px',
+    backgroundColor: tokens.surfaceMuted,
+    fontSize: 11,
+    fontWeight: 400,
+    fontVariantNumeric: 'tabular-nums',
+    color: tokens.surfaceMutedForeground,
+  },
+  // a quiet strip over a phone's list or code: what it holds, and one way on
+  phoneStrip: {
+    display: 'flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 36,
+    paddingBlock: 6,
+    paddingInline: 16,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
+    backgroundColor: tokens.surfaceInset,
+    fontSize: 11,
+    color: tokens.mutedForeground,
+  },
+  diagnosticRow: {
+    cursor: 'pointer',
+    backgroundColor: { default: null, ':hover': tokens.surfaceInset },
+  },
+  middle: { verticalAlign: 'middle' },
+  monoAction: {
+    fontFamily: 'ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace',
+    fontSize: 11.5,
+    fontWeight: 400,
+  },
+  iconAction: {
+    display: 'inline-flex',
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 0,
+    borderRadius: 6,
+    padding: 0,
+    backgroundColor: { default: 'transparent', ':hover': tokens.surfaceMuted },
+    color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
+    cursor: 'pointer',
+  },
+  // the words a packager raised, kept for whoever needs them, on one line
+  rawLine: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 8,
+    margin: 0,
+    paddingInline: 16,
+    paddingBottom: 10,
+  },
+  rawWords: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    // the font stack is spelled here: stylex.create cannot read a constant
+    // another module exported
+    fontFamily: 'ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace',
+    fontSize: 11.5,
+    color: tokens.mutedForeground,
+  },
+  stripBad: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 5,
+    fontWeight: 500,
+    color: tokens.danger,
   },
   stateLine: {
     display: 'flex',
@@ -414,11 +522,47 @@ const styles = stylex.create({
     paddingInline: 24,
     paddingBottom: 16,
   },
-  caseFields: { display: 'flex', flexDirection: 'column', gap: 14 },
+  // the three parts of a case, each under its own heading on its own ground
+  casePart: { display: 'flex', flexDirection: 'column', gap: 6 },
+  casePartTitle: {
+    margin: 0,
+    fontSize: 11,
+    fontWeight: 600,
+    letterSpacing: '0.06em',
+    color: tokens.mutedForeground,
+  },
+  casePartBody: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+    padding: 12,
+    borderRadius: tokens.radiusMd,
+    backgroundColor: tokens.surfaceInset,
+  },
+  caseVerdict: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    margin: 0,
+    paddingBlock: 10,
+    paddingInline: 12,
+    borderRadius: tokens.radiusMd,
+    backgroundColor: tokens.surfaceInset,
+    fontSize: 13,
+  },
+  caseVerdictGood: {
+    backgroundColor: `color-mix(in oklab, ${tokens.success} 12%, ${tokens.surface})`,
+    color: tokens.successForeground,
+  },
+  caseVerdictBad: {
+    backgroundColor: `color-mix(in oklab, ${tokens.danger} 10%, ${tokens.surface})`,
+    color: tokens.danger,
+  },
+  caseVerdictWords: { minWidth: 0, overflowWrap: 'anywhere' },
   caseFoot: { display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6 },
   problemLine: { margin: 0, fontSize: 12, color: tokens.danger },
   skeleton: { display: 'flex', flexDirection: 'column', gap: 16, padding: 20 },
-  // a phone's source tab: the editor, and under it what the compiler said
+  // a phone's source tab: the editor, under a strip that says what stands against it
   phoneSource: { display: 'flex', minHeight: 0, flexGrow: 1, flexDirection: 'column' },
   phoneEditor: {
     position: 'relative',
@@ -427,37 +571,7 @@ const styles = stylex.create({
     flexGrow: 1,
     flexDirection: 'column',
   },
-  phoneCompile: {
-    flexShrink: 0,
-    maxHeight: '40%',
-    overflowY: 'auto',
-    borderTopWidth: 1,
-    borderTopStyle: 'solid',
-    borderTopColor: tokens.border,
-  },
-  phoneExamplesBar: {
-    display: 'flex',
-    flexShrink: 0,
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: 6,
-    paddingBlock: 6,
-    paddingInline: 12,
-    borderBottomWidth: 1,
-    borderBottomStyle: 'solid',
-    borderBottomColor: tokens.divider,
-  },
   phoneExamples: { display: 'flex', minHeight: 0, flexGrow: 1, flexDirection: 'column' },
-  gateWords: {
-    display: 'flex',
-    minWidth: 0,
-    flexGrow: 1,
-    alignItems: 'center',
-    gap: 6,
-    fontSize: 12,
-    color: tokens.mutedForeground,
-  },
-  gateText: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
 })
 
 interface DraftTest {
@@ -477,15 +591,6 @@ const newTestKey = (): string =>
 
 /** the wire/compare projection: identity is local, never sent or compared */
 const bareTests = (tests: readonly DraftTest[]) => tests.map(({ key: _key, ...rest }) => rest)
-
-/** a case's stored input in brief; text that is not JSON is shown as typed */
-const inputTextSummary = (inputText: string): string => {
-  try {
-    return inputSummaryOf(JSON.parse(inputText === '' ? '{}' : inputText) as unknown)
-  } catch {
-    return inputText
-  }
-}
 
 /**
  * How wide the name field is drawn: as wide as the name, so the badge
@@ -565,6 +670,39 @@ const findingsOf = (error: unknown): PublishFindings => {
   }
 }
 
+/**
+ * The parameter a refusal is about, out of the path the validator names.
+ *
+ * `properties.hours.x-qualy-maxScale` is about `hours`; `.x-qualy-maxScale`
+ * is about the whole declaration and names nobody. The rest of the path is
+ * the rule, which the words beside it already say.
+ */
+const parameterOf = (path: string): string | null => {
+  const found = /(?:^|\.)properties\.([^.]+)/.exec(path)
+  return found?.[1] ?? null
+}
+
+/**
+ * The word to look for in the source when a refusal is pressed.
+ *
+ * A parameter's own name where the path names one; otherwise the setting it
+ * is about - `.x-qualy-maximum` is written `maximum:` in the declaration, and
+ * that is where its author will start reading.
+ */
+const sourceWordOf = (path: string): string | null => {
+  const named = parameterOf(path)
+  if (named !== null) return named
+  const last = path
+    .split('.')
+    .filter((part) => part !== '')
+    .at(-1)
+  if (last === undefined) return null
+  return last.replace(/^x-qualy-/, '')
+}
+
+/** the session key the page's own editor draws under; the diagnostics jump into it */
+const draftSessionKey = (lease: string) => `${lease}/draft`
+
 /** a hint on hover and focus, which a disabled control cannot carry itself */
 function Hinted({
   hint,
@@ -618,6 +756,7 @@ export default function FormulaEditorPage() {
   const titleRef = usePageTitle(fn?.name ?? format(m.listTitle))
   // where somebody else's formula can be started from, when this viewer may go there
   const templatesHref = usePageHref('assessment-formula/templates')
+  const goto = usePageNavigate()
   // A workbench at every width: it takes the room under the application's
   // bars and scrolls inside. Side by side where there is room, and on a
   // phone the same parts spread over tabs, with the step that comes next
@@ -628,16 +767,35 @@ export default function FormulaEditorPage() {
   // as this page does, not as long as whatever currently draws them
   const [editorLease] = useState(() => `formula-page-${newTestKey()}`)
   useEffect(() => holdEditorLease(editorLease), [editorLease])
-  // which of the versions and the try-run shows where the two share a column;
-  // versions first, since publishing is what the page is for
-  const [sideTab, setSideTab] = useState<SideTab>('history')
+  // what waits behind a drawer: the formula's versions, and the tries this
+  // browser remembers
+  const [versionsOpen, setVersionsOpen] = useState(false)
+  const [recordsOpen, setRecordsOpen] = useState(false)
+  // whose audience is open for changing; kept while the dialog closes, so
+  // its words stay put as it slides away
+  const [sharingFor, setSharingFor] = useState<{
+    readonly versionNo: number
+    readonly name: string
+  } | null>(null)
+  const [sharingOpen, setSharingOpen] = useState(false)
+  // an example being written out, and what it starts from when a try opened it
   const [addingExample, setAddingExample] = useState(false)
+  const [exampleSeed, setExampleSeed] = useState<{
+    readonly drafts?: Readonly<Record<string, FieldDraft>>
+    readonly expected?: string
+  }>({})
 
   // which state of the formula is on screen - the draft, or a piece of its
   // history - kept in the address so a reload or back lands on it again
   const [viewParam, setViewParam] = usePageQueryState('view', '', { history: 'push' })
   const view = parseView(viewParam)
-  const showView = (next: WorkbenchView) => setViewParam(viewValue(next))
+  // Only a press inside the page moves anything: arriving on a link straight
+  // to a version is simply where the reader is, with nothing to slide in.
+  const [motion, setMotion] = useState<'forward' | 'back' | null>(null)
+  const showView = (next: WorkbenchView) => {
+    setMotion(next.kind === 'draft' ? 'back' : 'forward')
+    setViewParam(viewValue(next))
+  }
   const [historyList, setHistoryList] = useState<HistoryList>('releases')
   const [phoneTab, setPhoneTab] = useState('source')
   const [publishOpen, setPublishOpen] = useState(false)
@@ -663,6 +821,10 @@ export default function FormulaEditorPage() {
   const [failure, setFailure] = useState<string | null>(null)
   const [findings, setFindings] = useState<PublishFindings>({})
 
+  // Whether the author has begun. A formula whose saved draft is empty opens
+  // on the two ways to start instead of on an editor; once one is taken, the
+  // editor stays even if every line is deleted again.
+  const [started, setStarted] = useState(false)
   const [baseRevision, setBaseRevision] = useState<number | null>(null)
   const [remoteMoved, setRemoteMoved] = useState(false)
   // edits this browser kept from an earlier visit, offered before anything else is kept
@@ -714,8 +876,12 @@ export default function FormulaEditorPage() {
     readonly forSource: string
     /** the case (input + expectation) this ran; edits make it stale too */
     readonly forCase: string
+    /** when it ran, for the try-run's own line */
+    readonly at?: number
   }
   const [runResults, setRunResults] = useState<Record<string, RunOutcome>>({})
+  /** which lines the run in flight is about, so each answers where it was pressed */
+  const [runningKeys, setRunningKeys] = useState<readonly string[]>([])
   const [tryResult, setTryResult] = useState<RunOutcome | null>(null)
   const [running, setRunning] = useState(false)
   // the panel under the editor: which view it shows, and which cases are
@@ -821,7 +987,11 @@ export default function FormulaEditorPage() {
   }
   const freezeForRun = async (): Promise<RunSnapshot | null> => {
     const fresh = await preview.ensureFresh()
-    if (fresh.status !== 'ready') return null
+    if (fresh.status !== 'ready') {
+      // a press that cannot run says why: silence reads as a broken button
+      toast.info(format(isBlankSource(source) ? m.runNeedsSource : m.runNeedsCompile))
+      return null
+    }
     return { sourceTs: fresh.source, contract: fresh.contract }
   }
 
@@ -849,6 +1019,7 @@ export default function FormulaEditorPage() {
 
   const runRows = async (keys: readonly string[]) => {
     setRunning(true)
+    setRunningKeys(keys)
     setFailure(null)
     try {
       const snapshot = await freezeForRun()
@@ -892,6 +1063,7 @@ export default function FormulaEditorPage() {
       setFailure(formatError(error))
     } finally {
       setRunning(false)
+      setRunningKeys([])
     }
   }
 
@@ -923,6 +1095,7 @@ export default function FormulaEditorPage() {
       })
       setTryResult({
         ...answers[0]!,
+        at: Date.now(),
         forSource: snapshot.sourceTs,
         forCase: JSON.stringify(frozenDrafts),
       })
@@ -970,6 +1143,7 @@ export default function FormulaEditorPage() {
   const adopt = (loaded: NonNullable<typeof fn>) => {
     setName(loaded.name)
     setSource(loaded.draftSourceTs)
+    if (!isBlankSource(loaded.draftSourceTs)) setStarted(true)
     setTests(seededTests(loaded))
     setBaseRevision(loaded.draftRevision)
     setRemoteMoved(false)
@@ -1355,6 +1529,7 @@ export default function FormulaEditorPage() {
     const put = () => {
       setSource(MINIMAL_EXAMPLE)
       setEditorSeed((seed) => seed + 1)
+      setStarted(true)
       setPhoneTab('source')
     }
     if (isBlankSource(source)) {
@@ -1447,8 +1622,12 @@ export default function FormulaEditorPage() {
   const releaseWords = (release: { versionNo: number; releaseName: string | null }): string =>
     release.releaseName ?? format(m.releaseOrdinal, { number: release.versionNo })
 
-  const historyWith = (primary: ReactNode) => (
-    <HistoryPanel
+  // the versions, wherever the workbench is showing them from
+  const versionsDrawer = (
+    <VersionsDrawer
+      open={versionsOpen}
+      onOpenChange={setVersionsOpen}
+      narrow={narrow}
       functionId={functionId}
       releases={releases}
       latestVersionNo={fn.latestVersionNo}
@@ -1457,21 +1636,50 @@ export default function FormulaEditorPage() {
       onView={showView}
       list={historyList}
       onList={setHistoryList}
-      primary={primary}
+      archived={archived}
+      restoring={restore.isPending}
+      onRestoreRelease={(release) =>
+        restoreFrom({ kind: 'published-version', versionNo: release.versionNo }, release.name)
+      }
+      onRestoreRevision={(revisionNo) =>
+        restoreFrom(
+          { kind: 'draft-revision', revisionNo },
+          format(m.revisionNumber, { number: revisionNo }),
+        )
+      }
+      onShare={(release) => {
+        setSharingFor({ versionNo: release.versionNo, name: releaseWords(release) })
+        setSharingOpen(true)
+      }}
     />
   )
 
-  // while a piece of history is open, the panel's first offer is the way back
-  const backToDraft = (
+  // mounted from the first press onwards, and kept through its own closing so
+  // its words stay put as it slides away
+  const sharingDialog =
+    sharingFor === null ? null : (
+      <VersionSharingDialog
+        open={sharingOpen}
+        functionId={functionId}
+        version={sharingFor}
+        onClose={() => setSharingOpen(false)}
+        onSaved={() => void refresh()}
+      />
+    )
+
+  /** the bar's way into the versions, which every view carries */
+  const versionsButton = (
     <Button
-      variant="outline"
+      variant="ghost"
       size="sm"
-      data-testid="formula-history-back"
-      className={stylex.props(styles.wide).className}
-      onClick={() => showView({ kind: 'draft' })}
+      data-testid="formula-versions-open"
+      onClick={() => setVersionsOpen(true)}
     >
-      <Undo2Icon aria-hidden />
-      {format(m.backToDraft)}
+      <HistoryIcon aria-hidden />
+      {format(m.historyTitle)}
+      {releases.length === 0 ? null : (
+        <span {...stylex.props(styles.actionCount)}>{releases.length}</span>
+      )}
     </Button>
   )
 
@@ -1505,9 +1713,14 @@ export default function FormulaEditorPage() {
           narrow={narrow}
           titleRef={titleRef}
           lease={editorLease}
-          history={historyWith(backToDraft)}
-          sideTab={sideTab}
-          onSideTab={setSideTab}
+          versionsButton={versionsButton}
+          drawers={
+            <>
+              {versionsDrawer}
+              {sharingDialog}
+            </>
+          }
+          {...(motion === 'forward' ? { motion: 'forward' as const } : {})}
           onBack={() => showView({ kind: 'draft' })}
           onRestore={(release) =>
             restoreFrom({ kind: 'published-version', versionNo: release.versionNo }, release.name)
@@ -1531,9 +1744,14 @@ export default function FormulaEditorPage() {
           narrow={narrow}
           titleRef={titleRef}
           lease={editorLease}
-          history={historyWith(backToDraft)}
-          sideTab={sideTab}
-          onSideTab={setSideTab}
+          versionsButton={versionsButton}
+          drawers={
+            <>
+              {versionsDrawer}
+              {sharingDialog}
+            </>
+          }
+          {...(motion === 'forward' ? { motion: 'forward' as const } : {})}
           onBack={() => showView({ kind: 'draft' })}
           onRestore={(revisionNo) =>
             restoreFrom(
@@ -1547,28 +1765,6 @@ export default function FormulaEditorPage() {
       </>
     )
   }
-
-  // the draft contract, as the try-run and the tabs speak of it
-  const structure: 'blank' | 'synced' | 'refused' | 'loading' | 'stale' = blank
-    ? 'blank'
-    : preview.current.status === 'ready' && preview.current.source === source
-      ? 'synced'
-      : preview.current.status === 'refused' && preview.current.source === source
-        ? 'refused'
-        : contract === null
-          ? 'loading'
-          : 'stale'
-  const structureWords = format(
-    {
-      blank: m.compileBlank,
-      synced: m.structureSynced,
-      // a form drawn from the last structure that compiled says so
-      refused: contract === null ? m.structureRefused : m.structureKept,
-      loading: m.structureLoading,
-      stale: m.structureStale,
-    }[structure],
-  )
-  const refusalWords = preview.current.status === 'refused' ? preview.current.refusal : null
 
   // What stands against the source on screen: the preview's own refusal,
   // which carries the compiler's findings, and a refused publish of the
@@ -1590,6 +1786,36 @@ export default function FormulaEditorPage() {
     findingsHeld && findings.detail !== undefined ? findings.detail : previewFindings.detail
   const packagerWords =
     findingsHeld && findings.packager !== undefined ? findings.packager : previewFindings.packager
+
+  // the draft contract, as the try-run and the tabs speak of it
+  const structure: 'blank' | 'synced' | 'refused' | 'loading' | 'stale' = blank
+    ? 'blank'
+    : preview.current.status === 'ready' && preview.current.source === source
+      ? 'synced'
+      : preview.current.status === 'refused' && preview.current.source === source
+        ? 'refused'
+        : contract === null
+          ? 'loading'
+          : 'stale'
+  const structureWords = format(
+    {
+      blank: m.compileBlank,
+      synced: m.structureSynced,
+      // a form drawn from the last structure that compiled says so, and says
+      // which of the two checks refused the one on screen
+      refused: contractRefused
+        ? contract === null
+          ? m.structureContractRefused
+          : m.structureContractKept
+        : contract === null
+          ? m.structureRefused
+          : m.structureKept,
+      loading: m.structureLoading,
+      stale: m.structureStale,
+    }[structure],
+  )
+  const refusalWords = preview.current.status === 'refused' ? preview.current.refusal : null
+
   const compileState: 'blank' | 'passed' | 'failed' | 'working' = blank
     ? 'blank'
     : diagnostics.length > 0 || (structure === 'refused' && !contractRefused)
@@ -1629,10 +1855,27 @@ export default function FormulaEditorPage() {
     ? 'bad'
     : cases.length > 0 && cases.every((one) => one.verdict === 'passed')
       ? 'good'
-      : 'quiet'
+      : running || cases.some((one) => one.verdict === 'not-run')
+        ? 'working'
+        : 'quiet'
+  // While the compiler is being asked again the answer is unknown, and saying
+  // so is steadier than taking the dot away and putting it back.
   const compileTone: Tone =
-    compileState === 'failed' ? 'bad' : compileState === 'passed' ? 'good' : 'quiet'
-  const contractTone: Tone = issues.length > 0 ? 'bad' : structure === 'synced' ? 'good' : 'quiet'
+    compileState === 'failed'
+      ? 'bad'
+      : compileState === 'passed'
+        ? 'good'
+        : compileState === 'working'
+          ? 'working'
+          : 'quiet'
+  const contractTone: Tone =
+    issues.length > 0
+      ? 'bad'
+      : structure === 'synced'
+        ? 'good'
+        : structure === 'blank'
+          ? 'quiet'
+          : 'working'
 
   // the foot of the examples: the first thing standing between the draft
   // and a publication, and the one step that settles it when there is one
@@ -1692,28 +1935,44 @@ export default function FormulaEditorPage() {
     setPublishOpen(true)
   }
 
-  const addCase = () => setAddingExample(true)
+  const addCase = () => {
+    setExampleSeed({})
+    setAddingExample(true)
+  }
 
   const editCase = (key: string, change: Partial<Omit<DraftTest, 'key'>>) =>
     setTests(tests.map((one) => (one.key === key ? { ...one, ...change } : one)))
+
+  /** one part of a case, under its own heading, so the three do not run together */
+  const casePart = (title: string, body: ReactNode) => (
+    <section {...stylex.props(styles.casePart)}>
+      <h3 {...stylex.props(styles.casePartTitle)}>{title}</h3>
+      <div {...stylex.props(styles.casePartBody)}>{body}</div>
+    </section>
+  )
 
   const caseFields = (test: DraftTest, legal: boolean) => {
     const expectedProblem = expectedIssueOf(test, contract)
     return (
       <>
-        <div {...stylex.props(styles.caseFields)}>
-          <Field label={format(m.testName)}>
+        {casePart(
+          format(m.testName),
+          <Field label={format(m.testName)} hideLabel>
             {(id) => (
               <Input
                 id={id}
                 value={test.name}
                 disabled={archived}
+                placeholder={format(m.exampleNamePlaceholder)}
                 onChange={(event) => editCase(test.key, { name: event.target.value })}
               />
             )}
-          </Field>
-          {contract === null ? (
-            <Field label={format(m.testInput)}>
+          </Field>,
+        )}
+        {casePart(
+          format(m.testInput),
+          contract === null ? (
+            <Field label={format(m.testInput)} hideLabel>
               {(id) => (
                 <Input
                   id={id}
@@ -1733,11 +1992,17 @@ export default function FormulaEditorPage() {
               disabled={archived}
               problems={rowIssues[test.key]}
               scope={`case-${test.key}`}
-              authoring={{ unnamedLabel: format(m.fieldUnnamed) }}
+              authoring={{
+                unnamedLabel: format(m.fieldUnnamed),
+                noteOf: (field) => constraintNote(field, format, locale),
+              }}
             />
-          )}
-          {contract === null ? (
-            <Field label={format(m.testExpected)}>
+          ),
+        )}
+        {casePart(
+          format(m.expectedLabel),
+          contract === null ? (
+            <Field label={format(m.expectedLabel)} hideLabel>
               {(id) => (
                 <Input
                   id={id}
@@ -1763,8 +2028,8 @@ export default function FormulaEditorPage() {
               disabled={archived}
               {...(expectedProblem === null ? {} : { problem: expectedProblem })}
             />
-          )}
-        </div>
+          ),
+        )}
         {legal ? null : (
           <p {...stylex.props(styles.problemLine)} role="alert">
             {format(m.testRowInvalid)}
@@ -1791,11 +2056,6 @@ export default function FormulaEditorPage() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        {narrow ? (
-          <DropdownMenuItem disabled={!canPublish} onSelect={openPublish}>
-            {format(m.publishVersionMenu)}
-          </DropdownMenuItem>
-        ) : null}
         <DropdownMenuItem disabled={archived} onSelect={loadExample}>
           {format(m.loadExampleMenu)}
         </DropdownMenuItem>
@@ -1821,16 +2081,39 @@ export default function FormulaEditorPage() {
         ? format(m.saveShortcutHint)
         : format(m.saveCleanHint)
   const saveButton = (
-    <Hinted hint={saveHint}>
+    <Hinted hint={saveHint} wide={narrow}>
       <Button
-        variant={narrow ? 'outline' : 'default'}
-        size="sm"
+        variant="outline"
+        size={narrow ? 'lg' : 'sm'}
         data-testid="formula-save"
         disabled={archived || busy || !dirty()}
         onClick={saveDraft}
+        className={narrow ? stylex.props(styles.wide).className : undefined}
       >
-        <SaveIcon aria-hidden />
+        {narrow ? null : <SaveIcon aria-hidden />}
         {format(m.save)}
+      </Button>
+    </Hinted>
+  )
+
+  const publishHint = archived
+    ? format(m.saveArchivedHint)
+    : blank
+      ? format(m.publishBlankHint)
+      : format(m.publishHint)
+  // publishing is what the page is for, so it stands in the bar rather than
+  // in a menu, and on a phone beside saving at the foot
+  const publishButton = (
+    <Hinted hint={publishHint} wide={narrow}>
+      <Button
+        size={narrow ? 'lg' : 'sm'}
+        data-testid="formula-publish-open"
+        disabled={!canPublish}
+        onClick={openPublish}
+        className={narrow ? stylex.props(styles.wide).className : undefined}
+      >
+        {narrow ? null : <UploadIcon aria-hidden />}
+        {format(m.publishOpen)}
       </Button>
     </Hinted>
   )
@@ -1841,10 +2124,10 @@ export default function FormulaEditorPage() {
       backLabel={format(m.listTitle)}
       titleRef={titleRef}
       title={
-        <label {...stylex.props(styles.nameEdit)}>
-          {archived ? null : (
-            <PencilIcon size={13} aria-hidden {...stylex.props(styles.nameGlyph)} />
-          )}
+        <label
+          {...stylex.props(styles.nameEdit, nameDirty() && styles.nameEditDirty)}
+          data-dirty={nameDirty() ? true : undefined}
+        >
           <input
             aria-label={format(m.nameLabel)}
             value={name}
@@ -1852,8 +2135,11 @@ export default function FormulaEditorPage() {
             spellCheck={false}
             onChange={(event) => setName(event.target.value)}
             style={{ width: nameWidth(name) }}
-            {...stylex.props(styles.name)}
+            {...stylex.props(styles.name, nameDirty() && styles.nameDirty)}
           />
+          {archived ? null : (
+            <PencilIcon size={13} aria-hidden {...stylex.props(styles.nameGlyph)} />
+          )}
         </label>
       }
       badge={
@@ -1883,44 +2169,52 @@ export default function FormulaEditorPage() {
             data-release={releaseRelation}
             {...stylex.props(styles.statusGroup, saveState === 'dirty' && styles.statusDirty)}
           >
-            {saveState === 'clean' && releaseRelation === 'same' ? (
-              <CheckIcon size={12} aria-hidden />
-            ) : null}
+            {saveState === 'clean' ? <CheckIcon size={12} aria-hidden /> : null}
             {format(
-              saveState !== 'clean'
-                ? {
-                    publishing: m.draftPublishing,
-                    saving: m.draftSaving,
-                    dirty: m.draftDirty,
-                  }[saveState]
-                : releaseRelation === 'same'
-                  ? m.draftMatchesRelease
-                  : releaseRelation === 'ahead'
-                    ? m.draftUnpublished
-                    : m.draftClean,
+              {
+                publishing: m.draftPublishing,
+                saving: m.draftSaving,
+                dirty: m.draftDirty,
+                clean: m.draftClean,
+              }[saveState],
             )}
           </span>
+          {/* what the saved draft is to the latest publication, said apart
+              from whether it is saved at all */}
+          {releaseRelation === 'none' ? null : (
+            <>
+              <span aria-hidden {...stylex.props(styles.statusRule)} />
+              <span
+                data-testid="formula-release-relation"
+                data-release={releaseRelation}
+                {...stylex.props(
+                  styles.statusGroup,
+                  releaseRelation === 'ahead' && styles.statusAhead,
+                )}
+              >
+                {format(releaseRelation === 'same' ? m.draftMatchesRelease : m.draftUnpublished)}
+              </span>
+            </>
+          )}
           {fn.latestVersionNo === null ? null : (
             <>
               <span aria-hidden {...stylex.props(styles.statusRule)} />
-              <span {...stylex.props(styles.statusGroup)}>
-                <span {...stylex.props(styles.statusLabel)}>{format(m.latestRelease)}</span>
-                <button
-                  type="button"
-                  data-testid="formula-latest-release"
-                  title={format(m.openRelease)}
-                  onClick={() => showView({ kind: 'release', versionNo: fn.latestVersionNo! })}
-                  {...stylex.props(styles.chip)}
-                >
-                  <TagIcon size={11} aria-hidden />
-                  <span {...stylex.props(styles.chipWords)}>
-                    {releaseWords({
+              <button
+                type="button"
+                data-testid="formula-latest-release"
+                title={format(m.openRelease)}
+                onClick={() => showView({ kind: 'release', versionNo: fn.latestVersionNo! })}
+                {...stylex.props(styles.statusGroup, styles.statusLink)}
+              >
+                <span {...stylex.props(styles.statusClip)}>
+                  {format(m.latestReleaseIs, {
+                    name: releaseWords({
                       versionNo: fn.latestVersionNo,
                       releaseName: fn.latestReleaseName,
-                    })}
-                  </span>
-                </button>
-              </span>
+                    }),
+                  })}
+                </span>
+              </button>
             </>
           )}
           {copiedFrom === null ? null : (
@@ -1941,10 +2235,13 @@ export default function FormulaEditorPage() {
       }
       actions={
         <>
+          {versionsButton}
           {saveButton}
+          {publishButton}
           {menu}
         </>
       }
+      phoneActions={versionsButton}
       phoneMenu={menu}
     />
   )
@@ -1954,31 +2251,6 @@ export default function FormulaEditorPage() {
       {failure === null ? null : (
         <div role="alert" {...stylex.props(styles.notice, styles.noticeDanger)}>
           {failure}
-        </div>
-      )}
-      {localDraft === null ? null : (
-        <div
-          data-testid="formula-local-draft"
-          {...stylex.props(styles.notice, styles.noticeWarning)}
-        >
-          <span {...stylex.props(styles.noticeWords)}>
-            <span {...stylex.props(styles.noticeTitle)}>{format(m.localDraftTitle)}</span>
-            {format(m.localDraftHint, {
-              when: shortWhen(new Date(localDraft.keptAt).toISOString(), format, locale),
-            })}
-          </span>
-          <span {...stylex.props(w.spring)} />
-          <Button variant="ghost" size="xs" onClick={dropLocalDraft}>
-            {format(m.localDraftDrop)}
-          </Button>
-          <Button
-            variant="outline"
-            size="xs"
-            data-testid="formula-local-draft-take"
-            onClick={takeLocalDraft}
-          >
-            {format(m.localDraftTake)}
-          </Button>
         </div>
       )}
       {remoteMoved ? (
@@ -1998,6 +2270,35 @@ export default function FormulaEditorPage() {
       ) : null}
     </>
   )
+
+  // the edits this browser kept, offered over the source rather than above it
+  const keptDraft =
+    localDraft === null ? null : (
+      <div data-testid="formula-local-draft" {...stylex.props(styles.floating)}>
+        <span {...stylex.props(styles.floatingWords)}>
+          <span {...stylex.props(styles.noticeTitle)}>{format(m.localDraftTitle)}</span>
+          <span {...stylex.props(styles.chipQuiet)}>
+            {format(m.localDraftHint, {
+              when: shortWhen(new Date(localDraft.keptAt).toISOString(), format, locale),
+            })}
+          </span>
+        </span>
+        <span {...stylex.props(styles.floatingActions)}>
+          <span {...stylex.props(w.spring)} />
+          <Button variant="ghost" size="xs" onClick={dropLocalDraft}>
+            {format(m.localDraftDrop)}
+          </Button>
+          <Button
+            variant="outline"
+            size="xs"
+            data-testid="formula-local-draft-take"
+            onClick={takeLocalDraft}
+          >
+            {format(m.localDraftTake)}
+          </Button>
+        </span>
+      </div>
+    )
 
   // ---- the source -----------------------------------------------------------
 
@@ -2022,29 +2323,73 @@ export default function FormulaEditorPage() {
     </Suspense>
   )
 
-  // Nothing written yet: two ways to begin, over an editor that is already
-  // live - typing anywhere around the card is the third.
-  const emptySource =
-    blank && !archived ? (
-      <div {...stylex.props(styles.emptyOverlay)}>
-        <div data-testid="formula-empty-source" {...stylex.props(styles.emptyCard)}>
-          <SigmaIcon size={22} aria-hidden {...stylex.props(styles.emptyGlyph)} />
-          <p {...stylex.props(styles.emptyTitle)}>{format(m.emptySourceTitle)}</p>
-          <p {...stylex.props(styles.emptyHint)}>{format(m.emptySourceHint)}</p>
-          <div {...stylex.props(styles.emptyActions)}>
-            <Button size="sm" onClick={loadExample}>
-              <FileCodeIcon aria-hidden />
-              {format(m.loadExample)}
+  /** leaving the page for somebody else's formula, with unsaved work here */
+  const browseTemplates = () => {
+    const go = () => goto('assessment-formula/templates')
+    if (!dirty()) {
+      go()
+      return
+    }
+    ask({
+      title: format(m.leaveForTemplatesTitle),
+      description: format(m.leaveForTemplatesDescription),
+      confirmLabel: format(m.leaveForTemplatesConfirm),
+      act: go,
+    })
+  }
+
+  // Nothing written yet, and nothing written before: the source area is the
+  // choice of how to begin rather than an empty editor with a card over it.
+  const beginning = blank && !started && !archived
+  const emptySource = (
+    <div data-testid="formula-empty-source" {...stylex.props(styles.emptyFill)}>
+      <div {...stylex.props(styles.emptyCard)}>
+        <SigmaIcon size={22} aria-hidden {...stylex.props(styles.emptyGlyph)} />
+        <p {...stylex.props(styles.emptyTitle)}>{format(m.emptySourceTitle)}</p>
+        <p {...stylex.props(styles.emptyHint)}>{format(m.emptySourceHint)}</p>
+        <div {...stylex.props(styles.emptyActions)}>
+          <Button size="sm" onClick={loadExample}>
+            <FileCodeIcon aria-hidden />
+            {format(m.loadExample)}
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setStarted(true)}>
+            {format(m.startBlank)}
+          </Button>
+          {templatesHref === undefined ? null : (
+            <Button size="sm" variant="ghost" onClick={browseTemplates}>
+              {format(m.browseTemplates)}
             </Button>
-            {templatesHref ? (
-              <Button size="sm" variant="outline" asChild>
-                <PageLink page="assessment-formula/templates">{format(m.browseTemplates)}</PageLink>
-              </Button>
-            ) : null}
-          </div>
+          )}
         </div>
       </div>
-    ) : null
+    </div>
+  )
+
+  /** puts what the compiler said on the clipboard, one finding or all of them */
+  const copyWords = (text: string) => {
+    void navigator.clipboard
+      ?.writeText(text)
+      .then(() => toast.success(format(m.copied)))
+      .catch(() => toast.error(format(m.copyFailed)))
+  }
+  const diagnosticWords = (row: { line: number; column: number; code: string; message: string }) =>
+    `${String(row.line)}:${String(row.column)} ${row.code} ${row.message}`
+
+  /** takes the caret to a place in the source the compiler named */
+  const jumpTo = (line: number, column: number) => {
+    setPhoneTab('source')
+    void import('./editor-session.ts').then(({ revealInSession }) => {
+      revealInSession(draftSessionKey(editorLease), line, column)
+    })
+  }
+
+  /** a refused parameter has no line, so its name is where to start looking */
+  const jumpToWord = (word: string) => {
+    setPhoneTab('source')
+    void import('./editor-session.ts').then(({ revealWordInSession }) => {
+      revealWordInSession(draftSessionKey(editorLease), word)
+    })
+  }
 
   const diagnosticsDetail = (
     <>
@@ -2056,18 +2401,54 @@ export default function FormulaEditorPage() {
         <table {...stylex.props(w.reportTable)} data-testid="formula-diagnostics">
           <tbody>
             {diagnostics.map((row, index) => (
-              <tr key={index}>
-                <td {...stylex.props(w.reportCell, w.mono, w.fit)}>
+              // the whole line is the way to the place it names
+              <tr
+                key={index}
+                data-testid="formula-diagnostic"
+                title={format(m.jumpToLine)}
+                onClick={() => jumpTo(row.line, row.column)}
+                {...stylex.props(styles.diagnosticRow)}
+              >
+                <td {...stylex.props(w.reportCell, w.mono, w.fit, styles.middle)}>
                   {row.line}:{row.column}
                 </td>
-                <td {...stylex.props(w.reportCell, w.mono, w.fit)}>{row.code}</td>
-                <td {...stylex.props(w.reportCell)}>{row.message}</td>
+                <td {...stylex.props(w.reportCell, w.mono, w.fit, styles.middle)}>{row.code}</td>
+                <td {...stylex.props(w.reportCell, styles.middle)}>{row.message}</td>
+                <td {...stylex.props(w.reportCell, w.fit, styles.middle)}>
+                  <button
+                    type="button"
+                    data-testid="formula-diagnostic-copy"
+                    aria-label={format(m.copyValue)}
+                    title={format(m.copyValue)}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      copyWords(diagnosticWords(row))
+                    }}
+                    {...stylex.props(styles.iconAction)}
+                  >
+                    <CopyIcon size={13} aria-hidden />
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
-      {packagerWords === undefined ? null : <pre {...stylex.props(w.detail)}>{packagerWords}</pre>}
+      {packagerWords === undefined ? null : (
+        <p {...stylex.props(styles.rawLine)}>
+          <span {...stylex.props(styles.rawWords)}>{packagerWords}</span>
+          <button
+            type="button"
+            data-testid="formula-packager-copy"
+            aria-label={format(m.copyTechnicalDetail)}
+            title={format(m.copyTechnicalDetail)}
+            onClick={() => copyWords(packagerWords)}
+            {...stylex.props(styles.iconAction)}
+          >
+            <CopyIcon size={13} aria-hidden />
+          </button>
+        </p>
+      )}
     </>
   )
 
@@ -2108,98 +2489,111 @@ export default function FormulaEditorPage() {
     </div>
   )
 
-  // a phone reads the compiler's verdict under the code it is about, in one
-  // line unless there is something to list
-  const compileLine = (
+  // A phone shows the code and what the compiler made of it on different
+  // tabs, so a strip over the code says how many problems there are and
+  // takes the reader to them.
+  const compileStrip = (
     <div
-      data-testid="formula-compile-state"
+      data-testid="formula-compile-strip"
       data-state={compileState}
-      {...stylex.props(styles.phoneCompile)}
+      {...stylex.props(styles.phoneStrip)}
     >
-      <p {...stylex.props(styles.stateLine)}>
-        {compileState === 'working' ? (
-          <Spinner aria-hidden xstyle={styles.lineSpinner} />
-        ) : compileState === 'passed' ? (
-          <CircleCheckIcon size={14} aria-hidden {...stylex.props(styles.lineGood)} />
-        ) : compileState === 'failed' ? (
-          <CircleXIcon size={14} aria-hidden {...stylex.props(styles.lineBad)} />
-        ) : (
-          <ToneDot tone={compileTone} />
-        )}
-        <span {...stylex.props(compileState === 'failed' && styles.failTitle)}>
-          {compileState === 'failed'
-            ? format(m.compileFailed)
-            : compileState === 'passed'
-              ? format(m.compileReady)
-              : structureWords}
-        </span>
-        {diagnostics.length === 0 ? null : (
-          <span {...stylex.props(styles.failCount)}>
-            {format(m.compileFindings, { count: diagnostics.length })}
-          </span>
-        )}
-      </p>
-      {compileState === 'failed' ? diagnosticsDetail : null}
+      <span {...stylex.props(styles.stripBad)}>
+        <ToneDot tone="bad" />
+        {format(m.compileFindings, { count: diagnostics.length })}
+      </span>
+      <span {...stylex.props(w.spring)} />
+      <button
+        type="button"
+        data-testid="formula-see-compile"
+        onClick={() => setPhoneTab('compile')}
+        {...stylex.props(styles.quietAction)}
+      >
+        {format(m.seeCompile)}
+      </button>
     </div>
   )
 
   // ---- the try-run and the contract -----------------------------------------
 
-  const trySection = (
-    <>
-      <SideHead
-        title={format(m.tryTitle)}
-        column
-        icon={<FlaskConicalIcon size={14} aria-hidden />}
-      />
-      <TryRunPanel
-        status={{
-          testId: 'formula-structure',
-          state: structure,
-          tone:
-            structure === 'synced'
-              ? 'good'
-              : structure === 'refused'
-                ? 'warn'
-                : structure === 'blank'
-                  ? 'quiet'
-                  : 'working',
-          words: structureWords,
+  /** a remembered try, put back into the form so it can be asked again */
+  const pickRecord = (record: TryRecord) => {
+    if (contract === null) return
+    const picked = draftsFromStored(contract.inputSchema, record.input)
+    setTryDrafts(picked)
+    setTryIssues(undefined)
+    setTryResult({
+      ...record.outcome,
+      at: record.at,
+      forSource: record.mark === sourceMark(source) ? source : '',
+      forCase: JSON.stringify(picked),
+    })
+    setRecordsOpen(false)
+  }
+
+  // a form drawn from a structure the code no longer has says where to read why
+  const structureAction =
+    structure === 'refused' ? (
+      <button
+        type="button"
+        data-testid="formula-structure-problems"
+        onClick={() => {
+          setTab('compile')
+          setPhoneTab('compile')
         }}
-        schema={contract?.inputSchema ?? null}
-        pending={{
-          state: structure,
-          words: structure === 'blank' ? format(m.tryBlank) : structureWords,
-          working: structure !== 'refused' && structure !== 'blank',
-          off: structure === 'refused',
-        }}
-        drafts={tryDrafts}
-        onDraft={(field, draft) => setTryDrafts({ ...tryDrafts, [field]: draft })}
-        issues={tryIssues}
-        disabled={archived}
-        running={running}
-        result={tryResult === null ? null : { outcome: tryResult, fresh: !tryStale(tryResult) }}
-        onRun={() => void runTry()}
-        onKeep={(expected) => {
-          saveTryAsCase(expected)
-          setTab('examples')
-        }}
-        records={tryRecords.records}
-        mark={sourceMark(source)}
-        onPick={(record) => {
-          if (contract === null) return
-          const picked = draftsFromStored(contract.inputSchema, record.input)
-          setTryDrafts(picked)
-          setTryIssues(undefined)
-          setTryResult({
-            ...record.outcome,
-            forSource: record.mark === sourceMark(source) ? source : '',
-            forCase: JSON.stringify(picked),
-          })
-        }}
-        onClearRecords={tryRecords.clear}
-      />
-    </>
+        {...stylex.props(styles.quietAction)}
+      >
+        {format(m.seeProblems)}
+      </button>
+    ) : undefined
+
+  const trySection = (phone: boolean) => (
+    <TryRunPanel
+      title={format(m.tryTitle)}
+      narrow={phone}
+      status={{
+        testId: 'formula-structure',
+        state: structure,
+        tone:
+          structure === 'synced'
+            ? 'quiet'
+            : structure === 'refused'
+              ? 'warn'
+              : structure === 'blank'
+                ? 'quiet'
+                : 'working',
+        words: structureWords,
+        ...(structureAction === undefined ? {} : { action: structureAction }),
+      }}
+      schema={contract?.inputSchema ?? null}
+      pending={{
+        state: structure,
+        words: structure === 'blank' ? format(m.tryBlank) : structureWords,
+        working: structure !== 'refused' && structure !== 'blank',
+        off: structure === 'refused',
+      }}
+      drafts={tryDrafts}
+      onDraft={(field, draft) => setTryDrafts({ ...tryDrafts, [field]: draft })}
+      issues={tryIssues}
+      disabled={archived}
+      running={running}
+      result={
+        tryResult === null
+          ? null
+          : {
+              outcome: tryResult,
+              fresh: !tryStale(tryResult),
+              ...(tryResult.at === undefined ? {} : { at: tryResult.at }),
+            }
+      }
+      onRun={() => void runTry()}
+      onKeep={(expected) => {
+        setExampleSeed({ drafts: tryDrafts, ...(expected === '' ? {} : { expected }) })
+        setAddingExample(true)
+      }}
+      recordCount={tryRecords.records.length}
+      onOpenRecords={() => setRecordsOpen(true)}
+    />
   )
 
   const contractBody = (
@@ -2207,18 +2601,49 @@ export default function FormulaEditorPage() {
       {issues.length === 0 ? null : (
         <div {...stylex.props(styles.issues)}>
           <table {...stylex.props(w.reportTable)} data-testid="formula-contract-issues">
+            <thead>
+              <tr>
+                <th {...stylex.props(w.reportHead, w.fit)}>{format(m.parametersLabel)}</th>
+                <th {...stylex.props(w.reportHead)}>{format(m.contractIssueColumn)}</th>
+                <th {...stylex.props(w.reportHead, w.fit)} />
+              </tr>
+            </thead>
             <tbody>
               {issues.map((row, index) => (
                 <tr key={index} data-reason={row.reason}>
-                  <td {...stylex.props(w.reportCell, w.mono)}>{row.path}</td>
-                  <td {...stylex.props(w.reportCell)}>{contractReasonWords(format, row.reason)}</td>
+                  <td {...stylex.props(w.reportCell, w.mono, w.fit, styles.middle)}>
+                    {sourceWordOf(row.path) === null ? null : (
+                      <button
+                        type="button"
+                        data-testid="formula-issue-jump"
+                        title={format(m.findInSource)}
+                        onClick={() => jumpToWord(sourceWordOf(row.path)!)}
+                        {...stylex.props(styles.quietAction, styles.monoAction)}
+                      >
+                        {sourceWordOf(row.path)}
+                      </button>
+                    )}
+                  </td>
+                  <td {...stylex.props(w.reportCell, styles.middle)}>
+                    {contractReasonWords(format, row.reason)}
+                  </td>
+                  <td {...stylex.props(w.reportCell, w.fit, styles.middle)}>
+                    {contractDetail === undefined || index > 0 ? null : (
+                      <button
+                        type="button"
+                        data-testid="formula-contract-copy"
+                        onClick={() => copyWords(contractDetail)}
+                        {...stylex.props(styles.quietAction)}
+                      >
+                        <CopyIcon size={13} aria-hidden />
+                        {format(m.copyTechnicalDetail)}
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
-          {contractDetail === undefined ? null : (
-            <pre {...stylex.props(w.detail)}>{contractDetail}</pre>
-          )}
         </div>
       )}
       {contract === null ? (
@@ -2233,6 +2658,19 @@ export default function FormulaEditorPage() {
   )
 
   // ---- the examples ---------------------------------------------------------
+
+  const compileActions =
+    diagnostics.length === 0 ? null : (
+      <Button
+        variant="ghost"
+        size="xs"
+        data-testid="formula-diagnostics-copy-all"
+        onClick={() => copyWords(diagnostics.map(diagnosticWords).join('\n'))}
+      >
+        <CopyIcon aria-hidden />
+        {format(m.copyAll)}
+      </Button>
+    )
 
   const examplesActions = (
     <>
@@ -2255,81 +2693,58 @@ export default function FormulaEditorPage() {
     </>
   )
 
+  const exampleRows = (phone: boolean) =>
+    cases.length === 0 ? (
+      <div {...stylex.props(w.emptyFill)}>
+        <EmptyRow>{format(m.examplesEmpty)}</EmptyRow>
+      </div>
+    ) : (
+      cases.map((one) => (
+        <ExampleRow
+          key={one.test.key}
+          index={one.index}
+          name={one.test.name}
+          narrow={phone}
+          facts={inputFactsOf(format, locale, contract?.inputSchema ?? null, storedInput(one.test))}
+          expected={one.test.expected}
+          outcome={
+            one.outcome === undefined
+              ? undefined
+              : {
+                  ...(one.outcome.passed === undefined ? {} : { passed: one.outcome.passed }),
+                  ...(one.outcome.actual === undefined ? {} : { actual: one.outcome.actual }),
+                  ...(one.outcome.refusal === undefined ? {} : { refusal: one.outcome.refusal }),
+                  ...(one.outcome.defect === undefined ? {} : { defect: one.outcome.defect }),
+                  stale: one.stale,
+                }
+          }
+          verdict={one.verdict}
+          legal={one.legal}
+          open={sheetOpen && editingKey === one.test.key}
+          onOpen={() => openCase(one.test.key)}
+          locked={archived}
+          running={running || blank}
+          runningHere={runningKeys.includes(one.test.key)}
+          onRun={() => void runRows([one.test.key])}
+          onLoadIntoTry={() => loadIntoTry(one.test)}
+          onDuplicate={() => setTests([...tests, { ...one.test, key: newTestKey() }])}
+          onRemove={() => setTests(tests.filter((kept) => kept.key !== one.test.key))}
+        />
+      ))
+    )
+
+  // the table, whose header row is what tells the six columns apart
   const examplesBody = (
     <>
       <div {...stylex.props(exampleStyles.columns, exampleStyles.head)}>
         <span>{format(m.testName)}</span>
-        <span {...stylex.props(exampleStyles.wide)}>{format(m.examplesInputColumn)}</span>
-        <span {...stylex.props(exampleStyles.wide, exampleStyles.end)}>
-          {format(m.examplesExpectedColumn)}
-        </span>
-        <span {...stylex.props(exampleStyles.wide, exampleStyles.end)}>
-          {format(m.reportActualColumn)}
-        </span>
+        <span>{format(m.examplesInputColumn)}</span>
+        <span {...stylex.props(exampleStyles.end)}>{format(m.examplesExpectedColumn)}</span>
+        <span {...stylex.props(exampleStyles.end)}>{format(m.reportActualColumn)}</span>
         <span>{format(m.reportOutcome)}</span>
         <span />
       </div>
-      <div {...stylex.props(w.panelScroll)}>
-        {cases.length === 0 ? (
-          <div {...stylex.props(w.emptyFill)}>
-            <EmptyRow>{format(m.examplesEmpty)}</EmptyRow>
-          </div>
-        ) : (
-          cases.map((one) => (
-            <ExampleRow
-              key={one.test.key}
-              index={one.index}
-              name={one.test.name}
-              inputSummary={inputTextSummary(one.test.inputText)}
-              expected={one.test.expected}
-              outcome={
-                one.outcome === undefined
-                  ? undefined
-                  : {
-                      ...(one.outcome.passed === undefined ? {} : { passed: one.outcome.passed }),
-                      ...(one.outcome.actual === undefined ? {} : { actual: one.outcome.actual }),
-                      ...(one.outcome.refusal === undefined
-                        ? {}
-                        : { refusal: one.outcome.refusal }),
-                      ...(one.outcome.defect === undefined ? {} : { defect: one.outcome.defect }),
-                      stale: one.stale,
-                    }
-              }
-              verdict={one.verdict}
-              legal={one.legal}
-              open={sheetOpen && editingKey === one.test.key}
-              onOpen={() => openCase(one.test.key)}
-              locked={archived}
-              running={running || blank}
-              onRun={() => void runRows([one.test.key])}
-              onLoadIntoTry={() => loadIntoTry(one.test)}
-              onDuplicate={() => setTests([...tests, { ...one.test, key: newTestKey() }])}
-              onRemove={() => setTests(tests.filter((kept) => kept.key !== one.test.key))}
-            />
-          ))
-        )}
-      </div>
-      {/* with nothing listed, the line in the middle already says it */}
-      {cases.length === 0 ? null : (
-        <div data-testid="formula-examples-summary" {...stylex.props(styles.panelFoot)}>
-          {/* a phone's foot already says it, under every tab */}
-          {narrow ? null : <span>{summary}</span>}
-          {adoptable === null || archived ? null : (
-            <button
-              type="button"
-              onClick={() => editCase(adoptable.key, { expected: adoptable.actual })}
-              {...stylex.props(styles.footAction)}
-            >
-              {format(m.adoptActual, { value: adoptable.actual })}
-            </button>
-          )}
-          <span {...stylex.props(w.spring)} />
-          <span aria-hidden {...stylex.props(styles.footRule)} />
-          <span {...stylex.props(styles.footTotal)}>
-            {format(m.examplesTotal, { count: cases.length })}
-          </span>
-        </div>
-      )}
+      <div {...stylex.props(w.panelScroll)}>{exampleRows(false)}</div>
     </>
   )
 
@@ -2364,56 +2779,138 @@ export default function FormulaEditorPage() {
     },
   ]
 
-  // what a phone's foot says: the first thing standing in the way, in the
-  // order a publication would meet it
-  const gate: { tone: Tone; words: string } =
+  // The one line at the foot: the first thing standing in the way, in the
+  // order a publication would meet it, and the one step that settles it.
+  const gate: WorkbenchGate =
     compileState === 'blank' || compileState === 'failed' || compileState === 'working'
-      ? { tone: compileTone, words: publishChecks[2]!.words }
+      ? {
+          label: format(m.panelLabel),
+          testId: 'formula-gate',
+          tone: compileTone,
+          words:
+            compileState === 'failed'
+              ? diagnostics.length === 0
+                ? format(m.compileFailed)
+                : format(m.compileFailedCount, { count: diagnostics.length })
+              : compileState === 'blank'
+                ? format(m.compileBlank)
+                : structureWords,
+          ...(compileState === 'failed'
+            ? {
+                action: (
+                  <button
+                    type="button"
+                    data-testid="formula-gate-action"
+                    onClick={() => {
+                      setTab('compile')
+                      setPhoneTab('compile')
+                    }}
+                    {...stylex.props(styles.quietAction)}
+                  >
+                    {format(m.seeProblems)}
+                  </button>
+                ),
+              }
+            : {}),
+        }
       : issues.length > 0
-        ? { tone: 'bad', words: format(m.contractFailed) }
-        : { tone: examplesTone, words: summary }
-
-  const publishHint = archived
-    ? format(m.saveArchivedHint)
-    : blank
-      ? format(m.publishBlankHint)
-      : format(m.publishHint)
-  const history = historyWith(
-    narrow ? null : (
-      <Hinted hint={publishHint} wide>
-        <Button
-          size="sm"
-          data-testid="formula-publish-open"
-          disabled={!canPublish}
-          onClick={openPublish}
-          className={stylex.props(styles.wide).className}
-        >
-          <UploadIcon aria-hidden />
-          {format(m.publishNew)}
-        </Button>
-      </Hinted>
-    ),
-  )
+        ? {
+            label: format(m.panelLabel),
+            testId: 'formula-gate',
+            tone: 'bad',
+            words: format(m.contractFailed),
+            action: (
+              <button
+                type="button"
+                data-testid="formula-gate-action"
+                onClick={() => {
+                  setTab('contract')
+                  setPhoneTab('contract')
+                }}
+                {...stylex.props(styles.quietAction)}
+              >
+                {format(m.seeProblems)}
+              </button>
+            ),
+          }
+        : {
+            label: format(m.panelLabel),
+            testId: 'formula-gate',
+            tone: examplesTone,
+            words: summary,
+            ...(adoptable !== null && !archived
+              ? {
+                  action: (
+                    <button
+                      type="button"
+                      data-testid="formula-gate-action"
+                      onClick={() => editCase(adoptable.key, { expected: adoptable.actual })}
+                      {...stylex.props(styles.quietAction)}
+                    >
+                      {format(m.adoptActual, { value: adoptable.actual })}
+                    </button>
+                  ),
+                }
+              : notRun > 0 && !archived && !blank
+                ? {
+                    // nothing here runs by itself: a run costs a sandbox, and
+                    // "not run yet" is a true thing to say. The one press that
+                    // settles it stands where the answer is wanted.
+                    action: (
+                      <button
+                        type="button"
+                        data-testid="formula-gate-action"
+                        disabled={running}
+                        onClick={() => {
+                          setTab('examples')
+                          setPhoneTab('examples')
+                          void runRows(tests.map((one) => one.key))
+                        }}
+                        {...stylex.props(styles.quietAction)}
+                      >
+                        {format(running ? m.running : m.runAll)}
+                      </button>
+                    ),
+                  }
+                : cases.length > 0
+                  ? {
+                      action: (
+                        <button
+                          type="button"
+                          data-testid="formula-gate-action"
+                          onClick={() => {
+                            setTab('examples')
+                            setPhoneTab('examples')
+                          }}
+                          {...stylex.props(styles.quietAction)}
+                        >
+                          {format(m.goExamples)}
+                        </button>
+                      ),
+                    }
+                  : {}),
+          }
 
   return (
     <WorkbenchLayout
       narrow={narrow}
       testId="formula-editor"
       status={fn.status}
+      {...(motion === 'back' ? { motion: 'back' as const } : {})}
       bar={bar}
       notices={notices}
       source={
-        <>
-          {editor}
-          {emptySource}
-        </>
+        beginning ? (
+          emptySource
+        ) : (
+          <>
+            {editor}
+            {keptDraft}
+          </>
+        )
       }
-      tryRun={trySection}
-      history={history}
-      sideTab={sideTab}
-      onSideTab={setSideTab}
+      tryRun={trySection(false)}
       tryLabel={format(m.tryTitle)}
-      historyLabel={format(m.historyTitle)}
       panelTabs={[
         {
           value: 'examples',
@@ -2426,47 +2923,44 @@ export default function FormulaEditorPage() {
           value: 'compile',
           label: format(m.diagnosticsTitle),
           tone: compileTone,
+          ...(diagnostics.length === 0 ? {} : { count: diagnostics.length }),
           content: compileBody,
         },
         {
           value: 'contract',
           label: format(m.contractIssuesTitle),
           tone: contractTone,
+          ...(issues.length === 0 ? {} : { count: issues.length }),
           content: <div {...stylex.props(w.panelScroll)}>{contractBody}</div>,
         },
       ]}
       panelTab={tab}
       onPanelTab={(next) => setTab(next as PanelTab)}
-      panelActions={examplesActions}
-      panelLabel={format(m.panelLabel)}
+      panelActions={
+        tab === 'compile' ? compileActions : tab === 'examples' ? examplesActions : null
+      }
+      panelLabel={format(m.checksTitle)}
       phoneTabs={[
         {
           value: 'source',
           label: format(m.phoneSourceTab),
-          tone: compileTone,
           content: (
             <div {...stylex.props(styles.phoneSource)}>
+              {beginning ? null : compileState === 'failed' ? compileStrip : null}
               <div {...stylex.props(styles.phoneEditor)}>
-                {editor}
-                {emptySource}
+                {beginning ? (
+                  emptySource
+                ) : (
+                  <>
+                    {editor}
+                    {keptDraft}
+                  </>
+                )}
               </div>
-              {/* nothing written, or still compiling: the foot says so already */}
-              {compileState === 'blank' || compileState === 'working' ? null : compileLine}
             </div>
           ),
         },
-        {
-          value: 'try',
-          label: format(m.tryTitle),
-          tone: contractTone,
-          content: (
-            <>
-              {trySection}
-              <SideHead title={format(m.contractIssuesTitle)} />
-              {contractBody}
-            </>
-          ),
-        },
+        { value: 'try', label: format(m.tryTitle), content: trySection(true) },
         {
           value: 'examples',
           label: format(m.testsTitle),
@@ -2474,35 +2968,37 @@ export default function FormulaEditorPage() {
           count: tests.length,
           content: (
             <div {...stylex.props(styles.phoneExamples)}>
-              <div {...stylex.props(styles.phoneExamplesBar)}>{examplesActions}</div>
-              {examplesBody}
+              <div {...stylex.props(styles.phoneStrip)}>
+                <span>{format(m.examplesCount, { count: cases.length })}</span>
+                <span {...stylex.props(w.spring)} />
+                {examplesActions}
+              </div>
+              <div {...stylex.props(w.panelScroll)}>{exampleRows(true)}</div>
             </div>
           ),
         },
         {
-          value: 'history',
-          label: format(m.historyTitle),
-          count: releases.length,
-          content: history,
+          value: 'compile',
+          label: format(m.diagnosticsTitle),
+          tone: compileTone,
+          ...(diagnostics.length === 0 ? {} : { count: diagnostics.length }),
+          content: compileBody,
+        },
+        {
+          value: 'contract',
+          label: format(m.contractIssuesTitle),
+          tone: contractTone,
+          ...(issues.length === 0 ? {} : { count: issues.length }),
+          content: <div {...stylex.props(w.panelScroll)}>{contractBody}</div>,
         },
       ]}
       phoneTab={phoneTab}
       onPhoneTab={setPhoneTab}
-      gate={
+      gate={gate}
+      foot={
         <>
-          <span
-            data-testid="formula-gate"
-            data-tone={gate.tone}
-            {...stylex.props(styles.gateWords)}
-          >
-            <ToneDot tone={gate.tone} />
-            <span {...stylex.props(styles.gateText)}>{gate.words}</span>
-          </span>
           {saveButton}
-          <Button size="sm" disabled={!canPublish} onClick={openPublish}>
-            <UploadIcon aria-hidden />
-            {format(m.publishOpen)}
-          </Button>
+          {publishButton}
         </>
       }
     >
@@ -2515,18 +3011,7 @@ export default function FormulaEditorPage() {
         <SheetContent side={narrow ? 'bottom' : 'right'} xstyle={styles.caseSheet}>
           <SheetHeader>
             <SheetTitle>{format(m.exampleEditTitle)}</SheetTitle>
-            {editingCase === undefined ? null : (
-              <SheetDescription>
-                {editingCase.outcome === undefined
-                  ? format(m.conclusionNotRun)
-                  : editingCase.stale
-                    ? format(m.resultStale)
-                    : (outcomeWords(format, editingCase.outcome) ??
-                      (editingCase.outcome.actual === undefined
-                        ? format(m.resultPassed)
-                        : format(m.resultActual, { value: editingCase.outcome.actual })))}
-              </SheetDescription>
-            )}
+            <SheetDescription>{format(m.exampleEditHint)}</SheetDescription>
           </SheetHeader>
           {editingCase === undefined ? null : (
             <div
@@ -2535,6 +3020,33 @@ export default function FormulaEditorPage() {
               {...stylex.props(styles.caseBody)}
             >
               {caseFields(editingCase.test, editingCase.legal)}
+              {/* what the last run made of it, in the same place every time */}
+              <p
+                data-testid="formula-case-verdict"
+                data-verdict={editingCase.verdict}
+                aria-live="polite"
+                {...stylex.props(
+                  styles.caseVerdict,
+                  editingCase.verdict === 'passed' && styles.caseVerdictGood,
+                  editingCase.verdict === 'failed' && styles.caseVerdictBad,
+                )}
+              >
+                {editingCase.verdict === 'passed' ? (
+                  <CircleCheckIcon size={15} aria-hidden />
+                ) : editingCase.verdict === 'failed' ? (
+                  <CircleXIcon size={15} aria-hidden />
+                ) : (
+                  <ToneDot tone="quiet" />
+                )}
+                <span {...stylex.props(styles.caseVerdictWords)}>
+                  {editingCase.outcome === undefined || editingCase.stale
+                    ? format(editingCase.outcome === undefined ? m.conclusionNotRun : m.resultStale)
+                    : (outcomeWords(format, editingCase.outcome) ??
+                      (editingCase.outcome.actual === undefined
+                        ? format(m.resultPassed)
+                        : format(m.resultActual, { value: editingCase.outcome.actual })))}
+                </span>
+              </p>
             </div>
           )}
           {editingCase === undefined ? null : (
@@ -2578,6 +3090,7 @@ export default function FormulaEditorPage() {
       <NewExampleDialog
         open={addingExample}
         contract={contract}
+        initial={exampleSeed}
         expectedProblem={(expected) =>
           expectedIssueOf({ key: '', name: '', inputText: '{}', expected }, contract)
         }
@@ -2597,6 +3110,18 @@ export default function FormulaEditorPage() {
         nameProblem={nameProblem}
         onClose={() => setPublishOpen(false)}
         onPublish={(release) => publish.mutate(release)}
+      />
+      {versionsDrawer}
+      {sharingDialog}
+      <TryRecordsDrawer
+        open={recordsOpen}
+        onOpenChange={setRecordsOpen}
+        narrow={narrow}
+        records={tryRecords.records}
+        schema={contract?.inputSchema ?? null}
+        mark={sourceMark(source)}
+        onPick={pickRecord}
+        onClear={tryRecords.clear}
       />
       {confirmDialog}
     </WorkbenchLayout>

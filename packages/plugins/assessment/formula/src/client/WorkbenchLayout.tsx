@@ -1,11 +1,11 @@
 import * as stylex from '@stylexjs/stylex'
-import { createContext, use, useRef, useState, type ReactNode, type RefObject } from 'react'
+import { useRef, useState, type ReactNode, type RefObject } from 'react'
 import { PageLink } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { layout } from '@qualy/ui/theme/layout.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@qualy/ui/tabs'
-import { useIsBelow } from '@qualy/ui/use-mobile'
 import { ArrowLeftIcon } from 'lucide-react'
 import { workbenchStyles as w } from './workbench-styles.ts'
 import { formulaMessages as m } from './i18n.ts'
@@ -17,35 +17,30 @@ import {
 
 // The formula workbench's frame, whatever it is showing.
 //
-// On a wide screen: a bar, the source on the left, then two columns - the
-// try-run, and the formula's versions - each scrolling in its own place, and
-// a panel of tabs under all three. Every edge between them can be dragged,
-// and the sizes are remembered. Where two columns do not fit beside the
-// source, they share one, versions first, behind a pair of tabs. On a phone
-// the same parts are spread over tabs, one at a time, and whatever stands
-// between the state and its next step stays at the foot of the screen.
+// On a wide screen: a bar, the source, the try-run beside it, and under both
+// a full-width panel of checks - the examples, what the compiler made of the
+// code, the structure it takes. Whatever stands between the draft and a
+// publication is one standing line at the very foot, and what is neither
+// checked nor published - the versions, the tries this browser remembers -
+// waits behind a drawer. On a phone the same parts are spread over one row
+// of tabs, with that line and the two decisions standing under them.
 
-/** below this viewport width the try-run and the versions share one column */
-const SPLIT_COLUMNS_MIN_WIDTH = 1200
-/** the least room a dragged edge leaves the source, a column and the upper area */
+/** the least room a dragged edge leaves the source, the column and the upper area */
 const SOURCE_MIN_WIDTH = 320
-const COLUMN_MIN_WIDTH = 240
+const TRY_MIN_WIDTH = 280
 const UPPER_MIN_HEIGHT = 200
 const PANEL_MIN_HEIGHT = 120
 /** how far one arrow key moves an edge */
 const KEY_STEP = 16
 
-export type SideTab = 'try' | 'history'
-
 /**
- * Whether the columns stand on their own or are reached through tabs. A
- * column's head repeats its tab's name when a tab already says it, so a head
- * that names a column steps aside there.
+ * How a view stands, for the dot on its tab.
+ *
+ * 'working' is its own face on purpose: while the compiler is being asked
+ * again, the answer is not yet known, and a dot that vanishes and comes back
+ * reads as a fault of the page rather than as work in progress.
  */
-const TabbedColumns = createContext(false)
-
-/** how a view stands, for the dot on its tab */
-export type Tone = 'good' | 'bad' | 'quiet'
+export type Tone = 'good' | 'bad' | 'warn' | 'working' | 'quiet'
 
 export interface WorkbenchTab {
   readonly value: string
@@ -55,7 +50,45 @@ export interface WorkbenchTab {
   readonly content: ReactNode
 }
 
+/** the one line between this state and a publication, at the foot of every width */
+export interface WorkbenchGate {
+  /** what the line is about, said once at its left edge */
+  readonly label: string
+  readonly tone: Tone
+  readonly words: string
+  /** the step that settles it, when there is one */
+  readonly action?: ReactNode
+  readonly testId?: string
+}
+
+// A state opened from the versions arrives from the right, the way it was
+// picked, and the draft comes back from the left. Only a press inside the
+// page moves anything: a link straight to a version simply is there.
+const slideForward = stylex.keyframes({
+  from: { transform: 'translateX(24px)', opacity: 0 },
+  to: { transform: 'translateX(0)', opacity: 1 },
+})
+const slideBack = stylex.keyframes({
+  from: { transform: 'translateX(-24px)', opacity: 0 },
+  to: { transform: 'translateX(0)', opacity: 1 },
+})
+
+const REDUCED = '@media (prefers-reduced-motion: reduce)'
+
 const styles = stylex.create({
+  // the slide happens inside a layer the frame clips, so the page never widens
+  moving: { overflowX: 'clip' },
+  movingLayer: { display: 'flex', minHeight: 0, flexGrow: 1, flexDirection: 'column' },
+  movingForward: {
+    animationName: { default: slideForward, [REDUCED]: 'none' },
+    animationDuration: '200ms',
+    animationTimingFunction: 'ease-out',
+  },
+  movingBack: {
+    animationName: { default: slideBack, [REDUCED]: 'none' },
+    animationDuration: '200ms',
+    animationTimingFunction: 'ease-out',
+  },
   workbench: {
     display: 'flex',
     flexGrow: 1,
@@ -74,6 +107,11 @@ const styles = stylex.create({
     borderBottomWidth: 1,
     borderBottomStyle: 'solid',
     borderBottomColor: tokens.border,
+  },
+  // a frozen state is not the draft, and the bar is where that is noticed:
+  // a tint across the whole bar, with the same rule under it as any other
+  barFrozen: {
+    backgroundColor: `color-mix(in oklab, ${tokens.warning} 7%, ${tokens.background})`,
   },
   barPhone: {
     display: 'flex',
@@ -106,14 +144,14 @@ const styles = stylex.create({
   heading: { display: 'flex', minWidth: 0, flexShrink: 1, flexDirection: 'column', gap: 2 },
   headingPhone: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 4 },
   // one height whatever the title is drawn with - an editable name or plain
-  // words - so opening a piece of history does not move the page
+  // words - so opening a version does not move the page
   titleLine: { display: 'flex', minWidth: 0, height: 30, alignItems: 'center', gap: 8 },
   statusLine: {
     display: 'flex',
     minWidth: 0,
     flexWrap: 'wrap',
     alignItems: 'center',
-    columnGap: 10,
+    columnGap: 8,
     rowGap: 4,
     fontSize: 12,
     color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
@@ -135,26 +173,14 @@ const styles = stylex.create({
     borderRightStyle: 'solid',
     borderRightColor: tokens.border,
   },
-  column: {
+  tryPane: {
     display: 'flex',
-    minWidth: COLUMN_MIN_WIDTH,
+    minWidth: TRY_MIN_WIDTH,
     minHeight: 0,
-    flexShrink: 1,
+    flexShrink: 0,
     flexDirection: 'column',
     overflow: 'hidden',
-    backgroundColor: tokens.background,
-  },
-  columnRuled: { borderLeftWidth: 1, borderLeftStyle: 'solid', borderLeftColor: tokens.border },
-  columnScroll: { minHeight: 0, flexGrow: 1, overflowY: 'auto' },
-  columnFill: { display: 'flex', minHeight: 0, flexGrow: 1, flexDirection: 'column' },
-  columnTabs: {
-    display: 'flex',
-    flexShrink: 0,
-    alignItems: 'center',
-    paddingInline: 8,
-    borderBottomWidth: 1,
-    borderBottomStyle: 'solid',
-    borderBottomColor: tokens.divider,
+    backgroundColor: tokens.surface,
   },
 
   panel: {
@@ -177,10 +203,11 @@ const styles = stylex.create({
     borderBottomWidth: 1,
     borderBottomStyle: 'solid',
     borderBottomColor: tokens.divider,
+    backgroundColor: tokens.background,
   },
   tabList: { gap: 0 },
-  tab: { height: 38, gap: 7, paddingInline: 14, borderRadius: 0, fontSize: 12.5 },
-  tabPhone: { height: 40, paddingInline: 12, borderRadius: 0, fontSize: 13 },
+  tab: { height: 38, gap: 7, paddingInline: 12, borderRadius: 0, fontSize: 12.5 },
+  tabPhone: { height: 40, gap: 6, paddingInline: 11, borderRadius: 0, fontSize: 13 },
   // the tab wraps what it is given in a label of its own, so the spacing
   // between the dot, the name and the count has to be inside
   tabWords: { display: 'inline-flex', alignItems: 'center', gap: 6 },
@@ -200,6 +227,8 @@ const styles = stylex.create({
     borderBottomWidth: 1,
     borderBottomStyle: 'solid',
     borderBottomColor: tokens.divider,
+    overflowX: 'auto',
+    scrollbarWidth: 'none',
   },
   phoneTabsFrame: { display: 'flex', minHeight: 0, flexGrow: 1, flexDirection: 'column' },
   phoneBody: {
@@ -210,13 +239,38 @@ const styles = stylex.create({
     overflowY: 'auto',
     backgroundColor: tokens.surface,
   },
+
+  // the standing line: one fact and at most one step, whatever tab is open
   gate: {
     display: 'flex',
     flexShrink: 0,
     alignItems: 'center',
     gap: 8,
-    minHeight: 56,
-    paddingBlock: 8,
+    height: 38,
+    paddingInline: { default: 20, [breakpoints.phone]: layout.pageGutter },
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    backgroundColor: tokens.surfaceInset,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  gateLabel: {
+    flexShrink: 0,
+    marginRight: 2,
+    fontWeight: 600,
+    letterSpacing: '0.06em',
+    color: tokens.surfaceMutedForeground,
+  },
+  gateWords: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  // the two decisions, standing under every tab a phone shows
+  foot: {
+    display: 'flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 8,
+    paddingTop: 10,
+    paddingBottom: 14,
     paddingInline: layout.pageGutter,
     borderTopWidth: 1,
     borderTopStyle: 'solid',
@@ -234,9 +288,15 @@ const styles = stylex.create({
   },
   dotGood: { backgroundColor: tokens.success },
   dotBad: { backgroundColor: tokens.danger },
+  dotWarn: { backgroundColor: tokens.warning },
+  // the answer is on its way: a ring where a filled dot will be
+  dotWorking: {
+    backgroundColor: 'transparent',
+    boxShadow: `inset 0 0 0 1.5px color-mix(in oklab, ${tokens.mutedForeground} 55%, transparent)`,
+  },
 
   // a column's name, as a bar the column hangs from: as tall as the source
-  // pane's head beside it, on the same rule, so the three read as one row
+  // pane's head beside it, on the same rule, so the two read as one row
   columnHead: {
     display: 'flex',
     height: 38,
@@ -249,14 +309,14 @@ const styles = stylex.create({
     borderBottomColor: tokens.divider,
     backgroundColor: tokens.surface,
   },
-  columnHeadIcon: { display: 'inline-flex', flexShrink: 0, color: tokens.mutedForeground },
-  columnHeadTitle: {
+  columnTitle: {
     flexShrink: 0,
     margin: 0,
     fontSize: 13,
     fontWeight: 600,
     color: tokens.foreground,
   },
+
   edgeX: { position: 'relative', flexShrink: 0, width: 0, zIndex: 3 },
   edgeY: { position: 'relative', flexShrink: 0, height: 0, zIndex: 3 },
   // The hit area straddles the rule it moves; the rule lights up under the
@@ -297,28 +357,6 @@ const styles = stylex.create({
       '[data-dragging]': `linear-gradient(to bottom, transparent 3px, ${tokens.focusRing} 3px, ${tokens.focusRing} 6px, transparent 6px)`,
     },
   },
-  sideHead: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 10,
-    minHeight: 44,
-    paddingTop: 6,
-    paddingInline: 16,
-  },
-  sideTitle: {
-    flexShrink: 0,
-    margin: 0,
-    fontSize: 12,
-    fontWeight: 600,
-    letterSpacing: '0.06em',
-    color: tokens.surfaceMutedForeground,
-  },
-  sideNote: {
-    minWidth: 0,
-    fontSize: 11,
-    textAlign: 'right',
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
-  },
 })
 
 /** the dot a tab or a line carries */
@@ -331,45 +369,26 @@ export function ToneDot({ tone }: { readonly tone: Tone }) {
         styles.dot,
         tone === 'good' && styles.dotGood,
         tone === 'bad' && styles.dotBad,
+        tone === 'warn' && styles.dotWarn,
+        tone === 'working' && styles.dotWorking,
       )}
     />
   )
 }
 
-/**
- * A section's name, with a note and an action beside it. A head that names a
- * whole column is drawn as the column's bar, with an icon; where columns
- * share room behind tabs, the tab says the name and the bar steps aside.
- */
-export function SideHead({
+/** a column's name, as the bar the column hangs from */
+export function ColumnHead({
   title,
   note,
   action,
-  icon,
-  column = false,
 }: {
   readonly title: string
   readonly note?: ReactNode
   readonly action?: ReactNode
-  readonly icon?: ReactNode
-  /** this head names a whole column */
-  readonly column?: boolean
 }) {
-  const tabbed = use(TabbedColumns)
-  if (column && tabbed) return null
-  if (column)
-    return (
-      <div {...stylex.props(styles.columnHead)}>
-        {icon === undefined ? null : <span {...stylex.props(styles.columnHeadIcon)}>{icon}</span>}
-        <h2 {...stylex.props(styles.columnHeadTitle)}>{title}</h2>
-        <span {...stylex.props(w.spring)} />
-        {note}
-        {action}
-      </div>
-    )
   return (
-    <div {...stylex.props(styles.sideHead)}>
-      <h2 {...stylex.props(styles.sideTitle)}>{title}</h2>
+    <div {...stylex.props(styles.columnHead)}>
+      <h2 {...stylex.props(styles.columnTitle)}>{title}</h2>
       <span {...stylex.props(w.spring)} />
       {note}
       {action}
@@ -377,69 +396,73 @@ export function SideHead({
   )
 }
 
-/** the note a side section carries at its right edge */
-export function SideNote({
-  children,
-  ...rest
-}: {
-  readonly children: ReactNode
-  readonly 'data-testid'?: string
-  readonly 'data-state'?: string
-}) {
-  return (
-    <span {...rest} {...stylex.props(styles.sideNote)}>
-      {children}
-    </span>
-  )
-}
-
 export function WorkbenchBar({
   narrow,
+  frozen = false,
   backLabel,
+  onBack,
   title,
   badge,
   status,
   actions,
+  phoneActions,
   phoneMenu,
   titleRef,
 }: {
   readonly narrow: boolean
+  /** this bar stands over a state that cannot be edited */
+  readonly frozen?: boolean
   readonly backLabel: string
+  /** where the way back goes, when it is not the list of formulas */
+  readonly onBack?: () => void
   readonly title: ReactNode
   readonly badge?: ReactNode
   readonly status?: ReactNode
   /** what a wide bar holds at its right edge */
   readonly actions?: ReactNode
   /** what a phone's bar holds beside the way back */
+  readonly phoneActions?: ReactNode
   readonly phoneMenu?: ReactNode
   readonly titleRef?: (node: HTMLElement | null) => void
 }) {
-  const back = (
-    <PageLink page="assessment-formula/list" className={stylex.props(styles.back).className}>
-      <ArrowLeftIcon size={15} aria-hidden />
-      <span>{backLabel}</span>
-    </PageLink>
-  )
+  const back =
+    onBack === undefined ? (
+      <PageLink page="assessment-formula/list" className={stylex.props(styles.back).className}>
+        <ArrowLeftIcon size={15} aria-hidden />
+        <span>{backLabel}</span>
+      </PageLink>
+    ) : (
+      <button
+        type="button"
+        data-testid="formula-back-to-draft"
+        onClick={onBack}
+        {...stylex.props(styles.back)}
+      >
+        <ArrowLeftIcon size={15} aria-hidden />
+        <span>{backLabel}</span>
+      </button>
+    )
   if (narrow) {
     return (
-      <header {...stylex.props(styles.barPhone)}>
+      <header {...stylex.props(styles.barPhone, frozen && styles.barFrozen)}>
         <div {...stylex.props(styles.barRow)}>
           {back}
           <span {...stylex.props(w.spring)} />
+          {phoneActions}
           {phoneMenu}
         </div>
         <div ref={titleRef} {...stylex.props(styles.headingPhone)}>
-          <div {...stylex.props(styles.titleLine)}>{title}</div>
-          <div {...stylex.props(styles.statusLine)}>
+          <div {...stylex.props(styles.titleLine)}>
+            {title}
             {badge}
-            {status}
           </div>
+          <div {...stylex.props(styles.statusLine)}>{status}</div>
         </div>
       </header>
     )
   }
   return (
-    <header {...stylex.props(styles.bar)}>
+    <header {...stylex.props(styles.bar, frozen && styles.barFrozen)}>
       {back}
       <span aria-hidden {...stylex.props(styles.rule)} />
       <div ref={titleRef} {...stylex.props(styles.heading)}>
@@ -554,10 +577,22 @@ const widthOf = (ref: RefObject<HTMLElement | null>): number =>
 function TabWords({ tab }: { readonly tab: WorkbenchTab }) {
   return (
     <span {...stylex.props(styles.tabWords)}>
-      {tab.tone === undefined ? null : <ToneDot tone={tab.tone} />}
+      {tab.tone === undefined || tab.tone === 'quiet' ? null : <ToneDot tone={tab.tone} />}
       {tab.label}
       {tab.count === undefined ? null : <span {...stylex.props(styles.tabCount)}>{tab.count}</span>}
     </span>
+  )
+}
+
+function GateLine({ gate }: { readonly gate: WorkbenchGate }) {
+  return (
+    <div data-testid={gate.testId} data-tone={gate.tone} {...stylex.props(styles.gate)}>
+      <span {...stylex.props(styles.gateLabel)}>{gate.label}</span>
+      <ToneDot tone={gate.tone} />
+      <span {...stylex.props(styles.gateWords)}>{gate.words}</span>
+      <span {...stylex.props(w.spring)} />
+      {gate.action}
+    </div>
   )
 }
 
@@ -565,15 +600,12 @@ export function WorkbenchLayout({
   narrow,
   testId,
   status,
+  motion,
   bar,
   notices,
   source,
   tryRun,
-  history,
-  sideTab,
-  onSideTab,
   tryLabel,
-  historyLabel,
   panelTabs,
   panelTab,
   onPanelTab,
@@ -583,23 +615,20 @@ export function WorkbenchLayout({
   phoneTab,
   onPhoneTab,
   gate,
+  foot,
   children,
 }: {
   readonly narrow: boolean
   readonly testId: string
   readonly status?: string
+  /** this state was just reached from inside the page: it arrives from a side */
+  readonly motion?: 'forward' | 'back'
   readonly bar: ReactNode
   readonly notices?: ReactNode
   readonly source: ReactNode
-  /** the try-run column, head included; it scrolls on its own */
+  /** the try-run column, its head included */
   readonly tryRun: ReactNode
-  /** the history column; it lays out its own scrolling list */
-  readonly history: ReactNode
-  /** which of the two shows when they share a column */
-  readonly sideTab: SideTab
-  readonly onSideTab: (tab: SideTab) => void
   readonly tryLabel: string
-  readonly historyLabel: string
   readonly panelTabs: readonly WorkbenchTab[]
   readonly panelTab: string
   readonly onPanelTab: (value: string) => void
@@ -608,13 +637,14 @@ export function WorkbenchLayout({
   readonly phoneTabs: readonly WorkbenchTab[]
   readonly phoneTab: string
   readonly onPhoneTab: (value: string) => void
-  /** a phone's standing foot: what is between this state and its next step */
-  readonly gate?: ReactNode
-  /** sheets and dialogs that belong to the view */
+  /** the standing line at the foot of either width */
+  readonly gate?: WorkbenchGate
+  /** a phone's standing decisions, under the line */
+  readonly foot?: ReactNode
+  /** drawers and dialogs that belong to the view */
   readonly children?: ReactNode
 }) {
   const { format } = useI18n()
-  const shared = useIsBelow(SPLIT_COLUMNS_MIN_WIDTH)
   const { sizes, resize } = useWorkbenchSizes()
   const workbenchRef = useRef<HTMLDivElement | null>(null)
   const upperRef = useRef<HTMLDivElement | null>(null)
@@ -622,8 +652,18 @@ export function WorkbenchLayout({
     resize(key, value, settle)
   if (narrow) {
     return (
-      <TabbedColumns value>
-        <div data-testid={testId} data-status={status} {...stylex.props(styles.workbench)}>
+      <div
+        data-testid={testId}
+        data-status={status}
+        {...stylex.props(styles.workbench, motion !== undefined && styles.moving)}
+      >
+        <div
+          {...stylex.props(
+            styles.movingLayer,
+            motion === 'forward' && styles.movingForward,
+            motion === 'back' && styles.movingBack,
+          )}
+        >
           {bar}
           {notices}
           <Tabs value={phoneTab} onValueChange={onPhoneTab} xstyle={styles.phoneTabsFrame}>
@@ -642,24 +682,22 @@ export function WorkbenchLayout({
               </TabsContent>
             ))}
           </Tabs>
-          {gate === undefined ? null : <div {...stylex.props(styles.gate)}>{gate}</div>}
-          {children}
+          {gate === undefined ? null : <GateLine gate={gate} />}
+          {foot === undefined ? null : <div {...stylex.props(styles.foot)}>{foot}</div>}
         </div>
-      </TabbedColumns>
+        {children}
+      </div>
     )
   }
   const panelLimits = () => {
     const whole = workbenchRef.current?.getBoundingClientRect()
     const upper = upperRef.current?.getBoundingClientRect()
     if (whole === undefined || upper === undefined) return { min: PANEL_MIN_HEIGHT, max: 600 }
-    return {
-      min: PANEL_MIN_HEIGHT,
-      max: whole.bottom - upper.top - UPPER_MIN_HEIGHT,
-    }
+    return { min: PANEL_MIN_HEIGHT, max: whole.bottom - upper.top - UPPER_MIN_HEIGHT }
   }
-  const columnLimits = (others: number) => () => ({
-    min: COLUMN_MIN_WIDTH,
-    max: widthOf(upperRef) - SOURCE_MIN_WIDTH - others,
+  const tryLimits = () => ({
+    min: TRY_MIN_WIDTH,
+    max: widthOf(upperRef) - SOURCE_MIN_WIDTH,
   })
 
   return (
@@ -667,122 +705,70 @@ export function WorkbenchLayout({
       ref={workbenchRef}
       data-testid={testId}
       data-status={status}
-      {...stylex.props(styles.workbench)}
+      {...stylex.props(styles.workbench, motion !== undefined && styles.moving)}
     >
-      {bar}
-      {notices}
       <div
-        ref={upperRef}
-        {...stylex.props(styles.upper)}
-        data-columns={shared ? 'shared' : 'split'}
-      >
-        {/* first on either width, so the source is never rebuilt when the columns fold */}
-        <div {...stylex.props(styles.sourcePane)}>{source}</div>
-        {shared ? (
-          <TabbedColumns value>
-            <Edge
-              axis="x"
-              label={format(m.resizeSide)}
-              value={sizes.sideWidth}
-              fallback={DEFAULT_WORKBENCH_SIZES.sideWidth}
-              limits={columnLimits(0)}
-              name="sideWidth"
-              onResize={size('sideWidth')}
-            />
-            <aside {...stylex.props(styles.column)} style={{ flexBasis: sizes.sideWidth }}>
-              <Tabs
-                value={sideTab}
-                onValueChange={(next) => onSideTab(next as SideTab)}
-                xstyle={styles.columnFill}
-              >
-                <div {...stylex.props(styles.columnTabs)}>
-                  <TabsList aria-label={`${historyLabel} ${tryLabel}`} xstyle={styles.tabList}>
-                    <TabsTrigger value="history" xstyle={styles.tab}>
-                      {historyLabel}
-                    </TabsTrigger>
-                    <TabsTrigger value="try" xstyle={styles.tab}>
-                      {tryLabel}
-                    </TabsTrigger>
-                  </TabsList>
-                </div>
-                <TabsContent value="history" xstyle={styles.columnFill}>
-                  {history}
-                </TabsContent>
-                <TabsContent value="try" xstyle={styles.columnScroll}>
-                  {tryRun}
-                </TabsContent>
-              </Tabs>
-            </aside>
-          </TabbedColumns>
-        ) : (
-          <>
-            <Edge
-              axis="x"
-              label={format(m.resizeTry)}
-              value={sizes.tryWidth}
-              fallback={DEFAULT_WORKBENCH_SIZES.tryWidth}
-              limits={columnLimits(sizes.historyWidth)}
-              name="tryWidth"
-              onResize={size('tryWidth')}
-            />
-            <section
-              aria-label={tryLabel}
-              {...stylex.props(styles.column)}
-              style={{ flexBasis: sizes.tryWidth }}
-            >
-              <div {...stylex.props(styles.columnScroll)}>{tryRun}</div>
-            </section>
-            <Edge
-              axis="x"
-              label={format(m.resizeHistory)}
-              value={sizes.historyWidth}
-              fallback={DEFAULT_WORKBENCH_SIZES.historyWidth}
-              limits={columnLimits(sizes.tryWidth)}
-              name="historyWidth"
-              onResize={size('historyWidth')}
-            />
-            <section
-              aria-label={historyLabel}
-              {...stylex.props(styles.column, styles.columnRuled)}
-              style={{ flexBasis: sizes.historyWidth }}
-            >
-              {history}
-            </section>
-          </>
+        {...stylex.props(
+          styles.movingLayer,
+          motion === 'forward' && styles.movingForward,
+          motion === 'back' && styles.movingBack,
         )}
-      </div>
-      <Edge
-        axis="y"
-        label={format(m.resizePanel)}
-        value={sizes.panelHeight}
-        fallback={DEFAULT_WORKBENCH_SIZES.panelHeight}
-        limits={panelLimits}
-        name="panelHeight"
-        onResize={size('panelHeight')}
-      />
-      <Tabs
-        value={panelTab}
-        onValueChange={onPanelTab}
-        xstyle={styles.panel}
-        style={{ height: sizes.panelHeight }}
       >
-        <div {...stylex.props(styles.panelBar)}>
-          <TabsList aria-label={panelLabel} xstyle={styles.tabList}>
-            {panelTabs.map((tab) => (
-              <TabsTrigger key={tab.value} value={tab.value} xstyle={styles.tab}>
-                <TabWords tab={tab} />
-              </TabsTrigger>
-            ))}
-          </TabsList>
-          <span {...stylex.props(w.spring)} />
-          {panelActions}
+        {bar}
+        {notices}
+        <div ref={upperRef} {...stylex.props(styles.upper)}>
+          <div {...stylex.props(styles.sourcePane)}>{source}</div>
+          <Edge
+            axis="x"
+            label={format(m.resizeTry)}
+            value={sizes.tryWidth}
+            fallback={DEFAULT_WORKBENCH_SIZES.tryWidth}
+            limits={tryLimits}
+            name="tryWidth"
+            onResize={size('tryWidth')}
+          />
+          <section
+            aria-label={tryLabel}
+            {...stylex.props(styles.tryPane)}
+            style={{ width: sizes.tryWidth }}
+          >
+            {tryRun}
+          </section>
         </div>
-        {panelTabs.map((tab) => (
-          <TabsContent key={tab.value} value={tab.value} xstyle={styles.panelBody}>
-            {tab.content}
-          </TabsContent>
-        ))}
-      </Tabs>
+        <Edge
+          axis="y"
+          label={format(m.resizePanel)}
+          value={sizes.panelHeight}
+          fallback={DEFAULT_WORKBENCH_SIZES.panelHeight}
+          limits={panelLimits}
+          name="panelHeight"
+          onResize={size('panelHeight')}
+        />
+        <Tabs
+          value={panelTab}
+          onValueChange={onPanelTab}
+          xstyle={styles.panel}
+          style={{ height: sizes.panelHeight }}
+        >
+          <div {...stylex.props(styles.panelBar)}>
+            <TabsList aria-label={panelLabel} xstyle={styles.tabList}>
+              {panelTabs.map((tab) => (
+                <TabsTrigger key={tab.value} value={tab.value} xstyle={styles.tab}>
+                  <TabWords tab={tab} />
+                </TabsTrigger>
+              ))}
+            </TabsList>
+            <span {...stylex.props(w.spring)} />
+            {panelActions}
+          </div>
+          {panelTabs.map((tab) => (
+            <TabsContent key={tab.value} value={tab.value} xstyle={styles.panelBody}>
+              {tab.content}
+            </TabsContent>
+          ))}
+        </Tabs>
+        {gate === undefined ? null : <GateLine gate={gate} />}
+      </div>
       {children}
     </div>
   )

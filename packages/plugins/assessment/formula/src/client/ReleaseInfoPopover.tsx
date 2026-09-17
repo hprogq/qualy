@@ -6,11 +6,10 @@ import { Popover, PopoverContent, PopoverTrigger } from '@qualy/ui/popover'
 import { InfoIcon } from 'lucide-react'
 import { formulaMessages as m } from './i18n.ts'
 import { fullWhen } from './library-styles.ts'
-import { VersionSharing } from './VersionSharing.tsx'
 
-// What one publication is, beside its line in the history: its name and
-// notes, when and by whom, and who it is shared with - where sharing is
-// also changed.
+// What one publication is, beside its line in the versions: its name and
+// notes, when and by whom. Who it is shared with is on the line itself, and
+// changed from there.
 //
 // It opens under a resting pointer and closes when the pointer leaves, like
 // a preview; a press on the mark, or a press anywhere inside, keeps it open
@@ -23,6 +22,8 @@ export interface ReleaseInfo {
   readonly releaseNotes: string | null
   readonly publishedAt: string
   readonly publishedByName: string | null
+  /** how many units it is offered to, where the caller knows */
+  readonly sharedCount?: number
 }
 
 const OPEN_DELAY_MS = 150
@@ -44,6 +45,8 @@ const styles = stylex.create({
     cursor: 'pointer',
   },
   triggerOpen: { backgroundColor: tokens.border, color: tokens.foreground },
+  // named rather than marked: beside other words, an icon alone would read as decoration
+  triggerNamed: { width: 'auto', paddingInline: 8, fontFamily: 'inherit', fontSize: 12 },
   // the card's own padding belongs to the hover area too, or the pointer
   // crossing the margin between text and edge would read as leaving
   body: { display: 'flex', flexDirection: 'column', gap: 12, margin: -14, padding: 14 },
@@ -74,11 +77,12 @@ const styles = stylex.create({
 })
 
 export function ReleaseInfoPopover({
-  functionId,
   release,
+  label,
 }: {
-  readonly functionId: string
   readonly release: ReleaseInfo
+  /** words on the mark, where it stands among other actions rather than on a row */
+  readonly label?: string
 }) {
   const { format, locale } = useI18n()
   const [open, setOpen] = useState(false)
@@ -142,9 +146,13 @@ export function ReleaseInfoPopover({
             else after(OPEN_DELAY_MS, () => setOpen(true))
           }}
           onMouseLeave={leave}
-          {...stylex.props(styles.trigger, open && styles.triggerOpen)}
+          {...stylex.props(
+            styles.trigger,
+            label !== undefined && styles.triggerNamed,
+            open && styles.triggerOpen,
+          )}
         >
-          <InfoIcon size={15} aria-hidden />
+          {label ?? <InfoIcon size={15} aria-hidden />}
         </button>
       </PopoverTrigger>
       <PopoverContent side="bottom" align="end" width={300}>
@@ -183,11 +191,6 @@ export function ReleaseInfoPopover({
               </dd>,
             ])}
           </dl>
-          <div aria-hidden {...stylex.props(styles.rule)} />
-          <div {...stylex.props(styles.section)}>
-            <h3 {...stylex.props(styles.sub)}>{format(m.releaseSharing)}</h3>
-            <VersionSharing functionId={functionId} versionNo={release.versionNo} />
-          </div>
         </div>
       </PopoverContent>
     </Popover>

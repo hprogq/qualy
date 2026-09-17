@@ -204,6 +204,18 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/editor/run',
       defaultMessage: 'Run',
     },
+    runNeedsCompile: {
+      id: 'assessment-formula/editor/run-needs-compile',
+      defaultMessage: 'The code has to compile before anything can run against it',
+    },
+    runNeedsSource: {
+      id: 'assessment-formula/editor/run-needs-source',
+      defaultMessage: 'Write the formula before running it',
+    },
+    runThisExample: {
+      id: 'assessment-formula/editor/run-this-example',
+      defaultMessage: 'Run this example',
+    },
     runAll: {
       id: 'assessment-formula/editor/run-all',
       defaultMessage: 'Run all',
@@ -215,10 +227,6 @@ const i18n = definePluginMessages({
     trySave: {
       id: 'assessment-formula/editor/try-save',
       defaultMessage: 'Save as example',
-    },
-    trySaveExpecting: {
-      id: 'assessment-formula/editor/try-save-expecting',
-      defaultMessage: 'Save expecting {value}',
     },
     adoptActual: {
       id: 'assessment-formula/editor/adopt-actual',
@@ -288,6 +296,10 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/editor/test-name',
       defaultMessage: 'Name',
     },
+    testInputLabel: {
+      id: 'assessment-formula/editor/test-input-label',
+      defaultMessage: 'Input',
+    },
     testInput: {
       id: 'assessment-formula/editor/test-input',
       defaultMessage: 'Input (JSON)',
@@ -299,6 +311,10 @@ const i18n = definePluginMessages({
     addTest: {
       id: 'assessment-formula/editor/add-test',
       defaultMessage: 'Add example',
+    },
+    removeConfirm: {
+      id: 'assessment-formula/editor/remove-confirm',
+      defaultMessage: 'Press again to remove',
     },
     removeTest: {
       id: 'assessment-formula/editor/remove-test',
@@ -437,6 +453,70 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/contract/error',
       defaultMessage: 'A schema was rejected while loading the formula; details below.',
     },
+    profileMaxScale: {
+      id: 'assessment-formula/contract/max-scale',
+      defaultMessage: 'maxScale must be a whole number from 0 to 4',
+    },
+    profileBoundsInverted: {
+      id: 'assessment-formula/contract/bounds-inverted',
+      defaultMessage: 'the lower bound is above the upper one',
+    },
+    profileIntegerBounds: {
+      id: 'assessment-formula/contract/integer-bounds',
+      defaultMessage: 'an integer parameter needs both a minimum and a maximum',
+    },
+    profileIntegerUnsafe: {
+      id: 'assessment-formula/contract/integer-unsafe',
+      defaultMessage: 'the bounds are outside the range integers can hold exactly',
+    },
+    profileDecimalBound: {
+      id: 'assessment-formula/contract/decimal-bound',
+      defaultMessage: 'a bound must be a plain decimal string, such as "0" or "99.99"',
+    },
+    profileDecimalScale: {
+      id: 'assessment-formula/contract/decimal-scale',
+      defaultMessage: 'a bound has more decimal places than maxScale allows',
+    },
+    profileLengthBounds: {
+      id: 'assessment-formula/contract/length-bounds',
+      defaultMessage: 'the length bounds must be whole numbers, the smallest first',
+    },
+    profileChoiceEmpty: {
+      id: 'assessment-formula/contract/choice-empty',
+      defaultMessage: 'a choice needs at least one option',
+    },
+    profileChoiceDuplicate: {
+      id: 'assessment-formula/contract/choice-duplicate',
+      defaultMessage: 'two options share one value',
+    },
+    profileChoiceTooMany: {
+      id: 'assessment-formula/contract/choice-too-many',
+      defaultMessage: 'this choice has more options than a form can take',
+    },
+    profileChoiceValue: {
+      id: 'assessment-formula/contract/choice-value',
+      defaultMessage: 'an option value must be a short identifier',
+    },
+    profileParameterName: {
+      id: 'assessment-formula/contract/parameter-name',
+      defaultMessage: 'a parameter name must be a short identifier',
+    },
+    profileTooManyParameters: {
+      id: 'assessment-formula/contract/too-many-parameters',
+      defaultMessage: 'the formula takes more parameters than a form can ask for',
+    },
+    profileUnknownKind: {
+      id: 'assessment-formula/contract/unknown-kind',
+      defaultMessage: 'this parameter is not one of the kinds a question can ask for',
+    },
+    profileUnknownKey: {
+      id: 'assessment-formula/contract/unknown-key',
+      defaultMessage: 'this parameter carries a setting the platform does not read',
+    },
+    profileWordsTooLong: {
+      id: 'assessment-formula/contract/words-too-long',
+      defaultMessage: 'a title, description or label is too long',
+    },
     contractPatternInvalid: {
       id: 'assessment-formula/contract/pattern-invalid',
       defaultMessage:
@@ -450,6 +530,10 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/contract/pattern-too-complex',
       defaultMessage: 'The pattern is too complex.',
     },
+    contractIssueColumn: {
+      id: 'assessment-formula/contract/issue-column',
+      defaultMessage: 'Detail',
+    },
     contractIssuesTitle: {
       id: 'assessment-formula/report/contract',
       defaultMessage: 'Contract findings',
@@ -458,13 +542,53 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/sharing/private',
       defaultMessage: 'Not shared',
     },
-    sharingAdd: {
-      id: 'assessment-formula/sharing/add',
-      defaultMessage: 'Share with a unit',
+    sharingUnits: {
+      id: 'assessment-formula/sharing/units',
+      defaultMessage: 'Shared with {count, plural, one {# unit} other {# units}}',
     },
-    sharingRemove: {
-      id: 'assessment-formula/sharing/remove',
-      defaultMessage: 'Stop sharing with {name}',
+    sharingManage: {
+      id: 'assessment-formula/sharing/manage',
+      defaultMessage: 'Who it is shared with',
+    },
+    sharingTitle: {
+      id: 'assessment-formula/sharing/title',
+      defaultMessage: 'Share {name}',
+    },
+    sharingHint: {
+      id: 'assessment-formula/sharing/hint',
+      defaultMessage: 'Everyone in a unit you offer it to may copy this publication',
+    },
+    sharingCurrent: {
+      id: 'assessment-formula/sharing/current',
+      defaultMessage: 'Offered to',
+    },
+    sharingChoose: {
+      id: 'assessment-formula/sharing/choose',
+      defaultMessage: 'Choose units',
+    },
+    sharingSearch: {
+      id: 'assessment-formula/sharing/search',
+      defaultMessage: 'Search units',
+    },
+    sharingNoOptions: {
+      id: 'assessment-formula/sharing/no-options',
+      defaultMessage: 'No unit here can be offered this formula',
+    },
+    sharingNoMatches: {
+      id: 'assessment-formula/sharing/no-matches',
+      defaultMessage: 'No unit matches',
+    },
+    sharingTruncated: {
+      id: 'assessment-formula/sharing/truncated',
+      defaultMessage: 'Showing the first matches; search to narrow them',
+    },
+    sharingSave: {
+      id: 'assessment-formula/sharing/save',
+      defaultMessage: 'Save',
+    },
+    sharingSaved: {
+      id: 'assessment-formula/sharing/saved',
+      defaultMessage: 'Sharing updated.',
     },
     versionsEmpty: {
       id: 'assessment-formula/editor/versions-empty',
@@ -684,10 +808,13 @@ const i18n = definePluginMessages({
       defaultMessage:
         '{count, plural, one {# example has} other {# examples have}} not run against the current code',
     },
-    examplesTotal: {
-      id: 'assessment-formula/examples/total',
-      defaultMessage:
-        '{count, plural, one {# example} other {# examples}}; all must pass to publish',
+    structureContractRefused: {
+      id: 'assessment-formula/editor/structure-contract-refused',
+      defaultMessage: 'The parameters were refused, so no input structure can be read yet',
+    },
+    structureContractKept: {
+      id: 'assessment-formula/editor/structure-contract-kept',
+      defaultMessage: 'The parameters were refused; showing the last structure that passed',
     },
     structureKept: {
       id: 'assessment-formula/editor/structure-kept',
@@ -704,6 +831,10 @@ const i18n = definePluginMessages({
     exampleEditTitle: {
       id: 'assessment-formula/examples/edit-title',
       defaultMessage: 'Edit example',
+    },
+    exampleEditHint: {
+      id: 'assessment-formula/examples/edit-hint',
+      defaultMessage: 'Changes take effect at once and are kept with the draft when it is saved',
     },
     exampleDone: {
       id: 'assessment-formula/examples/done',
@@ -779,6 +910,22 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/editor/load-example-confirm',
       defaultMessage: 'Load example',
     },
+    startBlank: {
+      id: 'assessment-formula/editor/start-blank',
+      defaultMessage: 'Start from a blank file',
+    },
+    leaveForTemplatesTitle: {
+      id: 'assessment-formula/editor/leave-for-templates-title',
+      defaultMessage: 'Leave this formula?',
+    },
+    leaveForTemplatesDescription: {
+      id: 'assessment-formula/editor/leave-for-templates-description',
+      defaultMessage: 'This draft has unsaved changes, and leaving the page lets them go.',
+    },
+    leaveForTemplatesConfirm: {
+      id: 'assessment-formula/editor/leave-for-templates-confirm',
+      defaultMessage: 'Leave',
+    },
     browseTemplates: {
       id: 'assessment-formula/editor/browse-templates',
       defaultMessage: 'Browse formula templates',
@@ -809,11 +956,7 @@ const i18n = definePluginMessages({
     },
     publishOpen: {
       id: 'assessment-formula/editor/publish-open',
-      defaultMessage: 'Publish…',
-    },
-    publishVersionMenu: {
-      id: 'assessment-formula/editor/publish-version-menu',
-      defaultMessage: 'Publish a version…',
+      defaultMessage: 'Publish',
     },
     publishedAs: {
       id: 'assessment-formula/editor/published-as',
@@ -945,10 +1088,6 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/release/publisher',
       defaultMessage: 'Published by',
     },
-    releaseSharing: {
-      id: 'assessment-formula/release/sharing',
-      defaultMessage: 'Sharing',
-    },
     releaseNoReport: {
       id: 'assessment-formula/release/no-report',
       defaultMessage: 'No test results were kept for this publication',
@@ -1078,9 +1217,33 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/history/revisions-empty',
       defaultMessage: 'No draft saves yet',
     },
-    releaseTryNote: {
-      id: 'assessment-formula/release/try-note',
-      defaultMessage: 'Runs the published artifact',
+    copyValue: {
+      id: 'assessment-formula/release/copy-value',
+      defaultMessage: 'Copy',
+    },
+    jumpToLine: {
+      id: 'assessment-formula/editor/jump-to-line',
+      defaultMessage: 'Go to this line',
+    },
+    copyAll: {
+      id: 'assessment-formula/editor/copy-all',
+      defaultMessage: 'Copy all',
+    },
+    findInSource: {
+      id: 'assessment-formula/editor/find-in-source',
+      defaultMessage: 'Find it in the source',
+    },
+    copyTechnicalDetail: {
+      id: 'assessment-formula/editor/copy-technical-detail',
+      defaultMessage: 'Copy the technical detail',
+    },
+    copied: {
+      id: 'assessment-formula/release/copied',
+      defaultMessage: 'Copied.',
+    },
+    copyFailed: {
+      id: 'assessment-formula/release/copy-failed',
+      defaultMessage: 'The browser did not allow copying.',
     },
     releaseDetails: {
       id: 'assessment-formula/release/details',
@@ -1142,10 +1305,6 @@ const i18n = definePluginMessages({
     publishBlankHint: {
       id: 'assessment-formula/publish/blank-hint',
       defaultMessage: 'Write the formula before publishing it',
-    },
-    publishNew: {
-      id: 'assessment-formula/publish/new',
-      defaultMessage: 'Publish a new version…',
     },
     openRelease: {
       id: 'assessment-formula/editor/open-release',
@@ -1211,13 +1370,98 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/workbench/resize-try',
       defaultMessage: 'Resize the try-run column',
     },
-    resizeHistory: {
-      id: 'assessment-formula/workbench/resize-history',
-      defaultMessage: 'Resize the versions column',
+    checksTitle: {
+      id: 'assessment-formula/editor/checks',
+      defaultMessage: 'Check results',
     },
-    resizeSide: {
-      id: 'assessment-formula/workbench/resize-side',
-      defaultMessage: 'Resize the side column',
+    seeProblems: {
+      id: 'assessment-formula/editor/see-problems',
+      defaultMessage: 'See the problems',
+    },
+    seeCompile: {
+      id: 'assessment-formula/editor/see-compile',
+      defaultMessage: 'See the compiler output',
+    },
+    goExamples: {
+      id: 'assessment-formula/editor/go-examples',
+      defaultMessage: 'Go to the examples',
+    },
+    compileFailedCount: {
+      id: 'assessment-formula/editor/compile-failed-count',
+      defaultMessage:
+        'The code does not compile, {count, plural, one {# finding} other {# findings}}',
+    },
+    resultNotRun: {
+      id: 'assessment-formula/editor/result-not-run',
+      defaultMessage: 'not run yet',
+    },
+    resultRanAt: {
+      id: 'assessment-formula/editor/result-ran-at',
+      defaultMessage: 'ran at {when}',
+    },
+    viewingVersion: {
+      id: 'assessment-formula/editor/viewing-version',
+      defaultMessage: 'Looking at {name}',
+    },
+    latestReleaseIs: {
+      id: 'assessment-formula/editor/latest-release-is',
+      defaultMessage: 'Latest publication: {name}',
+    },
+    expectedIs: {
+      id: 'assessment-formula/examples/expected-is',
+      defaultMessage: 'expects {value}',
+    },
+    expectedNone: {
+      id: 'assessment-formula/examples/expected-none',
+      defaultMessage: 'no expectation',
+    },
+    actualNone: {
+      id: 'assessment-formula/examples/actual-none',
+      defaultMessage: 'not run',
+    },
+    actualIs: {
+      id: 'assessment-formula/examples/actual-is',
+      defaultMessage: 'came to {value}',
+    },
+    examplesCount: {
+      id: 'assessment-formula/examples/count',
+      defaultMessage: '{count, plural, one {# example} other {# examples}}',
+    },
+    inputMore: {
+      id: 'assessment-formula/examples/input-more',
+      defaultMessage: '{count} more',
+    },
+    valueYes: {
+      id: 'assessment-formula/value/yes',
+      defaultMessage: 'Yes',
+    },
+    valueNo: {
+      id: 'assessment-formula/value/no',
+      defaultMessage: 'No',
+    },
+    tryRecordsHint: {
+      id: 'assessment-formula/try/records-hint',
+      defaultMessage: 'Kept on this device only, the last 20',
+    },
+    tryRecordFailed: {
+      id: 'assessment-formula/try/record-failed',
+      defaultMessage: 'Failed',
+    },
+    versionOpen: {
+      id: 'assessment-formula/history/version-open',
+      defaultMessage: 'Open this version',
+    },
+    versionsHint: {
+      id: 'assessment-formula/history/versions-hint',
+      defaultMessage: 'Open one to read it, or restore it as the draft',
+    },
+    releaseReadOnlyHint: {
+      id: 'assessment-formula/history/release-read-only-hint',
+      defaultMessage: 'A publication is read-only; restore it as the draft to change it',
+    },
+    revisionReadOnlyHint: {
+      id: 'assessment-formula/history/revision-read-only-hint',
+      defaultMessage: 'A saved revision is read-only; restore it as the draft to change it',
     },
     resizePanel: {
       id: 'assessment-formula/workbench/resize-panel',

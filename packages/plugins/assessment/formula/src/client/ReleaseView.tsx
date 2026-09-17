@@ -18,27 +18,15 @@ import {
 import type { NormalizedAtomicSchema, NormalizedInputSchema } from '@qualy/value-schema'
 import { draftsFromStored, materializeInput, type FieldDraft } from '@qualy/web-value-form/model'
 import { useTryRecords } from './try-records.ts'
-import {
-  DownloadIcon,
-  FilePenLineIcon,
-  FlaskConicalIcon,
-  LockIcon,
-  MoreHorizontalIcon,
-  Undo2Icon,
-} from 'lucide-react'
+import { CopyIcon, DownloadIcon, FilePenLineIcon, LockIcon, MoreHorizontalIcon } from 'lucide-react'
 import { formulaApi } from './api.ts'
 import { formulaMessages as m } from './i18n.ts'
 import { LazyFormulaSourceViewer } from './lazy-editors.ts'
 import { inputIssueWords, inputSummaryOf, outcomeWords, type OutcomeLike } from './report-words.ts'
 import { ContractTable } from './ContractTable.tsx'
 import { TryRunPanel, type TryOutcome } from './TryRunPanel.tsx'
-import {
-  SideHead,
-  WorkbenchBar,
-  WorkbenchLayout,
-  type SideTab,
-  type WorkbenchTab,
-} from './WorkbenchLayout.tsx'
+import { TryRecordsDrawer } from './TryRecordsDrawer.tsx'
+import { WorkbenchBar, WorkbenchLayout, type WorkbenchTab } from './WorkbenchLayout.tsx'
 import { workbenchStyles as w } from './workbench-styles.ts'
 
 // One publication of a formula, as it was frozen.
@@ -58,15 +46,26 @@ const styles = stylex.create({
     justifyContent: 'center',
     minHeight: 200,
   },
-  gateText: {
-    minWidth: 0,
-    flexGrow: 1,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
+  wide: { width: '100%' },
+  digest: { display: 'inline-flex', alignItems: 'center', gap: 4 },
+  digestHead: {
+    fontFamily: 'ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace',
     fontSize: 12,
-    color: tokens.mutedForeground,
   },
+  copy: {
+    display: 'inline-flex',
+    width: 22,
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 0,
+    borderRadius: 6,
+    padding: 0,
+    backgroundColor: { default: 'transparent', ':hover': tokens.surfaceMuted },
+    color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
+    cursor: 'pointer',
+  },
+  statusRule: { width: 1, height: 10, flexShrink: 0, backgroundColor: tokens.border },
   statusName: {
     minWidth: 0,
     maxWidth: '24rem',
@@ -91,9 +90,9 @@ export function ReleaseView({
   narrow,
   titleRef,
   lease,
-  history,
-  sideTab,
-  onSideTab,
+  versionsButton,
+  drawers,
+  motion,
   onBack,
   onRestore,
   restoring,
@@ -107,9 +106,12 @@ export function ReleaseView({
   readonly titleRef: (node: HTMLElement | null) => void
   /** the page's editor lease, which the read-only source hangs on */
   readonly lease: string
-  readonly history: ReactNode
-  readonly sideTab: SideTab
-  readonly onSideTab: (tab: SideTab) => void
+  /** the bar's way into the versions, which the page owns */
+  readonly versionsButton: ReactNode
+  /** the drawers the page keeps open across views */
+  readonly drawers: ReactNode
+  /** set when this state was opened from inside the page rather than linked to */
+  readonly motion?: 'forward'
   readonly onBack: () => void
   readonly onRestore: (release: { versionNo: number; name: string }) => void
   readonly restoring: boolean
@@ -124,6 +126,8 @@ export function ReleaseView({
   const [issues, setIssues] = useState<ReadonlyMap<string, string> | undefined>(undefined)
   const [result, setResult] = useState<{ outcome: TryOutcome; forCase: string } | null>(null)
   const [running, setRunning] = useState(false)
+  const [recordsOpen, setRecordsOpen] = useState(false)
+  const [ranAt, setRanAt] = useState<number | null>(null)
 
   // what this browser remembers trying against this publication
   const tryRecords = useTryRecords(`${functionId}/release-${String(versionNo)}`)
@@ -167,6 +171,7 @@ export function ReleaseView({
       )) as { cases: readonly TryOutcome[] }
       const outcome = answered.cases[0] ?? {}
       tryRecords.add({ input: materialized.value, outcome })
+      setRanAt(Date.now())
       setResult({ outcome, forCase: JSON.stringify(frozenDrafts) })
     } catch (error) {
       toast.error(formatError(error))
@@ -208,44 +213,36 @@ export function ReleaseView({
       </div>
     )
 
-  const tryRun = (
-    <>
-      <SideHead
-        title={format(m.tryTitle)}
-        column
-        icon={<FlaskConicalIcon size={14} aria-hidden />}
-      />
-      <TryRunPanel
-        status={{ state: 'frozen', tone: 'quiet', words: format(m.releaseTryNote) }}
-        schema={inputSchema}
-        pending={{
-          state: detail.isError ? 'refused' : 'loading',
-          words: detail.isError ? formatError(detail.error) : format(m.editorLoading),
-          working: !detail.isError,
-          off: detail.isError,
-        }}
-        drafts={drafts}
-        onDraft={(name, draft) => setDrafts({ ...drafts, [name]: draft })}
-        issues={issues}
-        disabled={false}
-        running={running}
-        result={
-          result === null
-            ? null
-            : { outcome: result.outcome, fresh: result.forCase === JSON.stringify(drafts) }
-        }
-        onRun={() => void runTry()}
-        records={tryRecords.records}
-        onPick={(record) => {
-          if (inputSchema === null) return
-          const picked = draftsFromStored(inputSchema, record.input)
-          setDrafts(picked)
-          setIssues(undefined)
-          setResult({ outcome: record.outcome, forCase: JSON.stringify(picked) })
-        }}
-        onClearRecords={tryRecords.clear}
-      />
-    </>
+  const tryRun = (phone: boolean) => (
+    <TryRunPanel
+      title={format(m.tryTitle)}
+      narrow={phone}
+      status={{ state: 'frozen', tone: 'quiet', words: '' }}
+      schema={inputSchema}
+      pending={{
+        state: detail.isError ? 'refused' : 'loading',
+        words: detail.isError ? formatError(detail.error) : format(m.editorLoading),
+        working: !detail.isError,
+        off: detail.isError,
+      }}
+      drafts={drafts}
+      onDraft={(name, draft) => setDrafts({ ...drafts, [name]: draft })}
+      issues={issues}
+      disabled={false}
+      running={running}
+      result={
+        result === null
+          ? null
+          : {
+              outcome: result.outcome,
+              fresh: result.forCase === JSON.stringify(drafts),
+              ...(ranAt === null ? {} : { at: ranAt }),
+            }
+      }
+      onRun={() => void runTry()}
+      recordCount={tryRecords.records.length}
+      onOpenRecords={() => setRecordsOpen(true)}
+    />
   )
 
   const reportTable =
@@ -274,7 +271,7 @@ export function ReleaseView({
                   {inputSummaryOf(tests[index]?.input)}
                 </td>
                 <td {...stylex.props(w.reportCell, w.mono)}>{row.expected}</td>
-                <td {...stylex.props(w.reportCell, w.mono)}>{row.actual ?? '—'}</td>
+                <td {...stylex.props(w.reportCell, w.mono)}>{row.actual ?? format(m.actualNone)}</td>
                 <td
                   title={notes ?? undefined}
                   {...stylex.props(w.reportCell, row.passed === true ? w.good : w.bad)}
@@ -296,33 +293,56 @@ export function ReleaseView({
       />
     )
 
+  // A digest is an identity to compare, not a number to read: its head is
+  // enough to tell two apart on screen, and the whole of it is one press away.
+  const digest = (value: string) => (
+    <span {...stylex.props(styles.digest)}>
+      <code {...stylex.props(styles.digestHead)}>{value.slice(0, 12)}</code>
+      <button
+        type="button"
+        data-testid="formula-copy-digest"
+        aria-label={format(m.copyValue)}
+        onClick={() => {
+          void navigator.clipboard
+            ?.writeText(value)
+            .then(() => toast.success(format(m.copied)))
+            .catch(() => toast.error(format(m.copyFailed)))
+        }}
+        {...stylex.props(styles.copy)}
+      >
+        <CopyIcon size={13} aria-hidden />
+      </button>
+    </span>
+  )
+
   const environment =
     version === undefined ? null : (
       <dl data-testid="formula-release-environment" {...stylex.props(w.facts)}>
         {(
           [
-            [m.envTypescript, version.typescriptVersion],
-            [m.envEsbuild, version.esbuildVersion],
-            [m.envQuickjs, version.quickjsEngineVersion],
-            [m.envFormulaAbi, String(version.formulaAbiVersion)],
-            [m.envSandboxAbi, String(version.sandboxAbiVersion)],
-            [m.envValueSchema, String(version.valueSchemaProfileVersion)],
-            [m.envRegex, String(version.regexProfileVersion)],
+            [m.envTypescript, version.typescriptVersion, false],
+            [m.envEsbuild, version.esbuildVersion, false],
+            [m.envQuickjs, version.quickjsEngineVersion, false],
+            [m.envFormulaAbi, String(version.formulaAbiVersion), false],
+            [m.envSandboxAbi, String(version.sandboxAbiVersion), false],
+            [m.envValueSchema, String(version.valueSchemaProfileVersion), false],
+            [m.envRegex, String(version.regexProfileVersion), false],
             [
               m.envSourcePolicy,
               `${String(version.sourcePolicyVersion)} (${version.sourcePolicyParserVersion})`,
+              false,
             ],
-            [m.envAuthoringBuild, version.authoringBuildId],
-            [m.envRuntimeBuild, version.sandboxRuntimeBuildId],
-            [m.envSourceSha, version.sourceSha256],
-            [m.envRuntimeSha, version.runtimeSha256],
-            [m.envContractSha, version.contractSha256],
-            [m.envFormulaRuntimeSha, version.formulaRuntimeSha256],
+            [m.envAuthoringBuild, version.authoringBuildId, true],
+            [m.envRuntimeBuild, version.sandboxRuntimeBuildId, true],
+            [m.envSourceSha, version.sourceSha256, true],
+            [m.envRuntimeSha, version.runtimeSha256, true],
+            [m.envContractSha, version.contractSha256, true],
+            [m.envFormulaRuntimeSha, version.formulaRuntimeSha256, true],
           ] as const
-        ).map(([label, value]) => (
+        ).map(([label, value, long]) => (
           <div key={label.id} {...stylex.props(w.fact)}>
             <dt {...stylex.props(w.factLabel)}>{format(label)}</dt>
-            <dd {...stylex.props(w.factValue, w.wrapMono)}>{value}</dd>
+            <dd {...stylex.props(w.factValue)}>{long ? digest(value) : value}</dd>
           </div>
         ))}
       </dl>
@@ -332,10 +352,11 @@ export function ReleaseView({
 
   const restoreButton = (
     <Button
-      size="sm"
+      size={narrow ? 'lg' : 'sm'}
       data-testid="formula-release-restore"
       disabled={archived || restoring || version === undefined}
       onClick={restore}
+      className={narrow ? stylex.props(styles.wide).className : undefined}
     >
       <FilePenLineIcon aria-hidden />
       {format(m.releaseRestore)}
@@ -364,36 +385,38 @@ export function ReleaseView({
       narrow={narrow}
       testId="formula-release-view"
       status="release"
+      {...(motion === undefined ? {} : { motion })}
       bar={
         <WorkbenchBar
           narrow={narrow}
-          backLabel={format(m.listTitle)}
+          frozen
+          backLabel={format(m.backToDraft)}
+          onBack={onBack}
           titleRef={titleRef}
-          title={<span {...stylex.props(w.title)}>{functionName}</span>}
+          title={<span {...stylex.props(w.title)}>{displayName}</span>}
           badge={
-            <span {...stylex.props(w.standing, w.standingOutline)}>
-              <LockIcon size={11} aria-hidden />
-              {format(m.readOnly)}
-            </span>
+            <>
+              <span {...stylex.props(w.standing, w.standingOutline)}>
+                <LockIcon size={11} aria-hidden />
+                {format(m.readOnly)}
+              </span>
+              {versionNo === latestVersionNo ? (
+                <span {...stylex.props(w.standing, w.standingQuiet)}>
+                  {format(m.versionLatest)}
+                </span>
+              ) : null}
+            </>
           }
           status={
-            version === undefined ? undefined : (
-              <>
-                <span {...stylex.props(styles.statusName)}>{displayName}</span>
-                {versionNo === latestVersionNo ? (
-                  <span {...stylex.props(w.standing, w.standingGood)}>
-                    {format(m.versionLatest)}
-                  </span>
-                ) : null}
-              </>
-            )
+            <>
+              <span {...stylex.props(styles.statusName)}>{functionName}</span>
+              <span aria-hidden {...stylex.props(styles.statusRule)} />
+              <span>{format(m.releaseOrdinal, { number: versionNo })}</span>
+            </>
           }
           actions={
             <>
-              <Button variant="ghost" size="sm" onClick={onBack}>
-                <Undo2Icon aria-hidden />
-                {format(m.backToDraft)}
-              </Button>
+              {versionsButton}
               <Button
                 variant="outline"
                 size="sm"
@@ -406,6 +429,7 @@ export function ReleaseView({
               {restoreButton}
             </>
           }
+          phoneActions={versionsButton}
           phoneMenu={
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -424,44 +448,44 @@ export function ReleaseView({
         />
       }
       source={source}
-      tryRun={tryRun}
-      history={history}
-      sideTab={sideTab}
-      onSideTab={onSideTab}
+      tryRun={tryRun(false)}
       tryLabel={format(m.tryTitle)}
-      historyLabel={format(m.historyTitle)}
       panelTabs={panelTabs}
       panelTab={panelTab}
       onPanelTab={setPanelTab}
       panelLabel={format(m.releaseDetails)}
       phoneTabs={[
         { value: 'source', label: format(m.phoneSourceTab), content: source },
-        { value: 'try', label: format(m.tryTitle), content: tryRun },
-        {
-          value: 'details',
-          label: format(m.releaseDetails),
-          count: report.length,
-          content: (
-            <>
-              <SideHead title={format(m.releaseReportTab)} />
-              {reportTable}
-              <SideHead title={format(m.releaseContractTab)} />
-              {contract}
-              <SideHead title={format(m.releaseEnvironmentTab)} />
-              {environment}
-            </>
-          ),
-        },
-        { value: 'history', label: format(m.historyTitle), content: history },
+        { value: 'try', label: format(m.tryTitle), content: tryRun(true) },
+        ...panelTabs,
       ]}
       phoneTab={phoneTab}
       onPhoneTab={setPhoneTab}
-      gate={
-        <>
-          <span {...stylex.props(styles.gateText)}>{displayName}</span>
-          {restoreButton}
-        </>
-      }
-    />
+      gate={{
+        label: format(m.historyTitle),
+        tone: report.length > 0 && passed === report.length ? 'good' : 'quiet',
+        words: displayName,
+      }}
+      foot={restoreButton}
+    >
+      {drawers}
+      <TryRecordsDrawer
+        open={recordsOpen}
+        onOpenChange={setRecordsOpen}
+        narrow={narrow}
+        records={tryRecords.records}
+        schema={inputSchema}
+        onPick={(record) => {
+          if (inputSchema === null) return
+          const picked = draftsFromStored(inputSchema, record.input)
+          setDrafts(picked)
+          setIssues(undefined)
+          setRanAt(record.at)
+          setResult({ outcome: record.outcome, forCase: JSON.stringify(picked) })
+          setRecordsOpen(false)
+        }}
+        onClear={tryRecords.clear}
+      />
+    </WorkbenchLayout>
   )
 }

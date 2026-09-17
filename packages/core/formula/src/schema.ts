@@ -100,9 +100,18 @@ const integer = (
     ...annotated(bounds),
   } as IntegerSchema) as IntegerSchema
 
+/**
+ * How many decimal places a value keeps.
+ *
+ * The scorer's fixed point is 1e-4, so this is a choice among five, not any
+ * number: written as a union, a typo like 2.03 is a compile error in the
+ * author's own editor instead of a refusal when the contract is read.
+ */
+export type MaxScale = 0 | 1 | 2 | 3 | 4
+
 const decimal = (
   bounds?: {
-    readonly maxScale?: number
+    readonly maxScale?: MaxScale
     readonly minimum?: string
     readonly maximum?: string
   } & Annotations,
@@ -150,7 +159,7 @@ const date = (words?: Annotations): DateSchema =>
  */
 const scoreAmount = (
   bounds?: {
-    readonly maxScale?: number
+    readonly maxScale?: MaxScale
     readonly minimum?: string
     readonly maximum?: string
   } & Annotations,

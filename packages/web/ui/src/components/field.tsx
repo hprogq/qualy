@@ -250,7 +250,14 @@ function FieldContent({ className, children, ...props }: React.ComponentProps<'d
   )
 }
 
-function FieldLabel({ className, ...props }: React.ComponentProps<'label'>) {
+function FieldLabel({
+  className,
+  xstyle,
+  ...props
+}: React.ComponentProps<'label'> & {
+  /** the formal StyleX extension seat */
+  xstyle?: stylex.StyleXStyles
+}) {
   const field = use(FieldCtx)
   const inContent = use(InContentCtx)
   // beside its control on a row, the label is what grows; inside a
@@ -261,7 +268,7 @@ function FieldLabel({ className, ...props }: React.ComponentProps<'label'>) {
         ? styles.labelGrowResponsive
         : styles.labelGrow
       : null
-  const sx = stylex.props(styles.label, grow)
+  const sx = stylex.props(styles.label, grow, xstyle)
   return (
     <label data-slot="field-label" {...sx} {...props} className={clsx(sx.className, className)} />
   )

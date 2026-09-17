@@ -5,25 +5,19 @@ import { useCallback, useState } from 'react'
 // A convenience of one viewer in one browser, so it lives in localStorage and
 // every read and write is allowed to fail: a private window, blocked site data
 // or a quota refusal simply gives the defaults back. The draft, a publication
-// and a saved revision share one set, so looking at history keeps the room
+// and a saved revision share one set, so looking at a version keeps the room
 // the author arranged.
 
 export interface WorkbenchSizes {
-  /** the try-run column, where it has a column of its own */
+  /** the try-run column beside the source */
   readonly tryWidth: number
-  /** the versions column, where it has a column of its own */
-  readonly historyWidth: number
-  /** the one column both share on a narrower screen */
-  readonly sideWidth: number
-  /** the panel of tabs under the source */
+  /** the panel of tabs under both */
   readonly panelHeight: number
 }
 
 export const DEFAULT_WORKBENCH_SIZES: WorkbenchSizes = {
-  tryWidth: 324,
-  historyWidth: 324,
-  sideWidth: 340,
-  panelHeight: 268,
+  tryWidth: 460,
+  panelHeight: 300,
 }
 
 const KEY = 'qualy.formula-workbench.sizes'
@@ -39,12 +33,7 @@ const read = (): WorkbenchSizes => {
         ? value
         : DEFAULT_WORKBENCH_SIZES[key]
     }
-    return {
-      tryWidth: pick('tryWidth'),
-      historyWidth: pick('historyWidth'),
-      sideWidth: pick('sideWidth'),
-      panelHeight: pick('panelHeight'),
-    }
+    return { tryWidth: pick('tryWidth'), panelHeight: pick('panelHeight') }
   } catch {
     return DEFAULT_WORKBENCH_SIZES
   }

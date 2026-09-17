@@ -76,6 +76,8 @@ const versionView = Schema.Struct({
   /** null when the publisher's row is gone; a version does not depend on it */
   publishedByName: Schema.NullOr(Schema.String),
   publishedAt: Schema.String,
+  /** how many units it is offered to; only where a screen lists versions */
+  sharedCount: Schema.optional(Schema.Number),
 })
 
 /** one published version of one function, as its address names it */
@@ -543,7 +545,13 @@ export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
       }),
       success: Schema.Struct({
         nodes: Schema.Array(
-          Schema.Struct({ id: Schema.String, name: Schema.String, depth: Schema.Number }),
+          Schema.Struct({
+            id: Schema.String,
+            name: Schema.String,
+            depth: Schema.Number,
+            /** what it hangs from, so a picker can draw the tree it belongs to */
+            parentId: Schema.NullOr(Schema.String),
+          }),
         ),
         truncated: Schema.Boolean,
       }),

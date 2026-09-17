@@ -89,6 +89,7 @@ const styles = stylex.create({
     gap: 24,
     padding: 24,
     backgroundColor: `color-mix(in oklch, ${tokens.surface} 96%, transparent)`,
+    borderRadius: tokens.radiusLg,
     borderWidth: 1,
     borderStyle: 'solid',
     borderColor: `color-mix(in oklch, ${tokens.foreground} 8%, transparent)`,

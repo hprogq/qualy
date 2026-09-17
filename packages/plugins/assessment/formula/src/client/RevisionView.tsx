@@ -18,21 +18,15 @@ import {
 import type { NormalizedInputSchema } from '@qualy/value-schema'
 import { draftsFromStored, materializeInput, type FieldDraft } from '@qualy/web-value-form/model'
 import { useTryRecords } from './try-records.ts'
-import {
-  DownloadIcon,
-  FlaskConicalIcon,
-  HistoryIcon,
-  LockIcon,
-  MoreHorizontalIcon,
-  Undo2Icon,
-} from 'lucide-react'
+import { DownloadIcon, HistoryIcon, LockIcon, MoreHorizontalIcon } from 'lucide-react'
 import { formulaApi } from './api.ts'
 import { formulaMessages as m } from './i18n.ts'
 import { fullWhen } from './library-styles.ts'
 import { LazyFormulaSourceViewer } from './lazy-editors.ts'
 import { inputIssueWords, inputSummaryOf } from './report-words.ts'
 import { TryRunPanel, type TryOutcome } from './TryRunPanel.tsx'
-import { SideHead, WorkbenchBar, WorkbenchLayout, type SideTab } from './WorkbenchLayout.tsx'
+import { TryRecordsDrawer } from './TryRecordsDrawer.tsx'
+import { WorkbenchBar, WorkbenchLayout } from './WorkbenchLayout.tsx'
 import { workbenchStyles as w } from './workbench-styles.ts'
 
 // One saved state of the draft, as it was saved: its source and its examples,
@@ -49,16 +43,16 @@ const styles = stylex.create({
     justifyContent: 'center',
     minHeight: 200,
   },
-  gateText: {
+  statusName: {
     minWidth: 0,
-    flexGrow: 1,
+    maxWidth: '24rem',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
-    fontSize: 12,
-    color: tokens.mutedForeground,
   },
+  statusRule: { width: 1, height: 10, flexShrink: 0, backgroundColor: tokens.border },
   sourceFill: { display: 'flex', minHeight: '18rem', flexGrow: 1, flexDirection: 'column' },
+  wide: { width: '100%' },
 })
 
 interface Compiled {
@@ -74,9 +68,9 @@ export function RevisionView({
   narrow,
   titleRef,
   lease,
-  history,
-  sideTab,
-  onSideTab,
+  versionsButton,
+  drawers,
+  motion,
   onBack,
   onRestore,
   restoring,
@@ -91,9 +85,12 @@ export function RevisionView({
   readonly titleRef: (node: HTMLElement | null) => void
   /** the page's editor lease, which the read-only source hangs on */
   readonly lease: string
-  readonly history: ReactNode
-  readonly sideTab: SideTab
-  readonly onSideTab: (tab: SideTab) => void
+  /** the bar's way into the versions, which the page owns */
+  readonly versionsButton: ReactNode
+  /** the drawers the page keeps open across views */
+  readonly drawers: ReactNode
+  /** set when this state was opened from inside the page rather than linked to */
+  readonly motion?: 'forward'
   readonly onBack: () => void
   readonly onRestore: (revisionNo: number) => void
   readonly restoring: boolean
@@ -108,6 +105,8 @@ export function RevisionView({
   const [issues, setIssues] = useState<ReadonlyMap<string, string> | undefined>(undefined)
   const [result, setResult] = useState<{ outcome: TryOutcome; forCase: string } | null>(null)
   const [running, setRunning] = useState(false)
+  const [recordsOpen, setRecordsOpen] = useState(false)
+  const [ranAt, setRanAt] = useState<number | null>(null)
 
   // what this browser remembers trying against this saved revision
   const tryRecords = useTryRecords(`${functionId}/revision-${String(revisionNo)}`)
@@ -166,6 +165,7 @@ export function RevisionView({
       )) as { cases: readonly TryOutcome[] }
       const outcome = answered.cases[0] ?? {}
       tryRecords.add({ input: materialized.value, outcome })
+      setRanAt(Date.now())
       setResult({ outcome, forCase: JSON.stringify(frozenDrafts) })
     } catch (error) {
       toast.error(formatError(error))
@@ -231,60 +231,41 @@ export function RevisionView({
       </div>
     )
 
-  const tryRun = (
-    <>
-      <SideHead
-        title={format(m.tryTitle)}
-        column
-        icon={<FlaskConicalIcon size={14} aria-hidden />}
-      />
-      <TryRunPanel
-        status={
-          compiled.data === undefined
-            ? { state: 'loading', tone: 'working', words: format(m.structureLoading) }
-            : { state: 'synced', tone: 'good', words: format(m.structureSynced) }
-        }
-        schema={compiled.data?.inputSchema ?? null}
-        pending={
-          blank
-            ? { state: 'blank', words: format(m.compileBlank), working: false, off: false }
-            : compiled.isError
-              ? {
-                  state: 'refused',
-                  words: format(m.structureRefused),
-                  working: false,
-                  off: true,
-                }
-              : {
-                  state: 'loading',
-                  words: format(m.structureLoading),
-                  working: true,
-                  off: false,
-                }
-        }
-        drafts={drafts}
-        onDraft={(name, draft) => setDrafts({ ...drafts, [name]: draft })}
-        issues={issues}
-        disabled={false}
-        running={running}
-        result={
-          result === null
-            ? null
-            : { outcome: result.outcome, fresh: result.forCase === JSON.stringify(drafts) }
-        }
-        onRun={() => void runTry()}
-        records={tryRecords.records}
-        onPick={(record) => {
-          const schema = compiled.data?.inputSchema
-          if (schema === undefined) return
-          const picked = draftsFromStored(schema, record.input)
-          setDrafts(picked)
-          setIssues(undefined)
-          setResult({ outcome: record.outcome, forCase: JSON.stringify(picked) })
-        }}
-        onClearRecords={tryRecords.clear}
-      />
-    </>
+  const tryRun = (phone: boolean) => (
+    <TryRunPanel
+      title={format(m.tryTitle)}
+      narrow={phone}
+      status={
+        compiled.data === undefined
+          ? { state: 'loading', tone: 'working', words: format(m.structureLoading) }
+          : { state: 'synced', tone: 'quiet', words: format(m.structureSynced) }
+      }
+      schema={compiled.data?.inputSchema ?? null}
+      pending={
+        blank
+          ? { state: 'blank', words: format(m.compileBlank), working: false, off: false }
+          : compiled.isError
+            ? { state: 'refused', words: format(m.structureRefused), working: false, off: true }
+            : { state: 'loading', words: format(m.structureLoading), working: true, off: false }
+      }
+      drafts={drafts}
+      onDraft={(name, draft) => setDrafts({ ...drafts, [name]: draft })}
+      issues={issues}
+      disabled={false}
+      running={running}
+      result={
+        result === null
+          ? null
+          : {
+              outcome: result.outcome,
+              fresh: result.forCase === JSON.stringify(drafts),
+              ...(ranAt === null ? {} : { at: ranAt }),
+            }
+      }
+      onRun={() => void runTry()}
+      recordCount={tryRecords.records.length}
+      onOpenRecords={() => setRecordsOpen(true)}
+    />
   )
 
   const examples =
@@ -311,7 +292,7 @@ export function RevisionView({
                 {inputSummaryOf(test.input)}
               </td>
               <td {...stylex.props(w.reportCell, w.mono)}>
-                {test.expected === '' ? '—' : test.expected}
+                {test.expected === '' ? format(m.expectedNone) : test.expected}
               </td>
             </tr>
           ))}
@@ -342,10 +323,11 @@ export function RevisionView({
   const restoreDisabled = archived || restoring || current || revision === undefined
   const restoreButton = (
     <Button
-      size="sm"
+      size={narrow ? 'lg' : 'sm'}
       data-testid="formula-revision-restore"
       disabled={restoreDisabled}
       onClick={() => onRestore(revisionNo)}
+      className={narrow ? stylex.props(styles.wide).className : undefined}
     >
       <HistoryIcon aria-hidden />
       {format(m.revisionRestore)}
@@ -357,21 +339,21 @@ export function RevisionView({
       narrow={narrow}
       testId="formula-revision-view"
       status="revision"
+      {...(motion === undefined ? {} : { motion })}
       bar={
         <WorkbenchBar
           narrow={narrow}
-          backLabel={format(m.listTitle)}
+          frozen
+          backLabel={format(m.backToDraft)}
+          onBack={onBack}
           titleRef={titleRef}
-          title={<span {...stylex.props(w.title)}>{functionName}</span>}
+          title={<span {...stylex.props(w.title)}>{label}</span>}
           badge={
-            <span {...stylex.props(w.standing, w.standingOutline)}>
-              <LockIcon size={11} aria-hidden />
-              {format(m.readOnly)}
-            </span>
-          }
-          status={
             <>
-              <span>{label}</span>
+              <span {...stylex.props(w.standing, w.standingOutline)}>
+                <LockIcon size={11} aria-hidden />
+                {format(m.readOnly)}
+              </span>
               {current ? (
                 <span {...stylex.props(w.standing, w.standingQuiet)}>
                   {format(m.revisionCurrent)}
@@ -379,12 +361,20 @@ export function RevisionView({
               ) : null}
             </>
           }
+          status={
+            <>
+              <span {...stylex.props(styles.statusName)}>{functionName}</span>
+              {revision === undefined ? null : (
+                <>
+                  <span aria-hidden {...stylex.props(styles.statusRule)} />
+                  <span>{origin()}</span>
+                </>
+              )}
+            </>
+          }
           actions={
             <>
-              <Button variant="ghost" size="sm" onClick={onBack}>
-                <Undo2Icon aria-hidden />
-                {format(m.backToDraft)}
-              </Button>
+              {versionsButton}
               <Button
                 variant="outline"
                 size="sm"
@@ -397,6 +387,7 @@ export function RevisionView({
               {restoreButton}
             </>
           }
+          phoneActions={versionsButton}
           phoneMenu={
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -415,12 +406,8 @@ export function RevisionView({
         />
       }
       source={source}
-      tryRun={tryRun}
-      history={history}
-      sideTab={sideTab}
-      onSideTab={onSideTab}
+      tryRun={tryRun(false)}
       tryLabel={format(m.tryTitle)}
-      historyLabel={format(m.historyTitle)}
       panelTabs={[
         {
           value: 'examples',
@@ -435,30 +422,43 @@ export function RevisionView({
       panelLabel={format(m.revisionInfo)}
       phoneTabs={[
         { value: 'source', label: format(m.phoneSourceTab), content: source },
-        { value: 'try', label: format(m.tryTitle), content: tryRun },
+        { value: 'try', label: format(m.tryTitle), content: tryRun(true) },
         {
-          value: 'details',
-          label: format(m.revisionInfo),
+          value: 'examples',
+          label: format(m.testsTitle),
           count: revision?.tests.length ?? 0,
-          content: (
-            <>
-              <SideHead title={format(m.testsTitle)} />
-              {examples}
-              <SideHead title={format(m.revisionInfo)} />
-              {details}
-            </>
-          ),
+          content: scroll(examples),
         },
-        { value: 'history', label: format(m.historyTitle), content: history },
+        { value: 'details', label: format(m.revisionInfo), content: scroll(details) },
       ]}
       phoneTab={phoneTab}
       onPhoneTab={setPhoneTab}
-      gate={
-        <>
-          <span {...stylex.props(styles.gateText)}>{label}</span>
-          {restoreButton}
-        </>
-      }
-    />
+      gate={{
+        label: format(m.historyTitle),
+        tone: 'quiet',
+        words: current ? format(m.revisionCurrent) : origin(),
+      }}
+      foot={restoreButton}
+    >
+      {drawers}
+      <TryRecordsDrawer
+        open={recordsOpen}
+        onOpenChange={setRecordsOpen}
+        narrow={narrow}
+        records={tryRecords.records}
+        schema={compiled.data?.inputSchema ?? null}
+        onPick={(record) => {
+          const schema = compiled.data?.inputSchema
+          if (schema === undefined) return
+          const picked = draftsFromStored(schema, record.input)
+          setDrafts(picked)
+          setIssues(undefined)
+          setRanAt(record.at)
+          setResult({ outcome: record.outcome, forCase: JSON.stringify(picked) })
+          setRecordsOpen(false)
+        }}
+        onClear={tryRecords.clear}
+      />
+    </WorkbenchLayout>
   )
 }

@@ -1,17 +1,14 @@
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 
 // The columns of the examples table, shared by its header and its rows so
-// the two can never disagree about where a column starts.
+// the two can never disagree about where a column starts. A phone does not
+// use them at all: there an example is a card, not a line.
 
 export const exampleStyles = stylex.create({
   columns: {
     display: 'grid',
-    gridTemplateColumns: {
-      default: 'minmax(0, 1.1fr) minmax(0, 1.3fr) 4.5rem 4.5rem 5.5rem 1.75rem',
-      [breakpoints.phone]: 'minmax(0, 1fr) 4.5rem 1.75rem',
-    },
+    gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.5fr) 5rem 5rem 6rem 5.5rem',
     columnGap: 16,
     alignItems: 'center',
     paddingInline: 16,
@@ -27,6 +24,8 @@ export const exampleStyles = stylex.create({
     borderBottomStyle: 'solid',
     borderBottomColor: tokens.divider,
   },
-  wide: { display: { default: null, [breakpoints.phone]: 'none' } },
+  // every cell centres against the row: the input column may be one line or
+  // three, and the name beside it should sit level with it either way
+  row: { alignItems: 'center', paddingBlock: 8 },
   end: { textAlign: 'right' },
 })

@@ -1,8 +1,13 @@
 import type { useI18n } from '@qualy/web-i18n'
 import {
+  choiceLabel,
   constraintOf,
+  displayTitle,
+  inputOrder,
+  kindOf,
   parameterSchemaAt,
   type AtomicSchema,
+  type ChoiceSchema,
   type NormalizedInputSchema,
 } from '@qualy/value-schema'
 import { formulaMessages as m } from './i18n.ts'
@@ -66,6 +71,40 @@ export const reasonWords = (format: Format, problem: ReportProblem): string => {
 // most common one - an unbounded output - says exactly what to type
 export const contractReasonWords = (format: Format, reason: string): string => {
   switch (reason) {
+    case 'max-scale-invalid':
+      return format(m.profileMaxScale)
+    case 'bounds-inverted':
+      return format(m.profileBoundsInverted)
+    case 'integer-bound-missing':
+      return format(m.profileIntegerBounds)
+    case 'integer-bound-unsafe':
+      return format(m.profileIntegerUnsafe)
+    case 'decimal-bound-not-lexical':
+      return format(m.profileDecimalBound)
+    case 'decimal-bound-exceeds-scale':
+      return format(m.profileDecimalScale)
+    case 'length-bound-invalid':
+      return format(m.profileLengthBounds)
+    case 'choice-empty':
+      return format(m.profileChoiceEmpty)
+    case 'choice-duplicate':
+      return format(m.profileChoiceDuplicate)
+    case 'choice-too-many':
+      return format(m.profileChoiceTooMany)
+    case 'choice-value-invalid':
+    case 'choice-not-a-string':
+      return format(m.profileChoiceValue)
+    case 'parameter-name-invalid':
+      return format(m.profileParameterName)
+    case 'too-many-parameters':
+      return format(m.profileTooManyParameters)
+    case 'unknown-kind':
+      return format(m.profileUnknownKind)
+    case 'unknown-key':
+      return format(m.profileUnknownKey)
+    case 'annotation-too-long':
+    case 'label-too-long':
+      return format(m.profileWordsTooLong)
     case 'not-a-score-amount':
       return format(m.contractNotScoreAmount)
     case 'not-a-decimal':
@@ -103,7 +142,8 @@ export const outcomeWords = (format: Format, outcome: OutcomeLike): string | nul
       .join('; ')
   if (outcome.refusal !== undefined) return format(m.refusalPrefix, { message: outcome.refusal })
   if (outcome.defect !== undefined) return format(m.defectPrefix, { message: outcome.defect })
-  if (outcome.passed === false) return format(m.resultFailed, { actual: outcome.actual ?? '—' })
+  if (outcome.passed === false)
+    return format(m.resultFailed, { actual: outcome.actual ?? format(m.actualNone) })
   return null
 }
 
@@ -120,6 +160,54 @@ export const inputSummaryOf = (value: unknown): string => {
     ([key, one]) => `${key}: ${typeof one === 'string' ? one : JSON.stringify(one)}`,
   )
   return pairs.length === 0 ? '{}' : `{ ${pairs.join(', ')} }`
+}
+
+/** one parameter of a case, as a reader of the form would name it */
+export interface InputFact {
+  readonly label: string
+  readonly value: string
+}
+
+/**
+ * A case's input as the author reads it: the parameters under the titles the
+ * contract declared, in the order it declares them, with choices and
+ * yes-or-no answers in words. Without a contract the keys stand in for the
+ * titles - a record kept from a structure that has since changed still says
+ * what was asked.
+ */
+export const inputFactsOf = (
+  format: Format,
+  locale: string,
+  schema: NormalizedInputSchema | null,
+  value: unknown,
+): readonly InputFact[] => {
+  if (value === undefined) return []
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    return [{ label: '', value: JSON.stringify(value) }]
+  const held = value as Record<string, unknown>
+  const keys =
+    schema === null
+      ? Object.keys(held)
+      : [
+          ...inputOrder(schema).filter((key) => Object.hasOwn(held, key)),
+          ...Object.keys(held).filter((key) => !Object.hasOwn(schema.properties, key)),
+        ]
+  return keys.map((key) => {
+    const field = schema?.properties[key]
+    const one = held[key]
+    const words =
+      typeof one === 'boolean'
+        ? format(one ? m.valueYes : m.valueNo)
+        : field !== undefined && typeof one === 'string' && kindOf(field) === 'choice'
+          ? choiceLabel(field as ChoiceSchema, one, locale)
+          : typeof one === 'string'
+            ? one
+            : JSON.stringify(one)
+    return {
+      label: field === undefined ? key : displayTitle(field, key, locale),
+      value: words,
+    }
+  })
 }
 
 /** what stops one field of a try or an example, in the author's words */

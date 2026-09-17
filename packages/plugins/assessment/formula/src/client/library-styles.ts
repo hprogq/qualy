@@ -216,6 +216,11 @@ export function shortWhen(
       )
 }
 
+/** the clock alone, for something that happened while the page was open */
+export function shortTime(at: string, locale: string): string {
+  return clock(locale).format(new Date(at))
+}
+
 /** the moment in full, for a page that names one thing */
 export function fullWhen(at: string, locale: string): string {
   return new Intl.DateTimeFormat(locale, {

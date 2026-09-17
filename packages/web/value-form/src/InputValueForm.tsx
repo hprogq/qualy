@@ -37,7 +37,11 @@ const styles = stylex.create({
     fontWeight: 400,
     color: 'var(--q-surface-muted-foreground)',
   },
-  description: { fontSize: '0.75rem', color: 'var(--q-surface-muted-foreground)', margin: 0 },
+  description: {
+    marginBlock: '0.4rem 0',
+    fontSize: '0.75rem',
+    color: 'var(--q-surface-muted-foreground)',
+  },
   problem: { fontSize: '0.75rem', color: 'var(--q-danger, #b91c1c)', margin: 0 },
 })
 
@@ -63,6 +67,10 @@ export interface ValueFieldsFormProps {
  */
 export interface FieldAuthoring {
   readonly unnamedLabel: string
+  /** what values a field takes, in the caller's words */
+  readonly noteOf?: (schema: AtomicSchema, name: string) => string | undefined
+  /** where that note sits: at the end of the label's line, or under the control */
+  readonly notePlacement?: 'label' | 'below'
 }
 
 export interface InputValueFormProps {
@@ -171,6 +179,7 @@ export function AtomicValueField({
   const description = displayDescription(schema, locale)
   const authored = label === undefined ? authoring : undefined
   const title = declaredTitle(schema, locale)
+  const note = authoring?.noteOf?.(schema, name)
   return (
     <Field
       label={
@@ -179,6 +188,11 @@ export function AtomicValueField({
           ? displayTitle(schema, name, locale)
           : (title ?? authored.unnamedLabel))
       }
+      {...(note === undefined
+        ? {}
+        : authoring?.notePlacement === 'below'
+          ? { hint: note }
+          : { note })}
       {...(authored === undefined
         ? {}
         : {

@@ -175,6 +175,12 @@ const showsText = (testId: string, words: string) =>
 /** longer than the preview waits after an edit, so a request it meant to send has gone */
 const pastIdle = () => new Promise((resolve) => setTimeout(resolve, 1_500))
 
+/** the versions live behind a drawer; opening one closes it again */
+const openVersions = async () => {
+  await page.getByTestId('formula-versions-open').click()
+  await expect.element(page.getByTestId('formula-versions')).toBeVisible()
+}
+
 describe('a formula’s draft and its history', () => {
   it('offers two ways to begin an empty formula, and compiles nothing until one is taken', async () => {
     const { wire, screen } = open({ source: '' })
@@ -247,9 +253,11 @@ describe('a formula’s draft and its history', () => {
     try {
       await showsText('formula-release-source', 'published_source')
       await showsText('formula-release-environment', 'authoring-1')
-      // what it is called, and its notes, are beside its line in the history
+      // what it is called, and its notes, are one press from its line
+      await openVersions()
       await page.getByTestId('formula-release-info').click()
       await showsText('formula-release-card', '按学院新规调整')
+      await userEvent.keyboard('{Escape}')
       await userEvent.keyboard('{Escape}')
 
       // a try runs the publication's own artifact; the compiler is never asked
@@ -288,6 +296,7 @@ describe('a formula’s draft and its history', () => {
         .element(page.getByTestId('formula-save-state'))
         .toHaveAttribute('data-state', 'dirty')
 
+      await openVersions()
       await page.getByTestId('formula-release').click()
       await expect.element(page.getByTestId('formula-release-source')).toBeVisible()
       expect(addressNow()).toBe(`/assessment/formulas/${FN_ID}?view=release-1`)
@@ -298,9 +307,10 @@ describe('a formula’s draft and its history', () => {
       await pastIdle()
       expect(wire.restores).toEqual([])
 
-      await page.getByTestId('formula-history-back').click()
+      await page.getByTestId('formula-back-to-draft').click()
       await expect.element(name).toHaveValue('认定分值（修订中）')
 
+      await openVersions()
       await page.getByTestId('formula-release').click()
       await page.getByTestId('formula-release-restore').click()
       await page.getByRole('button', { name: '替换当前草稿' }).click()
@@ -312,16 +322,18 @@ describe('a formula’s draft and its history', () => {
     }
   }, 60_000)
 
-  it('closes a piece of history by pressing it again, or with Escape', async () => {
+  it('comes back to the draft from the bar, or with Escape', async () => {
     const { screen } = open()
     const view = await screen
     try {
+      await openVersions()
       await page.getByTestId('formula-release').click()
       await expect.element(page.getByTestId('formula-release-view')).toBeVisible()
-      await page.getByTestId('formula-release').click()
+      await page.getByTestId('formula-back-to-draft').click()
       await expect.element(page.getByTestId('formula-editor')).toBeVisible()
       expect(addressNow()).toBe(`/assessment/formulas/${FN_ID}`)
 
+      await openVersions()
       await page.getByTestId('formula-release').click()
       await expect.element(page.getByTestId('formula-release-view')).toBeVisible()
       await userEvent.keyboard('{Escape}')
@@ -335,6 +347,7 @@ describe('a formula’s draft and its history', () => {
     const { screen } = open({ revisions: [] })
     const view = await screen
     try {
+      await openVersions()
       await page.getByRole('tab', { name: '草稿记录' }).click()
       await expect.element(page.getByTestId('formula-revisions-empty')).toBeVisible()
     } finally {

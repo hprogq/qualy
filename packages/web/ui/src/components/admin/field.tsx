@@ -34,6 +34,17 @@ const styles = stylex.create({
     paddingLeft: 2,
     color: tokens.danger,
   },
+  // a label that carries a note takes the whole line, so the note can sit at
+  // the far end of it rather than trailing the words
+  labelRow: { width: '100%' },
+  labelSpring: { minWidth: 6, flexGrow: 1 },
+  labelNote: {
+    flexShrink: 0,
+    fontSize: '0.6875rem',
+    fontWeight: 400,
+    fontVariantNumeric: 'tabular-nums',
+    color: tokens.mutedForeground,
+  },
   group: {
     display: 'flex',
     flexDirection: 'column',
@@ -173,12 +184,24 @@ export function Field({
   hint,
   required = false,
   aside,
+  note,
+  hideLabel = false,
   children,
 }: {
   label: string
+  /**
+   * Keep the label spoken but not drawn.
+   *
+   * For a field whose caller already prints the same words - a section under
+   * its own heading, say. The control still needs a name; what it does not
+   * need is to say it twice.
+   */
+  hideLabel?: boolean
   hint?: ReactNode
   /** a small mark that rides the label's line after it, such as an identifier */
   aside?: ReactNode
+  /** words at the far end of the label's line, such as what values it takes */
+  note?: ReactNode
   /**
    * Marks the label with the usual asterisk. Hidden from the accessible
    * name, which is the label itself - a control called "Title *" is what a
@@ -191,10 +214,23 @@ export function Field({
   const id = useId()
   return (
     <FormField>
-      <FormFieldLabel htmlFor={id}>
+      <FormFieldLabel
+        htmlFor={id}
+        {...(hideLabel
+          ? { xstyle: a11yStyles.visuallyHidden }
+          : note === undefined
+            ? {}
+            : { xstyle: styles.labelRow })}
+      >
         {label}
         {required && <RequiredMark />}
         {aside}
+        {note === undefined ? null : (
+          <>
+            <span {...stylex.props(styles.labelSpring)} />
+            <span {...stylex.props(styles.labelNote)}>{note}</span>
+          </>
+        )}
       </FormFieldLabel>
       {children(id)}
       {hint && <FormFieldDescription>{hint}</FormFieldDescription>}

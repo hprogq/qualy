@@ -1,24 +1,17 @@
 import * as stylex from '@stylexjs/stylex'
 import {
-  DECIMAL_MAXIMUM,
-  DECIMAL_MINIMUM,
-  MAX_SCALE,
-  choiceLabel,
   displayTitle,
   inputOrder,
   kindOf,
   type AtomicSchema,
-  type ChoiceSchema,
-  type DecimalSchema,
-  type IntegerSchema,
   type NormalizedAtomicSchema,
   type NormalizedInputSchema,
-  type TextSchema,
 } from '@qualy/value-schema'
 import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { formulaMessages as m } from './i18n.ts'
 import { kindWords } from './kind-words.ts'
+import { constraintRules } from './constraint-words.ts'
 
 // What the draft takes and gives, as the compiler read it.
 //
@@ -61,53 +54,6 @@ const styles = stylex.create({
   output: { fontWeight: 500 },
 })
 
-type Format = ReturnType<typeof useI18n>['format']
-
-const bounds = (format: Format, min: string | undefined, max: string | undefined) => {
-  if (min !== undefined && max !== undefined) return [format(m.constraintRange, { min, max })]
-  if (min !== undefined) return [format(m.constraintAtLeast, { min })]
-  if (max !== undefined) return [format(m.constraintAtMost, { max })]
-  return []
-}
-
-/** what a schema allows, as short separate statements */
-const rulesOf = (schema: AtomicSchema, format: Format, locale: string): readonly string[] => {
-  switch (kindOf(schema)) {
-    case 'integer': {
-      const integer = schema as IntegerSchema
-      return bounds(format, String(integer.minimum), String(integer.maximum))
-    }
-    case 'decimal': {
-      const decimal = schema as DecimalSchema
-      return [
-        ...bounds(format, decimal[DECIMAL_MINIMUM], decimal[DECIMAL_MAXIMUM]),
-        format(m.constraintScale, { scale: decimal[MAX_SCALE] }),
-      ]
-    }
-    case 'choice': {
-      const choice = schema as ChoiceSchema
-      return [choice.enum.map((value) => choiceLabel(choice, value, locale)).join(' / ')]
-    }
-    case 'text': {
-      const text = schema as TextSchema
-      const length =
-        text.minLength !== undefined && text.maxLength !== undefined
-          ? [format(m.constraintLength, { min: text.minLength, max: text.maxLength })]
-          : text.maxLength !== undefined
-            ? [format(m.constraintMaxLength, { max: text.maxLength })]
-            : []
-      return [
-        ...length,
-        ...(text.pattern === undefined
-          ? []
-          : [format(m.constraintPattern, { pattern: text.pattern })]),
-      ]
-    }
-    default:
-      return []
-  }
-}
-
 export function ContractTable({
   inputSchema,
   outputSchema,
@@ -117,7 +63,7 @@ export function ContractTable({
 }) {
   const { format, locale } = useI18n()
   const rules = (schema: AtomicSchema) => {
-    const said = rulesOf(schema, format, locale)
+    const said = constraintRules(schema, format, locale)
     return said.length === 0 ? (
       <span {...stylex.props(styles.quiet)}>{format(m.constraintNone)}</span>
     ) : (
@@ -148,7 +94,7 @@ export function ContractTable({
             <tr key={key} data-parameter={key}>
               <td {...stylex.props(styles.cell, styles.key)}>{key}</td>
               <td {...stylex.props(styles.cell, title === key && styles.quiet)}>
-                {title === key ? '—' : title}
+                {title === key ? format(m.fieldUnnamed) : title}
               </td>
               <td {...stylex.props(styles.cell)}>
                 {kindWords(format, kindOf(schema))}
@@ -162,7 +108,7 @@ export function ContractTable({
         })}
         <tr data-parameter="">
           <td {...stylex.props(styles.cell, styles.output)}>{format(m.parameterOutput)}</td>
-          <td {...stylex.props(styles.cell, styles.quiet)}>—</td>
+          <td {...stylex.props(styles.cell)} />
           <td {...stylex.props(styles.cell)}>{kindWords(format, kindOf(outputSchema))}</td>
           <td {...stylex.props(styles.cell)}>{rules(outputSchema)}</td>
         </tr>

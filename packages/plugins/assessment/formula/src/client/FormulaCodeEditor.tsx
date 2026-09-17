@@ -22,7 +22,7 @@ import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Button } from '@qualy/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@qualy/ui/tooltip'
-import { CodeXmlIcon, WandSparklesIcon } from 'lucide-react'
+import { CheckIcon, CodeXmlIcon, WandSparklesIcon } from 'lucide-react'
 import { monaco } from './monaco-setup.ts'
 import { holdEditorLease } from './editor-lease.ts'
 import { editorSession, type EditorSession, type SessionState } from './editor-session.ts'
@@ -147,14 +147,27 @@ function LanguageStatus({ session }: { readonly session: EditorSession | null })
  * Formats the whole source through the language service - the same thing the
  * editor's context menu offers, where few people look for it.
  */
+/**
+ * Formatting well-written code changes nothing on screen, which reads as a
+ * button that did nothing. The mark answers for a moment so the press is
+ * always acknowledged.
+ */
 function FormatButton({
   ready,
   onFormat,
 }: {
   readonly ready: boolean
-  readonly onFormat: () => void
+  readonly onFormat: () => Promise<void> | void
 }) {
   const { format } = useI18n()
+  const [done, setDone] = useState(false)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(
+    () => () => {
+      if (timer.current !== null) clearTimeout(timer.current)
+    },
+    [],
+  )
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -163,10 +176,17 @@ function FormatButton({
             variant="ghost"
             size="xs"
             data-testid="formula-format"
+            data-done={done ? true : undefined}
             disabled={!ready}
-            onClick={onFormat}
+            onClick={() => {
+              void Promise.resolve(onFormat()).then(() => {
+                setDone(true)
+                if (timer.current !== null) clearTimeout(timer.current)
+                timer.current = setTimeout(() => setDone(false), 1200)
+              })
+            }}
           >
-            <WandSparklesIcon aria-hidden />
+            {done ? <CheckIcon aria-hidden /> : <WandSparklesIcon aria-hidden />}
             {format(m.formatCode)}
           </Button>
         </span>
@@ -307,11 +327,11 @@ export default function FormulaCodeEditor(props: FormulaCodeEditorProps) {
         {props.readOnly ? null : (
           <FormatButton
             ready={session !== null && state === 'ready'}
-            onFormat={() => {
+            onFormat={async () => {
               const editor = editorRef.current
               if (editor === null) return
               editor.focus()
-              void editor.getAction('editor.action.formatDocument')?.run()
+              await editor.getAction('editor.action.formatDocument')?.run()
             }}
           />
         )}

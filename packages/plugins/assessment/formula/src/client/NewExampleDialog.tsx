@@ -29,11 +29,17 @@ const styles = stylex.create({
 export function NewExampleDialog({
   open,
   contract,
+  initial,
   expectedProblem,
   onClose,
   onAdd,
 }: {
   readonly open: boolean
+  /** what the dialog opens with, when it opens from a try that already ran */
+  readonly initial?: {
+    readonly drafts?: Readonly<Record<string, FieldDraft>>
+    readonly expected?: string
+  }
   /** the structure a form is drawn from; without one the input is typed as JSON */
   readonly contract: {
     readonly inputSchema: NormalizedInputSchema
@@ -53,16 +59,17 @@ export function NewExampleDialog({
   const [inputProblem, setInputProblem] = useState<string | null>(null)
   const [checked, setChecked] = useState(false)
 
-  // every opening is a new example
+  // every opening is a new example, seeded by whatever opened it
   useEffect(() => {
     if (!open) return
     setName('')
-    setDrafts({})
+    setDrafts(initial?.drafts ?? {})
     setInputText('')
-    setExpected('')
+    setExpected(initial?.expected ?? '')
     setIssues(undefined)
     setInputProblem(null)
     setChecked(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
   const expectation = checked ? expectedProblem(expected) : null

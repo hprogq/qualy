@@ -202,6 +202,8 @@ interface VersionRow {
   testReport: unknown
   publishedBy: string
   publishedAt: Date
+  /** only where the query asked for it: how many units it is offered to */
+  sharedCount?: number
 }
 
 /** how a saved state of the draft came to be */
@@ -296,6 +298,27 @@ const functionDetailDto = (row: FunctionRow) => ({
   draftTests: row.draftTests,
 })
 
+/**
+ * The refusals the value profile raised inside the guest, read back as the
+ * facts they are about.
+ *
+ * `normalizeAtomicSchema` throws `not a profile schema: <path> <reason>; …` -
+ * our own wording on both sides of the sandbox - and an author is owed the
+ * parameters and the rules, not a stack trace. Anything else keeps the generic
+ * classification, with the guest's words carried as detail.
+ */
+const profileRefusals = (
+  message: string,
+): readonly { readonly path: string; readonly reason: string }[] => {
+  const found = /not a profile schema:\s*(.+)$/.exec(message)
+  if (found === null) return []
+  return found[1]!
+    .split(';')
+    .map((one) => /^\s*(\S*)\s+([a-z-]+)\s*$/.exec(one))
+    .filter((one): one is RegExpExecArray => one !== null)
+    .map((one) => ({ path: one[1] ?? '', reason: one[2]! }))
+}
+
 const versionViewDto = (row: VersionRow) => ({
   versionId: row.id,
   versionNo: Number(row.versionNo),
@@ -306,6 +329,7 @@ const versionViewDto = (row: VersionRow) => ({
   publishedBy: row.publishedBy,
   publishedByName: row.publishedByName ?? null,
   publishedAt: isoInstant(row.publishedAt),
+  ...(row.sharedCount === undefined ? {} : { sharedCount: Number(row.sharedCount) }),
 })
 
 const versionDetailDto = (row: VersionRow) => ({
@@ -960,7 +984,10 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
           SandboxEvalFailed: (failure) =>
             Effect.fail(
               new FormulaContractInvalid({
-                issues: [{ path: '', reason: 'contract-error' }],
+                issues: (() => {
+                  const refused = profileRefusals(failure.message)
+                  return refused.length === 0 ? [{ path: '', reason: 'contract-error' }] : refused
+                })(),
                 detail: `${failure.name}: ${failure.message}`,
               }),
             ),
@@ -1256,6 +1283,16 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
             'u.displayName as publishedByName',
             'v.publishedAt as publishedAt',
           ])
+          // how wide each publication's audience is, so the list of versions
+          // can say it without a request per row
+          .select((eb) =>
+            eb
+              .selectFrom('FormulaShareScope as s')
+              .whereRef('s.tenantId', '=', 'v.tenantId')
+              .whereRef('s.versionId', '=', 'v.id')
+              .select(eb.fn.countAll<number>().as('count'))
+              .as('sharedCount'),
+          )
           .where('v.tenantId', '=', tenantId)
           .where('v.functionId', '=', functionId)
           .orderBy('v.versionNo', 'desc')

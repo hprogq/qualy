@@ -180,11 +180,12 @@ describe('the formula workbench', () => {
     try {
       const model = await draftModel()
       typeInto(model, '// typed\n')
+      await page.getByTestId('formula-versions-open').click()
       await page.getByRole('tab', { name: '草稿记录' }).click()
       await page.getByTestId('formula-revision').click()
       await expect.element(page.getByTestId('formula-revision-view')).toBeVisible()
       await vi.waitFor(() => expect(drawn(model)).toBe(false), { timeout: 5_000 })
-      await page.getByTestId('formula-history-back').click()
+      await page.getByTestId('formula-back-to-draft').click()
       await vi.waitFor(() => expect(drawn(model)).toBe(true), { timeout: 5_000 })
       expect(model.getValue()).toBe(`// typed\n${SAVED}`)
       expect(model.canUndo()).toBe(true)
@@ -200,7 +201,7 @@ describe('the formula workbench', () => {
     try {
       const model = await draftModel()
       await page.getByTestId('formula-more').click()
-      await page.getByRole('menuitem', { name: '载入最小示例…' }).click()
+      await page.getByRole('menuitem', { name: '载入最小示例' }).click()
       await page.getByRole('button', { name: '载入示例' }).click()
       await vi.waitFor(() => expect(model.getValue()).toBe(MINIMAL_EXAMPLE), { timeout: 5_000 })
       model.undo()
@@ -301,35 +302,26 @@ describe('the formula workbench', () => {
     }
   }, 60_000)
 
-  it('gives the try-run and the versions a column each where they fit, and tabs where they do not', async () => {
-    const wide = await open()
+  it('keeps the try-run beside the source, and the versions behind a drawer', async () => {
+    const view = await open()
     try {
-      await vi.waitFor(
-        () =>
-          expect(document.querySelector('[data-columns]')?.getAttribute('data-columns')).toBe(
-            'split',
-          ),
-        { timeout: 10_000 },
-      )
-    } finally {
-      wide.unmount()
-    }
-    await page.viewport(1100, 800)
-    const narrow = await open()
-    try {
-      await vi.waitFor(
-        () =>
-          expect(document.querySelector('[data-columns]')?.getAttribute('data-columns')).toBe(
-            'shared',
-          ),
-        { timeout: 10_000 },
-      )
-      // versions come first, and show first
-      await expect.element(page.getByTestId('formula-publish-open')).toBeVisible()
-      await page.getByRole('tab', { name: '试运行' }).click()
+      // the try-run is a column of the workbench, not something to open
       await expect.element(page.getByTestId('formula-structure')).toBeVisible()
+      await expect.element(page.getByTestId('formula-publish-open')).toBeVisible()
+      expect(document.querySelectorAll('[role="dialog"]').length).toBe(0)
+
+      await page.getByTestId('formula-versions-open').click()
+      await expect.element(page.getByRole('dialog', { name: '版本' })).toBeVisible()
+      // and opening one takes the drawer away with it
+      await page.getByRole('tab', { name: '草稿记录' }).click()
+      await page.getByTestId('formula-revision').click()
+      await expect.element(page.getByTestId('formula-revision-view')).toBeVisible()
+      await vi.waitFor(
+        () => expect(document.querySelectorAll('[data-testid="formula-revisions"]').length).toBe(0),
+        { timeout: 5_000 },
+      )
     } finally {
-      narrow.unmount()
+      view.unmount()
     }
   }, 60_000)
 
@@ -351,15 +343,18 @@ describe('the formula workbench', () => {
       await userEvent.fill(inputs()[1]!, '2')
       await page.getByRole('button', { name: '运行' }).click()
       await vi.waitFor(() => expect(wrote.tries.length).toBe(1), { timeout: 5_000 })
+      await page.getByTestId('formula-try-records-open').click()
       await expect.element(page.getByTestId('formula-try-record')).toBeVisible()
       await vi.waitFor(() =>
         expect(
           document.querySelector('[data-testid="formula-try-record"]')?.textContent ?? '',
         ).toContain('3.5'),
       )
+      await userEvent.keyboard('{Escape}')
 
       await userEvent.fill(inputs()[0]!, '9')
-      await page.getByTestId('formula-try-record').click()
+      await page.getByTestId('formula-try-records-open').click()
+      await page.getByTestId('formula-try-record-pick').click()
       await vi.waitFor(() => expect(inputs()[0]!.value).toBe('1.5'), { timeout: 5_000 })
       expect(inputs()[1]!.value).toBe('2')
     } finally {

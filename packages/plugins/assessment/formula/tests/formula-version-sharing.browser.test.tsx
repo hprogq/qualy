@@ -6,8 +6,7 @@ import { normalizeAtomicSchema, normalizeInputSchema } from '@qualy/value-schema
 import { apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // Offering one published version to somebody, and taking it back, from the
-// card beside the publication's line in the history, which keeps itself open
-// while its controls are used.
+// list of units beside the publication's line in the versions.
 //
 // The two directions are not symmetric on purpose. Widening needs the
 // permission where it widens to, so an author who no longer holds it is
@@ -127,12 +126,23 @@ const open = (
   })
 }
 
-const sharingRow = () => page.getByTestId('version-sharing')
+const sharing = () => page.getByTestId('formula-sharing')
 
-/** opens the publication's card, where its audience is managed */
-const openCard = async () => {
-  await page.getByTestId('formula-release-info').click()
-  await expect.element(page.getByTestId('formula-release-card')).toBeVisible()
+/** opens the publication's audience, which lives beside its line in the versions */
+const openSharing = async () => {
+  await page.getByTestId('formula-versions-open').click()
+  await expect.element(page.getByTestId('formula-versions')).toBeVisible()
+  await page.getByTestId('formula-release-share').click()
+  await expect.element(sharing()).toBeVisible()
+}
+
+/** ticks a unit in the list by its name */
+const tick = async (name: string) => {
+  const option = [
+    ...document.querySelectorAll<HTMLElement>('[data-testid="formula-sharing-unit"]'),
+  ].find((one) => one.textContent?.includes(name))
+  if (option === undefined) throw new Error(`no unit called ${name}`)
+  option.querySelector<HTMLElement>('button, input')!.click()
 }
 
 describe('managing a published version’s audience', () => {
@@ -143,12 +153,11 @@ describe('managing a published version’s audience', () => {
       options: [{ id: DEPARTMENT, name: '计算机系', depth: 2 }],
       wrote,
     })
-    await openCard()
-    await expect.element(sharingRow()).toBeVisible()
-    await expect.element(sharingRow()).toHaveAttribute('data-version', '1')
+    await openSharing()
+    await expect.element(sharing()).toHaveAttribute('data-version', '1')
 
-    await page.getByRole('combobox', { name: '共享给某个单位' }).click()
-    await page.getByRole('option', { name: '计算机系' }).click()
+    await tick('计算机系')
+    await page.getByTestId('formula-sharing-save').click()
 
     await vi.waitFor(() => expect(wrote.length).toBe(1))
     // the wire carries the audience as it should end up, not a diff
@@ -162,21 +171,19 @@ describe('managing a published version’s audience', () => {
     const wrote: unknown[] = []
     // no options: this author cannot widen anywhere any more
     open({ scopes: [{ orgNodeId: COLLEGE, name: '信息学院' }], options: [], wrote })
-    await openCard()
-    await expect.element(sharingRow()).toBeVisible()
-    await expect.element(page.getByTestId('sharing-scope')).toBeVisible()
-    // nothing to add with
-    expect(document.querySelectorAll('[data-testid="sharing-add"]').length).toBe(0)
-
-    await page.getByRole('button', { name: '停止共享给信息学院' }).click()
+    await openSharing()
+    // what is already offered stays on the list, and can still be unticked
+    await tick('信息学院')
+    await page.getByTestId('formula-sharing-save').click()
     await vi.waitFor(() => expect(wrote.length).toBe(1))
     expect(wrote[0]).toEqual({ expectedToken: 'token-1', orgNodeIds: [] })
   }, 30_000)
 
   it('says a version nobody was offered is not shared', async () => {
     open({ scopes: [], options: [{ id: DEPARTMENT, name: '计算机系', depth: 2 }] })
-    await openCard()
-    await expect.element(page.getByTestId('sharing-private')).toBeVisible()
+    await page.getByTestId('formula-versions-open').click()
+    await expect.element(page.getByTestId('formula-versions')).toBeVisible()
+    expect(document.querySelectorAll('[data-testid="formula-release-shared"]').length).toBe(0)
   }, 30_000)
 
   it('reads back a refusal when somebody else moved the audience first', async () => {
@@ -185,10 +192,9 @@ describe('managing a published version’s audience', () => {
       options: [{ id: DEPARTMENT, name: '计算机系', depth: 2 }],
       replace: () => Effect.fail(apiError('ASSESSMENT_FORMULA_SHARING_CONFLICT')) as never,
     })
-    await openCard()
-    await expect.element(sharingRow()).toBeVisible()
-    await page.getByRole('combobox', { name: '共享给某个单位' }).click()
-    await page.getByRole('option', { name: '计算机系' }).click()
+    await openSharing()
+    await tick('计算机系')
+    await page.getByTestId('formula-sharing-save').click()
 
     // a refusal a reader can act on, not a blank screen
     const refusal = page.getByTestId('sharing-failure')

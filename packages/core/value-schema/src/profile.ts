@@ -507,7 +507,11 @@ const normalizedAnnotations = (schema: SchemaAnnotations): Record<string, unknow
 export const normalizeAtomicSchema = (schema: AtomicSchema): NormalizedAtomicSchema => {
   const wrong = validateAtomicProfile(schema)
   if (wrong.length > 0)
-    throw new TypeError(`not a profile schema: ${wrong[0]!.path} ${wrong[0]!.reason}`)
+    // every issue, not only the first: an author is owed the whole list in
+    // one reading, and whoever catches this reads them apart by `; `
+    throw new TypeError(
+      `not a profile schema: ${wrong.map((one) => `${one.path} ${one.reason}`).join('; ')}`,
+    )
   const kind = kindOf(schema)
   if (kind === 'decimal') {
     const decimal = schema as DecimalSchema
