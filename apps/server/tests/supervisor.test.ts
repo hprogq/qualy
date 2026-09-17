@@ -43,18 +43,23 @@ const webPort = 5273
 const origin = `http://127.0.0.1:${String(port)}`
 const repoRoot = path.resolve(import.meta.dirname, '../../..')
 const host = path.join(repoRoot, 'apps/server/src/dev/host.ts')
-// beside the real one, so every relative path in it still means what it says
-const manifest = path.join(repoRoot, 'qualy.supervisor-test.yml')
-const lock = path.join(repoRoot, 'qualy.supervisor-test.lock.json')
+// The manifest lives in a product package of this suite's own: a temporary
+// directory that declares what the repository root declares plus the plugin
+// below, and reaches the installed packages, the lineage and the developer's
+// `.env` through links to the root's. Resolution holds a manifest to the
+// dependencies of the package it sits in, so a manifest that selects one
+// plugin more than the root cannot sit beside the root's.
+let productRoot = ''
+let manifest = ''
+let lock = ''
 
 // The plugin this suite installs so it has a backend source file of its own
 // to save. It contributes nothing - an id and no features - because what is
 // being exercised is the watcher's answer to a save under a plugin root, not
 // anything the plugin does. Its package is a temporary directory, linked into
-// the product package's node_modules - the repository root, where the
-// manifest sits - the way any installed plugin is; node_modules is never
-// watched, so the link itself is invisible to every watcher including the
-// one under test.
+// the repository's node_modules - which the product package above shares -
+// the way any installed plugin is; node_modules is never watched, so the
+// link itself is invisible to every watcher including the one under test.
 const triggerId = '@qualy/plugin-supervisor-test-trigger'
 const linkedAt = path.join(repoRoot, 'node_modules', ...triggerId.split('/'))
 
@@ -108,6 +113,20 @@ beforeAll(() => {
   fs.rmSync(linkedAt, { force: true, recursive: true })
   fs.symlinkSync(triggerRoot, linkedAt, 'dir')
 
+  // realpath because macOS puts the temporary directory behind a symlink
+  productRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-supervisor-product-')))
+  manifest = path.join(productRoot, 'qualy.yml')
+  lock = path.join(productRoot, 'qualy.lock.json')
+  for (const shared of ['node_modules', 'db', 'pnpm-lock.yaml', '.env']) {
+    const at = path.join(repoRoot, shared)
+    if (fs.existsSync(at)) fs.symlinkSync(at, path.join(productRoot, shared))
+  }
+  const product = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8')) as {
+    dependencies: Record<string, string>
+  }
+  product.dependencies[triggerId] = '0.0.0'
+  fs.writeFileSync(path.join(productRoot, 'package.json'), `${JSON.stringify(product, null, 2)}\n`)
+
   intact = fs.readFileSync(path.join(repoRoot, 'qualy.yml'), 'utf8')
   manifestText = intact
     .replace(
@@ -134,9 +153,9 @@ afterEach(async () => {
 })
 
 afterAll(() => {
-  for (const file of [manifest, lock]) fs.rmSync(file, { force: true })
   fs.rmSync(linkedAt, { force: true })
-  for (const dir of [webRoot, triggerRoot])
+  // the links inside the product are removed as links; nothing they point at is touched
+  for (const dir of [webRoot, triggerRoot, productRoot])
     if (dir !== '') fs.rmSync(dir, { recursive: true, force: true })
 })
 

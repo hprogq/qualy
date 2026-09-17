@@ -1,3 +1,5 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import type { AssemblyPlugin, PluginState } from '@qualy/assembly-contract'
 import { isPluginDescriptor, Plugin, type PluginDescriptor } from '@qualy/plugin-kit'
 import { CliCommands } from '@qualy/plugin-kit/cli'
@@ -89,8 +91,33 @@ export interface ResolveOptions {
 
 export async function resolveAssembly(options: ResolveOptions): Promise<Resolution> {
   const manifest = readManifest(options.manifestPath)
-  const resolver = createPackageResolver(options.hostDir ?? productRootFor(options.manifestPath))
+  const root = options.hostDir ?? productRootFor(options.manifestPath)
+  const resolver = createPackageResolver(root)
   const previous = options.previousLock
+
+  // The package holding the manifest installs its plugins: that is what makes
+  // it the product. Node would also find a package an ancestor directory
+  // installed, or one this package lists only for development, and a
+  // production install (`--prod`) of this package links neither - so a plugin
+  // resolvable here but absent from `dependencies` is a plugin the image
+  // would not have. Refused by name, before anything is imported.
+  const declared = productDependencies(root)
+  const undeclared: string[] = []
+  for (const id of manifest.plugins.keys()) {
+    if (declared.dependencies.has(id)) continue
+    undeclared.push(
+      declared.development.has(id)
+        ? `${id} is only in devDependencies; a production install links dependencies alone`
+        : `${id} is not in dependencies; \`pnpm add ${id}\` in ${root}`,
+    )
+  }
+  if (undeclared.length > 0) {
+    throw new Error(
+      `${manifest.source} selects plugins that ${path.join(root, 'package.json')} does not install:\n  ${undeclared.join('\n  ')}`,
+    )
+  }
+  // installed for THIS product: declared by it, and resolvable from it
+  const installed = (id: string) => declared.dependencies.has(id) && resolver.isInstalled(id)
 
   const states = new Map<string, PluginState>()
   const metadata = new Map<string, PluginMetadata>()
@@ -115,7 +142,7 @@ export async function resolveAssembly(options: ResolveOptions): Promise<Resoluti
     ...Object.values(previous?.capabilities ?? {}).map((capability) => capability.provider),
   ]
   for (const id of recalled) {
-    if (candidates.has(id) || !resolver.isInstalled(id)) continue
+    if (candidates.has(id) || !installed(id)) continue
     candidates.set(id, resolver.readMetadata(id))
   }
   // Every candidate's descriptor, imported before anything else is decided:
@@ -444,3 +471,18 @@ export const activePlugins = (resolution: Resolution) =>
  * what it owns disappear.
  */
 export const retainedPlugins = (resolution: Resolution) => [...resolution.plugins.values()]
+
+/** what the product package installs, by the two lists that mean different things */
+function productDependencies(root: string): {
+  dependencies: Set<string>
+  development: Set<string>
+} {
+  const raw = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')) as {
+    dependencies?: Record<string, string>
+    devDependencies?: Record<string, string>
+  }
+  return {
+    dependencies: new Set(Object.keys(raw.dependencies ?? {})),
+    development: new Set(Object.keys(raw.devDependencies ?? {})),
+  }
+}

@@ -104,21 +104,38 @@ export function createWorkspace(
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-workspace-'))
   const modules = path.join(dir, 'node_modules')
   fs.mkdirSync(modules, { recursive: true })
-  // the manifest's directory has to be a package: resolution reads its
-  // package.json to build the require that plugin ids resolve through
-  fs.writeFileSync(
-    path.join(dir, 'package.json'),
-    `${JSON.stringify({ name: 'qualy-test-workspace', version: '0.0.0', private: true }, null, 2)}\n`,
-  )
+  // The manifest's directory has to be a package: resolution reads its
+  // package.json to build the require that plugin ids resolve through, and
+  // refuses a plugin that package does not list in its dependencies. So
+  // every package linked into this workspace is declared there, the way an
+  // install would have declared it.
+  const declared = new Set<string>()
+  const writePackage = () =>
+    fs.writeFileSync(
+      path.join(dir, 'package.json'),
+      `${JSON.stringify(
+        {
+          name: 'qualy-test-workspace',
+          version: '0.0.0',
+          private: true,
+          dependencies: Object.fromEntries([...declared].sort().map((id) => [id, '*'])),
+        },
+        null,
+        2,
+      )}\n`,
+    )
+  writePackage()
 
   const host = createPackageResolver(PRODUCT_ROOT)
   const link = (id: string, target: string) => {
     const at = path.join(modules, ...id.split('/'))
     fs.mkdirSync(path.dirname(at), { recursive: true })
     if (!fs.existsSync(at)) fs.symlinkSync(target, at, 'dir')
+    declared.add(id)
   }
   const synthetic = new Set((options.synthetic ?? []).map((entry) => entry.id))
   for (const entry of options.synthetic ?? []) {
+    declared.add(entry.id)
     const at = path.join(modules, ...entry.id.split('/'))
     fs.mkdirSync(at, { recursive: true })
     const exports = {
@@ -166,6 +183,7 @@ export function createWorkspace(
       for (const id of (overrides ?? options).linked ?? []) {
         link(id, host.resolvePackageDir(id))
       }
+      writePackage()
       fs.writeFileSync(manifestPath, renderManifestText(selection, overrides ?? options))
     },
     dispose() {

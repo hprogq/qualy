@@ -89,13 +89,25 @@ describe('qualy plugin add', () => {
       external: { [DIST_PROBE]: DIST_PROBE_DIR },
     })
     try {
-      // installed the way a deployment installs one - and NOT selected, which
-      // is the state `add` exists for
+      // installed the way a deployment installs one (`pnpm add` declares it
+      // and links it) - and NOT selected, which is the state `add` exists for
       fs.mkdirSync(path.join(workspace.dir, 'node_modules/@acme'), { recursive: true })
       fs.symlinkSync(
         DIST_PROBE_DIR,
         path.join(workspace.dir, 'node_modules', ...DIST_PROBE.split('/')),
         'dir',
+      )
+      const packageFile = path.join(workspace.dir, 'package.json')
+      const installed = JSON.parse(fs.readFileSync(packageFile, 'utf8')) as {
+        dependencies?: Record<string, string>
+      }
+      fs.writeFileSync(
+        packageFile,
+        `${JSON.stringify(
+          { ...installed, dependencies: { ...installed.dependencies, [DIST_PROBE]: '*' } },
+          null,
+          2,
+        )}\n`,
       )
       // a comment, of the kind the real manifest is full of
       fs.writeFileSync(

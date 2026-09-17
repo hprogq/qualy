@@ -91,6 +91,15 @@ const installed = () => {
     fs.mkdirSync(path.dirname(at), { recursive: true })
     if (!fs.existsSync(at)) fs.symlinkSync(host.resolvePackageDir(id), at, 'dir')
   }
+  // and declared, as the product that installed them would declare them:
+  // resolution holds the manifest to the product's dependencies, not to what
+  // happens to be in node_modules
+  const hostPackage = path.join(dir, 'package.json')
+  const declared = JSON.parse(fs.readFileSync(hostPackage, 'utf8')) as {
+    dependencies: Record<string, string>
+  }
+  for (const id of PEERS) declared.dependencies[id] = '0.0.0'
+  fs.writeFileSync(hostPackage, `${JSON.stringify(declared, null, 2)}\n`)
 
   // the manifest sits in the package that installed the plugin, which is
   // the whole of what a product layout is
