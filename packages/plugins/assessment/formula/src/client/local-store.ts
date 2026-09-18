@@ -25,6 +25,8 @@ export const DRAFTS = 'drafts'
 export const TRY_RECORDS = 'tryRecords'
 /** the tries of one source in the order they were run */
 export const BY_SCOPE_AND_TIME = 'byScopeAndTime'
+/** every try of one formula, whichever source it was run against */
+export const BY_FUNCTION = 'byFunctionId'
 
 let opening: Promise<IDBDatabase | null> | null = null
 
@@ -43,6 +45,9 @@ const database = (): Promise<IDBDatabase | null> => {
         if (!db.objectStoreNames.contains(TRY_RECORDS)) {
           const store = db.createObjectStore(TRY_RECORDS, { keyPath: 'id' })
           store.createIndex(BY_SCOPE_AND_TIME, ['scopeKey', 'at'])
+          // and by formula, so deleting one can take everything this browser
+          // holds for it without knowing which sources were ever opened
+          store.createIndex(BY_FUNCTION, 'functionId')
         }
       }
       // Blocked means another tab still holds an older version open. This
@@ -120,4 +125,35 @@ export const inStores = <T>(
           resolve(fallback)
         }
       }),
+  )
+
+/**
+ * Everything this browser holds for one formula, in one transaction.
+ *
+ * Called when the formula itself is deleted on the server, which is
+ * permanent: leaving the kept source, the examples and the inputs somebody
+ * tried behind would leave work on the device that nothing can reach any
+ * more and that the person believes they deleted. Both stores go together -
+ * the reason they share a database - so there is no state where the draft is
+ * gone and its try records are not.
+ *
+ * Best effort, like everything else here, and deliberately AFTER the server
+ * has agreed: clearing first would take a person's crash recovery away on a
+ * deletion that then failed.
+ */
+export const forgetFormulaLocally = (functionId: string): Promise<void> =>
+  inStores(
+    [DRAFTS, TRY_RECORDS],
+    'readwrite',
+    (open) => {
+      open(DRAFTS).delete(functionId)
+      const cursor = open(TRY_RECORDS).index(BY_FUNCTION).openCursor(IDBKeyRange.only(functionId))
+      cursor.onsuccess = () => {
+        const at = cursor.result
+        if (at === null) return
+        at.delete()
+        at.continue()
+      }
+    },
+    undefined,
   )

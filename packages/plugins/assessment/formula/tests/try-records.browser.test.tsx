@@ -2,6 +2,8 @@ import { act } from 'react'
 import { renderHook } from 'vitest-browser-react'
 import { describe, expect, it, vi } from 'vitest'
 import { useTryRecords } from '../src/client/try-records.ts'
+import { forgetFormulaLocally } from '../src/client/local-store.ts'
+import { keepLocalDraft, readLocalDraft } from '../src/client/local-draft.ts'
 
 // The window between asking this browser what it remembers and being told.
 //
@@ -81,5 +83,38 @@ describe('what this browser remembers about its tries', () => {
     await new Promise((resolve) => setTimeout(resolve, 300))
     expect(second.result.current.records).toEqual([])
     await second.unmount()
+  })
+  it('takes everything this browser holds when the formula itself is deleted', async () => {
+    // a kept draft and tries against two different sources, which is what a
+    // person who worked on a formula for an afternoon actually leaves behind
+    await keepLocalDraft({
+      functionId: FN,
+      name: '试一下',
+      source: 'const a = 1\n',
+      tests: [],
+      baseRevision: 3,
+      keptAt: Date.now(),
+    })
+    const draft = await renderHook(() => useTryRecords(FN, 'draft'))
+    act(() => draft.result.current.add({ input: { base: '1' }, outcome }))
+    await settles(() => draft.result.current.records, 1)
+    await draft.unmount()
+    const release = await renderHook(() => useTryRecords(FN, 'release/5'))
+    act(() => release.result.current.add({ input: { base: '2' }, outcome }))
+    await settles(() => release.result.current.records, 1)
+    await release.unmount()
+
+    await forgetFormulaLocally(FN)
+
+    // the server row is gone for good; nothing of it is left on the device
+    expect(await readLocalDraft(FN)).toBeNull()
+    const backDraft = await renderHook(() => useTryRecords(FN, 'draft'))
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    expect(backDraft.result.current.records).toEqual([])
+    await backDraft.unmount()
+    const backRelease = await renderHook(() => useTryRecords(FN, 'release/5'))
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    expect(backRelease.result.current.records).toEqual([])
+    await backRelease.unmount()
   })
 })

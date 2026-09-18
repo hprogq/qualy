@@ -97,6 +97,7 @@ import { NewExampleDialog } from './NewExampleDialog.tsx'
 import { LazyFormulaCodeEditor } from './lazy-editors.ts'
 import { holdEditorLease } from './editor-lease.ts'
 import { forgetLocalDraft, keepLocalDraft, readLocalDraft, type LocalDraft } from './local-draft.ts'
+import { forgetFormulaLocally } from './local-store.ts'
 import { shortWhen } from './library-styles.ts'
 import { workbenchStyles as w } from './workbench-styles.ts'
 import { parseView, viewValue, type WorkbenchView } from './workbench-view.ts'
@@ -1559,6 +1560,12 @@ export default function FormulaEditorPage() {
       ),
     onSuccess: async () => {
       toast.success(format(m.deleted))
+      // the formula is gone for good, so what this browser kept for it goes
+      // too: a kept source and the inputs somebody tried are work on this
+      // device that nothing can reach any more. After the server agreed,
+      // never before - clearing first would take the crash recovery away on
+      // a deletion that then failed.
+      await forgetFormulaLocally(functionId)
       await refresh()
       goto('assessment-formula/list')
     },
