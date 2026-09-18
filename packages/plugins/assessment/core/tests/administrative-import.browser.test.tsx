@@ -71,7 +71,7 @@ const item = {
 const importRow = {
   id: IMPORT_ID,
   item: { id: ITEM_ID, title: '优秀学生干部' },
-  filename: '优秀学生干部.xlsx',
+  source: { available: true, filename: '优秀学生干部.xlsx', size: '2048', integrity: null },
   actor: { id: USER_ID, name: '张老师' },
   createdAt: '2026-09-16T10:22:00.000Z',
   importedCount: 126,
@@ -193,7 +193,11 @@ const open = (route: string, stubs: Record<string, unknown> = {}) =>
               {
                 rowNo: 2,
                 entryId: ENTRY_ID,
-                participant: { id: PARTICIPANT_ID, displayName: '郭航旗', businessNo: '2023123456' },
+                participant: {
+                  id: PARTICIPANT_ID,
+                  displayName: '郭航旗',
+                  businessNo: '2023123456',
+                },
                 businessNoSnapshot: '2023123456',
                 displayNameSnapshot: '郭航旗',
                 status: 'approved',
@@ -349,8 +353,9 @@ describe('importing a workbook of administrative records', () => {
   })
 
   it('withdraws what is left of an import, with a reason', async () => {
-    const reverse = vi.fn((_request: { params: { importId: string }; payload: { reason: string } }) =>
-      Effect.succeed({ affectedCount: 118 }),
+    const reverse = vi.fn(
+      (_request: { params: { importId: string }; payload: { reason: string } }) =>
+        Effect.succeed({ affectedCount: 118 }),
     )
     open(`${base}?import=${IMPORT_ID}`, { reverseAdministrativeImport: reverse as never })
     const standing = page.getByTestId('import-standing')

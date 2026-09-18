@@ -976,7 +976,9 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
     expect(first.standing).toEqual({ approved: 1, inReview: 0, rejected: 0, voided: 1, other: 0 })
     expect(first.actor?.name).toBe('Recorder')
     expect(first.item.title).toBe('违纪扣分')
-    expect(first.filename).toBe('import.xlsx')
+    // the original file's identity is part of the list of names: this reader
+    // reaches everyone in the import, so it is theirs to see
+    expect(first.source).toMatchObject({ available: true, filename: 'import.xlsx' })
     // the cursor the first page hands out resumes exactly after it
     expect([...found.first, ...found.second].map((row) => row.id)).toEqual(
       found.all.map((row) => row.id),

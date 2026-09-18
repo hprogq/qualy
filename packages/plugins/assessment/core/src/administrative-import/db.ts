@@ -578,9 +578,11 @@ export const importsOfBatchPage = (input: {
         )
         .select([
           'i.id',
+          'i.batchId',
           'i.itemId',
           'i.itemRevisionId',
           'i.filenameSnapshot',
+          'i.sizeBytes',
           'i.importedCount',
           'i.defaultBasis',
           'i.actorId',
@@ -606,10 +608,12 @@ export const importsOfBatchPage = (input: {
       Effect.map((rows) =>
         (rows as unknown as Record<string, unknown>[]).map((row) => ({
           id: String(row['id']),
+          batchId: String(row['batchId']),
           itemId: String(row['itemId']),
           itemRevisionId: String(row['itemRevisionId']),
           itemTitle: String(row['itemTitle'] ?? ''),
           filename: String(row['filenameSnapshot'] ?? ''),
+          sizeBytes: String(row['sizeBytes'] ?? '0'),
           importedCount: Number(row['importedCount'] ?? 0),
           defaultBasis: row['defaultBasis'] == null ? null : String(row['defaultBasis']),
           actorId: row['actorId'] == null ? null : String(row['actorId']),

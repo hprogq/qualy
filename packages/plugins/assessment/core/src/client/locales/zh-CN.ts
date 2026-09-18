@@ -354,6 +354,8 @@ export default {
   'assessment/record/import/detail-revision': '项目版本',
   'assessment/record/import/detail-revision-no': '第 {no} 版',
   'assessment/record/import/detail-basis-none': '未填写',
+  'assessment/record/import/detail-title': 'Excel 导入',
+  'assessment/record/import/detail-source-withheld': '仅对覆盖本次导入全部人员的管理员可见',
   'assessment/record/import/detail-source': '原始文件',
   'assessment/record/import/detail-download': '下载',
   'assessment/record/import/detail-count': '导入条数',
@@ -364,9 +366,12 @@ export default {
   'assessment/record/import/now-voided': '{count} 条已撤销',
   'assessment/record/import/reverse': '撤销本次导入',
   'assessment/record/import/reverse-title': '撤销本次导入？',
-  'assessment/record/import/reverse-hint': '本次导入中仍有效的认定将不再计入成绩，原记录及历史会保留。',
-  'assessment/record/import/reversed': '{count, plural, =0 {没有需要撤销的认定。} other {已撤销 {count} 条认定。}}',
-  'assessment/record/import/reverse-refused': '本次导入中有 {count} 条认定当前无法撤销，请分别处理后再试。',
+  'assessment/record/import/reverse-hint':
+    '本次导入中仍有效的认定将不再计入成绩，原记录及历史会保留。',
+  'assessment/record/import/reversed':
+    '{count, plural, =0 {没有需要撤销的认定。} other {已撤销 {count} 条认定。}}',
+  'assessment/record/import/reverse-refused':
+    '本次导入中有 {count} 条认定当前无法撤销，请分别处理后再试。',
   'assessment/record/import/reversals': '撤销记录',
   'assessment/record/import/reversal-line': '{when} · {actor} 撤销 {count} 条：{reason}',
   'assessment/record/import/rows': '导入明细',

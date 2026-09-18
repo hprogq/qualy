@@ -187,10 +187,16 @@ export function AdministrativeImportDetail({
         }),
       })
       void queryClient.invalidateQueries({
-        queryKey: query.assessment.listAdministrativeImports.key({ params: { batchId }, query: {} }),
+        queryKey: query.assessment.listAdministrativeImports.key({
+          params: { batchId },
+          query: {},
+        }),
       })
       void queryClient.invalidateQueries({
-        queryKey: query.assessment.listAdministrativeEntries.key({ params: { batchId }, query: {} }),
+        queryKey: query.assessment.listAdministrativeEntries.key({
+          params: { batchId },
+          query: {},
+        }),
       })
     },
     onError: (error) => {
@@ -243,7 +249,9 @@ export function AdministrativeImportDetail({
         <div {...stylex.props(styles.column)} data-testid="administrative-import-detail">
           <div {...stylex.props(styles.sheet)}>
             <div {...stylex.props(styles.titleRow)}>
-              <h2 {...stylex.props(styles.title)}>{found.filename}</h2>
+              <h2 {...stylex.props(styles.title)}>
+                {found.source.available ? found.source.filename : format(m.importDetailTitle)}
+              </h2>
               <span {...stylex.props(styles.by)}>
                 {format(m.importDetailBy, {
                   when: when(found.createdAt),
@@ -277,17 +285,27 @@ export function AdministrativeImportDetail({
               </dd>
               <dt {...stylex.props(styles.term)}>{format(m.importDetailSource)}</dt>
               <dd {...stylex.props(styles.value)}>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={download.isPending}
-                  onClick={() => download.mutate()}
-                  data-testid="import-source-download"
-                >
-                  <DownloadIcon aria-hidden {...stylex.props(styles.icon)} />
-                  {format(m.importDetailDownload)}
-                </Button>
-                {sizeLabel(Number(found.size))}
+                {found.source.available ? (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={download.isPending}
+                      onClick={() => download.mutate()}
+                      data-testid="import-source-download"
+                    >
+                      <DownloadIcon aria-hidden {...stylex.props(styles.icon)} />
+                      {format(m.importDetailDownload)}
+                    </Button>
+                    {sizeLabel(Number(found.source.size))}
+                  </>
+                ) : (
+                  // the file's own name says who is in it, so it waits for
+                  // the same reach its rows do
+                  <span data-testid="import-source-withheld">
+                    {format(m.importDetailSourceWithheld)}
+                  </span>
+                )}
               </dd>
               <dt {...stylex.props(styles.term)}>{format(m.importDetailCount)}</dt>
               <dd {...stylex.props(styles.value)}>

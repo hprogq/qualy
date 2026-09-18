@@ -150,11 +150,21 @@ export interface AdministrativeImportPreview {
 
 type Standing = Omit<ImportStanding, 'importId'>
 
+/** the original file's identity, which is part of the list of names it holds */
+export type AdministrativeImportSource =
+  | { readonly available: false }
+  | {
+      readonly available: true
+      readonly filename: string
+      readonly size: string
+      readonly integrity: { readonly algorithm: string; readonly value: string } | null
+    }
+
 /** one import in the history of a round */
 export interface AdministrativeImportView {
   readonly id: string
   readonly item: { readonly id: string; readonly title: string }
-  readonly filename: string
+  readonly source: AdministrativeImportSource
   readonly actor: { readonly id: string; readonly name: string } | null
   readonly createdAt: string
   readonly importedCount: number
@@ -169,10 +179,7 @@ export interface AdministrativeImportDetail {
   readonly batchId: string
   readonly item: { readonly id: string; readonly title: string }
   readonly itemRevision: { readonly id: string; readonly revisionNo: number }
-  readonly filename: string
-  readonly size: string
-  /** what the store verified the original to be, to tell a download from a substitute */
-  readonly integrity: { readonly algorithm: string; readonly value: string } | null
+  readonly source: AdministrativeImportSource
   readonly actor: { readonly id: string; readonly name: string } | null
   readonly createdAt: string
   readonly defaultBasis: string | null
@@ -1111,10 +1118,33 @@ export const makeAdministrativeImportMethods = (
           ),
         ),
       )
+      // The original file's identity is part of the list of names, not part
+      // of the fact that an import happened: a workbook called
+      // 软件2301张三李四处分名单.xlsx says who is in it. So it is asked for
+      // per row, behind the same reach the rows themselves are.
+      const reaches = new Map<string, boolean>()
+      for (const row of rows) {
+        reaches.set(
+          row.id,
+          yield* dieQuery(
+            withDb(
+              importReachable({
+                tenantId,
+                batchId: row.batchId,
+                importId: row.id,
+                userId: as.userId,
+              }),
+            ),
+          ),
+        )
+      }
       return rows.map((row): AdministrativeImportView => ({
         id: row.id,
         item: { id: row.itemId, title: row.itemTitle },
-        filename: row.filename,
+        source:
+          reaches.get(row.id) === true
+            ? { available: true, filename: row.filename, size: row.sizeBytes, integrity: null }
+            : { available: false },
         actor: personOf(row.actorId, row.actorName),
         createdAt: new Date(row.createdAt).toISOString(),
         importedCount: row.importedCount,
@@ -1127,6 +1157,11 @@ export const makeAdministrativeImportMethods = (
     'Assessment.getAdministrativeImport',
   )(function* (tenantId, importId, as) {
     const found = yield* visibleImport(tenantId, importId, as)
+    // the detail opens for anyone who may know the import happened; the
+    // original file's identity is the list of names, and waits for reach
+    const reachesAll = yield* dieQuery(
+      withDb(importReachable({ tenantId, batchId: found.batchId, importId, userId: as.userId })),
+    )
     const [standing, events, candidates] = yield* Effect.all([
       dieQuery(withDb(standingOfImports(tenantId, [importId]))),
       dieQuery(withDb(eventsOfImport(tenantId, importId))),
@@ -1159,12 +1194,17 @@ export const makeAdministrativeImportMethods = (
       batchId: found.batchId,
       item: { id: found.itemId, title: found.itemTitle },
       itemRevision: { id: found.itemRevisionId, revisionNo: found.itemRevisionNo },
-      filename: found.filenameSnapshot,
-      size: found.sizeBytes,
-      integrity:
-        found.contentHashAlgorithm === null || found.contentHash === null
-          ? null
-          : { algorithm: found.contentHashAlgorithm, value: found.contentHash },
+      source: reachesAll
+        ? {
+            available: true as const,
+            filename: found.filenameSnapshot,
+            size: found.sizeBytes,
+            integrity:
+              found.contentHashAlgorithm === null || found.contentHash === null
+                ? null
+                : { algorithm: found.contentHashAlgorithm, value: found.contentHash },
+          }
+        : { available: false as const },
       actor: personOf(found.actorId, found.actorName),
       createdAt: new Date(found.createdAt).toISOString(),
       defaultBasis: found.defaultBasis,

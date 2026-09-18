@@ -1363,7 +1363,7 @@ const i18n = definePluginMessages({
     importFile: { id: 'assessment/record/import/file', defaultMessage: 'List to import' },
     importFileHint: {
       id: 'assessment/record/import/file-hint',
-      defaultMessage: 'The .xlsx filled in from this item\'s template.',
+      defaultMessage: "The .xlsx filled in from this item's template.",
     },
     importChooseFile: {
       id: 'assessment/record/import/choose-file',
@@ -1578,7 +1578,7 @@ const i18n = definePluginMessages({
     },
     importReasonMetadataCorrupt: {
       id: 'assessment/record/import/reason/metadata-corrupt',
-      defaultMessage: 'The template\'s hidden details were changed. Download it again.',
+      defaultMessage: "The template's hidden details were changed. Download it again.",
     },
     importReasonOldTemplate: {
       id: 'assessment/record/import/reason/unsupported-template-version',
@@ -1646,6 +1646,14 @@ const i18n = definePluginMessages({
       id: 'assessment/record/import/detail-source',
       defaultMessage: 'Original file',
     },
+    importDetailTitle: {
+      id: 'assessment/record/import/detail-title',
+      defaultMessage: 'Excel import',
+    },
+    importDetailSourceWithheld: {
+      id: 'assessment/record/import/detail-source-withheld',
+      defaultMessage: 'Shown to administrators whose reach covers everyone in this import',
+    },
     importDetailDownload: {
       id: 'assessment/record/import/detail-download',
       defaultMessage: 'Download',
@@ -1678,15 +1686,18 @@ const i18n = definePluginMessages({
     },
     importReverseHint: {
       id: 'assessment/record/import/reverse-hint',
-      defaultMessage: 'Records from this import that are still in effect will stop counting. The records and their history stay.',
+      defaultMessage:
+        'Records from this import that are still in effect will stop counting. The records and their history stay.',
     },
     importReversed: {
       id: 'assessment/record/import/reversed',
-      defaultMessage: '{count, plural, =0 {Nothing was left to withdraw.} one {Withdrew # record.} other {Withdrew # records.}}',
+      defaultMessage:
+        '{count, plural, =0 {Nothing was left to withdraw.} one {Withdrew # record.} other {Withdrew # records.}}',
     },
     importReverseRefused: {
       id: 'assessment/record/import/reverse-refused',
-      defaultMessage: '{count, plural, one {# record in this import cannot be withdrawn now.} other {# records in this import cannot be withdrawn now.}} Handle them one by one, then try again.',
+      defaultMessage:
+        '{count, plural, one {# record in this import cannot be withdrawn now.} other {# records in this import cannot be withdrawn now.}} Handle them one by one, then try again.',
     },
     importReversals: { id: 'assessment/record/import/reversals', defaultMessage: 'Withdrawals' },
     importReversalLine: {

@@ -648,11 +648,32 @@ const importStanding = Schema.Struct({
  * asks rather than stored on the import: the entries already know, and a
  * second copy is a copy that can disagree with them.
  */
+/**
+ * The original file's identity, behind the same reach its contents are.
+ *
+ * A workbook's name carries what the workbook does - 软件2301张三李四处分名单.xlsx
+ * names people as plainly as the rows inside it - so it belongs with the rows
+ * rather than with the fact that an import happened. A shape rather than a
+ * nullable string, so a screen written later cannot print it without first
+ * asking whether it is there.
+ */
+const administrativeImportSource = Schema.Union([
+  Schema.Struct({ available: Schema.Literal(false) }),
+  Schema.Struct({
+    available: Schema.Literal(true),
+    /** the workbook's name as it was uploaded */
+    filename: Schema.String,
+    /** decimal bytes */
+    size: Schema.String,
+    /** what the store verified the original to be when it was imported */
+    integrity: Schema.NullOr(Schema.Struct({ algorithm: Schema.String, value: Schema.String })),
+  }),
+])
+
 const administrativeImportView = Schema.Struct({
   id: Schema.String,
   item: Schema.Struct({ id: Schema.String, title: Schema.String }),
-  /** the workbook's name as it was uploaded */
-  filename: Schema.String,
+  source: administrativeImportSource,
   actor: Schema.NullOr(personRef),
   createdAt: Schema.String,
   importedCount: Schema.Number,
@@ -666,11 +687,7 @@ const administrativeImportDetail = Schema.Struct({
   item: Schema.Struct({ id: Schema.String, title: Schema.String }),
   /** the question version every row of it answered */
   itemRevision: Schema.Struct({ id: Schema.String, revisionNo: Schema.Number }),
-  filename: Schema.String,
-  /** decimal bytes */
-  size: Schema.String,
-  /** what the store verified the original to be when it was imported */
-  integrity: Schema.NullOr(Schema.Struct({ algorithm: Schema.String, value: Schema.String })),
+  source: administrativeImportSource,
   actor: Schema.NullOr(personRef),
   createdAt: Schema.String,
   defaultBasis: Schema.NullOr(Schema.String),
@@ -2470,15 +2487,11 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
      * round this reader may not record in answers exactly as one that never
      * existed.
      */
-    HttpApiEndpoint.get(
-      'getAdministrativeImport',
-      '/assessment/administrative-imports/:importId',
-      {
-        params: Schema.Struct({ importId: uuidInput }),
-        success: administrativeImportDetail,
-        error: [AdministrativeImportNotFound],
-      },
-    ).middleware(Authenticated),
+    HttpApiEndpoint.get('getAdministrativeImport', '/assessment/administrative-imports/:importId', {
+      params: Schema.Struct({ importId: uuidInput }),
+      success: administrativeImportDetail,
+      error: [AdministrativeImportNotFound],
+    }).middleware(Authenticated),
   )
   .add(
     // the file's rows in the file's own order, each with the fact it became

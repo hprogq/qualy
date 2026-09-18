@@ -135,7 +135,10 @@ export function AdministrativeImportHistory({
     ...cursorPages,
   })
 
-  const rows = useMemo(() => history.data?.pages.flatMap((page) => page.items) ?? [], [history.data])
+  const rows = useMemo(
+    () => history.data?.pages.flatMap((page) => page.items) ?? [],
+    [history.data],
+  )
   const day = (iso: string) =>
     new Intl.DateTimeFormat(locale, { month: 'numeric', day: 'numeric' }).format(new Date(iso))
 
@@ -164,7 +167,9 @@ export function AdministrativeImportHistory({
                 onClick={() => onOpen(row.id)}
                 {...stylex.props(styles.row)}
               >
-                <span {...stylex.props(styles.file)}>{row.filename}</span>
+                <span {...stylex.props(styles.file)}>
+                  {row.source.available ? row.source.filename : format(m.importDetailTitle)}
+                </span>
                 <span {...stylex.props(styles.itemCell)}>{row.item.title}</span>
                 <span {...stylex.props(styles.asideCell)}>
                   {row.actor?.name ?? '—'}

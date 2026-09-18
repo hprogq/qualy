@@ -134,7 +134,7 @@ describe.runIf(postgresAvailable)('an import, looked back on', () => {
     expect(found.detail.reversals).toEqual([])
     expect(found.detail.capabilities.reverse).toBe(true)
     // what the store verified the original to be, never a browser's word
-    expect(found.detail.integrity).toEqual(found.stored)
+    expect(found.detail.source.available && found.detail.source.integrity).toEqual(found.stored)
     // the same import, with the same provenance, for whoever holds the
     // recording authority now
     expect(found.asAdmin.actor?.name).toBe('Recorder')
@@ -144,6 +144,68 @@ describe.runIf(postgresAvailable)('an import, looked back on', () => {
     expect(errorOf<{ _tag: string }>(found.asStudent)?._tag).toBe(
       'ASSESSMENT_ADMINISTRATIVE_IMPORT_NOT_FOUND',
     )
+  })
+
+  it('holds the original file back from a reader who reaches only part of it', async () => {
+    const found = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('aih-partial')
+          const g = yield* runningBatch(f)
+          yield* numbered(f)
+          const item = yield* recordItem(f, g.batch.id)
+          const assessment = yield* Assessment
+          // an import the ADMINISTRATOR makes, covering one person in the
+          // recorder's college and one in the college their authority does
+          // not reach - the shape of a registrar whose scope covers part of
+          // a round
+          const done = yield* imported(
+            f,
+            g.batch.id,
+            item.id,
+            f.admin,
+            [
+              ['2023001', 'Zhang San', '校发〔2026〕12 号'],
+              ['2023003', 'Wang Wu', '校发〔2026〕12 号'],
+            ],
+            { defaultBasis: '学院统一依据' },
+          )
+          const recorder = f.principal(f.recorder)
+          const whole = yield* assessment.getAdministrativeImport(
+            f.t,
+            done.importId,
+            f.principal(f.admin),
+          )
+          const partial = yield* assessment.getAdministrativeImport(f.t, done.importId, recorder)
+          const listed = yield* assessment.listAdministrativeImports(
+            f.t,
+            g.batch.id,
+            { limit: 10 },
+            recorder,
+          )
+          const rows = yield* Effect.exit(
+            assessment.listAdministrativeImportRows(f.t, done.importId, { limit: 10 }, recorder),
+          )
+          const source = yield* Effect.exit(
+            assessment.describeAdministrativeImportSource(f.t, done.importId, recorder),
+          )
+          return { whole, partial, listed, rows, source, item }
+        }),
+      ),
+    )
+    // reaching everyone: the file is theirs to see
+    expect(found.whole.source).toMatchObject({ available: true, filename: 'import.xlsx' })
+    // reaching only part of it: the import is still the round's record, so
+    // what it was and what it did stay readable
+    expect(found.partial.item).toEqual({ id: found.item.id, title: '违纪扣分' })
+    expect(found.partial.importedCount).toBe(2)
+    expect(found.partial.actor?.name).toBe('Admin')
+    // but the file's own name is a list of names, and waits with the rows
+    expect(found.partial.source).toEqual({ available: false })
+    expect(found.listed.map((one) => one.source)).toEqual([{ available: false }])
+    expect(errorOf<{ _tag: string }>(found.rows)?._tag).toBe('ACCESS_DENIED')
+    expect(errorOf<{ _tag: string }>(found.source)?._tag).toBe('ACCESS_DENIED')
   })
 
   it('lists its rows in the order of the file, each with what it became', async () => {
@@ -224,7 +286,7 @@ describe.runIf(postgresAvailable)('an import, looked back on', () => {
           return {
             described,
             digest: createHash('sha256').update(Buffer.concat(chunks)).digest('hex'),
-            integrity: detail.integrity,
+            integrity: detail.source.available ? detail.source.integrity : null,
             asAdmin,
           }
         }),
