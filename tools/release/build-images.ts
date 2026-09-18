@@ -4,6 +4,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { repoRoot } from '../lib/manifest.ts'
+import { checkoutOf, type Checkout } from './context.ts'
 
 // The release build: the three images of one release, one tag, one tree, one
 // platform.
@@ -65,83 +66,13 @@ const named = positional[0]
 const git = (gitArgs: readonly string[], cwd = repoRoot) =>
   execFileSync('git', [...gitArgs], { cwd, encoding: 'buffer', maxBuffer: 512 * 1024 * 1024 })
 
-interface Checkout {
-  readonly commit: string
-  /** the build inputs that differ from the commit, by path */
-  readonly changed: readonly string[]
-  readonly fingerprint: string
-}
-
-/**
- * Whether the build context leaves a path out, by the rules in .dockerignore.
- *
- * A change nothing builds from is not a change to the release: notes kept
- * untracked under docs/, a STATUS.md being written. Docker's reading, closely
- * enough for the patterns this repository writes: a pattern excludes what it
- * matches and everything under it, `!` puts a path back, the last rule that
- * matches decides.
- */
-const excludedFromContext = (() => {
-  const rules = fs
-    .readFileSync(path.join(repoRoot, '.dockerignore'), 'utf8')
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line !== '' && !line.startsWith('#'))
-    .map((line) => {
-      const negate = line.startsWith('!')
-      const pattern = (negate ? line.slice(1) : line).replace(/^\/+/, '').replace(/\/+$/, '')
-      return { negate, pattern }
-    })
-  return (file: string) => {
-    const parts = file.split('/')
-    const candidates = parts.map((_, at) => parts.slice(0, at + 1).join('/'))
-    let excluded = false
-    for (const rule of rules) {
-      if (candidates.some((candidate) => path.matchesGlob(candidate, rule.pattern))) {
-        excluded = !rule.negate
-      }
-    }
-    return excluded
-  }
-})()
-
-const pathsOf = (output: Buffer) =>
-  output
-    .toString('utf8')
-    .split('\0')
-    .filter((name) => name !== '')
-
-/**
- * The working directory as a build would read it, as one digest over the
- * inputs that differ from the commit: tracked changes with their content,
- * and untracked files git does not ignore. Files git ignores but docker does
- * not are why a named release is built from a worktree instead.
- */
-const checkout = (): Checkout => {
-  const commit = git(['rev-parse', 'HEAD']).toString('utf8').trim()
-  const digest = createHash('sha256').update(commit)
-  const tracked = pathsOf(git(['diff', 'HEAD', '--name-only', '-z']))
-    .filter((name) => !excludedFromContext(name))
-    .sort()
-  if (tracked.length > 0) digest.update(git(['diff', 'HEAD', '--binary', '--', ...tracked]))
-  const untracked = pathsOf(git(['ls-files', '--others', '--exclude-standard', '-z']))
-    .filter((name) => !excludedFromContext(name))
-    .sort()
-  for (const name of untracked) {
-    digest.update(`\0${name}\0`)
-    const at = path.join(repoRoot, name)
-    if (fs.statSync(at, { throwIfNoEntry: false })?.isFile()) digest.update(fs.readFileSync(at))
-  }
-  return { commit, changed: [...tracked, ...untracked], fingerprint: digest.digest('hex') }
-}
-
 const IMAGES: readonly (readonly [name: string, dockerfile: string])[] = [
   ['qualy-server', 'Dockerfile'],
   ['qualy-sandbox-runtime', 'apps/sandbox-runtime/Dockerfile'],
   ['qualy-sandbox-authoring', 'apps/sandbox-authoring/Dockerfile'],
 ]
 
-const started = checkout()
+const started = checkoutOf(repoRoot)
 const dirty = started.changed.length > 0
 const release = named ?? `${started.commit.slice(0, 8)}${dirty ? '-dirty' : ''}`
 if (!/^[\w][\w.-]{0,127}$/.test(release)) {
@@ -184,7 +115,7 @@ const abandon = (why: string): never => {
 }
 const unmoved = (when: string) => {
   if (snapshot) return
-  if (checkout().fingerprint !== started.fingerprint) {
+  if (checkoutOf(repoRoot).fingerprint !== started.fingerprint) {
     abandon(
       `the checkout changed ${when}; the images under ${release} would not come from one tree`,
     )
