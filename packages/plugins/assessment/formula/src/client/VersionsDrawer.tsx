@@ -1,6 +1,6 @@
 import * as stylex from '@stylexjs/stylex'
 import { useMemo } from 'react'
-import { useInfiniteQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { cursorPages, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -236,6 +236,15 @@ export function VersionsDrawer({
   const query = useApiQuery(formulaApi)
   const { format, formatError, locale } = useI18n()
 
+  // where this author holds the sharing permission, asked once for the list:
+  // a version offered to nobody, by somebody who may offer it to nobody, has
+  // no audience to manage
+  const shareOptions = useQuery({
+    ...query.assessmentFormula.listFormulaShareOptions.queryOptions({ query: {} }),
+    enabled: open && releases.length > 0,
+  })
+  const mayShare = (shareOptions.data?.nodes.length ?? 0) > 0
+
   const revisions = useInfiniteQuery({
     queryKey: [
       ...query.assessmentFormula.listFormulaDraftRevisions.key({
@@ -332,22 +341,28 @@ export function VersionsDrawer({
                   )}
                 </div>
               </div>
-              <button
-                type="button"
-                data-testid="formula-release-share"
-                data-shared={shared}
-                data-version={release.versionNo}
-                aria-label={
-                  shared === 0 ? format(m.sharingManage) : format(m.sharingUnits, { count: shared })
-                }
-                title={
-                  shared === 0 ? format(m.sharingManage) : format(m.sharingUnits, { count: shared })
-                }
-                onClick={() => onShare(release)}
-                {...stylex.props(styles.act, shared > 0 && styles.actShared)}
-              >
-                <Share2Icon size={15} aria-hidden />
-              </button>
+              {shared === 0 && !mayShare ? null : (
+                <button
+                  type="button"
+                  data-testid="formula-release-share"
+                  data-shared={shared}
+                  data-version={release.versionNo}
+                  aria-label={
+                    shared === 0
+                      ? format(m.sharingManage)
+                      : format(m.sharingUnits, { count: shared })
+                  }
+                  title={
+                    shared === 0
+                      ? format(m.sharingManage)
+                      : format(m.sharingUnits, { count: shared })
+                  }
+                  onClick={() => onShare(release)}
+                  {...stylex.props(styles.act, shared > 0 && styles.actShared)}
+                >
+                  <Share2Icon size={15} aria-hidden />
+                </button>
+              )}
               <button
                 type="button"
                 data-testid="formula-release"

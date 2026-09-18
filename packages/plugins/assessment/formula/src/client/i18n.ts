@@ -112,6 +112,10 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/templates/examples',
       defaultMessage: '{count, plural, one {# example} other {# examples}}',
     },
+    templatesExamplesHint: {
+      id: 'assessment-formula/templates/examples-hint',
+      defaultMessage: 'The examples this version was published with; copy it to run them',
+    },
     templatesCopiedFrom: {
       id: 'assessment-formula/templates/copied-from',
       defaultMessage: 'Copied from',
@@ -135,6 +139,30 @@ const i18n = definePluginMessages({
     newFormula: {
       id: 'assessment-formula/list/new',
       defaultMessage: 'New formula',
+    },
+    detailsTitle: {
+      id: 'assessment-formula/editor/details-title',
+      defaultMessage: 'Formula details',
+    },
+    detailsOpen: {
+      id: 'assessment-formula/editor/details-open',
+      defaultMessage: 'Edit the name and description',
+    },
+    detailsSave: {
+      id: 'assessment-formula/editor/details-save',
+      defaultMessage: 'Save',
+    },
+    detailsSaved: {
+      id: 'assessment-formula/editor/details-saved',
+      defaultMessage: 'The formula details were saved.',
+    },
+    descriptionNone: {
+      id: 'assessment-formula/editor/description-none',
+      defaultMessage: 'No description yet',
+    },
+    descriptionHint: {
+      id: 'assessment-formula/editor/description-hint',
+      defaultMessage: 'How it scores, shown in the formula list and to anyone it is shared with',
     },
     nameLabel: {
       id: 'assessment-formula/field/name',

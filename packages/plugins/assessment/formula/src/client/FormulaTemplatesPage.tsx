@@ -170,14 +170,20 @@ export default function FormulaTemplatesPage() {
                               </span>
                             )}
                           </span>
-                          {row.parameters.length > 0 && (
-                            <span {...stylex.props(styles.takes)}>
-                              <span {...stylex.props(l.chipLabel)}>
-                                {format(m.parametersLabel)}
+                          <span {...stylex.props(styles.takes)}>
+                            {row.parameters.length === 0 ? (
+                              <span {...stylex.props(l.chipLabel, l.lineNone)}>
+                                {format(m.parametersNone)}
                               </span>
-                              <ParameterChips names={row.parameters} />
-                            </span>
-                          )}
+                            ) : (
+                              <>
+                                <span {...stylex.props(l.chipLabel)}>
+                                  {format(m.parametersLabel)}
+                                </span>
+                                <ParameterChips names={row.parameters} />
+                              </>
+                            )}
+                          </span>
                           <span {...stylex.props(l.phoneMeta)}>
                             <span>{version}</span>
                             <span>{author}</span>

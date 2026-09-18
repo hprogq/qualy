@@ -78,6 +78,7 @@ import {
 } from './report-words.ts'
 import { VersionsDrawer, type HistoryList } from './VersionsDrawer.tsx'
 import { VersionSharingDialog } from './VersionSharingDialog.tsx'
+import { FormulaDetailsDialog } from './FormulaDetailsDialog.tsx'
 import { PublishDialog, type PublishCheck } from './PublishDialog.tsx'
 import { ReleaseView } from './ReleaseView.tsx'
 import { RevisionView } from './RevisionView.tsx'
@@ -129,51 +130,35 @@ type RestoreFrom =
 
 const styles = stylex.create({
   frame: { display: 'flex', minHeight: 0, flexGrow: 1, flexDirection: 'column' },
-  // the name edits in place, as a title rather than as a form field: it is
-  // a field only to the pointer resting on it and the caret inside it
+  // the formula's name, as a title: what it is called is a fact about the
+  // formula rather than a field of the draft, and the press beside it opens
+  // the one place where that fact and its description are written
+  nameLine: { display: 'inline-flex', minWidth: 0, alignItems: 'center', gap: 4 },
   name: {
-    minWidth: { default: '6em', [breakpoints.phone]: 0 },
-    flexShrink: 1,
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
     maxWidth: { default: '24rem', [breakpoints.phone]: '100%' },
-    height: { default: 28, [breakpoints.phone]: 30 },
-    marginLeft: -7,
-    paddingInline: 6,
-    borderWidth: 0,
-    borderRadius: 6,
-    outline: 'none',
-    backgroundColor: 'transparent',
-    fontFamily: 'inherit',
     fontSize: { default: 15, [breakpoints.phone]: 17 },
     fontWeight: 600,
     letterSpacing: '-0.01em',
     color: tokens.foreground,
-    textOverflow: 'ellipsis',
-    boxShadow: {
-      default: null,
-      ':hover': `inset 0 0 0 1px ${tokens.border}`,
-      ':focus-visible': `0 0 0 2px color-mix(in oklab, ${tokens.focusRing} 60%, transparent)`,
-      ':disabled': 'none',
-    },
   },
   statusDirty: { color: tokens.warningForeground },
-  // the name is editable, and the pencil after it says so before a pointer
-  // finds out; a name typed over but not saved is underlined like any other
-  // unsaved change on the page
   nameEdit: {
     display: 'inline-flex',
-    minWidth: 0,
+    width: 24,
+    height: 24,
+    flexShrink: 0,
     alignItems: 'center',
-    gap: 2,
+    justifyContent: 'center',
+    borderWidth: 0,
+    borderRadius: 6,
+    padding: 0,
+    backgroundColor: { default: 'transparent', ':hover': tokens.surfaceMuted },
     color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
-    cursor: 'text',
-  },
-  nameEditDirty: { color: tokens.warningForeground },
-  nameGlyph: { flexShrink: 0 },
-  nameDirty: {
-    textDecorationLine: 'underline',
-    textDecorationStyle: 'dotted',
-    textDecorationColor: tokens.warning,
-    textUnderlineOffset: 4,
+    cursor: 'pointer',
   },
   statusLabel: { flexShrink: 0 },
   statusGroup: { display: 'inline-flex', minWidth: 0, alignItems: 'center', gap: 4 },
@@ -594,19 +579,6 @@ const newTestKey = (): string =>
 /** the wire/compare projection: identity is local, never sent or compared */
 const bareTests = (tests: readonly DraftTest[]) => tests.map(({ key: _key, ...rest }) => rest)
 
-/**
- * How wide the name field is drawn: as wide as the name, so the badge
- * after it sits where the name ends. A Han character is about an em, a
- * Latin one a little over half.
- */
-const nameWidth = (name: string): string => {
-  const ems = [...name].reduce(
-    (sum, character) => sum + (character.charCodeAt(0) > 0x2e80 ? 1 : 0.6),
-    0,
-  )
-  return `calc(${ems.toFixed(1)}em + 14px)`
-}
-
 /** JSON with object keys in a fixed order, so equal values compare equal */
 const canonicalJson = (value: unknown): string =>
   JSON.stringify(value, (_key, held: unknown) =>
@@ -773,6 +745,8 @@ export default function FormulaEditorPage() {
   // browser remembers
   const [versionsOpen, setVersionsOpen] = useState(false)
   const [recordsOpen, setRecordsOpen] = useState(false)
+  // what the formula is called and what it is for, changed in one place
+  const [editingDetails, setEditingDetails] = useState(false)
   // whose audience is open for changing; kept while the dialog closes, so
   // its words stay put as it slides away
   const [sharingFor, setSharingFor] = useState<{
@@ -817,7 +791,6 @@ export default function FormulaEditorPage() {
     setConfirmOpen(true)
   }
 
-  const [name, setName] = useState('')
   const [source, setSource] = useState('')
   const [tests, setTests] = useState<DraftTest[]>([])
   const [failure, setFailure] = useState<string | null>(null)
@@ -1143,7 +1116,6 @@ export default function FormulaEditorPage() {
 
   /** takes the server's draft as the editor's, dropping what was held locally */
   const adopt = (loaded: NonNullable<typeof fn>) => {
-    setName(loaded.name)
     setSource(loaded.draftSourceTs)
     if (!isBlankSource(loaded.draftSourceTs)) setStarted(true)
     setTests(seededTests(loaded))
@@ -1152,11 +1124,12 @@ export default function FormulaEditorPage() {
     setEditorSeed((seed) => seed + 1)
   }
 
+  // what the editor holds that the server's draft does not; the name is not
+  // among them - it is written straight to the formula, never left unsaved
   const differsFromServer = (
     loaded: NonNullable<typeof fn>,
-    held: { readonly name: string; readonly source: string; readonly tests: readonly unknown[] },
+    held: { readonly source: string; readonly tests: readonly unknown[] },
   ): boolean =>
-    held.name.trim() !== loaded.name ||
     held.source !== loaded.draftSourceTs ||
     JSON.stringify(held.tests) !== JSON.stringify(bareTests(seededTests(loaded)))
 
@@ -1179,7 +1152,7 @@ export default function FormulaEditorPage() {
       return
     }
     if (fn.draftRevision === baseRevision) return
-    if (differsFromServer(fn, { name, source, tests: bareTests(tests) })) {
+    if (differsFromServer(fn, { source, tests: bareTests(tests) })) {
       setRemoteMoved(true)
       return
     }
@@ -1195,7 +1168,6 @@ export default function FormulaEditorPage() {
   /** puts the edits this browser kept back into the editor, as one undoable step */
   const takeLocalDraft = () => {
     if (fn === undefined || localDraft === null) return
-    setName(localDraft.name)
     setSource(localDraft.source)
     setTests(localDraft.tests.map((test) => ({ key: newTestKey(), ...test })))
     setBaseRevision(localDraft.baseRevision)
@@ -1233,9 +1205,8 @@ export default function FormulaEditorPage() {
 
   // the two dirts, apart on purpose: big code edits may leave cases
   // temporarily broken, and that must never hold the CODE hostage
-  const nameDirty = (): boolean => (fn === undefined ? false : name.trim() !== fn.name)
   const sourceChanged = (): boolean => (fn === undefined ? false : source !== fn.draftSourceTs)
-  const sourceDirty = (): boolean => nameDirty() || sourceChanged()
+  const sourceDirty = (): boolean => sourceChanged()
   const testsDirty = (): boolean =>
     fn === undefined
       ? false
@@ -1254,7 +1225,6 @@ export default function FormulaEditorPage() {
     allRowsLegalAgainst(preview.current.contract)
 
   interface SavePatch {
-    readonly name: string | null
     readonly source: string | null
     readonly tests: { name: string; input: unknown; expected: string }[] | null
   }
@@ -1267,7 +1237,6 @@ export default function FormulaEditorPage() {
         params: { functionId },
         payload: {
           expectedDraftRevision: baseRevision ?? fn!.draftRevision,
-          ...(patch.name === null ? {} : { name: patch.name }),
           ...(patch.source === null ? {} : { draftSourceTs: patch.source }),
           ...(patch.tests === null ? {} : { draftTests: patch.tests }),
         },
@@ -1295,10 +1264,9 @@ export default function FormulaEditorPage() {
     if (view.kind !== 'draft') return
     const wantTests = testsDirty()
     const canTests = wantTests && testsSaveable()
-    const patchName = nameDirty() ? (name.trim() === '' ? fn!.name : name.trim()) : null
     const patchSource = sourceChanged() ? source : null
     if (wantTests && !canTests) toast.info(format(m.testsHeldBack))
-    if (patchName === null && patchSource === null && !canTests) return
+    if (patchSource === null && !canTests) return
     let collected: SavePatch['tests'] = null
     if (canTests) {
       const parsed = parsedTests()
@@ -1308,7 +1276,7 @@ export default function FormulaEditorPage() {
       }
       collected = parsed.tests
     }
-    save.mutate({ name: patchName, source: patchSource, tests: collected })
+    save.mutate({ source: patchSource, tests: collected })
   }
   // Unsaved edits are kept in this browser a moment after they stop, and let
   // go once nothing is unsaved. While an earlier visit's edits are still on
@@ -1319,7 +1287,7 @@ export default function FormulaEditorPage() {
     if (dirty())
       void keepLocalDraft({
         functionId: fn.id,
-        name,
+        name: fn.name,
         source,
         tests: bareTests(tests),
         baseRevision,
@@ -1397,7 +1365,6 @@ export default function FormulaEditorPage() {
             new LocalFinding(format(m.testInputInvalid, { label: parsed.invalidLabel })),
           )
         const savedNow = (await saveEffect({
-          name: nameDirty() ? (name.trim() === '' ? fn!.name : name.trim()) : null,
           source: sourceChanged() ? source : null,
           tests: testsDirty() ? parsed.tests : null,
         })) as {
@@ -1547,7 +1514,7 @@ export default function FormulaEditorPage() {
   }
 
   const downloadCurrent = () => {
-    const filename = fileNameOf([name.trim() === '' ? fn?.name : name], '.ts')
+    const filename = fileNameOf([fn?.name], '.ts')
     downloadText({ filename, text: source, type: 'text/typescript;charset=utf-8' })
     toast.success(format(m.downloaded, { file: filename }))
   }
@@ -2080,6 +2047,9 @@ export default function FormulaEditorPage() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
+        <DropdownMenuItem disabled={archived} onSelect={() => setEditingDetails(true)}>
+          {format(m.detailsOpen)}
+        </DropdownMenuItem>
         <DropdownMenuItem disabled={archived} onSelect={loadExample}>
           {format(m.loadExampleMenu)}
         </DropdownMenuItem>
@@ -2159,23 +2129,21 @@ export default function FormulaEditorPage() {
       backLabel={format(m.listTitle)}
       titleRef={titleRef}
       title={
-        <label
-          {...stylex.props(styles.nameEdit, nameDirty() && styles.nameEditDirty)}
-          data-dirty={nameDirty() ? true : undefined}
-        >
-          <input
-            aria-label={format(m.nameLabel)}
-            value={name}
-            disabled={archived}
-            spellCheck={false}
-            onChange={(event) => setName(event.target.value)}
-            style={{ width: nameWidth(name) }}
-            {...stylex.props(styles.name, nameDirty() && styles.nameDirty)}
-          />
+        <span {...stylex.props(styles.nameLine)}>
+          <span {...stylex.props(styles.name)}>{fn.name}</span>
           {archived ? null : (
-            <PencilIcon size={13} aria-hidden {...stylex.props(styles.nameGlyph)} />
+            <button
+              type="button"
+              data-testid="formula-details-open"
+              aria-label={format(m.detailsOpen)}
+              title={format(m.detailsOpen)}
+              onClick={() => setEditingDetails(true)}
+              {...stylex.props(styles.nameEdit)}
+            >
+              <PencilIcon size={13} aria-hidden />
+            </button>
           )}
-        </label>
+        </span>
       }
       badge={
         <span
@@ -3150,6 +3118,15 @@ export default function FormulaEditorPage() {
       />
       {versionsDrawer}
       {sharingDialog}
+      <FormulaDetailsDialog
+        open={editingDetails}
+        functionId={functionId}
+        draftRevision={baseRevision ?? fn.draftRevision}
+        name={fn.name}
+        description={fn.description}
+        onClose={() => setEditingDetails(false)}
+        onSaved={() => void refresh()}
+      />
       <TryRecordsDrawer
         open={recordsOpen}
         onOpenChange={setRecordsOpen}

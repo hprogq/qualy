@@ -96,11 +96,16 @@ const open = (
   } = {},
 ) => {
   const scopes = had.scopes ?? []
+  // the list counts what the version is offered to, so the two agree
+  const listed = {
+    ...detail,
+    versions: [{ ...detail.versions[0]!, sharedCount: scopes.length }],
+  }
   return renderScreen({
     client: fakeClient({
       app: { getManifest: emptyManifest() },
       assessmentFormula: {
-        getFormulaFunction: () => Effect.succeed(detail),
+        getFormulaFunction: () => Effect.succeed(listed),
         listFormulaDraftRevisions: { items: [], nextCursor: null },
         previewFormulaDraft: () => Effect.succeed(contract),
         getFormulaVersion: () => Effect.succeed({ version: frozen }),

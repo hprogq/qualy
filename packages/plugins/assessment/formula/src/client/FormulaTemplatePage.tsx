@@ -17,13 +17,15 @@ import { Skeleton } from '@qualy/ui/skeleton'
 import { PageContainer } from '@qualy/ui/page-container'
 import { Reveal } from '@qualy/ui/reveal'
 import { AsyncSection } from '@qualy/ui/admin'
-import { ArrowLeftIcon, CopyIcon } from 'lucide-react'
+import { ArrowLeftIcon, ChevronRightIcon, CopyIcon } from 'lucide-react'
 import { formulaApi } from './api.ts'
 import { formulaMessages as m } from './i18n.ts'
 import { CopyTemplateDialog } from './CopyTemplateDialog.tsx'
+import { TemplateExamplesSheet } from './TemplateExamplesSheet.tsx'
 import { ParameterChips } from './library.tsx'
 import { fullWhen, libraryStyles as l } from './library-styles.ts'
 import { SourceView } from './SourceView.tsx'
+import type { NormalizedInputSchema } from '@qualy/value-schema'
 
 // One offered formula, in enough detail to decide whether to start from it.
 //
@@ -91,6 +93,24 @@ const styles = stylex.create({
     fontSize: 13,
     fontVariantNumeric: 'tabular-nums',
   },
+  /** the one fact with something behind it, said as the way to it */
+  examplesOpen: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 2,
+    marginLeft: -6,
+    padding: 0,
+    paddingInline: 6,
+    height: 22,
+    borderWidth: 0,
+    borderRadius: tokens.radiusSm,
+    backgroundColor: { default: 'transparent', ':hover': tokens.surfaceMuted },
+    fontFamily: 'inherit',
+    fontSize: 13,
+    fontVariantNumeric: 'tabular-nums',
+    color: tokens.foreground,
+    cursor: 'pointer',
+  },
   paneHead: {
     display: 'flex',
     minHeight: 40,
@@ -124,11 +144,21 @@ export default function FormulaTemplatePage() {
   const { format, formatError, locale } = useI18n()
   const navigate = usePageNavigate()
   const [copying, setCopying] = useState(false)
+  const [readingExamples, setReadingExamples] = useState(false)
 
   const detail = useQuery(
     query.assessmentFormula.getFormulaTemplate.queryOptions({ params: { versionId } }),
   )
   const template = detail.data?.template
+  // the wire carries the structure as an opaque value; a version published
+  // before a field existed, or one that carries nothing, reads as no structure
+  // rather than as a broken one
+  const inputSchema =
+    typeof template?.inputSchema === 'object' &&
+    template.inputSchema !== null &&
+    typeof (template.inputSchema as { properties?: unknown }).properties === 'object'
+      ? (template.inputSchema as NormalizedInputSchema)
+      : null
   const titleRef = usePageTitle(template?.functionName ?? format(m.templatesTitle))
 
   return (
@@ -205,7 +235,19 @@ export default function FormulaTemplatePage() {
                 <div {...stylex.props(styles.fact)}>
                   <dt {...stylex.props(styles.factLabel)}>{format(m.testsTitle)}</dt>
                   <dd {...stylex.props(styles.factValue)}>
-                    {format(m.templatesExamples, { count: template.tests.length })}
+                    {template.tests.length === 0 ? (
+                      format(m.templatesExamples, { count: 0 })
+                    ) : (
+                      <button
+                        type="button"
+                        data-testid="template-examples-open"
+                        onClick={() => setReadingExamples(true)}
+                        {...stylex.props(styles.examplesOpen)}
+                      >
+                        {format(m.templatesExamples, { count: template.tests.length })}
+                        <ChevronRightIcon size={13} aria-hidden />
+                      </button>
+                    )}
                   </dd>
                 </div>
               </dl>
@@ -234,6 +276,13 @@ export default function FormulaTemplatePage() {
             </>
           )}
         </AsyncSection>
+
+        <TemplateExamplesSheet
+          open={readingExamples}
+          onOpenChange={setReadingExamples}
+          examples={template?.tests ?? []}
+          schema={inputSchema}
+        />
 
         <CopyTemplateDialog
           versionId={copying ? versionId : null}

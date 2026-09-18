@@ -58,6 +58,8 @@ export const libraryStyles = stylex.create({
     columnGap: 16,
     paddingInline: 20,
   },
+  /** words for a line that has nothing to say, so the space reads as an answer */
+  lineNone: { color: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)` },
   headRow: {
     display: { default: 'grid', [breakpoints.phone]: 'none' },
     paddingTop: 10,
@@ -130,6 +132,7 @@ export const libraryStyles = stylex.create({
   end: { textAlign: 'right' },
   glyph: {
     justifySelf: 'end',
+    alignSelf: 'center',
     color: tokens.mutedForeground,
   },
   /** on a phone the columns fold into one quiet line under the name */

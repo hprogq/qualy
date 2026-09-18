@@ -2,6 +2,7 @@ import FormulaEditorPage from '../src/client/FormulaEditorPage.tsx'
 import { describe, expect, it, vi } from 'vitest'
 import { Effect } from 'effect'
 import { normalizeAtomicSchema, normalizeInputSchema } from '@qualy/value-schema'
+import { monaco } from '../src/client/monaco-setup.ts'
 import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The authoring loop around the editor: the draft contract preview turns
@@ -83,6 +84,7 @@ const screenFor = (
     app: { getManifest: emptyManifest() },
     assessmentFormula: {
       getFormulaFunction: detail(tests),
+      listFormulaShareOptions: { nodes: [], truncated: false },
       listFormulaDraftRevisions: { items: [], nextCursor: null },
       getFormulaVersion: { version: { versionNo: 1, sourceTs: '', tests: [] } },
       previewFormulaDraft: (request: { payload: { sourceTs: string } }) => {
@@ -255,23 +257,28 @@ describe('the formula authoring tools', () => {
       expect(saveButton.disabled).toBe(true)
       expect(wire.saves.length).toBe(0)
 
-      // dirty the tests (rename a case) and the function name; saving then
-      // patches the name only - the broken case holds the tests back, and
-      // nothing claims they were contract-checked
-      const caseName = await openCase(rows[0]!)
-      const nameSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
-      nameSetter.call(caseName, 'renamed case')
-      caseName.dispatchEvent(new Event('input', { bubbles: true }))
-      const inputs = [...view.container.querySelectorAll('input')] as HTMLInputElement[]
-      const nameField = inputs.find((one) => one.value === '认定分值')!
-      nameSetter.call(nameField, '认定分值 v2')
-      nameField.dispatchEvent(new Event('input', { bubbles: true }))
+      // dirty the tests (rename a case) and the source; saving then patches
+      // the source only - the broken case holds the tests back, and nothing
+      // claims they were contract-checked
+      const model = monaco.editor
+        .getEditors()
+        .map((editor) => editor.getModel())
+        .find((one) => one?.uri.toString().endsWith('/draft/formula.ts') === true)!
+      model.pushEditOperations(
+        null,
+        [{ range: model.getFullModelRange(), text: `${SOURCE}// edited\n` }],
+        () => null,
+      )
       await vi.waitFor(
         () => {
           if (saveButton.disabled) throw new Error('still clean')
         },
         { timeout: 5_000 },
       )
+      const caseName = await openCase(rows[0]!)
+      const nameSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
+      nameSetter.call(caseName, 'renamed case')
+      caseName.dispatchEvent(new Event('input', { bubbles: true }))
       saveButton.click()
       await vi.waitFor(
         () => {
@@ -279,9 +286,9 @@ describe('the formula authoring tools', () => {
         },
         { timeout: 10_000 },
       )
-      expect(wire.saves[0]).toHaveProperty('name', '认定分值 v2')
+      expect(wire.saves[0]).toHaveProperty('draftSourceTs')
       expect(wire.saves[0]).not.toHaveProperty('draftTests')
-      expect(wire.saves[0]).not.toHaveProperty('draftSourceTs')
+      expect(wire.saves[0]).not.toHaveProperty('name')
     } finally {
       view.unmount()
     }

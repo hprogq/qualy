@@ -1,17 +1,18 @@
-import type { HighlighterCore, ThemedToken, ThemeRegistration } from 'shiki/core'
+import type { HighlightAnswer, HighlightAsk } from './source-highlight.worker.ts'
 
 // TypeScript, coloured for reading.
 //
 // A template's source is somebody else's code being read to decide whether to
 // copy it; the editor's Monaco is a chunk of its own that such a reader should
 // never wait for. So this is the reader's half of the pair: a TextMate
-// tokenizer and nothing else - no language service, no worker, no session.
+// tokenizer and nothing else - no language service, no worker session, no
+// diagnostics.
 //
-// Taken in fine grains on purpose. The core, the JavaScript regex engine and
-// the TypeScript grammar are imported one by one, and only when a source is
-// actually on screen, so no other language, no theme collection and no
-// Oniguruma wasm reaches the browser. The whole of it arrives as its own async
-// chunk after the page has already painted its plain text.
+// This module is only the way to that tokenizer. It holds no grammar and no
+// theme: the whole of Shiki lives in the worker beside it, which is what keeps
+// a page that is being read from stalling while its source is coloured, and
+// keeps every byte of the tokenizer out of the page's own chunks until a
+// source is actually on screen.
 
 /** one coloured piece of a line; `color` is a CSS colour, already themed */
 export interface SourceToken {
@@ -21,100 +22,45 @@ export interface SourceToken {
   readonly strong?: boolean
 }
 
-/**
- * The colours, as the product's own tokens.
- *
- * Every value is a CSS variable this product already flips between light and
- * dark, so a theme change needs no second tokenization and no parallel React
- * state. The palette is deliberately short: code is black, what the language
- * owns recedes, text in quotes is green, comments are quieter still. Danger
- * and warning are not used here - in this product those two colours mean an
- * error and a warning, and syntax is neither.
- */
-const FOREGROUND = 'var(--q-foreground)'
-const RECEDED = 'var(--q-surface-muted-foreground)'
-const QUOTED = 'var(--q-success-foreground)'
-const QUIET = 'color-mix(in oklab, var(--q-muted-foreground) 75%, transparent)'
-const CONSTANT = 'color-mix(in oklab, var(--q-foreground) 75%, transparent)'
+type Waiting = (lines: readonly (readonly SourceToken[])[] | null) => void
 
-/** TextMate's bold bit, which this reader draws as the product's medium weight */
-const BOLD = 2
+const waiting = new Map<number, Waiting>()
+let asked = 0
+let worker: Worker | null = null
+/** a worker that could not be built, or that died, is never tried again */
+let refused = false
 
-const theme: ThemeRegistration = {
-  name: 'qualy-reader',
-  // a reader draws its own surface; the theme only says what the ink is
-  type: 'light',
-  colors: { 'editor.foreground': FOREGROUND, 'editor.background': 'transparent' },
-  settings: [
-    { settings: { foreground: FOREGROUND } },
-    { scope: ['comment', 'punctuation.definition.comment'], settings: { foreground: QUIET } },
-    {
-      scope: ['string', 'string.template', 'constant.character.escape', 'string.regexp'],
-      settings: { foreground: QUOTED },
-    },
-    // what is inside `${ }` is code again, and reads as code
-    {
-      scope: ['meta.template.expression', 'punctuation.definition.template-expression'],
-      settings: { foreground: FOREGROUND },
-    },
-    {
-      scope: [
-        'keyword',
-        'storage',
-        'storage.type',
-        'storage.modifier',
-        'keyword.control',
-        'keyword.operator.expression',
-        'keyword.operator.new',
-        'variable.language',
-        'support.type.primitive',
-        'entity.name.type',
-      ],
-      settings: { foreground: RECEDED, fontStyle: 'bold' },
-    },
-    {
-      scope: ['constant.numeric', 'constant.language', 'support.constant'],
-      settings: { foreground: CONSTANT },
-    },
-    // punctuation and operators hold the code together; they do not compete
-    {
-      scope: ['punctuation', 'meta.brace', 'keyword.operator'],
-      settings: { foreground: FOREGROUND },
-    },
-  ],
+const giveUp = (): void => {
+  refused = true
+  worker = null
+  for (const settle of waiting.values()) settle(null)
+  waiting.clear()
 }
 
-let opening: Promise<HighlighterCore> | null = null
-
-/**
- * The one highlighter this browser ever builds.
- *
- * Kept at module level rather than in a hook: building it compiles a grammar,
- * and a component that rebuilt it per render - or per keystroke of a source -
- * would pay that price again and again for the same answer.
- */
-const highlighter = (): Promise<HighlighterCore> =>
-  (opening ??= (async () => {
-    const [core, engine, typescript] = await Promise.all([
-      import('shiki/core'),
-      import('shiki/engine/javascript'),
-      import('@shikijs/langs/typescript'),
-    ])
-    return core.createHighlighterCore({
-      langs: [typescript.default],
-      themes: [theme],
-      // the JavaScript engine, so no wasm is fetched; a pattern it cannot
-      // compile costs that pattern's colour, never the whole reader
-      engine: engine.createJavaScriptRegexEngine({ forgiving: true }),
+const open = (): Worker | null => {
+  if (refused) return null
+  if (worker !== null) return worker
+  try {
+    const started = new Worker(new URL('./source-highlight.worker.ts', import.meta.url), {
+      type: 'module',
     })
-  })())
-
-const pieces = (tokens: readonly ThemedToken[]): readonly SourceToken[] =>
-  tokens.map((token) => ({
-    text: token.content,
-    ...(token.color === undefined ? {} : { color: token.color }),
-    ...(((token.fontStyle ?? 0) & BOLD) === 0 ? {} : { strong: true }),
-  }))
+    started.onmessage = (event: MessageEvent<HighlightAnswer>) => {
+      const settle = waiting.get(event.data.id)
+      if (settle === undefined) return
+      waiting.delete(event.data.id)
+      settle(event.data.lines)
+    }
+    // a worker that fails to load or throws leaves the reader with plain text,
+    // which is the same answer as a grammar it could not read
+    started.onerror = giveUp
+    started.onmessageerror = giveUp
+    worker = started
+    return started
+  } catch {
+    refused = true
+    return null
+  }
+}
 
 /**
  * The source as coloured lines, or null where it could not be coloured.
@@ -123,14 +69,15 @@ const pieces = (tokens: readonly ThemedToken[]): readonly SourceToken[] =>
  * already works, so a failure here leaves plain text on screen and nothing in
  * front of the person reading it.
  */
-export const highlightFormulaSource = async (
+export const highlightFormulaSource = (
   source: string,
 ): Promise<readonly (readonly SourceToken[])[] | null> => {
-  try {
-    const shiki = await highlighter()
-    const { tokens } = shiki.codeToTokens(source, { lang: 'typescript', theme: theme.name! })
-    return tokens.map(pieces)
-  } catch {
-    return null
-  }
+  const started = open()
+  if (started === null) return Promise.resolve(null)
+  const id = ++asked
+  return new Promise<readonly (readonly SourceToken[])[] | null>((resolve) => {
+    waiting.set(id, resolve)
+    const ask: HighlightAsk = { id, source }
+    started.postMessage(ask)
+  })
 }

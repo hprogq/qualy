@@ -300,9 +300,16 @@ export default function FormulaListPage() {
                               <span {...stylex.props(l.tag)}>{format(m.statusArchived)}</span>
                             )}
                           </span>
-                          {row.description !== null && row.description !== '' && (
-                            <span {...stylex.props(l.line)}>{row.description}</span>
-                          )}
+                          <span
+                            {...stylex.props(
+                              l.line,
+                              (row.description === null || row.description === '') && l.lineNone,
+                            )}
+                          >
+                            {row.description === null || row.description === ''
+                              ? format(m.descriptionNone)
+                              : row.description}
+                          </span>
                           <span {...stylex.props(l.phoneMeta)}>
                             {published}
                             <span>{updated}</span>

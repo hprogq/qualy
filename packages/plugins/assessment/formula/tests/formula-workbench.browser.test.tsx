@@ -82,6 +82,7 @@ const open = (
           wrote.tries?.push(request.payload.cases[0]!.input)
           return Effect.succeed({ ...contract, cases: [{ clientId: 'try', actual: '3.5' }] })
         },
+        listFormulaShareOptions: { nodes: [], truncated: false },
         listFormulaDraftRevisions: {
           items: [
             {
@@ -135,7 +136,7 @@ const draftModel = async (): Promise<monaco.editor.ITextModel> => {
         monaco.editor
           .getEditors()
           .map((editor) => editor.getModel())
-          .find((model) => model?.getValue().includes('saved_by_hand') === true) ?? null
+          .find((model) => model?.uri.toString().endsWith('/draft/formula.ts') === true) ?? null
       if (found === null) throw new Error('no draft editor yet')
     },
     { timeout: 10_000 },
@@ -309,7 +310,7 @@ describe('the formula workbench', () => {
   it('offers back the edits this browser kept, and puts them in the editor', async () => {
     await keepLocalDraft({
       functionId: FN_ID,
-      name: '本机改过的名字',
+      name: '认定分值',
       source: 'const kept_in_browser = 2\n',
       tests: [{ name: 'seed', inputText: '{"base":"1","bonus":0}', expected: '1' }],
       baseRevision: 3,
@@ -319,9 +320,11 @@ describe('the formula workbench', () => {
     try {
       await expect.element(page.getByTestId('formula-local-draft')).toBeVisible()
       await page.getByTestId('formula-local-draft-take').click()
-      await expect
-        .element(page.getByRole('textbox', { name: '名称', exact: true }))
-        .toHaveValue('本机改过的名字')
+      // the code this browser kept is the editor's again, and unsaved
+      const model = await draftModel()
+      await vi.waitFor(() => expect(model.getValue()).toBe('const kept_in_browser = 2\n'), {
+        timeout: 5_000,
+      })
       await expect
         .element(page.getByTestId('formula-save-state'))
         .toHaveAttribute('data-state', 'dirty')

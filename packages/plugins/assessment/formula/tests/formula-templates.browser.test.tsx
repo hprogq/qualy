@@ -142,6 +142,31 @@ describe('the formula template library', () => {
       .toHaveTextContent(`/assessment/formulas/${NEW_FUNCTION_ID}`)
   })
 
+  it('opens the examples the version was published with', async () => {
+    // the count on the detail card is the way in: examples are the fastest
+    // read of what the formula does, and there is nowhere else to see them
+    open({
+      route: `/assessment/formula-templates/${VERSION_ID}`,
+      detail: {
+        tests: [
+          { name: '国家级一等奖', input: { level: 'national' }, expected: '8' },
+          { name: '校级', input: { level: 'school' }, expected: '2' },
+        ],
+        inputSchema: {
+          type: 'object',
+          properties: { level: { type: 'string' } },
+          required: ['level'],
+          additionalProperties: false,
+          'x-qualy-order': ['level'],
+        },
+      },
+    })
+    await page.getByTestId('template-examples-open').click()
+    await expect.element(page.getByTestId('template-examples')).toBeVisible()
+    expect(document.querySelectorAll('[data-testid="template-example"]')).toHaveLength(2)
+    await expect.element(page.getByText('国家级一等奖')).toBeVisible()
+  }, 30_000)
+
   it('reads the source out exactly, whatever the highlighter makes of it', async () => {
     open({
       route: `/assessment/formula-templates/${VERSION_ID}`,
@@ -158,13 +183,14 @@ describe('the formula template library', () => {
     // before any colour has arrived, the whole source is already on screen
     expect(code()).toBe(RICH_SOURCE.replace(/\n$/, ''))
 
-    // and once it has, the text is still the text
+    // and once the colour is here, the text is exactly the source
     await vi.waitFor(
       () => {
-        const coloured = document.querySelectorAll(
-          '[data-testid="template-source"] code span[style]',
-        )
-        if (coloured.length === 0) throw new Error('nothing coloured yet')
+        const source = document.querySelector('[data-testid="template-source"]')
+        if (source?.getAttribute('data-state') !== 'read')
+          throw new Error('still waiting for colour')
+        if (source.querySelectorAll('code span[style]').length === 0)
+          throw new Error('nothing coloured')
       },
       { timeout: 20_000 },
     )

@@ -1,4 +1,5 @@
 import FormulaEditorPage from '../src/client/FormulaEditorPage.tsx'
+import { monaco } from '../src/client/monaco-setup.ts'
 import { MINIMAL_EXAMPLE } from '../src/client/starter-source.ts'
 import { Effect } from 'effect'
 import { describe, expect, it, vi } from 'vitest'
@@ -289,9 +290,23 @@ describe('a formula’s draft and its history', () => {
     const { wire, screen } = open()
     const view = await screen
     try {
-      const name = page.getByRole('textbox', { name: '名称', exact: true })
-      await expect.element(name).toHaveValue('认定分值')
-      await name.fill('认定分值（修订中）')
+      const model = await vi.waitFor(
+        () => {
+          const found = monaco.editor
+            .getEditors()
+            .map((editor) => editor.getModel())
+            .find((one) => one?.uri.toString().endsWith('/draft/formula.ts') === true)
+          if (found === undefined || found === null) throw new Error('no draft editor yet')
+          return found
+        },
+        { timeout: 20_000 },
+      )
+      const edited = `${model.getValue()}// being revised\n`
+      model.pushEditOperations(
+        null,
+        [{ range: model.getFullModelRange(), text: edited }],
+        () => null,
+      )
       await expect
         .element(page.getByTestId('formula-save-state'))
         .toHaveAttribute('data-state', 'dirty')
@@ -308,7 +323,7 @@ describe('a formula’s draft and its history', () => {
       expect(wire.restores).toEqual([])
 
       await page.getByTestId('formula-back-to-draft').click()
-      await expect.element(name).toHaveValue('认定分值（修订中）')
+      await vi.waitFor(() => expect(model.getValue()).toBe(edited), { timeout: 10_000 })
 
       await openVersions()
       await page.getByTestId('formula-release').click()
@@ -316,7 +331,7 @@ describe('a formula’s draft and its history', () => {
       await page.getByRole('button', { name: '替换当前草稿' }).click()
       await vi.waitFor(() => expect(wire.restores.length).toBe(1), { timeout: 5_000 })
       // the restored draft is the editor's now, the edit it replaced gone
-      await expect.element(name).toHaveValue('认定分值')
+      await vi.waitFor(() => expect(model.getValue()).not.toBe(edited), { timeout: 10_000 })
     } finally {
       view.unmount()
     }
