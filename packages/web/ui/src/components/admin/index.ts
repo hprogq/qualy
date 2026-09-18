@@ -4,7 +4,7 @@
 //
 // One public module (`@qualy/ui/admin`), split by migration unit: page
 // structure, async states, form fields, overlays.
-export { PageHeader, Panel } from './page.tsx'
+export { BannerBack, PageHeader, Panel } from './page.tsx'
 export { AsyncSection, Feedback } from './async.tsx'
 export { RequiredMark, Field, CheckboxGroup, RadioGroup, type CheckboxOption } from './field.tsx'
 export { FormDialog, SidePanel, ConfirmDialog } from './dialog.tsx'

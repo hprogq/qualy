@@ -1,9 +1,36 @@
 import type { ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
+import { ArrowLeftIcon } from 'lucide-react'
 import type { StyleXStyles } from '@stylexjs/stylex'
 import { tokens } from '../../theme/tokens.stylex.ts'
 
 const styles = stylex.create({
+  // sized to the line it sits in, not to itself: no vertical padding, no
+  // border, and the same font and leading as the prose around it
+  bannerBack: {
+    display: 'inline-flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 0,
+    borderRadius: 4,
+    backgroundColor: 'transparent',
+    padding: 0,
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    fontFamily: 'inherit',
+    color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
+    textDecorationLine: { default: 'none', ':hover': 'underline' },
+    textUnderlineOffset: 3,
+    cursor: 'pointer',
+  },
+  bannerBackIcon: { flexShrink: 0, width: 14, height: 14 },
+  bannerBackWords: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
   header: {
     display: 'flex',
     flexWrap: 'wrap',
@@ -173,5 +200,49 @@ export function Panel({
       </div>
       <div {...stylex.props(styles.panelBody)}>{children}</div>
     </section>
+  )
+}
+
+/**
+ * The way back out of a banner, and where the reader is.
+ *
+ * One pressable line rather than an arrow with words beside it: an arrow
+ * alone is a 14px target that makes the reader guess where it goes, and only
+ * the arrow was pressable. Whatever names the place - a label, a trail of
+ * groups - goes inside, and the whole of it is the press.
+ *
+ * Every measurement here is the description line's own. A banner's
+ * description slot is one 1.25rem line of 0.875rem text; a control carrying
+ * its own font, padding or border makes that line taller, and the band
+ * visibly grows the moment somebody opens a sub-screen and shrinks again
+ * when they leave. Three screens had each written their own version of this
+ * and two of them jumped.
+ */
+export function BannerBack({
+  label,
+  onBack,
+  children,
+}: {
+  /** where pressing it lands, said for a reader who cannot see the arrow */
+  label: string
+  onBack: () => void
+  /** what names the place; the label itself when nothing is given */
+  children?: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      data-slot="banner-back"
+      aria-label={label}
+      onClick={onBack}
+      {...stylex.props(styles.bannerBack)}
+    >
+      <ArrowLeftIcon aria-hidden {...stylex.props(styles.bannerBackIcon)} />
+      <span {...stylex.props(styles.bannerBackWords)}>
+        {children === undefined || (Array.isArray(children) && children.length === 0)
+          ? label
+          : children}
+      </span>
+    </button>
   )
 }
