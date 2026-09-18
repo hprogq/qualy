@@ -141,6 +141,13 @@ export interface PreviewInput {
     string,
     { readonly id: string; readonly displayName: string; readonly businessNo: string | null }
   >
+  /**
+   * The columns to judge by: the question's own, placed where the file put
+   * them, proven by `provenColumns`. Deliberately not read off
+   * `parsed.metadata` - that is the file's word, and what a column means is
+   * not the file's to say.
+   */
+  readonly columns: readonly TemplateColumn[]
   /** the question's own fields and the determination's, from the frozen revision */
   readonly evidenceSchemas: ReadonlyMap<string, AtomicSchema>
   readonly recognitionSchemas: ReadonlyMap<string, AtomicSchema>
@@ -172,8 +179,7 @@ export const judgeRows = (input: PreviewInput): readonly PreviewRow[] => {
     const payload: Record<string, unknown> = Object.create(null)
     const recognition: Record<string, unknown> = Object.create(null)
 
-    const matched =
-      row.businessNo === '' ? undefined : input.reachable.get(row.businessNo)
+    const matched = row.businessNo === '' ? undefined : input.reachable.get(row.businessNo)
     if (row.businessNo === '') {
       issues.push(issue('error', 'businessNo', 'business-no-required'))
     } else if (matched === undefined) {
@@ -192,8 +198,8 @@ export const judgeRows = (input: PreviewInput): readonly PreviewRow[] => {
       issues.push(issue('warning', 'displayName', 'name-mismatch'))
     }
 
-    for (const column of input.parsed.metadata.columns) {
-      const text = Object.hasOwn(row.cells, column.key) ? row.cells[column.key]! : ''
+    for (const column of input.columns) {
+      const text = Object.hasOwn(row.cells, column.column) ? row.cells[column.column]! : ''
       const schema =
         column.kind === 'evidence'
           ? input.evidenceSchemas.get(column.key)

@@ -17,7 +17,11 @@ import { AdministrativeEntryImportRow, EntryRevision } from '../src/db/entities.
 // hundred and twenty times in one file, and is owed all at once.
 
 const column = (over: Partial<TemplateColumn> & Pick<TemplateColumn, 'key' | 'type'>) =>
-  ({ column: 'C', kind: 'evidence', ...over }) as TemplateColumn
+  ({ column: 'C', kind: 'evidence', header: over.key, ...over }) as TemplateColumn
+
+/** the columns as a template would place them: C onwards, one letter each */
+const placed = (columns: readonly TemplateColumn[]): readonly TemplateColumn[] =>
+  columns.map((one, at) => ({ ...one, column: String.fromCharCode(67 + at) }))
 
 const parsed = (
   columns: readonly TemplateColumn[],
@@ -30,16 +34,29 @@ const parsed = (
   }[],
 ): ParsedWorkbook => ({
   metadata: {
-    templateVersion: 1,
+    templateVersion: 2,
     batchId: 'b',
     itemId: 'i',
     itemRevisionId: 'r',
-    columns,
+    locale: 'zh-CN',
+    columns: columns.map(({ column: at, kind, key }) => ({ column: at, kind, key })),
   },
-  rows,
+  headers: Object.fromEntries(columns.map((one) => [one.column, one.header])),
+  // the fixtures write cells under the field key, which reads better; the
+  // parser hands them over under the column letter, so translate once here
+  rows: rows.map((one) => ({
+    ...one,
+    cells: Object.fromEntries(
+      Object.entries(one.cells).map(([key, text]) => [
+        columns.find((found) => found.key === key)?.column ?? key,
+        text,
+      ]),
+    ),
+  })),
 })
 
 const base = (over: Partial<PreviewInput> & Pick<PreviewInput, 'parsed'>): PreviewInput => ({
+  columns: [],
   defaultBasis: '校发〔2026〕7 号',
   reachable: new Map(),
   evidenceSchemas: new Map(),
@@ -246,8 +263,11 @@ describe('judging a whole workbook', () => {
   it('refuses a determination the question requires and the file left out', () => {
     const rows = judgeRows(
       base({
+        columns: placed([
+          column({ key: 'rec-level', type: 'choice', kind: 'recognition', choices: [] }),
+        ]),
         parsed: parsed(
-          [column({ key: 'rec-level', type: 'choice', kind: 'recognition', choices: [] })],
+          placed([column({ key: 'rec-level', type: 'choice', kind: 'recognition', choices: [] })]),
           [{ rowNo: 2, businessNo: '0001', displayName: '张三', cells: {}, basis: '文件' }],
         ),
         reachable: reachable('0001', 'p1', '张三'),
@@ -285,26 +305,24 @@ describe('judging a whole workbook', () => {
   it('warns about the same fact twice, and is not fooled by a different basis', () => {
     const rows = judgeRows(
       base({
-        parsed: parsed(
-          [column({ key: 'summary', type: 'text' })],
-          [
-            {
-              rowNo: 2,
-              businessNo: '0001',
-              displayName: '张三',
-              cells: { summary: '入伍' },
-              basis: '甲',
-            },
-            {
-              rowNo: 3,
-              businessNo: '0001',
-              displayName: '张三',
-              cells: { summary: '入伍' },
-              // a different basis is not a different fact
-              basis: '乙',
-            },
-          ],
-        ),
+        columns: placed([column({ key: 'summary', type: 'text' })]),
+        parsed: parsed(placed([column({ key: 'summary', type: 'text' })]), [
+          {
+            rowNo: 2,
+            businessNo: '0001',
+            displayName: '张三',
+            cells: { summary: '入伍' },
+            basis: '甲',
+          },
+          {
+            rowNo: 3,
+            businessNo: '0001',
+            displayName: '张三',
+            cells: { summary: '入伍' },
+            // a different basis is not a different fact
+            basis: '乙',
+          },
+        ]),
         reachable: reachable('0001', 'p1', '张三'),
         participantUserIds: new Map([['p1', 'u1']]),
       }),
@@ -318,8 +336,15 @@ describe('judging a whole workbook', () => {
   it('collects every mistake rather than stopping at the first', () => {
     const rows = judgeRows(
       base({
+        columns: placed([
+          column({ key: 'when', type: 'date' }),
+          column({ key: 'score', type: 'integer' }),
+        ]),
         parsed: parsed(
-          [column({ key: 'when', type: 'date' }), column({ key: 'score', type: 'integer' })],
+          placed([
+            column({ key: 'when', type: 'date' }),
+            column({ key: 'score', type: 'integer' }),
+          ]),
           [
             {
               rowNo: 2,

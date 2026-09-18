@@ -26,10 +26,7 @@ export class SourceUnreadable extends Error {
 /** how long a signed url is given before the read is abandoned */
 const FETCH_TIMEOUT_MS = 20_000
 
-const collect = async (
-  body: AsyncIterable<Uint8Array>,
-  ceiling: number,
-): Promise<Uint8Array> => {
+const collect = async (body: AsyncIterable<Uint8Array>, ceiling: number): Promise<Uint8Array> => {
   const parts: Uint8Array[] = []
   let total = 0
   for await (const part of body) {
@@ -56,7 +53,9 @@ const collect = async (
  * never logged, and a non-2xx from it is the store failing rather than the
  * caller being wrong about anything.
  */
-export const readSourceBytes = (open: AttachmentOpen): Effect.Effect<Uint8Array, SourceUnreadable> =>
+export const readSourceBytes = (
+  open: AttachmentOpen,
+): Effect.Effect<Uint8Array, SourceUnreadable> =>
   Effect.tryPromise({
     try: async () => {
       const declared = Number(open.meta.size)

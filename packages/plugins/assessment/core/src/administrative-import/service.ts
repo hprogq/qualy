@@ -56,6 +56,7 @@ import {
   standingOfImports,
   type ImportStanding,
 } from './db.ts'
+import { provenColumns } from './columns.ts'
 import { judgeRows, summarise } from './preview.ts'
 import { readSourceBytes, SourceUnreadable } from './read-source.ts'
 import {
@@ -392,10 +393,7 @@ export interface AdministrativeImportMethods {
     as: Principal,
   ) => Effect.Effect<
     { affectedCount: number },
-    | AdministrativeImportNotFound
-    | BatchReadOnly
-    | EntryActionRefused
-    | AdministrativeImportInvalid
+    AdministrativeImportNotFound | BatchReadOnly | EntryActionRefused | AdministrativeImportInvalid
   >
 }
 
@@ -632,16 +630,32 @@ export const makeAdministrativeImportMethods = (
     )
 
     const recognitionFields = recognitionFormFields(ready.plan) ?? []
+    const evidenceFields = evidenceFieldsOf(ready.driver, ready.revision.formConfig, ready.context)
+    // What each column MEANS, decided from the frozen revision rather than
+    // read out of the file. The workbook may say where a field was put; a
+    // hidden sheet saying what a word stands for is a hidden sheet rewriting
+    // the reading the person saw.
+    const layout = provenColumns(parsed, {
+      locale: parsed.metadata.locale,
+      evidence: evidenceFields,
+      recognition: recognitionFields.map((field) => ({ id: field.id, schema: field.schema })),
+    })
+    if ('refusals' in layout) {
+      return yield* new AdministrativeImportInvalid({
+        issues: layout.refusals.map((refusal) => ({
+          rowNo: null,
+          field: refusal.field,
+          severity: 'error' as const,
+          reason: refusal.reason,
+        })),
+      })
+    }
     const rows = judgeRows({
       parsed,
+      columns: layout.columns,
       defaultBasis: input.defaultBasis ?? '',
       reachable,
-      evidenceSchemas: new Map(
-        evidenceFieldsOf(ready.driver, ready.revision.formConfig, ready.context).map((one) => [
-          one.key,
-          one.schema,
-        ]),
-      ),
+      evidenceSchemas: new Map(evidenceFields.map((one) => [one.key, one.schema])),
       recognitionSchemas: new Map(recognitionFields.map((one) => [one.id, one.schema as never])),
       requiredRecognitionIds: recognitionFields.map((one) => one.id),
       held,
@@ -713,7 +727,8 @@ export const makeAdministrativeImportMethods = (
             ...row.issues,
             ...wrong.map((issue) => ({
               severity: 'error' as const,
-              field: issue.recognitionId === '' ? 'recognition' : `recognition.${issue.recognitionId}`,
+              field:
+                issue.recognitionId === '' ? 'recognition' : `recognition.${issue.recognitionId}`,
               reason: issue.reason,
             })),
           ],
@@ -806,9 +821,7 @@ export const makeAdministrativeImportMethods = (
     Effect.gen(function* () {
       const found = yield* visibleImport(tenantId, importId, as)
       const reaches = yield* dieQuery(
-        withDb(
-          importReachable({ tenantId, batchId: found.batchId, importId, userId: as.userId }),
-        ),
+        withDb(importReachable({ tenantId, batchId: found.batchId, importId, userId: as.userId })),
       )
       if (!reaches) {
         return yield* new AccessDenied({
@@ -838,56 +851,53 @@ export const makeAdministrativeImportMethods = (
     })
 
   const prepareAdministrativeImportUpload: AdministrativeImportMethods['prepareAdministrativeImportUpload'] =
-    Effect.fn('Assessment.prepareAdministrativeImportUpload')(function* (
-      tenantId,
-      batchId,
-      input,
-      as,
-    ) {
-      const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
-      if (!batch) return yield* new BatchNotFound()
-      if (batch.status === 'archived') return yield* new BatchReadOnly()
-      const ready = yield* administrativeQuestion(tenantId, input.itemId, as)
-      if (ready.item.batchId !== batchId) return yield* new ItemNotFound()
-      return yield* storage
-        .prepareUpload({
-          tenantId,
-          ownerUserId: as.userId,
-          filename: input.filename,
-          declaredMime: input.declaredMime,
-          size: BigInt(input.size),
-        })
-        .pipe(
-          Effect.catchTags({
-            STORAGE_UPLOAD_REFUSED: (refused) =>
-              new EntryActionRefused({ action: 'import', reason: refused.reason }),
-            STORAGE_BACKEND_UNAVAILABLE: (error) => Effect.die(error),
-          }),
-        )
-    })
+    Effect.fn('Assessment.prepareAdministrativeImportUpload')(
+      function* (tenantId, batchId, input, as) {
+        const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
+        if (!batch) return yield* new BatchNotFound()
+        if (batch.status === 'archived') return yield* new BatchReadOnly()
+        const ready = yield* administrativeQuestion(tenantId, input.itemId, as)
+        if (ready.item.batchId !== batchId) return yield* new ItemNotFound()
+        return yield* storage
+          .prepareUpload({
+            tenantId,
+            ownerUserId: as.userId,
+            filename: input.filename,
+            declaredMime: input.declaredMime,
+            size: BigInt(input.size),
+          })
+          .pipe(
+            Effect.catchTags({
+              STORAGE_UPLOAD_REFUSED: (refused) =>
+                new EntryActionRefused({ action: 'import', reason: refused.reason }),
+              STORAGE_BACKEND_UNAVAILABLE: (error) => Effect.die(error),
+            }),
+          )
+      },
+    )
 
   const completeAdministrativeImportUpload: AdministrativeImportMethods['completeAdministrativeImportUpload'] =
-    Effect.fn('Assessment.completeAdministrativeImportUpload')(function* (
-      tenantId,
-      reservationId,
-      as,
-    ) {
-      return yield* storage.completeUpload({ tenantId, ownerUserId: as.userId, reservationId }).pipe(
-        Effect.map((meta) => ({
-          id: meta.id,
-          filename: meta.filename,
-          declaredMime: meta.declaredMime,
-          size: meta.size.toString(),
-          status: meta.status,
-        })),
-        Effect.catchTags({
-          STORAGE_RESERVATION_NOT_FOUND: () => new AttachmentUnavailable(),
-          STORAGE_RESERVATION_INVALID: (refused) =>
-            new EntryActionRefused({ action: 'import', reason: refused.reason }),
-          STORAGE_BACKEND_UNAVAILABLE: (error) => Effect.die(error),
-        }),
-      )
-    })
+    Effect.fn('Assessment.completeAdministrativeImportUpload')(
+      function* (tenantId, reservationId, as) {
+        return yield* storage
+          .completeUpload({ tenantId, ownerUserId: as.userId, reservationId })
+          .pipe(
+            Effect.map((meta) => ({
+              id: meta.id,
+              filename: meta.filename,
+              declaredMime: meta.declaredMime,
+              size: meta.size.toString(),
+              status: meta.status,
+            })),
+            Effect.catchTags({
+              STORAGE_RESERVATION_NOT_FOUND: () => new AttachmentUnavailable(),
+              STORAGE_RESERVATION_INVALID: (refused) =>
+                new EntryActionRefused({ action: 'import', reason: refused.reason }),
+              STORAGE_BACKEND_UNAVAILABLE: (error) => Effect.die(error),
+            }),
+          )
+      },
+    )
 
   const previewAdministrativeImport: AdministrativeImportMethods['previewAdministrativeImport'] =
     Effect.fn('Assessment.previewAdministrativeImport')(function* (tenantId, batchId, input, as) {
@@ -912,7 +922,9 @@ export const makeAdministrativeImportMethods = (
         )
       }
       if (judged.summary.rows === 0) {
-        return yield* refusalOf([{ rowNo: null, field: null, severity: 'error', reason: 'no-rows' }])
+        return yield* refusalOf([
+          { rowNo: null, field: null, severity: 'error', reason: 'no-rows' },
+        ])
       }
       // A file the server still has warnings about, that nobody confirmed,
       // is refused here rather than silently imported: the confirmation is
@@ -1099,78 +1111,77 @@ export const makeAdministrativeImportMethods = (
           ),
         ),
       )
-      return rows.map(
-        (row): AdministrativeImportView => ({
-          id: row.id,
-          item: { id: row.itemId, title: row.itemTitle },
-          filename: row.filename,
-          actor: personOf(row.actorId, row.actorName),
-          createdAt: new Date(row.createdAt).toISOString(),
-          importedCount: row.importedCount,
-          standing: standingOf(standing.get(row.id)),
-          cursor: [row.cursorAt, row.id] as const,
-        }),
-      )
+      return rows.map((row): AdministrativeImportView => ({
+        id: row.id,
+        item: { id: row.itemId, title: row.itemTitle },
+        filename: row.filename,
+        actor: personOf(row.actorId, row.actorName),
+        createdAt: new Date(row.createdAt).toISOString(),
+        importedCount: row.importedCount,
+        standing: standingOf(standing.get(row.id)),
+        cursor: [row.cursorAt, row.id] as const,
+      }))
     })
 
-  const getAdministrativeImport: AdministrativeImportMethods['getAdministrativeImport'] =
-    Effect.fn('Assessment.getAdministrativeImport')(function* (tenantId, importId, as) {
-      const found = yield* visibleImport(tenantId, importId, as)
-      const [standing, events, candidates] = yield* Effect.all([
-        dieQuery(withDb(standingOfImports(tenantId, [importId]))),
-        dieQuery(withDb(eventsOfImport(tenantId, importId))),
-        dieQuery(
-          withDb(
-            reversalCandidatesOf(tenantId, importId, { batchId: found.batchId, userId: as.userId }),
-          ),
+  const getAdministrativeImport: AdministrativeImportMethods['getAdministrativeImport'] = Effect.fn(
+    'Assessment.getAdministrativeImport',
+  )(function* (tenantId, importId, as) {
+    const found = yield* visibleImport(tenantId, importId, as)
+    const [standing, events, candidates] = yield* Effect.all([
+      dieQuery(withDb(standingOfImports(tenantId, [importId]))),
+      dieQuery(withDb(eventsOfImport(tenantId, importId))),
+      dieQuery(
+        withDb(
+          reversalCandidatesOf(tenantId, importId, { batchId: found.batchId, userId: as.userId }),
         ),
-      ])
-      // Offered only when pressing it could work: something still in effect,
-      // a round that is not archived, every person it would touch within
-      // this reader's reach and admitted by the phase. The reversal asks all
-      // of it again; this only keeps a button off the screen that would
-      // certainly be refused.
-      const live = candidates.filter((one) => one.status !== 'voided')
-      const batch = yield* dieQuery(withDb(oneBatch(tenantId, found.batchId)))
-      const gate = yield* deps
-        .recordGate(as, found.batchId, found.itemId)
-        .pipe(Effect.catchTag('ASSESSMENT_BATCH_NOT_FOUND', Effect.die))
-      const reverse =
-        live.length > 0 &&
-        batch !== null &&
-        batch.status !== 'archived' &&
-        live.every(
-          (one) =>
-            one.reached && one.participantUserId !== as.userId && gate(one.participantId).allowed,
-        )
-      return {
-        id: found.id,
-        batchId: found.batchId,
-        item: { id: found.itemId, title: found.itemTitle },
-        itemRevision: { id: found.itemRevisionId, revisionNo: found.itemRevisionNo },
-        filename: found.filenameSnapshot,
-        size: found.sizeBytes,
-        integrity:
-          found.contentHashAlgorithm === null || found.contentHash === null
-            ? null
-            : { algorithm: found.contentHashAlgorithm, value: found.contentHash },
-        actor: personOf(found.actorId, found.actorName),
-        createdAt: new Date(found.createdAt).toISOString(),
-        defaultBasis: found.defaultBasis,
-        importedCount: found.importedCount,
-        standing: standingOf(standing.get(importId)),
-        reversals: events
-          .filter((event) => event.kind === 'reversed')
-          .map((event) => ({
-            id: event.id,
-            actor: personOf(event.actorId, event.actorName),
-            reason: event.reason,
-            affectedCount: event.affectedCount,
-            createdAt: new Date(event.createdAt).toISOString(),
-          })),
-        capabilities: { reverse },
-      }
-    })
+      ),
+    ])
+    // Offered only when pressing it could work: something still in effect,
+    // a round that is not archived, every person it would touch within
+    // this reader's reach and admitted by the phase. The reversal asks all
+    // of it again; this only keeps a button off the screen that would
+    // certainly be refused.
+    const live = candidates.filter((one) => one.status !== 'voided')
+    const batch = yield* dieQuery(withDb(oneBatch(tenantId, found.batchId)))
+    const gate = yield* deps
+      .recordGate(as, found.batchId, found.itemId)
+      .pipe(Effect.catchTag('ASSESSMENT_BATCH_NOT_FOUND', Effect.die))
+    const reverse =
+      live.length > 0 &&
+      batch !== null &&
+      batch.status !== 'archived' &&
+      live.every(
+        (one) =>
+          one.reached && one.participantUserId !== as.userId && gate(one.participantId).allowed,
+      )
+    return {
+      id: found.id,
+      batchId: found.batchId,
+      item: { id: found.itemId, title: found.itemTitle },
+      itemRevision: { id: found.itemRevisionId, revisionNo: found.itemRevisionNo },
+      filename: found.filenameSnapshot,
+      size: found.sizeBytes,
+      integrity:
+        found.contentHashAlgorithm === null || found.contentHash === null
+          ? null
+          : { algorithm: found.contentHashAlgorithm, value: found.contentHash },
+      actor: personOf(found.actorId, found.actorName),
+      createdAt: new Date(found.createdAt).toISOString(),
+      defaultBasis: found.defaultBasis,
+      importedCount: found.importedCount,
+      standing: standingOf(standing.get(importId)),
+      reversals: events
+        .filter((event) => event.kind === 'reversed')
+        .map((event) => ({
+          id: event.id,
+          actor: personOf(event.actorId, event.actorName),
+          reason: event.reason,
+          affectedCount: event.affectedCount,
+          createdAt: new Date(event.createdAt).toISOString(),
+        })),
+      capabilities: { reverse },
+    }
+  })
 
   const listAdministrativeImportRows: AdministrativeImportMethods['listAdministrativeImportRows'] =
     Effect.fn('Assessment.listAdministrativeImportRows')(function* (tenantId, importId, page, as) {

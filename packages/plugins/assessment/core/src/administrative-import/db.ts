@@ -46,12 +46,7 @@ export const resolveImportParticipants = (input: {
             .innerJoin('User as u', (join) =>
               join.onRef('u.tenantId', '=', 'p.tenantId').onRef('u.id', '=', 'p.userId'),
             )
-            .select([
-              'p.id as participantId',
-              'p.userId',
-              'u.displayName',
-              'u.businessNo',
-            ])
+            .select(['p.id as participantId', 'p.userId', 'u.displayName', 'u.businessNo'])
             .where('p.tenantId', '=', input.tenantId)
             .where('p.batchId', '=', input.batchId)
             .where('p.status', '=', 'active')
@@ -205,7 +200,12 @@ export const insertImportEvent = (input: {
   affectedCount: number
 }) =>
   db
-    .query((k) => k.insertInto('AdministrativeEntryImportEvent').values(input as never).execute())
+    .query((k) =>
+      k
+        .insertInto('AdministrativeEntryImportEvent')
+        .values(input as never)
+        .execute(),
+    )
     .pipe(Effect.asVoid)
 
 export const importOf = (tenantId: string, importId: string) =>

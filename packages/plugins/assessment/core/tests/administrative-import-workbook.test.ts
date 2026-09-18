@@ -9,6 +9,7 @@ import {
   DATA_SHEET,
   META_SHEET,
   parseAdministrativeWorkbook,
+  templateLayout,
   TEMPLATE_VERSION,
   WorkbookUnreadable,
   type TemplateSpec,
@@ -65,14 +66,22 @@ describe('the administrative import workbook', () => {
     expect(parsed.metadata.templateVersion).toBe(TEMPLATE_VERSION)
     expect(parsed.metadata.batchId).toBe(BATCH)
     expect(parsed.metadata.itemRevisionId).toBe(REVISION)
-    // identity first, then the question's own fields, then the determination
+    // the FILE says only where each field is; what a field is belongs to the
+    // question, and the hidden sheet is not allowed to have an opinion on it
     expect(parsed.metadata.columns).toEqual([
-      { column: 'C', kind: 'evidence', key: 'summary', type: 'text' },
+      { column: 'C', kind: 'evidence', key: 'summary' },
+      { column: 'D', kind: 'recognition', key: 'rec-level' },
+    ])
+    expect(parsed.metadata.locale).toBe('zh-CN')
+    // identity first, then the question's own fields, then the determination
+    expect(templateLayout(spec()).columns).toEqual([
+      { column: 'C', kind: 'evidence', key: 'summary', type: 'text', header: '事项说明' },
       {
         column: 'D',
         kind: 'recognition',
         key: 'rec-level',
         type: 'choice',
+        header: '认定：级别',
         choices: [
           { value: 'national', label: 'national' },
           { value: 'provincial', label: 'provincial' },
@@ -91,8 +100,10 @@ describe('the administrative import workbook', () => {
     // the whole reason the column is formatted as text: 0012340 is an
     // identifier, and 12340 is a different person or nobody
     expect(parsed.rows[0]!.businessNo).toBe('0012340')
-    expect(parsed.rows[0]!.cells['summary']).toBe('入伍')
-    expect(parsed.rows[0]!.cells['rec-level']).toBe('national')
+    // by column letter: the field key is the hidden sheet's claim, and the
+    // parser is not the thing that gets to believe it
+    expect(parsed.rows[0]!.cells['C']).toBe('入伍')
+    expect(parsed.rows[0]!.cells['D']).toBe('national')
     expect(parsed.rows[0]!.basis).toBe('校发〔2026〕7 号')
     expect(parsed.rows[0]!.rowNo).toBe(2)
   })
@@ -117,46 +128,44 @@ describe('the administrative import workbook', () => {
   })
 
   it('tells two choices with the same word apart', async () => {
-    const bytes = await buildAdministrativeWorkbook(
-      spec({
-        recognition: [
-          {
-            id: 'rec-level',
-            schema: {
-              type: 'string',
-              enum: ['national', 'national-special'],
-              title: '级别',
-              // both print the same word, which a file cannot carry
-              'x-qualy-enumLabels': { national: '国家级', 'national-special': '国家级' },
-            } as never,
-          },
-        ],
-      }),
-    )
-    const parsed = await parseAdministrativeWorkbook(bytes)
-    expect(parsed.metadata.columns[1]!.choices).toEqual([
+    const colliding = spec({
+      recognition: [
+        {
+          id: 'rec-level',
+          schema: {
+            type: 'string',
+            enum: ['national', 'national-special'],
+            title: '级别',
+            // both print the same word, which a file cannot carry
+            'x-qualy-enumLabels': { national: '国家级', 'national-special': '国家级' },
+          } as never,
+        },
+      ],
+    })
+    const bytes = await buildAdministrativeWorkbook(colliding)
+    await parseAdministrativeWorkbook(bytes)
+    expect(templateLayout(colliding).columns[1]!.choices).toEqual([
       { value: 'national', label: '国家级 [national]' },
       { value: 'national-special', label: '国家级 [national-special]' },
     ])
   })
 
   it('leaves a label alone when nothing collides with it', async () => {
-    const bytes = await buildAdministrativeWorkbook(
-      spec({
-        recognition: [
-          {
-            id: 'rec-level',
-            schema: {
-              type: 'string',
-              enum: ['national', 'provincial'],
-              'x-qualy-enumLabels': { national: '国家级', provincial: '省级' },
-            } as never,
-          },
-        ],
-      }),
-    )
-    const parsed = await parseAdministrativeWorkbook(bytes)
-    expect(parsed.metadata.columns[1]!.choices).toEqual([
+    const distinct = spec({
+      recognition: [
+        {
+          id: 'rec-level',
+          schema: {
+            type: 'string',
+            enum: ['national', 'provincial'],
+            'x-qualy-enumLabels': { national: '国家级', provincial: '省级' },
+          } as never,
+        },
+      ],
+    })
+    const bytes = await buildAdministrativeWorkbook(distinct)
+    await parseAdministrativeWorkbook(bytes)
+    expect(templateLayout(distinct).columns[1]!.choices).toEqual([
       { value: 'national', label: '国家级' },
       { value: 'provincial', label: '省级' },
     ])
@@ -176,7 +185,7 @@ describe('the administrative import workbook', () => {
     const parsed = await parseAdministrativeWorkbook(bytes)
     // a serial date read as an instant drifts by a timezone, and a drifted
     // date can fall outside the round's material range
-    expect(parsed.rows[0]!.cells['when']).toBe('2026-03-01')
+    expect(parsed.rows[0]!.cells['C']).toBe('2026-03-01')
   })
 
   it('does not count the blank tail a spreadsheet leaves behind', async () => {
