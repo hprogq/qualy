@@ -56,11 +56,13 @@ catalog:
   # every @mikro-orm package sits on one version: the driver re-exports core's
   # types, and two copies of core would make an entity defined against one
   # unassignable to the other
-  '@mikro-orm/core': 7.1.13
-  '@mikro-orm/postgresql': 7.1.13
-  '@mikro-orm/migrations': 7.1.13
+  '@mikro-orm/core': 7.2.0
+  '@mikro-orm/postgresql': 7.2.0
+  '@mikro-orm/migrations': 7.2.0
   # pinned by @mikro-orm/sql, which depends on an exact kysely; two copies would
-  # make a query builder from one unusable against the other
+  # make a query builder from one unusable against the other. 0.29.6 exists and
+  # is deliberately NOT taken: @mikro-orm/sql@7.2.0 still depends on exactly
+  # 0.29.5, so moving this would install the second copy rather than avoid it
   kysely: 0.29.5
   # Effect v4 release candidate. Every effect package must sit on the SAME
   # version: the ecosystem peers on an exact prerelease. The modules this
@@ -73,8 +75,11 @@ catalog:
   '@effect/vitest': 4.0.0-rc.115
   '@effect/platform-node': 4.0.0-rc.115
   '@effect/tsgo': 0.36.4
-  pg: 8.22.0
-  '@types/pg': 8.20.0
+  # the SAME version @mikro-orm/postgresql depends on. It is the driver that
+  # builds the pool this plugin measures, and at 8.22.0 the tree carried two
+  # copies: the type came from ours and the Pool instance from the ORM's
+  pg: 8.23.0
+  '@types/pg': 8.23.1
   yaml: 2.9.0
   vitest: 5.0.1
   prettier: 3.9.6
@@ -131,10 +136,10 @@ minimumReleaseAgeExclude:
   - '@effect/vitest@4.0.0-rc.115'
   - '@effect/platform-node-shared@4.0.0-rc.115'
   - '@effect/platform-node@4.0.0-rc.115'
-  - '@mikro-orm/core@7.1.13'
-  - '@mikro-orm/migrations@7.1.13'
-  - '@mikro-orm/postgresql@7.1.13'
-  - '@mikro-orm/sql@7.1.13'
+  - '@mikro-orm/core@7.2.0'
+  - '@mikro-orm/migrations@7.2.0'
+  - '@mikro-orm/postgresql@7.2.0'
+  - '@mikro-orm/sql@7.2.0'
   - '@effect/tsgo-darwin-arm64@0.36.4'
   - '@effect/tsgo-darwin-x64@0.36.4'
   - '@effect/tsgo-linux-arm64@0.36.4'
