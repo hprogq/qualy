@@ -27,6 +27,7 @@ export function AdministrativeEntrySheet({
   entryId,
   onClose,
   onOpenImport,
+  onOpenAct,
   onFailed,
 }: {
   /** false while the sheet is shutting; the caller keeps it mounted for that */
@@ -36,6 +37,8 @@ export function AdministrativeEntrySheet({
   onClose: () => void
   /** to the import this fact arrived in, when it arrived in one */
   onOpenImport: (importId: string) => void
+  /** to the act that settled it, when it was settled with others */
+  onOpenAct: (operationId: string) => void
   /** the record could not be opened; the screen behind decides what to say */
   onFailed: (reason: string) => void
 }) {
@@ -145,9 +148,15 @@ export function AdministrativeEntrySheet({
         withdraw.mutate({ entryId: lingering.entry.id, reason })
       }}
       provenance={
+        // one or the other, never both: a fact comes from a file or from an
+        // act, and the way back is to whichever settled it
         line !== undefined && line.importId !== null ? (
           <Button size="sm" variant="ghost" onClick={() => onOpenImport(line.importId!)}>
             {format(m.importViewImport)}
+          </Button>
+        ) : line !== undefined && line.operationId !== null ? (
+          <Button size="sm" variant="ghost" onClick={() => onOpenAct(line.operationId!)}>
+            {format(m.recordActOpen)}
           </Button>
         ) : null
       }

@@ -1311,6 +1311,52 @@ const i18n = definePluginMessages({
         'An item becomes available here once it is set to be settled by the institution rather than claimed by participants.',
     },
     recordItem: { id: 'assessment/record/item', defaultMessage: 'Which item' },
+    recordActsTab: { id: 'assessment/record/acts-tab', defaultMessage: 'Bulk records' },
+    recordActsEmpty: {
+      id: 'assessment/record/acts-empty',
+      defaultMessage: 'Nothing recorded in bulk yet',
+    },
+    recordActsEmptyHint: {
+      id: 'assessment/record/acts-empty-hint',
+      defaultMessage:
+        'Settling one finding on several people at once records it here, so it can be taken back together.',
+    },
+    recordActBack: { id: 'assessment/record/act-back', defaultMessage: 'Back to the bulk records' },
+    recordActTitle: { id: 'assessment/record/act-title', defaultMessage: 'Bulk record' },
+    recordActByPeople: { id: 'assessment/record/act-by-people', defaultMessage: 'Chosen by name' },
+    recordActByUnits: { id: 'assessment/record/act-by-units', defaultMessage: 'Chosen by unit' },
+    recordActCount: {
+      id: 'assessment/record/act-count',
+      defaultMessage: '{count, plural, one {# record} other {# records}}',
+    },
+    recordActVoided: {
+      id: 'assessment/record/act-voided',
+      defaultMessage: '{count, plural, one {# withdrawn} other {# withdrawn}}',
+    },
+    recordActReverse: { id: 'assessment/record/act-reverse', defaultMessage: 'Withdraw this act' },
+    recordActReverseTitle: {
+      id: 'assessment/record/act-reverse-title',
+      defaultMessage: 'Withdraw this bulk record?',
+    },
+    recordActReverseHint: {
+      id: 'assessment/record/act-reverse-hint',
+      defaultMessage:
+        'Every record of this act that still counts stops counting. What was already withdrawn is left alone, and the history is kept.',
+    },
+    recordActReversed: {
+      id: 'assessment/record/act-reversed',
+      defaultMessage:
+        '{count, plural, =0 {Nothing was left to withdraw.} one {Withdrew # record.} other {Withdrew # records.}}',
+    },
+    recordActEvents: { id: 'assessment/record/act-events', defaultMessage: 'Withdrawals' },
+    recordActEventLine: {
+      id: 'assessment/record/act-event-line',
+      defaultMessage: '{when} {actor} withdrew {count}: {reason}',
+    },
+    recordActOpen: {
+      id: 'assessment/record/act-open',
+      defaultMessage: 'See the bulk record it came from',
+    },
     recordTargets: { id: 'assessment/record/targets', defaultMessage: 'Who is being recorded' },
     recordPickPeople: {
       id: 'assessment/record/pick-people',

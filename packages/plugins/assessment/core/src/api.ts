@@ -673,6 +673,7 @@ const administrativeEntryView = Schema.Struct({
   ),
   /** the bulk act it arrived in, when it arrived in one */
   importId: Schema.NullOr(Schema.String),
+  operationId: Schema.NullOr(Schema.String),
 })
 
 const personRef = Schema.Struct({ id: Schema.String, name: Schema.String })

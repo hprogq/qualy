@@ -234,6 +234,8 @@ interface AdministrativeEntryView {
     readonly fields: readonly { readonly id: string; readonly schema: unknown }[]
   } | null
   readonly importId: string | null
+  /** the bulk act it was settled by, when it was settled by one */
+  readonly operationId: string | null
   /** what the next page starts after, in the order this list is read */
   readonly cursor: readonly [string, string]
 }
@@ -3850,6 +3852,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
                     fields: fieldsOfRevision.get(row.itemRevisionId) ?? [],
                   },
             importId: row.importId,
+            operationId: row.operationId,
             cursor: [row.cursorAt, row.entryId] as const,
           }
         })

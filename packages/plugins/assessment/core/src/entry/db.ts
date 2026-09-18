@@ -1737,6 +1737,8 @@ export interface AdministrativeEntryRow {
   readonly recordedAt: number
   /** the import it arrived in, when it arrived in one */
   readonly importId: string | null
+  /** the bulk act it was settled by, when it was settled by one */
+  readonly operationId: string | null
 }
 
 /**
@@ -1789,11 +1791,16 @@ export const listAdministrativeEntriesPage = (input: {
         .leftJoin('AdministrativeEntryImportRow as ir', (join) =>
           join.onRef('ir.tenantId', '=', 'e.tenantId').onRef('ir.entryId', '=', 'e.id'),
         )
+        // and at most one act, for a fact settled on a group at once
+        .leftJoin('AdministrativeRecordOperationRow as ar', (join) =>
+          join.onRef('ar.tenantId', '=', 'e.tenantId').onRef('ar.entryId', '=', 'e.id'),
+        )
         .select([
           'e.id as entryId',
           'e.status',
           'e.source',
           'ir.importId',
+          'ar.operationId',
           'e.participantId',
           'e.itemId',
           'p.userId as participantUserId',
@@ -1890,6 +1897,7 @@ export const listAdministrativeEntriesPage = (input: {
           actorName: row['actorName'] == null ? null : String(row['actorName']),
           recordedAt: msOf(row['recordedMs']),
           importId: row['importId'] == null ? null : String(row['importId']),
+          operationId: row['operationId'] == null ? null : String(row['operationId']),
         })),
       ),
     )

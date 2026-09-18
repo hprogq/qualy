@@ -17,6 +17,8 @@ import { assessmentMessages as m } from '../i18n.ts'
 import { useBatchLive } from '../live.ts'
 import { BatchBanner, BatchScreen } from '../batch/BatchScreen.tsx'
 import type { BatchDto } from '../phase/model.ts'
+import { AdministrativeActDetail } from './AdministrativeActDetail.tsx'
+import { AdministrativeActHistory } from './AdministrativeActHistory.tsx'
 import { AdministrativeEntryList } from './AdministrativeEntryList.tsx'
 import { ManualRecordView } from './ManualRecordView.tsx'
 import { AdministrativeEntrySheet } from './AdministrativeEntrySheet.tsx'
@@ -69,8 +71,11 @@ const styles = stylex.create({
   actions: { display: 'flex', gap: 8 },
 })
 
+/** the three indexes of one book: by fact, by act, by file */
+const TOP = ['records', 'acts', 'imports']
+
 /** how deep the screen is, so the drill knows which way it moved */
-const depthOf = (view: string) => (view === 'records' || view === 'imports' ? 0 : 1)
+const depthOf = (view: string) => (TOP.includes(view) ? 0 : 1)
 
 export default function AdministrativeRecordsPage() {
   const { format } = useI18n()
@@ -79,6 +84,7 @@ export default function AdministrativeRecordsPage() {
   const [tab] = usePageQueryState('tab', '', { history: 'push' })
   const [mode] = usePageQueryState('mode', '', { history: 'push' })
   const [importId] = usePageQueryState('import', '', { history: 'push' })
+  const [actId] = usePageQueryState('act', '', { history: 'push' })
   const [entryId] = usePageQueryState('entry', '', { history: 'push' })
   const address = usePageQueryUpdate()
 
@@ -89,9 +95,13 @@ export default function AdministrativeRecordsPage() {
         ? 'import'
         : importId !== ''
           ? `detail:${importId}`
-          : tab === 'imports'
-            ? 'imports'
-            : 'records'
+          : actId !== ''
+            ? `act:${actId}`
+            : tab === 'acts'
+              ? 'acts'
+              : tab === 'imports'
+                ? 'imports'
+                : 'records'
   // kept mounted while the sheet shuts, or it would vanish rather than close;
   // absent entirely when nothing is open, so a page nobody has drilled into
   // asks for nothing
@@ -104,7 +114,7 @@ export default function AdministrativeRecordsPage() {
     depthOf(view) === depthOf(seen) ? 'none' : depthOf(view) > depthOf(seen) ? 'in' : 'out'
   if (seen !== view) setSeen(view)
 
-  const top = view === 'records' || view === 'imports'
+  const top = TOP.includes(view)
 
   return (
     <BatchScreen
@@ -177,12 +187,19 @@ function RecordsBody({
       ? { title: m.recordNewAction, from: m.recordTab, label: m.recordBack, to: { mode: '' } }
       : view === 'import'
         ? { title: m.importAction, from: m.recordTab, label: m.recordBack, to: { mode: '' } }
-        : {
-            title: m.importDetailTitle,
-            from: m.importTab,
-            label: m.importBack,
-            to: { import: '', tab: 'imports' },
-          }
+        : view.startsWith('act:')
+          ? {
+              title: m.recordActTitle,
+              from: m.recordActsTab,
+              label: m.recordActBack,
+              to: { act: '', tab: 'acts' },
+            }
+          : {
+              title: m.importDetailTitle,
+              from: m.importTab,
+              label: m.importBack,
+              to: { import: '', tab: 'imports' },
+            }
 
   // What somebody else just recorded, imported or withdrew in this round
   // moves the book and the imports' standing; nothing else on this page
@@ -223,16 +240,22 @@ function RecordsBody({
             <Tabs
               value={view}
               onValueChange={(next) =>
-                address({ tab: next === 'imports' ? 'imports' : '' }, { history: 'replace' })
+                address({ tab: next === 'records' ? '' : next }, { history: 'replace' })
               }
               xstyle={styles.tabs}
             >
               <TabsList>
                 <TabsTrigger value="records">{format(m.recordListTab)}</TabsTrigger>
+                <TabsTrigger value="acts">{format(m.recordActsTab)}</TabsTrigger>
                 <TabsTrigger value="imports">{format(m.importTab)}</TabsTrigger>
               </TabsList>
             </Tabs>
-            {view === 'imports' ? (
+            {view === 'acts' ? (
+              <AdministrativeActHistory
+                batchId={batch.id}
+                onOpen={(id) => address({ act: id }, { history: 'push' })}
+              />
+            ) : view === 'imports' ? (
               <AdministrativeImportHistory
                 batchId={batch.id}
                 onOpen={(id) => address({ import: id }, { history: 'push' })}
@@ -284,6 +307,8 @@ function RecordsBody({
                   address({ mode: '', tab: 'imports', import: id }, { history: 'replace' })
                 }
               />
+            ) : view.startsWith('act:') ? (
+              <AdministrativeActDetail batchId={batch.id} operationId={view.slice('act:'.length)} />
             ) : (
               <AdministrativeImportDetail
                 batchId={batch.id}
@@ -305,6 +330,9 @@ function RecordsBody({
           onClose={() => address({ entry: '' })}
           onOpenImport={(id) =>
             address({ entry: '', mode: '', tab: 'imports', import: id }, { history: 'push' })
+          }
+          onOpenAct={(id) =>
+            address({ entry: '', mode: '', tab: 'acts', act: id }, { history: 'push' })
           }
           onFailed={(reason) => {
             // said out loud, and the address that named it let go of: a link
