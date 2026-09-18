@@ -1700,6 +1700,7 @@ function ClaimRow({
         <span {...stylex.props(styles.claimFoldNarrow)}>
           <EntryStanding
             status={entry.status}
+            source={entry.source}
             revised={entry.currentReviewInstanceId !== null}
             asked={entry.supplement !== null}
           />
@@ -1711,6 +1712,7 @@ function ClaimRow({
       <span {...stylex.props(styles.claimStandingCell)}>
         <EntryStanding
           status={entry.status}
+          source={entry.source}
           revised={entry.currentReviewInstanceId !== null}
           asked={entry.supplement !== null}
         />

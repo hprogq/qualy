@@ -184,13 +184,18 @@ const waitForItems = () =>
     }
   })
 
+/**
+ * Choosing the question, which is now a choice and a step.
+ *
+ * Picking one selects it; the footer's "next" is what enters the form. From
+ * inside the form the way back to the choice is the footer's "back", which
+ * is also what discards the sheet.
+ */
 const chooseItem = async (title: string) => {
   const { userEvent } = await import('vitest/browser')
-  // already on a question: the way to another one is the named change
-  // button on its card, which is what discards the draft
-  const change = document.querySelector('[data-testid="record-item-change"]')
-  if (change !== null) {
-    await userEvent.click(change)
+  const back = document.querySelector('[data-testid="record-step-back"]')
+  if (back !== null) {
+    await userEvent.click(back)
     await waitForItems()
   }
   const choice = [...document.querySelectorAll('[data-testid="record-item-choice"]')].find((one) =>
@@ -198,6 +203,7 @@ const chooseItem = async (title: string) => {
   )
   if (!choice) throw new Error(`${title} is not offered`)
   await userEvent.click(choice)
+  await userEvent.click(page.getByRole('button', { name: '下一步' }).element())
 }
 
 /**
@@ -227,6 +233,38 @@ const choosePerson = async (name: string) => {
   )
 }
 
+/**
+ * The determination's own choice, which is the product's select rather than
+ * a native one: what it stands at is on the trigger, and setting it is the
+ * press that opens the list plus the option named there.
+ */
+const recognitionChoice = (parameter: string) => {
+  const trigger = () =>
+    document.querySelector<HTMLElement>(
+      `[data-testid="record-recognition"] [data-parameter="${parameter}"] [data-slot="select-trigger"]`,
+    )
+  return {
+    trigger,
+    /** what it stands at, read as the words on the trigger */
+    said: () => trigger()?.textContent ?? '',
+    pick: async (label: string) => {
+      const { userEvent } = await import('vitest/browser')
+      await userEvent.click(trigger()!)
+      await vi.waitFor(() => {
+        const found = [...document.querySelectorAll('[role="option"]')].find(
+          (one) => (one.textContent ?? '') === label,
+        )
+        if (!found) throw new Error(`${label} is not offered yet`)
+      })
+      await userEvent.click(
+        [...document.querySelectorAll('[role="option"]')].find(
+          (one) => (one.textContent ?? '') === label,
+        )!,
+      )
+    },
+  }
+}
+
 describe('recording with a determination', () => {
   it('follows the material until the registrar has judged, then submits their word', async () => {
     const created = vi.fn((request: { payload: Record<string, unknown> }) =>
@@ -250,12 +288,9 @@ describe('recording with a determination', () => {
       page.getByLabelText('申报级别', { exact: false }).element(),
       '国家级',
     )
-    const recognition = () =>
-      document.querySelector(
-        '[data-testid="record-recognition"] [data-parameter="rec-level"] select',
-      ) as HTMLSelectElement
+    const recognition = recognitionChoice('rec-level')
     await vi.waitFor(() => {
-      if (recognition().value !== 'national') throw new Error('seed not followed yet')
+      if (!recognition.said().includes('国家级')) throw new Error('seed not followed yet')
     })
     // material changes, untouched determination follows
     await userEvent.selectOptions(
@@ -263,11 +298,11 @@ describe('recording with a determination', () => {
       '省部级',
     )
     await vi.waitFor(() => {
-      if (recognition().value !== 'provincial') throw new Error('still following')
+      if (!recognition.said().includes('省部级')) throw new Error('still following')
     })
     // the registrar judges otherwise; the material moving again must not
     // overwrite their word
-    await userEvent.selectOptions(recognition(), 'national')
+    await recognition.pick('国家级')
     await userEvent.selectOptions(
       page.getByLabelText('申报级别', { exact: false }).element(),
       '国家级',
@@ -276,7 +311,7 @@ describe('recording with a determination', () => {
       page.getByLabelText('申报级别', { exact: false }).element(),
       '省部级',
     )
-    expect(recognition().value).toBe('national')
+    expect(recognition.said()).toContain('国家级')
   })
 
   it('carries a prototype-named recognition like any other id', async () => {
@@ -332,13 +367,12 @@ describe('recording with a determination', () => {
       page.getByLabelText('申报级别', { exact: false }).element(),
       '国家级',
     )
-    const recognition = () =>
-      document.querySelector('[data-testid="record-recognition"] select') as HTMLSelectElement
+    const recognition = recognitionChoice('__proto__')
     await vi.waitFor(() => {
-      if (recognition().value !== 'national') throw new Error('seed not followed yet')
+      if (!recognition.said().includes('国家级')) throw new Error('seed not followed yet')
     })
-    await userEvent.fill(page.getByLabelText('认定依据').element(), '校运会秩序册第 3 页')
-    await userEvent.click(page.getByTestId('record-check').element())
+    await userEvent.fill(page.getByLabelText('认定理由').element(), '校运会秩序册第 3 页')
+    await userEvent.click(page.getByTestId('record-step-next').element())
     await vi.waitFor(() => {
       if (created.mock.calls.length === 0) throw new Error('not asked yet')
     })
@@ -350,9 +384,11 @@ describe('recording with a determination', () => {
     expect(Object.getOwnPropertyDescriptor(values, '__proto__')?.value).toBe('national')
   })
 
-  it('starts a clean sheet on another person', async () => {
-    // half a record written about one student must never be filable
-    // against the next one picked from the roster
+  it('keeps the one finding while the people it is about change', async () => {
+    // One finding settled on many: adding somebody to the list does not
+    // make the material somebody else's, so the sheet stands. What does not
+    // stand is the checked list - a different set is a different list, and
+    // the forward key has to earn it again.
     open({})
     await waitForItems()
     await chooseItem('竞赛获奖登记')
@@ -366,20 +402,19 @@ describe('recording with a determination', () => {
       page.getByLabelText('申报级别', { exact: false }).element(),
       '国家级',
     )
-    const recognition = () =>
-      document.querySelector(
-        '[data-testid="record-recognition"] [data-parameter="rec-level"] select',
-      ) as HTMLSelectElement
-    await userEvent.selectOptions(recognition(), 'provincial')
-    // a different subject: evidence and determination both start over
+    const recognition = recognitionChoice('rec-level')
+    await recognition.pick('省部级')
     await choosePerson('林晚舟')
     await vi.waitFor(() => {
       const evidence = page
         .getByLabelText('申报级别', { exact: false })
         .element() as HTMLSelectElement
-      if (evidence.value !== '' || recognition().value !== '')
-        throw new Error('the previous person\u2019s sheet is still standing')
+      if (evidence.value === '' || !recognition.said().includes('省部级'))
+        throw new Error('the finding was thrown away with the list')
     })
+    // and the reader is still on the step that holds it, not looking at a
+    // confirmation of a set that has since moved
+    await expect.element(page.getByTestId('record-steps')).toHaveAttribute('data-at', '1')
   })
 
   it('starts a clean sheet after a successful filing', async () => {
@@ -407,13 +442,10 @@ describe('recording with a determination', () => {
       page.getByLabelText('申报级别', { exact: false }).element(),
       '国家级',
     )
-    const recognition = () =>
-      document.querySelector(
-        '[data-testid="record-recognition"] [data-parameter="rec-level"] select',
-      ) as HTMLSelectElement
-    await userEvent.selectOptions(recognition(), 'provincial')
-    await userEvent.fill(page.getByLabelText('认定依据').element(), '校运会秩序册第 3 页')
-    await userEvent.click(page.getByTestId('record-check').element())
+    const recognition = recognitionChoice('rec-level')
+    await recognition.pick('省部级')
+    await userEvent.fill(page.getByLabelText('认定理由').element(), '校运会秩序册第 3 页')
+    await userEvent.click(page.getByTestId('record-step-next').element())
     await vi.waitFor(() => {
       if (document.querySelector('[data-testid="record-submit"]') === null)
         throw new Error('not checked yet')
@@ -422,8 +454,18 @@ describe('recording with a determination', () => {
     await vi.waitFor(() => {
       if (created.mock.calls.length === 0) throw new Error('not filed yet')
     })
-    // the filing is done; what was typed for it dies with it - the next
-    // record, even for the same question and people, starts from nothing
+    // The filing is done, so the errand is: it closes onto the book behind
+    // it. What was typed for it dies with it - opening it again, even for
+    // the same question and the same people, starts from the first step
+    // with nothing carried over.
+    await vi.waitFor(() => {
+      if (document.querySelector('[data-testid="manual-record"]') !== null)
+        throw new Error('the errand is still standing')
+    })
+    // the band's own action; the empty book below offers the same errand
+    await userEvent.click(page.getByRole('button', { name: '统一认定' }).first().element())
+    await waitForItems()
+    await chooseItem('竞赛获奖登记')
     await vi.waitFor(() => {
       const who = page.getByTestId('record-targets').element()
       if ((who.textContent ?? '').includes('已选择')) throw new Error('targets still chosen')
@@ -431,7 +473,8 @@ describe('recording with a determination', () => {
         .getByLabelText('申报级别', { exact: false })
         .element() as HTMLSelectElement
       if (evidence.value !== '') throw new Error('evidence survived the filing')
-      if (recognition().value !== '') throw new Error('determination survived the filing')
+      if (recognition.said().includes('省部级'))
+        throw new Error('determination survived the filing')
     })
   })
 
@@ -444,16 +487,13 @@ describe('recording with a determination', () => {
         throw new Error('no recognition section yet')
     })
     const { userEvent } = await import('vitest/browser')
-    const recognition = () =>
-      document.querySelector(
-        '[data-testid="record-recognition"] [data-parameter="rec-level"] select',
-      ) as HTMLSelectElement
-    await userEvent.selectOptions(recognition(), 'national')
+    const recognition = recognitionChoice('rec-level')
+    await recognition.pick('国家级')
     // switching questions is a new contract: the touched draft dies with
     // the old one instead of leaking into it
     await chooseItem('荣誉称号登记')
     await vi.waitFor(() => {
-      if (recognition().value !== '') throw new Error('old draft still standing')
+      if (recognition.said().includes('国家级')) throw new Error('old draft still standing')
     })
   })
 })

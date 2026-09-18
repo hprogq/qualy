@@ -1,9 +1,8 @@
 import * as stylex from '@stylexjs/stylex'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeftIcon, ChevronRightIcon } from 'lucide-react'
+import { CheckIcon } from 'lucide-react'
 import { useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { Button } from '@qualy/ui/button'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
@@ -20,38 +19,49 @@ import type { ItemDto } from '../entry/model.ts'
 // screen rather than making something appear from nowhere.
 //
 // Everything below depends on the answer: the form's fields, the file's
-// columns, what the determination even is. So the choice keeps its own
-// screen until it is made, and afterwards shrinks to one line that can be
-// pressed to come back.
+// columns, what the determination even is. So the choice is a step of its
+// own, and the rail above it is how a reader comes back to change it.
 
 const styles = stylex.create({
-  card: {
-    display: 'flex',
-    minWidth: 0,
-    flexDirection: 'column',
-    overflow: 'hidden',
-    borderRadius: tokens.radiusLg,
-    backgroundColor: tokens.surface,
-    boxShadow: tokens.elevation1,
-  },
-  row: {
+  // one card per question, each its own target. A hairline list with a
+  // native radio in it reads as a form control; these are the four or five
+  // things the office actually records, and choosing one is the whole step.
+  grid: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 8 },
+  choice: {
     display: 'flex',
     width: '100%',
     alignItems: 'center',
     gap: 12,
-    borderTopWidth: { default: 1, ':first-child': 0 },
-    borderTopStyle: 'solid',
-    borderTopColor: tokens.divider,
-    backgroundColor: {
-      default: 'transparent',
-      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
+    borderRadius: tokens.radiusLg,
+    backgroundColor: tokens.surface,
+    boxShadow: {
+      default: `inset 0 0 0 1px ${tokens.border}`,
+      ':hover': `inset 0 0 0 1px ${tokens.mutedForeground}`,
     },
     paddingInline: 16,
     paddingBlock: 14,
     textAlign: 'start',
     cursor: 'pointer',
-    transitionProperty: 'background-color',
+    transitionProperty: 'box-shadow, background-color',
+    transitionDuration: '120ms',
   },
+  chosenChoice: {
+    backgroundColor: `color-mix(in oklab, ${tokens.primary} 5%, transparent)`,
+    boxShadow: {
+      default: `inset 0 0 0 2px ${tokens.primary}`,
+      ':hover': `inset 0 0 0 2px ${tokens.primary}`,
+    },
+  },
+  check: {
+    flexShrink: 0,
+    width: 18,
+    height: 18,
+    opacity: 0,
+    color: tokens.primary,
+    transitionProperty: 'opacity',
+    transitionDuration: '120ms',
+  },
+  checkOn: { opacity: 1 },
   body: { display: 'flex', minWidth: 0, flexGrow: 1, flexDirection: 'column', gap: 3 },
   title: {
     minWidth: 0,
@@ -61,148 +71,79 @@ const styles = stylex.create({
     fontSize: 15,
     fontWeight: 500,
   },
+  // The line under the title keeps its height whether or not it has
+  // anything in it yet: where a question sits comes from a second request,
+  // and a line that grows from nothing when that answers shoves every card
+  // below it down the panel.
   under: {
     display: 'flex',
     flexWrap: 'wrap',
+    minHeight: 16,
     alignItems: 'center',
     gap: 8,
     fontSize: 12,
     color: tokens.mutedForeground,
   },
   tick: { width: 1, height: 10, backgroundColor: tokens.divider },
-  chevron: {
-    flexShrink: 0,
-    width: 16,
-    height: 16,
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)`,
-  },
-  // once chosen, the way back to the others: a step out, so it sits where
-  // every other step out on this page sits
-  // once chosen, the question stays legible as a card: which one, where it
-  // sits, what it allows - the same three facts the list showed, so nothing
-  // is lost by having answered
-  chosen: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: 12,
-    borderRadius: tokens.radiusLg,
-    backgroundColor: tokens.surface,
-    boxShadow: tokens.elevation1,
-    paddingInline: 16,
-    paddingBlock: 12,
-  },
-  chosenBody: { display: 'flex', minWidth: 0, flexGrow: 1, flexDirection: 'column', gap: 3 },
-  chosenTitle: {
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    fontSize: 15,
-    fontWeight: 500,
-  },
-  changeSeat: {
-    display: 'flex',
-    flexShrink: 0,
-    flexDirection: 'column',
-    alignItems: 'flex-end',
-    gap: 2,
-  },
-  changeHint: {
-    fontSize: 12,
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
-  },
-  backIcon: { width: 14, height: 14 },
 })
 
 export function ItemPicker({
   batchId,
   items,
+  value,
   onPick,
 }: {
   batchId: string
   items: readonly ItemDto[]
+  /** the one chosen so far; a choice is confirmed, not fallen through */
+  value: string
   onPick: (itemId: string) => void
 }) {
   const { format } = useI18n()
   const query = useApiQuery(assessmentApi)
   const groups = useQuery(query.assessment.listScoreGroups.queryOptions({ params: { batchId } }))
   const where = trailOf(groups.data?.groups ?? [])
+  // Where a question sits comes from a second request. Until it answers the
+  // line under the title stays empty rather than half-written: showing the
+  // cap first and the path afterwards makes one line arrive in two pieces,
+  // which reads as the panel correcting itself.
+  const placed = !groups.isPending
 
   return (
-    <div {...stylex.props(styles.card)} data-testid="record-item-picker">
+    <div {...stylex.props(styles.grid)} role="radiogroup" data-testid="record-item-picker">
       {items.map((item) => (
         <button
           key={item.id}
           type="button"
+          role="radio"
+          aria-checked={value === item.id}
           data-testid="record-item-choice"
           data-item={item.id}
           onClick={() => onPick(item.id)}
-          {...stylex.props(styles.row)}
+          {...stylex.props(styles.choice, value === item.id && styles.chosenChoice)}
         >
           <span {...stylex.props(styles.body)}>
             <span {...stylex.props(styles.title)}>{item.title}</span>
             <span {...stylex.props(styles.under)}>
-              <span>{where(item.scoreGroupId)}</span>
-              {item.maxEntries !== null && (
+              {placed && (
                 <>
-                  <span aria-hidden {...stylex.props(styles.tick)} />
-                  <span>{format(m.recordItemCap, { count: item.maxEntries })}</span>
+                  <span>{where(item.scoreGroupId)}</span>
+                  {item.maxEntries !== null && (
+                    <>
+                      <span aria-hidden {...stylex.props(styles.tick)} />
+                      <span>{format(m.recordItemCap, { count: item.maxEntries })}</span>
+                    </>
+                  )}
                 </>
               )}
             </span>
           </span>
-          <ChevronRightIcon aria-hidden {...stylex.props(styles.chevron)} />
+          <CheckIcon
+            aria-hidden
+            {...stylex.props(styles.check, value === item.id && styles.checkOn)}
+          />
         </button>
       ))}
-    </div>
-  )
-}
-
-/**
- * The chosen question, as the way back to the others.
- *
- * It names the question rather than saying "change", because a reader who
- * has scrolled into a long form needs to be told which one they are filling
- * in more often than they need to be told they may leave it. Pressing it is
- * how they leave.
- */
-export function ChosenItem({
-  batchId,
-  item,
-  onChange,
-}: {
-  batchId: string
-  item: ItemDto
-  onChange: () => void
-}) {
-  const { format } = useI18n()
-  const query = useApiQuery(assessmentApi)
-  const groups = useQuery(query.assessment.listScoreGroups.queryOptions({ params: { batchId } }))
-  const where = trailOf(groups.data?.groups ?? [])
-  return (
-    <div {...stylex.props(styles.chosen)} data-testid="record-item-chosen" data-item={item.id}>
-      <span {...stylex.props(styles.chosenBody)}>
-        <span {...stylex.props(styles.chosenTitle)}>{item.title}</span>
-        <span {...stylex.props(styles.under)}>
-          <span>{where(item.scoreGroupId)}</span>
-          {item.maxEntries !== null && (
-            <>
-              <span aria-hidden {...stylex.props(styles.tick)} />
-              <span>{format(m.recordItemCap, { count: item.maxEntries })}</span>
-            </>
-          )}
-        </span>
-      </span>
-      {/* named, not just "change": the word says what is being changed, and
-          the line under it says what changing costs */}
-      <span {...stylex.props(styles.changeSeat)}>
-        <Button size="sm" variant="outline" onClick={onChange} data-testid="record-item-change">
-          <ArrowLeftIcon aria-hidden {...stylex.props(styles.backIcon)} />
-          {format(m.recordItemChangeSaid)}
-        </Button>
-        <span {...stylex.props(styles.changeHint)}>{format(m.recordItemChangeHint)}</span>
-      </span>
     </div>
   )
 }

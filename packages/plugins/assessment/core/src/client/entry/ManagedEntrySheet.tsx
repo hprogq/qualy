@@ -261,9 +261,16 @@ function Determination({
           ))}
         </dl>
       ) : (
-        // determined, but nothing the contract still names: the fact stands
-        // and its detail no longer has words, which is worth saying plainly
-        !contract.isPending && <p {...stylex.props(styles.quiet)}>{format(m.recognitionOpaque)}</p>
+        // Two different silences. A determination that carried values which
+        // the contract can no longer name is a lost version, and worth
+        // saying. A question that never had values to determine is not -
+        // it is simply that kind of question, and calling that a lost
+        // version accuses the round of something that never happened.
+        !contract.isPending && (
+          <p {...stylex.props(styles.quiet)}>
+            {format(Object.keys(values).length > 0 ? m.recognitionOpaque : m.recognitionNoValues)}
+          </p>
+        )
       )}
       {stale && <p {...stylex.props(styles.stale)}>{format(m.recognitionStale)}</p>}
     </div>

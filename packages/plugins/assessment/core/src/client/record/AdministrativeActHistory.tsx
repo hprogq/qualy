@@ -1,15 +1,15 @@
 import { useMemo } from 'react'
 import { useInfiniteQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { ChevronRightIcon, StampIcon } from 'lucide-react'
+import { ChevronRightIcon } from 'lucide-react'
 import { cursorPages, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@qualy/ui/empty'
-import { Skeleton } from '@qualy/ui/skeleton'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { ListEmpty } from './ListEmpty.tsx'
+import { ListSkeleton } from './ListSkeleton.tsx'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { useWhen } from './when.ts'
@@ -39,6 +39,21 @@ const styles = stylex.create({
     backgroundColor: tokens.surface,
     boxShadow: tokens.elevation1,
   },
+  head: {
+    display: { default: 'none', [wide]: 'grid' },
+    gridTemplateColumns: 'minmax(0, 1.4fr) minmax(0, 1fr) 9rem 9rem 1rem',
+    columnGap: 12,
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
+    backgroundColor: tokens.surfaceInset,
+    paddingInline: 16,
+    paddingBlock: 10,
+    fontSize: 12,
+    fontWeight: 500,
+    color: tokens.mutedForeground,
+  },
   row: {
     display: 'grid',
     width: '100%',
@@ -49,9 +64,9 @@ const styles = stylex.create({
     alignItems: 'center',
     columnGap: 12,
     rowGap: 4,
-    borderTopWidth: { default: 1, ':first-child': 0 },
-    borderTopStyle: 'solid',
-    borderTopColor: tokens.divider,
+    borderBottomWidth: { default: 1, ':last-child': 0 },
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
     backgroundColor: {
       default: 'transparent',
       ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
@@ -130,7 +145,6 @@ const styles = stylex.create({
     boxShadow: tokens.elevation1,
     paddingBlock: 48,
   },
-  waiting: { height: 220, width: '100%' },
   moreRow: { display: 'flex', justifyContent: 'center', paddingBlock: 8 },
 })
 
@@ -177,21 +191,24 @@ export function AdministrativeActHistory({
       loadingLabel={format(commonMessages.loading)}
       retryLabel={format(commonMessages.retry)}
       onRetry={() => void history.refetch()}
-      skeleton={<Skeleton className={stylex.props(styles.waiting).className} />}
+      skeleton={<ListSkeleton />}
     >
       {rows.length === 0 ? (
-        <Empty xstyle={styles.empty} data-testid="administrative-acts-empty">
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <StampIcon />
-            </EmptyMedia>
-            <EmptyTitle>{format(m.recordActsEmpty)}</EmptyTitle>
-            <EmptyDescription>{format(m.recordActsEmptyHint)}</EmptyDescription>
-          </EmptyHeader>
-        </Empty>
+        <ListEmpty
+          title={format(m.recordActsEmpty)}
+          said={format(m.recordActsEmptyHint)}
+          testId="administrative-acts-empty"
+        />
       ) : (
         <>
           <div {...stylex.props(styles.card)} data-testid="administrative-acts">
+            <div {...stylex.props(styles.head)} aria-hidden>
+              <span>{format(m.recordActItem)}</span>
+              <span>{format(m.recordTargets)}</span>
+              <span>{format(m.recordColumnActor)}</span>
+              <span>{format(m.importColumnStanding)}</span>
+              <span />
+            </div>
             {rows.map((row) => {
               // nothing this act wrote is left standing
               const spent = row.recordedCount > 0 && row.voidedCount >= row.recordedCount

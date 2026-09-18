@@ -2,6 +2,7 @@ import * as stylex from '@stylexjs/stylex'
 import { assignmentPlan, inputOrder, kindOf, normalizeAtomicSchema } from '@qualy/value-schema'
 import type { AtomicKind, AtomicSchema, NormalizedInputSchema } from '@qualy/value-schema'
 import { AtomicValueField } from '@qualy/web-value-form/InputValueForm'
+import { usePickerWords } from '@qualy/web-i18n/picker-words'
 import type { FieldDraft } from '@qualy/web-value-form/model'
 import { useI18n } from '@qualy/web-i18n'
 import { Field } from '@qualy/ui/admin'
@@ -98,6 +99,7 @@ export function ScoringBindingEditor({
   onChange,
 }: ScoringBindingEditorProps) {
   const { format } = useI18n()
+  const words = usePickerWords()
   const parameters = inputOrder(inputSchema)
   const diagnostics = bindingDiagnostics({ inputSchema, bindableFields, recognitions, bindings })
   const fieldName = (fieldId: string) => fieldLabels?.[fieldId] ?? fieldId
@@ -272,6 +274,7 @@ export function ScoringBindingEditor({
               {binding.kind === 'constant' ? (
                 <div {...stylex.props(styles.grown)}>
                   <AtomicValueField
+                    words={words}
                     schema={schema}
                     name={parameter}
                     draft={binding.draft}

@@ -1,26 +1,19 @@
 import { useMemo } from 'react'
 import { useInfiniteQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { ChevronRightIcon, PlusIcon, SearchIcon, StampIcon } from 'lucide-react'
+import { ChevronRightIcon, PlusIcon } from 'lucide-react'
 import { cursorPages, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
-import {
-  Empty,
-  EmptyContent,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from '@qualy/ui/empty'
 import { Input } from '@qualy/ui/input'
-import { Skeleton } from '@qualy/ui/skeleton'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { ListEmpty } from './ListEmpty.tsx'
+import { ListSkeleton } from './ListSkeleton.tsx'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
-import { EntryStanding } from '../entry/EntryStanding.tsx'
+import { RecordStanding } from './RecordStanding.tsx'
 import { useWhen } from './when.ts'
 
 // What the institution has recorded in this round, newest first.
@@ -69,19 +62,35 @@ const styles = stylex.create({
     backgroundColor: tokens.surface,
     boxShadow: tokens.elevation1,
   },
+  head: {
+    display: { default: 'none', [wide]: 'grid' },
+    gridTemplateColumns: 'minmax(0, 1.3fr) minmax(0, 1.2fr) 6.5rem 9rem 1rem',
+    columnGap: 12,
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
+    backgroundColor: tokens.surfaceInset,
+    paddingInline: 16,
+    paddingBlock: 10,
+    fontSize: 12,
+    fontWeight: 500,
+    color: tokens.mutedForeground,
+  },
+  headEnd: { textAlign: 'end' },
   row: {
     display: 'grid',
     width: '100%',
     gridTemplateColumns: {
       default: 'minmax(0, 1fr) auto 1rem',
-      [wide]: 'minmax(0, 1.3fr) minmax(0, 1.2fr) 6.5rem 8.5rem 1rem',
+      [wide]: 'minmax(0, 1.3fr) minmax(0, 1.2fr) 6.5rem 9rem 1rem',
     },
     alignItems: 'center',
     columnGap: 12,
     rowGap: 4,
-    borderTopWidth: { default: 1, ':first-child': 0 },
-    borderTopStyle: 'solid',
-    borderTopColor: tokens.divider,
+    borderBottomWidth: { default: 1, ':last-child': 0 },
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
     backgroundColor: {
       default: 'transparent',
       ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
@@ -174,7 +183,6 @@ const styles = stylex.create({
     paddingBlock: 48,
   },
   actionIcon: { width: 15, height: 15 },
-  waiting: { height: 220, width: '100%' },
   moreRow: { display: 'flex', justifyContent: 'center', paddingBlock: 8 },
 })
 
@@ -228,42 +236,39 @@ export function AdministrativeEntryList({
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void book.refetch()}
-        skeleton={<Skeleton className={stylex.props(styles.waiting).className} />}
+        skeleton={<ListSkeleton />}
       >
         {rows.length === 0 ? (
           // a search that found nobody is not an empty book, and offering to
           // record one there would answer a question nobody asked
           needle !== '' ? (
-            <Empty xstyle={styles.empty} data-testid="administrative-entries-empty">
-              <EmptyHeader>
-                <EmptyMedia variant="icon">
-                  <SearchIcon />
-                </EmptyMedia>
-                <EmptyTitle>{format(m.recordNobodyFound)}</EmptyTitle>
-              </EmptyHeader>
-            </Empty>
+            <ListEmpty title={format(m.recordNobodyFound)} testId="administrative-entries-empty" />
           ) : (
-            <Empty xstyle={styles.empty} data-testid="administrative-entries-empty">
-              <EmptyHeader>
-                <EmptyMedia variant="icon">
-                  <StampIcon />
-                </EmptyMedia>
-                <EmptyTitle>{format(m.recordListEmpty)}</EmptyTitle>
-                <EmptyDescription>{format(m.recordListEmptyHint)}</EmptyDescription>
-              </EmptyHeader>
+            <ListEmpty
+              title={format(m.recordListEmpty)}
+              said={format(m.recordListEmptyHint)}
+              testId="administrative-entries-empty"
+            >
               {onRecord !== undefined && (
-                <EmptyContent>
-                  <Button variant="outline" onClick={onRecord}>
-                    <PlusIcon aria-hidden {...stylex.props(styles.actionIcon)} />
-                    {format(m.recordNewAction)}
-                  </Button>
-                </EmptyContent>
+                <Button variant="outline" onClick={onRecord}>
+                  <PlusIcon aria-hidden {...stylex.props(styles.actionIcon)} />
+                  {format(m.recordNewAction)}
+                </Button>
               )}
-            </Empty>
+            </ListEmpty>
           )
         ) : (
           <>
             <div {...stylex.props(styles.card)} data-testid="administrative-entries">
+              {/* named columns, because five facts in a row need saying
+                  once at the top rather than guessing at per line */}
+              <div {...stylex.props(styles.head)} aria-hidden>
+                <span>{format(m.recordColumnWho)}</span>
+                <span>{format(m.recordColumnItem)}</span>
+                <span>{format(m.importColumnStatus)}</span>
+                <span {...stylex.props(styles.headEnd)}>{format(m.recordColumnActor)}</span>
+                <span />
+              </div>
               {rows.map((row) => {
                 const spent = row.status === 'voided'
                 const when = whenOf(row.revision.createdAt)
@@ -292,7 +297,7 @@ export function AdministrativeEntryList({
                     </span>
                     <span {...stylex.props(styles.itemCell)}>{row.item.title}</span>
                     <span {...stylex.props(styles.standingSeat)}>
-                      <EntryStanding status={row.status} />
+                      <RecordStanding status={row.status} />
                     </span>
                     <span {...stylex.props(styles.whenCell)}>
                       <span {...stylex.props(styles.actorLine)}>

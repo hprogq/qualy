@@ -1149,6 +1149,14 @@ const i18n = definePluginMessages({
       id: 'assessment/recognition/title',
       defaultMessage: 'Current determination',
     },
+    recognitionNoValuesShort: {
+      id: 'assessment/recognition/no-values-short',
+      defaultMessage: 'Not applicable',
+    },
+    recognitionNoValues: {
+      id: 'assessment/recognition/no-values',
+      defaultMessage: 'This item carries no determined values.',
+    },
     recognitionNone: {
       id: 'assessment/recognition/none',
       defaultMessage: 'Nothing has been determined on this entry yet.',
@@ -1303,28 +1311,29 @@ const i18n = definePluginMessages({
     },
     recordEmpty: {
       id: 'assessment/record/empty',
-      defaultMessage: 'No item is recorded by this office',
+      defaultMessage: 'No item in this batch is settled by this office',
     },
     recordEmptyHint: {
       id: 'assessment/record/empty-hint',
-      defaultMessage:
-        'An item becomes available here once it is set to be settled by the institution rather than claimed by participants.',
+      defaultMessage: 'Items appear here once they are set to be settled by the institution.',
     },
     recordItem: { id: 'assessment/record/item', defaultMessage: 'Which item' },
-    recordNeeds: {
-      id: 'assessment/record/needs',
-      defaultMessage: 'Still to fill in: {what}',
+    recordNeedsTargets: {
+      id: 'assessment/record/needs-targets',
+      defaultMessage: 'Nobody has been chosen yet',
     },
-    recordNeedsTargets: { id: 'assessment/record/needs-targets', defaultMessage: 'who it is for' },
     recordNeedsMaterial: {
       id: 'assessment/record/needs-material',
-      defaultMessage: 'the supporting material',
+      defaultMessage: 'The supporting material is not filled in',
     },
     recordNeedsResult: {
       id: 'assessment/record/needs-result',
-      defaultMessage: 'what it determines',
+      defaultMessage: 'The determination is not filled in',
     },
-    recordNeedsBasis: { id: 'assessment/record/needs-basis', defaultMessage: 'the basis' },
+    recordNeedsBasis: {
+      id: 'assessment/record/needs-basis',
+      defaultMessage: 'No reason has been written',
+    },
     recordReadyToCheck: {
       id: 'assessment/record/ready-to-check',
       defaultMessage: 'Ready to check who this reaches',
@@ -1338,11 +1347,6 @@ const i18n = definePluginMessages({
       id: 'assessment/record/check-title',
       defaultMessage: 'Check who this reaches',
     },
-    recordCheckRecap: {
-      id: 'assessment/record/check-recap',
-      defaultMessage: '{item} · basis {basis}',
-    },
-    recordCheckBack: { id: 'assessment/record/check-back', defaultMessage: 'Go back and edit' },
     recordDropBlockedMany: {
       id: 'assessment/record/drop-blocked-many',
       defaultMessage:
@@ -1352,26 +1356,82 @@ const i18n = definePluginMessages({
       id: 'assessment/record/drop-blocked-hint',
       defaultMessage: 'Checking runs again, so you see the list once more before confirming.',
     },
-    recordItemChangeSaid: {
-      id: 'assessment/record/item-change-said',
-      defaultMessage: 'Change the item',
+    recordStandingSettled: {
+      id: 'assessment/record/standing-settled',
+      defaultMessage: 'Settled',
     },
-    recordItemChangeHint: {
-      id: 'assessment/record/item-change-hint',
-      defaultMessage: 'Changing it starts this sheet over.',
+    recordStandingAppealed: {
+      id: 'assessment/record/standing-appealed',
+      defaultMessage: 'Under appeal',
+    },
+    recordStandingOverturned: {
+      id: 'assessment/record/standing-overturned',
+      defaultMessage: 'Not upheld',
+    },
+    recordStandingWithdrawn: {
+      id: 'assessment/record/standing-withdrawn',
+      defaultMessage: 'Withdrawn',
+    },
+    recordStepBack: { id: 'assessment/record/step-back', defaultMessage: 'Back' },
+    recordStepNext: { id: 'assessment/record/step-next', defaultMessage: 'Next' },
+    recordStepItem: { id: 'assessment/record/step-item', defaultMessage: 'Item' },
+    recordStepFill: { id: 'assessment/record/step-fill', defaultMessage: 'Details' },
+    recordStepConfirm: { id: 'assessment/record/step-confirm', defaultMessage: 'Confirm' },
+    importStepFile: { id: 'assessment/record/import/step-file', defaultMessage: 'File' },
+    importStepConfirm: {
+      id: 'assessment/record/import/step-confirm',
+      defaultMessage: 'Confirm',
+    },
+    importNeedsFile: {
+      id: 'assessment/record/import/needs-file',
+      defaultMessage: 'No list has been uploaded',
+    },
+    importReadyToCheck: {
+      id: 'assessment/record/import/ready-to-check',
+      defaultMessage: 'The file will be checked before anything is written',
+    },
+    recordUnitsOnce: {
+      id: 'assessment/record/units-once',
+      defaultMessage:
+        'This picks whoever is in the chosen part of the organization right now; later moves do not change it.',
+    },
+    recordNeedsBlocked: {
+      id: 'assessment/record/needs-blocked',
+      defaultMessage: 'people on the list who cannot be recorded',
+    },
+    recordTargetsNote: {
+      id: 'assessment/record/targets-note',
+      defaultMessage: 'The same finding is written for everyone chosen',
+    },
+    recordDialogHint: {
+      id: 'assessment/record/dialog-hint',
+      defaultMessage: 'One finding, settled on one or more participants. It takes effect at once.',
+    },
+    importDialogHint: {
+      id: 'assessment/record/import/dialog-hint',
+      defaultMessage: 'One file, one item. The findings take effect as soon as they are imported.',
     },
     recordActsTab: { id: 'assessment/record/acts-tab', defaultMessage: 'Bulk records' },
     recordActsEmpty: {
       id: 'assessment/record/acts-empty',
-      defaultMessage: 'Nothing recorded in bulk yet',
+      defaultMessage: 'No bulk records yet',
     },
     recordActsEmptyHint: {
       id: 'assessment/record/acts-empty-hint',
-      defaultMessage:
-        'Settling one finding on several people at once records it here, so it can be taken back together.',
+      defaultMessage: 'They appear here once a finding is settled on several people at once.',
     },
     recordActBack: { id: 'assessment/record/act-back', defaultMessage: 'Back to the bulk records' },
     recordActTitle: { id: 'assessment/record/act-title', defaultMessage: 'Bulk record' },
+    recordActDetailTitle: {
+      id: 'assessment/record/act-detail-title',
+      defaultMessage: 'Bulk record detail',
+    },
+    importDetailHeading: {
+      id: 'assessment/record/import/detail-heading',
+      defaultMessage: 'Import detail',
+    },
+    recordActItem: { id: 'assessment/record/act-item', defaultMessage: 'Item' },
+    recordActRows: { id: 'assessment/record/act-rows', defaultMessage: 'Who it reached' },
     recordActByPeople: { id: 'assessment/record/act-by-people', defaultMessage: 'Chosen by name' },
     recordActByUnits: { id: 'assessment/record/act-by-units', defaultMessage: 'Chosen by unit' },
     recordActCount: {
@@ -1425,10 +1485,6 @@ const i18n = definePluginMessages({
       defaultMessage: 'Nobody chosen yet',
     },
     recordTargetsClear: { id: 'assessment/record/targets-clear', defaultMessage: 'Clear' },
-    recordCheckTargets: {
-      id: 'assessment/record/check-targets',
-      defaultMessage: 'Check who this reaches',
-    },
     recordTargetsSummary: {
       id: 'assessment/record/targets-summary',
       defaultMessage:
@@ -1437,15 +1493,6 @@ const i18n = definePluginMessages({
     recordTargetsBlocked: {
       id: 'assessment/record/targets-blocked',
       defaultMessage: '{count, plural, one {# cannot be recorded} other {# cannot be recorded}}',
-    },
-    recordDropBlocked: {
-      id: 'assessment/record/drop-blocked',
-      defaultMessage: 'Leave them out and carry on',
-    },
-    recordFrozenNotice: {
-      id: 'assessment/record/frozen-notice',
-      defaultMessage:
-        'Confirming settles it on these participants. Later transfers, changes to the units, or people joining or leaving the roster do not change it.',
     },
     recordSubmitMany: {
       id: 'assessment/record/submit-many',
@@ -1469,27 +1516,21 @@ const i18n = definePluginMessages({
       id: 'assessment/record/blocker-other',
       defaultMessage: 'Cannot be recorded on right now',
     },
-    recordItemPick: {
-      id: 'assessment/record/item-pick',
-      defaultMessage: 'Which item is being recorded',
-    },
-    recordItemChange: { id: 'assessment/record/item-change', defaultMessage: 'Change' },
     recordItemCap: {
       id: 'assessment/record/item-cap',
       defaultMessage:
         '{count, plural, one {# record per person} other {Up to # records per person}}',
     },
-    recordWho: { id: 'assessment/record/who', defaultMessage: 'Who' },
     recordListTab: { id: 'assessment/record/list-tab', defaultMessage: 'Records' },
     recordNewAction: { id: 'assessment/record/new-action', defaultMessage: 'Record one' },
     recordBack: { id: 'assessment/record/back', defaultMessage: 'Back to the records' },
     recordListEmpty: {
       id: 'assessment/record/list-empty',
-      defaultMessage: 'Nothing recorded yet',
+      defaultMessage: 'No administrative records yet',
     },
     recordListEmptyHint: {
       id: 'assessment/record/list-empty-hint',
-      defaultMessage: 'What this office records, one at a time or from a file, appears here.',
+      defaultMessage: 'They appear here once anything is recorded.',
     },
     recordSearchList: {
       id: 'assessment/record/search-list',
@@ -1518,11 +1559,11 @@ const i18n = definePluginMessages({
       defaultMessage: 'Nobody in this round matches.',
     },
     recordMoreWho: { id: 'assessment/record/more-who', defaultMessage: 'Load more' },
-    recordBasis: { id: 'assessment/record/basis', defaultMessage: 'Basis' },
+    recordBasis: { id: 'assessment/record/basis', defaultMessage: 'Reason' },
     recordBasisHint: {
       id: 'assessment/record/basis-hint',
       defaultMessage:
-        'Required. Give a source somebody else can check, such as a document title or reference number; the participant is shown it.',
+        'Required. Say what this rests on, such as a document title or reference number; the participant is shown it.',
     },
     recordEffectNotice: {
       id: 'assessment/record/effect-notice',
@@ -1541,34 +1582,11 @@ const i18n = definePluginMessages({
       id: 'assessment/record/section-result-note',
       defaultMessage: 'Filled in from the material above, and yours to change',
     },
-    recordIrreversible: {
-      id: 'assessment/record/irreversible',
-      defaultMessage:
-        'A filed record cannot be edited. To correct one, withdraw it and file again.',
-    },
-    recordSubmit: { id: 'assessment/record/submit', defaultMessage: 'Confirm the record' },
-    recordDone: { id: 'assessment/record/done', defaultMessage: 'Recorded.' },
     // ------------------------------------------------------------------
     // importing a workbook of them, and looking back on what was imported
     importAction: { id: 'assessment/record/import/action', defaultMessage: 'Import' },
     importTab: { id: 'assessment/record/import/tab', defaultMessage: 'Imports' },
-    importNoCommitOnErrors: {
-      id: 'assessment/record/import/no-commit-on-errors',
-      defaultMessage: 'Rows with an error stop the import; rows to check can go in once confirmed.',
-    },
-    importFixAndReselect: {
-      id: 'assessment/record/import/fix-and-reselect',
-      defaultMessage: 'Correct them and upload again to import',
-    },
-    importItemPick: {
-      id: 'assessment/record/import/item-pick',
-      defaultMessage: 'Which item is this file for',
-    },
     importBack: { id: 'assessment/record/import/back', defaultMessage: 'Back to the imports' },
-    importItemHint: {
-      id: 'assessment/record/import/item-hint',
-      defaultMessage: 'One file imports one item.',
-    },
     importTemplate: {
       id: 'assessment/record/import/template',
       defaultMessage: 'Download the template: {item}',
@@ -1580,16 +1598,12 @@ const i18n = definePluginMessages({
     importTemplateHint: {
       id: 'assessment/record/import/template-hint',
       defaultMessage:
-        'The template is made for the item chosen above, so a different item needs a new one. One row per person, and leave the header row as it is.',
-    },
-    importTemplateRefresh: {
-      id: 'assessment/record/import/template-refresh',
-      defaultMessage: 'Download it again after the item has been reconfigured.',
+        'Built for the item chosen above. Leave the header row as it is, and fill in one participant per row.',
     },
     importFile: { id: 'assessment/record/import/file', defaultMessage: 'List to import' },
     importFileHint: {
       id: 'assessment/record/import/file-hint',
-      defaultMessage: 'The .xlsx you filled in from the template above.',
+      defaultMessage: 'Upload the file you filled in from the template above.',
     },
     importChooseFile: {
       id: 'assessment/record/import/choose-file',
@@ -1602,17 +1616,16 @@ const i18n = definePluginMessages({
     },
     importDefaultBasis: {
       id: 'assessment/record/import/default-basis',
-      defaultMessage: 'Shared basis',
+      defaultMessage: 'Default reason',
     },
     importDefaultBasisHint: {
       id: 'assessment/record/import/default-basis-hint',
-      defaultMessage: 'Used for every row that leaves its basis blank.',
+      defaultMessage: 'Rows that leave that column empty use what you put here.',
     },
     importChecking: {
       id: 'assessment/record/import/checking',
       defaultMessage: 'Checking the file…',
     },
-    importRecheck: { id: 'assessment/record/import/recheck', defaultMessage: 'Check again' },
     importResult: { id: 'assessment/record/import/result', defaultMessage: 'Check result' },
     importSummaryRows: {
       id: 'assessment/record/import/summary-rows',
@@ -1632,7 +1645,7 @@ const i18n = definePluginMessages({
     },
     importFixAndRetry: {
       id: 'assessment/record/import/fix-and-retry',
-      defaultMessage: 'Correct the rows with errors in the file, then upload it again.',
+      defaultMessage: 'Some rows on the list have errors. Correct them and upload the file again.',
     },
     importAllReady: {
       id: 'assessment/record/import/all-ready',
@@ -1688,7 +1701,7 @@ const i18n = definePluginMessages({
     },
     importReasonParticipantNotFound: {
       id: 'assessment/record/import/reason/participant-not-found',
-      defaultMessage: 'Nobody you can record on has this number here',
+      defaultMessage: 'That number is not among the people you may record on',
     },
     importReasonSelfRecord: {
       id: 'assessment/record/import/reason/self-record-refused',
@@ -1700,7 +1713,7 @@ const i18n = definePluginMessages({
     },
     importReasonBasisRequired: {
       id: 'assessment/record/import/reason/basis-required',
-      defaultMessage: 'No basis',
+      defaultMessage: 'No reason given',
     },
     importReasonRecognitionRequired: {
       id: 'assessment/record/import/reason/recognition-required',
@@ -1814,6 +1827,22 @@ const i18n = definePluginMessages({
       id: 'assessment/record/import/reason/unsupported-template-version',
       defaultMessage: 'The template is out of date',
     },
+    importBlockedErrors: {
+      id: 'assessment/record/import/blocked-errors',
+      defaultMessage: 'Correct the rows with errors and upload the file again',
+    },
+    importBlockedWarnings: {
+      id: 'assessment/record/import/blocked-warnings',
+      defaultMessage: 'Tick off the rows that need a look first',
+    },
+    importBlockedBusy: {
+      id: 'assessment/record/import/blocked-busy',
+      defaultMessage: 'The import is running',
+    },
+    importReasonOtherItem: {
+      id: 'assessment/record/import/reason/template-for-another-item',
+      defaultMessage: 'This template was downloaded for a different item',
+    },
     importReasonFormula: {
       id: 'assessment/record/import/reason/formula-not-allowed',
       defaultMessage: 'A cell holds a formula. Paste the values instead.',
@@ -1832,7 +1861,7 @@ const i18n = definePluginMessages({
     },
     importReasonNoRows: {
       id: 'assessment/record/import/reason/no-rows',
-      defaultMessage: 'The file has no rows',
+      defaultMessage: 'Nobody is filled in on this list',
     },
     importReasonUnreadable: {
       id: 'assessment/record/import/reason/unreadable',
@@ -1844,12 +1873,11 @@ const i18n = definePluginMessages({
     },
     importHistoryEmpty: {
       id: 'assessment/record/import/history-empty',
-      defaultMessage: 'No file imported yet',
+      defaultMessage: 'No imports yet',
     },
     importHistoryEmptyHint: {
       id: 'assessment/record/import/history-empty-hint',
-      defaultMessage:
-        'Each list you import appears here, with what it added and what still counts.',
+      defaultMessage: 'They appear here once a list has been imported.',
     },
     importColumnFile: { id: 'assessment/record/import/column-file', defaultMessage: 'File' },
     importColumnStanding: { id: 'assessment/record/import/column-standing', defaultMessage: 'Now' },
@@ -3498,6 +3526,30 @@ const i18n = definePluginMessages({
     entryTrailVersionFirstBy: {
       id: 'assessment/entry/trail-version-first-by',
       defaultMessage: '{who} created the claim, version {no}',
+    },
+    // A fact the office settled was never claimed by anybody, so it is not a
+    // version of a claim and nobody "filed" it. Told by what the revision
+    // says it is, never by the item's type - a question may one day accept
+    // both a claim and a record, and each fact still knows its own origin.
+    entryTrailRecorded: {
+      id: 'assessment/entry/trail-recorded',
+      defaultMessage: 'Recorded by the institution',
+    },
+    entryTrailRecordedBy: {
+      id: 'assessment/entry/trail-recorded-by',
+      defaultMessage: '{who} recorded this',
+    },
+    entryTrailImported: {
+      id: 'assessment/entry/trail-imported',
+      defaultMessage: 'Imported from a list',
+    },
+    entryTrailImportedBy: {
+      id: 'assessment/entry/trail-imported-by',
+      defaultMessage: '{who} imported this from a list',
+    },
+    entrySheetRecorded: {
+      id: 'assessment/entry-sheet/recorded',
+      defaultMessage: 'What was recorded',
     },
     entryTrailSubmitted: {
       id: 'assessment/entry/trail-submitted',

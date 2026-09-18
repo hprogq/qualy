@@ -20,6 +20,7 @@ import type { EvidenceFieldSpec } from '../entry/EvidenceForm.tsx'
 import { SlideKey } from './touch.tsx'
 import { useFinePointer } from './pointer.ts'
 import { ValueFieldsForm } from '@qualy/web-value-form/InputValueForm'
+import { usePickerWords } from '@qualy/web-i18n/picker-words'
 import { draftsFromFields, materializeFields, type FieldDraft } from '@qualy/web-value-form/model'
 import { parseDecimal, type AtomicSchema } from '@qualy/value-schema'
 import { changedSeedKeys, recognitionProblemText } from './recognition.ts'
@@ -469,6 +470,7 @@ export function ApproveDialog({
   onConfirm: (decision: WordedDecision) => void
 }) {
   const { format, locale } = useI18n()
+  const words = usePickerWords()
   const fine = useFinePointer()
   const [comment, setComment] = useState(initial?.comment ?? '')
 
@@ -544,6 +546,7 @@ export function ApproveDialog({
             <p {...stylex.props(recognitionStyles.quietNote)}>{format(m.recognitionLockedNote)}</p>
           )}
           <ValueFieldsForm
+            words={words}
             fields={fields}
             drafts={drafts}
             onDraft={(id, draft) => setDrafts((current) => ({ ...current, [id]: draft }))}

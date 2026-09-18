@@ -451,6 +451,7 @@ export function EntryDetail({
               </SheetTitle>
               <EntryStanding
                 status={entry.status}
+                source={entry.source}
                 revised={entry.currentReviewInstanceId !== null}
                 asked={entry.supplement !== null}
               />
@@ -585,7 +586,16 @@ export function EntryDetail({
 
                 <section {...stylex.props(styles.section)}>
                   <div {...stylex.props(styles.sectionHead)}>
-                    <p {...stylex.props(styles.sectionTitle)}>{format(m.entrySheetOwn)}</p>
+                    {/* what this section holds depends on how the fact
+                        arrived, not on what kind of question it answers:
+                        an item may accept both a claim and a record */}
+                    <p {...stylex.props(styles.sectionTitle)}>
+                      {format(
+                        entry.source === 'record' || entry.source === 'import'
+                          ? m.entrySheetRecorded
+                          : m.entrySheetOwn,
+                      )}
+                    </p>
                     <span aria-hidden {...stylex.props(styles.sectionRule)} />
                     {revisionNo !== undefined && (
                       <p {...stylex.props(styles.sectionNote)}>

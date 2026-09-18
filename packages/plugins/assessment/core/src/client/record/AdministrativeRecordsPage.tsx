@@ -7,6 +7,14 @@ import { useApiQuery, usePageQueryState, usePageQueryUpdate } from '@qualy/web-r
 import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@qualy/ui/dialog'
 import { Drill, type DrillMove } from '@qualy/ui/reveal'
 import { PageHeader } from '@qualy/ui/admin'
 import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
@@ -41,6 +49,8 @@ import { AdministrativeImportDetail } from './import/AdministrativeImportDetail.
 // in the address too, so a reload and a shared link both land where the
 // reader was.
 
+const wide = '@media (min-width: 900px)'
+
 const styles = stylex.create({
   grow: {
     display: 'flex',
@@ -53,19 +63,26 @@ const styles = stylex.create({
   // sized like the line of prose it sits in rather than like a control: a
   // button at a control's own height makes the band taller than the heading
   // it took over
+  // Sized to the line it sits in, not to itself. The description slot is one
+  // 1.25rem line of 0.875rem text; a control with its own padding makes that
+  // line taller, and the band visibly grows the moment somebody opens a
+  // sub-screen. So: no vertical padding, the same font and line-height as
+  // the prose around it, and the hover ground drawn outside the flow.
   backButton: {
     display: 'inline-flex',
     minWidth: 0,
     alignItems: 'center',
     gap: 6,
-    borderRadius: tokens.radiusSm,
     borderWidth: 0,
-    backgroundColor: { default: 'transparent', ':hover': tokens.surfaceMuted },
-    marginInlineStart: -6,
-    paddingInline: 6,
-    paddingBlock: 2,
-    font: 'inherit',
+    borderRadius: tokens.radiusSm,
+    backgroundColor: 'transparent',
+    padding: 0,
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    fontFamily: 'inherit',
     color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
+    textDecorationLine: { default: 'none', ':hover': 'underline' },
+    textUnderlineOffset: 3,
     cursor: 'pointer',
   },
   truncate: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
@@ -75,16 +92,29 @@ const styles = stylex.create({
   // to sit up in the page header, a whole banner away from the tabs - so a
   // reader on the imports tab was offered "record one" as the main action of
   // a screen they were not on.
+  // Wide, one line: tabs, search, actions. Narrow there is not room for
+  // all three, and the thing that must not be pushed off is the pair of
+  // actions - a screen whose main verbs have wrapped below the fold looks
+  // like a screen that cannot do anything. So the search drops to a line of
+  // its own and the tabs keep the actions company.
   band: {
-    display: 'flex',
-    flexWrap: 'wrap',
+    display: 'grid',
+    gridTemplateColumns: { default: 'minmax(0, 1fr) auto', [wide]: 'max-content 1fr max-content' },
     alignItems: 'center',
-    gap: 12,
+    columnGap: 12,
+    rowGap: 10,
     paddingBottom: 12,
   },
+  tabSeat: { gridColumnStart: 1, gridRowStart: 1, minWidth: 0 },
   bandTabs: { paddingBottom: 0 },
-  bandSpacer: { flexGrow: 1 },
-  searchSeat: { position: 'relative', minWidth: '14rem', maxWidth: '22rem', flexGrow: 1 },
+  searchSeat: {
+    position: 'relative',
+    gridColumn: { default: '1 / span 2', [wide]: '2' },
+    gridRowStart: { default: 2, [wide]: 1 },
+    justifySelf: { default: 'stretch', [wide]: 'end' },
+    minWidth: 0,
+    width: { default: 'auto', [wide]: 'min(22rem, 100%)' },
+  },
   searchGlass: {
     pointerEvents: 'none',
     position: 'absolute',
@@ -96,8 +126,53 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
   },
   searchIndent: { paddingLeft: 36 },
-  actions: { display: 'flex', flexShrink: 0, gap: 8 },
+  actions: {
+    display: 'flex',
+    gridColumnStart: { default: 2, [wide]: 3 },
+    gridRowStart: 1,
+    flexShrink: 0,
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
   icon: { width: 15, height: 15 },
+  // tall enough to hold a form without the panel growing past the window,
+  // and scrolling inside rather than out
+  // As tall as it needs up to a ceiling, and no taller. A fixed height left
+  // a short first step floating in the middle of an empty panel; an
+  // unbounded one moved the footer every time the form grew. The body
+  // scrolls when it reaches the ceiling, and its content starts at the top
+  // rather than being centred in whatever is left.
+  // the errand's own bands carry the side padding, so the rule above its
+  // keys can run the full width of the panel
+  // A floor as well as a ceiling. The first step cannot draw until the
+  // questions arrive, and a panel sized to nothing folds shut and reopens
+  // the moment they do - so it holds a spinner at the size it is about to
+  // be. The floor sits under every step's natural height, so nothing
+  // rattles around in it once there is something to show.
+  errandPanel: {
+    minHeight: 'min(70vh, 26rem)',
+    maxHeight: 'min(86vh, 52rem)',
+    paddingInline: 0,
+  },
+  errandHead: { paddingInline: 24 },
+  // The errand inside runs its own three moves and scrolls only the middle
+  // one, so this slot hands its height over rather than scrolling: two
+  // scrollbars for one panel would put the step rail and the pair of keys
+  // out of reach exactly when a long form needs them.
+  // minWidth as well as minHeight: a grid item sized by `auto` is at least
+  // as wide as its own min-content, and one band inside that refuses to
+  // shrink makes the whole panel scroll sideways
+  errandBody: {
+    display: 'flex',
+    minHeight: 0,
+    minWidth: 0,
+    flexDirection: 'column',
+    // the slot's own bleed is given back: the room a focus ring needs is
+    // inside the errand's bands now, and 4px hanging off each side of a
+    // panel that no longer pads sideways is 4px of sideways scrolling
+    margin: 0,
+    padding: 0,
+  },
 })
 
 /** the three indexes of one book: by fact, by act, by file */
@@ -117,20 +192,20 @@ export default function AdministrativeRecordsPage() {
   const [entryId] = usePageQueryState('entry', '', { history: 'push' })
   const address = usePageQueryUpdate()
 
+  // Recording and importing are errands, not places. They open over the book
+  // rather than replacing it, so finishing one puts the reader back exactly
+  // where they were - with the list behind already showing what they did.
+  const doing = mode === 'manual' ? 'manual' : mode === 'import' ? 'import' : null
   const view =
-    mode === 'manual'
-      ? 'manual'
-      : mode === 'import'
-        ? 'import'
-        : importId !== ''
-          ? `detail:${importId}`
-          : actId !== ''
-            ? `act:${actId}`
-            : tab === 'acts'
-              ? 'acts'
-              : tab === 'imports'
-                ? 'imports'
-                : 'records'
+    importId !== ''
+      ? `detail:${importId}`
+      : actId !== ''
+        ? `act:${actId}`
+        : tab === 'acts'
+          ? 'acts'
+          : tab === 'imports'
+            ? 'imports'
+            : 'records'
   // kept mounted while the sheet shuts, or it would vanish rather than close;
   // absent entirely when nothing is open, so a page nobody has drilled into
   // asks for nothing
@@ -157,6 +232,7 @@ export default function AdministrativeRecordsPage() {
           view={view}
           move={move}
           top={top}
+          doing={doing}
           openEntry={openEntry}
           entryId={entryId}
           address={address}
@@ -171,6 +247,7 @@ function RecordsBody({
   view,
   move,
   top,
+  doing,
   openEntry,
   entryId,
   address,
@@ -179,6 +256,8 @@ function RecordsBody({
   view: string
   move: DrillMove
   top: boolean
+  /** the errand open over the book, if one is */
+  doing: 'manual' | 'import' | null
   openEntry: string | null
   entryId: string
   address: ReturnType<typeof usePageQueryUpdate>
@@ -187,6 +266,9 @@ function RecordsBody({
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
+  // kept while the dialog shuts, or its contents would vanish before the
+  // panel does and the whole thing would fold inward
+  const errand = useLingering(doing)
   // where the back press goes: out of a form to the book, out of one import
   // to the imports it was opened from
   const back: {
@@ -196,24 +278,19 @@ function RecordsBody({
     from: MessageDescriptor
     label: MessageDescriptor
     to: Record<string, string>
-  } =
-    view === 'manual'
-      ? { title: m.recordNewAction, from: m.recordTab, label: m.recordBack, to: { mode: '' } }
-      : view === 'import'
-        ? { title: m.importAction, from: m.recordTab, label: m.recordBack, to: { mode: '' } }
-        : view.startsWith('act:')
-          ? {
-              title: m.recordActTitle,
-              from: m.recordActsTab,
-              label: m.recordActBack,
-              to: { act: '', tab: 'acts' },
-            }
-          : {
-              title: m.importDetailTitle,
-              from: m.importTab,
-              label: m.importBack,
-              to: { import: '', tab: 'imports' },
-            }
+  } = view.startsWith('act:')
+    ? {
+        title: m.recordActDetailTitle,
+        from: m.recordActsTab,
+        label: m.recordActBack,
+        to: { act: '', tab: 'acts' },
+      }
+    : {
+        title: m.importDetailHeading,
+        from: m.importTab,
+        label: m.importBack,
+        to: { import: '', tab: 'imports' },
+      }
 
   // What somebody else just recorded, imported or withdrew in this round
   // moves the book and the imports' standing; nothing else on this page
@@ -252,20 +329,21 @@ function RecordsBody({
         {top ? (
           <div>
             <div {...stylex.props(styles.band)}>
-              <Tabs
-                value={view}
-                onValueChange={(next) =>
-                  address({ tab: next === 'records' ? '' : next }, { history: 'replace' })
-                }
-                xstyle={styles.bandTabs}
-              >
-                <TabsList>
-                  <TabsTrigger value="records">{format(m.recordListTab)}</TabsTrigger>
-                  <TabsTrigger value="acts">{format(m.recordActsTab)}</TabsTrigger>
-                  <TabsTrigger value="imports">{format(m.importTab)}</TabsTrigger>
-                </TabsList>
-              </Tabs>
-              <span {...stylex.props(styles.bandSpacer)} />
+              <div {...stylex.props(styles.tabSeat)}>
+                <Tabs
+                  value={view}
+                  onValueChange={(next) =>
+                    address({ tab: next === 'records' ? '' : next }, { history: 'replace' })
+                  }
+                  xstyle={styles.bandTabs}
+                >
+                  <TabsList>
+                    <TabsTrigger value="records">{format(m.recordListTab)}</TabsTrigger>
+                    <TabsTrigger value="acts">{format(m.recordActsTab)}</TabsTrigger>
+                    <TabsTrigger value="imports">{format(m.importTab)}</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
               {/* only the records are searchable: the other two tabs are
                   walked by cursor and have nothing to search on, so drawing
                   a box there would promise something that does not exist */}
@@ -341,19 +419,12 @@ function RecordsBody({
                 }
               />
             </BatchBanner>
-            {view === 'manual' ? (
-              <ManualRecordView batchId={batch.id} materialRange={batch.materialRange} />
-            ) : view === 'import' ? (
-              <AdministrativeImportView
+            {view.startsWith('act:') ? (
+              <AdministrativeActDetail
                 batchId={batch.id}
-                // the import just made is where the reader goes next, and the
-                // wizard is not somewhere to come back to
-                onImported={(id) =>
-                  address({ mode: '', tab: 'imports', import: id }, { history: 'replace' })
-                }
+                operationId={view.slice('act:'.length)}
+                onOpenEntry={(id) => address({ entry: id }, { history: 'push' })}
               />
-            ) : view.startsWith('act:') ? (
-              <AdministrativeActDetail batchId={batch.id} operationId={view.slice('act:'.length)} />
             ) : (
               <AdministrativeImportDetail
                 batchId={batch.id}
@@ -364,6 +435,46 @@ function RecordsBody({
           </div>
         )}
       </Drill>
+      {/* An errand, opened over the book. Closing it leaves the reader on the
+          tab they started from, which is the whole difference between this
+          and a sub-screen: nothing to navigate back out of. */}
+      <Dialog
+        open={doing !== null}
+        onOpenChange={(open) => {
+          if (!open) address({ mode: '' })
+        }}
+      >
+        <DialogContent size="46rem" xstyle={styles.errandPanel}>
+          <DialogHeader className={stylex.props(styles.errandHead).className}>
+            <DialogTitle>
+              {format(errand === 'import' ? m.importAction : m.recordNewAction)}
+            </DialogTitle>
+            <DialogDescription>
+              {format(errand === 'import' ? m.importDialogHint : m.recordDialogHint)}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody xstyle={styles.errandBody}>
+            {errand === 'manual' && (
+              <ManualRecordView
+                batchId={batch.id}
+                materialRange={batch.materialRange}
+                onDone={() => address({ mode: '' })}
+              />
+            )}
+            {errand === 'import' && (
+              <AdministrativeImportView
+                batchId={batch.id}
+                // the import just made is where the reader goes next, and
+                // the errand is not somewhere to come back to
+                onImported={(id) =>
+                  address({ mode: '', tab: 'imports', import: id }, { history: 'replace' })
+                }
+              />
+            )}
+          </DialogBody>
+        </DialogContent>
+      </Dialog>
+
       {/* one claim, read and corrected over whichever part is showing: the
           siblings around it are the context it is read against */}
       {openEntry !== null && (

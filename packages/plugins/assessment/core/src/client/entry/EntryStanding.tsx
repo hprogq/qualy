@@ -57,25 +57,49 @@ const styles = stylex.create({
   },
 })
 
+/** the same six states, in the words an administrative finding uses */
+const recordWord = {
+  draft: m.recordStandingSettled,
+  in_review: m.recordStandingAppealed,
+  needs_revision: m.recordStandingAppealed,
+  approved: m.recordStandingSettled,
+  rejected: m.recordStandingOverturned,
+  voided: m.recordStandingWithdrawn,
+} as const
+
 export function EntryStanding({
   status,
   revised,
   asked,
+  source,
 }: {
   status: EntryDto['status']
   revised?: boolean
   /** a reviewer is waiting for material, which outranks "in review" */
   asked?: boolean
+  /**
+   * How the fact arrived, when the caller knows.
+   *
+   * The same six states mean different things depending on it. A claim that
+   * is `approved` passed a review; a fact the office recorded was settled
+   * the moment it was written and no reviewer ever saw it, so "已通过" names
+   * a review that never happened. Told by the fact's own origin rather than
+   * by the item's type, because one question may accept both.
+   */
+  source?: EntryDto['source']
 }) {
   const { format } = useI18n()
+  const administrative = source === 'record' || source === 'import'
   const word =
     asked === true
       ? m.entryStatusAwaitingSupplement
-      : status === 'draft' && revised === true
-        ? // a draft with a round behind it is not a fresh draft: it exists
-          // because something was asked of it
-          m.entryStatusRevising
-        : entryStatusMessage[status]
+      : administrative
+        ? recordWord[status]
+        : status === 'draft' && revised === true
+          ? // a draft with a round behind it is not a fresh draft: it
+            // exists because something was asked of it
+            m.entryStatusRevising
+          : entryStatusMessage[status]
   const alert = asked === true || status === 'rejected' || status === 'needs_revision'
   const hollow = status === 'draft' && asked !== true
   return (

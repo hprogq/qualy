@@ -7,16 +7,9 @@ import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
-import {
-  Empty,
-  EmptyContent,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from '@qualy/ui/empty'
-import { Skeleton } from '@qualy/ui/skeleton'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { ListEmpty } from '../ListEmpty.tsx'
+import { ListSkeleton } from '../ListSkeleton.tsx'
 import { assessmentApi } from '../../api.ts'
 import { assessmentMessages as m } from '../../i18n.ts'
 import { useWhen } from '../when.ts'
@@ -50,6 +43,21 @@ const styles = stylex.create({
     backgroundColor: tokens.surface,
     boxShadow: tokens.elevation1,
   },
+  head: {
+    display: { default: 'none', [wide]: 'grid' },
+    gridTemplateColumns: 'minmax(0, 1.4fr) minmax(0, 1fr) 9rem 9rem 1rem',
+    columnGap: 12,
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
+    backgroundColor: tokens.surfaceInset,
+    paddingInline: 16,
+    paddingBlock: 10,
+    fontSize: 12,
+    fontWeight: 500,
+    color: tokens.mutedForeground,
+  },
   row: {
     display: 'grid',
     width: '100%',
@@ -60,9 +68,9 @@ const styles = stylex.create({
     alignItems: 'center',
     columnGap: 12,
     rowGap: 4,
-    borderTopWidth: { default: 1, ':first-child': 0 },
-    borderTopStyle: 'solid',
-    borderTopColor: tokens.divider,
+    borderBottomWidth: { default: 1, ':last-child': 0 },
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
     backgroundColor: {
       default: 'transparent',
       ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
@@ -152,7 +160,6 @@ const styles = stylex.create({
     paddingBlock: 48,
   },
   actionIcon: { width: 15, height: 15 },
-  waiting: { height: 220, width: '100%' },
   moreRow: { display: 'flex', justifyContent: 'center', paddingBlock: 8 },
 })
 
@@ -202,29 +209,31 @@ export function AdministrativeImportHistory({
       loadingLabel={format(commonMessages.loading)}
       retryLabel={format(commonMessages.retry)}
       onRetry={() => void history.refetch()}
-      skeleton={<Skeleton className={stylex.props(styles.waiting).className} />}
+      skeleton={<ListSkeleton />}
     >
       {rows.length === 0 ? (
-        <Empty xstyle={styles.empty} data-testid="administrative-imports-empty">
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <FileSpreadsheetIcon />
-            </EmptyMedia>
-            <EmptyTitle>{format(m.importHistoryEmpty)}</EmptyTitle>
-            <EmptyDescription>{format(m.importHistoryEmptyHint)}</EmptyDescription>
-          </EmptyHeader>
+        <ListEmpty
+          title={format(m.importHistoryEmpty)}
+          said={format(m.importHistoryEmptyHint)}
+          testId="administrative-imports-empty"
+        >
           {onImport !== undefined && (
-            <EmptyContent>
-              <Button variant="outline" onClick={onImport}>
-                <DownloadIcon aria-hidden {...stylex.props(styles.actionIcon)} />
-                {format(m.importAction)}
-              </Button>
-            </EmptyContent>
+            <Button variant="outline" onClick={onImport}>
+              <DownloadIcon aria-hidden {...stylex.props(styles.actionIcon)} />
+              {format(m.importAction)}
+            </Button>
           )}
-        </Empty>
+        </ListEmpty>
       ) : (
         <>
           <div {...stylex.props(styles.card)} data-testid="administrative-imports">
+            <div {...stylex.props(styles.head)} aria-hidden>
+              <span>{format(m.importColumnFile)}</span>
+              <span>{format(m.recordColumnItem)}</span>
+              <span>{format(m.recordColumnActor)}</span>
+              <span>{format(m.importColumnStanding)}</span>
+              <span />
+            </div>
             {rows.map((row) => {
               // nothing of this file is left standing
               const spent = row.importedCount > 0 && row.standing.voided >= row.importedCount

@@ -144,7 +144,7 @@ export function RecordTargets({
             {/* said here rather than after confirming: somebody choosing a
                 class needs to know now that they are picking the people in
                 it today, not the class as a standing group */}
-            <DialogDescription>{format(m.recordFrozenNotice)}</DialogDescription>
+            <DialogDescription>{format(m.recordUnitsOnce)}</DialogDescription>
           </DialogHeader>
           <DialogBody xstyle={styles.body}>
             <UiSlot

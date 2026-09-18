@@ -235,7 +235,12 @@ const open = (route: string, stubs: Record<string, unknown> = {}) =>
 
 const base = `/assessment/batches/${BATCH_ID}/record`
 
-/** the file a recorder picks, dropped onto the upload area */
+/**
+ * The file a recorder picks, and the press that has it checked.
+ *
+ * Uploading only puts the file somewhere; the step's own forward key is what
+ * asks the server to read it, so the two travel together here.
+ */
 const pickWorkbook = async () => {
   await vi.waitFor(() => {
     if (document.querySelector('[data-testid="administrative-import"] input[type="file"]') === null)
@@ -250,6 +255,12 @@ const pickWorkbook = async () => {
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     }),
   )
+  const next = page.getByTestId('record-step-next')
+  await vi.waitFor(async () => {
+    if ((await next.element().getAttribute('disabled')) !== null)
+      throw new Error('the file has not landed yet')
+  })
+  await userEvent.click(next.element())
 }
 
 /** the questions this office settles are a list to read, not a select */
@@ -263,6 +274,8 @@ const chooseItem = async () => {
     (one.textContent ?? '').includes('优秀学生干部'),
   )!
   await userEvent.click(choice)
+  // picking selects; the step's own forward key is what enters the form
+  await userEvent.click(page.getByTestId('record-step-next').element())
 }
 
 describe('importing a workbook of administrative records', () => {
@@ -281,6 +294,39 @@ describe('importing a workbook of administrative records', () => {
     const line = page.getByTestId('administrative-import')
     await expect.element(line).toHaveAttribute('data-count', '126')
     await expect.element(line).toHaveAttribute('data-voided', '4')
+  })
+
+  it('fits the errand inside its panel, at every step', async () => {
+    // A dialog that scrolls sideways has a band inside it refusing to
+    // shrink, and the reader pays for it with a scrollbar under a panel
+    // that has nothing to scroll to. Measured rather than eyeballed,
+    // because it has come back twice.
+    open(`${base}?mode=import`)
+    await chooseItem()
+    await expect.element(page.getByTestId('administrative-import')).toBeVisible()
+    const panel = document.querySelector<HTMLElement>('[data-slot="dialog-content"]')!
+    await vi.waitFor(() => {
+      if (panel.scrollWidth > panel.clientWidth)
+        throw new Error(`the panel scrolls ${panel.scrollWidth - panel.clientWidth}px sideways`)
+    })
+  })
+
+  it('sets the upload area\u2019s words in the middle of it', async () => {
+    // The seat is one fixed height for all three of its states - empty,
+    // uploading, holding a file - so the step's middle does not jump every
+    // time the file moves. A fixed height is also what puts the words off
+    // centre when the area pads or spaces itself, which is why this is
+    // measured rather than eyeballed.
+    open(`${base}?mode=import`)
+    await chooseItem()
+    await vi.waitFor(() => {
+      if (document.querySelector('[data-upload-seat]') === null)
+        throw new Error('no upload area yet')
+    })
+    const seat = document.querySelector<HTMLElement>('[data-upload-seat]')!
+    const box = seat.getBoundingClientRect()
+    const said = seat.querySelector<HTMLElement>('[data-slot="dropzone-said"]')!.getBoundingClientRect()
+    expect(Math.abs((said.top + said.bottom) / 2 - (box.top + box.bottom) / 2)).toBeLessThan(1.5)
   })
 
   it('offers no import while the server found errors in the file', async () => {
@@ -314,8 +360,10 @@ describe('importing a workbook of administrative records', () => {
         ),
       )
       .toEqual(['participant-not-found'])
-    // nothing to press: the file has to be corrected and uploaded again
-    expect(document.querySelector('[data-testid="import-commit"]')).toBeNull()
+    // the press stays on the screen and says why it cannot run: a button
+    // that disappears leaves the reader looking for it instead of at what
+    // they have to fix
+    await expect.element(page.getByTestId('import-commit')).toBeDisabled()
     expect(commit).not.toHaveBeenCalled()
   })
 
@@ -389,7 +437,7 @@ describe('importing a workbook of administrative records', () => {
     await page.getByTestId('import-row').click()
     await expect.poll(() => addressNow()).toContain(`entry=${ENTRY_ID}`)
     // the sheet names where the fact came from, and goes there
-    await page.getByRole('button', { name: '查看所在导入记录' }).click()
+    await page.getByRole('button', { name: '查看本次导入' }).click()
     await expect.poll(() => addressNow()).not.toContain('entry=')
     expect(addressNow()).toContain(`import=${IMPORT_ID}`)
   })

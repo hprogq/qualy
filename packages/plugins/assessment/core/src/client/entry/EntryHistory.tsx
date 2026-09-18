@@ -760,14 +760,24 @@ function Version({
     <>
       <Line
         title={
-          subject === undefined
-            ? format(revision.revisionNo === 1 ? m.entryTrailVersionFirst : m.entryTrailVersion, {
-                no: revision.revisionNo,
-              })
-            : format(
-                revision.revisionNo === 1 ? m.entryTrailVersionFirstBy : m.entryTrailVersionBy,
-                { who: subject, no: revision.revisionNo },
-              )
+          // what this version IS, said by where it came from. A settled
+          // administrative fact was not filed by the person it is about, and
+          // telling them they wrote it is telling them something untrue.
+          revision.source === 'record' || revision.source === 'import'
+            ? subject === undefined
+              ? format(revision.source === 'import' ? m.entryTrailImported : m.entryTrailRecorded)
+              : format(
+                  revision.source === 'import' ? m.entryTrailImportedBy : m.entryTrailRecordedBy,
+                  { who: subject },
+                )
+            : subject === undefined
+              ? format(revision.revisionNo === 1 ? m.entryTrailVersionFirst : m.entryTrailVersion, {
+                  no: revision.revisionNo,
+                })
+              : format(
+                  revision.revisionNo === 1 ? m.entryTrailVersionFirstBy : m.entryTrailVersionBy,
+                  { who: subject, no: revision.revisionNo },
+                )
         }
         at={revision.createdAt}
       />

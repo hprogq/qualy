@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
+import { ChevronRightIcon } from 'lucide-react'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
@@ -12,6 +13,7 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { ReasonDialog } from '../items/ReasonDialog.tsx'
+import { RecordStanding } from './RecordStanding.tsx'
 import { useWhen } from './when.ts'
 
 // One bulk act, looked back on.
@@ -55,15 +57,60 @@ const styles = stylex.create({
   value: { minWidth: 0, margin: 0, overflowWrap: 'anywhere' },
   now: { display: 'flex', flexWrap: 'wrap', gap: 12 },
   events: { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13 },
+  section: { fontSize: 14, fontWeight: 600 },
+  card: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    overflow: 'hidden',
+    borderRadius: tokens.radiusLg,
+    backgroundColor: tokens.surface,
+    boxShadow: tokens.elevation1,
+  },
+  row: {
+    display: 'grid',
+    width: '100%',
+    gridTemplateColumns: 'minmax(0, 8rem) minmax(0, 1fr) 7rem 1rem',
+    alignItems: 'center',
+    columnGap: 12,
+    borderBottomWidth: { default: 1, ':last-child': 0 },
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
+    backgroundColor: {
+      default: 'transparent',
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
+    },
+    paddingInline: 16,
+    paddingBlock: 10,
+    textAlign: 'start',
+    fontSize: 13,
+    cursor: 'pointer',
+  },
+  headRow: {
+    backgroundColor: tokens.surfaceInset,
+    cursor: 'default',
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  cell: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  no: { fontVariantNumeric: 'tabular-nums' },
+  noneGiven: { color: `color-mix(in oklab, ${tokens.mutedForeground} 70%, transparent)` },
+  chevron: {
+    width: 16,
+    height: 16,
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)`,
+  },
   waiting: { height: 200, width: '100%' },
 })
 
 export function AdministrativeActDetail({
   batchId,
   operationId,
+  onOpenEntry,
 }: {
   batchId: string
   operationId: string
+  onOpenEntry: (entryId: string) => void
 }) {
   const api = useApi(assessmentApi)
   const run = useRunApi()
@@ -142,6 +189,8 @@ export function AdministrativeActDetail({
             </div>
 
             <dl {...stylex.props(styles.facts)}>
+              <dt {...stylex.props(styles.term)}>{format(m.recordActItem)}</dt>
+              <dd {...stylex.props(styles.value)}>{found.itemTitle}</dd>
               <dt {...stylex.props(styles.term)}>{format(m.recordTargets)}</dt>
               <dd {...stylex.props(styles.value)}>
                 {format(
@@ -185,6 +234,54 @@ export function AdministrativeActDetail({
               </dl>
             )}
           </section>
+
+          {/* the same table the import's rows use, because it answers the
+              same question: which people this act reached, and what each of
+              their facts is now. A row opens that fact. */}
+          {found.rows.length > 0 && (
+            <>
+              <p {...stylex.props(styles.section)}>{format(m.recordActRows)}</p>
+              <div {...stylex.props(styles.card)} role="table" data-testid="act-rows">
+                <div role="row" {...stylex.props(styles.row, styles.headRow)}>
+                  <span role="columnheader">{format(m.importColumnBusinessNo)}</span>
+                  <span role="columnheader">{format(m.importColumnName)}</span>
+                  <span role="columnheader">{format(m.importColumnStatus)}</span>
+                  <span />
+                </div>
+                {found.rows.map((one) => (
+                  <button
+                    key={one.participantId}
+                    type="button"
+                    role="row"
+                    data-testid="act-row"
+                    data-entry={one.entryId}
+                    onClick={() => onOpenEntry(one.entryId)}
+                    {...stylex.props(styles.row)}
+                  >
+                    {/* an empty cell reads as data that failed to arrive;
+                        this person simply has no number bound */}
+                    <span
+                      role="cell"
+                      {...stylex.props(
+                        styles.cell,
+                        styles.no,
+                        one.businessNo === null && styles.noneGiven,
+                      )}
+                    >
+                      {one.businessNo ?? format(m.noBusinessNoShort)}
+                    </span>
+                    <span role="cell" {...stylex.props(styles.cell)}>
+                      {one.displayName}
+                    </span>
+                    <span role="cell">
+                      <RecordStanding status={one.status as never} />
+                    </span>
+                    <ChevronRightIcon aria-hidden {...stylex.props(styles.chevron)} />
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
 
           {/* the reason is required by the contract and read later by whoever
               reconstructs why a round's scores moved */}

@@ -188,6 +188,38 @@ const confirmAndWait = async (decided: ReturnType<typeof vi.fn>) => {
 
 afterEach(() => page.viewport(1280, 800))
 
+/**
+ * A determination's choice, which is the product's select rather than a
+ * native one: what it stands at is the word on its trigger, and setting it
+ * is the press that opens the list plus the option named there.
+ */
+const choiceAt = (form: Element, parameter: string) => {
+  const trigger = () =>
+    form.querySelector<HTMLElement>(
+      `[data-parameter="${parameter}"] [data-slot="select-trigger"]`,
+    )!
+  return {
+    said: () => trigger().textContent ?? '',
+    locked: () => trigger().hasAttribute('disabled'),
+    pick: async (label: string) => {
+      const { userEvent } = await import('vitest/browser')
+      await userEvent.click(trigger())
+      await vi.waitFor(() => {
+        const offered = [...document.querySelectorAll('[role="option"]')].map(
+          (one) => one.textContent,
+        )
+        if (!offered.includes(label))
+          throw new Error(`${label} is not offered; saw ${JSON.stringify(offered)}`)
+      })
+      await userEvent.click(
+        [...document.querySelectorAll('[role="option"]')].find(
+          (one) => one.textContent === label,
+        )!,
+      )
+    },
+  }
+}
+
 describe('approving with a determination', () => {
   it('leaves a fixed question exactly as before: no form, no key on the wire', async () => {
     const decided = stagedDecide()
@@ -204,8 +236,7 @@ describe('approving with a determination', () => {
     await openApprove()
     const form = document.querySelector('[data-testid="recognition-form"]')!
     // the seeded choice arrives chosen, by its business label
-    const level = form.querySelector('[data-parameter="rec-level"] select') as HTMLSelectElement
-    expect(level.value).toBe('national')
+    expect(choiceAt(form, 'rec-level').said()).toContain('国家级')
     // the reviewer-only fact is blank and the act is gated on it
     const approve = page.getByRole('dialog').getByRole('button', { name: /^通过/ })
     await expect.element(approve).toBeDisabled()
@@ -275,8 +306,7 @@ describe('approving with a determination', () => {
       form.querySelector('[data-parameter="rec-ordinal"] input') as HTMLInputElement,
       '2',
     )
-    const level = form.querySelector('[data-parameter="rec-level"] select') as HTMLSelectElement
-    await userEvent.selectOptions(level, 'provincial')
+    await choiceAt(form, 'rec-level').pick('省部级')
     await expect.element(page.getByRole('dialog').getByText('认定调整说明')).toBeVisible()
     // the gate holds until the explanation is written
     await expect
@@ -310,9 +340,9 @@ describe('approving with a determination', () => {
     )
     await openApprove()
     const form = document.querySelector('[data-testid="recognition-form"]')!
-    const level = form.querySelector('[data-parameter="rec-level"] select') as HTMLSelectElement
-    expect(level.value).toBe('provincial')
-    expect(level.disabled).toBe(true)
+    const level = choiceAt(form, 'rec-level')
+    expect(level.said()).toContain('省部级')
+    expect(level.locked()).toBe(true)
     // no reason box: confirming the sitting's text changes nothing
     expect(document.body.textContent).not.toContain('认定调整说明')
     await confirmAndWait(decided)

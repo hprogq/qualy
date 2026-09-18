@@ -46,6 +46,7 @@ const WORDS = {
   'metadata-missing': m.importReasonMetadataMissing,
   'metadata-corrupt': m.importReasonMetadataCorrupt,
   'unsupported-template-version': m.importReasonOldTemplate,
+  'template-for-another-item': m.importReasonOtherItem,
   'formula-not-allowed': m.importReasonFormula,
   'cell-too-long': m.importReasonCellTooLong,
   'cell-error': m.importReasonCellError,

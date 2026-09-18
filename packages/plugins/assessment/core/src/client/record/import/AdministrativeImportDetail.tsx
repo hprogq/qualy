@@ -64,6 +64,23 @@ const styles = stylex.create({
   value: { minWidth: 0, margin: 0, overflowWrap: 'anywhere' },
   now: { display: 'flex', flexWrap: 'wrap', gap: 12 },
   icon: { width: 14, height: 14 },
+  sourceRow: { display: 'inline-flex', alignItems: 'baseline', gap: 10 },
+  sourceLink: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+    padding: 0,
+    fontSize: 'inherit',
+    lineHeight: 'inherit',
+    fontFamily: 'inherit',
+    color: { default: tokens.foreground, ':hover': tokens.foreground },
+    textDecorationLine: { default: 'underline', ':hover': 'underline' },
+    textUnderlineOffset: 3,
+    cursor: { default: 'pointer', ':disabled': 'progress' },
+  },
+  sourceSize: { color: tokens.mutedForeground },
   reversals: { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13 },
   section: { fontSize: 14, fontWeight: 600 },
   card: {
@@ -102,6 +119,7 @@ const styles = stylex.create({
   },
   cell: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   // the determined parts, spaced rather than punctuated
+  determinedNone: { color: `color-mix(in oklab, ${tokens.mutedForeground} 70%, transparent)` },
   determined: {
     display: 'flex',
     minWidth: 0,
@@ -300,19 +318,24 @@ export function AdministrativeImportDetail({
               <dt {...stylex.props(styles.term)}>{format(m.importDetailSource)}</dt>
               <dd {...stylex.props(styles.value)}>
                 {found.source.available ? (
-                  <>
-                    <Button
-                      size="sm"
-                      variant="ghost"
+                  <span {...stylex.props(styles.sourceRow)}>
+                    {/* text-sized: a control at a control's own height in a
+                        row of plain facts makes that one row taller than the
+                        rest, and the whole list steps around it */}
+                    <button
+                      type="button"
                       disabled={download.isPending}
                       onClick={() => download.mutate()}
                       data-testid="import-source-download"
+                      {...stylex.props(styles.sourceLink)}
                     >
                       <DownloadIcon aria-hidden {...stylex.props(styles.icon)} />
                       {format(m.importDetailDownload)}
-                    </Button>
-                    {sizeLabel(Number(found.source.size))}
-                  </>
+                    </button>
+                    <span {...stylex.props(styles.sourceSize)}>
+                      {sizeLabel(Number(found.source.size))}
+                    </span>
+                  </span>
                 ) : (
                   // the file's own name says who is in it, so it waits for
                   // the same reach its rows do
@@ -397,19 +420,38 @@ export function AdministrativeImportDetail({
                   {...stylex.props(styles.row)}
                 >
                   <span role="cell">{line.rowNo}</span>
-                  <span role="cell" {...stylex.props(styles.cell)}>
-                    {line.businessNoSnapshot ?? line.participant.businessNo ?? ''}
+                  <span
+                    role="cell"
+                    {...stylex.props(
+                      styles.cell,
+                      (line.businessNoSnapshot ?? line.participant.businessNo) === null &&
+                        styles.determinedNone,
+                    )}
+                  >
+                    {line.businessNoSnapshot ??
+                      line.participant.businessNo ??
+                      format(m.noBusinessNoShort)}
                   </span>
                   <span role="cell" {...stylex.props(styles.cell)}>
                     {line.participant.displayName}
                   </span>
                   <span role="cell">
-                    <EntryStanding status={line.status} />
+                    <EntryStanding status={line.status} source="import" />
                   </span>
                   <span role="cell" {...stylex.props(styles.determined)}>
-                    {determinationOf(line.recognition).map((part) => (
-                      <span key={part}>{part}</span>
-                    ))}
+                    {(() => {
+                      const parts = determinationOf(line.recognition)
+                      // a question that determines nothing leaves this cell
+                      // empty on every row, which reads as data that failed
+                      // to load rather than as a column that does not apply
+                      return parts.length > 0 ? (
+                        parts.map((part) => <span key={part}>{part}</span>)
+                      ) : (
+                        <span {...stylex.props(styles.determinedNone)}>
+                          {format(m.recognitionNoValuesShort)}
+                        </span>
+                      )
+                    })()}
                   </span>
                   <ChevronRightIcon aria-hidden {...stylex.props(styles.chevron)} />
                 </button>

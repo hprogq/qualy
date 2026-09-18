@@ -58,14 +58,14 @@ const styles = stylex.create({
     flexDirection: 'column',
     gap: 8,
   },
+  // Wide, the tree is simply there and needs no handle - a heading that
+  // cannot be pressed and names what is plainly below it is a line of
+  // furniture. Narrow it is the only way to reach the tree, so it stays.
   unitsTrigger: {
+    display: { default: 'flex', [wide]: 'none' },
     width: '100%',
     justifyContent: 'space-between',
     paddingInline: 8,
-    pointerEvents: {
-      default: null,
-      [wide]: 'none',
-    },
   },
   unitsWord: {
     fontSize: 14,
@@ -95,10 +95,20 @@ const styles = stylex.create({
       [wide]: 16,
     },
   },
+  // The shape of a tree, not a slab where one will be: a box to search in
+  // and a few units under it, the second and third indented the way a
+  // child node is. 256px of flat grey says only that something is coming.
   treeSkeleton: {
-    height: 256,
-    width: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+    paddingTop: 4,
   },
+  treeSkeletonSearch: { height: 32, width: '100%' },
+  treeSkeletonRows: { display: 'flex', flexDirection: 'column', gap: 9 },
+  treeSkeletonRow: { height: 13 },
+  treeSkeletonUnder: { marginLeft: 18 },
+  treeSkeletonDeeper: { marginLeft: 36 },
   listColumn: {
     display: 'flex',
     minWidth: 0,
@@ -311,7 +321,7 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
                   onScopeChange: setUnitScope,
                 }}
                 fallback={null}
-                loading={<Skeleton className={stylex.props(styles.treeSkeleton).className} />}
+                loading={<UnitsWaiting />}
               />
             </CollapsibleContent>
           </aside>
@@ -466,6 +476,39 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
         onImport={(selection) => importPeople.mutate(selection)}
         onClose={() => setImporting(false)}
       />
+    </div>
+  )
+}
+
+/**
+ * The unit tree before it arrives.
+ *
+ * Drawn as what is coming - a search box and a short run of units, two of
+ * them indented - so the tree lands in an outline that is already the right
+ * shape rather than replacing a grey rectangle.
+ */
+function UnitsWaiting() {
+  const rows: [string, stylex.StyleXStyles?][] = [
+    ['62%'],
+    ['48%', styles.treeSkeletonUnder],
+    ['54%', styles.treeSkeletonUnder],
+    ['40%', styles.treeSkeletonDeeper],
+    ['58%', styles.treeSkeletonUnder],
+    ['44%'],
+  ]
+  return (
+    <div {...stylex.props(styles.treeSkeleton)} role="presentation" aria-hidden>
+      <Skeleton className={stylex.props(styles.treeSkeletonSearch).className} radius={6} />
+      <span {...stylex.props(styles.treeSkeletonRows)}>
+        {rows.map(([width, indent], index) => (
+          <Skeleton
+            key={index}
+            width={width}
+            radius={4}
+            className={stylex.props(styles.treeSkeletonRow, indent).className}
+          />
+        ))}
+      </span>
     </div>
   )
 }
