@@ -105,11 +105,41 @@ const styles = stylex.create({
   tally: {
     display: 'flex',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: { default: 6, [wide]: 12 },
     fontSize: 13,
     color: tokens.mutedForeground,
   },
-  tallyBad: { color: tokens.danger },
+  // Wide, the tally is a sentence to read across. Narrow, the three counts
+  // that carry a verdict become blocks that can be told apart at a glance,
+  // because on a phone they wrap into a stack and a stack of identical grey
+  // numbers is the one shape that hides which of them is the bad news.
+  tallyPart: {
+    borderRadius: { default: tokens.radiusSm, [wide]: 0 },
+    paddingInline: { default: 8, [wide]: 0 },
+    paddingBlock: { default: 3, [wide]: 0 },
+    backgroundColor: { default: tokens.surfaceInset, [wide]: 'transparent' },
+  },
+  tallyGood: {
+    backgroundColor: {
+      default: `color-mix(in oklab, ${tokens.success} 14%, transparent)`,
+      [wide]: 'transparent',
+    },
+    color: { default: tokens.successForeground, [wide]: tokens.mutedForeground },
+  },
+  tallyCheck: {
+    backgroundColor: {
+      default: `color-mix(in oklab, ${tokens.warning} 16%, transparent)`,
+      [wide]: 'transparent',
+    },
+    color: { default: tokens.warningForeground, [wide]: tokens.mutedForeground },
+  },
+  tallyBad: {
+    color: tokens.danger,
+    backgroundColor: {
+      default: `color-mix(in oklab, ${tokens.danger} 12%, transparent)`,
+      [wide]: 'transparent',
+    },
+  },
   table: { display: 'flex', flexDirection: 'column', minWidth: 0 },
   // wide, four columns a reader scans down; narrow, the same four facts as a
   // card per row, because a 6rem name column on a phone is a column of
@@ -481,15 +511,19 @@ export function AdministrativeImportView({
                   <div {...stylex.props(styles.resultHead)}>
                     <p {...stylex.props(styles.resultTitle)}>{format(m.importResult)}</p>
                     <span {...stylex.props(styles.tally)}>
+                      {/* the total is context, not a verdict, so it stays
+                          plain at every width */}
                       <span>{format(m.importSummaryRows, { count: preview.summary.rows })}</span>
-                      <span>{format(m.importSummaryValid, { count: preview.summary.valid })}</span>
+                      <span {...stylex.props(styles.tallyPart, styles.tallyGood)}>
+                        {format(m.importSummaryValid, { count: preview.summary.valid })}
+                      </span>
                       {preview.summary.warnings > 0 && (
-                        <span>
+                        <span {...stylex.props(styles.tallyPart, styles.tallyCheck)}>
                           {format(m.importSummaryWarnings, { count: preview.summary.warnings })}
                         </span>
                       )}
                       {preview.summary.errors > 0 && (
-                        <span {...stylex.props(styles.tallyBad)}>
+                        <span {...stylex.props(styles.tallyPart, styles.tallyBad)}>
                           {format(m.importSummaryErrors, { count: preview.summary.errors })}
                         </span>
                       )}
