@@ -2153,6 +2153,9 @@ export const make = Effect.fn('Assessment.make')(function* () {
     storage,
     rosterReach: (as, tenantId, batchId) =>
       Effect.map(Effect.result(requireRosterReach(as, tenantId, batchId)), Result.isSuccess),
+    // the filing's own boundary, so material a recorder attached to an
+    // administrative fact reads back to the person who attached it
+    mayReadEntry: (tenantId, entryId, as) => entryMethods.mayReadEntryById(tenantId, entryId, as),
     // who may put material in at all: an active member, or staff whose
     // accepted authority includes recording on others' behalf
     uploadStanding: (tenantId, batchId, as) =>
@@ -5273,9 +5276,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         return {
           entries: page.map(({ cursor: _cursor, ...row }) => row),
           nextCursor:
-            found.length > limit && last
-              ? encodeQueryCursor(fingerprint, [...last.cursor])
-              : null,
+            found.length > limit && last ? encodeQueryCursor(fingerprint, [...last.cursor]) : null,
         }
       }),
     )

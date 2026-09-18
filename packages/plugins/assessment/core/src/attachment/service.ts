@@ -87,6 +87,20 @@ export interface AttachmentDeps {
   readonly withDb: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, Exclude<R, Orm>>
   readonly storage: Storage['Service']
   readonly rosterReach: (as: Principal, tenantId: string, batchId: string) => Effect.Effect<boolean>
+  /**
+   * Whether this person may read the filing that cites the material.
+   *
+   * The batch administrator's reach above is not the only way in. A recorder
+   * writes administrative facts about the people their authority covers and
+   * puts the document behind the fact in with them, so reading the material
+   * back has to be the same boundary as reading the fact - otherwise the
+   * person who attached it is refused it the moment they reopen the record.
+   */
+  readonly mayReadEntry: (
+    tenantId: string,
+    entryId: string,
+    as: Principal,
+  ) => Effect.Effect<boolean>
   /** may this person put material into this batch at all: an active member, or staff who records */
   readonly uploadStanding: (
     tenantId: string,
@@ -111,6 +125,11 @@ export const makeAttachmentMethods = (deps: AttachmentDeps): AttachmentMethods =
       if (entries.some((entry) => entry.subjectUserId === as.userId)) return
       for (const batchId of new Set(entries.map((entry) => entry.batchId))) {
         if (yield* deps.rosterReach(as, tenantId, batchId)) return
+      }
+      // and whoever may read the filing itself, which a recorder's own
+      // administrative fact is
+      for (const entry of entries) {
+        if (yield* deps.mayReadEntry(tenantId, entry.entryId, as)) return
       }
       const instances = [
         ...(yield* withDb(citingInstances(tenantId, meta.id))),

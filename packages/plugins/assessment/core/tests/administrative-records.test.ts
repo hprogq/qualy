@@ -1,9 +1,9 @@
-import { Effect } from 'effect'
+import { Effect, Exit } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
 import { Assessment } from '../src/server/index.ts'
 import { gradedScoring } from './support/catalogs.ts'
-import { GATED, ok, run, runningBatch, seed, type Seeded } from './support/round.ts'
+import { GATED, errorOf, ok, run, runningBatch, seed, type Seeded } from './support/round.ts'
 
 // The book of what the institution has recorded in a round.
 //
@@ -172,6 +172,63 @@ describe.runIf(postgresAvailable)('the administrative record book', () => {
     expect(found.asAdmin).toHaveLength(2)
     expect(found.asRecorder).toHaveLength(1)
     expect(found.asRecorder[0]!.participant.id).toBe(found.inside)
+  })
+
+  it('opens what the list offered, and nothing the list withheld', async () => {
+    const found = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('ar-open')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f)
+          const admin = f.principal(f.admin)
+          const recorder = f.principal(f.recorder)
+          const deduction = yield* recordItem(f, g.batch.id)
+
+          // one administrative fact in this recorder's college, one outside it
+          const inside = yield* assessment.createEntry(
+            f.t,
+            { itemId: deduction.id, participantId: g.p1, payload: {}, note: '甲' },
+            admin,
+          )
+          const outside = yield* assessment.createEntry(
+            f.t,
+            { itemId: deduction.id, participantId: g.p3, payload: {}, note: '乙' },
+            admin,
+          )
+          // what this person is offered, and what happens when they take it
+          const listed = yield* assessment.listAdministrativeEntries(
+            f.t,
+            g.batch.id,
+            { limit: 50 },
+            recorder,
+          )
+          const opened = yield* Effect.exit(assessment.getEntry(f.t, inside.id, recorder))
+          const history = yield* Effect.exit(assessment.getEntryHistory(f.t, inside.id, recorder))
+          const refused = yield* Effect.exit(assessment.getEntry(f.t, outside.id, recorder))
+          // a claim its owner filed is NOT an administrative fact, and holding
+          // the recording authority is not a way to read one
+          const own = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p3, payload: {}, note: '' },
+            f.principal(f.s3),
+          )
+          const theirs = yield* Effect.exit(assessment.getEntry(f.t, own.id, recorder))
+          return { listed, opened, history, refused, theirs, inside: inside.id }
+        }),
+      ),
+    )
+    // the row was offered
+    expect(found.listed.map((one) => one.entryId)).toEqual([found.inside])
+    // and it opens, with its history: the list and the detail are one boundary
+    expect(errorOf<{ _tag: string }>(found.opened)?._tag ?? 'ok').toBe('ok')
+    expect(Exit.isSuccess(found.opened)).toBe(true)
+    expect(Exit.isSuccess(found.history)).toBe(true)
+    // the one outside their reach is not theirs, and says nothing more
+    expect(errorOf<{ _tag: string }>(found.refused)?._tag).toBe('ASSESSMENT_ENTRY_NOT_FOUND')
+    // nor is somebody else's own submission
+    expect(errorOf<{ _tag: string }>(found.theirs)?._tag).toBe('ASSESSMENT_ENTRY_NOT_FOUND')
   })
 
   it('names a determination by the question version it was judged under', async () => {

@@ -419,6 +419,16 @@ export interface EntryMethods {
     entryId: string,
     as: Principal,
   ) => Effect.Effect<EntryView, EntryNotFound>
+  /**
+   * Whether this person may read that entry at all - the same boundary the
+   * detail and its history use, offered to the doors that hold a citation
+   * rather than a row (an attachment is one).
+   */
+  readonly mayReadEntryById: (
+    tenantId: string,
+    entryId: string,
+    as: Principal,
+  ) => Effect.Effect<boolean>
   readonly appendEntryRevision: (
     tenantId: string,
     entryId: string,
@@ -1093,6 +1103,58 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
     },
   )
 
+  /**
+   * Who may read one entry, asked once so every door agrees.
+   *
+   * Three ways in, and the third is the one that was missing. The subject
+   * reads their own history whatever their standing now (§32.56). A batch
+   * administrator reads the round they run. And a recorder reads the
+   * administrative facts they could have written themselves - the list
+   * already offers them those rows, filtered by exactly this permission and
+   * this reach, so a detail that asked for the administrator's authority
+   * instead answered "no such entry" for a row the same person had just been
+   * shown, and the screen behind it did nothing at all.
+   *
+   * A claim its owner filed is deliberately NOT in the third case: holding
+   * `assessment.entry.record` is the power to write facts about people, not
+   * the power to read what they submitted about themselves.
+   */
+  const mayReadEntry = (
+    tenantId: string,
+    entry: { readonly batchId: string; readonly source: string },
+    participant: ParticipantAnchor & { readonly userId: string },
+    as: Principal,
+  ) =>
+    Effect.gen(function* () {
+      if (participant.userId === as.userId) return true
+      const roster = yield* Effect.result(deps.requireRosterReach(as, tenantId, entry.batchId))
+      if (Result.isSuccess(roster)) return true
+      if (entry.source !== 'record' && entry.source !== 'import') return false
+      return yield* staffReachesParticipant({
+        tenantId,
+        batchId: entry.batchId,
+        userId: as.userId,
+        permissionCode: 'assessment.entry.record',
+        participant,
+      })
+    })
+
+  /** the same question by id, for the doors that hold a citation rather than a row */
+  const mayReadEntryById = (
+    tenantId: string,
+    entryId: string,
+    as: Principal,
+  ): Effect.Effect<boolean> =>
+    withDb(
+      Effect.gen(function* () {
+        const loaded = yield* loadEntry(tenantId, entryId)
+        if (loaded === null) return false
+        return yield* mayReadEntry(tenantId, loaded.entry, loaded.participant, as)
+      }),
+      // a database that cannot answer is not a refusal to hand to a caller
+      // deciding whether to show a file; it is this process being broken
+    ).pipe(Effect.orDie)
+
   const getEntry: EntryMethods['getEntry'] = Effect.fn('Assessment.getEntry')(
     function* (tenantId, entryId, as) {
       return yield* withDb(
@@ -1100,12 +1162,9 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           const loaded = yield* loadEntry(tenantId, entryId)
           if (loaded === null) return yield* new EntryNotFound()
           const { entry, participant } = loaded
-          // the owner reads their own history whatever their standing now
-          // (§32.56); everyone else needs administrative reach, and learns
-          // nothing - not even existence - without it
-          if (participant.userId !== as.userId) {
-            const reach = yield* Effect.result(deps.requireRosterReach(as, tenantId, entry.batchId))
-            if (Result.isFailure(reach)) return yield* new EntryNotFound()
+          // everyone learns nothing - not even existence - without a way in
+          if (!(yield* mayReadEntry(tenantId, entry, participant, as))) {
+            return yield* new EntryNotFound()
           }
           const asked = yield* openSupplementsOfEntries(tenantId, [entryId])
           const said = yield* latestRefusalOf(tenantId, [entryId])
@@ -1833,11 +1892,10 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           // even that it exists.
           if (participant.userId !== as.userId) {
             const judging = yield* deps.mayReviewEntry(as, tenantId, entryId)
-            if (!judging) {
-              const reach = yield* Effect.result(
-                deps.requireRosterReach(as, tenantId, entry.batchId),
-              )
-              if (Result.isFailure(reach)) return yield* new EntryNotFound()
+            // the same boundary the detail uses, so a recorder who can open
+            // an administrative fact can read how it got there
+            if (!judging && !(yield* mayReadEntry(tenantId, entry, participant, as))) {
+              return yield* new EntryNotFound()
             }
           }
           const revisions = yield* entryRevisionsOf(tenantId, entryId)
@@ -2153,6 +2211,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
     getEntryHistory,
     createEntry,
     getEntry,
+    mayReadEntryById,
     appendEntryRevision,
     setEntryStatus,
     markMyEntryRead,
