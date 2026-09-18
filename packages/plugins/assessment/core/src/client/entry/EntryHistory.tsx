@@ -932,7 +932,7 @@ function Answer({
               <div key={asked.key} {...stylex.props(styles.gridRow)}>
                 <dt {...stylex.props(styles.term)}>{asked.label}</dt>
                 <dd {...stylex.props(styles.detail)}>
-                  {typeof answers[asked.key] === 'string' ? (answers[asked.key] as string) : '—'}
+                  {typeof answers[asked.key] === 'string' ? (answers[asked.key] as string) : '–'}
                 </dd>
               </div>
             ))}

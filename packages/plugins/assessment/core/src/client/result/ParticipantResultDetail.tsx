@@ -4,7 +4,7 @@ import { ArrowLeftIcon } from 'lucide-react'
 import { useApiQuery } from '@qualy/web-runtime'
 import { isApiErrorCode, useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import { AsyncSection, PageHeader } from '@qualy/ui/admin'
+import { AsyncSection, PageHeader, BannerBack } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { Count } from '@qualy/ui/count'
@@ -33,18 +33,6 @@ import { ParticipantEntries } from './ParticipantEntries.tsx'
 
 const styles = stylex.create({
   column: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 16 },
-  backButton: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: tokens.radiusSm,
-    color: tokens.mutedForeground,
-    backgroundColor: { default: 'transparent', ':hover': tokens.surfaceMuted },
-    cursor: 'pointer',
-    borderWidth: 0,
-    padding: 2,
-    marginInlineEnd: 4,
-  },
   icon14: { width: 14, height: 14 },
   truncate: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   tabBar: {
@@ -214,14 +202,7 @@ export function ParticipantResultDetail({
               {/* text-sized rather than a button's own size: a control as
                   tall as a control in a line of prose makes that line taller
                   than the same line in the heading it took over */}
-              <button
-                type="button"
-                aria-label={format(m.participantResultsBack)}
-                {...stylex.props(styles.backButton)}
-                onClick={onBack}
-              >
-                <ArrowLeftIcon aria-hidden {...stylex.props(styles.icon14)} />
-              </button>
+              <BannerBack label={format(m.participantResultsBack)} onBack={onBack} />
               {participant === undefined ? (
                 <Skeleton className={stylex.props(styles.numberBone).className} />
               ) : (

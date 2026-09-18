@@ -43,7 +43,7 @@ export const useWhen = (): When => {
       from === null || to === null
         ? null
         : sameDay(from, to)
-          ? `${day(from)} ${time(from)} — ${time(to)}`
-          : `${moment(from)} — ${moment(to)}`,
+          ? `${day(from)} ${time(from)} – ${time(to)}`
+          : `${moment(from)} – ${moment(to)}`,
   }
 }

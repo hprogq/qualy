@@ -928,7 +928,7 @@ function FieldRow({
         {field.label}
       </span>
       <span {...stylex.props(styles.rowTheirs, changed && styles.rowStruck)}>
-        {original || '—'}
+        {original || '–'}
       </span>
       {field.type === 'choice' ? (
         <NativeSelect

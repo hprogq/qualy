@@ -18,7 +18,7 @@ import {
   XIcon,
 } from 'lucide-react'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
-import { Feedback, Field, PageHeader } from '@qualy/ui/admin'
+import { Feedback, Field, PageHeader, BannerBack } from '@qualy/ui/admin'
 import { useLingering } from '@qualy/ui/use-lingering'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
@@ -34,6 +34,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy
 import { materializeField, type FieldDraft as ValueDraft } from '@qualy/web-value-form/model'
 import type { AtomicSchema, NormalizedInputSchema } from '@qualy/value-schema'
 import { ScoringBindingEditor } from './ScoringBindingEditor.tsx'
+import { prefillField, prefillable } from './prefill.ts'
 import { assessmentApi } from '../api.ts'
 import type { MessageDescriptor } from '@qualy/i18n-contract'
 import { SUMMARY_FIELDS_MOST, summaryFieldIdsOf } from '../../entry/summary.ts'
@@ -305,14 +306,6 @@ const styles = stylex.create({
     flexShrink: 1,
     flexBasis: '0%',
     flexDirection: 'column',
-  },
-  backButton: {
-    flexShrink: 0,
-    transitionProperty: 'color, background-color, border-color, box-shadow',
-    color: {
-      default: null,
-      ':hover': tokens.foreground,
-    },
   },
   trailSep: {
     paddingInline: 6,
@@ -593,20 +586,23 @@ const styles = stylex.create({
     gap: 6,
   },
   // the standing chip
+  // A standing, not a badge. A pill carries its own padding and its own
+  // line box, so it made the band taller than the same band without it and
+  // the page visibly grew on the way in. Said as quiet words on the title's
+  // own line, it costs the band nothing.
   chip: {
-    flexShrink: 0,
-    borderRadius: '9999px',
-    backgroundColor: tokens.surfaceMuted,
-    paddingInline: 10,
-    paddingBlock: 2,
-    fontSize: 12,
-    whiteSpace: 'nowrap',
-  },
-  chipItems: {
     display: 'inline-flex',
+    flexShrink: 0,
     alignItems: 'center',
     gap: 6,
+    paddingBlock: 0,
+    fontSize: 13,
+    fontWeight: 400,
+    lineHeight: 'inherit',
+    color: tokens.mutedForeground,
+    whiteSpace: 'nowrap',
   },
+  chipItems: {},
   statusDot: {
     width: 6,
     height: 6,
@@ -1413,7 +1409,11 @@ const draftOf = (
     summaryFieldIds: summaryFieldIdsOf(config?.displayConfig).filter((id) =>
       fields.some((field) => field.id === id),
     ),
-    fields: fields.length > 0 ? fields : [blankField(nextKey())],
+    // No field until somebody asks for one, or until a parameter filled in
+    // from the form needs one. A new question used to open with an unnamed
+    // text box nobody had asked for, which was also the first thing to make
+    // its own form illegal.
+    fields,
     // 100.0000 is how it is stored, not how anybody types it
     // the stored spelling, verbatim: trimAmount renders an amount for
     // READING, and seeding an editable field with it makes opening a
@@ -2160,6 +2160,16 @@ export function ItemConfigEditor({
   const declaredKind = draft.itemType === 'declaration'
   const fielded = draft.itemType === 'evidence'
   const routed = !granted && draft.reviewMode === 'workflow'
+  // A refusal the server reasoned about, told apart from one it never
+  // reached. The first is a configuration somebody can go and fix; the
+  // second is a connection, and telling somebody to check their formula
+  // because their wifi dropped sends them looking in the wrong place.
+  const contractRefused =
+    contract.isError &&
+    (contract.error as { _tag?: string } | null)?._tag === 'ASSESSMENT_ITEM_CONFIG_INVALID'
+      ? ((contract.error as { issues?: readonly { path: string; reason: string }[] }).issues ?? [])
+      : null
+
   const missing: string[] = [
     draft.title.trim() === '' ? format(m.itemsNeedTitle) : '',
     draft.scoreGroupId === '' ? format(m.itemsNeedGroup) : '',
@@ -2177,12 +2187,22 @@ export function ItemConfigEditor({
     draft.scoring.language === 'v2' && !draft.scoring.configured
       ? format(m.itemsNeedCalculatorConfig)
       : '',
-    draft.scoring.language === 'v2' &&
-    draft.scoring.configured &&
-    draft.scoring.touched &&
-    !contract.isSuccess
-      ? format(m.itemsContractUnavailable)
+    // Which of the four it is, said as itself. "The parameters could not be
+    // read" once stood for a broken calculator config, an unfinished form,
+    // a dead formula version and a dropped connection alike - so whichever
+    // one a reader was in, they were told about a different one.
+    draft.scoring.language === 'v2' && draft.scoring.configured && draft.scoring.touched
+      ? contract.isError
+        ? format(
+            contractRefused === null ? m.itemsContractRetrying : m.itemsScoringUnreadable,
+          )
+        : !contract.isSuccess
+          ? format(m.itemsContractPending)
+          : ''
       : '',
+    // a form the driver cannot read is the form's problem, and it is the
+    // form's section that has to hear about it
+    contract.data?.form?.valid === false ? format(m.itemsFormIncomplete) : '',
   ].filter((one) => one !== '')
 
   // The api asks for a sentence when a live question's scoring or placement
@@ -2235,31 +2255,23 @@ export function ItemConfigEditor({
               <StandingChip item={item} />
             </>
           }
+          // Always present, even before the question's own words arrive: a
+          // description that appears a moment later makes the band grow
+          // under the reader's eyes on every reload.
           description={
             <>
-              {/* text-sized rather than a button's own size: a control as tall
-                  as a control in a line of prose makes that line taller than
-                  the same line in the heading it hands over from */}
-              <button
-                type="button"
-                aria-label={format(m.itemsBack)}
-                {...stylex.props(styles.backButton)}
-                onClick={onCancel}
-              >
-                <ArrowLeftIcon aria-hidden className={stylex.props(styles.icon14).className} />
-              </button>
-              <span {...stylex.props(styles.truncateMin)}>
+              <BannerBack label={format(m.itemsBack)} onBack={onCancel}>
                 {trail.map((name, index) => (
                   <span key={`${index}:${name}`}>
                     {index > 0 && <span {...stylex.props(styles.trailSep)}>&rsaquo;</span>}
                     {name}
                   </span>
                 ))}
-              </span>
+              </BannerBack>
               {at >= 0 && paper.length > 1 && (
                 <>
                   <span aria-hidden {...stylex.props(styles.trailDot)}>
-                    &middot;
+                    &#12288;
                   </span>
                   <span {...stylex.props(styles.shrinkNone)}>
                     {format(m.itemsPaperPosition, { index: at + 1, total: paper.length })}
@@ -2358,6 +2370,7 @@ export function ItemConfigEditor({
                   {(id) => (
                     <Choice
                       id={id}
+                      xstyle={styles.fullWidth}
                       value={draft.scoreGroupId}
                       options={groups.map((group) => ({ value: group.id, label: group.name }))}
                       onChange={(scoreGroupId) => patch({ scoreGroupId })}
@@ -2369,6 +2382,7 @@ export function ItemConfigEditor({
                     {(id) => (
                       <Choice
                         id={id}
+                        xstyle={styles.fullWidth}
                         value={draft.entrySource}
                         options={[
                           { value: 'student', label: format(m.itemsEntrySourceStudent) },
@@ -2412,58 +2426,12 @@ export function ItemConfigEditor({
               </div>
             </Section>
           )}
-          {declaredKind && (
-            <Section title={format(m.itemsTabFields)} hint={format(m.itemsDeclaredHint)}>
-              <p {...stylex.props(styles.mutedText)}>{format(m.itemsDeclaredBody)}</p>
-            </Section>
-          )}
-          {fielded && (
-            <Section title={format(m.itemsTabFields)} hint={format(m.itemsFieldsHint)}>
-              <FieldList
-                fields={draft.fields}
-                materialRange={materialRange}
-                openKey={openField}
-                onOpen={setOpenField}
-                onChange={patchField}
-                onReorder={(orderedKeys) =>
-                  setDraft((previous) => ({
-                    ...previous,
-                    fields: orderedKeys.flatMap((key) => {
-                      const found = previous.fields.find((one) => one.key === key)
-                      return found === undefined ? [] : [found]
-                    }),
-                  }))
-                }
-                onRemove={(key) => {
-                  setDraft((previous) => ({
-                    ...previous,
-                    fields: previous.fields.filter((one) => one.key !== key),
-                  }))
-                  setOpenField(null)
-                }}
-                onAdd={() => {
-                  const key = nextKey()
-                  patch({ fields: [...draft.fields, blankField(key)] })
-                  setOpenField(key)
-                }}
-              />
-            </Section>
-          )}
-          {/* a section of its own, right after the fields it elects from
-              and before the scoring: it names claims, which is neither a
-              form question nor an amount */}
-          {fielded && (
-            <Section
-              title={format(m.itemsSummaryTitle)}
-              hint={format(m.itemsSummaryHint, { most: SUMMARY_FIELDS_MOST })}
-            >
-              <SummaryPicker
-                fields={draft.fields}
-                elected={draft.summaryFieldIds}
-                onChange={(next) => patch({ summaryFieldIds: next })}
-              />
-            </Section>
-          )}
+          {/* The arithmetic first: its parameters are what the filing
+              form is then built out of. Asking for the fields before
+              anybody knows what the scoring needs is asking somebody to
+              guess, and it was also the order that made the question's
+              own contract unreadable until the guess happened to be
+              legal. */}
           <Section title={format(m.itemsTabScoring)} hint={format(m.itemsScoringHint)}>
             <div {...stylex.props(styles.fieldColumn)}>
               {/* the width belongs to the wrapper: a field stretches whatever
@@ -2521,7 +2489,13 @@ export function ItemConfigEditor({
                       {format(m.itemsContractPending)}
                     </p>
                   ) : contract.isError ? (
-                    <Feedback message={format(m.itemsContractUnavailable)} />
+                    <Feedback
+                      message={format(
+                        contractRefused === null
+                          ? m.itemsContractRetrying
+                          : m.itemsScoringUnreadable,
+                      )}
+                    />
                   ) : (
                     <ScoringBindingEditor
                       inputSchema={contract.data.inputSchema as NormalizedInputSchema}
@@ -2533,6 +2507,16 @@ export function ItemConfigEditor({
                       fieldLabels={Object.fromEntries(
                         draft.fields.map((field) => [field.id, field.label]),
                       )}
+                      canPrefill={prefillable}
+                      onPrefill={(parameter, schema) => {
+                        // A field already answering this parameter is the
+                        // one to keep: a second press must not leave two
+                        // fields asking the same person the same thing.
+                        const made = prefillField(schema, parameter, locale, nextKey())
+                        if (made === null) return null
+                        patch({ fields: [...draft.fields, made] })
+                        return made.id
+                      }}
                       onChange={(next) =>
                         patch({
                           scoring: {
@@ -2632,6 +2616,58 @@ export function ItemConfigEditor({
             </div>
           </Section>
 
+          {declaredKind && (
+            <Section title={format(m.itemsTabFields)} hint={format(m.itemsDeclaredHint)}>
+              <p {...stylex.props(styles.mutedText)}>{format(m.itemsDeclaredBody)}</p>
+            </Section>
+          )}
+          {fielded && (
+            <Section title={format(m.itemsTabFields)} hint={format(m.itemsFieldsHint)}>
+              <FieldList
+                fields={draft.fields}
+                materialRange={materialRange}
+                openKey={openField}
+                onOpen={setOpenField}
+                onChange={patchField}
+                onReorder={(orderedKeys) =>
+                  setDraft((previous) => ({
+                    ...previous,
+                    fields: orderedKeys.flatMap((key) => {
+                      const found = previous.fields.find((one) => one.key === key)
+                      return found === undefined ? [] : [found]
+                    }),
+                  }))
+                }
+                onRemove={(key) => {
+                  setDraft((previous) => ({
+                    ...previous,
+                    fields: previous.fields.filter((one) => one.key !== key),
+                  }))
+                  setOpenField(null)
+                }}
+                onAdd={() => {
+                  const key = nextKey()
+                  patch({ fields: [...draft.fields, blankField(key)] })
+                  setOpenField(key)
+                }}
+              />
+            </Section>
+          )}
+          {/* a section of its own, right after the fields it elects from
+              and before the scoring: it names claims, which is neither a
+              form question nor an amount */}
+          {fielded && (
+            <Section
+              title={format(m.itemsSummaryTitle)}
+              hint={format(m.itemsSummaryHint, { most: SUMMARY_FIELDS_MOST })}
+            >
+              <SummaryPicker
+                fields={draft.fields}
+                elected={draft.summaryFieldIds}
+                onChange={(next) => patch({ summaryFieldIds: next })}
+              />
+            </Section>
+          )}
           {/* A recorded question still carries a chain: recording does not
               walk it, but a later challenge resolves the chain from this very
               revision, so a question saved without one would be history with
@@ -3360,7 +3396,7 @@ function ParticipantPreview({ draft }: { draft: Draft }) {
             {draft.fields.map((field) => (
               <div key={field.key} {...stylex.props(styles.previewField)}>
                 <p {...stylex.props(styles.smallMuted)}>
-                  {field.label.trim() === '' ? '—' : field.label}
+                  {field.label.trim() === '' ? '–' : field.label}
                   {field.required && <span {...stylex.props(styles.requiredStar)}>*</span>}
                 </p>
                 {field.type === 'attachment' ? (

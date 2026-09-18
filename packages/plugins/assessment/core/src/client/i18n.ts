@@ -132,13 +132,13 @@ const pendingShort = defineMessage<{ count: number }>()({
 const batchSummary = defineMessage<{ count: number; from: string; until: string }>()({
   id: 'assessment/batch/summary',
   defaultMessage:
-    '{count, plural, one {# participant} other {# participants}} · materials from {from} to {until}',
+    '{count, plural, one {# participant} other {# participants}} 　 materials from {from} to {until}',
 })
 
 const batchSummaryDraft = defineMessage<{ units: number; from: string; until: string }>()({
   id: 'assessment/batch/summary-draft',
   defaultMessage:
-    '{units, plural, one {# unit} other {# units}} · materials from {from} to {until}',
+    '{units, plural, one {# unit} other {# units}} 　 materials from {from} to {until}',
 })
 
 const pageOfTotal = defineMessage<{ page: number; pages: number }>()({
@@ -179,37 +179,37 @@ const leftSeconds = defineMessage<{ count: number }>()({
 // without it a bare number on a page about a batch reads as the batch's.
 const bareDays = defineMessage<{ count: number }>()({
   id: 'assessment/progress/bare-days',
-  defaultMessage: '{count, plural, one {Stage · # day left} other {Stage · # days left}}',
+  defaultMessage: '{count, plural, one {Stage 　 # day left} other {Stage 　 # days left}}',
 })
 const bareHours = defineMessage<{ count: number }>()({
   id: 'assessment/progress/bare-hours',
-  defaultMessage: '{count, plural, one {Stage · # hour left} other {Stage · # hours left}}',
+  defaultMessage: '{count, plural, one {Stage 　 # hour left} other {Stage 　 # hours left}}',
 })
 const bareMinutes = defineMessage<{ count: number }>()({
   id: 'assessment/progress/bare-minutes',
-  defaultMessage: '{count, plural, one {Stage · # minute left} other {Stage · # minutes left}}',
+  defaultMessage: '{count, plural, one {Stage 　 # minute left} other {Stage 　 # minutes left}}',
 })
 const bareSeconds = defineMessage<{ count: number }>()({
   id: 'assessment/progress/bare-seconds',
-  defaultMessage: '{count, plural, one {Stage · # second left} other {Stage · # seconds left}}',
+  defaultMessage: '{count, plural, one {Stage 　 # second left} other {Stage 　 # seconds left}}',
 })
 const bareSinceDays = defineMessage<{ count: number }>()({
   id: 'assessment/progress/bare-since-days',
-  defaultMessage: '{count, plural, one {Stage · # day elapsed} other {Stage · # days elapsed}}',
+  defaultMessage: '{count, plural, one {Stage 　 # day elapsed} other {Stage 　 # days elapsed}}',
 })
 const bareSinceHours = defineMessage<{ count: number }>()({
   id: 'assessment/progress/bare-since-hours',
-  defaultMessage: '{count, plural, one {Stage · # hour elapsed} other {Stage · # hours elapsed}}',
+  defaultMessage: '{count, plural, one {Stage 　 # hour elapsed} other {Stage 　 # hours elapsed}}',
 })
 const bareSinceMinutes = defineMessage<{ count: number }>()({
   id: 'assessment/progress/bare-since-minutes',
   defaultMessage:
-    '{count, plural, one {Stage · # minute elapsed} other {Stage · # minutes elapsed}}',
+    '{count, plural, one {Stage 　 # minute elapsed} other {Stage 　 # minutes elapsed}}',
 })
 const bareSinceSeconds = defineMessage<{ count: number }>()({
   id: 'assessment/progress/bare-since-seconds',
   defaultMessage:
-    '{count, plural, one {Stage · # second elapsed} other {Stage · # seconds elapsed}}',
+    '{count, plural, one {Stage 　 # second elapsed} other {Stage 　 # seconds elapsed}}',
 })
 const sinceDays = defineMessage<{ count: number }>()({
   id: 'assessment/progress/since-days',
@@ -1081,7 +1081,7 @@ const i18n = definePluginMessages({
     reviewDecided: { id: 'assessment/review/decided', defaultMessage: 'Review decision recorded.' },
     reviewSubmittedBy: {
       id: 'assessment/review/submitted-by',
-      defaultMessage: '{name} · review round {round}',
+      defaultMessage: '{name} 　 review round {round}',
     },
     reviewPayloadTitle: {
       id: 'assessment/review/payload-title',
@@ -1230,7 +1230,7 @@ const i18n = definePluginMessages({
     },
     resultPendingLabel: {
       id: 'assessment/result/pending-label',
-      defaultMessage: 'Under review · not counted yet',
+      defaultMessage: 'Under review 　 not counted yet',
     },
     resultPendingCount: {
       id: 'assessment/result/pending-count',
@@ -1290,12 +1290,12 @@ const i18n = definePluginMessages({
     resultGroupFloored: groupFloored,
     resultLineExcluded: {
       id: 'assessment/result/line-excluded',
-      defaultMessage: 'Returned · not counted',
+      defaultMessage: 'Returned 　 not counted',
     },
     resultLineNone: { id: 'assessment/result/line-none', defaultMessage: 'Not submitted' },
     resultLineVoided: {
       id: 'assessment/result/line-voided',
-      defaultMessage: 'Item disabled · not counted',
+      defaultMessage: 'Item disabled 　 not counted',
     },
     resultLineAdjustment: {
       id: 'assessment/result/line-adjustment',
@@ -1992,7 +1992,7 @@ const i18n = definePluginMessages({
     itemsStuckRow: {
       id: 'assessment/items/stuck-row',
       defaultMessage:
-        '{unit} · {roles} · {count, plural, one {# submission waiting} other {# submissions waiting}}',
+        '{unit} 　 {roles} 　 {count, plural, one {# submission waiting} other {# submissions waiting}}',
     },
     itemsStuckConflict: {
       id: 'assessment/items/stuck-conflict',
@@ -2250,6 +2250,88 @@ const i18n = definePluginMessages({
       defaultMessage:
         'This scoring setup was written by a newer version and cannot be edited here. Everything else about the question can still be changed.',
     },
+    itemsScoringUnreadable: {
+      id: 'assessment/items/scoring-unreadable',
+      defaultMessage: 'This arithmetic could not be read; check its configuration',
+    },
+    itemsContractRetrying: {
+      id: 'assessment/items/contract-retrying',
+      defaultMessage: 'The scoring parameters could not be read just now',
+    },
+    itemsFormIncomplete: {
+      id: 'assessment/items/form-incomplete',
+      defaultMessage: 'The filing fields are not finished',
+    },
+    itemsBindingTally: {
+      id: 'assessment/items/binding-tally',
+      defaultMessage:
+        '{total, plural, one {# parameter} other {# parameters}} 　 {done} set 　 {left} to go',
+    },
+    itemsBindingAllSet: {
+      id: 'assessment/items/binding-all-set',
+      defaultMessage: '{total, plural, one {# parameter} other {# parameters}} 　 all set',
+    },
+    itemsBindingColumnParameter: {
+      id: 'assessment/items/binding-column-parameter',
+      defaultMessage: 'Parameter',
+    },
+    itemsBindingColumnTakes: {
+      id: 'assessment/items/binding-column-takes',
+      defaultMessage: 'Takes',
+    },
+    itemsBindingColumnSource: {
+      id: 'assessment/items/binding-column-source',
+      defaultMessage: 'Comes from',
+    },
+    itemsBindingUnset: { id: 'assessment/items/binding-unset', defaultMessage: 'Not set' },
+    itemsBindingPrefilled: {
+      id: 'assessment/items/binding-prefilled',
+      defaultMessage: 'Prefilled determination',
+    },
+    itemsBindingManual: {
+      id: 'assessment/items/binding-manual',
+      defaultMessage: 'Determined by hand',
+    },
+    itemsBindingPrefilledFrom: {
+      id: 'assessment/items/binding-prefilled-from',
+      defaultMessage: 'Prefilled from {field}',
+    },
+    itemsBindingSheetTitle: {
+      id: 'assessment/items/binding-sheet-title',
+      defaultMessage: 'Where this parameter comes from',
+    },
+    itemsBindingSheetHint: {
+      id: 'assessment/items/binding-sheet-hint',
+      defaultMessage: 'The arithmetic reads it under this name whatever feeds it.',
+    },
+    itemsBindingTakesTitle: {
+      id: 'assessment/items/binding-takes-title',
+      defaultMessage: 'What it takes',
+    },
+    itemsBindingPrefillUnavailable: {
+      id: 'assessment/items/binding-prefill-unavailable',
+      defaultMessage: 'A filing field cannot express what this parameter takes',
+    },
+    itemsBindingPrefillField: {
+      id: 'assessment/items/binding-prefill-field',
+      defaultMessage: 'Filing field',
+    },
+    itemsBindingPrefillMade: {
+      id: 'assessment/items/binding-prefill-made',
+      defaultMessage: 'A filing field was added for it',
+    },
+    itemsBindingConstantHint: {
+      id: 'assessment/items/binding-constant-hint',
+      defaultMessage: 'The same value for everybody',
+    },
+    itemsBindingManualHint: {
+      id: 'assessment/items/binding-manual-hint',
+      defaultMessage: 'Somebody determines it while reviewing',
+    },
+    itemsBindingPrefillHint: {
+      id: 'assessment/items/binding-prefill-hint',
+      defaultMessage: 'A filing field suggests it, and it can still be changed',
+    },
     itemsBindingSource: {
       id: 'assessment/items/binding-source',
       defaultMessage: 'Comes from',
@@ -2484,7 +2566,7 @@ const i18n = definePluginMessages({
     },
     myEntriesGranted: {
       id: 'assessment/entry/granted',
-      defaultMessage: 'Automatically counted · no submission required',
+      defaultMessage: 'Automatically counted 　 no submission required',
     },
     itemsKind: { id: 'assessment/items/kind', defaultMessage: 'Item type' },
     itemsKindEvidence: {
@@ -3003,7 +3085,7 @@ const i18n = definePluginMessages({
     },
     reviewUndoPending: {
       id: 'assessment/review/undo-pending',
-      defaultMessage: 'Submitting in {seconds}s · undo before submission',
+      defaultMessage: 'Submitting in {seconds}s 　 undo before submission',
     },
     // the round moved on while this reader was mid-thought: say so where
     // they stand, keep what they typed, and shut only the acts
@@ -3213,7 +3295,7 @@ const i18n = definePluginMessages({
     },
     reviewAwaitingAnswered: {
       id: 'assessment/review/awaiting-answered',
-      defaultMessage: 'Material submitted · awaiting review',
+      defaultMessage: 'Material submitted 　 awaiting review',
     },
     reviewAwaitingGo: { id: 'assessment/review/awaiting-go', defaultMessage: 'Review' },
     reviewAwaitingHint: {
@@ -4213,11 +4295,11 @@ const i18n = definePluginMessages({
     },
     itemsPublishedVersion: {
       id: 'assessment/items/published-version',
-      defaultMessage: 'Published · version {no}',
+      defaultMessage: 'Published 　 version {no}',
     },
     itemsDraftVersion: {
       id: 'assessment/items/draft-version',
-      defaultMessage: 'Unpublished · version {no}',
+      defaultMessage: 'Unpublished 　 version {no}',
     },
     itemsLimitMaxLength: {
       id: 'assessment/items/limit-max-length',

@@ -1715,7 +1715,7 @@ function SiblingSheet({
           {(sibling?.values ?? []).map((pair) => (
             <div key={pair.label} {...stylex.props(styles.siblingRow)}>
               <dt {...stylex.props(styles.siblingLabel)}>{pair.label}</dt>
-              <dd {...stylex.props(styles.siblingValue)}>{pair.value === '' ? '—' : pair.value}</dd>
+              <dd {...stylex.props(styles.siblingValue)}>{pair.value === '' ? '–' : pair.value}</dd>
             </div>
           ))}
         </dl>

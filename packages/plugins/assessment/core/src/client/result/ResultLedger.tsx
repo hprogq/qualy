@@ -625,7 +625,7 @@ function GroupRows({
         </span>
         <span {...stylex.props(styles.groupFigure)}>{two(group.itemsTotal)}</span>
         <span {...stylex.props(styles.groupFigure)}>
-          {hasChildren ? two(group.childrenTotal) : '—'}
+          {hasChildren ? two(group.childrenTotal) : '–'}
         </span>
         <span {...stylex.props(styles.groupTotal)}>{two(group.final)}</span>
       </div>

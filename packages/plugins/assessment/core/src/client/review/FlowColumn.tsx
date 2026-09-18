@@ -495,7 +495,7 @@ export const FlowColumn = memo(function FlowColumn({
           )}
         </div>
         {review.events.length === 0 ? (
-          <p {...stylex.props(styles.emptyMark)}>—</p>
+          <p {...stylex.props(styles.emptyMark)}>–</p>
         ) : (
           // A timeline, not a numbered list: dots on one thread, the last
           // solid because it is where the round stands now. The two lines of

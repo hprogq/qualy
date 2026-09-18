@@ -16,7 +16,7 @@ import {
   DialogTitle,
 } from '@qualy/ui/dialog'
 import { Drill, type DrillMove } from '@qualy/ui/reveal'
-import { PageHeader } from '@qualy/ui/admin'
+import { PageHeader, BannerBack } from '@qualy/ui/admin'
 import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
 import { toast } from '@qualy/ui/toast'
 import { useLingering } from '@qualy/ui/use-lingering'
@@ -68,25 +68,7 @@ const styles = stylex.create({
   // line taller, and the band visibly grows the moment somebody opens a
   // sub-screen. So: no vertical padding, the same font and line-height as
   // the prose around it, and the hover ground drawn outside the flow.
-  backButton: {
-    display: 'inline-flex',
-    minWidth: 0,
-    alignItems: 'center',
-    gap: 6,
-    borderWidth: 0,
-    borderRadius: tokens.radiusSm,
-    backgroundColor: 'transparent',
-    padding: 0,
-    fontSize: '0.875rem',
-    lineHeight: '1.25rem',
-    fontFamily: 'inherit',
-    color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
-    textDecorationLine: { default: 'none', ':hover': 'underline' },
-    textUnderlineOffset: 3,
-    cursor: 'pointer',
-  },
   truncate: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  backIcon: { width: 14, height: 14 },
   tabs: { paddingBottom: 12 },
   // One band: what to look at, what to search, what to do. The actions used
   // to sit up in the page header, a whole banner away from the tabs - so a
@@ -408,14 +390,7 @@ function RecordsBody({
                   // beside it: the arrow alone made the reader guess where it
                   // goes, and only the arrow was a target. Text-sized, so the
                   // band is the same height going in as coming out.
-                  <button
-                    type="button"
-                    onClick={() => address(back.to)}
-                    {...stylex.props(styles.backButton)}
-                  >
-                    <ArrowLeftIcon aria-hidden {...stylex.props(styles.backIcon)} />
-                    <span {...stylex.props(styles.truncate)}>{format(back.label)}</span>
-                  </button>
+                  <BannerBack label={format(back.label)} onBack={() => address(back.to)} />
                 }
               />
             </BatchBanner>

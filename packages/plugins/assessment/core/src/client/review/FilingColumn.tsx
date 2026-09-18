@@ -460,7 +460,7 @@ export const FilingColumn = memo(function FilingColumn({
   const summaryLines: string[] = []
   if (review.chain.route === 'escalation') {
     summaryLines.push(
-      `${format(m.reviewRouteEscalation)} · ${format(m.reviewSummaryRound, { round: review.roundNo })}`,
+      `${format(m.reviewRouteEscalation)} 　 ${format(m.reviewSummaryRound, { round: review.roundNo })}`,
     )
   } else if (review.roundNo > 1) {
     summaryLines.push(format(m.reviewSummaryRound, { round: review.roundNo }))
@@ -620,7 +620,7 @@ export const FilingColumn = memo(function FilingColumn({
                 <dd {...stylex.props(styles.fieldValue)}>
                   {field.type === 'attachment' ? (
                     cited.length === 0 ? (
-                      <span {...stylex.props(styles.mutedInk)}>—</span>
+                      <span {...stylex.props(styles.mutedInk)}>–</span>
                     ) : (
                       // the files themselves, under the field that asked for
                       // them: one flat "materials" heap at the end of the page
@@ -643,7 +643,7 @@ export const FilingColumn = memo(function FilingColumn({
                     )
                   ) : (
                     <span {...stylex.props(styles.answer, changed && styles.answerChanged)}>
-                      {now === '' ? '—' : now}
+                      {now === '' ? '–' : now}
                     </span>
                   )}
                   {/* What the last version had here, under what this one
@@ -761,12 +761,12 @@ function SupplementCard({ supplement }: { supplement: ReviewDto['supplements'][n
                         ))}
                       </span>
                     ) : (
-                      '—'
+                      '–'
                     )
                   ) : typeof value === 'string' && value !== '' ? (
                     value
                   ) : (
-                    '—'
+                    '–'
                   )}
                 </dd>
               </div>

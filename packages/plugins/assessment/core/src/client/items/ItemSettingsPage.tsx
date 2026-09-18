@@ -2,7 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { PencilIcon, TriangleAlertIcon } from 'lucide-react'
-import { useApi, useApiQuery, usePageQueryState, useRunApi } from '@qualy/web-runtime'
+import {
+  useApi,
+  useApiQuery,
+  usePageQueryState,
+  usePageQueryUpdate,
+  useRunApi,
+} from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -201,19 +207,42 @@ const segments = [styles.segment0, styles.segment1, styles.segment2, styles.segm
 /** a counter, so two things composed in one session never share a handle */
 let composed = 0
 
+/** how the address spells a question that has no id yet */
+const DRAFT = 'draft:'
+
 export default function ItemSettingsPage() {
   const { format } = useI18n()
-  // Both held out here because the band at the top of the page is the one the
+  // Held out here because the band at the top of the page is the one the
   // open question speaks through, and the page has to know when to give it
-  // up. The saved one is in the address; the one still being composed cannot
-  // be, so it is the only piece of this kept in memory.
-  const [question, setQuestion] = usePageQueryState('question', '', { history: 'push' })
-  const [composing, setComposing] = useState<string | null>(null)
+  // up.
+  //
+  // Both kinds live in the address, a saved question by its id and one still
+  // being composed as `draft:<handle>` with the group it is being composed
+  // into beside it. A composition used to be the one thing kept in memory,
+  // which meant a reload - or a shared link, or the back button used once
+  // too often - put the reader back on the structure with no sign that
+  // anything had been open.
+  const [question] = usePageQueryState('question', '', { history: 'push' })
+  const [group] = usePageQueryState('group', '', { history: 'push' })
+  // One write, two keys. Setting them through two state hooks made the
+  // second overwrite the first's pending address, so a composition arrived
+  // with no group and a close arrived with no question cleared.
+  const address = usePageQueryUpdate()
+  const composing = question.startsWith(DRAFT) ? question.slice(DRAFT.length) : null
+  const setQuestion = (itemId: string) =>
+    address({ question: itemId, group: '' }, { history: 'push' })
+  const setComposing = (localId: string | null, groupId?: string) =>
+    address(
+      localId === null
+        ? { question: '', group: '' }
+        : { question: `${DRAFT}${localId}`, group: groupId ?? group },
+      { history: 'push' },
+    )
   return (
     <BatchScreen
       title={format(m.itemsTab)}
       description={format(m.itemsHint)}
-      banner={question === '' && composing === null ? 'section' : 'open'}
+      banner={question === '' ? 'section' : 'open'}
     >
       {(batch) => (
         <Editor
@@ -224,6 +253,7 @@ export default function ItemSettingsPage() {
           question={question}
           onQuestion={setQuestion}
           composing={composing}
+          composingGroup={group}
           onComposing={setComposing}
         />
       )}
@@ -239,6 +269,7 @@ function Editor({
   question,
   onQuestion,
   composing: composingId,
+  composingGroup,
   onComposing,
 }: {
   batchId: string
@@ -251,7 +282,9 @@ function Editor({
   onQuestion: (itemId: string) => void
   /** the unsaved question being written, which has no id to put in the address */
   composing: string | null
-  onComposing: (localId: string | null) => void
+  /** which group the composition in the address belongs to */
+  composingGroup: string
+  onComposing: (localId: string | null, groupId?: string) => void
 }) {
   const query = useApiQuery(assessmentApi)
   const api = useApi(assessmentApi)
@@ -298,6 +331,20 @@ function Editor({
   const drillKey =
     composingId !== null ? `draft:${composingId}` : question !== '' ? `item:${question}` : STRUCTURE
 
+  // A reload arrives with the address naming a composition this session has
+  // never held, so the row is made again from what the address says. What
+  // was typed into it is gone - that was never anywhere but this tab - but
+  // the reader lands back on the question they were writing rather than on
+  // the structure, wondering whether they imagined it.
+  useEffect(() => {
+    if (composingId === null) return
+    setDrafts((current) =>
+      current.some((one) => one.localId === composingId)
+        ? current
+        : [...current, { localId: composingId, groupId: composingGroup, title: '' }],
+    )
+  }, [composingId, composingGroup])
+
   /** leave whatever is open and go back to the structure */
   const close = () => {
     onComposing(null)
@@ -308,8 +355,7 @@ function Editor({
   const compose = (groupId: string) => {
     const localId = `local-${(composed += 1)}`
     setDrafts((current) => [...current, { localId, groupId, title: '' }])
-    onQuestion('')
-    onComposing(localId)
+    onComposing(localId, groupId)
   }
 
   const closeDraft = (localId: string) => {
@@ -457,7 +503,7 @@ function Editor({
       const found = (allGroups as readonly TreeGroup[]).find((one) => one.id === row.id)
       if (found !== undefined) setGroup({ kind: 'edit', group: found })
     } else if (row.kind === 'item') onQuestion(row.id)
-    else onComposing(row.id)
+    else onComposing(row.id, drafts.find((one) => one.localId === row.id)?.groupId)
   }
 
   // a dropped row lands where the line was drawn: inside a group, or beside
@@ -818,7 +864,7 @@ function PaperSummary({
     paper.floor === null
       ? format(m.paperFloorNone)
       : `${format(m.itemsGroupFloor)} ${trimAmount(paper.floor)}`,
-  ].join(' · ')
+  ].join(' 　 ')
 
   return (
     <section {...stylex.props(styles.summary)}>

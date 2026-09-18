@@ -431,7 +431,7 @@ function AwaitingRow({
           {howLongAgo(row.requestedAt)}
         </span>
         <span aria-hidden {...stylex.props(styles.dotSep)}>
-          ·
+          　
         </span>
         <span {...stylex.props(styles.askedAt)}>{timeLabel(row.requestedAt)}</span>
         <span {...stylex.props(styles.mobileSpacer)} />

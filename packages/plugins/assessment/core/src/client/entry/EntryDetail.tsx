@@ -380,7 +380,7 @@ function SuggestedChanges({
         return (
           <p key={field.key} {...stylex.props(styles.suggestedLine)}>
             <span {...stylex.props(styles.suggestedLabel)}>{field.label}</span>
-            <span {...stylex.props(styles.anywhere)}>{said === '' ? '—' : said}</span>
+            <span {...stylex.props(styles.anywhere)}>{said === '' ? '–' : said}</span>
           </p>
         )
       })}
@@ -679,11 +679,11 @@ export function EntryDetail({
                                 ))}
                               </span>
                             ) : (
-                              <p {...stylex.props(styles.fieldCleared)}>—</p>
+                              <p {...stylex.props(styles.fieldCleared)}>–</p>
                             )
                           ) : (
                             <p {...stylex.props(styles.fieldValue)}>
-                              {typeof value === 'string' && value !== '' ? value : '—'}
+                              {typeof value === 'string' && value !== '' ? value : '–'}
                             </p>
                           )}
                         </div>

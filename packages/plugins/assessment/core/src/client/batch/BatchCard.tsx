@@ -1012,7 +1012,7 @@ export function BatchCard({
             </span>
             <span {...stylex.props(styles.stageClock)}>
               {/* the close and what is left to it, one unit: "03.01 23:59
-                截止 · 12 days left"; a stage with no close only says how
+                截止 　 12 days left"; a stage with no close only says how
                 long it has run */}
               {closes !== null && (
                 <span {...stylex.props(styles.stageWhen)}>

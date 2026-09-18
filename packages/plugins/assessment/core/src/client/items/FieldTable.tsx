@@ -608,7 +608,7 @@ export function FieldList({
               <span {...stylex.props(styles.typeCell)}>{format(FIELD_TYPE_LABEL[field.type])}</span>
               <span {...stylex.props(styles.limitCell)}>
                 {limitOf(field) === '' ? (
-                  <span {...stylex.props(styles.limitNone)}>—</span>
+                  <span {...stylex.props(styles.limitNone)}>–</span>
                 ) : (
                   limitOf(field)
                 )}

@@ -762,12 +762,12 @@ function Queue({
             <span {...stylex.props(styles.phoneStatNum)}>{all.length}</span>
             {awaiting > 0 && (
               <>
-                <span aria-hidden>·</span>
+                <span aria-hidden>　</span>
                 <span>{format(m.reviewAwaitingTab)}</span>
                 <span {...stylex.props(styles.phoneStatNum)}>{awaiting}</span>
               </>
             )}
-            <span aria-hidden>·</span>
+            <span aria-hidden>　</span>
             <span>{format(m.reviewStatToday)}</span>
             <span {...stylex.props(styles.phoneStatNum)}>{inbox.data?.handledToday ?? 0}</span>
           </p>

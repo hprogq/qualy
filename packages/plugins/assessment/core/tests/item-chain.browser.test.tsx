@@ -1,6 +1,6 @@
 import ItemSettingsPage from '../src/client/items/ItemSettingsPage.tsx'
 import { lazy } from 'react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
 import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
@@ -380,6 +380,35 @@ const composeQuestion = async () => {
   await page.getByRole('menuitem', { name: '新建项目' }).click()
   await expect.element(page.getByTestId('chain-step').first()).toBeVisible()
 }
+
+/**
+ * Opening one parameter's own sheet.
+ *
+ * The list says what each parameter takes and what feeds it; configuring
+ * one happens where there is room for it, so the controls a test drives
+ * are a press away rather than fifty cards deep.
+ */
+const openParameter = async (parameter = 'level') => {
+  await expect.element(page.getByTestId('scoring-bindings')).toBeVisible()
+  await vi.waitFor(() => {
+    if (document.querySelector(`[data-parameter-row="${parameter}"]`) === null)
+      throw new Error(`${parameter} is not listed yet`)
+  })
+  const { userEvent } = await import('vitest/browser')
+  await userEvent.click(document.querySelector<HTMLElement>(`[data-parameter-row="${parameter}"]`)!)
+  await expect.element(page.getByTestId('binding-sheet')).toBeVisible()
+}
+
+/** and shutting it again, which is what puts the page's own keys back */
+const closeParameter = async () => {
+  const { userEvent } = await import('vitest/browser')
+  await userEvent.keyboard('{Escape}')
+  await vi.waitFor(() => {
+    if (document.querySelector('[data-testid="binding-sheet"]') !== null)
+      throw new Error('the sheet is still standing')
+  })
+}
+
 
 describe('composing the review chain', () => {
   it('marks the unnamed step unfinished instead of dressing it in a default name', async () => {
@@ -783,7 +812,7 @@ describe('binding what the arithmetic asks for', () => {
 
   it('offers only the fields a determination could lawfully come from', async () => {
     openFormula()
-    await expect.element(page.getByTestId('scoring-bindings')).toBeVisible()
+    await openParameter()
 
     // the fact carries a refinement: a graded decimal between 60 and 100.
     // One field is exactly that; the other is a decimal with no bounds at
@@ -827,6 +856,7 @@ describe('binding what the arithmetic asks for', () => {
     expect(only?.text).toContain('60')
     expect(only?.text).toContain('100')
     // and the option itself carries the same reason
+    await openParameter()
     await page.getByTestId('recognition-default').click()
     const reasons = Object.fromEntries(
       page
@@ -890,6 +920,7 @@ describe('binding what the arithmetic asks for', () => {
     })
     await expect.element(page.getByTestId('scoring-bindings')).toBeVisible()
     expect(page.getByTestId('binding-diagnostic').elements()).toEqual([])
+    await openParameter()
     await page.getByTestId('recognition-default').click()
     const rank = page
       .getByRole('option')
@@ -903,10 +934,11 @@ describe('binding what the arithmetic asks for', () => {
     const saved: { config?: { scoringConfig?: Record<string, unknown> } }[] = []
     const item = formulaItem()
     openFormula({ items: [item], saved })
-    await expect.element(page.getByTestId('scoring-bindings')).toBeVisible()
+    await openParameter()
 
     const label = page.getByRole('textbox', { name: '认定名称' })
     await label.fill('获奖等级')
+    await closeParameter()
     await page.getByRole('button', { name: '保存', exact: false }).click()
 
     await expect.poll(() => saved.length).toBe(1)
@@ -1027,10 +1059,11 @@ describe('what survives a round trip', () => {
     // a duplicate rather than refuse.
     const saved: { config?: { scoringConfig?: Record<string, unknown> } }[] = []
     openWith({ items: [formulaItem()], saved })
-    await expect.element(page.getByTestId('scoring-bindings')).toBeVisible()
+    await openParameter()
     const label = page.getByRole('textbox', { name: '认定名称' })
     await label.fill('获奖等级')
     await label.fill('获奖等第')
+    await closeParameter()
     await page.getByRole('button', { name: '保存', exact: false }).click()
 
     await expect.poll(() => saved.length).toBe(1)

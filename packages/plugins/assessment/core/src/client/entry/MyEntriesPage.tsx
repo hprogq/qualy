@@ -1707,7 +1707,7 @@ function Body({
                         </span>
                         <span {...stylex.props(styles.countValue)}>
                           {standing.data === undefined
-                            ? '—'
+                            ? '–'
                             : Number(standing.data.total).toFixed(2)}
                         </span>
                       </div>
@@ -1748,7 +1748,7 @@ function Body({
                         </span>
                         <span {...stylex.props(styles.wideCountValue)}>
                           {standing.data === undefined
-                            ? '—'
+                            ? '–'
                             : Number(standing.data.total).toFixed(2)}
                         </span>
                       </span>
