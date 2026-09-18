@@ -1846,6 +1846,135 @@ export const AdministrativeEntryImportEvent = defineEntity({
   ],
 })
 
+/**
+ * One administrative finding, settled on several people at once.
+ *
+ * The same provenance idea as an import and for the same reason, minus the
+ * file: an import can point at the workbook to say which facts went
+ * together, and this cannot, so it has to say so itself. Without it there
+ * would be no way to withdraw an act - only to withdraw findings one at a
+ * time and hope the set was remembered right.
+ *
+ * `target_kind` and `target_spec` are history, never a rule (§32.78). They
+ * record that somebody chose "these units, these kinds of person" on a
+ * Tuesday; they are NEVER resolved again. Who this act reached is the rows
+ * below and only the rows below - re-running the selection later would
+ * reach people who never got the finding and miss people who since moved
+ * away. The same distinction `roster_imports` already draws: a record of an
+ * act, not a definition.
+ */
+export const AdministrativeRecordOperation = defineEntity({
+  name: 'AdministrativeRecordOperation',
+  tableName: 'administrative_record_operations',
+  properties: {
+    id: p.uuid().primary().defaultRaw('uuidv7()'),
+    tenantId: tenantOf('administrative_record_operations_tenant_id_tenants_id_fkey'),
+    batchId: p.uuid(),
+    itemId: p.uuid(),
+    // frozen: the question version every finding in this act was written
+    // against, exactly as an import freezes one
+    itemRevisionId: p.uuid(),
+    // how the targets were found, for somebody reading the history later
+    targetKind: p.string().length(16),
+    // the selection as it was made: unit ids and kinds of person for an
+    // organizational pick, the ids named for a by-person one. jsonb because
+    // it is a snapshot - foreign keys would chain it back to live rows and
+    // stop it being one, and a unit deleted afterwards must not erase the
+    // record that it was used
+    targetSpec: p.json<Record<string, unknown>>(),
+    actorId: p.uuid().nullable(),
+    recordedCount: p.integer(),
+    createdAt: p.datetime().defaultRaw('now()'),
+  },
+  checks: [
+    {
+      name: 'chk_administrative_record_operations_target_kind',
+      expression: `target_kind IN ('people', 'organization')`,
+    },
+  ],
+  indexes: [
+    {
+      // (tenant_id, id) backs the tenant-scoped composite keys the rows and
+      // events hang off, the way the imports table does
+      name: 'uq_administrative_record_operations_tenant_id_id',
+      expression:
+        'create unique index uq_administrative_record_operations_tenant_id_id on administrative_record_operations (tenant_id, id)',
+    },
+    {
+      name: 'idx_administrative_record_operations_batch',
+      expression:
+        'create index idx_administrative_record_operations_batch on administrative_record_operations (tenant_id, batch_id, created_at desc, id)',
+    },
+  ],
+})
+
+/**
+ * Which finding of that act landed on whom.
+ *
+ * The frozen target set. Withdrawal walks these rows; it never goes back to
+ * `target_spec`. Only provenance, like an import's rows: the payload, the
+ * determination and the basis live on the entry's own revision, and a second
+ * copy here would be a second truth to keep in step.
+ */
+export const AdministrativeRecordOperationRow = defineEntity({
+  name: 'AdministrativeRecordOperationRow',
+  tableName: 'administrative_record_operation_rows',
+  properties: {
+    id: p.uuid().primary().defaultRaw('uuidv7()'),
+    tenantId: tenantOf('administrative_record_operation_rows_tenant_id_tenants_id_fkey'),
+    operationId: p.uuid(),
+    // the entry's own participant, and the composite key below refuses any
+    // other: reading who may see this act joins through it
+    participantId: p.uuid(),
+    entryId: p.uuid(),
+    createdAt: p.datetime().defaultRaw('now()'),
+  },
+  indexes: [
+    {
+      // one act reaches one participant once; a second finding on the same
+      // person is a second act
+      name: 'uq_administrative_record_operation_rows_participant',
+      expression:
+        'create unique index uq_administrative_record_operation_rows_participant on administrative_record_operation_rows (tenant_id, operation_id, participant_id)',
+    },
+    {
+      // one fact comes from one act, or provenance means nothing
+      name: 'uq_administrative_record_operation_rows_entry',
+      expression:
+        'create unique index uq_administrative_record_operation_rows_entry on administrative_record_operation_rows (tenant_id, entry_id)',
+    },
+  ],
+})
+
+/**
+ * Something done to a whole act, as opposed to one finding inside it.
+ *
+ * A single withdrawal writes its own entry event; this answers what that one
+ * cannot - why these thirty-six went together. Same shape as an import's
+ * events, because it is the same question.
+ */
+export const AdministrativeRecordOperationEvent = defineEntity({
+  name: 'AdministrativeRecordOperationEvent',
+  tableName: 'administrative_record_operation_events',
+  properties: {
+    id: p.uuid().primary().defaultRaw('uuidv7()'),
+    tenantId: tenantOf('administrative_record_operation_events_tenant_id_tenants_id_fkey'),
+    operationId: p.uuid(),
+    kind: p.string().length(32),
+    actorId: p.uuid().nullable(),
+    reason: p.string().length(500).nullable(),
+    affectedCount: p.integer(),
+    createdAt: p.datetime().defaultRaw('now()'),
+  },
+  indexes: [
+    {
+      name: 'idx_administrative_record_operation_events_operation',
+      expression:
+        'create index idx_administrative_record_operation_events_operation on administrative_record_operation_events (tenant_id, operation_id, created_at desc)',
+    },
+  ],
+})
+
 export const compositeForeignKeys = [
   `alter table assessment_batches add constraint fk_assessment_batches_current_phase
      foreign key (tenant_id, id, current_phase_id) references batch_phases (tenant_id, batch_id, id) on delete set null (current_phase_id)`,
@@ -1869,6 +1998,20 @@ export const compositeForeignKeys = [
      foreign key (tenant_id, entry_id, participant_id) references entries (tenant_id, id, participant_id) on delete cascade`,
   `alter table administrative_entry_import_events add constraint fk_administrative_entry_import_events_import
      foreign key (tenant_id, import_id) references administrative_entry_imports (tenant_id, id) on delete cascade`,
+  `alter table administrative_record_operations add constraint fk_administrative_record_operations_batch
+     foreign key (tenant_id, batch_id) references assessment_batches (tenant_id, id) on delete cascade`,
+  // the question is one of this round's, and the version frozen on the act is
+  // one of that question's: the same two keys an import carries
+  `alter table administrative_record_operations add constraint fk_administrative_record_operations_item
+     foreign key (tenant_id, batch_id, item_id) references assessment_items (tenant_id, batch_id, id) on delete cascade`,
+  `alter table administrative_record_operations add constraint fk_administrative_record_operations_item_revision
+     foreign key (tenant_id, item_id, item_revision_id) references assessment_item_revisions (tenant_id, item_id, id) on delete cascade`,
+  `alter table administrative_record_operation_rows add constraint fk_administrative_record_operation_rows_operation
+     foreign key (tenant_id, operation_id) references administrative_record_operations (tenant_id, id) on delete cascade`,
+  `alter table administrative_record_operation_rows add constraint fk_administrative_record_operation_rows_entry
+     foreign key (tenant_id, entry_id, participant_id) references entries (tenant_id, id, participant_id) on delete cascade`,
+  `alter table administrative_record_operation_events add constraint fk_administrative_record_operation_events_operation
+     foreign key (tenant_id, operation_id) references administrative_record_operations (tenant_id, id) on delete cascade`,
   `alter table batch_management_anchors add constraint fk_batch_management_anchors_batch
      foreign key (tenant_id, batch_id) references assessment_batches (tenant_id, id) on delete cascade`,
   `alter table batch_management_anchors add constraint fk_batch_management_anchors_node
@@ -2030,6 +2173,9 @@ export const entities = [
   AdministrativeEntryImport,
   AdministrativeEntryImportRow,
   AdministrativeEntryImportEvent,
+  AdministrativeRecordOperation,
+  AdministrativeRecordOperationRow,
+  AdministrativeRecordOperationEvent,
   BatchPhase,
   PhaseEvent,
   BatchLifecycleEvent,
