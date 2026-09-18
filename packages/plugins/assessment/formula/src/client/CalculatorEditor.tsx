@@ -8,6 +8,7 @@ import { Badge } from '@qualy/ui/badge'
 import { Feedback, Field } from '@qualy/ui/admin'
 import type { CalculatorEditorContext } from '@qualy/plugin-assessment/surfaces'
 import { formulaApi } from './api.ts'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { formulaMessages as m } from './i18n.ts'
 
 // Choosing which published formula a question is scored by.
@@ -21,28 +22,61 @@ import { formulaMessages as m } from './i18n.ts'
 const REF = 'formula@1'
 
 const styles = stylex.create({
-  frame: { display: 'flex', flexDirection: 'column', gap: '0.5rem', minWidth: 320 },
-  row: {
+  frame: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 10 },
+  // One card per formula, not one row per publication. Seven publications
+  // of one formula were seven lines each repeating its name, and the last
+  // of them carried every parameter it declares - which, with no floor on
+  // how far a flex child may shrink, wrung the name itself into a column of
+  // single characters.
+  group: {
     display: 'flex',
-    alignItems: 'center',
-    gap: '0.5rem',
-    padding: '0.5rem 0.625rem',
-    borderRadius: '0.375rem',
-    border: '1px solid var(--q-border)',
-    background: 'var(--q-surface)',
-    textAlign: 'left',
-    width: '100%',
-    cursor: 'pointer',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 8,
+    borderRadius: tokens.radiusMd,
+    backgroundColor: tokens.surface,
+    boxShadow: `inset 0 0 0 1px ${tokens.border}`,
+    paddingInline: 12,
+    paddingBlock: 10,
   },
-  chosen: { borderColor: 'var(--q-primary)' },
-  held: { cursor: 'not-allowed', opacity: 0.55 },
-  name: { fontWeight: 500 },
-  meta: { fontSize: '0.8125rem', color: 'var(--q-surface-muted-foreground)' },
-  spacer: { marginInlineStart: 'auto' },
+  groupHead: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 2 },
+  name: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 14,
+    fontWeight: 500,
+  },
+  // how many it takes, not which: the parameters themselves are the list
+  // below this one, where each is configured
+  meta: { fontSize: 12, color: tokens.mutedForeground },
+  versions: { display: 'flex', flexWrap: 'wrap', gap: 6 },
+  version: {
+    display: 'inline-flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 0,
+    borderRadius: '9999px',
+    backgroundColor: tokens.surfaceMuted,
+    paddingInline: 10,
+    paddingBlock: 4,
+    fontFamily: 'inherit',
+    fontSize: 12,
+    color: tokens.foreground,
+    cursor: { default: 'pointer', ':disabled': 'not-allowed' },
+  },
+  chosen: {
+    backgroundColor: tokens.primary,
+    color: tokens.primaryForeground,
+  },
+  held: { opacity: 0.55 },
 })
 
 interface Option {
   readonly versionId: string
+  readonly functionId: string
   readonly functionName: string
   readonly versionNo: number
   readonly releaseName: string | null
@@ -95,6 +129,33 @@ export default function CalculatorEditor({ context }: { context: CalculatorEdito
     return [{ ...current, current: true }, ...offered]
   }, [versions.data])
 
+  // A formula is one thing with a history, so it is one card with its
+  // publications in it. Grouped by identity rather than by name, because two
+  // formulas may be called the same and the reader would then be choosing a
+  // version of something else.
+  const grouped = useMemo(() => {
+    const order: string[] = []
+    const byFunction = new Map<
+      string,
+      { functionId: string; functionName: string; parameters: number; versions: Option[] }
+    >()
+    for (const option of options) {
+      const held = byFunction.get(option.functionId)
+      if (held === undefined) {
+        order.push(option.functionId)
+        byFunction.set(option.functionId, {
+          functionId: option.functionId,
+          functionName: option.functionName,
+          parameters: option.parameters.length,
+          versions: [option],
+        })
+        continue
+      }
+      held.versions.push(option)
+    }
+    return order.map((functionId) => byFunction.get(functionId)!)
+  }, [options])
+
   if (!mine) return null
 
   return (
@@ -102,41 +163,48 @@ export default function CalculatorEditor({ context }: { context: CalculatorEdito
       {() => (
         <div {...stylex.props(styles.frame)} data-testid="formula-version-picker">
           {versions.isError ? <Feedback message={formatError(versions.error)} /> : null}
-          {options.map((option) => {
-            const held = context.disabled || !(option.bindableForNew || option.current)
-            return (
-              <button
-                key={option.versionId}
-                type="button"
-                disabled={held}
-                data-testid="formula-version-option"
-                data-version-id={option.versionId}
-                data-version-origin={option.current ? 'current' : 'offered'}
-                data-version-chosen={option.versionId === chosen}
-                {...stylex.props(
-                  styles.row,
-                  option.versionId === chosen && styles.chosen,
-                  held && styles.held,
-                )}
-                onClick={() =>
-                  context.onChange({ ref: REF, config: { versionId: option.versionId } })
-                }
-              >
-                <span {...stylex.props(styles.name)}>{option.functionName}</span>
+          {grouped.map((group) => (
+            <div key={group.functionId} {...stylex.props(styles.group)}>
+              <div {...stylex.props(styles.groupHead)}>
+                <span {...stylex.props(styles.name)}>{group.functionName}</span>
                 <span {...stylex.props(styles.meta)}>
-                  {option.releaseName ?? format(m.releaseOrdinal, { number: option.versionNo })}
+                  {format(m.bindingParameterCount, { count: group.parameters })}
                 </span>
-                <span {...stylex.props(styles.meta)}>
-                  {format(m.bindingParameters, { names: option.parameters.join('、') })}
-                </span>
-                {option.current && !option.bindableForNew ? (
-                  <span {...stylex.props(styles.spacer)}>
-                    <Badge variant="secondary">{format(m.bindingKeptOnly)}</Badge>
-                  </span>
-                ) : null}
-              </button>
-            )
-          })}
+              </div>
+              <div {...stylex.props(styles.versions)} role="radiogroup">
+                {group.versions.map((option) => {
+                  const held = context.disabled || !(option.bindableForNew || option.current)
+                  return (
+                    <button
+                      key={option.versionId}
+                      type="button"
+                      role="radio"
+                      aria-checked={option.versionId === chosen}
+                      disabled={held}
+                      data-testid="formula-version-option"
+                      data-version-id={option.versionId}
+                      data-version-origin={option.current ? 'current' : 'offered'}
+                      data-version-chosen={option.versionId === chosen}
+                      {...stylex.props(
+                        styles.version,
+                        option.versionId === chosen && styles.chosen,
+                        held && styles.held,
+                      )}
+                      onClick={() =>
+                        context.onChange({ ref: REF, config: { versionId: option.versionId } })
+                      }
+                    >
+                      {option.releaseName ??
+                        format(m.releaseOrdinal, { number: option.versionNo })}
+                      {option.current && !option.bindableForNew ? (
+                        <Badge variant="secondary">{format(m.bindingKeptOnly)}</Badge>
+                      ) : null}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
           {versions.hasNextPage ? (
             <Button
               variant="ghost"

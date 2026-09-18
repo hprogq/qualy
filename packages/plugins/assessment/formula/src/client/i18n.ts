@@ -924,6 +924,10 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/binding/title',
       defaultMessage: 'Formula',
     },
+    bindingParameterCount: {
+      id: 'assessment-formula/binding/parameter-count',
+      defaultMessage: '{count, plural, one {# parameter} other {# parameters}}',
+    },
     bindingParameters: {
       id: 'assessment-formula/binding/parameters',
       defaultMessage: 'Takes {names}',

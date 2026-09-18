@@ -236,6 +236,7 @@ export default {
   'assessment-formula/editor/result-actual': '结果：{value}',
   'assessment-formula/binding/calculator': '已发布的公式',
   'assessment-formula/binding/title': '公式',
+  'assessment-formula/binding/parameter-count': '{count} 个参数',
   'assessment-formula/binding/parameters': '参数：{names}',
   'assessment-formula/binding/kept-only': '仅保留',
   'assessment-formula/binding/more': '加载更多',
