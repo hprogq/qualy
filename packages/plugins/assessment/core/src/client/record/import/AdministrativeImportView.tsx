@@ -59,6 +59,27 @@ const wide = '@media (min-width: 900px)'
 
 const styles = stylex.create({
   quiet: { fontSize: 14, lineHeight: '1.25rem', color: tokens.mutedForeground },
+  step: { display: 'flex', flexDirection: 'column', gap: 8 },
+  stepHead: { display: 'flex', alignItems: 'center', gap: 10 },
+  // a numbered order, because the first one is a gate: a file that was never
+  // the template is refused whole, and being told that after filling in a
+  // hundred rows is being told too late
+  stepMark: {
+    display: 'inline-flex',
+    flexShrink: 0,
+    width: 22,
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: '9999px',
+    backgroundColor: tokens.primary,
+    color: tokens.primaryForeground,
+    fontSize: 12,
+    fontWeight: 600,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  stepTitle: { fontSize: 14, fontWeight: 600 },
+  stepBody: { display: 'flex', flexDirection: 'column', gap: 10, paddingLeft: 32 },
   templateBox: {
     display: 'flex',
     gap: 12,
@@ -387,17 +408,19 @@ export function AdministrativeImportView({
             </>
           ) : (
             <>
-              <ChosenItem item={item} onChange={() => choose('')} />
+              <ChosenItem batchId={batchId} item={item} onChange={() => choose('')} />
               <RecordSheet>
                 <SheetBlock>
-                  <div {...stylex.props(styles.templateBox)}>
-                    <span aria-hidden {...stylex.props(styles.templateSeat)}>
-                      <FileSpreadsheetIcon {...stylex.props(styles.seatIcon)} />
-                    </span>
-                    <span {...stylex.props(styles.templateBody)}>
-                      <span {...stylex.props(styles.templateTitle)}>
+                  <div {...stylex.props(styles.step)}>
+                    <span {...stylex.props(styles.stepHead)}>
+                      <span aria-hidden {...stylex.props(styles.stepMark)}>
+                        1
+                      </span>
+                      <span {...stylex.props(styles.stepTitle)}>
                         {format(m.importTemplateTitle)}
                       </span>
+                    </span>
+                    <span {...stylex.props(styles.stepBody)}>
                       <span {...stylex.props(styles.templateText)}>
                         {format(m.importTemplateHint)}
                       </span>
@@ -410,64 +433,90 @@ export function AdministrativeImportView({
                     </span>
                   </div>
 
-                  <Field label={format(m.importFile)} hint={format(m.importFileHint)}>
-                    {() =>
-                      uploaded === null ? (
-                        <Dropzone
-                          accept={{ [XLSX]: ['.xlsx'] }}
-                          maxFiles={1}
-                          multiple={false}
-                          disabled={upload.isPending}
-                          onFiles={(files) => {
-                            const file = files[0]
-                            if (file !== undefined) upload.mutate(file)
-                          }}
-                        >
-                          {upload.isPending ? (
-                            <>
-                              <Spinner />
-                              {format(m.importUploading)}
-                            </>
-                          ) : (
-                            format(m.importChooseFile)
-                          )}
-                        </Dropzone>
-                      ) : (
-                        <FileTile
-                          media={
-                            <FileSpreadsheetIcon aria-hidden {...stylex.props(styles.tileIcon)} />
-                          }
-                          name={uploaded.filename}
-                          meta={sizeLabel(Number(uploaded.size))}
-                          actions={
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => {
-                                setUploaded(null)
-                                check.reset()
+                  <div {...stylex.props(styles.step)}>
+                    <span {...stylex.props(styles.stepHead)}>
+                      <span aria-hidden {...stylex.props(styles.stepMark)}>
+                        2
+                      </span>
+                      <span {...stylex.props(styles.stepTitle)}>{format(m.importFile)}</span>
+                    </span>
+                    <span {...stylex.props(styles.stepBody)}>
+                      <Field label={format(m.importFile)} hideLabel hint={format(m.importFileHint)}>
+                        {() =>
+                          uploaded === null ? (
+                            <Dropzone
+                              accept={{ [XLSX]: ['.xlsx'] }}
+                              maxFiles={1}
+                              multiple={false}
+                              disabled={upload.isPending}
+                              onFiles={(files) => {
+                                const file = files[0]
+                                if (file !== undefined) upload.mutate(file)
                               }}
                             >
-                              {format(m.importChooseAnother)}
-                            </Button>
-                          }
-                        />
-                      )
-                    }
-                  </Field>
+                              {upload.isPending ? (
+                                <>
+                                  <Spinner />
+                                  {format(m.importUploading)}
+                                </>
+                              ) : (
+                                format(m.importChooseFile)
+                              )}
+                            </Dropzone>
+                          ) : (
+                            <FileTile
+                              media={
+                                <FileSpreadsheetIcon
+                                  aria-hidden
+                                  {...stylex.props(styles.tileIcon)}
+                                />
+                              }
+                              name={uploaded.filename}
+                              meta={sizeLabel(Number(uploaded.size))}
+                              actions={
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => {
+                                    setUploaded(null)
+                                    check.reset()
+                                  }}
+                                >
+                                  {format(m.importChooseAnother)}
+                                </Button>
+                              }
+                            />
+                          )
+                        }
+                      </Field>
+                    </span>
+                  </div>
 
-                  <Field
-                    label={format(m.importDefaultBasis)}
-                    hint={format(m.importDefaultBasisHint)}
-                  >
-                    {(id) => (
-                      <Input
-                        id={id}
-                        value={basis}
-                        onChange={(event) => setBasis(event.target.value)}
-                      />
-                    )}
-                  </Field>
+                  <div {...stylex.props(styles.step)}>
+                    <span {...stylex.props(styles.stepHead)}>
+                      <span aria-hidden {...stylex.props(styles.stepMark)}>
+                        3
+                      </span>
+                      <span {...stylex.props(styles.stepTitle)}>
+                        {format(m.importDefaultBasis)}
+                      </span>
+                    </span>
+                    <span {...stylex.props(styles.stepBody)}>
+                      <Field
+                        label={format(m.importDefaultBasis)}
+                        hideLabel
+                        hint={format(m.importDefaultBasisHint)}
+                      >
+                        {(id) => (
+                          <Input
+                            id={id}
+                            value={basis}
+                            onChange={(event) => setBasis(event.target.value)}
+                          />
+                        )}
+                      </Field>
+                    </span>
+                  </div>
                 </SheetBlock>
               </RecordSheet>
 

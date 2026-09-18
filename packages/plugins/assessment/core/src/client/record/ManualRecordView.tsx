@@ -100,6 +100,7 @@ export function ManualRecordView({
           ) : (
             <>
               <ChosenItem
+                batchId={batchId}
                 item={item}
                 onChange={() => {
                   // another question is another sheet; nothing typed for

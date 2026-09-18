@@ -186,11 +186,11 @@ const waitForItems = () =>
 
 const chooseItem = async (title: string) => {
   const { userEvent } = await import('vitest/browser')
-  // already on a question: the way to another one is back through the
-  // choice, which is what the screen offers and what discards the draft
-  const chosen = document.querySelector('[data-testid="record-item-chosen"]')
-  if (chosen !== null) {
-    await userEvent.click(chosen)
+  // already on a question: the way to another one is the named change
+  // button on its card, which is what discards the draft
+  const change = document.querySelector('[data-testid="record-item-change"]')
+  if (change !== null) {
+    await userEvent.click(change)
     await waitForItems()
   }
   const choice = [...document.querySelectorAll('[data-testid="record-item-choice"]')].find((one) =>

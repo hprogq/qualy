@@ -15,7 +15,7 @@ import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { EvidenceForm, type EvidencePayload } from '../entry/EvidenceForm.tsx'
 import { fieldsOf, type ItemDto } from '../entry/model.ts'
-import { SheetBar, SheetBlock, SheetFoot } from './sheet.tsx'
+import { SheetAside, SheetBar, SheetBlock, SheetFoot } from './sheet.tsx'
 import type { RecordTarget } from './RecordTargets.tsx'
 
 // One administrative fact, written down.
@@ -42,7 +42,23 @@ import type { RecordTarget } from './RecordTargets.tsx'
 const styles = stylex.create({
   summary: { display: 'flex', flexDirection: 'column', gap: 8 },
   count: { fontSize: 14, fontWeight: 500 },
-  blockedCount: { fontSize: 13, color: tokens.warningForeground },
+  blockedBox: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+    borderRadius: tokens.radiusMd,
+    backgroundColor: `color-mix(in oklab, ${tokens.warning} 8%, transparent)`,
+    boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${tokens.warning} 28%, transparent)`,
+    paddingInline: 14,
+    paddingBlock: 12,
+  },
+  blockedCount: { fontSize: 13, fontWeight: 500, color: tokens.warningForeground },
+  blockedWho: { fontWeight: 500 },
+  blockedActions: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 },
+  blockedHint: {
+    fontSize: 12,
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
+  },
   blockedList: { display: 'flex', flexDirection: 'column', gap: 4, margin: 0, padding: 0 },
   blockedRow: {
     display: 'flex',
@@ -191,6 +207,19 @@ export function AdministrativeRecordForm({
   const [seen, setSeen] = useState<PreviewResult | null>(null)
   const [dropped, setDropped] = useState<readonly string[]>([])
 
+  // Named in the order the sheet is filled, so the state says the first
+  // thing to go and do rather than all of them at once.
+  const missing =
+    target === null
+      ? m.recordNeedsTargets
+      : !evidenceValid
+        ? m.recordNeedsMaterial
+        : !recognitionReady
+          ? m.recordNeedsResult
+          : basis.trim() === ''
+            ? m.recordNeedsBasis
+            : null
+
   const check = useMutation({
     mutationFn: () =>
       run(
@@ -260,18 +289,23 @@ export function AdministrativeRecordForm({
         <>
           <SheetBar title={format(m.recordRecognition)} note={format(m.recordSectionResultNote)} />
           <SheetBlock>
-            <div data-testid="record-recognition">
-              <ValueFieldsForm
-                fields={fields}
-                drafts={recognitionDrafts}
-                onDraft={(id, draft) => {
-                  setDirty((current) => new Set(current).add(id))
-                  setRecognitionDrafts((current) => ({ ...current, [id]: draft }))
-                }}
-                locale={locale}
-                scope="record"
-              />
-            </div>
+            {/* the sentence that keeps somebody from reading these as the
+                score: they are what the formula reads, and the width the
+                inputs do not want is exactly where it goes */}
+            <SheetAside said={format(m.recordResultAside)}>
+              <div data-testid="record-recognition">
+                <ValueFieldsForm
+                  fields={fields}
+                  drafts={recognitionDrafts}
+                  onDraft={(id, draft) => {
+                    setDirty((current) => new Set(current).add(id))
+                    setRecognitionDrafts((current) => ({ ...current, [id]: draft }))
+                  }}
+                  locale={locale}
+                  scope="record"
+                />
+              </div>
+            </SheetAside>
           </SheetBlock>
         </>
       )}
@@ -287,69 +321,93 @@ export function AdministrativeRecordForm({
         <Feedback message={problem} />
       </SheetBlock>
       {seen !== null && (
-        <SheetBlock ruled>
-          <div {...stylex.props(styles.summary)} data-testid="record-preview">
-            <span {...stylex.props(styles.count)} data-eligible={seen.eligibleCount}>
-              {format(m.recordTargetsSummary, { count: seen.eligibleCount })}
-            </span>
-            {seen.blocked.length > 0 && (
-              <>
-                <span {...stylex.props(styles.blockedCount)} data-blocked={seen.blocked.length}>
-                  {format(m.recordTargetsBlocked, { count: seen.blocked.length })}
-                </span>
-                <ul {...stylex.props(styles.blockedList)}>
-                  {seen.blocked.map((one) => (
-                    <li key={one.participantId} {...stylex.props(styles.blockedRow)}>
-                      <span>{one.displayName}</span>
-                      <span {...stylex.props(styles.blockedWhy)}>
-                        {format(blockerMessage(one.reason))}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-                {/* a person-level refusal may be dropped and the act carried
-                    on; what refuses the act itself never appears here */}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    setDropped(seen.blocked.map((one) => one.participantId))
-                    setSeen(null)
-                  }}
-                >
-                  {format(m.recordDropBlocked)}
-                </Button>
-              </>
-            )}
-            <span {...stylex.props(styles.frozen)}>{format(m.recordFrozenNotice)}</span>
-          </div>
-        </SheetBlock>
+        <>
+          {/* The second half of a two-step submit, and it says so. The
+              server's own shape is preview-then-commit, so the screen gives
+              that step a heading of its own and recaps what is about to be
+              settled - a reader confirming a number has to be able to see
+              what the number is a number OF. */}
+          <SheetBar
+            title={format(m.recordCheckTitle)}
+            note={format(m.recordCheckRecap, { item: item.title, basis: basis.trim() })}
+          />
+          <SheetBlock>
+            <div {...stylex.props(styles.summary)} data-testid="record-preview">
+              <span {...stylex.props(styles.count)} data-eligible={seen.eligibleCount}>
+                {format(m.recordTargetsSummary, { count: seen.eligibleCount })}
+              </span>
+              {seen.blocked.length > 0 && (
+                <div {...stylex.props(styles.blockedBox)}>
+                  <span {...stylex.props(styles.blockedCount)} data-blocked={seen.blocked.length}>
+                    {format(m.recordTargetsBlocked, { count: seen.blocked.length })}
+                  </span>
+                  <ul {...stylex.props(styles.blockedList)}>
+                    {seen.blocked.map((one) => (
+                      <li key={one.participantId} {...stylex.props(styles.blockedRow)}>
+                        <span {...stylex.props(styles.blockedWho)}>{one.displayName}</span>
+                        <span {...stylex.props(styles.blockedWhy)}>
+                          {format(blockerMessage(one.reason))}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  {/* dropping them checks again rather than clearing the
+                      screen: the old behaviour looked like an error */}
+                  <span {...stylex.props(styles.blockedActions)}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setDropped([...dropped, ...seen.blocked.map((one) => one.participantId)])
+                        setSeen(null)
+                        check.mutate()
+                      }}
+                      data-testid="record-drop-blocked"
+                    >
+                      {format(m.recordDropBlockedMany, { count: seen.blocked.length })}
+                    </Button>
+                    <span {...stylex.props(styles.blockedHint)}>
+                      {format(m.recordDropBlockedHint)}
+                    </span>
+                  </span>
+                </div>
+              )}
+              <span {...stylex.props(styles.frozen)}>{format(m.recordFrozenNotice)}</span>
+            </div>
+          </SheetBlock>
+          <SheetFoot note={format(m.recordIrreversible)}>
+            <Button size="sm" variant="ghost" onClick={() => setSeen(null)}>
+              {format(m.recordCheckBack)}
+            </Button>
+            <Button
+              disabled={record.isPending || seen.eligibleCount === 0 || seen.blocked.length > 0}
+              onClick={() => record.mutate()}
+              data-testid="record-submit"
+            >
+              {format(m.recordSubmitMany, { count: seen.eligibleCount })}
+            </Button>
+          </SheetFoot>
+        </>
       )}
-      <SheetFoot note={format(m.recordIrreversible)}>
-        {seen === null ? (
+      {seen === null && (
+        <SheetFoot
+          note={format(m.recordIrreversible)}
+          status={
+            missing === null
+              ? format(m.recordReadyToCheck)
+              : format(m.recordNeeds, { what: format(missing) })
+          }
+          blocked={missing !== null}
+        >
           <Button
-            disabled={
-              check.isPending ||
-              target === null ||
-              basis.trim() === '' ||
-              !evidenceValid ||
-              !recognitionReady
-            }
+            disabled={check.isPending || missing !== null}
             onClick={() => check.mutate()}
             data-testid="record-check"
           >
             {format(m.recordCheckTargets)}
           </Button>
-        ) : (
-          <Button
-            disabled={record.isPending || seen.eligibleCount === 0 || seen.blocked.length > 0}
-            onClick={() => record.mutate()}
-            data-testid="record-submit"
-          >
-            {format(m.recordSubmitMany, { count: seen.eligibleCount })}
-          </Button>
-        )}
-      </SheetFoot>
+        </SheetFoot>
+      )}
     </>
   )
 }

@@ -78,7 +78,40 @@ const styles = stylex.create({
   },
   // once chosen, the way back to the others: a step out, so it sits where
   // every other step out on this page sits
-  chosen: { display: 'flex', alignSelf: 'flex-start' },
+  // once chosen, the question stays legible as a card: which one, where it
+  // sits, what it allows - the same three facts the list showed, so nothing
+  // is lost by having answered
+  chosen: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: tokens.radiusLg,
+    backgroundColor: tokens.surface,
+    boxShadow: tokens.elevation1,
+    paddingInline: 16,
+    paddingBlock: 12,
+  },
+  chosenBody: { display: 'flex', minWidth: 0, flexGrow: 1, flexDirection: 'column', gap: 3 },
+  chosenTitle: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 15,
+    fontWeight: 500,
+  },
+  changeSeat: {
+    display: 'flex',
+    flexShrink: 0,
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: 2,
+  },
+  changeHint: {
+    fontSize: 12,
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
+  },
   backIcon: { width: 14, height: 14 },
 })
 
@@ -134,21 +167,42 @@ export function ItemPicker({
  * in more often than they need to be told they may leave it. Pressing it is
  * how they leave.
  */
-export function ChosenItem({ item, onChange }: { item: ItemDto; onChange: () => void }) {
+export function ChosenItem({
+  batchId,
+  item,
+  onChange,
+}: {
+  batchId: string
+  item: ItemDto
+  onChange: () => void
+}) {
   const { format } = useI18n()
+  const query = useApiQuery(assessmentApi)
+  const groups = useQuery(query.assessment.listScoreGroups.queryOptions({ params: { batchId } }))
+  const where = trailOf(groups.data?.groups ?? [])
   return (
-    <div {...stylex.props(styles.chosen)}>
-      <Button
-        size="sm"
-        variant="ghost"
-        onClick={onChange}
-        data-testid="record-item-chosen"
-        data-item={item.id}
-        aria-label={format(m.recordItemChange)}
-      >
-        <ArrowLeftIcon aria-hidden {...stylex.props(styles.backIcon)} />
-        {item.title}
-      </Button>
+    <div {...stylex.props(styles.chosen)} data-testid="record-item-chosen" data-item={item.id}>
+      <span {...stylex.props(styles.chosenBody)}>
+        <span {...stylex.props(styles.chosenTitle)}>{item.title}</span>
+        <span {...stylex.props(styles.under)}>
+          <span>{where(item.scoreGroupId)}</span>
+          {item.maxEntries !== null && (
+            <>
+              <span aria-hidden {...stylex.props(styles.tick)} />
+              <span>{format(m.recordItemCap, { count: item.maxEntries })}</span>
+            </>
+          )}
+        </span>
+      </span>
+      {/* named, not just "change": the word says what is being changed, and
+          the line under it says what changing costs */}
+      <span {...stylex.props(styles.changeSeat)}>
+        <Button size="sm" variant="outline" onClick={onChange} data-testid="record-item-change">
+          <ArrowLeftIcon aria-hidden {...stylex.props(styles.backIcon)} />
+          {format(m.recordItemChangeSaid)}
+        </Button>
+        <span {...stylex.props(styles.changeHint)}>{format(m.recordItemChangeHint)}</span>
+      </span>
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useInfiniteQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { ChevronRightIcon, PlusIcon, SearchIcon, StampIcon } from 'lucide-react'
@@ -180,10 +180,13 @@ const styles = stylex.create({
 
 export function AdministrativeEntryList({
   batchId,
+  search,
   onOpen,
   onRecord,
 }: {
   batchId: string
+  /** what to narrow to; the band above the list owns the box */
+  search: string
   onOpen: (entryId: string) => void
   /** the way out of an empty page, when this reader may take one */
   onRecord?: () => void
@@ -193,7 +196,6 @@ export function AdministrativeEntryList({
   const query = useApiQuery(assessmentApi)
   const { format, formatError } = useI18n()
   const whenOf = useWhen()
-  const [search, setSearch] = useState('')
   const needle = search.trim()
 
   const book = useInfiniteQuery({
@@ -220,20 +222,6 @@ export function AdministrativeEntryList({
 
   return (
     <div {...stylex.props(styles.column)}>
-      <div {...stylex.props(styles.tools)}>
-        <div {...stylex.props(styles.searchSeat)}>
-          <SearchIcon aria-hidden {...stylex.props(styles.searchGlass)} />
-          <Input
-            name="administrative-search"
-            value={search}
-            placeholder={format(m.recordSearchList)}
-            aria-label={format(m.recordSearchList)}
-            onChange={(event) => setSearch(event.target.value)}
-            className={stylex.props(styles.indented).className}
-          />
-        </div>
-      </div>
-
       <AsyncSection
         pending={book.isPending}
         error={book.isError ? formatError(book.error) : null}

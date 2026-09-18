@@ -24,6 +24,8 @@ import { assessmentMessages as m } from '../i18n.ts'
 // A second width invented here only moved the sheet away from the heading
 // and left a gutter on either side of it that meant nothing.
 
+const wide = '@media (min-width: 900px)'
+
 const styles = stylex.create({
   column: { display: 'flex', width: '100%', minWidth: 0, flexDirection: 'column', gap: 16 },
   // the one line that says what this screen is asking, above the thing it
@@ -38,6 +40,31 @@ const styles = stylex.create({
     boxShadow: tokens.elevation1,
   },
   block: { display: 'flex', flexDirection: 'column', gap: 14, padding: 16 },
+  // Three to a row once there is room. The sheet is as wide as the banner
+  // above it - one width for the page, not two - so the reading length is
+  // fixed here instead: three fields across put an input back at about
+  // 360px, where a line of it is readable, rather than stretching one box
+  // over the whole page.
+  grid: {
+    display: 'grid',
+    gap: 14,
+    gridTemplateColumns: { default: null, [wide]: 'repeat(3, minmax(0, 1fr))' },
+    alignItems: 'start',
+  },
+  // a field and the sentence that explains it, side by side: the words use
+  // the width the input does not want
+  aside: {
+    display: 'grid',
+    gap: { default: 6, [wide]: 16 },
+    gridTemplateColumns: { default: null, [wide]: 'minmax(0, 1fr) minmax(0, 2fr)' },
+    alignItems: 'start',
+  },
+  asideText: {
+    fontSize: 12,
+    lineHeight: 1.7,
+    color: tokens.mutedForeground,
+    textWrap: 'pretty',
+  },
   blockRuled: {
     borderTopWidth: 1,
     borderTopStyle: 'solid',
@@ -73,6 +100,16 @@ const styles = stylex.create({
     paddingBlock: 12,
   },
   footNote: { minWidth: 0, flexGrow: 1, fontSize: 12, color: tokens.mutedForeground },
+  footState: { display: 'flex', minWidth: 0, flexGrow: 1, alignItems: 'center', gap: 8 },
+  footDot: {
+    flexShrink: 0,
+    width: 6,
+    height: 6,
+    borderRadius: '9999px',
+    backgroundColor: tokens.success,
+  },
+  footDotWaiting: { backgroundColor: tokens.warning },
+  footStatus: { minWidth: 0, fontSize: 13, color: tokens.foreground },
   // what the reader is about to do, said before they do it rather than in
   // the confirmation afterwards
   notice: {
@@ -117,6 +154,21 @@ export function SheetBlock({ children, ruled }: { children: ReactNode; ruled?: b
   return <div {...stylex.props(styles.block, ruled === true && styles.blockRuled)}>{children}</div>
 }
 
+/** several fields on one line, so no single one becomes a metre wide */
+export function SheetRow({ children }: { children: ReactNode }) {
+  return <div {...stylex.props(styles.grid)}>{children}</div>
+}
+
+/** a field with the sentence that explains it beside it */
+export function SheetAside({ children, said }: { children: ReactNode; said: string }) {
+  return (
+    <div {...stylex.props(styles.aside)}>
+      {children}
+      <p {...stylex.props(styles.asideText)}>{said}</p>
+    </div>
+  )
+}
+
 export function SheetBar({ title, note }: { title: string; note?: string }) {
   return (
     <div {...stylex.props(styles.bar)}>
@@ -126,11 +178,41 @@ export function SheetBar({ title, note }: { title: string; note?: string }) {
   )
 }
 
-/** the consequence on the left, the button that accepts it on the right */
-export function SheetFoot({ note, children }: { note: string; children: ReactNode }) {
+/**
+ * What is stopping the button, and the button.
+ *
+ * A key that is grey in five different circumstances is a key that tells
+ * nobody which of the five they are in, so the state says it in words and
+ * the dot carries whether anything is outstanding at all.
+ */
+export function SheetFoot({
+  note,
+  status,
+  blocked,
+  children,
+}: {
+  note: string
+  /** what is still missing, or what it is ready to do */
+  status?: string
+  /** true while something is still outstanding */
+  blocked?: boolean
+  children: ReactNode
+}) {
   return (
     <div {...stylex.props(styles.foot)}>
-      <span {...stylex.props(styles.footNote)}>{note}</span>
+      {status === undefined ? (
+        <span {...stylex.props(styles.footNote)}>{note}</span>
+      ) : (
+        <span {...stylex.props(styles.footState)}>
+          <span
+            aria-hidden
+            {...stylex.props(styles.footDot, blocked === true && styles.footDotWaiting)}
+          />
+          <span {...stylex.props(styles.footStatus)} data-testid="record-foot-status">
+            {status}
+          </span>
+        </span>
+      )}
       {children}
     </div>
   )

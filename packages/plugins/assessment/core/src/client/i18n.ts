@@ -1311,6 +1311,55 @@ const i18n = definePluginMessages({
         'An item becomes available here once it is set to be settled by the institution rather than claimed by participants.',
     },
     recordItem: { id: 'assessment/record/item', defaultMessage: 'Which item' },
+    recordNeeds: {
+      id: 'assessment/record/needs',
+      defaultMessage: 'Still to fill in: {what}',
+    },
+    recordNeedsTargets: { id: 'assessment/record/needs-targets', defaultMessage: 'who it is for' },
+    recordNeedsMaterial: {
+      id: 'assessment/record/needs-material',
+      defaultMessage: 'the supporting material',
+    },
+    recordNeedsResult: {
+      id: 'assessment/record/needs-result',
+      defaultMessage: 'what it determines',
+    },
+    recordNeedsBasis: { id: 'assessment/record/needs-basis', defaultMessage: 'the basis' },
+    recordReadyToCheck: {
+      id: 'assessment/record/ready-to-check',
+      defaultMessage: 'Ready to check who this reaches',
+    },
+    recordResultAside: {
+      id: 'assessment/record/result-aside',
+      defaultMessage:
+        'These are the values the scoring formula reads, not the score itself. The score is worked out from them by this item\u2019s formula, and follows it if the formula changes.',
+    },
+    recordCheckTitle: {
+      id: 'assessment/record/check-title',
+      defaultMessage: 'Check who this reaches',
+    },
+    recordCheckRecap: {
+      id: 'assessment/record/check-recap',
+      defaultMessage: '{item} · basis {basis}',
+    },
+    recordCheckBack: { id: 'assessment/record/check-back', defaultMessage: 'Go back and edit' },
+    recordDropBlockedMany: {
+      id: 'assessment/record/drop-blocked-many',
+      defaultMessage:
+        '{count, plural, one {Leave # out and check again} other {Leave these # out and check again}}',
+    },
+    recordDropBlockedHint: {
+      id: 'assessment/record/drop-blocked-hint',
+      defaultMessage: 'Checking runs again, so you see the list once more before confirming.',
+    },
+    recordItemChangeSaid: {
+      id: 'assessment/record/item-change-said',
+      defaultMessage: 'Change the item',
+    },
+    recordItemChangeHint: {
+      id: 'assessment/record/item-change-hint',
+      defaultMessage: 'Changing it starts this sheet over.',
+    },
     recordActsTab: { id: 'assessment/record/acts-tab', defaultMessage: 'Bulk records' },
     recordActsEmpty: {
       id: 'assessment/record/acts-empty',
@@ -1503,6 +1552,14 @@ const i18n = definePluginMessages({
     // importing a workbook of them, and looking back on what was imported
     importAction: { id: 'assessment/record/import/action', defaultMessage: 'Import' },
     importTab: { id: 'assessment/record/import/tab', defaultMessage: 'Imports' },
+    importNoCommitOnErrors: {
+      id: 'assessment/record/import/no-commit-on-errors',
+      defaultMessage: 'Rows with an error stop the import; rows to check can go in once confirmed.',
+    },
+    importFixAndReselect: {
+      id: 'assessment/record/import/fix-and-reselect',
+      defaultMessage: 'Correct them and upload again to import',
+    },
     importItemPick: {
       id: 'assessment/record/import/item-pick',
       defaultMessage: 'Which item is this file for',

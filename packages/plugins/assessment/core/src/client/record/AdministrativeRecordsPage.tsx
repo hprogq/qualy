@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { useQueryClient } from '@tanstack/react-query'
-import { ArrowLeftIcon } from 'lucide-react'
+import { ArrowLeftIcon, DownloadIcon, PlusIcon, SearchIcon } from 'lucide-react'
 import type { MessageDescriptor } from '@qualy/i18n-contract'
 import { useApiQuery, usePageQueryState, usePageQueryUpdate } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
+import { Input } from '@qualy/ui/input'
 import { Drill, type DrillMove } from '@qualy/ui/reveal'
 import { PageHeader } from '@qualy/ui/admin'
 import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
@@ -54,21 +55,49 @@ const styles = stylex.create({
   // it took over
   backButton: {
     display: 'inline-flex',
-    flexShrink: 0,
+    minWidth: 0,
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 6,
     borderRadius: tokens.radiusSm,
     borderWidth: 0,
     backgroundColor: { default: 'transparent', ':hover': tokens.surfaceMuted },
-    padding: 2,
-    marginInlineEnd: 4,
+    marginInlineStart: -6,
+    paddingInline: 6,
+    paddingBlock: 2,
+    font: 'inherit',
     color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
     cursor: 'pointer',
   },
   truncate: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   backIcon: { width: 14, height: 14 },
   tabs: { paddingBottom: 12 },
-  actions: { display: 'flex', gap: 8 },
+  // One band: what to look at, what to search, what to do. The actions used
+  // to sit up in the page header, a whole banner away from the tabs - so a
+  // reader on the imports tab was offered "record one" as the main action of
+  // a screen they were not on.
+  band: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 12,
+    paddingBottom: 12,
+  },
+  bandTabs: { paddingBottom: 0 },
+  bandSpacer: { flexGrow: 1 },
+  searchSeat: { position: 'relative', minWidth: '14rem', maxWidth: '22rem', flexGrow: 1 },
+  searchGlass: {
+    pointerEvents: 'none',
+    position: 'absolute',
+    top: '50%',
+    left: 12,
+    width: 14,
+    height: 14,
+    transform: 'translateY(-50%)',
+    color: tokens.mutedForeground,
+  },
+  searchIndent: { paddingLeft: 36 },
+  actions: { display: 'flex', flexShrink: 0, gap: 8 },
+  icon: { width: 15, height: 15 },
 })
 
 /** the three indexes of one book: by fact, by act, by file */
@@ -121,22 +150,6 @@ export default function AdministrativeRecordsPage() {
       title={format(m.recordTab)}
       description={format(m.recordHint)}
       banner={top ? 'section' : 'open'}
-      actions={
-        top ? (
-          <div {...stylex.props(styles.actions)}>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => address({ mode: 'import' }, { history: 'push' })}
-            >
-              {format(m.importAction)}
-            </Button>
-            <Button size="sm" onClick={() => address({ mode: 'manual' }, { history: 'push' })}>
-              {format(m.recordNewAction)}
-            </Button>
-          </div>
-        ) : null
-      }
     >
       {(batch) => (
         <RecordsBody
@@ -173,6 +186,7 @@ function RecordsBody({
   const { format } = useI18n()
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
+  const [search, setSearch] = useState('')
   // where the back press goes: out of a form to the book, out of one import
   // to the imports it was opened from
   const back: {
@@ -237,19 +251,52 @@ function RecordsBody({
       >
         {top ? (
           <div>
-            <Tabs
-              value={view}
-              onValueChange={(next) =>
-                address({ tab: next === 'records' ? '' : next }, { history: 'replace' })
-              }
-              xstyle={styles.tabs}
-            >
-              <TabsList>
-                <TabsTrigger value="records">{format(m.recordListTab)}</TabsTrigger>
-                <TabsTrigger value="acts">{format(m.recordActsTab)}</TabsTrigger>
-                <TabsTrigger value="imports">{format(m.importTab)}</TabsTrigger>
-              </TabsList>
-            </Tabs>
+            <div {...stylex.props(styles.band)}>
+              <Tabs
+                value={view}
+                onValueChange={(next) =>
+                  address({ tab: next === 'records' ? '' : next }, { history: 'replace' })
+                }
+                xstyle={styles.bandTabs}
+              >
+                <TabsList>
+                  <TabsTrigger value="records">{format(m.recordListTab)}</TabsTrigger>
+                  <TabsTrigger value="acts">{format(m.recordActsTab)}</TabsTrigger>
+                  <TabsTrigger value="imports">{format(m.importTab)}</TabsTrigger>
+                </TabsList>
+              </Tabs>
+              <span {...stylex.props(styles.bandSpacer)} />
+              {/* only the records are searchable: the other two tabs are
+                  walked by cursor and have nothing to search on, so drawing
+                  a box there would promise something that does not exist */}
+              {view === 'records' && (
+                <div {...stylex.props(styles.searchSeat)}>
+                  <SearchIcon aria-hidden {...stylex.props(styles.searchGlass)} />
+                  <Input
+                    name="administrative-search"
+                    value={search}
+                    placeholder={format(m.recordSearchList)}
+                    aria-label={format(m.recordSearchList)}
+                    onChange={(event) => setSearch(event.target.value)}
+                    className={stylex.props(styles.searchIndent).className}
+                  />
+                </div>
+              )}
+              <div {...stylex.props(styles.actions)}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => address({ mode: 'import' }, { history: 'push' })}
+                >
+                  <DownloadIcon aria-hidden {...stylex.props(styles.icon)} />
+                  {format(m.importAction)}
+                </Button>
+                <Button size="sm" onClick={() => address({ mode: 'manual' }, { history: 'push' })}>
+                  <PlusIcon aria-hidden {...stylex.props(styles.icon)} />
+                  {format(m.recordNewAction)}
+                </Button>
+              </div>
+            </div>
             {view === 'acts' ? (
               <AdministrativeActHistory
                 batchId={batch.id}
@@ -264,6 +311,7 @@ function RecordsBody({
             ) : (
               <AdministrativeEntryList
                 batchId={batch.id}
+                search={search}
                 onOpen={(id) => address({ entry: id }, { history: 'push' })}
                 onRecord={() => address({ mode: 'manual' }, { history: 'push' })}
               />
@@ -278,21 +326,18 @@ function RecordsBody({
                 variant="banner"
                 title={format(back.title)}
                 description={
-                  <>
-                    {/* text-sized rather than a control's own size: a button
-                        as tall as a button in a line of prose makes that line
-                        taller than the same line in the heading it took over,
-                        and the band would jump on the way in */}
-                    <button
-                      type="button"
-                      aria-label={format(back.label)}
-                      onClick={() => address(back.to)}
-                      {...stylex.props(styles.backButton)}
-                    >
-                      <ArrowLeftIcon aria-hidden {...stylex.props(styles.backIcon)} />
-                    </button>
-                    <span {...stylex.props(styles.truncate)}>{format(back.from)}</span>
-                  </>
+                  // One pressable sentence rather than an arrow with a label
+                  // beside it: the arrow alone made the reader guess where it
+                  // goes, and only the arrow was a target. Text-sized, so the
+                  // band is the same height going in as coming out.
+                  <button
+                    type="button"
+                    onClick={() => address(back.to)}
+                    {...stylex.props(styles.backButton)}
+                  >
+                    <ArrowLeftIcon aria-hidden {...stylex.props(styles.backIcon)} />
+                    <span {...stylex.props(styles.truncate)}>{format(back.label)}</span>
+                  </button>
                 }
               />
             </BatchBanner>
