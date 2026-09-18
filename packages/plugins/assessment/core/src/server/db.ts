@@ -2039,9 +2039,9 @@ export const staffReachOver = (input: {
  * Who one administrative act would reach, worked out once.
  *
  * Both ways of choosing land here, and both are answered from this round's
- * own roster rather than from the directory: by name, the ids are looked up
- * among this batch's participants, so somebody who is not in the round
- * simply is not found; by unit, membership is read from the frozen anchor,
+ * own roster rather than from the directory: by name, the ids ARE
+ * participants of this round, so somebody outside it cannot be named at all;
+ * by unit, membership is read from the frozen anchor,
  * so the answer is whom this round admitted from there and not who stands
  * there today (§32.78).
  *
@@ -2057,7 +2057,7 @@ export const resolveRecordTargets = (
   tenantId: string,
   batchId: string,
   target:
-    | { kind: 'people'; userIds: readonly string[] }
+    | { kind: 'people'; participantIds: readonly string[] }
     | {
         kind: 'organization'
         orgNodeIds: readonly string[]
@@ -2073,7 +2073,7 @@ export const resolveRecordTargets = (
       .where('BatchParticipant.status', '=', 'active')
     if (target.kind === 'people') {
       query = query.where(
-        sql<boolean>`batch_participants.user_id = any(${target.userIds as string[]}::uuid[])`,
+        sql<boolean>`batch_participants.id = any(${target.participantIds as string[]}::uuid[])`,
       )
     } else {
       query = query.where(

@@ -552,8 +552,12 @@ describe('filing a claim', () => {
     // and the form itself does not move while somebody is answering it
     await expect.element(page.getByTestId('rules-changed')).toBeVisible()
     await expect.element(page.getByLabelText('事项说明', { exact: false })).toHaveValue(said)
-    await expect.element(page.getByRole('button', { name: '存为草稿', exact: false })).toBeDisabled()
-    await expect.element(page.getByRole('button', { name: '保存并提交审核', exact: false })).toBeDisabled()
+    await expect
+      .element(page.getByRole('button', { name: '存为草稿', exact: false }))
+      .toBeDisabled()
+    await expect
+      .element(page.getByRole('button', { name: '保存并提交审核', exact: false }))
+      .toBeDisabled()
     expect(page.getByLabelText('获奖级别').elements()).toHaveLength(0)
 
     // the new question arrives when it is asked for, carrying the answers it
@@ -1429,7 +1433,9 @@ describe('judging a submission', () => {
     await page.getByRole('button', { name: /退回/ }).click()
     // the word this dialog refuses to go without says so before it is asked
     // for, and says it to a reader and not only to the eye
-    await expect.element(page.getByLabelText('审核意见', { exact: false })).toHaveAttribute('aria-required')
+    await expect
+      .element(page.getByLabelText('审核意见', { exact: false }))
+      .toHaveAttribute('aria-required')
     await page.getByLabelText('审核意见', { exact: false }).fill('证书缺少落款。')
     await page
       .getByRole('dialog')
@@ -1545,7 +1551,9 @@ describe('judging a submission', () => {
 
     await page.getByRole('button', { name: /退回/ }).click()
     const confirm = page.getByRole('dialog').getByRole('button', { name: /确认退回/ })
-    await expect.element(page.getByRole('dialog').getByText('材料不清晰', { exact: false })).toBeVisible()
+    await expect
+      .element(page.getByRole('dialog').getByText('材料不清晰', { exact: false }))
+      .toBeVisible()
 
     // the focus rests on the dialog, not on the first option: a ring there
     // reads as "this one is chosen" when nothing is

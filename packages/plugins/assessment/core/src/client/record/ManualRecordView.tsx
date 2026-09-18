@@ -10,7 +10,7 @@ import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import type { ItemDto } from '../entry/model.ts'
 import { AdministrativeRecordForm, type RecognitionWire } from './AdministrativeRecordForm.tsx'
-import { ParticipantPicker, type PickedParticipant } from './ParticipantPicker.tsx'
+import { RecordTargets, type RecordTarget } from './RecordTargets.tsx'
 import { administrativeItemsOf, ChosenItem, ItemPicker } from './ItemPicker.tsx'
 import {
   NoAdministrativeItems,
@@ -51,7 +51,7 @@ export function ManualRecordView({
   const { format, formatError } = useI18n()
   const items = useQuery(query.assessment.listItems.queryOptions({ params: { batchId } }))
   const [itemId, setItemId] = useState('')
-  const [participant, setParticipant] = useState<PickedParticipant | null>(null)
+  const [target, setTarget] = useState<RecordTarget | null>(null)
   // bumped on every successful record: the same question and the same
   // person again is a NEW sheet, never leftovers from the one just filed
   const [attempt, setAttempt] = useState(0)
@@ -68,7 +68,15 @@ export function ManualRecordView({
   // reset: evidence payload, basis, recognition drafts, dirty marks and the
   // evidence form's own local drafts all go together - a sheet half-filled
   // for one student must never be filable against another.
-  const session = `${item?.currentRevision?.id ?? 'no-revision'}:${participant?.id ?? ''}:${attempt}`
+  // Everything typed here is ABOUT one question version, one set of people,
+  // one filing. Remounting on any part of that identity is the whole reset.
+  const who =
+    target === null
+      ? ''
+      : target.kind === 'people'
+        ? [...target.participantIds].sort().join(',')
+        : [...target.orgNodeIds].sort().join(',')
+  const session = `${item?.currentRevision?.id ?? 'no-revision'}:${who}:${attempt}`
 
   return (
     <AsyncSection
@@ -97,21 +105,13 @@ export function ManualRecordView({
                   // another question is another sheet; nothing typed for
                   // this one may follow it there
                   setItemId('')
-                  setParticipant(null)
+                  setTarget(null)
                 }}
               />
               <RecordSheet>
                 <SheetBlock>
-                  <Field label={format(m.recordWho)}>
-                    {(id) => (
-                      <ParticipantPicker
-                        id={id}
-                        batchId={batchId}
-                        value={participant}
-                        onChange={setParticipant}
-                        label={format(m.recordWho)}
-                      />
-                    )}
+                  <Field label={format(m.recordTargets)} hideLabel>
+                    {() => <RecordTargets batchId={batchId} value={target} onChange={setTarget} />}
                   </Field>
                 </SheetBlock>
                 <AdministrativeRecordForm
@@ -120,10 +120,10 @@ export function ManualRecordView({
                   batchId={batchId}
                   materialRange={materialRange}
                   item={item}
-                  participantId={participant?.id ?? ''}
+                  target={target}
                   wire={wire}
                   onRecorded={() => {
-                    setParticipant(null)
+                    setTarget(null)
                     setAttempt((count) => count + 1)
                   }}
                 />

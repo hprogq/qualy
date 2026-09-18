@@ -1,8 +1,11 @@
 import AdministrativeRecordsPage from '../src/client/record/AdministrativeRecordsPage.tsx'
 import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
+import { lazy } from 'react'
 import { Effect } from 'effect'
 import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+
+const PeoplePickerView = lazy(() => import('@qualy/plugin-auth/client/iam/PeoplePickerView'))
 
 // The registrar making a determination while they file the fact.
 //
@@ -105,7 +108,18 @@ const contractOf = (itemRevisionId: string) => ({
 const open = (stubs: Record<string, unknown>) =>
   renderScreen({
     client: fakeClient({
-      app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
+      app: {
+        getManifest: () =>
+          Effect.succeed({
+            ...emptyManifest(),
+            pages: PAGES,
+            // the picker's drawing belongs to iam and arrives through the
+            // surface it contributes to, exactly as in the application
+            slots: {
+              'iam/people-picker-view': [{ id: 'auth/people-picker-view', order: 0 }],
+            },
+          }),
+      },
       assessment: {
         getBatch: () => Effect.succeed({ batch: batch() }),
         listItems: () =>
@@ -142,6 +156,8 @@ const open = (stubs: Record<string, unknown>) =>
             ],
             nextCursor: null,
           }),
+        listRosterUnits: () =>
+          Effect.succeed({ units: [{ id: 'node', name: '一班', parentId: null }] }),
         listScoreGroups: () => Effect.succeed({ groups: [], version: 1 }),
         listAdministrativeEntries: () => Effect.succeed({ entries: [], nextCursor: null }),
         getRecognitionContract: ((request: { params: { itemId: string } }) =>
@@ -155,40 +171,60 @@ const open = (stubs: Record<string, unknown>) =>
       { path: '/assessment/batches/:batchId/record', element: <AdministrativeRecordsPage /> },
     ] as never,
     route: `/assessment/batches/${BATCH_ID}/record?mode=manual`,
+    registry: {
+      slots: { 'iam/people-picker-view': { 'auth/people-picker-view': PeoplePickerView } },
+    },
   })
 
-/** an option inside a closed select is real but "not visible": wait on it */
+/** the questions this office settles arrive as a list to read, not a select */
 const waitForItems = () =>
   vi.waitFor(() => {
-    const options = [...document.querySelectorAll('option')].map((one) => one.textContent)
-    if (!options.includes('竞赛获奖登记')) throw new Error('items not loaded yet')
+    if (document.querySelector('[data-testid="record-item-choice"]') === null) {
+      throw new Error('items not loaded yet')
+    }
   })
 
 const chooseItem = async (title: string) => {
   const { userEvent } = await import('vitest/browser')
-  const selects = document.querySelectorAll('select')
-  await userEvent.selectOptions(selects[0]!, title)
+  // already on a question: the way to another one is back through the
+  // choice, which is what the screen offers and what discards the draft
+  const chosen = document.querySelector('[data-testid="record-item-chosen"]')
+  if (chosen !== null) {
+    await userEvent.click(chosen)
+    await waitForItems()
+  }
+  const choice = [...document.querySelectorAll('[data-testid="record-item-choice"]')].find((one) =>
+    (one.textContent ?? '').includes(title),
+  )
+  if (!choice) throw new Error(`${title} is not offered`)
+  await userEvent.click(choice)
 }
 
 /**
- * Naming a participant, which is a search now rather than a dropdown.
+ * Naming who a finding is about.
  *
- * The roster is walked by cursor and filtered in sql, so the picker opens,
- * asks, and offers what came back - the same two presses a person makes.
+ * One dialog, the shared picker view inside it, and the confirmation that
+ * closes it - the same three presses a person makes. The population it
+ * offers is this round's roster, not the directory.
  */
 const choosePerson = async (name: string) => {
   const { userEvent } = await import('vitest/browser')
-  await userEvent.click(page.getByTestId('participant-picker').element())
+  await userEvent.click(page.getByRole('button', { name: '选择参评人员' }).element())
   await vi.waitFor(() => {
-    const found = [...document.querySelectorAll('[data-testid="participant-option"]')].find(
-      (option) => (option.textContent ?? '').includes(name),
+    const found = [...document.querySelectorAll('[data-testid="people-picker-row"]')].find((row) =>
+      (row.textContent ?? '').includes(name),
     )
     if (!found) throw new Error(`${name} is not offered yet`)
   })
-  const option = [...document.querySelectorAll('[data-testid="participant-option"]')].find((one) =>
+  const row = [...document.querySelectorAll('[data-testid="people-picker-row"]')].find((one) =>
     (one.textContent ?? '').includes(name),
   )!
-  await userEvent.click(option)
+  await userEvent.click(row.querySelector('button, input')!)
+  await userEvent.click(
+    [...document.querySelectorAll('button')].find((one) =>
+      (one.textContent ?? '').includes('已选择'),
+    )!,
+  )
 }
 
 describe('recording with a determination', () => {
@@ -248,15 +284,17 @@ describe('recording with a determination', () => {
     // one: the seed follows the material into it and it rides the filing as
     // an own key - never as a mutation of some object's prototype
     const created = vi.fn((request: { payload: Record<string, unknown> }) =>
-      Effect.fail({
-        _tag: 'ASSESSMENT_ENTRY_ACTION_REFUSED',
-        action: 'create',
-        reason: 'x',
+      Effect.succeed({
+        item: { id: ITEM_A, title: '竞赛获奖登记', revisionId: REVISION_A },
+        requestedCount: 1,
+        eligibleCount: 1,
+        blocked: [],
+        targetFingerprint: 'fp',
         request,
       }),
     )
     open({
-      createEntry: created as never,
+      previewAdministrativeRecord: created as never,
       getRecognitionContract: (() =>
         Effect.succeed({
           contract: {
@@ -300,9 +338,9 @@ describe('recording with a determination', () => {
       if (recognition().value !== 'national') throw new Error('seed not followed yet')
     })
     await userEvent.fill(page.getByLabelText('认定依据').element(), '校运会秩序册第 3 页')
-    await userEvent.click(page.getByRole('button', { name: '确认认定' }).element())
+    await userEvent.click(page.getByTestId('record-check').element())
     await vi.waitFor(() => {
-      if (created.mock.calls.length === 0) throw new Error('not submitted yet')
+      if (created.mock.calls.length === 0) throw new Error('not asked yet')
     })
     const sent = created.mock.calls[0]![0]!.payload as {
       recognition?: { values?: Record<string, unknown> }
@@ -345,8 +383,18 @@ describe('recording with a determination', () => {
   })
 
   it('starts a clean sheet after a successful filing', async () => {
-    const created = vi.fn(() => Effect.succeed({ entry: { id: 'e1', status: 'approved' } }))
-    open({ createEntry: created as never })
+    const created = vi.fn(() => Effect.succeed({ operationId: 'op1', recordedCount: 1 }))
+    open({
+      previewAdministrativeRecord: (() =>
+        Effect.succeed({
+          item: { id: ITEM_A, title: '竞赛获奖登记', revisionId: REVISION_A },
+          requestedCount: 1,
+          eligibleCount: 1,
+          blocked: [],
+          targetFingerprint: 'fp',
+        })) as never,
+      recordAdministrativeBatch: created as never,
+    })
     await waitForItems()
     await chooseItem('竞赛获奖登记')
     const { userEvent } = await import('vitest/browser')
@@ -365,15 +413,20 @@ describe('recording with a determination', () => {
       ) as HTMLSelectElement
     await userEvent.selectOptions(recognition(), 'provincial')
     await userEvent.fill(page.getByLabelText('认定依据').element(), '校运会秩序册第 3 页')
-    await userEvent.click(page.getByRole('button', { name: '确认认定' }).element())
+    await userEvent.click(page.getByTestId('record-check').element())
+    await vi.waitFor(() => {
+      if (document.querySelector('[data-testid="record-submit"]') === null)
+        throw new Error('not checked yet')
+    })
+    await userEvent.click(page.getByTestId('record-submit').element())
     await vi.waitFor(() => {
       if (created.mock.calls.length === 0) throw new Error('not filed yet')
     })
     // the filing is done; what was typed for it dies with it - the next
-    // record, even for the same question and person, starts from nothing
+    // record, even for the same question and people, starts from nothing
     await vi.waitFor(() => {
-      const who = page.getByTestId('participant-picker').element()
-      if ((who.textContent ?? '').includes('周予安')) throw new Error('subject still selected')
+      const who = page.getByTestId('record-targets').element()
+      if ((who.textContent ?? '').includes('已选择')) throw new Error('targets still chosen')
       const evidence = page
         .getByLabelText('申报级别', { exact: false })
         .element() as HTMLSelectElement

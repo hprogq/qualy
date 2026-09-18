@@ -1311,6 +1311,69 @@ const i18n = definePluginMessages({
         'An item becomes available here once it is set to be settled by the institution rather than claimed by participants.',
     },
     recordItem: { id: 'assessment/record/item', defaultMessage: 'Which item' },
+    recordTargets: { id: 'assessment/record/targets', defaultMessage: 'Who is being recorded' },
+    recordPickPeople: {
+      id: 'assessment/record/pick-people',
+      defaultMessage: 'Choose participants',
+    },
+    recordPickUnits: { id: 'assessment/record/pick-units', defaultMessage: 'Choose by unit' },
+    recordTargetsChosen: {
+      id: 'assessment/record/targets-chosen',
+      defaultMessage: '{count, plural, one {# participant chosen} other {# participants chosen}}',
+    },
+    recordTargetsUnits: {
+      id: 'assessment/record/targets-units',
+      defaultMessage: '{count, plural, one {# unit chosen} other {# units chosen}}',
+    },
+    recordTargetsNone: {
+      id: 'assessment/record/targets-none',
+      defaultMessage: 'Nobody chosen yet',
+    },
+    recordTargetsClear: { id: 'assessment/record/targets-clear', defaultMessage: 'Clear' },
+    recordCheckTargets: {
+      id: 'assessment/record/check-targets',
+      defaultMessage: 'Check who this reaches',
+    },
+    recordTargetsSummary: {
+      id: 'assessment/record/targets-summary',
+      defaultMessage:
+        '{count, plural, one {# participant will be recorded} other {# participants will be recorded}}',
+    },
+    recordTargetsBlocked: {
+      id: 'assessment/record/targets-blocked',
+      defaultMessage: '{count, plural, one {# cannot be recorded} other {# cannot be recorded}}',
+    },
+    recordDropBlocked: {
+      id: 'assessment/record/drop-blocked',
+      defaultMessage: 'Leave them out and carry on',
+    },
+    recordFrozenNotice: {
+      id: 'assessment/record/frozen-notice',
+      defaultMessage:
+        'Confirming settles it on these participants. Later transfers, changes to the units, or people joining or leaving the roster do not change it.',
+    },
+    recordSubmitMany: {
+      id: 'assessment/record/submit-many',
+      defaultMessage:
+        '{count, plural, one {Confirm for # participant} other {Confirm for # participants}}',
+    },
+    recordDoneMany: {
+      id: 'assessment/record/done-many',
+      defaultMessage:
+        '{count, plural, one {Recorded for # participant.} other {Recorded for # participants.}}',
+    },
+    recordBlockerSelf: {
+      id: 'assessment/record/blocker-self',
+      defaultMessage: 'You cannot record on yourself',
+    },
+    recordBlockerQuota: {
+      id: 'assessment/record/blocker-quota',
+      defaultMessage: 'Already at the limit for this item',
+    },
+    recordBlockerOther: {
+      id: 'assessment/record/blocker-other',
+      defaultMessage: 'Cannot be recorded on right now',
+    },
     recordItemPick: {
       id: 'assessment/record/item-pick',
       defaultMessage: 'Which item is being recorded',

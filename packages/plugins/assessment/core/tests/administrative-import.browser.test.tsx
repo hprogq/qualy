@@ -252,12 +252,17 @@ const pickWorkbook = async () => {
   )
 }
 
+/** the questions this office settles are a list to read, not a select */
 const chooseItem = async () => {
   await vi.waitFor(() => {
-    const options = [...document.querySelectorAll('option')].map((one) => one.textContent)
-    if (!options.includes('优秀学生干部')) throw new Error('items not loaded yet')
+    if (document.querySelector('[data-testid="record-item-choice"]') === null) {
+      throw new Error('items not loaded yet')
+    }
   })
-  await userEvent.selectOptions(document.querySelector('select')!, '优秀学生干部')
+  const choice = [...document.querySelectorAll('[data-testid="record-item-choice"]')].find((one) =>
+    (one.textContent ?? '').includes('优秀学生干部'),
+  )!
+  await userEvent.click(choice)
 }
 
 describe('importing a workbook of administrative records', () => {

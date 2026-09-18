@@ -69,7 +69,7 @@ import {
 
 /** how the targets were chosen; history once the act is written */
 export type RecordTarget =
-  | { readonly kind: 'people'; readonly userIds: readonly string[] }
+  | { readonly kind: 'people'; readonly participantIds: readonly string[] }
   | {
       readonly kind: 'organization'
       readonly orgNodeIds: readonly string[]
@@ -478,7 +478,7 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
             // people were found, not who the act applies to
             targetSpec:
               input.target.kind === 'people'
-                ? { userIds: [...input.target.userIds] }
+                ? { participantIds: [...input.target.participantIds] }
                 : {
                     orgNodeIds: [...input.target.orgNodeIds],
                     userTypeIds: [...input.target.userTypeIds],

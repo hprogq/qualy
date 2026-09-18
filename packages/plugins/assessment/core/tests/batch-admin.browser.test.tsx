@@ -688,7 +688,9 @@ describe('creating a batch', () => {
     await dialog.getByRole('button', { name: '下一步' }).click()
 
     // the units are chosen right here, not in a dialog stacked on this one
-    await expect.element(dialog.getByRole('checkbox', { name: '软件学院', exact: false })).toBeVisible()
+    await expect
+      .element(dialog.getByRole('checkbox', { name: '软件学院', exact: false }))
+      .toBeVisible()
     await dialog.getByRole('checkbox', { name: '软件学院', exact: false }).click()
     await dialog.getByRole('checkbox', { name: '学生', exact: false }).click()
     await dialog.getByRole('button', { name: '创建批次' }).click()

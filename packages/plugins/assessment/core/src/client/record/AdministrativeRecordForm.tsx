@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import * as stylex from '@stylexjs/stylex'
 import { useMutation } from '@tanstack/react-query'
 import { useApi, useRunApi } from '@qualy/web-runtime'
 import { ValueFieldsForm } from '@qualy/web-value-form/InputValueForm'
@@ -9,11 +10,13 @@ import { Feedback, Field } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { toast } from '@qualy/ui/toast'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { EvidenceForm, type EvidencePayload } from '../entry/EvidenceForm.tsx'
 import { fieldsOf, type ItemDto } from '../entry/model.ts'
 import { SheetBar, SheetBlock, SheetFoot } from './sheet.tsx'
+import type { RecordTarget } from './RecordTargets.tsx'
 
 // One administrative fact, written down.
 //
@@ -36,6 +39,46 @@ import { SheetBar, SheetBlock, SheetFoot } from './sheet.tsx'
 // from the material, which is the only way to know that editing one is
 // allowed rather than a mistake.
 
+const styles = stylex.create({
+  summary: { display: 'flex', flexDirection: 'column', gap: 8 },
+  count: { fontSize: 14, fontWeight: 500 },
+  blockedCount: { fontSize: 13, color: tokens.warningForeground },
+  blockedList: { display: 'flex', flexDirection: 'column', gap: 4, margin: 0, padding: 0 },
+  blockedRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'baseline',
+    gap: 8,
+    listStyle: 'none',
+    fontSize: 13,
+  },
+  blockedWhy: { color: tokens.mutedForeground },
+  frozen: {
+    fontSize: 12,
+    lineHeight: 1.6,
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
+  },
+})
+
+/** what the server said this act would come to */
+interface PreviewResult {
+  readonly eligibleCount: number
+  readonly targetFingerprint: string
+  readonly blocked: readonly {
+    readonly participantId: string
+    readonly displayName: string
+    readonly reason: string
+  }[]
+}
+
+/** the server's word for a person-level refusal, in the reader's */
+const blockerMessage = (reason: string) =>
+  reason === 'self-record-refused'
+    ? m.recordBlockerSelf
+    : reason === 'max-entries-reached'
+      ? m.recordBlockerQuota
+      : m.recordBlockerOther
+
 /** the recognition contract as the wire serves it to this form */
 export interface RecognitionWire {
   readonly itemRevisionId: string
@@ -54,7 +97,7 @@ export function AdministrativeRecordForm({
   batchId,
   materialRange,
   item,
-  participantId,
+  target,
   wire,
   onRecorded,
 }: {
@@ -63,7 +106,8 @@ export function AdministrativeRecordForm({
   batchId: string
   materialRange: { start: string; end: string }
   item: ItemDto
-  participantId: string
+  /** who it is about, already chosen; null until somebody has been */
+  target: RecordTarget | null
   wire: RecognitionWire | null
   onRecorded: () => void
 }) {
@@ -120,31 +164,74 @@ export function AdministrativeRecordForm({
   )
   const recognitionReady = wire === null || materialized.value !== null
 
+  // What the act would be, sent whole every time it is asked: the preview
+  // and the write are the same request plus a confirmation, so a screen that
+  // remembered half of it could confirm something it never showed.
+  const asked =
+    target === null
+      ? null
+      : {
+          itemId: item.id,
+          expectedItemRevisionId: item.currentRevision?.id ?? '',
+          target:
+            target.kind === 'people'
+              ? { kind: 'people' as const, participantIds: target.participantIds }
+              : {
+                  kind: 'organization' as const,
+                  orgNodeIds: target.orgNodeIds,
+                  userTypeIds: target.userTypeIds,
+                },
+          payload,
+          ...(wire === null || materialized.value === null
+            ? {}
+            : { recognition: { values: materialized.value } }),
+          basis: basis.trim(),
+        }
+
+  const [seen, setSeen] = useState<PreviewResult | null>(null)
+  const [dropped, setDropped] = useState<readonly string[]>([])
+
+  const check = useMutation({
+    mutationFn: () =>
+      run(
+        api.assessment.previewAdministrativeRecord({
+          params: { batchId },
+          payload: { ...asked!, excludedParticipantIds: [...dropped] },
+        }),
+      ),
+    onSuccess: (answer) => {
+      setSeen(answer)
+      setProblem(null)
+    },
+    onError: (error) => {
+      setSeen(null)
+      setProblem(formatError(error))
+    },
+  })
+
   const record = useMutation({
     mutationFn: () =>
       run(
-        api.assessment.createEntry({
+        api.assessment.recordAdministrativeBatch({
+          params: { batchId },
           payload: {
-            itemId: item.id,
-            participantId,
-            payload,
-            note: basis.trim(),
-            ...(wire === null || materialized.value === null
-              ? {}
-              : { recognition: { values: materialized.value } }),
-            // the form on screen is this item's current version; if it moved
-            // while the record was being written, nothing is filed
-            ...(item.currentRevision?.id === undefined
-              ? {}
-              : { expectedItemRevisionId: item.currentRevision.id }),
+            ...asked!,
+            excludedParticipantIds: [...dropped],
+            expectedTargetFingerprint: seen!.targetFingerprint,
           },
         }),
       ),
-    onSuccess: () => {
-      toast.success(format(m.recordDone))
+    onSuccess: (done) => {
+      toast.success(format(m.recordDoneMany, { count: done.recordedCount }))
       onRecorded()
     },
-    onError: (error) => setProblem(formatError(error)),
+    onError: (error) => {
+      // the set moved under them, or somebody stopped being writable: either
+      // way what they were shown is stale, so it goes rather than sitting
+      // there looking confirmable
+      setSeen(null)
+      setProblem(formatError(error))
+    },
   })
 
   return (
@@ -199,19 +286,69 @@ export function AdministrativeRecordForm({
         </Field>
         <Feedback message={problem} />
       </SheetBlock>
+      {seen !== null && (
+        <SheetBlock ruled>
+          <div {...stylex.props(styles.summary)} data-testid="record-preview">
+            <span {...stylex.props(styles.count)} data-eligible={seen.eligibleCount}>
+              {format(m.recordTargetsSummary, { count: seen.eligibleCount })}
+            </span>
+            {seen.blocked.length > 0 && (
+              <>
+                <span {...stylex.props(styles.blockedCount)} data-blocked={seen.blocked.length}>
+                  {format(m.recordTargetsBlocked, { count: seen.blocked.length })}
+                </span>
+                <ul {...stylex.props(styles.blockedList)}>
+                  {seen.blocked.map((one) => (
+                    <li key={one.participantId} {...stylex.props(styles.blockedRow)}>
+                      <span>{one.displayName}</span>
+                      <span {...stylex.props(styles.blockedWhy)}>
+                        {format(blockerMessage(one.reason))}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                {/* a person-level refusal may be dropped and the act carried
+                    on; what refuses the act itself never appears here */}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setDropped(seen.blocked.map((one) => one.participantId))
+                    setSeen(null)
+                  }}
+                >
+                  {format(m.recordDropBlocked)}
+                </Button>
+              </>
+            )}
+            <span {...stylex.props(styles.frozen)}>{format(m.recordFrozenNotice)}</span>
+          </div>
+        </SheetBlock>
+      )}
       <SheetFoot note={format(m.recordIrreversible)}>
-        <Button
-          disabled={
-            record.isPending ||
-            participantId === '' ||
-            basis.trim() === '' ||
-            !evidenceValid ||
-            !recognitionReady
-          }
-          onClick={() => record.mutate()}
-        >
-          {format(m.recordSubmit)}
-        </Button>
+        {seen === null ? (
+          <Button
+            disabled={
+              check.isPending ||
+              target === null ||
+              basis.trim() === '' ||
+              !evidenceValid ||
+              !recognitionReady
+            }
+            onClick={() => check.mutate()}
+            data-testid="record-check"
+          >
+            {format(m.recordCheckTargets)}
+          </Button>
+        ) : (
+          <Button
+            disabled={record.isPending || seen.eligibleCount === 0 || seen.blocked.length > 0}
+            onClick={() => record.mutate()}
+            data-testid="record-submit"
+          >
+            {format(m.recordSubmitMany, { count: seen.eligibleCount })}
+          </Button>
+        )}
       </SheetFoot>
     </>
   )

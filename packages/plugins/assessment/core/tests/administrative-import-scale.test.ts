@@ -85,7 +85,11 @@ describe.runIf(postgresAvailable)('an administrative import at scale', () => {
           const sheet = book.getWorksheet(DATA_SHEET)!
           for (let n = 1; n <= ROWS; n++) {
             sheet.addRow(
-              laidOut(sheet, [`S${String(n).padStart(6, '0')}`, `Student ${n}`, `校发〔2026〕${n} 号`]),
+              laidOut(sheet, [
+                `S${String(n).padStart(6, '0')}`,
+                `Student ${n}`,
+                `校发〔2026〕${n} 号`,
+              ]),
             )
           }
           const bytes = Buffer.from(yield* Effect.promise(() => book.xlsx.writeBuffer()))

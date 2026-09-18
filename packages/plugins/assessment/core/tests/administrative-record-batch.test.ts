@@ -137,7 +137,12 @@ describe.runIf(postgresAvailable).concurrent('recording one finding on a group',
               itemId: item.id,
               expectedItemRevisionId: revision,
               // by name, and naming themselves among them
-              target: { kind: 'people' as const, userIds: [f.s1, f.recorder] },
+              target: {
+                kind: 'people' as const,
+                participantIds: people
+                  .filter((row) => row.user_id === f.s1 || row.user_id === f.recorder)
+                  .map((row) => row.id),
+              },
               payload: {},
               basis: 'b',
             },
@@ -163,13 +168,19 @@ describe.runIf(postgresAvailable).concurrent('recording one finding on a group',
           const { f, g, item, revision } = yield* ready('ar-reach')
           const assessment = yield* Assessment
           // s3 is in the other college; the recorder's authority stops at A
+          const people = yield* participantsOf(f.t, g.batch.id)
           const seen = yield* assessment.previewAdministrativeRecord(
             f.t,
             g.batch.id,
             {
               itemId: item.id,
               expectedItemRevisionId: revision,
-              target: { kind: 'people' as const, userIds: [f.s1, f.s3] },
+              target: {
+                kind: 'people' as const,
+                participantIds: people
+                  .filter((row) => row.user_id === f.s1 || row.user_id === f.s3)
+                  .map((row) => row.id),
+              },
               payload: {},
               basis: 'b',
             },

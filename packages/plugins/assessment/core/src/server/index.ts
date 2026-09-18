@@ -4477,7 +4477,7 @@ const listed = (value: string | readonly string[] | undefined): string[] =>
 /** the wire's target, with its id lists normalised to arrays */
 const targetOf = (
   target:
-    | { readonly kind: 'people'; readonly userIds: string | readonly string[] }
+    | { readonly kind: 'people'; readonly participantIds: string | readonly string[] }
     | {
         readonly kind: 'organization'
         readonly orgNodeIds: string | readonly string[]
@@ -4485,7 +4485,7 @@ const targetOf = (
       },
 ) =>
   target.kind === 'people'
-    ? ({ kind: 'people', userIds: listed(target.userIds) } as const)
+    ? ({ kind: 'people', participantIds: listed(target.participantIds) } as const)
     : ({
         kind: 'organization',
         orgNodeIds: listed(target.orgNodeIds),

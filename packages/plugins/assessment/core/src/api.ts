@@ -354,7 +354,7 @@ export const idList = Schema.Union([Schema.Array(uuidInput), uuidInput])
  * the selection that was made, not who the act applies to (§32.78).
  */
 const recordTargetInput = Schema.Union([
-  Schema.Struct({ kind: Schema.Literal('people'), userIds: idList }),
+  Schema.Struct({ kind: Schema.Literal('people'), participantIds: idList }),
   Schema.Struct({
     kind: Schema.Literal('organization'),
     orgNodeIds: idList,
