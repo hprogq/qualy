@@ -82,12 +82,6 @@ const styles = stylex.create({
   backIcon: { width: 14, height: 14 },
 })
 
-/** the questions this office records directly, in the batch's own order */
-export const administrativeItemsOf = (items: readonly ItemDto[]): readonly ItemDto[] =>
-  items.filter(
-    (item) => item.status === 'active' && item.currentRevision?.entrySource === 'administrative',
-  )
-
 export function ItemPicker({
   batchId,
   items,

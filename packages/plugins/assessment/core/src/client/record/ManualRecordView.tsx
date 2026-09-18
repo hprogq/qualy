@@ -8,10 +8,10 @@ import { AsyncSection, Field } from '@qualy/ui/admin'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
-import type { ItemDto } from '../entry/model.ts'
+import { administrativeItemsOf, type ItemDto } from '../entry/model.ts'
 import { AdministrativeRecordForm, type RecognitionWire } from './AdministrativeRecordForm.tsx'
 import { RecordTargets, type RecordTarget } from './RecordTargets.tsx'
-import { administrativeItemsOf, ChosenItem, ItemPicker } from './ItemPicker.tsx'
+import { ChosenItem, ItemPicker } from './ItemPicker.tsx'
 import {
   NoAdministrativeItems,
   RecordColumn,

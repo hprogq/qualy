@@ -18,9 +18,9 @@ import { toast } from '@qualy/ui/toast'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi, assessmentUrls } from '../../api.ts'
 import { assessmentMessages as m } from '../../i18n.ts'
-import { fieldsOf, sizeLabel, type ItemDto } from '../../entry/model.ts'
+import { administrativeItemsOf, fieldsOf, sizeLabel, type ItemDto } from '../../entry/model.ts'
 import { uploadFile } from '../../entry/upload.ts'
-import { administrativeItemsOf, ChosenItem, ItemPicker } from '../ItemPicker.tsx'
+import { ChosenItem, ItemPicker } from '../ItemPicker.tsx'
 import {
   NoAdministrativeItems,
   RecordColumn,

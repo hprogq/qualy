@@ -106,6 +106,12 @@ export interface ItemDto {
   createdAt: string
 }
 
+/** the questions this office records directly, in the batch's own order */
+export const administrativeItemsOf = (items: readonly ItemDto[]): readonly ItemDto[] =>
+  items.filter(
+    (item) => item.status === 'active' && item.currentRevision?.entrySource === 'administrative',
+  )
+
 export const entryStatusMessage: Record<EntryDto['status'], MessageDescriptor> = {
   draft: m.entryStatusDraft,
   in_review: m.entryStatusInReview,
