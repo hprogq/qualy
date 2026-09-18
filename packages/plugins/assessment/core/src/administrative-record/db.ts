@@ -276,3 +276,31 @@ export const operationOfEntry = (tenantId: string, entryId: string) =>
         row === undefined ? null : String((row as Record<string, unknown>)['operationId']),
       ),
     )
+
+/** the people one act reached, with what each of their facts is now */
+export const operationRowsPage = (input: {
+  tenantId: string
+  operationId: string
+  after?: string | undefined
+  limit: number
+}) =>
+  db.query((k) => {
+    let query = k
+      .selectFrom('AdministrativeRecordOperationRow as r')
+      .innerJoin('Entry as e', (join) =>
+        join.onRef('e.tenantId', '=', 'r.tenantId').onRef('e.id', '=', 'r.entryId'),
+      )
+      .innerJoin('BatchParticipant as p', (join) =>
+        join.onRef('p.tenantId', '=', 'r.tenantId').onRef('p.id', '=', 'r.participantId'),
+      )
+      .innerJoin('User as u', (join) =>
+        join.onRef('u.tenantId', '=', 'p.tenantId').onRef('u.id', '=', 'p.userId'),
+      )
+      .select(['r.entryId', 'r.participantId', 'e.status', 'u.displayName', 'u.businessNo'])
+      .where('r.tenantId', '=', input.tenantId)
+      .where('r.operationId', '=', input.operationId)
+    if (input.after !== undefined) {
+      query = query.where(sql<boolean>`r.participant_id > ${input.after}::uuid`)
+    }
+    return query.orderBy('r.participantId').limit(input.limit).execute()
+  })

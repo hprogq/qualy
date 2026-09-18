@@ -984,6 +984,7 @@ export class Assessment extends Context.Service<
         id: string
         batchId: string
         itemId: string
+        itemTitle: string
         itemRevisionId: string
         targetKind: string
         targetSpec: Record<string, unknown>
@@ -991,6 +992,13 @@ export class Assessment extends Context.Service<
         recordedCount: number
         voidedCount: number
         createdAt: string
+        rows: readonly {
+          entryId: string
+          participantId: string
+          displayName: string
+          businessNo: string | null
+          status: string
+        }[]
         events: readonly {
           id: string
           kind: string
@@ -5623,11 +5631,15 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           id: act.id,
           batchId: act.batchId,
           itemId: act.itemId,
+          itemTitle: act.itemTitle,
           itemRevisionId: act.itemRevisionId,
           targetKind: act.targetKind,
           recordedCount: act.recordedCount,
           voidedCount: act.voidedCount,
           createdAt: act.createdAt,
+          actorName: null,
+          basis: null,
+          rows: act.rows,
           events: act.events,
         }
       }),

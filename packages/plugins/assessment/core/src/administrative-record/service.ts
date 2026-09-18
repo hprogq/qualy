@@ -37,6 +37,7 @@ import { effectiveEntryCounts } from '../administrative-import/db.ts'
 import { lockBatch, oneBatch, resolveRecordTargets } from '../server/db.ts'
 import {
   eventsOfOperation,
+  operationRowsPage,
   insertRecordOperation,
   insertRecordOperationEvent,
   insertRecordOperationRows,
@@ -660,9 +661,23 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
       string,
       unknown
     >[]
+    // the question it settled, and the people it reached: a detail that says
+    // only how many there were is a receipt, not a record
+    const item = yield* withDb(itemOf(tenantId, act.itemId))
+    const rows = (yield* withDb(
+      operationRowsPage({ tenantId, operationId, limit: 500 }),
+    )) as unknown as Record<string, unknown>[]
     return {
       ...act,
+      itemTitle: item?.title ?? '',
       voidedCount: standing.get(operationId)?.voided ?? 0,
+      rows: rows.map((row) => ({
+        entryId: String(row['entryId']),
+        participantId: String(row['participantId']),
+        displayName: String(row['displayName'] ?? ''),
+        businessNo: row['businessNo'] == null ? null : String(row['businessNo']),
+        status: String(row['status']),
+      })),
       events: events.map((row) => ({
         id: String(row['id']),
         kind: String(row['kind']),

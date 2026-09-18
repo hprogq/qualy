@@ -1,4 +1,4 @@
-import { Effect, Result } from 'effect'
+import { Clock, Effect, Result } from 'effect'
 import { hashCanonicalJson } from '@qualy/value-schema/hash'
 import { transaction, type Orm } from '@qualy/plugin-database/server'
 import type { AttachmentOpen, Storage } from '@qualy/plugin-storage/server'
@@ -594,14 +594,33 @@ export const makeAdministrativeImportMethods = (
           ],
         }),
     })
-    // the metadata is not a credential, but it does say which question
-    // the file believes it answers, and disagreement is the reader's
-    // mistake rather than something to reconcile
-    if (
-      parsed.metadata.batchId !== batchId ||
-      parsed.metadata.itemId !== ready.item.id ||
-      parsed.metadata.itemRevisionId !== ready.revision.id
-    ) {
+    // A template with nothing filled in is not an import of nothing, it is a
+    // file the reader has not finished. Judged here rather than in the
+    // parser, which reads a workbook without knowing what it is for - the
+    // template this very endpoint hands out has no rows either.
+    if (parsed.rows.length === 0) {
+      return yield* new AdministrativeImportInvalid({
+        issues: [{ rowNo: null, field: null, severity: 'error', reason: 'no-rows' }],
+      })
+    }
+    // The metadata is not a credential, but it does say which question the
+    // file believes it answers, and disagreement is the reader's mistake
+    // rather than something to reconcile.
+    //
+    // Two different mistakes, and they are told apart because the way out
+    // differs: a file built for another question was never this question's
+    // to import, while a file built for this one whose form has since moved
+    // is answering a version that no longer exists. Calling the first of
+    // those "the form changed" sends somebody looking for a change nobody
+    // made.
+    if (parsed.metadata.batchId !== batchId || parsed.metadata.itemId !== ready.item.id) {
+      return yield* new AdministrativeImportInvalid({
+        issues: [
+          { rowNo: null, field: null, severity: 'error', reason: 'template-for-another-item' },
+        ],
+      })
+    }
+    if (parsed.metadata.itemRevisionId !== ready.revision.id) {
       return yield* new ItemRevisionConflict({
         itemId: ready.item.id,
         currentRevisionId: ready.item.currentRevisionId,
@@ -854,8 +873,24 @@ export const makeAdministrativeImportMethods = (
           recognition: fields.map((field) => ({ id: field.id, schema: field.schema })),
         }),
       )
-      // named after the question, so a folder of templates says which is which
-      return { bytes, filename: `${ready.item.title}.xlsx` }
+      // Named after the question, what it is and when it was taken. A
+      // folder of these is otherwise a folder of questions, and a template
+      // goes stale the moment the question's form moves - the stamp is how
+      // somebody tells this morning's download from last week's. Read in
+      // the round's own clock, which is the one its dates are written in.
+      const batch = yield* dieQuery(withDb(oneBatch(tenantId, ready.item.batchId)))
+      const stamp = new Intl.DateTimeFormat('en-CA', {
+        timeZone: batch?.timezone ?? 'UTC',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      })
+        .format(new Date(yield* Clock.currentTimeMillis))
+        .replace(/[^0-9]/g, '')
+      return { bytes, filename: `${ready.item.title}_导入模板_${stamp}.xlsx` }
     })
 
   const prepareAdministrativeImportUpload: AdministrativeImportMethods['prepareAdministrativeImportUpload'] =

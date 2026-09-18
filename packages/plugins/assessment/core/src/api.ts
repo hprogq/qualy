@@ -2780,11 +2780,23 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
           id: Schema.String,
           batchId: Schema.String,
           itemId: Schema.String,
+          itemTitle: Schema.String,
           itemRevisionId: Schema.String,
           targetKind: Schema.String,
           recordedCount: Schema.Number,
           voidedCount: Schema.Number,
           createdAt: Schema.String,
+          actorName: Schema.NullOr(Schema.String),
+          basis: Schema.NullOr(Schema.String),
+          rows: Schema.Array(
+            Schema.Struct({
+              entryId: Schema.String,
+              participantId: Schema.String,
+              displayName: Schema.String,
+              businessNo: Schema.NullOr(Schema.String),
+              status: Schema.String,
+            }),
+          ),
           events: Schema.Array(
             Schema.Struct({
               id: Schema.String,

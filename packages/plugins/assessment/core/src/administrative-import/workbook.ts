@@ -151,7 +151,7 @@ export class WorkbookUnreadable extends Error {
   }
 }
 
-const BUSINESS_NO_HEADER = '业务编号 *'
+const BUSINESS_NO_HEADER = '学工号 *'
 const NAME_HEADER = '姓名'
 const BASIS_HEADER = '认定依据'
 
