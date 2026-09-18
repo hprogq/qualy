@@ -97,11 +97,22 @@ const styles = stylex.create({
 const EDITOR_OPTIONS = {
   automaticLayout: true,
   minimap: { enabled: false },
+  // Off, because it has nothing to sit on. The editor's own background is
+  // transparent on purpose - the product draws the pane and its colour
+  // shows through - and the stacked-scope strip takes its background from
+  // that same colour, so it drew the enclosing braces straight over the
+  // code under them. Turning it back on means giving the strip an opaque
+  // colour of its own first (`editorStickyScroll.background`), which the
+  // theme cannot state while it is following a CSS variable.
+  stickyScroll: { enabled: false },
   // the page owns the wheel once the editor has nothing left to scroll;
   // without this the editor pins the page under the cursor
   scrollbar: { alwaysConsumeMouseWheel: false },
   fontSize: 13,
-  lineNumbersMinChars: 3,
+  // Room for four digits. The gutter reserves this much and right-aligns
+  // the number in it, so a formula that runs past line 99 had its leading
+  // digits pushed off the left edge of the pane rather than widening it.
+  lineNumbersMinChars: 4,
   scrollBeyondLastLine: false,
   fixedOverflowWidgets: true,
 } as const

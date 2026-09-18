@@ -22,7 +22,6 @@ import { Input } from '@qualy/ui/input'
 import { toast } from '@qualy/ui/toast'
 import { ConfirmDialog, Field } from '@qualy/ui/admin'
 import { Spinner } from '@qualy/ui/spinner'
-import { Skeleton } from '@qualy/ui/skeleton'
 import { EmptyRow } from '@qualy/ui/empty-row'
 import { PageContainer } from '@qualy/ui/page-container'
 import { useIsMobile } from '@qualy/ui/use-mobile'
@@ -87,6 +86,7 @@ import {
   ToneDot,
   WorkbenchBar,
   WorkbenchLayout,
+  WorkbenchSkeleton,
   type Tone,
   type WorkbenchGate,
 } from './WorkbenchLayout.tsx'
@@ -103,6 +103,7 @@ import { workbenchStyles as w } from './workbench-styles.ts'
 import { parseView, viewValue, type WorkbenchView } from './workbench-view.ts'
 import { MINIMAL_EXAMPLE } from './starter-source.ts'
 import { AtomicValueField, InputValueForm } from '@qualy/web-value-form/InputValueForm'
+import { usePickerWords } from '@qualy/web-i18n/picker-words'
 import {
   draftsFromStored,
   materializeField,
@@ -550,7 +551,6 @@ const styles = stylex.create({
   caseVerdictWords: { minWidth: 0, overflowWrap: 'anywhere' },
   caseFoot: { display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6 },
   problemLine: { margin: 0, fontSize: 12, color: tokens.danger },
-  skeleton: { display: 'flex', flexDirection: 'column', gap: 16, padding: 20 },
   // a phone's source tab: the editor, under a strip that says what stands against it
   phoneSource: { display: 'flex', minHeight: 0, flexGrow: 1, flexDirection: 'column' },
   phoneEditor: {
@@ -709,6 +709,13 @@ export default function FormulaEditorPage() {
   const query = useApiQuery(formulaApi)
   const queryClient = useQueryClient()
   const { format, formatError, locale } = useI18n()
+  const words = usePickerWords()
+  // the live check is the form's; the words for what it finds are this
+  // screen's, and they are the same ones a run reports
+  const explain = useCallback(
+    (schema: AtomicSchema, _id: string, reason: string) => fieldIssueWords(format, schema, reason),
+    [format],
+  )
 
   const detail = useQuery(
     query.assessmentFormula.getFormulaFunction.queryOptions({ params: { functionId } }),
@@ -851,6 +858,12 @@ export default function FormulaEditorPage() {
   const [rowIssues, setRowIssues] = useState<Record<string, ReadonlyMap<string, string>>>({})
   const [tryDrafts, setTryDrafts] = useState<Record<string, FieldDraft>>({})
   const [tryIssues, setTryIssues] = useState<ReadonlyMap<string, string> | undefined>(undefined)
+  // how the last press came out, stamped so two presses in a row each get
+  // their own beat on the button
+  const [tryVerdict, setTryVerdict] = useState<{
+    at: number
+    kind: 'refused' | 'ran' | 'failed'
+  } | null>(null)
   interface RunOutcome {
     readonly passed?: boolean
     readonly actual?: string
@@ -1062,7 +1075,14 @@ export default function FormulaEditorPage() {
       const frozenDrafts = { ...tryDrafts }
       const materialized = materializeInput(snapshot.contract.inputSchema, frozenDrafts)
       if (materialized.value === null) {
-        setTryIssues(translateIssues(snapshot.contract.inputSchema, materialized.issues))
+        // Said twice on purpose. The fields mark themselves, but on a long
+        // contract they mark themselves somewhere the reader is not looking
+        // - so the press answers where it was made, and a notice says how
+        // much there is to go and find.
+        const words = translateIssues(snapshot.contract.inputSchema, materialized.issues)
+        setTryIssues(words)
+        setTryVerdict({ at: Date.now(), kind: 'refused' })
+        toast.error(format(m.runNeedsFields, { count: words.size }))
         return
       }
       const answers = await evaluate(snapshot.sourceTs, [
@@ -1084,8 +1104,14 @@ export default function FormulaEditorPage() {
         forSource: snapshot.sourceTs,
         forCase: JSON.stringify(frozenDrafts),
       })
+      // it ran; whether the formula liked its input is the result's to say
+      setTryVerdict({
+        at: Date.now(),
+        kind: answer.actual === undefined ? 'failed' : 'ran',
+      })
     } catch (error) {
       setFailure(formatError(error))
+      setTryVerdict({ at: Date.now(), kind: 'failed' })
     } finally {
       setRunning(false)
     }
@@ -1109,11 +1135,22 @@ export default function FormulaEditorPage() {
     ])
   }
 
+  /**
+   * An example's input, taken over by the try column.
+   *
+   * It leaves the reader where the values now are: the sheet it may have
+   * been pressed in closes, a phone moves to the try tab, and a word says
+   * it happened. Pressed from a sheet it used to do all of its work behind
+   * that sheet, which read as a button that did nothing.
+   */
   const loadIntoTry = (row: DraftTest) => {
     if (contract === null) return
     setTryDrafts(draftsFromStored(contract.inputSchema, storedInput(row)))
     setTryIssues(undefined)
     setTryResult(null)
+    setSheetOpen(false)
+    setPhoneTab('try')
+    toast.success(format(m.loadedIntoTry))
   }
 
   const seededTests = (loaded: NonNullable<typeof fn>) =>
@@ -1618,18 +1655,7 @@ export default function FormulaEditorPage() {
       </PageContainer>
     )
   }
-  if (fn === undefined) {
-    return (
-      <div {...stylex.props(styles.frame)} aria-busy>
-        <div {...stylex.props(styles.skeleton)}>
-          <Skeleton height={16} width={220} radius={4} />
-          <Skeleton height={14} width="40%" radius={4} />
-          <Skeleton height={14} width="60%" radius={4} />
-          <Skeleton height={14} width="30%" radius={4} />
-        </div>
-      </div>
-    )
-  }
+  if (fn === undefined) return <WorkbenchSkeleton narrow={narrow} />
 
   const archived = fn.status === 'archived'
   const busy = save.isPending || publish.isPending || restore.isPending
@@ -2041,6 +2067,8 @@ export default function FormulaEditorPage() {
             </Field>
           ) : (
             <InputValueForm
+              explain={explain}
+              words={words}
               schema={contract.inputSchema}
               drafts={draftsOfRow(test)}
               onDraft={(name_, draft) => editRow(test, name_, draft)}
@@ -2073,6 +2101,8 @@ export default function FormulaEditorPage() {
             // the expectation faces the OUTPUT contract like inputs face the
             // input contract; '' stays legal until publish
             <AtomicValueField
+              explain={explain}
+              words={words}
               schema={contract.outputSchema}
               name={`expected-${test.key}`}
               label={format(m.expectedLabel)}
@@ -2655,6 +2685,7 @@ export default function FormulaEditorPage() {
             }
       }
       onRun={() => void runTry()}
+      verdict={tryVerdict}
       onKeep={(expected) => {
         setExampleSeed({ drafts: tryDrafts, ...(expected === '' ? {} : { expected }) })
         setAddingExample(true)

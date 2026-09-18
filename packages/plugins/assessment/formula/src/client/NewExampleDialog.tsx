@@ -1,15 +1,16 @@
 import * as stylex from '@stylexjs/stylex'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { Field, FormDialog } from '@qualy/ui/admin'
-import type { NormalizedAtomicSchema, NormalizedInputSchema } from '@qualy/value-schema'
+import type { AtomicSchema, NormalizedAtomicSchema, NormalizedInputSchema } from '@qualy/value-schema'
 import { AtomicValueField, InputValueForm } from '@qualy/web-value-form/InputValueForm'
+import { usePickerWords } from '@qualy/web-i18n/picker-words'
 import { materializeInput, type FieldDraft } from '@qualy/web-value-form/model'
 import { formulaMessages as m } from './i18n.ts'
-import { inputIssueWords } from './report-words.ts'
+import { inputIssueWords, fieldIssueWords } from './report-words.ts'
 
 // A new example, written out before it joins the list: its name, what goes
 // in, and what should come out. Nothing is added until it is confirmed, so a
@@ -51,6 +52,13 @@ export function NewExampleDialog({
   readonly onAdd: (example: NewExample) => void
 }) {
   const { format, locale } = useI18n()
+  const words = usePickerWords()
+  // the live check is the form's; the words for what it finds are this
+  // screen's, and they are the same ones a run reports
+  const explain = useCallback(
+    (schema: AtomicSchema, _id: string, reason: string) => fieldIssueWords(format, schema, reason),
+    [format],
+  )
   const [name, setName] = useState('')
   const [drafts, setDrafts] = useState<Record<string, FieldDraft>>({})
   const [inputText, setInputText] = useState('')
@@ -140,6 +148,8 @@ export function NewExampleDialog({
           </Field>
         ) : (
           <InputValueForm
+            explain={explain}
+            words={words}
             schema={contract.inputSchema}
             drafts={drafts}
             onDraft={(field, draft) => setDrafts({ ...drafts, [field]: draft })}
@@ -167,6 +177,8 @@ export function NewExampleDialog({
           </Field>
         ) : (
           <AtomicValueField
+            explain={explain}
+            words={words}
             schema={contract.outputSchema}
             name="expected"
             label={format(m.expectedLabel)}

@@ -5,6 +5,7 @@ import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { layout } from '@qualy/ui/theme/layout.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
+import { Skeleton } from '@qualy/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@qualy/ui/tabs'
 import { ArrowLeftIcon } from 'lucide-react'
 import { workbenchStyles as w } from './workbench-styles.ts'
@@ -218,6 +219,19 @@ const styles = stylex.create({
     color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
   },
   panelBody: { display: 'flex', minHeight: 0, flexGrow: 1, flexDirection: 'column' },
+
+  // The workbench before it arrives, drawn from the same styles the real one
+  // uses: the same bar, the same split, the same panel at the same heights.
+  // What lands then lands in an outline already on screen, instead of
+  // replacing four grey lines in a corner with a three-pane tool.
+  waitBar: { display: 'flex', alignItems: 'center', gap: 12, paddingInline: 12 },
+  waitSpring: { flexGrow: 1 },
+  waitCode: { display: 'flex', flexDirection: 'column', gap: 9, padding: 16 },
+  waitTry: { display: 'flex', flexDirection: 'column', gap: 14, padding: 16 },
+  waitField: { display: 'flex', flexDirection: 'column', gap: 6 },
+  waitPanel: { display: 'flex', flexDirection: 'column', gap: 10, padding: 16 },
+  waitRow: { display: 'flex', alignItems: 'center', gap: 12 },
+  waitTabs: { display: 'flex', alignItems: 'center', gap: 16, paddingInline: 12 },
 
   phoneTabs: {
     display: 'flex',
@@ -770,6 +784,98 @@ export function WorkbenchLayout({
         {gate === undefined ? null : <GateLine gate={gate} />}
       </div>
       {children}
+    </div>
+  )
+}
+
+/** an uneven run of code, because a stack of equal bars reads as a progress bar */
+const CODE_WIDTHS = ['38%', '64%', '52%', '71%', '44%', '58%', '30%', '66%', '48%', '35%']
+
+/**
+ * The workbench, waiting.
+ *
+ * Its own layout rather than a placeholder in a corner: the bar, the source
+ * pane beside the try column at the width the reader last left it, and the
+ * panel under both. A formula editor is a three-pane tool, and four grey
+ * lines said nothing about which three.
+ */
+export function WorkbenchSkeleton({ narrow }: { narrow: boolean }) {
+  const { sizes } = useWorkbenchSizes()
+  const code = (
+    <div {...stylex.props(styles.waitCode)}>
+      {CODE_WIDTHS.map((width, index) => (
+        <Skeleton key={index} height={11} width={width} radius={4} />
+      ))}
+    </div>
+  )
+  const tryColumn = (
+    <div {...stylex.props(styles.waitTry)}>
+      {[0, 1, 2].map((index) => (
+        <span key={index} {...stylex.props(styles.waitField)}>
+          <Skeleton height={10} width="34%" radius={4} />
+          <Skeleton height={32} radius={6} />
+        </span>
+      ))}
+      <span {...stylex.props(styles.waitRow)}>
+        <Skeleton height={32} width="100%" radius={6} />
+      </span>
+    </div>
+  )
+  const panelRows = (
+    <div {...stylex.props(styles.waitPanel)}>
+      {['46%', '62%', '38%', '55%'].map((width, index) => (
+        <span key={index} {...stylex.props(styles.waitRow)}>
+          <Skeleton height={11} width={width} radius={4} />
+          <span {...stylex.props(styles.waitSpring)} />
+          <Skeleton height={11} width="4rem" radius={4} />
+        </span>
+      ))}
+    </div>
+  )
+  const bar = (
+    <div {...stylex.props(styles.bar)}>
+      <span {...stylex.props(styles.waitBar)}>
+        <Skeleton height={14} width={180} radius={4} />
+        <Skeleton height={10} width={90} radius={4} />
+      </span>
+      <span {...stylex.props(styles.waitSpring)} />
+      <span {...stylex.props(styles.waitBar)}>
+        <Skeleton height={28} width={76} radius={6} />
+        <Skeleton height={28} width={76} radius={6} />
+      </span>
+    </div>
+  )
+
+  if (narrow) {
+    return (
+      <div {...stylex.props(styles.workbench)} data-testid="formula-workbench-waiting" aria-busy>
+        {bar}
+        <div {...stylex.props(styles.phoneTabs, styles.waitTabs)}>
+          {[60, 48, 54].map((width, index) => (
+            <Skeleton key={index} height={11} width={width} radius={4} />
+          ))}
+        </div>
+        {code}
+      </div>
+    )
+  }
+  return (
+    <div {...stylex.props(styles.workbench)} data-testid="formula-workbench-waiting" aria-busy>
+      {bar}
+      <div {...stylex.props(styles.upper)}>
+        <div {...stylex.props(styles.sourcePane)}>{code}</div>
+        <section {...stylex.props(styles.tryPane)} style={{ width: sizes.tryWidth }}>
+          {tryColumn}
+        </section>
+      </div>
+      <div {...stylex.props(styles.panel)} style={{ height: sizes.panelHeight }}>
+        <div {...stylex.props(styles.panelBar, styles.waitTabs)}>
+          {[56, 44, 62].map((width, index) => (
+            <Skeleton key={index} height={11} width={width} radius={4} />
+          ))}
+        </div>
+        {panelRows}
+      </div>
     </div>
   )
 }

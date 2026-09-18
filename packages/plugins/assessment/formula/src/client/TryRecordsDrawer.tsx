@@ -1,3 +1,4 @@
+import { Fragment, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -7,7 +8,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import type { NormalizedInputSchema } from '@qualy/value-schema'
 import { formulaMessages as m } from './i18n.ts'
 import { shortTime } from './library-styles.ts'
-import { inputFactsOf } from './report-words.ts'
+import { inputFactsOf, type InputFact } from './report-words.ts'
 import type { TryRecord } from './try-records.ts'
 import { workbenchStyles as w } from './workbench-styles.ts'
 
@@ -91,6 +92,33 @@ const styles = stylex.create({
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
     color: tokens.surfaceMutedForeground,
+  },
+  // Open, the same facts one to a line. A contract of twenty parameters run
+  // together reads as a paragraph nobody can find a value in, and wrapping
+  // it differently does not help: what makes a value findable is that the
+  // next one starts under it.
+  factsOpen: {
+    display: 'grid',
+    gridTemplateColumns: 'max-content minmax(0, 1fr)',
+    columnGap: 12,
+    rowGap: 3,
+    margin: 0,
+    fontSize: 11.5,
+    lineHeight: '17px',
+  },
+  factsTerm: { color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)` },
+  factsValue: { minWidth: 0, margin: 0, overflowWrap: 'anywhere', color: tokens.surfaceMutedForeground },
+  more: {
+    alignSelf: 'flex-start',
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+    padding: 0,
+    fontFamily: 'inherit',
+    fontSize: 11.5,
+    color: tokens.mutedForeground,
+    textDecorationLine: { default: 'none', ':hover': 'underline' },
+    textUnderlineOffset: 3,
+    cursor: 'pointer',
   },
   reason: { fontSize: 11.5, lineHeight: 1.55, color: tokens.danger },
   again: {
@@ -199,15 +227,7 @@ export function TryRecordsDrawer({
                       {format(m.tryRecordPick)}
                     </button>
                   </div>
-                  <div {...stylex.props(styles.facts)}>
-                    <span {...stylex.props(styles.factsLabel)}>{format(m.testInputLabel)}</span>
-                    {inputFactsOf(format, locale, schema, record.input).map((fact) => (
-                      <span key={fact.label} {...stylex.props(styles.fact)}>
-                        <span {...stylex.props(styles.factLabel)}>{fact.label}</span>
-                        <span {...stylex.props(styles.factValue)}>{fact.value}</span>
-                      </span>
-                    ))}
-                  </div>
+                  <RecordFacts facts={inputFactsOf(format, locale, schema, record.input)} />
                   {failed ? (
                     <span {...stylex.props(styles.reason)}>
                       {format(
@@ -234,5 +254,58 @@ export function TryRecordsDrawer({
         )}
       </SheetContent>
     </Sheet>
+  )
+}
+
+/** how many parameters a record shows before it offers the rest */
+const FACTS_SHOWN = 3
+
+/**
+ * One run's input: a glance, and the whole of it on request.
+ *
+ * A short contract fits on the line it is already on. A long one does not,
+ * and running twenty parameters together is a paragraph nobody can read a
+ * value out of - so past a few the rest is behind a press, and opening it
+ * puts each parameter on its own line where the next one starts under it.
+ */
+function RecordFacts({ facts }: { facts: readonly InputFact[] }) {
+  const { format } = useI18n()
+  const [open, setOpen] = useState(false)
+  const rest = facts.length - FACTS_SHOWN
+  if (open)
+    return (
+      <>
+        <dl {...stylex.props(styles.factsOpen)} data-testid="formula-try-record-facts" data-open>
+          {facts.map((fact) => (
+            <Fragment key={fact.label}>
+              <dt {...stylex.props(styles.factsTerm)}>{fact.label}</dt>
+              <dd {...stylex.props(styles.factsValue)}>{fact.value}</dd>
+            </Fragment>
+          ))}
+        </dl>
+        <button type="button" onClick={() => setOpen(false)} {...stylex.props(styles.more)}>
+          {format(m.tryRecordFewerFacts)}
+        </button>
+      </>
+    )
+  // Shut, the same one-per-line list, just shorter. Three values packed
+  // onto a line that wraps are three values in a paragraph; the whole point
+  // of holding the rest back is that what is shown can be read down.
+  return (
+    <>
+      <dl {...stylex.props(styles.factsOpen)} data-testid="formula-try-record-facts">
+        {facts.slice(0, FACTS_SHOWN).map((fact) => (
+          <Fragment key={fact.label}>
+            <dt {...stylex.props(styles.factsTerm)}>{fact.label}</dt>
+            <dd {...stylex.props(styles.factsValue)}>{fact.value}</dd>
+          </Fragment>
+        ))}
+      </dl>
+      {rest > 0 && (
+        <button type="button" onClick={() => setOpen(true)} {...stylex.props(styles.more)}>
+          {format(m.tryRecordMoreFacts, { count: rest })}
+        </button>
+      )}
+    </>
   )
 }

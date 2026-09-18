@@ -223,7 +223,7 @@ export default function FormulaListPage() {
             loadingLabel={format(commonMessages.loading)}
             retryLabel={format(commonMessages.retry)}
             onRetry={() => void functions.refetch()}
-            skeleton={<LibrarySkeleton />}
+            skeleton={<LibrarySkeleton columns={styles.columns} />}
           >
             <div {...stylex.props(l.sheet)}>
               {items.length === 0 ? (

@@ -240,6 +240,34 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/editor/run',
       defaultMessage: 'Run',
     },
+    tryRecordMoreFacts: {
+      id: 'assessment-formula/editor/try-record-more-facts',
+      defaultMessage: 'Show all parameters ({count} more)',
+    },
+    tryRecordFewerFacts: {
+      id: 'assessment-formula/editor/try-record-fewer-facts',
+      defaultMessage: 'Show fewer',
+    },
+    releaseCaseTitle: {
+      id: 'assessment-formula/editor/release-case-title',
+      defaultMessage: 'Example',
+    },
+    releaseCaseHint: {
+      id: 'assessment-formula/editor/release-case-hint',
+      defaultMessage: 'Frozen with this version; load it into the try column to change anything.',
+    },
+    loadedIntoTry: {
+      id: 'assessment-formula/editor/loaded-into-try',
+      defaultMessage: 'Loaded into the try column',
+    },
+    runDone: { id: 'assessment-formula/editor/run-done', defaultMessage: 'Done' },
+    runFailed: { id: 'assessment-formula/editor/run-failed', defaultMessage: 'Failed' },
+    runRefused: { id: 'assessment-formula/editor/run-refused', defaultMessage: 'Check the form' },
+    runNeedsFields: {
+      id: 'assessment-formula/editor/run-needs-fields',
+      defaultMessage:
+        '{count, plural, one {One parameter needs a look} other {# parameters need a look}}',
+    },
     runNeedsCompile: {
       id: 'assessment-formula/editor/run-needs-compile',
       defaultMessage: 'The code has to compile before anything can run against it',
@@ -750,6 +778,14 @@ const i18n = definePluginMessages({
     constraintPattern: {
       id: 'assessment-formula/constraint/pattern',
       defaultMessage: 'matches {pattern}',
+    },
+    constraintBoolean: {
+      id: 'assessment-formula/constraint/boolean',
+      defaultMessage: 'yes or no',
+    },
+    constraintPatterned: {
+      id: 'assessment-formula/constraint/patterned',
+      defaultMessage: 'set format',
     },
     constraintNone: {
       id: 'assessment-formula/constraint/none',

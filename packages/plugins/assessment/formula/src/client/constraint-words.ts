@@ -37,6 +37,16 @@ export const constraintRules = (
   schema: AtomicSchema,
   format: Format,
   locale: string,
+  /**
+   * Name a pattern instead of printing it.
+   *
+   * A pattern is the one rule that cannot be read at a glance:
+   * `^[A-Z]{2}-[0-9]{4}$` beside a field is forty characters of punctuation
+   * that answers "what goes in here" with another question. Beside the box
+   * it is named; in the contract table, where an author is reading the
+   * contract itself, it is printed in full.
+   */
+  brief = false,
 ): readonly string[] => {
   switch (kindOf(schema)) {
     case 'integer': {
@@ -54,6 +64,10 @@ export const constraintRules = (
       const choice = schema as ChoiceSchema
       return [choice.enum.map((value) => choiceLabel(choice, value, locale)).join(' / ')]
     }
+    case 'boolean':
+      // it takes two values and only two; "anything" was the default answer
+      // for a kind with no bounds to state, which reads as no rule at all
+      return [format(m.constraintBoolean)]
     case 'text': {
       const text = schema as TextSchema
       const length =
@@ -66,7 +80,11 @@ export const constraintRules = (
         ...length,
         ...(text.pattern === undefined
           ? []
-          : [format(m.constraintPattern, { pattern: text.pattern })]),
+          : [
+              brief
+                ? format(m.constraintPatterned)
+                : format(m.constraintPattern, { pattern: text.pattern }),
+            ]),
       ]
     }
     default:
@@ -76,4 +94,4 @@ export const constraintRules = (
 
 /** a field's kind and its rules as one line, for the note beside its label */
 export const constraintNote = (schema: AtomicSchema, format: Format, locale: string): string =>
-  [kindWords(format, kindOf(schema)), ...constraintRules(schema, format, locale)].join(GAP)
+  [kindWords(format, kindOf(schema)), ...constraintRules(schema, format, locale, true)].join(GAP)

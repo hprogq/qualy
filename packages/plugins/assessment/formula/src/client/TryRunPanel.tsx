@@ -1,13 +1,16 @@
 import * as stylex from '@stylexjs/stylex'
 import type { ReactNode } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Spinner } from '@qualy/ui/spinner'
-import { HistoryIcon, PlayIcon } from 'lucide-react'
-import type { NormalizedInputSchema } from '@qualy/value-schema'
+import { CheckIcon, HistoryIcon, PlayIcon, TriangleAlertIcon, XIcon } from 'lucide-react'
+import type { AtomicSchema, NormalizedInputSchema } from '@qualy/value-schema'
 import { InputValueForm } from '@qualy/web-value-form/InputValueForm'
+import { usePickerWords } from '@qualy/web-i18n/picker-words'
 import type { FieldDraft } from '@qualy/web-value-form/model'
 import { formulaMessages as m } from './i18n.ts'
+import { fieldIssueWords } from './report-words.ts'
 import { constraintNote } from './constraint-words.ts'
 import { shortTime } from './library-styles.ts'
 import { ColumnHead } from './WorkbenchLayout.tsx'
@@ -131,6 +134,26 @@ const styles = stylex.create({
     opacity: { default: 1, ':disabled': 0.55 },
   },
   runPhone: { height: 44, fontSize: 14, borderRadius: tokens.radiusLg },
+  // The press answers itself for a moment before going back to being a
+  // press. A run whose only sign was a field turning red somewhere further
+  // up the pane read, on a long contract, as a button that did nothing.
+  // The verdict as a tint with the verdict's own ink on it, which is how
+  // the example rows already say the same three things. Filled solid, the
+  // success green and its foreground - a green meant for ink on a pale
+  // ground - sat on top of each other and the word went unreadable.
+  runGood: {
+    backgroundColor: `color-mix(in oklab, ${tokens.success} 16%, ${tokens.surface})`,
+    boxShadow: `inset 0 0 0 1px ${tokens.success}`,
+    color: { default: tokens.successForeground, ':disabled': tokens.successForeground },
+    opacity: { default: 1, ':disabled': 1 },
+  },
+  runBad: {
+    backgroundColor: `color-mix(in oklab, ${tokens.danger} 12%, ${tokens.surface})`,
+    boxShadow: `inset 0 0 0 1px ${tokens.danger}`,
+    color: { default: tokens.danger, ':disabled': tokens.danger },
+    opacity: { default: 1, ':disabled': 1 },
+  },
+  runSpinner: { width: 13, height: 13 },
   result: {
     display: 'flex',
     minWidth: 0,
@@ -231,6 +254,7 @@ export function TryRunPanel({
   running,
   result,
   onRun,
+  verdict,
   onKeep,
   recordCount,
   onOpenRecords,
@@ -260,12 +284,29 @@ export function TryRunPanel({
     readonly at?: number
   } | null
   readonly onRun: () => void
+  /**
+   * How the last press came out, and when it was stamped.
+   *
+   * The button wears it for a moment and goes back to being a button. The
+   * moment matters most for `refused`, where nothing else on this pane
+   * moves: a field somewhere up a long contract turns red, and a reader who
+   * is looking at the button they just pressed sees a screen that did
+   * nothing at all.
+   */
+  readonly verdict: { readonly at: number; readonly kind: 'refused' | 'ran' | 'failed' } | null
   /** keeps the try as an example, expecting the given value ('' for none yet) */
   readonly onKeep?: (expected: string) => void
   readonly recordCount: number
   readonly onOpenRecords: () => void
 }) {
   const { format, locale } = useI18n()
+  const words = usePickerWords()
+  // the live check is the form's; the words for what it finds are this
+  // screen's, and they are the same ones a run reports
+  const explain = useCallback(
+    (schema: AtomicSchema, _id: string, reason: string) => fieldIssueWords(format, schema, reason),
+    [format],
+  )
 
   const statusWords =
     status.words === '' && status.action === undefined ? null : (
@@ -329,6 +370,8 @@ export function TryRunPanel({
       </div>
     ) : (
       <InputValueForm
+        explain={explain}
+        words={words}
         schema={schema}
         drafts={drafts}
         onDraft={onDraft}
@@ -343,6 +386,18 @@ export function TryRunPanel({
         }}
       />
     )
+
+  // worn for a beat and then let go; keyed on the stamp, so two presses in
+  // a row each get their own beat
+  const [shown, setShown] = useState<'refused' | 'ran' | 'failed' | null>(null)
+  const stamp = verdict?.at ?? 0
+  const kind = verdict?.kind
+  useEffect(() => {
+    if (stamp === 0 || kind === undefined) return
+    setShown(kind)
+    const timer = setTimeout(() => setShown(null), 1_400)
+    return () => clearTimeout(timer)
+  }, [stamp, kind])
 
   const outcome = result?.outcome
   const problem = outcome === undefined ? null : outcomeWords(outcome)
@@ -383,12 +438,39 @@ export function TryRunPanel({
   const runButton = (
     <button
       type="button"
+      data-testid="formula-try-run"
+      data-state={running ? 'running' : (shown ?? 'idle')}
       disabled={disabled || running}
       onClick={onRun}
-      {...stylex.props(styles.run, narrow && styles.runPhone)}
+      {...stylex.props(
+        styles.run,
+        narrow && styles.runPhone,
+        shown === 'ran' && styles.runGood,
+        (shown === 'failed' || shown === 'refused') && styles.runBad,
+      )}
     >
-      <PlayIcon size={narrow ? 15 : 13} aria-hidden />
-      {format(running ? m.running : m.run)}
+      {running ? (
+        <Spinner aria-hidden xstyle={styles.runSpinner} />
+      ) : shown === 'ran' ? (
+        <CheckIcon size={narrow ? 15 : 13} aria-hidden />
+      ) : shown === 'refused' ? (
+        <TriangleAlertIcon size={narrow ? 15 : 13} aria-hidden />
+      ) : shown === 'failed' ? (
+        <XIcon size={narrow ? 15 : 13} aria-hidden />
+      ) : (
+        <PlayIcon size={narrow ? 15 : 13} aria-hidden />
+      )}
+      {format(
+        running
+          ? m.running
+          : shown === 'ran'
+            ? m.runDone
+            : shown === 'refused'
+              ? m.runRefused
+              : shown === 'failed'
+                ? m.runFailed
+                : m.run,
+      )}
     </button>
   )
 

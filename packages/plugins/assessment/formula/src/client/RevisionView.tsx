@@ -23,7 +23,7 @@ import { formulaApi } from './api.ts'
 import { formulaMessages as m } from './i18n.ts'
 import { fullWhen } from './library-styles.ts'
 import { LazyFormulaSourceViewer } from './lazy-editors.ts'
-import { inputIssueWords, inputSummaryOf } from './report-words.ts'
+import { inputIssueWords, inputSummaryOf, fieldIssueWords } from './report-words.ts'
 import { TryRunPanel, type TryOutcome } from './TryRunPanel.tsx'
 import { TryRecordsDrawer } from './TryRecordsDrawer.tsx'
 import { WorkbenchBar, WorkbenchLayout } from './WorkbenchLayout.tsx'
@@ -103,6 +103,12 @@ export function RevisionView({
   const [phoneTab, setPhoneTab] = useState('source')
   const [drafts, setDrafts] = useState<Record<string, FieldDraft>>({})
   const [issues, setIssues] = useState<ReadonlyMap<string, string> | undefined>(undefined)
+  // how the last press came out, stamped so two presses in a row each get
+  // their own beat on the button
+  const [verdict, setVerdict] = useState<{
+    at: number
+    kind: 'refused' | 'ran' | 'failed'
+  } | null>(null)
   const [result, setResult] = useState<{ outcome: TryOutcome; forCase: string } | null>(null)
   const [running, setRunning] = useState(false)
   const [recordsOpen, setRecordsOpen] = useState(false)
@@ -148,7 +154,12 @@ export function RevisionView({
     const frozenDrafts = { ...drafts }
     const materialized = materializeInput(schema, frozenDrafts)
     if (materialized.value === null) {
-      setIssues(inputIssueWords(format, schema, materialized.issues))
+      // the fields mark themselves, but on a long contract they do it
+      // somewhere the reader is not looking
+      const words = inputIssueWords(format, schema, materialized.issues)
+      setIssues(words)
+      setVerdict({ at: Date.now(), kind: 'refused' })
+      toast.error(format(m.runNeedsFields, { count: words.size }))
       return
     }
     setIssues(undefined)
@@ -167,8 +178,10 @@ export function RevisionView({
       tryRecords.add({ input: materialized.value, outcome })
       setRanAt(Date.now())
       setResult({ outcome, forCase: JSON.stringify(frozenDrafts) })
+      setVerdict({ at: Date.now(), kind: outcome.actual === undefined ? 'failed' : 'ran' })
     } catch (error) {
       toast.error(formatError(error))
+      setVerdict({ at: Date.now(), kind: 'failed' })
     } finally {
       setRunning(false)
     }
@@ -251,6 +264,7 @@ export function RevisionView({
       drafts={drafts}
       onDraft={(name, draft) => setDrafts({ ...drafts, [name]: draft })}
       issues={issues}
+      verdict={verdict}
       disabled={false}
       running={running}
       result={

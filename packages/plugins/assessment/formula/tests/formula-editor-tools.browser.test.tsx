@@ -155,6 +155,25 @@ const waitForForm = async (screen: Awaited<ReturnType<typeof renderScreen>>) => 
   )
 }
 
+/**
+ * A parameter's choice, which is the product's select rather than a native
+ * one: the words live behind the press that opens the list.
+ */
+const pickChoice = async (form: Element, parameter: string, label: string) => {
+  const { userEvent } = await import('vitest/browser')
+  await userEvent.click(
+    form.querySelector(`[data-parameter="${parameter}"] [data-slot="select-trigger"]`)!,
+  )
+  await vi.waitFor(() => {
+    const offered = [...document.querySelectorAll('[role="option"]')].map((one) => one.textContent)
+    if (!offered.includes(label))
+      throw new Error(`${label} is not offered; saw ${JSON.stringify(offered)}`)
+  })
+  await userEvent.click(
+    [...document.querySelectorAll('[role="option"]')].find((one) => one.textContent === label)!,
+  )
+}
+
 describe('the formula authoring tools', () => {
   it('turns the contract preview into a typed form and runs the try-case', async () => {
     const { wire, screen } = screenFor(
@@ -176,9 +195,7 @@ describe('the formula authoring tools', () => {
       expect(order).toEqual(['level', 'ordinal', 'base'])
 
       // fill and run: the wire sees the MATERIALIZED value, typed
-      const select = tryForm.querySelector('select')!
-      select.value = 'provincial'
-      select.dispatchEvent(new Event('change', { bubbles: true }))
+      await pickChoice(tryForm, 'level', '省级')
       const [ordinalInput, baseInput] = [
         ...tryForm.querySelectorAll('input:not([type="checkbox"])'),
       ] as HTMLInputElement[]
@@ -303,9 +320,7 @@ describe('the formula authoring tools', () => {
     try {
       await waitForForm(view)
       const tryForm = view.container.querySelector('[data-testid="value-form-try"]')!
-      const select = tryForm.querySelector('select')!
-      select.value = 'national'
-      select.dispatchEvent(new Event('change', { bubbles: true }))
+      await pickChoice(tryForm, 'level', '国家级')
       const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
       const [ordinalInput, baseInput] = [
         ...tryForm.querySelectorAll('input:not([type="checkbox"])'),

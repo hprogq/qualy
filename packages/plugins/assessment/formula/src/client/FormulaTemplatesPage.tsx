@@ -107,7 +107,7 @@ export default function FormulaTemplatesPage() {
             loadingLabel={format(commonMessages.loading)}
             retryLabel={format(commonMessages.retry)}
             onRetry={() => void templates.refetch()}
-            skeleton={<LibrarySkeleton />}
+            skeleton={<LibrarySkeleton columns={styles.columns} middle={2} />}
           >
             <div {...stylex.props(l.sheet)}>
               {items.length === 0 ? (

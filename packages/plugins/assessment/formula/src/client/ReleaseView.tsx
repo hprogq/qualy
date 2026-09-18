@@ -23,8 +23,20 @@ import { formulaApi } from './api.ts'
 import { formulaMessages as m } from './i18n.ts'
 import { ReleaseInfoPopover } from './ReleaseInfoPopover.tsx'
 import { LazyFormulaSourceViewer } from './lazy-editors.ts'
-import { inputIssueWords, inputSummaryOf, outcomeWords, type OutcomeLike } from './report-words.ts'
+import {
+  fieldIssueWords,
+  inputFactsOf,
+  inputIssueWords,
+  outcomeWords,
+  type OutcomeLike,
+} from './report-words.ts'
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@qualy/ui/sheet'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
+import { InputValueForm } from '@qualy/web-value-form/InputValueForm'
+import { usePickerWords } from '@qualy/web-i18n/picker-words'
 import { ContractTable } from './ContractTable.tsx'
+import { ExampleRow } from './ExampleRow.tsx'
+import { exampleStyles } from './example-grid.ts'
 import { TryRunPanel, type TryOutcome } from './TryRunPanel.tsx'
 import { TryRecordsDrawer } from './TryRecordsDrawer.tsx'
 import { WorkbenchBar, WorkbenchLayout, type WorkbenchTab } from './WorkbenchLayout.tsx'
@@ -75,6 +87,41 @@ const styles = stylex.create({
     whiteSpace: 'nowrap',
   },
   sourceFill: { display: 'flex', minHeight: '18rem', flexGrow: 1, flexDirection: 'column' },
+  // the same sheet the editor opens on a case, minus everything that could
+  // change one: a published example is a record of what was proved
+  caseSheet: { width: { default: 420, [breakpoints.phone]: null } },
+  caseBody: {
+    display: 'flex',
+    minHeight: 0,
+    flexGrow: 1,
+    flexDirection: 'column',
+    gap: 12,
+    overflowY: 'auto',
+    paddingInline: 24,
+    paddingBottom: 16,
+  },
+  casePart: { display: 'flex', flexDirection: 'column', gap: 6 },
+  casePartTitle: {
+    margin: 0,
+    fontSize: 11,
+    fontWeight: 600,
+    letterSpacing: '0.06em',
+    color: tokens.mutedForeground,
+  },
+  casePartBody: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+    padding: 12,
+    borderRadius: tokens.radiusMd,
+    backgroundColor: tokens.surfaceInset,
+  },
+  caseLine: { display: 'flex', alignItems: 'baseline', gap: 10, margin: 0, fontSize: 13 },
+  caseValue: { minWidth: 0, margin: 0, overflowWrap: 'anywhere', fontWeight: 500 },
+  caseVerdict: { display: 'flex', alignItems: 'center', gap: 8, margin: 0, fontSize: 13 },
+  caseGood: { color: tokens.success },
+  caseBad: { color: tokens.danger },
+  caseFoot: { display: 'flex', gap: 8, paddingInline: 24, paddingBottom: 20 },
 })
 
 interface ReportRow extends OutcomeLike {
@@ -128,11 +175,18 @@ export function ReleaseView({
   const api = useApi(formulaApi)
   const run = useRunApi()
   const query = useApiQuery(formulaApi)
-  const { format, formatError } = useI18n()
+  const { format, formatError, locale } = useI18n()
+  const words = usePickerWords()
   const [panelTab, setPanelTab] = useState('report')
   const [phoneTab, setPhoneTab] = useState('source')
   const [drafts, setDrafts] = useState<Record<string, FieldDraft>>({})
   const [issues, setIssues] = useState<ReadonlyMap<string, string> | undefined>(undefined)
+  // how the last press came out, stamped so two presses in a row each get
+  // their own beat on the button
+  const [verdict, setVerdict] = useState<{
+    at: number
+    kind: 'refused' | 'ran' | 'failed'
+  } | null>(null)
   const [result, setResult] = useState<{ outcome: TryOutcome; forCase: string } | null>(null)
   const [running, setRunning] = useState(false)
   const [recordsOpen, setRecordsOpen] = useState(false)
@@ -181,7 +235,12 @@ export function ReleaseView({
     const frozenDrafts = { ...drafts }
     const materialized = materializeInput(inputSchema, frozenDrafts)
     if (materialized.value === null) {
-      setIssues(inputIssueWords(format, inputSchema, materialized.issues))
+      // the fields mark themselves, but on a long contract they do it
+      // somewhere the reader is not looking
+      const words = inputIssueWords(format, inputSchema, materialized.issues)
+      setIssues(words)
+      setVerdict({ at: Date.now(), kind: 'refused' })
+      toast.error(format(m.runNeedsFields, { count: words.size }))
       return
     }
     setIssues(undefined)
@@ -197,8 +256,10 @@ export function ReleaseView({
       tryRecords.add({ input: materialized.value, outcome })
       setRanAt(Date.now())
       setResult({ outcome, forCase: JSON.stringify(frozenDrafts) })
+      setVerdict({ at: Date.now(), kind: outcome.actual === undefined ? 'failed' : 'ran' })
     } catch (error) {
       toast.error(formatError(error))
+      setVerdict({ at: Date.now(), kind: 'failed' })
     } finally {
       setRunning(false)
     }
@@ -252,6 +313,7 @@ export function ReleaseView({
       drafts={drafts}
       onDraft={(name, draft) => setDrafts({ ...drafts, [name]: draft })}
       issues={issues}
+      verdict={verdict}
       disabled={false}
       running={running}
       result={
@@ -269,46 +331,60 @@ export function ReleaseView({
     />
   )
 
+  // The same lines the editor shows, in the same six columns: a published
+  // version's examples are read the way its author read them. What differs
+  // is that nothing here can be run, copied or taken away - it is a record
+  // - so a line offers one act, filling the try column from it, and its
+  // sheet shows the values without letting anybody move them.
+  const [openCase, setOpenCase] = useState<number | null>(null)
+  const caseAt = openCase === null ? undefined : report[openCase]
   const reportTable =
     version === undefined ? null : report.length === 0 ? (
       <div {...stylex.props(w.emptyFill)}>
         <EmptyRow>{format(m.releaseNoReport)}</EmptyRow>
       </div>
     ) : (
-      <table data-testid="formula-release-report" {...stylex.props(w.reportTable)}>
-        <thead>
-          <tr>
-            <th {...stylex.props(w.reportHead)}>{format(m.testName)}</th>
-            <th {...stylex.props(w.reportHead)}>{format(m.examplesInputColumn)}</th>
-            <th {...stylex.props(w.reportHead)}>{format(m.examplesExpectedColumn)}</th>
-            <th {...stylex.props(w.reportHead)}>{format(m.reportActualColumn)}</th>
-            <th {...stylex.props(w.reportHead)}>{format(m.reportOutcome)}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {report.map((row, index) => {
-            const notes = outcomeWords(format, row)
-            return (
-              <tr key={index} data-passed={row.passed === true}>
-                <td {...stylex.props(w.reportCell)}>{row.name}</td>
-                <td {...stylex.props(w.reportCell, w.wrapMono, w.quiet)}>
-                  {inputSummaryOf(tests[index]?.input)}
-                </td>
-                <td {...stylex.props(w.reportCell, w.mono)}>{row.expected}</td>
-                <td {...stylex.props(w.reportCell, w.mono)}>
-                  {row.actual ?? format(m.actualNone)}
-                </td>
-                <td
-                  title={notes ?? undefined}
-                  {...stylex.props(w.reportCell, row.passed === true ? w.good : w.bad)}
-                >
-                  {format(row.passed === true ? m.resultPassed : m.reportFailed)}
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+      <>
+        <div {...stylex.props(exampleStyles.columns, exampleStyles.head)}>
+          <span>{format(m.testName)}</span>
+          <span>{format(m.examplesInputColumn)}</span>
+          <span {...stylex.props(exampleStyles.end)}>{format(m.examplesExpectedColumn)}</span>
+          <span {...stylex.props(exampleStyles.end)}>{format(m.reportActualColumn)}</span>
+          <span>{format(m.reportOutcome)}</span>
+          <span />
+        </div>
+        <div {...stylex.props(w.panelScroll)} data-testid="formula-release-report">
+          {report.map((row, index) => (
+            <ExampleRow
+              key={index}
+              readOnly
+              index={index}
+              name={row.name}
+              narrow={narrow}
+              facts={inputFactsOf(format, locale, inputSchema, tests[index]?.input)}
+              expected={row.expected}
+              outcome={{
+                ...(row.actual === undefined ? {} : { actual: row.actual }),
+                stale: false,
+              }}
+              verdict={row.passed === true ? 'passed' : 'failed'}
+              legal
+              open={openCase === index}
+              onOpen={() => setOpenCase(index)}
+              locked
+              running={false}
+              onLoadIntoTry={() => {
+                if (inputSchema === null) return
+                setDrafts(draftsFromStored(inputSchema, tests[index]?.input))
+                setIssues(undefined)
+                setResult(null)
+                toast.success(format(m.loadedIntoTry))
+                setOpenCase(null)
+              }}
+            />
+          ))}
+        </div>
+      </>
     )
 
   const contract =
@@ -507,6 +583,98 @@ export function ReleaseView({
       foot={restoreButton}
     >
       {drawers}
+      {/* One frozen example, read in full. Every field is disabled: this is
+          what was proved on the day, and a box somebody can type in invites
+          them to believe otherwise. The one act left is taking its input
+          over into the try column, where changing things is the point. */}
+      <Sheet open={caseAt !== undefined} onOpenChange={(open) => !open && setOpenCase(null)}>
+        <SheetContent side={narrow ? 'bottom' : 'right'} xstyle={styles.caseSheet}>
+          <SheetHeader>
+            <SheetTitle>{format(m.releaseCaseTitle)}</SheetTitle>
+            <SheetDescription>{format(m.releaseCaseHint)}</SheetDescription>
+          </SheetHeader>
+          {caseAt === undefined || openCase === null ? null : (
+            <div data-testid="formula-release-case" {...stylex.props(styles.caseBody)}>
+              <section {...stylex.props(styles.casePart)}>
+                <h3 {...stylex.props(styles.casePartTitle)}>{format(m.testName)}</h3>
+                <div {...stylex.props(styles.casePartBody)}>
+                  <p {...stylex.props(styles.caseValue)}>
+                    {caseAt.name === '' ? format(m.exampleUnnamed) : caseAt.name}
+                  </p>
+                </div>
+              </section>
+              <section {...stylex.props(styles.casePart)}>
+                <h3 {...stylex.props(styles.casePartTitle)}>{format(m.testInput)}</h3>
+                <div {...stylex.props(styles.casePartBody)}>
+                  {inputSchema === null ? (
+                    <p {...stylex.props(styles.caseValue)}>
+                      {JSON.stringify(tests[openCase]?.input ?? {})}
+                    </p>
+                  ) : (
+                    <InputValueForm
+                      words={words}
+                      schema={inputSchema}
+                      drafts={draftsFromStored(inputSchema, tests[openCase]?.input)}
+                      onDraft={() => {}}
+                      locale={locale}
+                      disabled
+                      scope={`release-case-${openCase}`}
+                    />
+                  )}
+                </div>
+              </section>
+              <section {...stylex.props(styles.casePart)}>
+                <h3 {...stylex.props(styles.casePartTitle)}>{format(m.reportOutcome)}</h3>
+                <div {...stylex.props(styles.casePartBody)}>
+                  <p {...stylex.props(styles.caseLine)}>
+                    <span>{format(m.examplesExpectedColumn)}</span>
+                    <span {...stylex.props(styles.caseValue)}>{caseAt.expected}</span>
+                  </p>
+                  <p {...stylex.props(styles.caseLine)}>
+                    <span>{format(m.reportActualColumn)}</span>
+                    <span {...stylex.props(styles.caseValue)}>
+                      {caseAt.actual ?? format(m.actualNone)}
+                    </span>
+                  </p>
+                  <p
+                    data-testid="formula-release-case-verdict"
+                    data-passed={caseAt.passed === true}
+                    {...stylex.props(
+                      styles.caseVerdict,
+                      caseAt.passed === true ? styles.caseGood : styles.caseBad,
+                    )}
+                  >
+                    {format(caseAt.passed === true ? m.resultPassed : m.reportFailed)}
+                  </p>
+                  {outcomeWords(format, caseAt) === null ? null : (
+                    <p {...stylex.props(styles.caseLine)}>{outcomeWords(format, caseAt)}</p>
+                  )}
+                </div>
+              </section>
+            </div>
+          )}
+          {caseAt === undefined || openCase === null ? null : (
+            <SheetFooter xstyle={styles.caseFoot}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={inputSchema === null}
+                data-testid="formula-release-case-load"
+                onClick={() => {
+                  if (inputSchema === null) return
+                  setDrafts(draftsFromStored(inputSchema, tests[openCase]?.input))
+                  setIssues(undefined)
+                  setResult(null)
+                  toast.success(format(m.loadedIntoTry))
+                  setOpenCase(null)
+                }}
+              >
+                {format(m.loadIntoTry)}
+              </Button>
+            </SheetFooter>
+          )}
+        </SheetContent>
+      </Sheet>
       <TryRecordsDrawer
         open={recordsOpen}
         onOpenChange={setRecordsOpen}

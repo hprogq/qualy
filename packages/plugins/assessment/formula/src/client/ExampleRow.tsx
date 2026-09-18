@@ -215,6 +215,7 @@ export function ExampleRow({
   onLoadIntoTry,
   onDuplicate,
   onRemove,
+  readOnly = false,
 }: {
   readonly index: number
   readonly name: string
@@ -233,10 +234,16 @@ export function ExampleRow({
   /** this line is the one being run now */
   readonly runningHere?: boolean
   readonly narrow?: boolean
-  readonly onRun: () => void
+  readonly onRun?: () => void
   readonly onLoadIntoTry: () => void
-  readonly onDuplicate: () => void
-  readonly onRemove: () => void
+  readonly onDuplicate?: () => void
+  readonly onRemove?: () => void
+  /**
+   * A published version's examples, which are a record rather than a working
+   * set: nothing about them can be run, copied or taken away, and the one
+   * thing still worth doing with one is filling the try column from it.
+   */
+  readonly readOnly?: boolean
 }) {
   const { format } = useI18n()
   // Removing a line takes two presses: the first arms the mark, the second
@@ -254,7 +261,7 @@ export function ExampleRow({
     if (arming) {
       if (armed.current !== null) clearTimeout(armed.current)
       setArming(false)
-      onRemove()
+      onRemove?.()
       return
     }
     setArming(true)
@@ -311,7 +318,25 @@ export function ExampleRow({
     </span>
   )
 
-  const actions = (
+  const actions = readOnly ? (
+    <span onClick={(event) => event.stopPropagation()} {...stylex.props(styles.menu)}>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label={format(m.exampleMenu)}
+            data-testid="formula-test-menu"
+          >
+            <MoreVerticalIcon />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onSelect={onLoadIntoTry}>{format(m.loadIntoTry)}</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </span>
+  ) : (
     <span onClick={(event) => event.stopPropagation()} {...stylex.props(styles.menu)}>
       <button
         type="button"
@@ -320,7 +345,7 @@ export function ExampleRow({
         aria-label={format(m.runThisExample)}
         title={format(m.runThisExample)}
         disabled={locked || running}
-        onClick={onRun}
+        onClick={() => onRun?.()}
         {...stylex.props(
           styles.quickRun,
           settled === 'passed' && styles.quickRunGood,
@@ -366,17 +391,17 @@ export function ExampleRow({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem disabled={locked || running} onSelect={onRun}>
+          <DropdownMenuItem disabled={locked || running} onSelect={() => onRun?.()}>
             {format(m.run)}
           </DropdownMenuItem>
           <DropdownMenuItem disabled={locked} onSelect={onLoadIntoTry}>
             {format(m.loadIntoTry)}
           </DropdownMenuItem>
-          <DropdownMenuItem disabled={locked} onSelect={onDuplicate}>
+          <DropdownMenuItem disabled={locked} onSelect={() => onDuplicate?.()}>
             {format(m.copyTest)}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem variant="destructive" disabled={locked} onSelect={onRemove}>
+          <DropdownMenuItem variant="destructive" disabled={locked} onSelect={() => onRemove?.()}>
             {format(m.removeTest)}
           </DropdownMenuItem>
         </DropdownMenuContent>
