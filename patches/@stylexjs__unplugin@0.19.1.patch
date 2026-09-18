@@ -1,8 +1,8 @@
 diff --git a/lib/core.js b/lib/core.js
-index 96e685e7c3a51dd4e8e18b4e869576f95131017a..f08a712780e9b2019eac852bfe2c24355cd7211c 100644
+index 23e8c47ad8f19139b70ad89df42bf9d899fa21cd..4a237ec36f8f94424111dd76aaec965cc268f496 100644
 --- a/lib/core.js
 +++ b/lib/core.js
-@@ -32,7 +32,29 @@ function pickCssAssetFromRollupBundle(bundle, choose) {
+@@ -34,7 +34,29 @@ function pickCssAssetFromRollupBundle(bundle, choose) {
  }
  function processCollectedRulesToCSS(rules, options) {
    if (!rules || rules.length === 0) return '';
@@ -33,7 +33,7 @@ index 96e685e7c3a51dd4e8e18b4e869576f95131017a..f08a712780e9b2019eac852bfe2c2435
      useLayers: options.useCSSLayers ?? false,
      enableLTRRTLComments: options?.enableLTRRTLComments
    });
-@@ -287,7 +309,7 @@ const unpluginFactory = (userOptions = {}, metaOptions) => {
+@@ -289,7 +311,7 @@ const unpluginFactory = (userOptions = {}, metaOptions) => {
        } catch {}
      }
    }
@@ -42,7 +42,7 @@ index 96e685e7c3a51dd4e8e18b4e869576f95131017a..f08a712780e9b2019eac852bfe2c2435
      const merged = new Map();
      if (devPersistToDisk) {
        try {
-@@ -306,7 +328,8 @@ const unpluginFactory = (userOptions = {}, metaOptions) => {
+@@ -308,7 +330,8 @@ const unpluginFactory = (userOptions = {}, metaOptions) => {
      return processCollectedRulesToCSS(allRules, {
        useCSSLayers,
        lightningcssOptions,
@@ -53,10 +53,10 @@ index 96e685e7c3a51dd4e8e18b4e869576f95131017a..f08a712780e9b2019eac852bfe2c2435
    }
    async function persistRulesToDisk(id, rules) {
 diff --git a/lib/es/core.mjs b/lib/es/core.mjs
-index ab666ee586474155be07c94d6839f30fbf7bc194..6a9df020f67619b2a86f385eeec7935004c866e5 100644
+index 583431190aab3aad75c831ff982d84a3bcc48341..3678117f066a6d6993545cc1383689982ca4ec59 100644
 --- a/lib/es/core.mjs
 +++ b/lib/es/core.mjs
-@@ -23,7 +23,29 @@ export function pickCssAssetFromRollupBundle(bundle, choose) {
+@@ -25,7 +25,29 @@ export function pickCssAssetFromRollupBundle(bundle, choose) {
  }
  function processCollectedRulesToCSS(rules, options) {
    if (!rules || rules.length === 0) return '';
@@ -87,7 +87,7 @@ index ab666ee586474155be07c94d6839f30fbf7bc194..6a9df020f67619b2a86f385eeec79350
      useLayers: options.useCSSLayers ?? false,
      enableLTRRTLComments: options?.enableLTRRTLComments
    });
-@@ -278,7 +300,7 @@ export const unpluginFactory = (userOptions = {}, metaOptions) => {
+@@ -280,7 +302,7 @@ export const unpluginFactory = (userOptions = {}, metaOptions) => {
        } catch {}
      }
    }
@@ -96,7 +96,7 @@ index ab666ee586474155be07c94d6839f30fbf7bc194..6a9df020f67619b2a86f385eeec79350
      const merged = new Map();
      if (devPersistToDisk) {
        try {
-@@ -297,7 +319,8 @@ export const unpluginFactory = (userOptions = {}, metaOptions) => {
+@@ -299,7 +321,8 @@ export const unpluginFactory = (userOptions = {}, metaOptions) => {
      return processCollectedRulesToCSS(allRules, {
        useCSSLayers,
        lightningcssOptions,
@@ -107,7 +107,7 @@ index ab666ee586474155be07c94d6839f30fbf7bc194..6a9df020f67619b2a86f385eeec79350
    }
    async function persistRulesToDisk(id, rules) {
 diff --git a/lib/es/vite.mjs b/lib/es/vite.mjs
-index 0da6294e82f05d5a858f8b3740ecdfd8b2dd239c..2797f9b1935249f29f2110d7983b68d751bcd463 100644
+index 12cea8cda04db57ce92759979e2c072e6c261a9b..a3c4f8c96455e44c37dc78f2928642f41e4974b4 100644
 --- a/lib/es/vite.mjs
 +++ b/lib/es/vite.mjs
 @@ -48,7 +48,9 @@ function attachViteHooks(plugin) {
@@ -130,7 +130,7 @@ index 0da6294e82f05d5a858f8b3740ecdfd8b2dd239c..2797f9b1935249f29f2110d7983b68d7
        }
      },
 diff --git a/lib/vite.js b/lib/vite.js
-index bf3df4c8b81574dafae3f626767706455f03854d..c1824804fc50dd078287bd220f27343ffe932aa8 100644
+index 1c81eb81c9cc4648d3b623454b912adf5592af9c..f9a0cfdb84a9543a021b7b834f1a8f49aa38ea90 100644
 --- a/lib/vite.js
 +++ b/lib/vite.js
 @@ -55,7 +55,9 @@ function attachViteHooks(plugin) {

@@ -52,11 +52,11 @@ catalogs:
       specifier: 4.4.3
       version: 4.4.3
     '@stylexjs/stylex':
-      specifier: 0.19.0
-      version: 0.19.0
+      specifier: 0.19.1
+      version: 0.19.1
     '@stylexjs/unplugin':
-      specifier: 0.19.0
-      version: 0.19.0
+      specifier: 0.19.1
+      version: 0.19.1
     '@tanstack/react-query':
       specifier: 5.101.4
       version: 5.101.4
@@ -173,7 +173,7 @@ catalogs:
       version: 2.9.0
 
 patchedDependencies:
-  '@stylexjs/unplugin@0.19.0': 5c4b92159415a693d0fd58c286da573c9243f6a43b3cfc447664bd4ed4f4fe31
+  '@stylexjs/unplugin@0.19.1': f25208b4a013d827f6b128fa4945ec4a557fa6d7527f502e29a5ba139b73cd43
 
 importers:
 
@@ -293,7 +293,7 @@ importers:
         version: link:packages/build/web
       '@stylexjs/unplugin':
         specifier: 'catalog:'
-        version: 0.19.0(patch_hash=5c4b92159415a693d0fd58c286da573c9243f6a43b3cfc447664bd4ed4f4fe31)(supports-color@7.2.0)(unplugin@2.3.11)
+        version: 0.19.1(patch_hash=f25208b4a013d827f6b128fa4945ec4a557fa6d7527f502e29a5ba139b73cd43)(supports-color@7.2.0)(unplugin@2.3.11)
       '@types/node':
         specifier: 'catalog:'
         version: 24.13.3
@@ -511,10 +511,10 @@ importers:
         version: link:../../packages/build/web
       '@stylexjs/stylex':
         specifier: 'catalog:'
-        version: 0.19.0
+        version: 0.19.1
       '@stylexjs/unplugin':
         specifier: 'catalog:'
-        version: 0.19.0(patch_hash=5c4b92159415a693d0fd58c286da573c9243f6a43b3cfc447664bd4ed4f4fe31)(supports-color@7.2.0)(unplugin@2.3.11)
+        version: 0.19.1(patch_hash=f25208b4a013d827f6b128fa4945ec4a557fa6d7527f502e29a5ba139b73cd43)(supports-color@7.2.0)(unplugin@2.3.11)
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.18
@@ -816,7 +816,7 @@ importers:
         version: link:../../../web/value-form
       '@stylexjs/stylex':
         specifier: 'catalog:'
-        version: 0.19.0
+        version: 0.19.1
       '@tanstack/react-query':
         specifier: 'catalog:'
         version: 5.101.4(react@19.2.8)
@@ -955,7 +955,7 @@ importers:
         version: 4.4.3
       '@stylexjs/stylex':
         specifier: 'catalog:'
-        version: 0.19.0
+        version: 0.19.1
       '@tanstack/react-query':
         specifier: 'catalog:'
         version: 5.101.4(react@19.2.8)
@@ -1055,7 +1055,7 @@ importers:
         version: link:../../../web/runtime
       '@stylexjs/stylex':
         specifier: 'catalog:'
-        version: 0.19.0
+        version: 0.19.1
       '@tanstack/react-query':
         specifier: 'catalog:'
         version: 5.101.4(react@19.2.8)
@@ -1125,7 +1125,7 @@ importers:
         version: link:../../../web/runtime
       '@stylexjs/stylex':
         specifier: 'catalog:'
-        version: 0.19.0
+        version: 0.19.1
       '@tanstack/react-query':
         specifier: 'catalog:'
         version: 5.101.4(react@19.2.8)
@@ -1198,7 +1198,7 @@ importers:
         version: link:../../../web/runtime
       '@stylexjs/stylex':
         specifier: 'catalog:'
-        version: 0.19.0
+        version: 0.19.1
       argon2:
         specifier: 'catalog:'
         version: 0.45.1
@@ -1250,7 +1250,7 @@ importers:
         version: link:../../../web/runtime
       '@stylexjs/stylex':
         specifier: 'catalog:'
-        version: 0.19.0
+        version: 0.19.1
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.115
@@ -1317,7 +1317,7 @@ importers:
         version: link:../../../web/runtime
       '@stylexjs/stylex':
         specifier: 'catalog:'
-        version: 0.19.0
+        version: 0.19.1
       '@tanstack/react-query':
         specifier: 'catalog:'
         version: 5.101.4(react@19.2.8)
@@ -1402,7 +1402,7 @@ importers:
         version: link:../../../web/runtime
       '@stylexjs/stylex':
         specifier: 'catalog:'
-        version: 0.19.0
+        version: 0.19.1
       '@tanstack/react-query':
         specifier: 'catalog:'
         version: 5.101.4(react@19.2.8)
@@ -1460,7 +1460,7 @@ importers:
         version: link:../../../web/runtime
       '@stylexjs/stylex':
         specifier: 'catalog:'
-        version: 0.19.0
+        version: 0.19.1
       '@tanstack/react-query':
         specifier: 'catalog:'
         version: 5.101.4(react@19.2.8)
@@ -1809,7 +1809,7 @@ importers:
     dependencies:
       '@stylexjs/stylex':
         specifier: 'catalog:'
-        version: 0.19.0
+        version: 0.19.1
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -1878,7 +1878,7 @@ importers:
         version: link:../i18n
       '@stylexjs/stylex':
         specifier: 'catalog:'
-        version: 0.19.0
+        version: 0.19.1
       '@tanstack/react-query':
         specifier: 'catalog:'
         version: 5.101.4(react@19.2.8)
@@ -1918,7 +1918,7 @@ importers:
         version: link:../brand
       '@stylexjs/stylex':
         specifier: 'catalog:'
-        version: 0.19.0
+        version: 0.19.1
       clsx:
         specifier: 'catalog:'
         version: 2.1.1
@@ -1967,7 +1967,7 @@ importers:
         version: link:../../core/value-schema
       '@stylexjs/stylex':
         specifier: 'catalog:'
-        version: 0.19.0
+        version: 0.19.1
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -2662,17 +2662,17 @@ packages:
   '@sinclair/typebox@0.27.12':
     resolution: {integrity: sha512-hhyNJ+nbR6ZR7pToHvllEFun9TL0sbL+tk/ON75lo+Xas054uez98qRbsuNt7MBCyZKK4+8Yli/OAGZhmfBZ/g==}
 
-  '@stylexjs/babel-plugin@0.19.0':
-    resolution: {integrity: sha512-2SnVZIl047TtqKW0nRTn7Irz0kmoot1bxdGDE/HwfwfF7dJYHqwkIFg92s87v3hj7zxJobrHWwDx1p3qvQXW4g==}
+  '@stylexjs/babel-plugin@0.19.1':
+    resolution: {integrity: sha512-Ig3crX6MuGWDEAx+f89aLxTQUWVeEc2Aco2moIdcObyvo7hZJgU26rxJN3k7geFjhi+5dfna6TNR8iTRK0PQGA==}
 
-  '@stylexjs/shared@0.19.0':
-    resolution: {integrity: sha512-7Yym70cQH5sPzJHgzJX3FkL9ZCptbC3IbiRijN9YLYU/5OywB/3c519Xv1DOzvxqjv8urSxh98/9HxLaPG7sDg==}
+  '@stylexjs/shared@0.19.1':
+    resolution: {integrity: sha512-oFBtW0NPNLJOT1gLweWRNKrIJHjJMwOmSV7fgd6ewok4fwb/Nh95PEaYGKu+ZONk0nNghjLFfOwiIsxJdvh3TQ==}
 
-  '@stylexjs/stylex@0.19.0':
-    resolution: {integrity: sha512-CnUFp7YMaDLDeemsWOfJgoC/gKM5P/yBNMcpJaE6ChJmXr7s0DJwSeGTTlHJcqqwN9OW1qGtmARWLFhGZN1pTA==}
+  '@stylexjs/stylex@0.19.1':
+    resolution: {integrity: sha512-JwNFm0MOYPqi+M4Ax5Un4ZxfZp4HEAX2sAWetZ88KALFcv1eEiHNJs75oO3V3U7RVWnzfkiM8i9eBowC3hqgUw==}
 
-  '@stylexjs/unplugin@0.19.0':
-    resolution: {integrity: sha512-2QwNYovSwarC/M8DLD78857F6MEi4eQ3UYzgdmyg/K7562M/rV1KWptiATxcKgujlUT6ToNy778SOXf4bGK+Bw==}
+  '@stylexjs/unplugin@0.19.1':
+    resolution: {integrity: sha512-MJz/IPrFe3hSHbZtjbxaYd3kLgS718/NFBEY/Mf+njteJKLdY7bHHfVka3051LCYy9fKfyZapGCmUpibraHqmQ==}
     peerDependencies:
       unplugin: ^2.3.11
 
@@ -5101,34 +5101,34 @@ snapshots:
 
   '@sinclair/typebox@0.27.12': {}
 
-  '@stylexjs/babel-plugin@0.19.0(supports-color@7.2.0)':
+  '@stylexjs/babel-plugin@0.19.1(supports-color@7.2.0)':
     dependencies:
       '@babel/core': 7.29.7(supports-color@7.2.0)
       '@babel/helper-module-imports': 7.29.7(supports-color@7.2.0)
       '@babel/traverse': 7.29.8(supports-color@7.2.0)
       '@babel/types': 7.29.8
       '@dual-bundle/import-meta-resolve': 4.2.1
-      '@stylexjs/shared': 0.19.0
-      '@stylexjs/stylex': 0.19.0
+      '@stylexjs/shared': 0.19.1
+      '@stylexjs/stylex': 0.19.1
       postcss-value-parser: 4.2.0
     transitivePeerDependencies:
       - supports-color
 
-  '@stylexjs/shared@0.19.0': {}
+  '@stylexjs/shared@0.19.1': {}
 
-  '@stylexjs/stylex@0.19.0':
+  '@stylexjs/stylex@0.19.1':
     dependencies:
       css-mediaquery: 0.1.2
       invariant: 2.2.4
       styleq: 0.2.1
 
-  '@stylexjs/unplugin@0.19.0(patch_hash=5c4b92159415a693d0fd58c286da573c9243f6a43b3cfc447664bd4ed4f4fe31)(supports-color@7.2.0)(unplugin@2.3.11)':
+  '@stylexjs/unplugin@0.19.1(patch_hash=f25208b4a013d827f6b128fa4945ec4a557fa6d7527f502e29a5ba139b73cd43)(supports-color@7.2.0)(unplugin@2.3.11)':
     dependencies:
       '@babel/core': 7.29.7(supports-color@7.2.0)
       '@babel/plugin-syntax-flow': 7.29.7(@babel/core@7.29.7(supports-color@7.2.0))
       '@babel/plugin-syntax-jsx': 7.29.7(@babel/core@7.29.7(supports-color@7.2.0))
       '@babel/plugin-syntax-typescript': 7.29.7(@babel/core@7.29.7(supports-color@7.2.0))
-      '@stylexjs/babel-plugin': 0.19.0(supports-color@7.2.0)
+      '@stylexjs/babel-plugin': 0.19.1(supports-color@7.2.0)
       browserslist: 4.28.8
       lightningcss: 1.33.0
       unplugin: 2.3.11

@@ -1,6 +1,7 @@
 # @stylexjs/unplugin 实查记录
 
-版本:0.19.0(catalog)。UI 平台迁移(docs/ui-platform-migration.md)M0 接入时实查。
+版本:0.19.1(catalog)。UI 平台迁移(docs/ui-platform-migration.md)M0 接入时实查;
+0.19.1 升级时按下面「0.19.1 复核」重新核对了两组 patch。
 
 ## 行为确认(以安装产物为准)
 
@@ -24,7 +25,7 @@
 timer 压住事件循环:每次 `pnpm test:browser` 结束都挂 10 秒后被 vitest 强制关闭并打
 "close timed out / something prevents the main process from exiting" 告警(已实测:去掉插件即干净退出)。
 
-patch(`patches/@stylexjs__unplugin@0.19.0.patch`,pnpm 的版本化命名)在 setInterval 后补一行
+patch(`patches/@stylexjs__unplugin@0.19.1.patch`,pnpm 的版本化命名)在 setInterval 后补一行
 `interval.unref?.()`,两个构建产物(esm/cjs)各一处。移除条件:上游修复该 timer 泄漏并升级到含修复的版本。
 
 同一份 patch 的第二组 hunk(2026-09-13,断点常量接入时实查):`defineConsts` 的消费方编译成
@@ -49,6 +50,33 @@ rule metadata 结构一变就失效;而且 dev 下的"跳过"会把真正的解�
 上游正确的修法应在规则收集 / 依赖层:transform 时记下"规则 A 依赖常量 X",X 未到就标 pending,
 定义 X 的模块 transform 后解析 pending 规则再重生成样式表,而不是事后解析字符串。
 移除条件:上游在依赖层处理常量的收集顺序(或改为 transform 期内联)并升级到含修复的版本。
+
+## 0.19.1 复核(2026-09-18 升级时,以发布产物为准)
+
+`npm pack` 取 0.19.0 与 0.19.1 的实际发布内容逐文件 diff,**整个版本只改了一件事**:新增
+`INDEX_CSS_RE` / `STYLE_CSS_RE` 两个正则(`/(^|\/)index(-[\w-]{8,})?\.css$/i` 与 style 同款),
+把「带 hash 的 index-<hash>.css / style-<hash>.css 也算入口样式表」推广到 vite / rollup /
+esbuild / webpack 四个适配器。lib 全树共 58 行增删,`vite.d.ts` 与 `core.d.ts` 一字未改。
+
+据此逐项核对两组 patch:
+
+- **常量组仍需保留**。0.19.1 的 `processCollectedRulesToCSS` 与 0.19.0 逐字相同,全树 `grep constKey`
+  零命中——上游没有在任何层处理常量收集顺序。撤销条件不变。
+- **timer 组仍需保留**。`lib/vite.js` 的 `setInterval(..., 150)` 仍只在 `httpServer` 的 `close` 里
+  `clearInterval`,全树 `grep unref` 零命中。撤销条件不变。
+- 新 patch 是同样 10 个 hunk 在 0.19.1 源码上重做(`pnpm patch` 生成),没有保留任何已进上游的内容——
+  因为一个都没进上游。
+
+**`cssInjectionTarget` 仍然必须保留**,而且 0.19.1 的新正则救不了本仓库:产物样式表叫
+`assets/s-<hash>.css`,既不匹配 `index(-hash)?.css` 也不匹配 `style(-hash)?.css`,仍然落到
+「bundle 里第一个 CSS asset」的兜底。实测(升级后去掉该选项跑一次 production build):
+1508 条 StyleX 原子规则**全部**进了 lazy 表 `a-<hash>.css`,shell 表 `s-<hash>.css` 里一条都没有——
+即外壳裸奔。装回该选项后落点正确(shell 1508 / lazy 0)。
+
+**ESM/CJS 类型 workaround 仍然必须保留**。包没有 `type: module`,`exports['./vite']` 的
+`types` 仍是同一份 CJS 风味 `vite.d.ts`,而 `import` 指向真正的 `lib/es/vite.mjs`。实测把
+`apps/web/vite.config.ts` 改回 `import stylexUnplugin from '@stylexjs/unplugin/vite'` 后
+`pnpm typecheck` 报 `TS2349: This expression is not callable`,所以保留 `import * as` + cast。
 
 ## 条件键的实查边界(2026-08-28,编译产物验证)
 

@@ -99,8 +99,8 @@ catalog:
   # the styling compiler for product layout and visuals. One version across
   # the workspace - two copies of the stylex runtime would split the
   # injected CSS
-  '@stylexjs/stylex': 0.19.0
-  '@stylexjs/unplugin': 0.19.0
+  '@stylexjs/stylex': 0.19.1
+  '@stylexjs/unplugin': 0.19.1
   # Mantine is the commodity widget substrate behind @qualy/ui (ADR 0010);
   # hooks is core's peer dependency and must match its version exactly
   '@mantine/core': 9.5.2
@@ -126,8 +126,6 @@ catalog:
   # The per-product package rather than `tencentcloud-sdk-nodejs`: the whole
   # sdk unpacks to 44 MB for three calls, and this one to 220 KB.
   tencentcloud-sdk-nodejs-rum: 4.1.281
-patchedDependencies:
-  '@stylexjs/unplugin@0.19.0': patches/@stylexjs__unplugin@0.19.0.patch
 minimumReleaseAgeExclude:
   - effect@4.0.0-rc.115
   - '@effect/vitest@4.0.0-rc.115'
@@ -159,3 +157,5 @@ minimumReleaseAgeExclude:
   - '@vitest/ui@5.0.1'
   - '@vitest/utils@5.0.1'
   - vitest@5.0.1
+patchedDependencies:
+  '@stylexjs/unplugin@0.19.1': patches/@stylexjs__unplugin@0.19.1.patch
