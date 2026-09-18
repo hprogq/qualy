@@ -12,7 +12,6 @@ import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
 import { Dropzone, FileTile } from '@qualy/ui/dropzone'
 import { Input } from '@qualy/ui/input'
-import { NativeSelect } from '@qualy/ui/native-select'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Spinner } from '@qualy/ui/spinner'
 import { toast } from '@qualy/ui/toast'
@@ -21,6 +20,14 @@ import { assessmentApi, assessmentUrls } from '../../api.ts'
 import { assessmentMessages as m } from '../../i18n.ts'
 import { fieldsOf, sizeLabel, type ItemDto } from '../../entry/model.ts'
 import { uploadFile } from '../../entry/upload.ts'
+import { administrativeItemsOf, ChosenItem, ItemPicker } from '../ItemPicker.tsx'
+import {
+  NoAdministrativeItems,
+  RecordColumn,
+  RecordSheet,
+  SheetBlock,
+  SheetLead,
+} from '../sheet.tsx'
 import { fieldText, reasonText, type ColumnNames, type ImportIssue } from './issues.ts'
 
 // A workbook of administrative facts, taken in.
@@ -31,17 +38,57 @@ import { fieldText, reasonText, type ColumnNames, type ImportIssue } from './iss
 // stored file itself - found nothing wrong. Warnings do not stop it; they
 // have to be looked at, which is what the box beside the button is for.
 //
+// Which question comes first and alone, because the file's very columns
+// come from it. The template block is then the first thing on the sheet
+// rather than a footnote, because a file that was never the template is
+// refused whole - and being told that after filling in a hundred rows is
+// being told too late. Which is also why the refusal, when it comes,
+// carries the download rather than only naming what went wrong: the way out
+// is the same press either way.
+//
+// It is one form, in order, not a wizard. Changing the question is the one
+// way back, and it is a way back to the choice rather than to a step: a
+// different question is a different file, so nothing already here survives
+// it.
+//
 // Big files do not spread out here. The result opens on the rows that need
 // attention, and the whole list is one press away.
 
 const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+const wide = '@media (min-width: 900px)'
 
 const styles = stylex.create({
-  column: { display: 'flex', maxWidth: '48rem', flexDirection: 'column', gap: 20 },
   quiet: { fontSize: 14, lineHeight: '1.25rem', color: tokens.mutedForeground },
-  hint: { fontSize: 12, lineHeight: '1rem', color: tokens.mutedForeground },
-  templateRow: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 },
+  templateBox: {
+    display: 'flex',
+    gap: 12,
+    borderRadius: tokens.radiusMd,
+    backgroundColor: tokens.surfaceInset,
+    boxShadow: `inset 0 0 0 1px ${tokens.divider}`,
+    padding: 12,
+  },
+  templateSeat: {
+    display: 'flex',
+    flexShrink: 0,
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: tokens.radiusMd,
+    backgroundColor: tokens.surface,
+    boxShadow: `inset 0 0 0 1px ${tokens.divider}`,
+    color: tokens.surfaceMutedForeground,
+  },
+  templateBody: { display: 'flex', minWidth: 0, flexGrow: 1, flexDirection: 'column', gap: 8 },
+  templateTitle: { fontSize: 13, fontWeight: 600 },
+  templateText: { fontSize: 12, lineHeight: 1.65, color: tokens.mutedForeground },
+  templateRow: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 },
+  templateNote: {
+    fontSize: 12,
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
+  },
   icon: { width: 14, height: 14 },
+  seatIcon: { width: 16, height: 16 },
   tileIcon: { width: 18, height: 18 },
   waiting: { height: 160, width: '100%' },
   result: {
@@ -55,13 +102,26 @@ const styles = stylex.create({
   },
   resultHead: { display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 12 },
   resultTitle: { fontSize: 14, fontWeight: 600 },
-  tally: { display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 13, color: tokens.mutedForeground },
+  tally: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 12,
+    fontSize: 13,
+    color: tokens.mutedForeground,
+  },
   tallyBad: { color: tokens.danger },
   table: { display: 'flex', flexDirection: 'column', minWidth: 0 },
+  // wide, four columns a reader scans down; narrow, the same four facts as a
+  // card per row, because a 6rem name column on a phone is a column of
+  // ellipses
   row: {
     display: 'grid',
-    gridTemplateColumns: '3.5rem minmax(0, 7rem) minmax(0, 6rem) minmax(0, 1fr)',
+    gridTemplateColumns: {
+      default: 'auto auto minmax(0, 1fr)',
+      [wide]: '3.5rem minmax(0, 7rem) minmax(0, 6rem) minmax(0, 1fr)',
+    },
     columnGap: 12,
+    rowGap: 4,
     alignItems: 'start',
     borderTopWidth: { default: 1, ':first-child': 0 },
     borderTopStyle: 'solid',
@@ -70,11 +130,47 @@ const styles = stylex.create({
     fontSize: 13,
     lineHeight: '1.25rem',
   },
-  head: { fontSize: 12, color: tokens.mutedForeground },
-  cell: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  issues: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 4 },
+  head: {
+    display: { default: 'none', [wide]: 'grid' },
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  rowNo: {
+    gridColumnStart: 1,
+    gridRowStart: 1,
+    color: { default: tokens.mutedForeground, [wide]: 'inherit' },
+    fontVariantNumeric: 'tabular-nums',
+  },
+  // the number identifies the row in the file; the name is what a reader
+  // recognises, so narrow puts the name first
+  numberCell: {
+    gridColumnStart: { default: 3, [wide]: 2 },
+    gridRowStart: 1,
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    color: { default: tokens.mutedForeground, [wide]: 'inherit' },
+    fontVariantNumeric: 'tabular-nums',
+  },
+  nameCell: {
+    gridColumnStart: { default: 2, [wide]: 3 },
+    gridRowStart: 1,
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontWeight: { default: 500, [wide]: 400 },
+  },
+  issues: {
+    gridColumn: { default: '1 / span 3', [wide]: '4' },
+    gridRowStart: { default: 2, [wide]: 1 },
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 4,
+  },
   issue: { display: 'flex', alignItems: 'baseline', gap: 6 },
-  fine: { color: tokens.mutedForeground },
   fileIssues: { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13 },
   foot: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 },
   spacer: { flexGrow: 1 },
@@ -108,9 +204,7 @@ export function AdministrativeImportView({
   const [showAll, setShowAll] = useState(false)
   const [confirmed, setConfirmed] = useState(false)
 
-  const administrative = ((items.data?.items ?? []) as readonly ItemDto[]).filter(
-    (item) => item.status === 'active' && item.currentRevision?.entrySource === 'administrative',
-  )
+  const administrative = administrativeItemsOf((items.data?.items ?? []) as readonly ItemDto[])
   const item = administrative.find((candidate) => candidate.id === itemId) ?? null
   const revisionId = item?.currentRevision?.id ?? ''
 
@@ -200,10 +294,16 @@ export function AdministrativeImportView({
     onSuccess: (done) => {
       toast.success(format(m.importDone, { count: done.importedCount }))
       void queryClient.invalidateQueries({
-        queryKey: query.assessment.listAdministrativeEntries.key({ params: { batchId }, query: {} }),
+        queryKey: query.assessment.listAdministrativeEntries.key({
+          params: { batchId },
+          query: {},
+        }),
       })
       void queryClient.invalidateQueries({
-        queryKey: query.assessment.listAdministrativeImports.key({ params: { batchId }, query: {} }),
+        queryKey: query.assessment.listAdministrativeImports.key({
+          params: { batchId },
+          query: {},
+        }),
       })
       onImported(done.importId)
     },
@@ -247,248 +347,289 @@ export function AdministrativeImportView({
       skeleton={<Skeleton className={stylex.props(styles.waiting).className} />}
     >
       {administrative.length === 0 ? (
-        <p {...stylex.props(styles.quiet)}>{format(m.recordEmpty)}</p>
+        <NoAdministrativeItems />
       ) : (
-        <div {...stylex.props(styles.column)} data-testid="administrative-import">
-          <Field label={format(m.recordItem)} hint={format(m.importItemHint)}>
-            {(id) => (
-              <NativeSelect id={id} value={itemId} onChange={(event) => choose(event.target.value)}>
-                <option value="" />
-                {administrative.map((candidate) => (
-                  <option key={candidate.id} value={candidate.id}>
-                    {candidate.title}
-                  </option>
-                ))}
-              </NativeSelect>
-            )}
-          </Field>
-
-          {item !== null && (
+        <RecordColumn testId="administrative-import">
+          {item === null ? (
             <>
-              <div {...stylex.props(styles.templateRow)}>
-                <Button asChild variant="outline" size="sm">
-                  <a
-                    href={assessmentUrls.assessment.administrativeImportTemplate({
-                      params: { itemId: item.id },
-                    })}
-                    download
-                    data-testid="import-template"
-                  >
-                    <DownloadIcon aria-hidden {...stylex.props(styles.icon)} />
-                    {format(m.importTemplate)}
-                  </a>
-                </Button>
-                <span {...stylex.props(styles.hint)}>{format(m.importTemplateHint)}</span>
-              </div>
+              <SheetLead>{format(m.importItemPick)}</SheetLead>
+              <ItemPicker batchId={batchId} items={administrative} onPick={choose} />
+            </>
+          ) : (
+            <>
+              <ChosenItem item={item} onChange={() => choose('')} />
+              <RecordSheet>
+                <SheetBlock>
+                  <div {...stylex.props(styles.templateBox)}>
+                    <span aria-hidden {...stylex.props(styles.templateSeat)}>
+                      <FileSpreadsheetIcon {...stylex.props(styles.seatIcon)} />
+                    </span>
+                    <span {...stylex.props(styles.templateBody)}>
+                      <span {...stylex.props(styles.templateTitle)}>
+                        {format(m.importTemplateTitle)}
+                      </span>
+                      <span {...stylex.props(styles.templateText)}>
+                        {format(m.importTemplateHint)}
+                      </span>
+                      <span {...stylex.props(styles.templateRow)}>
+                        <TemplateDownload item={item} />
+                        <span {...stylex.props(styles.templateNote)}>
+                          {format(m.importTemplateRefresh)}
+                        </span>
+                      </span>
+                    </span>
+                  </div>
 
-              <Field label={format(m.importFile)} hint={format(m.importFileHint)}>
-                {() =>
-                  uploaded === null ? (
-                    <Dropzone
-                      accept={{ [XLSX]: ['.xlsx'] }}
-                      maxFiles={1}
-                      multiple={false}
-                      disabled={upload.isPending}
-                      onFiles={(files) => {
-                        const file = files[0]
-                        if (file !== undefined) upload.mutate(file)
-                      }}
-                    >
-                      {upload.isPending ? (
-                        <>
-                          <Spinner />
-                          {format(m.importUploading)}
-                        </>
-                      ) : (
-                        format(m.importChooseFile)
-                      )}
-                    </Dropzone>
-                  ) : (
-                    <FileTile
-                      media={
-                        <FileSpreadsheetIcon aria-hidden {...stylex.props(styles.tileIcon)} />
-                      }
-                      name={uploaded.filename}
-                      meta={sizeLabel(Number(uploaded.size))}
-                      actions={
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => {
-                            setUploaded(null)
-                            check.reset()
+                  <Field label={format(m.importFile)} hint={format(m.importFileHint)}>
+                    {() =>
+                      uploaded === null ? (
+                        <Dropzone
+                          accept={{ [XLSX]: ['.xlsx'] }}
+                          maxFiles={1}
+                          multiple={false}
+                          disabled={upload.isPending}
+                          onFiles={(files) => {
+                            const file = files[0]
+                            if (file !== undefined) upload.mutate(file)
                           }}
                         >
-                          {format(m.importChooseAnother)}
-                        </Button>
-                      }
-                    />
-                  )
-                }
-              </Field>
+                          {upload.isPending ? (
+                            <>
+                              <Spinner />
+                              {format(m.importUploading)}
+                            </>
+                          ) : (
+                            format(m.importChooseFile)
+                          )}
+                        </Dropzone>
+                      ) : (
+                        <FileTile
+                          media={
+                            <FileSpreadsheetIcon aria-hidden {...stylex.props(styles.tileIcon)} />
+                          }
+                          name={uploaded.filename}
+                          meta={sizeLabel(Number(uploaded.size))}
+                          actions={
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                setUploaded(null)
+                                check.reset()
+                              }}
+                            >
+                              {format(m.importChooseAnother)}
+                            </Button>
+                          }
+                        />
+                      )
+                    }
+                  </Field>
 
-              <Field label={format(m.importDefaultBasis)} hint={format(m.importDefaultBasisHint)}>
-                {(id) => (
-                  <Input id={id} value={basis} onChange={(event) => setBasis(event.target.value)} />
-                )}
-              </Field>
+                  <Field
+                    label={format(m.importDefaultBasis)}
+                    hint={format(m.importDefaultBasisHint)}
+                  >
+                    {(id) => (
+                      <Input
+                        id={id}
+                        value={basis}
+                        onChange={(event) => setBasis(event.target.value)}
+                      />
+                    )}
+                  </Field>
+                </SheetBlock>
+              </RecordSheet>
+
+              {uploaded !== null && check.isPending && (
+                <p {...stylex.props(styles.quiet)}>{format(m.importChecking)}</p>
+              )}
+
+              {uploaded !== null && refusal !== null && (
+                <div {...stylex.props(styles.result)} data-testid="import-refused">
+                  <p {...stylex.props(styles.resultTitle)}>{format(m.importFileUnreadable)}</p>
+                  {refusal.sentence !== null ? (
+                    <p {...stylex.props(styles.quiet)}>{refusal.sentence}</p>
+                  ) : (
+                    <div {...stylex.props(styles.fileIssues)}>
+                      {refusal.issues.map((issue, at) => (
+                        <span key={at} data-reason={issue.reason}>
+                          {reasonText(format, issue)}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {/* the way out, beside what is wrong: every refusal at this
+                  level is answered by starting from the template again */}
+                  <div {...stylex.props(styles.templateRow)}>
+                    <TemplateDownload item={item} />
+                    <span {...stylex.props(styles.templateNote)}>
+                      {format(m.importRefusedHint)}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {uploaded !== null && preview !== null && (
+                <div
+                  {...stylex.props(styles.result)}
+                  data-testid="import-preview"
+                  data-rows={preview.summary.rows}
+                  data-errors={preview.summary.errors}
+                  data-warnings={preview.summary.warnings}
+                >
+                  <div {...stylex.props(styles.resultHead)}>
+                    <p {...stylex.props(styles.resultTitle)}>{format(m.importResult)}</p>
+                    <span {...stylex.props(styles.tally)}>
+                      <span>{format(m.importSummaryRows, { count: preview.summary.rows })}</span>
+                      <span>{format(m.importSummaryValid, { count: preview.summary.valid })}</span>
+                      {preview.summary.warnings > 0 && (
+                        <span>
+                          {format(m.importSummaryWarnings, { count: preview.summary.warnings })}
+                        </span>
+                      )}
+                      {preview.summary.errors > 0 && (
+                        <span {...stylex.props(styles.tallyBad)}>
+                          {format(m.importSummaryErrors, { count: preview.summary.errors })}
+                        </span>
+                      )}
+                    </span>
+                    <span {...stylex.props(styles.spacer)} />
+                    {stale && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={check.isPending}
+                        onClick={() => check.mutate({ attachmentId: uploaded.attachmentId, basis })}
+                      >
+                        {format(m.importRecheck)}
+                      </Button>
+                    )}
+                  </div>
+
+                  {preview.summary.errors > 0 ? (
+                    <p {...stylex.props(styles.quiet)}>{format(m.importFixAndRetry)}</p>
+                  ) : flagged.length === 0 ? (
+                    <p {...stylex.props(styles.quiet)}>{format(m.importAllReady)}</p>
+                  ) : null}
+
+                  {shown.length > 0 && (
+                    <div {...stylex.props(styles.table)} role="table">
+                      <div role="row" {...stylex.props(styles.row, styles.head)}>
+                        <span role="columnheader">{format(m.importColumnRow)}</span>
+                        <span role="columnheader">{format(m.importColumnBusinessNo)}</span>
+                        <span role="columnheader">{format(m.importColumnName)}</span>
+                        <span role="columnheader">{format(m.importColumnIssues)}</span>
+                      </div>
+                      {shown.map((row) => (
+                        <div
+                          key={row.rowNo}
+                          role="row"
+                          data-testid="import-preview-row"
+                          data-row={row.rowNo}
+                          data-reasons={row.issues.map((one) => one.reason).join(' ')}
+                          {...stylex.props(styles.row)}
+                        >
+                          <span role="cell" {...stylex.props(styles.rowNo)}>
+                            {row.rowNo}
+                          </span>
+                          <span role="cell" {...stylex.props(styles.numberCell)}>
+                            {row.businessNo}
+                          </span>
+                          <span role="cell" {...stylex.props(styles.nameCell)}>
+                            {row.matchedParticipant?.displayName ?? row.displayNameFromFile}
+                          </span>
+                          <span role="cell" {...stylex.props(styles.issues)}>
+                            {/* a row with nothing to check says nothing: the
+                            column is about what needs a look */}
+                            {row.issues.length === 0
+                              ? null
+                              : row.issues.map((issue, at) => {
+                                  const where = fieldText(format, issue.field, names)
+                                  return (
+                                    <span key={at} {...stylex.props(styles.issue)}>
+                                      <Badge
+                                        variant={
+                                          issue.severity === 'error' ? 'destructive' : 'outline'
+                                        }
+                                      >
+                                        {format(
+                                          issue.severity === 'error'
+                                            ? m.importSeverityError
+                                            : m.importSeverityWarning,
+                                        )}
+                                      </Badge>
+                                      <span>
+                                        {where === null
+                                          ? reasonText(format, issue)
+                                          : format(m.importIssueAt, {
+                                              field: where,
+                                              reason: reasonText(format, issue),
+                                            })}
+                                      </span>
+                                    </span>
+                                  )
+                                })}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div {...stylex.props(styles.foot)}>
+                    {preview.rows.length > flagged.length && (
+                      <Button size="sm" variant="ghost" onClick={() => setShowAll((all) => !all)}>
+                        {showAll
+                          ? format(m.importShowProblems)
+                          : format(m.importShowAll, { count: preview.summary.rows })}
+                      </Button>
+                    )}
+                    <span {...stylex.props(styles.spacer)} />
+                    {preview.canCommit && preview.summary.warnings > 0 && (
+                      <label {...stylex.props(styles.confirm)}>
+                        <Checkbox
+                          checked={confirmed}
+                          onCheckedChange={setConfirmed}
+                          data-testid="import-confirm-warnings"
+                        />
+                        {format(m.importConfirmWarnings)}
+                      </label>
+                    )}
+                    {preview.canCommit && (
+                      <Button
+                        disabled={!ready}
+                        onClick={() => commit.mutate()}
+                        data-testid="import-commit"
+                      >
+                        {format(m.importCommit, { count: preview.summary.valid })}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
             </>
           )}
-
-          {uploaded !== null && check.isPending && (
-            <p {...stylex.props(styles.quiet)}>{format(m.importChecking)}</p>
-          )}
-
-          {uploaded !== null && refusal !== null && (
-            <div {...stylex.props(styles.result)} data-testid="import-refused">
-              <p {...stylex.props(styles.resultTitle)}>{format(m.importFileUnreadable)}</p>
-              {refusal.sentence !== null ? (
-                <p {...stylex.props(styles.quiet)}>{refusal.sentence}</p>
-              ) : (
-                <div {...stylex.props(styles.fileIssues)}>
-                  {refusal.issues.map((issue, at) => (
-                    <span key={at} data-reason={issue.reason}>
-                      {reasonText(format, issue)}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {uploaded !== null && preview !== null && (
-            <div
-              {...stylex.props(styles.result)}
-              data-testid="import-preview"
-              data-rows={preview.summary.rows}
-              data-errors={preview.summary.errors}
-              data-warnings={preview.summary.warnings}
-            >
-              <div {...stylex.props(styles.resultHead)}>
-                <p {...stylex.props(styles.resultTitle)}>{format(m.importResult)}</p>
-                <span {...stylex.props(styles.tally)}>
-                  <span>{format(m.importSummaryRows, { count: preview.summary.rows })}</span>
-                  <span>{format(m.importSummaryValid, { count: preview.summary.valid })}</span>
-                  {preview.summary.warnings > 0 && (
-                    <span>
-                      {format(m.importSummaryWarnings, { count: preview.summary.warnings })}
-                    </span>
-                  )}
-                  {preview.summary.errors > 0 && (
-                    <span {...stylex.props(styles.tallyBad)}>
-                      {format(m.importSummaryErrors, { count: preview.summary.errors })}
-                    </span>
-                  )}
-                </span>
-                <span {...stylex.props(styles.spacer)} />
-                {stale && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={check.isPending}
-                    onClick={() => check.mutate({ attachmentId: uploaded.attachmentId, basis })}
-                  >
-                    {format(m.importRecheck)}
-                  </Button>
-                )}
-              </div>
-
-              {preview.summary.errors > 0 ? (
-                <p {...stylex.props(styles.quiet)}>{format(m.importFixAndRetry)}</p>
-              ) : flagged.length === 0 ? (
-                <p {...stylex.props(styles.quiet)}>{format(m.importAllReady)}</p>
-              ) : null}
-
-              {shown.length > 0 && (
-                <div {...stylex.props(styles.table)} role="table">
-                  <div role="row" {...stylex.props(styles.row, styles.head)}>
-                    <span role="columnheader">{format(m.importColumnRow)}</span>
-                    <span role="columnheader">{format(m.importColumnBusinessNo)}</span>
-                    <span role="columnheader">{format(m.importColumnName)}</span>
-                    <span role="columnheader">{format(m.importColumnIssues)}</span>
-                  </div>
-                  {shown.map((row) => (
-                    <div
-                      key={row.rowNo}
-                      role="row"
-                      data-testid="import-preview-row"
-                      data-row={row.rowNo}
-                      data-reasons={row.issues.map((one) => one.reason).join(' ')}
-                      {...stylex.props(styles.row)}
-                    >
-                      <span role="cell">{row.rowNo}</span>
-                      <span role="cell" {...stylex.props(styles.cell)}>
-                        {row.businessNo}
-                      </span>
-                      <span role="cell" {...stylex.props(styles.cell)}>
-                        {row.matchedParticipant?.displayName ?? row.displayNameFromFile}
-                      </span>
-                      <span role="cell" {...stylex.props(styles.issues)}>
-                        {row.issues.length === 0 ? (
-                          <span {...stylex.props(styles.fine)}>—</span>
-                        ) : (
-                          row.issues.map((issue, at) => {
-                            const where = fieldText(format, issue.field, names)
-                            return (
-                              <span key={at} {...stylex.props(styles.issue)}>
-                                <Badge variant={issue.severity === 'error' ? 'destructive' : 'outline'}>
-                                  {format(
-                                    issue.severity === 'error'
-                                      ? m.importSeverityError
-                                      : m.importSeverityWarning,
-                                  )}
-                                </Badge>
-                                <span>
-                                  {where === null
-                                    ? reasonText(format, issue)
-                                    : format(m.importIssueAt, {
-                                        field: where,
-                                        reason: reasonText(format, issue),
-                                      })}
-                                </span>
-                              </span>
-                            )
-                          })
-                        )}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div {...stylex.props(styles.foot)}>
-                {preview.rows.length > flagged.length && (
-                  <Button size="sm" variant="ghost" onClick={() => setShowAll((all) => !all)}>
-                    {showAll
-                      ? format(m.importShowProblems)
-                      : format(m.importShowAll, { count: preview.summary.rows })}
-                  </Button>
-                )}
-                <span {...stylex.props(styles.spacer)} />
-                {preview.canCommit && preview.summary.warnings > 0 && (
-                  <label {...stylex.props(styles.confirm)}>
-                    <Checkbox
-                      checked={confirmed}
-                      onCheckedChange={setConfirmed}
-                      data-testid="import-confirm-warnings"
-                    />
-                    {format(m.importConfirmWarnings)}
-                  </label>
-                )}
-                {preview.canCommit && (
-                  <Button
-                    disabled={!ready}
-                    onClick={() => commit.mutate()}
-                    data-testid="import-commit"
-                  >
-                    {format(m.importCommit, { count: preview.summary.valid })}
-                  </Button>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
+        </RecordColumn>
       )}
     </AsyncSection>
+  )
+}
+
+/** the one press that answers "where do I get the right file" */
+function TemplateDownload({ item }: { item: ItemDto }) {
+  const { format } = useI18n()
+  return (
+    <Button asChild variant="outline" size="sm">
+      <a
+        href={assessmentUrls.assessment.administrativeImportTemplate({
+          params: { itemId: item.id },
+        })}
+        download
+        data-testid="import-template"
+      >
+        <DownloadIcon aria-hidden {...stylex.props(styles.icon)} />
+        {format(m.importTemplate, { item: item.title })}
+      </a>
+    </Button>
   )
 }

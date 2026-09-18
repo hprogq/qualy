@@ -299,4 +299,92 @@ describe.runIf(postgresAvailable).concurrent('recording one finding on a group',
     expect(found.facts).toBe(1)
     expect(found.eligible).toBeGreaterThan(1)
   })
+
+  it('withdraws what the act actually wrote, not what the selection would find today', async () => {
+    const found = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const { f, g, item, revision } = yield* ready('ar-reverse')
+          const assessment = yield* Assessment
+          const input = {
+            itemId: item.id,
+            expectedItemRevisionId: revision,
+            target: { kind: 'organization' as const, orgNodeIds: [f.classA], userTypeIds: [] },
+            payload: {},
+            basis: 'b',
+          }
+          const seen = yield* assessment.previewAdministrativeRecord(
+            f.t,
+            g.batch.id,
+            input,
+            f.principal(f.recorder),
+          )
+          const done = yield* assessment.recordAdministrativeBatch(
+            f.t,
+            g.batch.id,
+            {
+              ...input,
+              excludedParticipantIds: seen.blocked.map((one) => one.participantId),
+              expectedTargetFingerprint: seen.targetFingerprint,
+            },
+            f.principal(f.recorder),
+          )
+
+          // the world moves on: one of the people it reached is moved out of
+          // class A - still within the recorder's authority, but no longer
+          // anywhere the selection would find them - and somebody new
+          // arrives in class A
+          const college = one<{ id: string }>(
+            yield* runSql(sql`select parent_id as id from org_nodes where id = ${f.classA}`),
+          ).id
+          const people = yield* participantsOf(f.t, g.batch.id)
+          const moved = people.find((row) => row.user_id === f.s1)!
+          yield* runSql(sql`
+            update batch_participants
+               set assessment_anchor_node_id = ${college},
+                   anchor_path = (select path from org_nodes where id = ${college})
+             where id = ${moved.id}`)
+          const arrival = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.t}, 'Latecomer', ${f.studentType}, ${f.classA}) returning id`),
+          ).id
+          yield* assessment.addParticipants(f.t, g.batch.id, [arrival], f.principal(f.admin))
+
+          const undone = yield* assessment.reverseAdministrativeRecord(
+            f.t,
+            done.operationId,
+            { reason: '认定有误' },
+            f.principal(f.recorder),
+          )
+          const voided = one<{ n: number }>(
+            yield* runSql(sql`
+              select count(*)::int as n
+                from administrative_record_operation_rows r
+                join entries e on e.tenant_id = r.tenant_id and e.id = r.entry_id
+               where r.tenant_id = ${f.t} and r.operation_id = ${done.operationId}
+                 and e.status = 'voided'`),
+          ).n
+          // the latecomer must not have been swept in by the unit's name
+          const latecomer = one<{ n: number }>(
+            yield* runSql(sql`
+              select count(*)::int as n from entries e
+                join batch_participants p
+                  on p.tenant_id = e.tenant_id and p.id = e.participant_id
+               where e.tenant_id = ${f.t} and p.user_id = ${arrival}`),
+          ).n
+          return { done, undone, voided, latecomer }
+        }),
+      ),
+    )
+
+    // everybody the act wrote is withdrawn, including the one who has since
+    // moved out of the unit the selection named
+    expect(found.undone.affectedCount).toBe(found.done.recordedCount)
+    expect(found.voided).toBe(found.done.recordedCount)
+    // and nobody who arrived afterwards was ever touched: withdrawal walks
+    // the frozen rows, never the selection (§32.78)
+    expect(found.latecomer).toBe(0)
+  })
 })

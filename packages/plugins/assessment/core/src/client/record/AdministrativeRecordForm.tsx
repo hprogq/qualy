@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import * as stylex from '@stylexjs/stylex'
 import { useMutation } from '@tanstack/react-query'
 import { useApi, useRunApi } from '@qualy/web-runtime'
 import { ValueFieldsForm } from '@qualy/web-value-form/InputValueForm'
@@ -10,11 +9,11 @@ import { Feedback, Field } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { toast } from '@qualy/ui/toast'
-import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { EvidenceForm, type EvidencePayload } from '../entry/EvidenceForm.tsx'
 import { fieldsOf, type ItemDto } from '../entry/model.ts'
+import { SheetBar, SheetBlock, SheetFoot } from './sheet.tsx'
 
 // One administrative fact, written down.
 //
@@ -29,17 +28,13 @@ import { fieldsOf, type ItemDto } from '../entry/model.ts'
 // upstream is the session identity (item revision + subject + attempt), so a
 // different question, a different person, or the same pair after a filing
 // all start from nothing.
-
-const styles = stylex.create({
-  recognition: { display: 'flex', flexDirection: 'column', gap: 10 },
-  recognitionHead: {
-    margin: 0,
-    fontSize: 13,
-    fontWeight: 600,
-    color: tokens.surfaceMutedForeground,
-  },
-  foot: { display: 'flex', justifyContent: 'flex-end' },
-})
+//
+// This is the lower half of the sheet the caller opened: the material, what
+// it determines, and the basis, each announced by its own bar so a reader
+// can see at a glance how much of the sheet is left. The bar above the
+// determination is the one that earns its words - it says those values came
+// from the material, which is the only way to know that editing one is
+// allowed rather than a mistake.
 
 /** the recognition contract as the wire serves it to this form */
 export interface RecognitionWire {
@@ -154,40 +149,57 @@ export function AdministrativeRecordForm({
 
   return (
     <>
-      <EvidenceForm
-        session={session}
-        onValidityChange={setEvidenceValid}
-        fields={fieldsOf(item.currentRevision?.formConfig)}
-        value={payload}
-        onChange={setPayload}
-        doors={{
-          prepare: (input) => run(api.assessment.prepareAttachmentUpload({ payload: input })),
-          complete: (reservationId) =>
-            run(api.assessment.completeAttachmentUpload({ params: { reservationId } })),
-        }}
-        where={{ batchId, itemId: item.id }}
-        materialRange={materialRange}
+      <SheetBar
+        title={format(m.recordSectionEvidence)}
+        note={format(m.recordSectionEvidenceNote)}
       />
+      <SheetBlock>
+        <EvidenceForm
+          session={session}
+          onValidityChange={setEvidenceValid}
+          fields={fieldsOf(item.currentRevision?.formConfig)}
+          value={payload}
+          onChange={setPayload}
+          doors={{
+            prepare: (input) => run(api.assessment.prepareAttachmentUpload({ payload: input })),
+            complete: (reservationId) =>
+              run(api.assessment.completeAttachmentUpload({ params: { reservationId } })),
+          }}
+          where={{ batchId, itemId: item.id }}
+          materialRange={materialRange}
+        />
+      </SheetBlock>
       {wire !== null && (
-        <div {...stylex.props(styles.recognition)} data-testid="record-recognition">
-          <p {...stylex.props(styles.recognitionHead)}>{format(m.recordRecognition)}</p>
-          <ValueFieldsForm
-            fields={fields}
-            drafts={recognitionDrafts}
-            onDraft={(id, draft) => {
-              setDirty((current) => new Set(current).add(id))
-              setRecognitionDrafts((current) => ({ ...current, [id]: draft }))
-            }}
-            locale={locale}
-            scope="record"
-          />
-        </div>
+        <>
+          <SheetBar title={format(m.recordRecognition)} note={format(m.recordSectionResultNote)} />
+          <SheetBlock>
+            <div data-testid="record-recognition">
+              <ValueFieldsForm
+                fields={fields}
+                drafts={recognitionDrafts}
+                onDraft={(id, draft) => {
+                  setDirty((current) => new Set(current).add(id))
+                  setRecognitionDrafts((current) => ({ ...current, [id]: draft }))
+                }}
+                locale={locale}
+                scope="record"
+              />
+            </div>
+          </SheetBlock>
+        </>
       )}
-      <Field label={format(m.recordBasis)} hint={format(m.recordBasisHint)}>
-        {(id) => <Input id={id} value={basis} onChange={(event) => setBasis(event.target.value)} />}
-      </Field>
-      <Feedback message={problem} />
-      <div {...stylex.props(styles.foot)}>
+      <SheetBlock ruled>
+        {/* what it takes, and who ends up reading it, both belong under the
+            box rather than in the label: a label is the control's name, and
+            anything added to it is added to what the control is called */}
+        <Field label={format(m.recordBasis)} hint={format(m.recordBasisHint)}>
+          {(id) => (
+            <Input id={id} value={basis} onChange={(event) => setBasis(event.target.value)} />
+          )}
+        </Field>
+        <Feedback message={problem} />
+      </SheetBlock>
+      <SheetFoot note={format(m.recordIrreversible)}>
         <Button
           disabled={
             record.isPending ||
@@ -200,7 +212,7 @@ export function AdministrativeRecordForm({
         >
           {format(m.recordSubmit)}
         </Button>
-      </div>
+      </SheetFoot>
     </>
   )
 }

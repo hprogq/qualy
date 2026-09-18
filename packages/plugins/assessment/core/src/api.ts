@@ -37,6 +37,10 @@ export const batchLiveEvent = Schema.Struct({
 export type BatchLiveEvent = typeof batchLiveEvent.Type
 import { AccessDenied } from '@qualy/rbac-contract/effect'
 import {
+  AdministrativeRecordTargetsChanged,
+  AdministrativeRecordRefused,
+  AdministrativeRecordNotFound,
+  AdministrativeRecordFilesNotShareable,
   AccessInvalid,
   AdvanceInvalid,
   EntryActionRefused,
@@ -342,6 +346,40 @@ const accessSyncPageView = Schema.Struct({
  * that named exactly one thing, which is most of them.
  */
 export const idList = Schema.Union([Schema.Array(uuidInput), uuidInput])
+
+/**
+ * How a bulk administrative act found its people.
+ *
+ * Kept as history once the act is written and never resolved again: it says
+ * the selection that was made, not who the act applies to (§32.78).
+ */
+const recordTargetInput = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal('people'), userIds: idList }),
+  Schema.Struct({
+    kind: Schema.Literal('organization'),
+    orgNodeIds: idList,
+    userTypeIds: idList,
+  }),
+])
+
+const recordBlockerView = Schema.Struct({
+  participantId: Schema.String,
+  userId: Schema.String,
+  displayName: Schema.String,
+  businessNo: Schema.NullOr(Schema.String),
+  reason: Schema.String,
+})
+
+const recordOperationView = Schema.Struct({
+  id: Schema.String,
+  itemId: Schema.String,
+  itemTitle: Schema.String,
+  targetKind: Schema.String,
+  recordedCount: Schema.Number,
+  voidedCount: Schema.Number,
+  actorName: Schema.NullOr(Schema.String),
+  createdAt: Schema.String,
+})
 
 /** the query one import runs: units to look under, and which kinds of people */
 const importSelection = Schema.Struct({
@@ -2625,6 +2663,159 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       success: pageOf(participantView),
       error: [BatchNotFound, AccessDenied, BadRequest],
     }).middleware(Authenticated),
+  )
+  .add(
+    /**
+     * Who one administrative finding would reach, and what would refuse it.
+     *
+     * Arithmetic, not history: nothing is written, and the fingerprint it
+     * returns is what the confirmation carries back so the act lands on the
+     * people somebody actually looked at.
+     */
+    HttpApiEndpoint.post(
+      'previewAdministrativeRecord',
+      '/assessment/batches/:batchId/administrative-record-previews',
+      {
+        params: Schema.Struct({ batchId: uuidInput }),
+        payload: Schema.Struct({
+          itemId: uuidInput,
+          expectedItemRevisionId: uuidInput,
+          target: recordTargetInput,
+          excludedParticipantIds: Schema.optional(idList),
+          payload: Schema.Record(Schema.String, Schema.Unknown),
+          recognition: Schema.optional(
+            Schema.Struct({ values: Schema.Record(Schema.String, Schema.Unknown) }),
+          ),
+          basis: boundedText(500),
+        }),
+        success: Schema.Struct({
+          item: Schema.Struct({
+            id: Schema.String,
+            title: Schema.String,
+            revisionId: Schema.String,
+          }),
+          requestedCount: Schema.Number,
+          eligibleCount: Schema.Number,
+          blocked: Schema.Array(recordBlockerView),
+          targetFingerprint: Schema.String,
+        }),
+        error: [
+          BatchNotFound,
+          BatchReadOnly,
+          AccessDenied,
+          ItemNotFound,
+          ItemRevisionConflict,
+          DeterminationRefused,
+          EntryPayloadInvalid,
+          ScoringUnavailable,
+        ],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
+    /**
+     * The act itself: every confirmed person or none of them.
+     *
+     * The fingerprint names the set that was confirmed and the exclusions
+     * say who the caller dropped, which is what lets the server rebuild
+     * exactly that set and refuse if it has moved.
+     */
+    HttpApiEndpoint.post(
+      'recordAdministrativeBatch',
+      '/assessment/batches/:batchId/administrative-records',
+      {
+        params: Schema.Struct({ batchId: uuidInput }),
+        payload: Schema.Struct({
+          itemId: uuidInput,
+          expectedItemRevisionId: uuidInput,
+          target: recordTargetInput,
+          excludedParticipantIds: Schema.optional(idList),
+          expectedTargetFingerprint: boundedText(200),
+          payload: Schema.Record(Schema.String, Schema.Unknown),
+          recognition: Schema.optional(
+            Schema.Struct({ values: Schema.Record(Schema.String, Schema.Unknown) }),
+          ),
+          basis: boundedText(500),
+        }),
+        success: Schema.Struct({ operationId: Schema.String, recordedCount: Schema.Number }),
+        error: [
+          BatchNotFound,
+          BatchReadOnly,
+          AccessDenied,
+          ItemNotFound,
+          ItemRevisionConflict,
+          DeterminationRefused,
+          EntryPayloadInvalid,
+          ScoringUnavailable,
+          AdministrativeRecordTargetsChanged,
+          AdministrativeRecordFilesNotShareable,
+          AdministrativeRecordRefused,
+        ],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.get(
+      'listAdministrativeRecords',
+      '/assessment/batches/:batchId/administrative-records',
+      {
+        params: Schema.Struct({ batchId: uuidInput }),
+        query: Schema.Struct({ ...pageQuery }),
+        success: Schema.Struct({
+          items: Schema.Array(recordOperationView),
+          nextCursor: Schema.NullOr(Schema.String),
+        }),
+        error: [BatchNotFound, AccessDenied, BadRequest],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.get(
+      'getAdministrativeRecord',
+      '/assessment/administrative-records/:operationId',
+      {
+        params: Schema.Struct({ operationId: uuidInput }),
+        success: Schema.Struct({
+          id: Schema.String,
+          batchId: Schema.String,
+          itemId: Schema.String,
+          itemRevisionId: Schema.String,
+          targetKind: Schema.String,
+          recordedCount: Schema.Number,
+          voidedCount: Schema.Number,
+          createdAt: Schema.String,
+          events: Schema.Array(
+            Schema.Struct({
+              id: Schema.String,
+              kind: Schema.String,
+              reason: Schema.NullOr(Schema.String),
+              affectedCount: Schema.Number,
+              actorName: Schema.NullOr(Schema.String),
+              createdAt: Schema.String,
+            }),
+          ),
+        }),
+        error: [AdministrativeRecordNotFound],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
+    /** taking a whole act back, along the rows it actually wrote */
+    HttpApiEndpoint.post(
+      'reverseAdministrativeRecord',
+      '/assessment/administrative-records/:operationId/reversals',
+      {
+        params: Schema.Struct({ operationId: uuidInput }),
+        payload: Schema.Struct({ reason: boundedText(500) }),
+        success: Schema.Struct({ affectedCount: Schema.Number }),
+        error: [
+          AdministrativeRecordNotFound,
+          BatchReadOnly,
+          EntryActionRefused,
+          AdministrativeRecordRefused,
+        ],
+      },
+    ).middleware(Authenticated),
   )
   .add(
     /**

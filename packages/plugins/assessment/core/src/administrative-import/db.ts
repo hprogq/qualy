@@ -140,10 +140,7 @@ export interface ImportRow {
  * this is what turns the refusal into the first import's own answer, which
  * is what a retry after a lost response is owed.
  */
-export const importOfAttachment = (input: {
-  tenantId: string
-  attachmentId: string
-}) =>
+export const importOfAttachment = (input: { tenantId: string; attachmentId: string }) =>
   db
     .query((k) =>
       k

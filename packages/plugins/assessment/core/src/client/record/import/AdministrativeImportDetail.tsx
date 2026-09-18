@@ -101,6 +101,15 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
   },
   cell: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  // the determined parts, spaced rather than punctuated
+  determined: {
+    display: 'flex',
+    minWidth: 0,
+    flexWrap: 'wrap',
+    columnGap: 12,
+    rowGap: 2,
+    overflow: 'hidden',
+  },
   chevron: {
     width: 16,
     height: 16,
@@ -214,24 +223,29 @@ export function AdministrativeImportDetail({
       new Date(iso),
     )
 
-  const determinationOf = (recognition: (typeof lines)[number]['recognition']) => {
-    if (recognition === null) return ''
+  // What was determined, as the parts it was determined in.
+  //
+  // They come back as a list rather than a sentence because what goes
+  // between them is not a word in any language the catalogs carry: it is
+  // whitespace, and the cell below sets it. `Intl.ListFormat` was tried and
+  // is wrong here - in zh-CN a narrow unit list joins with nothing at all,
+  // running "等级 省级" and "加分 3.00" into one unreadable run.
+  const determinationOf = (recognition: (typeof lines)[number]['recognition']): string[] => {
+    if (recognition === null) return []
     const values = (recognition.values ?? {}) as Record<string, unknown>
-    return recognition.fields
-      .flatMap((field) => {
-        if (!Object.hasOwn(values, field.id)) return []
-        const value = values[field.id]
-        if (value === null || value === undefined || value === '') return []
-        const schema = field.schema as AtomicSchema
-        const text =
-          kindOf(schema) === 'choice'
-            ? choiceLabel(schema as never, String(value), locale)
-            : typeof value === 'boolean'
-              ? format(value ? m.recognitionYes : m.recognitionNo)
-              : String(value)
-        return [`${displayTitle(schema, field.id, locale)} ${text}`]
-      })
-      .join(' · ')
+    return recognition.fields.flatMap((field) => {
+      if (!Object.hasOwn(values, field.id)) return []
+      const value = values[field.id]
+      if (value === null || value === undefined || value === '') return []
+      const schema = field.schema as AtomicSchema
+      const text =
+        kindOf(schema) === 'choice'
+          ? choiceLabel(schema as never, String(value), locale)
+          : typeof value === 'boolean'
+            ? format(value ? m.recognitionYes : m.recognitionNo)
+            : String(value)
+      return [`${displayTitle(schema, field.id, locale)} ${text}`]
+    })
   }
 
   const found = detail.data
@@ -392,8 +406,10 @@ export function AdministrativeImportDetail({
                   <span role="cell">
                     <EntryStanding status={line.status} />
                   </span>
-                  <span role="cell" {...stylex.props(styles.cell)}>
-                    {determinationOf(line.recognition)}
+                  <span role="cell" {...stylex.props(styles.determined)}>
+                    {determinationOf(line.recognition).map((part) => (
+                      <span key={part}>{part}</span>
+                    ))}
                   </span>
                   <ChevronRightIcon aria-hidden {...stylex.props(styles.chevron)} />
                 </button>

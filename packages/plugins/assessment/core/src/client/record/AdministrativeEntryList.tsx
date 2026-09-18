@@ -1,18 +1,27 @@
 import { useMemo, useState } from 'react'
 import { useInfiniteQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { ChevronRightIcon, SearchIcon } from 'lucide-react'
+import { ChevronRightIcon, PlusIcon, SearchIcon, StampIcon } from 'lucide-react'
 import { cursorPages, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@qualy/ui/empty'
 import { Input } from '@qualy/ui/input'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { EntryStanding } from '../entry/EntryStanding.tsx'
+import { useWhen } from './when.ts'
 
 // What the institution has recorded in this round, newest first.
 //
@@ -21,6 +30,17 @@ import { EntryStanding } from '../entry/EntryStanding.tsx'
 // and a blank form answers a different one. The same sheet the rest of the
 // product uses: white is the record, days are not grouped because a record
 // book is read by person and question rather than by when.
+//
+// One line answers four things at once - who, on what, where it stands, and
+// who settled it when - so on a wide screen each gets a column and the last
+// one hangs off the right edge, where a reader scanning for this morning's
+// work looks. Narrow, the same four stack into three lines with the standing
+// beside the name, because a column that has been squeezed to nothing is not
+// a column any more.
+//
+// A withdrawn record stays on the page and goes grey. It is still part of
+// what this round did, and greying the whole line says it no longer counts
+// without making anybody read the standing to find that out.
 
 const PAGE = 30
 const wide = '@media (min-width: 900px)'
@@ -53,8 +73,8 @@ const styles = stylex.create({
     display: 'grid',
     width: '100%',
     gridTemplateColumns: {
-      default: 'minmax(0, 1fr) 1rem',
-      [wide]: 'minmax(0, 1.4fr) minmax(0, 1fr) 7rem 6rem 1rem',
+      default: 'minmax(0, 1fr) auto 1rem',
+      [wide]: 'minmax(0, 1.3fr) minmax(0, 1.2fr) 6.5rem 8.5rem 1rem',
     },
     alignItems: 'center',
     columnGap: 12,
@@ -72,45 +92,79 @@ const styles = stylex.create({
     cursor: 'pointer',
     transitionProperty: 'background-color',
   },
-  who: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 2 },
+  // withdrawn: still on the page, no longer counting
+  spent: { color: tokens.mutedForeground },
   name: {
+    gridColumnStart: 1,
+    gridRowStart: 1,
     minWidth: 0,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
-    fontSize: 14,
+    fontSize: { default: 15, [wide]: 14 },
     fontWeight: 500,
   },
-  under: {
+  // number and how it arrived, joined by the time of it on a narrow screen
+  // where there is no column to put the time in
+  meta: {
+    gridColumn: { default: '1 / span 2', [wide]: '1' },
+    gridRowStart: { default: 3, [wide]: 2 },
     display: 'flex',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: 8,
     fontSize: 12,
     color: tokens.mutedForeground,
+    fontVariantNumeric: 'tabular-nums',
   },
-  // on a narrow screen the question and the standing ride under the name
+  tick: {
+    width: 1,
+    height: 10,
+    backgroundColor: tokens.divider,
+  },
+  phoneOnly: { display: { default: 'inline', [wide]: 'none' } },
   itemCell: {
-    gridColumnStart: { default: 1, [wide]: 2 },
-    gridRowStart: { default: 2, [wide]: 1 },
+    gridColumn: { default: '1 / span 2', [wide]: '2' },
+    gridRow: { default: '2', [wide]: '1 / span 2' },
     minWidth: 0,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
-    fontSize: { default: 12, [wide]: 14 },
-    color: { default: tokens.mutedForeground, [wide]: tokens.foreground },
+    fontSize: { default: 13, [wide]: 14 },
   },
-  asideCell: {
-    display: { default: 'none', [wide]: 'block' },
-    fontSize: 12,
+  standingSeat: {
+    display: 'flex',
+    gridColumnStart: { default: 2, [wide]: 3 },
+    gridRow: { default: '1', [wide]: '1 / span 2' },
+  },
+  // who settled it and when, hung off the right edge
+  whenCell: {
+    display: { default: 'none', [wide]: 'flex' },
+    gridColumnStart: 4,
+    gridRow: '1 / span 2',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 2,
+    textAlign: 'end',
+  },
+  actorLine: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 13,
     color: tokens.mutedForeground,
   },
-  standingSeat: { display: { default: 'none', [wide]: 'flex' } },
+  whenLine: {
+    fontSize: 12,
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
+    fontVariantNumeric: 'tabular-nums',
+  },
   chevron: {
     width: 16,
     height: 16,
-    gridColumnStart: { default: 2, [wide]: 5 },
-    gridRowStart: 1,
-    gridRowEnd: { default: 'span 2', [wide]: 'auto' },
+    gridColumnStart: { default: 3, [wide]: 5 },
+    gridRow: { default: '1 / span 3', [wide]: '1 / span 2' },
     color: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)`,
   },
   empty: {
@@ -118,10 +172,8 @@ const styles = stylex.create({
     backgroundColor: tokens.surface,
     boxShadow: tokens.elevation1,
     paddingBlock: 48,
-    textAlign: 'center',
-    fontSize: 13,
-    color: tokens.mutedForeground,
   },
+  actionIcon: { width: 15, height: 15 },
   waiting: { height: 220, width: '100%' },
   moreRow: { display: 'flex', justifyContent: 'center', paddingBlock: 8 },
 })
@@ -129,14 +181,18 @@ const styles = stylex.create({
 export function AdministrativeEntryList({
   batchId,
   onOpen,
+  onRecord,
 }: {
   batchId: string
   onOpen: (entryId: string) => void
+  /** the way out of an empty page, when this reader may take one */
+  onRecord?: () => void
 }) {
   const api = useApi(assessmentApi)
   const run = useRunApi()
   const query = useApiQuery(assessmentApi)
-  const { format, formatError, locale } = useI18n()
+  const { format, formatError } = useI18n()
+  const whenOf = useWhen()
   const [search, setSearch] = useState('')
   const needle = search.trim()
 
@@ -161,8 +217,6 @@ export function AdministrativeEntryList({
   })
 
   const rows = useMemo(() => book.data?.pages.flatMap((page) => page.entries) ?? [], [book.data])
-  const day = (iso: string) =>
-    new Intl.DateTimeFormat(locale, { month: 'numeric', day: 'numeric' }).format(new Date(iso))
 
   return (
     <div {...stylex.props(styles.column)}>
@@ -189,43 +243,79 @@ export function AdministrativeEntryList({
         skeleton={<Skeleton className={stylex.props(styles.waiting).className} />}
       >
         {rows.length === 0 ? (
-          <p {...stylex.props(styles.empty)}>{format(m.recordListEmpty)}</p>
+          // a search that found nobody is not an empty book, and offering to
+          // record one there would answer a question nobody asked
+          needle !== '' ? (
+            <Empty xstyle={styles.empty} data-testid="administrative-entries-empty">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <SearchIcon />
+                </EmptyMedia>
+                <EmptyTitle>{format(m.recordNobodyFound)}</EmptyTitle>
+              </EmptyHeader>
+            </Empty>
+          ) : (
+            <Empty xstyle={styles.empty} data-testid="administrative-entries-empty">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <StampIcon />
+                </EmptyMedia>
+                <EmptyTitle>{format(m.recordListEmpty)}</EmptyTitle>
+                <EmptyDescription>{format(m.recordListEmptyHint)}</EmptyDescription>
+              </EmptyHeader>
+              {onRecord !== undefined && (
+                <EmptyContent>
+                  <Button variant="outline" onClick={onRecord}>
+                    <PlusIcon aria-hidden {...stylex.props(styles.actionIcon)} />
+                    {format(m.recordNewAction)}
+                  </Button>
+                </EmptyContent>
+              )}
+            </Empty>
+          )
         ) : (
           <>
             <div {...stylex.props(styles.card)} data-testid="administrative-entries">
-              {rows.map((row) => (
-                <button
-                  key={row.entryId}
-                  type="button"
-                  data-testid="administrative-entry"
-                  data-entry={row.entryId}
-                  data-source={row.source}
-                  data-entry-status={row.status}
-                  onClick={() => onOpen(row.entryId)}
-                  {...stylex.props(styles.row)}
-                >
-                  <span {...stylex.props(styles.who)}>
+              {rows.map((row) => {
+                const spent = row.status === 'voided'
+                const when = whenOf(row.revision.createdAt)
+                return (
+                  <button
+                    key={row.entryId}
+                    type="button"
+                    data-testid="administrative-entry"
+                    data-entry={row.entryId}
+                    data-source={row.source}
+                    data-entry-status={row.status}
+                    onClick={() => onOpen(row.entryId)}
+                    {...stylex.props(styles.row, spent && styles.spent)}
+                  >
                     <span {...stylex.props(styles.name)}>{row.participant.displayName}</span>
-                    <span {...stylex.props(styles.under)}>
-                      {row.participant.businessNo ?? format(m.noBusinessNoShort)}
-                      <span aria-hidden>·</span>
-                      {format(
-                        row.source === 'import' ? m.recordSourceImport : m.recordSourceManual,
-                      )}
+                    <span {...stylex.props(styles.meta)}>
+                      <span>{row.participant.businessNo ?? format(m.noBusinessNoShort)}</span>
+                      <span aria-hidden {...stylex.props(styles.tick)} />
+                      <span>
+                        {format(
+                          row.source === 'import' ? m.recordSourceImport : m.recordSourceManual,
+                        )}
+                      </span>
+                      <span aria-hidden {...stylex.props(styles.tick, styles.phoneOnly)} />
+                      <span {...stylex.props(styles.phoneOnly)}>{when}</span>
                     </span>
-                  </span>
-                  <span {...stylex.props(styles.itemCell)}>{row.item.title}</span>
-                  <span {...stylex.props(styles.standingSeat)}>
-                    <EntryStanding status={row.status} />
-                  </span>
-                  <span {...stylex.props(styles.asideCell)}>
-                    {row.revision.actorName ?? '—'}
-                    {' · '}
-                    {day(row.revision.createdAt)}
-                  </span>
-                  <ChevronRightIcon aria-hidden {...stylex.props(styles.chevron)} />
-                </button>
-              ))}
+                    <span {...stylex.props(styles.itemCell)}>{row.item.title}</span>
+                    <span {...stylex.props(styles.standingSeat)}>
+                      <EntryStanding status={row.status} />
+                    </span>
+                    <span {...stylex.props(styles.whenCell)}>
+                      <span {...stylex.props(styles.actorLine)}>
+                        {row.revision.actorName ?? format(m.recordActorUnknown)}
+                      </span>
+                      <span {...stylex.props(styles.whenLine)}>{when}</span>
+                    </span>
+                    <ChevronRightIcon aria-hidden {...stylex.props(styles.chevron)} />
+                  </button>
+                )
+              })}
             </div>
             {book.hasNextPage && (
               <div {...stylex.props(styles.moreRow)}>

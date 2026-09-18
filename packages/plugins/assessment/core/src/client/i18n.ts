@@ -5262,6 +5262,10 @@ const i18n = definePluginMessages({
       id: 'assessment/error/administrative-record-files-not-shareable',
       defaultMessage: 'A record with an attached file has to be made for one person at a time.',
     },
+    ASSESSMENT_ADMINISTRATIVE_RECORD_NOT_FOUND: {
+      id: 'assessment/error/administrative-record-not-found',
+      defaultMessage: 'That record no longer exists.',
+    },
     ASSESSMENT_ADMINISTRATIVE_RECORD_REFUSED: {
       id: 'assessment/error/administrative-record-refused',
       defaultMessage: 'Some of these people can no longer be recorded on, so nothing was recorded.',

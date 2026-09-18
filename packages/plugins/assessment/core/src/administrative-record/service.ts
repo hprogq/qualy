@@ -5,11 +5,14 @@ import type { Principal } from '@qualy/rbac-contract'
 import { AccessDenied } from '@qualy/rbac-contract/effect'
 import {
   AdministrativeRecordFilesNotShareable,
+  AdministrativeRecordNotFound,
   AdministrativeRecordRefused,
   AdministrativeRecordTargetsChanged,
   BatchNotFound,
   BatchReadOnly,
   DeterminationRefused,
+  EntryActionRefused,
+  EntryPayloadInvalid,
   ItemNotFound,
   ItemRevisionConflict,
   ScoringUnavailable,
@@ -19,18 +22,29 @@ import {
   ScoringRuntimeCatalog,
   type AttachmentRef,
   type BatchContext,
-  type ItemPayloadInvalid,
   type ItemTypeDriver,
 } from '../plugin.ts'
 import type { ActionDecision } from '../administrative-import/service.ts'
 import { proveSettlements } from '../scoring/failure-boundary.ts'
 import { readScoringPlan } from '../scoring/plan.ts'
 import { canonicalRecognition } from '../scoring/recognition.ts'
-import { recordAdministrativeEntryTx } from '../entry/administrative-write.ts'
+import {
+  recordAdministrativeEntryTx,
+  voidAdministrativeEntryTx,
+} from '../entry/administrative-write.ts'
 import { announce } from '../live/events.ts'
 import { effectiveEntryCounts } from '../administrative-import/db.ts'
 import { lockBatch, oneBatch, resolveRecordTargets } from '../server/db.ts'
-import { insertRecordOperation, insertRecordOperationRows } from './db.ts'
+import {
+  eventsOfOperation,
+  insertRecordOperation,
+  insertRecordOperationEvent,
+  insertRecordOperationRows,
+  operationOf,
+  operationsOfBatchPage,
+  reversalCandidatesOfOperation,
+  standingOfOperations,
+} from './db.ts'
 
 // One administrative finding, settled on a group of people.
 //
@@ -197,9 +211,17 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
     const context: BatchContext = { materialRange: deps.parseRange(String(batch.materialRange)) }
     const plan = yield* Effect.orDie(readScoringPlan(revision))
 
-    // the same reading every other door does, so a payload that would be
-    // refused one at a time is refused here too
-    const decoded = yield* driver.decodePayload(revision.formConfig, input.payload, context)
+    // The same reading every other door does, so a payload that would be
+    // refused one at a time is refused here too. The driver's own error is
+    // an internal shape; on the wire this is the same refusal a single
+    // filing gets, because it is the same problem.
+    const decoded = yield* driver
+      .decodePayload(revision.formConfig, input.payload, context)
+      .pipe(
+        Effect.catchTag('ASSESSMENT_ITEM_PAYLOAD_INVALID', (error) =>
+          Effect.fail(new EntryPayloadInvalid({ issues: error.issues })),
+        ),
+      )
 
     // A finding settled on many people is one finding, and an attachment
     // belongs to exactly one entry (§5.14). Rather than loosen that - which
@@ -480,7 +502,179 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
     return { operationId: written.operationId, recordedCount: written.rows.length }
   })
 
-  return { preview, record, shapeOf }
+  /**
+   * Taking a whole act back.
+   *
+   * It walks the rows this act actually wrote - never the selection that
+   * found them. Resolving "class 1" again a month later would withdraw
+   * findings from people who transferred in since and leave alone the ones
+   * who left, which is precisely backwards (§32.78).
+   *
+   * All or nothing, with one exception that is not one: findings already
+   * withdrawn singly are simply not candidates, exactly as an import's
+   * reversal treats them. Everything still standing goes together or not at
+   * all, and the authority asked is the authority of whoever is pressing
+   * now, not of whoever recorded.
+   */
+  const reverse = Effect.fn('Assessment.reverseAdministrativeRecord')(function* (
+    tenantId: string,
+    operationId: string,
+    input: { reason: string },
+    as: Principal,
+  ) {
+    return yield* withDb(
+      transaction(
+        Effect.gen(function* () {
+          const act = yield* operationOf(tenantId, operationId)
+          if (act === null) return yield* new AdministrativeRecordNotFound()
+          const locked = yield* lockBatch(tenantId, act.batchId)
+          if (!locked) return yield* new AdministrativeRecordNotFound()
+          if (!(yield* deps.holdsRecord(tenantId, act.batchId, as.userId))) {
+            return yield* new AdministrativeRecordNotFound()
+          }
+          if (locked.status === 'archived') return yield* new BatchReadOnly()
+          const reason = input.reason.trim()
+          if (reason === '') {
+            return yield* new EntryActionRefused({ action: 'abandon', reason: 'reason-required' })
+          }
+
+          const linked = yield* reversalCandidatesOfOperation(tenantId, operationId, {
+            batchId: act.batchId,
+            userId: as.userId,
+          })
+          const candidates = linked.filter((one) => one.status !== 'voided')
+          // withdrawn one by one already, or withdrawn whole before: there is
+          // nothing left to say, and saying nothing is not an event
+          if (candidates.length === 0) return { affectedCount: 0 }
+
+          const gate = yield* deps
+            .recordGate(as, act.batchId, act.itemId)
+            .pipe(Effect.catchTag('ASSESSMENT_BATCH_NOT_FOUND', Effect.die))
+          const refused: { participantId: string; reason: string }[] = []
+          for (const one of candidates) {
+            if (one.source !== 'record' && one.source !== 'import') {
+              refused.push({ participantId: one.participantId, reason: 'entry-not-abandonable' })
+              continue
+            }
+            if (!one.reached) {
+              refused.push({ participantId: one.participantId, reason: 'participant-out-of-scope' })
+              continue
+            }
+            if (one.participantUserId === as.userId) {
+              refused.push({ participantId: one.participantId, reason: 'self-record-refused' })
+              continue
+            }
+            const decision = gate(one.participantId)
+            if (!decision.allowed) {
+              refused.push({ participantId: one.participantId, reason: decision.reason })
+            }
+          }
+          if (refused.length > 0)
+            return yield* new AdministrativeRecordRefused({ blocked: refused })
+
+          let cancelledReview = false
+          for (const one of candidates) {
+            const withdrawn = yield* voidAdministrativeEntryTx({
+              tenantId,
+              entryId: one.entryId,
+              status: one.status,
+              currentReviewInstanceId: one.currentReviewInstanceId,
+              actorUserId: as.userId,
+              reason,
+            })
+            if (!withdrawn.voided) {
+              return yield* new AdministrativeRecordRefused({
+                blocked: [{ participantId: one.participantId, reason: 'entry-not-abandonable' }],
+              })
+            }
+            cancelledReview = cancelledReview || withdrawn.cancelledReview
+          }
+          // each entry's own event already says it was withdrawn; this is the
+          // one line saying it was this act being taken back
+          yield* insertRecordOperationEvent({
+            tenantId,
+            operationId,
+            kind: 'reversed',
+            actorId: as.userId,
+            reason,
+            affectedCount: candidates.length,
+          })
+          yield* announce(tenantId, act.batchId, [
+            { kind: 'entries-changed' },
+            { kind: 'result-changed' },
+            ...(cancelledReview
+              ? ([{ kind: 'review-inbox-changed' }, { kind: 'review-instance-changed' }] as const)
+              : []),
+          ])
+          return { affectedCount: candidates.length }
+        }),
+      ),
+    )
+  })
+
+  /** the acts of one round, newest first, with what each comes to now */
+  const list = Effect.fn('Assessment.listAdministrativeRecords')(function* (
+    tenantId: string,
+    batchId: string,
+    filter: { after?: readonly [string, string] | undefined; limit: number },
+    as: Principal,
+  ) {
+    if (!(yield* deps.holdsRecord(tenantId, batchId, as.userId))) {
+      return yield* new AccessDenied({ reason: 'assessment.entry.record' })
+    }
+    const rows = (yield* withDb(
+      operationsOfBatchPage({ tenantId, batchId, after: filter.after, limit: filter.limit }),
+    )) as unknown as Record<string, unknown>[]
+    const standing = yield* withDb(
+      standingOfOperations(
+        tenantId,
+        rows.map((row) => String(row['id'])),
+      ),
+    )
+    return rows.map((row) => ({
+      id: String(row['id']),
+      itemId: String(row['itemId']),
+      itemTitle: String(row['itemTitle'] ?? ''),
+      targetKind: String(row['targetKind']),
+      targetSpec: row['targetSpec'] as Record<string, unknown>,
+      recordedCount: Number(row['recordedCount'] ?? 0),
+      voidedCount: standing.get(String(row['id']))?.voided ?? 0,
+      actorName: row['actorName'] == null ? null : String(row['actorName']),
+      createdAt: String(row['createdAt']),
+    }))
+  })
+
+  /** one act, what it came to, and what has been done to it */
+  const detail = Effect.fn('Assessment.administrativeRecordDetail')(function* (
+    tenantId: string,
+    operationId: string,
+    as: Principal,
+  ) {
+    const act = yield* withDb(operationOf(tenantId, operationId))
+    if (act === null) return yield* new AdministrativeRecordNotFound()
+    if (!(yield* deps.holdsRecord(tenantId, act.batchId, as.userId))) {
+      return yield* new AdministrativeRecordNotFound()
+    }
+    const standing = yield* withDb(standingOfOperations(tenantId, [operationId]))
+    const events = (yield* withDb(eventsOfOperation(tenantId, operationId))) as unknown as Record<
+      string,
+      unknown
+    >[]
+    return {
+      ...act,
+      voidedCount: standing.get(operationId)?.voided ?? 0,
+      events: events.map((row) => ({
+        id: String(row['id']),
+        kind: String(row['kind']),
+        reason: row['reason'] == null ? null : String(row['reason']),
+        affectedCount: Number(row['affectedCount'] ?? 0),
+        actorName: row['actorName'] == null ? null : String(row['actorName']),
+        createdAt: String(row['createdAt']),
+      })),
+    }
+  })
+
+  return { preview, record, reverse, list, detail, shapeOf }
 }
 
-export type { ItemPayloadInvalid, ScoringUnavailable }
+export type { ScoringUnavailable }

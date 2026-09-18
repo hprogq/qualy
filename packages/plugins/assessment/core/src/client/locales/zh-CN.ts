@@ -1582,6 +1582,7 @@ export default {
   'assessment/error/administrative-record-targets-changed':
     '认定对象已发生变化，请重新确认后再提交',
   'assessment/error/administrative-record-files-not-shareable': '含附件的认定需要逐人录入',
+  'assessment/error/administrative-record-not-found': '该认定操作已不存在',
   'assessment/error/administrative-record-refused': '部分人员当前无法认定，本次未认定任何人',
   'assessment/error/item-scoring-incompatible':
     '新的计分规则无法处理 {affected} 条已生效认定（{refused} 条被规则拒绝，{executionFailed} 条计算失败），请修正计分规则后重试。',

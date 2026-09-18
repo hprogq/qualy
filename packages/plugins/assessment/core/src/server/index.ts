@@ -89,6 +89,7 @@ import {
   AttachmentUnavailable,
   AccessInvalid,
   AdministrativeRecordFilesNotShareable,
+  AdministrativeRecordNotFound,
   AdministrativeRecordRefused,
   AdministrativeRecordTargetsChanged,
   AdvanceInvalid,
@@ -105,6 +106,7 @@ import {
   DeterminationRefused,
   EntryPayloadInvalid,
   ItemNotFound,
+  EntryActionRefused,
   ItemRevisionConflict,
   ScoringUnavailable,
   TemplateConflict,
@@ -925,7 +927,7 @@ export class Assessment extends Context.Service<
       | ItemNotFound
       | ItemRevisionConflict
       | DeterminationRefused
-      | ItemPayloadInvalid
+      | EntryPayloadInvalid
       | ScoringUnavailable,
       ScoringRuntimeCatalog
     >
@@ -943,12 +945,73 @@ export class Assessment extends Context.Service<
       | ItemNotFound
       | ItemRevisionConflict
       | DeterminationRefused
-      | ItemPayloadInvalid
+      | EntryPayloadInvalid
       | ScoringUnavailable
       | AdministrativeRecordTargetsChanged
       | AdministrativeRecordFilesNotShareable
       | AdministrativeRecordRefused,
       ScoringRuntimeCatalog
+    >
+    /** the acts of one round, newest first, with what each comes to now */
+    readonly listAdministrativeRecords: (
+      tenantId: string,
+      batchId: string,
+      filter: { after?: readonly [string, string] | undefined; limit: number },
+      as: Principal,
+    ) => Effect.Effect<
+      readonly {
+        id: string
+        itemId: string
+        itemTitle: string
+        targetKind: string
+        targetSpec: Record<string, unknown>
+        recordedCount: number
+        voidedCount: number
+        actorName: string | null
+        createdAt: string
+      }[],
+      AccessDenied
+    >
+    /** one act, what it came to, and what has been done to it */
+    readonly getAdministrativeRecord: (
+      tenantId: string,
+      operationId: string,
+      as: Principal,
+    ) => Effect.Effect<
+      {
+        id: string
+        batchId: string
+        itemId: string
+        itemRevisionId: string
+        targetKind: string
+        targetSpec: Record<string, unknown>
+        actorId: string | null
+        recordedCount: number
+        voidedCount: number
+        createdAt: string
+        events: readonly {
+          id: string
+          kind: string
+          reason: string | null
+          affectedCount: number
+          actorName: string | null
+          createdAt: string
+        }[]
+      },
+      AdministrativeRecordNotFound
+    >
+    /** taking a whole act back, along the rows it actually wrote */
+    readonly reverseAdministrativeRecord: (
+      tenantId: string,
+      operationId: string,
+      input: { reason: string },
+      as: Principal,
+    ) => Effect.Effect<
+      { affectedCount: number },
+      | AdministrativeRecordNotFound
+      | BatchReadOnly
+      | EntryActionRefused
+      | AdministrativeRecordRefused
     >
     readonly previewAdministrativeImport: AdministrativeImportMethods['previewAdministrativeImport']
     readonly commitAdministrativeImport: AdministrativeImportMethods['commitAdministrativeImport']
@@ -2296,6 +2359,9 @@ export const make = Effect.fn('Assessment.make')(function* () {
     ...importMethods,
     previewAdministrativeRecord: recordMethods.preview,
     recordAdministrativeBatch: recordMethods.record,
+    listAdministrativeRecords: recordMethods.list,
+    getAdministrativeRecord: recordMethods.detail,
+    reverseAdministrativeRecord: recordMethods.reverse,
     ...reviewMethods,
     ...scoringMethods,
     ...attachmentMethods,
@@ -4408,6 +4474,24 @@ const parseInstant = (value: string) => {
 const listed = (value: string | readonly string[] | undefined): string[] =>
   value === undefined ? [] : typeof value === 'string' ? [value] : [...value]
 
+/** the wire's target, with its id lists normalised to arrays */
+const targetOf = (
+  target:
+    | { readonly kind: 'people'; readonly userIds: string | readonly string[] }
+    | {
+        readonly kind: 'organization'
+        readonly orgNodeIds: string | readonly string[]
+        readonly userTypeIds: string | readonly string[]
+      },
+) =>
+  target.kind === 'people'
+    ? ({ kind: 'people', userIds: listed(target.userIds) } as const)
+    : ({
+        kind: 'organization',
+        orgNodeIds: listed(target.orgNodeIds),
+        userTypeIds: listed(target.userTypeIds),
+      } as const)
+
 const entryDto = (entry: EntryView) => ({
   id: entry.id,
   batchId: entry.batchId,
@@ -5428,6 +5512,134 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
               ? encodeQueryCursor(fingerprint, [last.anchorPath, last.id])
               : null,
         }
+      }),
+    )
+    .handle(
+      'previewAdministrativeRecord',
+      Effect.fn('assessment.previewAdministrativeRecord.handler')(function* ({ params, payload }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const seen = yield* assessment.previewAdministrativeRecord(
+          principal.tenantId,
+          params.batchId,
+          {
+            itemId: payload.itemId,
+            expectedItemRevisionId: payload.expectedItemRevisionId,
+            target: targetOf(payload.target),
+            ...(payload.excludedParticipantIds === undefined
+              ? {}
+              : { excludedParticipantIds: listed(payload.excludedParticipantIds) }),
+            payload: payload.payload,
+            ...(payload.recognition === undefined ? {} : { recognition: payload.recognition }),
+            basis: payload.basis,
+          },
+          principal,
+        )
+        return {
+          item: seen.item,
+          requestedCount: seen.requestedCount,
+          eligibleCount: seen.eligibleCount,
+          blocked: seen.blocked,
+          targetFingerprint: seen.targetFingerprint,
+        }
+      }),
+    )
+    .handle(
+      'recordAdministrativeBatch',
+      Effect.fn('assessment.recordAdministrativeBatch.handler')(function* ({ params, payload }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        return yield* assessment.recordAdministrativeBatch(
+          principal.tenantId,
+          params.batchId,
+          {
+            itemId: payload.itemId,
+            expectedItemRevisionId: payload.expectedItemRevisionId,
+            target: targetOf(payload.target),
+            ...(payload.excludedParticipantIds === undefined
+              ? {}
+              : { excludedParticipantIds: listed(payload.excludedParticipantIds) }),
+            expectedTargetFingerprint: payload.expectedTargetFingerprint,
+            payload: payload.payload,
+            ...(payload.recognition === undefined ? {} : { recognition: payload.recognition }),
+            basis: payload.basis,
+          },
+          principal,
+        )
+      }),
+    )
+    .handle(
+      'listAdministrativeRecords',
+      Effect.fn('assessment.listAdministrativeRecords.handler')(function* ({ params, query }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const limit = pageSize(query.limit, DEFAULT_PAGE_SIZE)
+        const fingerprint = `assessment.administrative-records:${params.batchId}`
+        const key = readQueryCursor(query.cursor, fingerprint, ['text', 'uuid'])
+        if (key === null) return yield* cursorUnusable()
+        const found = yield* assessment.listAdministrativeRecords(
+          principal.tenantId,
+          params.batchId,
+          {
+            ...(key !== undefined ? { after: [key[0]!, key[1]!] as const } : {}),
+            limit: limit + 1,
+          },
+          principal,
+        )
+        const page = found.slice(0, limit)
+        const last = page[page.length - 1]
+        return {
+          items: page.map((row) => ({
+            id: row.id,
+            itemId: row.itemId,
+            itemTitle: row.itemTitle,
+            targetKind: row.targetKind,
+            recordedCount: row.recordedCount,
+            voidedCount: row.voidedCount,
+            actorName: row.actorName,
+            createdAt: row.createdAt,
+          })),
+          nextCursor:
+            found.length > limit && last
+              ? encodeQueryCursor(fingerprint, [last.createdAt, last.id])
+              : null,
+        }
+      }),
+    )
+    .handle(
+      'getAdministrativeRecord',
+      Effect.fn('assessment.getAdministrativeRecord.handler')(function* ({ params }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const act = yield* assessment.getAdministrativeRecord(
+          principal.tenantId,
+          params.operationId,
+          principal,
+        )
+        return {
+          id: act.id,
+          batchId: act.batchId,
+          itemId: act.itemId,
+          itemRevisionId: act.itemRevisionId,
+          targetKind: act.targetKind,
+          recordedCount: act.recordedCount,
+          voidedCount: act.voidedCount,
+          createdAt: act.createdAt,
+          events: act.events,
+        }
+      }),
+    )
+    .handle(
+      'reverseAdministrativeRecord',
+      Effect.fn('assessment.reverseAdministrativeRecord.handler')(function* ({ params, payload }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        return yield* assessment.reverseAdministrativeRecord(
+          principal.tenantId,
+          params.operationId,
+          { reason: payload.reason },
+          principal,
+        )
       }),
     )
     .handle(

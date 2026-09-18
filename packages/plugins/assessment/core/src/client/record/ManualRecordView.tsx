@@ -5,25 +5,39 @@ import { useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, Field } from '@qualy/ui/admin'
-import { NativeSelect } from '@qualy/ui/native-select'
 import { Skeleton } from '@qualy/ui/skeleton'
-import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import type { ItemDto } from '../entry/model.ts'
 import { AdministrativeRecordForm, type RecognitionWire } from './AdministrativeRecordForm.tsx'
 import { ParticipantPicker, type PickedParticipant } from './ParticipantPicker.tsx'
+import { administrativeItemsOf, ChosenItem, ItemPicker } from './ItemPicker.tsx'
+import {
+  NoAdministrativeItems,
+  RecordColumn,
+  RecordSheet,
+  SheetBlock,
+  SheetLead,
+  SheetNotice,
+} from './sheet.tsx'
 
 // Writing one administrative fact: which question, about whom, and what the
 // office determines by recording it.
+//
+// What it takes to do that is said before the first field rather than in a
+// confirmation afterwards, because by then the reader has already typed
+// everything and the only honest answer left is "are you sure".
+//
+// Which question is asked first and on its own, because it decides what the
+// rest of the sheet even is: the fields, the determination, the limits. A
+// screen that opened on an empty dropdown and then sprouted a form once it
+// was answered was showing the reader nothing, then everything.
 //
 // The roster is not loaded here. It is walked by cursor and searched in sql
 // by the picker, because the first page of a large round is not the round.
 
 const styles = stylex.create({
-  quiet: { fontSize: 14, lineHeight: '1.25rem', color: tokens.mutedForeground },
   waiting: { height: 160, width: '100%' },
-  form: { display: 'flex', maxWidth: '36rem', flexDirection: 'column', gap: 16 },
 })
 
 export function ManualRecordView({
@@ -47,9 +61,7 @@ export function ManualRecordView({
   })
   const wire = (contract.data?.contract ?? null) as RecognitionWire | null
 
-  const administrative = ((items.data?.items ?? []) as readonly ItemDto[]).filter(
-    (item) => item.status === 'active' && item.currentRevision?.entrySource === 'administrative',
-  )
+  const administrative = administrativeItemsOf((items.data?.items ?? []) as readonly ItemDto[])
   const item = administrative.find((candidate) => candidate.id === itemId) ?? null
   // Everything typed here is ABOUT one question version, one person, one
   // filing. Remounting the sheet on any part of that identity is the whole
@@ -68,52 +80,57 @@ export function ManualRecordView({
       skeleton={<Skeleton className={stylex.props(styles.waiting).className} />}
     >
       {administrative.length === 0 ? (
-        <p {...stylex.props(styles.quiet)}>{format(m.recordEmpty)}</p>
+        <NoAdministrativeItems />
       ) : (
-        <div {...stylex.props(styles.form)}>
-          <Field label={format(m.recordItem)}>
-            {(id) => (
-              <NativeSelect
-                id={id}
-                value={itemId}
-                onChange={(event) => setItemId(event.target.value)}
-              >
-                <option value="" />
-                {administrative.map((candidate) => (
-                  <option key={candidate.id} value={candidate.id}>
-                    {candidate.title}
-                  </option>
-                ))}
-              </NativeSelect>
-            )}
-          </Field>
-          <Field label={format(m.recordWho)}>
-            {(id) => (
-              <ParticipantPicker
-                id={id}
-                batchId={batchId}
-                value={participant}
-                onChange={setParticipant}
-                label={format(m.recordWho)}
+        <RecordColumn testId="manual-record">
+          <SheetNotice>{format(m.recordEffectNotice)}</SheetNotice>
+          {item === null ? (
+            <>
+              <SheetLead>{format(m.recordItemPick)}</SheetLead>
+              <ItemPicker batchId={batchId} items={administrative} onPick={setItemId} />
+            </>
+          ) : (
+            <>
+              <ChosenItem
+                item={item}
+                onChange={() => {
+                  // another question is another sheet; nothing typed for
+                  // this one may follow it there
+                  setItemId('')
+                  setParticipant(null)
+                }}
               />
-            )}
-          </Field>
-          {item !== null && (
-            <AdministrativeRecordForm
-              key={session}
-              session={session}
-              batchId={batchId}
-              materialRange={materialRange}
-              item={item}
-              participantId={participant?.id ?? ''}
-              wire={wire}
-              onRecorded={() => {
-                setParticipant(null)
-                setAttempt((count) => count + 1)
-              }}
-            />
+              <RecordSheet>
+                <SheetBlock>
+                  <Field label={format(m.recordWho)}>
+                    {(id) => (
+                      <ParticipantPicker
+                        id={id}
+                        batchId={batchId}
+                        value={participant}
+                        onChange={setParticipant}
+                        label={format(m.recordWho)}
+                      />
+                    )}
+                  </Field>
+                </SheetBlock>
+                <AdministrativeRecordForm
+                  key={session}
+                  session={session}
+                  batchId={batchId}
+                  materialRange={materialRange}
+                  item={item}
+                  participantId={participant?.id ?? ''}
+                  wire={wire}
+                  onRecorded={() => {
+                    setParticipant(null)
+                    setAttempt((count) => count + 1)
+                  }}
+                />
+              </RecordSheet>
+            </>
           )}
-        </div>
+        </RecordColumn>
       )}
     </AsyncSection>
   )

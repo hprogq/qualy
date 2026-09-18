@@ -239,7 +239,15 @@ function Determination({
         <span {...stylex.props(styles.cardWhen)}>
           {format(m.recognitionBy, {
             who: recognition.createdByName ?? format(m.eventSomebody),
-            when: new Date(recognition.createdAt).toLocaleString(),
+            // the reader's own calendar and clock, to the minute: seconds
+            // and a machine's default ordering were never read here
+            when: new Intl.DateTimeFormat(locale, {
+              month: 'long',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: false,
+            }).format(new Date(recognition.createdAt)),
           })}
         </span>
       </div>

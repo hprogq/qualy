@@ -7,6 +7,7 @@ import { useApiQuery, usePageQueryState, usePageQueryUpdate } from '@qualy/web-r
 import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
 import { Drill, type DrillMove } from '@qualy/ui/reveal'
+import { PageHeader } from '@qualy/ui/admin'
 import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
 import { toast } from '@qualy/ui/toast'
 import { useLingering } from '@qualy/ui/use-lingering'
@@ -14,7 +15,7 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { useBatchLive } from '../live.ts'
-import { BatchScreen } from '../batch/BatchScreen.tsx'
+import { BatchBanner, BatchScreen } from '../batch/BatchScreen.tsx'
 import type { BatchDto } from '../phase/model.ts'
 import { AdministrativeEntryList } from './AdministrativeEntryList.tsx'
 import { ManualRecordView } from './ManualRecordView.tsx'
@@ -46,7 +47,23 @@ const styles = stylex.create({
     flexDirection: 'column',
   },
   quiet: { fontSize: 14, lineHeight: '1.25rem', color: tokens.mutedForeground },
-  head: { display: 'flex', alignItems: 'center', gap: 8, paddingBottom: 12 },
+  // sized like the line of prose it sits in rather than like a control: a
+  // button at a control's own height makes the band taller than the heading
+  // it took over
+  backButton: {
+    display: 'inline-flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: tokens.radiusSm,
+    borderWidth: 0,
+    backgroundColor: { default: 'transparent', ':hover': tokens.surfaceMuted },
+    padding: 2,
+    marginInlineEnd: 4,
+    color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
+    cursor: 'pointer',
+  },
+  truncate: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   backIcon: { width: 14, height: 14 },
   tabs: { paddingBottom: 12 },
   actions: { display: 'flex', gap: 8 },
@@ -93,6 +110,7 @@ export default function AdministrativeRecordsPage() {
     <BatchScreen
       title={format(m.recordTab)}
       description={format(m.recordHint)}
+      banner={top ? 'section' : 'open'}
       actions={
         top ? (
           <div {...stylex.props(styles.actions)}>
@@ -147,10 +165,24 @@ function RecordsBody({
   const queryClient = useQueryClient()
   // where the back press goes: out of a form to the book, out of one import
   // to the imports it was opened from
-  const back: { label: MessageDescriptor; to: Record<string, string> } =
-    view === 'manual' || view === 'import'
-      ? { label: m.recordBack, to: { mode: '' } }
-      : { label: m.importBack, to: { import: '', tab: 'imports' } }
+  const back: {
+    /** what the band says while this is open */
+    title: MessageDescriptor
+    /** where pressing the arrow lands, said for a reader who cannot see it */
+    from: MessageDescriptor
+    label: MessageDescriptor
+    to: Record<string, string>
+  } =
+    view === 'manual'
+      ? { title: m.recordNewAction, from: m.recordTab, label: m.recordBack, to: { mode: '' } }
+      : view === 'import'
+        ? { title: m.importAction, from: m.recordTab, label: m.recordBack, to: { mode: '' } }
+        : {
+            title: m.importDetailTitle,
+            from: m.importTab,
+            label: m.importBack,
+            to: { import: '', tab: 'imports' },
+          }
 
   // What somebody else just recorded, imported or withdrew in this round
   // moves the book and the imports' standing; nothing else on this page
@@ -204,27 +236,43 @@ function RecordsBody({
               <AdministrativeImportHistory
                 batchId={batch.id}
                 onOpen={(id) => address({ import: id }, { history: 'push' })}
+                onImport={() => address({ mode: 'import' }, { history: 'push' })}
               />
             ) : (
               <AdministrativeEntryList
                 batchId={batch.id}
                 onOpen={(id) => address({ entry: id }, { history: 'push' })}
+                onRecord={() => address({ mode: 'manual' }, { history: 'push' })}
               />
             )}
           </div>
         ) : (
           <div>
-            <div {...stylex.props(styles.head)}>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => address(back.to)}
-                aria-label={format(back.label)}
-              >
-                <ArrowLeftIcon aria-hidden {...stylex.props(styles.backIcon)} />
-                {format(back.label)}
-              </Button>
-            </div>
+            {/* the band says where the reader is and how to leave; the
+                content area below it is only what they came to do */}
+            <BatchBanner>
+              <PageHeader
+                variant="banner"
+                title={format(back.title)}
+                description={
+                  <>
+                    {/* text-sized rather than a control's own size: a button
+                        as tall as a button in a line of prose makes that line
+                        taller than the same line in the heading it took over,
+                        and the band would jump on the way in */}
+                    <button
+                      type="button"
+                      aria-label={format(back.label)}
+                      onClick={() => address(back.to)}
+                      {...stylex.props(styles.backButton)}
+                    >
+                      <ArrowLeftIcon aria-hidden {...stylex.props(styles.backIcon)} />
+                    </button>
+                    <span {...stylex.props(styles.truncate)}>{format(back.from)}</span>
+                  </>
+                }
+              />
+            </BatchBanner>
             {view === 'manual' ? (
               <ManualRecordView batchId={batch.id} materialRange={batch.materialRange} />
             ) : view === 'import' ? (

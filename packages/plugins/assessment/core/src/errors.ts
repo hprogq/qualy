@@ -551,3 +551,10 @@ export class AdministrativeRecordRefused extends Schema.TaggedError<Administrati
   },
   { httpApiStatus: 422, identifier: 'AssessmentAdministrativeRecordRefused' },
 ) {}
+
+/** no such bulk administrative act for this reader */
+export class AdministrativeRecordNotFound extends Schema.TaggedError<AdministrativeRecordNotFound>()(
+  'ASSESSMENT_ADMINISTRATIVE_RECORD_NOT_FOUND',
+  {},
+  { httpApiStatus: 404, identifier: 'AssessmentAdministrativeRecordNotFound' },
+) {}
