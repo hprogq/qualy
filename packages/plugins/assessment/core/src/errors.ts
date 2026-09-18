@@ -502,3 +502,52 @@ export class AdministrativeImportInvalid extends Schema.TaggedError<Administrati
   },
   { httpApiStatus: 422, identifier: 'AssessmentAdministrativeImportInvalid' },
 ) {}
+
+/**
+ * The people this act would reach are no longer the people that were
+ * confirmed.
+ *
+ * Somebody joined the round, left it, or moved into the units the selection
+ * named, between the preview and the press. A count cannot see that - four
+ * people are four people whichever four they are - so the confirmation
+ * carries a hash of the ids, and this is what it refusing looks like
+ * (§32.78). Nothing is written; the caller previews again and confirms the
+ * set they are actually shown.
+ */
+export class AdministrativeRecordTargetsChanged extends Schema.TaggedError<AdministrativeRecordTargetsChanged>()(
+  'ASSESSMENT_ADMINISTRATIVE_RECORD_TARGETS_CHANGED',
+  { expected: Schema.String, actual: Schema.String, actualCount: Schema.Number },
+  { httpApiStatus: 409, identifier: 'AssessmentAdministrativeRecordTargetsChanged' },
+) {}
+
+/**
+ * A finding meant for several people carries a file.
+ *
+ * An attachment belongs to exactly one entry (§5.14, `attachment-cross-entry`),
+ * and the same file cannot be the evidence of thirty-six separate facts
+ * without making "whose file is this" unanswerable. Rather than loosen
+ * ownership, an act carrying files is refused above one person and those are
+ * recorded one at a time.
+ */
+export class AdministrativeRecordFilesNotShareable extends Schema.TaggedError<AdministrativeRecordFilesNotShareable>()(
+  'ASSESSMENT_ADMINISTRATIVE_RECORD_FILES_NOT_SHAREABLE',
+  { targetCount: Schema.Number },
+  { httpApiStatus: 422, identifier: 'AssessmentAdministrativeRecordFilesNotShareable' },
+) {}
+
+/**
+ * The act would reach somebody it cannot, and so it reaches nobody.
+ *
+ * Raised at the write, after the target set has already been confirmed:
+ * between confirming and pressing, one of the people fell out of reach, hit
+ * their limit, or the round closed its door. All-or-nothing is the whole
+ * point - a partial act would leave the recorder with no way to tell which
+ * half happened.
+ */
+export class AdministrativeRecordRefused extends Schema.TaggedError<AdministrativeRecordRefused>()(
+  'ASSESSMENT_ADMINISTRATIVE_RECORD_REFUSED',
+  {
+    blocked: Schema.Array(Schema.Struct({ participantId: Schema.String, reason: Schema.String })),
+  },
+  { httpApiStatus: 422, identifier: 'AssessmentAdministrativeRecordRefused' },
+) {}

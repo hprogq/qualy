@@ -2035,6 +2035,78 @@ export const staffReachOver = (input: {
  * is a postgres expression the query builder has no vocabulary for, and the
  * insert that writes these lineages is written the same way.
  */
+/**
+ * Who one administrative act would reach, worked out once.
+ *
+ * Both ways of choosing land here, and both are answered from this round's
+ * own roster rather than from the directory: by name, the ids are looked up
+ * among this batch's participants, so somebody who is not in the round
+ * simply is not found; by unit, membership is read from the frozen anchor,
+ * so the answer is whom this round admitted from there and not who stands
+ * there today (§32.78).
+ *
+ * `active` only, and never wider than the caller's own reach - both decided
+ * in sql, because a set filtered after the fact has already counted other
+ * people's participants.
+ *
+ * Ordered by id so the set has one spelling: what the caller confirms is
+ * checked against a hash of it, and an unordered answer would hash
+ * differently each time it was read.
+ */
+export const resolveRecordTargets = (
+  tenantId: string,
+  batchId: string,
+  target:
+    | { kind: 'people'; userIds: readonly string[] }
+    | {
+        kind: 'organization'
+        orgNodeIds: readonly string[]
+        userTypeIds: readonly string[]
+      },
+  reach: { userId: string; permissionCode: string } | null,
+  limit: number,
+) =>
+  db.query((k) => {
+    let query = participantSelection(k)
+      .where('BatchParticipant.tenantId', '=', tenantId)
+      .where('BatchParticipant.batchId', '=', batchId)
+      .where('BatchParticipant.status', '=', 'active')
+    if (target.kind === 'people') {
+      query = query.where(
+        sql<boolean>`batch_participants.user_id = any(${target.userIds as string[]}::uuid[])`,
+      )
+    } else {
+      query = query.where(
+        // the frozen anchor, not where the person lives now: this is the
+        // round's own account of where it drew them from
+        sql<boolean>`exists (
+          select 1 from org_nodes scope
+           where scope.tenant_id = batch_participants.tenant_id
+             and scope.id = any(${target.orgNodeIds as string[]}::uuid[])
+             and batch_participants.anchor_path <@ scope.path
+        )`,
+      )
+      if (target.userTypeIds.length > 0) {
+        query = query.where(
+          sql<boolean>`batch_participants.user_type_id = any(${target.userTypeIds as string[]}::uuid[])`,
+        )
+      }
+    }
+    if (reach !== null) {
+      query = query.where(
+        staffReachOver({
+          tenantId,
+          batchId,
+          userId: reach.userId,
+          permissionCode: reach.permissionCode,
+          anchorNodeId: sql.ref('batch_participants.assessment_anchor_node_id'),
+          anchorPath: sql.ref('batch_participants.anchor_path'),
+        }),
+      )
+    }
+    return query.orderBy('BatchParticipant.id').limit(limit).execute()
+  })
+
 export const listRosterUnits = (
   tenantId: string,
   batchId: string,

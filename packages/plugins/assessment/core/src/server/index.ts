@@ -30,9 +30,20 @@ import { deriveTimeline, type TimelineEntry } from '../phase/engine/timeline.ts'
 import type { EpochMillis, PhasePlan, PhaseSnapshot } from '../phase/engine/types.ts'
 import { gateAllows, type GateContext, type GateDecision } from '../phase/gate.ts'
 import { PARTICIPANT_ACTION_CODES, BATCH_STAFF_CODES } from '../permissions.ts'
-import { ItemTypeCatalog, ScoringDefinitionCatalog } from '../plugin.ts'
+import {
+  ItemTypeCatalog,
+  ScoringDefinitionCatalog,
+  ScoringRuntimeCatalog,
+  type AttachmentRef,
+  type ItemPayloadInvalid,
+} from '../plugin.ts'
 import { makeItemMethods, type ItemMethods, type ItemView } from '../item/service.ts'
 import { currentBatchConfigs, liveBatchPayloads, revisionsByIdOf } from '../item/db.ts'
+import {
+  administrativeRecordService,
+  type AdministrativeRecordInput,
+  type AdministrativeRecordPreview,
+} from '../administrative-record/service.ts'
 import {
   makeAdministrativeImportMethods,
   type AdministrativeImportMethods,
@@ -77,6 +88,9 @@ import { Storage } from '@qualy/plugin-storage/server'
 import {
   AttachmentUnavailable,
   AccessInvalid,
+  AdministrativeRecordFilesNotShareable,
+  AdministrativeRecordRefused,
+  AdministrativeRecordTargetsChanged,
   AdvanceInvalid,
   BatchNoParticipants,
   BatchNotFound,
@@ -88,6 +102,11 @@ import {
   ParticipantNotFound,
   PhaseNotFound,
   PlanInvalid,
+  DeterminationRefused,
+  EntryPayloadInvalid,
+  ItemNotFound,
+  ItemRevisionConflict,
+  ScoringUnavailable,
   TemplateConflict,
   TemplateNotFound,
   batchConstraints,
@@ -892,6 +911,45 @@ export class Assessment extends Context.Service<
     readonly administrativeImportTemplate: AdministrativeImportMethods['administrativeImportTemplate']
     readonly prepareAdministrativeImportUpload: AdministrativeImportMethods['prepareAdministrativeImportUpload']
     readonly completeAdministrativeImportUpload: AdministrativeImportMethods['completeAdministrativeImportUpload']
+    /** who one bulk administrative act would reach, and what would refuse it */
+    readonly previewAdministrativeRecord: (
+      tenantId: string,
+      batchId: string,
+      input: AdministrativeRecordInput,
+      as: Principal,
+    ) => Effect.Effect<
+      AdministrativeRecordPreview & { files: readonly AttachmentRef[] },
+      | BatchNotFound
+      | BatchReadOnly
+      | AccessDenied
+      | ItemNotFound
+      | ItemRevisionConflict
+      | DeterminationRefused
+      | ItemPayloadInvalid
+      | ScoringUnavailable,
+      ScoringRuntimeCatalog
+    >
+    /** the act itself, all of it or none of it */
+    readonly recordAdministrativeBatch: (
+      tenantId: string,
+      batchId: string,
+      input: AdministrativeRecordInput & { expectedTargetFingerprint: string },
+      as: Principal,
+    ) => Effect.Effect<
+      { operationId: string; recordedCount: number },
+      | BatchNotFound
+      | BatchReadOnly
+      | AccessDenied
+      | ItemNotFound
+      | ItemRevisionConflict
+      | DeterminationRefused
+      | ItemPayloadInvalid
+      | ScoringUnavailable
+      | AdministrativeRecordTargetsChanged
+      | AdministrativeRecordFilesNotShareable
+      | AdministrativeRecordRefused,
+      ScoringRuntimeCatalog
+    >
     readonly previewAdministrativeImport: AdministrativeImportMethods['previewAdministrativeImport']
     readonly commitAdministrativeImport: AdministrativeImportMethods['commitAdministrativeImport']
     readonly listAdministrativeImports: AdministrativeImportMethods['listAdministrativeImports']
@@ -2221,10 +2279,23 @@ export const make = Effect.fn('Assessment.make')(function* () {
     parseRange,
   })
 
+  const recordMethods = administrativeRecordService({
+    withDb,
+    recordGate,
+    holdsRecord: (tenantId, batchId, userId) =>
+      Effect.map(batchAuthority(tenantId, batchId, userId), (authority) =>
+        authority.has('assessment.entry.record'),
+      ),
+    itemTypes,
+    parseRange,
+  })
+
   return Assessment.of({
     ...itemMethods,
     ...entryMethods,
     ...importMethods,
+    previewAdministrativeRecord: recordMethods.preview,
+    recordAdministrativeBatch: recordMethods.record,
     ...reviewMethods,
     ...scoringMethods,
     ...attachmentMethods,
