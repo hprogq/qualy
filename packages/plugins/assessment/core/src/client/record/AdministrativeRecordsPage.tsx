@@ -8,6 +8,7 @@ import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
 import { Drill, type DrillMove } from '@qualy/ui/reveal'
 import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
+import { toast } from '@qualy/ui/toast'
 import { useLingering } from '@qualy/ui/use-lingering'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
@@ -257,6 +258,13 @@ function RecordsBody({
           onOpenImport={(id) =>
             address({ entry: '', mode: '', tab: 'imports', import: id }, { history: 'push' })
           }
+          onFailed={(reason) => {
+            // said out loud, and the address that named it let go of: a link
+            // to a record this reader cannot open should not keep re-opening
+            // nothing every time the page draws
+            toast.error(reason)
+            address({ entry: '' })
+          }}
         />
       )}
     </>

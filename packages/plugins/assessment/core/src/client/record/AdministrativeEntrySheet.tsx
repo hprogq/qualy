@@ -27,6 +27,7 @@ export function AdministrativeEntrySheet({
   entryId,
   onClose,
   onOpenImport,
+  onFailed,
 }: {
   /** false while the sheet is shutting; the caller keeps it mounted for that */
   open: boolean
@@ -35,6 +36,8 @@ export function AdministrativeEntrySheet({
   onClose: () => void
   /** to the import this fact arrived in, when it arrived in one */
   onOpenImport: (importId: string) => void
+  /** the record could not be opened; the screen behind decides what to say */
+  onFailed: (reason: string) => void
 }) {
   const api = useApi(assessmentApi)
   const run = useRunApi()
@@ -99,9 +102,14 @@ export function AdministrativeEntrySheet({
       })
       void queryClient.invalidateQueries({ queryKey: query.assessment.getEntry.key() })
       void queryClient.invalidateQueries({
-        queryKey: query.assessment.listAdministrativeImports.key({ params: { batchId }, query: {} }),
+        queryKey: query.assessment.listAdministrativeImports.key({
+          params: { batchId },
+          query: {},
+        }),
       })
-      void queryClient.invalidateQueries({ queryKey: query.assessment.getAdministrativeImport.key() })
+      void queryClient.invalidateQueries({
+        queryKey: query.assessment.getAdministrativeImport.key(),
+      })
       void queryClient.invalidateQueries({
         queryKey: query.assessment.listAdministrativeImportRows.key(),
       })
@@ -110,6 +118,17 @@ export function AdministrativeEntrySheet({
     onError: (error) => toast.error(formatError(error)),
   })
 
+  // A record that will not open has to say so.
+  //
+  // Returning nothing here meant a press on a row did nothing at all: no
+  // sheet, no message, nothing to retry - which is what a reader saw when a
+  // deep link named an entry that is not theirs, or when the read simply
+  // failed. Whether it exists is not said either way; whether THIS reader
+  // can open it is.
+  if (detail.isError && lingering === null) {
+    onFailed(formatError(detail.error))
+    return null
+  }
   if (lingering === null) return null
   return (
     <ManagedEntrySheet
