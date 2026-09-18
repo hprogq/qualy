@@ -45,9 +45,43 @@ const database = (): Promise<IDBDatabase | null> => {
           store.createIndex(BY_SCOPE_AND_TIME, ['scopeKey', 'at'])
         }
       }
-      request.onsuccess = () => resolve(request.result)
-      request.onerror = () => resolve(null)
-      request.onblocked = () => resolve(null)
+      // Blocked means another tab still holds an older version open. This
+      // request is NOT over - it stays pending and succeeds once that tab
+      // lets go - so answering the caller now is right, but the connection
+      // that arrives later has to be closed rather than left open with
+      // nobody holding it: an unclosed one goes on blocking the next upgrade
+      // forever, which is the same deadlock from the other side.
+      let abandoned = false
+      request.onblocked = () => {
+        abandoned = true
+        opening = null
+        resolve(null)
+      }
+      request.onsuccess = () => {
+        const db = request.result
+        if (abandoned) {
+          db.close()
+          return
+        }
+        // Another tab wants to upgrade: let go rather than block it. Holding
+        // on is what makes one stale tab enough to stop every other tab's
+        // upgrade, and there is nothing here worth that - the next call
+        // reopens.
+        db.onversionchange = () => {
+          db.close()
+          opening = null
+        }
+        // a connection closed under us (storage cleared, the tab evicted) is
+        // not one to keep handing out
+        db.onclose = () => {
+          opening = null
+        }
+        resolve(db)
+      }
+      request.onerror = () => {
+        opening = null
+        resolve(null)
+      }
     } catch {
       resolve(null)
     }

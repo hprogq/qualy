@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { BY_SCOPE_AND_TIME, TRY_RECORDS, inStores } from './local-store.ts'
 import type { TryOutcome } from './TryRunPanel.tsx'
 
@@ -35,6 +35,16 @@ interface StoredTryRecord extends TryRecord {
 
 /** how many tries one scope keeps; older ones go as newer ones arrive */
 const LIMIT = 20
+
+/** one identity for "nothing", so a scope change does not rerender forever */
+const EMPTY: readonly TryRecord[] = []
+
+/** newest first, one row per id, and never more than the scope keeps */
+const newestFirst = (records: readonly TryRecord[]): readonly TryRecord[] => {
+  const byId = new Map<string, TryRecord>()
+  for (const one of records) if (!byId.has(one.id)) byId.set(one.id, one)
+  return [...byId.values()].sort((a, b) => b.at - a.at).slice(0, LIMIT)
+}
 
 const isRecord = (value: unknown): value is StoredTryRecord => {
   const one = value as Partial<StoredTryRecord> | null
@@ -98,16 +108,47 @@ export const sourceMark = (source: string): string => {
  */
 export const useTryRecords = (functionId: string, scope: string) => {
   const scopeKey = `${functionId}/${scope}`
-  const [records, setRecords] = useState<readonly TryRecord[]>([])
+  // Held with the scope they belong to, and read back only when the two
+  // agree. A plain list would still be the previous scope's on the render
+  // that follows a switch - the effect below has not run yet - and that list
+  // is in a drawer somebody may have open: they would see, and could load,
+  // the tries of the source they just left.
+  const [held, setHeld] = useState<{ scope: string; records: readonly TryRecord[] }>({
+    scope: scopeKey,
+    records: [],
+  })
+  const records = held.scope === scopeKey ? held.records : EMPTY
+
+  /**
+   * Which hydration is the current one, and what happened locally while it
+   * was in flight.
+   *
+   * Storage answers asynchronously and a person can run a try inside that
+   * window. Assigning the stored list on arrival would then take the record
+   * they just watched appear back off the screen - it IS in the database, so
+   * it returns on the next visit, which makes it look like the run was lost
+   * and then found. What arrives is merged with what happened instead.
+   */
+  const load = useRef(0)
+  const since = useRef<{ added: readonly TryRecord[]; cleared: boolean }>({
+    added: [],
+    cleared: false,
+  })
 
   useEffect(() => {
-    let live = true
+    const mine = ++load.current
+    since.current = { added: [], cleared: false }
+    setHeld({ scope: scopeKey, records: [] })
     void read(scopeKey).then((found) => {
-      if (live) setRecords(found)
+      // a later scope, or a later hydration of this one, owns the screen now
+      if (load.current !== mine) return
+      const happened = since.current
+      since.current = { added: [], cleared: false }
+      // emptied while this was in flight: the list the person asked for is
+      // the empty one, not the one the read started before they pressed it
+      if (happened.cleared) return
+      setHeld({ scope: scopeKey, records: newestFirst([...happened.added, ...found]) })
     })
-    return () => {
-      live = false
-    }
   }, [scopeKey])
 
   const add = useCallback(
@@ -119,8 +160,12 @@ export const useTryRecords = (functionId: string, scope: string) => {
         functionId,
         scopeKey,
       }
+      since.current = { ...since.current, added: [stored, ...since.current.added] }
       // on screen at once; the write is this browser's own bookkeeping
-      setRecords((held) => [stored, ...held].slice(0, LIMIT))
+      setHeld((was) => ({
+        scope: scopeKey,
+        records: newestFirst([stored, ...(was.scope === scopeKey ? was.records : [])]),
+      }))
       void inStores(
         [TRY_RECORDS],
         'readwrite',
@@ -146,7 +191,8 @@ export const useTryRecords = (functionId: string, scope: string) => {
   )
 
   const clear = useCallback(() => {
-    setRecords([])
+    since.current = { added: [], cleared: true }
+    setHeld({ scope: scopeKey, records: [] })
     void inStores(
       [TRY_RECORDS],
       'readwrite',
