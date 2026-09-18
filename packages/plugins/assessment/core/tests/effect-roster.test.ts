@@ -506,6 +506,46 @@ describe.runIf(postgresAvailable).concurrent('the roster management face', () =>
     expect(inOneClass.length).toBeLessThan(under.length)
   })
 
+  it('names the units this round was drawn from, whatever org does afterwards', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('units')
+        const assessment = yield* Assessment
+        // drawn from grade A, whose students stand in classes 1 and 2
+        const batch = yield* activateBatch(f, 'Batch', [f.gradeA])
+        const units = () => assessment.listRosterUnits(f.tenant, batch.id, {}, f.principal)
+        const before = yield* units()
+        // everybody in class 1 is moved to a class this round never drew from
+        yield* f.moveUser(f.s1, f.class3)
+        yield* f.moveUser(f.s4, f.class3)
+        const afterMove = yield* units()
+        // and class 1 is renamed
+        yield* Effect.asVoid(
+          runSql(sql`update org_nodes set name = 'Renamed' where id = ${f.class1}`),
+        )
+        const afterRename = yield* units()
+        return { f, before, afterMove, afterRename }
+      }),
+    )
+    const { f, before, afterMove, afterRename } = ok(exit)
+    const idsOf = (units: readonly { id: string }[]) => units.map((unit) => unit.id).sort()
+
+    // the round's own tree: the classes its people were frozen in, and every
+    // unit above them - never a corner of the organization it did not reach
+    expect(idsOf(before)).toEqual([f.root, f.gradeA, f.class1, f.class2].sort())
+    expect(idsOf(before)).not.toContain(f.class3)
+
+    // moving people out does not move the round. The tree is what this batch
+    // admitted, and it admitted them from class 1
+    expect(idsOf(afterMove)).toEqual(idsOf(before))
+
+    // the wording is live even though the membership is frozen: a renamed
+    // department reads as its new name rather than as last year's
+    expect(afterRename.find((unit) => unit.id === f.class1)?.name).toBe('Renamed')
+    expect(idsOf(afterRename)).toEqual(idsOf(before))
+  })
+
   it('takes somebody out without deleting them, and lets them back in', async () => {
     const exit = await run(
       db.url,

@@ -247,6 +247,13 @@ const timelineEntry = Schema.Struct({
 
 const lineageStep = Schema.Struct({ nodeId: Schema.String, nodeTypeId: Schema.String })
 
+/** one unit of the organization as this round froze it, live wording */
+const rosterUnitView = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  parentId: Schema.NullOr(Schema.String),
+})
+
 const participantView = Schema.Struct({
   id: Schema.String,
   userId: Schema.String,
@@ -2612,8 +2619,29 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         orgNodeIds: Schema.optional(idList),
         /** that unit only, or everything under it; under it when absent */
         orgScope: Schema.optional(Schema.Literals(['self', 'subtree'])),
+        /** the kind of person this round froze them as, not what they are now */
+        userTypeId: Schema.optional(uuidInput),
       }),
       success: pageOf(participantView),
+      error: [BatchNotFound, AccessDenied, BadRequest],
+    }).middleware(Authenticated),
+  )
+  .add(
+    /**
+     * The units this round's people were admitted from, as it froze them.
+     *
+     * A tree to find people in, not the organization itself: it holds only
+     * what appears in some participant's frozen lineage, so it answers "where
+     * are this round's people" rather than "what does the university look
+     * like today". Names come from the live nodes, because a renamed
+     * department should read as its new name.
+     */
+    HttpApiEndpoint.get('listRosterUnits', '/assessment/batches/:batchId/roster-units', {
+      params: Schema.Struct({ batchId: uuidInput }),
+      query: Schema.Struct({
+        userTypeId: Schema.optional(uuidInput),
+      }),
+      success: Schema.Struct({ units: Schema.Array(rosterUnitView) }),
       error: [BatchNotFound, AccessDenied, BadRequest],
     }).middleware(Authenticated),
   )

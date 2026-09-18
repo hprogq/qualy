@@ -2013,6 +2013,70 @@ export const staffReachOver = (input: {
     )
 )`
 
+/**
+ * The organization as this round froze it.
+ *
+ * Not the organization as it stands today. A round admitted its people from
+ * somewhere, and each participant carries that somewhere as a frozen lineage
+ * from their anchor up to the root; the units here are exactly the ones
+ * appearing in those lineages, so a unit since emptied, moved or split still
+ * names the population it named on the day.
+ *
+ * What is NOT frozen is the wording: names come from the live `org_nodes`,
+ * so renaming a department does not leave a screen full of last year's
+ * titles. Membership is read from the lineage, the label from the node - the
+ * split §32.78 draws.
+ *
+ * `reach` narrows it the way the participant list is narrowed: a recorder
+ * sees the units their own authority covers and no others, decided in sql
+ * rather than after the fact.
+ *
+ * One `sql` fragment rather than the builder: walking a frozen jsonb lineage
+ * is a postgres expression the query builder has no vocabulary for, and the
+ * insert that writes these lineages is written the same way.
+ */
+export const listRosterUnits = (
+  tenantId: string,
+  batchId: string,
+  filter: {
+    reach?: { userId: string; permissionCode: string }
+    userTypeId?: string
+  },
+) =>
+  db.query((k) =>
+    sql<{ id: string; name: string; parentId: string | null }>`
+        select n.id::text as id, n.name as name, n.parent_id::text as "parentId"
+          from org_nodes n
+         where n.tenant_id = ${tenantId}::uuid
+           and exists (
+             select 1
+               from batch_participants bp
+               cross join lateral jsonb_array_elements(bp.anchor_lineage) as step
+              where bp.tenant_id = n.tenant_id
+                and bp.batch_id = ${batchId}::uuid
+                and bp.status = 'active'
+                and (step.value ->> 'nodeId')::uuid = n.id
+                and ${
+                  filter.userTypeId === undefined || filter.userTypeId === ''
+                    ? sql<boolean>`true`
+                    : sql<boolean>`bp.user_type_id = ${filter.userTypeId}::uuid`
+                }
+                and ${
+                  filter.reach === undefined
+                    ? sql<boolean>`true`
+                    : staffReachOver({
+                        tenantId,
+                        batchId,
+                        userId: filter.reach.userId,
+                        permissionCode: filter.reach.permissionCode,
+                        anchorNodeId: sql.ref('bp.assessment_anchor_node_id'),
+                        anchorPath: sql.ref('bp.anchor_path'),
+                      })
+                }
+           )
+         order by n.path`.execute(k),
+  )
+
 export const listParticipantsPage = (
   tenantId: string,
   batchId: string,
@@ -2030,6 +2094,8 @@ export const listParticipantsPage = (
     /** narrowed to the people frozen at, or under, these units */
     orgNodeIds?: readonly string[]
     orgScope?: 'self' | 'subtree'
+    /** the kind of person this round froze them as, not what they are now */
+    userTypeId?: string
     /**
      * the reader's own reach, when they are here on recording authority
      * rather than as the roster's administrator: intersected in sql, so
@@ -2069,6 +2135,9 @@ export const listParticipantsPage = (
             anchorPath: sql.ref('batch_participants.anchor_path'),
           }),
         )
+      }
+      if (filter.userTypeId !== undefined && filter.userTypeId !== '') {
+        query = query.where('BatchParticipant.userTypeId', '=', filter.userTypeId)
       }
       if (filter.orgNodeIds !== undefined && filter.orgNodeIds.length > 0) {
         // against the frozen anchor, not against where the person lives now:

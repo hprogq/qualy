@@ -144,6 +144,7 @@ import {
   listBatchesPage,
   countBatchesByStatus,
   listParticipantsPage,
+  listRosterUnits,
   listPhaseRows,
   phaseRowsForBatches,
   listTemplatesPage,
@@ -932,11 +933,22 @@ export class Assessment extends Context.Service<
         q?: string
         orgNodeIds?: readonly string[]
         orgScope?: 'self' | 'subtree'
+        userTypeId?: string
         after?: { path: string; id: string }
         limit: number
       },
       as: Principal,
     ) => Effect.Effect<readonly ParticipantRow[], BatchNotFound | AccessDenied>
+    /** the units this round's people were admitted from, as it froze them */
+    readonly listRosterUnits: (
+      tenantId: string,
+      batchId: string,
+      filter: { userTypeId?: string },
+      as: Principal,
+    ) => Effect.Effect<
+      readonly { id: string; name: string; parentId: string | null }[],
+      BatchNotFound | AccessDenied
+    >
     /**
      * Adding people by name of the people themselves.
      *
@@ -3741,6 +3753,36 @@ export const make = Effect.fn('Assessment.make')(function* () {
       },
     ),
 
+    listRosterUnits: Effect.fn('Assessment.listRosterUnits')(
+      function* (tenantId, batchId, filter, as) {
+        const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
+        if (!batch) return yield* new BatchNotFound()
+        // the same two ways in as the roster itself: administering it reads
+        // all of it, recording on it reads the part that may be recorded on
+        const administers = yield* Effect.match(requireRosterReach(as, tenantId, batchId), {
+          onSuccess: () => true,
+          onFailure: () => false,
+        })
+        if (!administers) {
+          const records = (yield* batchAuthority(tenantId, batchId, as.userId)).has(
+            'assessment.entry.record',
+          )
+          if (!records) yield* requireRosterReach(as, tenantId, batchId)
+        }
+        const found = yield* dieQuery(
+          withDb(
+            listRosterUnits(tenantId, batchId, {
+              ...filter,
+              ...(administers
+                ? {}
+                : { reach: { userId: as.userId, permissionCode: 'assessment.entry.record' } }),
+            }),
+          ),
+        )
+        return found.rows
+      },
+    ),
+
     addParticipants: Effect.fn('Assessment.addParticipants')(
       function* (tenantId, batchId, userIds, as) {
         return yield* withDb(
@@ -5289,7 +5331,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         // every filter in the fingerprint: a cursor from one question applied
         // to another silently skips or repeats people
         const units = listed(query.orgNodeIds).sort()
-        const fingerprint = `assessment.participants:${params.batchId}:${query.status ?? ''}:${query.q ?? ''}:${units.join(',')}:${query.orgScope ?? ''}`
+        const fingerprint = `assessment.participants:${params.batchId}:${query.status ?? ''}:${query.q ?? ''}:${units.join(',')}:${query.orgScope ?? ''}:${query.userTypeId ?? ''}`
         const key = readQueryCursor(query.cursor, fingerprint, ['text', 'uuid'])
         if (key === null) return yield* cursorUnusable()
         const found = yield* assessment.listParticipants(
@@ -5300,6 +5342,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
             ...(query.q !== undefined ? { q: query.q } : {}),
             ...(units.length > 0 ? { orgNodeIds: units } : {}),
             ...(query.orgScope !== undefined ? { orgScope: query.orgScope } : {}),
+            ...(query.userTypeId !== undefined ? { userTypeId: query.userTypeId } : {}),
             ...(key !== undefined ? { after: { path: key[0]!, id: key[1]! } } : {}),
             limit: limit + 1,
           },
@@ -5314,6 +5357,20 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
               ? encodeQueryCursor(fingerprint, [last.anchorPath, last.id])
               : null,
         }
+      }),
+    )
+    .handle(
+      'listRosterUnits',
+      Effect.fn('assessment.listRosterUnits.handler')(function* ({ params, query }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const units = yield* assessment.listRosterUnits(
+          principal.tenantId,
+          params.batchId,
+          query.userTypeId === undefined ? {} : { userTypeId: query.userTypeId },
+          principal,
+        )
+        return { units }
       }),
     )
     .handle(
