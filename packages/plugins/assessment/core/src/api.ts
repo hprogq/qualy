@@ -1177,6 +1177,13 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         calculator: Schema.Struct({ ref: Schema.String, contractHash: Schema.String }),
         inputSchema: Schema.Unknown,
         outputSchema: Schema.Unknown,
+        /** how the form stands, which is a separate question from the
+         *  calculator's: a question is composed by naming the arithmetic
+         *  first, and its parameters are what the form is then built from */
+        form: Schema.Struct({
+          valid: Schema.Boolean,
+          issues: Schema.Array(Schema.Struct({ path: Schema.String, reason: Schema.String })),
+        }),
         bindableFields: Schema.Array(
           Schema.Struct({
             fieldId: Schema.String,

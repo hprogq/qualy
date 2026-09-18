@@ -319,11 +319,29 @@ export interface ScoringPreviewInput {
   readonly itemId?: string
 }
 
-/** the contract a screen binds parameters against, and what it may bind them to */
+/**
+ * The contract a screen binds parameters against, and what it may bind them to.
+ *
+ * The two halves are answered independently on purpose. What a calculator
+ * needs is a fact about the calculator, and a screen has to know it BEFORE
+ * the form exists - a question is now composed by choosing the arithmetic,
+ * seeing its parameters, and letting the parameters that are filled in from
+ * a form say which fields the form must have. So a form this driver cannot
+ * yet read is reported as `form.valid: false` with nothing to bind, not as
+ * a refusal of the whole request.
+ *
+ * Saving is unaffected: `validateItemConfig` still judges the form strictly,
+ * and a question whose form never became legal cannot be written.
+ */
 export interface ScoringPreviewView {
   readonly calculator: { readonly ref: string; readonly contractHash: string }
   readonly inputSchema: unknown
   readonly outputSchema: unknown
+  /** how the form stands right now, and why it does not stand */
+  readonly form: {
+    readonly valid: boolean
+    readonly issues: readonly { readonly path: string; readonly reason: string }[]
+  }
   readonly bindableFields: readonly {
     readonly fieldId: string
     readonly payloadKey: string
@@ -2054,25 +2072,24 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
                 issues: [{ path: 'itemType', reason: 'item-type-not-installed' }],
               })
             }
-            // the driver's own codec decides what a form IS, and what it
-            // produces is what the bindable fields are read from
+            // The driver's own codec decides what a form IS, and what it
+            // produces is what the bindable fields are read from. A form it
+            // cannot read yet is reported rather than refused: the screen
+            // asks this question while the form is still being built out of
+            // the very parameters this call is here to name.
             const formConfig = yield* Effect.match(
               Schema.decodeUnknownEffect(driver.configSchema as Schema.Codec<unknown>)(
                 input.formConfig,
               ),
               { onSuccess: (value: unknown) => ({ value }), onFailure: () => null },
             )
-            if (formConfig === null) {
-              return yield* new ItemConfigInvalid({
-                issues: [{ path: 'formConfig', reason: 'form-config-invalid' }],
-              })
-            }
             const formIssues =
-              driver.configIssues?.(formConfig.value, { materialRange })?.map((issue) => ({
-                path: issue.path,
-                reason: issue.reason,
-              })) ?? []
-            if (formIssues.length > 0) return yield* new ItemConfigInvalid({ issues: formIssues })
+              formConfig === null
+                ? [{ path: 'formConfig', reason: 'form-config-invalid' }]
+                : (driver.configIssues?.(formConfig.value, { materialRange })?.map((issue) => ({
+                    path: issue.path,
+                    reason: issue.reason,
+                  })) ?? [])
 
             const calculator = catalogs.calculators.get(input.calculator.ref)
             if (calculator === undefined) {
@@ -2136,8 +2153,13 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
               },
               inputSchema: compiled.contract.inputSchema,
               outputSchema: compiled.contract.outputSchema,
+              form: { valid: formIssues.length === 0, issues: formIssues },
+              // nothing to bind against a form that cannot be read; the
+              // parameters are still named, which is the point
               bindableFields: (
-                driver.bindableFields?.(formConfig.value, { materialRange }) ?? []
+                formConfig === null || formIssues.length > 0
+                  ? []
+                  : (driver.bindableFields?.(formConfig.value, { materialRange }) ?? [])
               ).map((field) => ({
                 fieldId: field.fieldId,
                 payloadKey: field.payloadKey,

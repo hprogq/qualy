@@ -1928,32 +1928,39 @@ describe.runIf(postgresAvailable)('previewing a calculator contract', () => {
     ).toEqual(['calculator-not-installed'])
   })
 
-  it('refuses a form its own driver cannot read', async () => {
-    const result = await run(
-      db.url,
-      Effect.gen(function* () {
-        const f = yield* seed('preview-form')
-        const assessment = yield* Assessment
-        const { batch } = yield* draftBatch(f, 'Round')
-        return yield* assessment.previewScoring(
-          f.tenant,
-          batch.id,
-          {
-            itemType: 'evidence',
-            // `required` is a list of names; a number is not a form
-            formConfig: { required: 7 },
-            calculator: { ref: 'fixed@1', config: { value: '1.00' } },
-          },
-          f.principal,
-        )
-      }),
+  it('still names the parameters when its driver cannot read the form', async () => {
+    // A question is composed by naming the arithmetic first: its parameters
+    // are what the form is then built out of. So a form the driver cannot
+    // read yet is reported, not refused - refusing it made the screen ask
+    // for the parameters it needs in order to produce a legal form, and be
+    // told to produce a legal form first.
+    const preview = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('preview-form')
+          const assessment = yield* Assessment
+          const { batch } = yield* draftBatch(f, 'Round')
+          return yield* assessment.previewScoring(
+            f.tenant,
+            batch.id,
+            {
+              itemType: 'evidence',
+              // `required` is a list of names; a number is not a form
+              formConfig: { required: 7 },
+              calculator: { ref: 'fixed@1', config: { value: '1.00' } },
+            },
+            f.principal,
+          )
+        }),
+      ),
     )
 
-    expect(
-      (errorOf<{ issues?: readonly { path: string }[] }>(result)?.issues ?? []).map(
-        (issue) => issue.path,
-      ),
-    ).toEqual(['formConfig'])
+    expect(preview.calculator.ref).toBe('fixed@1')
+    expect(preview.form.valid).toBe(false)
+    expect(preview.form.issues.map((issue) => issue.path)).toEqual(['formConfig'])
+    // nothing to bind against a form nobody can read
+    expect(preview.bindableFields).toEqual([])
   })
 
   it('answers nobody who could not manage the round', async () => {
