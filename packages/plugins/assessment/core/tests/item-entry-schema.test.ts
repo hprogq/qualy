@@ -478,19 +478,30 @@ describe.runIf(postgresAvailable)('assessment item and entry schema', () => {
       const lawful = { batchId: a.batchId, itemId: a.itemId, itemRevisionId: a.itemRevisionId }
 
       await insertImport(f, { ...lawful, attachmentId: file })
+      // each probe brings its own upload: one upload is one import, so a
+      // second insert naming the same file would be refused for that before
+      // it ever reached the reference being tested here
       // a real question, from another round
       expect(
-        await pgCode(insertImport(f, { ...lawful, itemId: b.itemId, attachmentId: file })),
+        await pgCode(
+          insertImport(f, { ...lawful, itemId: b.itemId, attachmentId: await storedFile(f) }),
+        ),
       ).toBe('23503')
       // this round's question, frozen at another question's version
       expect(
         await pgCode(
-          insertImport(f, { ...lawful, itemRevisionId: b.itemRevisionId, attachmentId: file }),
+          insertImport(f, {
+            ...lawful,
+            itemRevisionId: b.itemRevisionId,
+            attachmentId: await storedFile(f),
+          }),
         ),
       ).toBe('23503')
       // no file, and a file that was never stored
       expect(await pgCode(insertImport(f, { ...lawful, attachmentId: null }))).toBe('23502')
       expect(await pgCode(insertImport(f, { ...lawful, attachmentId: randomUUID() }))).toBe('23503')
+      // and one upload is one import, whatever else the row says
+      expect(await pgCode(insertImport(f, { ...lawful, attachmentId: file }))).toBe('23505')
       // and the workbook an import names cannot be deleted out from under it
       expect(await pgCode(db.query(`delete from storage_attachments where id = $1`, [file]))).toBe(
         '23001',

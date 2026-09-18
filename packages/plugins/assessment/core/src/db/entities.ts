@@ -1755,6 +1755,19 @@ export const AdministrativeEntryImport = defineEntity({
         'create unique index uq_administrative_entry_imports_tenant_id_id on administrative_entry_imports (tenant_id, id)',
     },
     {
+      // One upload, one import. The workbook is bound rather than consumed -
+      // binding an already-bound attachment answers with its metadata, which
+      // is right for a general store and wrong as a one-shot - so nothing
+      // else stopped the same file from being committed twice and writing a
+      // second set of official facts. A lost HTTP response and a second
+      // press are the ordinary way that happens, and the round would carry
+      // both. Re-importing the same spreadsheet on purpose means uploading
+      // it again, which is a new attachment and a new import.
+      name: 'uq_administrative_entry_imports_source',
+      expression:
+        'create unique index uq_administrative_entry_imports_source on administrative_entry_imports (tenant_id, source_attachment_id)',
+    },
+    {
       name: 'idx_administrative_entry_imports_batch',
       expression:
         'create index idx_administrative_entry_imports_batch on administrative_entry_imports (tenant_id, batch_id, created_at desc, id)',

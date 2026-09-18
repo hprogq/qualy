@@ -132,6 +132,38 @@ export interface ImportRow {
   readonly createdAt: number
 }
 
+/**
+ * The import this upload already became, if it became one.
+ *
+ * Asked under the batch lock, so a second press cannot slip past between the
+ * question and the answer. The unique index behind it is the real guarantee;
+ * this is what turns the refusal into the first import's own answer, which
+ * is what a retry after a lost response is owed.
+ */
+export const importOfAttachment = (input: {
+  tenantId: string
+  attachmentId: string
+}) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('AdministrativeEntryImport')
+        .select(['id', 'importedCount'])
+        .where('tenantId', '=', input.tenantId)
+        .where('sourceAttachmentId', '=', input.attachmentId)
+        .executeTakeFirst(),
+    )
+    .pipe(
+      Effect.map((row) =>
+        row === undefined
+          ? null
+          : {
+              importId: String((row as Record<string, unknown>)['id']),
+              importedCount: Number((row as Record<string, unknown>)['importedCount'] ?? 0),
+            },
+      ),
+    )
+
 export const insertImport = (input: {
   tenantId: string
   batchId: string

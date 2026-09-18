@@ -151,7 +151,10 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
     expect(found.sources.every((one) => one.status === 'approved')).toBe(true)
     // every revision carries its basis: the row's own where it gave one,
     // the shared one where it did not - never nothing
-    expect(found.sources.map((one) => one.note).sort()).toEqual(['学院统一依据', '校发〔2026〕12 号'])
+    expect(found.sources.map((one) => one.note).sort()).toEqual([
+      '学院统一依据',
+      '校发〔2026〕12 号',
+    ])
     // and the file rows they came from, in the file's own numbering
     expect(found.rows.map((one) => one.source_row_no)).toEqual([2, 3])
     // the workbook entered history in the same transaction as the facts
@@ -370,17 +373,21 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
           ).id
           // both rows are lawful; the database refuses the second one only
           // once the first is already written inside the same transaction
-          yield* runSql(sql.raw(`
+          yield* runSql(
+            sql.raw(`
             create or replace function refuse_second_import_row() returns trigger as $$
             begin
               if new.participant_id = '${g.p2}' and new.source = 'import' then
                 raise exception 'refused partway, for the test';
               end if;
               return new;
-            end $$ language plpgsql`))
-          yield* runSql(sql.raw(`
+            end $$ language plpgsql`),
+          )
+          yield* runSql(
+            sql.raw(`
             create trigger refuse_second_import_row before insert on entries
-            for each row execute function refuse_second_import_row()`))
+            for each row execute function refuse_second_import_row()`),
+          )
           const failed = yield* Effect.exit(
             assessment.commitAdministrativeImport(
               f.t,
@@ -521,9 +528,7 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
     )
     // the conflict that already exists for exactly this, rather than a
     // second error meaning the same thing
-    expect(errorOf<{ _tag: string }>(found.refused)?._tag).toBe(
-      'ASSESSMENT_ITEM_REVISION_CONFLICT',
-    )
+    expect(errorOf<{ _tag: string }>(found.refused)?._tag).toBe('ASSESSMENT_ITEM_REVISION_CONFLICT')
     expect(found.after).toEqual({ imports: 0, entries: 0 })
   })
 
@@ -726,9 +731,9 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
       ['participant-out-of-scope'],
       [],
     ])
-    expect(
-      errorOf<{ issues: { rowNo: number; reason: string }[] }>(found.refused)?.issues,
-    ).toEqual([expect.objectContaining({ rowNo: 2, reason: 'participant-out-of-scope' })])
+    expect(errorOf<{ issues: { rowNo: number; reason: string }[] }>(found.refused)?.issues).toEqual(
+      [expect.objectContaining({ rowNo: 2, reason: 'participant-out-of-scope' })],
+    )
     expect(found.after).toEqual({ imports: 0, entries: 0 })
   })
 
@@ -936,12 +941,7 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
             reader,
           )
           const student = yield* Effect.exit(
-            assessment.listAdministrativeImports(
-              f.t,
-              g.batch.id,
-              { limit: 10 },
-              f.principal(f.s1),
-            ),
+            assessment.listAdministrativeImports(f.t, g.batch.id, { limit: 10 }, f.principal(f.s1)),
           )
 
           // Zhang San's frozen position moves to college B: the recorder no
@@ -1026,11 +1026,85 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
       ),
     )
     // what the server read still has a warning, and nobody said they saw it
-    expect(errorOf<{ issues: { severity: string }[] }>(found.unconfirmed)?.issues[0]?.severity).toBe(
-      'warning',
-    )
+    expect(
+      errorOf<{ issues: { severity: string }[] }>(found.unconfirmed)?.issues[0]?.severity,
+    ).toBe('warning')
     expect(found.before).toEqual({ imports: 0, entries: 0 })
     // confirmed, it goes in
     expect(found.confirmed.importedCount).toBe(1)
+  })
+  it('makes one import of one upload, however many times it is committed', async () => {
+    const found = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('ai-once')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f)
+          yield* numbered(f)
+          const item = yield* recordItem(f, g.batch.id)
+          const attachmentId = yield* workbook(f, item.id, f.recorder, [
+            ['2023001', 'Zhang San', '校发〔2026〕12 号'],
+            ['2023002', 'Li Si', '校发〔2026〕12 号'],
+          ])
+          const revision = one<{ id: string }>(
+            yield* runSql(
+              sql`select current_revision_id as id from assessment_items where id = ${item.id}`,
+            ),
+          ).id
+          const commit = () =>
+            assessment.commitAdministrativeImport(
+              f.t,
+              g.batch.id,
+              {
+                attachmentId,
+                itemId: item.id,
+                expectedItemRevisionId: revision,
+                defaultBasis: '学院统一依据',
+              },
+              f.principal(f.recorder),
+            )
+          // the ordinary shape of it: the response was lost and the person
+          // pressed the button again
+          const first = yield* commit()
+          const retried = yield* commit()
+          // and the shape a double click makes, which the batch lock has to
+          // serialize rather than interleave
+          const [a, b] = yield* Effect.all([commit(), commit()], { concurrency: 2 })
+          // taking the whole import back does not make the file importable
+          // again: the facts it wrote are withdrawn, the upload is spent
+          yield* assessment.reverseAdministrativeImport(
+            f.t,
+            first.importId,
+            { reason: '名单有误' },
+            f.principal(f.recorder),
+          )
+          const afterReversal = yield* commit()
+          const imports = (yield* runSql(sql`
+            select id from administrative_entry_imports
+             where tenant_id = ${f.t} and source_attachment_id = ${attachmentId}`)) as unknown as {
+            rows: { id: string }[]
+          }
+          const entries = (yield* runSql(sql`
+            select count(*)::int as n from entries
+             where tenant_id = ${f.t} and item_id = ${item.id}`)) as unknown as {
+            rows: { n: number }[]
+          }
+          return { first, retried, a, b, afterReversal, imports, entries }
+        }),
+      ),
+    )
+    // every answer is the same import, and it is the one the first call made
+    const ids = [
+      found.retried.importId,
+      found.a.importId,
+      found.b.importId,
+      found.afterReversal.importId,
+    ]
+    expect(ids).toEqual(Array.from({ length: 4 }, () => found.first.importId))
+    expect(found.retried.importedCount).toBe(found.first.importedCount)
+    // one import row, and one set of facts - not five
+    expect(found.imports.rows.map((one) => one.id)).toEqual([found.first.importId])
+    expect(found.entries.rows[0]!.n).toBe(2)
   })
 })

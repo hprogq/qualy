@@ -49,6 +49,7 @@ import {
   importRowsPage,
   importsOfBatchPage,
   insertImport,
+  importOfAttachment,
   insertImportEvent,
   insertImportRows,
   resolveImportParticipants,
@@ -958,6 +959,19 @@ export const makeAdministrativeImportMethods = (
             const locked = yield* lockBatch(tenantId, batchId)
             if (!locked) return yield* new BatchNotFound()
             if (locked.status === 'archived') return yield* new BatchReadOnly()
+            // One upload, one import - answered with the import it already
+            // became rather than refused. A lost response and a second press
+            // is the ordinary way the same workbook arrives twice, and the
+            // round must not end up carrying both sets of facts; binding the
+            // file cannot say so, because binding an already-bound
+            // attachment succeeds by design. Importing the same spreadsheet
+            // again on purpose means uploading it again, which is a new
+            // attachment and a new import.
+            const already = yield* importOfAttachment({
+              tenantId,
+              attachmentId: input.attachmentId,
+            })
+            if (already !== null) return already
             // the question, again: a revision that moved while the reader
             // was filling in the file makes every determination in it
             // answer a question that no longer exists
