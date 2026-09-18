@@ -18297,3 +18297,31 @@ pnpm test:browser                                60 files / 446 passed(新增「
 pnpm build                                       exit=0(shiki 全部落在一个 worker chunk,344 KB;页面 chunk 不含它)
 pnpm qualy database verify                       63 committed migration(s) build the declared schema, zero drift
 ```
+
+## 版本改名的入口与并发;浏览器本地数据并库(2026-09-18)
+
+### 做了什么
+
+- **改名入口下沉到版本列表**:抽屉每行在共享、打开之间多一个铅笔按钮(发布版本页标题旁的详情卡里保留同一入口)。
+  理由是「发现名字写错」这件事发生在看列表的时候,不该要求先打开版本。
+- **三处随之暴露的问题**:①版本列表的查询没 select `metadata_revision`,于是它恒为 1,连改两次第二次会被判成
+  「别人改过」(已补列,并在 node 测试里断言列表返回的 revision 随改名前进);②审计只记了 `notesChanged: true/false`,
+  事后等于什么都没记——改成 `name` / `notes` 各记 from/to 全文,且只记真正变了的那一项(版本行只留最新文字,
+  审计是唯一的历史);③对话框里两个字段包在一个 div 里,`DialogBody` 的 gap 只作用于直接子节点,字段贴在一起。
+  审计动作名补 zh-CN(此前界面上显示英文 defaultMessage)。
+- **浏览器本地数据并库**:原先草稿在 IndexedDB `qualy-formula-drafts`,试运行记录在 localStorage(每个 scope 一个
+  JSON 数组,每跑一次要读 20 条、前插、截断、整体写回)。现在同一个库 `qualy-formula-local` 两个 object store
+  (`drafts` / `tryRecords`),一条运行一行,复合索引 `(scopeKey, at)`:新增是一次 put + 一个游标裁掉超限的旧行,
+  读取是倒序游标取 20。不做旧数据迁移(尚未上生产)。**首帧需要的偏好仍留在 localStorage**(主题、语言、工作台栏宽),
+  它们要同步读。scope 形状改为 `<functionId>/draft`、`<functionId>/release/5`、`<functionId>/revision/18`。
+
+### 命令与结果(实际执行)
+
+```text
+pnpm typecheck                                   exit=0
+pnpm vitest run tools/tests packages/plugins/assessment/formula/tests
+                                                 430 passed(binding-catalog 的并发用例在整套并行下偶发红,
+                                                 单独跑 4/4 通过——它假设 contender 一定排在事务之后,机器负载高时不成立)
+pnpm test:browser                                60 files / 447 passed
+pnpm build                                       exit=0
+```
