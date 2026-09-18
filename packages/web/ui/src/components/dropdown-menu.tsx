@@ -133,6 +133,11 @@ const styles = stylex.create({
     borderRadius: tokens.radiusLg,
     padding: 4,
   },
+  // What a caller writes inside a row - an icon and its words - is wrapped by
+  // the widget in a label element of its own, so the row's flex never reaches
+  // it and an icon lands above the words. The wrapper is what has to be the
+  // line, and this is the seat the widget offers for saying so.
+  itemLabel: { display: 'flex', minWidth: 0, alignItems: 'center', gap: 10 },
   item: {
     position: 'relative',
     display: 'flex',
@@ -225,6 +230,7 @@ function DropdownMenuItem({
       data-slot="dropdown-menu-item"
       data-inset={inset}
       data-variant={variant}
+      classNames={{ itemLabel: stylex.props(styles.itemLabel).className }}
       {...(disabled === undefined ? {} : { disabled })}
       {...(onSelect === undefined ? {} : { onClick: onSelect })}
       {...props}
@@ -256,6 +262,7 @@ function DropdownMenuCheckboxItem({
       aria-checked={checked === true}
       data-slot="dropdown-menu-checkbox-item"
       data-inset={inset}
+      classNames={{ itemLabel: stylex.props(styles.itemLabel).className }}
       closeMenuOnClick={false}
       {...(disabled === undefined ? {} : { disabled })}
       onClick={() => onCheckedChange?.(!(checked === true))}
@@ -314,6 +321,7 @@ function DropdownMenuRadioItem({
       aria-checked={checked}
       data-slot="dropdown-menu-radio-item"
       data-inset={inset}
+      classNames={{ itemLabel: stylex.props(styles.itemLabel).className }}
       {...(disabled === undefined ? {} : { disabled })}
       onClick={() => group.onValueChange?.(value)}
       {...props}
