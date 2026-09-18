@@ -10,11 +10,13 @@ import { Audit } from '@qualy/audit-contract/plugin'
 import { userActions } from './actions.ts'
 import {
   APP_SHELL,
+  AUTHENTICATED,
   BLANK_SHELL,
   PUBLIC,
   orgNodePicker,
   peopleImportPicker,
   peoplePicker,
+  peoplePickerView,
   permissionOf,
   personCard,
   drawerAccount,
@@ -148,6 +150,16 @@ const plugin = Plugin.define(
     id: 'auth/people-picker',
     component: Ui.react('./client/iam/PeoplePicker'),
     visibility: permissionOf('auth.user.read'),
+  }),
+  // The same drawing with nobody in it, for a screen whose population is
+  // narrower than the directory and differently authorized. It fetches
+  // nothing and decides nothing about who may be seen, so it asks for no
+  // permission of its own - the caller has already proved its own page.
+  Ui.slot({
+    key: peoplePickerView.key,
+    id: 'auth/people-picker-view',
+    component: Ui.react('./client/iam/PeoplePickerView'),
+    visibility: AUTHENTICATED,
   }),
   Ui.slot({
     key: peopleImportPicker.key,

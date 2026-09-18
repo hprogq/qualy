@@ -310,6 +310,75 @@ export interface PeoplePickerContext {
 }
 
 /**
+ * The picker's shell, with nobody in it.
+ *
+ * `peoplePicker` above answers two questions at once - what choosing people
+ * looks like, and which people exist to be chosen - and the second one binds
+ * it to the directory. A screen choosing within a narrower population than
+ * the directory (this round's participants, say) needs the first answer and
+ * must not take the second: its population is the one it may act on, which
+ * is a smaller and differently-authorized set.
+ *
+ * So this surface is the drawing alone. It fetches nothing, decides nothing
+ * about who may be seen, and is therefore visible to anyone signed in; the
+ * screen that mounts it has already asked its own server for a page of
+ * people it is allowed to show, and hands it over. Choosing here never
+ * authorizes anything - what comes back is a list of ids that the write is
+ * expected to prove all over again.
+ */
+export const peoplePickerView = defineUiSlot({
+  key: 'iam/people-picker-view',
+  cardinality: 'one',
+})
+
+export interface PeoplePickerViewContext {
+  /** the units this reader may look in, however the caller found them */
+  nodes: readonly { id: string; name: string; parentId: string | null }[]
+  /** the tree is only part of what exists, and says so */
+  nodesTruncated?: boolean
+  /** the kinds of people the list may be narrowed to */
+  userTypes: readonly { id: string; name: string }[]
+  /** the page standing where the reader is looking, already authorized */
+  rows: readonly {
+    id: string
+    displayName: string
+    businessNo: string | null
+    userTypeName: string | null
+  }[]
+
+  /** where the reader is looking, and how the caller is querying it */
+  nodeId: string | null
+  scope: 'self' | 'subtree'
+  userTypeId: string
+  /** the search the caller is querying on, not what is being typed */
+  search: string
+
+  /** the ids chosen so far, across every page the caller has served */
+  value: readonly string[]
+  /** at most one person, for the places that admit only one */
+  single?: boolean
+  /** people who cannot be chosen, and the word shown beside them */
+  disabled?: readonly string[]
+  disabledLabel?: string
+
+  pending: boolean
+  /** why the page could not be read, already in the reader's language */
+  error?: string | null
+  hasPrevious: boolean
+  hasNext: boolean
+
+  onNodeChange: (nodeId: string) => void
+  onScopeChange: (scope: 'self' | 'subtree') => void
+  onUserTypeChange: (userTypeId: string) => void
+  /** the caller is told once the typing has settled, not per keystroke */
+  onSearchChange: (search: string) => void
+  onToggle: (userId: string) => void
+  onPrevious: () => void
+  onNext: () => void
+  onRetry: () => void
+}
+
+/**
  * Choosing a slice of the organization instead of naming people one by one.
  *
  * Units and kinds of people, which is a query - what it will do is the asking

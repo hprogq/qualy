@@ -20,6 +20,7 @@
     "./client/iam/OrgNodePicker": "./src/client/iam/OrgNodePicker.tsx",
     "./client/iam/PeopleImportPicker": "./src/client/iam/PeopleImportPicker.tsx",
     "./client/iam/PeoplePicker": "./src/client/iam/PeoplePicker.tsx",
+    "./client/iam/PeoplePickerView": "./src/client/iam/PeoplePickerView.tsx",
     "./client/iam/PersonCard": "./src/client/iam/PersonCard.tsx",
     "./client/iam/UserDetailPage": "./src/client/iam/UserDetailPage.tsx",
     "./client/iam/UserTypesPage": "./src/client/iam/UserTypesPage.tsx",
