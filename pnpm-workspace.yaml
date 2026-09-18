@@ -92,7 +92,6 @@ catalog:
   '@vitejs/plugin-react': 6.0.5
   '@types/react': 19.2.18
   '@types/react-dom': 19.2.4
-  '@electric-sql/pglite': 0.5.4
   '@tanstack/react-query': 5.101.4
   sirv: 3.0.2
   argon2: 0.45.1
@@ -131,6 +130,8 @@ catalog:
   # The per-product package rather than `tencentcloud-sdk-nodejs`: the whole
   # sdk unpacks to 44 MB for three calls, and this one to 220 KB.
   tencentcloud-sdk-nodejs-rum: 4.1.281
+patchedDependencies:
+  '@stylexjs/unplugin@0.19.1': patches/@stylexjs__unplugin@0.19.1.patch
 minimumReleaseAgeExclude:
   - effect@4.0.0-rc.115
   - '@effect/vitest@4.0.0-rc.115'
@@ -162,5 +163,3 @@ minimumReleaseAgeExclude:
   - '@vitest/ui@5.0.1'
   - '@vitest/utils@5.0.1'
   - vitest@5.0.1
-patchedDependencies:
-  '@stylexjs/unplugin@0.19.1': patches/@stylexjs__unplugin@0.19.1.patch

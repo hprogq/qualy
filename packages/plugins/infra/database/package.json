@@ -31,7 +31,6 @@
     "pg": "catalog:"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "catalog:",
     "@types/pg": "catalog:"
   }
 }
