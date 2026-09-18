@@ -104,11 +104,31 @@ beforeAll(() => {
       2,
     )}\n`,
   )
+  // The descriptor reads the file this suite saves, so one save can mean two
+  // different things: an ordinary backend reload, or a backend that resolves
+  // and prepares exactly as before and then refuses while its services are
+  // built - which is the only band in which "prepared, never listened" can be
+  // reached on purpose.
   fs.writeFileSync(
     path.join(triggerRoot, 'index.js'),
-    `export default { _tag: 'Plugin', id: ${JSON.stringify(triggerId)}, dependsOn: [], features: [] }\n`,
+    `import fs from 'node:fs'
+import { Effect, Layer } from 'effect'
+const marker = fs.readFileSync(new URL('./src/server/marker.ts', import.meta.url), 'utf8')
+const refuses = marker.includes('REFUSE_AT_RUNTIME')
+export default {
+  _tag: 'Plugin',
+  id: ${JSON.stringify(triggerId)},
+  dependsOn: [],
+  features: refuses
+    ? [{ _tag: 'Layer', layer: Layer.effectDiscard(Effect.die(new Error('this plugin refuses'))) }]
+    : [],
+}
+`,
   )
   fs.writeFileSync(triggerFile(), 'export const marker = 1\n')
+  // the package resolves `effect` the way any installed plugin does; its own
+  // directory is outside the repository, so it needs the link to reach it
+  fs.symlinkSync(path.join(repoRoot, 'node_modules'), path.join(triggerRoot, 'node_modules'))
   fs.mkdirSync(path.dirname(linkedAt), { recursive: true })
   fs.rmSync(linkedAt, { force: true, recursive: true })
   fs.symlinkSync(triggerRoot, linkedAt, 'dir')
@@ -140,6 +160,9 @@ beforeAll(() => {
 
 afterEach(async () => {
   fs.writeFileSync(manifest, manifestText)
+  // the marker says what the trigger plugin does, so a case that made it
+  // refuse has to put it back before the next case starts a backend
+  fs.writeFileSync(triggerFile(), 'export const marker = 1\n')
   if (supervisor !== null && supervisor.exitCode === null) {
     // a detached child is its own group, and killing only its leader would
     // leave the backend and the dev server behind
@@ -240,6 +263,32 @@ describe.runIf(postgresAvailable)('the development supervisor', () => {
     await until(() => serving().length === 2)
     await until(async () => (await answers()) === 200)
     expect(started()).toBe(1)
+  }, 300_000)
+
+  it('does not call a backend that never listened a serving one', async () => {
+    start()
+    // the watcher's first walk has to be over before a save means anything:
+    // inside it, `ignoreInitial` reads the save as a file that was always there
+    await until(() => output.includes('watching for changes'))
+    await until(async () => (await answers()) === 200)
+    const first = serving()[0]!
+
+    // resolves and prepares like any other candidate, then refuses while its
+    // services are built: the band where a backend is past the point the old
+    // one was retired at, and still never answers
+    fs.writeFileSync(triggerFile(), `export const marker = 'REFUSE_AT_RUNTIME'\n`)
+    await until(() => output.includes('did not come up'))
+
+    // the supervisor's own picture has to agree with the world: no second
+    // backend was ever announced as serving, and nothing is answering
+    expect(serving()).toEqual([first])
+    await until(async () => (await answers()) === 0)
+
+    // and the next save is a real recovery, not a reload of something that
+    // never ran
+    fs.writeFileSync(triggerFile(), `export const marker = ${String(Date.now())}\n`)
+    await until(() => serving().length === 2)
+    await until(async () => (await answers()) === 200)
   }, 300_000)
 
   // A Ctrl+C in a terminal goes to the whole foreground group, not to the

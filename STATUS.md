@@ -18325,3 +18325,47 @@ pnpm vitest run tools/tests packages/plugins/assessment/formula/tests
 pnpm test:browser                                60 files / 447 passed
 pnpm build                                       exit=0
 ```
+
+## 开发态 supervisor 的生命周期缺口(按外部审计核对后修复,2026-09-18)
+
+### 核对结果
+
+审计点名六条,逐条对着 `apps/server/src/dev/` 现状核实:**没有一条已经修掉**。另外读代码时发现第七条。
+
+### 做了什么
+
+- **readiness 失败成为真正的失败路径**(审计最确定的一条):`listening()` 返回 false 后原先只打印一行,
+  接着照常 accept services 并宣布 `is serving`——supervisor 自己的世界观从此是错的。现在失败即:
+  active.backend 清空、该 child 停掉、staged services 一律不 accept、不输出 serving、return。
+  已补回归测试,并**做过负面验证**:回退该分支后测试断言 `serving()` 为 `['1','3']`,正是审计描述的症状。
+- **停止请求不再排队**:`stopRequested` latch 在信号处理器里同步置位,`backendPrepared` / `servicePrepared` /
+  `serviceReady` / `listening` 全部与它 race(`racingStop`,被打断抛 `Abandoned` 并静默收尾)。
+  此前 Ctrl+C 只是 `queue.push(stop)`,要等当前 `stageWorld()` 返回——最坏是 60 秒 readiness 轮询走完。
+- **两级 Ctrl+C**,与 backend 自己的语义一致:第一次 graceful 并明说可以再按;1 秒内重复到达的同一次按键忽略
+  (终端向整个前台组投递,pnpm 还会再抛);真正的第二次按键强杀全部 owned children 并 `exit(130)`。
+- **child ownership 登记册**:`owned: Set<Child>`,fork 成功即登记、exit 即注销;`active` / `candidate` 只表达角色。
+  顺带堵住 `startServices()` 的泄漏——它先 fork 全部再逐个 prepare,中途 `return false` 会丢下已 fork、
+  尚未登记的 child;现在无论从哪条分支离开都把剩下的停掉。teardown 以登记册为准收割。
+- **IPC 等待的 exit 竞态**:`Child.exit` 改为 fork 时就 latch 的一个永久 promise,`awaits()` 与它 race 而不是
+  每次临时 `once('exit')`。此前对一个**已经退出**的 child 调用 `servicePrepared/serviceReady` 永不 settle,
+  而 supervisor 只有一个 reconcile loop——一次挂起就是整个 session 不再响应任何保存和 Ctrl+C。
+  新增 `apps/server/tests/dev-child.test.ts` 专测这一类,同样做过负面验证(回退后报 `still waiting after 5000ms`)。
+- **dev service 自己的释放截止时间**(读代码时发现,审计未提):runner 收到 stop 后等 Effect scope 关闭,
+  若插件的 release(典型是 `vite.server.close()`)不返回,端口就一直被占;supervisor 若已被强杀则没人来收。
+  现在 runner 自己给 10 秒,超时打印一行并 `exit(0)`。
+
+### 没有做的一条
+
+审计第 6 条建议加 Product Root 级的 dev-session lease(现在只检查 backend PORT)。**暂不做**:
+上面五条堵的正是「幽灵进程」的三条已知来源(无 owner 的 child、readiness 失败后继续 accept、release 挂起),
+lease 防的是「同时开两个 pnpm dev」这类使用错误,属于第二道防线。按「复杂度必须由已发生的问题证明」的元规则,
+等这批修复上手后仍出现残留再加。
+
+### 命令与结果(实际执行)
+
+```text
+pnpm typecheck                                   exit=0
+pnpm vitest run tools/tests apps/server/tests    413 passed(supervisor 4/4,新增 dev-child 1/1)
+负面验证(临时回退后重跑)                         readiness 用例:expected ['1','3'] to equal ['1']
+                                                 dev-child 用例:still waiting after 5000ms
+```

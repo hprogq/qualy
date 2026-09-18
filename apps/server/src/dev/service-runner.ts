@@ -51,10 +51,27 @@ process.on('message', (raw: unknown) => {
     Deferred.doneUnsafe(stopped, Effect.void)
   }
 })
-/** the one way this process is asked to stop, whoever is asking */
+/**
+ * The one way this process is asked to stop, whoever is asking.
+ *
+ * Having taken nothing, it simply leaves. Having taken something, it lets the
+ * scope close so the release runs - and gives that release a deadline of its
+ * own, because the port is the thing at stake: a `close()` that never returns
+ * (a socket with a client still attached is the usual reason) would otherwise
+ * hold the development server's port for as long as this process lives, and a
+ * supervisor that has already been killed is not there to reap it. The
+ * supervisor's own kill deadline covers the case where it IS there; this
+ * covers the case where it is not.
+ */
 const requested = () => {
   Deferred.doneUnsafe(stopped, Effect.void)
   if (!launched) process.exit(0)
+  setTimeout(() => {
+    process.stderr.write(
+      `dev service runner: ${told?.spec.key ?? 'service'} did not release; leaving\n`,
+    )
+    process.exit(0)
+  }, 10_000).unref()
 }
 
 // The channel closing is this process's lease, the same as for the backend,

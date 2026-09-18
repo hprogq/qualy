@@ -20,6 +20,8 @@ const serviceEntry = path.resolve(here, 'service-runner.ts')
 export interface Child {
   /** what the log calls it: `backend#3`, `dev:@qualy/plugin-web:web#1` */
   readonly name: string
+  /** how long it is given to leave, and which half of the world it is */
+  readonly kind: 'backend' | 'service'
   readonly process: ChildProcess
   /**
    * Latched from the child's own `exit` event, because `exitCode` cannot
@@ -35,32 +37,53 @@ export interface Child {
    * waits forever.
    */
   gone: boolean
+  /**
+   * The child leaving, latched once when it is forked.
+   *
+   * One promise for the whole life of the child rather than a listener per
+   * question, because "the event already happened" is a whole CLASS of race
+   * here and a latch is what removes the class: every wait below settles for a
+   * child that left before the wait began, including one that left before it
+   * was forked far enough to answer anything.
+   */
+  readonly exit: Promise<number | null>
 }
 
 let generation = 0
 
-const start = (label: string, entry: string, argv: readonly string[], env: NodeJS.ProcessEnv) => {
+const start = (
+  label: string,
+  kind: Child['kind'],
+  entry: string,
+  argv: readonly string[],
+  env: NodeJS.ProcessEnv,
+) => {
   generation += 1
   const process = fork(entry, [...argv], { env, stdio: 'inherit' })
   // an EventEmitter that emits `error` with nobody listening throws, and a
   // channel torn down mid-write is the one thing children reliably do
   process.on('error', () => {})
-  const child: Child = { name: `${label}#${String(generation)}`, process, gone: false }
-  process.once('exit', () => {
+  let latch: (code: number | null) => void = () => {}
+  const exit = new Promise<number | null>((resolve) => {
+    latch = resolve
+  })
+  const child: Child = { name: `${label}#${String(generation)}`, kind, process, gone: false, exit }
+  process.once('exit', (code) => {
     child.gone = true
+    latch(code)
   })
   return child
 }
 
 export const forkBackend = (env: NodeJS.ProcessEnv): Child =>
-  start('backend', backendEntry, ['development'], env)
+  start('backend', 'backend', backendEntry, ['development'], env)
 
 export const forkService = (
   spec: DevServiceSpec,
   origin: string,
   env: NodeJS.ProcessEnv,
 ): Child => {
-  const child = start(`dev:${spec.id}`, serviceEntry, [], env)
+  const child = start(`dev:${spec.id}`, 'service', serviceEntry, [], env)
   send(child, { protocol: PROTOCOL, type: 'spec', spec, origin })
   return child
 }
@@ -89,11 +112,7 @@ export const send = (child: Child, message: HostMessage): void => {
   }
 }
 
-export const exited = (child: Child): Promise<number | null> =>
-  new Promise((resolve) => {
-    if (child.gone) return resolve(child.process.exitCode)
-    child.process.once('exit', (code) => resolve(code))
-  })
+export const exited = (child: Child): Promise<number | null> => child.exit
 
 /** ask it to stop, and wait; whatever is left after the deadline is killed */
 export const stop = async (child: Child, within: number): Promise<void> => {
@@ -126,9 +145,13 @@ const awaits = <Found extends ChildMessage>(
       resolve(message)
     }
     child.process.on('message', onMessage)
-    child.process.once('exit', (code) =>
-      reject(new ChildGone(`${child.name} ended (${String(code)})`)),
-    )
+    // the latch rather than a fresh listener: a child that is ALREADY gone
+    // would otherwise be waited on for an event that fired before this call,
+    // which never settles and stalls the one reconcile loop there is
+    void child.exit.then((code) => {
+      child.process.off('message', onMessage)
+      reject(new ChildGone(`${child.name} ended (${String(code)})`))
+    })
   })
 
 /** what a candidate backend reports, or a rejection if it never got there */
@@ -160,10 +183,16 @@ export const serviceReady = (child: Child): Promise<void> =>
  * kept polling would restart a process for being briefly busy, and a
  * development backend is briefly busy all the time.
  */
-export const listening = async (origin: string, child: Child, within: number): Promise<boolean> => {
+export const listening = async (
+  origin: string,
+  child: Child,
+  within: number,
+  /** asked between polls, so a stop does not have to outwait the deadline */
+  abandoned: () => boolean = () => false,
+): Promise<boolean> => {
   const end = Date.now() + within
   while (Date.now() < end) {
-    if (child.gone) return false
+    if (child.gone || abandoned()) return false
     try {
       const response = await fetch(`${origin}/health/live`, { signal: AbortSignal.timeout(1_000) })
       if (response.status === 200) return true

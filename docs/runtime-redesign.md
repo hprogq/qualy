@@ -2497,6 +2497,22 @@ Watcher V1 采用 conservative roots。
 
 - candidate退出。
 
+51. backend PREPARED 但始终没有 Listening（2026-09-18 补）：
+
+- 判定为失败：active.backend 清空、该 child 被停掉、已 staged 的 services 不得 accept；
+- 日志不得在 “did not come up” 之后再出现同一个 backend 的 “is serving”。
+
+52. 两级 Ctrl+C（2026-09-18 补）：
+
+- 第一次 = graceful，且**不排在 reconcile 队列后面**：prepare / accept / readiness 等待都要能被它打断；
+- 1 秒内重复到达的同一次按键忽略（终端向整个前台组投递，pnpm 还会再抛一次）；
+- 真正的第二次按键：强杀 supervisor 拥有的全部 children 并 exit 130。
+
+53. child ownership（2026-09-18 补）：
+
+- fork 成功即登记，exit 即注销；`active` / `candidate` 只表达角色，不兼任资源登记册；
+- teardown 以登记册为准收割，不问状态机认为谁在服役。
+
 ---
 
 # 58. 性能验证

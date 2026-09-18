@@ -9,7 +9,6 @@ import { logLine, resolveLogging } from '../logging.ts'
 import { PROTOCOL, type PluginRoot } from './protocol.ts'
 import {
   backendPrepared,
-  exited,
   forkBackend,
   forkService,
   listening,
@@ -108,6 +107,52 @@ let pending: Action | null = null
 let stopping = false
 let watcher: FSWatcher | null = null
 
+/**
+ * Every process this supervisor has forked and not yet seen leave.
+ *
+ * `active` and `candidate` say what each child is FOR, which is a question
+ * the state machine answers and changes its mind about; this says what exists,
+ * which is a fact about the machine. They were the same register once, and a
+ * child that was forked but had not been filed under a role yet - a service
+ * whose sibling failed to prepare, a candidate abandoned mid-staging - was
+ * owned by nobody and outlived the session that started it. Whatever the state
+ * machine believes, teardown empties this.
+ */
+const owned = new Set<Child>()
+
+/**
+ * A stop is not a mutation, so it does not queue behind one.
+ *
+ * Everything that CHANGES the world is serialized through one loop, which is
+ * what keeps two backends from existing at once. Being asked to stop is not
+ * one of those: it forbids the world rather than moving it, and queueing it
+ * meant Ctrl+C during a 60 second readiness poll was read a minute later -
+ * long enough for a person to press it again, decide the session was wedged
+ * and kill the terminal, which is how a development server outlives its
+ * supervisor. So the latch is set synchronously in the signal handler, every
+ * long wait is asked about it, and only the teardown itself is a queued event.
+ */
+let stopRequested = false
+let firstSignalAt = 0
+let releaseStopped: () => void = () => {}
+const stopped = new Promise<void>((resolve) => {
+  releaseStopped = resolve
+})
+
+/** thrown by a wait that a stop cut short; never reported as an error */
+class Abandoned extends Error {}
+
+/** a wait that loses to a stop request rather than outliving it */
+const racingStop = async <T>(work: Promise<T>): Promise<T> => {
+  if (stopRequested) throw new Abandoned()
+  const finished = await Promise.race([
+    work.then((value) => ({ done: true, value }) as const),
+    stopped.then(() => ({ done: false }) as const),
+  ])
+  if (!finished.done) throw new Abandoned()
+  return finished.value
+}
+
 const manifest = manifestPath()
 // The product package: where the manifest sits, and therefore where its
 // plugins are installed and where a developer's `.env` lives. In this
@@ -180,8 +225,13 @@ const drain = async () => {
   draining = false
 }
 
-const watchExit = (child: Child) => {
-  child.process.once('exit', () => post({ kind: 'exit', child }))
+/** every forked child is owned from the moment it exists until it is gone */
+const own = (child: Child) => {
+  owned.add(child)
+  void child.exit.then(() => {
+    owned.delete(child)
+    post({ kind: 'exit', child })
+  })
   return child
 }
 
@@ -235,16 +285,29 @@ const startServices = async (
   into: Map<string, Child>,
   { tolerant }: { tolerant: boolean },
 ): Promise<boolean> => {
-  const started = specs.map((spec) => ({ spec, child: watchExit(forkService(spec, origin, env)) }))
+  const started = specs.map((spec) => ({ spec, child: own(forkService(spec, origin, env)) }))
+  // Whatever happens below, every process forked above leaves with this call:
+  // they are all alive from the first line, and answering "no" halfway used to
+  // walk away from the ones that had not been asked yet.
+  const reapRest = async (from: number) => {
+    await Promise.all(started.slice(from).map(({ child }) => stop(child, 5_000)))
+  }
   let whole = true
-  for (const { spec, child } of started) {
+  for (const [index, { spec, child }] of started.entries()) {
     try {
-      await servicePrepared(child)
+      await racingStop(servicePrepared(child))
       into.set(spec.key, child)
-    } catch {
+    } catch (error) {
+      if (error instanceof Abandoned) {
+        await reapRest(index)
+        return false
+      }
       say(`${spec.key} could not prepare`, 'Warn')
       whole = false
-      if (!tolerant) return false
+      if (!tolerant) {
+        await reapRest(index + 1)
+        return false
+      }
     }
   }
   return whole || tolerant
@@ -252,8 +315,11 @@ const startServices = async (
 
 const acceptServices = async (services: Map<string, Child>) => {
   for (const [key, child] of services) {
+    if (stopRequested) return
     send(child, { protocol: PROTOCOL, type: 'accept' })
-    await serviceReady(child).catch(() => say(`${key} failed while starting`, 'Error'))
+    await racingStop(serviceReady(child)).catch((error: unknown) => {
+      if (!(error instanceof Abandoned)) say(`${key} failed while starting`, 'Error')
+    })
   }
 }
 
@@ -307,12 +373,18 @@ const resyncWatcher = async (): Promise<void> => {
 
 /** a backend and, if asked, the services its own topology declares */
 const stageWorld = async (kind: 'backend' | 'session'): Promise<void> => {
-  const backend = watchExit(forkBackend(env))
+  if (stopRequested) return
+  const backend = own(forkBackend(env))
   candidate = { backend, services: new Map(), committed: false }
   let prepared: Prepared
   try {
-    prepared = await backendPrepared(backend)
+    prepared = await racingStop(backendPrepared(backend))
   } catch (error) {
+    if (error instanceof Abandoned) {
+      await stop(backend, 5_000)
+      candidate = null
+      return
+    }
     say(
       active.backend === null
         ? `backend failed to start: ${error instanceof Error ? error.message : String(error)}`
@@ -347,9 +419,25 @@ const stageWorld = async (kind: 'backend' | 'session'): Promise<void> => {
 
   send(backend, { protocol: PROTOCOL, type: 'accept' })
   active.backend = backend
+  // adopted whatever comes of it: the topology and the plugin roots are what
+  // this source SAYS, so the watcher must follow them even when the process
+  // that reported them fails to come up - otherwise the fix for the failure
+  // on screen is a save nobody sees
   adopt(prepared)
-  if (!(await listening(origin, backend, 60_000))) {
-    say(`${backend.name} did not come up; no backend is running`, 'Error')
+  if (!(await listening(origin, backend, 60_000, () => stopRequested))) {
+    // A readiness that never arrived is a failure, and the world has to read
+    // as one. Saying "did not come up" and then filing the same child as
+    // serving - which is what this did - leaves the supervisor's own picture
+    // wrong: a candidate that never listened held the active slot, the
+    // services beside it were accepted against an api that was not there, and
+    // the next save reloaded something that had never run.
+    if (!stopRequested) say(`${backend.name} did not come up; no backend is running`, 'Error')
+    if (active.backend === backend) active.backend = null
+    await stop(backend, 20_000)
+    await Promise.all([...candidate.services.values()].map((child) => stop(child, 5_000)))
+    candidate = null
+    await resyncWatcher()
+    return
   }
 
   if (wholeSession) {
@@ -369,13 +457,19 @@ const stageWorld = async (kind: 'backend' | 'session'): Promise<void> => {
 
 /** one development service, replaced under a backend that never stops */
 const stageService = async (key: string): Promise<void> => {
+  if (stopRequested) return
   const spec = active.topology.find((one) => one.key === key)
   if (spec === undefined) return
-  const child = watchExit(forkService(spec, origin, env))
+  const child = own(forkService(spec, origin, env))
   candidate = { backend: null, services: new Map([[key, child]]), committed: false }
   try {
-    await servicePrepared(child)
-  } catch {
+    await racingStop(servicePrepared(child))
+  } catch (error) {
+    if (error instanceof Abandoned) {
+      await stop(child, 5_000)
+      candidate = null
+      return
+    }
     const held = active.services.get(key)
     say(
       held === undefined ? `${key} failed to start` : `${key} reload failed; keeping ${held.name}`,
@@ -389,9 +483,11 @@ const stageService = async (key: string): Promise<void> => {
   if (previous !== undefined) await stop(previous, 5_000)
   send(child, { protocol: PROTOCOL, type: 'accept' })
   active.services.set(key, child)
-  await serviceReady(child).catch(() => say(`${key} failed while starting`, 'Error'))
+  await racingStop(serviceReady(child)).catch((error: unknown) => {
+    if (!(error instanceof Abandoned)) say(`${key} failed while starting`, 'Error')
+  })
   candidate = null
-  say(`${child.name} is serving`)
+  if (!stopRequested) say(`${child.name} is serving`)
 }
 
 /** throw away a candidate that has taken nothing */
@@ -411,7 +507,7 @@ const discard = async () => {
 
 const handle = async (event: Event): Promise<void> => {
   if (event.kind === 'stop') return teardown()
-  if (stopping) return
+  if (stopping || stopRequested) return
 
   if (event.kind === 'exit') {
     const { child } = event
@@ -433,7 +529,7 @@ const handle = async (event: Event): Promise<void> => {
 }
 
 const reconcile = async (): Promise<void> => {
-  while (!stopping && pending !== null) {
+  while (!stopping && !stopRequested && pending !== null) {
     if (candidate !== null) {
       // A candidate past its commit point is pinned: the world it replaces is
       // already being taken down, and dropping it now would leave nothing
@@ -453,16 +549,47 @@ const reconcile = async (): Promise<void> => {
 const teardown = async () => {
   if (stopping) return
   stopping = true
-  say('stopping')
   await watcher?.close()
-  await discard()
-  await retireSession()
+  candidate = null
+  active.backend = null
+  active.services.clear()
+  // the ownership register rather than the roles: whatever the state machine
+  // thought each child was for, a child this supervisor forked does not
+  // outlive it. A backend is given the longer deadline it needs to close its
+  // pool; a development service releases a port and little else.
+  await Promise.all(
+    [...owned].map((child) => stop(child, child.kind === 'backend' ? 20_000 : 5_000)),
+  )
   process.exit(0)
 }
 
-for (const signal of ['SIGINT', 'SIGTERM'] as const) {
-  process.on(signal, () => post({ kind: 'stop' }))
+/**
+ * Ctrl+C, in the two stages a person actually presses it.
+ *
+ * The first asks, and says so. A terminal delivers the signal to the whole
+ * foreground group, and pnpm re-raises it, so the same press arrives here more
+ * than once - within a second of the first it is that press, not a second one.
+ * A real second press is somebody who has decided the wait is not worth it:
+ * everything this supervisor owns is killed outright and the exit code is the
+ * one a shell reads as interrupted. The backend does the same thing for its
+ * own children, and a supervisor that offered less than what it supervises is
+ * where "I pressed it four times and it is still running" comes from.
+ */
+const interrupt = () => {
+  const now = Date.now()
+  if (stopRequested) {
+    if (now - firstSignalAt < 1_000) return
+    for (const child of owned) child.process.kill('SIGKILL')
+    process.exit(130)
+  }
+  stopRequested = true
+  firstSignalAt = now
+  releaseStopped()
+  say('stopping; press Ctrl+C again to give up waiting')
+  post({ kind: 'stop' })
 }
+
+for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, interrupt)
 
 // ---------------------------------------------------------------------------
 // the first world
