@@ -108,9 +108,9 @@ catalog:
   '@stylexjs/unplugin': 0.19.1
   # Mantine is the commodity widget substrate behind @qualy/ui (ADR 0010);
   # hooks is core's peer dependency and must match its version exactly
-  '@mantine/core': 9.5.2
-  '@mantine/dates': 9.5.2
-  '@mantine/hooks': 9.5.2
+  '@mantine/core': 9.6.1
+  '@mantine/dates': 9.6.1
+  '@mantine/hooks': 9.6.1
   # the date components' own formatting engine; nothing else in the product
   # uses it, and no domain date logic moves onto it
   dayjs: 1.11.13
