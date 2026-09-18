@@ -11,8 +11,9 @@ import { FormulaLibrary, layer as formulaLayer } from '../src/server/index.ts'
 import { seedFormulaFixture, servicesFor } from './support/stack.ts'
 
 // A formula's life as one model: one draft that is edited, a revision left
-// behind by every save that changed what could be published, and a named
-// publication frozen for good. History only grows - restoring an earlier
+// behind by every save that changed what could be published, and publications
+// whose executable record is frozen for good while the name and notes on it
+// stay the author's to rewrite. History only grows - restoring an earlier
 // state appends a revision naming where it came from.
 
 const stack = (url: string) =>
@@ -129,7 +130,7 @@ describe.runIf(postgresAvailable)('a formula over its lifetime', () => {
     ])
   }, 120_000)
 
-  it('publishes under a name that is its own, for good', async () => {
+  it('publishes once per set of bytes, whatever the publication is called', async () => {
     const outcome = ok(
       await run(
         db.url,
@@ -165,11 +166,26 @@ describe.runIf(postgresAvailable)('a formula over its lifetime', () => {
             },
             as,
           )
-          // the same source under another name is a second publication
-          const renamed = yield* library.publish(
+          // the same source under another name is NOT a second publication:
+          // what a version executes is unchanged, and the name is a label
+          // that can be rewritten on the one that exists
+          const unchanged = yield* Effect.flip(
+            library.publish(
+              f.t,
+              created.id,
+              { expectedDraftRevision: 2, releaseName: '2026 春季正式规则（复核）' },
+              as,
+            ),
+          )
+          const renamed = yield* library.updateVersionInfo(
             f.t,
             created.id,
-            { expectedDraftRevision: 2, releaseName: '2026 春季正式规则（复核）' },
+            1,
+            {
+              expectedMetadataRevision: 1,
+              releaseName: '2026 春季正式规则（复核）',
+              releaseNotes: '补充口径说明',
+            },
             as,
           )
           yield* library.updateDraft(
@@ -186,14 +202,20 @@ describe.runIf(postgresAvailable)('a formula over its lifetime', () => {
             library.publish(
               f.t,
               created.id,
-              { expectedDraftRevision: 3, releaseName: '2026 春季正式规则' },
+              { expectedDraftRevision: 3, releaseName: '2026 春季正式规则（复核）' },
               as,
             ),
+          )
+          yield* library.publish(
+            f.t,
+            created.id,
+            { expectedDraftRevision: 3, releaseName: '2026 秋季正式规则' },
+            as,
           )
           const detail = yield* library.getFunction(f.t, created.id, as)
           const listed = yield* library.listFunctions(f.t, {}, as)
           const frozen = yield* library.getVersion(f.t, created.id, 1, as)
-          return { spring, retried, renamed, taken, detail, listed, frozen }
+          return { spring, retried, unchanged, renamed, taken, detail, listed, frozen }
         }),
       ),
     )
@@ -204,13 +226,28 @@ describe.runIf(postgresAvailable)('a formula over its lifetime', () => {
       publishedByName: 'Admin',
     })
     expect(outcome.retried.versionId).toBe(outcome.spring.versionId)
-    expect(outcome.renamed.versionNo).toBe(2)
+    expect(outcome.unchanged).toMatchObject({
+      _tag: 'ASSESSMENT_FORMULA_VERSION_UNCHANGED',
+      versionNo: 1,
+    })
+    // relabelling leaves the publication itself exactly where it was
+    expect(outcome.renamed).toMatchObject({
+      versionId: outcome.spring.versionId,
+      versionNo: 1,
+      releaseName: '2026 春季正式规则（复核）',
+      releaseNotes: '补充口径说明',
+      metadataRevision: 2,
+      publishedBy: outcome.spring.publishedBy,
+      publishedAt: outcome.spring.publishedAt,
+    })
+    expect(outcome.renamed.sourceTs).toBe(outcome.spring.sourceTs)
+    expect(outcome.renamed.metadataUpdatedAt).not.toBeNull()
     expect(outcome.taken._tag).toBe('ASSESSMENT_FORMULA_RELEASE_NAME_TAKEN')
     expect(outcome.detail.versions.map((row) => row.releaseName)).toEqual([
+      '2026 秋季正式规则',
       '2026 春季正式规则（复核）',
-      '2026 春季正式规则',
     ])
-    expect(outcome.listed.items[0]!.latestReleaseName).toBe('2026 春季正式规则（复核）')
+    expect(outcome.listed.items[0]!.latestReleaseName).toBe('2026 秋季正式规则')
     // the frozen record carries the world it was proven in
     expect(outcome.frozen.sourceTs).toBe(IDENTITY)
     expect(outcome.frozen.sourcePolicyParserVersion).not.toBe('')
@@ -323,6 +360,89 @@ describe.runIf(postgresAvailable)('a formula over its lifetime', () => {
     ])
     // the publication restored from is untouched
     expect(outcome.version.sourceTs).toBe(IDENTITY)
+  }, 180_000)
+
+  it('relabels a publication without touching what it scores', async () => {
+    const outcome = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('fh-relabel')
+          const library = yield* FormulaLibrary
+          const as = f.principal(f.admin)
+          const created = yield* library.createFunction(f.t, { name: '认定分值' }, as)
+          yield* library.updateDraft(
+            f.t,
+            created.id,
+            { expectedDraftRevision: 1, draftSourceTs: IDENTITY, draftTests: THREE },
+            as,
+          )
+          const published = yield* library.publish(
+            f.t,
+            created.id,
+            { expectedDraftRevision: 2, releaseName: '春季规侧' },
+            as,
+          )
+          const fixed = yield* library.updateVersionInfo(
+            f.t,
+            created.id,
+            1,
+            {
+              expectedMetadataRevision: 1,
+              releaseName: '2026 春季规则',
+              releaseNotes: '校级每小时 0.1 分，院级每小时 0.06 分',
+            },
+            as,
+          )
+          // a second window holding the label as it was read before
+          const stale = yield* Effect.flip(
+            library.updateVersionInfo(
+              f.t,
+              created.id,
+              1,
+              { expectedMetadataRevision: 1, releaseName: '另一个名字', releaseNotes: null },
+              as,
+            ),
+          )
+          // the same words again are not an act: no revision, no trail row
+          const again = yield* library.updateVersionInfo(
+            f.t,
+            created.id,
+            1,
+            {
+              expectedMetadataRevision: 2,
+              releaseName: '2026 春季规则',
+              releaseNotes: '校级每小时 0.1 分，院级每小时 0.06 分',
+            },
+            as,
+          )
+          const detail = yield* library.getFunction(f.t, created.id, as)
+          const trail = yield* library.getVersion(f.t, created.id, 1, as)
+          return { published, fixed, stale, again, detail, trail }
+        }),
+      ),
+    )
+    expect(outcome.fixed).toMatchObject({
+      versionNo: 1,
+      releaseName: '2026 春季规则',
+      metadataRevision: 2,
+      publishedAt: outcome.published.publishedAt,
+      publishedBy: outcome.published.publishedBy,
+    })
+    // the executable record is byte for byte what was proven
+    expect(outcome.fixed.sourceTs).toBe(outcome.published.sourceTs)
+    expect(outcome.fixed.sourceSha256).toBe(outcome.published.sourceSha256)
+    expect(outcome.fixed.runtimeSha256).toBe(outcome.published.runtimeSha256)
+    expect(outcome.fixed.tests).toEqual(outcome.published.tests)
+    expect(outcome.stale).toMatchObject({
+      _tag: 'ASSESSMENT_FORMULA_VERSION_INFO_CONFLICT',
+      metadataRevision: 2,
+    })
+    expect(outcome.again.metadataRevision).toBe(2)
+    // one publication, still: relabelling never mints a version
+    expect(outcome.detail.versions).toHaveLength(1)
+    expect(outcome.trail.releaseName).toBe('2026 春季规则')
+    expect(outcome.trail.metadataUpdatedByName).toBe('Admin')
   }, 180_000)
 
   it('pages the revisions newest first without repeats or gaps', async () => {

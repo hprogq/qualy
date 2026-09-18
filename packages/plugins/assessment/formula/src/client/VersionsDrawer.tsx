@@ -210,6 +210,7 @@ export function VersionsDrawer({
   onRestoreRelease,
   onRestoreRevision,
   onShare,
+  onEditInfo,
 }: {
   readonly open: boolean
   readonly onOpenChange: (open: boolean) => void
@@ -230,6 +231,8 @@ export function VersionsDrawer({
   readonly onRestoreRevision: (revisionNo: number) => void
   /** opens the audience of one publication for changing */
   readonly onShare: (release: ReleaseInfo) => void
+  /** opens the name and notes of one publication for rewriting */
+  readonly onEditInfo: (release: ReleaseInfo) => void
 }) {
   const api = useApi(formulaApi)
   const runApi = useRunApi()
@@ -491,7 +494,11 @@ export function VersionsDrawer({
           {format(m.releaseRestore)}
         </button>
         {openRelease === undefined ? null : (
-          <ReleaseInfoPopover release={openRelease} label={format(m.releaseDetails)} />
+          <ReleaseInfoPopover
+            release={openRelease}
+            label={format(m.releaseDetails)}
+            onEdit={() => onEditInfo(openRelease)}
+          />
         )}
       </div>
     )

@@ -77,6 +77,7 @@ import {
   outcomeWords,
 } from './report-words.ts'
 import { VersionsDrawer, type HistoryList } from './VersionsDrawer.tsx'
+import { VersionInfoDialog } from './VersionInfoDialog.tsx'
 import { VersionSharingDialog } from './VersionSharingDialog.tsx'
 import { FormulaDetailsDialog } from './FormulaDetailsDialog.tsx'
 import { PublishDialog, type PublishCheck } from './PublishDialog.tsx'
@@ -754,6 +755,14 @@ export default function FormulaEditorPage() {
     readonly name: string
   } | null>(null)
   const [sharingOpen, setSharingOpen] = useState(false)
+  // whose name and notes are open for rewriting, kept the same way
+  const [infoFor, setInfoFor] = useState<{
+    readonly versionNo: number
+    readonly releaseName: string | null
+    readonly releaseNotes: string | null
+    readonly metadataRevision: number
+  } | null>(null)
+  const [infoOpen, setInfoOpen] = useState(false)
   // an example being written out, and what it starts from when a try opened it
   const [addingExample, setAddingExample] = useState(false)
   const [exampleSeed, setExampleSeed] = useState<{
@@ -1613,6 +1622,22 @@ export default function FormulaEditorPage() {
   const releaseWords = (release: { versionNo: number; releaseName: string | null }): string =>
     release.releaseName ?? format(m.releaseOrdinal, { number: release.versionNo })
 
+  /** relabelling one publication, from wherever it is offered */
+  const editVersionInfo = (release: {
+    versionNo: number
+    releaseName: string | null
+    releaseNotes: string | null
+    metadataRevision: number
+  }) => {
+    setInfoFor({
+      versionNo: release.versionNo,
+      releaseName: release.releaseName,
+      releaseNotes: release.releaseNotes,
+      metadataRevision: release.metadataRevision,
+    })
+    setInfoOpen(true)
+  }
+
   // the versions, wherever the workbench is showing them from
   const versionsDrawer = (
     <VersionsDrawer
@@ -1642,8 +1667,30 @@ export default function FormulaEditorPage() {
         setSharingFor({ versionNo: release.versionNo, name: releaseWords(release) })
         setSharingOpen(true)
       }}
+      onEditInfo={editVersionInfo}
     />
   )
+
+  // relabelling a publication: the same dialog wherever it is reached from,
+  // kept mounted through its own closing so its words stay put as it goes
+  const versionInfoDialog =
+    infoFor === null ? null : (
+      <VersionInfoDialog
+        open={infoOpen}
+        functionId={functionId}
+        version={infoFor}
+        onClose={() => setInfoOpen(false)}
+        onSaved={() => {
+          // the drawer's list and the open version both read the new label
+          void queryClient.invalidateQueries({
+            queryKey: query.assessmentFormula.getFormulaVersion.key({
+              params: { functionId, versionNo: String(infoFor.versionNo) },
+            }),
+          })
+          void refresh()
+        }}
+      />
+    )
 
   // mounted from the first press onwards, and kept through its own closing so
   // its words stay put as it slides away
@@ -1709,6 +1756,7 @@ export default function FormulaEditorPage() {
             <>
               {versionsDrawer}
               {sharingDialog}
+              {versionInfoDialog}
             </>
           }
           {...(motion === 'forward' ? { motion: 'forward' as const } : {})}
@@ -1716,6 +1764,7 @@ export default function FormulaEditorPage() {
           onRestore={(release) =>
             restoreFrom({ kind: 'published-version', versionNo: release.versionNo }, release.name)
           }
+          onEditInfo={editVersionInfo}
           restoring={restore.isPending}
         />
         {confirmDialog}
@@ -1740,6 +1789,7 @@ export default function FormulaEditorPage() {
             <>
               {versionsDrawer}
               {sharingDialog}
+              {versionInfoDialog}
             </>
           }
           {...(motion === 'forward' ? { motion: 'forward' as const } : {})}
@@ -3118,6 +3168,7 @@ export default function FormulaEditorPage() {
       />
       {versionsDrawer}
       {sharingDialog}
+      {versionInfoDialog}
       <FormulaDetailsDialog
         open={editingDetails}
         functionId={functionId}

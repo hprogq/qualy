@@ -18255,3 +18255,45 @@ javascript 正则引擎                              58 KB(动态;无 wasm)
 已知遗留(**本次之前就存在**,已用改动前的构建复核):模板页 chunk 静态依赖 Monaco 那个 2.6 MB chunk,
 原因是插件的 typed client `src/client/api.ts` 被 rolldown 归进了 monaco chunk(`editor-session.ts` 也 import 它),
 于是每个用 API 的页面都连上了它。属于分包策略问题,与本次高亮无关,单独一笔处理。
+
+## 已发布版本的名称与说明可改;高亮进 worker;公式信息与模板示例(2026-09-18)
+
+### 做了什么
+
+- **发布版本分两层**(领域裁决,已写进 docs/assessment-formula-recognition.md):**计算事实永久不可变**
+  (源码、示例、输入输出结构、产物、全部哈希与工具链版本、`versionId` / `versionNo` / `publishedAt` / `publishedBy`);
+  **展示元数据可改**(`releaseName` / `releaseNotes`)。理由是需要不可篡改的是「这版规则当时怎么算」,
+  而不是「作者当时标题写得好不好」——为改一个错别字重新发布,会伪造出一次「规则变了」的版本历史。
+- **发布指纹重构**:指纹此前包含名称与说明,现在只覆盖可执行身份(源码、示例、工具链)。于是重复发布同一份内容是幂等的:
+  请求完全相同则返回已有版本;只换了名字则拒绝为 `ASSESSMENT_FORMULA_VERSION_UNCHANGED`(带已有版本号),
+  界面据此引导去改那个版本的名称。可变元数据不再参与不可变版本身份。
+- **改名端点**:`PATCH /assessment/formula-functions/{functionId}/versions/{versionNo}`,
+  payload 带 `expectedMetadataRevision` 做乐观并发(冲突 `ASSESSMENT_FORMULA_VERSION_INFO_CONFLICT`)。
+  事务里先锁函数行(与发布、共享同一把锁)、复核作者、校验名称在本公式内唯一,再更新;
+  **不创建版本、不推进 versionNo / publishedAt / publishedBy**,只递增 `metadata_revision` 并记
+  `metadata_updated_at` / `metadata_updated_by`;文字没变就是 no-op(不递增、不记审计)。
+  审计新增 `assessment.formula.version.info.change`(版本行只留最新文字,所以审计是「曾经叫过什么」的唯一记录)。
+- **界面**:版本详情卡(抽屉底部的「详情」,以及发布版本页标题旁的同一张卡)里加「编辑名称与说明」,
+  打开一个只有两个字段的对话框,并写明「该版本的代码、示例与计分结果保持发布时的状态」;
+  卡里在确实改过时才多一行「信息更新于 …」,列表不显示。术语按「版本名称 / 发布说明」统一,
+  发布对话框的「名称和说明不可再修改」改成「之后仍可修改」。
+- **代码高亮**:配色重做为四色两灰(语言紫、调用蓝、值青、字符串绿,标点淡、注释灰),每个颜色是一对
+  `light-dark()`,跟随根元素的 color-scheme,明暗切换不重新 tokenize。**tokenize 移进 Web Worker**:
+  TypeScript 语法首次编译几百条正则(Node 实测 125ms,浏览器更慢),在主线程上是可见卡顿;
+  现在页面只收 token。等待期显示的是可读的源码(压到 45% 不透明度),到齐后淡入,不再先黑后彩,也不留空白。
+- **公式信息**:公式名称不再在标题上就地编辑(名称与它 hover 出来的框对不齐),改成「公式信息」对话框
+  (名称 + 说明),说明因此第一次有了修改入口;列表与模板页的第二行恒渲染,无说明时是一句淡色占位,行高一致。
+- **模板详情页**:「3 条示例」变成入口,点开右侧抽屉逐条显示示例的输入(按参数标题)与预期值;无示例时不可点。
+- **下拉菜单**:菜单项的 icon 与文字改为同一行(此前被组件库的块级规则拆成上下两行)。
+
+### 命令与结果(实际执行)
+
+```text
+pnpm typecheck                                   exit=0
+pnpm vitest run tools/tests                      50 files / 317 passed
+pnpm vitest run packages/plugins/assessment packages/core
+                                                 892 passed(formula-history 改写发布幂等用例,新增「改标签不动计分事实」)
+pnpm test:browser                                60 files / 446 passed(新增「改名不发布任何东西」与模板示例抽屉)
+pnpm build                                       exit=0(shiki 全部落在一个 worker chunk,344 KB;页面 chunk 不含它)
+pnpm qualy database verify                       63 committed migration(s) build the declared schema, zero drift
+```

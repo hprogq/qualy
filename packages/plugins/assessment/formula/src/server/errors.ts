@@ -112,6 +112,35 @@ export class FormulaReleaseNameTaken extends Schema.TaggedError<FormulaReleaseNa
   { httpApiStatus: 409, identifier: 'AssessmentFormulaReleaseNameTaken' },
 ) {}
 
+/**
+ * This draft is already published, exactly as it stands.
+ *
+ * Publication is idempotent over what a version executes, so the same source,
+ * the same examples and the same toolchain answer with the version that
+ * exists rather than minting a second one that scores identically. A retried
+ * request is that answer; a deliberate press with a different name is this
+ * refusal, because renaming a publication is its own act and a new version
+ * claiming a rule changed when it did not is worse than being told no.
+ */
+export class FormulaVersionUnchanged extends Schema.TaggedError<FormulaVersionUnchanged>()(
+  'ASSESSMENT_FORMULA_VERSION_UNCHANGED',
+  { versionNo: Schema.Number, releaseName: Schema.NullOr(Schema.String) },
+  { httpApiStatus: 409, identifier: 'AssessmentFormulaVersionUnchanged' },
+) {}
+
+/**
+ * A version's name or notes moved while somebody was rewriting them.
+ *
+ * The same reason the audience has a token: two windows open on one
+ * publication must not let the later save swallow the earlier one without
+ * either author knowing.
+ */
+export class FormulaVersionInfoConflict extends Schema.TaggedError<FormulaVersionInfoConflict>()(
+  'ASSESSMENT_FORMULA_VERSION_INFO_CONFLICT',
+  { metadataRevision: Schema.Number },
+  { httpApiStatus: 409, identifier: 'AssessmentFormulaVersionInfoConflict' },
+) {}
+
 export class FormulaFunctionArchived extends Schema.TaggedError<FormulaFunctionArchived>()(
   'ASSESSMENT_FORMULA_FUNCTION_ARCHIVED',
   {},

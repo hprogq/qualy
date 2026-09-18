@@ -995,8 +995,18 @@ source_draft_revision_no integer nullable(restored-from-draft)
 - 新建公式的草稿源码为空(修订 1,`created`);从模板复制的修订 1 是 `copied-from-template` 并指向来源版本。空源码不编译、不报错,试运行与发布不可用。
 - **恢复不回退**:`POST .../draft/restores`,`{expectedDraftRevision, from: {kind:'published-version', versionNo} | {kind:'draft-revision', revisionNo}}`,
   从不可变行读取内容,追加一条新修订并记来源;与当前草稿完全相同时是 no-op。历史版本与旧修订本身永不改动。
-- **发布命名**:`releaseName`(必填,≤100)与 `releaseNotes`(可选,≤1000)随发布冻结,不可改名。同一函数内名称唯一(部分唯一索引,旧版本为 null 不参与)。
-  发布指纹包含名称与说明:同名同内容重试返回已有版本;同一份代码换新名字是第二次发布;同名但内容或说明不同拒绝为 `ASSESSMENT_FORMULA_RELEASE_NAME_TAKEN`。
+- **发布命名**:`releaseName`(必填,≤100)与 `releaseNotes`(可选,≤1000)是版本的**展示元数据,发布后仍可修改**;
+  同一函数内名称唯一(部分唯一索引,旧版本为 null 不参与)。版本的**计算事实**——源码、示例、输入输出结构、产物、各类哈希与工具链版本、
+  `versionId` / `versionNo` / `publishedAt` / `publishedBy`——永久不可变(2026-09-18 裁决)。
+  改名/改说明经 `PATCH /assessment/formula-functions/{functionId}/versions/{versionNo}`,
+  带 `expectedMetadataRevision` 乐观并发(冲突 `ASSESSMENT_FORMULA_VERSION_INFO_CONFLICT`),
+  在函数行的写锁内校验名称唯一,**不创建新版本、不推进 `versionNo`**,只递增 `metadata_revision` 并记
+  `metadata_updated_at` / `metadata_updated_by`,同事务写一条 `assessment.formula.version.info.change` 审计;
+  文字未变则视为 no-op(不递增、不记审计)。理由:需要不可篡改的是「这版规则当时怎么算」,不是「作者当时标题写得好不好」;
+  为改一个错别字而重新发布,会伪造出一次「规则变了」的版本历史。
+  **发布指纹只覆盖可执行身份**(源码、示例、工具链),不再包含名称与说明。因此同一份内容重复发布是幂等的:
+  请求完全相同(含名称与说明)时返回已有版本;若只换了名字,拒绝为 `ASSESSMENT_FORMULA_VERSION_UNCHANGED`(带已有版本号),
+  界面据此引导去改该版本的名称与说明。名称被另一个版本占用仍拒绝为 `ASSESSMENT_FORMULA_RELEASE_NAME_TAKEN`。
   `version_no` 仍是内部发布次序,界面显示名称,次序只作「第 N 次发布」的辅助文字;名称为空的旧版本显示「未命名发布」。
 - **迁移**:`release_name` / `release_notes` 可空,不伪造「v1」之类的名字;每个已有函数按当前草稿补一条 `migration` 基线修订,号码沿用它已有的 `draft_revision`,更早的源码从未保存过,不重建。
 

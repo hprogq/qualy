@@ -26,7 +26,9 @@ import {
   FormulaTestFailed,
   FormulaTypecheckFailed,
   FormulaCompileUnavailable,
+  FormulaVersionInfoConflict,
   FormulaVersionNotFound,
+  FormulaVersionUnchanged,
   FormulaVersionUnrunnable,
   FormulaReleaseNameTaken,
 } from './server/errors.ts'
@@ -71,6 +73,9 @@ const versionView = Schema.Struct({
   versionNo: Schema.Number,
   releaseName: Schema.NullOr(Schema.String),
   releaseNotes: Schema.NullOr(Schema.String),
+  /** what the name and the notes were when read; every rewrite of them
+   *  carries the one it read, so two windows cannot overwrite each other */
+  metadataRevision: Schema.Number,
   contractSha256: Schema.String,
   runtimeSha256: Schema.String,
   publishedBy: Schema.String,
@@ -132,6 +137,11 @@ const versionDetail = Schema.Struct({
   sandboxRuntimeBuildId: Schema.String,
   tests: Schema.Array(formulaTest),
   testReport: Schema.Unknown,
+  /** when the name or the notes were last rewritten, and by whom; null
+   *  while they still read as the publisher first wrote them */
+  metadataUpdatedAt: Schema.NullOr(Schema.String),
+  metadataUpdatedBy: Schema.NullOr(Schema.String),
+  metadataUpdatedByName: Schema.NullOr(Schema.String),
 })
 
 /** where a draft revision came from, as a screen needs to say it */
@@ -481,7 +491,8 @@ export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
         params: Schema.Struct({ functionId: id }),
         payload: Schema.Struct({
           expectedDraftRevision: expectedVersion,
-          /** what the publication is called, for good: it cannot be renamed */
+          /** what to call the publication; it can be rewritten afterwards,
+           *  and what it scores cannot */
           releaseName: trimmedName(100),
           releaseNotes: Schema.optional(boundedText(1000)),
         }),
@@ -492,6 +503,7 @@ export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
           FormulaFunctionArchived,
           FormulaDraftConflict,
           FormulaReleaseNameTaken,
+          FormulaVersionUnchanged,
           FormulaSourceTooLarge,
           FormulaSourceRefused,
           FormulaTypecheckFailed,
@@ -513,6 +525,39 @@ export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
         params: versionParams,
         success: Schema.Struct({ version: versionDetail }),
         error: [FormulaFunctionNotFound, FormulaVersionNotFound, AccessDenied, BadRequest],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
+    /**
+     * Rewriting what a publication is CALLED, and nothing else.
+     *
+     * The two fields this patches are a label on the record rather than part
+     * of it: the source, the examples, the contract and the artifact stay
+     * exactly as they were proven, and so do the version's number, its
+     * instant and its publisher. Nothing new is published, and the answer is
+     * the same version, relabelled.
+     */
+    HttpApiEndpoint.patch(
+      'updateFormulaVersionInfo',
+      '/assessment/formula-functions/:functionId/versions/:versionNo',
+      {
+        params: versionParams,
+        payload: Schema.Struct({
+          /** the label as this screen read it; a stale one is refused */
+          expectedMetadataRevision: expectedVersion,
+          releaseName: trimmedName(100),
+          releaseNotes: Schema.NullOr(boundedText(1000)),
+        }),
+        success: Schema.Struct({ version: versionDetail }),
+        error: [
+          BadRequest,
+          FormulaFunctionNotFound,
+          FormulaVersionNotFound,
+          FormulaReleaseNameTaken,
+          FormulaVersionInfoConflict,
+          AccessDenied,
+        ],
       },
     ).middleware(Authenticated),
   )

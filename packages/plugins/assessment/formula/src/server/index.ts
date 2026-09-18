@@ -50,6 +50,7 @@ import {
   FormulaFunctionCreated,
   FormulaFunctionDetailsChanged,
   FormulaFunctionRestored,
+  FormulaVersionInfoChanged,
 } from '../actions.ts'
 import { formulaApiGroup } from '../api.ts'
 import { FormulaLanguage } from './language.ts'
@@ -75,7 +76,9 @@ import {
   FormulaSourceTooLarge,
   FormulaTestFailed,
   FormulaTypecheckFailed,
+  FormulaVersionInfoConflict,
   FormulaVersionNotFound,
+  FormulaVersionUnchanged,
   FormulaVersionUnrunnable,
   FormulaReleaseNameTaken,
 } from './errors.ts'
@@ -204,6 +207,10 @@ interface VersionRow {
   testReport: unknown
   publishedBy: string
   publishedAt: Date
+  metadataRevision: number
+  metadataUpdatedAt: Date | null
+  metadataUpdatedBy: string | null
+  metadataUpdatedByName?: string | null
   /** only where the query asked for it: how many units it is offered to */
   sharedCount?: number
 }
@@ -331,6 +338,7 @@ const versionViewDto = (row: VersionRow) => ({
   publishedBy: row.publishedBy,
   publishedByName: row.publishedByName ?? null,
   publishedAt: isoInstant(row.publishedAt),
+  metadataRevision: Number(row.metadataRevision ?? 1),
   ...(row.sharedCount === undefined ? {} : { sharedCount: Number(row.sharedCount) }),
 })
 
@@ -354,6 +362,9 @@ const versionDetailDto = (row: VersionRow) => ({
   sandboxRuntimeBuildId: row.sandboxRuntimeBuildId,
   tests: row.tests,
   testReport: row.testReport,
+  metadataUpdatedAt: row.metadataUpdatedAt === null ? null : isoInstant(row.metadataUpdatedAt),
+  metadataUpdatedBy: row.metadataUpdatedBy ?? null,
+  metadataUpdatedByName: row.metadataUpdatedByName ?? null,
 })
 
 const revisionViewDto = (row: RevisionRow) => ({
@@ -558,6 +569,7 @@ interface FormulaLibraryShape {
     | FormulaFunctionArchived
     | FormulaDraftConflict
     | FormulaReleaseNameTaken
+    | FormulaVersionUnchanged
     | CompileRefusal
   >
   readonly listDraftRevisions: (
@@ -604,6 +616,24 @@ interface FormulaLibraryShape {
   ) => Effect.Effect<
     ReturnType<typeof versionDetailDto>,
     AccessDenied | FormulaFunctionNotFound | FormulaVersionNotFound
+  >
+  readonly updateVersionInfo: (
+    tenantId: string,
+    functionId: string,
+    versionNo: number,
+    request: {
+      readonly expectedMetadataRevision: number
+      readonly releaseName: string
+      readonly releaseNotes: string | null
+    },
+    as: Principal,
+  ) => Effect.Effect<
+    ReturnType<typeof versionDetailDto>,
+    | AccessDenied
+    | FormulaFunctionNotFound
+    | FormulaVersionNotFound
+    | FormulaReleaseNameTaken
+    | FormulaVersionInfoConflict
   >
   readonly evaluateVersion: (
     tenantId: string,
@@ -663,8 +693,13 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
           .leftJoin('User as u', (join) =>
             join.onRef('u.tenantId', '=', 'v.tenantId').onRef('u.id', '=', 'v.publishedBy'),
           )
+          // LEFT twice: whoever last rewrote the label need not be the
+          // publisher, and either row may be gone
+          .leftJoin('User as m', (join) =>
+            join.onRef('m.tenantId', '=', 'v.tenantId').onRef('m.id', '=', 'v.metadataUpdatedBy'),
+          )
           .selectAll('v')
-          .select('u.displayName as publishedByName')
+          .select(['u.displayName as publishedByName', 'm.displayName as metadataUpdatedByName'])
           .where('v.tenantId', '=', tenantId)
         return (
           'versionId' in where
@@ -1617,14 +1652,15 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     // compiler process actually produced it
     const compiled = yield* compile(row.draftSourceTs, row.draftTests)
 
-    // what publication is idempotent over: the executable identity - source,
-    // examples and the whole toolchain - and what the author called it. A
-    // double click or a retried request answers with the version that
-    // already exists; a toolchain upgrade changes the fingerprint and may
-    // legitimately mint a new version, and so does the same source published
-    // again under another name: that is a second publication somebody asked
-    // for, and answering with the first would quietly drop the name they gave.
-    // draftRevision stays what it is: the EDITING concurrency token.
+    // What publication is idempotent over: the EXECUTABLE identity alone -
+    // source, examples and the whole toolchain. What the author calls it is
+    // deliberately not in here: the name and the notes can be rewritten
+    // afterwards, so a fingerprint carrying them would describe a version
+    // that no longer exists the moment somebody fixes a typo. A double click
+    // or a retried request therefore answers with the version that already
+    // holds these bytes; a toolchain upgrade changes the fingerprint and may
+    // legitimately mint a new one. draftRevision stays what it is: the
+    // EDITING concurrency token.
     // The engine identity is what the answers themselves carried: reading
     // it anywhere else could name a process that served none of this work.
     const engine = compiled.sandboxRuntime.engineVersion
@@ -1646,7 +1682,6 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
         String(VALUE_SCHEMA_PROFILE_VERSION),
         String(REGEX_PROFILE_VERSION),
         engine,
-        sha256Hex(JSON.stringify([releaseName, releaseNotes])),
       ].join('|'),
     )
 
@@ -1690,7 +1725,20 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
                 .executeTakeFirst(),
             )
             .pipe(Effect.orDie)
-          if (existing !== undefined) return existing
+          // the same bytes, already published. A retry of the very same
+          // request is answered with the version it made; a press that means
+          // something else - a new name for code that did not change - is
+          // refused rather than minting a version claiming a rule moved
+          if (existing !== undefined) {
+            const same =
+              (existing['releaseName'] as string | null) === releaseName &&
+              (existing['releaseNotes'] as string | null) === releaseNotes
+            if (same) return existing
+            return yield* new FormulaVersionUnchanged({
+              versionNo: Number(existing['versionNo']),
+              releaseName: (existing['releaseName'] as string | null) ?? null,
+            })
+          }
           // a different publication wearing the name already: the function
           // row is held, so no second publish can take it meanwhile
           const named = yield* db
@@ -1759,6 +1807,122 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     const published = yield* versionRow(tenantId, { versionId: inserted.id as string })
     if (published === undefined) return yield* Effect.die(new Error('a published version vanished'))
     return versionDetailDto(published)
+  })
+
+  /**
+   * Rewriting what a publication is called, and why it was made.
+   *
+   * The whole of the executable record is left alone, and so is the
+   * publication itself: the number, the instant and the publisher stay as
+   * they were, because none of them is what changed. Only the label moves,
+   * under the function's own lock so that the name it takes is still free
+   * when it takes it, and with its own revision so two windows cannot
+   * silently overwrite one another.
+   */
+  const updateVersionInfo = Effect.fn('FormulaLibrary.updateVersionInfo')(function* (
+    tenantId: string,
+    functionId: string,
+    versionNo: number,
+    request: {
+      readonly expectedMetadataRevision: number
+      readonly releaseName: string
+      readonly releaseNotes: string | null
+    },
+    as: Principal,
+  ) {
+    yield* authoringRow(tenantId, functionId, as)
+    const releaseName = request.releaseName.trim()
+    const releaseNotes =
+      request.releaseNotes === null || request.releaseNotes.trim() === ''
+        ? null
+        : request.releaseNotes.trim()
+    yield* withDb(
+      transaction(
+        Effect.gen(function* () {
+          // the function row is the lock every write to this formula takes,
+          // so a second window renaming another version cannot take the name
+          // between this check and this update
+          const locked = yield* db
+            .query((k) =>
+              k
+                .selectFrom('FormulaFunction')
+                .select(['createdBy'])
+                .where('tenantId', '=', tenantId)
+                .where('id', '=', functionId)
+                .forUpdate()
+                .executeTakeFirst(),
+            )
+            .pipe(Effect.orDie)
+          if (locked === undefined) return yield* new FormulaFunctionNotFound()
+          yield* requireAuthor(as)
+          if (locked.createdBy !== as.userId) return yield* new FormulaFunctionNotFound()
+          const version = yield* db
+            .query((k) =>
+              k
+                .selectFrom('FormulaVersion')
+                .select(['id', 'metadataRevision', 'releaseName', 'releaseNotes'])
+                .where('tenantId', '=', tenantId)
+                .where('functionId', '=', functionId)
+                .where('versionNo', '=', versionNo)
+                .executeTakeFirst(),
+            )
+            .pipe(Effect.orDie)
+          if (version === undefined) return yield* new FormulaVersionNotFound()
+          const held = Number(version.metadataRevision ?? 1)
+          if (held !== request.expectedMetadataRevision)
+            return yield* new FormulaVersionInfoConflict({ metadataRevision: held })
+          const was = (version.releaseName as string | null) ?? null
+          const wasNotes = (version.releaseNotes as string | null) ?? null
+          // words that did not move are not an act: no revision, no trail row
+          if (was === releaseName && wasNotes === releaseNotes) return
+          const taken = yield* db
+            .query((k) =>
+              k
+                .selectFrom('FormulaVersion')
+                .select('id')
+                .where('tenantId', '=', tenantId)
+                .where('functionId', '=', functionId)
+                .where('releaseName', '=', releaseName)
+                .where('id', '!=', version.id as string)
+                .executeTakeFirst(),
+            )
+            .pipe(Effect.orDie)
+          if (taken !== undefined) return yield* new FormulaReleaseNameTaken()
+          yield* db
+            .query((k) =>
+              k
+                .updateTable('FormulaVersion')
+                .set({
+                  releaseName,
+                  releaseNotes,
+                  metadataRevision: held + 1,
+                  metadataUpdatedAt: sql`now()`,
+                  metadataUpdatedBy: as.userId,
+                })
+                .where('tenantId', '=', tenantId)
+                .where('id', '=', version.id as string)
+                .execute(),
+            )
+            .pipe(Effect.orDie)
+          // the version row keeps only the latest words, so the trail is the
+          // one account that a publication was ever called something else
+          yield* audit.record(FormulaVersionInfoChanged, {
+            tenantId,
+            actor: actorOf(as),
+            target: { id: functionId, label: releaseName },
+            details: {
+              versionId: version.id as string,
+              versionNo,
+              ...(was === releaseName ? {} : { name: { from: was ?? '', to: releaseName } }),
+              notesChanged: wasNotes !== releaseNotes,
+            },
+          })
+        }),
+      ),
+    )
+    const updated = yield* versionRow(tenantId, { functionId, versionNo })
+    if (updated === undefined) return yield* new FormulaVersionNotFound()
+    return versionDetailDto(updated)
   })
 
   const getVersion = Effect.fn('FormulaLibrary.getVersion')(function* (
@@ -2070,6 +2234,8 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
       withDb(publish(tenantId, functionId, request, as)),
     getVersion: (tenantId, functionId, versionNo, as) =>
       withDb(getVersion(tenantId, functionId, versionNo, as)),
+    updateVersionInfo: (tenantId, functionId, versionNo, request, as) =>
+      withDb(updateVersionInfo(tenantId, functionId, versionNo, request, as)),
     evaluateVersion: (tenantId, functionId, versionNo, cases, as) =>
       withDb(evaluateVersion(tenantId, functionId, versionNo, cases, as)),
     listDraftRevisions: (tenantId, functionId, page, as) =>
@@ -2455,6 +2621,31 @@ export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula
             principal.tenantId,
             params.functionId,
             parsed,
+            principal,
+          ),
+        }
+      }),
+    )
+    .handle(
+      'updateFormulaVersionInfo',
+      Effect.fn('assessmentFormula.updateVersionInfo.handler')(function* ({ params, payload }) {
+        const library = yield* FormulaLibrary
+        const principal = yield* CurrentUser
+        const parsed = Number(params.versionNo)
+        if (!Number.isSafeInteger(parsed) || parsed < 1)
+          return yield* new BadRequest({
+            message: 'the version number must be a positive integer',
+          })
+        return {
+          version: yield* library.updateVersionInfo(
+            principal.tenantId,
+            params.functionId,
+            parsed,
+            {
+              expectedMetadataRevision: payload.expectedMetadataRevision,
+              releaseName: payload.releaseName,
+              releaseNotes: payload.releaseNotes,
+            },
             principal,
           ),
         }

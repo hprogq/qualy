@@ -1,7 +1,7 @@
 import * as stylex from '@stylexjs/stylex'
 import { useMemo } from 'react'
 import { useInfiniteQuery } from '@tanstack/react-query'
-import { useApi, useApiQuery, useRunApi, cursorPages} from '@qualy/web-runtime'
+import { useApi, useApiQuery, useRunApi, cursorPages } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
 import { Badge } from '@qualy/ui/badge'

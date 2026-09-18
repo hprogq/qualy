@@ -121,13 +121,24 @@ export const FormulaVersion = defineEntity({
     testReport: p.json<readonly Record<string, unknown>[]>(),
     publishedBy: p.uuid(),
     publishedAt: p.datetime().defaultRaw('now()'),
-    // What its author called this publication, and why they made it. Part of
-    // the frozen record like everything above: a name somebody could change
-    // afterwards would rewrite what a round was scored under. Null only on
-    // rows published before publications were named - their history is not
-    // invented after the fact.
+    // What its author called this publication, and why they made it. These
+    // two are the only columns of this table that may ever change: they are
+    // a label on the record, not part of it. What a round was scored under
+    // is the source, the examples and the artifact above - a better title
+    // for the same rule rewrites nothing, while forcing a republication to
+    // fix a typo would mint a version that says the rule changed when it did
+    // not. Null only on rows published before publications were named.
     releaseName: p.string().length(100).nullable(),
     releaseNotes: p.text().nullable(),
+    // the concurrency token for those two, kept apart from anything about
+    // the publication itself: two windows editing the same version's title
+    // must not overwrite each other, and the draft's own revision has
+    // nothing to say about a version that was published long ago
+    metadataRevision: p.integer().default(1),
+    // who last rewrote the label, and when; null while it still reads as
+    // its author first wrote it
+    metadataUpdatedAt: p.datetime().nullable(),
+    metadataUpdatedBy: p.uuid().nullable(),
   },
   checks: [
     {

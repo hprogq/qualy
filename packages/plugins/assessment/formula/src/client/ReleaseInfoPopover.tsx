@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Popover, PopoverContent, PopoverTrigger } from '@qualy/ui/popover'
-import { InfoIcon } from 'lucide-react'
+import { InfoIcon, PencilLineIcon } from 'lucide-react'
 import { formulaMessages as m } from './i18n.ts'
 import { fullWhen } from './library-styles.ts'
 
@@ -22,6 +22,11 @@ export interface ReleaseInfo {
   readonly releaseNotes: string | null
   readonly publishedAt: string
   readonly publishedByName: string | null
+  /** the label's own revision, which a rewrite of it must carry */
+  readonly metadataRevision: number
+  /** when the name or notes were last rewritten, where the caller knows */
+  readonly metadataUpdatedAt?: string | null
+  readonly metadataUpdatedByName?: string | null
   /** how many units it is offered to, where the caller knows */
   readonly sharedCount?: number
 }
@@ -73,16 +78,39 @@ const styles = stylex.create({
   factLabel: { color: tokens.mutedForeground },
   factValue: { margin: 0, minWidth: 0, overflowWrap: 'anywhere' },
   section: { display: 'flex', flexDirection: 'column', gap: 8 },
+  // the one thing to do from here, and it changes nothing the card states
+  edit: {
+    display: 'inline-flex',
+    alignSelf: 'flex-start',
+    alignItems: 'center',
+    gap: 6,
+    height: 26,
+    marginLeft: -8,
+    paddingInline: 8,
+    borderWidth: 0,
+    borderRadius: 6,
+    backgroundColor: { default: 'transparent', ':hover': tokens.surfaceMuted },
+    fontFamily: 'inherit',
+    fontSize: 12.5,
+    color: { default: tokens.surfaceMutedForeground, ':hover': tokens.foreground },
+    cursor: 'pointer',
+  },
   sub: { margin: 0, fontSize: 12, fontWeight: 600, color: tokens.surfaceMutedForeground },
 })
 
 export function ReleaseInfoPopover({
   release,
   label,
+  onEdit,
+  testId = 'formula-release-info',
 }: {
   readonly release: ReleaseInfo
   /** words on the mark, where it stands among other actions rather than on a row */
   readonly label?: string
+  /** rewriting the name and the notes, where the reader may do that */
+  readonly onEdit?: () => void
+  /** the card can stand in two places at once; each names its own mark */
+  readonly testId?: string
 }) {
   const { format, locale } = useI18n()
   const [open, setOpen] = useState(false)
@@ -136,7 +164,7 @@ export function ReleaseInfoPopover({
       <PopoverTrigger asChild>
         <button
           type="button"
-          data-testid="formula-release-info"
+          data-testid={testId}
           aria-label={format(m.releaseInfoOf, { name })}
           onClick={() => {
             pressed.current = true
@@ -181,6 +209,21 @@ export function ReleaseInfoPopover({
                 [m.releaseOrdinalLabel, format(m.releaseOrdinal, { number: release.versionNo })],
                 [m.templatesPublishedColumn, fullWhen(release.publishedAt, locale)],
                 [m.releasePublisher, release.publishedByName ?? format(m.templatesAuthorUnknown)],
+                // said only where it happened: a publication nobody relabelled
+                // reads as its publisher wrote it, and a line saying so would
+                // be one more thing to read for no news
+                ...(release.metadataUpdatedAt === undefined || release.metadataUpdatedAt === null
+                  ? []
+                  : ([
+                      [
+                        m.releaseInfoUpdated,
+                        `${fullWhen(release.metadataUpdatedAt, locale)}${
+                          release.metadataUpdatedByName == null
+                            ? ''
+                            : ` ${release.metadataUpdatedByName}`
+                        }`,
+                      ],
+                    ] as const)),
               ] as const
             ).flatMap(([label, value]) => [
               <dt key={`${label.id}-label`} {...stylex.props(styles.factLabel)}>
@@ -191,6 +234,20 @@ export function ReleaseInfoPopover({
               </dd>,
             ])}
           </dl>
+          {onEdit === undefined ? null : (
+            <button
+              type="button"
+              data-testid="formula-release-info-edit"
+              onClick={() => {
+                close()
+                onEdit()
+              }}
+              {...stylex.props(styles.edit)}
+            >
+              <PencilLineIcon size={13} aria-hidden />
+              {format(m.versionInfoEdit)}
+            </button>
+          )}
         </div>
       </PopoverContent>
     </Popover>

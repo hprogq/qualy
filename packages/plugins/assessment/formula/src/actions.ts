@@ -81,6 +81,28 @@ export const FormulaVersionSharingChanged = AuditAction.define({
 })
 
 /**
+ * What a published version is called, or why it was made, changed.
+ *
+ * The publication itself is untouched - the same source, examples, contract
+ * and artifact, under the same number, instant and publisher - so nothing
+ * about the rule moved and no new version says otherwise. The version row
+ * keeps only the latest words, which makes this the one record that it was
+ * ever called something else.
+ */
+export const FormulaVersionInfoChanged = AuditAction.define({
+  code: 'assessment.formula.version.info.change',
+  target: 'assessment.formula',
+  version: 1,
+  name: message('assessment-formula/audit/version-info-change', 'Rename formula version'),
+  details: Schema.Struct({
+    versionId: Schema.String,
+    versionNo: Schema.Number,
+    name: Schema.optional(Schema.Struct({ from: Schema.String, to: Schema.String })),
+    notesChanged: Schema.Boolean,
+  }),
+})
+
+/**
  * A draft-only formula, deleted.
  *
  * The one action here that leaves nothing at all: the row and its revisions
@@ -126,5 +148,6 @@ export const formulaActions = [
   FormulaFunctionDeleted,
   FormulaFunctionRestored,
   FormulaVersionSharingChanged,
+  FormulaVersionInfoChanged,
   FormulaTemplateCopied,
 ] as const

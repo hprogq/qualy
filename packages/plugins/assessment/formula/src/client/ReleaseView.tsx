@@ -21,6 +21,7 @@ import { useTryRecords } from './try-records.ts'
 import { CopyIcon, DownloadIcon, FilePenLineIcon, LockIcon, MoreHorizontalIcon } from 'lucide-react'
 import { formulaApi } from './api.ts'
 import { formulaMessages as m } from './i18n.ts'
+import { ReleaseInfoPopover } from './ReleaseInfoPopover.tsx'
 import { LazyFormulaSourceViewer } from './lazy-editors.ts'
 import { inputIssueWords, inputSummaryOf, outcomeWords, type OutcomeLike } from './report-words.ts'
 import { ContractTable } from './ContractTable.tsx'
@@ -95,6 +96,7 @@ export function ReleaseView({
   motion,
   onBack,
   onRestore,
+  onEditInfo,
   restoring,
 }: {
   readonly functionId: string
@@ -114,6 +116,13 @@ export function ReleaseView({
   readonly motion?: 'forward'
   readonly onBack: () => void
   readonly onRestore: (release: { versionNo: number; name: string }) => void
+  /** opens this publication's name and notes for rewriting */
+  readonly onEditInfo: (release: {
+    versionNo: number
+    releaseName: string | null
+    releaseNotes: string | null
+    metadataRevision: number
+  }) => void
   readonly restoring: boolean
 }) {
   const api = useApi(formulaApi)
@@ -142,6 +151,21 @@ export function ReleaseView({
       ? ''
       : (version.releaseName ?? format(m.releaseOrdinal, { number: version.versionNo }))
   const inputSchema = (version?.inputSchema ?? null) as NormalizedInputSchema | null
+  // what this publication IS, for the card beside its name: the label, who
+  // published it and when, and who last rewrote the label
+  const info =
+    version === undefined
+      ? null
+      : {
+          versionNo: version.versionNo,
+          releaseName: version.releaseName,
+          releaseNotes: version.releaseNotes,
+          publishedAt: version.publishedAt,
+          publishedByName: version.publishedByName,
+          metadataRevision: version.metadataRevision,
+          metadataUpdatedAt: version.metadataUpdatedAt,
+          metadataUpdatedByName: version.metadataUpdatedByName,
+        }
 
   const download = () => {
     if (version === undefined) return
@@ -271,7 +295,9 @@ export function ReleaseView({
                   {inputSummaryOf(tests[index]?.input)}
                 </td>
                 <td {...stylex.props(w.reportCell, w.mono)}>{row.expected}</td>
-                <td {...stylex.props(w.reportCell, w.mono)}>{row.actual ?? format(m.actualNone)}</td>
+                <td {...stylex.props(w.reportCell, w.mono)}>
+                  {row.actual ?? format(m.actualNone)}
+                </td>
                 <td
                   title={notes ?? undefined}
                   {...stylex.props(w.reportCell, row.passed === true ? w.good : w.bad)}
@@ -417,6 +443,13 @@ export function ReleaseView({
           actions={
             <>
               {versionsButton}
+              {info === null ? null : (
+                <ReleaseInfoPopover
+                  release={info}
+                  testId="formula-release-info-open"
+                  onEdit={() => onEditInfo(info)}
+                />
+              )}
               <Button
                 variant="outline"
                 size="sm"
@@ -442,6 +475,11 @@ export function ReleaseView({
                 <DropdownMenuItem disabled={version === undefined} onSelect={download}>
                   {format(m.downloadCode)}
                 </DropdownMenuItem>
+                {info === null ? null : (
+                  <DropdownMenuItem onSelect={() => onEditInfo(info)}>
+                    {format(m.versionInfoEdit)}
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           }

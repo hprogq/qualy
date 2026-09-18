@@ -61,6 +61,7 @@ const release = {
   publishedBy: AUTHOR,
   publishedByName: '张老师',
   publishedAt: '2026-09-01T06:30:00.000Z',
+  metadataRevision: 1,
 }
 
 const frozen = {
@@ -103,6 +104,7 @@ interface Wire {
   publishes: unknown[]
   restores: unknown[]
   versionRuns: unknown[]
+  relabels: unknown[]
 }
 
 const open = ({
@@ -116,7 +118,13 @@ const open = ({
   publish?: (attempt: number) => Effect.Effect<unknown, unknown>
   revisions?: readonly unknown[]
 } = {}) => {
-  const wire: Wire = { previews: [], publishes: [], restores: [], versionRuns: [] }
+  const wire: Wire = {
+    previews: [],
+    publishes: [],
+    restores: [],
+    versionRuns: [],
+    relabels: [],
+  }
   let draft = draftOf(source, 3)
   const screen = renderScreen({
     client: fakeClient({
@@ -142,6 +150,12 @@ const open = ({
         getFormulaDraftRevision: () => Effect.succeed({ revision: savedRevision }),
         getFormulaVersionSharing: () => Effect.succeed({ scopes: [], token: 'token-1' }),
         listFormulaShareOptions: () => Effect.succeed({ nodes: [], truncated: false }),
+        updateFormulaVersionInfo: (request: { payload: unknown }) => {
+          wire.relabels.push(request.payload)
+          return Effect.succeed({
+            version: { ...frozen, releaseName: '2026 秋季规则', metadataRevision: 2 },
+          })
+        },
         publishFormulaVersion: (request: { payload: unknown }) => {
           wire.publishes.push(request.payload)
           return publish?.(wire.publishes.length) ?? Effect.succeed({ version: frozen })
@@ -223,7 +237,7 @@ describe('a formula’s draft and its history', () => {
       const confirm = page.getByTestId('formula-publish-confirm')
       // a publication has no name until its author gives it one
       await expect.element(confirm).toBeDisabled()
-      await page.getByRole('textbox', { name: '发布名称' }).fill('2026 秋季正式规则')
+      await page.getByRole('textbox', { name: '版本名称' }).fill('2026 秋季正式规则')
       await page.getByRole('textbox', { name: '发布说明' }).fill('按学院新规调整')
       await confirm.click()
       await vi.waitFor(() => expect(wire.publishes.length).toBe(1), { timeout: 5_000 })
@@ -235,7 +249,7 @@ describe('a formula’s draft and its history', () => {
 
       // the name is the dialog's to fix, so the dialog stays
       await expect.element(page.getByRole('alert')).toBeVisible()
-      await page.getByRole('textbox', { name: '发布名称' }).fill('2026 秋季修订')
+      await page.getByRole('textbox', { name: '版本名称' }).fill('2026 秋季修订')
       await confirm.click()
       await vi.waitFor(() => expect(wire.publishes.length).toBe(2), { timeout: 5_000 })
       expect(wire.publishes[1]).toMatchObject({ releaseName: '2026 秋季修订' })
@@ -254,11 +268,9 @@ describe('a formula’s draft and its history', () => {
     try {
       await showsText('formula-release-source', 'published_source')
       await showsText('formula-release-environment', 'authoring-1')
-      // what it is called, and its notes, are one press from its line
-      await openVersions()
-      await page.getByTestId('formula-release-info').click()
+      // what it is called, and its notes, are one press from its name
+      await page.getByTestId('formula-release-info-open').click()
       await showsText('formula-release-card', '按学院新规调整')
-      await userEvent.keyboard('{Escape}')
       await userEvent.keyboard('{Escape}')
 
       // a try runs the publication's own artifact; the compiler is never asked
@@ -281,6 +293,33 @@ describe('a formula’s draft and its history', () => {
       })
       await expect.element(page.getByTestId('formula-editor')).toBeVisible()
       expect(addressNow()).toBe(`/assessment/formulas/${FN_ID}`)
+    } finally {
+      view.unmount()
+    }
+  }, 60_000)
+
+  it('rewrites a publication’s name and notes without publishing anything', async () => {
+    const { wire, screen } = open({ route: '?view=release-1' })
+    const view = await screen
+    try {
+      await expect.element(page.getByTestId('formula-release-view')).toBeVisible()
+      // the card beside the name is where a publication explains itself, and
+      // the one thing to do from it is fix what it is called
+      await page.getByTestId('formula-release-info-open').click()
+      await page.getByTestId('formula-release-info-edit').click()
+      await expect.element(page.getByTestId('formula-version-info')).toBeVisible()
+
+      await page.getByRole('textbox', { name: '版本名称' }).fill('2026 秋季规则')
+      await page.getByTestId('formula-version-info-save').click()
+      await vi.waitFor(() => expect(wire.relabels.length).toBe(1), { timeout: 5_000 })
+      expect(wire.relabels[0]).toEqual({
+        expectedMetadataRevision: 1,
+        releaseName: '2026 秋季规则',
+        releaseNotes: '按学院新规调整',
+      })
+      // nothing was published, and the reader is still on the same version
+      expect(wire.publishes).toEqual([])
+      expect(addressNow()).toBe(`/assessment/formulas/${FN_ID}?view=release-1`)
     } finally {
       view.unmount()
     }

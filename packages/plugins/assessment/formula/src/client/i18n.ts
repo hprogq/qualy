@@ -1040,6 +1040,26 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/publish/name',
       defaultMessage: 'Release name',
     },
+    versionInfoTitle: {
+      id: 'assessment-formula/release/info-title',
+      defaultMessage: 'Edit release details',
+    },
+    versionInfoEdit: {
+      id: 'assessment-formula/release/info-edit',
+      defaultMessage: 'Edit name and notes',
+    },
+    versionInfoScope: {
+      id: 'assessment-formula/release/info-scope',
+      defaultMessage: 'The code, examples and results of this release stay as they were published',
+    },
+    versionInfoSaved: {
+      id: 'assessment-formula/release/info-saved',
+      defaultMessage: 'Release details saved',
+    },
+    releaseInfoUpdated: {
+      id: 'assessment-formula/release/info-updated',
+      defaultMessage: 'Details updated',
+    },
     releaseNamePlaceholder: {
       id: 'assessment-formula/publish/name-placeholder',
       defaultMessage: 'For example: 2026 autumn rules',
@@ -1051,7 +1071,7 @@ const i18n = definePluginMessages({
     publishLasting: {
       id: 'assessment-formula/publish/lasting',
       defaultMessage:
-        'Publishing freezes the code, examples and contract; the name and notes cannot be changed afterwards',
+        'Publishing freezes the code, examples and contract; the name and notes can still be rewritten',
     },
     publishConfirm: {
       id: 'assessment-formula/publish/confirm',
@@ -1557,6 +1577,16 @@ const i18n = definePluginMessages({
     ASSESSMENT_FORMULA_RELEASE_NAME_TAKEN: {
       id: 'assessment-formula/error/release-name-taken',
       defaultMessage: 'Another publication of this formula already has that name. Choose another.',
+    },
+    ASSESSMENT_FORMULA_VERSION_UNCHANGED: {
+      id: 'assessment-formula/error/version-unchanged',
+      defaultMessage:
+        'The code and examples are already published as release {versionNo}. Edit that release’s name and notes instead.',
+      values: (error) => ({ versionNo: error.versionNo }),
+    },
+    ASSESSMENT_FORMULA_VERSION_INFO_CONFLICT: {
+      id: 'assessment-formula/error/version-info-conflict',
+      defaultMessage: 'The release name or notes changed elsewhere. Reload and try again.',
     },
     ASSESSMENT_FORMULA_VERSION_UNRUNNABLE: {
       id: 'assessment-formula/error/version-unrunnable',
