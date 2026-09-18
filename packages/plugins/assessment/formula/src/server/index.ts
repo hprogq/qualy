@@ -66,6 +66,7 @@ import {
   FormulaBundleFailed,
   FormulaCompileUnavailable,
   FormulaContractInvalid,
+  FormulaDetailsConflict,
   FormulaDraftConflict,
   FormulaDraftRevisionNotFound,
   FormulaExecutionLimitExceeded,
@@ -172,6 +173,7 @@ interface FunctionRow {
   draftSourceTs: string
   draftTests: readonly FormulaTestInput[]
   draftRevision: number
+  detailsRevision: number
   archivedAt: Date | null
   updatedAt: Date
   latestVersionNo: number | null
@@ -296,6 +298,7 @@ const functionDto = (row: FunctionRow) => ({
   authorUserId: row.createdBy,
   status: (row.archivedAt === null ? 'active' : 'archived') as 'active' | 'archived',
   draftRevision: row.draftRevision,
+  detailsRevision: Number(row.detailsRevision ?? 1),
   latestVersionNo: row.latestVersionNo === null ? null : Number(row.latestVersionNo),
   latestReleaseName: row.latestReleaseName ?? null,
   updatedAt: isoInstant(row.updatedAt),
@@ -525,6 +528,7 @@ interface FormulaLibraryShape {
     functionId: string,
     patch: {
       expectedDraftRevision: number
+      expectedDetailsRevision?: number
       name?: string
       description?: string | null
       draftSourceTs?: string
@@ -537,6 +541,7 @@ interface FormulaLibraryShape {
     | FormulaFunctionNotFound
     | FormulaFunctionArchived
     | FormulaDraftConflict
+    | FormulaDetailsConflict
     | FormulaSourceTooLarge
   >
   readonly setStatus: (
@@ -1406,6 +1411,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     functionId: string,
     patch: {
       expectedDraftRevision: number
+      expectedDetailsRevision?: number
       name?: string
       description?: string | null
       draftSourceTs?: string
@@ -1442,6 +1448,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
                   'draftSourceTs',
                   'draftTests',
                   'draftRevision',
+                  'detailsRevision',
                   'archivedAt',
                 ])
                 .where('tenantId', '=', tenantId)
@@ -1479,6 +1486,16 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
           const content = sourceTs !== undefined || tests !== undefined
           if (!content && name === undefined && description === undefined) return false
           const revisionNo = patch.expectedDraftRevision + (content ? 1 : 0)
+          // The words have their own token. A rename moves no draft revision,
+          // so two windows that each read revision 8 - one renaming, one
+          // rewriting the description - would both be accepted against it and
+          // the later save would drop the earlier one's words without either
+          // author seeing anything.
+          const details = name !== undefined || description !== undefined
+          const detailsNow = Number(locked.detailsRevision ?? 1)
+          if (details && patch.expectedDetailsRevision !== detailsNow) {
+            return yield* new FormulaDetailsConflict({ detailsRevision: detailsNow })
+          }
           yield* db
             .query((k) =>
               k
@@ -1491,6 +1508,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
                     ? {}
                     : { draftTests: sql`${JSON.stringify(tests)}::jsonb` }),
                   draftRevision: revisionNo,
+                  ...(details ? { detailsRevision: detailsNow + 1 } : {}),
                   updatedBy: as.userId,
                   updatedAt: sql`now()`,
                 })
@@ -2378,6 +2396,9 @@ export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula
           params.functionId,
           {
             expectedDraftRevision: payload.expectedDraftRevision,
+            ...(payload.expectedDetailsRevision === undefined
+              ? {}
+              : { expectedDetailsRevision: payload.expectedDetailsRevision }),
             ...(payload.name === undefined ? {} : { name: payload.name }),
             ...(payload.description === undefined ? {} : { description: payload.description }),
             ...(payload.draftSourceTs === undefined

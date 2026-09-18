@@ -14,6 +14,7 @@ import {
   FormulaBundleFailed,
   FormulaContractInvalid,
   FormulaExecutionLimitExceeded,
+  FormulaDetailsConflict,
   FormulaDraftConflict,
   FormulaDraftRevisionNotFound,
   FormulaFunctionArchived,
@@ -54,6 +55,9 @@ const functionView = Schema.Struct({
   authorUserId: Schema.String,
   status: Schema.Literals(['active', 'archived']),
   draftRevision: Schema.Number,
+  /** what the name and the description are at; every rewrite of them carries
+   *  the one it read, so two windows cannot overwrite each other */
+  detailsRevision: Schema.Number,
   latestVersionNo: Schema.NullOr(Schema.Number),
   /** what the latest publication was called; null before any, or when it
    *  predates named publications */
@@ -382,6 +386,9 @@ export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
       params: Schema.Struct({ functionId: id }),
       payload: Schema.Struct({
         expectedDraftRevision: expectedVersion,
+        /** required alongside a name or a description: they are their own
+         *  fact, with their own token, and the draft's says nothing about them */
+        expectedDetailsRevision: Schema.optional(expectedVersion),
         name: Schema.optional(trimmedName(255)),
         description: Schema.optional(Schema.NullOr(boundedText(2000))),
         draftSourceTs: Schema.optional(sourceText),
@@ -393,6 +400,7 @@ export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
         FormulaFunctionNotFound,
         FormulaFunctionArchived,
         FormulaDraftConflict,
+        FormulaDetailsConflict,
         FormulaSourceTooLarge,
         AccessDenied,
       ],

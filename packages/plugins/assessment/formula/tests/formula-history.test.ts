@@ -91,7 +91,8 @@ describe.runIf(postgresAvailable)('a formula over its lifetime', () => {
           const renamed = yield* library.updateDraft(
             f.t,
             created.id,
-            { expectedDraftRevision: 2, name: '认定分值（校级）' },
+            // a rename carries the words' own token, not the draft's
+            { expectedDraftRevision: 2, expectedDetailsRevision: 1, name: '认定分值（校级）' },
             as,
           )
           const revisions = yield* library.listDraftRevisions(f.t, created.id, {}, as)
@@ -449,6 +450,86 @@ describe.runIf(postgresAvailable)('a formula over its lifetime', () => {
     })
     expect(outcome.trail.releaseName).toBe('2026 春季规则')
     expect(outcome.trail.metadataUpdatedByName).toBe('Admin')
+  }, 180_000)
+
+  it('refuses a rename made against words somebody else already changed', async () => {
+    const outcome = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('fh-details')
+          const library = yield* FormulaLibrary
+          const as = f.principal(f.admin)
+          const created = yield* library.createFunction(
+            f.t,
+            { name: '认定分值', description: '原说明' },
+            as,
+          )
+          // two windows, both holding what the formula said when they opened
+          const held = { draft: created.draftRevision, details: created.detailsRevision }
+          const renamed = yield* library.updateDraft(
+            f.t,
+            created.id,
+            {
+              expectedDraftRevision: held.draft,
+              expectedDetailsRevision: held.details,
+              name: '认定分值（修订）',
+            },
+            as,
+          )
+          // the second window now writes the description against the token it
+          // read, which the rename has moved
+          const stale = yield* Effect.flip(
+            library.updateDraft(
+              f.t,
+              created.id,
+              {
+                expectedDraftRevision: held.draft,
+                expectedDetailsRevision: held.details,
+                description: '新说明',
+              },
+              as,
+            ),
+          )
+          // and succeeds once it carries the one that is current
+          const after = yield* library.updateDraft(
+            f.t,
+            created.id,
+            {
+              expectedDraftRevision: held.draft,
+              expectedDetailsRevision: renamed.detailsRevision,
+              description: '新说明',
+            },
+            as,
+          )
+          // saving the SOURCE is untouched by any of it: it has its own token
+          const saved = yield* library.updateDraft(
+            f.t,
+            created.id,
+            { expectedDraftRevision: held.draft, draftSourceTs: IDENTITY },
+            as,
+          )
+          return { created, renamed, stale, after, saved }
+        }),
+      ),
+    )
+    expect(outcome.created.detailsRevision).toBe(1)
+    expect(outcome.renamed).toMatchObject({ name: '认定分值（修订）', detailsRevision: 2 })
+    // the rename did not move the draft: nothing that could be published changed
+    expect(outcome.renamed.draftRevision).toBe(outcome.created.draftRevision)
+    expect(outcome.stale).toMatchObject({
+      _tag: 'ASSESSMENT_FORMULA_DETAILS_CONFLICT',
+      detailsRevision: 2,
+    })
+    // the words both windows wrote are both there, because neither was dropped
+    expect(outcome.after).toMatchObject({
+      name: '认定分值（修订）',
+      description: '新说明',
+      detailsRevision: 3,
+    })
+    // and the source save moved the draft revision and nothing else
+    expect(outcome.saved.draftRevision).toBe(outcome.created.draftRevision + 1)
+    expect(outcome.saved.detailsRevision).toBe(3)
   }, 180_000)
 
   it('pages the revisions newest first without repeats or gaps', async () => {

@@ -3173,6 +3173,7 @@ export default function FormulaEditorPage() {
         open={editingDetails}
         functionId={functionId}
         draftRevision={baseRevision ?? fn.draftRevision}
+        detailsRevision={fn.detailsRevision}
         name={fn.name}
         description={fn.description}
         onClose={() => setEditingDetails(false)}

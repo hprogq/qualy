@@ -1588,6 +1588,10 @@ const i18n = definePluginMessages({
         'The code and examples are already published as release {versionNo}. Edit that release’s name and notes instead.',
       values: (error) => ({ versionNo: error.versionNo }),
     },
+    ASSESSMENT_FORMULA_DETAILS_CONFLICT: {
+      id: 'assessment-formula/error/details-conflict',
+      defaultMessage: 'The name or description changed elsewhere. Reload and try again.',
+    },
     ASSESSMENT_FORMULA_VERSION_INFO_CONFLICT: {
       id: 'assessment-formula/error/version-info-conflict',
       defaultMessage: 'The release name or notes changed elsewhere. Reload and try again.',

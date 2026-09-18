@@ -141,6 +141,20 @@ export class FormulaVersionInfoConflict extends Schema.TaggedError<FormulaVersio
   { httpApiStatus: 409, identifier: 'AssessmentFormulaVersionInfoConflict' },
 ) {}
 
+/**
+ * A formula's name or description moved while somebody was editing them.
+ *
+ * Its own refusal rather than a draft conflict, because they are its own
+ * fact: renaming a formula publishes nothing and leaves the source and the
+ * examples exactly where they were, so a draft revision has nothing to say
+ * about whether a rename is stale.
+ */
+export class FormulaDetailsConflict extends Schema.TaggedError<FormulaDetailsConflict>()(
+  'ASSESSMENT_FORMULA_DETAILS_CONFLICT',
+  { detailsRevision: Schema.Number },
+  { httpApiStatus: 409, identifier: 'AssessmentFormulaDetailsConflict' },
+) {}
+
 export class FormulaFunctionArchived extends Schema.TaggedError<FormulaFunctionArchived>()(
   'ASSESSMENT_FORMULA_FUNCTION_ARCHIVED',
   {},

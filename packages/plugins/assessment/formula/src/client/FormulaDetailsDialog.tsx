@@ -29,6 +29,7 @@ export function FormulaDetailsDialog({
   open,
   functionId,
   draftRevision,
+  detailsRevision,
   name,
   description,
   onClose,
@@ -38,6 +39,15 @@ export function FormulaDetailsDialog({
   readonly functionId: string
   /** the revision the page holds; the same guard every write to this formula takes */
   readonly draftRevision: number
+  /**
+   * What the name and the description were at when this screen read them.
+   *
+   * Their own token, not the draft's: renaming a formula moves no draft
+   * revision - nothing that could be published changed - so two windows that
+   * each read the same draft revision would both be accepted against it and
+   * the later save would drop the earlier one's words.
+   */
+  readonly detailsRevision: number
   readonly name: string
   readonly description: string | null
   readonly onClose: () => void
@@ -65,6 +75,7 @@ export function FormulaDetailsDialog({
           params: { functionId },
           payload: {
             expectedDraftRevision: draftRevision,
+            expectedDetailsRevision: detailsRevision,
             name: written.trim(),
             description: about.trim() === '' ? null : about.trim(),
           },

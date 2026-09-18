@@ -30,6 +30,14 @@ export const FormulaFunction = defineEntity({
     draftSourceTs: p.text(),
     draftTests: p.json<readonly Record<string, unknown>[]>(),
     draftRevision: p.integer().default(1),
+    // What the NAME and the description are at, kept apart from the draft's
+    // own revision. A rename is deliberately not a draft revision - nothing
+    // that could be published moved - but it still needs a token of its own,
+    // or two windows editing the description and the name would each save
+    // against the draft revision they read, both be accepted, and the later
+    // one silently drop the other's words. The same shape a published
+    // version's label already carries.
+    detailsRevision: p.integer().default(1),
     // The author, and deliberately no foreign key: authorship is a fact
     // about who wrote this, not a live reference. It never moves - there is
     // no transfer and no administrative takeover - so when an author's

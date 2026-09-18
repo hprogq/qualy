@@ -403,6 +403,7 @@ export default {
   'assessment-formula/error/draft-revision-not-found': '找不到该草稿记录。',
   'assessment-formula/error/release-name-taken': '该公式已有同名发布，请换一个名称。',
   'assessment-formula/error/version-unchanged': '当前代码与示例已经发布为第 {versionNo} 次发布，如需改名请编辑该版本的名称与说明。',
+  'assessment-formula/error/details-conflict': '公式名称或说明已在别处被修改，请刷新后重试。',
   'assessment-formula/error/version-info-conflict': '版本名称或说明已在别处被修改，请刷新后重试。',
   'assessment-formula/error/version-unrunnable': '该版本无法在当前运行环境中执行。',
   'assessment-formula/error/function-published': '该公式已有发布版本，只能归档，不能删除。',
