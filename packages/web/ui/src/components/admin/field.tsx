@@ -36,14 +36,21 @@ const styles = stylex.create({
   },
   // a label that carries a note takes the whole line, so the note can sit at
   // the far end of it rather than trailing the words
-  labelRow: { width: '100%' },
+  labelRow: { width: '100%', flexWrap: 'wrap' },
   labelSpring: { minWidth: 6, flexGrow: 1 },
+  // A note says what a field takes, and some fields take a lot - a list of
+  // eight choices, a length and a pattern. Held rigid it drove the row past
+  // the pane, put a scrollbar under the form and squeezed the label itself
+  // into a column of single characters. So it gives way: it shrinks, breaks
+  // where it must, and drops to its own line before any of that happens.
   labelNote: {
-    flexShrink: 0,
+    minWidth: 0,
+    flexShrink: 1,
     fontSize: '0.6875rem',
     fontWeight: 400,
     fontVariantNumeric: 'tabular-nums',
     color: tokens.mutedForeground,
+    overflowWrap: 'anywhere',
   },
   group: {
     display: 'flex',

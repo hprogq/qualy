@@ -48,6 +48,7 @@
     "./empty-row": "./src/components/empty-row.tsx",
     "./toggle-group": "./src/components/toggle-group.tsx",
     "./steps": "./src/components/steps.tsx",
+    "./date-picker": "./src/components/date-picker.tsx",
     "./date-range-picker": "./src/components/date-range-picker.tsx",
     "./sheet": "./src/components/sheet.tsx",
     "./scroll-area": "./src/components/scroll-area.tsx",

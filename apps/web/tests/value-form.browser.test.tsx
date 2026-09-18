@@ -16,6 +16,9 @@ import { InputValueForm, ValueFieldsForm } from '@qualy/web-value-form/InputValu
 import { normalizeAtomicSchema, normalizeInputSchema } from '@qualy/value-schema'
 import '../src/app.css'
 
+// the four words every generated control needs; the form itself holds none
+const WORDS = { unanswered: '未填写', clear: '清除', month: '月份', year: '年份' }
+
 // The schema-driven form in two layers: the draft/materialize model (a
 // person mid-edit holds shapes no schema admits; only materialization
 // produces wire values, judged by the same validator the server runs) and
@@ -135,6 +138,7 @@ describe('the generated form', () => {
         drafts={{}}
         onDraft={() => {}}
         locale="zh-CN"
+        words={WORDS}
         scope="probe"
       />,
     )
@@ -155,8 +159,16 @@ describe('the generated form', () => {
     expect(form.textContent).toContain('奖项序位')
     // no words for base/awarded: the key is the fallback
     expect(form.textContent).toContain('base')
-    const select = form.querySelector('select')!
-    expect([...select.options].map((option) => option.textContent)).toContain('国家级')
+    // a choice is the product's own select, so the words live behind the
+    // press that opens it rather than in the markup
+    const { userEvent } = await import('vitest/browser')
+    await userEvent.click(form.querySelector('[data-parameter="level"] button')!)
+    await vi.waitFor(() => {
+      const offered = [...document.querySelectorAll('[role="option"]')].map(
+        (one) => one.textContent,
+      )
+      if (!offered.includes('国家级')) throw new Error('the choices are not offered yet')
+    })
   })
 
   it('surfaces per-field problems where the field is', async () => {
@@ -167,6 +179,7 @@ describe('the generated form', () => {
         onDraft={() => {}}
         locale="zh-CN"
         problems={new Map([['ordinal', '请输入整数']])}
+        words={WORDS}
         scope="probe2"
       />,
     )
@@ -229,6 +242,7 @@ describe('the generated form', () => {
         drafts={drafts}
         onDraft={() => {}}
         locale="zh-CN"
+        words={WORDS}
         scope="opaque"
       />,
     )

@@ -34,6 +34,8 @@ export default {
   'common/error/client-unsupported': '页面需要刷新后才能继续使用。',
   'common/error/network': '暂时无法连接 Qualy，请检查网络后重试。',
   'common/error/unexpected': '操作失败，请重试。',
+  'common/state/unanswered': '未填写',
+  'common/action/clear': '清除',
   'common/clock/hour': '小时',
   'common/clock/minute': '分钟',
   'common/clock/second': '秒',

@@ -152,6 +152,23 @@ export const materializeFields = (
   return issues.size > 0 ? { value: null, issues } : { value, issues }
 }
 
+/**
+ * What stops one field, judged on its own.
+ *
+ * The same three judgments `materializeFields` makes - answered, spelled in
+ * the kind's syntax, inside the schema's bounds - against a single draft, so
+ * a form can say what is wrong with a field while it is being typed instead
+ * of waiting for somebody to press run. Returns a reason code; the words for
+ * it belong to whoever owns the screen.
+ */
+export const checkField = (schema: AtomicSchema, draft: FieldDraft | undefined): string | undefined => {
+  const outcome = materializeField(schema, draft)
+  if (outcome.kind === 'empty') return 'required'
+  if (outcome.kind === 'invalid') return outcome.reason
+  const wrong = validate(normalizeAtomicSchema(schema), outcome.value)
+  return wrong.length > 0 ? wrong[0]!.reason : undefined
+}
+
 /** the input-contract face of materializeFields, for callers with a schema */
 export const materializeInput = (
   schema: NormalizedInputSchema,

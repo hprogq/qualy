@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { useDropzone, type Accept, type FileRejection as DropRejection } from 'react-dropzone'
-import { clsx } from 'clsx'
 import * as stylex from '@stylexjs/stylex'
+import { seatOf } from '../lib/xstyle.ts'
 import { tokens } from '../theme/tokens.stylex.ts'
 
 // Somewhere to drop files, and a row for each one that landed.
@@ -145,6 +145,7 @@ export function Dropzone({
   maxSize,
   multiple = true,
   disabled = false,
+  xstyle,
   className,
   children,
 }: {
@@ -157,6 +158,9 @@ export function Dropzone({
   maxSize?: number | undefined
   multiple?: boolean
   disabled?: boolean
+  /** the caller's own StyleX, which wins over the area's own */
+  xstyle?: stylex.StyleXStyles
+  /** legacy escape hatch for callers still speaking utilities */
   className?: string
   /** what the area says while it waits; the drag state is handed back to it */
   children: ReactNode | ((state: { dragging: boolean }) => ReactNode)
@@ -178,16 +182,17 @@ export function Dropzone({
 
   return (
     <div
-      {...getRootProps({
-        className: clsx(
+      {...getRootProps(
+        seatOf(
           stylex.props(
             styles.drop,
             isDragActive && styles.dropOver,
             disabled === true && styles.dropOff,
-          ).className,
+            xstyle,
+          ),
           className,
         ),
-      })}
+      )}
     >
       <input {...getInputProps()} />
       {typeof children === 'function' ? children({ dragging: isDragActive }) : children}
@@ -201,6 +206,7 @@ export function FileTile({
   name,
   meta,
   actions,
+  xstyle,
   className,
 }: {
   /** a thumbnail or an icon; sized by the caller into the square left of the name */
@@ -208,10 +214,13 @@ export function FileTile({
   name: ReactNode
   meta?: ReactNode
   actions?: ReactNode
+  /** the caller's own StyleX, which wins over the row's own */
+  xstyle?: stylex.StyleXStyles
+  /** legacy escape hatch for callers still speaking utilities */
   className?: string
 }) {
   return (
-    <div className={clsx(stylex.props(styles.tile).className, className)}>
+    <div {...seatOf(stylex.props(styles.tile, xstyle), className)}>
       {media !== undefined && <span {...stylex.props(styles.tileMedia)}>{media}</span>}
       <span {...stylex.props(styles.tileWords)}>
         <span {...stylex.props(styles.truncate)}>{name}</span>

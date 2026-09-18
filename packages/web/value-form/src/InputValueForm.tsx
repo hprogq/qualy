@@ -6,6 +6,7 @@
  * words for problems - this module renders structure, not copy.
  */
 
+import { useEffect, useRef, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import {
   choiceLabel,
@@ -17,11 +18,12 @@ import {
   type ChoiceSchema,
   type NormalizedInputSchema,
 } from '@qualy/value-schema'
+import { DatePicker } from '@qualy/ui/date-picker'
 import { Input } from '@qualy/ui/input'
-import { NativeSelect } from '@qualy/ui/native-select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { Checkbox } from '@qualy/ui/checkbox'
 import { Field } from '@qualy/ui/admin'
-import { fieldsOfInput, type FieldDraft, type ValueFieldSpec } from './model.ts'
+import { checkField, fieldsOfInput, type FieldDraft, type ValueFieldSpec } from './model.ts'
 
 const styles = stylex.create({
   grid: { display: 'flex', flexDirection: 'column', gap: '0.625rem' },
@@ -43,7 +45,42 @@ const styles = stylex.create({
     color: 'var(--q-surface-muted-foreground)',
   },
   problem: { fontSize: '0.75rem', color: 'var(--q-danger, #b91c1c)', margin: 0 },
+  control: { width: '100%' },
 })
+
+/**
+ * The handful of words the controls need.
+ *
+ * This package renders structure, not copy, and a picker still has to say
+ * something while it is unanswered and name the press that empties it. So
+ * the caller brings the words, the same way it brings the drafts.
+ */
+export interface ValueFieldWords {
+  /** what a choice or a date says while nothing is chosen */
+  readonly unanswered: string
+  /** the press that puts a field back to unanswered */
+  readonly clear: string
+  /** the calendar's caption pickers, read out but never shown */
+  readonly month: string
+  readonly year: string
+}
+
+/**
+ * Turning a field's reason code into the words under its box.
+ *
+ * Given, the form checks each field as it is typed and says what is wrong
+ * without waiting for a run. The check is the package's; the words are the
+ * screen's, because the same code reads differently under a parameter and
+ * under a participant's claim.
+ */
+export type ExplainFieldProblem = (
+  schema: AtomicSchema,
+  id: string,
+  reason: string,
+) => string | undefined
+
+/** long enough that a half-typed number is not called wrong mid-keystroke */
+const SETTLE_MS = 400
 
 export interface ValueFieldsFormProps {
   /** opaque field ids with their schemas, in display order */
@@ -56,6 +93,10 @@ export interface ValueFieldsFormProps {
   readonly problems?: ReadonlyMap<string, string>
   /** distinguishes multiple forms on one screen for stable test hooks */
   readonly scope: string
+  /** see {@link ValueFieldWords} */
+  readonly words: ValueFieldWords
+  /** see {@link ExplainFieldProblem} */
+  readonly explain?: ExplainFieldProblem
   /** see {@link FieldAuthoring} */
   readonly authoring?: FieldAuthoring
 }
@@ -83,6 +124,10 @@ export interface InputValueFormProps {
   readonly problems?: ReadonlyMap<string, string>
   /** distinguishes multiple forms on one screen for stable test hooks */
   readonly scope: string
+  /** see {@link ValueFieldWords} */
+  readonly words: ValueFieldWords
+  /** see {@link ExplainFieldProblem} */
+  readonly explain?: ExplainFieldProblem
   /** see {@link FieldAuthoring} */
   readonly authoring?: FieldAuthoring
 }
@@ -95,6 +140,7 @@ const AtomicControl = ({
   locale,
   disabled,
   id,
+  words,
 }: {
   schema: AtomicSchema
   name: string
@@ -103,11 +149,15 @@ const AtomicControl = ({
   locale: string
   disabled: boolean
   id: string
+  words: ValueFieldWords
 }) => {
   const kind = kindOf(schema)
   if (kind === 'boolean')
-    // three states on purpose: unanswered renders as the platform's mixed
-    // mark, and only a person's click turns it into an explicit yes or no
+    // Three states on purpose. Unanswered wears the platform's mixed mark,
+    // and only a person's click turns it into an explicit yes or no - so a
+    // box nobody has reached is not quietly reported as "no", and the
+    // check that says a field is still unanswered has something to point
+    // at. An empty box would have said "no" for everybody who never looked.
     return (
       <Checkbox
         id={id}
@@ -119,28 +169,44 @@ const AtomicControl = ({
   if (kind === 'choice') {
     const choice = schema as ChoiceSchema
     return (
-      <NativeSelect
-        id={id}
-        value={typeof draft === 'string' ? draft : ''}
+      <Select
+        value={typeof draft === 'string' && draft !== '' ? draft : undefined}
         disabled={disabled}
-        onChange={(event) => onDraft(event.target.value)}
+        onValueChange={(value) => onDraft(value)}
       >
-        <option value="" />
-        {choice.enum.map((value) => (
-          <option key={value} value={value}>
-            {choiceLabel(choice, value, locale)}
-          </option>
-        ))}
-      </NativeSelect>
+        <SelectTrigger id={id} xstyle={styles.control}>
+          <SelectValue placeholder={words.unanswered} />
+        </SelectTrigger>
+        <SelectContent>
+          {choice.enum.map((value) => (
+            <SelectItem key={value} value={value}>
+              {choiceLabel(choice, value, locale)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     )
   }
+  if (kind === 'date')
+    return (
+      <DatePicker
+        id={id}
+        value={typeof draft === 'string' && draft !== '' ? draft : null}
+        disabled={disabled}
+        placeholder={words.unanswered}
+        clearLabel={words.clear}
+        localeTag={locale}
+        monthLabel={words.month}
+        yearLabel={words.year}
+        onChange={(next) => onDraft(next ?? '')}
+      />
+    )
   return (
     <Input
       id={id}
       value={typeof draft === 'string' ? draft : draft === undefined ? '' : String(draft)}
       disabled={disabled}
       inputMode={kind === 'integer' ? 'numeric' : kind === 'decimal' ? 'decimal' : undefined}
-      type={kind === 'date' ? 'date' : 'text'}
       onChange={(event) => onDraft(event.target.value)}
     />
   )
@@ -157,6 +223,10 @@ export interface AtomicValueFieldProps {
   readonly problem?: string
   /** overrides the annotation/key label (e.g. an output's own caption) */
   readonly label?: string
+  /** see {@link ValueFieldWords} */
+  readonly words: ValueFieldWords
+  /** see {@link ExplainFieldProblem} */
+  readonly explain?: ExplainFieldProblem
   /** see {@link FieldAuthoring}; ignored when a label is given */
   readonly authoring?: FieldAuthoring
 }
@@ -174,9 +244,17 @@ export function AtomicValueField({
   disabled = false,
   problem,
   label,
+  words,
+  explain,
   authoring,
 }: AtomicValueFieldProps) {
   const description = displayDescription(schema, locale)
+  const live = useLiveProblem(schema, name, draft, explain)
+  // Once somebody has typed here, the live check owns the line: a problem
+  // from the last run is about what the field held then, and leaving it
+  // under a box that has since been corrected says the correction did not
+  // take.
+  const said = live.touched ? live.problem : problem
   const authored = label === undefined ? authoring : undefined
   const title = declaredTitle(schema, locale)
   const note = authoring?.noteOf?.(schema, name)
@@ -208,7 +286,7 @@ export function AtomicValueField({
           })}
     >
       {(id) => (
-        <div data-parameter={name} data-invalid={problem === undefined ? undefined : true}>
+        <div data-parameter={name} data-invalid={said === undefined ? undefined : true}>
           <AtomicControl
             schema={schema}
             name={name}
@@ -217,19 +295,60 @@ export function AtomicValueField({
             locale={locale}
             disabled={disabled}
             id={id}
+            words={words}
           />
           {description === undefined ? null : (
             <p {...stylex.props(styles.description)}>{description}</p>
           )}
-          {problem === undefined ? null : (
+          {said === undefined ? null : (
             <p {...stylex.props(styles.problem)} role="alert">
-              {problem}
+              {said}
             </p>
           )}
         </div>
       )}
     </Field>
   )
+}
+
+/**
+ * A field's own verdict on what is in it, a beat after the typing stops.
+ *
+ * Debounced, because judging a number while it is half typed calls `-` and
+ * `1.` wrong on the way to `-1.5`. Silent until the field has been touched:
+ * an untouched form is not a form full of mistakes, it is a form.
+ */
+function useLiveProblem(
+  schema: AtomicSchema,
+  name: string,
+  draft: FieldDraft | undefined,
+  explain: ExplainFieldProblem | undefined,
+): { touched: boolean; problem: string | undefined } {
+  const [problem, setProblem] = useState<string | undefined>(undefined)
+  const [touched, setTouched] = useState(false)
+  const first = useRef(true)
+  // Whether this field has ever held an answer. Emptiness is only worth
+  // saying once it is a deletion: a field nobody has reached yet is not a
+  // mistake, and a form that opens covered in "required" has told the
+  // reader nothing except that it is a form.
+  const held = useRef(false)
+  if (draft !== undefined && draft !== '') held.current = true
+  useEffect(() => {
+    if (explain === undefined) return
+    // the draft this field opened with is not something somebody typed
+    if (first.current) {
+      first.current = false
+      return
+    }
+    setTouched(true)
+    const timer = setTimeout(() => {
+      const reason = checkField(schema, draft)
+      const said = reason === 'required' && !held.current ? undefined : reason
+      setProblem(said === undefined ? undefined : explain(schema, name, said))
+    }, SETTLE_MS)
+    return () => clearTimeout(timer)
+  }, [schema, name, draft, explain])
+  return { touched, problem }
 }
 
 /**
@@ -247,6 +366,8 @@ export function ValueFieldsForm({
   disabled = false,
   problems,
   scope,
+  words,
+  explain,
   authoring,
 }: ValueFieldsFormProps) {
   return (
@@ -262,6 +383,8 @@ export function ValueFieldsForm({
             onDraft={(draft) => onDraft(field.id, draft)}
             locale={locale}
             disabled={disabled}
+            words={words}
+            {...(explain === undefined ? {} : { explain })}
             {...(problem === undefined ? {} : { problem })}
             {...(authoring === undefined ? {} : { authoring })}
           />

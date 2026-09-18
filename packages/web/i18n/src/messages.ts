@@ -70,6 +70,10 @@ export const commonMessages = {
     defaultMessage: 'Reload the page to continue.',
   },
   reloadPage: { id: 'common/action/reload-page', defaultMessage: 'Reload the page' },
+  // what a picker says while nothing has been chosen, and the press that
+  // puts it back to that
+  unanswered: { id: 'common/state/unanswered', defaultMessage: 'Not set' },
+  clear: { id: 'common/action/clear', defaultMessage: 'Clear' },
   // the calendar's caption pickers, named for whoever cannot see them
   clockHour: { id: 'common/clock/hour', defaultMessage: 'Hour' },
   clockMinute: { id: 'common/clock/minute', defaultMessage: 'Minute' },
