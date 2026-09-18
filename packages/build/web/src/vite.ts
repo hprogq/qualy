@@ -4,6 +4,7 @@ import type { Plugin } from 'vite'
 import { BOOT_COPY_ID, BOOT_PLACEHOLDER, bootFrame } from '@qualy/brand/boot'
 import { repoRoot } from './manifest.ts'
 import { BROWSER_SURFACE_MAP } from './release-vite.ts'
+import { workerDependencyScan } from './dependency-scan.ts'
 import { buildPluginModuleSource, buildPluginScanSource, buildSurfaceMapSource } from './collect.ts'
 
 export {
@@ -65,7 +66,15 @@ export const qualyPlugins = (): Plugin => {
       // the scanner does not follow the aggregate's dynamic imports, so a
       // static-import twin walks the same tree for it (see collect.ts)
       writeIfChanged(scanFile, await buildPluginScanSource({ fromDir }))
-      return { optimizeDeps: { entries: [cacheFile, scanFile] } }
+      return {
+        optimizeDeps: {
+          entries: [cacheFile, scanFile],
+          // and the half of that walk an import cannot express: a worker is
+          // started, not imported, so the scanner stops at the expression and
+          // discovers whatever the worker imports mid-run instead
+          rolldownOptions: { plugins: [workerDependencyScan()] },
+        },
+      }
     },
     resolveId(id) {
       return id === virtualId ? cacheFile : undefined
