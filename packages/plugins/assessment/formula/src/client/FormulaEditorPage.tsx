@@ -1548,7 +1548,15 @@ export default function FormulaEditorPage() {
   // so it can be taken away. Once a version exists it is what questions are
   // scored by, and archiving is what stops it being used from here on.
   const remove = useMutation({
-    mutationFn: () => run(api.assessmentFormula.deleteFormulaFunction({ params: { functionId } })),
+    mutationFn: () =>
+      run(
+        api.assessmentFormula.deleteFormulaFunction({
+          params: { functionId },
+          // the revision this screen is looking at: deleting takes the draft
+          // and its whole history, and must not take a save this tab never saw
+          query: { expectedDraftRevision: String(baseRevision ?? fn?.draftRevision ?? 1) },
+        }),
+      ),
     onSuccess: async () => {
       toast.success(format(m.deleted))
       await refresh()

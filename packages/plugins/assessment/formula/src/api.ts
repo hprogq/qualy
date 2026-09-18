@@ -471,10 +471,21 @@ export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
   .add(
     // a formula nobody has published is the author's own draft and nothing
     // else, so it can be taken away; one with a publication is archived
+    // deleting a formula nobody has published. The revision it was looked at
+    // is a precondition like every other write's: this is the one act that
+    // takes the draft and its whole history away, so it must not be able to
+    // do that to work the caller never saw
     HttpApiEndpoint.delete('deleteFormulaFunction', '/assessment/formula-functions/:functionId', {
       params: Schema.Struct({ functionId: id }),
+      query: Schema.Struct({ expectedDraftRevision: Schema.String }),
       success: Schema.Struct({ deleted: Schema.Boolean }),
-      error: [FormulaFunctionNotFound, FormulaFunctionPublished, AccessDenied],
+      error: [
+        BadRequest,
+        FormulaFunctionNotFound,
+        FormulaFunctionPublished,
+        FormulaDraftConflict,
+        AccessDenied,
+      ],
     }).middleware(Authenticated),
   )
   .add(

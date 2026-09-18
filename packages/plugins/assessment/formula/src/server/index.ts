@@ -553,10 +553,11 @@ interface FormulaLibraryShape {
   readonly deleteFunction: (
     tenantId: string,
     functionId: string,
+    expectedDraftRevision: number,
     as: Principal,
   ) => Effect.Effect<
     { readonly deleted: boolean },
-    AccessDenied | FormulaFunctionNotFound | FormulaFunctionPublished
+    AccessDenied | FormulaFunctionNotFound | FormulaFunctionPublished | FormulaDraftConflict
   >
   readonly publish: (
     tenantId: string,
@@ -1604,15 +1605,55 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
    * while the draft's own revisions cascade with it. The check here is not
    * the safety, it is the sentence the author gets instead of a constraint.
    */
+  /**
+   * Deleting a formula nobody has published, under the same discipline a
+   * publication takes.
+   *
+   * It is the one destructive thing an author can do here - the row goes and
+   * its whole draft history goes with it - and it used to be the one write
+   * that asked for no preconditions. Two things followed from that. A tab
+   * left open on revision 7 could delete the work a second tab had just
+   * saved as revision 8, and neither of them would ever know. And the check
+   * for a publication was read without holding the function, so a publish
+   * committing between that read and the delete turned the foreign key that
+   * exists to protect published versions into a defect rather than the
+   * refusal it is there to produce.
+   *
+   * So the function is held first, everything is asked again under it, and
+   * the revision the caller was looking at has to still be the one that is
+   * current. Publish and delete then serialize against each other: whichever
+   * takes the lock second wakes up to a world the first one already decided.
+   */
   const deleteFunction = Effect.fn('FormulaLibrary.deleteFunction')(function* (
     tenantId: string,
     functionId: string,
+    expectedDraftRevision: number,
     as: Principal,
   ) {
-    const row = yield* authoringRow(tenantId, functionId, as)
+    yield* authoringRow(tenantId, functionId, as)
     yield* withDb(
       transaction(
         Effect.gen(function* () {
+          const locked = yield* db
+            .query((k) =>
+              k
+                .selectFrom('FormulaFunction')
+                .select(['name', 'draftRevision', 'createdBy'])
+                .where('tenantId', '=', tenantId)
+                .where('id', '=', functionId)
+                .forUpdate()
+                .executeTakeFirst(),
+            )
+            .pipe(Effect.orDie)
+          if (locked === undefined) return yield* new FormulaFunctionNotFound()
+          // asked again under the lock, as publishing does: authorship cannot
+          // have moved, but the CAPABILITY can have been taken away while
+          // this request was in flight
+          yield* requireAuthor(as)
+          if (locked.createdBy !== as.userId) return yield* new FormulaFunctionNotFound()
+          if (Number(locked.draftRevision) !== expectedDraftRevision) {
+            return yield* new FormulaDraftConflict({ draftRevision: Number(locked.draftRevision) })
+          }
           const published = yield* db
             .query((k) =>
               k
@@ -1637,7 +1678,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
           yield* audit.record(FormulaFunctionDeleted, {
             tenantId,
             actor: actorOf(as),
-            target: { id: functionId, label: row.name },
+            target: { id: functionId, label: locked.name as string },
             details: {},
           })
         }),
@@ -2250,7 +2291,8 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
       withDb(updateDraft(tenantId, functionId, patch, as)),
     setStatus: (tenantId, functionId, status, as) =>
       withDb(setStatus(tenantId, functionId, status, as)),
-    deleteFunction: (tenantId, functionId, as) => withDb(deleteFunction(tenantId, functionId, as)),
+    deleteFunction: (tenantId, functionId, expectedDraftRevision, as) =>
+      withDb(deleteFunction(tenantId, functionId, expectedDraftRevision, as)),
     publish: (tenantId, functionId, request, as) =>
       withDb(publish(tenantId, functionId, request, as)),
     getVersion: (tenantId, functionId, versionNo, as) =>
@@ -2429,10 +2471,20 @@ export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula
     )
     .handle(
       'deleteFormulaFunction',
-      Effect.fn('assessmentFormula.deleteFunction.handler')(function* ({ params }) {
+      Effect.fn('assessmentFormula.deleteFunction.handler')(function* ({ params, query }) {
         const library = yield* FormulaLibrary
         const principal = yield* CurrentUser
-        return yield* library.deleteFunction(principal.tenantId, params.functionId, principal)
+        const expected = Number(query.expectedDraftRevision)
+        if (!Number.isSafeInteger(expected) || expected < 1)
+          return yield* new BadRequest({
+            message: 'the expected draft revision must be a positive integer',
+          })
+        return yield* library.deleteFunction(
+          principal.tenantId,
+          params.functionId,
+          expected,
+          principal,
+        )
       }),
     )
     .handle(

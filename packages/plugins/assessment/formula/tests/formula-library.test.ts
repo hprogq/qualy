@@ -37,6 +37,13 @@ const ok = <A, E>(exit: Exit.Exit<A, E>): A => {
   throw new Error(`expected success, got ${inspect(exit.cause, { depth: 10 })}`)
 }
 
+/** the refusal an exit carries, or undefined where it succeeded */
+const errorOf = <E>(exit: Exit.Exit<unknown, unknown>): E | undefined => {
+  if (Exit.isSuccess(exit)) return undefined
+  for (const reason of exit.cause.reasons) if (reason._tag === 'Fail') return reason.error as E
+  return undefined
+}
+
 const seed = seedFormulaFixture
 
 const IDENTITY = `import { Schema, defineFormula } from '@qualy/formula'
@@ -136,7 +143,17 @@ describe.runIf(postgresAvailable)('the formula library', () => {
             as,
           )
           const revisionsBefore = yield* library.listDraftRevisions(f.t, draftOnly.id, {}, as)
-          const removed = yield* library.deleteFunction(f.t, draftOnly.id, as)
+          // the revision this caller was looking at, like every other write
+          const stale = yield* Effect.flip(
+            library.deleteFunction(f.t, draftOnly.id, draftOnly.draftRevision, as),
+          )
+          const current = yield* library.getFunction(f.t, draftOnly.id, as)
+          const removed = yield* library.deleteFunction(
+            f.t,
+            draftOnly.id,
+            current.function.draftRevision,
+            as,
+          )
           const gone = yield* Effect.flip(library.getFunction(f.t, draftOnly.id, as))
           const revisionRows = yield* runSql<{ left: number }>(sql`
             select count(*)::int as left
@@ -162,10 +179,13 @@ describe.runIf(postgresAvailable)('the formula library', () => {
             { expectedDraftRevision: drafted.draftRevision, releaseName: 'first' },
             as,
           )
-          const refused = yield* Effect.flip(library.deleteFunction(f.t, published.id, as))
+          const refused = yield* Effect.flip(
+            library.deleteFunction(f.t, published.id, drafted.draftRevision, as),
+          )
           const stands = yield* library.getFunction(f.t, published.id, as)
           return {
             revisionsBefore: revisionsBefore.items.length,
+            stale,
             removed,
             gone: gone._tag,
             revisionRows: revisionRows.rows,
@@ -176,6 +196,12 @@ describe.runIf(postgresAvailable)('the formula library', () => {
       ),
     )
     expect(outcome.revisionsBefore).toBeGreaterThan(0)
+    // a tab that had not seen the save cannot take it away: deleting is the
+    // one act that ends the draft AND its whole history
+    expect(outcome.stale).toMatchObject({
+      _tag: 'ASSESSMENT_FORMULA_DRAFT_CONFLICT',
+      draftRevision: 2,
+    })
     expect(outcome.removed).toEqual({ deleted: true })
     expect(outcome.gone).toBe('ASSESSMENT_FORMULA_FUNCTION_NOT_FOUND')
     // the draft's own history went with it
@@ -183,6 +209,76 @@ describe.runIf(postgresAvailable)('the formula library', () => {
     expect(outcome.refused).toBe('ASSESSMENT_FORMULA_FUNCTION_PUBLISHED')
     expect(outcome.stands).toBe(1)
   }, 120_000)
+
+  it('makes deleting and publishing take turns, whichever arrives first', async () => {
+    const outcome = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('fx-delete-race')
+          const library = yield* FormulaLibrary
+          const as = f.principal(f.admin)
+          const made = yield* library.createFunction(f.t, { name: '同时' }, as)
+          const drafted = yield* library.updateDraft(
+            f.t,
+            made.id,
+            {
+              expectedDraftRevision: made.draftRevision,
+              draftSourceTs: IDENTITY,
+              draftTests: [{ name: 'three', input: { value: '3.00' }, expected: '3' }],
+            },
+            as,
+          )
+          // Both at once, on the row that protects published versions. The
+          // delete used to read "no publication yet" without holding the
+          // function, so a publish committing in between turned the foreign
+          // key into a defect instead of the refusal it exists to produce.
+          const [published, deleted] = yield* Effect.all(
+            [
+              Effect.exit(
+                library.publish(
+                  f.t,
+                  made.id,
+                  { expectedDraftRevision: drafted.draftRevision, releaseName: 'first' },
+                  as,
+                ),
+              ),
+              Effect.exit(library.deleteFunction(f.t, made.id, drafted.draftRevision, as)),
+            ],
+            { concurrency: 2 },
+          )
+          const left = yield* runSql<{ left: number }>(sql`
+            select count(*)::int as left
+            from assessment_formula_functions where id = ${made.id}
+          `)
+          const versions = yield* runSql<{ left: number }>(sql`
+            select count(*)::int as left
+            from assessment_formula_versions where function_id = ${made.id}
+          `)
+          return { published, deleted, left: left.rows, versions: versions.rows }
+        }),
+      ),
+    )
+    const publishedOk = Exit.isSuccess(outcome.published)
+    const deletedOk = Exit.isSuccess(outcome.deleted)
+    // exactly one of them happened, and the world agrees with whichever it was
+    expect(publishedOk !== deletedOk).toBe(true)
+    if (publishedOk) {
+      // the delete lost: it is told the formula is published, never a defect
+      expect(errorOf<{ _tag: string }>(outcome.deleted)?._tag).toBe(
+        'ASSESSMENT_FORMULA_FUNCTION_PUBLISHED',
+      )
+      expect(outcome.left).toEqual([{ left: 1 }])
+      expect(outcome.versions).toEqual([{ left: 1 }])
+    } else {
+      // the publish lost: the formula it would have published is gone
+      expect(errorOf<{ _tag: string }>(outcome.published)?._tag).toBe(
+        'ASSESSMENT_FORMULA_FUNCTION_NOT_FOUND',
+      )
+      expect(outcome.left).toEqual([{ left: 0 }])
+      expect(outcome.versions).toEqual([{ left: 0 }])
+    }
+  }, 180_000)
 
   it('refuses to publish what does not hold: types, examples, stale drafts', async () => {
     const outcome = ok(
