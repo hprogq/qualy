@@ -325,6 +325,28 @@ describe('a formula’s draft and its history', () => {
     }
   }, 60_000)
 
+  it('renames a publication from its line in the versions', async () => {
+    // reaching it should not mean opening the version first: the line is
+    // where a reader is when they notice the name is wrong
+    const { wire, screen } = open()
+    const view = await screen
+    try {
+      await openVersions()
+      await page.getByTestId('formula-release-rename').click()
+      await expect.element(page.getByTestId('formula-version-info')).toBeVisible()
+      await page.getByRole('textbox', { name: '版本名称' }).fill('2026 秋季规则')
+      await page.getByTestId('formula-version-info-save').click()
+      await vi.waitFor(() => expect(wire.relabels.length).toBe(1), { timeout: 5_000 })
+      expect(wire.relabels[0]).toMatchObject({
+        expectedMetadataRevision: 1,
+        releaseName: '2026 秋季规则',
+      })
+      expect(wire.publishes).toEqual([])
+    } finally {
+      view.unmount()
+    }
+  }, 60_000)
+
   it('keeps unsaved edits across a look at the history, and asks before replacing them', async () => {
     const { wire, screen } = open()
     const view = await screen

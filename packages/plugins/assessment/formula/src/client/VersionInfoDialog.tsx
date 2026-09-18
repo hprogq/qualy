@@ -25,6 +25,9 @@ export const RELEASE_NAME_LIMIT = 100
 export const RELEASE_NOTES_LIMIT = 1000
 
 const styles = stylex.create({
+  // the dialog's body spaces its own children; a group inside it has to
+  // say the same spacing again, or the fields land against each other
+  fields: { display: 'flex', flexDirection: 'column', gap: 14 },
   says: { margin: 0, fontSize: 12, color: tokens.mutedForeground },
   failure: { margin: 0, fontSize: 12, color: tokens.danger },
 })
@@ -106,7 +109,7 @@ export function VersionInfoDialog({
         </>
       }
     >
-      <div data-testid="formula-version-info">
+      <div data-testid="formula-version-info" {...stylex.props(styles.fields)}>
         <Field label={format(m.releaseNameLabel)} required>
           {(id) => (
             <Input

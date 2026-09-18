@@ -52,6 +52,10 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/audit/details-change',
       defaultMessage: 'Change scoring formula details',
     },
+    'audit.version-info-change': {
+      id: 'assessment-formula/audit/version-info-change',
+      defaultMessage: 'Rename formula version',
+    },
     'audit.archive': {
       id: 'assessment-formula/audit/archive',
       defaultMessage: 'Archive scoring formula',

@@ -9,7 +9,7 @@ import { EmptyRow } from '@qualy/ui/empty-row'
 import { Spinner } from '@qualy/ui/spinner'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@qualy/ui/sheet'
 import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
-import { EyeIcon, Share2Icon } from 'lucide-react'
+import { EyeIcon, PencilLineIcon, Share2Icon } from 'lucide-react'
 import { formulaApi } from './api.ts'
 import { formulaMessages as m } from './i18n.ts'
 import { shortWhen } from './library-styles.ts'
@@ -366,6 +366,17 @@ export function VersionsDrawer({
                   <Share2Icon size={15} aria-hidden />
                 </button>
               )}
+              <button
+                type="button"
+                data-testid="formula-release-rename"
+                data-version={release.versionNo}
+                aria-label={format(m.versionInfoEdit)}
+                title={format(m.versionInfoEdit)}
+                onClick={() => onEditInfo(release)}
+                {...stylex.props(styles.act)}
+              >
+                <PencilLineIcon size={15} aria-hidden />
+              </button>
               <button
                 type="button"
                 data-testid="formula-release"

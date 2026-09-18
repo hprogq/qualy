@@ -97,8 +97,13 @@ export const FormulaVersionInfoChanged = AuditAction.define({
   details: Schema.Struct({
     versionId: Schema.String,
     versionNo: Schema.Number,
-    name: Schema.optional(Schema.Struct({ from: Schema.String, to: Schema.String })),
-    notesChanged: Schema.Boolean,
+    // both sides in full, and only for what actually moved: the version row
+    // keeps the latest words alone, so anything this leaves out is gone. A
+    // publication named after the fact has no `from`.
+    name: Schema.optional(Schema.Struct({ from: Schema.NullOr(Schema.String), to: Schema.String })),
+    notes: Schema.optional(
+      Schema.Struct({ from: Schema.NullOr(Schema.String), to: Schema.NullOr(Schema.String) }),
+    ),
   }),
 })
 

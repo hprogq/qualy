@@ -11,6 +11,7 @@ export default {
   'assessment-formula/audit/sharing-change': '调整公式共享范围',
   'assessment-formula/audit/template-copy': '复制公式模板',
   'assessment-formula/audit/details-change': '修改计分公式名称或说明',
+  'assessment-formula/audit/version-info-change': '修改发布版本的名称或说明',
   'assessment-formula/audit/delete': '删除计分公式',
   'assessment-formula/audit/archive': '归档计分公式',
   'assessment-formula/audit/restore': '恢复计分公式',

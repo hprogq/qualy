@@ -1327,6 +1327,10 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
             'v.publishedBy as publishedBy',
             'u.displayName as publishedByName',
             'v.publishedAt as publishedAt',
+            // the label's own revision: a list this is relabelled from must
+            // hand the rewrite the revision it read, or the second rewrite
+            // in a row reads as somebody else's
+            'v.metadataRevision as metadataRevision',
           ])
           // how wide each publication's audience is, so the list of versions
           // can say it without a request per row
@@ -1913,8 +1917,8 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
             details: {
               versionId: version.id as string,
               versionNo,
-              ...(was === releaseName ? {} : { name: { from: was ?? '', to: releaseName } }),
-              notesChanged: wasNotes !== releaseNotes,
+              ...(was === releaseName ? {} : { name: { from: was, to: releaseName } }),
+              ...(wasNotes === releaseNotes ? {} : { notes: { from: wasNotes, to: releaseNotes } }),
             },
           })
         }),
@@ -2228,8 +2232,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
       withDb(updateDraft(tenantId, functionId, patch, as)),
     setStatus: (tenantId, functionId, status, as) =>
       withDb(setStatus(tenantId, functionId, status, as)),
-    deleteFunction: (tenantId, functionId, as) =>
-      withDb(deleteFunction(tenantId, functionId, as)),
+    deleteFunction: (tenantId, functionId, as) => withDb(deleteFunction(tenantId, functionId, as)),
     publish: (tenantId, functionId, request, as) =>
       withDb(publish(tenantId, functionId, request, as)),
     getVersion: (tenantId, functionId, versionNo, as) =>

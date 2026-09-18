@@ -441,6 +441,12 @@ describe.runIf(postgresAvailable)('a formula over its lifetime', () => {
     expect(outcome.again.metadataRevision).toBe(2)
     // one publication, still: relabelling never mints a version
     expect(outcome.detail.versions).toHaveLength(1)
+    // the list hands back the revision it read, so relabelling twice from it
+    // does not read as somebody else's change
+    expect(outcome.detail.versions[0]).toMatchObject({
+      releaseName: '2026 春季规则',
+      metadataRevision: 2,
+    })
     expect(outcome.trail.releaseName).toBe('2026 春季规则')
     expect(outcome.trail.metadataUpdatedByName).toBe('Admin')
   }, 180_000)
