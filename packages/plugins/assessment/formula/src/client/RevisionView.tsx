@@ -109,7 +109,7 @@ export function RevisionView({
   const [ranAt, setRanAt] = useState<number | null>(null)
 
   // what this browser remembers trying against this saved revision
-  const tryRecords = useTryRecords(`${functionId}/revision-${String(revisionNo)}`)
+  const tryRecords = useTryRecords(functionId, `revision/${String(revisionNo)}`)
   const detail = useQuery(
     query.assessmentFormula.getFormulaDraftRevision.queryOptions({
       params: { functionId, revisionNo: String(revisionNo) },

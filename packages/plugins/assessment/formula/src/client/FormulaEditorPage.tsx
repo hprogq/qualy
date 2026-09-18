@@ -721,7 +721,7 @@ export default function FormulaEditorPage() {
     enabled: latestNo !== null,
   })
   // the tries this browser remembers for the draft
-  const tryRecords = useTryRecords(`${functionId}/draft`)
+  const tryRecords = useTryRecords(functionId, 'draft')
   const versions = detail.data?.versions ?? []
   // Where this draft was started from, when it was started from somebody
   // else's. A note about how it came to exist and nothing more: there is

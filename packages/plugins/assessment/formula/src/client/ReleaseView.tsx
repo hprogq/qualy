@@ -139,7 +139,7 @@ export function ReleaseView({
   const [ranAt, setRanAt] = useState<number | null>(null)
 
   // what this browser remembers trying against this publication
-  const tryRecords = useTryRecords(`${functionId}/release-${String(versionNo)}`)
+  const tryRecords = useTryRecords(functionId, `release/${String(versionNo)}`)
   const detail = useQuery(
     query.assessmentFormula.getFormulaVersion.queryOptions({
       params: { functionId, versionNo: String(versionNo) },
