@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { UiSlot, useApi, useApiQuery, useRunApi, useUiCollection } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
@@ -20,6 +20,7 @@ import {
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { Feedback, Field, PageHeader, BannerBack } from '@qualy/ui/admin'
 import { useLingering } from '@qualy/ui/use-lingering'
+import { useSettled } from '@qualy/ui/use-settled'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Button } from '@qualy/ui/button'
@@ -2122,6 +2123,11 @@ export function ItemConfigEditor({
    * configuration, and the form fields are read as they stand when it does.
    */
   const formConfigNow = configOf(draft).formConfig
+  // Asked a beat after the typing stops, not on the keystroke. The form only
+  // decides which fields may feed a parameter; the parameters themselves
+  // come from the calculator, so re-asking on every letter of a field's name
+  // rebuilt the whole parameter list under the hand that was typing.
+  const askedForm = useSettled(JSON.stringify(formConfigNow), 500)
   const contract = useQuery({
     queryKey: [
       'assessment',
@@ -2129,7 +2135,7 @@ export function ItemConfigEditor({
       batchId,
       item?.id ?? 'new',
       draft.itemType,
-      JSON.stringify(formConfigNow),
+      askedForm,
       chosenCalculator.ref,
       JSON.stringify(chosenCalculator.config),
     ],
@@ -2149,6 +2155,10 @@ export function ItemConfigEditor({
     // not a configuration any calculator's codec would accept, and asking
     // would report a step nobody has reached yet as a failure
     enabled: draft.scoring.language === 'v2' && draft.scoring.configured,
+    // the answer already on screen stays there while the next one is in
+    // flight: the parameters have not moved, and blanking the list to say
+    // so reads as the whole section reloading on every edit
+    placeholderData: keepPreviousData,
   })
   const parameterSchemas = contract.data?.inputSchema as NormalizedInputSchema | undefined
   const schemaOf = (parameter: string): AtomicSchema | undefined =>
