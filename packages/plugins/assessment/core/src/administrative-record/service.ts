@@ -27,7 +27,7 @@ import {
 import type { ActionDecision } from '../administrative-import/service.ts'
 import { proveSettlements } from '../scoring/failure-boundary.ts'
 import { readScoringPlan } from '../scoring/plan.ts'
-import { canonicalRecognition } from '../scoring/recognition.ts'
+import { provenRecognition } from '../scoring/proven-recognition.ts'
 import {
   recordAdministrativeEntryTx,
   voidAdministrativeEntryTx,
@@ -247,8 +247,13 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
 
     const files = driver.attachmentRefs(revision.formConfig, decoded)
 
-    const determination = canonicalRecognition(
-      plan.recognitionSchemas,
+    // judged, not merely canonicalized. Canonicalization copies through keys
+    // the plan never named and leaves ill-typed ones alone, so an unjudged
+    // determination either reached the scorer with a field missing - a
+    // defect, answered 500 - or was stored polluted. The other two doors
+    // that write determinations have always judged first.
+    const determination = yield* provenRecognition(
+      plan,
       input.recognition === undefined ? {} : input.recognition.values,
     )
 

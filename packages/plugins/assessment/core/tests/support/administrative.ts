@@ -36,7 +36,11 @@ export const laidOut = (sheet: ExcelJS.Worksheet, row: readonly string[]): strin
 export const recordItem = (
   f: Seeded,
   batchId: string,
-  over?: { maxEntries?: number | null; formConfig?: Record<string, unknown> },
+  over?: {
+    maxEntries?: number | null
+    formConfig?: Record<string, unknown>
+    scoringConfig?: Record<string, unknown>
+  },
 ) =>
   Effect.gen(function* () {
     const assessment = yield* Assessment
@@ -58,7 +62,7 @@ export const recordItem = (
         config: {
           entrySource: 'administrative',
           formConfig: over?.formConfig ?? {},
-          scoringConfig: {
+          scoringConfig: over?.scoringConfig ?? {
             calculator: { ref: 'fixed@1', config: { value: '-1.00' } },
             aggregator: { ref: 'sum@1', config: {} },
           },

@@ -6,6 +6,7 @@ import {
 } from '../scoring/recognition-db.ts'
 import { recordAdministrativeEntryTx, voidAdministrativeEntryTx } from './administrative-write.ts'
 import { bindCitedAttachments } from './bind-attachments.ts'
+import { provenRecognition } from '../scoring/proven-recognition.ts'
 import {
   canonicalRecognition,
   judgeRecognition,
@@ -183,40 +184,6 @@ export interface EntryView {
     readonly appeal: ActionAvailability
     readonly abandon: ActionAvailability
   }
-}
-
-/**
- * What a claim is recognised as, proven before it counts as approved.
- *
- * Every door that produces an approved claim goes through here: a reviewer's
- * word, a member of staff recording one, and the rule that approves a
- * question nobody reviews. The database guarantees an approved claim HAS a
- * determination and that it is an object; only this says it is the complete
- * and exact determination the frozen contract asked for. Without it a claim
- * reaches the account with a field missing, and the failure surfaces on a
- * student's results page rather than at the door that let it in.
- */
-const provenRecognition = (
-  plan: ScoringPlan,
-  candidate: unknown,
-): Effect.Effect<Record<string, unknown>, EntryPayloadInvalid> => {
-  const wrong = judgeRecognition(plan.recognitionSchemas, candidate)
-  return wrong.length === 0
-    ? Effect.succeed(
-        // stored the one way the contract says it means: a value written
-        // "3.0" and read back "3.00" would make every later comparison a
-        // fact about who typed it
-        canonicalRecognition(plan.recognitionSchemas, candidate as Record<string, unknown>),
-      )
-    : Effect.fail(
-        new EntryPayloadInvalid({
-          issues: wrong.map((issue) => ({
-            field:
-              issue.recognitionId === '' ? 'recognition' : `recognition.${issue.recognitionId}`,
-            reason: issue.reason,
-          })),
-        }),
-      )
 }
 
 export interface CreateEntryInput {

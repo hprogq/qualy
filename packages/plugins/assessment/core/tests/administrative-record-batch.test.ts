@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
 import { Assessment } from '../src/server/index.ts'
 import { recordItem } from './support/administrative.ts'
+import { probeScoring } from './support/catalogs.ts'
 import { errorOf, ok, one, run, runningBatch, seed, staged } from './support/round.ts'
 
 // One administrative finding, settled on several people at once.
@@ -29,7 +30,11 @@ describe.runIf(postgresAvailable).concurrent('recording one finding on a group',
   /** the round, a question the office settles, and who is in reach */
   const ready = (
     slug: string,
-    over?: { maxEntries?: number | null; formConfig?: Record<string, unknown> },
+    over?: {
+      maxEntries?: number | null
+      formConfig?: Record<string, unknown>
+      scoringConfig?: Record<string, unknown>
+    },
   ) =>
     Effect.gen(function* () {
       const f = yield* seed(slug)
@@ -266,6 +271,57 @@ describe.runIf(postgresAvailable).concurrent('recording one finding on a group',
     expect(found.previewed).toBe('ASSESSMENT_ENTRY_PAYLOAD_INVALID')
     expect(found.written).toBe('ASSESSMENT_ENTRY_PAYLOAD_INVALID')
     expect(found.entries).toBe(0)
+  })
+
+  it('judges the determination it is handed instead of proving whatever arrives', async () => {
+    const found = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const { f, g, item, revision } = yield* ready('ar-judged', {
+            scoringConfig: probeScoring(),
+          })
+          const assessment = yield* Assessment
+          const act = (values: Record<string, unknown>) => ({
+            itemId: item.id,
+            expectedItemRevisionId: revision,
+            target: { kind: 'people' as const, participantIds: [g.p1] },
+            payload: {},
+            recognition: { values },
+            basis: '校发〔2026〕6 号',
+          })
+          // a determination the plan cannot read: the level is not one of
+          // the values its schema admits
+          const nonsense = yield* Effect.exit(
+            assessment.previewAdministrativeRecord(
+              f.t,
+              g.batch.id,
+              act({ 'rec-level': 'not-a-level', 'rec-ordinal': 1 }),
+              f.principal(f.recorder),
+            ),
+          )
+          // and one carrying a key the plan never named
+          const extra = yield* Effect.exit(
+            assessment.previewAdministrativeRecord(
+              f.t,
+              g.batch.id,
+              act({ 'rec-level': 'national', 'rec-ordinal': 1, 'rec-invented': 'x' }),
+              f.principal(f.recorder),
+            ),
+          )
+          return {
+            nonsense: errorOf<{ _tag: string }>(nonsense)?._tag,
+            extra: errorOf<{ _tag: string }>(extra)?._tag,
+          }
+        }),
+      ),
+    )
+    // The other two doors that write determinations judge first. Without it
+    // an unreadable one reached the scorer and died there as a defect - a
+    // 500 for a bad request - and an invented key was stored verbatim in an
+    // append-only table.
+    expect(found.nonsense).toBe('ASSESSMENT_ENTRY_PAYLOAD_INVALID')
+    expect(found.extra).toBe('ASSESSMENT_ENTRY_PAYLOAD_INVALID')
   })
 
   it('writes one fact per person, as ordinary records, under one act', async () => {
