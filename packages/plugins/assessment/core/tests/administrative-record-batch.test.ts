@@ -455,6 +455,53 @@ describe.runIf(postgresAvailable).concurrent('recording one finding on a group',
     expect(found.rows).toHaveLength(found.done.recordedCount)
   })
 
+  it('finds the people the round drew from a unit after the unit has moved', async () => {
+    const found = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const { f, g, item, revision } = yield* ready('ar-restructured')
+          const assessment = yield* Assessment
+          const target = {
+            kind: 'organization' as const,
+            orgNodeIds: [f.classA],
+            userTypeIds: [],
+          }
+          const input = {
+            itemId: item.id,
+            expectedItemRevisionId: revision,
+            target,
+            payload: {},
+            basis: '校发〔2026〕7 号',
+          }
+          const before = yield* assessment.previewAdministrativeRecord(
+            f.t,
+            g.batch.id,
+            input,
+            f.principal(f.recorder),
+          )
+          // the organization is restructured after the roster froze: the
+          // class keeps its identity and gets a new address
+          yield* runSql(sql`
+            update org_nodes set path = text2ltree(ltree2text(path) || '_moved')
+             where tenant_id = ${f.t} and id = ${f.classA}`)
+          const after = yield* assessment.previewAdministrativeRecord(
+            f.t,
+            g.batch.id,
+            input,
+            f.principal(f.recorder),
+          )
+          return { before, after }
+        }),
+      ),
+    )
+    // the round's own account of where it drew somebody from does not move
+    // when the organization does
+    expect(found.before.eligibleCount).toBeGreaterThan(1)
+    expect(found.after.eligibleCount).toBe(found.before.eligibleCount)
+    expect(found.after.targetFingerprint).toBe(found.before.targetFingerprint)
+  })
+
   it('refuses the recorder themselves, and says so before anything is written', async () => {
     const found = ok(
       await run(

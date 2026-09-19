@@ -2091,13 +2091,15 @@ export const resolveRecordTargets = (
       )
     } else {
       query = query.where(
-        // the frozen anchor, not where the person lives now: this is the
-        // round's own account of where it drew them from
+        // The frozen lineage, which is this round's own account of where it
+        // drew somebody from - the same judgement the unit picker beside it
+        // makes. Comparing the frozen anchor PATH against a live node's path
+        // instead put the two halves in different coordinate systems: move a
+        // unit in the organization after the roster froze and the act reached
+        // nobody under it, or reached people the round never drew from there.
         sql<boolean>`exists (
-          select 1 from org_nodes scope
-           where scope.tenant_id = batch_participants.tenant_id
-             and scope.id = any(${target.orgNodeIds as string[]}::uuid[])
-             and batch_participants.anchor_path <@ scope.path
+          select 1 from jsonb_array_elements(batch_participants.anchor_lineage) as step
+           where (step.value ->> 'nodeId')::uuid = any(${target.orgNodeIds as string[]}::uuid[])
         )`,
       )
       if (target.userTypeIds.length > 0) {
