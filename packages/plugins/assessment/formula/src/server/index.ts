@@ -2559,10 +2559,11 @@ export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula
         const library = yield* FormulaLibrary
         const principal = yield* CurrentUser
         yield* library.requireAuthor(principal)
-        const limit = Number(query.limit)
+        // the kit's helper, the way every other list in this plugin asks:
+        // an unbounded limit let one request select the whole org tree
         return yield* templates.shareableNodes(principal.tenantId, principal, {
           ...(query.search === undefined ? {} : { search: query.search }),
-          ...(Number.isSafeInteger(limit) && limit > 0 ? { limit } : {}),
+          limit: pageSize(query.limit, DEFAULT_PAGE_SIZE),
         })
       }),
     )
@@ -2651,7 +2652,11 @@ export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula
       'getFormulaVersionSharing',
       Effect.fn('assessmentFormula.getSharing.handler')(function* ({ params }) {
         const templates = yield* FormulaTemplateLibrary
+        const library = yield* FormulaLibrary
         const principal = yield* CurrentUser
+        // the whole authoring plane answers to this, and a capability that
+        // can be revoked while every url still works is not a capability
+        yield* library.requireAuthor(principal)
         const versionNo = Number(params.versionNo)
         if (!Number.isSafeInteger(versionNo) || versionNo < 1) {
           return yield* new BadRequest({ message: 'the version number is not usable here' })
@@ -2668,7 +2673,9 @@ export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula
       'replaceFormulaVersionSharing',
       Effect.fn('assessmentFormula.replaceSharing.handler')(function* ({ params, payload }) {
         const templates = yield* FormulaTemplateLibrary
+        const library = yield* FormulaLibrary
         const principal = yield* CurrentUser
+        yield* library.requireAuthor(principal)
         const versionNo = Number(params.versionNo)
         if (!Number.isSafeInteger(versionNo) || versionNo < 1) {
           return yield* new BadRequest({ message: 'the version number is not usable here' })

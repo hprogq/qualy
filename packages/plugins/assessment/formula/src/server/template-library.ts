@@ -38,6 +38,9 @@ import {
 } from './errors.ts'
 
 /** the one spelling of the audience-widening permission */
+/** how many units one picker request may name */
+export const MOST_SHAREABLE_NODES = 200
+
 export const SHARE = 'assessment.formula.share'
 
 export interface SharedScope {
@@ -540,7 +543,11 @@ export const make = Effect.fn('FormulaTemplateLibrary.make')(function* () {
         if (!scope.tenantWide && scope.anchors.length === 0) {
           return { nodes: [], truncated: false }
         }
-        const limit = Math.max(1, options?.limit ?? 50)
+        // clamped at both ends. The handler asks through the kit's page
+        // helper, and this is the floor under it: an unbounded limit let one
+        // request select the whole org tree, and a picker never needs more
+        // than a screenful at a time.
+        const limit = Math.min(Math.max(1, options?.limit ?? 50), MOST_SHAREABLE_NODES)
         const search = options?.search?.trim() ?? ''
         const rows = yield* database(
           db.query((k) => {

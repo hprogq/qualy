@@ -72,7 +72,8 @@ class MockSocket {
 
 const editorProps = (value: string, extra?: Partial<Parameters<typeof FormulaCodeEditor>[0]>) =>
   ({
-    functionId: 'f-1',
+    // a real one: the language session's url carries a uuid column's value
+    functionId: '01a0b900-0000-7000-8000-000000000f01',
     value,
     onChange: () => {},
     seed: 0,

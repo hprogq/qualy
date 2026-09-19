@@ -72,7 +72,9 @@ class MockSocket {
 
 const editorProps = (value: string, extra?: Partial<Parameters<typeof FormulaCodeEditor>[0]>) =>
   ({
-    functionId: 'f-1',
+    // a real one: every identifier this contract names addresses a uuid
+    // column, and the language session's url carries it
+    functionId: '01a0b900-0000-7000-8000-000000000f01',
     value,
     onChange: () => {},
     readOnly: false,
