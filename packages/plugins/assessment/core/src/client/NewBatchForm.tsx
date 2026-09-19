@@ -6,6 +6,7 @@ import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useIsMobile } from '@qualy/ui/use-mobile'
 import { useI18n, useLocale } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
+import { dayAfter } from './entry/model.ts'
 import { CheckboxGroup, Feedback, Field, FormDialog, SidePanel } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { toast } from '@qualy/ui/toast'
@@ -87,7 +88,10 @@ export function NewBatchDialog({
         api.assessment.createBatch({
           payload: {
             name,
-            materialRange: range,
+            // the picker hands back the last day chosen; the window is
+            // stored with its end outside it, so that day has to become the
+            // day after or material dated on it is refused
+            materialRange: { start: range.start, end: dayAfter(range.end) },
             import: { orgNodeIds: scopeNodeIds, userTypeIds },
           },
         }),

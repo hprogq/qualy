@@ -179,6 +179,22 @@ export const lastDay = (end: string): string => {
   return at.toISOString().slice(0, 10)
 }
 
+/**
+ * The other half of `lastDay`: the exclusive end a picked last day means.
+ *
+ * A picker hands back the last day somebody chose, and the window is stored
+ * `[start, end)`. Sending the picked day straight through left it outside
+ * the window - so material dated on the day the administrator chose was
+ * refused, while every reading screen went on displaying that day as the
+ * end. Arithmetic in UTC, because a calendar day is not an instant and
+ * crossing through a local `Date` is what makes it the day before.
+ */
+export const dayAfter = (day: string): string => {
+  const at = new Date(`${day}T00:00:00Z`)
+  at.setUTCDate(at.getUTCDate() + 1)
+  return at.toISOString().slice(0, 10)
+}
+
 /** what a file weighs, at the precision anybody reads it at */
 export const sizeLabel = (bytes: number): string => {
   if (!Number.isFinite(bytes) || bytes <= 0) return ''

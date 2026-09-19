@@ -307,6 +307,14 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
         MAX_RECORD_TARGETS + 1,
       ),
     )
+    // the same ceiling the write applies, and on the same thing: what the
+    // selection found. A reader must not be shown a set the write will then
+    // refuse, nor one quietly cut off at the query's own limit.
+    if (found.length > MAX_RECORD_TARGETS) {
+      return yield* new AdministrativeRecordRefused({
+        blocked: [{ participantId: '', reason: 'too-many-targets' }],
+      })
+    }
     const dropped = new Set(input.excludedParticipantIds ?? [])
     const considered = found.filter((one) => !dropped.has(one.id))
 
@@ -418,6 +426,16 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
         MAX_RECORD_TARGETS + 1,
       ),
     )
+    // The ceiling is about the selection, so it is tested on what the
+    // selection found. Tested after the exclusions instead, a larger
+    // population simply came back cut off at the query's own limit and the
+    // act settled on whoever happened to sort first - which is a silent
+    // truncation dressed as a confirmed set.
+    if (found.length > MAX_RECORD_TARGETS) {
+      return yield* new AdministrativeRecordRefused({
+        blocked: [{ participantId: '', reason: 'too-many-targets' }],
+      })
+    }
     const dropped = new Set(input.excludedParticipantIds ?? [])
     const targets = found.filter((one) => !dropped.has(one.id))
     const fingerprint = fingerprintOf(targets.map((one) => one.id))
@@ -426,11 +444,6 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
         expected: input.expectedTargetFingerprint,
         actual: fingerprint,
         actualCount: targets.length,
-      })
-    }
-    if (targets.length > MAX_RECORD_TARGETS) {
-      return yield* new AdministrativeRecordRefused({
-        blocked: [{ participantId: '', reason: 'too-many-targets' }],
       })
     }
     // one finding, one file, one entry: sharing an attachment across facts

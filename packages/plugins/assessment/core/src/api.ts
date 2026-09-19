@@ -2741,6 +2741,9 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
           ItemRevisionConflict,
           DeterminationRefused,
           EntryPayloadInvalid,
+          // a selection past the ceiling: refused here as well as at the
+          // write, so a reader is never shown a set the write would refuse
+          AdministrativeRecordRefused,
           ScoringUnavailable,
         ],
       },

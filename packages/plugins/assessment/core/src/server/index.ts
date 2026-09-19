@@ -930,6 +930,9 @@ export class Assessment extends Context.Service<
       | ItemRevisionConflict
       | DeterminationRefused
       | EntryPayloadInvalid
+      // a selection past the ceiling is refused here too, so a reader is
+      // never shown a set the write would then refuse
+      | AdministrativeRecordRefused
       | ScoringUnavailable,
       ScoringRuntimeCatalog
     >

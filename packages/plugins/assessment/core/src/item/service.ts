@@ -1847,6 +1847,14 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
             as.userId,
             reason === '' ? null : reason,
           )
+          // A cap or a floor moves every participant's total, and the paper
+          // is built out of these groups - so every screen showing either is
+          // now showing the old arithmetic. Said inside the transaction, the
+          // way the other configuration writes announce theirs.
+          yield* announce(tenantId, batchId, [
+            { kind: 'item-changed' },
+            { kind: 'result-changed' },
+          ])
           return { groups: yield* groupsView(tenantId, batchId), version: version + 1 }
         }),
       ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error))),
