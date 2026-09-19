@@ -422,6 +422,78 @@ describe.runIf(postgresAvailable)('the alarm the phase loop aims by', () => {
     await db?.dispose()
   })
 
+  it('leaves one unreadable batch to itself and sweeps the rest', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const assessment = yield* Assessment
+        const start = yield* Clock.currentTimeMillis
+        const activate = (slug: string) =>
+          Effect.gen(function* () {
+            const f = yield* seed(slug)
+            const batch = yield* assessment.createBatch(
+              f.tenant,
+              {
+                name: slug,
+                materialRange: { start: '2026-03-01', end: '2026-09-01' },
+                import: { orgNodeIds: [f.node], userTypeIds: [f.studentType] },
+              },
+              f.principal,
+            )
+            yield* assessment.replacePlan(
+              f.tenant,
+              batch.id,
+              { specs: [phase({ phaseKey: 'entry' }), phase({ phaseKey: 'archive' })] },
+              f.principal,
+            )
+            const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+            yield* assessment.schedulePhase(
+              f.tenant,
+              batch.id,
+              plan[0]!.id,
+              start + 60_000,
+              f.principal,
+            )
+            return { f, batch }
+          })
+        const one = yield* activate('sweep-broken-a')
+        const two = yield* activate('sweep-broken-b')
+        // the candidates are walked in id order, so the unreadable one has
+        // to be the one that comes first or the test proves nothing
+        const [broken, sound] = one.batch.id < two.batch.id ? [one, two] : [two, one]
+
+        // a plan no engine will read: the scheduled phase sitting behind the
+        // unscheduled one. Written directly, because the door that used to
+        // let this in has since been shut.
+        yield* runSql(sql`
+          update batch_phases set ordinal = 3 - ordinal
+           where tenant_id = ${broken.f.tenant} and batch_id = ${broken.batch.id}`)
+
+        yield* TestClock.adjust('2 minutes')
+        const swept = yield* assessment.sweepDueBoundaries
+        const entered = (yield* assessment.getPlan(
+          sound.f.tenant,
+          sound.batch.id,
+          sound.f.principal,
+        )).find((row) => row.plannedEntryAt !== null)?.actualEntryAt
+        // the unreadable one is left unreadable on purpose, so it is taken
+        // out of the candidate set before the next test asks what is still
+        // due across this database
+        yield* runSql(sql`
+          update batch_phases set planned_entry_at = null
+           where tenant_id = ${broken.f.tenant} and batch_id = ${broken.batch.id}`)
+        return { swept, entered }
+      }),
+    )
+    const answer = ok(exit)
+    // One batch's trouble is its own. Carried out of the loop, it stopped
+    // every candidate after it - the same ones every tick, because the
+    // candidates come back in id order.
+    expect(answer.swept.scanned).toBe(2)
+    expect(answer.entered).not.toBeNull()
+    expect(answer.entered).not.toBeUndefined()
+  })
+
   it('names the earliest planned instant across tenants, and nothing once ratified', async () => {
     const exit = await run(
       db.url,

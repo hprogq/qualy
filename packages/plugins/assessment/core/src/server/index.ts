@@ -4501,7 +4501,21 @@ export const make = Effect.fn('Assessment.make')(function* () {
               return swept.ratified
             }),
           ),
-        ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
+        ).pipe(
+          Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
+          // One batch at a time, and one batch's trouble is its own. Without
+          // this the loop carried the first failure out of the sweep and
+          // every candidate after it - ordered by id, so the same ones every
+          // tick - simply stopped having their boundaries ratified. A
+          // deadline that has passed is not a thing to stay quiet about, so
+          // it is logged by name and the sweep goes on.
+          Effect.catchCause((cause) =>
+            Effect.logError('a batch could not be swept', cause).pipe(
+              Effect.annotateLogs({ tenantId: candidate.tenantId, batchId: candidate.id }),
+              Effect.as(0),
+            ),
+          ),
+        )
       }
       return { scanned: candidates.length, ratified }
     }).pipe(Effect.withSpan('Assessment.sweepDueBoundaries')),
@@ -5011,9 +5025,17 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
               return standing.review
             case 'entries-changed':
             case 'result-changed':
+              // A participant hears about their own. The people who work the
+              // round hear about all of it: a recorder's list and a
+              // reviewer's queue are drawn from exactly the facts these
+              // announce, and gated on membership alone the staff screens
+              // never woke at all. Nothing is disclosed by hearing - what
+              // goes down the wire is the kind and nothing else.
               return (
-                standing.personal &&
-                (event.subjectUserId === null || event.subjectUserId === principal.userId)
+                standing.review ||
+                standing.record ||
+                (standing.personal &&
+                  (event.subjectUserId === null || event.subjectUserId === principal.userId))
               )
             case 'item-changed':
               return true
