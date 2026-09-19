@@ -1,7 +1,7 @@
-import { Effect, Layer, Redacted } from 'effect'
+import { Effect, Exit, Layer, Redacted } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { ShellPolicy, shellPolicyLayer } from '@qualy/api-kit/shell-policy'
-import { StorageBackends } from '@qualy/plugin-storage/server'
+import { DEFAULT_LIMITS, StorageBackends, StorageConfig } from '@qualy/plugin-storage/server'
 import plugin from '../src/index.ts'
 import { CosStorageConfig } from '../src/server/config.ts'
 
@@ -25,7 +25,45 @@ const settings = CosStorageConfig.of({
 
 /** the bare layer the descriptor carries, which is where the registration lives */
 const registration = plugin.features.find((feature) => feature._tag === 'Layer')!
-  .layer as Layer.Layer<never, never, StorageBackends | CosStorageConfig | ShellPolicy>
+  .layer as Layer.Layer<
+  never,
+  never,
+  StorageBackends | CosStorageConfig | ShellPolicy | StorageConfig
+>
+
+const withLimits = (minutes: number) =>
+  Effect.runPromise(
+    Effect.exit(
+      Effect.flatMap(ShellPolicy, (policy) => policy.entries).pipe(
+        Effect.provide(
+          registration.pipe(
+            Layer.provideMerge(
+              Layer.mergeAll(
+                shellPolicyLayer,
+                Layer.succeed(CosStorageConfig, settings),
+                Layer.succeed(
+                  StorageConfig,
+                  StorageConfig.of({
+                    defaultBackend: 'cos',
+                    limits: { ...DEFAULT_LIMITS, uploadGrantTtlMinutes: minutes },
+                  }),
+                ),
+                Layer.succeed(
+                  StorageBackends,
+                  StorageBackends.of({
+                    register: () => Effect.void,
+                    resolve: () => Effect.die('not asked'),
+                    forWrite: Effect.die('not asked'),
+                    installed: Effect.succeed([]),
+                  }),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  )
 
 const entriesFor = (config: typeof settings) =>
   Effect.runPromise(
@@ -36,6 +74,9 @@ const entriesFor = (config: typeof settings) =>
               Layer.mergeAll(
                 shellPolicyLayer,
                 Layer.succeed(CosStorageConfig, config),
+                // the registration refuses a grant lifetime cam cannot mint,
+                // so the stub carries the product's own default
+                Layer.succeed(StorageConfig, StorageConfig.of({ defaultBackend: 'cos', limits: DEFAULT_LIMITS })),
                 Layer.succeed(
                   StorageBackends,
                   StorageBackends.of({
@@ -64,6 +105,16 @@ describe('the shell policy contribution', () => {
         'img-src': [bucket],
       },
     ])
+  })
+
+  // The ticket's lifetime is the product's configuration; the credential's
+  // is cam's api, which takes 15 minutes to 2 hours. Clamped in silence, a
+  // shorter grant left a credential outliving the ticket it was minted for.
+  it('refuses a grant lifetime it cannot mint a credential for', async () => {
+    expect(Exit.isSuccess(await withLimits(15))).toBe(true)
+    expect(Exit.isSuccess(await withLimits(120))).toBe(true)
+    expect(Exit.isFailure(await withLimits(5))).toBe(true)
+    expect(Exit.isFailure(await withLimits(180))).toBe(true)
   })
 
   it('names the download domain as well, when a deployment has one', async () => {

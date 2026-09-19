@@ -20,8 +20,8 @@ export interface TemporaryCredential {
 }
 
 /** the shortest and longest lifetimes the api accepts, in seconds */
-const MIN_DURATION = 900
-const MAX_DURATION = 7200
+export const MIN_DURATION = 900
+export const MAX_DURATION = 7200
 
 export const credentialForObject = (input: {
   readonly secretId: Redacted.Redacted

@@ -87,7 +87,7 @@ const port = 3196
 const base = `http://127.0.0.1:${port}`
 // the same application with nobody trusted in front of it: the peer that
 // speaks to it is an ordinary client, whatever headers it writes
-const bareport = 3197
+const bareport = 3219
 const bare = `http://127.0.0.1:${bareport}`
 // one suite, one extra listener: the OTLP receiver the exported spans land
 // on; 3203 is claimed here the way `port` claims 3196 - keep both unique

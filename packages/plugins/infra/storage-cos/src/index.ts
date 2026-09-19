@@ -4,10 +4,11 @@ import { Browser } from '@qualy/plugin-kit/browser'
 import { ShellPolicy } from '@qualy/api-kit/shell-policy'
 import { Storage } from '@qualy/plugin-storage/plugin'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
-import { StorageBackends } from '@qualy/plugin-storage/server'
+import { StorageBackends, StorageConfig } from '@qualy/plugin-storage/server'
 import { cosBackend } from './server/backend.ts'
 import { config, CosStorageConfig } from './server/config.ts'
 import { cosDownloadOrigin, cosOrigin } from './server/policy.ts'
+import { MAX_DURATION, MIN_DURATION } from './server/sts.ts'
 
 // Keeping attachments in a tencent cloud bucket.
 //
@@ -16,11 +17,31 @@ import { cosDownloadOrigin, cosOrigin } from './server/policy.ts'
 // wrote stay readable through it even after a deployment starts writing
 // somewhere else.
 
-const registration: Layer.Layer<never, never, StorageBackends | CosStorageConfig | ShellPolicy> =
+const registration: Layer.Layer<
+  never,
+  never,
+  StorageBackends | CosStorageConfig | ShellPolicy | StorageConfig
+> =
   Layer.effectDiscard(
     Effect.gen(function* () {
       const settings = yield* CosStorageConfig
       const registry = yield* StorageBackends
+      // A ticket this backend cannot honour is refused here rather than
+      // quietly rewritten. The upload grant's lifetime is the product's
+      // configuration; the credential's is cam's api, which accepts
+      // [15 minutes, 2 hours] and used to be clamped in silence - so a
+      // shorter grant left a credential outliving the ticket it was minted
+      // for, and a longer one failed uploads near the end of a window the
+      // browser had been promised.
+      const { limits } = yield* StorageConfig
+      const seconds = limits.uploadGrantTtlMinutes * 60
+      if (seconds < MIN_DURATION || seconds > MAX_DURATION) {
+        return yield* Effect.die(
+          new Error(
+            `storage.limits.uploadGrantTtlMinutes is ${limits.uploadGrantTtlMinutes}, which this backend cannot mint a credential for: cam accepts ${MIN_DURATION / 60} to ${MAX_DURATION / 60} minutes`,
+          ),
+        )
+      }
       yield* registry.register(cosBackend(settings))
       // the browser writes to the bucket itself, so the shell's content
       // security policy has to let it connect there; the origin is this
