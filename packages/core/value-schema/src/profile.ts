@@ -284,6 +284,15 @@ const atomicIssues = (value: unknown, path: string): readonly ProfileIssue[] => 
   if ('enum' in value) {
     const found = onlyKeys(value, ['type', 'enum', ENUM_LABELS], path)
     const choices = value['enum']
+    // The ceiling first, and then nothing. Everything below reads the whole
+    // option list - once per label, once per locale - so a schema past the
+    // ceiling was cross-checked in full before being refused for being past
+    // it, which is work proportional to options times labels on a schema
+    // already known to be illegal.
+    if (Array.isArray(choices) && choices.length > PROFILE_LIMITS.choiceOptions) {
+      found.push(issue(`${path}.enum`, 'choice-too-many'))
+      return found
+    }
     found.push(
       ...annotationIssues(
         value,
@@ -297,8 +306,6 @@ const atomicIssues = (value: unknown, path: string): readonly ProfileIssue[] => 
       found.push(issue(`${path}.enum`, 'choice-empty'))
       return found
     }
-    if (choices.length > PROFILE_LIMITS.choiceOptions)
-      found.push(issue(`${path}.enum`, 'choice-too-many'))
     if (!choices.every((choice) => typeof choice === 'string'))
       found.push(issue(`${path}.enum`, 'choice-not-a-string'))
     else {
@@ -315,8 +322,11 @@ const atomicIssues = (value: unknown, path: string): readonly ProfileIssue[] => 
     if (labels !== undefined) {
       if (!isRecord(labels)) found.push(issue(`${path}.${ENUM_LABELS}`, 'not-an-object'))
       else {
+        // a set, not a scan per label: `includes` made this options times
+        // labels, and both are bounded only by the ceiling above
+        const admitted = new Set(choices)
         for (const [key, label] of Object.entries(labels)) {
-          if (!choices.includes(key))
+          if (!admitted.has(key))
             found.push(issue(`${path}.${ENUM_LABELS}.${key}`, 'label-orphan'))
           if (typeof label !== 'string')
             found.push(issue(`${path}.${ENUM_LABELS}.${key}`, 'label-not-a-string'))

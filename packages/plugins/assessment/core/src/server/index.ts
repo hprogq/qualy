@@ -4915,7 +4915,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         const principal = yield* CurrentUser
         const limit = pageSize(query.limit, DEFAULT_PAGE_SIZE)
         const fingerprint = `assessment.batches:${query.status ?? ''}:${query.q ?? ''}`
-        const key = readQueryCursor(query.cursor, fingerprint, ['text', 'uuid'])
+        const key = readQueryCursor(query.cursor, fingerprint, ['timestamp', 'uuid'])
         if (key === null) return yield* cursorUnusable()
         const after =
           key === undefined ? undefined : { createdAt: Date.parse(key[0]!), id: key[1]! }
@@ -5673,7 +5673,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         const principal = yield* CurrentUser
         const limit = pageSize(query.limit, DEFAULT_PAGE_SIZE)
         const fingerprint = `assessment.administrative-records:${params.batchId}`
-        const key = readQueryCursor(query.cursor, fingerprint, ['text', 'uuid'])
+        const key = readQueryCursor(query.cursor, fingerprint, ['timestamp', 'uuid'])
         if (key === null) return yield* cursorUnusable()
         const found = yield* assessment.listAdministrativeRecords(
           principal.tenantId,
