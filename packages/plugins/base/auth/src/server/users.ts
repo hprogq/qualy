@@ -1,3 +1,4 @@
+import { likeContains } from '@qualy/api-kit/schema'
 import { Effect } from 'effect'
 import { kyselyOf, query, transaction, withDatabase } from '@qualy/plugin-database/server'
 import { translateConstraints } from '@qualy/plugin-database/server/constraints'
@@ -202,7 +203,9 @@ const listUsers = (
       found = found.where('u.userTypeId', '=', input.userTypeId)
     }
     if (input.search !== undefined) {
-      const like = `%${input.search}%`
+      // wildcards in what somebody typed stay literal: unescaped, a search
+      // for `%` matched every row and one for `_` matched any character
+      const like = likeContains(input.search)
       // through the builder rather than one sql fragment holding an `or`: a
       // raw fragment is spliced in unparenthesised, so `and` binds tighter and
       // the clauses after it end up as alternatives to this one
@@ -372,7 +375,7 @@ const placeableNodes = (
       .orderBy('n.path')
       // one more than asked for, which is how the caller knows to say so
       .limit(limit + 1)
-    if (search !== undefined) found = found.where('n.name', 'ilike', `%${search}%`)
+    if (search !== undefined) found = found.where('n.name', 'ilike', likeContains(search))
     return found.execute()
   })
 

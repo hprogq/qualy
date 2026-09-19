@@ -23,7 +23,7 @@ import { transaction, withDatabase } from '@qualy/plugin-database/server'
 import { Rbac } from '@qualy/rbac-contract/effect'
 import { scopeCoverage } from '@qualy/rbac-contract'
 import { AccessDenied } from '@qualy/rbac-contract/effect'
-import { BadRequest } from '@qualy/api-kit/schema'
+import { BadRequest, likeContains } from '@qualy/api-kit/schema'
 import type { Principal } from '@qualy/rbac-contract'
 import { Audit } from '@qualy/audit-contract/effect'
 import { db } from './db.ts'
@@ -565,7 +565,7 @@ export const make = Effect.fn('FormulaTemplateLibrary.make')(function* () {
                   path: eb.ref('n.path'),
                 }),
               )
-            if (search !== '') found = found.where('n.name', 'ilike', `%${search}%`)
+            if (search !== '') found = found.where('n.name', 'ilike', likeContains(search))
             return found
               .orderBy(sql`path`)
               .limit(limit + 1)

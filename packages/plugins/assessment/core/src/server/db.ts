@@ -1,3 +1,4 @@
+import { likeContains } from '@qualy/api-kit/schema'
 import { Effect } from 'effect'
 import { Db } from '@qualy/plugin-database/plugin'
 import { sql, type RawBuilder } from 'kysely'
@@ -360,8 +361,7 @@ const batchFilters = <Q extends { where: (...args: never[]) => Q }>(
   }
   if (filter.q !== undefined) {
     // a plain substring match; wildcards in the input stay literal
-    const escaped = filter.q.replace(/[\\%_]/g, (match) => `\\${match}`)
-    found = found.where(...(['name', 'ilike', `%${escaped}%`] as never[]))
+    found = found.where(...(['name', 'ilike', likeContains(filter.q)] as never[]))
   }
   return found
 }

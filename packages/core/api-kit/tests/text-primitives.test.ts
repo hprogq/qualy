@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
-import { boundedText, trimmedName } from '../src/schema.ts'
+import { boundedText, likeContains, trimmedName } from '../src/schema.ts'
 
 // Every text field in the product is built from one of these two, so what
 // they admit is what reaches a text column. PostgreSQL stores no NUL byte
@@ -32,5 +32,18 @@ describe('what a text primitive admits', () => {
     expect(admits(boundedText(4), 'abcd')).toBe(true)
     expect(admits(boundedText(4), 'abcde')).toBe(false)
     expect(admits(trimmedName(4), '')).toBe(false)
+  })
+})
+
+describe('a substring somebody typed', () => {
+  it('means the characters it contains, wildcards included', () => {
+    expect(likeContains('ada')).toBe('%ada%')
+    // unescaped, this one matched every row in the table
+    expect(likeContains('%')).toBe('%\\%%')
+    // and this one matched any single character
+    expect(likeContains('_')).toBe('%\\_%')
+    expect(likeContains('100%')).toBe('%100\\%%')
+    // the escape character itself, or it would escape the escapes
+    expect(likeContains('a\\b')).toBe('%a\\\\b%')
   })
 })

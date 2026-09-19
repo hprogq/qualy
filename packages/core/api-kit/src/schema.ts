@@ -215,6 +215,17 @@ export const codeFrom = (name: string, prefix: string): string => {
 }
 
 /**
+ * A substring somebody typed, as a `like` pattern that means it literally.
+ *
+ * `%` and `_` are wildcards, so an unescaped search for `%` matched every
+ * row and one for `_` matched any single character - a search box quietly
+ * answering something other than what was typed. The backslash goes first
+ * or it would escape the escapes.
+ */
+export const likeContains = (text: string): string =>
+  `%${text.replace(/[\\%_]/g, (match) => `\\${match}`)}%`
+
+/**
  * PostgreSQL stores no NUL byte in a text column, and refuses the row rather
  * than dropping it. Admitted here, the refusal arrives from the database as
  * a fault - a 500 for a request that a schema can see is malformed. It is
