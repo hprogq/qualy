@@ -18417,8 +18417,9 @@ pnpm vitest run tools/tests apps/server/tests    413 passed(supervisor 4/4,新�
 
 ### golden 重新生成的理由
 
-`packages/core/formula-compiler/tests/support/golden-artifacts.json` 在本批一并重生成:decimal 的长度
-上限改动了打进沙箱产物的 value-schema 源码,产物字节因此变化。这是该门禁注释要求的"与故意改动同一提交
+`packages/core/formula-compiler/tests/support/golden-artifacts.json` 重生成了两次,原因同类:
+沙箱产物里打包着 value-schema 的源码,而本轮两次改到它——decimal 的长度上限,以及 choice 的
+选项上限提前到标签交叉校验之前(顺带把 `includes` 换成 Set)。产物字节因此变化。这是该门禁注释要求的"与故意改动同一提交
 并记录原因"的情形,不是未解释的漂移。**已发布版本不受影响**——`formula_versions.runtime_js` 逐版本存着
 当时的产物,执行的是那些字节。
 
