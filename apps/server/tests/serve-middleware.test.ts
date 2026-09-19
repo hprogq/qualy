@@ -1,6 +1,6 @@
 import { NodeHttpServer } from '@effect/platform-node'
 import { Effect, Exit, Layer, Scope } from 'effect'
-import { HttpRouter, HttpServerResponse } from 'effect/unstable/http'
+import { HttpRouter, HttpServerRequest, HttpServerResponse } from 'effect/unstable/http'
 import { createServer } from 'node:http'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
@@ -56,11 +56,19 @@ let scope: Scope.Closeable
 
 beforeAll(async () => {
   const echo = Effect.succeed(HttpServerResponse.jsonUnsafe({ ok: true }))
+  // a route that actually reads the body, which is the only way to observe
+  // the ceiling: the echo routes above answer without ever touching it
+  const swallow = Effect.gen(function* () {
+    const request = yield* HttpServerRequest.HttpServerRequest
+    const body = yield* request.text
+    return HttpServerResponse.jsonUnsafe({ read: body.length })
+  })
   const routes = Layer.mergeAll(
     HttpRouter.add('GET', '/echo', echo),
     HttpRouter.add('POST', '/echo', echo),
     HttpRouter.add('GET', `${QUALY_API_PREFIX}/echo`, echo),
     HttpRouter.add('POST', `${QUALY_API_PREFIX}/echo`, echo),
+    HttpRouter.add('POST', `${QUALY_API_PREFIX}/swallow`, swallow),
     // the mount's own not-found, as the host serves it
     apiRouteFallback,
   )
@@ -94,6 +102,36 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await Effect.runPromise(Scope.close(scope, Exit.void))
+})
+
+describe('how heavy a request body may be', () => {
+  const post = (bytes: number) =>
+    fetch(`${base}${QUALY_API_PREFIX}/swallow`, {
+      method: 'POST',
+      headers: { 'content-type': 'text/plain', origin: base },
+      body: 'x'.repeat(bytes),
+    })
+
+  it('reads a body the product can legitimately send', async () => {
+    // an administrative act naming five thousand people, and excluding five
+    // thousand more, is around 380 KB of identifiers
+    const ordinary = await post(400_000)
+    expect(ordinary.status).toBe(200)
+    expect(await ordinary.json()).toEqual({ read: 400_000 })
+  })
+
+  it('refuses to buffer one past the ceiling', async () => {
+    // Without a ceiling this answered 200 with three megabytes held in
+    // memory, and nothing bounded how many of those could be in flight.
+    // Reaching the limit destroys the request stream, so what the caller
+    // sees is the connection going away rather than a status - either way
+    // the body was never read to the end.
+    const outcome = await post(3 * 1024 * 1024).then(
+      (response) => `status:${response.status}`,
+      () => 'dropped',
+    )
+    expect(outcome).not.toBe('status:200')
+  })
 })
 
 describe('what every api answer carries', () => {

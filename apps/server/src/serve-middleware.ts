@@ -1,4 +1,6 @@
+import { ByteSize, Effect as Eff } from 'effect'
 import type { Effect } from 'effect'
+import { HttpServerRequest as Incoming } from 'effect/unstable/http'
 import type { HttpServerRequest, HttpServerResponse } from 'effect/unstable/http'
 import { requestOriginGuard } from '@qualy/api-kit/origin'
 import {
@@ -32,6 +34,20 @@ import { responseHeaders } from './response-headers.ts'
 // router's empty 404 before any serve middleware runs, so that answer is a
 // catch-all route of the mount instead (api-kit's route fallback).
 
+/**
+ * What one request body may weigh.
+ *
+ * `MaxBodySize` defaults to undefined, which reads as no ceiling at all, so
+ * without this every json endpoint buffered whatever was sent before any
+ * schema looked at it. The number is the largest body the product can
+ * legitimately produce with room to spare: an administrative act names at
+ * most 5000 participants and may exclude 5000 more, which is around 380 KB
+ * of identifiers. Uploads do not pass through here - a file arrives on its
+ * own raw route and is read as a stream - and a route needing a different
+ * ceiling provides its own the way the csp report route already does.
+ */
+const MAX_BODY = ByteSize.mebibytes(2)
+
 export const serveMiddleware = (options: {
   readonly trustedProxies: readonly string[]
   readonly access: LoggingSettings['access']
@@ -50,6 +66,14 @@ export const serveMiddleware = (options: {
     Exclude<R, RequestContext> | HttpServerRequest.HttpServerRequest
   > =>
     withRequestContext(
-      withAccessLog(httpMetrics(routeSpanNames(responseHeaders(guard(compatible(httpApp)))))),
+      withAccessLog(
+        httpMetrics(
+          routeSpanNames(
+            responseHeaders(
+              guard(compatible(Eff.provideService(httpApp, Incoming.MaxBodySize, MAX_BODY))),
+            ),
+          ),
+        ),
+      ),
     )
 }
