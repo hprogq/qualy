@@ -9,7 +9,7 @@ import {
   ShellPolicyHeader,
   ShellPolicyRefused,
 } from '../src/server/shell-policy.ts'
-import { makeReportDeduper, parseReports } from '../src/server/csp-reports.ts'
+import { MAX_TRACKED_KEYS, makeReportDeduper, parseReports } from '../src/server/csp-reports.ts'
 
 // The policy as a string, and the two things that decide it: what the
 // shell writes on its own, and what a plugin may add. Then the freeze - one
@@ -229,5 +229,27 @@ describe('reading a report', () => {
     expect(deduplicate('other', 2_000)).toEqual({ log: true, suppressed: 0 })
     expect(deduplicate('k', 60_000)).toEqual({ log: true, suppressed: 2 })
     expect(deduplicate('k', 60_001)).toEqual({ log: false, suppressed: 1 })
+  })
+
+  it('holds a bounded number of keys however many distinct ones arrive', () => {
+    // The key is three fields off an unauthenticated body, so the window
+    // bounds nothing on its own: inside one window there is never anything
+    // old enough to expire, and the table grew with whatever was posted.
+    const deduplicate = makeReportDeduper(60_000)
+    for (let i = 0; i < MAX_TRACKED_KEYS * 3; i++) deduplicate(`key-${i}`, 1_000)
+    // the oldest keys went, so the first one is logged as new again
+    expect(deduplicate('key-0', 1_000)).toEqual({ log: true, suppressed: 0 })
+    // while one still inside the table is remembered
+    const recent = `key-${MAX_TRACKED_KEYS * 3 - 1}`
+    expect(deduplicate(recent, 1_000)).toEqual({ log: false, suppressed: 1 })
+  })
+
+  it('reads a bounded number of reports out of one body', () => {
+    const many = Array.from({ length: 200 }, () => ({
+      type: 'csp-violation',
+      body: { effectiveDirective: 'script-src', blockedURL: 'https://evil.test/x' },
+    }))
+    const read = parseReports('application/reports+json', JSON.stringify(many))
+    expect(read).toHaveLength(32)
   })
 })
