@@ -255,6 +255,17 @@ export default defineFormula({
 `
 
 describe.runIf(postgresAvailable)('the formula api over http', () => {
+  it('refuses a malformed identifier instead of letting postgres refuse it', async () => {
+    // Every identifier in this contract addresses a uuid column. Accepting
+    // any short string meant a malformed one travelled to the database,
+    // which rejects it as a syntax error - a defect, answered 500, for a
+    // request that merely names something that cannot exist.
+    const read = await call('GET', '/api/assessment/formula-functions/not-a-uuid')
+    expect(read.status).toBeLessThan(500)
+    const listed = await call('GET', '/api/assessment/formula-functions/%20/versions')
+    expect(listed.status).toBeLessThan(500)
+  })
+
   it('saves through the real HttpApiClient pipeline, the way the browser does', async () => {
     const created = await call('POST', '/api/assessment/formula-functions', {
       name: 'Client pipeline',

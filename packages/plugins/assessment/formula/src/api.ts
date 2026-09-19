@@ -9,6 +9,7 @@ import {
   pageOf,
   pageQuery,
   trimmedName,
+  uuidInput,
 } from '@qualy/api-kit/schema'
 import {
   FormulaBundleFailed,
@@ -35,7 +36,14 @@ import {
 } from './server/errors.ts'
 import { BatchNotFound } from '@qualy/plugin-assessment/errors'
 
-const id = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64))
+/**
+ * Every identifier this contract names addresses a uuid column.
+ *
+ * Accepting any short string meant a malformed one travelled all the way to
+ * PostgreSQL, which refuses it as a syntax error - a defect, answered 500,
+ * for what is simply a request naming something that cannot exist.
+ */
+const id = uuidInput
 
 /** a formula source; the compile pipeline enforces the byte limit again */
 const sourceText = Schema.String.check(Schema.isMaxLength(262_144))
