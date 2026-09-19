@@ -40,6 +40,8 @@ console.log(`check-csp-enforce: enforcing ${policy}`)
 
 const browser = await chromium.launch()
 const violations: string[] = []
+/** what was actually opened, so the last line can only claim that much */
+const opened: string[] = []
 try {
   const context = await browser.newContext({
     viewport: { width: 1280, height: 800 },
@@ -66,6 +68,7 @@ try {
     await delay(settle)
     const reported = (await page.evaluate('window.__csp')) as string[]
     for (const line of reported) violations.push(`${route}: ${line}`)
+    opened.push(route)
     console.log(
       `check-csp-enforce: ${route} opened, ${String(reported.length)} violation(s) reported`,
     )
@@ -88,6 +91,13 @@ try {
     if (status !== 200) fail(`sign-in answered ${String(status)}`)
     await visit('/assessment/batches')
     await visit('/library/formulas', 4000)
+  } else if (process.env.CSP_REQUIRE_SIGNED_IN === '1') {
+    // The pages worth opening under an enforced policy are the signed-in
+    // ones: the only Workers in the tree are the code editor's, and
+    // `worker-src` is the directive most likely to be broken. Skipping them
+    // used to be a log line inside a run that then said no violations - so
+    // the gate degraded to the login page and stayed green about it.
+    fail('no administrator credentials; the signed-in pages were not opened')
   } else {
     console.log(
       'check-csp-enforce: no administrator credentials in the environment; the signed-in pages are not opened',
@@ -100,4 +110,4 @@ if (violations.length > 0) {
   fail(`${String(violations.length)} policy violation(s):\n  ${violations.join('\n  ')}`)
 }
 await server.stop()
-console.log('check-csp-enforce: no violations under the enforced policy')
+console.log(`check-csp-enforce: no violations on ${opened.join(', ')} under the enforced policy`)

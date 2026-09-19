@@ -137,9 +137,25 @@ jobs:
           key: playwright-${{ steps.playwright.outputs.version }}
       - name: install chromium
         run: pnpm exec playwright install --with-deps chromium
+      # The pages worth opening under an enforced policy are the signed-in
+      # ones - the only Workers in the tree are the code editor's, and
+      # worker-src is the directive most likely to be broken - so there has
+      # to be somebody to sign in as. Without this the check reached the
+      # login page alone and reported no violations, which read as coverage
+      # it did not have.
+      - name: an administrator to sign in as
+        env:
+          DATABASE_URL: postgres://qualy:qualy@localhost:5432/qualy
+          QUALY_ADMIN_USERNAME: admin
+          QUALY_ADMIN_PASSWORD: csp-smoke-only
+        run: pnpm seed
       - name: the content security policy can be enforced
         env:
           DATABASE_URL: postgres://qualy:qualy@localhost:5432/qualy
+          QUALY_ADMIN_USERNAME: admin
+          QUALY_ADMIN_PASSWORD: csp-smoke-only
+          # and it may not quietly fall back to the login page here
+          CSP_REQUIRE_SIGNED_IN: '1'
         run: node tools/quality/check-csp-enforce.ts
 
   # The component suite, in the one environment that is always cold. Its
