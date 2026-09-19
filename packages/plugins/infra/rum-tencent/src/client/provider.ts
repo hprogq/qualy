@@ -185,7 +185,17 @@ export const tencentRumProvider: BrowserRumProvider = {
       captureDiagnostic(code: string, context?: DiagnosticContext) {
         // a custom event, not an error: a missing component has no stack, and
         // inventing one would put a fiction in front of whoever reads it
-        aegis.reportEvent({ name: code, ext1: oneLine(context) })
+        aegis.reportEvent({
+          name: code,
+          ext1: oneLine(context),
+          // Read off the installed sdk (lib/aegis.min.js): `reportEvent` fills
+          // `originFrom` from the real address unless it is given one, and it
+          // runs the EVENT pipeline, which has no `beforeReport` stage - that
+          // hook, which replaces the address everywhere else, is the last
+          // stage of the log pipeline. So this is the only place the observed
+          // page can be put on an event.
+          originFrom: observedPageUrl(),
+        })
       },
 
       setPage() {

@@ -3,7 +3,7 @@ import { setObservedPage } from '@qualy/browser-observability'
 import { registerApiRoutes, resetApiRoutes } from '@qualy/browser-observability/api-routes'
 import { resetBrowserRum } from '@qualy/plugin-rum/client'
 import { beforeReport, beforeRequest } from '@qualy/plugin-rum-tencent/client/privacy'
-import { aegisOptions } from '@qualy/plugin-rum-tencent/client/provider'
+import { aegisOptions, tencentRumProvider } from '@qualy/plugin-rum-tencent/client/provider'
 import {
   apiSpeedUrl,
   beforeReportSpeed,
@@ -326,6 +326,43 @@ describe('which api failures reach the error panel', () => {
     expect(beforeReport(retcode)).toBe(true)
     expect(retcode.msg).toContain('/api/iam/users/:userId/role-grants')
     expect(retcode.msg).not.toContain('2023123456')
+  })
+})
+
+describe('what an event says the page was', () => {
+  it('names the observed page, because the event pipeline has no report hook', async () => {
+    // Read off the installed sdk: `reportEvent` fills `originFrom` from the
+    // real address unless it is given one, and it runs the EVENT pipeline -
+    // while `beforeReport`, the hook that replaces the address on every
+    // other report, is the last stage of the LOG pipeline. So a diagnostic
+    // carried location.href to the vendor whatever the hooks did.
+    const loaded = await import('aegis-web-sdk')
+    const Aegis = loaded.default as unknown as { prototype: Record<string, unknown> }
+    const original = Aegis.prototype['reportEvent']
+    const sent: Record<string, unknown>[] = []
+    // the sdk's own rule, so the stub observes what it would really send:
+    // `originFrom: e.originFrom || this.getOriginFrom()`, and the subclass
+    // answers getOriginFrom with the real address
+    Aegis.prototype['reportEvent'] = function (
+      this: { getOriginFrom: () => string },
+      event: Record<string, unknown>,
+    ) {
+      sent.push({ ...event, originFrom: event['originFrom'] ?? this.getOriginFrom() })
+    }
+    try {
+      setObservedPage({ pageId: 'assessment/review', route: '/assessment/batches/:batchId/review' })
+      const sink = await tencentRumProvider.start(
+        { id: 'probe-id', environment: 'production', sampleRate: 1 },
+        { releaseId: 'r_probe' },
+      )
+      sink?.captureDiagnostic('ui/component-missing', { pageId: 'assessment/review' })
+      sink?.destroy()
+    } finally {
+      Aegis.prototype['reportEvent'] = original
+    }
+    expect(sent).toHaveLength(1)
+    expect(sent[0]!['originFrom']).toBe('/assessment/batches/:batchId/review')
+    expect(String(sent[0]!['originFrom'])).not.toContain(window.location.host)
   })
 })
 
