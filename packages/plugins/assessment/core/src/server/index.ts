@@ -3065,10 +3065,17 @@ export const make = Effect.fn('Assessment.make')(function* () {
     applyAccessSync: Effect.fn('Assessment.applyAccessSync')(
       function* (tenantId, batchId, input, as) {
         yield* requireBatchAdministration(tenantId, batchId, as)
-        const assignments = yield* applicableAssignments(tenantId, batchId)
         return yield* withDb(
           transaction(
             Effect.gen(function* () {
+              // The same lock every other write on this batch takes, and the
+              // reason this one needs it: two administrators pressing sync at
+              // the same moment both saw the same source as new and both
+              // inserted it, and the loser met a unique index as a database
+              // fault - a 500 for having been second.
+              const locked = yield* lockBatch(tenantId, batchId)
+              if (!locked) return yield* new BatchNotFound()
+              const assignments = yield* applicableAssignments(tenantId, batchId)
               // recomputed inside the transaction rather than trusted from the
               // request: the selection says which change and how much of it, and
               // both are intersected with what the organization offers right now
