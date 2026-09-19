@@ -1506,6 +1506,50 @@ describe.runIf(postgresAvailable)('recognitions', () => {
     expect(result?.issues).toBeUndefined()
   })
 
+  it("will not let the subject re-file the office's own finding as their claim", async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rec-admin-submit')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, {
+            profile: [...REVIEW_OPEN, 'assessment.entry.appeal', 'assessment.entry.abandon'],
+            stages: [at(f, 'class')],
+            escalation: [at(f, 'dept')],
+          })
+          const item = yield* recordItem(f, g.batch.id)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: item.id, participantId: g.p1, payload: {}, note: '违纪记录' },
+            f.principal(f.recorder),
+          )
+          // where an appeal that did not carry leaves it. Placed directly
+          // because the route there is the appeal machinery, and what is
+          // under test is what the subject may do from here.
+          yield* runSql(sql`update entries set status = 'rejected' where id = ${entry.id}`)
+
+          const asSubject = f.principal(f.s1)
+          const submitted = yield* Effect.exit(
+            assessment.setEntryStatus(f.t, entry.id, 'in_review', asSubject),
+          )
+          const after = one<{ status: string; source: string }>(
+            yield* runSql(sql`select status, source from entries where id = ${entry.id}`),
+          )
+          return { submitted, after }
+        }),
+      ),
+    )
+
+    // Submitting walks the ordinary route, so the office's own finding would
+    // come back as something the subject filed and a reviewer approved. The
+    // abandon door has refused this since the recorded-fact boundary landed;
+    // this one was left open.
+    expect(refusalOf(result.submitted)?.reason).toBe('entry-not-submittable')
+    expect(result.after.status).toBe('rejected')
+    expect(result.after.source).toBe('record')
+  })
+
   it("keeps a recorded fact out of its subject's hands, and open to their argument", async () => {
     const result = ok(
       await run(

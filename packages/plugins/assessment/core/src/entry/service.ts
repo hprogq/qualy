@@ -1195,9 +1195,14 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               if (participant.userId !== as.userId) return yield* refuse(action, 'not-your-entry')
               // the projection hides it; this is where it is refused. A fact
               // the office recorded or an import carried in is not the
-              // subject's to withdraw, whatever the phase allows in general
-              if (action === 'abandon' && entry.source !== 'self' && entry.source !== 'proxy') {
-                return yield* refuse(action, 'entry-not-abandonable')
+              // subject's to withdraw, whatever the phase allows in general -
+              // nor to file. An administrative record can reach `rejected`
+              // (an appeal that did not carry), and from there submitting
+              // would walk the ordinary route and re-file the office's own
+              // finding as the subject's claim.
+              if (entry.source !== 'self' && entry.source !== 'proxy') {
+                if (action === 'abandon') return yield* refuse(action, 'entry-not-abandonable')
+                if (to === 'in_review') return yield* refuse(action, 'entry-not-submittable')
               }
               if (participant.status !== 'active') {
                 return yield* refuse(action, 'participant-not-active')
