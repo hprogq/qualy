@@ -627,7 +627,7 @@ function Editor({
 
   const structure =
     paper === undefined ? (
-      <PaperStart batchId={batchId} onCreated={() => void refresh()} />
+      <PaperStart batchId={batchId} version={groupsVersion ?? 0} onCreated={() => void refresh()} />
     ) : (
       <div {...stylex.props(styles.grow, styles.structureArea)}>
         <PaperSummary

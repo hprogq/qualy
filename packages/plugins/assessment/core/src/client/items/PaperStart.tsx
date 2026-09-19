@@ -103,7 +103,22 @@ const styles = stylex.create({
   },
 })
 
-export function PaperStart({ batchId, onCreated }: { batchId: string; onCreated: () => void }) {
+export function PaperStart({
+  batchId,
+  version,
+  onCreated,
+}: {
+  batchId: string
+  /**
+   * The score groups' version as this screen last read it.
+   *
+   * Not 1. A round whose paper was set up and then removed is on its second
+   * version or later, and writing the first one back is a conflict every
+   * time - which left the only door to a paper permanently shut.
+   */
+  version: number
+  onCreated: () => void
+}) {
   const { format } = useI18n()
   const [wizard, setWizard] = useState(false)
   const [blank, setBlank] = useState(false)
@@ -152,6 +167,7 @@ export function PaperStart({ batchId, onCreated }: { batchId: string; onCreated:
         <PaperWizard
           open={wizard || blank}
           batchId={batchId}
+          version={version}
           /* the blank route asks the same two things and simply leaves the
              ceiling empty; a second dialog for that would be a second answer
              to one question */
@@ -170,6 +186,7 @@ export function PaperStart({ batchId, onCreated }: { batchId: string; onCreated:
 function PaperWizard({
   open,
   batchId,
+  version,
   capped,
   onClose,
   onCreated,
@@ -177,6 +194,7 @@ function PaperWizard({
   /** false while it animates shut; it keeps drawing what it was showing */
   open: boolean
   batchId: string
+  version: number
   capped: boolean
   onClose: () => void
   onCreated: () => void
@@ -201,7 +219,7 @@ function PaperWizard({
                 floor: null,
               },
             ],
-            expectedVersion: 1,
+            expectedVersion: version,
           },
         }),
       ),
