@@ -2621,6 +2621,67 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     expect(Object.keys(events[1]!.diff)).toEqual(['phasePlan'])
   })
 
+  it("keeps the tenant timetable out of one unit administrator hands", async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('template-reach')
+        const assessment = yield* Assessment
+        const mine = yield* assessment.createTemplate(
+          f.tenant,
+          { name: 'shared', phases: [phase({ phaseKey: 'entry' })] },
+          f.principal,
+        )
+
+        // somebody who administers rounds in one part of the tree and
+        // nowhere else
+        const local = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+            values (${f.tenant}, 'College head', ${f.teacherType}, ${f.gradeA}) returning id`),
+        ).id
+        const office = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+            values (${f.tenant}, 'college', 'College', 'org', 'active', 'explicit', 'unrestricted')
+            returning id`),
+        ).id
+        const manage = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into permissions (code, plugin, name, target_kind)
+            values ('assessment.batch.manage', 'assessment', 'manage', 'org-node')
+            on conflict (code) do update set code = excluded.code returning id`),
+        ).id
+        yield* runSql(sql`
+          insert into role_permissions (tenant_id, role_id, permission_id)
+          values (${f.tenant}, ${office}, ${manage})`)
+        yield* runSql(sql`
+          insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+          values (${f.tenant}, ${local}, ${office}, ${f.gradeA}, 'subtree')`)
+        const asLocal = { tenantId: f.tenant, userId: local, sessionId: 's' }
+
+        const written = yield* Effect.exit(
+          assessment.createTemplate(f.tenant, { name: 'theirs', phases: [] }, asLocal),
+        )
+        const removed = yield* Effect.exit(assessment.deleteTemplate(f.tenant, mine.id, asLocal))
+        const still = yield* assessment.listTemplates(f.tenant, { limit: 50 }, f.principal)
+        return {
+          written: tagOf(written),
+          removed: tagOf(removed),
+          names: still.map((row) => row.name),
+        }
+      }),
+    )
+    const answer = ok(exit)
+    // A template belongs to the tenant: no owner, no organizational scope,
+    // and every round in the tenant can be built from it. Held-anywhere let
+    // one college's administrator edit and delete what every other college
+    // builds from.
+    expect(answer.written).toBe('ACCESS_DENIED')
+    expect(answer.removed).toBe('ACCESS_DENIED')
+    expect(answer.names).toContain('shared')
+  })
+
   it('holds templates to their structural rules and versions their edits', async () => {
     const exit = await run(
       db.url,

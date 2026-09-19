@@ -1807,11 +1807,24 @@ export const make = Effect.fn('Assessment.make')(function* () {
       return locked
     })
 
+  /**
+   * Who may write the tenant's timetable templates.
+   *
+   * A template belongs to the tenant, not to a unit: it has no owner column
+   * and no organizational scope, and every round in the tenant can be built
+   * from it. Held-anywhere was the wrong shape for that - one college's
+   * batch administrator could edit, and delete, what every other college
+   * builds from. Only authority over the whole tenant is wide enough for
+   * something that is nobody's in particular, which is the same answer the
+   * roster reach gives for a round whose units are gone.
+   */
   const templatePermission = (as: Principal) =>
-    Effect.flatMap(rbac.hasPermission(as, MANAGE), (held) =>
-      held
+    Effect.flatMap(rbac.listAuthorizedScope(as, MANAGE), (held) =>
+      held.tenantWide
         ? Effect.void
-        : Effect.fail(new AccessDenied({ reason: 'cannot manage assessment batches' })),
+        : Effect.fail(
+            new AccessDenied({ reason: 'cannot manage assessment timetable templates' }),
+          ),
     )
 
   /** the selection as a validated, deduplicated set of living units */
