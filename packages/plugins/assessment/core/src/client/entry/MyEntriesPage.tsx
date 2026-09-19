@@ -1577,7 +1577,13 @@ function Body({
             ? formatError(groups.error)
             : mine.error
               ? formatError(mine.error)
-              : null
+              : // a standing that failed is not a standing of zero: it is
+                // already retried out, so it reports neither pending nor an
+                // error unless somebody asks, and every group ledger drew a
+                // settled 0 over a read that never arrived
+                standing.error
+                ? formatError(standing.error)
+                : null
       }
       loadingLabel={format(commonMessages.loading)}
       retryLabel={format(commonMessages.retry)}
@@ -1931,6 +1937,11 @@ function Body({
       )}
       {lingeringAppeal != null && (
         <AppealDialog
+          /* what it is about, so a second request does not open on the first
+             one's typing. The filing dialog above is keyed for the same
+             reason; these two were not, and what somebody wrote about one
+             claim pre-filled the argument about another. */
+          key={lingeringAppeal.id}
           open={appealing !== null}
           entryId={lingeringAppeal.id}
           onClose={() => setAppealing(null)}
@@ -1942,6 +1953,7 @@ function Body({
       )}
       {lingeringAnswer?.supplement != null && (
         <SupplementAnswerDialog
+          key={lingeringAnswer.supplement.requestId}
           open={answering !== null}
           entry={lingeringAnswer}
           supplement={lingeringAnswer.supplement}

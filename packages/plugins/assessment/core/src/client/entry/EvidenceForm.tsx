@@ -4,6 +4,7 @@ import * as stylex from '@stylexjs/stylex'
 import { DownloadIcon, FileTextIcon, UploadIcon, XIcon } from 'lucide-react'
 import { useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
+import { entryRefusalMessage } from './refusals.ts'
 import { parseDecimal } from '@qualy/value-schema'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { Button } from '@qualy/ui/button'
@@ -169,7 +170,7 @@ export function EvidenceForm({
   /** false while any draft cannot materialize; submit gates listen here */
   onValidityChange?: (valid: boolean) => void
 }) {
-  const { format } = useI18n()
+  const { format, formatError } = useI18n()
   const [uploaded, setUploaded] = useState<Record<string, UploadedFile>>({})
   const [uploading, setUploading] = useState<{ field: string; names: readonly string[] } | null>(
     null,
@@ -181,6 +182,17 @@ export function EvidenceForm({
     field: string
     files: readonly { name: string; reason: FileRejection['reason'] }[]
   } | null>(null)
+
+  /**
+   * The payload as it stands right now, for a write that lands later.
+   *
+   * An upload finishes long after the drop that began it, and the handler
+   * closes over the render it was made in - so writing the whole payload
+   * back from that render erased everything typed while the bytes were in
+   * flight. Reads, never renders from: what draws is `value`.
+   */
+  const latest = useRef(value)
+  latest.current = value
 
   const setField = (key: string, next: string | number | readonly string[]) =>
     onChange({ ...value, [key]: next })
@@ -394,11 +406,24 @@ export function EvidenceForm({
               setUploaded((previous) => ({ ...previous, [done.attachmentId]: done }))
               landed.push(done.attachmentId)
             }
-          } catch {
-            setUploadError(format(m.entryFileFailed))
+          } catch (error) {
+            // the round's own refusal, when it gave one: a file too large
+            // for this field, a type it does not take, a quota reached. The
+            // bare catch threw all ten of them away and said "try again",
+            // which is advice that cannot work.
+            const refusal = entryRefusalMessage(error)
+            setUploadError(refusal === null ? formatError(error) : format(refusal))
           } finally {
             setUploading(null)
-            if (landed.length > 0) setField(field.key, [...cited, ...landed])
+            if (landed.length > 0) {
+              // read the payload as it stands now, not as it stood at the drop
+              const current = latest.current
+              const already = current[field.key]
+              onChange({
+                ...current,
+                [field.key]: [...(Array.isArray(already) ? (already as string[]) : []), ...landed],
+              })
+            }
           }
         }
 

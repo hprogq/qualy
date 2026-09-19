@@ -331,9 +331,15 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
           <div {...stylex.props(styles.listHead)}>
             <div {...stylex.props(styles.listTitleSeat)}>
               <h3 {...stylex.props(styles.listTitle)}>{format(m.tabRoster)}</h3>
-              <span {...stylex.props(styles.listCount)}>
-                {format(m.participantCount, { count: rows.length })}
-              </span>
+              {/* the round's own count, not this page's: the list is paged
+                  at twenty-five, so a round of four hundred read as
+                  twenty-five. Under a unit filter there is no total to
+                  report, and a page count would be the same lie. */}
+              {units.length === 0 && (
+                <span {...stylex.props(styles.listCount)}>
+                  {format(m.participantCount, { count: batch.participantCount })}
+                </span>
+              )}
             </div>
             {batch.manageable && (
               <div {...stylex.props(styles.listActions)}>
