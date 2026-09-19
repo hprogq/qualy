@@ -4714,7 +4714,13 @@ entry_events 新表),按 CLAUDE 的规矩每一步都要配升级测试,因此�
 `pnpm test:browser` 54 passed;`pnpm build` 通过;`pnpm qualy generate` 无待生成;
 `prettier --check` 全绿。
 
-§32.62 的九条至此全部落地。
+§32.62 的九条至此落地八条。**第八条未落地**(2026-09-19 审查发现):`resolveRoute` 已按三态
+记录(`no-such-level` / `no-holder`),`stageArrival` 也已把 `nodeId === null` 判为
+`blocked / no-assignee`,但 `enterableFrom`(review/chain.ts)只看 `nodeId !== null`,把两种原因
+一起跳过——于是 `nearestRole` 全线无人时该步骤被静默越过,它前一级成了终审,条目直接通过。
+前置依赖同样未做:`review_instances.current_node_id` 仍非空(db/entities.ts),`blockedGroups`
+还 `join org_nodes on n.id = ri.current_node_id`,所以轮次无法停在一个没有节点的步骤上。
+修复属 Review v2 范围:列改可空 + 阻塞面板容忍空节点 + `enterableFrom` 只跳过 `no-such-level`。
 
 ### 界面文案按纪律清一遍(2026-08-15)
 
