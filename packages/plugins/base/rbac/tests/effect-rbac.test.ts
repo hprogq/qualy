@@ -1096,6 +1096,56 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
     }
   })
 
+  it('shows an administrator the grants they may revoke, without a second permission', async () => {
+    const db = await createTestContext('rbac-grant-read-implied')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const access = yield* Access
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const permission = (code: string) =>
+            Effect.map(
+              runSql(sql`
+                insert into permissions (code, plugin, name, target_kind)
+                values (${code}, 'iam', ${code}, 'org-node')
+                on conflict (code) do update set code = excluded.code returning id`),
+              (result) => one<{ id: string }>(result).id,
+            )
+          const manage = yield* permission('iam.grant.manage')
+          const office = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+              values (${f.tenant}, 'revoker', 'Revoker', 'org', 'active', 'explicit', 'unrestricted')
+              returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into role_permissions (tenant_id, role_id, permission_id)
+            values (${f.tenant}, ${office}, ${manage})`)
+          // grant administration here, and no separate reading permission
+          yield* runSql(sql`
+            insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+            values (${f.tenant}, ${f.anchored.userId}, ${office}, ${f.child}, 'subtree')`)
+          return yield* access.grantScopeFor({
+            tenantId: f.tenant,
+            userId: f.anchored.userId,
+            sessionId: 's',
+          })
+        }),
+      )
+      const scope = ok(exit)
+      // being unable to see what you may revoke is not a narrower
+      // permission, it is a blank screen with a button behind it
+      expect(scope.manage.anchors.length).toBe(1)
+      expect(scope.read.anchors.map((anchor) => anchor.orgNodeId)).toEqual(
+        scope.manage.anchors.map((anchor) => anchor.orgNodeId),
+      )
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('offers only roles the write would actually accept, and says when nobody is there', async () => {
     const db = await createTestContext('effect-grant-options')
     try {

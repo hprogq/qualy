@@ -253,9 +253,17 @@ export const make = Effect.fn('Rbac.make')(function* (declared: readonly ActiveP
     const held = new Set(
       (yield* effectiveRows(actor, undefined)).map(({ definition }) => definition.code),
     )
+    const manage = yield* listAuthorizedScope(actor, 'iam.grant.manage')
+    const read = yield* listAuthorizedScope(actor, 'iam.grant.read')
     return {
-      read: yield* listAuthorizedScope(actor, 'iam.grant.read'),
-      manage: yield* listAuthorizedScope(actor, 'iam.grant.manage'),
+      // the same implication as the tenant line below, which is the one that
+      // had it: an administrator holding manage and not read saw an empty
+      // screen and could revoke nothing, having been shown nothing
+      read: {
+        tenantWide: read.tenantWide || manage.tenantWide,
+        anchors: [...read.anchors, ...manage.anchors],
+      },
+      manage,
       tenantGrants: {
         read: held.has('iam.tenant-grant.read') || held.has('iam.tenant-grant.manage'),
         manage: held.has('iam.tenant-grant.manage'),
