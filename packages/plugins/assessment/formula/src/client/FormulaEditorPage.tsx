@@ -593,7 +593,10 @@ const bareTests = (tests: readonly DraftTest[]) => tests.map(({ key: _key, ...re
 const comparableTests = (tests: readonly DraftTest[]) =>
   bareTests(tests).map((row) => {
     try {
-      return { ...row, inputText: canonicalJson(JSON.parse(row.inputText === '' ? '{}' : row.inputText)) }
+      return {
+        ...row,
+        inputText: canonicalJson(JSON.parse(row.inputText === '' ? '{}' : row.inputText)),
+      }
     } catch {
       // half-typed json is compared as it stands; it is a difference either way
       return row
@@ -1294,8 +1297,7 @@ export default function FormulaEditorPage() {
   const testsDirty = (): boolean =>
     fn === undefined
       ? false
-      : JSON.stringify(comparableTests(tests)) !==
-        JSON.stringify(comparableTests(seededTests(fn)))
+      : JSON.stringify(comparableTests(tests)) !== JSON.stringify(comparableTests(seededTests(fn)))
   const dirty = (): boolean => sourceDirty() || testsDirty()
 
   /** every row satisfies a given contract, expectation included */
@@ -1383,7 +1385,11 @@ export default function FormulaEditorPage() {
   useEffect(() => {
     const timer = setTimeout(() => keepNow.current(), 800)
     return () => clearTimeout(timer)
-  }, [name, source, tests, baseRevision, localDraft, fn])
+    // everything the keep reads, and nothing that is not here: `name` used
+    // to lead this list and resolved to the DOM global, because no binding
+    // by that name exists on this page. The name kept is `fn.name`, which
+    // arrives with `fn`.
+  }, [source, tests, baseRevision, localDraft, fn])
   // and at once when the window is put away, which may be the last chance
   useEffect(() => {
     const onHide = () => {
@@ -1396,6 +1402,12 @@ export default function FormulaEditorPage() {
       window.removeEventListener('pagehide', onHide)
     }
   }, [])
+  // and once more on the way out. Leaving by the bar's way back is in-app
+  // navigation: the page unmounts without a visibilitychange and without a
+  // pagehide, so whatever was typed inside the debounce window left with it
+  // - nothing asked, because the beforeunload guard cannot see an in-app
+  // move either, and nothing kept for the next visit.
+  useEffect(() => () => keepNow.current(), [])
 
   const saveDraftRef = useRef(saveDraft)
   saveDraftRef.current = saveDraft

@@ -1,6 +1,6 @@
 import FormulaEditorPage from '../src/client/FormulaEditorPage.tsx'
 import { MINIMAL_EXAMPLE } from '../src/client/starter-source.ts'
-import { forgetLocalDraft, keepLocalDraft } from '../src/client/local-draft.ts'
+import { forgetLocalDraft, keepLocalDraft, readLocalDraft } from '../src/client/local-draft.ts'
 import { monaco } from '@qualy/plugin-assessment-formula/client/monaco-setup'
 import { Effect } from 'effect'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -304,6 +304,36 @@ describe('the formula workbench', () => {
       })
     } finally {
       view.unmount()
+    }
+  }, 60_000)
+
+  // Leaving by the bar's way back is in-app navigation: no pagehide, no
+  // visibilitychange, and the beforeunload guard cannot see it either. So a
+  // draft still inside the debounce window went with the page - unasked,
+  // and unkept for the next visit.
+  it('keeps what was typed when the page is left before the debounce fires', async () => {
+    const view = await open()
+    try {
+      const model = await draftModel()
+      model.setValue('const typed_then_left = 3\n')
+      // React has the edit - the model leads and React follows - and the
+      // 800ms wait has not run out, so nothing is kept yet. Without that
+      // second half this would pass on the timer rather than on the leaving.
+      await expect
+        .element(page.getByTestId('formula-save-state'))
+        .toHaveAttribute('data-state', 'dirty')
+      expect(await readLocalDraft(FN_ID)).toBeNull()
+
+      view.unmount()
+      await vi.waitFor(
+        async () => {
+          const kept = await readLocalDraft(FN_ID)
+          expect(kept?.source).toBe('const typed_then_left = 3\n')
+        },
+        { timeout: 5_000 },
+      )
+    } finally {
+      await forgetLocalDraft(FN_ID)
     }
   }, 60_000)
 
