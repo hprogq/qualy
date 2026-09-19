@@ -54,26 +54,31 @@ function collectItems(node: React.ReactNode, out: Map<string, React.ReactNode>):
   })
 }
 
-function Select({
-  value,
-  defaultValue,
-  onValueChange,
-  disabled = false,
-  children,
-}: {
+function Select(props: {
   value?: string
   defaultValue?: string
   onValueChange?: (value: string) => void
   disabled?: boolean
   children?: React.ReactNode
 }) {
+  const { value, defaultValue, onValueChange, disabled = false, children } = props
+  /**
+   * Whether the caller owns the answer, decided by whether they said so.
+   *
+   * `value ?? inner` reads a controlled `undefined` as "nobody is holding
+   * this" and falls back to the last pick, so a form that cleared a choice
+   * went on showing the label it had cleared - and the next submit sent a
+   * value the screen was no longer claiming. The prop being PRESENT is what
+   * says who owns it; what it holds is the answer, absence included.
+   */
+  const controlled = 'value' in props
   const [inner, setInner] = React.useState(defaultValue)
   const [opened, setOpened] = React.useState(false)
   const store = useCombobox({
     onDropdownOpen: () => setOpened(true),
     onDropdownClose: () => setOpened(false),
   })
-  const chosen = value ?? inner
+  const chosen = controlled ? value : inner
   const items = new Map<string, React.ReactNode>()
   collectItems(children, items)
   const state = React.useMemo<SelectState>(
@@ -102,7 +107,10 @@ function Select({
       transitionProps={{ transition: 'pop', duration: 130 }}
       disabled={disabled}
       onOptionSubmit={(next) => {
-        setInner(next)
+        // an uncontrolled select keeps its own answer; a controlled one is
+        // told what it holds, and writing here too would leave a stale copy
+        // to fall back on
+        if (!controlled) setInner(next)
         onValueChange?.(next)
         store.closeDropdown()
       }}
