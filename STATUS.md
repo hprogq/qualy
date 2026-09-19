@@ -18600,3 +18600,11 @@ pnpm vitest run tools/tests apps/server/tests    413 passed(supervisor 4/4,新�
   `tencentRumProvider.start(...)`,它正是经这个 cast `new Aegis(...)`,并断言 sink 非 null。注释属实。
 - **参评人成绩页的 fixture 与服务端矛盾**:review 来源的认定确实带 `createdBy = as.userId`(review/service.ts
   的注释写明为何加),参评人侧一路原样透出,没有任何脱敏。fixture 与服务端一致。
+
+### 仍留给用户裁决(两条,均未改)
+
+1. **`no-holder` 阻塞的评审轮,在有人被任命之后是否自动解除阻塞**。详见上文「留给用户的问题」。
+   文档只冻结了「必须 BLOCKED」,没有冻结自动治愈;现在的答案是管理员走一次 `reroute`。
+2. **rbac 把 scoped-grant 路径上的一切拒绝压成同一个 `AccessDenied`**。这是已记录的取舍(拒绝理由
+   本身可能泄露组织侧事实),本轮没有推翻它。已经按域内词表单独答过的只有 `already-staffed` 一条
+   (见上节),其余仍然同形。要不要逐类展开,是策略问题而不是实现问题。
