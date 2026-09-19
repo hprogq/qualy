@@ -235,6 +235,47 @@ describe.runIf(postgresAvailable).concurrent('changing a node type across three 
     }
   })
 
+  it('tells a stranger nothing about whether a node exists', async () => {
+    const db = await createTestContext('effect-retype-stranger-probe')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const stranger = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.tenant}, 'Nobody', ${f.adminType}, ${f.node}) returning id`),
+          ).id
+          const asNobody = { tenantId: f.tenant, userId: stranger, sessionId: 's' }
+          const org = yield* Org
+          const real = yield* Effect.result(
+            org.changeNodeType(f.tenant, f.node, f.clubType, asNobody),
+          )
+          const absent = yield* Effect.result(
+            org.changeNodeType(
+              f.tenant,
+              '01a0b900-0000-7000-8000-00000000dead',
+              f.clubType,
+              asNobody,
+            ),
+          )
+          return { real: tagOf(real), absent: tagOf(absent) }
+        }),
+      )
+      const answer = ok(exit)
+      // Refused before the lock, so the two are the same answer: the caller
+      // learns nothing from which refusal came back, and cannot serialize
+      // every structural write of the tenant behind a call they were never
+      // allowed to make.
+      expect(answer.real).toBe('ACCESS_DENIED')
+      expect(answer.absent).toBe('ACCESS_DENIED')
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('lets the type change under a role that is anchored anywhere', async () => {
     const db = await createTestContext('effect-retype-anywhere')
     try {

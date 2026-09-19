@@ -263,6 +263,12 @@ export const make = Effect.fn('Org.make')(function* () {
     // the transaction itself can fail on BEGIN or COMMIT. That is the pool
     // being unreachable rather than a decision this caller makes, so it dies
     // as a 500 instead of joining the failures a handler chooses between
+    // Refuse before taking the lock, the way the field writes already do:
+    // the check inside is the authoritative one, and this one only stops an
+    // unauthorized caller from serializing every structural write of the
+    // tenant behind them - and from learning whether a node exists by which
+    // refusal comes back.
+    yield* rbac.requireAt(as, 'org.tree.manage', nodeId)
     return yield* withDb(
       transaction(
         Effect.gen(function* () {
@@ -618,6 +624,10 @@ export const make = Effect.fn('Org.make')(function* () {
     as: Principal,
     newSortOrder?: number,
   ) {
+    // as above: refused before the lock, re-decided under it. A move is
+    // judged against both ends, and the one the caller is moving is the one
+    // they must already be able to reach to be asking at all.
+    yield* rbac.requireAt(as, 'org.tree.manage', nodeId)
     return yield* withDb(
       transaction(
         Effect.gen(function* () {
