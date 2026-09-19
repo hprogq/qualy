@@ -78,6 +78,13 @@ const flush = async (client: Client, run: Run, waiting: Map<string, Waiting[]>) 
   }
 }
 
+/** how long an answer is worth holding, with room to press after it draws */
+const freshFor = (descriptor: Descriptor | null | undefined): number => {
+  if (descriptor?.delivery.kind !== 'redirect') return 30_000
+  const lives = descriptor.delivery.expiresInSeconds * 1000
+  return Math.max(5_000, lives - 10_000)
+}
+
 /**
  * What one cited file is, batched under the hood. `null` when the server
  * left it out - absent and not-yours read the same on purpose.
@@ -88,6 +95,18 @@ export function useAttachmentDescriptor(attachmentId: string) {
   return useQuery({
     queryKey: ['assessment', 'attachment', attachmentId],
     queryFn: () => load(client, run as Run, attachmentId),
-    staleTime: 30_000,
+    /**
+     * As fresh as the answer says it is.
+     *
+     * A store that signs its own urls hands back one that expires - sixty
+     * seconds, for the object store this deployment can use - and the answer
+     * says when. Held for a fixed thirty seconds and then simply kept, a
+     * screen open longer than a minute offered a link that had already
+     * lapsed, so a download or a preview failed with nothing to explain it.
+     * Refreshed a little before the lapse rather than at it, because the
+     * press comes after the render.
+     */
+    staleTime: (query) => freshFor(query.state.data),
+    refetchInterval: (query) => freshFor(query.state.data),
   })
 }
