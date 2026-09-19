@@ -107,4 +107,22 @@ describe('a development service runner', () => {
     await until(() => run.child.exitCode !== null)
     expect(run.child.exitCode).toBe(0)
   }, 60_000)
+
+  // Before it is let in, a runner is parked waiting for permission, and
+  // nothing is watching the deferred a stop used to complete. So it went on
+  // waiting for an answer that was never coming, and the supervisor's kill
+  // deadline - five seconds of it - was what actually ended it. Both answers
+  // are answers: a refusal is the supervisor saying somebody else has the
+  // port, and neither has anything to release.
+  for (const answer of ['reject', 'shutdown'] as const) {
+    it(`leaves at once when it is told ${answer} before it is let in`, async () => {
+      const run = start()
+      await until(() => run.messages.some((message) => message.type === 'prepared'))
+      run.child.send({ protocol: PROTOCOL, type: answer })
+      await until(() => run.child.exitCode !== null, 3_000)
+      expect(run.child.exitCode).toBe(0)
+      // nothing was taken, so nothing was released
+      expect(said(run, 'acquired')).toBe(false)
+    }, 60_000)
+  }
 })

@@ -33,6 +33,35 @@ let launched = false
 let told: { spec: DevServiceSpec; origin: string } | null = null
 let onSpec: (() => void) | null = null
 
+/**
+ * The one way this process is asked to stop, whoever is asking.
+ *
+ * Having taken nothing, it simply leaves - and leaving is the whole point
+ * before acceptance, because until then the program is parked on `accepted`
+ * and nothing is watching `stopped` at all. Completing that deferred alone
+ * left a refused or stopped runner waiting for a permission that was never
+ * coming, until the supervisor's kill deadline ran out and SIGKILLed it.
+ *
+ * Having taken something, it lets the scope close so the release runs - and
+ * gives that release a deadline of its own, because the port is the thing at
+ * stake: a `close()` that never returns (a socket with a client still
+ * attached is the usual reason) would otherwise hold the development
+ * server's port for as long as this process lives, and a supervisor that has
+ * already been killed is not there to reap it. The supervisor's own kill
+ * deadline covers the case where it IS there; this covers the case where it
+ * is not.
+ */
+const requested = () => {
+  Deferred.doneUnsafe(stopped, Effect.void)
+  if (!launched) process.exit(0)
+  setTimeout(() => {
+    process.stderr.write(
+      `dev service runner: ${told?.spec.key ?? 'service'} did not release; leaving\n`,
+    )
+    process.exit(0)
+  }, 10_000).unref()
+}
+
 process.on('message', (raw: unknown) => {
   const message = hostMessage(raw)
   if (message === null) return
@@ -45,34 +74,11 @@ process.on('message', (raw: unknown) => {
     launched = true
     Deferred.doneUnsafe(accepted, Effect.void)
   }
-  // a refusal and a stop end the same way here: this process owns nothing
-  // the supervisor has to wait for
-  if (message.type === 'reject' || message.type === 'shutdown') {
-    Deferred.doneUnsafe(stopped, Effect.void)
-  }
+  // a refusal and a stop end the same way here, and the same way a lost
+  // channel or a signal does: whatever has been taken is released, and a
+  // runner that has taken nothing leaves rather than going on waiting
+  if (message.type === 'reject' || message.type === 'shutdown') requested()
 })
-/**
- * The one way this process is asked to stop, whoever is asking.
- *
- * Having taken nothing, it simply leaves. Having taken something, it lets the
- * scope close so the release runs - and gives that release a deadline of its
- * own, because the port is the thing at stake: a `close()` that never returns
- * (a socket with a client still attached is the usual reason) would otherwise
- * hold the development server's port for as long as this process lives, and a
- * supervisor that has already been killed is not there to reap it. The
- * supervisor's own kill deadline covers the case where it IS there; this
- * covers the case where it is not.
- */
-const requested = () => {
-  Deferred.doneUnsafe(stopped, Effect.void)
-  if (!launched) process.exit(0)
-  setTimeout(() => {
-    process.stderr.write(
-      `dev service runner: ${told?.spec.key ?? 'service'} did not release; leaving\n`,
-    )
-    process.exit(0)
-  }, 10_000).unref()
-}
 
 // The channel closing is this process's lease, the same as for the backend,
 // and it means the same two things: a runner that has taken something unwinds,
