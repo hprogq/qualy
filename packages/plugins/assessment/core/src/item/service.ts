@@ -1903,6 +1903,20 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
               return yield* refuse('delete', 'item-last-in-phase-scope')
             }
             yield* deleteItemRows(tenantId, itemId)
+            // The two things every other write here does and this one did
+            // not. A question removed from a running round stayed on the
+            // screens of everybody else looking at it, and the round's
+            // configuration log kept a creation with nothing beside it -
+            // which reads as a question that is still there.
+            yield* deps.recordConfigChange(
+              tenantId,
+              item.batchId,
+              locked.status,
+              { deletedItem: itemId },
+              as.userId,
+              null,
+            )
+            yield* announce(tenantId, item.batchId, [{ kind: 'item-changed' }])
           }),
         ).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
       )

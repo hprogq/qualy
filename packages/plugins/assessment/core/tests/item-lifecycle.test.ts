@@ -121,6 +121,14 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
             admin,
           )
           const draftDelete = yield* Effect.exit(assessment.deleteItem(f.t, unpublished.id, admin))
+          // a running round keeps a configuration history, and a creation
+          // with nothing beside it reads as a question that is still there
+          const logged = one<{ diff: Record<string, unknown> }>(
+            yield* runSql(sql`
+              select diff from batch_config_revisions
+               where tenant_id = ${f.t} and batch_id = ${g.batch.id}
+               order by revision desc limit 1`),
+          ).diff
           const draftGone = yield* Effect.exit(assessment.getItem(f.t, unpublished.id, admin))
           const blankReason = yield* Effect.exit(
             assessment.setItemStatus(f.t, g.item.id, { status: 'voided', reason: '   ' }, admin),
@@ -241,10 +249,13 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
             onlyInScope,
             stillScoped,
             gone,
+            logged,
           }
         }),
       ),
     )
+
+    expect(Object.keys(result.logged)).toEqual(['deletedItem'])
 
     // a published question keeps its record: void it, never delete it
     expect(refusalOf(result.activeDelete)?.reason).toBe('item-published')
