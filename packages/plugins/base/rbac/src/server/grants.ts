@@ -293,7 +293,16 @@ const orgNodeType = (tenantId: string, orgNodeId: string) =>
       .executeTakeFirst(),
   )
 
-/** whether the actor themselves holds the canonical administrator role */
+/**
+ * Whether the actor themselves holds the canonical administrator role.
+ *
+ * A general question about authority, so it is asked the way every other
+ * general question is: a grant that has been withdrawn or has fallen outside
+ * its validity window holds nothing, and a grant confined to one resource
+ * confers nothing anywhere else. Without those two lines an ex-administrator
+ * kept the two things this answer decides - the bypass of the appointment
+ * graph, and the reservation on the administrator role itself.
+ */
 const holdsCanonicalAdmin = (tenantId: string, userId: string, canonicalKey: string) =>
   db
     .query((k) =>
@@ -314,6 +323,14 @@ const holdsCanonicalAdmin = (tenantId: string, userId: string, canonicalKey: str
         )
         .where('g.tenantId', '=', tenantId)
         .where('g.userId', '=', userId)
+        .where((eb) =>
+          inForce({
+            revokedAt: eb.ref('g.revokedAt'),
+            validFrom: eb.ref('g.validFrom'),
+            validUntil: eb.ref('g.validUntil'),
+          }),
+        )
+        .where('g.resourceId', 'is', null)
         .select('g.id')
         .executeTakeFirst(),
     )

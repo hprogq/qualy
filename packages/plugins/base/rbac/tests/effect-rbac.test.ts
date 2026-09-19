@@ -160,7 +160,7 @@ const seed = Effect.fn('seed')(function* () {
 
   const principal: Principal = { tenantId: tenant, userId: user, sessionId: 's' }
   const anchored: Principal = { tenantId: tenant, userId: plainUser, sessionId: 's' }
-  return { tenant, root, child, user, role, plainRole, principal, anchored }
+  return { tenant, root, child, user, role, plainRole, userType, principal, anchored }
 })
 
 describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
@@ -510,6 +510,85 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
       // and collapsing it into ACCESS_DENIED made that sentence unreachable.
       expect(answer.refused).toBe('TENANT_ADMIN_REQUIRED')
       expect(answer.allowed).toBe('Success')
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('stops counting an administrator whose own grant has been withdrawn', async () => {
+    const db = await createTestContext('effect-grant-revoked-admin')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const f = yield* seed()
+          const access = yield* Access
+          const newcomer = (name: string) =>
+            Effect.map(
+              runSql(sql`
+                insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+                values (${f.tenant}, ${name}, ${f.userType}, ${f.root}) returning id`),
+              (result) => one<{ id: string }>(result).id,
+            )
+          const first = yield* newcomer('Hopper')
+          const second = yield* newcomer('Lovelace')
+
+          // Grace keeps an ordinary tenant-grant authority of her own, so
+          // that withdrawing the administrator grant leaves her able to
+          // reach this decision at all. Without it she is refused one gate
+          // earlier and the reservation is never asked.
+          const permission = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into permissions (code, plugin, name, target_kind)
+              values ('iam.tenant-grant.manage','iam','manage tenant grants','tenant')
+              on conflict (code) do update set code = excluded.code returning id`),
+          ).id
+          const granter = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into roles (tenant_id, code, name, kind, status, permission_mode)
+              values (${f.tenant},'granter','Granter','tenant','active','explicit') returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into role_permissions (tenant_id, role_id, permission_id)
+            values (${f.tenant}, ${granter}, ${permission})`)
+          yield* runSql(sql`
+            insert into role_grants (tenant_id, user_id, role_id)
+            values (${f.tenant}, ${f.anchored.userId}, ${granter})`)
+          yield* runSql(sql`
+            insert into role_grants (tenant_id, user_id, role_id)
+            values (${f.tenant}, ${f.anchored.userId}, ${f.role})`)
+
+          // while the administrator grant stands, handing the role on is hers
+          const before = yield* Effect.result(
+            access.grants.grant(
+              f.tenant,
+              { userId: first, roleId: f.role, target: { kind: 'tenant' } },
+              f.anchored,
+            ),
+          )
+          // withdrawn, not deleted: the row stays as the record of an
+          // authority that existed, and carries nothing from here on
+          yield* runSql(sql`
+            update role_grants set revoked_at = now()
+             where tenant_id = ${f.tenant} and user_id = ${f.anchored.userId}
+               and role_id = ${f.role}`)
+          const after = yield* Effect.result(
+            access.grants.grant(
+              f.tenant,
+              { userId: second, roleId: f.role, target: { kind: 'tenant' } },
+              f.anchored,
+            ),
+          )
+          return { before: before._tag, after: tagOf(after) }
+        }),
+      )
+      const answer = ok(exit)
+      // Two things hang on this answer - the bypass of the whole appointment
+      // graph, and the reservation on the administrator role itself - so a
+      // grant that no longer stands must not keep either of them alive.
+      expect(answer.before).toBe('Success')
+      expect(answer.after).toBe('TENANT_ADMIN_REQUIRED')
     } finally {
       await db.dispose()
     }
