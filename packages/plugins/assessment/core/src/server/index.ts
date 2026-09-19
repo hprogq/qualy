@@ -4509,58 +4509,44 @@ export const make = Effect.fn('Assessment.make')(function* () {
               if (members > 0) reason = 'panel-seat-unfilled'
             }
           }
+          // The move and the event it is, in one transaction. Written as two
+          // autocommits they could come apart: a crash in between left a
+          // round blocked with nothing in its history saying why, and that
+          // history is the only account the person waiting on it has.
+          const moveRound = (
+            from: 'active' | 'blocked',
+            to: 'active' | 'blocked',
+            kind: string,
+            blockedReason: string | null,
+          ) =>
+            dieQuery(
+              withDb(
+                transaction(
+                  Effect.gen(function* () {
+                    const moved = yield* setInstanceState({
+                      tenantId,
+                      instanceId: round.id,
+                      from,
+                      to,
+                      blockedReason,
+                      at: { route: round.currentRoute, stageId: round.currentStageId },
+                    })
+                    if (!moved) return false
+                    yield* insertReviewEvent({
+                      tenantId,
+                      reviewInstanceId: round.id,
+                      kind,
+                      actorId: null,
+                    })
+                    return true
+                  }),
+                ),
+              ),
+            )
           if (round.state === 'active' && !actionable) {
-            const moved = yield* dieQuery(
-              withDb(
-                setInstanceState({
-                  tenantId,
-                  instanceId: round.id,
-                  from: 'active',
-                  to: 'blocked',
-                  blockedReason: reason,
-                  at: { route: round.currentRoute, stageId: round.currentStageId },
-                }),
-              ),
-            )
-            if (moved) {
-              blocked += 1
-              yield* dieQuery(
-                withDb(
-                  insertReviewEvent({
-                    tenantId,
-                    reviewInstanceId: round.id,
-                    kind: 'assignee-not-found',
-                    actorId: null,
-                  }),
-                ),
-              )
-            }
+            if (yield* moveRound('active', 'blocked', 'assignee-not-found', reason)) blocked += 1
           } else if (round.state === 'blocked' && actionable) {
-            const moved = yield* dieQuery(
-              withDb(
-                setInstanceState({
-                  tenantId,
-                  instanceId: round.id,
-                  from: 'blocked',
-                  to: 'active',
-                  blockedReason: null,
-                  at: { route: round.currentRoute, stageId: round.currentStageId },
-                }),
-              ),
-            )
-            if (moved) {
-              released += 1
-              yield* dieQuery(
-                withDb(
-                  insertReviewEvent({
-                    tenantId,
-                    reviewInstanceId: round.id,
-                    kind: 'assignee-found',
-                    actorId: null,
-                  }),
-                ),
-              )
-            }
+            if (yield* moveRound('blocked', 'active', 'assignee-found', null)) released += 1
           }
         }
       }

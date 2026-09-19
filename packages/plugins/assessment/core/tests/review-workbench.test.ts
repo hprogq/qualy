@@ -1323,7 +1323,15 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
                 select state, blocked_reason from review_instances where id = ${id}`),
               (rows) => one<{ state: string; blocked_reason: string | null }>(rows),
             )
-          return { patrol, good: yield* standing(good), short: yield* standing(short) }
+          // the move and the account of it: written apart they could come
+          // apart, and that account is the only one the person waiting has
+          const events = yield* Effect.map(
+            runSql(sql`
+              select kind from review_events
+               where tenant_id = ${f.t} and review_instance_id = ${short}`),
+            (rows) => (rows as unknown as { rows: { kind: string }[] }).rows.map((r) => r.kind),
+          )
+          return { patrol, good: yield* standing(good), short: yield* standing(short), events }
         }),
       ),
     )
@@ -1333,5 +1341,6 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
     // splits on: an appointment is missing, not a recusal
     expect(result.short).toEqual({ state: 'blocked', blocked_reason: 'no-assignee' })
     expect(result.patrol).toEqual({ blocked: 1, released: 0 })
+    expect(result.events).toContain('assignee-not-found')
   })
 })
