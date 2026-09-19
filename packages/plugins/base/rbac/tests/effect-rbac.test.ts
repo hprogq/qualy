@@ -1167,7 +1167,18 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
               f.principal,
             ),
           )
-          return { offered, absent }
+          // a caller who administers grants nowhere: nothing here is theirs
+          // to give, and the list has to say so rather than offer a press
+          // the write will answer 403 to
+          const outOfReach = yield* access.grants.options(
+            f.tenant,
+            {
+              userId: f.anchored.userId,
+              target: { kind: 'org-node', orgNodeId: f.child, coverage: 'self' },
+            },
+            f.anchored,
+          )
+          return { offered, absent, outOfReach }
         }),
       )
       const answer = ok(exit)
@@ -1178,6 +1189,10 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
       ).toEqual(['local'])
       expect(answer.offered.find((role) => role.code === 'closed')?.refusal).toBe('user-type')
       expect(tagOf(answer.absent)).toBe('GRANT_USER_NOT_FOUND')
+      // the reach question does not depend on the role, so it is one answer
+      // over the whole list rather than a press per candidate
+      expect(answer.outOfReach.length).toBeGreaterThan(0)
+      expect(answer.outOfReach.every((role) => role.refusal === 'authority')).toBe(true)
     } finally {
       await db.dispose()
     }

@@ -655,6 +655,22 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     const candidates = (yield* rolesOfTenant(tenantId).pipe(Effect.orDie)).filter(
       (role) => role.kind === wantedKind && role.status === 'active' && role.assignable,
     )
+    // Asked once, because it does not depend on the role: administering
+    // grants of this reach at this place is the same question for every
+    // candidate. It used to be left to the write, which meant the picker
+    // offered roles the write then answered 403 to - and this list exists
+    // precisely so somebody can see WHY a role is out of reach rather than
+    // find out by pressing.
+    const reaches = yield* Effect.result(mayAdministerGrantsAt(actor, request.target))
+    if (reaches._tag === 'Failure') {
+      return candidates.map((role) => ({
+        id: role.id,
+        code: role.code,
+        name: role.name,
+        kind: role.kind,
+        refusal: 'authority' as const,
+      }))
+    }
     const offered: {
       id: string
       code: string
