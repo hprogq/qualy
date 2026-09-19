@@ -104,6 +104,26 @@ export const isoDate = Schema.String.check(
 const materialRange = Schema.Struct({ start: isoDate, end: isoDate })
 
 /**
+ * A zone name the platform can actually resolve.
+ *
+ * The value is bound into `AT TIME ZONE` wherever a round's day boundaries
+ * are worked out, and PostgreSQL refuses a name it does not know - which
+ * arrives as a database fault, so one bad value answered 500 on that round's
+ * reviewer inbox rather than being refused when it was set. `Intl` knows the
+ * same tz database, so it can say no at the door.
+ */
+const timeZoneName = trimmedName(63).check(
+  Schema.makeFilter((value: string) => {
+    try {
+      new Intl.DateTimeFormat(undefined, { timeZone: value })
+      return undefined
+    } catch {
+      return 'not a time zone this platform knows'
+    }
+  }),
+)
+
+/**
  * The labels a reviewer picks a reason from, one list per act. Configured on
  * the batch; the chosen label is copied onto the review event, so these
  * lists are offer, not history.
@@ -2049,7 +2069,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         name: trimmedName(255),
         descriptionMd: Schema.optional(boundedText(65536)),
         materialRange,
-        timezone: Schema.optional(trimmedName(63)),
+        timezone: Schema.optional(timeZoneName),
         // where the first people come from: a query run once, not a scope the
         // batch keeps and has to be reconciled against afterwards
         import: importSelection,
@@ -2084,7 +2104,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
           name: Schema.optional(trimmedName(255)),
           descriptionMd: Schema.optional(Schema.NullOr(boundedText(65536))),
           materialRange: Schema.optional(materialRange),
-          timezone: Schema.optional(trimmedName(63)),
+          timezone: Schema.optional(timeZoneName),
           reviewReasons: Schema.optional(
             Schema.Struct({
               reject: Schema.Array(trimmedName(100)).check(Schema.isMaxLength(30)),

@@ -19,6 +19,7 @@ import {
   type RecognitionValues,
 } from '../scoring/recognition.ts'
 import { readScoringPlan } from '../scoring/plan.ts'
+import { isUuid } from '../item/uuid.ts'
 import { ProbeNeeded, probeIdentity, settleWithProbe } from '../scoring/failure-boundary.ts'
 import { ScoringRuntimeCatalog } from '../plugin.ts'
 import {
@@ -1531,6 +1532,11 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                     itemRevisionId: row.recognitionRevisionId,
                     values,
                     source: 'review',
+                    // who determined it, the way the other two doors that
+                    // write a determination already record. Without it every
+                    // reviewed claim came back with an unknown determiner,
+                    // while a recorded one names the registrar.
+                    createdBy: as.userId,
                     reviewInstanceId: instanceId,
                     reviewEventId: eventId,
                     ...(standing === null ? {} : { supersedesId: standing.id }),
@@ -2605,6 +2611,14 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               }
               if (cited.length > FILES_MOST) {
                 issues.push({ field: asked.key, reason: 'too-many' })
+                continue
+              }
+              // the payload is whatever the caller sent, and these become an
+              // array literal the lock casts to uuid[]. An id that is not one
+              // arrives as a database fault instead of a refusal about the
+              // answer.
+              if (!cited.every(isUuid)) {
+                issues.push({ field: asked.key, reason: 'unreadable' })
                 continue
               }
               normalized[asked.key] = cited

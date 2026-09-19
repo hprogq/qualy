@@ -1,3 +1,4 @@
+import { isUuid } from './uuid.ts'
 // The review policy an item revision may store: the frozen policy language
 // of assessment-design §14, and nothing outside it.
 //
@@ -29,9 +30,6 @@ export interface PolicyIssue {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-
-const isUuid = (value: unknown): value is string => typeof value === 'string' && UUID.test(value)
 
 const unknownKeys = (
   issues: PolicyIssue[],

@@ -3,6 +3,7 @@ import type { AttachmentMeta } from '@qualy/plugin-storage/server'
 import type { AttachmentRef } from '../plugin.ts'
 import { EntryPayloadInvalid } from '../errors.ts'
 import { entryAttachmentHistory, lockAttachments } from './db.ts'
+import { isUuid } from '../item/uuid.ts'
 
 // Crossing a cited file into storage, for every door that writes a revision.
 //
@@ -51,6 +52,18 @@ export const bindCitedAttachments = (
     if (input.refs.length === 0) return
 
     const issues: { field: string; reason: string }[] = []
+
+    // The driver names what the payload claims, and a payload is whatever
+    // the caller sent. An id that is not one reaches the lock below as an
+    // array literal PostgreSQL refuses to cast, which arrives as a database
+    // fault - a 500 for a malformed request - so the shape is answered here
+    // with the other things wrong with the citation.
+    for (const ref of input.refs) {
+      if (!isUuid(ref.attachmentId)) {
+        issues.push({ field: ref.field, reason: 'attachment-not-found' })
+      }
+    }
+    if (issues.length > 0) return yield* new EntryPayloadInvalid({ issues })
 
     // one file, one field: a duplicate across fields would collide in the
     // relation's key anyway, and quietly picking a field for it would make
