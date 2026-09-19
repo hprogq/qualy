@@ -134,6 +134,11 @@ export function StatusBadge({
         stylex.props(styles.badge, tone.badge, compact && styles.compact, xstyle).className
       }
       labelXstyle={styles.label}
+      // where the round stands, said as a fact: the badge's word is copy and
+      // the colour is not readable by a test, but which of the four this is
+      // is neither
+      data-testid="batch-standing"
+      data-standing={standing}
       // the word is what goes, not the meaning: the colour and the dot still
       // say it, and whoever cannot see them is reading this instead
       aria-label={compact ? format(label) : undefined}

@@ -51,7 +51,9 @@ describe('the sign-in screen', () => {
       throw new Error('this driver exploded')
     }
     screen({ local: lazy(() => Promise.resolve({ default: Broken })) })
-    await expect.element(page.getByText('该登录方式暂不可用')).toBeVisible()
+    await expect
+      .element(page.getByTestId('login-renderer'))
+      .toHaveAttribute('data-renderer', 'missing')
     // and the way out is still there, which is the whole point of catching it
     await expect.element(page.getByRole('button', { name: '← 其他登录方式' })).toBeVisible()
   })
@@ -61,7 +63,9 @@ describe('the sign-in screen', () => {
     // have: the screen says so and offers the way back, rather than showing
     // a card with nothing in it
     screen({})
-    await expect.element(page.getByText('该登录方式暂不可用')).toBeVisible()
+    await expect
+      .element(page.getByTestId('login-renderer'))
+      .toHaveAttribute('data-renderer', 'missing')
     await expect.element(page.getByLabelText('用户名')).not.toBeInTheDocument()
     await expect.element(page.getByRole('button', { name: '← 其他登录方式' })).toBeVisible()
   })

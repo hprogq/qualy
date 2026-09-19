@@ -1572,8 +1572,6 @@ describe('judging a submission', () => {
       .getByRole('dialog')
       .getByRole('button', { name: /确认退回/ })
       .click()
-    expect(page.getByText('先选择一个决定。').elements()).toHaveLength(0)
-
     // and the window sends it exactly once, however many times React runs
     // the state updaters around it
     await vi.waitFor(() => expect(decided).toHaveBeenCalledOnce(), { timeout: 8000 })

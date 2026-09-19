@@ -467,8 +467,11 @@ describe('recording with a determination', () => {
     await waitForItems()
     await chooseItem('竞赛获奖登记')
     await vi.waitFor(() => {
-      const who = page.getByTestId('record-targets').element()
-      if ((who.textContent ?? '').includes('已选择')) throw new Error('targets still chosen')
+      // the chosen-people line is rendered only while somebody is chosen,
+      // so its absence is the fact - not the words it would have carried
+      if (page.getByTestId('record-targets-said').elements().length > 0) {
+        throw new Error('targets still chosen')
+      }
       const evidence = page
         .getByLabelText('申报级别', { exact: false })
         .element() as HTMLSelectElement

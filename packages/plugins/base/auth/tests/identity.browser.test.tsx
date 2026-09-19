@@ -178,7 +178,9 @@ describe('user types screen', () => {
     expect(modes.length).toBeGreaterThan(0)
     for (const mode of modes) expect(mode).toBeDisabled()
     // and nothing on it acts
-    expect(await page.getByRole('button', { name: '保存', exact: false }).elements()).toHaveLength(0)
+    expect(await page.getByRole('button', { name: '保存', exact: false }).elements()).toHaveLength(
+      0,
+    )
     expect(await page.getByRole('button', { name: '重命名' }).elements()).toHaveLength(0)
     expect(await page.getByRole('button', { name: '停用' }).elements()).toHaveLength(0)
     expect(await page.getByRole('button', { name: '删除' }).elements()).toHaveLength(0)
@@ -290,13 +292,18 @@ describe('user types screen', () => {
     // a system identity stands at the tenant root whatever its row says, so
     // there is no placement to edit and the only save is the one behind the
     // rename dialog
-    expect(await page.getByRole('button', { name: '保存', exact: false }).elements()).toHaveLength(0)
+    expect(await page.getByRole('button', { name: '保存', exact: false }).elements()).toHaveLength(
+      0,
+    )
     await page.getByRole('button', { name: '重命名' }).click()
     await page.getByRole('button', { name: '保存', exact: false }).click()
-    // the refusal reaches the reader translated - the subject here is that
-    // the raw code never does, asserted just below
-    await expect.element(page.getByText('租户将失去最后一个还能登录的管理员。')).toBeInTheDocument()
-    // the english protocol text never reaches the page
+    // The refusal reaches the reader as a sentence rather than as a code,
+    // which is the subject here. Asserted as: something was said, it was
+    // said as a refusal, and it was not the protocol word. Not as the
+    // sentence itself - that one belongs to rbac's catalog, and an auth
+    // test quoting it went red whenever rbac reworded.
+    await expect.element(page.getByTestId('feedback')).toHaveAttribute('data-tone', 'error')
+    expect(page.getByTestId('feedback').element().textContent ?? '').not.toBe('')
     expect(await page.getByText('LAST_ADMINISTRATOR').elements()).toHaveLength(0)
     // the row is versioned as a whole, and a save that cannot say which
     // version it read is one that overwrites whoever went second

@@ -261,13 +261,15 @@ describe('the batch list', () => {
 
     // the first page knows where it sits in the whole
     await expect.element(page.getByText('2026 春季综测')).toBeVisible()
-    await expect.element(page.getByText('第 1 / 2 页', { exact: false })).toBeVisible()
+    // which page and how many, as the fact rather than as the sentence
+    await expect.element(page.getByTestId('batch-pager')).toHaveAttribute('data-page', '1')
+    await expect.element(page.getByTestId('batch-pager')).toHaveAttribute('data-pages', '2')
 
     await page.getByRole('button', { name: '下一页' }).click()
     // the second page replaces the first, reached by the cursor it handed out
     await expect.element(page.getByText('2025 秋季综测')).toBeVisible()
     expect(seen.at(-1)?.query).toMatchObject({ cursor: 'next-page' })
-    await expect.element(page.getByText('第 2 / 2 页', { exact: false })).toBeVisible()
+    await expect.element(page.getByTestId('batch-pager')).toHaveAttribute('data-page', '2')
 
     // and going back is the cursor already held, not a re-count
     await page.getByRole('button', { name: '上一页' }).click()
@@ -403,7 +405,6 @@ describe('the batch list', () => {
     // heading the section would have to repeat
     await expect.element(page.getByText('2026 春季综测')).toBeVisible()
 
-    console.log('LINKS', [...document.querySelectorAll('a')].map((a) => a.textContent).join(' | '))
     await page.getByRole('link', { name: '全部测评' }).click()
     await expect.element(page.getByRole('heading', { name: '测评批次' })).toBeVisible()
   })
@@ -554,9 +555,10 @@ describe('the batch overview', () => {
 
     // the rail opens on where the round is, not on where it started; the
     // strip beside it is the phone's copy and keeps every stage
-    await expect.element(page.getByText('展开前面 3 个阶段')).toBeVisible()
-    await page.getByText('展开前面 3 个阶段').click()
-    expect(await page.getByText('展开前面 3 个阶段').elements()).toHaveLength(0)
+    // exactly three stages are folded away, and none once it is opened
+    await expect.element(page.getByTestId('flow-fold')).toHaveAttribute('data-count', '3')
+    await page.getByTestId('flow-fold').click()
+    expect(page.getByTestId('flow-fold').elements()).toHaveLength(0)
     await expect.element(page.getByRole('heading', { name: '预填报期' }).first()).toBeVisible()
   })
 
@@ -584,8 +586,20 @@ describe('the batch overview', () => {
       `/assessment/batches/${BATCH_ID}`,
     )
 
-    // the stage says its time is still to be decided, and why
-    await expectVisibleText('时间待定')
+    // the stage carries no time yet, which is the fact; the note under it
+    // says why, and that note is the fixture's own words
+    await vi.waitFor(() =>
+      expect(page.getByTestId('stage-when').elements().length).toBeGreaterThan(0),
+    )
+    // the rail and the phone strip draw the same stages, so what is asserted
+    // is that one of them carries no time and the others do - not how many
+    // elements that comes to
+    const whens = page
+      .getByTestId('stage-when')
+      .elements()
+      .map((one) => one.getAttribute('data-when'))
+    expect(whens).toContain('unscheduled')
+    expect(whens).toContain('scheduled')
     await expectVisibleText('待学院审批名单后确定')
   })
 })
@@ -597,7 +611,9 @@ describe('the batch lifecycle', () => {
     screen({ deleteBatch }, `/assessment/batches/${BATCH_ID}/settings`)
 
     // a draft has run nothing, so removing it loses only the setup
-    await expect.element(page.getByText('草稿')).toBeVisible()
+    await expect
+      .element(page.getByTestId('batch-standing').first())
+      .toHaveAttribute('data-standing', 'draft')
     expect(await page.getByRole('button', { name: '激活' }).elements()).toHaveLength(0)
     await page.getByRole('button', { name: '删除批次' }).click()
     await page.getByRole('alertdialog').getByRole('button', { name: '删除批次' }).click()
@@ -626,7 +642,9 @@ describe('the batch lifecycle', () => {
     screen({
       getBatch: () => Effect.succeed({ batch: batch({ status: 'active', currentPhaseId: null }) }),
     })
-    await expect.element(page.getByText('待开始')).toBeVisible()
+    await expect
+      .element(page.getByTestId('batch-standing'))
+      .toHaveAttribute('data-standing', 'pending')
   })
 
   it('reopens an archived batch into a stage, and insists on a reason', async () => {

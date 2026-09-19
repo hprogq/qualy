@@ -358,7 +358,13 @@ function Stage({ stage, upright }: { stage: FlowStage; upright: boolean }) {
       </TimelineHeader>
       {/* the whole row fades together, not only its name: a finished stage
           with a full-strength date under a pale title reads as two stages */}
-      <TimelineDate xstyle={[flow.date, stage.status === 'ended' && flow.faded]}>
+      <TimelineDate
+        xstyle={[flow.date, stage.status === 'ended' && flow.faded]}
+        // whether this stage has a time at all, said as a fact: the sentence
+        // under it is copy, and "no time yet" is not
+        data-testid="stage-when"
+        data-when={stage.at === null ? 'unscheduled' : 'scheduled'}
+      >
         {said(stage)}
       </TimelineDate>
       {/* what it waits on first, then what it is for: one is about now and
@@ -417,6 +423,10 @@ export function BatchFlow({
           <button
             type="button"
             {...stylex.props(styles.foldButton)}
+            // how many stages are folded away, as the number rather than as
+            // the sentence carrying it
+            data-testid="flow-fold"
+            data-count={String(folded)}
             onClick={() => setOpened(true)}
           >
             {format(m.flowEarlier, { count: folded })}

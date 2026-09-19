@@ -1105,7 +1105,12 @@ function NodePanel({
           </form>
         )}
 
-        {!node.manageable && <p {...stylex.props(styles.quietNote)}>{format(m.readOnly)}</p>}
+        {!node.manageable && (
+          // the note is copy; that this reader may only look is not
+          <p data-testid="node-note" data-manageable="false" {...stylex.props(styles.quietNote)}>
+            {format(m.readOnly)}
+          </p>
+        )}
 
         <Facts
           items={[

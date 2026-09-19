@@ -356,7 +356,7 @@ describe('the organization screen', () => {
     })
 
     await expect.element(page.getByRole('heading', { name: /示例大学/ })).toBeInTheDocument()
-    await expect.element(page.getByText('你对该节点只有查看权限。')).toBeInTheDocument()
+    await expect.element(page.getByTestId('node-note')).toHaveAttribute('data-manageable', 'false')
     expect(await page.getByRole('button', { name: '重命名' }).elements()).toHaveLength(0)
     expect(await page.getByRole('button', { name: '创建' }).elements()).toHaveLength(0)
     expect(await page.getByRole('button', { name: '删除组织' }).elements()).toHaveLength(0)

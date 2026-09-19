@@ -166,7 +166,9 @@ function MethodRenderer({
   // working, use another. The way out is the one below, not a second button
   // of its own.
   const unavailable = (
-    <Alert variant="destructive">
+    // said as a fact beside the sentence: a way in that cannot draw itself
+    // is the thing a test is about, and the sentence is copy
+    <Alert variant="destructive" data-testid="login-renderer" data-renderer="missing">
       <AlertTitle>{format(m.rendererMissing)}</AlertTitle>
     </Alert>
   )
