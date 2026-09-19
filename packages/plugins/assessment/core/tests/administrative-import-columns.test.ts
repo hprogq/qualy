@@ -111,6 +111,25 @@ describe('what the hidden sheet is allowed to decide', () => {
     ])
   })
 
+  it('imports its own template when a title carries stray space', async () => {
+    // The reader trims what it finds in the cell; the header it is compared
+    // against is the field's annotated title as written. With the space
+    // taken off only one side, a title like this made the template THIS
+    // question writes impossible to import, explained by nothing but an
+    // internal code.
+    const spaced = {
+      evidence: [
+        { key: 'summary', schema: { type: 'string' as const, title: ' 事项说明 ' } },
+        { key: 'note', schema: { type: 'string' as const, title: '备注' } },
+      ],
+    }
+    const bytes = await buildAdministrativeWorkbook(spec(spaced))
+    const parsed = await parseAdministrativeWorkbook(bytes)
+    const proven = provenColumns(parsed, question(spaced))
+    if ('refusals' in proven) throw new Error(`refused: ${JSON.stringify(proven.refusals)}`)
+    expect(proven.columns.map((one) => one.key)).toEqual(['summary', 'note', 'rec-level'])
+  })
+
   it('takes the words a value wears from the question, not from the file', async () => {
     // the attack this whole shape exists for: the visible sheet still reads
     // 国家级, and the hidden one says that word means `provincial`

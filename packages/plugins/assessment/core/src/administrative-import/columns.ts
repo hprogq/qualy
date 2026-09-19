@@ -59,8 +59,15 @@ export const provenColumns = (
     }
     placed.delete(fieldName(column))
     // the anchor: the words above the column the file points at have to be
-    // the words this question writes for this field
-    if ((parsed.headers[placement.column] ?? '') !== column.header) {
+    // the words this question writes for this field.
+    //
+    // Compared with the surrounding space taken off both, because only one
+    // side had it taken off before: the reader trims what it finds in the
+    // cell, while the header this compares against is the field's annotated
+    // title as written. A title with a stray space either side therefore
+    // made the template this very question writes impossible to import,
+    // explained only by an internal code.
+    if ((parsed.headers[placement.column] ?? '').trim() !== column.header.trim()) {
       refusals.push({
         reason: 'column-header-mismatch',
         field: fieldName(column),
