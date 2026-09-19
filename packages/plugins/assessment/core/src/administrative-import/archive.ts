@@ -26,11 +26,23 @@ export const ARCHIVE_LIMITS = {
   /** a filled-in template is a dozen parts; eight sheets with drawings are a few dozen */
   maxEntries: 512,
   /**
-   * Every part inflated, added up. The row and column ceilings keep a
-   * lawful workbook to a few megabytes of XML; this is the room left for
-   * styles, themes and the odd pasted image, and no more.
+   * Every part inflated, added up.
+   *
+   * This is the only ceiling that acts before the reader builds its object
+   * model, and that model is far larger than the xml it comes from -
+   * measured, 73 MiB of sheet xml became 820 MiB of heap. So the number has
+   * to be read as "how much heap one upload may cost", not as "how big a
+   * spreadsheet may be".
+   *
+   * Sized from the widest workbook the parser will actually accept: 2000
+   * rows by 128 columns of ordinary text is 1.58 MiB on disk and 16.71 MiB
+   * inflated. The rest is room for styles, themes and pasted images, which
+   * arrive already compressed and are bounded by the 10 MiB file ceiling
+   * anyway. It was 64 MiB, which admitted about 52,000 rows - twenty-six
+   * times the row ceiling - and roughly 700 MiB of heap before the row
+   * ceiling was consulted at all.
    */
-  maxInflatedBytes: 64 * 1024 * 1024,
+  maxInflatedBytes: 32 * 1024 * 1024,
 } as const
 
 export type ArchiveLimits = { readonly maxEntries: number; readonly maxInflatedBytes: number }

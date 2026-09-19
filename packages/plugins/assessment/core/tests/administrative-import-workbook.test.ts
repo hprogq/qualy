@@ -366,6 +366,29 @@ describe('the archive a workbook arrives in', () => {
     expect(refusalOf(() => inspectArchive(plain, small))).toBeNull()
   })
 
+  it('refuses a workbook far past the row ceiling before the reader builds anything', async () => {
+    // This ceiling is the only one that acts before the reader materialises
+    // its object model, and that model is much larger than the xml: measured,
+    // 73 MiB of sheet xml became 820 MiB of heap. So it has to refuse what
+    // the row ceiling would refuse anyway, rather than let the reader find
+    // out afterwards.
+    const book = new ExcelJS.Workbook()
+    const sheet = book.addWorksheet('big')
+    for (let row = 0; row < 2 * ADMIN_IMPORT_LIMITS.maxRows; row++) {
+      sheet.addRow(
+        Array.from(
+          { length: ADMIN_IMPORT_LIMITS.maxColumns },
+          (_, col) => `2023${String(row).padStart(6, '0')}-col${String(col)}`,
+        ),
+      )
+    }
+    const bytes = new Uint8Array(await book.xlsx.writeBuffer())
+    // small enough to pass the file ceiling, which is why that one cannot do
+    // this job
+    expect(bytes.byteLength).toBeLessThan(ADMIN_IMPORT_LIMITS.maxFileBytes)
+    expect(refusalOf(() => inspectArchive(bytes))).toBe('too-large')
+  }, 60_000)
+
   it('refuses parts that say they add up to more than the ceiling, inflating none of them', () => {
     // a declaration alone, backed by a handful of real bytes: nothing about
     // it needs inflating to be refused
