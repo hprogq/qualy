@@ -180,7 +180,7 @@ export class Org extends Context.Service<
         sortOrder?: number
       },
       as: Principal,
-    ) => Effect.Effect<NodeRowPublic, CreateNodeError>
+    ) => Effect.Effect<NodeView, CreateNodeError>
     readonly moveNode: (
       tenantId: string,
       nodeId: string,
@@ -603,7 +603,12 @@ export const make = Effect.fn('Org.make')(function* () {
           organizationId: created.id,
           details: { parentId: parent.id, orgTypeId: input.orgTypeId },
         })
-        return created
+        // What the creator may do with what they just made, asked rather
+        // than assumed. Authority over the PARENT is what let them create
+        // it, and a self anchor covers exactly the parent - so the answer
+        // is often no, and the screen used to offer a rename and a move
+        // that the next request refuses.
+        return yield* writtenNode(tenantId, created.id, as)
       }),
     )
   })
@@ -1004,8 +1009,7 @@ export const orgApiHandlers = HttpApiBuilder.group(local, 'org', (handlers) =>
         const org = yield* Org
         const principal = yield* CurrentUser
         const node = yield* org.createNode(principal.tenantId, payload, principal)
-        // a freshly created node is manageable by whoever could create it
-        return { node: toNodeDto({ ...node, manageable: true, subtreeManageable: true }) }
+        return { node: toNodeDto(node) }
       }),
     )
     .handle(

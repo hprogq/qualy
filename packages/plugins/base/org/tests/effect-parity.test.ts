@@ -420,14 +420,27 @@ describe.runIf(postgresAvailable).concurrent('tree behaviours nothing else asser
             insert into role_permissions (tenant_id, role_id, permission_id)
             values (${f.tenant}, ${role}, ${readPermission})`)
           const as: Principal = { tenantId: f.tenant, userId: manager, sessionId: 's' }
-          return yield* org.readNode(f.tenant, child.id, as)
+          // Authority over the PARENT is what lets somebody create a child,
+          // and a self anchor covers exactly the parent - so what comes back
+          // from a creation has to be asked, not assumed. It used to claim
+          // both, offering a rename and a move the next request refuses.
+          const made = yield* org.createNode(
+            f.tenant,
+            { parentId: child.id, orgTypeId: f.department, name: 'Below' },
+            as,
+          )
+          return { read: yield* org.readNode(f.tenant, child.id, as), made }
         }),
       )
-      const answer = ok(exit)
+      const answer = ok(exit).read
+      const made = ok(exit).made
       // may edit the node itself
       expect(answer.manageable).toBe(true)
       // and may not move it, because a self anchor promises nothing below
       expect(answer.subtreeManageable).toBe(false)
+      // the child they just made is outside that anchor entirely
+      expect(made.manageable).toBe(false)
+      expect(made.subtreeManageable).toBe(false)
     } finally {
       await db.dispose()
     }
