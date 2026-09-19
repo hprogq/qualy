@@ -13,7 +13,10 @@ import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 // columns fold where they do not fit, and the acts that take something away
 // ask first.
 
-const FN_ID = '01a04f4b-83a1-763f-9fbc-bfa53bc98ecb'
+/** this file's own formula: the browser suite shares one origin, so two
+ *  files naming the same stored formula race over its kept draft and its
+ *  remembered tries */
+const FN_ID = '01a04f4b-83a1-763f-9fbc-bfa53bc98e03'
 const AUTHOR = '01920000-0000-7000-8000-0000000000a1'
 const SAVED = 'const saved_by_hand = 1\n'
 

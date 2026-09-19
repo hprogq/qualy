@@ -14,7 +14,10 @@ import { apiError, emptyManifest, fakeClient, renderScreen } from './support/scr
 // permission would trap whatever was already offered - so the controls
 // that remove stay, and this file bears exactly that asymmetry.
 
-const FN_ID = '01a04f4b-83a1-763f-9fbc-bfa53bc98ecb'
+/** this file's own formula: the browser suite shares one origin, so two
+ *  files naming the same stored formula race over its kept draft and its
+ *  remembered tries */
+const FN_ID = '01a04f4b-83a1-763f-9fbc-bfa53bc98e04'
 const COLLEGE = '01920000-0000-7000-8000-0000000000e1'
 const DEPARTMENT = '01920000-0000-7000-8000-0000000000e2'
 

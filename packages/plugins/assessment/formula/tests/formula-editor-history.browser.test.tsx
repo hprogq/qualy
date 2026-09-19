@@ -13,7 +13,10 @@ import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from '.
 // back only as the draft's newest state, asking first when that would
 // replace unsaved work.
 
-const FN_ID = '01a04f4b-83a1-763f-9fbc-bfa53bc98ecb'
+/** this file's own formula: the browser suite shares one origin, so two
+ *  files naming the same stored formula race over its kept draft and its
+ *  remembered tries */
+const FN_ID = '01a04f4b-83a1-763f-9fbc-bfa53bc98e02'
 const AUTHOR = '01920000-0000-7000-8000-0000000000a1'
 const SAVED = '// the draft as saved\n'
 const FROZEN = '// published_source\n'

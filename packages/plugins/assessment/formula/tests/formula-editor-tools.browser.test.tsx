@@ -10,7 +10,10 @@ import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 // share one evaluator wire, results go stale with the code, and a save
 // never holds the code hostage to broken cases.
 
-const FN_ID = '01a04f4b-83a1-763f-9fbc-bfa53bc98ecb'
+/** this file's own formula: the browser suite shares one origin, so two
+ *  files naming the same stored formula race over its kept draft and its
+ *  remembered tries */
+const FN_ID = '01a04f4b-83a1-763f-9fbc-bfa53bc98e05'
 
 // the stubbed preview never compiles this; any stable text will do
 const SOURCE = `// the draft buffer the page loads; the compiled truth lives server-side
