@@ -66,13 +66,17 @@ export function AdministrativeEntrySheet({
   const determined: RecognitionDto | null = (() => {
     const row = line
     if (row === undefined || row.recognition === null) return null
+    // off the determination's own row: a record written in one act has the
+    // same hand on both, and an appeal that re-determines one does not -
+    // borrowing the filing's author said the office decided something it
+    // did not
     return {
       id: row.recognition.id,
-      source: row.source,
+      source: row.recognition.source,
       entryRevisionId: row.revision.id,
       values: row.recognition.values,
-      createdAt: Date.parse(row.revision.createdAt),
-      createdByName: row.revision.actorName,
+      createdAt: Date.parse(row.recognition.createdAt),
+      createdByName: row.recognition.actorName,
     }
   })()
 

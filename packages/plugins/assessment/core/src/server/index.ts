@@ -232,6 +232,10 @@ interface AdministrativeEntryView {
     readonly itemRevisionId: string
     readonly values: Record<string, unknown>
     readonly fields: readonly { readonly id: string; readonly schema: unknown }[]
+    /** whose determination it is, off its own row rather than the filing's */
+    readonly source: 'review' | 'record' | 'import' | 'system'
+    readonly actorName: string | null
+    readonly createdAt: string
   } | null
   readonly importId: string | null
   /** the bulk act it was settled by, when it was settled by one */
@@ -3967,6 +3971,9 @@ export const make = Effect.fn('Assessment.make')(function* () {
                     itemRevisionId: row.itemRevisionId,
                     values: determined.values,
                     fields: fieldsOfRevision.get(row.itemRevisionId) ?? [],
+                    source: determined.source,
+                    actorName: determined.createdByName,
+                    createdAt: new Date(determined.createdAt).toISOString(),
                   },
             importId: row.importId,
             operationId: row.operationId,

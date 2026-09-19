@@ -689,6 +689,19 @@ const administrativeEntryView = Schema.Struct({
       values: configJson,
       /** that version's own fields, in the order it declares them */
       fields: Schema.Array(Schema.Struct({ id: Schema.String, schema: configJson })),
+      /**
+       * Who settled it and when, which is not who filed the fact.
+       *
+       * They are the same hand for a record written in one act, and they
+       * part the moment an appeal re-determines one: the record stays as
+       * the office wrote it while somebody else decides what it is
+       * recognised as. Read off the determination's own row, because a
+       * screen borrowing the filing's author says the office decided
+       * something it did not.
+       */
+      source: Schema.Literals(['review', 'record', 'import', 'system']),
+      actorName: Schema.NullOr(Schema.String),
+      createdAt: Schema.String,
     }),
   ),
   /** the bulk act it arrived in, when it arrived in one */

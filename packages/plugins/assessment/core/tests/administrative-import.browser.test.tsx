@@ -442,6 +442,37 @@ describe('importing a workbook of administrative records', () => {
     expect(addressNow()).toContain(`import=${IMPORT_ID}`)
   })
 
+  it('names whoever settled the determination, not whoever filed the fact', async () => {
+    // the office wrote the record; an appeal re-determined it afterwards.
+    // The two halves have different hands, and the sheet used to borrow the
+    // filing's for both
+    open(`${base}?import=${IMPORT_ID}`, {
+      listAdministrativeEntries: () =>
+        Effect.succeed({
+          entries: [
+            {
+              ...bookLine,
+              recognition: {
+                id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+                itemRevisionId: REVISION_ID,
+                values: {},
+                fields: [],
+                source: 'review',
+                actorName: '李老师',
+                createdAt: '2026-09-20T09:00:00.000Z',
+              },
+            },
+          ],
+          nextCursor: null,
+        }),
+    })
+    await page.getByTestId('import-row').click()
+    const card = page.getByTestId('entry-recognition')
+    await expect.element(card).toBeVisible()
+    await expect.element(card).toHaveAttribute('data-source', 'review')
+    expect((card.element() as HTMLElement).textContent ?? '').toContain('李老师')
+  })
+
   it('goes back from one import to the imports it was opened from', async () => {
     open(`${base}?tab=imports`)
     await page.getByTestId('administrative-import').click()
