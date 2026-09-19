@@ -581,6 +581,25 @@ const newTestKey = (): string =>
 /** the wire/compare projection: identity is local, never sent or compared */
 const bareTests = (tests: readonly DraftTest[]) => tests.map(({ key: _key, ...rest }) => rest)
 
+/**
+ * The same rows, spelled one way, for deciding whether anything changed.
+ *
+ * `inputText` is json a person typed on one side and json the database
+ * handed back on the other, and jsonb does not keep the key order it was
+ * given. Compared as bytes, a saved example whose parameters came back in a
+ * different order read as an edit - so the workbench said unsaved forever,
+ * and the only way out was to save again, which changed nothing.
+ */
+const comparableTests = (tests: readonly DraftTest[]) =>
+  bareTests(tests).map((row) => {
+    try {
+      return { ...row, inputText: canonicalJson(JSON.parse(row.inputText === '' ? '{}' : row.inputText)) }
+    } catch {
+      // half-typed json is compared as it stands; it is a difference either way
+      return row
+    }
+  })
+
 /** JSON with object keys in a fixed order, so equal values compare equal */
 const canonicalJson = (value: unknown): string =>
   JSON.stringify(value, (_key, held: unknown) =>
@@ -1178,7 +1197,8 @@ export default function FormulaEditorPage() {
     held: { readonly source: string; readonly tests: readonly unknown[] },
   ): boolean =>
     held.source !== loaded.draftSourceTs ||
-    JSON.stringify(held.tests) !== JSON.stringify(bareTests(seededTests(loaded)))
+    JSON.stringify(comparableTests(held.tests as readonly DraftTest[])) !==
+      JSON.stringify(comparableTests(seededTests(loaded)))
 
   // The editor follows the server draft only while it holds nothing of its
   // own. The first arrival is adopted; a revision this page saved itself is
@@ -1210,6 +1230,23 @@ export default function FormulaEditorPage() {
   const discardLocal = () => {
     if (fn === undefined) return
     adopt(fn)
+  }
+
+  /**
+   * Keep what is written here and carry on from where the draft now stands.
+   *
+   * The banner used to offer one way out, and it threw the author's work
+   * away. Every write this page can make carries the revision it was based
+   * on, so while that stays stale each of them is refused and the only
+   * offered press was the destructive one. Re-basing changes the token and
+   * nothing else: the next save is an ordinary save, over a draft that has
+   * moved, which is what the concurrency token is there to let somebody
+   * decide about.
+   */
+  const rebaseOnRemote = () => {
+    if (fn === undefined) return
+    setBaseRevision(fn.draftRevision)
+    setRemoteMoved(false)
   }
 
   /** puts the edits this browser kept back into the editor, as one undoable step */
@@ -1257,7 +1294,8 @@ export default function FormulaEditorPage() {
   const testsDirty = (): boolean =>
     fn === undefined
       ? false
-      : JSON.stringify(bareTests(tests)) !== JSON.stringify(bareTests(seededTests(fn)))
+      : JSON.stringify(comparableTests(tests)) !==
+        JSON.stringify(comparableTests(seededTests(fn)))
   const dirty = (): boolean => sourceDirty() || testsDirty()
 
   /** every row satisfies a given contract, expectation included */
@@ -2361,6 +2399,12 @@ export default function FormulaEditorPage() {
             {format(m.remoteMovedHint)}
           </span>
           <span {...stylex.props(w.spring)} />
+          {/* the destructive way out is not the only way out: what is
+              written here can be kept and saved over the draft as it now
+              stands, which is the decision the revision token exists for */}
+          <Button variant="outline" size="xs" onClick={rebaseOnRemote}>
+            {format(m.keepMineAnyway)}
+          </Button>
           <Button variant="outline" size="xs" onClick={discardLocal}>
             {format(m.discardLocal)}
           </Button>

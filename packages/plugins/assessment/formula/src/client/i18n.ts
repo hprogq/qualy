@@ -671,6 +671,10 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/editor/discard-local',
       defaultMessage: 'Discard my edits and reload',
     },
+    keepMineAnyway: {
+      id: 'assessment-formula/editor/keep-mine-anyway',
+      defaultMessage: 'Keep mine and save over it',
+    },
     loadFailed: {
       id: 'assessment-formula/editor/load-failed',
       defaultMessage: 'The formula could not be loaded.',

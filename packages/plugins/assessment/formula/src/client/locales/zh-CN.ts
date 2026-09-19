@@ -175,6 +175,7 @@ export default {
   'assessment-formula/editor/remote-moved-hint':
     '编辑期间有其他人保存了这份草稿。你的内容未被改动，放弃本地修改后即可载入对方的版本。',
   'assessment-formula/editor/discard-local': '放弃本地修改并刷新',
+  'assessment-formula/editor/keep-mine-anyway': '保留我的修改并覆盖保存',
   'assessment-formula/editor/load-failed': '公式加载失败。',
   'assessment-formula/list/all': '全部公式',
   'assessment-formula/list/name-column': '名称与说明',
