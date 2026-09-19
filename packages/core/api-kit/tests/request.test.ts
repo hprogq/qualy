@@ -85,6 +85,10 @@ describe('the trusted-proxy client address', () => {
 
 const port = 3196
 const base = `http://127.0.0.1:${port}`
+// the same application with nobody trusted in front of it: the peer that
+// speaks to it is an ordinary client, whatever headers it writes
+const bareport = 3197
+const bare = `http://127.0.0.1:${bareport}`
 // one suite, one extra listener: the OTLP receiver the exported spans land
 // on; 3203 is claimed here the way `port` claims 3196 - keep both unique
 // across suites
@@ -141,7 +145,9 @@ beforeAll(async () => {
   const application = HttpRouter.serve(routes, {
     // the loopback peer stands in for the deployment's proxy tier
     middleware: (httpApp) =>
-      requestContext({ trustedProxies: ['127.0.0.1'] })(httpMetrics(routeSpanNames(httpApp))),
+      requestContext({ trustedProxies: ['127.0.0.1'] })(
+        httpMetrics({ trustedProxies: ['127.0.0.1'] })(routeSpanNames(httpApp)),
+      ),
   }).pipe(
     Layer.provide(NodeHttpServer.layer(createServer, { port })),
     // the exporting tracer, so the names this suite pins are the names a
@@ -157,8 +163,15 @@ beforeAll(async () => {
       ),
     ),
   )
+  const bareApplication = HttpRouter.serve(routes, {
+    middleware: (httpApp) =>
+      requestContext({ trustedProxies: [] })(
+        httpMetrics({ trustedProxies: [] })(routeSpanNames(httpApp)),
+      ),
+  }).pipe(Layer.provide(NodeHttpServer.layer(createServer, { port: bareport })))
   scope = await Effect.runPromise(Scope.make())
   await Effect.runPromise(Layer.buildWithScope(application, scope))
+  await Effect.runPromise(Layer.buildWithScope(bareApplication, scope))
 })
 
 afterAll(async () => {
@@ -307,6 +320,19 @@ describe('the labels a request becomes', () => {
       (state) => state.id === 'http.server.request.duration',
     )
     expect(after.map((state) => state.attributes?.['url.scheme'])).toContain('https')
+    // and only through a peer this deployment declared: from anybody else
+    // the header is a label a client picked for its own request
+    await fetch(`${bare}/things/${uuid}`, { headers: { 'x-forwarded-proto': 'https' } })
+    const untrusted = (await Effect.runPromise(Metric.snapshot)).filter(
+      (state) =>
+        state.id === 'http.server.request.duration' &&
+        state.attributes?.['url.scheme'] === 'https',
+    )
+    const httpsCount = untrusted.reduce(
+      (total, state) => total + Number((state.state as { count?: number }).count ?? 0),
+      0,
+    )
+    expect(httpsCount).toBe(1)
     // the unmatched request was counted, without inventing a route label
     expect(
       requests.some(

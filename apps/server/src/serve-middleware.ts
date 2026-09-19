@@ -55,6 +55,7 @@ export const serveMiddleware = (options: {
   readonly clientProtocol?: ProtocolWindow
 }) => {
   const withRequestContext = requestContext({ trustedProxies: options.trustedProxies })
+  const withMetrics = httpMetrics({ trustedProxies: options.trustedProxies })
   const withAccessLog = accessLog(options.access)
   const guard = requestOriginGuard({ trustedProxies: options.trustedProxies })
   const compatible = clientCompatibility(options.clientProtocol)
@@ -67,7 +68,7 @@ export const serveMiddleware = (options: {
   > =>
     withRequestContext(
       withAccessLog(
-        httpMetrics(
+        withMetrics(
           routeSpanNames(
             responseHeaders(
               guard(compatible(Eff.provideService(httpApp, Incoming.MaxBodySize, MAX_BODY))),

@@ -118,8 +118,8 @@ describe('logging settings', () => {
                 sessionId: undefined,
                 publicHost: undefined,
                 bindSession: () => Effect.void,
-        endpoint: undefined,
-        bindEndpoint: () => Effect.void,
+                endpoint: undefined,
+                bindEndpoint: () => Effect.void,
               }),
             )
           }),
@@ -138,6 +138,35 @@ describe('logging settings', () => {
     expect(inside.trace_id).toBe(spoke.traceId)
     expect(inside.span_id).toBe(spoke.spanId)
     expect(spoke.name).toBe('business-operation')
+  })
+
+  // The csp report door is unauthenticated by design and only clips what it
+  // is sent. A pretty line is written with console.log, so a newline inside
+  // an annotation used to end the line and start one of the reporter's own -
+  // any level, any source, indistinguishable from the server's own voice.
+  it('keeps a forged newline from becoming a line of its own', async () => {
+    const written: string[] = []
+    const capture = { log: console.log }
+    console.log = (line: string) => written.push(line)
+    try {
+      await Effect.runPromise(
+        Effect.provide(
+          Effect.logWarning('content security policy violation reported').pipe(
+            Effect.annotateLogs({
+              source: 'web',
+              blockedUri: 'https://evil.test/x\n10:25:46 ERROR [db] the database is on fire',
+            }),
+          ),
+          loggingLayer(resolveLogging({ format: 'pretty' }, {}, 'production')),
+        ),
+      )
+    } finally {
+      console.log = capture.log
+    }
+    expect(written).toHaveLength(1)
+    expect(written[0]).not.toContain('\n')
+    // the value is still there to read, just not as a line
+    expect(written[0]).toContain('the database is on fire')
   })
 
   it('refuses what it cannot mean', () => {

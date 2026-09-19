@@ -163,8 +163,23 @@ const sourcePaint = (source: string): Paint => {
   return next
 }
 
+/**
+ * One line stays one line.
+ *
+ * A pretty line is written with `console.log`, so a control character inside
+ * a value ends it and starts another - and some of what gets annotated comes
+ * from outside: the csp report door is unauthenticated by design and its
+ * fields are only clipped, never read. A reporter could therefore write log
+ * lines of their own choosing, at any level, attributed to any source. The
+ * json format escapes its own strings and needs none of this, but the value
+ * goes through here before either of them sees it.
+ */
+const oneLine = (value: string): string =>
+  // eslint-disable-next-line no-control-regex
+  value.replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ')
+
 const text = (part: unknown): string =>
-  typeof part === 'string' ? part : inspect(part, { depth: 4, colors: false })
+  oneLine(typeof part === 'string' ? part : inspect(part, { depth: 4, colors: false }))
 
 /** `@qualy/plugin-org` reads as `org` on a terminal; json keeps the full id */
 const shortSource = (source: string): string => source.replace(/^@qualy\/(plugin-)?/, '')

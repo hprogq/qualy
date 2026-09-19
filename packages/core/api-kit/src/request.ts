@@ -320,9 +320,30 @@ const KNOWN_METHODS = new Set([
   'PATCH',
 ])
 
-export const httpMetrics = <A extends { readonly status: number }, E, R>(
-  httpApp: Effect.Effect<A, E, R>,
-): Effect.Effect<A, E, R | HttpServerRequest.HttpServerRequest> =>
+/**
+ * Which scheme the browser used, decided the way the address is decided.
+ *
+ * `x-forwarded-proto` is only worth reading from a declared proxy; from
+ * anybody else it is a label a client picked for its own request. Without a
+ * trusted hop the answer is what the socket actually is, which for this
+ * product is plain http behind whatever terminates TLS.
+ */
+const schemeOf = (
+  request: HttpServerRequest.HttpServerRequest,
+  trusted: TrustedProxies,
+): 'https' | 'http' => {
+  const remote = normalizeIp(Option.getOrUndefined(request.remoteAddress ?? Option.none()))
+  if (remote === undefined || !trusted(remote)) return 'http'
+  return request.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http'
+}
+
+export const httpMetrics = (options?: {
+  readonly trustedProxies?: readonly string[] | undefined
+}) => {
+  const trusted = trustedProxies(options?.trustedProxies ?? [])
+  return <A extends { readonly status: number }, E, R>(
+    httpApp: Effect.Effect<A, E, R>,
+  ): Effect.Effect<A, E, R | HttpServerRequest.HttpServerRequest> =>
   Effect.withFiber((fiber) => {
     const request = Context.getUnsafe(fiber.context, HttpServerRequest.HttpServerRequest)
     const span = Option.getOrUndefined(Context.getOption(fiber.context, Tracer.ParentSpan))
@@ -344,7 +365,10 @@ export const httpMetrics = <A extends { readonly status: number }, E, R>(
           Metric.withAttributes(requestDuration, {
             unit: 's',
             'http.request.method': KNOWN_METHODS.has(request.method) ? request.method : '_OTHER',
-            'url.scheme': request.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http',
+            // through the same trust policy every other forwarded header
+            // here goes through: believed only from a declared proxy, so a
+            // client cannot relabel its own request by sending the header
+            'url.scheme': schemeOf(request, trusted),
             'http.response.status_code': String(status),
             ...(route === undefined ? {} : { 'http.route': route }),
             // a server error is the condition semconv requires error.type
@@ -356,6 +380,7 @@ export const httpMetrics = <A extends { readonly status: number }, E, R>(
       }),
     )
   })
+}
 
 /**
  * Serve middleware that provides the `RequestContext` for everything
