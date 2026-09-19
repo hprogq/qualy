@@ -1320,6 +1320,8 @@ describe('judging a submission', () => {
       reject: { state: 'available' as const, reason: null },
       escalate: { state: 'blocked' as const, reason: 'no-route' },
       supplement: { state: 'available' as const, reason: null },
+      // a normal-route round: a rejection here goes back to whoever filed
+      rejectionReturns: true,
     },
     capabilities: {
       canDecide: true,

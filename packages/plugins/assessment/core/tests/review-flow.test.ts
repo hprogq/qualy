@@ -1439,6 +1439,104 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
     expect(refusalOf(result.withdrawn)?.reason).toBe('appeal-not-withdrawable')
   })
 
+  // Advice for the person who filed rides only a rejection that reaches
+  // them. A judge standing mid-ladder writes to the judge above instead, so
+  // the workbench must not offer them the suggestion grid - it used to, and
+  // the refusal came back as a failed rejection naming a field they had no
+  // idea they filled.
+  it('says whether a rejection here reaches the person who filed', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rv-returns')
+          const assessment = yield* Assessment
+          // a second duty, so the two escalation rungs are two different
+          // people: a rung resolving to somebody who already judged this
+          // round is stepped over, which would make the middle the end
+          const seniorRole = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into roles (tenant_id, code, name, kind, status, anchor_mode)
+              values (${f.t}, 'senior', 'Senior', 'org', 'active', 'allow-list') returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into role_permissions (tenant_id, role_id, permission_id)
+            select ${f.t}, ${seniorRole}, p.id from permissions p
+            where p.code = 'assessment.review.process'`)
+          const at = (id: string, roleId: string) => ({
+            id,
+            selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [roleId] },
+            quorum: { type: 'any' },
+          })
+          const g = yield* runningBatch(f, {
+            profile: REVIEW_OPEN,
+            stages: [at('class', f.reviewRole)],
+            escalation: [at('middle', f.reviewRole), at('top', seniorRole)],
+          })
+          const senior = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.t}, 'Senior', ${f.studentType}, ${f.classA}) returning id`),
+          ).id
+          const seniorGrant = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+              values (${f.t}, ${senior}, ${seniorRole}, ${f.classA}, 'self') returning id`),
+          ).id
+          yield* accept(f.t, g.batch.id, senior, seniorGrant)
+          // the middle rung, seated before the round moves: the walk reads
+          // who is available at that moment, and a rung whose only holder
+          // has already judged is stepped over
+          const colleague = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.t}, 'Colleague', ${f.studentType}, ${f.classA}) returning id`),
+          ).id
+          const grant = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+              values (${f.t}, ${colleague}, ${f.reviewRole}, ${f.classA}, 'self') returning id`),
+          ).id
+          yield* accept(f.t, g.batch.id, colleague, grant)
+          const above = f.principal(colleague)
+          const s1 = f.principal(f.s1)
+          const reviewer = f.principal(f.reviewer)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          const round = sent.currentReviewInstanceId!
+          const onTheNormalRoute = yield* assessment.getReviewInstance(f.t, round, reviewer)
+          yield* assessment.decideReview(
+            f.t,
+            round,
+            { decision: 'escalate', comment: '请上一级看' },
+            reviewer,
+          )
+          const midLadder = yield* assessment.getReviewInstance(f.t, round, above)
+          // and the server is the same answer, which is what the flag is for
+          const advised = yield* Effect.exit(
+            assessment.decideReview(
+              f.t,
+              round,
+              { decision: 'reject', comment: '不予认定', suggestedPayload: { hint: 'try again' } },
+              above,
+            ),
+          )
+          return { onTheNormalRoute, midLadder, advised }
+        }),
+      ),
+    )
+    expect(result.onTheNormalRoute.actions.rejectionReturns).toBe(true)
+    expect(result.midLadder.chain.route).toBe('escalation')
+    expect(result.midLadder.actions.rejectionReturns).toBe(false)
+    expect(
+      errorOf<{ issues: readonly { field: string; reason: string }[] }>(result.advised)?.issues,
+    ).toEqual([{ field: 'suggestedPayload', reason: 'not-allowed' }])
+  })
+
   // A sitting held at the end of the ladder. The grammar forbids a panel on
   // the escalation route's last step because a split there would have
   // nowhere to go - but it checks that by POSITION, while a round walks by

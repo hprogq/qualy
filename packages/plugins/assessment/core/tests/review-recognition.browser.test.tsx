@@ -128,6 +128,8 @@ const review = (over: Record<string, unknown> = {}) => ({
     reject: { state: 'available' as const, reason: null },
     escalate: { state: 'blocked' as const, reason: 'no-route' },
     supplement: { state: 'available' as const, reason: null },
+    // a normal-route round: a rejection here goes back to whoever filed
+    rejectionReturns: true,
   },
   recognitionForm: recognitionForm(),
   capabilities: { canDecide: true, canCancelSupplement: false, canAnswerSupplement: false },
@@ -466,5 +468,21 @@ describe('approving with a determination', () => {
     const payload = decidedPayload(decided)
     // the suggestion files as the field's own kind: a number, not its text
     expect(payload['suggestedPayload']).toMatchObject({ 'claimed-placing': 3 })
+  })
+
+  it('offers no suggestion where the rejection goes to the next judge', async () => {
+    const base = review({ recognitionForm: null })
+    open(
+      {
+        ...base,
+        actions: { ...base.actions, rejectionReturns: false },
+      } as never,
+      { decideReview: stagedDecide() as never },
+    )
+    await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
+    await page.getByRole('button', { name: /退回/ }).click()
+    await expect.element(page.getByRole('dialog')).toBeVisible()
+    // advice is for the person who filed, and this word never reaches them
+    expect(page.getByRole('checkbox', { name: /修改建议/ }).elements()).toEqual([])
   })
 })

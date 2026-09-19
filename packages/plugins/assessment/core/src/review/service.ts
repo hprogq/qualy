@@ -230,6 +230,17 @@ export interface ReviewActionsView {
   readonly reject: ReviewActionView
   readonly escalate: ReviewActionView
   readonly supplement: ReviewActionView
+  /**
+   * Whether a rejection said here goes back to the person who filed.
+   *
+   * Said by the server because the rule is the server's: advice for the
+   * filer rides only a rejection that reaches them, and a judge whose word
+   * moves the round to the next one instead is refused it. Said at all
+   * because the workbench was offering the suggestion grid anyway, and the
+   * refusal arrived as a failed rejection naming a field nobody knew they
+   * had filled.
+   */
+  readonly rejectionReturns: boolean
 }
 
 /** one ask and its answer, as a reader sees them */
@@ -688,6 +699,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
         reject: act(offered.includes('reject'), null),
         escalate: act(offered.includes('escalate'), escalateReason),
         supplement: act(view.canDecide, null),
+        rejectionReturns: here !== null && wordEnds(policy, here, 'reject'),
       }
       // what the concluded sittings said, for the judge now standing after
       // them; and which steps this round stepped over, off its own trail

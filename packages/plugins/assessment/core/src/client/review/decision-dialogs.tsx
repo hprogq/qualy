@@ -675,6 +675,11 @@ export function RejectDialog({
   const [suggesting, setSuggesting] = useState(false)
   const fields = fieldsOf(review.form.formConfig).filter((field) => field.type !== 'attachment')
   const filed = (review.revision.payload ?? {}) as Record<string, unknown>
+  // advice goes to the person who filed, so it is offered only where this
+  // rejection actually reaches them: a word that moves the round on to the
+  // next judge carries none, and the server refuses the whole rejection
+  // rather than quietly dropping the words somebody wrote
+  const maySuggest = fields.length > 0 && review.actions.rejectionReturns
   // empty means "keep theirs": only what the reviewer actually typed becomes
   // part of the suggestion, so a box left alone never overwrites anything
   const [suggested, setSuggested] = useState<Record<string, string>>({})
@@ -687,7 +692,7 @@ export function RejectDialog({
   // it was inside. Bare digits belong to the reasons; ⌥ carries G and the
   // slot digits through, writing or not.
   useEffect(() => {
-    if (!fine) return
+    if (!fine || !maySuggest) return
     const down = (event: KeyboardEvent) => {
       const typing =
         event.target instanceof HTMLElement && event.target.closest('input, textarea') !== null
@@ -711,7 +716,7 @@ export function RejectDialog({
     }
     document.addEventListener('keydown', down)
     return () => document.removeEventListener('keydown', down)
-  }, [fine, fields.length])
+  }, [fine, maySuggest, fields.length])
 
   // a typo in a suggestion must hold the door, never file as text where a
   // number belongs - and an all-empty grid stays "keep everything"
@@ -727,7 +732,7 @@ export function RejectDialog({
     onConfirm({
       ...(reason === '' ? {} : { reason }),
       comment: comment.trim(),
-      ...(suggesting && Object.keys(changes).length > 0
+      ...(maySuggest && suggesting && Object.keys(changes).length > 0
         ? { suggestedPayload: { ...filed, ...changes } }
         : {}),
     })
@@ -835,7 +840,7 @@ export function RejectDialog({
           )}
         </Field>
 
-        {fields.length > 0 && (
+        {maySuggest && (
           <div {...stylex.props(styles.frame)}>
             <label {...stylex.props(styles.suggestToggle)}>
               <Checkbox

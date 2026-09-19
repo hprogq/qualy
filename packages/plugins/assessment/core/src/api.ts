@@ -1030,6 +1030,12 @@ const reviewDetailView = Schema.Struct({
     reject: reviewActionView,
     escalate: reviewActionView,
     supplement: reviewActionView,
+    /**
+     * Whether a rejection said here reaches the person who filed, rather
+     * than moving the round on to the next judge. Advice for them rides
+     * only the first kind, so this is what says whether to offer it.
+     */
+    rejectionReturns: Schema.Boolean,
   }),
   events: Schema.Array(
     Schema.Struct({
