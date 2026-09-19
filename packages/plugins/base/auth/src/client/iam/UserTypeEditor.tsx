@@ -5,7 +5,7 @@ import type { Effect } from 'effect'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { useApi, useRunApi, useApiQuery, PageLink } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+import { useI18n, useList } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, ConfirmDialog, Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import { Barred, DefRow, EditorHead, ModeChoice, PickGrid } from '@qualy/ui/screen'
@@ -56,6 +56,7 @@ export function UserTypeEditor({
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
+  const listJoin = useList()
   const [feedback, setFeedback] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [renaming, setRenaming] = useState(false)
@@ -289,14 +290,14 @@ export function UserTypeEditor({
           {admitting.length === 0 ? (
             <span {...stylex.props(styles.alert)}>{format(m.signInNone)}</span>
           ) : (
-            admitting.join('、')
+            listJoin(admitting)
           )}
         </DefRow>
       )}
 
       {roles.isSuccess && (
         <DefRow label={format(m.openRolesLabel)}>
-          {openRoles.length === 0 ? format(m.openRolesNone) : openRoles.join('、')}
+          {openRoles.length === 0 ? format(m.openRolesNone) : listJoin(openRoles)}
         </DefRow>
       )}
 

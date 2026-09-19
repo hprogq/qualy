@@ -11,7 +11,7 @@ import {
   ShapesIcon,
 } from 'lucide-react'
 import { PageLink, useApi, useRunApi, useApiQuery, usePageQueryState } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+import { useI18n, useList } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -63,7 +63,6 @@ interface OrgShape {
   nodesOfType: ReadonlyMap<string, number>
 }
 
-const listJoin = (names: readonly string[]) => names.join('，')
 
 const styles = stylex.create({
   split: {
@@ -963,6 +962,7 @@ function NodePanel({
   headcount: number
 }) {
   const { format } = useI18n()
+  const listJoin = useList()
   const [renaming, setRenaming] = useState(false)
   const [name, setName] = useState(node.name)
   const [moving, setMoving] = useState(false)
@@ -1217,12 +1217,12 @@ function NodePanel({
             {...(removable
               ? {}
               : {
-                  reason: [
-                    children.length > 0 ? format(m.childCount, { count: children.length }) : null,
-                    headcount > 0 ? format(m.peopleCount, { count: headcount }) : null,
-                  ]
-                    .filter((line) => line !== null)
-                    .join('，'),
+                  reason: listJoin(
+                    [
+                      children.length > 0 ? format(m.childCount, { count: children.length }) : null,
+                      headcount > 0 ? format(m.peopleCount, { count: headcount }) : null,
+                    ].filter((line) => line !== null),
+                  ),
                 })}
           />
           <Button
@@ -1266,6 +1266,7 @@ function TypeRail({
   onOpen: (id: string) => void
 }) {
   const { format } = useI18n()
+  const listJoin = useList()
   const childNames = (typeId: string) =>
     shape.rules
       .filter((rule) => rule.parentTypeId === typeId)
@@ -1323,6 +1324,7 @@ function TypePanel({
   canManage: boolean
 }) {
   const { format } = useI18n()
+  const listJoin = useList()
   const [renaming, setRenaming] = useState(false)
   const [name, setName] = useState(type.name)
   const [confirmingDelete, setConfirmingDelete] = useState(false)

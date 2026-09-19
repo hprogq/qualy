@@ -3,7 +3,7 @@ import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useEffect, useState } from 'react'
 import { useApi, useRunApi, useApiQuery, usePageQueryState } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+import { useI18n, useList } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, Feedback } from '@qualy/ui/admin'
 import {
@@ -58,6 +58,7 @@ export default function LoginMethodsPage() {
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
+  const listJoin = useList()
   const [selected, setSelected] = usePageQueryState('provider')
   const [feedback, setFeedback] = useState<string | null>(null)
 
@@ -100,10 +101,11 @@ export default function LoginMethodsPage() {
   })
 
   const named = (ids: readonly string[]) =>
-    (types.data?.userTypes ?? [])
-      .filter((type) => ids.includes(type.id))
-      .map((type) => type.name)
-      .join('、')
+    listJoin(
+      (types.data?.userTypes ?? [])
+        .filter((type) => ids.includes(type.id))
+        .map((type) => type.name),
+    )
   const dirty =
     mode !== (current?.audience.mode ?? 'unrestricted') ||
     [...userTypeIds].sort().join(',') !== [...stored].sort().join(',')

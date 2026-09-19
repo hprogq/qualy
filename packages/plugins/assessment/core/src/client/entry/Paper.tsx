@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { useI18n } from '@qualy/web-i18n'
+import { useI18n, useList } from '@qualy/web-i18n'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { Appear } from '@qualy/ui/reveal'
@@ -1290,6 +1290,7 @@ function Question({
   onDetail: (entry: EntryDto) => void
 }) {
   const { format } = useI18n()
+  const listJoin = useList()
   const [unfolded, setUnfolded] = useState(false)
   // a withdrawn question arrives folded: it is history, not work
   const [opened, setOpened] = useState(false)
@@ -1370,7 +1371,7 @@ function Question({
         <div {...stylex.props(styles.termsCard)}>
           {terms.length > 0 && (
             <>
-              <p {...stylex.props(styles.termsLine)}>{terms.join('，')}</p>
+              <p {...stylex.props(styles.termsLine)}>{listJoin(terms)}</p>
               <ul {...stylex.props(styles.termsList)}>
                 {terms.map((term) => (
                   <li key={term}>{term}</li>

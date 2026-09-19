@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { useApiQuery } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+import { useI18n, useList } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Field, SidePanel } from '@qualy/ui/admin'
@@ -88,6 +88,7 @@ export function StageSheet({
 }) {
   const query = useApiQuery(assessmentApi)
   const { format } = useI18n()
+  const listJoin = useList()
   const roleIds = stage.kind === 'roleAt' ? stage.roleIds : [stage.roleId]
   const coverage = useQuery({
     ...query.assessment.reviewCoverage.queryOptions({
@@ -189,7 +190,7 @@ export function StageSheet({
                 : uncovered.length === 0
                   ? format(m.itemsReviewCovered, { count: coverage.data.nodes.length })
                   : format(m.itemsReviewUncovered, {
-                      names: uncovered.map((node) => node.name).join('、'),
+                      names: listJoin(uncovered.map((node) => node.name)),
                     })}
             </p>
           )}

@@ -10,7 +10,7 @@ import {
   useRunApi,
   cursorPages,
 } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+import { useI18n, useList } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
@@ -705,7 +705,7 @@ function MyDesk({
   const { format, formatError, locale } = useI18n()
   const [lane, setLane] = useState<Lane>('all')
   // the desk's list fragments join in the reader's own punctuation
-  const listJoin = locale.startsWith('zh') ? '，' : ', '
+  const listJoin = useList()
 
   const perspective = lane === 'all' ? undefined : lane
   const activity = useInfiniteQuery({
@@ -792,11 +792,11 @@ function MyDesk({
       detail:
         desk!.reviewer!.queueGroups.length === 0
           ? null
-          : desk!
-              .reviewer!.queueGroups.map((group) =>
+          : listJoin(
+              desk!.reviewer!.queueGroups.map((group) =>
                 format(m.overviewQueueGroup, { name: group.name, count: group.count }),
-              )
-              .join(listJoin),
+              ),
+            ),
       at: null,
       verb: format(m.overviewGoReview),
       go: () => navigate('assessment/batch-reviews', { params: { batchId } }),
@@ -812,14 +812,14 @@ function MyDesk({
       detail:
         desk!.reviewer!.answeredAsks.length === 0
           ? null
-          : desk!
-              .reviewer!.answeredAsks.map((ask) =>
+          : listJoin(
+              desk!.reviewer!.answeredAsks.map((ask) =>
                 format(m.overviewAskEntry, {
                   who: ask.who ?? format(m['activity.somebody']),
                   item: ask.itemTitle,
                 }),
-              )
-              .join(listJoin),
+              ),
+            ),
       at: null,
       verb: format(m.overviewGoAsked),
       go: () =>

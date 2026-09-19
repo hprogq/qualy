@@ -63,6 +63,23 @@ export function useLocale(): [SupportedLocale, (locale: SupportedLocale) => void
   return [locale, setLocale]
 }
 
+/**
+ * An enumeration in the reader's own language.
+ *
+ * The separator between two names is language, not data: components joined
+ * with the ideographic comma directly, so an en-US reader was shown Chinese
+ * punctuation inside a sentence that had been translated around it. The
+ * platform knows the rule for every locale it serves, so no catalog needs a
+ * key for a comma.
+ *
+ * `unit` rather than `conjunction`: these are lists of things - names,
+ * tokens, units - and none of them wants an "and" before the last one.
+ */
+export function useList(): (items: readonly string[]) => string {
+  const { locale } = useI18n()
+  return (items) => new Intl.ListFormat(locale, { type: 'unit', style: 'narrow' }).format(items)
+}
+
 const isSupported = (value: string | null | undefined): value is SupportedLocale =>
   !!value && (supportedLocales as readonly string[]).includes(value)
 

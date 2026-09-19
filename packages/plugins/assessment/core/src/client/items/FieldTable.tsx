@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { CheckIcon, ChevronDownIcon, GripVerticalIcon, PlusIcon, XIcon } from 'lucide-react'
-import { useI18n } from '@qualy/web-i18n'
+import { useI18n, useList } from '@qualy/web-i18n'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
@@ -972,6 +972,7 @@ function OptionsEditor({
 
 function AcceptPicker({ accept, onChange }: { accept: string; onChange: (next: string) => void }) {
   const { format } = useI18n()
+  const listJoin = useList()
   const stored = accept
     .split(',')
     .map((token) => token.trim())
@@ -1049,7 +1050,7 @@ function AcceptPicker({ accept, onChange }: { accept: string; onChange: (next: s
             <p {...stylex.props(styles.customHint)}>{format(m.itemsAcceptOtherHint)}</p>
             {unwritable.length > 0 && (
               <p {...stylex.props(styles.unwritableNote)}>
-                {format(m.itemsAcceptUnwritable, { tokens: unwritable.join('、') })}
+                {format(m.itemsAcceptUnwritable, { tokens: listJoin(unwritable) })}
               </p>
             )}
           </>

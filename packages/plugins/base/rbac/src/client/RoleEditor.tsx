@@ -3,7 +3,7 @@ import type { Effect } from 'effect'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { useApi, useRunApi, useApiQuery } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+import { useI18n, useList } from '@qualy/web-i18n'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { commonMessages } from '@qualy/web-i18n/messages'
@@ -123,6 +123,7 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
   const query = useApiQuery(accessApi)
   const queryClient = useQueryClient()
   const { format, formatError, formatText } = useI18n()
+  const listJoin = useList()
   const [tab, setTab] = useState<Tab>('permissions')
   const [feedback, setFeedback] = useState<string | null>(null)
   const [renaming, setRenaming] = useState(false)
@@ -330,10 +331,11 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
   const holderWord =
     holder.mode === 'unrestricted'
       ? format(m.anyoneWord)
-      : (options.data?.userTypes ?? [])
-          .filter((type) => holder.userTypeIds.includes(type.id))
-          .map((type) => type.name)
-          .join('、')
+      : listJoin(
+          (options.data?.userTypes ?? [])
+            .filter((type) => holder.userTypeIds.includes(type.id))
+            .map((type) => type.name),
+        )
   const kindWord = format(role.kind === 'tenant' ? m.tenantGroup : m.orgGroup)
 
   return (

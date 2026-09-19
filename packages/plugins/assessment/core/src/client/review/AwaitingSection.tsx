@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { ClockIcon } from 'lucide-react'
 import { useApiQuery, usePageNavigate } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+import { useI18n, useList } from '@qualy/web-i18n'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -389,6 +389,7 @@ function AwaitingRow({
   onOpen: () => void
 }) {
   const { format } = useI18n()
+  const listJoin = useList()
   const answered = row.status === 'answered'
   return (
     // Stacked lines on a phone, the queue's own columns beside a desk: the
@@ -418,7 +419,7 @@ function AwaitingRow({
         <span {...stylex.props(styles.askTitle)}>{row.itemTitle}</span>
         {row.asks.length > 0 && (
           <span {...stylex.props(styles.askWant)}>
-            {format(m.reviewAwaitingWant, { what: row.asks.join('、') })}
+            {format(m.reviewAwaitingWant, { what: listJoin(row.asks) })}
           </span>
         )}
       </span>
