@@ -1,9 +1,14 @@
 import { assembledBarrier, assembledLayer } from '@qualy/api-kit/assembled'
 import { readinessLayer } from '@qualy/api-kit/readiness'
-import { Effect, Exit, Layer, Redacted, Scope } from 'effect'
+import { Effect, Exit, Layer, Redacted, Schema, Scope } from 'effect'
 import { NodeHttpServer } from '@effect/platform-node'
 import { HttpRouter } from 'effect/unstable/http'
-import { HttpApiBuilder, HttpApiClient } from 'effect/unstable/httpapi'
+import {
+  HttpApiBuilder,
+  HttpApiClient,
+  HttpApiEndpoint,
+  HttpApiGroup,
+} from 'effect/unstable/httpapi'
 import { FetchHttpClient } from 'effect/unstable/http'
 import fs from 'node:fs'
 import { createServer } from 'node:http'
@@ -370,6 +375,30 @@ describe.runIf(postgresAvailable)('the generated api aggregate', () => {
       // blank page, four layers from the line that caused it.
       const doubled = await fetch(`${base}${QUALY_API_PREFIX}${QUALY_API_PREFIX}/ping/hello`)
       expect(doubled.status).toBe(404)
+
+      // Some answers under /api are the pipeline's rather than a handler's,
+      // and no endpoint declares them - so the typed client has no decoder
+      // for their status and used to fall through to its own transport
+      // error. The reader was then told "something went wrong" for the one
+      // answer whose whole point is to say what to do next.
+      const gone = await Effect.runPromise(
+        Effect.flip(
+          Effect.gen(function* () {
+            const client = yield* clientFor(
+              Api.local(
+                HttpApiGroup.make('ping').add(
+                  HttpApiEndpoint.get('hello', '/ping/nowhere', {
+                    success: Schema.Struct({ msg: Schema.String }),
+                  }),
+                ),
+              ),
+              base,
+            )
+            return yield* client.ping.hello()
+          }),
+        ),
+      )
+      expect((gone as { _tag?: string })._tag).toBe('API_ROUTE_NOT_FOUND')
     } finally {
       await teardownStaged('client', scope, db)
     }

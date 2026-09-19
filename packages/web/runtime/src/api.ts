@@ -1,5 +1,10 @@
-import { Effect, identity } from 'effect'
-import { FetchHttpClient, HttpClient, HttpClientRequest } from 'effect/unstable/http'
+import { Effect, identity, Result } from 'effect'
+import {
+  FetchHttpClient,
+  HttpClient,
+  HttpClientRequest,
+  type HttpClientResponse,
+} from 'effect/unstable/http'
 import { HttpApiClient, type HttpApi, type HttpApiGroup } from 'effect/unstable/httpapi'
 import { apiRouteTemplates } from '@qualy/api-kit/local'
 import { registerApiRoutes } from '@qualy/browser-observability/api-routes'
@@ -102,6 +107,52 @@ const withIdentity = (options: TransportOptions) => {
  * path is the full path. Omitting it entirely is the browser case: the paths
  * are absolute and same-origin, so fetch resolves them against the page.
  */
+/**
+ * The refusals no endpoint declares, given back their own names.
+ *
+ * Two answers under `/api` are the pipeline's rather than a handler's: a
+ * request that did not come from this application, and a route this build no
+ * longer has. They carry the same tagged shape as every other error here,
+ * but no endpoint lists them - so the typed client has no decoder for their
+ * status and falls through to its own transport error. The reader was then
+ * told "something went wrong" for the two answers whose whole point is to
+ * say what to do next, and the sentences written for them could never be
+ * reached.
+ *
+ * Decided by status rather than by body, because the body is gone: the
+ * decoder that failed has already read it, and a response here has no second
+ * copy. The status is enough precisely because this code only runs when the
+ * decoder fell through - which means this endpoint declared nothing for that
+ * status, and under this mount the only thing left that answers it is the
+ * pipeline.
+ */
+const PIPELINE_REFUSALS: Record<number, string> = {
+  403: 'REQUEST_ORIGIN_REFUSED',
+  404: 'API_ROUTE_NOT_FOUND',
+}
+
+type FellThrough = {
+  readonly _tag: 'HttpClientError'
+  readonly reason: { readonly _tag: string; readonly response: HttpClientResponse.HttpClientResponse }
+}
+
+const fellThrough = (error: unknown): error is FellThrough =>
+  (error as { _tag?: unknown } | null)?._tag === 'HttpClientError' &&
+  (error as { reason?: { _tag?: unknown } }).reason?._tag === 'DecodeError'
+
+const pipelineRefusals = (
+  effect: Effect.Effect<unknown, unknown, unknown>,
+): Effect.Effect<unknown, unknown, unknown> =>
+  Effect.catch(effect, (error) => {
+    if (!fellThrough(error)) return Effect.fail(error)
+    const code = PIPELINE_REFUSALS[error.reason.response.status]
+    // the english a server sends for clients that do not localize is the
+    // last thing between an untranslated code and "something went wrong",
+    // and there is none to carry here - the code is the whole message, and
+    // every locale has a sentence for it
+    return code === undefined ? Effect.fail(error) : Effect.fail({ _tag: code })
+  })
+
 export const clientFor = <ApiId extends string, Groups extends HttpApiGroup.Constraint>(
   api: HttpApi.HttpApi<ApiId, Groups>,
   baseUrl?: string,
@@ -123,6 +174,7 @@ export const clientFor = <ApiId extends string, Groups extends HttpApiGroup.Cons
   return HttpApiClient.make(api, {
     ...(baseUrl === undefined ? {} : { baseUrl }),
     transformClient: withIdentity(options),
+    transformResponse: pipelineRefusals,
   }).pipe(Effect.provide(FetchHttpClient.layer))
 }
 
