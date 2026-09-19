@@ -1713,7 +1713,7 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
         const offered = yield* assessment.staffOptions(
           f.tenant,
           batch.id,
-          { userId: f.s2, orgNodeId: f.class1 },
+          { userIds: [f.s2], orgNodeIds: [f.class1] },
           f.principal,
         )
         return {
@@ -1986,14 +1986,14 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
         const here = yield* assessment.staffOptions(
           f.tenant,
           batch.id,
-          { userId: teacher, orgNodeId: f.class1 },
+          { userIds: [teacher], orgNodeIds: [f.class1] },
           f.principal,
         )
         // a unit this round has nobody in is not a place to hand out authority
         const elsewhere = yield* assessment.staffOptions(
           f.tenant,
           batch.id,
-          { userId: teacher, orgNodeId: f.class3 },
+          { userIds: [teacher], orgNodeIds: [f.class3] },
           f.principal,
         )
         // and the write refuses it too, not only the list
@@ -2023,6 +2023,65 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     expect(reasonsOf(written).map((entry) => (entry.error as { reason?: string }).reason)).toEqual([
       'node-out-of-batch',
     ])
+  })
+
+  it('offers a role only where it holds for every person and unit chosen', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('staff-selection')
+        const assessment = yield* Assessment
+        // a role only teachers may hold, which is the ordinary shape: the
+        // offer is true of one chosen person and false of another
+        const counsellor = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into roles (tenant_id, code, name, kind, status, permission_mode,
+                               assignable, eligibility_mode, anchor_mode)
+            values (${f.tenant}, 'counsellor', 'Counsellor', 'org', 'active', 'explicit', true,
+                    'allow-list', 'unrestricted')
+            returning id`),
+        ).id
+        yield* runSql(sql`
+          insert into role_permissions (tenant_id, role_id, permission_id)
+          select ${f.tenant}, ${counsellor}, id from permissions
+          where code = 'assessment.review.process'`)
+        yield* runSql(sql`
+          insert into role_allowed_user_types (tenant_id, role_id, user_type_id)
+          values (${f.tenant}, ${counsellor}, ${f.teacherType})`)
+
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Selection',
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            import: { orgNodeIds: [f.class1], userTypeIds: [f.studentType] },
+          },
+          f.principal,
+        )
+        const ask = (userIds: readonly string[]) =>
+          assessment.staffOptions(f.tenant, batch.id, { userIds, orgNodeIds: [f.class1] }, f.principal)
+        const teacherOnly = yield* ask([f.t1])
+        const withAStudent = yield* ask([f.t1, f.s1])
+        // and the write is the same answer, which is what the list is for
+        const written = yield* Effect.exit(
+          assessment.addStaff(
+            f.tenant,
+            batch.id,
+            { userIds: [f.t1, f.s1], orgNodeIds: [f.class1], roleId: counsellor },
+            f.principal,
+          ),
+        )
+        return { counsellor, teacherOnly, withAStudent, written }
+      }),
+    )
+    const { counsellor, teacherOnly, withAStudent, written } = ok(exit)
+    const refusalOf = (offered: { roles: readonly { id: string; refusal: string | null }[] }) =>
+      offered.roles.find((role) => role.id === counsellor)?.refusal
+    expect(refusalOf(teacherOnly)).toBe(null)
+    // the second person is the one it does not hold for, and an offer that is
+    // true of one pair and false of another is not an answer
+    expect(refusalOf(withAStudent)).toBe('user-type')
+    expect(Exit.isFailure(written)).toBe(true)
   })
 
   it('shows a participant their own running batch and nobody else\u2019s draft', async () => {

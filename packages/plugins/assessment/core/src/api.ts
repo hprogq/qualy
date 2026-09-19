@@ -2227,9 +2227,12 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     // needs no authority over the tenant's roles beyond its own.
     HttpApiEndpoint.get('staffOptions', '/assessment/batches/:batchId/staff-options', {
       params: Schema.Struct({ batchId: uuidInput }),
+      // the whole selection, because the write applies the role to every
+      // pair of it at once: a list answering for one person in one unit
+      // promises roles the write then refuses, and refuses all of it
       query: Schema.Struct({
-        userId: Schema.optional(uuidInput),
-        orgNodeId: Schema.optional(uuidInput),
+        userIds: Schema.optional(idList),
+        orgNodeIds: Schema.optional(idList),
       }),
       success: Schema.Struct({
         nodes: Schema.Array(

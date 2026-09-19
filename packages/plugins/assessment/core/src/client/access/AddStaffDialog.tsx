@@ -108,7 +108,7 @@ export function AddStaffDialog({
   const probes = useQuery({
     ...query.assessment.staffOptions.queryOptions({
       params: { batchId },
-      query: { userId: chosen[0] ?? '', orgNodeId: orgNodeIds[0] ?? '' },
+      query: { userIds: chosen, orgNodeIds },
     }),
     enabled: open && chosen.length > 0 && orgNodeIds.length > 0,
   })

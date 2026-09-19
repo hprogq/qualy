@@ -580,6 +580,21 @@ export interface SweepReport {
  */
 const SWEEP_BATCH_LIMIT = 200
 
+/**
+ * Why a role is not on offer for a staffing selection.
+ *
+ * The first four are rbac's answer about the person and the place;
+ * `beyond-batch` is this domain's own, and says the authority the role
+ * carries is more than a batch may hand out at all.
+ */
+export type RoleRefusal =
+  | 'user-type'
+  | 'authority'
+  | 'self-escalation'
+  | 'unavailable'
+  | 'beyond-batch'
+  | null
+
 /** one level of the lineage being frozen, with who could act there today */
 export interface ChainPreviewStep {
   readonly nodeId: string
@@ -778,7 +793,7 @@ export class Assessment extends Context.Service<
     readonly staffOptions: (
       tenantId: string,
       batchId: string,
-      request: { userId?: string; orgNodeId?: string },
+      request: { userIds?: readonly string[] | string; orgNodeIds?: readonly string[] | string },
       as: Principal,
     ) => Effect.Effect<
       {
@@ -3129,40 +3144,51 @@ export const make = Effect.fn('Assessment.make')(function* () {
       const nodes = yield* dieQuery(
         withDb(batchUnits(tenantId, batchId, yield* rbac.listAuthorizedScope(as, MANAGE))),
       )
-      if (request.userId === undefined || request.orgNodeId === undefined) {
+      const userIds = [...new Set(listed(request.userIds ?? []))]
+      const orgNodeIds = [...new Set(listed(request.orgNodeIds ?? []))]
+      if (userIds.length === 0 || orgNodeIds.length === 0) return { nodes, roles: [] }
+      // every unit has to be one of this round's own, or bringing somebody in
+      // would be a way of handing out authority anywhere in the tenant
+      if (!orgNodeIds.every((id) => nodes.some((node) => node.id === id))) {
         return { nodes, roles: [] }
       }
-      // the unit has to be one of this round's own, or bringing somebody in
-      // would be a way of handing out authority anywhere in the tenant
-      if (!nodes.some((node) => node.id === request.orgNodeId)) return { nodes, roles: [] }
-      const grantable = yield* rbac.listGrantableRoles({
-        tenantId,
-        actor: as,
-        userId: request.userId,
-        orgNodeId: request.orgNodeId,
-      })
+      // Every pair, because the write is every pair and it is all or nothing.
+      // A role is offered only where it would be accepted for the whole
+      // selection; anywhere it would not, the first refusal is the one shown,
+      // since that is the one somebody has to resolve first.
+      const refusals = new Map<string, { name: string; refusal: RoleRefusal }>()
+      for (const userId of userIds) {
+        for (const orgNodeId of orgNodeIds) {
+          const grantable = yield* rbac.listGrantableRoles({ tenantId, actor: as, userId, orgNodeId })
+          const offered = new Set(grantable.map((role) => role.id))
+          for (const role of grantable) {
+            const held = refusals.get(role.id)
+            if (held === undefined) {
+              refusals.set(role.id, { name: role.name, refusal: role.refusal })
+              continue
+            }
+            if (held.refusal === null) held.refusal = role.refusal
+          }
+          // a role this pair was not offered at all is unavailable for the
+          // selection, whatever another pair had to say about it
+          for (const [roleId, held] of refusals) {
+            if (!offered.has(roleId) && held.refusal === null) held.refusal = 'unavailable'
+          }
+        }
+      }
       // and one more rule of this domain's own: a batch may only hand out
       // what a batch may hand out. A role reaching past that is shown and
       // refused rather than hidden, like the ones rbac refused.
-      const roles: {
-        id: string
-        name: string
-        refusal:
-          'user-type' | 'authority' | 'self-escalation' | 'unavailable' | 'beyond-batch' | null
-      }[] = []
-      for (const role of grantable) {
-        if (role.refusal !== null) {
-          roles.push({ id: role.id, name: role.name, refusal: role.refusal })
+      const roles: { id: string; name: string; refusal: RoleRefusal }[] = []
+      for (const [id, held] of refusals) {
+        if (held.refusal !== null) {
+          roles.push({ id, name: held.name, refusal: held.refusal })
           continue
         }
-        const carried = yield* rbac.getRolePermissions(tenantId, role.id)
+        const carried = yield* rbac.getRolePermissions(tenantId, id)
         const delegatable =
           carried.length > 0 && carried.every((code) => BATCH_STAFF_CODES.includes(code as never))
-        roles.push({
-          id: role.id,
-          name: role.name,
-          refusal: delegatable ? null : 'beyond-batch',
-        })
+        roles.push({ id, name: held.name, refusal: delegatable ? null : 'beyond-batch' })
       }
       return { nodes, roles }
     }),
