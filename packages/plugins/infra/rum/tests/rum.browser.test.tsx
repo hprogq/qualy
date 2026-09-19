@@ -78,6 +78,23 @@ describe('starting up', () => {
     expect(seen.exceptions).toHaveLength(1)
   })
 
+  // An exception is deduped by the identity of its error object; a
+  // diagnostic has none, and its hot caller reports from inside a render -
+  // so a screen missing a surface reported on every re-render.
+  it('reports one fact once, however often it is noticed', async () => {
+    answering({ schema: 2, config: { id: 'x' } })
+    const seen = fakeProvider()
+    await startBrowserRum(release)
+    for (let at = 0; at < 5; at++) {
+      captureDiagnostic('surface-missing', { surfaceKind: 'page', surface: 'a/b' })
+    }
+    expect(seen.diagnostics).toHaveLength(1)
+    // a different fact is a different report
+    captureDiagnostic('surface-missing', { surfaceKind: 'page', surface: 'c/d' })
+    captureDiagnostic('release-gone')
+    expect(seen.diagnostics).toHaveLength(3)
+  })
+
   it('reports nowhere when the deployment named no provider', async () => {
     answering({ schema: 2, config: null })
     const seen = fakeProvider()

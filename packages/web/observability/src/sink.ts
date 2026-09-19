@@ -217,7 +217,35 @@ export const captureException = (error: unknown, context?: ExceptionContext): vo
  * longer keeps. Codes are a closed vocabulary and the context is low
  * cardinality on purpose; neither is a place to put an error message.
  */
+/**
+ * One report per fact, with a ceiling on how many facts are remembered.
+ *
+ * An exception is deduped by the identity of the error object; a diagnostic
+ * has no object, so it is deduped by what it says - which the vocabulary is
+ * built for: a closed set of codes and low-cardinality context. It needs to
+ * be: the hot caller reports a missing surface from inside a RENDER, so a
+ * screen that re-renders on every keystroke reported on every keystroke.
+ *
+ * The ceiling is generous next to a closed vocabulary and bounded anyway:
+ * at the limit the oldest fact is forgotten, which costs one repeat rather
+ * than unbounded memory.
+ */
+const DIAGNOSTIC_FACTS = 64
+let reported = new Map<string, true>()
+
+const firstTime = (code: string, context?: DiagnosticContext): boolean => {
+  const key = `${code}|${context === undefined ? '' : JSON.stringify(context)}`
+  if (reported.has(key)) return false
+  if (reported.size >= DIAGNOSTIC_FACTS) {
+    const oldest = reported.keys().next()
+    if (!oldest.done) reported.delete(oldest.value)
+  }
+  reported.set(key, true)
+  return true
+}
+
 export const captureDiagnostic = (code: string, context?: DiagnosticContext): void => {
+  if (!firstTime(code, context)) return
   if (sink === null) {
     // held for the same reason an exception is: a surface the manifest
     // promised and the build does not have is discovered on the first
@@ -249,6 +277,7 @@ export const resetObservability = (): void => {
   // a WeakSet cannot be emptied, and a suite's next case must be able to
   // report the same object again
   accounted = new WeakSet<object>()
+  reported = new Map<string, true>()
   rememberObservedPage({})
   drainEarlyFailures()
 }
