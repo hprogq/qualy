@@ -62,7 +62,20 @@ export interface PlanShape {
   readonly tail: number
 }
 
-export const shapeOf = (rows: readonly PhaseDto[]): PlanShape => {
+/**
+ * The shape of a plan, with the stage in hand taken from the server rather
+ * than worked out here.
+ *
+ * Which stage is in hand is the clock's answer, and the server already gives
+ * it. Counting the rows that have been written down instead said something
+ * else twice over: for as long as a boundary that has passed waits to be
+ * ratified - a second usually, minutes when a sweep is behind, indefinitely
+ * while the scheduler is down - and, permanently, for a round that has been
+ * archived or reopened, where the last stage that ran is not a stage in
+ * hand at all. `scheduled` is untouched: ratification moves a time from one
+ * column to the other and never changes whether there is one.
+ */
+export const shapeOf = (rows: readonly PhaseDto[], currentPhaseId: string | null): PlanShape => {
   const entered = rows.filter((row) => row.actualEntryAt !== null).length
   const scheduled = rows.filter(
     (row) => row.actualEntryAt !== null || row.plannedEntryAt !== null,
@@ -70,7 +83,7 @@ export const shapeOf = (rows: readonly PhaseDto[]): PlanShape => {
   return {
     entered,
     scheduled,
-    currentIndex: entered - 1,
+    currentIndex: currentPhaseId === null ? -1 : rows.findIndex((row) => row.id === currentPhaseId),
     frontier: scheduled < rows.length ? scheduled : -1,
     tail: scheduled > entered ? scheduled - 1 : -1,
   }

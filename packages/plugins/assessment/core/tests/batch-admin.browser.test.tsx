@@ -777,6 +777,29 @@ describe('the stage plan', () => {
     })
   })
 
+  // Which stage is in hand is the clock's answer and the batch carries it.
+  // Counting the rows that have been written down says something else while
+  // a boundary that has passed waits to be ratified - and permanently once
+  // a round is archived, where the last stage that ran is not a stage in
+  // hand at all.
+  it('takes the stage in hand from the round, not from what has been written down', async () => {
+    screen({
+      // entered, and the round is over: nothing is in hand
+      getBatch: () =>
+        Effect.succeed({ batch: batch({ status: 'archived', currentPhaseId: null }) }),
+      listBatches: () =>
+        Effect.succeed({ items: [listRow({ status: 'archived' })], nextCursor: null, total: 1 }),
+      getPhases: () => Effect.succeed(twoPhases({ entered: '2027-09-01T16:00:00.000Z' })),
+    })
+
+    await vi.waitFor(() => expect(page.getByTestId('phase-standing').elements()).toHaveLength(2))
+    const standings = page
+      .getByTestId('phase-standing')
+      .elements()
+      .map((node) => node.getAttribute('data-standing'))
+    expect(standings).not.toContain('current')
+  })
+
   it('enters the stage at the front of the queue on the spot', async () => {
     const advancePhase = vi.fn((_request: Request) => Effect.succeed({ phases: [] }))
     screen({

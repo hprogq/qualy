@@ -288,7 +288,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
 
   const rows = phases.data?.phases ?? []
   const serverDrafts = useMemo(() => rows.map(draftOf), [rows])
-  const shape = useMemo(() => shapeOf(rows), [rows])
+  const shape = useMemo(() => shapeOf(rows, batch.currentPhaseId), [rows, batch.currentPhaseId])
 
   const [edited, setEdited] = useState<readonly PhaseDraft[] | null>(null)
   const drafts = edited ?? serverDrafts
@@ -498,8 +498,11 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
       setScheduling({
         id: row.id!,
         name: named(row),
-        // entering now only means anything at the very front of the queue
-        canStartNow: index === shape.entered,
+        // entering now only means anything at the very front of the queue,
+        // and the front is where the clock has reached rather than where
+        // the writing down has: offering it on a stage already entered was
+        // a button whose only answer was a refusal
+        canStartNow: index === shape.currentIndex + 1,
       })
     },
     onUnschedule: () => setUnscheduling({ id: row.id!, name: named(row) }),
