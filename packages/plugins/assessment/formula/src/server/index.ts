@@ -1025,10 +1025,19 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
         },
       })
       .pipe(
-        Effect.map((answer) => ({
-          contract: JSON.parse(answer.output) as { input?: unknown; output?: unknown },
-          runtime: answer.runtime,
-        })),
+        // the guest wrote this string, so it is not known to be json until it
+        // parses. Thrown here it would be a defect - a 500 on a publish - for
+        // the same thing the branch below already calls the author's problem.
+        Effect.flatMap((answer) =>
+          Effect.try({
+            try: () => ({
+              contract: JSON.parse(answer.output) as { input?: unknown; output?: unknown },
+              runtime: answer.runtime,
+            }),
+            catch: () =>
+              new FormulaContractInvalid({ issues: [{ path: '', reason: 'contract-error' }] }),
+          }),
+        ),
         Effect.catchTags({
           // the guest's own failure to hand a contract out is the author's
           // problem, classified as such - never a 503
