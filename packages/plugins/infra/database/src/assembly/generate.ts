@@ -10,7 +10,7 @@ import {
 } from './baseline.ts'
 import type { DatabaseContribution } from './contribution.ts'
 import { structuralDiff } from './diff.ts'
-import { destructiveIn, scanDestructive } from './drop-guard.ts'
+import { DESTRUCTIVE_APPROVED, destructiveIn, scanDestructive } from './drop-guard.ts'
 import { asState, type DatabaseState } from './state.ts'
 import { databaseWork } from './work.ts'
 
@@ -78,14 +78,28 @@ export async function generateDatabase(
   // would be applied by the next deploy, and its baseline markers would be read
   // as compiled by the next generate - so refusing it once would silently drop
   // those fragments from every migration after it
-  refuse(destructiveIn(path.basename(file), sql), 1)
-  writeMigration(file, sql)
+  const destructive = destructiveIn(path.basename(file), sql)
+  refuse(destructive, 1)
+  writeMigration(file, migrationText(sql, destructive))
 
   for (const fragment of pending) {
     console.log(`database: compiled ${fragment.plugin} ${fragment.file} (${fragment.phase})`)
   }
   console.log(`database: ${path.basename(file)}`)
 }
+
+/**
+ * What a generated migration is committed as: the SQL, and - when it drops
+ * something - the approval, written where the guard reads it.
+ *
+ * Getting past the refusal with ALLOW_DESTRUCTIVE=1 IS the approval. The file
+ * used to be written without a word of it, so the full-lineage scan CI runs
+ * stayed red for good unless somebody remembered the marker by hand, and
+ * nothing in the repository could put it right afterwards: a committed
+ * migration may not be edited.
+ */
+export const migrationText = (sql: string, destructive: readonly string[]): string =>
+  destructive.length === 0 ? sql : `${DESTRUCTIVE_APPROVED}\n${sql}`
 
 const stampOf = (at: Date) => at.toISOString().replace(/\D/g, '').slice(0, 14)
 

@@ -11,6 +11,9 @@ const destructivePatterns = [
   /\bdrop\s+column\b/i,
   /\bdrop\s+schema\b[^;]*\bcascade\b/i,
 ]
+/** the one spelling of an approval, owned by the guard that reads it */
+export const DESTRUCTIVE_APPROVED = '-- destructive: approved'
+
 const approvalMarker = /^--\s*destructive:\s*approved\s*$/m
 
 /**

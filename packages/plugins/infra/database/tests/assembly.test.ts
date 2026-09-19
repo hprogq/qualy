@@ -17,11 +17,13 @@ import { execFileSync } from 'node:child_process'
 import {
   allMigrationFiles,
   changedMigrationFiles,
+  destructiveIn,
   scanDestructive,
 } from '../src/assembly/drop-guard.ts'
 import {
   blankMigration,
   guardDestructive,
+  migrationText,
   nextStamp,
   writeMigration,
 } from '../src/assembly/generate.ts'
@@ -473,6 +475,35 @@ describe('drop guard', () => {
       expect(scanDestructive([approved])).toEqual([])
       expect(scanDestructive([destructive])).toHaveLength(1)
       expect(() => guardDestructive([destructive])).toThrow(/destructive statements detected/)
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  // Generation and the guard have to agree, and only generation can write the
+  // agreement down: the lineage scan reads every migration ever committed, and
+  // a committed migration may not be edited. A destructive one that landed
+  // without its marker left that scan failing for good.
+  it('writes the approval it generated a destructive migration under', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-guard-approved-'))
+    try {
+      const name = '20260101000000_drop.sql'
+      const sql = 'ALTER TABLE a DROP COLUMN b;\n'
+      // what generation would refuse to write unless it was approved
+      const destructive = destructiveIn(name, sql)
+      expect(destructive).toHaveLength(1)
+
+      const file = path.join(dir, name)
+      writeMigration(file, migrationText(sql, destructive))
+
+      // the SQL is whole, and the lineage the migration now belongs to scans
+      // clean without anybody setting anything
+      expect(fs.readFileSync(file, 'utf8')).toContain(sql)
+      expect(scanDestructive([file])).toEqual([])
+      expect(() => guardDestructive(allMigrationFiles(dir))).not.toThrow()
+
+      // a migration with nothing to approve is written exactly as generated
+      expect(migrationText(sql, [])).toBe(sql)
     } finally {
       fs.rmSync(dir, { recursive: true, force: true })
     }
