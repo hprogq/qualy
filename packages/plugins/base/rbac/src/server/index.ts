@@ -321,8 +321,10 @@ export const make = Effect.fn('Rbac.make')(function* (declared: readonly ActiveP
       }))
     }),
 
-    listUserRoles: Effect.fn('Rbac.listUserRoles')(function* (tenantId, userId) {
-      const rows = yield* bound(() => userRoleHoldings(tenantId, userId))().pipe(Effect.orDie)
+    listUserRoles: Effect.fn('Rbac.listUserRoles')(function* (tenantId, userId, read) {
+      const rows = yield* bound(() => userRoleHoldings(tenantId, userId, read))().pipe(
+        Effect.orDie,
+      )
       return rows.map((row) => ({
         grantId: row.grantId,
         roleId: row.roleId,

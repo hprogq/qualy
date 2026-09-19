@@ -691,12 +691,11 @@ export const make = Effect.fn('Iam.users.make')(function* () {
         const held = yield* scopes(principal)
         const row = yield* oneUser(principal.tenantId, userId, held).pipe(Effect.orDie)
         if (!row) return yield* new UserNotFound()
-        const rbac = yield* Rbac
         const [orgPath, roles, identities] = yield* Effect.all([
           row.primaryOrgNodeId === null
             ? Effect.succeed([])
             : ancestryOf(principal.tenantId, row.primaryOrgNodeId, held.read).pipe(Effect.orDie),
-          rbac.listUserRoles(principal.tenantId, userId),
+          rbac.listUserRoles(principal.tenantId, userId, held.read),
           identitiesOf(principal.tenantId, userId).pipe(Effect.orDie),
         ])
         return { user: row, orgPath, roles, identities }

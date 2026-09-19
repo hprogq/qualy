@@ -3,7 +3,13 @@ import { Effect } from 'effect'
 import { db, type Db, admitsOrgType, admitsUserType, inForce } from './db.ts'
 import { kyselyOf, query } from '@qualy/plugin-database/server'
 import { sql, type Expression } from 'kysely'
-import { canonicalTenantAdmin, type ActivePermission, type Principal } from '@qualy/rbac-contract'
+import {
+  canonicalTenantAdmin,
+  scopeCoverage,
+  type ActivePermission,
+  type AuthorizationScope,
+  type Principal,
+} from '@qualy/rbac-contract'
 
 // The authorization SQL.
 //
@@ -315,7 +321,21 @@ export const authorizedScope = (principal: Principal, def: ActivePermission) =>
  * person been given", which is a different question from "may they act here",
  * and mixing the two produced a list nobody could read.
  */
-export const userRoleHoldings = (tenantId: string, userId: string) =>
+export const userRoleHoldings = (
+  tenantId: string,
+  userId: string,
+  /**
+   * The reader's own reach over the organization.
+   *
+   * The anchor's NAME rides this row, and the same response trims the
+   * person's org path to exactly this scope with the words "being allowed
+   * to read a person is not being allowed to walk the organization above
+   * them". Unfiltered, somebody who may read one student learned the names
+   * of every unit that student holds a duty in. A tenant-wide holding names
+   * no unit, so it discloses nothing and stays.
+   */
+  read: AuthorizationScope,
+) =>
   db.query((k) =>
     k
       .selectFrom('RoleGrant as g')
@@ -339,6 +359,16 @@ export const userRoleHoldings = (tenantId: string, userId: string) =>
       .where('g.tenantId', '=', tenantId)
       .where('g.userId', '=', userId)
       .where('r.status', '=', 'active')
+      .where((eb) =>
+        eb.or([
+          eb('g.orgNodeId', 'is', null),
+          scopeCoverage(read, {
+            id: eb.ref('anchor.id'),
+            tenantId: eb.ref('anchor.tenantId'),
+            path: eb.ref('anchor.path'),
+          }),
+        ]),
+      )
       .where((eb) =>
         inForce({
           revokedAt: eb.ref('g.revokedAt'),

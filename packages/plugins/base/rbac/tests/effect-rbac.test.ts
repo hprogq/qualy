@@ -2141,7 +2141,10 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
             yield* access.grantScopeFor(f.principal),
           )
           const projected = yield* access.roles.get(f.tenant, office, f.principal)
-          const holdings = yield* rbac.listUserRoles(f.tenant, f.anchored.userId)
+          const holdings = yield* rbac.listUserRoles(f.tenant, f.anchored.userId, {
+            tenantWide: true,
+            anchors: [],
+          })
           return {
             confinedScoped: confined?.scoped ?? null,
             othersScoped: whileStanding

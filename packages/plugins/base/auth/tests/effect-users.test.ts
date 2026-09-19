@@ -213,6 +213,48 @@ describe.runIf(postgresAvailable).concurrent('users', () => {
     }
   })
 
+  // Being allowed to read a person is not being allowed to read the
+  // organization - the rule the org path in the same response is already
+  // trimmed by. Each duty carries the NAME of the unit it is anchored at,
+  // so an unfiltered list told a narrow reader what every unit is called.
+  it('names no unit outside the reader\u2019s own reach', async () => {
+    const db = await createTestContext('effect-users-holdings-scope')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const f = yield* seed()
+          const iam = yield* Iam
+          // somebody the reader may read: the seed's reading reach is the
+          // right branch, and its managing reach is the left one
+          const userId = f.onRight
+          const duty = (code: string, nodeId: string) =>
+            Effect.gen(function* () {
+              const role = one<{ id: string }>(
+                yield* runSql(sql`
+                  insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+                  values (${f.tenant}, ${code}, ${code}, 'org', 'active', 'explicit', 'unrestricted')
+                  returning id`),
+              ).id
+              yield* runSql(sql`
+                insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+                values (${f.tenant}, ${userId}, ${role}, ${nodeId}, 'self')`)
+            })
+          yield* duty('here', f.right)
+          yield* duty('elsewhere', f.left)
+          const seen = yield* iam.users.detail(f.as, userId)
+          return seen.roles.map((row) => row.roleCode)
+        }),
+      )
+      const codes = ok(exit)
+      // the duty inside their reach, and nothing about the other unit
+      expect(codes).toEqual(['here'])
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('needs authority at both ends of a transfer', async () => {
     // moving someone changes who administers them, so managing only where
     // they are now is not enough

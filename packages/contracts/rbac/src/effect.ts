@@ -140,6 +140,15 @@ export interface RbacShape {
   readonly listUserRoles: (
     tenantId: string,
     userId: string,
+    /**
+     * The reader's own reach over the organization.
+     *
+     * Each holding carries the name of the unit it is anchored at, and
+     * being allowed to read a person is not being allowed to read the
+     * organization - the same rule their org path is trimmed by. A
+     * tenant-wide holding names no unit and is always included.
+     */
+    read: AuthorizationScope,
   ) => Effect.Effect<readonly UserRoleHolding[]>
 
   /**
