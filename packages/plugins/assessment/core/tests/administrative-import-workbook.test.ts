@@ -108,6 +108,34 @@ describe('the administrative import workbook', () => {
     expect(parsed.rows[0]!.rowNo).toBe(2)
   })
 
+  it('declares every column of words as text, and leaves the numeric ones alone', async () => {
+    const bytes = await buildAdministrativeWorkbook(
+      spec({
+        evidence: [
+          { key: 'certificate', schema: { type: 'string', title: '证书编号' } },
+          { key: 'when', schema: { type: 'string', format: 'date', title: '日期' } },
+          { key: 'amount', schema: { type: 'string', format: 'qualy-decimal', title: '金额' } },
+        ],
+      }),
+    )
+    const book = new ExcelJS.Workbook()
+    await book.xlsx.load(bytes as unknown as ArrayBuffer)
+    const sheet = book.getWorksheet(DATA_SHEET)!
+    const formatOf = (at: number) => sheet.getColumn(at).numFmt
+    // business number, name, the certificate number, the level, the basis
+    expect([formatOf(1), formatOf(2), formatOf(3), formatOf(6), formatOf(7)]).toEqual([
+      '@',
+      '@',
+      '@',
+      '@',
+      '@',
+    ])
+    // a date and an amount are read as what they are, so a recorder gets the
+    // spreadsheet's own help with them
+    expect(formatOf(4)).toBe(undefined)
+    expect(formatOf(5)).toBe(undefined)
+  })
+
   it('refuses a formula rather than trusting what it last evaluated to', async () => {
     const bytes = await filled(
       await buildAdministrativeWorkbook(spec()),

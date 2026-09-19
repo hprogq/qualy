@@ -244,12 +244,25 @@ export const buildAdministrativeWorkbook = async (spec: TemplateSpec): Promise<U
   const { headers, columns } = templateLayout(spec)
   sheet.addRow([...headers])
   sheet.getRow(1).font = { bold: true }
-  // the identity column is text, or Excel turns 0012340 into 12340 the
-  // moment somebody opens the file
-  sheet.getColumn(1).numFmt = '@'
   sheet.getColumn(1).width = 18
   sheet.getColumn(2).width = 12
   for (let at = 3; at <= headers.length; at += 1) sheet.getColumn(at).width = 20
+  // Every column holding words is declared text, or Excel reinterprets what
+  // the recorder typed the moment they leave the cell: 0012340 is stored as
+  // 12340, and an eighteen-digit identity number as 1.23456789012346e+17.
+  // Neither comes back, and neither says anything went wrong - the importer
+  // reads a number as the number it became. The two columns that must stay
+  // numeric to a reader are dates and amounts, which is why this asks the
+  // question's own type rather than covering the sheet.
+  const asText = [1, 2].map((at) => sheet.getColumn(at))
+  for (const column of columns) {
+    if (column.type === 'text' || column.type === 'choice') {
+      asText.push(sheet.getColumn(column.column))
+    }
+  }
+  // the basis is somebody's sentence about why
+  asText.push(sheet.getColumn(columnLetter(headers.length)))
+  for (const column of asText) column.numFmt = '@'
 
   const metadata: TemplateMetadata = {
     templateVersion: TEMPLATE_VERSION,
