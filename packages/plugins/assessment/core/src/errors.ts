@@ -400,6 +400,11 @@ export class AccessInvalid extends Schema.TaggedError<AccessInvalid>()(
       // their own authority can lock themselves out of the batch they are
       // responsible for, and nobody is left to undo it
       'self-adjustment',
+      // people and units multiply into one assignment each, all in one
+      // transaction, so a request naming a lot of both is a request nobody
+      // can finish. Said rather than attempted: an errand this size was
+      // meant to be several.
+      'too-many',
     ]),
   },
   { httpApiStatus: 422, identifier: 'AssessmentAccessInvalid' },

@@ -369,6 +369,18 @@ const accessSyncPageView = Schema.Struct({
 export const idList = Schema.Union([Schema.Array(uuidInput), uuidInput])
 
 /**
+ * A list of ids, with the most one request may name.
+ *
+ * Every list built this way is walked rather than only stored: a position
+ * read, an authorization question or a row written per element, most of it
+ * inside one transaction. The request body's own ceiling is 2 MiB, which is
+ * some fifty thousand ids - so without a bound the largest question anybody
+ * may ask is decided by how long a uuid is. What a caller may send has to be
+ * something the server can finish.
+ */
+const idsUpTo = (most: number) => Schema.Array(uuidInput).check(Schema.isMaxLength(most))
+
+/**
  * How a bulk administrative act found its people.
  *
  * Kept as history once the act is written and never resolved again: it says
@@ -404,8 +416,9 @@ const recordOperationView = Schema.Struct({
 
 /** the query one import runs: units to look under, and which kinds of people */
 const importSelection = Schema.Struct({
-  orgNodeIds: Schema.Array(uuidInput),
-  userTypeIds: Schema.Array(uuidInput),
+  // each unit is asked about on its own before anything is read
+  orgNodeIds: idsUpTo(200),
+  userTypeIds: idsUpTo(50),
 })
 
 const templateKind = Schema.Literals(['timeline', 'phase'])
@@ -2293,9 +2306,11 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       payload: Schema.Struct({
         // both sides are sets: one person over two classes and two people over
         // one are the same errand, and doing either one pair at a time is a
-        // sequence of writes somebody can be interrupted halfway through
-        userIds: Schema.Array(uuidInput),
-        orgNodeIds: Schema.Array(uuidInput),
+        // sequence of writes somebody can be interrupted halfway through.
+        // Every PAIR is an assignment written inside one transaction, so the
+        // two bounds multiply - the server caps the product as well.
+        userIds: idsUpTo(200),
+        orgNodeIds: idsUpTo(200),
         roleId: uuidInput,
         validUntil: Schema.optional(isoInstant),
       }),
@@ -2932,7 +2947,9 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     // and it takes user ids.
     HttpApiEndpoint.post('addParticipants', '/assessment/batches/:batchId/participants', {
       params: Schema.Struct({ batchId: uuidInput }),
-      payload: Schema.Struct({ userIds: Schema.Array(uuidInput) }),
+      // people named one at a time by somebody reading a list; the bulk way
+      // in is importing from the organization, which names units instead
+      payload: Schema.Struct({ userIds: idsUpTo(500) }),
       success: Schema.Struct({ added: Schema.Number, skipped: Schema.Number }),
       error: [BatchNotFound, BatchReadOnly, ParticipantInvalid, AccessDenied],
     }).middleware(Authenticated),

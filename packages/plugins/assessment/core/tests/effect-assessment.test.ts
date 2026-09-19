@@ -2207,6 +2207,45 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     expect(reasonOf(alongside)).toEqual(['already-staffed'])
   })
 
+  // Every person-by-unit pair is an assignment, and all of them go in one
+  // transaction so half a request never stands. The two lists are bounded
+  // separately at the contract, which says nothing about their product: a
+  // request naming a lot of both was attempted, and held the tenant against
+  // everybody else for as long as it took to fail.
+  it('refuses a staffing request larger than it can finish, before reading anything', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('staff-too-many')
+        const assessment = yield* Assessment
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Crowded',
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            import: { orgNodeIds: [f.class1], userTypeIds: [f.studentType] },
+          },
+          f.principal,
+        )
+        // ids nobody owns and a role that does not exist: the refusal has to
+        // come before any of it is looked up, which is the whole point
+        const many = (count: number) => Array.from({ length: count }, () => randomUUID())
+        return yield* Effect.exit(
+          assessment.addStaff(
+            f.tenant,
+            batch.id,
+            { userIds: many(50), orgNodeIds: many(50), roleId: randomUUID() },
+            f.principal,
+          ),
+        )
+      }),
+    )
+    const refused = ok(exit)
+    expect(reasonsOf(refused).map((entry) => (entry.error as { reason?: string }).reason)).toEqual([
+      'too-many',
+    ])
+  })
+
   it('offers a role only where it holds for every person and unit chosen', async () => {
     const exit = await run(
       db.url,

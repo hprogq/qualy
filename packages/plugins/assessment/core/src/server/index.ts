@@ -587,6 +587,17 @@ export interface SweepReport {
 const SWEEP_BATCH_LIMIT = 200
 
 /**
+ * How many people-by-unit pairs one staffing request may name.
+ *
+ * Each pair is an assignment, and all of them are written in one transaction
+ * so that half a request never stands. The two lists are bounded separately
+ * at the contract, which bounds neither their product nor how long the
+ * tenant is held; this is that bound, and it is far above what naming people
+ * over the units of one round comes to.
+ */
+const MAX_STAFF_PAIRS = 2000
+
+/**
  * Why a role is not on offer for a staffing selection.
  *
  * The first four are rbac's answer about the person and the place;
@@ -3248,6 +3259,13 @@ export const make = Effect.fn('Assessment.make')(function* () {
       if (input.validUntil !== undefined && input.validUntil <= now) {
         return yield* new AccessInvalid({ reason: 'expiry-in-past' })
       }
+      // The pairs are what this costs, and the two lists are bounded
+      // separately, so their product is not. Refused before anything is
+      // read: every pair becomes an assignment written inside one
+      // transaction, and a request nobody can finish holds the tenant
+      // against everybody else while it tries.
+      const pairs = new Set(input.userIds).size * new Set(input.orgNodeIds).size
+      if (pairs > MAX_STAFF_PAIRS) return yield* new AccessInvalid({ reason: 'too-many' })
       // The role decides what they may do, so the role is what is checked.
       // Anything a batch is not allowed to hand out at all - administering the
       // batch, administering this very list - makes the whole role ineligible

@@ -694,7 +694,12 @@ export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
         params: versionParams,
         payload: Schema.Struct({
           expectedToken: Schema.String,
-          orgNodeIds: Schema.Array(id),
+          // Bounded because the audience is walked, not just stored: every
+          // pair is compared for containment and every unit newly named is
+          // asked about, inside the transaction holding the version row. The
+          // body's own ceiling is some fifty thousand ids, which is a
+          // question no request should be able to ask.
+          orgNodeIds: Schema.Array(id).check(Schema.isMaxLength(200)),
         }),
         success: versionSharing,
         error: [

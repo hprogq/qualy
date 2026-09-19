@@ -24,7 +24,7 @@ import type * as assessmentErrors from '../errors.ts'
 const accessInvalid = defineMessage<{ reason: string }>()({
   id: 'assessment/error/access-invalid',
   defaultMessage:
-    '{reason, select, already-staffed {That person already holds this role in the selected unit.} other {The permission change could not be applied. Check the selected settings and try again.}}',
+    '{reason, select, already-staffed {That person already holds this role in the selected unit.} too-many {Too many people and units at once. Add them in smaller groups.} other {The permission change could not be applied. Check the selected settings and try again.}}',
 })
 
 const determinationRefused = defineMessage<{ reason: string }>()({
