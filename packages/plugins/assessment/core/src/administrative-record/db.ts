@@ -278,11 +278,21 @@ export const operationOfEntry = (tenantId: string, entryId: string) =>
     )
 
 /** the people one act reached, with what each of their facts is now */
+/**
+ * The people one act reached, as far as the reader's own standing carries.
+ *
+ * `reach` is not optional in spirit: holding the recording permission
+ * somewhere in a round says nothing about which units it covers, and these
+ * rows carry names and student numbers. Its sibling that offers rows for
+ * undoing has always asked this question; this one, which only shows them,
+ * did not.
+ */
 export const operationRowsPage = (input: {
   tenantId: string
   operationId: string
   after?: string | undefined
   limit: number
+  reach?: { batchId: string; userId: string; permissionCode: string } | undefined
 }) =>
   db.query((k) => {
     let query = k
@@ -301,6 +311,18 @@ export const operationRowsPage = (input: {
       .where('r.operationId', '=', input.operationId)
     if (input.after !== undefined) {
       query = query.where(sql<boolean>`r.participant_id > ${input.after}::uuid`)
+    }
+    if (input.reach !== undefined) {
+      query = query.where(
+        staffReachOver({
+          tenantId: input.tenantId,
+          batchId: input.reach.batchId,
+          userId: input.reach.userId,
+          permissionCode: input.reach.permissionCode,
+          anchorNodeId: sql.ref('p.assessment_anchor_node_id'),
+          anchorPath: sql.ref('p.anchor_path'),
+        }),
+      )
     }
     return query.orderBy('r.participantId').limit(input.limit).execute()
   })

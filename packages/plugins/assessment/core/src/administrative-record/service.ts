@@ -683,7 +683,19 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
     // only how many there were is a receipt, not a record
     const item = yield* withDb(itemOf(tenantId, act.itemId))
     const rows = (yield* withDb(
-      operationRowsPage({ tenantId, operationId, limit: 500 }),
+      operationRowsPage({
+        tenantId,
+        operationId,
+        limit: 500,
+        // holding the permission in this round is what let the act be opened
+        // at all; which of its people may be named is a separate question,
+        // and these rows carry names and student numbers
+        reach: {
+          batchId: act.batchId,
+          userId: as.userId,
+          permissionCode: 'assessment.entry.record',
+        },
+      }),
     )) as unknown as Record<string, unknown>[]
     return {
       ...act,

@@ -104,6 +104,69 @@ describe.runIf(postgresAvailable).concurrent('recording one finding on a group',
     expect(found.status).toBe('bound')
   })
 
+  it('names in the act detail only the people the reader can reach', async () => {
+    const found = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const { f, g, item, revision } = yield* ready('ar-detail-reach')
+          const assessment = yield* Assessment
+          // the recorder's authority is widened to the whole tree, so one act
+          // can settle on both colleges at once
+          yield* runSql(sql`
+            update role_grants set org_node_id = ${f.root}
+             where tenant_id = ${f.t} and id = ${f.recordGrant}`)
+          const input = {
+            itemId: item.id,
+            expectedItemRevisionId: revision,
+            target: { kind: 'organization' as const, orgNodeIds: [f.root], userTypeIds: [] },
+            payload: {},
+            basis: '校发〔2026〕8 号',
+          }
+          const seen = yield* assessment.previewAdministrativeRecord(
+            f.t,
+            g.batch.id,
+            input,
+            f.principal(f.recorder),
+          )
+          const done = yield* assessment.recordAdministrativeBatch(
+            f.t,
+            g.batch.id,
+            {
+              ...input,
+              excludedParticipantIds: seen.blocked.map((one) => one.participantId),
+              expectedTargetFingerprint: seen.targetFingerprint,
+            },
+            f.principal(f.recorder),
+          )
+          // and then narrowed back to one class, which is where most
+          // recorders sit
+          yield* runSql(sql`
+            update role_grants set org_node_id = ${f.classA}
+             where tenant_id = ${f.t} and id = ${f.recordGrant}`)
+          const read = yield* assessment.getAdministrativeRecord(
+            f.t,
+            done.operationId,
+            f.principal(f.recorder),
+          )
+          return {
+            recorded: done.recordedCount,
+            listed: read.rows.map((row) => row.participantId),
+            inReach: g.p1,
+            outOfReach: g.p3,
+          }
+        }),
+      ),
+    )
+    // the act really did reach everyone, and the detail says so
+    expect(found.recorded).toBeGreaterThan(found.listed.length)
+    // but the rows carry names and student numbers, so they stop where the
+    // reader's own standing stops - the same question its sibling asks
+    // before offering a row for undoing
+    expect(found.listed).toContain(found.inReach)
+    expect(found.listed).not.toContain(found.outOfReach)
+  })
+
   it('writes one fact per person, as ordinary records, under one act', async () => {
     const found = ok(
       await run(
