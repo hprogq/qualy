@@ -1,5 +1,5 @@
 import { sql } from 'kysely'
-import { Effect } from 'effect'
+import { Effect, Exit } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
 import { Assessment } from '../src/server/index.ts'
@@ -35,6 +35,20 @@ describe.runIf(postgresAvailable)('a void against everything it must stop', () =
       (rows) => one<{ n: number }>(rows).n,
     )
 
+  /**
+   * What the question itself ended up as.
+   *
+   * The premise of every case here, and it has to be asserted: an end state
+   * with no live work under a question that was never voided is the answer
+   * to a question nobody asked. The first two cases used to pass with both
+   * racers failing and the question still active.
+   */
+  const statusOf = (itemId: string) =>
+    Effect.map(
+      runSql(sql`select status from assessment_items where id = ${itemId}`),
+      (rows) => one<{ status: string }>(rows).status,
+    )
+
   const activeRoundsOf = (entryId: string) =>
     Effect.map(
       runSql(sql`
@@ -64,11 +78,19 @@ describe.runIf(postgresAvailable)('a void against everything it must stop', () =
             ],
             { concurrency: 'unbounded' },
           )
-          return { creating, voiding, live: yield* liveWorkOn(g.item.id) }
+          return {
+            creating,
+            voiding,
+            live: yield* liveWorkOn(g.item.id),
+            status: yield* statusOf(g.item.id),
+          }
         }),
       ),
     )
 
+    // the void is the premise: without it an empty question proves nothing
+    expect(Exit.isSuccess(result.voiding)).toBe(true)
+    expect(result.status).toBe('voided')
     expect(result.live).toBe(0)
   })
 
@@ -111,6 +133,7 @@ describe.runIf(postgresAvailable)('a void against everything it must stop', () =
             live: yield* liveWorkOn(g.item.id),
             editorRounds: yield* activeRoundsOf(editing.id),
             submitterRounds: yield* activeRoundsOf(submitting.id),
+            status: yield* statusOf(g.item.id),
           }
         }),
       ),
@@ -119,6 +142,7 @@ describe.runIf(postgresAvailable)('a void against everything it must stop', () =
     // whoever won, the end is the same: no live entry, no active round - a
     // submit that beat the void was swept, one that lost was refused, and
     // in neither order may a round survive on a voided entry
+    expect(result.status).toBe('voided')
     expect(result.live).toBe(0)
     expect(result.editorRounds).toBe(0)
     expect(result.submitterRounds).toBe(0)

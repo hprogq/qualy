@@ -212,12 +212,6 @@ export const captureException = (error: unknown, context?: ExceptionContext): vo
 }
 
 /**
- * Something worth knowing that is not a crash: a surface the manifest
- * promised and the bundle does not have, a tab left on a release the store no
- * longer keeps. Codes are a closed vocabulary and the context is low
- * cardinality on purpose; neither is a place to put an error message.
- */
-/**
  * One report per fact, with a ceiling on how many facts are remembered.
  *
  * An exception is deduped by the identity of the error object; a diagnostic
@@ -244,6 +238,12 @@ const firstTime = (code: string, context?: DiagnosticContext): boolean => {
   return true
 }
 
+/**
+ * Something worth knowing that is not a crash: a surface the manifest
+ * promised and the bundle does not have, a tab left on a release the store no
+ * longer keeps. Codes are a closed vocabulary and the context is low
+ * cardinality on purpose; neither is a place to put an error message.
+ */
 export const captureDiagnostic = (code: string, context?: DiagnosticContext): void => {
   if (!firstTime(code, context)) return
   if (sink === null) {
