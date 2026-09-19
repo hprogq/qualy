@@ -1,3 +1,4 @@
+import { isBuiltin } from 'node:module'
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -18,19 +19,15 @@ import { collectWebPlugins } from '@qualy/web-build/collect'
 // anything suspicious, and the depth is four hops. Bundling is the only check
 // that follows the same graph the browser does.
 
-const NODE_ONLY = [
-  'pg',
-  'node:crypto',
-  'node:fs',
-  'node:http',
-  'node:path',
-  'node:url',
-  'node:buffer',
-  'events',
-  'drizzle-orm',
-  'vite',
-  'sirv',
-]
+/**
+ * Server packages a browser must not reach. Node's own builtins are NOT
+ * listed: `isBuiltin` knows all of them, under both spellings and with
+ * subpaths, and a hand-kept list of eleven was neither. Six of its seven
+ * builtins were spelled with the `node:` prefix only, so the bare `crypto`,
+ * `fs`, `path` and `http` that ordinary npm packages require went unmatched
+ * - which is exactly the shape of the leak this file was written for.
+ */
+const NODE_ONLY = ['pg', 'drizzle-orm', 'vite', 'sirv']
 
 /**
  * Modules that mount an api rather than call one.
@@ -114,7 +111,15 @@ describe('what a plugin may run on every page load', () => {
 
   for (const { plugin, module } of browserModules) {
     it(`boots ${plugin} without dragging a library along`, async () => {
-      const chunks = await bundle(module)
+      // collected here as well as weighed: with no array to collect into,
+      // nothing was ever node-only, so a boot module - which runs on EVERY
+      // page load - was the one surface with no node-only check at all
+      const externals: string[] = []
+      const chunks = await bundle(module, externals)
+      expect(
+        [...new Set(externals)].sort(),
+        `${module} runs on every page load and reached a node-only module`,
+      ).toEqual([])
       const byFile = new Map(chunks.map((chunk) => [chunk.fileName, chunk]))
       // static imports only, transitively: what the browser must have before
       // this module's side effect can run. A dynamic import is a chunk the
@@ -175,6 +180,13 @@ function probe(entry: string) {
  * bundled or reported. Marking node builtins external is exactly how the
  * first incident went unnoticed in the dev server, which externalizes them
  * with a warning and carries on.
+ *
+ * "Bundled or reported" is only true of what this recognises. What it does
+ * not is neither: the bundler answers an unresolvable builtin with an empty
+ * stub, silently under this log level, and the probe then measures a
+ * four-hundred-byte chunk and calls the plugin clean. The page finds out, as
+ * `x is not a function` on load. So recognising every builtin is the whole
+ * of the guarantee, and it comes from node rather than from a list.
  */
 async function bundle(entry: string, externals?: string[]): Promise<Rollup.OutputChunk[]> {
   const result = await build({
@@ -185,7 +197,7 @@ async function bundle(entry: string, externals?: string[]): Promise<Rollup.Outpu
       rollupOptions: {
         external: (id) => {
           if (externals === undefined) return false
-          if (NODE_ONLY.some((name) => id === name || id.startsWith(`${name}/`))) {
+          if (isBuiltin(id) || NODE_ONLY.some((name) => id === name || id.startsWith(`${name}/`))) {
             externals.push(id)
             return true
           }
