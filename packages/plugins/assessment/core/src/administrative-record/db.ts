@@ -20,6 +20,8 @@ export const insertRecordOperation = (input: {
   targetSpec: Record<string, unknown>
   actorId: string
   recordedCount: number
+  /** the press this act came of; null only for acts written before presses had ids */
+  idempotencyKey: string | null
 }) =>
   db
     .query((k) =>
@@ -63,6 +65,40 @@ export const insertRecordOperationEvent = (input: {
         .execute(),
     )
     .pipe(Effect.asVoid)
+
+/**
+ * The act a press already became, if it became one.
+ *
+ * A lost response and a second press is the ordinary way the same act
+ * arrives twice, and the round must not end up carrying both sets of
+ * findings. Answered with what it became rather than refused, exactly as one
+ * upload answers with the import it already became.
+ */
+export const operationOfPress = (input: {
+  tenantId: string
+  batchId: string
+  idempotencyKey: string
+}) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('AdministrativeRecordOperation')
+        .select(['id', 'recordedCount'])
+        .where('tenantId', '=', input.tenantId)
+        .where('batchId', '=', input.batchId)
+        .where('idempotencyKey', '=', input.idempotencyKey)
+        .executeTakeFirst(),
+    )
+    .pipe(
+      Effect.map((row) =>
+        row === undefined
+          ? null
+          : {
+              operationId: String((row as Record<string, unknown>)['id']),
+              recordedCount: Number((row as Record<string, unknown>)['recordedCount'] ?? 0),
+            },
+      ),
+    )
 
 /** one act, or nothing if this tenant has no such act */
 export const operationOf = (tenantId: string, operationId: string) =>

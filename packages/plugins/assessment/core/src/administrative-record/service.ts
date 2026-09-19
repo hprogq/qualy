@@ -43,6 +43,7 @@ import {
   insertRecordOperationEvent,
   insertRecordOperationRows,
   operationOf,
+  operationOfPress,
   operationsOfBatchPage,
   reversalCandidatesOfOperation,
   standingOfOperations,
@@ -148,6 +149,13 @@ export interface AdministrativeRecordInput {
   readonly payload: Record<string, unknown>
   readonly recognition?: { readonly values: Record<string, unknown> }
   readonly basis: string
+  /**
+   * The press this act comes of, minted by the screen that confirmed it.
+   *
+   * The fingerprint says the same PEOPLE were confirmed, which a first press
+   * succeeding does not change; this says it is the same PRESS.
+   */
+  readonly idempotencyKey?: string
 }
 
 /** the id set, spelled one way, so the same people always hash the same */
@@ -441,6 +449,20 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
           if (!locked) return yield* new BatchNotFound()
           if (locked.status === 'archived') return yield* new BatchReadOnly()
 
+          // One press, one act - answered with the act it already became
+          // rather than refused. Nothing else can notice the repeat: the
+          // fingerprint is unchanged by the first press succeeding, and a
+          // question with no per-person ceiling happily takes a second
+          // finding on everybody.
+          if (input.idempotencyKey !== undefined) {
+            const already = yield* operationOfPress({
+              tenantId,
+              batchId,
+              idempotencyKey: input.idempotencyKey,
+            })
+            if (already !== null) return { ...already, replayed: true as const }
+          }
+
           const held = yield* effectiveEntryCounts({
             tenantId,
             itemId: shape.item.id,
@@ -503,6 +525,7 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
           const operationId = yield* insertRecordOperation({
             tenantId,
             batchId,
+            idempotencyKey: input.idempotencyKey ?? null,
             itemId: shape.item.id,
             itemRevisionId: shape.revision.id,
             targetKind: input.target.kind,
@@ -526,12 +549,12 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
             { kind: 'entries-changed' },
             { kind: 'result-changed' },
           ])
-          return { operationId, rows }
+          return { operationId, recordedCount: rows.length, replayed: false as const }
         }),
       ),
     )
 
-    return { operationId: written.operationId, recordedCount: written.rows.length }
+    return { operationId: written.operationId, recordedCount: written.recordedCount }
   })
 
   /**

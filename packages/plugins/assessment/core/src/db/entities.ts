@@ -1902,6 +1902,17 @@ export const AdministrativeRecordOperation = defineEntity({
     targetSpec: p.json<Record<string, unknown>>(),
     actorId: p.uuid().nullable(),
     recordedCount: p.integer(),
+    /**
+     * The press this act came of, minted by the screen that confirmed it.
+     *
+     * An import can say "one upload, one import" by pointing at the file;
+     * this has no file, so the press itself is the identity. Without it a
+     * lost response and a second press wrote a second complete set of
+     * approved findings on the same people - doubling a penalty, with
+     * nothing in the schema able to notice. Nullable because the acts
+     * recorded before this column existed have no press to name.
+     */
+    idempotencyKey: p.uuid().nullable(),
     createdAt: p.datetime().defaultRaw('now()'),
   },
   checks: [
@@ -1922,6 +1933,13 @@ export const AdministrativeRecordOperation = defineEntity({
       name: 'idx_administrative_record_operations_batch',
       expression:
         'create index idx_administrative_record_operations_batch on administrative_record_operations (tenant_id, batch_id, created_at desc, id)',
+    },
+    {
+      // one press, one act. Partial, because the acts written before the
+      // column existed carry no key and must not collide with each other
+      name: 'uq_administrative_record_operations_press',
+      expression:
+        'create unique index uq_administrative_record_operations_press on administrative_record_operations (tenant_id, batch_id, idempotency_key) where idempotency_key is not null',
     },
   ],
 })

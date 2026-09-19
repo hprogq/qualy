@@ -141,6 +141,16 @@ export function RecordSteps({
   const [problem, setProblem] = useState<string | null>(null)
   const [evidenceValid, setEvidenceValid] = useState(true)
   const [seen, setSeen] = useState<PreviewResult | null>(null)
+  /**
+   * The press this act will come of.
+   *
+   * Minted with the confirmation and held for as long as it stands, so
+   * pressing record again after an answer went missing is the same press and
+   * is answered with the act it already became. Anything that clears the
+   * confirmation - a changed question, a changed list - mints another,
+   * because that is a different act.
+   */
+  const [press, setPress] = useState(() => crypto.randomUUID())
   const [dropped, setDropped] = useState<readonly string[]>([])
 
   const fields = useMemo(
@@ -235,6 +245,7 @@ export function RecordSteps({
       ),
     onSuccess: (answer) => {
       setSeen(answer)
+      setPress(crypto.randomUUID())
       setProblem(null)
       onGo(2)
     },
@@ -254,6 +265,10 @@ export function RecordSteps({
             ...asked!,
             excludedParticipantIds: [...dropped],
             expectedTargetFingerprint: seen!.targetFingerprint,
+            // the press, not the people: a retry after a lost answer is
+            // answered with the act it already became instead of writing a
+            // second finding on everybody
+            idempotencyKey: press,
           },
         }),
       ),

@@ -5610,6 +5610,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
               ? {}
               : { excludedParticipantIds: listed(payload.excludedParticipantIds) }),
             expectedTargetFingerprint: payload.expectedTargetFingerprint,
+            idempotencyKey: payload.idempotencyKey,
             payload: payload.payload,
             ...(payload.recognition === undefined ? {} : { recognition: payload.recognition }),
             basis: payload.basis,

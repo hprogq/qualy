@@ -2745,6 +2745,14 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
           target: recordTargetInput,
           excludedParticipantIds: Schema.optional(idList),
           expectedTargetFingerprint: boundedText(200),
+          /**
+           * The press this act comes of, minted by the screen that confirmed
+           * it. A retry of the same press is answered with the act it
+           * already became rather than writing a second one: the fingerprint
+           * above says the same PEOPLE were confirmed, which succeeding does
+           * not change.
+           */
+          idempotencyKey: uuidInput,
           payload: Schema.Record(Schema.String, Schema.Unknown),
           recognition: Schema.optional(
             Schema.Struct({ values: Schema.Record(Schema.String, Schema.Unknown) }),

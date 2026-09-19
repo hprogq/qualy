@@ -324,6 +324,63 @@ describe.runIf(postgresAvailable).concurrent('recording one finding on a group',
     expect(found.extra).toBe('ASSESSMENT_ENTRY_PAYLOAD_INVALID')
   })
 
+  it('answers a repeated press with the act it already became', async () => {
+    const found = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const { f, g, item, revision } = yield* ready('ar-press')
+          const assessment = yield* Assessment
+          const input = {
+            itemId: item.id,
+            expectedItemRevisionId: revision,
+            target: { kind: 'people' as const, participantIds: [g.p1, g.p2] },
+            payload: {},
+            basis: '校发〔2026〕5 号',
+          }
+          const seen = yield* assessment.previewAdministrativeRecord(
+            f.t,
+            g.batch.id,
+            input,
+            f.principal(f.recorder),
+          )
+          const press = '01a0b900-0000-7000-8000-000000000001'
+          const commit = () =>
+            assessment.recordAdministrativeBatch(
+              f.t,
+              g.batch.id,
+              {
+                ...input,
+                excludedParticipantIds: [],
+                expectedTargetFingerprint: seen.targetFingerprint,
+                idempotencyKey: press,
+              },
+              f.principal(f.recorder),
+            )
+          const first = yield* commit()
+          // the answer went missing and the reader pressed again
+          const again = yield* commit()
+          const entries = one<{ n: number }>(
+            yield* runSql(sql`select count(*)::int as n from entries
+                               where tenant_id = ${f.t} and item_id = ${item.id}`),
+          ).n
+          const acts = one<{ n: number }>(
+            yield* runSql(sql`select count(*)::int as n from administrative_record_operations
+                               where tenant_id = ${f.t} and batch_id = ${g.batch.id}`),
+          ).n
+          return { first, again, entries, acts }
+        }),
+      ),
+    )
+    // Nothing else could notice the repeat: the fingerprint is unchanged by
+    // the first press succeeding, and a question with no per-person ceiling
+    // takes a second finding on everybody quite happily.
+    expect(found.again.operationId).toBe(found.first.operationId)
+    expect(found.again.recordedCount).toBe(found.first.recordedCount)
+    expect(found.acts).toBe(1)
+    expect(found.entries).toBe(found.first.recordedCount)
+  })
+
   it('writes one fact per person, as ordinary records, under one act', async () => {
     const found = ok(
       await run(
