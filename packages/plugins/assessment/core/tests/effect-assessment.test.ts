@@ -737,6 +737,39 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     expect(tagOf(afterRunning)).toBe('ASSESSMENT_BATCH_STATUS_INVALID')
   })
 
+  it('reads an emptied roster as nothing to compare, not as everything withdrawn', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('sync-empty')
+        const assessment = yield* Assessment
+        const round = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Emptied',
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            import: { orgNodeIds: [f.gradeA], userTypeIds: [f.studentType] },
+          },
+          f.principal,
+        )
+        const before = yield* assessment.listAccess(f.tenant, round.id, {}, f.principal)
+        // everybody leaves the round; nobody withdrew anybody's authority
+        yield* runSql(sql`
+          update batch_participants set status = 'excluded'
+           where tenant_id = ${f.tenant} and batch_id = ${round.id}`)
+        const plan = yield* assessment.previewAccessSync(f.tenant, round.id, {}, f.principal)
+        return { accepted: before.staff.length, changes: plan.items.length }
+      }),
+    )
+    const answer = ok(exit)
+    // Authority over a round comes from the units its people stand in, so an
+    // emptied roster has nowhere to ask. Read as lapses, every accepted
+    // source was offered to the reader under the button that puts the whole
+    // baseline down.
+    expect(answer.accepted).toBeGreaterThan(0)
+    expect(answer.changes).toBe(0)
+  })
+
   it('accepts what the tenant offers when the batch is created, and no more after', async () => {
     const exit = await run(
       db.url,

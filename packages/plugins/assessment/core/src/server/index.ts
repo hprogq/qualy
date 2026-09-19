@@ -2053,10 +2053,19 @@ export const make = Effect.fn('Assessment.make')(function* () {
     tenantId: string,
     batchId: string,
   ) {
-    const [sources, assignments] = yield* Effect.all([
+    const [sources, anchors, assignments] = yield* Effect.all([
       dieQuery(withDb(accessSources(tenantId, batchId))),
+      dieQuery(withDb(rosterAnchors(tenantId, batchId))),
       applicableAssignments(tenantId, batchId),
     ])
+    // Authority over this round can only come from the units its people
+    // stand in, so a round with nobody on it has nowhere to ask. That is not
+    // the same answer as "the tenant withdrew everything": read as lapses,
+    // it offered a reader the button that puts the whole baseline down, over
+    // an emptied roster rather than over anything anybody withdrew.
+    if (anchors.length === 0) {
+      return { changes: [] as AccessChange[] }
+    }
     const accepted = new Map(sources.map((source) => [source.roleAssignmentId, source]))
     const names = new Map(
       (yield* dieQuery(
