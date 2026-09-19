@@ -2169,6 +2169,10 @@ const i18n = definePluginMessages({
       id: 'assessment/entry/issue-not-text',
       defaultMessage: 'Enter text here',
     },
+    entryIssueNotABoolean: {
+      id: 'assessment/entry/issue-not-a-boolean',
+      defaultMessage: 'Answer yes or no here',
+    },
     recordRecognition: {
       id: 'assessment/record/recognition',
       defaultMessage: 'Determination',
@@ -2877,6 +2881,10 @@ const i18n = definePluginMessages({
     recognitionNotDecimal: {
       id: 'assessment/review/recognition-not-decimal',
       defaultMessage: 'Enter an amount like 3.5',
+    },
+    recognitionNotBoolean: {
+      id: 'assessment/review/recognition-not-boolean',
+      defaultMessage: 'Answer yes or no here',
     },
     recognitionOverMax: {
       id: 'assessment/review/recognition-over-max',

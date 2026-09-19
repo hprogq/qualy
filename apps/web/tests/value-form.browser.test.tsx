@@ -118,6 +118,14 @@ describe('draft to wire value', () => {
     expect(draftFromValue(contract.properties['base']!, 3)).toBe('3')
     // and NO stored value stays no draft: absence is part of the model
     expect(draftFromValue(contract.properties['level']!, undefined)).toBeUndefined()
+    // A question that became a checkbox after somebody answered it: their
+    // answer is carried over to be seen and corrected, never rewritten as a
+    // no. The materialize side says so rather than filing it as one.
+    const yesno = contract.properties['awarded']!
+    expect(draftFromValue(yesno, false)).toBe(false)
+    expect(draftFromValue(yesno, 'yes')).toBe('yes')
+    expect(materializeField(yesno, 'yes')).toEqual({ kind: 'invalid', reason: 'not-a-boolean' })
+    expect(materializeField(yesno, false)).toEqual({ kind: 'value', value: false })
   })
 })
 

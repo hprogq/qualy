@@ -251,6 +251,7 @@ const ISSUE_SENTENCES: Record<string, MessageDescriptor> = {
   'too-precise': m.entryIssueTooPrecise,
   'not-a-choice': m.entryIssueNotAChoice,
   'not-text': m.entryIssueNotText,
+  'not-a-boolean': m.entryIssueNotABoolean,
   'too-long': m.entryIssueTooLong,
   'too-many': m.entryIssueTooMany,
   'too-many-attachments': m.entryIssueTooMany,

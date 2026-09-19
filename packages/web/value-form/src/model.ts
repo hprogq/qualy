@@ -71,7 +71,13 @@ const INTEGER_SYNTAX = /^-?\d+$/
 export const draftFromValue = (schema: AtomicSchema, value: unknown): FieldDraft | undefined => {
   if (value === undefined || value === null) return undefined
   const kind = kindOf(schema)
-  if (kind === 'boolean') return value === true
+  // a yes or a no stays one; anything else under a boolean field is rendered
+  // the way every other kind renders what it cannot read, so the answer that
+  // was stored survives to be seen and corrected. Turning it into `false`
+  // here was the one place this function dropped something, and it dropped
+  // it as an answer: somebody whose question became a checkbox had their
+  // "yes" reported back to them as "no".
+  if (kind === 'boolean' && typeof value === 'boolean') return value
   if (typeof value === 'string') return value
   if (typeof value === 'number' || typeof value === 'boolean') return String(value)
   return JSON.stringify(value)
@@ -85,7 +91,12 @@ export const materializeField = (
   // nobody answered: not false, not "", just not answered
   if (draft === undefined) return { kind: 'empty' }
   const kind = kindOf(schema)
-  if (kind === 'boolean') return { kind: 'value', value: draft === true || draft === 'true' }
+  if (kind === 'boolean') {
+    if (draft === true || draft === 'true') return { kind: 'value', value: true }
+    if (draft === false || draft === 'false') return { kind: 'value', value: false }
+    // not a yes and not a no: said so, rather than filed as a no
+    return { kind: 'invalid', reason: 'not-a-boolean' }
+  }
   const text = typeof draft === 'string' ? draft : String(draft)
   if (kind === 'integer') {
     const trimmed = text.trim()

@@ -21,6 +21,8 @@ export const recognitionProblemText = (
       return format(m.recognitionNotInteger)
     case 'not-a-decimal':
       return format(m.recognitionNotDecimal)
+    case 'not-a-boolean':
+      return format(m.recognitionNotBoolean)
     default: {
       const constraint = (schema === undefined ? undefined : constraintOf(schema, reason)) ?? ''
       switch (reason) {
