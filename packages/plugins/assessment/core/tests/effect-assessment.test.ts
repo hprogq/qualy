@@ -2025,6 +2025,65 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     ])
   })
 
+  it('says a person is already staffed rather than refusing the administrator', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('staff-again')
+        const assessment = yield* Assessment
+        const reviewer = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into roles (tenant_id, code, name, kind, status, permission_mode,
+                               assignable, eligibility_mode, anchor_mode)
+            values (${f.tenant}, 'reviewer', 'Reviewer', 'org', 'active', 'explicit', true,
+                    'unrestricted', 'unrestricted')
+            returning id`),
+        ).id
+        yield* runSql(sql`
+          insert into role_permissions (tenant_id, role_id, permission_id)
+          select ${f.tenant}, ${reviewer}, id from permissions
+          where code = 'assessment.review.process'`)
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Again',
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            import: { orgNodeIds: [f.class1], userTypeIds: [f.studentType] },
+          },
+          f.principal,
+        )
+        const add = () =>
+          Effect.exit(
+            assessment.addStaff(
+              f.tenant,
+              batch.id,
+              { userIds: [f.t1], orgNodeIds: [f.class1], roleId: reviewer },
+              f.principal,
+            ),
+          )
+        const first = yield* add()
+        const again = yield* add()
+        // a second unit alongside the one already held is the same request to
+        // an administrator, and it is refused whole rather than half written
+        const alongside = yield* Effect.exit(
+          assessment.addStaff(
+            f.tenant,
+            batch.id,
+            { userIds: [f.t1], orgNodeIds: [f.class1, f.gradeA], roleId: reviewer },
+            f.principal,
+          ),
+        )
+        return { first, again, alongside }
+      }),
+    )
+    const { first, again, alongside } = ok(exit)
+    expect(Exit.isSuccess(first)).toBe(true)
+    const reasonOf = (failed: Exit.Exit<unknown, unknown>) =>
+      reasonsOf(failed).map((entry) => (entry.error as { reason?: string }).reason)
+    expect(reasonOf(again)).toEqual(['already-staffed'])
+    expect(reasonOf(alongside)).toEqual(['already-staffed'])
+  })
+
   it('offers a role only where it holds for every person and unit chosen', async () => {
     const exit = await run(
       db.url,

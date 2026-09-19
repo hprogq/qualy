@@ -3239,6 +3239,34 @@ export const make = Effect.fn('Assessment.make')(function* () {
                 return yield* new AccessInvalid({ reason: 'node-out-of-batch' })
               }
             }
+            // What already stands, asked before anything is written. The
+            // unique index would catch it, but as a constraint violation the
+            // port turns into a refusal of authority - so an administrator
+            // who may do this, and whose only mistake is that it is already
+            // done, was told they were not allowed to.
+            const standing = yield* rbac.listApplicableAssignments({
+              tenantId,
+              codes: [...BATCH_STAFF_CODES],
+              nodeIds: [...new Set(input.orgNodeIds)],
+              resource: batchResource(batchId),
+            })
+            const alreadyHeld = new Set(
+              standing
+                .filter(
+                  (held) =>
+                    held.resourceId === batchId &&
+                    held.roleId === input.roleId &&
+                    held.coverage === 'subtree',
+                )
+                .map((held) => `${held.userId}:${held.orgNodeId}`),
+            )
+            for (const userId of new Set(input.userIds)) {
+              for (const orgNodeId of new Set(input.orgNodeIds)) {
+                if (alreadyHeld.has(`${userId}:${orgNodeId}`)) {
+                  return yield* new AccessInvalid({ reason: 'already-staffed' })
+                }
+              }
+            }
             // Every pair, in one transaction: half of a request nobody
             // finished is worse than none of it, because what is missing is
             // invisible next to what went in.

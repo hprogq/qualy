@@ -19,6 +19,14 @@ import type * as assessmentErrors from '../errors.ts'
 
 // the rule's own sentence travels as a value: it is what the person
 // determining needs to read, and it is nobody's translation key
+// one code, and the two answers behind it that are not the same news: a
+// request that may not be made, and one that has already been made
+const accessInvalid = defineMessage<{ reason: string }>()({
+  id: 'assessment/error/access-invalid',
+  defaultMessage:
+    '{reason, select, already-staffed {That person already holds this role in the selected unit.} other {The permission change could not be applied. Check the selected settings and try again.}}',
+})
+
 const determinationRefused = defineMessage<{ reason: string }>()({
   id: 'assessment/error/determination-refused',
   defaultMessage: 'The current scoring rule does not accept this determination: {reason}',
@@ -5480,9 +5488,8 @@ const i18n = definePluginMessages({
         'The batch cannot advance to the selected stage. Check the stage settings and prerequisites.',
     },
     ASSESSMENT_ACCESS_INVALID: {
-      id: 'assessment/error/access-invalid',
-      defaultMessage:
-        'The permission change could not be applied. Check the selected settings and try again.',
+      message: accessInvalid,
+      values: (data) => ({ reason: data.reason }),
     },
     ASSESSMENT_MATERIAL_RANGE_INVALID: {
       id: 'assessment/error/material-range-invalid',

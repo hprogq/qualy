@@ -389,6 +389,10 @@ export class AccessInvalid extends Schema.TaggedError<AccessInvalid>()(
       'node-not-found',
       'user-not-found',
       'expiry-in-past',
+      // the request asks for something that already holds. Not a refusal of
+      // authority, which is what it used to arrive as: the person asking may
+      // do this, and the only thing wrong is that it is already done
+      'already-staffed',
       // nobody edits their own standing: an administrator who can withdraw
       // their own authority can lock themselves out of the batch they are
       // responsible for, and nobody is left to undo it

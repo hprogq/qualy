@@ -1674,7 +1674,8 @@ export default {
   'assessment/error/administrative-record-refused': '部分人员当前无法认定，本次未认定任何人',
   'assessment/error/item-scoring-incompatible':
     '新的计分规则无法处理 {affected} 条已生效认定（{refused} 条被规则拒绝，{executionFailed} 条计算失败），请修正计分规则后重试。',
-  'assessment/error/access-invalid': '权限变更失败，请检查相关设置后重试。',
+  'assessment/error/access-invalid':
+    '{reason, select, already-staffed {该人员已在所选单位担任该角色。} other {权限变更失败，请检查相关设置后重试。}}',
   'assessment/error/advance-invalid': '当前无法进入下一阶段，请检查相关设置。',
   'assessment/permission-group/assessment': '综合测评',
   'assessment/permission/batch-manage': '管理测评批次',
