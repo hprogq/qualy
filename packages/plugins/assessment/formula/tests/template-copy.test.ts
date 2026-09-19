@@ -1,5 +1,5 @@
 import { inspect } from 'node:util'
-import { Effect, Exit, Fiber, Layer } from 'effect'
+import { Deferred, Effect, Exit, Fiber, Layer } from 'effect'
 import { sql } from 'kysely'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
@@ -336,5 +336,70 @@ describe.runIf(postgresAvailable)('forking a template', () => {
     // the withdrawal could not land while the copy held the version row
     expect(outcome.waitedMs).toBeGreaterThan(150)
     expect(outcome.after).toBe('ASSESSMENT_FORMULA_TEMPLATE_NOT_FOUND')
+  }, 120_000)
+
+  // The same race the other way round, which the lock alone does not settle.
+  // A withdrawal holds the version row while it deletes the share rows, so a
+  // copy queues behind it - and then goes on with the snapshot it began
+  // with, where the audience is still there. The row was locked rather than
+  // changed, so nothing makes the waiting statement look again; measured on
+  // the dialect, and touching the version row does not help either, because
+  // the re-check re-evaluates the locked row and leaves the subquery on the
+  // old snapshot. Only a new statement sees the withdrawal.
+  it('refuses a copy that queued behind the withdrawal it is racing', async () => {
+    const outcome = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seedFormulaFixture('copy-queued')
+          const templates = yield* FormulaTemplateLibrary
+          const published = yield* publishedVersion(f.t, f.authorA, '被收回的公式')
+          yield* offer(f.t, published.versionId, f.root, f.authorA)
+
+          const withdrawn = yield* Deferred.make<void>()
+          const holder = yield* Effect.forkChild(
+            transaction(
+              Effect.gen(function* () {
+                // the order the sharing writer takes: the version row, then
+                // the rows that say who may see it
+                yield* runSql(sql`
+                  select id from assessment_formula_versions
+                   where id = ${published.versionId} for update`)
+                yield* runSql(sql`
+                  delete from assessment_formula_share_scopes
+                   where version_id = ${published.versionId}`)
+                yield* Deferred.succeed(withdrawn, undefined)
+                // held open until the copy is actually seen waiting on it
+                for (let waited = 0; waited < 300; waited += 1) {
+                  yield* runSql(sql`select pg_stat_clear_snapshot()`)
+                  const waiting = one<{ n: number }>(
+                    yield* runSql(sql`
+                      select count(*)::int as n from pg_stat_activity
+                       where datname = current_database() and wait_event_type = 'Lock'`),
+                  ).n
+                  if (waiting > 0) return true
+                  yield* Effect.sleep('50 millis')
+                }
+                return false
+              }),
+            ),
+          )
+          yield* Deferred.await(withdrawn)
+          const queued = yield* Effect.exit(
+            templates.copyTemplate(
+              f.t,
+              published.versionId,
+              { userId: f.authorB, nodeId: f.collegeA },
+              { name: '排队的副本' },
+            ),
+          )
+          return { queued: tagOf(queued), sawTheWaiter: yield* Fiber.join(holder) }
+        }),
+      ),
+    )
+
+    // the copy really did queue on the lock; without that this proves nothing
+    expect(outcome.sawTheWaiter).toBe(true)
+    expect(outcome.queued).toBe('ASSESSMENT_FORMULA_TEMPLATE_NOT_FOUND')
   }, 120_000)
 })

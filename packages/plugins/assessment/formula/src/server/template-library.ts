@@ -450,13 +450,35 @@ export const make = Effect.fn('FormulaTemplateLibrary.make')(function* () {
           Effect.gen(function* () {
             if (viewer.nodeId === null) return yield* new FormulaTemplateNotFound()
             const nodeId = viewer.nodeId
-            // The version row first, held FOR SHARE, and the audience read
-            // under it - the same order every writer of that audience
-            // takes. That is what makes this and a concurrent withdrawal
-            // linear rather than racing: the database runs read committed,
-            // where each statement sees its own moment, so a visibility
-            // check followed by an unlocked insert would happily copy
-            // something already taken back.
+            // The version row first, held FOR SHARE, and the audience asked
+            // afterwards in a STATEMENT OF ITS OWN - the same order every
+            // writer of that audience takes, and the re-read is what makes
+            // the order worth anything.
+            //
+            // Asking in the same statement as the lock does not work, and
+            // was measured not to: a withdrawal holds this row FOR UPDATE
+            // while it deletes the share rows, so this waits - and then
+            // proceeds on the snapshot it began with, in which the audience
+            // is still there. The row is locked rather than changed, so
+            // nothing makes the statement look again; touching the version
+            // row does not help either, because the re-check re-evaluates
+            // the locked row and leaves the subquery on the old snapshot.
+            // Under read committed the only thing that sees the withdrawal
+            // is a new statement, which is why this is two.
+            const locked = yield* db
+              .query((k) =>
+                k
+                  .selectFrom('FormulaVersion as v')
+                  .select(['v.id as versionId', 'v.sourceTs as sourceTs', 'v.tests as tests'])
+                  .where('v.tenantId', '=', tenantId)
+                  .where('v.id', '=', versionId)
+                  .forShare()
+                  .executeTakeFirst(),
+              )
+              .pipe(Effect.orDie)
+            if (locked === undefined) return yield* new FormulaTemplateNotFound()
+            // a version nobody may see and a version that is not there are
+            // the same answer, so that a refusal never says which
             const source = yield* db
               .query((k) =>
                 k
@@ -464,16 +486,15 @@ export const make = Effect.fn('FormulaTemplateLibrary.make')(function* () {
                   .innerJoin('FormulaFunction as f', (join) =>
                     join.onRef('f.tenantId', '=', 'v.tenantId').onRef('f.id', '=', 'v.functionId'),
                   )
-                  .select(['v.id as versionId', 'v.sourceTs as sourceTs', 'v.tests as tests'])
+                  .select('v.id as versionId')
                   .where('v.tenantId', '=', tenantId)
                   .where('v.id', '=', versionId)
                   .where(visibleTemplate(tenantId, viewer.userId, nodeId))
-                  .forShare()
                   .executeTakeFirst(),
               )
               .pipe(Effect.orDie)
             if (source === undefined) return yield* new FormulaTemplateNotFound()
-            const found = source as unknown as {
+            const found = locked as unknown as {
               sourceTs: string
               tests: readonly Record<string, unknown>[]
             }
