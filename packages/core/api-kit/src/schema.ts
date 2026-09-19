@@ -21,8 +21,21 @@ import { MAX_PAGE_SIZE } from './index.ts'
  */
 export const uiText = UiTextSchema
 
+/**
+ * How long a page cursor may be on the way back in.
+ *
+ * It has to be at least as long as `encodeQueryCursor` can mint, or a page
+ * hands back a cursor its own contract then refuses and paging stops dead.
+ * The widest key in the product is a display name, 100 characters - which in
+ * Chinese is 300 bytes, and base64url of the enclosing json came to 540. The
+ * old ceiling was 512, so a list sorted by a full-width name paged exactly
+ * once. What bounds the work is not this number but the decoder, which
+ * refuses anything not minted for the query being asked.
+ */
+export const MAX_CURSOR_LENGTH = 2048
+
 export const pageQuery = {
-  cursor: Schema.optional(Schema.String.check(Schema.isMaxLength(512))),
+  cursor: Schema.optional(Schema.String.check(Schema.isMaxLength(MAX_CURSOR_LENGTH))),
   limit: Schema.optional(Schema.String),
 }
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { encodeQueryCursor, readQueryCursor } from '../src/index.ts'
+import { MAX_CURSOR_LENGTH } from '../src/schema.ts'
 
 // A cursor is client-held, so every part of it is attacker-controlled. What
 // makes it safe is that the only two answers are "the key" and "unusable" -
@@ -60,6 +61,15 @@ describe('the pagination cursor', () => {
         'uuid',
       ]),
     ).toEqual([at, 'zzz', ID])
+  })
+
+  it('mints nothing longer than the contract takes back', () => {
+    // A page whose cursor its own contract refuses pages exactly once. The
+    // widest key the product sorts by is a display name, and the column is
+    // 100 characters - which in Chinese is 300 bytes.
+    const widest = encodeQueryCursor(`access:${ID}`, ['\u5f20'.repeat(100), ID])
+    expect(widest.length).toBeLessThanOrEqual(MAX_CURSOR_LENGTH)
+    expect(readQueryCursor(widest, `access:${ID}`, ['text', 'uuid'])).not.toBeNull()
   })
 
   it('refuses what it cannot read at all', () => {
