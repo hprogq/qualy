@@ -903,8 +903,20 @@ export const make = Effect.fn('Iam.users.make')(function* () {
           yield* requireVersion(user, input.expectedVersion)
 
           if (user.deletedAt !== null) {
-            // asking for what is already true is agreement, not an error
-            if (input.status === 'deleted') return
+            // Asking for what is already true is agreement, not an error -
+            // but only for somebody who could have asked for it. Answered
+            // before the authority was consulted, it told anybody who could
+            // name an id that the person exists and has been deleted, and a
+            // few more calls told them the row's version.
+            if (input.status === 'deleted') {
+              if (
+                user.primaryOrgNodeId !== null &&
+                !(yield* rbac.canAt(as, 'auth.user.delete', user.primaryOrgNodeId))
+              ) {
+                return yield* new AccessDenied({ reason: 'not allowed to delete users here' })
+              }
+              return
+            }
             // there is no shortcut past disabled: restore hands back the
             // person, not their access
             if (input.status === 'active') return yield* new UserDeleted()
@@ -979,9 +991,13 @@ export const make = Effect.fn('Iam.users.make')(function* () {
           }
 
           const enabled = input.status === 'active'
+          // authority first, then whether there is anything to do: answered
+          // the other way round, a caller with no reach over this person
+          // learned from the difference between success and a refusal
+          // whether they were enabled
+          yield* manages(as, user.primaryOrgNodeId!)
           if (user.enabled === enabled) return
           if (!enabled && user.isSystem) return yield* new SystemAccountProtected()
-          yield* manages(as, user.primaryOrgNodeId!)
           yield* setUserEnabled(tenantId, user.id, enabled)
           yield* audit.record(enabled ? UserEnabled : UserDisabled, {
             tenantId,

@@ -330,6 +330,73 @@ describe.runIf(postgresAvailable)('the user lifecycle', () => {
     }
   })
 
+  // Asking for what is already true is agreement, and agreement used to be
+  // given before anybody asked whether the caller had any business asking.
+  // A stranger who could name an id learned from the answer whether the
+  // person existed and whether they were enabled.
+  it('tells a stranger nothing by agreeing with them', async () => {
+    const db = await createTestContext('lifecycle-noop-authz')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const f = yield* seed()
+          const iam = yield* Iam
+          // somebody in the tenant with no authority over anybody
+          const stranger = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.tenant}, 'Stranger', ${f.staff}, ${f.root}) returning id`),
+          ).id
+          const asStranger = { tenantId: f.tenant, userId: stranger, sessionId: 's' }
+          // the person is enabled, so this asks for what already holds
+          const agreeing = yield* Effect.result(
+            iam.users.setStatus(f.tenant, f.person, { status: 'active', expectedVersion: 1 }, {
+              ...asStranger,
+            }),
+          )
+          // and the other way round, which used to be the refusal that told
+          // them the same thing from the other side
+          const changing = yield* Effect.result(
+            iam.users.setStatus(f.tenant, f.person, { status: 'disabled', expectedVersion: 1 }, {
+              ...asStranger,
+            }),
+          )
+          yield* iam.users.setStatus(
+            f.tenant,
+            f.person,
+            { status: 'disabled', expectedVersion: 1 },
+            f.as,
+          )
+          yield* iam.users.setStatus(
+            f.tenant,
+            f.person,
+            { status: 'deleted', expectedVersion: 2 },
+            f.as,
+          )
+          const agreeingDeleted = yield* Effect.result(
+            iam.users.setStatus(f.tenant, f.person, { status: 'deleted', expectedVersion: 3 }, {
+              ...asStranger,
+            }),
+          )
+          return {
+            agreeing: tagOf(agreeing),
+            changing: tagOf(changing),
+            agreeingDeleted: tagOf(agreeingDeleted),
+          }
+        }),
+      )
+      const answer = ok(exit)
+      // the two answers are the same answer, which is the whole point
+      expect(answer.agreeing).toBe('ACCESS_DENIED')
+      expect(answer.changing).toBe('ACCESS_DENIED')
+      expect(answer.agreeingDeleted).toBe('ACCESS_DENIED')
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('restores to disabled, without the access that fell', async () => {
     const db = await createTestContext('lifecycle-restore')
     try {
