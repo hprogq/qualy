@@ -235,6 +235,45 @@ describe.runIf(postgresAvailable).concurrent('changing a node type across three 
     }
   })
 
+  it('lets the type change under a role that is anchored anywhere', async () => {
+    const db = await createTestContext('effect-retype-anywhere')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          // an org role that may anchor on any kind of unit, so it keeps no
+          // allow-list rows at all
+          const role = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+              values (${f.tenant}, 'aide', 'Aide', 'org', 'active', 'explicit', 'unrestricted')
+              returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+            values (${f.tenant}, ${f.principal.userId}, ${role}, ${f.node}, 'self')`)
+
+          const org = yield* Org
+          const result = yield* Effect.result(
+            org.changeNodeType(f.tenant, f.node, f.clubType, f.principal),
+          )
+          return { tag: tagOf(result), nowClub: (yield* typeOf(f.node)) === f.clubType }
+        }),
+      )
+      const answer = ok(exit)
+      // "allowed on nothing in particular" is allowed on everything. Asking
+      // only whether an allow-list row exists made every anchor-anywhere
+      // grant read as blocking, so a node it was granted at could never be
+      // retyped.
+      expect(answer.tag).toBeUndefined()
+      expect(answer.nowClub).toBe(true)
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it("refuses when rbac's grants would no longer allow the type", async () => {
     const db = await createTestContext('effect-retype-grants')
     try {

@@ -1,6 +1,6 @@
 import { plainText } from '@qualy/i18n-contract'
 import { Effect } from 'effect'
-import { db, type Db, admitsUserType, inForce } from './db.ts'
+import { db, type Db, admitsOrgType, admitsUserType, inForce } from './db.ts'
 import { kyselyOf, query } from '@qualy/plugin-database/server'
 import { sql, type Expression } from 'kysely'
 import { canonicalTenantAdmin, type ActivePermission, type Principal } from '@qualy/rbac-contract'
@@ -731,7 +731,16 @@ export const lockAdministratorRole = (tenantId: string, systemKey: string) =>
       .executeTakeFirst(),
   )
 
-/** role codes of org-kind grants at the node whose role forbids the given org type */
+/**
+ * Role codes of org-kind grants at the node whose role forbids the given org
+ * type.
+ *
+ * Asked through `admitsOrgType`, which is where the answer lives: a role
+ * whose anchor mode is `unrestricted` has no allow-list rows and admits
+ * every type. Spelling the allow-list test out again here dropped that arm,
+ * so any anchor-anywhere role granted at a node reported itself as blocking
+ * and the node's type could not be changed at all.
+ */
 export const grantsBlockingOrgType = (tenantId: string, orgNodeId: string, orgTypeId: string) =>
   db
     .query((k) =>
@@ -754,13 +763,14 @@ export const grantsBlockingOrgType = (tenantId: string, orgNodeId: string, orgTy
         )
         .where((eb) =>
           eb.not(
-            eb.exists(
-              eb
-                .selectFrom('RoleAllowedOrgType as t')
-                .select(sql<number>`1`.as('one'))
-                .whereRef('t.tenantId', '=', 'g.tenantId')
-                .whereRef('t.roleId', '=', 'g.roleId')
-                .where('t.orgTypeId', '=', orgTypeId),
+            admitsOrgType(
+              {
+                tenantId: eb.ref('r.tenantId'),
+                id: eb.ref('r.id'),
+                eligibilityMode: eb.ref('r.eligibilityMode'),
+                anchorMode: eb.ref('r.anchorMode'),
+              },
+              eb.val(orgTypeId),
             ),
           ),
         )
