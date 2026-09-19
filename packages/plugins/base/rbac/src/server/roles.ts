@@ -1050,8 +1050,18 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
           )
           const added = targets.filter((target) => !standing.has(target.id))
           if (added.length > 0) {
+            // An all-active office carries every active capability and no
+            // permission rows, so measuring it by its rows measured it as
+            // carrying nothing - and declaring your own office an appointer
+            // of the tenant administrator passed as though it named no
+            // authority at all. The self-grant guard already reads it this
+            // way; so does this one now.
             yield* assertMayDefineRole(authority, [
-              ...new Set(added.flatMap((target) => target.codes)),
+              ...new Set(
+                added.flatMap((target) =>
+                  target.allActive ? authority.activeCodes() : target.codes,
+                ),
+              ),
             ])
           }
           yield* replaceGrantRuleTargets(tenantId, role.id, wanted)

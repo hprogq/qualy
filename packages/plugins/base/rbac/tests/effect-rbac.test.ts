@@ -2020,11 +2020,13 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
               }
               return created
             })
+          const manageTenant = yield* permission('iam.tenant-grant.manage', 'tenant')
           const a = yield* role('office-a', 'org', [manage])
           const b = yield* role('office-b', 'org', [manage])
           const c = yield* role('office-c', 'org', [manage])
           const powerless = yield* role('office-powerless', 'org')
           const tenantOffice = yield* role('office-tenant', 'tenant')
+          const personnel = yield* role('office-personnel', 'tenant', [manageTenant])
           const set = (granter: string, targets: readonly string[], by: Principal) =>
             Effect.result(access.roles.setGrantableRoles(f.tenant, granter, targets, 1, by))
           return {
@@ -2044,6 +2046,12 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
             // an author may only draw edges to authority they hold, with the
             // named exception; this author holds nothing tenant-wide
             beyond: tagOf(yield* set(c, [b], f.anchored)),
+            // The canonical administrator carries every active capability by
+            // MODE and holds no permission rows at all, so an office read
+            // from its rows read as carrying nothing - and declaring your
+            // own office its appointer named no authority to measure. The
+            // same author, the same refusal as any other edge beyond them.
+            administrator: tagOf(yield* set(personnel, [f.role], f.anchored)),
           }
         }),
       )
@@ -2055,6 +2063,7 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
       expect(answer.deeper).toBe('Success')
       expect(answer.ring).toBe('ROLE_APPOINTMENT_INVALID')
       expect(answer.beyond).toBe('ROLE_ESCALATION_REFUSED')
+      expect(answer.administrator).toBe('ROLE_ESCALATION_REFUSED')
     } finally {
       await db.dispose()
     }

@@ -371,9 +371,25 @@ export const appointmentCycleExists = (tenantId: string, roleId: string) =>
     .pipe(Effect.map(({ rows }) => Boolean(rows[0]!.cycled)))
 
 /** what appointment validation needs to know about each named target */
+/** an office an appointment edge may point at, with the authority it carries */
+export interface AppointmentTarget {
+  readonly id: string
+  readonly kind: 'tenant' | 'org'
+  readonly codes: string[]
+  /**
+   * Whether it carries every active capability instead of a list of them.
+   *
+   * The canonical tenant administrator holds its authority by mode rather
+   * than by rows, so reading `role_permissions` alone reports it as carrying
+   * nothing at all - and an office measured as empty is an office anybody
+   * may declare themselves an appointer of.
+   */
+  readonly allActive: boolean
+}
+
 export const rolesForAppointment = (tenantId: string, roleIds: readonly string[]) =>
   roleIds.length === 0
-    ? Effect.succeed([] as readonly { id: string; kind: 'tenant' | 'org'; codes: string[] }[])
+    ? Effect.succeed([] as readonly AppointmentTarget[])
     : db
         .query((k) =>
           k
@@ -382,24 +398,28 @@ export const rolesForAppointment = (tenantId: string, roleIds: readonly string[]
               join.onRef('rp.tenantId', '=', 'r.tenantId').onRef('rp.roleId', '=', 'r.id'),
             )
             .leftJoin('Permission as p', (join) => join.onRef('p.id', '=', 'rp.permissionId'))
-            .select(['r.id', 'r.kind', 'p.code'])
+            .select(['r.id', 'r.kind', 'r.permissionMode', 'p.code'])
             .where('r.tenantId', '=', tenantId)
             .where('r.id', 'in', [...roleIds])
             .execute(),
         )
         .pipe(
           Effect.map((rows) => {
-            const byId = new Map<string, { id: string; kind: 'tenant' | 'org'; codes: string[] }>()
+            const byId = new Map<
+              string,
+              { -readonly [K in keyof AppointmentTarget]: AppointmentTarget[K] }
+            >()
             for (const row of rows) {
               const held = byId.get(row.id) ?? {
                 id: row.id,
                 kind: row.kind as 'tenant' | 'org',
                 codes: [],
+                allActive: row.permissionMode === 'all-active',
               }
               if (row.code !== null) held.codes.push(row.code)
               byId.set(row.id, held)
             }
-            return [...byId.values()]
+            return [...byId.values()] as readonly AppointmentTarget[]
           }),
         )
 
