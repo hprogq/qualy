@@ -355,8 +355,11 @@ describe('what an event says the page was', () => {
         { id: 'probe-id', environment: 'production', sampleRate: 1 },
         { releaseId: 'r_probe' },
       )
-      sink?.captureDiagnostic('ui/component-missing', { pageId: 'assessment/review' })
-      sink?.destroy()
+      // the sink is the thing under test, so a null one is a failure rather
+      // than something to step around
+      expect(sink).not.toBeNull()
+      sink!.captureDiagnostic('ui/component-missing', { pageId: 'assessment/review' })
+      sink!.destroy?.()
     } finally {
       Aegis.prototype['reportEvent'] = original
     }
