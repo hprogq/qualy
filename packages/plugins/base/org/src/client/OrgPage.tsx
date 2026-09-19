@@ -63,7 +63,6 @@ interface OrgShape {
   nodesOfType: ReadonlyMap<string, number>
 }
 
-
 const styles = stylex.create({
   split: {
     display: 'grid',
@@ -600,6 +599,11 @@ export default function OrgPage() {
   })
   const headcountOf = (orgNodeId: string) =>
     headcounts.data?.nodes.find((node) => node.orgNodeId === orgNodeId)?.userCount ?? 0
+  // and whether that zero is an answer. Failing is allowed, so a reader
+  // without the people grant saw zero everywhere - which reads exactly like
+  // an empty unit, and is how a delete came to be offered on units full of
+  // people
+  const headcountsKnown = headcounts.isSuccess
 
   // targeted invalidation: only this plugin's queries, never the whole cache
   const refresh = () => {
@@ -738,6 +742,7 @@ export default function OrgPage() {
                 run={run}
                 onOpen={setSelectedId}
                 headcount={headcountOf(selected.id)}
+                headcountKnown={headcountsKnown}
               />
             ) : (
               <Blank
@@ -952,6 +957,7 @@ function NodePanel({
   run,
   onOpen,
   headcount,
+  headcountKnown,
 }: {
   node: OrgTreeNodeDto
   shape: OrgShape
@@ -960,6 +966,8 @@ function NodePanel({
   onOpen: (id: string) => void
   /** people standing at this node, from whoever owns people */
   headcount: number
+  /** whether that count was answered at all; reading people is its own grant */
+  headcountKnown: boolean
 }) {
   const { format } = useI18n()
   const listJoin = useList()
@@ -972,9 +980,13 @@ function NodePanel({
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const isRoot = !node.parentId
   const children = shape.childrenOf.get(node.id) ?? []
-  // both counts are read before the button is offered, so a refusal is not
-  // the first a reader hears of a rule
-  const removable = children.length === 0 && headcount === 0
+  // Both counts are read before the button is offered, so a refusal is not
+  // the first a reader hears of a rule - which means an unknown count is not
+  // a zero, and an emptiness this reader cannot see under is not an
+  // emptiness. A reader whose reach ends at this node is sent the node
+  // alone, and units full of people came back looking like leaves.
+  const removable =
+    node.subtreeVisible && children.length === 0 && headcountKnown && headcount === 0
   const typeName = (id: string) =>
     shape.types.find((type) => type.id === id)?.name ?? format(m.unknownType)
 

@@ -137,6 +137,8 @@ export interface NodeView {
   sortOrder: number
   manageable: boolean
   subtreeManageable: boolean
+  /** whether the answer carries what is under this node, or only the node */
+  subtreeVisible: boolean
 }
 
 export interface TypeRow {
@@ -535,12 +537,18 @@ export const make = Effect.fn('Org.make')(function* () {
       ),
     ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
 
-  const withFlags = (node: NodeRow, manageScope: ResolvedScope) => ({
+  const withFlags = (node: NodeRow, manageScope: ResolvedScope, readScope: ResolvedScope) => ({
     ...node,
     // manageable covers single-node mutations; a move relocates the whole
     // subtree and needs subtree coverage, so they are separate answers
     manageable: coveredBy(manageScope, node),
     subtreeManageable: subtreeCoveredBy(manageScope, node),
+    // Whether the answer carries what is UNDER this node, or only the node
+    // itself: a self anchor yields the one node it names, and a reader
+    // cannot tell that from a unit that genuinely holds nothing. Saying so
+    // is what lets a screen keep an emptiness it cannot see from reading as
+    // one it can.
+    subtreeVisible: subtreeCoveredBy(readScope, node),
   })
 
   /**
@@ -560,7 +568,11 @@ export const make = Effect.fn('Org.make')(function* () {
   ) {
     // the row exists: this runs under the lock the write took, after the write
     const node = (yield* oneNode(tenantId, nodeId).pipe(Effect.orDie))!
-    return withFlags(node, yield* resolveScope(tenantId, as, 'org.tree.manage'))
+    return withFlags(
+      node,
+      yield* resolveScope(tenantId, as, 'org.tree.manage'),
+      yield* resolveScope(tenantId, as, 'org.tree.read'),
+    )
   })
 
   const createNode = Effect.fn('Org.createNode')(function* (
@@ -721,7 +733,7 @@ export const make = Effect.fn('Org.make')(function* () {
           // must not learn that a node they cannot see exists
           if (!node || !coveredBy(readScope, node)) return yield* new NodeNotFound()
           const manageScope = yield* resolveScope(tenantId, as, 'org.tree.manage')
-          return withFlags(node, manageScope)
+          return withFlags(node, manageScope, readScope)
         }),
       )
     }),
@@ -773,7 +785,9 @@ export const make = Effect.fn('Org.make')(function* () {
 
           return {
             roots,
-            nodes: [...nodes.values()].sort(byPath).map((node) => withFlags(node, manageScope)),
+            nodes: [...nodes.values()]
+              .sort(byPath)
+              .map((node) => withFlags(node, manageScope, readScope)),
           }
         }),
       )
@@ -956,6 +970,7 @@ const toNodeDto = (node: NodeView) => ({
   sortOrder: node.sortOrder,
   manageable: node.manageable,
   subtreeManageable: node.subtreeManageable,
+  subtreeVisible: node.subtreeVisible,
 })
 
 const toRuleDto = (row: RuleRow) => ({

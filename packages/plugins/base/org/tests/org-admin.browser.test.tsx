@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
+import { AccessDenied } from '@qualy/rbac-contract/effect'
 import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // loaded through the registry the host actually uses, so a screen that lost
@@ -28,10 +29,12 @@ const node = (over: {
   orgTypeId: string
   depth: number
   manageable?: boolean
+  subtreeVisible?: boolean
 }) => ({
   sortOrder: 0,
   manageable: true,
   subtreeManageable: true,
+  subtreeVisible: true,
   ...over,
 })
 
@@ -189,6 +192,50 @@ describe('the organization screen', () => {
     await expect.element(del).toBeDisabled()
     // the bar names its reason as data, beside the struck action
     await expect.element(page.getByRole('alertdialog')).not.toBeInTheDocument()
+  })
+
+  // A tree is what this reader may SEE, not what is there. A reader whose
+  // reach ends at a unit is sent that unit alone, which on the wire is
+  // indistinguishable from a leaf - and the delete control was offered on
+  // units holding whole branches. The server refuses, but a refusal was
+  // never meant to be the first anybody hears of a rule.
+  it('keeps deletion barred where the tree stops at this unit', async () => {
+    const client = world()
+    client.org.getTree = () =>
+      Effect.succeed({
+        roots: [COLLEGE],
+        nodes: [
+          node({
+            id: COLLEGE,
+            name: '软件学院',
+            parentId: ROOT,
+            orgTypeId: COLLEGE_TYPE,
+            depth: 1,
+            subtreeVisible: false,
+          }),
+        ],
+      })
+    renderScreen({
+      client: fakeClient(client),
+      route: `/admin/org?node=${COLLEGE}`,
+      children: <OrgPage />,
+    })
+    await expect.element(page.getByRole('button', { name: '删除节点' })).toBeDisabled()
+  })
+
+  // The same rule for the other count. Reading people is a grant of its own
+  // and the screen tolerates being refused it - but the zero that came back
+  // was an absence of an answer, not an absence of people.
+  it('keeps deletion barred while the headcount went unanswered', async () => {
+    const client = world()
+    client.identity.getUserOptions = () =>
+      Effect.fail(new AccessDenied({ reason: 'reading people is its own grant' })) as never
+    renderScreen({
+      client: fakeClient(client),
+      route: `/admin/org?node=${KLASS}`,
+      children: <OrgPage />,
+    })
+    await expect.element(page.getByRole('button', { name: '删除节点' })).toBeDisabled()
   })
 
   it('opens a unit from the tree and creates a child of a legal type only', async () => {

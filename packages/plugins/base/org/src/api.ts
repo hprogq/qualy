@@ -63,6 +63,10 @@ const orgNode = Schema.Struct({
   // offering actions that would be refused.
   manageable: Schema.Boolean,
   subtreeManageable: Schema.Boolean,
+  // and how much of the answer is about this node: a reader whose reach ends
+  // here is sent the node alone, which on its own is indistinguishable from a
+  // unit that holds nothing
+  subtreeVisible: Schema.Boolean,
 })
 
 const orgRule = Schema.Struct({
