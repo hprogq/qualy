@@ -5386,6 +5386,10 @@ const i18n = definePluginMessages({
       id: 'assessment/refusal/phase-removed',
       defaultMessage: 'A stage cannot be deleted after it has started.',
     },
+    'refusal.phase-duplicated': {
+      id: 'assessment/refusal/phase-duplicated',
+      defaultMessage: 'A stage appears more than once in this timeline.',
+    },
     'refusal.reorder-not-allowed': {
       id: 'assessment/refusal/reorder-not-allowed',
       defaultMessage: 'Started stages cannot be reordered.',

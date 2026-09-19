@@ -3374,6 +3374,21 @@ export const make = Effect.fn('Assessment.make')(function* () {
                 refusals: [{ reason: 'phase-not-found', phaseId: unknown.id! }],
               })
             }
+            // One phase, named twice. writePlanOrder finalizes ordinals by
+            // spec index, so the second mention overwrites the first and the
+            // row lands wherever it was last named - past rows that were
+            // never scheduled, which is the corrupt shape normalizePlan
+            // refuses to read. Naming each phase once is also what makes the
+            // prefix comparison below total: every committed id is present,
+            // present once, and the first ones are in their committed order.
+            const named = new Set<string>()
+            const duplicated: PlanRefusal[] = []
+            for (const [index, spec] of specs.entries()) {
+              if (spec.id === undefined) continue
+              if (named.has(spec.id)) duplicated.push({ reason: 'phase-duplicated', phaseId: spec.id, index })
+              named.add(spec.id)
+            }
+            if (duplicated.length > 0) return yield* new PlanInvalid({ refusals: duplicated })
 
             if (draft) {
               // a draft plan is replaced as a whole: ids are kept where

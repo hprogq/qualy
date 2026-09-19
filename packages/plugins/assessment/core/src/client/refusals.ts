@@ -20,6 +20,7 @@ type ServiceRefusalReason =
   | 'template-not-a-timeline'
   | 'phase-template-shape'
   | 'phase-removed'
+  | 'phase-duplicated'
   | 'reorder-not-allowed'
   | 'phase-key-immutable'
   | 'scope-in-template'
@@ -49,6 +50,7 @@ const SENTENCES: Record<EditRefusalReason | ServiceRefusalReason, MessageDescrip
   'template-not-a-timeline': m['refusal.template-not-a-timeline'],
   'phase-template-shape': m['refusal.phase-template-shape'],
   'phase-removed': m['refusal.phase-removed'],
+  'phase-duplicated': m['refusal.phase-duplicated'],
   'reorder-not-allowed': m['refusal.reorder-not-allowed'],
   'phase-key-immutable': m['refusal.phase-key-immutable'],
   'scope-in-template': m['refusal.scope-in-template'],

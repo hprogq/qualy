@@ -1628,6 +1628,7 @@ export default {
   'assessment/refusal/plan-empty': '启动批次前至少需要设置一个有效阶段。',
   'assessment/refusal/template-requires-draft': '仅草稿状态的批次可以导入模板。',
   'assessment/refusal/phase-removed': '已开始的阶段无法删除。',
+  'assessment/refusal/phase-duplicated': '同一个阶段在时间轴上出现了多次。',
   'assessment/refusal/reorder-not-allowed': '已开始阶段的顺序无法调整。',
   'assessment/refusal/phase-key-immutable': '批次已开始，无法更改参评人员类型。',
   'assessment/refusal/scope-in-template': '可复用模板不能关联特定批次的项目或人员。',

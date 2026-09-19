@@ -304,6 +304,54 @@ describe.runIf(postgresAvailable).concurrent('plan writes', () => {
     expect(timeline).toHaveLength(2)
   })
 
+  it('refuses a plan that names one phase twice', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('named-twice')
+        const assessment = yield* Assessment
+        const batch = yield* newBatch(f.tenant, 'Twice', f.root, f.studentType, f.principal)
+        yield* assessment.replacePlan(
+          f.tenant,
+          batch.id,
+          { specs: [phase({ phaseKey: 'entry' }), phase({ phaseKey: 'review' })] },
+          f.principal,
+        )
+        const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+        yield* assessment.schedulePhase(
+          f.tenant,
+          batch.id,
+          plan[0]!.id,
+          Date.now() + HOUR,
+          f.principal,
+        )
+
+        // the scheduled phase named again behind the unscheduled one. The
+        // committed ids are still the prefix, so the reorder comparison sees
+        // nothing wrong; ordinals are finalized by spec index, so the last
+        // mention would drop the scheduled phase behind the unscheduled one.
+        const echoed = yield* Effect.exit(
+          assessment.replacePlan(
+            f.tenant,
+            batch.id,
+            { specs: [toSpec(plan[0]!), toSpec(plan[1]!), toSpec(plan[0]!)] },
+            f.principal,
+          ),
+        )
+        const after = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+        // the batch still answers: the corrupt order this would have written
+        // is one no read of the batch, or of any list it appears in, survives
+        const timeline = yield* assessment.timeline(f.tenant, batch.id)
+        return { echoed, after, timeline }
+      }),
+    )
+    const { echoed, after, timeline } = ok(exit)
+    expect(refusalsIn(echoed)).toContain('phase-duplicated')
+    expect(after.map((row) => row.phaseKey)).toEqual(['entry', 'review'])
+    expect(after[0]!.plannedEntryAt).not.toBeNull()
+    expect(timeline).toHaveLength(2)
+  })
+
   it('keeps an allowance the stage editor never renders when the plan is saved', async () => {
     const exit = await run(
       db.url,
