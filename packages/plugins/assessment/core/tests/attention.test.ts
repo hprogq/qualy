@@ -1,9 +1,11 @@
-import { Effect } from 'effect'
+import { Deferred, Effect, Fiber } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { sql } from 'kysely'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
+import { transaction } from '@qualy/plugin-database/server'
 import { Assessment } from '../src/server/index.ts'
-import { GATED, ok, run, runningBatch, seed } from './support/round.ts'
+import { bumpParticipantAttention } from '../src/entry/db.ts'
+import { GATED, ok, one, run, runningBatch, seed } from './support/round.ts'
 
 // The unread dot's whole contract (§32.72): external changes ring the bell,
 // the owner's own acts never do, looking silences exactly what was looked
@@ -238,6 +240,76 @@ describe.runIf(postgresAvailable)('the participant attention model', () => {
     for (const at of result.ats) {
       expect(at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
     }
+  })
+
+  // The same rule as above, but with the two genuinely overlapping rather
+  // than one after the other. The look queues on the row the bump holds, and
+  // the database runs read committed: a statement that reads the attention
+  // off the row it is writing re-reads it once the lock frees, so the look
+  // marked the very change it was racing and the dot never came back.
+  it('keeps a bump that lands while the look is waiting on the row', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('at-lock-race')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: PROFILE })
+          const s1 = f.principal(f.s1)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+
+          // the bump, held open on its own connection until the look is seen
+          // queueing on the entry row it locked
+          const queued = yield* Deferred.make<void>()
+          const holder = yield* Effect.forkChild(
+            transaction(
+              Effect.gen(function* () {
+                yield* bumpParticipantAttention(f.t, entry.id)
+                yield* Deferred.succeed(queued, undefined)
+                for (let waited = 0; waited < 300; waited += 1) {
+                  // a transaction keeps its first look at the activity table
+                  // unless told to look again
+                  yield* runSql(sql`select pg_stat_clear_snapshot()`)
+                  const waiting = one<{ n: number }>(
+                    yield* runSql(sql`
+                      select count(*)::int as n from pg_stat_activity
+                       where datname = current_database() and wait_event_type = 'Lock'`),
+                  ).n
+                  if (waiting > 0) return true
+                  yield* Effect.sleep('50 millis')
+                }
+                return false
+              }),
+            ),
+          )
+          yield* Deferred.await(queued)
+          yield* assessment.markMyEntryRead(f.t, g.batch.id, g.item.id, s1)
+          const waited = yield* Fiber.join(holder)
+
+          const row = one<{ marked: number; seen: number }>(
+            yield* runSql(sql`
+              select participant_attention_revision as marked, participant_seen_revision as seen
+              from entries where id = ${entry.id}`),
+          )
+          return {
+            waited,
+            row,
+            unread: (yield* assessment.listMyEntries(f.t, g.batch.id, {}, s1)).attention
+              .unreadItemIds,
+            itemId: g.item.id,
+          }
+        }),
+      ),
+    )
+
+    // the look really did queue on the lock; without that this proves nothing
+    expect(result.waited).toBe(true)
+    expect(result.row.marked).toBeGreaterThan(result.row.seen)
+    expect(result.unread).toEqual([result.itemId])
   })
 
   it('lists the open ask and the return mark as the two things to handle', async () => {

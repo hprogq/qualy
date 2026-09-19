@@ -306,9 +306,20 @@ export const bumpParticipantAttention = (tenantId: string, entryId: string) =>
   )
 
 /**
- * The owner has looked at this question's claims, all of them at once. A
- * change landing concurrently keeps its own bump - seen is set to the
- * attention value THIS statement reads, and a later increment stays ahead.
+ * The owner has looked at this question's claims, all of them at once.
+ *
+ * Seen is read through a subquery rather than off the row being written, and
+ * that is the whole of it. `set seen = attention` reads the column from the
+ * row the statement is updating, and the database runs read committed: a
+ * bump that commits while this waits on that row's lock makes the statement
+ * re-evaluate against the NEW row, so it assigned the very attention it was
+ * racing and the participant was never told (measured, on the dialect: with
+ * the plain form seen came back equal to the bumped value).
+ *
+ * The subquery scans the table again, which keeps the statement's own
+ * snapshot, so what is marked seen is what was there when the reader asked.
+ * A bump that lands in the meantime stays ahead and rings, which is the
+ * direction to be wrong in.
  */
 export const markMyEntryReads = (input: {
   tenantId: string
@@ -319,7 +330,10 @@ export const markMyEntryReads = (input: {
   db.query((k) =>
     k
       .updateTable('Entry')
-      .set({ participantSeenRevision: sql`participant_attention_revision` })
+      .set({
+        participantSeenRevision: sql<number>`(select snapshot.participant_attention_revision
+          from entries snapshot where snapshot.id = entries.id)`,
+      })
       .where('tenantId', '=', input.tenantId)
       .where('batchId', '=', input.batchId)
       .where('itemId', '=', input.itemId)
