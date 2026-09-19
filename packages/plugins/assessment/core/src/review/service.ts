@@ -1869,10 +1869,16 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                 const eventId = yield* say(action === 'approve' ? 'approved' : 'rejected')
                 const recognitionId =
                   determined === undefined ? undefined : yield* settle(determined, eventId)
+                // The one place a round moves the claim (§32.21). A first
+                // round is standing at `in_review`; a round reconsidering a
+                // settled decision left the claim where it was, so the
+                // states it may move from are all three. What it lands on is
+                // the same either way - 更正 and 维持 both leave an approval
+                // approved, 撤销 makes it a rejection.
                 yield* setEntryState({
                   tenantId,
                   entryId: row.entryId,
-                  from: ['in_review'],
+                  from: ['in_review', 'approved', 'rejected'],
                   to: action === 'approve' ? 'approved' : 'rejected',
                   ...(recognitionId === undefined ? {} : { currentRecognitionId: recognitionId }),
                 })
@@ -2209,13 +2215,19 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                 members: landing.eligible,
               })
             }
-            // the decision is being disputed, so it is no longer settled:
-            // an approval under appeal stops counting until the appeal ends
+            // The claim keeps the standing it already had (§32.21): a round
+            // is a reconsideration of a settled decision, not a withdrawal of
+            // it, and status moves only in the round's own terminal
+            // transaction. Moving it here made contesting a deduction the way
+            // to stop the deduction counting - the 「分数悬置」 reading that
+            // ruling voids in as many words. What a reader needs in order to
+            // know a round is open is the round itself, which is attached in
+            // the same statement.
             const moved = yield* setEntryState({
               tenantId,
               entryId,
               from: ['approved', 'rejected'],
-              to: 'in_review',
+              to: row.status,
               currentReviewInstanceId: opened,
             })
             if (!moved) return yield* refuse('appeal', 'nothing-to-appeal')

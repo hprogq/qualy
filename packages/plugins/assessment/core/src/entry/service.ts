@@ -70,6 +70,7 @@ import {
   eventsOfRounds,
   roundsOfEntry,
   entryCountOf,
+  hasOpenRound,
   entryOf,
   entryRevisionOf,
   insertEntry,
@@ -1441,7 +1442,9 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                   entryId,
                   from: ['draft', 'rejected', 'needs_revision', 'in_review', 'approved'],
                   to: 'voided',
-                  ...(entry.status === 'in_review' ? { currentReviewInstanceId: null } : {}),
+                  ...(entry.currentReviewInstanceId === null
+                    ? {}
+                    : { currentReviewInstanceId: null }),
                 })
                 if (!moved) return yield* refuse(action, 'entry-not-abandonable')
                 yield* insertEntryEvent({
@@ -1451,7 +1454,14 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                   actorId: as.userId,
                 })
               } else {
-                if (entry.status !== 'in_review' || entry.currentReviewInstanceId === null) {
+                // The round, not the status: a claim under appeal keeps the
+                // standing it already had (§32.21). The entry goes on
+                // pointing at its round after that round ends, so open is
+                // what the round row says rather than what the pointer says.
+                if (
+                  entry.currentReviewInstanceId === null ||
+                  !(yield* hasOpenRound(tenantId, entryId))
+                ) {
                   return yield* refuse(action, 'entry-not-withdrawable')
                 }
                 // withdrawing ends where review begins (§32.69), and an

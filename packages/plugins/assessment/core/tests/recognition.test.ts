@@ -1550,6 +1550,50 @@ describe.runIf(postgresAvailable)('recognitions', () => {
     expect(result.after.source).toBe('record')
   })
 
+  it('goes on counting a deduction while its appeal is argued', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rec-appeal-scores')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, {
+            profile: [...REVIEW_OPEN, 'assessment.entry.appeal'],
+            stages: [at(f, 'class')],
+            escalation: [at(f, 'dept')],
+          })
+          const item = yield* recordItem(f, g.batch.id)
+          yield* assessment.createEntry(
+            f.t,
+            { itemId: item.id, participantId: g.p1, payload: {}, note: '违纪记录' },
+            f.principal(f.recorder),
+          )
+          const asSubject = f.principal(f.s1)
+          const settled = (yield* assessment.getMyResult(f.t, g.batch.id, asSubject)).total
+
+          const entry = one<{ id: string }>(
+            yield* runSql(sql`select id from entries
+                               where tenant_id = ${f.t} and item_id = ${item.id}`),
+          ).id
+          yield* assessment.appealEntry(f.t, entry, { reason: '当天我在校外实习' }, asSubject)
+          const during = (yield* assessment.getMyResult(f.t, g.batch.id, asSubject)).total
+          const status = one<{ status: string }>(
+            yield* runSql(sql`select status from entries where id = ${entry}`),
+          ).status
+          return { settled, during, status }
+        }),
+      ),
+    )
+    // §32.21: a round is a reconsideration of a settled decision, not a
+    // withdrawal of it, and the 「分数悬置」 reading is void. Moving the
+    // entry out of `approved` made contesting a deduction the way to make
+    // the deduction stop counting for as long as the argument lasted.
+    expect(result.status).toBe('approved')
+    expect(result.during).toBe(result.settled)
+    // and it is a real deduction, not two zeroes agreeing
+    expect(result.settled).not.toBe('0')
+  })
+
   it("keeps a recorded fact out of its subject's hands, and open to their argument", async () => {
     const result = ok(
       await run(
@@ -1613,7 +1657,11 @@ describe.runIf(postgresAvailable)('recognitions', () => {
     expect(result.round.origin).toBe('appeal')
     expect(result.round.appealed_instance_id).toBeNull()
     expect(result.round.appealed_recognition_id).toBe(result.recognitionId)
-    expect(result.status).toBe('in_review')
+    // and the deduction goes on counting while it is argued about: a round
+    // is a reconsideration of a settled decision, not a withdrawal of it
+    // (§32.21, which voids the 「分数悬置」 reading in as many words). Moving
+    // it here made appealing a penalty the way to make the penalty stop.
+    expect(result.status).toBe('approved')
   })
 
   it('lets the registrar withdraw what the registrar recorded, and nobody narrower or wider', async () => {

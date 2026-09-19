@@ -142,29 +142,35 @@ export const voidAdministrativeEntryTx = (input: {
   Effect.gen(function* () {
     if (input.status === 'voided') return { voided: false } as const
     let cancelledReview = false
-    if (input.status === 'in_review') {
-      if (input.currentReviewInstanceId === null) return { voided: false } as const
+    // The round, not the status: a claim under appeal keeps the standing it
+    // already had (§32.21), so an approved fact can be carrying an open
+    // round. The entry goes on pointing at its round after that round ends,
+    // which is what lets a reader find the decision - so the question is put
+    // to the round, and `cancelReviewInstance` only closes one that is still
+    // open. A `false` here is "there was nothing open", not a failure.
+    if (input.currentReviewInstanceId !== null) {
       const closed = yield* cancelReviewInstance({
         tenantId: input.tenantId,
         instanceId: input.currentReviewInstanceId,
         outcome: 'cancelled',
       })
-      if (!closed) return { voided: false } as const
-      yield* insertReviewEvent({
-        tenantId: input.tenantId,
-        reviewInstanceId: input.currentReviewInstanceId,
-        kind: 'cancelled-by-staff',
-        actorId: input.actorUserId,
-        comment: input.reason,
-      })
-      cancelledReview = true
+      if (closed) {
+        yield* insertReviewEvent({
+          tenantId: input.tenantId,
+          reviewInstanceId: input.currentReviewInstanceId,
+          kind: 'cancelled-by-staff',
+          actorId: input.actorUserId,
+          comment: input.reason,
+        })
+        cancelledReview = true
+      }
     }
     const gone = yield* setEntryState({
       tenantId: input.tenantId,
       entryId: input.entryId,
       from: ['draft', 'rejected', 'needs_revision', 'in_review', 'approved'],
       to: 'voided',
-      ...(input.status === 'in_review' ? { currentReviewInstanceId: null } : {}),
+      ...(cancelledReview ? { currentReviewInstanceId: null } : {}),
     })
     if (!gone) return { voided: false } as const
     yield* insertEntryEvent({
