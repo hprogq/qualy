@@ -3028,8 +3028,17 @@ export const make = Effect.fn('Assessment.make')(function* () {
         subjects.map((subject) => subject.userId),
       )
       const last = subjects.at(-1)
+      // In the order the page was CUT in. The page is chosen by display name
+      // and the cursor is minted from it, while the rows come back in the
+      // order their sources were accepted - so a reader saw one order and
+      // resumed in another, and the boundary between two pages read as rows
+      // going missing.
+      const at = new Map(subjects.map((subject, index) => [subject.userId, index]))
+      const seen = asSeenBy(access, as)
       return {
-        ...asSeenBy(access, as),
+        staff: [...seen.staff].sort(
+          (one, other) => (at.get(one.userId) ?? 0) - (at.get(other.userId) ?? 0),
+        ),
         nextCursor:
           found.length > size && last !== undefined
             ? encodeQueryCursor(`access:${batchId}`, [last.displayName, last.userId])

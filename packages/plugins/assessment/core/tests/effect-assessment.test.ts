@@ -2074,6 +2074,59 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     expect([...walked].sort()).toEqual(['One', 'Three', 'Two'])
   })
 
+  it('lists the people who work a round in the order it pages them', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('access-order')
+        const assessment = yield* Assessment
+        const role = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+            values (${f.tenant}, 'tutor', 'Tutor', 'org', 'active', 'explicit', 'unrestricted')
+            returning id`),
+        ).id
+        yield* runSql(sql`
+          insert into role_permissions (tenant_id, role_id, permission_id)
+          select ${f.tenant}, ${role}, id from permissions
+          where code = 'assessment.review.process'`)
+        // three people whose acceptance order is the reverse of their names
+        const person = (name: string) =>
+          Effect.gen(function* () {
+            const id = one<{ id: string }>(
+              yield* runSql(sql`
+                insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+                values (${f.tenant}, ${name}, ${f.teacherType}, ${f.gradeA}) returning id`),
+            ).id
+            yield* runSql(sql`
+              insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+              values (${f.tenant}, ${id}, ${role}, ${f.gradeA}, 'subtree')`)
+            return id
+          })
+        const zoe = yield* person('Zoe')
+        const ada = yield* person('Ada')
+        void zoe
+        void ada
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Ordered',
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            import: { orgNodeIds: [f.gradeA], userTypeIds: [f.studentType] },
+          },
+          f.principal,
+        )
+        const listed = yield* assessment.listAccess(f.tenant, batch.id, {}, f.principal)
+        return listed.staff.map((row) => row.displayName)
+      }),
+    )
+    const names = ok(exit)
+    // the page is chosen by name and its cursor is minted from one, so the
+    // rows have to arrive in that order or the boundary reads as rows going
+    // missing
+    expect(names).toEqual([...names].sort())
+  })
+
   it('says a person is already staffed rather than refusing the administrator', async () => {
     const exit = await run(
       db.url,
