@@ -450,7 +450,7 @@ export const listBatchesPage = (
   filter: {
     status?: string
     q?: string
-    after?: { createdAt: number; id: string }
+    after?: { createdAt: string; id: string }
     limit: number
   },
 ) =>
@@ -459,6 +459,13 @@ export const listBatchesPage = (
       let query = batchFilters(
         batchSelection(k)
           .select(withinReach(viewer.held).as('manageable'))
+          // The column as postgres writes it, for the cursor alone.
+          // `createdAt` is epoch milliseconds for arithmetic, and a resume
+          // point rounded to the millisecond skips every row written inside
+          // the one it names - which is all of them, when a bulk insert gives
+          // a whole page the transaction's single `now()`. Aliased away from
+          // the entity's own property name so it comes back a string.
+          .select(sql<string>`assessment_batches.created_at::text`.as('cursorAt'))
           .where('tenantId', '=', tenantId)
           .where(visibleTo(viewer)),
         filter,
@@ -466,12 +473,19 @@ export const listBatchesPage = (
       if (filter.after !== undefined) {
         query = query.where(
           sql<boolean>`(assessment_batches.created_at, assessment_batches.id)
-            < (${instant(filter.after.createdAt)}, ${filter.after.id}::uuid)`,
+            < (${filter.after.createdAt}::timestamptz, ${filter.after.id}::uuid)`,
         )
       }
       return query.orderBy('createdAt', 'desc').orderBy('id', 'desc').limit(filter.limit).execute()
     })
-    .pipe(Effect.map((found) => (found as unknown as Record<string, unknown>[]).map(toBatchRow)))
+    .pipe(
+      Effect.map((found) =>
+        (found as unknown as Record<string, unknown>[]).map((row) => ({
+          ...toBatchRow(row),
+          cursorAt: String(row.cursorAt),
+        })),
+      ),
+    )
 
 export const insertBatch = (input: {
   tenantId: string

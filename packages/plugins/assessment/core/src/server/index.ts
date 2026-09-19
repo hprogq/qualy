@@ -248,6 +248,8 @@ export interface MaterialRange {
 /** a batch as a list shows it: the row, plus where the batch has got to */
 export interface BatchListRow extends BatchRow {
   readonly timeline: readonly TimelineEntry[]
+  /** where a page resumes, at the precision the column is actually stored at */
+  readonly cursorAt: string
 }
 
 export interface BatchDetail {
@@ -708,7 +710,7 @@ export class Assessment extends Context.Service<
       filter: {
         status?: 'draft' | 'active' | 'archived'
         q?: string
-        after?: { createdAt: EpochMillis; id: string }
+        after?: { createdAt: string; id: string }
         limit: number
       },
       as: Principal,
@@ -4975,9 +4977,10 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         const fingerprint = `assessment.batches:${query.status ?? ''}:${query.q ?? ''}`
         const key = readQueryCursor(query.cursor, fingerprint, ['timestamp', 'uuid'])
         if (key === null) return yield* cursorUnusable()
-        const after =
-          key === undefined ? undefined : { createdAt: Date.parse(key[0]!), id: key[1]! }
-        if (after !== undefined && Number.isNaN(after.createdAt)) return yield* cursorUnusable()
+        // handed on as the text it was minted from: the shape was already
+        // checked by the cursor reader, and parsing it into milliseconds here
+        // is what threw away the microseconds the column actually holds
+        const after = key === undefined ? undefined : { createdAt: key[0]!, id: key[1]! }
         const found = yield* assessment.listBatches(
           principal.tenantId,
           {
@@ -5036,7 +5039,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           })),
           nextCursor:
             found.length > limit && last
-              ? encodeQueryCursor(fingerprint, [new Date(last.createdAt).toISOString(), last.id])
+              ? encodeQueryCursor(fingerprint, [last.cursorAt, last.id])
               : null,
         }
       }),

@@ -2025,6 +2025,55 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     ])
   })
 
+  it('walks a page boundary that falls inside one millisecond', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('cursor-precision')
+        const assessment = yield* Assessment
+        const make = (name: string) =>
+          assessment.createBatch(
+            f.tenant,
+            {
+              name,
+              materialRange: { start: '2026-03-01', end: '2026-09-01' },
+              import: { orgNodeIds: [f.class1], userTypeIds: [f.studentType] },
+            },
+            f.principal,
+          )
+        yield* make('One')
+        yield* make('Two')
+        yield* make('Three')
+        // what a bulk write leaves behind: postgres stamps a whole
+        // transaction with one now(), to the microsecond
+        yield* runSql(sql`
+          update assessment_batches set created_at = '2026-03-01 10:00:00.123456+00'
+          where tenant_id = ${f.tenant}`)
+
+        const walked: string[] = []
+        let after: { createdAt: string; id: string } | undefined = undefined
+        for (let page = 0; page < 5; page++) {
+          const found: readonly { name: string; id: string; cursorAt: string }[] =
+            yield* assessment.listBatches(
+              f.tenant,
+              { limit: 2, ...(after !== undefined ? { after } : {}) },
+              f.principal,
+            )
+          const shown = found.slice(0, 1)
+          for (const row of shown) walked.push(row.name)
+          const last = shown[0]
+          if (found.length < 2 || last === undefined) break
+          after = { createdAt: last.cursorAt, id: last.id }
+        }
+        return { walked }
+      }),
+    )
+    const { walked } = ok(exit)
+    // every round is reached exactly once, though the boundary between two
+    // pages falls inside a single millisecond
+    expect([...walked].sort()).toEqual(['One', 'Three', 'Two'])
+  })
+
   it('says a person is already staffed rather than refusing the administrator', async () => {
     const exit = await run(
       db.url,
