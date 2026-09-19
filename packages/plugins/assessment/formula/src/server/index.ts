@@ -1229,6 +1229,13 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
           ])
           .select(latestNoSubquery.as('latestVersionNo'))
           .select(latestReleaseSubquery.as('latestReleaseName'))
+          // The instant as postgres wrote it, for the cursor alone. The
+          // column is microsecond, `updatedAt` arrives as a Date and an ISO
+          // string of one is millisecond - so a boundary landing inside a
+          // millisecond excluded every row written in it, and a bulk write
+          // shares one. Aliased away from the entity's own property name so
+          // the orm's hydration leaves it a string.
+          .select(sql<string>`assessment_formula_functions.updated_at::text`.as('cursorAt'))
           .where('FormulaFunction.tenantId', '=', tenantId)
           // what this author wrote, and nothing else: there is no
           // organizational range to a formula any more
@@ -1252,7 +1259,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     const nextCursor =
       rows.length > size
         ? encodeQueryCursor(LIST_FINGERPRINT, [
-            isoInstant(sliced[sliced.length - 1]!.updatedAt),
+            String((sliced[sliced.length - 1]! as unknown as { cursorAt: string }).cursorAt),
             sliced[sliced.length - 1]!.id,
           ])
         : null

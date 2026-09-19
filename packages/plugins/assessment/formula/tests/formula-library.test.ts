@@ -125,6 +125,45 @@ describe.runIf(postgresAvailable)('the formula library', () => {
     expect(outcome.listed.items.map((row) => row.latestVersionNo)).toEqual([1])
   }, 120_000)
 
+  // The column is microsecond and an ISO string of a Date is millisecond, so
+  // a page boundary landing inside a millisecond used to exclude every row
+  // written in it - and rows written together share one.
+  it('walks a page boundary that falls inside one millisecond', async () => {
+    const outcome = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('fx-cursor')
+          const library = yield* FormulaLibrary
+          const as = f.principal(f.admin)
+          for (const name of ['One', 'Two', 'Three']) {
+            yield* library.createFunction(f.t, { name }, as)
+          }
+          // what a write in one transaction leaves behind, to the microsecond
+          yield* runSql(sql`
+            update assessment_formula_functions
+               set updated_at = '2026-03-01 10:00:00.123456+00'
+             where tenant_id = ${f.t}`)
+          const walked: string[] = []
+          let cursor: string | undefined = undefined
+          for (let page = 0; page < 5; page++) {
+            const listed: { items: readonly { name: string }[]; nextCursor: string | null } =
+              yield* library.listFunctions(
+                f.t,
+                { limit: '1', ...(cursor === undefined ? {} : { cursor }) },
+                as,
+              )
+            for (const item of listed.items) walked.push(item.name)
+            if (listed.nextCursor === null) break
+            cursor = listed.nextCursor
+          }
+          return walked
+        }),
+      ),
+    )
+    expect([...outcome].sort()).toEqual(['One', 'Three', 'Two'])
+  }, 120_000)
+
   it('deletes a draft nobody published, and refuses once one exists', async () => {
     const outcome = ok(
       await run(

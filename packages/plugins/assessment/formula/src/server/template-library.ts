@@ -361,6 +361,12 @@ export const make = Effect.fn('FormulaTemplateLibrary.make')(function* () {
                 join.onRef('u.tenantId', '=', 'f.tenantId').onRef('u.id', '=', 'f.createdBy'),
               )
               .select(TEMPLATE_COLUMNS)
+              // The instant as postgres wrote it, for the cursor alone: the
+              // column is microsecond and an ISO string of a Date is
+              // millisecond, so a boundary landing inside a millisecond
+              // excluded every row published in it - and a batch published
+              // together shares one.
+              .select(sql<string>`v.published_at::text`.as('cursorAt'))
               .where('v.tenantId', '=', tenantId)
               .where(visibleTemplate(tenantId, viewer.userId, nodeId))
             if (after !== undefined) {
@@ -391,7 +397,7 @@ export const make = Effect.fn('FormulaTemplateLibrary.make')(function* () {
             tail === undefined
               ? null
               : {
-                  publishedAt: new Date(tail.publishedAt).toISOString(),
+                  publishedAt: String((tail as unknown as { cursorAt: string }).cursorAt),
                   versionId: tail.versionId,
                 },
           more: all.length > size,

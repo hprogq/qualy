@@ -131,6 +131,14 @@ export const cosBackend = (settings: CosSettings): StorageBackend => {
                   ? {}
                   : { Domain: settings.downloadDomain }),
                 Query: {
+                  // Two of the three rules §18 freezes, and the third is not
+                  // expressible here: a signed url may override the content
+                  // type, the disposition and a handful of caching headers,
+                  // and nothing else - so `X-Content-Type-Options: nosniff`
+                  // cannot ride this delivery the way it rides the streamed
+                  // one. The disposition is what carries the weight anyway:
+                  // a browser told to save a file never sniffs it.
+                  //
                   // the browser must save it rather than render it: an html or
                   // svg attachment displayed inline would be somebody else's
                   // script running on a url this deployment vouched for
