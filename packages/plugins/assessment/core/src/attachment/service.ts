@@ -232,21 +232,32 @@ export const makeAttachmentMethods = (deps: AttachmentDeps): AttachmentMethods =
   const describeAttachment: AttachmentMethods['describeAttachment'] = Effect.fn(
     'Assessment.describeAttachment',
   )(function* (tenantId, attachmentId, as) {
-    const opened = yield* openAttachment(tenantId, attachmentId, as)
-    if (opened.target.kind === 'redirect') {
-      return {
-        ...metaView(opened.meta),
-        delivery: {
-          kind: 'redirect' as const,
-          url: opened.target.url,
-          expiresInSeconds: opened.target.expiresInSeconds,
-        },
-      }
-    }
-    // describing must not spend the stream: a disk opens a descriptor
-    // eagerly, and an unread one is a leak
-    ;(opened.target.body as { destroy?: () => void }).destroy?.()
-    return { ...metaView(opened.meta), delivery: { kind: 'content' as const } }
+    // Describing must not spend the stream, and a disk opens its descriptor
+    // eagerly - so the close is the release of the open rather than a line
+    // after it. Written as a line after it, a request abandoned in the
+    // window between the two left the descriptor open for good.
+    return yield* Effect.acquireUseRelease(
+      openAttachment(tenantId, attachmentId, as),
+      (opened) =>
+        Effect.succeed(
+          opened.target.kind === 'redirect'
+            ? {
+                ...metaView(opened.meta),
+                delivery: {
+                  kind: 'redirect' as const,
+                  url: opened.target.url,
+                  expiresInSeconds: opened.target.expiresInSeconds,
+                },
+              }
+            : { ...metaView(opened.meta), delivery: { kind: 'content' as const } },
+        ),
+      (opened) =>
+        Effect.sync(() => {
+          if (opened.target.kind === 'stream') {
+            ;(opened.target.body as { destroy?: () => void }).destroy?.()
+          }
+        }),
+    )
   })
 
   const describeAttachments: AttachmentMethods['describeAttachments'] = Effect.fn(
