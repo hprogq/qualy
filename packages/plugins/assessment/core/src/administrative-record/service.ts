@@ -237,6 +237,14 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
     // would make "whose file is this" unanswerable - an act carrying files
     // is refused above one person, and the screen says to record those one
     // at a time.
+    // the basis is the record: an administrative fact without its document
+    // reference is an assertion nobody can check, and the single-entry door
+    // has refused one since the boundary landed. Act-level, because no
+    // subset of the people fixes it.
+    if (input.basis.trim() === '') {
+      return yield* new EntryPayloadInvalid({ issues: [{ field: 'basis', reason: 'required' }] })
+    }
+
     const files = driver.attachmentRefs(revision.formConfig, decoded)
 
     const determination = canonicalRecognition(

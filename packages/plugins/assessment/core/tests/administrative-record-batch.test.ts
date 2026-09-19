@@ -228,6 +228,46 @@ describe.runIf(postgresAvailable).concurrent('recording one finding on a group',
     expect(found.second[0]).not.toBe(found.first[0])
   })
 
+  it('refuses an act that cites no document', async () => {
+    const found = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const { f, g, item, revision } = yield* ready('ar-basis')
+          const assessment = yield* Assessment
+          const input = {
+            itemId: item.id,
+            expectedItemRevisionId: revision,
+            target: { kind: 'people' as const, participantIds: [g.p1] },
+            payload: {},
+            basis: '   ',
+          }
+          const previewed = yield* Effect.exit(
+            assessment.previewAdministrativeRecord(f.t, g.batch.id, input, f.principal(f.recorder)),
+          )
+          const written = yield* Effect.exit(
+            assessment.recordAdministrativeBatch(
+              f.t,
+              g.batch.id,
+              { ...input, excludedParticipantIds: [], expectedTargetFingerprint: 'whatever' },
+              f.principal(f.recorder),
+            ),
+          )
+          const entries = one<{ n: number }>(
+            yield* runSql(sql`select count(*)::int as n from entries
+                               where tenant_id = ${f.t} and item_id = ${item.id}`),
+          ).n
+          return { previewed: errorOf<{ _tag: string }>(previewed)?._tag, written: errorOf<{ _tag: string }>(written)?._tag, entries }
+        }),
+      ),
+    )
+    // the basis is the record: a finding whose document nobody can look up
+    // is an assertion, and the single-entry door has refused one all along
+    expect(found.previewed).toBe('ASSESSMENT_ENTRY_PAYLOAD_INVALID')
+    expect(found.written).toBe('ASSESSMENT_ENTRY_PAYLOAD_INVALID')
+    expect(found.entries).toBe(0)
+  })
+
   it('writes one fact per person, as ordinary records, under one act', async () => {
     const found = ok(
       await run(
