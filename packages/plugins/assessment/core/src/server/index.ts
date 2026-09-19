@@ -3003,6 +3003,25 @@ export const make = Effect.fn('Assessment.make')(function* () {
                 }
               }
 
+              // Archiving closes every door in the round and reopening opens
+              // a new one; either way every screen already open is offering
+              // acts the round no longer permits. It was the one
+              // phase-affecting write here that said nothing.
+              // Archiving closes every door in the round and reopening opens
+              // a new one; either way every screen already open is offering
+              // acts the round no longer permits. It was the one
+              // phase-affecting write here that said nothing.
+              // Archiving closes every door in the round and reopening opens
+              // a new one; either way every screen already open is offering
+              // acts the round no longer permits. It was the one
+              // phase-affecting write here that said nothing.
+              yield* announce(tenantId, batchId, [
+                { kind: 'phase-changed' },
+                { kind: 'plan-changed' },
+                { kind: 'entries-changed' },
+                { kind: 'review-inbox-changed' },
+                { kind: 'result-changed' },
+              ])
               const batch = yield* oneBatch(tenantId, batchId)
               return { ...(yield* readDetail(tenantId, batch!)), manageable: true }
             }),

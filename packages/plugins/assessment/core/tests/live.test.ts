@@ -137,4 +137,51 @@ describe.runIf(postgresAvailable)('the live announcement channel', () => {
     )
     expect(result.kinds).toContain('result-changed')
   })
+
+  // Archiving closes every door in the round, and every screen already open
+  // goes on offering acts it no longer permits until somebody reloads. It
+  // was the one phase-affecting write that said nothing.
+  it('says so when a round is archived', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('lv-archive')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: [...GATED] })
+          // archiving is refused until the last stage has been entered, and
+          // entering one announces on its own - so nothing is listening yet
+          const plan = yield* assessment.timeline(f.t, g.batch.id)
+          yield* assessment.advancePhase(
+            f.t,
+            g.batch.id,
+            { to: plan[plan.length - 1]!.phaseId, force: true, reason: 'wrapping up' },
+            f.principal(f.admin),
+          )
+          const notifications = yield* DatabaseNotifications
+          const heard: { kind: string }[] = []
+          const collector = yield* Effect.forkChild(
+            notifications
+              .listen(ASSESSMENT_LIVE_CHANNEL)
+              .pipe(
+                Stream.runForEach((payload) =>
+                  Effect.sync(() => heard.push(JSON.parse(payload) as { kind: string })),
+                ),
+              ),
+          )
+          yield* Effect.sleep('500 millis')
+          yield* assessment.setBatchStatus(
+            f.t,
+            g.batch.id,
+            { status: 'archived' },
+            f.principal(f.admin),
+          )
+          yield* Effect.sleep('500 millis')
+          yield* Fiber.interrupt(collector)
+          return { kinds: heard.map((one) => one.kind) }
+        }),
+      ),
+    )
+    expect(result.kinds).toContain('phase-changed')
+  })
 })
