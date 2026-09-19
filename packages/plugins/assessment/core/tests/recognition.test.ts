@@ -1602,7 +1602,15 @@ describe.runIf(postgresAvailable)('recognitions', () => {
           const f = yield* seed('rec-admin-boundary')
           const assessment = yield* Assessment
           const g = yield* runningBatch(f, {
-            profile: [...REVIEW_OPEN, 'assessment.entry.appeal', 'assessment.entry.abandon'],
+            profile: [
+              ...REVIEW_OPEN,
+              'assessment.entry.appeal',
+              'assessment.entry.abandon',
+              // the phase a student files in: what makes the editing doors a
+              // real question rather than one the plan closes anyway
+              'assessment.entry.edit',
+              'assessment.entry.submit',
+            ],
             stages: [at(f, 'class')],
             escalation: [at(f, 'dept')],
           })
@@ -1620,6 +1628,9 @@ describe.runIf(postgresAvailable)('recognitions', () => {
           const card = yield* Effect.map(assessment.getEntry(f.t, entry.id, asSubject), (view) => ({
             abandon: view.capabilities.abandon.state,
             appeal: view.capabilities.appeal.state,
+            // nor rewrite it: correcting an administrative fact is voiding
+            // it, and the write has always said so
+            edit: view.capabilities.edit.state,
           }))
           // but they can say they disagree with it, which is the whole point
           const appealed = yield* assessment.appealEntry(
@@ -1637,10 +1648,28 @@ describe.runIf(postgresAvailable)('recognitions', () => {
               select origin, appealed_instance_id, appealed_recognition_id
               from review_instances where id = ${appealed.id}`),
           )
+          // the appeal is heard and the office's finding is overturned, so
+          // the fact ends up `rejected` - the one state an administrative
+          // entry reaches where the ordinary editing doors look open
+          yield* assessment.decideReview(
+            f.t,
+            appealed.id,
+            { decision: 'reject', comment: '不予更正' },
+            f.principal(f.reviewer),
+          )
+          const afterAppeal = yield* Effect.map(
+            assessment.getEntry(f.t, entry.id, asSubject),
+            (view) => ({
+              status: view.status,
+              edit: view.capabilities.edit.state,
+              submit: view.capabilities.submit.state,
+            }),
+          )
           return {
             abandoned,
             card,
             round,
+            afterAppeal,
             recognitionId: yield* pointerOf(entry.id),
             status: (yield* assessment.getEntry(f.t, entry.id, asSubject)).status,
           }
@@ -1651,6 +1680,7 @@ describe.runIf(postgresAvailable)('recognitions', () => {
     // a penalty the office recorded is not the student's to delete
     expect(refusalOf(result.abandoned)?.reason).toBe('entry-not-abandonable')
     expect(result.card.abandon).toBe('hidden')
+    expect(result.card.edit).toBe('hidden')
     // and the appeal names the determination itself: there is no round that
     // made it, which is exactly why the old door could not be opened here
     expect(result.card.appeal).toBe('available')
@@ -1661,7 +1691,13 @@ describe.runIf(postgresAvailable)('recognitions', () => {
     // is a reconsideration of a settled decision, not a withdrawal of it
     // (§32.21, which voids the 「分数悬置」 reading in as many words). Moving
     // it here made appealing a penalty the way to make the penalty stop.
-    expect(result.status).toBe('approved')
+    expect(result.status).toBe('rejected')
+    // and once it lands there, the subject is offered neither of the doors
+    // the write has always refused them: rewriting the office's own finding,
+    // or re-filing it as their own claim
+    expect(result.afterAppeal.status).toBe('rejected')
+    expect(result.afterAppeal.edit).toBe('hidden')
+    expect(result.afterAppeal.submit).toBe('hidden')
   })
 
   it('lets the registrar withdraw what the registrar recorded, and nobody narrower or wider', async () => {

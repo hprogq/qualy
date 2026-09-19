@@ -630,10 +630,16 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
       // goes through. Callers answering a write already hold the fresh row
       // and skip the gates; the screens re-read through the gated paths.
       capabilities: {
+        // Editing is the subject's own act, on their own claim. A penalty
+        // the office recorded or a fact an import carried in is corrected by
+        // voiding it, never by rewriting it - the same rule `abandon` states
+        // below, which the write has always enforced and this line had not:
+        // the screen offered a press that came back `entry-not-editable`.
         edit: when(
-          entry.status === 'draft' ||
-            entry.status === 'rejected' ||
-            entry.status === 'needs_revision',
+          (entry.source === 'self' || entry.source === 'proxy') &&
+            (entry.status === 'draft' ||
+              entry.status === 'rejected' ||
+              entry.status === 'needs_revision'),
           gates?.edit,
         ),
         // a rejected filing may go back as it stands (§32.65): the word was
@@ -642,7 +648,11 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
         submit:
           active && entry.status === 'needs_revision'
             ? { state: 'blocked', reason: 'must-revise-first' }
-            : when(entry.status === 'draft' || entry.status === 'rejected', gates?.submit),
+            : when(
+                (entry.source === 'self' || entry.source === 'proxy') &&
+                  (entry.status === 'draft' || entry.status === 'rejected'),
+                gates?.submit,
+              ),
         // Taking work back to edit ends where review begins (§32.69): once
         // anybody has decided, escalated, asked for material or voted -
         // anywhere along a continuation lineage - the words said stand, and
