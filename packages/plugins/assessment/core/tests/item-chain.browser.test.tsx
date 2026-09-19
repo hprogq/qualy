@@ -597,6 +597,29 @@ describe("what may do a question's arithmetic", () => {
     expect(page.getByRole('textbox', { name: '每条通过计分' }).elements()).toHaveLength(0)
   })
 
+  it('stops naming a ceiling the chosen arithmetic never promised', async () => {
+    // the pen's own amount field is what a fixed score reads and nothing
+    // else does; a question a formula scores has no per-entry amount, and
+    // the band used to report one anyway - computed from that stale field
+    // and announced as a fixed score
+    open({
+      groups: [paper, { ...paper, id: SECTION_ID, parentGroupId: PAPER_ID, name: '文体' }],
+      items: [officerItem()],
+      question: ITEM_ID,
+      surfaces: BOTH_CALCULATORS,
+    })
+    const ceiling = page.getByTestId('item-ceiling')
+    await expect.element(page.getByRole('textbox', { name: '每条通过计分' })).toBeVisible()
+    await page.getByRole('textbox', { name: '每条通过计分' }).fill('2')
+    await expect.element(ceiling).toHaveAttribute('data-ceiling', '2')
+
+    await page.getByRole('combobox', { name: '分值来源' }).click()
+    await page.getByRole('option', { name: '已发布的公式' }).click()
+    await expect.element(page.getByTestId('formula-version-picker')).toBeVisible()
+    // no number, because there is none to give
+    await expect.element(ceiling).toHaveAttribute('data-ceiling', 'by-rule')
+  })
+
   it('shows no chooser when the assembly offers one arithmetic, and keeps its editor', async () => {
     // a deployment with the formula writer closed projects no option: the
     // chooser has nothing to choose between and stays out of the way, while

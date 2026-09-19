@@ -37,7 +37,7 @@ import type { AtomicSchema, NormalizedInputSchema } from '@qualy/value-schema'
 import { ScoringBindingEditor } from './ScoringBindingEditor.tsx'
 import { prefillField, prefillable } from './prefill.ts'
 import { assessmentApi } from '../api.ts'
-import type { MessageDescriptor } from '@qualy/i18n-contract'
+import type { MessageDescriptor, UiText } from '@qualy/i18n-contract'
 import { SUMMARY_FIELDS_MOST, summaryFieldIdsOf } from '../../entry/summary.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { amountOf, trimAmount, unitsOf, type ItemDto } from '../entry/model.ts'
@@ -2621,6 +2621,11 @@ export function ItemConfigEditor({
                 counted={counted}
                 folding={foldingOf(draft)}
                 each={draft.fixedValue}
+                method={{
+                  ref: chosenCalculator.ref,
+                  label:
+                    calculators.find((one) => one.ref === chosenCalculator.ref)?.label ?? null,
+                }}
                 placement={placement}
               />
             </div>
@@ -2953,6 +2958,7 @@ function ScoringSummary({
   counted,
   folding,
   each,
+  method,
   placement,
 }: {
   /** granted to everybody: one amount per person, never a count of claims */
@@ -2962,9 +2968,22 @@ function ScoringSummary({
   counted: number | null
   folding: Folding
   each: string
+  /**
+   * The arithmetic actually chosen.
+   *
+   * Everything below used to be worked out from the pen's own amount field
+   * and announced as a fixed score, whichever calculator the question had.
+   * A question scored by a lookup, a range or a formula therefore read back
+   * a ceiling computed from a number nothing uses and named a method it
+   * does not have. Only `fixed@1` puts an amount in that field.
+   */
+  method: { ref: string; label: UiText | null }
   placement: Placement
 }) {
-  const { format } = useI18n()
+  const { format, formatText } = useI18n()
+  const perEntryAmount = method.ref === 'fixed@1'
+  const methodName =
+    method.label === null ? format(m.itemsScoringMethodFixed) : formatText(method.label)
   const chain = placement.sections
     .map((section) =>
       section.cap === null
@@ -2982,9 +3001,13 @@ function ScoringSummary({
         <p
           {...stylex.props(styles.statValue)}
           data-testid="item-ceiling"
-          data-ceiling={ceiling ?? 'unlimited'}
+          data-ceiling={!perEntryAmount ? 'by-rule' : (ceiling ?? 'unlimited')}
         >
-          {ceiling === null ? format(m.structureUnlimited) : ceiling}
+          {!perEntryAmount
+            ? format(m.itemsCeilingByRule)
+            : ceiling === null
+              ? format(m.structureUnlimited)
+              : ceiling}
         </p>
       </div>
       <div aria-hidden {...stylex.props(styles.divider)} />
@@ -2995,19 +3018,21 @@ function ScoringSummary({
       <p {...stylex.props(styles.smallProse)}>
         {/* the sentence names the rule the number was worked out under:
             "2 × 5 entries" beside a ceiling of 2 reads as a mistake */}
-        {granted
-          ? format(m.itemsCeilingHowGranted, { value: trimAmount(each.trim()) })
-          : folding.rule === 'max'
-            ? format(m.itemsCeilingHowMax, { value: trimAmount(each.trim()) })
-            : folding.rule === 'top-n'
-              ? format(m.itemsCeilingHowTopN, {
-                  value: trimAmount(each.trim()),
-                  count: counted ?? folding.n,
-                })
-              : counted === null
-                ? format(m.itemsCeilingHowAny)
-                : format(m.itemsCeilingHow, { value: trimAmount(each.trim()), count: counted })}
-        {` ${format(m.itemsCeilingSource, { name: format(m.itemsScoringMethodFixed) })}`}
+        {!perEntryAmount
+          ? format(m.itemsCeilingHowRule, { name: methodName })
+          : granted
+            ? format(m.itemsCeilingHowGranted, { value: trimAmount(each.trim()) })
+            : folding.rule === 'max'
+              ? format(m.itemsCeilingHowMax, { value: trimAmount(each.trim()) })
+              : folding.rule === 'top-n'
+                ? format(m.itemsCeilingHowTopN, {
+                    value: trimAmount(each.trim()),
+                    count: counted ?? folding.n,
+                  })
+                : counted === null
+                  ? format(m.itemsCeilingHowAny)
+                  : format(m.itemsCeilingHow, { value: trimAmount(each.trim()), count: counted })}
+        {` ${format(m.itemsCeilingSource, { name: methodName })}`}
         {chain !== '' && ` ${format(m.itemsCeilingNote, { chain })}`}
       </p>
     </div>
@@ -3376,6 +3401,12 @@ function StageCoverage({ batchId, stage }: { batchId: string; stage: StageDraft 
  */
 function ParticipantPreview({ draft }: { draft: Draft }) {
   const { format } = useI18n()
+  // the pen's own amount field is what `fixed@1` reads and nothing else
+  // does: a question scored by a lookup or a formula has no per-entry
+  // amount to promise, and promising one here promised it to the person
+  // filing
+  const perEntryAmount =
+    draft.scoring.language !== 'v2' || draft.scoring.calculator.ref === 'fixed@1'
   return (
     <>
       <p {...stylex.props(styles.previewTitle)}>{format(m.itemsPreviewTitle)}</p>
@@ -3386,14 +3417,22 @@ function ParticipantPreview({ draft }: { draft: Draft }) {
         <p {...stylex.props(styles.smallProse)}>
           {draft.description.trim() === '' ? '' : `${draft.description.trim()} `}
           {draft.itemType === 'constant' ? (
-            format(m.itemsCeilingHowGranted, { value: trimAmount(draft.fixedValue.trim()) })
+            perEntryAmount ? (
+              format(m.itemsCeilingHowGranted, { value: trimAmount(draft.fixedValue.trim()) })
+            ) : (
+              ''
+            )
           ) : (
             <>
               {draft.maxEntries.trim() === ''
                 ? format(m.itemsPreviewNoMax)
                 : format(m.itemsPreviewMax, { count: Number(draft.maxEntries) })}
-              {format(m.listSeparator)}
-              {format(m.itemsPreviewValue, { value: trimAmount(draft.fixedValue.trim()) })}
+              {perEntryAmount && (
+                <>
+                  {format(m.listSeparator)}
+                  {format(m.itemsPreviewValue, { value: trimAmount(draft.fixedValue.trim()) })}
+                </>
+              )}
             </>
           )}
         </p>

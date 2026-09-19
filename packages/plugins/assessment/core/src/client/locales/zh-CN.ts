@@ -1149,6 +1149,8 @@ export default {
   'assessment/items/field-open-hint': '点击字段可修改设置',
   'assessment/items/kind-locked': '项目类型创建后不可更改。',
   'assessment/items/ceiling-source': '分值来源：{name}。',
+  'assessment/items/ceiling-by-rule': '由规则决定',
+  'assessment/items/ceiling-how-rule': '每条认定的分值由{name}算出。',
   'assessment/items/ceiling-how': '{value} 分 × {count} 条。',
   'assessment/items/ceiling-how-max': '{value} 分，只按分值最高的一条计。',
   'assessment/items/ceiling-how-top-n': '{value} 分 × 分值最高的 {count} 条。',

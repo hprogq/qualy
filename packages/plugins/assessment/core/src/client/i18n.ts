@@ -4392,6 +4392,14 @@ const i18n = definePluginMessages({
       id: 'assessment/items/ceiling-source',
       defaultMessage: 'Score source: {name}.',
     },
+    itemsCeilingByRule: {
+      id: 'assessment/items/ceiling-by-rule',
+      defaultMessage: 'Set by the rule',
+    },
+    itemsCeilingHowRule: {
+      id: 'assessment/items/ceiling-how-rule',
+      defaultMessage: 'The amount is worked out by {name} for each determination.',
+    },
     itemsCeilingHow: {
       id: 'assessment/items/ceiling-how',
       defaultMessage: '{value} × {count, plural, one {# entry} other {# entries}}.',
