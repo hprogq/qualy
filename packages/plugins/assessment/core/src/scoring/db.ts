@@ -99,6 +99,8 @@ export interface ScoredEntryRow {
   /** the determination this claim stands on, when it stands on one */
   recognitionId: string | null
   recognition: Record<string, unknown>
+  /** whether a round was ever opened on it, which is what submitting does */
+  wasSubmitted: boolean
   createdAt: number
 }
 
@@ -127,6 +129,21 @@ export const participantEntries = (tenantId: string, batchId: string, participan
           'e.currentRecognitionId as recognitionId',
           'rec.values as recognition',
         ])
+        // whether it was ever put to anybody. §32.30 gives a line to a claim
+        // that was formally submitted and is no longer counted, and nothing
+        // to a draft somebody abandoned - and submitting is what opens a
+        // round, so a round having existed is exactly that question.
+        .select((eb) =>
+          eb
+            .exists(
+              eb
+                .selectFrom('ReviewInstance as ri')
+                .select(eb.lit(1).as('one'))
+                .whereRef('ri.tenantId', '=', 'e.tenantId')
+                .whereRef('ri.entryId', '=', 'e.id'),
+            )
+            .as('wasSubmitted'),
+        )
         .select([epoch('e.created_at').as('createdMs')])
         .where('e.tenantId', '=', tenantId)
         .where('e.batchId', '=', batchId)
@@ -142,6 +159,7 @@ export const participantEntries = (tenantId: string, batchId: string, participan
           revisionId: row.revisionId,
           recognitionId: row.recognitionId ?? null,
           recognition: (row.recognition ?? {}) as Record<string, unknown>,
+          wasSubmitted: row.wasSubmitted === true,
           createdAt: msOf(row.createdMs),
         })),
       ),

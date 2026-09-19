@@ -109,7 +109,7 @@ const account = (fixture: {
           }
         : {
             ...base,
-            standing: status === 'rejected' ? ('refused' as const) : ('unscored' as const),
+            standing: status === 'rejected' ? ('excluded' as const) : ('unscored' as const),
           }
     }),
   })

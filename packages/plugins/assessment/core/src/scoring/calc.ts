@@ -97,8 +97,13 @@ export type ScoreInputEntry =
       readonly recognitionId: string
     })
   | (ScoreInputEntryBase & {
-      /** formally submitted and formally refused: in the account, at zero */
-      readonly standing: 'refused'
+      /**
+       * Formally submitted and then taken out of the account: refused by a
+       * reviewer, or withdrawn by the office afterwards. In the account at
+       * zero either way, because §32.30 requires a line to appeal from and
+       * an absence is nothing to anchor on.
+       */
+      readonly standing: 'excluded'
     })
   | (ScoreInputEntryBase & {
       /**
@@ -319,9 +324,9 @@ export const calcParticipant = (catalogs: ScoringCatalogs, input: ScoreInput): B
       for (const entry of entries) {
         if (entry.standing === 'counted') {
           approved.push({ entry, amount: entry.amount, recognitionId: entry.recognitionId })
-        } else if (entry.standing === 'refused') {
-          // it was formally submitted and formally refused: the refusal is
-          // part of the account, at zero, rather than an absence
+        } else if (entry.standing === 'excluded') {
+          // it was formally submitted and is no longer counted: that is part
+          // of the account, at zero, rather than an absence
           lines.push({
             lineId: `entry:${entry.id}`,
             kind: 'excluded-evidence',
@@ -334,7 +339,8 @@ export const calcParticipant = (catalogs: ScoringCatalogs, input: ScoreInput): B
             },
           })
         }
-        // draft, in_review, voided: no line - nothing has been decided
+        // never submitted, or still undecided: no line, because nothing
+        // was ever put to anybody
       }
       // The aggregator decides which approved lines count, and every line
       // says what it contributed: a rule like "only the highest office" must

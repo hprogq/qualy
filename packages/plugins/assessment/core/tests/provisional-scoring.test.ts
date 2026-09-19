@@ -271,6 +271,54 @@ describe.runIf(postgresAvailable)('the provisional account', () => {
     expect(errorOf<{ _tag: string }>(result.notInRound)?._tag).toBe('ACCESS_DENIED')
   })
 
+  // A claim the office withdrew after it was approved is still something
+  // the person put in, and §32.30 wants a line they can appeal from. It used
+  // to disappear from the account entirely, which leaves nothing to anchor
+  // on - while a draft nobody ever submitted rightly leaves no trace.
+  it('keeps a line for a withdrawn claim that was submitted, and none for a draft', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('sc-withdrawn')
+          const assessment = yield* Assessment
+          const g = yield* scoringBatch(f, {
+            groups: [{ name: '文体', cap: '10.00' }],
+            items: [
+              { title: '退役复学', value: '3.00', group: 0, entrySource: 'student' },
+              { title: '志愿服务', value: '2.00', group: 0, entrySource: 'student' },
+            ],
+          })
+          const s1 = f.principal(f.s1)
+          const approvedThenVoided = yield* approved(f, g.items[0]!, g.p1, f.s1)
+          const draft = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.items[1]!, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const counted = yield* assessment.getMyResult(f.t, g.batch.id, s1)
+          // its owner gives up a claim that was put to a reviewer and
+          // approved: theirs to give up, and still something they put in
+          yield* assessment.setEntryStatus(f.t, approvedThenVoided, 'voided', s1)
+          // and their way out of a draft nobody has seen
+          yield* assessment.setEntryStatus(f.t, draft.id, 'voided', s1)
+          const after = yield* assessment.getMyResult(f.t, g.batch.id, s1)
+          return { counted, after, approvedThenVoided, draft }
+        }),
+      ),
+    )
+    expect(result.counted.total).toBe('3.00')
+    // the withdrawn one is in the account at zero, with somewhere to appeal
+    expect(result.after.lines.map((line) => [line.lineId, line.kind, line.value])).toEqual([
+      [`entry:${result.approvedThenVoided}`, 'excluded-evidence', '0.00'],
+    ])
+    expect(result.after.total).toBe('0.00')
+    // and the draft, which was never put to anybody, leaves none
+    expect(result.after.lines.map((line) => line.lineId)).not.toContain(
+      `entry:${result.draft.id}`,
+    )
+  })
+
   it('prepares once per question in the arithmetic, and never outside it', async () => {
     // The lazy seam: a calculator is prepared when - and only when - some
     // amount is actually about to be computed under its plan. An inactive

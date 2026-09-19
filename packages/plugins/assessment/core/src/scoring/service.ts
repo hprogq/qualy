@@ -217,6 +217,8 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
         readonly revisionId: string | null
         readonly recognitionId: string | null
         readonly recognition: Record<string, unknown>
+        /** whether it was ever put to anybody, which is what gives it a line */
+        readonly wasSubmitted: boolean
         readonly createdAt: number
       }[]
     },
@@ -273,16 +275,21 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
           createdAt: entry.createdAt,
         }
         if (entry.status !== 'approved' || item === undefined || item.status !== 'active') {
-          // A refusal is in the account at zero; everything else - filed and
-          // undecided, walked away from, or approved under a question that
-          // is no longer scored - has no line and no amount. Said as one of
-          // the ledger's own three standings rather than by narrowing a
-          // lifecycle column, so "approved with no amount" is not a shape
-          // this loop can produce at all.
-          entries.push({
-            ...common,
-            standing: entry.status === 'rejected' ? 'refused' : 'unscored',
-          })
+          // A claim that was put to somebody and is no longer counted stays
+          // in the account at zero (§32.30): a refusal, and equally a claim
+          // the office withdrew afterwards - both need a line to appeal
+          // from, and an absence is nothing to anchor on. Everything else -
+          // never submitted, still undecided, or under a question that is
+          // no longer scored at all - has no line and no amount; a question
+          // that was withdrawn carries its own line instead of one per
+          // claim. Said as one of the ledger's own three standings rather
+          // than by narrowing a lifecycle column, so "approved with no
+          // amount" is not a shape this loop can produce at all.
+          const excluded =
+            item !== undefined &&
+            item.status === 'active' &&
+            (entry.status === 'rejected' || (entry.status === 'voided' && entry.wasSubmitted))
+          entries.push({ ...common, standing: excluded ? 'excluded' : 'unscored' })
           continue
         }
         // the table refuses an approved claim without a determination, so
