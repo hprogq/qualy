@@ -58,7 +58,7 @@ import {
   type ImportStanding,
 } from './db.ts'
 import { provenColumns } from './columns.ts'
-import { judgeRows, summarise } from './preview.ts'
+import { judgeRows, markDuplicateFacts, summarise } from './preview.ts'
 import { readSourceBytes, SourceUnreadable } from './read-source.ts'
 import {
   buildAdministrativeWorkbook,
@@ -765,10 +765,15 @@ export const makeAdministrativeImportMethods = (
       return { ...row, recognition: canonical, recognitionHash: hashCanonicalJson(canonical) }
     })
 
+    // here rather than in the row reader, because only now are two rows
+    // comparable: the payload has been through the question's own decoder
+    // and the determination through its canonicaliser
+    const marked = markDuplicateFacts(settled)
+
     // the arithmetic, proven for every distinct determination before any
     // of it could be written - never inside a transaction, never once
     // per row. What is proven is exactly what will be written.
-    const provable = settled
+    const provable = marked
       .filter((row) => !row.issues.some((one) => one.severity === 'error'))
       .map((row) => row.recognition)
     const proven = yield* proveSettlements(
@@ -782,7 +787,7 @@ export const makeAdministrativeImportMethods = (
       },
       provable,
     )
-    const judged = settled.map((row) => {
+    const judged = marked.map((row) => {
       const answer = proven.get(row.recognitionHash)
       if (answer === undefined || 'identity' in answer) return row
       return {

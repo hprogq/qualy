@@ -76,6 +76,53 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
     await db?.dispose()
   })
 
+  // The same fact twice is a warning somebody has to look at, and two rows
+  // are the same fact once the question's own decoder and the determination's
+  // canonicaliser have spoken. The reader keeps a decimal as the text
+  // somebody typed - on purpose - so fingerprinting the readings saw 3.5 and
+  // 3.50 as two facts, said nothing, and committed both.
+  it('sees one fact twice when two rows spell the same decimal differently', async () => {
+    const found = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('ai-spelling')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f)
+          yield* numbered(f)
+          const item = yield* recordItem(f, g.batch.id, {
+            formConfig: {
+              fields: [{ key: 'amount', type: 'decimal', label: '金额', maxScale: 2 }],
+            },
+          })
+          const revision = one<{ id: string }>(
+            yield* runSql(
+              sql`select current_revision_id as id from assessment_items where id = ${item.id}`,
+            ),
+          ).id
+          const attachmentId = yield* workbook(f, item.id, f.recorder, [
+            ['2023001', 'Zhang San', '校发〔2026〕12 号', 'national', '3.5'],
+            // the same amount, spelt the other way, on a different basis -
+            // and a basis is deliberately not part of what makes a fact
+            ['2023001', 'Zhang San', '校发〔2026〕13 号', 'national', '3.50'],
+          ])
+          return yield* assessment.previewAdministrativeImport(
+            f.t,
+            g.batch.id,
+            { attachmentId, itemId: item.id, expectedItemRevisionId: revision },
+            f.principal(f.recorder),
+          )
+        }),
+      ),
+    )
+
+    expect(found.rows[0]!.issues).toEqual([])
+    expect(found.rows[1]!.issues.map((one) => one.reason)).toEqual(['duplicate-in-file'])
+    // a warning, never a refusal: some questions are won more than once
+    expect(found.summary.errors).toBe(0)
+    expect(found.canCommit).toBe(true)
+  })
+
   it('writes every row as an ordinary approved fact, with import provenance on all of it', async () => {
     const found = ok(
       await run(

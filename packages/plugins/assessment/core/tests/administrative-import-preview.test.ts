@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   judgeRows,
+  markDuplicateFacts,
   readCell,
   summarise,
   WRITTEN_TEXT_WIDTHS,
@@ -303,29 +304,31 @@ describe('judging a whole workbook', () => {
   })
 
   it('warns about the same fact twice, and is not fooled by a different basis', () => {
-    const rows = judgeRows(
-      base({
-        columns: placed([column({ key: 'summary', type: 'text' })]),
-        parsed: parsed(placed([column({ key: 'summary', type: 'text' })]), [
-          {
-            rowNo: 2,
-            businessNo: '0001',
-            displayName: '张三',
-            cells: { summary: '入伍' },
-            basis: '甲',
-          },
-          {
-            rowNo: 3,
-            businessNo: '0001',
-            displayName: '张三',
-            cells: { summary: '入伍' },
-            // a different basis is not a different fact
-            basis: '乙',
-          },
-        ]),
-        reachable: reachable('0001', 'p1', '张三'),
-        participantUserIds: new Map([['p1', 'u1']]),
-      }),
+    const rows = markDuplicateFacts(
+      judgeRows(
+        base({
+          columns: placed([column({ key: 'summary', type: 'text' })]),
+          parsed: parsed(placed([column({ key: 'summary', type: 'text' })]), [
+            {
+              rowNo: 2,
+              businessNo: '0001',
+              displayName: '张三',
+              cells: { summary: '入伍' },
+              basis: '甲',
+            },
+            {
+              rowNo: 3,
+              businessNo: '0001',
+              displayName: '张三',
+              cells: { summary: '入伍' },
+              // a different basis is not a different fact
+              basis: '乙',
+            },
+          ]),
+          reachable: reachable('0001', 'p1', '张三'),
+          participantUserIds: new Map([['p1', 'u1']]),
+        }),
+      ),
     )
     expect(rows[0]!.issues).toEqual([])
     expect(rows[1]!.issues.map((one) => one.reason)).toEqual(['duplicate-in-file'])

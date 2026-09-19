@@ -172,7 +172,6 @@ export interface PreviewInput {
 export const judgeRows = (input: PreviewInput): readonly PreviewRow[] => {
   const out: PreviewRow[] = []
   const takenInFile = new Map<string, number>()
-  const seenFacts = new Map<string, number>()
 
   for (const row of input.parsed.rows) {
     const issues: PreviewIssue[] = []
@@ -236,21 +235,6 @@ export const judgeRows = (input: PreviewInput): readonly PreviewRow[] => {
       takenInFile.set(matched.id, takenHere + 1)
     }
 
-    // the same fact twice is worth saying out loud and is not a refusal:
-    // some questions are won more than once, and the basis is deliberately
-    // not part of what makes two facts the same
-    const fingerprint =
-      matched === undefined
-        ? null
-        : hashCanonicalJson({ participantId: matched.id, payload, recognition })
-    if (fingerprint !== null) {
-      const before = seenFacts.get(fingerprint)
-      if (before !== undefined) {
-        issues.push(issue('warning', null, 'duplicate-in-file'))
-      }
-      seenFacts.set(fingerprint, row.rowNo)
-    }
-
     out.push({
       rowNo: row.rowNo,
       businessNo: row.businessNo,
@@ -264,6 +248,39 @@ export const judgeRows = (input: PreviewInput): readonly PreviewRow[] => {
     })
   }
   return out
+}
+
+/**
+ * The same fact twice, said out loud and never refused: some questions are
+ * won more than once, and the basis is deliberately not part of what makes
+ * two facts the same.
+ *
+ * Its own pass because the values only become comparable after the question's
+ * own decoder and the determination's canonicaliser have run. The reader
+ * keeps a decimal as the text somebody typed, on purpose - the canonicaliser
+ * is the one thing allowed to decide what 3.0 and 3.00 have in common - so
+ * fingerprinting the readings missed every duplicate that was merely spelt
+ * differently, and both rows committed without anybody being asked.
+ *
+ * A row that will not be written cannot duplicate anything, so a row already
+ * carrying an error is passed over: what is wrong with it is the error.
+ */
+export const markDuplicateFacts = (rows: readonly PreviewRow[]): readonly PreviewRow[] => {
+  const seen = new Set<string>()
+  return rows.map((row) => {
+    if (row.matchedParticipant === null) return row
+    if (row.issues.some((one) => one.severity === 'error')) return row
+    const fingerprint = hashCanonicalJson({
+      participantId: row.matchedParticipant.id,
+      payload: row.payload,
+      recognition: row.recognition,
+    })
+    if (!seen.has(fingerprint)) {
+      seen.add(fingerprint)
+      return row
+    }
+    return { ...row, issues: [...row.issues, issue('warning', null, 'duplicate-in-file')] }
+  })
 }
 
 /** the tally a preview reports, counted from the rows themselves */
