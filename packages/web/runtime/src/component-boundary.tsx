@@ -23,13 +23,35 @@ interface BoundaryProps {
 
 interface BoundaryState {
   failed: boolean
+  /** which surface failed, so a different one is not held to its answer */
+  surface: string | null
 }
 
 export class PluginComponentBoundary extends Component<BoundaryProps, BoundaryState> {
-  override state: BoundaryState = { failed: false }
+  override state: BoundaryState = { failed: false, surface: null }
 
-  static getDerivedStateFromError(): BoundaryState {
+  static getDerivedStateFromError(): Pick<BoundaryState, 'failed'> {
     return { failed: true }
+  }
+
+  /**
+   * A failure belongs to the surface that had it.
+   *
+   * The boundary outlives a route change - React keeps the instance where
+   * the element type and position match - so a page that failed left this
+   * latched, and the next healthy page rendered the previous one's error
+   * screen with its own retry press. Compared by label rather than by
+   * identity, because the surface prop is rebuilt on every render.
+   */
+  static getDerivedStateFromProps(
+    props: BoundaryProps,
+    state: BoundaryState,
+  ): BoundaryState | null {
+    const here = surfaceLabel(props.surface)
+    if (state.failed && state.surface !== null && state.surface !== here) {
+      return { failed: false, surface: null }
+    }
+    return state.surface === here ? null : { ...state, surface: here }
   }
 
   override componentDidCatch(error: unknown) {
@@ -45,7 +67,9 @@ export class PluginComponentBoundary extends Component<BoundaryProps, BoundarySt
   }
 
   override render() {
-    if (this.state.failed) return this.props.fallback(() => this.setState({ failed: false }))
+    if (this.state.failed) {
+      return this.props.fallback(() => this.setState({ failed: false, surface: null }))
+    }
     return this.props.children
   }
 }

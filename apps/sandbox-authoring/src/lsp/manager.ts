@@ -359,6 +359,14 @@ export const makeLspManager = (): LspManager => {
       // the kill-the-server case wins that race). The session's own exit
       // handling is the real cleanup; the stream error is just noise.
       child.stdin?.on('error', () => {})
+      // and the child itself. `spawn` reports a failure to start as an
+      // 'error' event, not a throw, and a ChildProcess with no listener for
+      // it turns that into an uncaught exception - the same way a stream
+      // does, with the same consequence: the whole authoring process goes
+      // down because one session could not start. The exit handling below
+      // is what actually cleans up; a child that never started simply has
+      // nothing to wait for.
+      child.on('error', () => {})
       const outbound = yield* Queue.bounded<OutboundEvent, Cause.Done>(
         LSP_SESSION_LIMITS.outboundQueue,
       )

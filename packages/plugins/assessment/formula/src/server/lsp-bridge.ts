@@ -185,6 +185,11 @@ export const bridgeSocket = (
     // the ONE outbound channel: ordered events, one writer, no per-event fibers
     yield* session.events.pipe(
       Stream.runForEach((jsonRpc) => write(jsonRpc)),
+      // a session that ends cleanly - the language server shut down, the
+      // sandbox was replaced - is still a session that ended. Without this
+      // the socket stayed open with nothing behind it, and the editor went
+      // on saying it was connected to a service that had gone.
+      Effect.andThen(closeWith(1000, 'language session ended')),
       Effect.catch(() => closeWith(1011, 'language service unavailable')),
       Effect.forkScoped,
     )
