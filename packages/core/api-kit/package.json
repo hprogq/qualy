@@ -18,7 +18,8 @@
     "./shell-policy": "./src/shell-policy.ts",
     "./plugin": "./src/plugin.ts",
     "./headless": "./src/headless.ts",
-    "./route-fallback": "./src/route-fallback.ts"
+    "./route-fallback": "./src/route-fallback.ts",
+    "./schema-refusal": "./src/schema-refusal.ts"
   },
   "dependencies": {
     "@effect/platform-node": "catalog:",
