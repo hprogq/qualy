@@ -1,6 +1,7 @@
 import { Cause, Context, Effect, Option, type LogLevel } from 'effect'
 import { HttpServerError, HttpServerRequest } from 'effect/unstable/http'
 import { insideApi } from '@qualy/api-kit/route-fallback'
+import { RequestContext, type RequestContextShape } from '@qualy/api-kit/request'
 import type { LoggingSettings } from './logging.ts'
 
 // The access log, replacing the upstream one.
@@ -19,6 +20,22 @@ const strip = (url: string): string => {
   return at === -1 ? url : url.slice(0, at)
 }
 
+/**
+ * What the line names: the endpoint, not the identifiers in the address.
+ *
+ * The concrete path went into every line before, and one of this product's
+ * own doors carries its CREDENTIAL in a path segment - the upload ticket is
+ * the whole authority to write those bytes - so a log pipeline held live
+ * upload credentials for as long as they lived. Somebody who wants the
+ * concrete address follows the request id, which every line already carries
+ * and every handler's own logs repeat.
+ *
+ * A request no route matched has no endpoint bound, and its raw path is
+ * logged: there is no parameter in it to have leaked.
+ */
+const endpointOf = (context: RequestContextShape | undefined, path: string): string =>
+  context?.endpoint ?? path
+
 // the settings speak LogLevel, which admits None (say nothing) and All
 // (say everything); logWithLevel speaks Severity, which admits neither
 const successLog = (level: LogLevel.LogLevel, message: string): Effect.Effect<void> =>
@@ -33,6 +50,7 @@ export const accessLog =
     Effect.withFiber((fiber) => {
       const request = Context.getUnsafe(fiber.context, HttpServerRequest.HttpServerRequest)
       const path = strip(request.url)
+      const bound = Option.getOrUndefined(Context.getOption(fiber.context, RequestContext))
       if (
         settings.mode === 'off' ||
         (settings.mode === 'api' && !insideApi(path)) ||
@@ -59,7 +77,7 @@ export const accessLog =
       return Effect.flatMap(Effect.exit(httpApp), (exit) => {
         const elapsed = Math.round(performance.now() - started)
         const line = (status: number | string, suffix = '') =>
-          `${request.method} ${path} ${status} ${elapsed}ms${suffix}`
+          `${request.method} ${endpointOf(bound, path)} ${status} ${elapsed}ms${suffix}`
         const annotated = <X>(effect: Effect.Effect<X>) =>
           Effect.annotateLogs(effect, 'source', 'http')
         if (exit._tag === 'Success') {

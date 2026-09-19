@@ -280,6 +280,8 @@ describe.runIf(postgresAvailable)('the audit writer', () => {
                 sessionId: '44444444-4444-4444-8444-444444444444',
                 publicHost: undefined,
                 bindSession: () => Effect.void,
+        endpoint: undefined,
+        bindEndpoint: () => Effect.void,
               }),
             )
           return yield* eventRows(tenant).pipe(Effect.orDie)

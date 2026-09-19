@@ -118,6 +118,8 @@ describe('logging settings', () => {
                 sessionId: undefined,
                 publicHost: undefined,
                 bindSession: () => Effect.void,
+        endpoint: undefined,
+        bindEndpoint: () => Effect.void,
               }),
             )
           }),

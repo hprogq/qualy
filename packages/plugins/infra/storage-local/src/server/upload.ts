@@ -2,6 +2,7 @@ import { Effect, Stream } from 'effect'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { HttpServerRequest, HttpServerResponse } from 'effect/unstable/http'
 import { Api } from '@qualy/api-kit/plugin'
+import { nameEndpoint } from '@qualy/api-kit/request'
 import { Storage } from '@qualy/plugin-storage/server'
 import { storageLocalApiGroup } from '../api.ts'
 
@@ -20,6 +21,11 @@ export const storageLocalApiHandlers = HttpApiBuilder.group(local, 'storageLocal
   handlers.handleRaw(
     'uploadObject',
     Effect.fn('storageLocal.uploadObject.handler')(function* ({ params }) {
+      // The ticket in the address is the credential (see ../api.ts), so the
+      // access log must not write this request's address down. Said here
+      // because this is the door that knows; everything else is logged at
+      // its own address, which is what an operator wants to read.
+      yield* nameEndpoint('PUT /storage/local/uploads/:reservationId')
       const storage = yield* Storage
       const request = yield* HttpServerRequest.HttpServerRequest
       const body = yield* Stream.toAsyncIterableEffect(request.stream)

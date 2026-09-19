@@ -46,6 +46,26 @@ export interface RequestContextShape {
    * otherwise. What an Origin header has to match.
    */
   readonly publicHost: string | undefined
+  /**
+   * What the access log should call this request, when the address itself
+   * is not safe to write down.
+   *
+   * A slot like the session, and declared by the door that knows: the local
+   * upload ticket IS the credential to write those bytes, and it travels as
+   * a path segment, so a line naming the concrete address hands a live
+   * credential to every pipeline that reads the logs. Whoever owns such a
+   * door binds the name their requests should be logged under; everything
+   * else is logged at its own address, which is what an operator wants.
+   *
+   * Not taken from the router: `RouteContext` exists only inside a matched
+   * route, and the enclosing request restores the fiber context on the way
+   * out, so nothing around the router can read it. The span carries the
+   * same value under `http.route`, but only when a real tracer is installed
+   * AND the span is sampled (repos/effect/packages/effect/src/unstable/
+   * http/HttpRouter.ts:223-227), which is no basis for a redaction.
+   */
+  readonly endpoint: string | undefined
+  readonly bindEndpoint: (name: string) => Effect.Effect<void>
 }
 
 export class RequestContext extends Context.Service<RequestContext, RequestContextShape>()(
@@ -63,6 +83,18 @@ export class RequestContext extends Context.Service<RequestContext, RequestConte
  */
 export const currentRequestContext: Effect.Effect<Option.Option<RequestContextShape>> =
   Effect.serviceOption(RequestContext)
+
+/**
+ * Says what the access log should call this request instead of its address.
+ *
+ * For a door whose address carries a credential. Silently does nothing
+ * outside a request, like its sibling below: the same handler runs from the
+ * CLI and from tests, where there is no line to name.
+ */
+export const nameEndpoint = Effect.fn('RequestContext.nameEndpoint')(function* (name: string) {
+  const context = yield* Effect.serviceOption(RequestContext)
+  if (Option.isSome(context)) yield* context.value.bindEndpoint(name)
+})
 
 /** binds the resolved session onto the current request, if there is one */
 export const bindSessionId = Effect.fn('RequestContext.bindSessionId')(function* (
@@ -345,6 +377,7 @@ export const requestContext = (options?: {
       const request = Context.getUnsafe(fiber.context, HttpServerRequest.HttpServerRequest)
       const span = Context.getOption(fiber.context, Tracer.ParentSpan)
       let sessionId: string | undefined
+      let endpoint: string | undefined
       return Effect.provideService(httpApp, RequestContext, {
         requestId: randomUUID(),
         clientIp: clientAddressOf(
@@ -367,6 +400,13 @@ export const requestContext = (options?: {
         bindSession: (id) =>
           Effect.sync(() => {
             sessionId = id
+          }),
+        get endpoint() {
+          return endpoint
+        },
+        bindEndpoint: (route) =>
+          Effect.sync(() => {
+            endpoint = route
           }),
       })
     })
