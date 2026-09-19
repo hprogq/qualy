@@ -429,42 +429,6 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
       })
     }
 
-    const found = yield* withDb(
-      resolveRecordTargets(
-        tenantId,
-        batchId,
-        input.target,
-        { userId: as.userId, permissionCode: 'assessment.entry.record' },
-        MAX_RECORD_TARGETS + 1,
-      ),
-    )
-    // The ceiling is about the selection, so it is tested on what the
-    // selection found. Tested after the exclusions instead, a larger
-    // population simply came back cut off at the query's own limit and the
-    // act settled on whoever happened to sort first - which is a silent
-    // truncation dressed as a confirmed set.
-    if (found.length > MAX_RECORD_TARGETS) {
-      return yield* new AdministrativeRecordRefused({
-        blocked: [{ participantId: '', reason: 'too-many-targets' }],
-      })
-    }
-    const dropped = new Set(input.excludedParticipantIds ?? [])
-    const targets = found.filter((one) => !dropped.has(one.id))
-    const fingerprint = fingerprintOf(targets.map((one) => one.id))
-    if (fingerprint !== input.expectedTargetFingerprint) {
-      return yield* new AdministrativeRecordTargetsChanged({
-        expected: input.expectedTargetFingerprint,
-        actual: fingerprint,
-        actualCount: targets.length,
-      })
-    }
-    // one finding, one file, one entry: sharing an attachment across facts
-    // is what §5.14 refuses, and this is the one door that could have done it
-    if (shape.files.length > 0 && targets.length > 1) {
-      return yield* new AdministrativeRecordFilesNotShareable({ targetCount: targets.length })
-    }
-
-    const gate = yield* deps.recordGate(as, batchId, shape.item.id)
     const written = yield* withDb(
       transaction(
         Effect.gen(function* () {
@@ -487,6 +451,47 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
             })
             if (already !== null) return { ...already, replayed: true as const }
           }
+
+          // Who may be recorded on, and whether the phase still admits the
+          // act: both on the locked connection, the way the import path
+          // does it. Resolved before the lock they were a judgement about a
+          // moment that had already passed - an authority withdrawn in
+          // between, or a phase closed, still wrote the act.
+          const found = yield* withDb(
+            resolveRecordTargets(
+              tenantId,
+              batchId,
+              input.target,
+              { userId: as.userId, permissionCode: 'assessment.entry.record' },
+              MAX_RECORD_TARGETS + 1,
+            ),
+          )
+          // The ceiling is about the selection, so it is tested on what the
+          // selection found. Tested after the exclusions instead, a larger
+          // population simply came back cut off at the query's own limit and the
+          // act settled on whoever happened to sort first - which is a silent
+          // truncation dressed as a confirmed set.
+          if (found.length > MAX_RECORD_TARGETS) {
+            return yield* new AdministrativeRecordRefused({
+              blocked: [{ participantId: '', reason: 'too-many-targets' }],
+            })
+          }
+          const dropped = new Set(input.excludedParticipantIds ?? [])
+          const targets = found.filter((one) => !dropped.has(one.id))
+          const fingerprint = fingerprintOf(targets.map((one) => one.id))
+          if (fingerprint !== input.expectedTargetFingerprint) {
+            return yield* new AdministrativeRecordTargetsChanged({
+              expected: input.expectedTargetFingerprint,
+              actual: fingerprint,
+              actualCount: targets.length,
+            })
+          }
+          // one finding, one file, one entry: sharing an attachment across facts
+          // is what §5.14 refuses, and this is the one door that could have done it
+          if (shape.files.length > 0 && targets.length > 1) {
+            return yield* new AdministrativeRecordFilesNotShareable({ targetCount: targets.length })
+          }
+          const gate = yield* deps.recordGate(as, batchId, shape.item.id)
 
           const held = yield* effectiveEntryCounts({
             tenantId,
