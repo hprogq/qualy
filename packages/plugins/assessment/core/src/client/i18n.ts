@@ -2809,6 +2809,10 @@ const i18n = definePluginMessages({
       id: 'assessment/entry/draft-saved-toast',
       defaultMessage: 'Draft saved.',
     },
+    entrySubmitFailedDraftKept: {
+      id: 'assessment/entry/submit-failed-draft-kept',
+      defaultMessage: 'Your draft was saved; only handing it on did not go through.',
+    },
     entryWithdrawnToast: {
       id: 'assessment/entry/withdrawn-toast',
       defaultMessage: 'Submission withdrawn; it is a draft again.',

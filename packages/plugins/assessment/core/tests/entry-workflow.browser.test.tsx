@@ -449,6 +449,48 @@ describe('filing a claim', () => {
     await vi.waitFor(() => expect(submitted).toHaveBeenCalledOnce())
   })
 
+  it('writes the claim once when the handing on is what failed', async () => {
+    const created = vi.fn(() => Effect.succeed({ entry: entry() }))
+    const revised = vi.fn(() => Effect.succeed({ entry: entry() }))
+    const submitted = vi.fn(() =>
+      Effect.fail(
+        Object.assign(new Error('ASSESSMENT_ENTRY_ACTION_REFUSED'), {
+          _tag: 'ASSESSMENT_ENTRY_ACTION_REFUSED',
+          action: 'submit',
+          reason: 'phase-closed',
+        }),
+      ),
+    )
+    screen(
+      {
+        listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
+        createEntry: created as never,
+        reviseEntry: revised as never,
+        setEntryStatus: submitted as never,
+      },
+      `/assessment/batches/${BATCH_ID}/my-entries`,
+      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+    )
+
+    await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
+    await clickVisible('file-claim')
+    await page.getByLabelText('事项说明', { exact: false }).fill('2024 年入伍，2026 年退役复学')
+    const press = async () => {
+      await page.getByRole('button', { name: '保存并提交审核', exact: false }).click()
+      await page.getByTestId('confirm-accept').click()
+    }
+    await press()
+    await vi.waitFor(() => expect(created).toHaveBeenCalledOnce())
+    await vi.waitFor(() => expect(submitted).toHaveBeenCalledOnce())
+
+    // pressing again writes to the claim that already exists: a second
+    // create would be a second claim, or a refusal for using up the places
+    // that the first one is quietly holding
+    await press()
+    await vi.waitFor(() => expect(revised).toHaveBeenCalledOnce())
+    expect(created).toHaveBeenCalledOnce()
+  })
+
   it('turns an oversized file away at the picker instead of at the save', async () => {
     const prepared = vi.fn(() => Effect.succeed({}))
     // the same question, with a file field the administrator capped

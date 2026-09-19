@@ -357,6 +357,13 @@ export function EntryDialog({
    * exists before anybody is asked to look at it. Doing them in one press is
    * this screen's job, not the reader's.
    */
+  // What this dialog has already written, when it wrote it and the handing
+  // on then failed. Saving and submitting is two calls: the first one
+  // succeeding and the second one refusing left a draft nobody could see
+  // from here, and the next press created a SECOND one - or was refused for
+  // using up the places, which is the first one talking.
+  const [created, setCreated] = useState<string | null>(null)
+
   const save = useMutation({
     mutationFn: async (andSubmit: boolean) => {
       // every call names the question this screen was drawn from, submission
@@ -368,15 +375,17 @@ export function EntryDialog({
         ...(seen === undefined ? {} : { expectedItemRevisionId: seen }),
         ...(note.trim() === '' ? {} : { note: note.trim() }),
       }
+      const writing = entry?.id ?? created
       const saved =
-        entry === null
+        writing === null || writing === undefined
           ? await run(
               api.assessment.createEntry({ payload: { itemId: asked.id, participantId, ...body } }),
             )
-          : await run(api.assessment.reviseEntry({ params: { entryId: entry.id }, payload: body }))
+          : await run(api.assessment.reviseEntry({ params: { entryId: writing }, payload: body }))
+      const entryId = (saved as { entry?: { id?: string } }).entry?.id ?? writing ?? null
+      if (entryId !== null) setCreated(entryId)
       if (!andSubmit) return saved
-      const entryId = (saved as { entry?: { id?: string } }).entry?.id ?? entry?.id
-      if (entryId === undefined) return saved
+      if (entryId === null) return saved
       return run(
         api.assessment.setEntryStatus({
           params: { entryId },
@@ -408,7 +417,12 @@ export function EntryDialog({
       const raised = error as { issues?: readonly { field: string; reason: string }[] }
       if (Array.isArray(raised.issues)) setIssues(raised.issues)
       const refusal = entryRefusalMessage(error)
-      setProblem(refusal === null ? formatError(error) : format(refusal))
+      const said = refusal === null ? formatError(error) : format(refusal)
+      // the write went through and the handing on did not: say so, or the
+      // screen reads as though nothing was kept
+      setProblem(
+        entry === null && created !== null ? `${said} ${format(m.entrySubmitFailedDraftKept)}` : said,
+      )
     },
   })
 
