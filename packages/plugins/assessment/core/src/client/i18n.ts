@@ -1823,6 +1823,18 @@ const i18n = definePluginMessages({
       id: 'assessment/record/import/reason/data-sheet-missing',
       defaultMessage: 'The 行政认定 sheet is missing',
     },
+    importReasonColumnMissing: {
+      id: 'assessment/record/import/reason/column-missing',
+      defaultMessage: 'A column this question asks for is not in the file',
+    },
+    importReasonColumnUnknown: {
+      id: 'assessment/record/import/reason/column-unknown',
+      defaultMessage: 'The file has a column this question does not ask for',
+    },
+    importReasonColumnHeader: {
+      id: 'assessment/record/import/reason/column-header-mismatch',
+      defaultMessage: 'A column heading is not the one the template was written with',
+    },
     importReasonMetadataMissing: {
       id: 'assessment/record/import/reason/metadata-missing',
       defaultMessage: 'Not the template downloaded from this page',

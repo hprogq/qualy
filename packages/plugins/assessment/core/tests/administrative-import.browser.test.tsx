@@ -1,5 +1,6 @@
 import AdministrativeRecordsPage from '../src/client/record/AdministrativeRecordsPage.tsx'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { reasonText } from '../src/client/record/import/issues.ts'
 import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
 import { registerUploadDriver } from '@qualy/plugin-storage/client'
@@ -277,6 +278,20 @@ const chooseItem = async () => {
   // picking selects; the step's own forward key is what enters the form
   await userEvent.click(page.getByTestId('record-step-next').element())
 }
+
+// Every refusal the column proof can produce has to reach the reader as a
+// sentence: this screen falls back to printing the code itself, and the
+// three column refusals had no entry at all.
+describe('the words an import problem gets', () => {
+  it('has one for every column refusal the proof can produce', () => {
+    // the formatter is a parameter, so a stub answering with the message id
+    // is enough to tell a known code from the fallback
+    const said = ((descriptor: { id: string }) => descriptor.id) as never
+    for (const reason of ['column-missing', 'column-unknown', 'column-header-mismatch']) {
+      expect(reasonText(said, { reason })).not.toBe('assessment/record/import/reason/other')
+    }
+  })
+})
 
 describe('importing a workbook of administrative records', () => {
   let dispose: () => void = () => {}
