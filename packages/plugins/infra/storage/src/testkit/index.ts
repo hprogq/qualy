@@ -20,6 +20,15 @@ export interface MemoryBackend extends StorageBackend {
   readonly keys: () => readonly string[]
   /** makes the next call of an operation fail, to test what callers do then */
   readonly failNext: (operation: 'stat' | 'delete') => void
+  /**
+   * The type the service asked this object be served as, last time it was
+   * opened.
+   *
+   * A backend that signs its own url puts this straight on the response,
+   * where `nosniff` holds a browser to it - so what the service hands down
+   * is the whole of the answer, and a test has to be able to read it.
+   */
+  readonly servedAs: () => string | undefined
 }
 
 /**
@@ -30,6 +39,7 @@ export interface MemoryBackend extends StorageBackend {
  */
 export const memoryBackend = (code = 'memory'): MemoryBackend => {
   const objects = new Map<string, Uint8Array>()
+  let lastServedAs: string | undefined
   const failures = new Set<string>()
   const fail = (operation: string) => {
     if (!failures.has(operation)) return false
@@ -43,6 +53,7 @@ export const memoryBackend = (code = 'memory'): MemoryBackend => {
     },
     has: (key) => objects.has(key),
     keys: () => [...objects.keys()],
+    servedAs: () => lastServedAs,
     failNext: (operation) => {
       failures.add(operation)
     },
@@ -66,8 +77,9 @@ export const memoryBackend = (code = 'memory'): MemoryBackend => {
           integrityValue: createHash('sha256').update(bytes).digest('hex'),
         })
       }),
-    open: (key) =>
+    open: (key, options) =>
       Effect.suspend(() => {
+        lastServedAs = options?.mime
         const bytes = objects.get(key) ?? new Uint8Array()
         return Effect.succeed({
           kind: 'stream' as const,

@@ -10,6 +10,7 @@ import {
 } from '../errors.ts'
 import type { UploadTicket } from '../upload.ts'
 import { objectKeyOf, type BackendOpen } from './backend.ts'
+import { servedTypeOf } from './served-type.ts'
 import { measured } from './metrics.ts'
 import { StorageConfig } from './config.ts'
 import {
@@ -421,7 +422,10 @@ const make = () =>
         const backend = yield* backends.resolve(row.backend)
         const target = yield* backend.open(row.storageKey, {
           filename: row.filename,
-          mime: row.declaredMime,
+          // never the uploader's word for it: a backend that signs its own
+          // url puts this straight on the response, where it is the one
+          // thing `nosniff` holds the browser to
+          mime: servedTypeOf(row.declaredMime),
         })
         return { meta, target }
       }).pipe(

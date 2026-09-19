@@ -196,6 +196,43 @@ describe.skipIf(!postgresAvailable)('storage', () => {
     expect(tagOf(exit)).toBe('STORAGE_RESERVATION_NOT_FOUND')
   })
 
+  it('never serves an object as the type its uploader claimed', async () => {
+    const { tenantId, ownerUserId } = owner()
+    const backend = memoryBackend()
+    const served = ok(
+      await run(
+        context.url,
+        backend,
+        Effect.gen(function* () {
+          const storage = yield* Storage
+          const ticket = yield* storage.prepareUpload({
+            tenantId,
+            ownerUserId,
+            filename: 'proof.html',
+            // whatever an uploader says it is
+            declaredMime: 'text/html',
+            size: 11n,
+          })
+          backend.put(`attachments/${tenantId}/${ticket.attachmentId}`, Buffer.from('<h1>hi</h1>'))
+          yield* storage.completeUpload({ tenantId, ownerUserId, reservationId: ticket.reservationId })
+          const opened = yield* storage.open(
+            { tenantId, attachmentId: ticket.attachmentId },
+            () => Effect.void,
+          )
+          ;(opened.target as { body?: { return?: () => void } }).body?.return?.()
+          return { asked: backend.servedAs(), declared: opened.meta.declaredMime }
+        }),
+      ),
+    )
+
+    // A backend that signs its own url puts this straight on the response,
+    // and `nosniff` holds the browser to exactly what it says - so repeating
+    // the uploader's word for it would let a stored file be a document on an
+    // origin somebody trusts.
+    expect(served.declared).toBe('text/html')
+    expect(served.asked).toBe('application/octet-stream')
+  })
+
   it('does not let one tenant read another tenant’s attachment', async () => {
     const { tenantId, ownerUserId } = owner()
     const backend = memoryBackend()

@@ -32,6 +32,7 @@ export {
 } from './service.ts'
 export { CLEANUP_LEASE_MS, StorageCleanup, SWEEP_INTERVAL, type SweepReport } from './cleanup.ts'
 export { lockKey } from './db.ts'
+export { BYTES, servedTypeOf } from './served-type.ts'
 
 /**
  * Everything this plugin runs, in one layer.
