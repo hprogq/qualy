@@ -552,6 +552,47 @@ describe('what a save may not quietly rewrite', () => {
     expect(JSON.stringify(sent)).toBe(JSON.stringify(item.currentRevision.scoringConfig))
   })
 
+  it('hands a sub-megabyte file ceiling back exactly as it arrived', async () => {
+    // The editor holds this one in megabytes and used to ROUND it on the way
+    // in, so half a megabyte read back as one and the next save doubled it -
+    // and anything under half read back as zero.
+    const saved: { config?: unknown }[] = []
+    const withFile = officerItem()
+    const item = {
+      ...withFile,
+      currentRevision: {
+        ...withFile.currentRevision!,
+        formConfig: {
+          files: {},
+          fields: [
+            {
+              id: 'proof',
+              key: 'proof',
+              label: '证明材料',
+              type: 'attachment',
+              maxCount: 1,
+              maxFileBytes: 512 * 1024,
+            },
+          ],
+        },
+      },
+    }
+    open({
+      groups: [paper, { ...paper, id: SECTION_ID, parentGroupId: PAPER_ID, name: '文体' }],
+      items: [item as never],
+      saved,
+      question: ITEM_ID,
+    })
+    await expect.element(page.getByRole('textbox', { name: '标题' })).toBeVisible()
+    await page.getByRole('textbox', { name: '标题' }).fill('学生干部任职(改名)')
+    await page.getByRole('button', { name: '保存', exact: false }).click()
+
+    await expect.poll(() => saved.length).toBe(1)
+    const fields = (saved[0]?.config as { formConfig?: { fields?: { maxFileBytes?: number }[] } })
+      ?.formConfig?.fields
+    expect(fields?.[0]?.maxFileBytes).toBe(512 * 1024)
+  })
+
   it('still rebuilds the legacy language from the fields that own it', async () => {
     const saved: { config?: unknown }[] = []
     open({

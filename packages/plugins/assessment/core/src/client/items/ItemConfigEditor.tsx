@@ -1362,10 +1362,15 @@ const draftOf = (
                 ...base,
                 type,
                 maxCount: field['maxCount'] === undefined ? '1' : String(field['maxCount']),
+                // exactly, not rounded: a ceiling of half a megabyte read
+                // back as one and the next save of the question DOUBLED it,
+                // and a smaller one read back as zero. A megabyte is a power
+                // of two, so the division and the multiplication that undoes
+                // it are both exact.
                 maxSizeMb:
                   field['maxFileBytes'] === undefined
                     ? ''
-                    : String(Math.round(Number(field['maxFileBytes']) / (1024 * 1024))),
+                    : String(Number(field['maxFileBytes']) / (1024 * 1024)),
                 accept: Array.isArray(field['accept'])
                   ? (field['accept'] as string[]).join(', ')
                   : '',
