@@ -80,7 +80,7 @@ export const operationOf = (tenantId: string, operationId: string) =>
           'actorId',
           'recordedCount',
         ])
-        .select([sql<string>`created_at::text`.as('createdAt')])
+        .select([sql<string>`created_at::text`.as('createdAtText')])
         .where('tenantId', '=', tenantId)
         .where('id', '=', operationId)
         .executeTakeFirst(),
@@ -101,7 +101,7 @@ export const operationOf = (tenantId: string, operationId: string) =>
                   ? null
                   : String((row as Record<string, unknown>)['actorId']),
               recordedCount: Number((row as Record<string, unknown>)['recordedCount'] ?? 0),
-              createdAt: String((row as Record<string, unknown>)['createdAt']),
+              createdAt: String((row as Record<string, unknown>)['createdAtText']),
             },
       ),
     )
@@ -204,7 +204,16 @@ export const standingOfOperations = (tenantId: string, operationIds: readonly st
           ),
         )
 
-/** the acts of one round, newest first, keyset-paged */
+/**
+ * The acts of one round, newest first, keyset-paged.
+ *
+ * The boundary instant is selected as text under a name of its own. Aliasing
+ * it `createdAt` would collide with the entity's own datetime property, and
+ * the orm's kysely plugin rewrites a column of that name back into a Date -
+ * so the cursor would carry `Fri Sep 19 2026 ...`, which PostgreSQL refuses
+ * as a timestamptz on the way back in. Every other keyset read here spells
+ * the alias differently for the same reason.
+ */
 export const operationsOfBatchPage = (input: {
   tenantId: string
   batchId: string
@@ -229,7 +238,7 @@ export const operationsOfBatchPage = (input: {
         'i.title as itemTitle',
         'u.displayName as actorName',
       ])
-      .select([sql<string>`o.created_at::text`.as('createdAt')])
+      .select([sql<string>`o.created_at::text`.as('createdAtText')])
       .where('o.tenantId', '=', input.tenantId)
       .where('o.batchId', '=', input.batchId)
     if (input.after !== undefined) {
@@ -253,7 +262,7 @@ export const eventsOfOperation = (tenantId: string, operationId: string) =>
         join.onRef('u.tenantId', '=', 'v.tenantId').onRef('u.id', '=', 'v.actorId'),
       )
       .select(['v.id', 'v.kind', 'v.reason', 'v.affectedCount', 'u.displayName as actorName'])
-      .select([sql<string>`v.created_at::text`.as('createdAt')])
+      .select([sql<string>`v.created_at::text`.as('createdAtText')])
       .where('v.tenantId', '=', tenantId)
       .where('v.operationId', '=', operationId)
       .orderBy(sql`v.created_at desc`)

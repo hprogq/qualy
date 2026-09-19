@@ -659,7 +659,7 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
       recordedCount: Number(row['recordedCount'] ?? 0),
       voidedCount: standing.get(String(row['id']))?.voided ?? 0,
       actorName: row['actorName'] == null ? null : String(row['actorName']),
-      createdAt: String(row['createdAt']),
+      createdAt: String(row['createdAtText']),
     }))
   })
 
@@ -714,7 +714,7 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
         reason: row['reason'] == null ? null : String(row['reason']),
         affectedCount: Number(row['affectedCount'] ?? 0),
         actorName: row['actorName'] == null ? null : String(row['actorName']),
-        createdAt: String(row['createdAt']),
+        createdAt: String(row['createdAtText']),
       })),
     }
   })

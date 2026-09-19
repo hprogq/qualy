@@ -167,6 +167,67 @@ describe.runIf(postgresAvailable).concurrent('recording one finding on a group',
     expect(found.listed).not.toContain(found.outOfReach)
   })
 
+  it('pages its acts on a cursor postgres can read back', async () => {
+    const found = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const { f, g, item, revision } = yield* ready('ar-paging')
+          const assessment = yield* Assessment
+          const settle = (participantId: string, basis: string) =>
+            Effect.gen(function* () {
+              const input = {
+                itemId: item.id,
+                expectedItemRevisionId: revision,
+                target: { kind: 'people' as const, participantIds: [participantId] },
+                payload: {},
+                basis,
+              }
+              const seen = yield* assessment.previewAdministrativeRecord(
+                f.t,
+                g.batch.id,
+                input,
+                f.principal(f.recorder),
+              )
+              return yield* assessment.recordAdministrativeBatch(
+                f.t,
+                g.batch.id,
+                {
+                  ...input,
+                  excludedParticipantIds: [],
+                  expectedTargetFingerprint: seen.targetFingerprint,
+                },
+                f.principal(f.recorder),
+              )
+            })
+          yield* settle(g.p1, '校发〔2026〕1 号')
+          yield* settle(g.p2, '校发〔2026〕2 号')
+
+          const first = yield* assessment.listAdministrativeRecords(
+            f.t,
+            g.batch.id,
+            { limit: 1 },
+            f.principal(f.recorder),
+          )
+          // the cursor is made of what the page handed back, so whatever
+          // shape that is has to survive the trip to postgres and back
+          const boundary = first[0]!
+          const second = yield* assessment.listAdministrativeRecords(
+            f.t,
+            g.batch.id,
+            { after: [boundary.createdAt, boundary.id] as const, limit: 10 },
+            f.principal(f.recorder),
+          )
+          return { first: first.map((row) => row.id), second: second.map((row) => row.id) }
+        }),
+      ),
+    )
+    expect(found.first).toHaveLength(1)
+    // the second act, and never the one the cursor was taken from
+    expect(found.second).toHaveLength(1)
+    expect(found.second[0]).not.toBe(found.first[0])
+  })
+
   it('writes one fact per person, as ordinary records, under one act', async () => {
     const found = ok(
       await run(
