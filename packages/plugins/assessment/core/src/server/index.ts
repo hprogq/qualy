@@ -2359,6 +2359,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
       Effect.map(batchAuthority(tenantId, batchId, userId), (authority) =>
         authority.has('assessment.entry.record'),
       ),
+    storage,
     itemTypes,
     parseRange,
   })

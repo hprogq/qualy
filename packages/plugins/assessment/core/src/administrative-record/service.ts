@@ -32,6 +32,7 @@ import {
   recordAdministrativeEntryTx,
   voidAdministrativeEntryTx,
 } from '../entry/administrative-write.ts'
+import { bindCitedAttachments, type CitedAttachmentStorage } from '../entry/bind-attachments.ts'
 import { announce } from '../live/events.ts'
 import { effectiveEntryCounts } from '../administrative-import/db.ts'
 import { lockBatch, oneBatch, resolveRecordTargets } from '../server/db.ts'
@@ -119,6 +120,13 @@ export interface AdministrativeRecordDeps {
   ) => Effect.Effect<boolean>
   readonly itemTypes: ReadonlyMap<string, ItemTypeDriver>
   readonly parseRange: (text: string) => { start: string; end: string }
+  /**
+   * Storage's two doors, so a finding's file crosses into storage in the same
+   * transaction that writes the finding. A door that writes a revision and
+   * skips this leaves the file staged, and the staged sweep deletes the bytes
+   * out from under the row that cites them.
+   */
+  readonly storage: CitedAttachmentStorage
 }
 
 /**
@@ -447,6 +455,16 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
           // confirmed as a whole, so it happens as a whole
           if (refused.length > 0)
             return yield* new AdministrativeRecordRefused({ blocked: refused })
+
+          // before the first revision cites them: recordAdministrativeEntryTx
+          // writes the citation and leaves binding to its caller. Files are
+          // refused above one person, so this is one entry's worth.
+          yield* bindCitedAttachments(deps.storage, {
+            tenantId,
+            entryId: null,
+            actorId: as.userId,
+            refs: shape.files,
+          })
 
           const rows: { participantId: string; entryId: string }[] = []
           for (const person of targets) {

@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
 import { Assessment } from '../src/server/index.ts'
 import { recordItem } from './support/administrative.ts'
-import { errorOf, ok, one, run, runningBatch, seed } from './support/round.ts'
+import { errorOf, ok, one, run, runningBatch, seed, staged } from './support/round.ts'
 
 // One administrative finding, settled on several people at once.
 //
@@ -27,7 +27,10 @@ describe.runIf(postgresAvailable).concurrent('recording one finding on a group',
   })
 
   /** the round, a question the office settles, and who is in reach */
-  const ready = (slug: string, over?: { maxEntries?: number | null }) =>
+  const ready = (
+    slug: string,
+    over?: { maxEntries?: number | null; formConfig?: Record<string, unknown> },
+  ) =>
     Effect.gen(function* () {
       const f = yield* seed(slug)
       const g = yield* runningBatch(f)
@@ -46,6 +49,60 @@ describe.runIf(postgresAvailable).concurrent('recording one finding on a group',
                   where tenant_id = ${tenantId} and batch_id = ${batchId}`),
       (result) => (result as unknown as { rows: { id: string; user_id: string }[] }).rows,
     )
+
+  it('binds the document it cites, so the staged sweep cannot take it away', async () => {
+    const found = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const { f, g, item, revision } = yield* ready('ar-binds', {
+            formConfig: { files: {} },
+          })
+          const assessment = yield* Assessment
+          const file = yield* staged(f.t, f.recorder)
+          // one person: an act carrying a file is refused above one, because
+          // one file belongs to one entry
+          const input = {
+            itemId: item.id,
+            expectedItemRevisionId: revision,
+            target: { kind: 'people' as const, participantIds: [g.p1] },
+            payload: { files: [file] },
+            basis: '校发〔2026〕9 号',
+          }
+          const seen = yield* assessment.previewAdministrativeRecord(
+            f.t,
+            g.batch.id,
+            input,
+            f.principal(f.recorder),
+          )
+          const done = yield* assessment.recordAdministrativeBatch(
+            f.t,
+            g.batch.id,
+            {
+              ...input,
+              excludedParticipantIds: [],
+              expectedTargetFingerprint: seen.targetFingerprint,
+            },
+            f.principal(f.recorder),
+          )
+          const status = one<{ status: string }>(
+            yield* runSql(sql`select status from storage_attachments where id = ${file}`),
+          ).status
+          const cited = one<{ n: number }>(
+            yield* runSql(sql`select count(*)::int as n from entry_revision_attachments
+                               where attachment_id = ${file}`),
+          ).n
+          return { status, cited, recorded: done.recordedCount }
+        }),
+      ),
+    )
+    // a revision cites it, so storage must already know it is spoken for. A
+    // citation left pointing at a staged file is one whose bytes the sweep
+    // deletes, before wedging on the row it then cannot delete.
+    expect(found.recorded).toBe(1)
+    expect(found.cited).toBe(1)
+    expect(found.status).toBe('bound')
+  })
 
   it('writes one fact per person, as ordinary records, under one act', async () => {
     const found = ok(
