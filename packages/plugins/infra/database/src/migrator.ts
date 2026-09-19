@@ -177,7 +177,7 @@ async function assertDatabaseExists(url: string): Promise<void> {
 export async function withMigrator<A>(
   url: string,
   options: MigrationOptions,
-  body: (migrator: Migrator) => Promise<A>,
+  body: (migrator: Migrator, orm: MikroORM) => Promise<A>,
 ): Promise<A> {
   await assertDatabaseExists(url)
   const orm = await MikroORM.init({
@@ -190,7 +190,7 @@ export async function withMigrator<A>(
     migrations: { migrationsList: migrationsIn(options.folder), snapshot: false },
   })
   try {
-    return await body(orm.migrator as Migrator)
+    return await body(orm.migrator as Migrator, orm)
   } finally {
     await orm.close()
   }
@@ -224,9 +224,32 @@ export const adoptMigrations = (url: string, options: MigrationOptions): Promise
     }),
   )
 
-/** how many committed migrations this database has not run yet */
+/**
+ * How many committed migrations this database has not run yet, read without
+ * writing anything.
+ *
+ * The migrator's own `getPending` reaches `getExecutedMigrations`, which
+ * calls `ensureTable` first (@mikro-orm/migrations 7.2.0,
+ * MigrationStorage.js:37-38) - so asking the question CREATED the ledger.
+ * A validate-only start is the one path whose whole purpose is to leave the
+ * database exactly as it found it, and production's default is exactly that
+ * path. A database with no ledger has run nothing, which is the answer its
+ * absence already gives.
+ */
 export const pendingMigrations = (url: string, options: MigrationOptions): Promise<number> =>
-  withMigrator(url, options, async (migrator) => (await migrator.getPending()).length)
+  withMigrator(url, options, async (migrator, orm) => {
+    const { tableName, schemaName } = migrator.getStorage().getTableName()
+    const qualified = schemaName === undefined ? tableName : `${schemaName}.${tableName}`
+    const connection = orm.em.getConnection()
+    const present = await connection.execute<{ here: string | null }[]>(
+      `select to_regclass('${qualified}')::text as here`,
+    )
+    const all = migrationsIn(options.folder)
+    if (present[0]?.here == null) return all.length
+    const executed = await connection.execute<{ name: string }[]>(`select name from ${qualified}`)
+    const ran = new Set(executed.map((row) => row.name))
+    return all.filter((entry) => !ran.has(entry.name)).length
+  })
 
 export const runMigrations = async (
   url: string,

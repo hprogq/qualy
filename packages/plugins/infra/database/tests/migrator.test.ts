@@ -6,6 +6,7 @@ import { Client } from 'pg'
 import {
   MIGRATION_LOCK_KEY,
   MIGRATION_LOCK_TIMEOUT_VARIABLE,
+  pendingMigrations,
   runMigrations,
 } from '../src/migrator.ts'
 import { createTestContext, postgresAvailable } from '../src/testkit.ts'
@@ -113,6 +114,32 @@ describe.runIf(postgresAvailable)('applying a lineage', () => {
       fs.rmSync(folder, { recursive: true, force: true })
     }
   })
+
+  // A validate-only start is the one path whose whole purpose is to leave
+  // the database exactly as it found it, and production's default is that
+  // path. Asking the migrator its own question used to create the ledger.
+  it('counts what is pending without writing anything', async () => {
+    const target = await emptyDatabase('migrator-read-only-count')
+    const folder = lineage({
+      '00000000000001_first.sql': 'create table counted_probe (id int);\n',
+      '00000000000002_second.sql': 'create table counted_probe_two (id int);\n',
+    })
+    try {
+      const before = await pendingMigrations(target.db.url, { folder, entities: [] })
+      const ledger = await target.db.query<{ here: string | null }>(
+        `select to_regclass('${LEDGER}')::text as here`,
+      )
+      expect(before).toBe(2)
+      // the count is the whole lineage, and the question left no trace
+      expect(ledger.rows[0]?.here).toBe(null)
+
+      await runMigrations(target.db.url, { folder, entities: [] })
+      expect(await pendingMigrations(target.db.url, { folder, entities: [] })).toBe(0)
+    } finally {
+      await target.dispose()
+      fs.rmSync(folder, { recursive: true, force: true })
+    }
+  }, 120_000)
 
   it('records nothing for a migration that failed, and applies it once it is fixed', async () => {
     const target = await emptyDatabase('migrator-failure')
