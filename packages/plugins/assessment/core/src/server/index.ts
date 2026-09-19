@@ -1000,6 +1000,8 @@ export class Assessment extends Context.Service<
       tenantId: string,
       operationId: string,
       as: Principal,
+      /** where the list of people resumes; an act may name thousands */
+      rowsAfter?: string,
     ) => Effect.Effect<
       {
         id: string
@@ -1010,9 +1012,11 @@ export class Assessment extends Context.Service<
         targetKind: string
         targetSpec: Record<string, unknown>
         actorId: string | null
+        actorName: string | null
         recordedCount: number
         voidedCount: number
         createdAt: string
+        rowsNextCursor: string | null
         rows: readonly {
           entryId: string
           participantId: string
@@ -5774,13 +5778,14 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
     )
     .handle(
       'getAdministrativeRecord',
-      Effect.fn('assessment.getAdministrativeRecord.handler')(function* ({ params }) {
+      Effect.fn('assessment.getAdministrativeRecord.handler')(function* ({ params, query }) {
         const assessment = yield* Assessment
         const principal = yield* CurrentUser
         const act = yield* assessment.getAdministrativeRecord(
           principal.tenantId,
           params.operationId,
           principal,
+          query.rowsCursor,
         )
         return {
           id: act.id,
@@ -5792,8 +5797,8 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           recordedCount: act.recordedCount,
           voidedCount: act.voidedCount,
           createdAt: act.createdAt,
-          actorName: null,
-          basis: null,
+          actorName: act.actorName,
+          rowsNextCursor: act.rowsNextCursor,
           rows: act.rows,
           events: act.events,
         }

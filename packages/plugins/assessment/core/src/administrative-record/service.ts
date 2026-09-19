@@ -70,6 +70,14 @@ import {
 // determination, so there is one thing to prove, and it is proven before a
 // transaction rather than inside one.
 
+/**
+ * How many of an act's people one read carries.
+ *
+ * The rows are keyed by participant, which is what `operationRowsPage`
+ * resumes on, so the next page needs nothing but the last one's id.
+ */
+const ACT_ROWS_PAGE = 200
+
 /** how the targets were chosen; history once the act is written */
 export type RecordTarget =
   | { readonly kind: 'people'; readonly participantIds: readonly string[] }
@@ -721,6 +729,7 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
     tenantId: string,
     operationId: string,
     as: Principal,
+    rowsAfter?: string,
   ) {
     const act = yield* withDb(operationOf(tenantId, operationId))
     if (act === null) return yield* new AdministrativeRecordNotFound()
@@ -735,11 +744,16 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
     // the question it settled, and the people it reached: a detail that says
     // only how many there were is a receipt, not a record
     const item = yield* withDb(itemOf(tenantId, act.itemId))
-    const rows = (yield* withDb(
+    // A page, and it says whether there is another. An act may name
+    // thousands of people, and taking the first five hundred in silence made
+    // the detail a receipt rather than a record - a reader had no way to
+    // know the list in front of them was not the act.
+    const found = (yield* withDb(
       operationRowsPage({
         tenantId,
         operationId,
-        limit: 500,
+        limit: ACT_ROWS_PAGE + 1,
+        ...(rowsAfter === undefined ? {} : { after: rowsAfter }),
         // holding the permission in this round is what let the act be opened
         // at all; which of its people may be named is a separate question,
         // and these rows carry names and student numbers
@@ -750,10 +764,16 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
         },
       }),
     )) as unknown as Record<string, unknown>[]
+    const rows = found.slice(0, ACT_ROWS_PAGE)
+    const lastRow = rows[rows.length - 1]
     return {
       ...act,
       itemTitle: item?.title ?? '',
       voidedCount: standing.get(operationId)?.voided ?? 0,
+      rowsNextCursor:
+        found.length > ACT_ROWS_PAGE && lastRow !== undefined
+          ? String(lastRow['participantId'])
+          : null,
       rows: rows.map((row) => ({
         entryId: String(row['entryId']),
         participantId: String(row['participantId']),

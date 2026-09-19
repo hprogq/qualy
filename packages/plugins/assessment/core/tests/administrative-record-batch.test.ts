@@ -502,6 +502,64 @@ describe.runIf(postgresAvailable).concurrent('recording one finding on a group',
     expect(found.after.targetFingerprint).toBe(found.before.targetFingerprint)
   })
 
+  it('hands the people it reached a page at a time, and says when it is done', async () => {
+    const found = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const { f, g, item, revision } = yield* ready('ar-paged')
+          const assessment = yield* Assessment
+          const input = {
+            itemId: item.id,
+            expectedItemRevisionId: revision,
+            target: { kind: 'organization' as const, orgNodeIds: [f.classA], userTypeIds: [] },
+            payload: {},
+            basis: '校发〔2026〕7 号',
+          }
+          const seen = yield* assessment.previewAdministrativeRecord(
+            f.t,
+            g.batch.id,
+            input,
+            f.principal(f.recorder),
+          )
+          const done = yield* assessment.recordAdministrativeBatch(
+            f.t,
+            g.batch.id,
+            {
+              ...input,
+              excludedParticipantIds: seen.blocked.map((one) => one.participantId),
+              expectedTargetFingerprint: seen.targetFingerprint,
+            },
+            f.principal(f.recorder),
+          )
+          const whole = yield* assessment.getAdministrativeRecord(
+            f.t,
+            done.operationId,
+            f.principal(f.recorder),
+          )
+          const rest = yield* assessment.getAdministrativeRecord(
+            f.t,
+            done.operationId,
+            f.principal(f.recorder),
+            whole.rows[0]!.participantId,
+          )
+          return { whole, rest }
+        }),
+      ),
+    )
+    expect(found.whole.rows.length).toBeGreaterThan(1)
+    // the act fits in one page, and the detail says so rather than leaving a
+    // reader to wonder whether the list in front of them is the act
+    expect(found.whole.rowsNextCursor).toBe(null)
+    // and it resumes where it is told to, in the key the rows are ordered by
+    expect(found.rest.rows.length).toBe(found.whole.rows.length - 1)
+    expect(found.rest.rows.map((one) => one.participantId)).not.toContain(
+      found.whole.rows[0]!.participantId,
+    )
+    // who settled it, which the detail used to leave permanently null
+    expect(found.whole.actorName).not.toBe(null)
+  })
+
   it('refuses the recorder themselves, and says so before anything is written', async () => {
     const found = ok(
       await run(

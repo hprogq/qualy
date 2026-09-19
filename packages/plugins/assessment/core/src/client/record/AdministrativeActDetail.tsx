@@ -120,8 +120,14 @@ export function AdministrativeActDetail({
   const whenOf = useWhen()
   const [asking, setAsking] = useState(false)
 
+  // the people an act reached arrive a page at a time: one act may name
+  // thousands, and a list that stops without saying so is not the act
+  const [rowsCursor, setRowsCursor] = useState<string | null>(null)
   const detail = useQuery(
-    query.assessment.getAdministrativeRecord.queryOptions({ params: { operationId } }),
+    query.assessment.getAdministrativeRecord.queryOptions({
+      params: { operationId },
+      query: rowsCursor === null ? {} : { rowsCursor },
+    }),
   )
 
   const reverse = useMutation({
@@ -137,7 +143,10 @@ export function AdministrativeActDetail({
       // what the score is made of just changed: the act, the acts list and
       // the record book are all asked again
       void queryClient.invalidateQueries({
-        queryKey: query.assessment.getAdministrativeRecord.key({ params: { operationId } }),
+        queryKey: query.assessment.getAdministrativeRecord.key({
+          params: { operationId },
+          query: {},
+        }),
       })
       void queryClient.invalidateQueries({
         queryKey: query.assessment.listAdministrativeRecords.key({
@@ -280,6 +289,15 @@ export function AdministrativeActDetail({
                   </button>
                 ))}
               </div>
+              {found.rowsNextCursor !== null && (
+                <Button
+                  variant="outline"
+                  data-testid="act-rows-more"
+                  onClick={() => setRowsCursor(found.rowsNextCursor)}
+                >
+                  {format(m.recordMoreWho)}
+                </Button>
+              )}
             </>
           )}
 

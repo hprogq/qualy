@@ -105,20 +105,27 @@ export const operationOf = (tenantId: string, operationId: string) =>
   db
     .query((k) =>
       k
-        .selectFrom('AdministrativeRecordOperation')
+        .selectFrom('AdministrativeRecordOperation as o')
+        .leftJoin('User as u', (join) =>
+          join.onRef('u.tenantId', '=', 'o.tenantId').onRef('u.id', '=', 'o.actorId'),
+        )
         .select([
-          'id',
-          'batchId',
-          'itemId',
-          'itemRevisionId',
-          'targetKind',
-          'targetSpec',
-          'actorId',
-          'recordedCount',
+          'o.id',
+          'o.batchId',
+          'o.itemId',
+          'o.itemRevisionId',
+          'o.targetKind',
+          'o.targetSpec',
+          'o.actorId',
+          'o.recordedCount',
+          // who settled it: the act's own row is the only place this is
+          // written, so a detail that leaves it out leaves out the one name
+          // an administrative record is read for
+          'u.displayName as actorName',
         ])
-        .select([sql<string>`created_at::text`.as('createdAtText')])
-        .where('tenantId', '=', tenantId)
-        .where('id', '=', operationId)
+        .select([sql<string>`o.created_at::text`.as('createdAtText')])
+        .where('o.tenantId', '=', tenantId)
+        .where('o.id', '=', operationId)
         .executeTakeFirst(),
     )
     .pipe(
@@ -132,6 +139,10 @@ export const operationOf = (tenantId: string, operationId: string) =>
               itemRevisionId: String((row as Record<string, unknown>)['itemRevisionId']),
               targetKind: String((row as Record<string, unknown>)['targetKind']),
               targetSpec: (row as Record<string, unknown>)['targetSpec'] as Record<string, unknown>,
+              actorName:
+                (row as Record<string, unknown>)['actorName'] == null
+                  ? null
+                  : String((row as Record<string, unknown>)['actorName']),
               actorId:
                 (row as Record<string, unknown>)['actorId'] == null
                   ? null

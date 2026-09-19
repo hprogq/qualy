@@ -6,6 +6,7 @@ import {
   changed,
   expectedVersion,
   kebabCode,
+  MAX_CURSOR_LENGTH,
   pageQuery,
   countedPageOf,
   pageOf,
@@ -2842,6 +2843,14 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       '/assessment/administrative-records/:operationId',
       {
         params: Schema.Struct({ operationId: uuidInput }),
+        /**
+         * Where the list of people resumes. An act may name thousands, and
+         * the detail used to take the first five hundred and say nothing
+         * about the rest - a receipt where a record was asked for.
+         */
+        query: Schema.Struct({
+          rowsCursor: Schema.optional(Schema.String.check(Schema.isMaxLength(MAX_CURSOR_LENGTH))),
+        }),
         success: Schema.Struct({
           id: Schema.String,
           batchId: Schema.String,
@@ -2852,8 +2861,10 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
           recordedCount: Schema.Number,
           voidedCount: Schema.Number,
           createdAt: Schema.String,
+          /** who settled it; the act's own row is the only place this is written */
           actorName: Schema.NullOr(Schema.String),
-          basis: Schema.NullOr(Schema.String),
+          /** non-null when there are more people than this page carries */
+          rowsNextCursor: Schema.NullOr(Schema.String),
           rows: Schema.Array(
             Schema.Struct({
               entryId: Schema.String,
