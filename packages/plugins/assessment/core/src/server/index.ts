@@ -2947,8 +2947,12 @@ export const make = Effect.fn('Assessment.make')(function* () {
                   return yield* new PlanInvalid({ refusals: review.refusals })
                 }
                 if (input.plannedEntryAt !== null && input.plannedEntryAt <= now) {
+                  // the word the rest of the plan already uses for this, and
+                  // the only one the screen has a sentence for: a second
+                  // spelling of the same refusal reached the reader as the
+                  // machine key itself
                   return yield* new PlanInvalid({
-                    refusals: [{ reason: 'planned-in-past', phaseId: null }],
+                    refusals: [{ reason: 'planned-not-in-future', phaseId: null }],
                   })
                 }
                 const phaseId = yield* insertPhase({

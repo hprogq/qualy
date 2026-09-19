@@ -1221,6 +1221,22 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
         )
         const afterArchive = yield* assessment.getBatch(f.tenant, batch.id, f.principal)
         const timelineArchived = yield* assessment.timeline(f.tenant, batch.id)
+        // reopening onto a moment already gone: refused in the word the
+        // screen has a sentence for, never a second spelling of it that
+        // reaches the reader as the machine key itself
+        const backwards = yield* Effect.exit(
+          assessment.setBatchStatus(
+            f.tenant,
+            batch.id,
+            {
+              status: 'active',
+              reason: 'again',
+              phase: { displayName: 'Late', permissionProfile: ['assessment.entry.create'] },
+              plannedEntryAt: Date.now() - HOUR,
+            },
+            f.principal,
+          ),
+        )
         // reopened for next week: active again, but nothing is in effect yet
         yield* assessment.setBatchStatus(
           f.tenant,
@@ -1238,16 +1254,21 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           'assessment.entry.create',
           batch.id,
         )
-        return { running, archived, waiting, afterArchive, timelineArchived }
+        return { running, archived, waiting, afterArchive, timelineArchived, backwards }
       }),
     )
-    const { running, archived, waiting, afterArchive, timelineArchived } = ok(exit)
+    const { running, archived, waiting, afterArchive, timelineArchived, backwards } = ok(exit)
     expect(running.allowed).toBe(true)
     expect(archived.allowed).toBe(false)
     expect(refusal(archived)?.layer).toBe('gate')
     // the projection goes with it, which is what a reopening would revive
     expect(afterArchive.currentPhaseId).toBeNull()
     expect(timelineArchived.every((entry) => entry.status === 'ended')).toBe(true)
+    expect(
+      reasonsOf(backwards)
+        .flatMap((entry) => (entry.error as { refusals?: readonly { reason: string }[] }).refusals ?? [])
+        .map((one) => one.reason),
+    ).toEqual(['planned-not-in-future'])
     // and a stage in next week's diary opens nothing today
     expect(waiting.allowed).toBe(false)
   })
