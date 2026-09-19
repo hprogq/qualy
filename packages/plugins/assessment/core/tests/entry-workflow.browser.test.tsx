@@ -841,8 +841,21 @@ describe('filing a claim', () => {
     expect(kinds).toContain('version')
     expect(kinds).toContain('act')
     expect(kinds).toContain('suggestion')
-    // advice is read, never applied: nothing offers to copy it in
-    expect(page.getByRole('button', { name: '套用' }).elements()).toHaveLength(0)
+    // Advice is read, never applied - the frozen decision, guarded on the
+    // structure rather than on a word. The assertion here used to look for
+    // a button named 套用, a label the product does not use anywhere, so it
+    // held however the advice node was built and whatever an apply control
+    // ended up called. What the decision actually forbids is a control that
+    // puts the advice into the claim, so what is asserted is that the node
+    // carrying the advice offers nothing to press at all.
+    const advice = page
+      .getByTestId('trail-node')
+      .elements()
+      .find((node) => node.getAttribute('data-kind') === 'suggestion')
+    expect(advice).toBeDefined()
+    expect(advice!.querySelectorAll('button, [role="button"], input')).toHaveLength(0)
+    // and it is the advice: the reviewer's words are inside that node
+    expect(advice!.textContent).toContain('建议补充退役日期')
   })
 
   it('reads a claim back against the form it was filed under', async () => {
