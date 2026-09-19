@@ -1,6 +1,7 @@
 import { Context, Effect, Option } from 'effect'
 import { Headers, HttpEffect, HttpServerRequest, HttpServerResponse } from 'effect/unstable/http'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
+import { underPrefix } from '@qualy/api-kit/route-fallback'
 import { RequestContext } from '@qualy/api-kit/request'
 import { QUALY_REQUEST_ID_HEADER } from '@qualy/api-kit'
 
@@ -41,8 +42,7 @@ import { QUALY_REQUEST_ID_HEADER } from '@qualy/api-kit'
 
 const PREFIXES = [QUALY_API_PREFIX, '/health']
 
-const under = (url: string, prefix: string): boolean =>
-  url === prefix || url.startsWith(`${prefix}/`) || url.startsWith(`${prefix}?`)
+const under = underPrefix
 
 const isEventStream = (response: HttpServerResponse.HttpServerResponse): boolean =>
   (

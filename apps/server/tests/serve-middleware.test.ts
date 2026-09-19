@@ -104,6 +104,35 @@ afterAll(async () => {
   await Effect.runPromise(Scope.close(scope, Exit.void))
 })
 
+describe('what counts as being inside the api', () => {
+  it('decides on the same spelling the router matches on', async () => {
+    // The prefix test reads the raw url while the router matches the path it
+    // has already decoded. If those disagree, a request can reach an api
+    // handler while every wrapper that keys off the prefix - the client
+    // compatibility check, the access log's api mode - believes it is
+    // somewhere else entirely.
+    const probe = async (path: string) => {
+      const response = await fetch(`${base}${path}`)
+      return `${path} -> ${response.status} ${response.headers.get('x-qualy-request-id') === null ? 'no-id' : 'id'}`
+    }
+    const seen = [
+      await probe(`${QUALY_API_PREFIX}/echo`),
+      await probe('/%61pi/echo'),
+      await probe('/API/echo'),
+      await probe('//api/echo'),
+      await probe('/api//echo'),
+    ]
+    // every spelling the router accepts is one the prefix test must accept
+    expect(seen).toEqual([
+      '/api/echo -> 200 id',
+      '/%61pi/echo -> 200 id',
+      '/API/echo -> 200 id',
+      '//api/echo -> 200 id',
+      '/api//echo -> 200 id',
+    ])
+  })
+})
+
 describe('how heavy a request body may be', () => {
   const post = (bytes: number) =>
     fetch(`${base}${QUALY_API_PREFIX}/swallow`, {

@@ -1,6 +1,6 @@
 import { Cause, Context, Effect, Option, type LogLevel } from 'effect'
 import { HttpServerError, HttpServerRequest } from 'effect/unstable/http'
-import { QUALY_API_PREFIX } from '@qualy/api-kit'
+import { insideApi } from '@qualy/api-kit/route-fallback'
 import type { LoggingSettings } from './logging.ts'
 
 // The access log, replacing the upstream one.
@@ -24,8 +24,6 @@ const strip = (url: string): string => {
 const successLog = (level: LogLevel.LogLevel, message: string): Effect.Effect<void> =>
   level === 'None' ? Effect.void : Effect.logWithLevel(level === 'All' ? 'Trace' : level)(message)
 
-const insideApi = (path: string): boolean =>
-  path === QUALY_API_PREFIX || path.startsWith(`${QUALY_API_PREFIX}/`)
 
 export const accessLog =
   (settings: LoggingSettings['access']) =>
