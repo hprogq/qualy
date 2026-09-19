@@ -1,4 +1,11 @@
-import { MAX_SCALE, choiceLabel, displayTitle, kindOf } from '@qualy/value-schema'
+import {
+  DECIMAL_MAXIMUM,
+  DECIMAL_MINIMUM,
+  MAX_SCALE,
+  choiceLabel,
+  displayTitle,
+  kindOf,
+} from '@qualy/value-schema'
 import type { AtomicSchema, ChoiceSchema } from '@qualy/value-schema'
 import type { FieldDraft } from './FieldTable.tsx'
 
@@ -55,6 +62,8 @@ export const prefillField = (
     maximum?: unknown
     maxLength?: unknown
     [MAX_SCALE]?: unknown
+    [DECIMAL_MINIMUM]?: unknown
+    [DECIMAL_MAXIMUM]?: unknown
   }
   switch (kindOf(schema)) {
     case 'text':
@@ -68,8 +77,12 @@ export const prefillField = (
         ...base,
         type: 'decimal',
         maxScale: said(bounds[MAX_SCALE]) === '' ? '2' : said(bounds[MAX_SCALE]),
-        min: said(bounds.minimum),
-        max: said(bounds.maximum),
+        // a decimal's bounds are spelled as annotations, never as `minimum`
+        // and `maximum` - those belong to integers. Read from the wrong keys
+        // the field came out unbounded, which is a field the very parameter
+        // it was made for will not accept.
+        min: said(bounds[DECIMAL_MINIMUM]),
+        max: said(bounds[DECIMAL_MAXIMUM]),
       }
     case 'choice': {
       const choice = schema as ChoiceSchema

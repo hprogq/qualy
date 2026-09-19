@@ -225,6 +225,10 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
 
     const driver = deps.itemTypes.get(item.itemType)
     if (driver === undefined) return yield* new ItemNotFound()
+    // the same question the single-entry door asks: a derived question is
+    // worked out from other questions, so nothing is filed into it and
+    // nothing may be recorded on it either
+    if (driver.interaction === 'derived') return yield* new ItemNotFound()
     const context: BatchContext = { materialRange: deps.parseRange(String(batch.materialRange)) }
     const plan = yield* Effect.orDie(readScoringPlan(revision))
 
