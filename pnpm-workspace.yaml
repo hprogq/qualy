@@ -130,6 +130,24 @@ catalog:
   # The per-product package rather than `tencentcloud-sdk-nodejs`: the whole
   # sdk unpacks to 44 MB for three calls, and this one to 220 KB.
   tencentcloud-sdk-nodejs-rum: 4.1.281
+# Transitive versions pinned forward, with the reason each one is here.
+#
+# qs: the tencent cos sdks carry it (cos-request, qcloud-cos-sts) and both
+# declare ^6.15.x, so 6.16 is what they asked for. Two parsing advisories
+# against 6.15.3 - an array-limit bypass and an attacker-controlled isBuffer.
+# This product builds those query strings itself rather than parsing anybody
+# else's, so neither is reachable from here; pinned anyway because it costs a
+# line and the alternative is re-deciding that every time the report is read.
+#
+# Left alone deliberately, because an override here would be inert or worse:
+# fast-xml-parser is webpack-inlined into cos-js-sdk-v5's own dist, dompurify
+# is vendored inside monaco-editor, nanoid arrives only through vite and
+# never reaches the release image, and the uuid advisory is about a bounds
+# check in v3/v5/v6 with a caller-supplied buffer - exceljs and the tencent
+# sdk call v4, and the fix is two majors away.
+overrides:
+  qs: ^6.16.0
+
 patchedDependencies:
   '@stylexjs/unplugin@0.19.1': patches/@stylexjs__unplugin@0.19.1.patch
 minimumReleaseAgeExclude:
