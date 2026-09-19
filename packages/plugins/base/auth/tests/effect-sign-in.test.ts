@@ -1,3 +1,4 @@
+import fs from 'node:fs'
 import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
 import { NodeHttpServer } from '@effect/platform-node'
 import { sql } from 'kysely'
@@ -173,6 +174,29 @@ describe.runIf(postgresAvailable)('signing in', () => {
     expect(await fetch(`${base}/auth/session`, { headers: { cookie } })).toMatchObject({
       status: 401,
     })
+  })
+
+  it('will not let a burst of misses take the thread pool with it', async () => {
+    // argon2 is deliberately expensive, and node-argon2 spends that expense
+    // on a libuv threadpool thread - the same four that serve every `fs`
+    // read this process makes. Unthrottled, a handful of concurrent attempts
+    // on the one unauthenticated write endpoint held the pool and 256 MiB,
+    // so the whole server slowed rather than just the login.
+    const misses = 10
+    const attempts = Array.from({ length: misses }, () =>
+      login({ identifier: 'ada', password: 'not the password' }),
+    )
+    const answers = await Promise.all(attempts)
+    // every one of them is still answered, and answered the same way
+    expect(answers.map((response) => response.status)).toEqual(
+      Array.from({ length: misses }, () => 401),
+    )
+    // and the file the shell is served from is still readable while they run
+    const readable = await fs.promises.readFile(new URL(import.meta.url)).then(
+      () => true,
+      () => false,
+    )
+    expect(readable).toBe(true)
   })
 
   it('answers every credential failure the same way', async () => {

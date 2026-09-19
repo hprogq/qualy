@@ -12,12 +12,56 @@ const ARGON2_OPTIONS = {
 
 export const PASSWORD_MIN_LENGTH = 12
 
+/**
+ * How many password hashes may be computed at once.
+ *
+ * argon2 is deliberately expensive, and node-argon2 spends that expense on a
+ * libuv threadpool thread - the same four threads that serve every `fs` read
+ * this process makes, which is how the browser shell is served and how an
+ * attachment is streamed. Unthrottled, four concurrent attempts on the one
+ * unauthenticated write endpoint hold 256 MiB and leave nothing to read a
+ * file with, so a handful of presses degrades the whole server rather than
+ * just the login.
+ *
+ * Two, so half the pool is always somebody else's. What this costs is
+ * latency under load, and a queue is the right answer to a cost that is
+ * supposed to be paid slowly.
+ */
+const MAX_CONCURRENT_HASHES = 2
+
+let running = 0
+const waiting: (() => void)[] = []
+
+const enter = (): Promise<void> => {
+  if (running < MAX_CONCURRENT_HASHES) {
+    running += 1
+    return Promise.resolve()
+  }
+  return new Promise<void>((resume) => waiting.push(resume))
+}
+
+const leave = (): void => {
+  const next = waiting.shift()
+  if (next === undefined) running -= 1
+  else next()
+}
+
+/** one hash at a time per seat, however the call turns out */
+const throttled = async <T>(work: () => Promise<T>): Promise<T> => {
+  await enter()
+  try {
+    return await work()
+  } finally {
+    leave()
+  }
+}
+
 export function hashPassword(password: string): Promise<string> {
-  return argon2.hash(password, ARGON2_OPTIONS)
+  return throttled(() => argon2.hash(password, ARGON2_OPTIONS))
 }
 
 export function verifyPassword(hash: string, password: string): Promise<boolean> {
-  return argon2.verify(hash, password).catch(() => false)
+  return throttled(() => argon2.verify(hash, password)).catch(() => false)
 }
 
 // verified against unknown identifiers so response timing does not reveal
