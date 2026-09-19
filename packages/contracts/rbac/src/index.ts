@@ -5,7 +5,7 @@
 
 import type { UiText } from '@qualy/i18n-contract'
 export { isSystemActor, type SystemActor } from './system-actor.ts'
-export { scopeCoverage, type OrgNodeRef } from './scope.ts'
+export { scopeCoverage, scopeCoverageAtLeast, type OrgNodeRef } from './scope.ts'
 
 // one grant of one role to one user. A tenant role reaches the whole tenant
 // and carries no node; an org role is anchored and carries both.

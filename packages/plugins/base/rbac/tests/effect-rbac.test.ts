@@ -910,6 +910,55 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
     }
   })
 
+  it('offers no press over a grant that reaches further than the caller does', async () => {
+    const db = await createTestContext('effect-grant-manageable-rank')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const f = yield* seed()
+          const access = yield* Access
+          const office = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+              values (${f.tenant}, 'tutor', 'Tutor', 'org', 'active', 'explicit', 'unrestricted')
+              returning id`),
+          ).id
+          // one grant over the whole subtree, one over its node alone
+          yield* runSql(sql`
+            insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+            values (${f.tenant}, ${f.user}, ${office}, ${f.child}, 'subtree')`)
+          yield* runSql(sql`
+            insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+            values (${f.tenant}, ${f.anchored.userId}, ${office}, ${f.child}, 'self')`)
+
+          // a caller who administers grants at that node and no further
+          const atTheNode = {
+            read: {
+              tenantWide: false,
+              anchors: [{ orgNodeId: f.child, coverage: 'subtree' as const }],
+            },
+            manage: {
+              tenantWide: false,
+              anchors: [{ orgNodeId: f.child, coverage: 'self' as const }],
+            },
+            tenantGrants: { read: false, manage: false },
+          }
+          const listed = yield* access.grants.list(f.tenant, { orgNodeId: f.child }, atTheNode)
+          return listed.map((row) => ({ coverage: row.coverage, manageable: row.manageable }))
+        }),
+      )
+      const rows = ok(exit)
+      // The write compares the caller's reach against the grant's own, so a
+      // press offered over the wider one is a press that answers 403.
+      expect(rows.find((row) => row.coverage === 'self')?.manageable).toBe(true)
+      expect(rows.find((row) => row.coverage === 'subtree')?.manageable).toBe(false)
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('replaces permissions only within what the catalog currently offers', async () => {
     // The case that would quietly destroy authority: a row whose plugin is
     // unloaded was never on offer, so omitting it is not declining it.

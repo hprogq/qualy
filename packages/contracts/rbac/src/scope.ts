@@ -49,6 +49,37 @@ export function scopeCoverage(scope: AuthorizationScope, node: OrgNodeRef): RawB
 // interpolated because `= any()` wanted an array literal, which is why this
 // file also carried a uuid check: that was an injection guard rather than a
 // domain rule, and binding them removes the thing it guarded against.
+/**
+ * The same reach, weighed against how far the thing being reached extends.
+ *
+ * Reaching a node is not the same question as being allowed to administer a
+ * grant that stands there: somebody whose own authority covers one node
+ * alone must not be able to touch a grant that reaches its whole subtree.
+ * The write has always compared the two, and a projection that only asked
+ * `scopeCoverage` offered a press the write then refused.
+ *
+ * `coverage` is the reached thing's own, read off the row.
+ */
+export function scopeCoverageAtLeast(
+  scope: AuthorizationScope,
+  node: OrgNodeRef,
+  coverage: Expression<string | null>,
+): RawBuilder<boolean> {
+  if (scope.tenantWide) return sql<boolean>`true`
+  const subtree = anchorIds(scope, 'subtree')
+  const wide =
+    subtree.length === 0
+      ? sql<boolean>`false`
+      : sql<boolean>`exists (
+    select 1 from org_nodes qualy_anchor
+    where qualy_anchor.tenant_id = ${node.tenantId}
+      and qualy_anchor.id = any(${subtree}::uuid[])
+      and ${node.path} <@ qualy_anchor.path
+  )`
+  return sql<boolean>`case when ${coverage} = 'subtree' then ${wide}
+    else ${scopeCoverage(scope, node)} end`
+}
+
 const anchorIds = (scope: AuthorizationScope, coverage: 'self' | 'subtree'): string[] => [
   ...new Set(
     scope.anchors.filter((anchor) => anchor.coverage === coverage).map((a) => a.orgNodeId),

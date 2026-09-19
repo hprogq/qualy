@@ -16,6 +16,7 @@ import {
   CANONICAL_ADMIN_ROLE,
   isCanonicalTenantAdmin,
   scopeCoverage,
+  scopeCoverageAtLeast,
   type AuthorizationScope,
   type GrantTarget,
   type OrgNodeRef,
@@ -114,9 +115,19 @@ const withinScope = (
   held: AuthorizationScope,
   /** a tenant-wide grant has no node, so node coverage cannot decide it */
   tenantWide: boolean,
+  /**
+   * The row's own coverage, when the answer is about administering it.
+   *
+   * Reaching a node and being allowed to change a grant standing there are
+   * two questions: the write has always compared the caller's reach against
+   * the grant's own, and a projection that only asked the first offered a
+   * revoke press the write then answered 403 to. Absent for the visibility
+   * filter, which really is only about reaching.
+   */
+  coverage?: Expression<string | null>,
 ) =>
   sql<boolean>`case when ${refs.orgNodeId} is null then ${tenantWide}
-    else ${scopeCoverage(held, refs)} end`
+    else ${coverage === undefined ? scopeCoverage(held, refs) : scopeCoverageAtLeast(held, refs, coverage)} end`
 
 /**
  * The grants a caller may see, with whether they may change each one.
@@ -197,6 +208,7 @@ const grantRows = (
               },
               scope.manage,
               scope.tenantGrants.manage,
+              eb.ref('g.coverage'),
             )
         ).as('manageable'),
       ])
