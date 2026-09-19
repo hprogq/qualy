@@ -244,6 +244,92 @@ describe.runIf(postgresAvailable)('the user lifecycle', () => {
     }
   })
 
+  it('will not restore somebody out of a unit the caller cannot reach', async () => {
+    const db = await createTestContext('lifecycle-restore-reach')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const f = yield* seed()
+          const iam = yield* Iam
+          const node = (name: string, label: string) =>
+            Effect.map(
+              runSql(sql`
+                insert into org_nodes (tenant_id, org_type_id, parent_id, name, path, depth)
+                values (${f.tenant}, (select org_type_id from org_nodes where id = ${f.root}),
+                        ${f.root}, ${label}, ${sql.raw(`'r.${name}'`)}::ltree, 1)
+                returning id`),
+              (result) => one<{ id: string }>(result).id,
+            )
+          const theirs = yield* node('a', 'Theirs')
+          const mine = yield* node('b', 'Mine')
+          // the person stands somewhere the narrow restorer cannot reach
+          yield* runSql(
+            sql`update users set primary_org_node_id = ${theirs} where id = ${f.person}`,
+          )
+          yield* iam.users.setStatus(
+            f.tenant,
+            f.person,
+            { status: 'disabled', expectedVersion: 1 },
+            f.as,
+          )
+          yield* iam.users.setStatus(
+            f.tenant,
+            f.person,
+            { status: 'deleted', expectedVersion: 2 },
+            f.as,
+          )
+
+          // a restorer whose authority covers their own unit and nothing else
+          const restorer = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.tenant}, 'Restorer', ${f.staff}, ${mine}) returning id`),
+          ).id
+          const role = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+              values (${f.tenant}, 'desk', 'Desk', 'org', 'active', 'explicit', 'unrestricted')
+              returning id`),
+          ).id
+          const permission = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into permissions (code, plugin, name, target_kind)
+              values ('auth.user.restore', 'auth', 'restore', 'org-node')
+              on conflict (code) do update set code = excluded.code returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into role_permissions (tenant_id, role_id, permission_id)
+            values (${f.tenant}, ${role}, ${permission})`)
+          yield* runSql(sql`
+            insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+            values (${f.tenant}, ${restorer}, ${role}, ${mine}, 'subtree')`)
+
+          // naming their own unit as the destination is the whole trick: the
+          // check used to look only there
+          const pulled = yield* Effect.result(
+            iam.users.setStatus(
+              f.tenant,
+              f.person,
+              { status: 'disabled', expectedVersion: 3, primaryOrgNodeId: mine },
+              { tenantId: f.tenant, userId: restorer, sessionId: 's' },
+            ),
+          )
+          const still = (yield* runSql<{ deleted_at: string | null }>(
+            sql`select deleted_at from users where id = ${f.person}`,
+          )).rows[0]!
+          return { pulled: tagOf(pulled), deleted: still.deleted_at !== null }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.pulled).toBe('ACCESS_DENIED')
+      expect(answer.deleted).toBe(true)
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('restores to disabled, without the access that fell', async () => {
     const db = await createTestContext('lifecycle-restore')
     try {

@@ -910,6 +910,17 @@ export const make = Effect.fn('Iam.users.make')(function* () {
             const orgNodeId = input.primaryOrgNodeId ?? user.primaryOrgNodeId
             if (userTypeId === null) return yield* new UserTypeNotFound()
             if (orgNodeId === null) return yield* new UserPlacementNotFound()
+            // Where they are, and where they are going. Every other door
+            // here asks about where the person already stands; restore asked
+            // only about the destination, and the destination is the
+            // caller's to choose - so anyone who could restore into their
+            // own unit could pull any deleted person in the tenant into it.
+            if (
+              user.primaryOrgNodeId !== null &&
+              !(yield* rbac.canAt(as, 'auth.user.restore', user.primaryOrgNodeId))
+            ) {
+              return yield* new AccessDenied({ reason: 'not allowed to restore users here' })
+            }
             if (!(yield* rbac.canAt(as, 'auth.user.restore', orgNodeId))) {
               return yield* new AccessDenied({ reason: 'not allowed to restore users here' })
             }
