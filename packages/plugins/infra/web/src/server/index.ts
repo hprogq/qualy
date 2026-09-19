@@ -186,9 +186,7 @@ const serve = (
   }
   return (request, response, next) => {
     const url = request.url ?? '/'
-    // nothing hidden is served: the release's own metadata sits beside its
-    // shell, and the per-request lookup does not know a dotfile from a file
-    if (/\/\./.test(url.split('?')[0]!)) {
+    if (namesHiddenPath(url)) {
       notFound(response)
       return
     }
@@ -331,6 +329,28 @@ const judging = (
  * whose handler is an effect runs that effect per request, which would have
  * started a Vite server for every navigation.
  */
+/**
+ * Whether a request names something hidden.
+ *
+ * Nothing hidden is served: the release's own metadata sits beside its
+ * shell, and the per-request lookup does not know a dotfile from a file.
+ *
+ * Decided on the DECODED path, because that is the spelling the file lookup
+ * works from. `%2E` is a dot and `%2F` is a separator, so the raw text can
+ * name the very file this refuses while carrying neither. An escape that
+ * does not decode is refused too - it cannot name a servable file either.
+ */
+export const namesHiddenPath = (url: string): boolean => {
+  const raw = url.split(/[?#]/)[0] ?? url
+  let decoded: string
+  try {
+    decoded = decodeURIComponent(raw)
+  } catch {
+    return true
+  }
+  return /(?:^|\/)\./.test(decoded)
+}
+
 export const routes: Layer.Layer<
   never,
   never,

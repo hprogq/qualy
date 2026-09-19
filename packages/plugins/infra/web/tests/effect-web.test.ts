@@ -15,7 +15,7 @@ import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { QUALY_RELEASE_ENDPOINT, ReleaseProbeSchema } from '@qualy/release-contract'
 import { AssemblyInfo } from '@qualy/api-kit/assembled'
 import { NodeServer } from '@qualy/api-kit/node'
-import { WebConfig, routes } from '../src/server/index.ts'
+import { WebConfig, namesHiddenPath, routes } from '../src/server/index.ts'
 import { ShellPolicyHeader } from '../src/server/shell-policy.ts'
 import { viteLogger } from '../src/dev/index.ts'
 import { TEST_CONTRACT, TEST_HASH, installTestRelease } from './support/store.ts'
@@ -118,6 +118,27 @@ beforeAll(async () => {
 afterAll(async () => {
   await Effect.runPromise(Scope.close(scope, Exit.void))
   fs.rmSync(assetRoot, { recursive: true, force: true })
+})
+
+describe('what the shell refuses to serve', () => {
+  it('reads a hidden name through its escapes', () => {
+    // The guard used to test the raw url, while the file lookup works from
+    // the decoded one: `%2E` is a dot and `%2F` is a separator, so the raw
+    // text named the release's own metadata while carrying neither.
+    for (const hidden of [
+      '/.qualy-release.json',
+      '/%2Equaly-release.json',
+      '/assets%2F.hidden',
+      '/a/.git/config',
+      // an escape that does not decode cannot name a servable file either
+      '/%ZZ',
+    ]) {
+      expect(namesHiddenPath(hidden), hidden).toBe(true)
+    }
+    for (const served of ['/', '/index.html', '/assets/index-abc.js', '/ping', '/batches?x=1']) {
+      expect(namesHiddenPath(served), served).toBe(false)
+    }
+  })
 })
 
 describe('the shell against the api mount', () => {
