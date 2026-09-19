@@ -803,6 +803,80 @@ describe('filing a claim', () => {
     expect(page.getByRole('button', { name: '套用' }).elements()).toHaveLength(0)
   })
 
+  it('reads a claim back against the form it was filed under', async () => {
+    const MOVED = '77777777-7777-4777-8777-777777777777'
+    // the question was edited after this was filed: the field it asked for
+    // is gone, and a different one took its place
+    const moved = item({
+      currentRevision: {
+        id: MOVED,
+        revisionNo: 2,
+        entrySource: 'student' as const,
+        formConfig: {
+          fields: [{ key: 'unit', type: 'text', label: '所在部队', required: true }],
+        },
+        scoringConfig: {},
+        reviewPolicy: {},
+        displayConfig: null,
+        reason: null,
+        createdAt: '2026-04-01T00:00:00.000Z',
+      },
+    })
+    screen(
+      {
+        listItems: () => Effect.succeed({ items: [moved], capabilities: { canManage: false } }),
+        listMyEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: [entry()],
+            nextCursor: null,
+            attention: { unreadItemIds: [] },
+          }),
+        getEntryHistory: () =>
+          Effect.succeed({
+            entry: entry(),
+            events: [],
+            rounds: [],
+            revisions: [
+              {
+                id: REVISION_ID,
+                revisionNo: 1,
+                itemRevisionId: REVISION_ID,
+                payload: { summary: '2024 年入伍，2026 年退役复学' },
+                note: null,
+                source: 'self',
+                actorId: PARTICIPANT_ID,
+                subjectId: PARTICIPANT_ID,
+                attachments: [],
+                createdAt: '2026-03-02T00:00:00.000Z',
+                formConfig: {
+                  fields: [{ key: 'summary', type: 'text', label: '事项说明', required: true }],
+                },
+              },
+            ],
+          }),
+      },
+      `/assessment/batches/${BATCH_ID}/my-entries`,
+      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+    )
+
+    // by the row rather than by its words: the summary line is drawn from
+    // the question as it stands today, and this question no longer asks for
+    // the field the summary used to name
+    await page.getByTestId('claim-row').first().click()
+    const sheet = page.getByRole('dialog')
+    await expect.element(sheet).toBeVisible()
+    // what was actually written, under the words it was asked for
+    await vi.waitFor(() => {
+      const words = (sheet.element() as HTMLElement).textContent ?? ''
+      if (!words.includes('事项说明')) throw new Error('not read back yet')
+    })
+    const words = (sheet.element() as HTMLElement).textContent ?? ''
+    expect(words).toContain('2024 年入伍')
+    // and nothing from the form nobody was ever asked
+    expect(words).not.toContain('所在部队')
+  })
+
   it('shows the question\u2019s routes by step name, and never who holds them', async () => {
     screen(
       {

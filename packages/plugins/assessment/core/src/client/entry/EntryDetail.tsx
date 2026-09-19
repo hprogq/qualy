@@ -414,7 +414,6 @@ export function EntryDetail({
   const query = useApiQuery(assessmentApi)
   const { format } = useI18n()
   const [tab, setTab] = useState<'content' | 'trail'>('content')
-  const fields = fieldsOf(item.currentRevision?.formConfig)
   const payload = (entry.currentRevision?.payload ?? {}) as Record<string, unknown>
   const revisionNo = entry.currentRevision?.revisionNo
   const declared = item.itemType === 'declaration'
@@ -431,6 +430,22 @@ export function EntryDetail({
       .map((one) => ({ ...one, roundNo: round.roundNo })),
   )
   const versions = (history.data as History | undefined)?.revisions.length ?? 0
+  // Read back against the form this version was written under, not the one
+  // the question carries today. An administrator editing the question after
+  // somebody filed moved answers out from under the reader: a field since
+  // removed took a filed answer off the screen entirely, and a field since
+  // added showed as cleared though nobody was ever asked it. The two are the
+  // same object whenever nothing changed, which is the ordinary case and
+  // needs no waiting; where they differ, the fields wait for the history
+  // rather than showing the wrong ones in the meantime.
+  const filedUnder = ((history.data as History | undefined)?.revisions ?? []).find(
+    (one) => one.id === entry.currentRevision?.id,
+  )
+  const fields = fieldsOf(
+    entry.currentRevision?.itemRevisionId === item.currentRevision?.id
+      ? item.currentRevision?.formConfig
+      : (filedUnder?.formConfig ?? null),
+  )
 
   return (
     <Sheet open={open} onOpenChange={(next) => !next && onClose()}>
