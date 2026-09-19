@@ -6,6 +6,7 @@ import {
   compareDecimal,
   fractionalDigits,
   isDecimalString,
+  MAX_DECIMAL_LENGTH,
   parseDecimal,
 } from '../src/decimal.ts'
 
@@ -26,6 +27,28 @@ describe('the lexical layer', () => {
       expect(canonicalDecimal(value)).toBeNull()
     },
   )
+})
+
+describe('how long a spelling may be', () => {
+  it('admits everything the profile can describe', () => {
+    // the widest real value: the platform amount's integer digits and the
+    // profile's largest scale
+    expect(isDecimalString(`-12345678.${'9'.repeat(18)}`)).toBe(true)
+    expect(isDecimalString(`0.${'1'.repeat(MAX_DECIMAL_LENGTH - 2)}`)).toBe(true)
+  })
+
+  it('refuses a spelling longer than the language has a meaning for', () => {
+    // Neither layer below is linear in the digits: the coefficient is a
+    // BigInt over all of them, and reducing the scale divides it once per
+    // trailing zero. Measured before this ceiling existed, a hundred
+    // thousand trailing zeros held the event loop for four and a half
+    // seconds - inside one ordinary request body.
+    const long = `0.1${'0'.repeat(200_000)}`
+    expect(isDecimalString(long)).toBe(false)
+    expect(parseDecimal(long)).toBeNull()
+    expect(canonicalDecimal(long)).toBeNull()
+    expect(isDecimalString(`0.${'1'.repeat(MAX_DECIMAL_LENGTH)}`)).toBe(false)
+  })
 })
 
 describe('the semantic layer', () => {

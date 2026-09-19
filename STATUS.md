@@ -18375,3 +18375,57 @@ pnpm vitest run tools/tests apps/server/tests    413 passed(supervisor 4/4,新�
 负面验证(临时回退后重跑)                         readiness 用例:expected ['1','3'] to equal ['1']
                                                  dev-child 用例:still waiting after 5000ms
 ```
+
+## 对抗审查修复(2026-09-19)
+
+对整棵树做了一轮分子系统 + 跨切面的对抗审查(45 个发现单元,每条发现由三个立场不同的裁决者独立判定,
+两票否决淘汰),按严重度逐条复核、修复、配可复现的回归测试,并逐条做反向验证(去掉修复确认测试转红)。
+
+### 已修
+
+- **阶段计划把同一阶段写两次**(P0):`replacePlan` 的重排守卫只比较提交序列的**前缀**,一个 id 出现两次
+  时前缀仍相等;`writePlanOrder` 按 spec 下标定 ordinal,第二次提及覆盖第一次,已排期阶段落到未排期
+  阶段之后。那是 `normalizePlan` 拒绝读的形状,且是裸 `throw`(defect,`catchTag` 拦不住)——此后该批次
+  每一次读都 500,批次列表页对整租户 500,`sweepDueBoundaries` 卡在这一行不再前进。改为在 draft/active
+  分叉前拒绝重复 id;这一条同时让前缀比较变得完备。
+- **批量行政认定不绑定它引用的附件**(P0):`recordAdministrativeEntryTx` 的契约注释写明绑定归调用方,
+  三个调用方漏了一个。附件停在 `staged`,24 小时后清扫**先删对象字节再删行**,而行被 `on delete restrict`
+  挡住——证据没了,行还在;清扫按 `created_at` 升序认领,此后整个部署的 staged 清扫不再前进。
+  `bindAttachments` 抽成 `entry/bind-attachments.ts` 两门共用,`storage` 进 `AdministrativeRecordDeps`
+  成为必填依赖(类型系统当场点名未接线处)。
+- **被撤销的授予仍算管理员**(P1,授权):`holdsCanonicalAdmin` 不带 `inForce` 与 `resourceId is null`,
+  而本插件其他每一处读 `role_grants` 都带。它决定两件事:绕过整张任命图,以及"只有管理员能授予/撤销
+  管理员角色"。反向验证:去掉修复后,一个授予已撤销、仍持有 `iam.tenant-grant.manage` 的前管理员
+  成功把管理员角色授了出去。(同类漏网已在 `administratorSurvivors` 上修过一次。)
+- **请求体没有上限**(P1):`HttpIncomingMessage.MaxBodySize` 默认 `undefined` 即不限,全仓库只有 CSP
+  上报路由自己提供过。serve chain 统一给 2 MiB(最大合法 JSON 是行政批量认定的 5000+5000 个 id,约
+  380 KB);上传不走这里,附件经自己的 raw 路由以流读入。
+- **CSP 上报去重表无界**(P1):键来自不可信正文,一个窗口内涌入的不同键没有任何可过期的,且过 1024 后
+  每次插入全表扫描。改为按大小封顶(4096)并淘汰最久未上报的键,另加单次请求最多读 32 条。
+- **行政行动详情忽略读者的组织可达范围**(P1,越权读):只校验"在本批次持有记录权限",随后返回该行动
+  触达的全部人员姓名与学号。同文件的撤销路径一直在问 `staffReachOver`,只有这条读路径漏了。
+- **名单为空时强制推进完全不校验权限**(P1):`for (const nodeId of rosterAnchors(...))` 在空列表上执行
+  零次检查,于是一个已激活、参评人全部退出的批次,任何能"管理"它的人都能强制推进。改为空名单时要求
+  租户级的强制权限(与 `rosterReachOf` 对"单位已删除"的答法一致)。
+- **行政记录游标把 `Date.toString()` 写进去**(P1):`created_at::text` 的别名取作 `createdAt`,与实体的
+  datetime 属性同名,orm 的 kysely 插件把它转回 `Date`——游标里是 `Fri Sep 19 2026 ... GMT+0800`,
+  第二页必 500。实测:`time zone "gmt+0800" not recognized`。`entry/db.ts` 一直特意用 `cursorAt` 避开。
+- **decimal 没有长度上限**(P1,单请求 DoS):`fractionalDigits` 每个尾随零一次 BigInt 除法,实测
+  10,000 位 43ms / 50,000 位 1085ms / **100,000 位 4436ms**,平方增长。加 `MAX_DECIMAL_LENGTH = 128`
+  (profile 的 maxScale 是 18,平台金额 `numeric(12,4)` 只有 8 位整数,余量充足),4436ms → 0.03ms。
+- **STATUS 的一条完工声明不实**:原文称「§32.62 的九条至此全部落地」,实际第八条未落地(见下)。
+
+### golden 重新生成的理由
+
+`packages/core/formula-compiler/tests/support/golden-artifacts.json` 在本批一并重生成:decimal 的长度
+上限改动了打进沙箱产物的 value-schema 源码,产物字节因此变化。这是该门禁注释要求的"与故意改动同一提交
+并记录原因"的情形,不是未解释的漂移。**已发布版本不受影响**——`formula_versions.runtime_js` 逐版本存着
+当时的产物,执行的是那些字节。
+
+### 未修:§32.62 第八条(`nearestRole` 空缺必须 BLOCKED)
+
+`resolveRoute` 已按三态记录(`no-such-level` / `no-holder`),`stageArrival` 也已把 `nodeId === null`
+判为 `blocked / no-assignee`——机制齐全。缺口只在 `enterableFrom`(review/chain.ts)只看
+`stage.nodeId !== null`,把两种原因一起跳过:某角色全线无人时该步骤被静默越过,它前一级成了终审,
+条目直接通过并计分。前置依赖同样未做——`review_instances.current_node_id` 仍非空,`blockedGroups`
+还 `join org_nodes on n.id = ri.current_node_id`,轮次停不到一个没有节点的步骤上。属 Review v2 范围。

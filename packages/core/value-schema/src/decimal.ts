@@ -18,15 +18,33 @@
 
 const LEXICAL = /^-?(?:0|[1-9]\d*)(?:\.\d+)?$/
 
+/**
+ * How long the spelling of a decimal may be.
+ *
+ * The lexical layer had no ceiling, and the two things built on it are not
+ * linear in the number of digits: the coefficient is one BigInt over every
+ * digit, and reducing the scale divides it once per trailing zero. Measured
+ * on the real routine, a value with 100,000 trailing zeros - well inside an
+ * ordinary request - held the event loop for four and a half seconds, and
+ * the cost grows with the square.
+ *
+ * The number is far above anything the profile can describe: the scale may
+ * not exceed 18, and the platform amount carries eight integer digits. A
+ * spelling longer than this is not a decimal this language has a meaning
+ * for, which is why the refusal belongs here rather than in a caller.
+ */
+export const MAX_DECIMAL_LENGTH = 128
+
 export interface DecimalParts {
   readonly coefficient: bigint
   readonly scale: number
 }
 
-export const isDecimalString = (value: string): boolean => LEXICAL.test(value)
+export const isDecimalString = (value: string): boolean =>
+  value.length <= MAX_DECIMAL_LENGTH && LEXICAL.test(value)
 
 export const parseDecimal = (value: string): DecimalParts | null => {
-  if (!LEXICAL.test(value)) return null
+  if (!isDecimalString(value)) return null
   const negative = value.startsWith('-')
   const unsigned = negative ? value.slice(1) : value
   const dot = unsigned.indexOf('.')
