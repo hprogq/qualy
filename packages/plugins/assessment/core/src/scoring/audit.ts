@@ -91,12 +91,21 @@ const PAGE = 200
 
 type Tally = Omit<ScoringAuditReport, 'failures' | 'verdict'>
 
-const verdictOf = (tally: Tally): ScoringAuditVerdict =>
+/**
+ * The counters decide which verdict, and the failures decide whether there
+ * can be a clean one at all.
+ *
+ * The second half is the floor rather than a second opinion: every counter is
+ * a count of things, and a count can be zero for a failure that still
+ * happened. A report that names a failure and calls itself clean is a report
+ * nobody can act on, whichever counter did not move.
+ */
+const verdictOf = (tally: Tally, failures: readonly ScoringAuditFailure[]): ScoringAuditVerdict =>
   tally.integrityFailed + tally.invariantFailed + tally.unreadable + tally.unprepared > 0
     ? 'fail-closed'
     : tally.refused + tally.executionFailed > 0
       ? 'violations'
-      : tally.unavailable > 0
+      : tally.unavailable > 0 || failures.length > 0
         ? 'inconclusive'
         : 'clean'
 
@@ -200,7 +209,12 @@ export const auditScoringState = (
         if (Result.isFailure(prepared)) {
           const error = prepared.failure
           if (error.kind === 'unavailable') {
-            tally.unavailable += rows.length + (derived ? 1 : 0)
+            // at least the rule itself. Counting only the determinations it
+            // left unproven made an outage on a question nobody has filed
+            // against add nothing at all, and a tally of nothing reads as a
+            // clean bill: the audit named the failure and then said the
+            // arithmetic was sound, and exited 0.
+            tally.unavailable += Math.max(1, rows.length + (derived ? 1 : 0))
           } else {
             tally.unprepared += 1
           }
@@ -276,5 +290,5 @@ export const auditScoringState = (
       if (page.length < PAGE) break
     }
 
-    return { ...tally, failures, verdict: verdictOf(tally) }
+    return { ...tally, failures, verdict: verdictOf(tally, failures) }
   })

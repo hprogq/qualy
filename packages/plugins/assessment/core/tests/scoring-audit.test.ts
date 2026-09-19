@@ -2,6 +2,7 @@ import { Duration, Effect, Fiber, Option } from 'effect'
 import { sql } from 'kysely'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
+import { CalculatorRuntimeError, ScoringRuntimeCatalog } from '../src/plugin.ts'
 import { Assessment } from '../src/server/index.ts'
 import { auditScoringState, exitCodeOf, type ScoringAuditReport } from '../src/scoring/audit.ts'
 import { catalogLayers, probeGrantTest, probeHold, probeScoring } from './support/catalogs.ts'
@@ -298,6 +299,44 @@ describe.runIf(postgresAvailable)('the audit of what stands', () => {
     )
     expect(report.unavailable).toBe(1)
     expect(report.refused + report.executionFailed).toBe(0)
+    expect(report.verdict).toBe('inconclusive')
+    expect(exitCodeOf(report.verdict)).toBe(3)
+  }, 120_000)
+
+  // The counters count things, and an outage of the RULE has nothing to
+  // count when nobody has filed against the question yet: the audit named
+  // the failure, added zero to every counter, and called the arithmetic
+  // clean - exit 0, and the operator hint that says some of it was out of
+  // reach stayed quiet too, because that reads the same counter.
+  it('never calls itself clean when a rule would not prepare, with nobody standing under it', async () => {
+    const report = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('sa-prepare-outage')
+          const real = yield* ScoringRuntimeCatalog
+          // an active question nobody has filed against: the audit takes it,
+          // and there is no determination for an outage to leave unproven
+          yield* runningBatch(f, { profile: REVIEW_OPEN, scoring: probeScoring() })
+          return yield* auditScoringState({ tenantId: f.t }).pipe(
+            Effect.provideService(
+              ScoringRuntimeCatalog,
+              ScoringRuntimeCatalog.of({
+                compile: real.compile,
+                verify: real.verify,
+                prepare: () =>
+                  Effect.fail(new CalculatorRuntimeError('unavailable', 'the sandbox is gone')),
+              }),
+            ),
+            Effect.provide(catalogLayers),
+          )
+        }),
+      ),
+    )
+    expect(report.failures).toHaveLength(1)
+    expect(report.failures[0]).toMatchObject({ stage: 'prepare', kind: 'unavailable' })
+    // the rule itself is the thing left unproven, so the count is not zero
+    expect(report.unavailable).toBe(1)
     expect(report.verdict).toBe('inconclusive')
     expect(exitCodeOf(report.verdict)).toBe(3)
   }, 120_000)
