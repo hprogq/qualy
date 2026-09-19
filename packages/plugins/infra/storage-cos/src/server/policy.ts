@@ -107,10 +107,28 @@ export const objectWritePolicy = (input: ObjectPolicyInput): CosPolicy => {
 
 /**
  * The origin a browser talks to when it uploads straight to the bucket: the
- * sdk's default endpoint for a bucket in a region. It is what the shell's
- * content security policy has to allow under connect-src, and nothing else
- * of this provider's is reached from a browser - downloads are streamed
- * through the api.
+ * sdk's default endpoint for a bucket in a region.
  */
 export const cosOrigin = (input: { readonly region: string; readonly bucket: string }): string =>
   `https://${input.bucket}.cos.${input.region}.myqcloud.com`
+
+/**
+ * The origin a browser FETCHES from, which is not always the one it writes
+ * to.
+ *
+ * Downloads are not streamed through the api when this backend signs its own
+ * urls: `describeAttachment` hands the browser a redirect and the browser
+ * goes to the store itself - through `downloadDomain` when a deployment
+ * names one. Left out of the policy, the shell blocked the product's own
+ * evidence: an `<img>` against `img-src`, and a fetch against `connect-src`.
+ */
+export const cosDownloadOrigin = (input: {
+  readonly region: string
+  readonly bucket: string
+  readonly downloadDomain?: string | undefined
+}): string => {
+  const named = input.downloadDomain?.trim() ?? ''
+  if (named === '') return cosOrigin(input)
+  // a bare host in configuration, an origin here
+  return named.startsWith('http://') || named.startsWith('https://') ? named : `https://${named}`
+}

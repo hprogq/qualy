@@ -7,7 +7,7 @@ import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { StorageBackends } from '@qualy/plugin-storage/server'
 import { cosBackend } from './server/backend.ts'
 import { config, CosStorageConfig } from './server/config.ts'
-import { cosOrigin } from './server/policy.ts'
+import { cosDownloadOrigin, cosOrigin } from './server/policy.ts'
 
 // Keeping attachments in a tencent cloud bucket.
 //
@@ -26,9 +26,18 @@ const registration: Layer.Layer<never, never, StorageBackends | CosStorageConfig
       // security policy has to let it connect there; the origin is this
       // deployment's, known only once the configuration is read
       const policy = yield* ShellPolicy
+      // Two origins and two directives. The browser WRITES to the bucket
+      // endpoint, and it READS from wherever this deployment's download
+      // urls point - the same host unless a download domain is named. A
+      // redirect delivery is fetched, and an image among the evidence is
+      // drawn, so both of those doors have to be open or the shell blocks
+      // the product's own files.
+      const writesTo = cosOrigin(settings)
+      const readsFrom = cosDownloadOrigin(settings)
       yield* policy.register({
         owner: '@qualy/plugin-storage-cos',
-        'connect-src': [cosOrigin(settings)],
+        'connect-src': readsFrom === writesTo ? [writesTo] : [writesTo, readsFrom],
+        'img-src': [readsFrom],
       })
       yield* Effect.logDebug(`cos storage writing to ${settings.bucket} in ${settings.region}`)
     }),

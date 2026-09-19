@@ -5,10 +5,16 @@ import { StorageBackends } from '@qualy/plugin-storage/server'
 import plugin from '../src/index.ts'
 import { CosStorageConfig } from '../src/server/config.ts'
 
-// What this plugin tells the shell about itself: the one origin a browser
+// What this plugin tells the shell about itself: the origins a browser
 // reaches on its behalf. Read off the descriptor's own layer, built over
 // stubs - no bucket, no database - because the registration is a fact about
 // configuration, not about the store.
+//
+// Two of them, and they are not the same question. The browser WRITES to the
+// bucket endpoint, and it READS from wherever this deployment's download
+// urls point: a signed redirect is fetched by the browser itself, and an
+// image among the evidence is drawn. Registering only the first blocked the
+// product's own files with its own policy.
 
 const settings = CosStorageConfig.of({
   region: 'ap-beijing',
@@ -21,16 +27,15 @@ const settings = CosStorageConfig.of({
 const registration = plugin.features.find((feature) => feature._tag === 'Layer')!
   .layer as Layer.Layer<never, never, StorageBackends | CosStorageConfig | ShellPolicy>
 
-describe('the shell policy contribution', () => {
-  it('registers the bucket endpoint under connect-src, and nothing else', async () => {
-    const entries = await Effect.runPromise(
+const entriesFor = (config: typeof settings) =>
+  Effect.runPromise(
       Effect.flatMap(ShellPolicy, (policy) => policy.entries).pipe(
         Effect.provide(
           registration.pipe(
             Layer.provideMerge(
               Layer.mergeAll(
                 shellPolicyLayer,
-                Layer.succeed(CosStorageConfig, settings),
+                Layer.succeed(CosStorageConfig, config),
                 Layer.succeed(
                   StorageBackends,
                   StorageBackends.of({
@@ -45,11 +50,31 @@ describe('the shell policy contribution', () => {
           ),
         ),
       ),
+  )
+
+describe('the shell policy contribution', () => {
+  const bucket = 'https://qualy-files-1301296774.cos.ap-beijing.myqcloud.com'
+
+  it('names the bucket for both writing and reading when nothing else is set', async () => {
+    expect(await entriesFor(settings)).toEqual([
+      {
+        owner: '@qualy/plugin-storage-cos',
+        'connect-src': [bucket],
+        // an image among the evidence is drawn, not fetched
+        'img-src': [bucket],
+      },
+    ])
+  })
+
+  it('names the download domain as well, when a deployment has one', async () => {
+    const entries = await entriesFor(
+      CosStorageConfig.of({ ...settings, downloadDomain: 'files.qualy.example' }),
     )
     expect(entries).toEqual([
       {
         owner: '@qualy/plugin-storage-cos',
-        'connect-src': ['https://qualy-files-1301296774.cos.ap-beijing.myqcloud.com'],
+        'connect-src': [bucket, 'https://files.qualy.example'],
+        'img-src': ['https://files.qualy.example'],
       },
     ])
   })
