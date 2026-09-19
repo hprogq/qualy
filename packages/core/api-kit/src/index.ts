@@ -124,11 +124,47 @@ export type CursorPart = 'text' | 'uuid' | 'timestamp'
 
 const UUID_SHAPED = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+/**
+ * A timestamp PostgreSQL will read, decided without asking it.
+ *
+ * `Date.parse` was the gate here and in the audit filter, and the two
+ * grammars do not agree: it takes `2026-02-30` and `Sat Sep 19 2026 ...
+ * GMT+0800`, both of which reach the database as a cast error - a defect,
+ * answered 500, for a request that is simply malformed. So the shape is
+ * checked here, and the calendar with it.
+ *
+ * Accepts what the product really produces on both sides: an ISO instant
+ * from a browser, and `timestamptz::text` from PostgreSQL, whose offset is
+ * two digits and whose fraction is up to six.
+ */
+const TIMESTAMP_SHAPE =
+  /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:\.\d{1,6})?(?:Z|[+-]\d{2}(?::?\d{2})?)?$/
+
+export const isReadableTimestamp = (value: string): boolean => {
+  const parts = TIMESTAMP_SHAPE.exec(value)
+  if (parts === null) return false
+  const year = Number(parts[1])
+  const month = Number(parts[2])
+  const day = Number(parts[3])
+  // a calendar day that exists: the shape alone admits the thirtieth of
+  // February, which postgres does not
+  const probe = new Date(Date.UTC(year, month - 1, day))
+  if (
+    probe.getUTCFullYear() !== year ||
+    probe.getUTCMonth() !== month - 1 ||
+    probe.getUTCDate() !== day
+  ) {
+    return false
+  }
+  // leap seconds are spelled :60 and postgres takes them
+  return Number(parts[4]) < 24 && Number(parts[5]) < 60 && Number(parts[6]) <= 60
+}
+
 // Every value in a cursor was minted by `encodeQueryCursor` from a row, so
 // "what this can read" is the right bar rather than "everything postgres
 // would accept": a stricter check refuses tampering without refusing anything
 // this ever produced.
-const timestampShaped = (part: string) => !Number.isNaN(Date.parse(part))
+const timestampShaped = (part: string) => isReadableTimestamp(part)
 
 /**
  * A cursor read without deciding what an unusable one means.

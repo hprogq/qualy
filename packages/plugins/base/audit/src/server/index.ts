@@ -2,7 +2,12 @@ import { Effect, Layer } from 'effect'
 import { sql } from 'kysely'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { Api } from '@qualy/api-kit/plugin'
-import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
+import {
+  DEFAULT_PAGE_SIZE,
+  encodeQueryCursor,
+  isReadableTimestamp,
+  readQueryCursor,
+} from '@qualy/api-kit'
 import { BadRequest, cursorUnusable, pageSize } from '@qualy/api-kit/schema'
 import { CurrentUser } from '@qualy/auth-contract/session'
 import { Rbac } from '@qualy/rbac-contract/effect'
@@ -128,7 +133,11 @@ export const listEvents = (
  */
 const timeBound = Effect.fnUntraced(function* (value: string | undefined) {
   if (value === undefined) return undefined
-  if (Number.isNaN(Date.parse(value))) {
+  // asked the way the database would answer, not the way `Date.parse` does:
+  // the two grammars disagree about `2026-02-30` and about a spelled-out
+  // `Sat Sep 19 2026 ... GMT+0800`, and both of those reached the cast as a
+  // fault instead of being refused here
+  if (!isReadableTimestamp(value)) {
     return yield* new BadRequest({ message: `not a timestamp: ${value}` })
   }
   return value

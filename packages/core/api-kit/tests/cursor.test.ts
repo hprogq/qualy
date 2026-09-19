@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { encodeQueryCursor, readQueryCursor } from '../src/index.ts'
+import { encodeQueryCursor, isReadableTimestamp, readQueryCursor } from '../src/index.ts'
 import { MAX_CURSOR_LENGTH } from '../src/schema.ts'
 
 // A cursor is client-held, so every part of it is attacker-controlled. What
@@ -70,6 +70,37 @@ describe('the pagination cursor', () => {
     const widest = encodeQueryCursor(`access:${ID}`, ['\u5f20'.repeat(100), ID])
     expect(widest.length).toBeLessThanOrEqual(MAX_CURSOR_LENGTH)
     expect(readQueryCursor(widest, `access:${ID}`, ['text', 'uuid'])).not.toBeNull()
+  })
+
+  it('admits the timestamps postgres does, and only those', () => {
+    // `Date.parse` was the gate, and the two grammars disagree. Both of the
+    // refusals below used to pass it and then fail at the `::timestamptz`
+    // cast - a defect, answered 500, for a malformed request.
+    for (const real of [
+      '2026-09-19T12:00:00.000Z',
+      '2026-09-19T12:00:00Z',
+      '2026-09-19T12:00:00+08:00',
+      // what `timestamptz::text` hands back: a two-digit offset, microseconds
+      '2026-09-19 12:00:00+00',
+      '2026-09-19 12:00:00.123456+00',
+      '2026-09-19 12:00:00',
+    ]) {
+      expect(isReadableTimestamp(real), real).toBe(true)
+    }
+    for (const refused of [
+      // a day that is not on the calendar
+      '2026-02-30T00:00:00Z',
+      '2026-02-29T00:00:00Z',
+      '2026-13-01T00:00:00Z',
+      '2026-09-19T25:00:00Z',
+      // what a JS Date prints, which is how a cursor once carried one
+      'Sat Sep 19 2026 12:00:00 GMT+0800',
+      'now',
+      '2026-09-19',
+      '',
+    ]) {
+      expect(isReadableTimestamp(refused), refused).toBe(false)
+    }
   })
 
   it('refuses what it cannot read at all', () => {

@@ -215,6 +215,17 @@ export const codeFrom = (name: string, prefix: string): string => {
 }
 
 /**
+ * PostgreSQL stores no NUL byte in a text column, and refuses the row rather
+ * than dropping it. Admitted here, the refusal arrives from the database as
+ * a fault - a 500 for a request that a schema can see is malformed. It is
+ * checked on the primitives rather than field by field, because every text
+ * field in the product is built from one of them.
+ */
+const noNulByte = Schema.makeFilter((value: string) =>
+  value.includes('\u0000') ? 'text may not carry a NUL byte' : undefined,
+)
+
+/**
  * A human-readable name, trimmed on the way in.
  *
  * `Schema.Trim` is a decode-time transform: the stored value is the trimmed one.
@@ -224,10 +235,11 @@ export const codeFrom = (name: string, prefix: string): string => {
  * same request rather than agreeing.
  */
 export const trimmedName = (max: number) =>
-  Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(max))
+  Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(max), noNulByte)
 
 /** free text with a ceiling, not trimmed: the contract does not trim it either */
-export const boundedText = (max: number) => Schema.String.check(Schema.isMaxLength(max))
+export const boundedText = (max: number) =>
+  Schema.String.check(Schema.isMaxLength(max), noNulByte)
 
 /** an integer inside the range the column can actually hold */
 export const boundedInt = (min: number, max: number) =>
