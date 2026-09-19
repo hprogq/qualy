@@ -223,26 +223,6 @@ export function reviewInsertion(
   return profileReview(null, spec.permissionProfile ?? [])
 }
 
-/** the ordinal arithmetic of an insertion the review already accepted */
-export interface InsertionPlacement {
-  /** the ordinal the new phase takes */
-  readonly ordinal: number
-  /** existing phases whose ordinal shifts up, in plan order */
-  readonly shifted: readonly { readonly phaseId: string; readonly ordinal: number }[]
-}
-
-export function planInsertion(plan: PhasePlan, position: number): InsertionPlacement {
-  const at = plan[position]
-  const ordinal =
-    at !== undefined ? at.ordinal : plan.length > 0 ? plan[plan.length - 1]!.ordinal + 1 : 0
-  return {
-    ordinal,
-    shifted: plan
-      .slice(position)
-      .map((phase) => ({ phaseId: phase.id, ordinal: phase.ordinal + 1 })),
-  }
-}
-
 /**
  * A whole plan of specs, reviewed at once - what a draft rewrite or a
  * template append submits. Times are not part of a spec list: a plan arrives

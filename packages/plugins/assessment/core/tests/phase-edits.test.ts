@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyToPlan,
-  planInsertion,
   reviewInsertion,
   reviewPlan,
   reviewPlanEdit,
@@ -160,16 +159,6 @@ describe('changing the structure', () => {
     ])
   })
 
-  it('shifts the ordinals of everything it lands in front of', () => {
-    expect(planInsertion(plan(), 2)).toEqual({
-      ordinal: 2,
-      shifted: [
-        { phaseId: 'p2', ordinal: 3 },
-        { phaseId: 'p3', ordinal: 4 },
-      ],
-    })
-  })
-
   it('reviews a whole submitted plan as structure alone', () => {
     const review = reviewPlan([
       { phaseKey: 'a', displayName: 'A' },
@@ -181,9 +170,14 @@ describe('changing the structure', () => {
 
 describe('applying an accepted edit', () => {
   it('writes only the phase it names', () => {
-    const after = applyToPlan(plan(), { kind: 'describe', phaseId: 'p2', description: 'S1' })
+    const before = plan()
+    const after = applyToPlan(before, { kind: 'describe', phaseId: 'p2', description: 'S1' })
     expect(after[2]!.description).toBe('S1')
-    expect(after[1]).toBe(plan()[1] === after[1] ? after[1] : after[1])
-    expect(after.map((row) => row.displayName)).toEqual(plan().map((row) => row.displayName))
+    // every other row comes through by identity, not by copy: the assertion
+    // here used to compare a value with itself through a ternary whose two
+    // branches were the same expression, which no change could have failed
+    expect(after[0]).toBe(before[0])
+    expect(after[1]).toBe(before[1])
+    expect(after.map((row) => row.displayName)).toEqual(before.map((row) => row.displayName))
   })
 })

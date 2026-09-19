@@ -18,6 +18,7 @@ import type { Principal } from '@qualy/rbac-contract'
 import type { ApplicableAssignment } from '@qualy/rbac-contract/effect'
 import { assessmentApiGroup } from '../api.ts'
 import {
+  applyToPlan,
   reviewInsertion,
   reviewPlan,
   reviewPlanEdit,
@@ -605,12 +606,7 @@ const MAX_STAFF_PAIRS = 2000
  * carries is more than a batch may hand out at all.
  */
 export type RoleRefusal =
-  | 'user-type'
-  | 'authority'
-  | 'self-escalation'
-  | 'unavailable'
-  | 'beyond-batch'
-  | null
+  'user-type' | 'authority' | 'self-escalation' | 'unavailable' | 'beyond-batch' | null
 
 /** one level of the lineage being frozen, with who could act there today */
 export interface ChainPreviewStep {
@@ -1490,26 +1486,6 @@ export const make = Effect.fn('Assessment.make')(function* () {
     }
   }
 
-  /** the in-memory application of an accepted edit, for sequential review */
-  const applyToPlan = (plan: PhasePlan, edit: PlanEdit): PhasePlan =>
-    plan.map((phase) => {
-      if (phase.id !== edit.phaseId) return phase
-      switch (edit.kind) {
-        case 'rename':
-          return { ...phase, displayName: edit.displayName }
-        case 'set-planned':
-          return { ...phase, plannedEntryAt: edit.plannedEntryAt }
-        case 'describe':
-          return { ...phase, description: edit.description }
-        case 'note-entry':
-          return { ...phase, entryNote: edit.entryNote }
-        case 'set-profile':
-          return { ...phase, permissionProfile: edit.permissionProfile }
-        default:
-          return phase
-      }
-    })
-
   /**
    * Rewrites the plan to the submitted order: retained rows park their
    * ordinals out of the way first, so the unique (batch, ordinal) index never
@@ -1858,9 +1834,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
     Effect.flatMap(rbac.listAuthorizedScope(as, MANAGE), (held) =>
       held.tenantWide
         ? Effect.void
-        : Effect.fail(
-            new AccessDenied({ reason: 'cannot manage assessment timetable templates' }),
-          ),
+        : Effect.fail(new AccessDenied({ reason: 'cannot manage assessment timetable templates' })),
     )
 
   /** the selection as a validated, deduplicated set of living units */
@@ -3219,7 +3193,12 @@ export const make = Effect.fn('Assessment.make')(function* () {
       const refusals = new Map<string, { name: string; refusal: RoleRefusal }>()
       for (const userId of userIds) {
         for (const orgNodeId of orgNodeIds) {
-          const grantable = yield* rbac.listGrantableRoles({ tenantId, actor: as, userId, orgNodeId })
+          const grantable = yield* rbac.listGrantableRoles({
+            tenantId,
+            actor: as,
+            userId,
+            orgNodeId,
+          })
           const offered = new Set(grantable.map((role) => role.id))
           for (const role of grantable) {
             const held = refusals.get(role.id)
@@ -3530,7 +3509,8 @@ export const make = Effect.fn('Assessment.make')(function* () {
             const duplicated: PlanRefusal[] = []
             for (const [index, spec] of specs.entries()) {
               if (spec.id === undefined) continue
-              if (named.has(spec.id)) duplicated.push({ reason: 'phase-duplicated', phaseId: spec.id, index })
+              if (named.has(spec.id))
+                duplicated.push({ reason: 'phase-duplicated', phaseId: spec.id, index })
               named.add(spec.id)
             }
             if (duplicated.length > 0) return yield* new PlanInvalid({ refusals: duplicated })
