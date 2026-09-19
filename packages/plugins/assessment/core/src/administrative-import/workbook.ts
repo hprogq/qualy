@@ -178,14 +178,24 @@ export const columnLetter = (index: number): string => {
 const choicesOf = (schema: AtomicSchema, locale: string) => {
   if (kindOf(schema) !== 'choice') return undefined
   const values = (schema as { enum: readonly string[] }).enum
-  const labels = values.map((value) => choiceLabel(schema as never, value, locale))
+  // Trimmed where the label is made, because a cell's text arrives trimmed
+  // and this is the same list the reading compares against. Two labels
+  // differing only by a space around them counted as two different words
+  // here and as one word there: neither was disambiguated, and whichever
+  // came second read back as the first one's value, silently, as a fact
+  // somebody had recorded about a person.
+  const labels = values.map((value) => choiceLabel(schema as never, value, locale).trim())
   const seen = new Map<string, number>()
   for (const label of labels) seen.set(label, (seen.get(label) ?? 0) + 1)
   return values.map((value, at) => {
     const label = labels[at]!
     // two values, one word: the file has to keep them apart or importing it
-    // back would have to guess
-    return { value, label: (seen.get(label) ?? 0) > 1 ? `${label} [${value}]` : label }
+    // back would have to guess. Trimmed again because a label that was only
+    // spaces is empty by now, and the reading would not find a leading one
+    return {
+      value,
+      label: ((seen.get(label) ?? 0) > 1 ? `${label} [${value}]` : label).trim(),
+    }
   })
 }
 

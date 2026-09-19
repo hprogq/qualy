@@ -178,6 +178,36 @@ describe('the administrative import workbook', () => {
     ])
   })
 
+  // A cell's text arrives trimmed, so two labels that are the same word with
+  // a space around one of them are two words here and one word there. Neither
+  // was disambiguated and the reading matched whichever came first, so the
+  // other value was unreachable and quietly became the first - as a recorded
+  // fact about a person.
+  it('tells two choices apart when only a space around one of them differs', async () => {
+    const spaced = spec({
+      recognition: [
+        {
+          id: 'rec-level',
+          schema: {
+            type: 'string',
+            enum: ['national', 'national-special'],
+            'x-qualy-enumLabels': { national: '国家级', 'national-special': ' 国家级 ' },
+          } as never,
+        },
+      ],
+    })
+    const bytes = await buildAdministrativeWorkbook(spaced)
+    await parseAdministrativeWorkbook(bytes)
+    const choices = templateLayout(spaced).columns[1]!.choices!
+    expect(choices).toEqual([
+      { value: 'national', label: '国家级 [national]' },
+      { value: 'national-special', label: '国家级 [national-special]' },
+    ])
+    // and every label is one the reading can actually find: the cell is
+    // trimmed before it is compared
+    for (const choice of choices) expect(choice.label).toBe(choice.label.trim())
+  })
+
   it('leaves a label alone when nothing collides with it', async () => {
     const distinct = spec({
       recognition: [
