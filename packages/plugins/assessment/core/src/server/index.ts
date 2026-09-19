@@ -3667,7 +3667,21 @@ export const make = Effect.fn('Assessment.make')(function* () {
               return yield* new AdvanceInvalid({ reason: 'force-required' })
             }
             if (input.force === true) {
-              for (const nodeId of yield* rosterAnchors(tenantId, batchId)) {
+              const anchors = yield* rosterAnchors(tenantId, batchId)
+              // Asking once per unit somebody is standing in means asking
+              // nothing at all when nobody is: an active round whose people
+              // have all withdrawn could be forced on by anyone who could
+              // merely manage it. A round with no units of its own is
+              // nobody's in particular, so only authority over the whole
+              // tenant is wide enough - the same answer the roster reach
+              // gives for a round whose units have been deleted.
+              if (anchors.length === 0) {
+                const held = yield* rbac.listAuthorizedScope(as, FORCE_ADVANCE)
+                if (!held.tenantWide) {
+                  return yield* new AccessDenied({ reason: FORCE_ADVANCE })
+                }
+              }
+              for (const nodeId of anchors) {
                 yield* rbac.requireAt(as, FORCE_ADVANCE, nodeId)
               }
               if (input.reason === undefined || input.reason.trim() === '') {

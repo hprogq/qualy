@@ -471,6 +471,99 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     expect(grown[1]!.plannedEntryAt).toBeNull()
   })
 
+  it('still asks for the forcing permission when the round has nobody left on it', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('force-empty')
+        const assessment = yield* Assessment
+        const round = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Emptied',
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            import: { orgNodeIds: [f.root], userTypeIds: [f.studentType] },
+          },
+          f.principal,
+        )
+        yield* assessment.replacePlan(
+          f.tenant,
+          round.id,
+          { specs: [phase({ phaseKey: 'entry' }), phase({ phaseKey: 'review' })] },
+          f.principal,
+        )
+        const timetable = yield* assessment.getPlan(f.tenant, round.id, f.principal)
+        yield* assessment.advancePhase(f.tenant, round.id, { to: timetable[0]!.id }, f.principal)
+        // the second boundary has promised a time, so entering it is forced
+        yield* assessment.schedulePhase(
+          f.tenant,
+          round.id,
+          timetable[1]!.id,
+          Date.now() + 3 * HOUR,
+          f.principal,
+        )
+        // everybody leaves the round. It is still an active round with a
+        // timetable somebody can override.
+        yield* runSql(sql`
+          update batch_participants set status = 'excluded'
+           where tenant_id = ${f.tenant} and batch_id = ${round.id}`)
+
+        // somebody who may manage rounds over the whole tree but was never
+        // given the authority to override a boundary
+        const manager = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+            values (${f.tenant}, 'Manager', ${f.teacherType}, ${f.root}) returning id`),
+        ).id
+        const office = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+            values (${f.tenant}, 'rounds', 'Rounds', 'org', 'active', 'explicit', 'unrestricted')
+            returning id`),
+        ).id
+        const manage = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into permissions (code, plugin, name, target_kind)
+            values ('assessment.batch.manage', 'assessment', 'manage', 'org-node')
+            on conflict (code) do update set code = excluded.code returning id`),
+        ).id
+        yield* runSql(sql`
+          insert into role_permissions (tenant_id, role_id, permission_id)
+          values (${f.tenant}, ${office}, ${manage})`)
+        yield* runSql(sql`
+          insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+          values (${f.tenant}, ${manager}, ${office}, ${f.root}, 'subtree')`)
+        const asManager = { tenantId: f.tenant, userId: manager, sessionId: 's' }
+
+        // they really can manage this round, which is what makes the next
+        // answer about the forcing permission rather than about reach
+        const manages = yield* Effect.exit(assessment.getPlan(f.tenant, round.id, asManager))
+        const refused = yield* Effect.exit(
+          assessment.advancePhase(
+            f.tenant,
+            round.id,
+            { to: timetable[1]!.id, force: true, reason: 'nobody is left anyway' },
+            asManager,
+          ),
+        )
+        const after = yield* assessment.getPlan(f.tenant, round.id, f.principal)
+        return {
+          manages: manages._tag,
+          refused: tagOf(refused),
+          entered: after[1]!.actualEntryAt,
+        }
+      }),
+    )
+    const answer = ok(exit)
+    // Asking once per unit somebody stands in asks nothing at all when
+    // nobody does, and the round becomes forceable by anyone who can merely
+    // manage it.
+    expect(answer.manages).toBe('Success')
+    expect(answer.refused).toBe('ACCESS_DENIED')
+    // and the boundary is still where it was
+    expect(answer.entered).toBeNull()
+  })
+
   it('advances manually, demands force and a reason for early boundaries, and archives at the terminal', async () => {
     const exit = await run(
       db.url,
