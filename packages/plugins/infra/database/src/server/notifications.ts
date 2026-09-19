@@ -77,7 +77,20 @@ export class DatabaseNotifications extends Context.Service<
             const client = yield* Effect.acquireRelease(
               Effect.tryPromise({
                 try: async () => {
-                  const client = new Client({ connectionString: url })
+                  // A LISTEN session sends nothing for as long as nothing
+                  // happens, which is exactly what a firewall or a load
+                  // balancer reaps. node-postgres leaves TCP keepalive off,
+                  // so a silently dead socket left the consumer waiting for
+                  // notifications that could no longer arrive - and a stream
+                  // that never fails is never retried. The connect timeout
+                  // is the same idea at the other end: a pause that never
+                  // resolves is not a connection.
+                  const client = new Client({
+                    connectionString: url,
+                    keepAlive: true,
+                    keepAliveInitialDelayMillis: 30_000,
+                    connectionTimeoutMillis: 10_000,
+                  })
                   await client.connect()
                   return client
                 },
