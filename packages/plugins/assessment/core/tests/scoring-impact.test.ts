@@ -55,8 +55,14 @@ interface Report {
       amountChanged: number
       refused: number
       executionFailed: number
+      baselineFailed: number
     }
-    derived: null | { comparable: boolean; amountChanged: boolean; refused: boolean }
+    derived: null | {
+      comparable: boolean
+      amountChanged: boolean
+      refused: boolean
+      baselineFailed: boolean
+    }
   }
 }
 
@@ -179,7 +185,8 @@ describe.runIf(postgresAvailable)('what a scoring change makes of what stands', 
             update entry_recognitions set values = '{"rec-level":"national","rec-ordinal":9}'::jsonb
             where entry_id = ${entryId}`)
           // now the current rule cannot compute it either: a fault that
-          // predates this save, laid at nobody's candidate
+          // predates this save, laid at nobody's candidate and counted
+          // rather than thrown
           const broken = yield* Effect.exit(
             assessment.updateItem(
               f.t,
@@ -188,11 +195,12 @@ describe.runIf(postgresAvailable)('what a scoring change makes of what stands', 
               admin,
             ),
           )
-          return { brokenDied: died(broken) }
+          return { brokenDied: died(broken), brokenReport: errorOf<Report>(broken) }
         }),
       ),
     )
-    expect(result.brokenDied).toBe(true)
+    expect(result.brokenDied).toBe(false)
+    expect(result.brokenReport?.scoring.approved.baselineFailed).toBe(1)
   }, 120_000)
 
   it('reports how many amounts a re-pricing changes, and saves once acknowledged', async () => {
@@ -242,6 +250,7 @@ describe.runIf(postgresAvailable)('what a scoring change makes of what stands', 
       amountChanged: 2,
       refused: 0,
       executionFailed: 0,
+      baselineFailed: 0,
     })
     expect(result.untouched).toBe(1)
     expect(result.saved).toBe(2)
@@ -403,7 +412,7 @@ describe.runIf(postgresAvailable)('what a scoring change makes of what stands', 
     expect(result.report.scoring.approved.amountChanged).toBe(1)
   }, 120_000)
 
-  it('judges the current rule first, so a fault that predates the save is never the candidate', async () => {
+  it('lays a fault that predates the save at the current rule, and still lets it be fixed', async () => {
     const result = ok(
       await run(
         db.url,
@@ -428,7 +437,9 @@ describe.runIf(postgresAvailable)('what a scoring change makes of what stands', 
               ),
             )
           // the current program cannot compute what stands; the candidate
-          // would refuse it. The former is the answer.
+          // would refuse it. The former is the answer - and it is reported
+          // rather than thrown, because a rule that cannot score what stands
+          // is precisely the rule somebody needs to replace
           yield* plant(9)
           const currentBroken = yield* attempt(probeScoring({ maxOrdinal: 2 }))
           // the current arithmetic is out of reach; the candidate cannot
@@ -438,14 +449,20 @@ describe.runIf(postgresAvailable)('what a scoring change makes of what stands', 
           return {
             currentBrokenDied: died(currentBroken),
             currentBrokenTag: tagOf(currentBroken),
+            currentBrokenReport: errorOf<Report>(currentBroken),
             currentOut: tagOf(currentOut),
             untouched: yield* revisionNoOf(g.item.id),
           }
         }),
       ),
     )
-    expect(result.currentBrokenDied).toBe(true)
-    expect(result.currentBrokenTag).toBeUndefined()
+    expect(result.currentBrokenDied).toBe(false)
+    // the candidate is not blamed for it - the refusal that would have been
+    // its verdict is not what comes back
+    expect(result.currentBrokenTag).toBe('ASSESSMENT_ITEM_CHANGE_DECISION_REQUIRED')
+    expect(result.currentBrokenReport?.scoring.approved.baselineFailed).toBe(1)
+    expect(result.currentBrokenReport?.scoring.approved.refused).toBe(0)
+    // an outage is still an outage: a report with a hole in it is not a report
     expect(result.currentOut).toBe('ASSESSMENT_SCORING_UNAVAILABLE')
     expect(result.untouched).toBe(1)
   }, 120_000)
@@ -543,6 +560,7 @@ describe.runIf(postgresAvailable)('what a scoring change makes of what stands', 
       amountChanged: true,
       refused: false,
       executionFailed: false,
+      baselineFailed: false,
     })
     expect(result.refused?._tag).toBe('ASSESSMENT_ITEM_SCORING_INCOMPATIBLE')
     expect(result.refused?.derived).toEqual({ refused: true, executionFailed: false })

@@ -41,8 +41,16 @@ export interface ScoringTrial {
   readonly derived: boolean
 }
 
-/** how the candidate answered one determination the current rule scored */
-type Verdict = 'same' | 'changed' | 'refused' | 'execution'
+/**
+ * How the candidate answered one determination the current rule scored, or
+ * `baseline` where the current rule could not score it.
+ *
+ * That last one used to be a defect, which made a broken rule permanent:
+ * the probe runs the current rule first on every row, so the one save that
+ * would fix it - replacing the rule - answered 500 instead. It is a fact
+ * about the question as it stands, said as one.
+ */
+type Verdict = 'same' | 'changed' | 'refused' | 'execution' | 'baseline'
 
 /**
  * How many determinations are evaluated at once, here and in the audit.
@@ -78,12 +86,34 @@ const candidateVerdict = (
   }
 }
 
-/** the current rule's failure on what stands: predates this save, never the candidate's */
+/**
+ * The current rule's failure on what stands: predates this save, never the
+ * candidate's.
+ *
+ * An outage stops the trial, because a report with a hole in it is not a
+ * report. Anything else is logged where a defect would have been logged and
+ * then counted: the row is set aside rather than compared, and it is not
+ * held against the candidate - a determination that is already unscorable
+ * must not be what stops the rule that would score it.
+ */
 const baselineFailure = (
   site: FailureSite,
   error: ScoringEvaluationFailed,
-): Effect.Effect<never, ScoringUnavailable> =>
-  error.kind === 'unavailable' ? Effect.fail(new ScoringUnavailable()) : defectAt(site, error)
+): Effect.Effect<'baseline', ScoringUnavailable> =>
+  error.kind === 'unavailable'
+    ? Effect.fail(new ScoringUnavailable())
+    : Effect.as(
+        Effect.logError('scoring failed', {
+          tenantId: site.tenantId,
+          batchId: site.batchId,
+          itemId: site.itemId,
+          calculatorRef: site.plan.calculator.ref,
+          kind: error.kind,
+          reason: error.reason,
+          boundary: 'impact-current',
+        }),
+        'baseline' as const,
+      )
 
 export const trialScoringImpact = (
   runtime: ScoringRuntimeCatalog['Service'],
@@ -118,6 +148,8 @@ export const trialScoringImpact = (
           countEvaluation('impact'),
           Effect.catch((error) => baselineFailure(at(trial.current), error)),
         )
+        // nothing to compare against, and nothing to hold the candidate to
+        if (before === 'baseline') return 'baseline' as const
         const after = yield* evaluateRecognition(candidate, {
           itemId: trial.itemId,
           plan: trial.candidate,
@@ -149,6 +181,7 @@ export const trialScoringImpact = (
         amountChanged: count('changed'),
         refused: count('refused'),
         executionFailed: count('execution'),
+        baselineFailed: count('baseline'),
       },
       derived:
         derived === null
@@ -158,6 +191,7 @@ export const trialScoringImpact = (
               amountChanged: derived === 'changed',
               refused: derived === 'refused',
               executionFailed: derived === 'execution',
+              baselineFailed: derived === 'baseline',
             },
     }
   })

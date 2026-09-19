@@ -88,12 +88,14 @@ export interface ChangeImpact {
       readonly amountChanged: number
       readonly refused: number
       readonly executionFailed: number
+      readonly baselineFailed: number
     }
     readonly derived: null | {
       readonly comparable: boolean
       readonly amountChanged: boolean
       readonly refused: boolean
       readonly executionFailed: boolean
+      readonly baselineFailed: boolean
     }
   }
 }
@@ -114,10 +116,15 @@ const asking = (impact: ChangeImpact) => ({
     impact.form.changed &&
     impact.form.inReview.incompatible + impact.form.approved.incompatible > 0,
   review: impact.review.changed && impact.review.open > 0,
-  // told, not asked: the amounts will change and there is nothing to pick
+  // told, not asked: the amounts will change and there is nothing to pick.
+  // Determinations the rule in force cannot score at all are told here too -
+  // the same screen, and the person reading it is the one editing that rule.
   scoring:
     impact.scoring.changed &&
-    (impact.scoring.approved.amountChanged > 0 || impact.scoring.derived?.amountChanged === true),
+    (impact.scoring.approved.amountChanged > 0 ||
+      impact.scoring.derived?.amountChanged === true ||
+      impact.scoring.approved.baselineFailed > 0 ||
+      impact.scoring.derived?.baselineFailed === true),
 })
 
 export function ImpactDialog({
@@ -194,6 +201,7 @@ export function ImpactDialog({
             data-comparable={impact.scoring.approved.comparable}
             data-amount-changed={impact.scoring.approved.amountChanged}
             data-derived-changed={impact.scoring.derived?.amountChanged === true ? 'true' : 'false'}
+            data-baseline-failed={impact.scoring.approved.baselineFailed}
           >
             <p {...stylex.props(styles.scoringTitle)}>{format(m.itemsImpactScoringTitle)}</p>
             {impact.scoring.approved.total > 0 && (
@@ -210,6 +218,13 @@ export function ImpactDialog({
             )}
             {impact.scoring.derived?.amountChanged === true && (
               <p {...stylex.props(styles.pastChangedNote)}>{format(m.itemsImpactScoringDerived)}</p>
+            )}
+            {impact.scoring.approved.baselineFailed > 0 && (
+              <p {...stylex.props(styles.pastChangedNote)} data-testid="impact-scoring-stuck">
+                {format(m.itemsImpactScoringStuck, {
+                  count: impact.scoring.approved.baselineFailed,
+                })}
+              </p>
             )}
             <p {...stylex.props(styles.pastChangedNote)}>{format(m.itemsImpactScoringNote)}</p>
           </section>

@@ -1046,6 +1046,8 @@ export default {
   'assessment/items/impact-scoring-comparable': '新旧规则均可计算',
   'assessment/items/impact-scoring-amount-changed': '已有认定分值变化',
   'assessment/items/impact-scoring-derived': '本题固定计分结果将变化。',
+  'assessment/items/impact-scoring-stuck':
+    '当前生效的计分规则无法计算已作出的 {count} 条认定，上面的比较未包含它们。',
   'assessment/items/impact-scoring-note':
     '保存后，已生效认定将按新规则计分；分值在读取成绩时重新计算。',
   'assessment/items/chain-hint-recorded': '认定后立即计入成绩；仅在有人提出异议时启动审核流程。',

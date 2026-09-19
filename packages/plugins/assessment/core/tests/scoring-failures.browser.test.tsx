@@ -306,24 +306,27 @@ describe('a rule that re-prices what stands', () => {
   const scoring = (over: {
     amountChanged?: number
     refused?: number
+    baselineFailed?: number
     derived?: {
       comparable: boolean
       amountChanged: boolean
       refused: boolean
       executionFailed: boolean
+      baselineFailed: boolean
     } | null
   }) => ({
     changed: true,
     approved: {
       total: 128,
-      comparable: 128 - (over.refused ?? 0),
+      comparable: 128 - (over.refused ?? 0) - (over.baselineFailed ?? 0),
       amountChanged: over.amountChanged ?? 0,
       refused: over.refused ?? 0,
       executionFailed: 0,
+      baselineFailed: over.baselineFailed ?? 0,
     },
     derived: over.derived ?? null,
   })
-  const decisionRequired = (amountChanged: number) =>
+  const decisionRequired = (amountChanged: number, baselineFailed = 0) =>
     apiError('ASSESSMENT_ITEM_CHANGE_DECISION_REQUIRED', {
       currentRevisionId: REVISION_ID,
       impactToken: 'token-1',
@@ -340,7 +343,7 @@ describe('a rule that re-prices what stands', () => {
         stageRemoved: 0,
         pastChanged: 0,
       },
-      scoring: scoring({ amountChanged }),
+      scoring: scoring({ amountChanged, baselineFailed }),
     })
 
   const openEditor = (updateItem: (call: { payload: Record<string, unknown> }) => unknown) => {
@@ -440,6 +443,24 @@ describe('a rule that re-prices what stands', () => {
     await vi.waitFor(() => expect(sent).toHaveLength(2))
     // nothing to choose: the acknowledgement is the token, and only the token
     expect(sent[1]?.['effects']).toEqual({ impactToken: 'token-1' })
+  }, 30_000)
+
+  it('says what the rule in force already cannot score, and still lets it be replaced', async () => {
+    const sent: Record<string, unknown>[] = []
+    openEditor((call) => {
+      sent.push(call.payload)
+      return sent.length === 1
+        ? Effect.fail(decisionRequired(0, 3))
+        : Effect.succeed({ item: item() })
+    })
+    await retitleAndSave()
+    const section = page.getByTestId('impact-scoring')
+    await expect.element(section).toBeVisible()
+    await expect.element(section).toHaveAttribute('data-baseline-failed', '3')
+    // and the way forward is open: replacing the rule is the repair
+    await expect.element(page.getByTestId('impact-scoring-stuck')).toBeVisible()
+    await page.getByRole('dialog').getByRole('button', { name: '保存', exact: false }).click()
+    await vi.waitFor(() => expect(sent).toHaveLength(2))
   }, 30_000)
 
   it('offers no way through when the rule cannot take what stands', async () => {

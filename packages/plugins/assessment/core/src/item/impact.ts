@@ -86,6 +86,13 @@ export interface ScoringImpact {
     readonly refused: number
     /** the candidate program failed to compute them */
     readonly executionFailed: number
+    /**
+     * The CURRENT rule could not score these, so there was nothing to
+     * compare the candidate against. Already unscorable before this save
+     * and not held against the candidate - otherwise the one save that
+     * would fix a broken rule is the one the broken rule forbids.
+     */
+    readonly baselineFailed: number
   }
   /** a granted question's own amount, tried the same way; null for a filed one */
   readonly derived: null | {
@@ -93,6 +100,7 @@ export interface ScoringImpact {
     readonly amountChanged: boolean
     readonly refused: boolean
     readonly executionFailed: boolean
+    readonly baselineFailed: boolean
   }
 }
 
@@ -105,6 +113,7 @@ export const unchangedScoring = (approvedTotal: number): ScoringImpact => ({
     amountChanged: 0,
     refused: 0,
     executionFailed: 0,
+    baselineFailed: 0,
   },
   derived: null,
 })
@@ -300,9 +309,15 @@ export const decisionNeeded = (impact: ChangeImpact) => ({
   // an acknowledgement rather than a choice: the amounts will change, and
   // there is nothing to pick - the current rule is the only rule there is
   // (assessment-design §32.62), so being told is the whole decision
+  // and the same acknowledgement covers determinations the rule in force
+  // cannot score at all: an administrator editing that very rule is the one
+  // person who can do something about them
   scoring:
     impact.scoring.changed &&
-    (impact.scoring.approved.amountChanged > 0 || impact.scoring.derived?.amountChanged === true),
+    (impact.scoring.approved.amountChanged > 0 ||
+      impact.scoring.derived?.amountChanged === true ||
+      impact.scoring.approved.baselineFailed > 0 ||
+      impact.scoring.derived?.baselineFailed === true),
 })
 
 /** what an answer left unstated, if anything */

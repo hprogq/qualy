@@ -4093,6 +4093,11 @@ const i18n = definePluginMessages({
       id: 'assessment/items/impact-scoring-derived',
       defaultMessage: 'The fixed amount this question grants will change.',
     },
+    itemsImpactScoringStuck: {
+      id: 'assessment/items/impact-scoring-stuck',
+      defaultMessage:
+        'The rule in force cannot compute {count, plural, one {# determination} other {# determinations}} already made, so they were left out of the comparison above.',
+    },
     itemsImpactScoringNote: {
       id: 'assessment/items/impact-scoring-note',
       defaultMessage:

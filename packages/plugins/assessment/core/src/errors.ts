@@ -200,6 +200,8 @@ export class ItemChangeDecisionRequired extends Schema.TaggedError<ItemChangeDec
         amountChanged: Schema.Number,
         refused: Schema.Number,
         executionFailed: Schema.Number,
+        /** the rule in force today cannot score these; said, not blamed */
+        baselineFailed: Schema.Number,
       }),
       derived: Schema.NullOr(
         Schema.Struct({
@@ -207,6 +209,7 @@ export class ItemChangeDecisionRequired extends Schema.TaggedError<ItemChangeDec
           amountChanged: Schema.Boolean,
           refused: Schema.Boolean,
           executionFailed: Schema.Boolean,
+          baselineFailed: Schema.Boolean,
         }),
       ),
     }),
