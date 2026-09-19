@@ -831,7 +831,11 @@ function Workbench({ batch }: { batch: BatchDto }) {
     if (!lostTurn || told.current.has(instanceId)) return
     told.current.add(instanceId)
     toast.info(format(lostBecause))
-    if (deferred.pending !== null) {
+    // only if what is waiting belongs to the round that was lost. A decision
+    // staged on one round and a turn lost on the next are two different
+    // rounds, and taking the first one back would quietly discard a decision
+    // that was still perfectly good.
+    if (deferred.pending?.instanceId === instanceId) {
       deferred.undo()
       toast.info(format(m.reviewGoneUndone))
     }
