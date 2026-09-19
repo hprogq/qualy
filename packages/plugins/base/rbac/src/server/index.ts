@@ -622,6 +622,7 @@ const toGrantShape = (row: GrantRow) => ({
           coverage: row.coverage ?? 'self',
         } as const),
   manageable: row.manageable,
+  scoped: row.scoped,
 })
 
 export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers) =>

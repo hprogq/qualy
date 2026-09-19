@@ -135,6 +135,15 @@ const grantShape = Schema.Struct({
   target: grantTargetShape,
   // whether this caller may revoke this particular grant
   manageable: Schema.Boolean,
+  /**
+   * Whether this authority is confined to one object.
+   *
+   * A confined grant confers nothing outside the thing it names, and every
+   * general authorization question filters it out. Said on the wire because
+   * a screen that lists it beside organizational authority, with the same
+   * revoke press, is showing authority that is not what it looks like.
+   */
+  scoped: Schema.Boolean,
 })
 
 /** why someone holds a capability */

@@ -180,6 +180,12 @@ const grantRows = (
         'g.orgNodeId',
         'n.name as orgNodeName',
         sql<'self' | 'subtree' | null>`g.coverage`.as('coverage'),
+        // A grant confined to one object confers nothing outside it - every
+        // general authorization question filters these rows out. Listed here
+        // without saying so, they read as ordinary organizational authority
+        // and carry the same revoke press, so the screen that administers
+        // authority showed authority that is not what it looks like.
+        sql<boolean>`g.resource_id is not null`.as('scoped'),
         (scope === undefined
           ? sql<boolean>`true`
           : withinScope(

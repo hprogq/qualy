@@ -2000,6 +2000,17 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
                       'assessment', 'batch', ${f.child})
               returning id`),
           ).id
+          // Before it is withdrawn: the screen that administers authority
+          // has to say this one is tied to a single object. Listed beside
+          // organizational authority with no word for it, and carrying the
+          // same revoke press, it reads as something it is not - and every
+          // general question about what this person may do leaves it out.
+          const whileStanding = yield* access.grants.list(
+            f.tenant,
+            { userId: f.anchored.userId },
+            yield* access.grantScopeFor(f.principal),
+          )
+          const confined = whileStanding.find((row) => row.id === assignment)
           const blockingBefore = yield* rbac.grantsBlockingUserType(
             f.tenant,
             f.anchored.userId,
@@ -2018,6 +2029,10 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
           const projected = yield* access.roles.get(f.tenant, office, f.principal)
           const holdings = yield* rbac.listUserRoles(f.tenant, f.anchored.userId)
           return {
+            confinedScoped: confined?.scoped ?? null,
+            othersScoped: whileStanding
+              .filter((row) => row.id !== assignment)
+              .map((row) => row.scoped),
             blockingBefore,
             blockingAfter: yield* rbac.grantsBlockingUserType(f.tenant, f.anchored.userId, guest),
             listedIds: listed.map((row) => row.id),
@@ -2032,6 +2047,9 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
         }),
       )
       const answer = ok(exit)
+      expect(answer.confinedScoped).toBe(true)
+      // and nothing else is marked, so the flag says something
+      expect(answer.othersScoped).not.toContain(true)
       // one fewer grant obstructs the retype: the withdrawn one
       expect(answer.blockingAfter).toBe(answer.blockingBefore - 1)
       expect(answer.listedIds).not.toContain(answer.assignment)

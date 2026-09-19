@@ -131,6 +131,7 @@ export default {
   'auth/users/grants': '角色授权',
   'auth/users/grants-empty': '没有角色授权。',
   'auth/users/grant-tenant-wide': '整个租户范围',
+  'auth/users/grant-scoped': '仅限单个对象',
   'auth/users/grants-hint': '仅显示并允许编辑你管理范围内的授权。',
   'auth/users/grant-add': '授予角色',
   'auth/users/grant-scope': '生效范围',

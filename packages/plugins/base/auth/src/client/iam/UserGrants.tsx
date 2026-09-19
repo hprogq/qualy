@@ -102,7 +102,12 @@ export function UserGrants({
                   <p {...stylex.props(styles.grantWhere)}>
                     {grant.target.kind === 'tenant'
                       ? format(m.tenantWideGrant)
-                      : `${grant.target.orgNodeName} · ${grant.target.coverage}`}
+                      : `${grant.target.orgNodeName} / ${grant.target.coverage}`}
+                    {/* authority tied to one object confers nothing outside
+                        it, and every general question about what somebody
+                        may do leaves it out. Beside organizational authority
+                        with no word for it, it reads as the same thing. */}
+                    {grant.scoped ? ` / ${format(m.scopedGrant)}` : ''}
                   </p>
                 </div>
                 {grant.manageable && (

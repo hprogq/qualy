@@ -267,6 +267,10 @@ const i18n = definePluginMessages({
       id: 'auth/users/grant-tenant-wide',
       defaultMessage: 'across the whole tenant',
     },
+    scopedGrant: {
+      id: 'auth/users/grant-scoped',
+      defaultMessage: 'for one object only',
+    },
     grantsHint: {
       id: 'auth/users/grants-hint',
       defaultMessage: 'Only grants inside what you administer are shown and editable.',
