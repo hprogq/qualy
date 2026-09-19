@@ -580,9 +580,6 @@ export interface SweepReport {
  */
 const SWEEP_BATCH_LIMIT = 200
 
-/** how many nodes a scope picker is willing to render at once */
-const SCOPE_OPTION_LIMIT = 500
-
 /** one level of the lineage being frozen, with who could act there today */
 export interface ChainPreviewStep {
   readonly nodeId: string
@@ -4175,7 +4172,14 @@ export const make = Effect.fn('Assessment.make')(function* () {
       // manage, so the authorization scope IS the option list
       const held = yield* rbac.listAuthorizedScope(as, MANAGE)
       yield* templatePermission(as)
-      return yield* dieQuery(withDb(scopeOptionRows(tenantId, held, SCOPE_OPTION_LIMIT)))
+      // the whole authorized projection, uncapped. A ceiling here protected
+      // nothing - org serves the same rows of the same table to the same
+      // tenant with more columns and no ceiling - while costing an
+      // administrator at a school of more than five hundred units the ability
+      // to name their own unit: path order is pre-order, so a cut leaves a
+      // coherent tree that is simply missing everything after the cut, and
+      // nothing on the screen says so.
+      return yield* dieQuery(withDb(scopeOptionRows(tenantId, held)))
     }),
 
     /**

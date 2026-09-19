@@ -2485,7 +2485,7 @@ export const roleHoldersAt = (tenantId: string, nodeIds: readonly string[]) =>
  * whoever can see a single leaf of it, and the picker needs no more than
  * which node hangs under which.
  */
-export const scopeOptions = (tenantId: string, held: AuthorizationScope, limit: number) =>
+export const scopeOptions = (tenantId: string, held: AuthorizationScope) =>
   db
     .query((k) =>
       k
@@ -2507,7 +2507,6 @@ export const scopeOptions = (tenantId: string, held: AuthorizationScope, limit: 
           }),
         )
         .orderBy(sql`org_nodes.path`)
-        .limit(limit)
         .execute(),
     )
     .pipe(

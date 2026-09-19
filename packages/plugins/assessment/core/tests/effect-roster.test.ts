@@ -618,4 +618,34 @@ describe.runIf(postgresAvailable).concurrent('the roster management face', () =>
     expect(Object.keys(event.diff)).toEqual(['name'])
     expect(renamed.configRevision).toBe(1)
   })
+
+  it('offers every unit a caller may manage, not the first five hundred', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('wide')
+        const assessment = yield* Assessment
+        // a school with more units than any one screen was sized for. Path
+        // order is pre-order, so a ceiling would leave a coherent tree that
+        // is simply missing its tail - and the administrator standing in the
+        // tail cannot name their own unit.
+        yield* runSql(sql`
+          insert into org_nodes (tenant_id, org_type_id, parent_id, name, path, depth)
+          select ${f.tenant}, ${f.classType}, ${f.gradeB},
+                 'Wing ' || n, ('r.b.k' || lpad(n::text, 4, '0'))::ltree, 2
+          from generate_series(1, 600) as n`)
+        const offered = yield* assessment.scopeOptions(f.tenant, f.principal)
+        const total = one<{ count: string }>(
+          yield* runSql(sql`
+            select count(*)::text as count from org_nodes where tenant_id = ${f.tenant}`),
+        ).count
+        return { offered, total }
+      }),
+    )
+    const { offered, total } = ok(exit)
+    expect(offered.length).toBe(Number(total))
+    expect(offered.length).toBeGreaterThan(500)
+    // the last unit in path order: the one a ceiling takes away first
+    expect(offered.at(-1)!.name).toBe('Wing 600')
+  })
 })
