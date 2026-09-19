@@ -92,6 +92,14 @@ const stage = (
   route: 'normal' | 'escalation',
   index: number,
   nodeId: string | null,
+  /**
+   * Why it resolved to no unit, when it did.
+   *
+   * `no-such-level` is a level this participant does not sit under and may
+   * be stepped over; `no-holder` is a vacancy and must not be. They were one
+   * thing here for a long time, which is why only the first was ever walked.
+   */
+  vacant: 'no-such-level' | 'no-holder' = 'no-such-level',
 ) => ({
   id,
   label: null,
@@ -101,7 +109,7 @@ const stage = (
   quorum,
   roleIds: ['role'],
   nodeId,
-  skipped: nodeId === null ? ('no-such-level' as const) : null,
+  skipped: nodeId === null ? vacant : null,
 })
 
 describe('walking a resolved policy', () => {
@@ -116,6 +124,38 @@ describe('walking a resolved policy', () => {
 
   it('steps over a level this person sits under no unit of', () => {
     expect(nextAfter(policy, policy.normal[0]!)?.id).toBe('n3')
+  })
+
+  it('stops at a duty nobody holds rather than stepping over it', () => {
+    // ADR 0007 and §32.62 clause eight: a `nearestRole` step with no holder
+    // anywhere on this lineage is a vacancy, not a level to skip. Stepping
+    // over it made the step before it the route's end, so a claim was
+    // approved and scored with that reviewer never having seen it.
+    const vacancy: ResolvedPolicy = {
+      normal: [
+        stage('n1', 'normal', 0, 'a'),
+        stage('n2', 'normal', 1, null, 'no-holder'),
+        stage('n3', 'normal', 2, 'c'),
+      ],
+      escalation: [],
+    }
+    const next = nextAfter(vacancy, vacancy.normal[0]!)
+    expect(next?.id).toBe('n2')
+    // and it carries no unit, which is what makes an arrival read it as
+    // blocked for want of an assignee
+    expect(next?.nodeId).toBeNull()
+    // so the step before it is not the end of the route
+    expect(isRouteEnd(vacancy, vacancy.normal[0]!)).toBe(false)
+  })
+
+  it('has nowhere to go when the vacancy is the last step', () => {
+    const vacancy: ResolvedPolicy = {
+      normal: [stage('n1', 'normal', 0, 'a'), stage('n2', 'normal', 1, null, 'no-holder')],
+      escalation: [],
+    }
+    // the round stands at the vacancy, and there is nothing after it
+    expect(nextAfter(vacancy, vacancy.normal[1]!)).toBeNull()
+    expect(isRouteEnd(vacancy, vacancy.normal[1]!)).toBe(true)
   })
 
   it('knows the end of a route without looking at the other one', () => {

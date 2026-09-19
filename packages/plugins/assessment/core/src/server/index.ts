@@ -1209,8 +1209,9 @@ export class Assessment extends Context.Service<
     ) => Effect.Effect<
       {
         groups: readonly {
-          nodeId: string
-          nodeName: string
+          /** nothing when the step resolved to no unit: a duty nobody holds */
+          nodeId: string | null
+          nodeName: string | null
           roleNames: readonly string[]
           reason: 'no-assignee' | 'no-independent-reviewer' | 'panel-seat-unfilled'
           waiting: number
@@ -4269,7 +4270,15 @@ export const make = Effect.fn('Assessment.make')(function* () {
         // different answers, and this loop sees every batch of the tenant.
         const staffing = new Map<string, number>()
         for (const round of rounds) {
-          const key = `${round.batchId}:${round.currentNodeId}:${[...round.currentRoleIds].sort().join(',')}`
+          // A round stopped at a step that resolved to no unit has nothing
+          // here to ask about: membership is a question about a unit, and
+          // this one has none. It is already blocked for want of an
+          // assignee, and the way out is an administrator rerouting it onto
+          // the current policy once somebody holds the role - which resolves
+          // the step again rather than rewriting what it froze (§32.62).
+          if (round.currentNodeId === null) continue
+          const nodeId = round.currentNodeId
+          const key = `${round.batchId}:${nodeId}:${[...round.currentRoleIds].sort().join(',')}`
           let members = staffing.get(key)
           if (members === undefined) {
             members = (yield* dieQuery(
@@ -4277,7 +4286,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
                 reviewersAt({
                   tenantId,
                   batchId: round.batchId,
-                  nodeId: round.currentNodeId,
+                  nodeId,
                   roleIds: round.currentRoleIds,
                   subjectUserId: NOBODY,
                   actorId: NOBODY,
@@ -4300,7 +4309,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
                     reviewersAt({
                       tenantId,
                       batchId: round.batchId,
-                      nodeId: round.currentNodeId,
+                      nodeId,
                       roleIds: round.currentRoleIds,
                       subjectUserId: round.subjectUserId,
                       actorId: round.actorId,

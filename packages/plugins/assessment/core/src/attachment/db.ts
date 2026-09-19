@@ -48,7 +48,7 @@ export interface CitingInstanceRow {
   /** the authorizer needs it: a reviewer's read narrows while an ask is open (§32.70) */
   state: string
   currentRoute: 'normal' | 'escalation'
-  currentNodeId: string
+  currentNodeId: string | null
   currentRoleIds: readonly string[]
   subjectUserId: string
   actorId: string

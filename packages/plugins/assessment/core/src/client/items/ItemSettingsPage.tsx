@@ -679,12 +679,20 @@ function Editor({
               <p {...stylex.props(styles.alertTitle)}>{format(m.itemsStuckTitle)}</p>
               <ul {...stylex.props(styles.alertList)}>
                 {(alerts.data?.groups ?? []).map((row) => (
-                  <li key={`${row.nodeId}:${row.roleNames.join(',')}:${row.reason}`}>
-                    {format(m.itemsStuckRow, {
-                      unit: row.nodeName,
-                      roles: row.roleNames.join(format(m.listSeparator)),
-                      count: row.waiting,
-                    })}
+                  <li key={`${row.nodeId ?? ''}:${row.roleNames.join(',')}:${row.reason}`}>
+                    {/* a round can also stop at a step that resolved to no
+                        unit at all, and a row naming an empty unit would
+                        read as a bug rather than as the vacancy it is */}
+                    {row.nodeName === null
+                      ? format(m.itemsStuckNowhere, {
+                          roles: row.roleNames.join(format(m.listSeparator)),
+                          count: row.waiting,
+                        })
+                      : format(m.itemsStuckRow, {
+                          unit: row.nodeName,
+                          roles: row.roleNames.join(format(m.listSeparator)),
+                          count: row.waiting,
+                        })}
                     {/* a staffing gap and a recusal rule call for different
                         fixes, so the row says which one it is looking at */}
                     {row.reason !== 'no-assignee' && (

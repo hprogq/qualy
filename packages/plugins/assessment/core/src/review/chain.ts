@@ -275,10 +275,21 @@ export const stageById = (
 ): ResolvedStage | null => routeOf(policy, route).find((stage) => stage.id === stageId) ?? null
 
 /**
- * The first stage of a route a round can actually stand at, from `from`
- * onward: the first one that resolved to a unit. Stages that resolved to
- * nothing are stepped over rather than blocking - they are levels this
- * participant does not sit under.
+ * The first stage of a route a round can stop at, from `from` onward.
+ *
+ * Two different things resolve to no unit and they are not interchangeable
+ * (ADR 0007, §32.62 clause eight). `no-such-level` is a level this
+ * participant does not sit under - a class step for somebody enrolled
+ * directly at a college - and stepping over it is the whole point of writing
+ * a route that way. `no-holder` is a vacancy: the step exists for this
+ * person and nobody anywhere on their lineage holds it. Stepping over that
+ * one made the step before it the final approver, so a claim was approved
+ * and scored with the counsellor never having seen it.
+ *
+ * A vacant step is therefore returned, with no unit on it; `stageArrival`
+ * reads that as blocked for want of an assignee, and the round stands there
+ * until somebody is appointed and an administrator reroutes it onto the
+ * current policy.
  */
 export const enterableFrom = (
   policy: ResolvedPolicy,
@@ -286,7 +297,9 @@ export const enterableFrom = (
   from: number,
 ): ResolvedStage | null => {
   for (const stage of routeOf(policy, route)) {
-    if (stage.index >= from && stage.nodeId !== null) return stage
+    if (stage.index >= from && (stage.nodeId !== null || stage.skipped === 'no-holder')) {
+      return stage
+    }
   }
   return null
 }

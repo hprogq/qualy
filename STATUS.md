@@ -18422,10 +18422,26 @@ pnpm vitest run tools/tests apps/server/tests    413 passed(supervisor 4/4,新�
 并记录原因"的情形,不是未解释的漂移。**已发布版本不受影响**——`formula_versions.runtime_js` 逐版本存着
 当时的产物,执行的是那些字节。
 
-### 未修:§32.62 第八条(`nearestRole` 空缺必须 BLOCKED)
+### §32.62 第八条(`nearestRole` 空缺必须 BLOCKED)已落地
 
-`resolveRoute` 已按三态记录(`no-such-level` / `no-holder`),`stageArrival` 也已把 `nodeId === null`
-判为 `blocked / no-assignee`——机制齐全。缺口只在 `enterableFrom`(review/chain.ts)只看
-`stage.nodeId !== null`,把两种原因一起跳过:某角色全线无人时该步骤被静默越过,它前一级成了终审,
-条目直接通过并计分。前置依赖同样未做——`review_instances.current_node_id` 仍非空,`blockedGroups`
-还 `join org_nodes on n.id = ri.current_node_id`,轮次停不到一个没有节点的步骤上。属 Review v2 范围。
+缺口只在 `enterableFrom`(review/chain.ts)一处:`resolveRoute` 早已按三态记录
+(`no-such-level` / `no-holder`),`stageArrival` 也早已把 `nodeId === null` 判为
+`blocked / no-assignee`,但这个走链函数只看 `stage.nodeId !== null`,把两种原因一起跳过。
+于是某角色在该参评人整条 lineage 上无人担任时,该步骤被静默越过,**它前一级成了终审**,
+条目未经该级审核直接通过并计分。测试从未覆盖到,因为 `review-routes.test.ts` 的 stage helper
+把 `skipped` 硬编码成 `'no-such-level'`。
+
+- `enterableFrom` 现在只跳过 `no-such-level`,把 `no-holder` 交出去;`stageArrival` 读到没有单位的
+  步骤即 `blocked / no-assignee`,轮次停在那里。
+- 前置依赖(裁决自己点名的那条)一并做掉:迁移 `20260919123625_review-vacancy-blocks.sql` 把
+  `review_instances.current_node_id` 与 `current_node_path` 改为可空,并加
+  `chk_review_instances_standing_place` —— 两列同生同灭,且只有 `blocked / no-assignee` 的轮次
+  才允许没有位置。纯 expand,旧 release 不受影响。
+- `blockedGroups` 改 `left join`(没有节点的轮次恰恰是管理员最需要看见的),`nodeId`/`nodeName`
+  可空一路贯通到契约与界面,界面为这种情况有自己的一句话而不是渲染一个空单位名。
+- 巡检跳过没有位置的轮次:成员资格是关于"单位"的问题,而它没有单位。出路是既有的
+  `reroute`(管理员重新应用配置时重开轮次并**重新解析**策略,§32.62 五),不新造治愈机制。
+
+**留给用户的问题**:有人被任命后是否应当自动解除阻塞。文档只裁决了"必须 BLOCKED",没有裁决
+自动治愈;而 patrol 按第九条只改状态、不动 policy,要把轮次落到一个当时解析为空的步骤上,
+等于改写冻结的解析结果。现在的答案是走 `reroute`,需要管理员一次动作。

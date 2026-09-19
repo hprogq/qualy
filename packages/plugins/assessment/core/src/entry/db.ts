@@ -709,8 +709,9 @@ export const insertReviewInstance = (input: {
   route: 'normal' | 'escalation'
   stageId: string
   roleIds: readonly string[]
-  nodeId: string
-  nodePath: string
+  /** where the round stands, or nothing when its step resolved to no unit */
+  nodeId: string | null
+  nodePath: string | null
   state: 'active' | 'blocked'
   /** why nobody can act, when arriving blocked */
   blockedReason?: string | null
@@ -753,8 +754,9 @@ export const advanceReviewInstance = (input: {
   toRoute: 'normal' | 'escalation'
   toStageId: string
   roleIds: readonly string[]
-  nodeId: string
-  nodePath: string
+  /** where the round stands, or nothing when its step resolved to no unit */
+  nodeId: string | null
+  nodePath: string | null
   state: 'active' | 'blocked'
   /** why nobody can act at the step being entered, when arriving blocked */
   blockedReason?: string | null

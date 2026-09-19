@@ -1994,6 +1994,11 @@ const i18n = definePluginMessages({
       defaultMessage:
         '{unit} 　 {roles} 　 {count, plural, one {# submission waiting} other {# submissions waiting}}',
     },
+    itemsStuckNowhere: {
+      id: 'assessment/items/stuck-nowhere',
+      defaultMessage:
+        '{roles} 　 {count, plural, one {# submission waiting} other {# submissions waiting}}, with nobody holding this duty anywhere above them',
+    },
     itemsStuckConflict: {
       id: 'assessment/items/stuck-conflict',
       defaultMessage: 'every current reviewer is recused from these rounds',

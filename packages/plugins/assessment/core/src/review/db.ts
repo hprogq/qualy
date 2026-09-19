@@ -325,7 +325,7 @@ export interface RoundRef {
   id: string
   batchId: string
   currentRoute: 'normal' | 'escalation'
-  currentNodeId: string
+  currentNodeId: string | null
   currentRoleIds: readonly string[]
   subjectUserId: string
   actorId: string
@@ -404,7 +404,7 @@ export interface ReviewInstanceDetailRow {
   appealedRecognitionId: string | null
   /** the round this one replaced, when a policy change opened it */
   supersedesInstanceId: string | null
-  currentNodeId: string
+  currentNodeId: string | null
   currentRoleIds: readonly string[]
   createdAt: number
   completedAt: number | null
@@ -1016,7 +1016,7 @@ export interface PatrolRow {
   currentStageId: string
   /** the frozen routes, for reading the current stage's quorum */
   effectivePolicy: ResolvedPolicy
-  currentNodeId: string
+  currentNodeId: string | null
   currentRoleIds: readonly string[]
   subjectUserId: string
   actorId: string
@@ -1112,8 +1112,8 @@ export const blockedGroups = (tenantId: string, batchId: string) =>
   db
     .query((k) =>
       sql<{
-        node_id: string
-        node_name: string
+        node_id: string | null
+        node_name: string | null
         role_ids: string[]
         reason: string | null
         waiting: string
@@ -1123,17 +1123,20 @@ export const blockedGroups = (tenantId: string, batchId: string) =>
                count(*)::text as waiting
         from review_instances ri
         join entries e on e.tenant_id = ri.tenant_id and e.id = ri.entry_id
-        join org_nodes n on n.tenant_id = ri.tenant_id and n.id = ri.current_node_id
+        -- left, because a round stopped at a step that resolved to no unit
+        -- has no node to join to, and those are exactly the ones an
+        -- administrator most needs to see: a duty nobody anywhere holds
+        left join org_nodes n on n.tenant_id = ri.tenant_id and n.id = ri.current_node_id
         where ri.tenant_id = ${tenantId} and e.batch_id = ${batchId} and ri.state = 'blocked'
         group by ri.current_node_id, n.name, ri.current_role_ids, ri.blocked_reason
-        order by n.name
+        order by n.name nulls first
       `.execute(k),
     )
     .pipe(
       Effect.map(({ rows }) =>
         rows.map((row) => ({
-          nodeId: String(row.node_id),
-          nodeName: String(row.node_name),
+          nodeId: row.node_id === null ? null : String(row.node_id),
+          nodeName: row.node_name === null ? null : String(row.node_name),
           roleIds: row.role_ids.map(String),
           // why these wait: a staffing gap and a conflict rule read differently
           reason: (row.reason ?? 'no-assignee') as

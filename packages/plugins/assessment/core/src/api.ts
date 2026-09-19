@@ -1126,8 +1126,14 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       success: Schema.Struct({
         groups: Schema.Array(
           Schema.Struct({
-            nodeId: Schema.String,
-            nodeName: Schema.String,
+            /**
+             * Nothing when the step resolved to no unit at all: a duty this
+             * participant's lineage carries that nobody anywhere holds. The
+             * round stops there rather than stepping over it (§32.62), so it
+             * has no unit to name.
+             */
+            nodeId: Schema.NullOr(Schema.String),
+            nodeName: Schema.NullOr(Schema.String),
             roleNames: Schema.Array(Schema.String),
             /** why these wait: a staffing gap and a conflict rule read differently */
             reason: Schema.Literals([

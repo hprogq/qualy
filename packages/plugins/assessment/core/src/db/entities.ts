@@ -1239,8 +1239,19 @@ export const ReviewInstance = defineEntity({
     blockedReason: p.string().length(31).nullable(),
     outcome: p.string().length(31).nullable(),
     currentRoleIds: p.array().columnType('uuid[]'),
-    currentNodeId: p.uuid(),
-    currentNodePath: p.string().type('ltree'),
+    /**
+     * The unit the round is standing at, or nothing when the step it is
+     * standing at resolved to no unit at all.
+     *
+     * Nullable because a `nearestRole` step nobody holds anywhere on this
+     * participant's lineage must BLOCK rather than be stepped over (ADR 0007,
+     * §32.62 clause eight): the round has to be recordable where it stopped,
+     * and there is no unit to name. Only that one shape is allowed - the
+     * check below ties a missing unit to a round blocked for want of an
+     * assignee - so nothing else can quietly lose its place.
+     */
+    currentNodeId: p.uuid().nullable(),
+    currentNodePath: p.string().type('ltree').nullable(),
     createdAt: p.datetime().defaultRaw('now()'),
     completedAt: p.datetime().nullable(),
   },
@@ -1290,6 +1301,13 @@ export const ReviewInstance = defineEntity({
     {
       name: 'chk_review_instances_blocked_reason_shape',
       expression: `(state <> 'blocked' AND blocked_reason IS NULL) OR (state = 'blocked' AND blocked_reason IS NOT NULL)`,
+    },
+    // the unit and its path go together, and a round with neither is one
+    // stopped at a step that resolved to nobody. Every other state names
+    // where it is standing.
+    {
+      name: 'chk_review_instances_standing_place',
+      expression: `((current_node_id IS NULL) = (current_node_path IS NULL)) AND (current_node_id IS NOT NULL OR (state = 'blocked' AND blocked_reason = 'no-assignee'))`,
     },
   ],
   indexes: [
