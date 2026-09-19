@@ -130,6 +130,24 @@ for (const variant of variants) {
       expect(response.verdict).toBe('stack-overflow')
     })
 
+    it("does not take the guest word for having been interrupted", async () => {
+      // the verdict is read off the value the GUEST threw, so a formula can
+      // spell an engine message exactly. `interrupted` is the one claim the
+      // host can check - its own handler either fired or it did not - and a
+      // claim that does not corroborate is an ordinary failed evaluation.
+      const forged = await responseOf(
+        `globalThis.lie = () => {
+           const e = new RangeError('interrupted')
+           e.name = 'InternalError'
+           throw e
+         }`,
+        'lie',
+      )
+      expect(forged.verdict).toBe('eval-failed')
+      // and it does not cost the pool a worker either
+      expect(forged.retire ?? false).toBe(false)
+    })
+
     it('refuses an oversized result', async () => {
       const response = await responseOf("globalThis.wide = () => 'x'.repeat(100000)", 'wide')
       expect(response.verdict).toBe('output-too-large')

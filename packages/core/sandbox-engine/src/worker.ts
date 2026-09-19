@@ -92,12 +92,35 @@ const BOOTSTRAP = `(() => {
 
 const ENGINE_ERRORS = new Set(['InternalError', 'SyntaxError', 'RangeError'])
 
-const verdictOf = (problem: {
-  readonly name: string
-  readonly message: string
-}): InvokeResponse['verdict'] => {
+/**
+ * What the engine says happened, corroborated where it can be.
+ *
+ * `name` and `message` come off the value the GUEST threw, so on their own
+ * they are a claim rather than a finding. `interrupted` is checked against
+ * something the guest cannot write - whether the host's own interrupt
+ * handler actually fired - and a claim that does not corroborate is an
+ * ordinary failed evaluation, which is what a guest throwing a lookalike is.
+ *
+ * The two exhaustion verdicts are NOT corroborated, and the attempt is
+ * recorded here so the next reader does not repeat it: after a real
+ * out-of-memory or stack overflow the engine serves a small allocation
+ * perfectly well - the stack has unwound and the failed allocation has been
+ * released - so asking it for one distinguishes nothing (measured; it turned
+ * both genuine cases into `eval-failed`). What a forged exhaustion buys is a
+ * worker respawn per evaluation, which costs a WASM re-instantiation and
+ * nothing else: no escape, no wrong answer, and the source is authored by
+ * somebody who already holds the authoring capability. Corroborating it
+ * needs a reading of the engine's own state that this binding does not
+ * expose; until then the cost is bounded and known.
+ */
+const verdictOf = (
+  problem: { readonly name: string; readonly message: string },
+  engine: { readonly interrupted: boolean },
+): InvokeResponse['verdict'] => {
   if (!ENGINE_ERRORS.has(problem.name)) return 'eval-failed'
-  if (problem.message.includes('interrupted')) return 'interrupted'
+  if (problem.message.includes('interrupted')) {
+    return engine.interrupted ? 'interrupted' : 'eval-failed'
+  }
   if (problem.message.includes('out of memory')) return 'out-of-memory'
   if (problem.message.includes('stack overflow') || problem.message.includes('call stack size'))
     return 'stack-overflow'
@@ -146,9 +169,10 @@ const failure = (
   id: number,
   context: QuickJSContext,
   errorHandle: QuickJSHandle,
+  engine: { readonly interrupted: boolean },
 ): InvokeResponse => {
   const problem = boundedProblem(context, errorHandle)
-  const verdict = verdictOf(problem)
+  const verdict = verdictOf(problem, engine)
   const base = {
     id,
     verdict,
@@ -176,7 +200,14 @@ const execute = (request: InvokeRequest): InvokeResponse => {
   const deadline = Date.now() + request.softDeadlineMs
   runtime.setMemoryLimit(request.memoryBytes)
   runtime.setMaxStackSize(request.stackBytes)
-  runtime.setInterruptHandler(() => Date.now() > deadline)
+  // recorded, because the verdict below must not take the guest's word for
+  // it: an interrupt is something the host did, and this is the only place
+  // that knows whether it did it
+  let interrupted = false
+  runtime.setInterruptHandler(() => {
+    if (Date.now() > deadline) interrupted = true
+    return interrupted
+  })
   const context = runtime.newContext({ intrinsics: { ...DefaultIntrinsics, Date: false } })
   let retired = false
   const owned: QuickJSHandle[] = []
@@ -201,7 +232,7 @@ const execute = (request: InvokeRequest): InvokeResponse => {
   try {
     const boot = context.evalCode(BOOTSTRAP, 'bootstrap.js')
     if (boot.error) {
-      const refused = failure(request.id, context, own(boot.error))
+      const refused = failure(request.id, context, own(boot.error), { interrupted })
       retired = refused.retire === true
       return refused
     }
@@ -209,7 +240,7 @@ const execute = (request: InvokeRequest): InvokeResponse => {
 
     const loaded = context.evalCode(request.artifact, 'artifact.js')
     if (loaded.error) {
-      const refused = failure(request.id, context, own(loaded.error))
+      const refused = failure(request.id, context, own(loaded.error), { interrupted })
       retired = refused.retire === true
       return refused
     }
@@ -225,7 +256,7 @@ const execute = (request: InvokeRequest): InvokeResponse => {
 
     const called = context.callFunction(entry, context.undefined, request.arguments.map(toHandle))
     if (called.error) {
-      const refused = failure(request.id, context, own(called.error))
+      const refused = failure(request.id, context, own(called.error), { interrupted })
       retired = refused.retire === true
       return refused
     }
