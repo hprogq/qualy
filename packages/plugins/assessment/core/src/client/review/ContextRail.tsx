@@ -522,13 +522,15 @@ function Route({
                   {/* the administrator's name for the step where one exists;
                       the unit-and-roles composite only as the fallback */}
                   <span {...stylex.props(styles.stepName, current && styles.stepNameCurrent)}>
-                    {stage.nodeName === null
-                      ? format(
-                          stage.skipped === 'no-holder'
-                            ? m.reviewStageNoHolder
-                            : m.reviewStageSkipped,
-                        )
-                      : (stage.label ?? `${stage.nodeName}／${listed.format(stage.roleNames)}`)}
+                    {stage.veiled === true
+                      ? format(m.reviewStageVeiled)
+                      : stage.nodeName === null
+                        ? format(
+                            stage.skipped === 'no-holder'
+                              ? m.reviewStageNoHolder
+                              : m.reviewStageSkipped,
+                          )
+                        : (stage.label ?? `${stage.nodeName}／${listed.format(stage.roleNames)}`)}
                   </span>
                   <span {...stylex.props(styles.spacer)} />
                   {/* what happened at this step, where the eye already is:

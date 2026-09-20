@@ -2678,6 +2678,7 @@ const i18n = definePluginMessages({
       defaultMessage: 'About this question',
     },
     reviewQueueKey: { id: 'assessment/review/queue-key', defaultMessage: 'Pending' },
+    reviewStageVeiled: { id: 'assessment/review/stage-veiled', defaultMessage: 'A later step' },
     reviewQueueKeysMove: { id: 'assessment/review/queue-keys-move', defaultMessage: 'Move' },
     reviewQueueKeysOpen: { id: 'assessment/review/queue-keys-open', defaultMessage: 'Open' },
     reviewQueueCurrent: { id: 'assessment/review/queue-current', defaultMessage: 'Open now' },
@@ -5084,6 +5085,14 @@ const i18n = definePluginMessages({
       id: 'assessment/permission-hint/entry-appeal',
       defaultMessage: 'Appeal an entry that already has a review decision.',
     },
+    'permission-hint.assessment.review.view-reviewers': {
+      id: 'assessment/permission-hint/review-view-reviewers',
+      defaultMessage: 'Participants see who reviewed their own filings.',
+    },
+    'permission-hint.assessment.review.view-chain': {
+      id: 'assessment/permission-hint/review-view-chain',
+      defaultMessage: 'Reviewers see the steps after their own and who holds them.',
+    },
     'permission-hint.assessment.review.escalate': {
       id: 'assessment/permission-hint/review-escalate',
       defaultMessage: 'Escalate submissions that require further review.',
@@ -5142,6 +5151,14 @@ const i18n = definePluginMessages({
     'permission.assessment.entry.appeal': {
       id: 'assessment/permission/entry-appeal',
       defaultMessage: 'File appeals',
+    },
+    'permission.assessment.review.view-reviewers': {
+      id: 'assessment/permission/review-view-reviewers',
+      defaultMessage: 'See who reviewed',
+    },
+    'permission.assessment.review.view-chain': {
+      id: 'assessment/permission/review-view-chain',
+      defaultMessage: 'See later review steps',
     },
     'permission.assessment.review.escalate': {
       id: 'assessment/permission/review-escalate',

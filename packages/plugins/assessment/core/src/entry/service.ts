@@ -280,6 +280,8 @@ export interface EntryRoundView {
 }
 
 export interface EntryHistoryView {
+  /** false where the phase keeps from the participant who judged the claim */
+  readonly reviewersShown: boolean
   readonly entry: EntryView
   readonly revisions: readonly (EntryRevisionView & {
     /**
@@ -489,6 +491,8 @@ export interface EntryDeps {
     participantId: string,
     itemIds: readonly string[],
   ) => Effect.Effect<ReadonlyMap<string, EntryGates>, BatchNotFound>
+  /** whether the batch's phase of the moment opens a gated code */
+  readonly phaseOpens: (tenantId: string, batchId: string, code: string) => Effect.Effect<boolean>
   /** whoever may judge an open round of a claim may read how it got here */
   readonly mayReviewEntry: (
     as: Principal,
@@ -1066,6 +1070,39 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
       // deciding whether to show a file; it is this process being broken
     ).pipe(Effect.orDie)
 
+  /**
+   * Whether this reader is kept from knowing who judged the claim.
+   *
+   * Only the claim's own participant is ever kept from it, and only while
+   * the phase of the moment does not open `view-reviewers`. The names are
+   * taken off on the server: a screen that received them and drew stars
+   * over them would have published them to anybody who opens the network
+   * panel.
+   */
+  const reviewersVeiled = (
+    tenantId: string,
+    batchId: string,
+    participant: ParticipantAnchor | null,
+    as: Principal,
+  ) =>
+    participant === null || participant.userId !== as.userId
+      ? Effect.succeed(false)
+      : Effect.map(
+          deps.phaseOpens(tenantId, batchId, 'assessment.review.view-reviewers'),
+          (open) => !open,
+        )
+
+  /** the same view with the people who judged it left out */
+  const veil = (shown: EntryView, veiled: boolean): EntryView =>
+    !veiled
+      ? shown
+      : {
+          ...shown,
+          refusal: shown.refusal === null ? null : { ...shown.refusal, actorName: null },
+          supplement:
+            shown.supplement === null ? null : { ...shown.supplement, requestedByName: null },
+        }
+
   const getEntry: EntryMethods['getEntry'] = Effect.fn('Assessment.getEntry')(
     function* (tenantId, entryId, as) {
       return yield* withDb(
@@ -1083,17 +1120,20 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             entry.status === 'in_review' && entry.currentReviewInstanceId !== null
               ? yield* withdrawStandingsOf(tenantId, [entry.currentReviewInstanceId])
               : new Map<string, { origin: string; begun: boolean }>()
-          return view(
-            entry,
-            yield* revisionView(tenantId, entry.currentRevisionId),
-            as,
-            participant,
-            undefined,
-            asked[0] ?? null,
-            said.get(entryId) ?? null,
-            entry.currentReviewInstanceId === null
-              ? undefined
-              : standings.get(entry.currentReviewInstanceId),
+          return veil(
+            view(
+              entry,
+              yield* revisionView(tenantId, entry.currentRevisionId),
+              as,
+              participant,
+              undefined,
+              asked[0] ?? null,
+              said.get(entryId) ?? null,
+              entry.currentReviewInstanceId === null
+                ? undefined
+                : standings.get(entry.currentReviewInstanceId),
+            ),
+            yield* reviewersVeiled(tenantId, entry.batchId, participant, as),
           )
         }).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
       )
@@ -1644,19 +1684,23 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               .map((one) => one.id),
           )
           const entries: EntryView[] = []
+          const veiled = yield* reviewersVeiled(tenantId, batchId, participant, as)
           for (const entry of pageRows) {
             entries.push(
-              view(
-                entry,
-                yield* revisionView(tenantId, entry.currentRevisionId),
-                as,
-                participant,
-                gatesByItem.get(entry.itemId),
-                askedByEntry.get(entry.id) ?? null,
-                saidByEntry.get(entry.id) ?? null,
-                entry.currentReviewInstanceId === null
-                  ? undefined
-                  : standings.get(entry.currentReviewInstanceId),
+              veil(
+                view(
+                  entry,
+                  yield* revisionView(tenantId, entry.currentRevisionId),
+                  as,
+                  participant,
+                  gatesByItem.get(entry.itemId),
+                  askedByEntry.get(entry.id) ?? null,
+                  saidByEntry.get(entry.id) ?? null,
+                  entry.currentReviewInstanceId === null
+                    ? undefined
+                    : standings.get(entry.currentReviewInstanceId),
+                ),
+                veiled,
               ),
             )
           }
@@ -1845,15 +1889,26 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             tenantId,
             rounds.map((round) => round.id),
           )
+          const veiled = yield* reviewersVeiled(tenantId, entry.batchId, participant, as)
+          // the participant's own acts keep their name; everybody else in a
+          // round is somebody who judged it
+          const actor = (event: { actorId: string | null; actorName: string | null }) =>
+            veiled && event.actorId !== as.userId
+              ? { actorId: null, actorName: null }
+              : { actorId: event.actorId, actorName: event.actorName }
           return {
-            entry: view(
-              entry,
-              yield* revisionView(tenantId, entry.currentRevisionId),
-              as,
-              participant,
-              undefined,
-              asked[0] ?? null,
-              said.get(entryId) ?? null,
+            reviewersShown: !veiled,
+            entry: veil(
+              view(
+                entry,
+                yield* revisionView(tenantId, entry.currentRevisionId),
+                as,
+                participant,
+                undefined,
+                asked[0] ?? null,
+                said.get(entryId) ?? null,
+              ),
+              veiled,
             ),
             revisions: revisions.map((revision) => ({
               id: revision.id,
@@ -1882,14 +1937,15 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               completedAt: round.completedAt,
               events: (events.get(round.id) ?? []).map((event) => ({
                 kind: event.kind,
-                actorId: event.actorId,
-                actorName: event.actorName,
+                ...actor(event),
                 reason: event.reason,
                 comment: event.comment,
                 suggestedPayload: event.suggestedPayload,
                 at: event.createdAt,
               })),
-              supplements: supplements.get(round.id) ?? [],
+              supplements: (supplements.get(round.id) ?? []).map((asked) =>
+                veiled ? { ...asked, requestedBy: '', requestedByName: null } : asked,
+              ),
             })),
             events: ownEvents.map((event) => ({
               kind: event.kind,

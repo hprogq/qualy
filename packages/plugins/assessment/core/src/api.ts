@@ -967,6 +967,8 @@ const reviewInboxItem = Schema.Struct({
 const reviewStageView = Schema.Struct({
   id: Schema.String,
   index: Schema.Number,
+  /** a step this reader is not told about: only that it is there */
+  veiled: Schema.Boolean,
   /** the administrator's name for the step, when the policy carries one */
   label: Schema.NullOr(Schema.String),
   nodeName: Schema.NullOr(Schema.String),
@@ -1783,6 +1785,8 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     HttpApiEndpoint.get('getEntryHistory', '/assessment/entries/:entryId/revisions', {
       params: Schema.Struct({ entryId: uuidInput }),
       success: Schema.Struct({
+        /** false where the phase keeps from the participant who judged the claim */
+        reviewersShown: Schema.Boolean,
         entry: entryView,
         revisions: Schema.Array(
           Schema.Struct({

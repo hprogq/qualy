@@ -1822,7 +1822,9 @@ export function EscalateDialog({
                         may do is the same at every rung - any of them can
                         settle it - so the chain says the names and stops */}
                     <span {...stylex.props(styles.stageName)}>
-                      {stage.label ?? stage.nodeName ?? format(m.reviewStageSkipped)}
+                      {stage.veiled === true
+                        ? format(m.reviewStageVeiled)
+                        : (stage.label ?? stage.nodeName ?? format(m.reviewStageSkipped))}
                     </span>
                   </li>
                 )

@@ -138,6 +138,11 @@ export const PARTICIPANT_ACTION_CODES = [
   // appeal - not for the resubmission that is plain entry.submit
   'assessment.entry.appeal',
   'assessment.result.view-self',
+  // Who judged one's own claim. Reading the claim's account is always the
+  // participant's; whether that account names the people in it is the
+  // batch's to decide, phase by phase - hidden while judging is under way,
+  // shown once it can no longer be leaned on, or never
+  'assessment.review.view-reviewers',
 ] as const
 
 /**
@@ -159,7 +164,13 @@ export const PARTICIPANT_ACTION_CODES = [
  * identical ticks against every reviewing role and would buy nothing - what
  * varies is not who, it is when.
  */
-export const REVIEW_ACTION_CODES = ['assessment.review.escalate'] as const
+export const REVIEW_ACTION_CODES = [
+  'assessment.review.escalate',
+  // what stands after the level a reviewer is judging at: the levels still
+  // to come and who holds them. Closed, a reviewer judges what is in front
+  // of them without knowing who reads it next
+  'assessment.review.view-chain',
+] as const
 
 export const BATCH_STAFF_CODES = [
   'assessment.entry.proxy',
@@ -183,6 +194,8 @@ export const PHASE_GATED_CODES = [
   'assessment.review.process',
   'assessment.review.escalate',
   'assessment.review.reopen',
+  'assessment.review.view-reviewers',
+  'assessment.review.view-chain',
   'assessment.result.view-peers',
   'assessment.ranking.view',
 ] as const

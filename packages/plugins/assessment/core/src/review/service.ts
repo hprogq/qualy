@@ -185,6 +185,8 @@ export interface ReviewInboxItem {
 export interface ReviewStageView {
   readonly id: string
   readonly index: number
+  /** a step this reader is not told about: only that it is there */
+  readonly veiled: boolean
   /** the administrator's name for the step, when the policy carries one */
   readonly label: string | null
   readonly nodeName: string | null
@@ -578,6 +580,8 @@ export interface ReviewDeps {
   readonly reviewGate: (tenantId: string, batchId: string) => Effect.Effect<GateDecision>
   /** and on assessment.review.escalate, which a phase opens separately */
   readonly escalateGate: (tenantId: string, batchId: string) => Effect.Effect<GateDecision>
+  /** whether the batch's phase of the moment opens a gated code */
+  readonly phaseOpens: (tenantId: string, batchId: string, code: string) => Effect.Effect<boolean>
   /** administrative reach over the batch, the same door getEntry uses */
   readonly rosterReach: (as: Principal, tenantId: string, batchId: string) => Effect.Effect<boolean>
   readonly parseRange: (text: string) => { start: string; end: string }
@@ -672,6 +676,12 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
       canDecide: boolean
       mayEscalate?: boolean
       resolveReviewers: boolean
+      /**
+       * Leave out what stands after the step being judged at: the steps to
+       * come and who holds them. The phase decides; the shape of the route
+       * (how many steps) stays, because the rail draws it.
+       */
+      veilAhead?: boolean
       canCancelSupplement?: boolean
       /**
        * The caller-side half of "may answer the open ask": the subject of a
@@ -804,9 +814,31 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
           earlier: older.filter((one) => one.roundNo !== previous?.roundNo),
         }
       }
-      const stageView = (stage: ResolvedStage): ReviewStageView => {
+      const standingAt = [...policy.normal, ...policy.escalation].find(
+        (stage) => stage.id === row.currentStageId,
+      )
+      const ahead = (stage: ResolvedStage, route: 'normal' | 'escalation') =>
+        view.veilAhead === true &&
+        (route === row.currentRoute
+          ? standingAt !== undefined && stage.index > standingAt.index
+          : route === 'escalation')
+      const stageView = (stage: ResolvedStage, route: 'normal' | 'escalation'): ReviewStageView => {
         const said = opinionsByStage.get(stage.id)
+        if (ahead(stage, route)) {
+          return {
+            id: stage.id,
+            index: stage.index,
+            veiled: true,
+            label: null,
+            nodeName: null,
+            roleNames: [],
+            reviewers: null,
+            skipped: null,
+            opinions: null,
+          }
+        }
         return {
+          veiled: false,
           id: stage.id,
           index: stage.index,
           label: stage.label,
@@ -853,8 +885,8 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
         chain: {
           route: row.currentRoute,
           stageId: row.currentStageId,
-          normal: policy.normal.map(stageView),
-          escalation: policy.escalation.map(stageView),
+          normal: policy.normal.map((stage) => stageView(stage, 'normal')),
+          escalation: policy.escalation.map((stage) => stageView(stage, 'escalation')),
         },
         actions,
         context,
@@ -1077,6 +1109,11 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
           canDecide,
           mayEscalate: escalationDecision.allowed,
           resolveReviewers: true,
+          veilAhead: !(yield* deps.phaseOpens(
+            tenantId,
+            row.batchId,
+            'assessment.review.view-chain',
+          )),
           canCancelSupplement:
             judge &&
             row.state === 'awaiting_supplement' &&

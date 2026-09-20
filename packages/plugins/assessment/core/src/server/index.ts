@@ -2303,10 +2303,23 @@ export const make = Effect.fn('Assessment.make')(function* () {
     },
   })
 
+  // whether the phase of the moment opens a gated code, asked of nobody in
+  // particular: the codes read this way decide what a screen says, not who
+  // may act
+  const phaseOpens = (tenantId: string, batchId: string, code: string) =>
+    Effect.gen(function* () {
+      const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
+      if (!batch) return false
+      const now = yield* Clock.currentTimeMillis
+      const view = yield* dieQuery(withDb(gateView(tenantId, batch, now)))
+      return decide(view, code, undefined).allowed
+    })
+
   const entryMethods = makeEntryMethods({
     withDb,
     authorize: authorizeAction,
     participantGates,
+    phaseOpens,
     mayReviewEntry: (as, tenantId, entryId) =>
       dieQuery(withDb(mayReviewEntry({ tenantId, userId: as.userId, entryId }))),
     requireRosterReach,
@@ -2336,6 +2349,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
         const view = yield* dieQuery(withDb(gateView(tenantId, batch, now)))
         return decide(view, 'assessment.review.escalate', undefined)
       }),
+    phaseOpens,
     rosterReach: (as, tenantId, batchId) =>
       Effect.map(Effect.result(requireRosterReach(as, tenantId, batchId)), Result.isSuccess),
     parseRange,
@@ -6348,6 +6362,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           principal,
         )
         return {
+          reviewersShown: history.reviewersShown,
           entry: entryDto(history.entry),
           revisions: history.revisions.map((revision) => ({
             id: revision.id,
