@@ -26,6 +26,7 @@ import { TypesView } from './types/TypesView.tsx'
 // nobody thinks in.
 
 const styles = stylex.create({
+  viewSwitch: { marginLeft: 8 },
   split: {
     display: 'grid',
     alignItems: 'start',
@@ -109,27 +110,30 @@ export default function OrgPage() {
     <Screen
       title={format(m.treeTitle)}
       description={format(types ? m.typesHint : m.structureHint)}
-      size={types ? 'default' : 'broad'}
+      // one width for both faces, and the switch beside the title: at the far
+      // end it slid sideways whenever the face under it changed the band's
+      // width or brought an action of its own
+      size="broad"
+      titleAside={
+        <Segmented
+          xstyle={styles.viewSwitch}
+          label={format(m.viewStructure)}
+          value={types ? 'types' : 'structure'}
+          onChange={(next) => setView(next === 'types' ? 'types' : '')}
+          options={[
+            { value: 'structure', label: format(m.viewStructure) },
+            { value: 'types', label: format(m.viewTypes) },
+          ]}
+        />
+      }
       actions={
-        <>
-          <Segmented
-            label={format(m.viewStructure)}
-            value={types ? 'types' : 'structure'}
-            onChange={(next) => setView(next === 'types' ? 'types' : '')}
-            options={[
-              { value: 'structure', label: format(m.viewStructure) },
-              { value: 'types', label: format(m.viewTypes) },
-            ]}
-          />
-          {/* after the view switch, which therefore never moves: the one
-              action only one face offers comes and goes at the far end */}
-          {rootManageable && types && (
-            <Button onClick={() => setCreatingType(true)}>
-              <PlusIcon aria-hidden />
-              {format(m.newTypeTitle)}
-            </Button>
-          )}
-        </>
+        rootManageable &&
+        types && (
+          <Button onClick={() => setCreatingType(true)}>
+            <PlusIcon aria-hidden />
+            {format(m.newTypeTitle)}
+          </Button>
+        )
       }
     >
       <Feedback message={feedback} />

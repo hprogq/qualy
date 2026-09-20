@@ -357,8 +357,11 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
   }, [catalog.data, search, format, formatText])
 
   const holder = role.holderPolicy
-  const holderWord =
-    holder.mode === 'unrestricted'
+  // the canonical administrator is the one role eligibility does not apply
+  // to, so its empty list is an exemption rather than something left unsaid
+  const holderWord = locked
+    ? format(m.exemptWord)
+    : holder.mode === 'unrestricted'
       ? format(m.anyoneWord)
       : listJoin(
           (options.data?.userTypes ?? [])
@@ -644,7 +647,8 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
             </AsyncSection>
           ))}
 
-        {tab === 'eligibility' && (
+        {tab === 'eligibility' && locked && <CardEmpty>{format(m.exemptHint)}</CardEmpty>}
+        {tab === 'eligibility' && !locked && (
           <AsyncSection
             pending={options.isPending}
             error={options.isError ? formatError(options.error) : null}

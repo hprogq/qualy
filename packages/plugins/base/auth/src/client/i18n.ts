@@ -372,7 +372,6 @@ const i18n = definePluginMessages({
       id: 'auth/users/grant-count',
       defaultMessage: '{count, plural, =0 {no grants} one {# grant} other {# grants}}',
     },
-    columnAccounts: { id: 'auth/users/column-accounts', defaultMessage: 'Accounts' },
     moveLabel: { id: 'auth/users/move', defaultMessage: 'Move' },
     movePick: { id: 'auth/users/move-pick', defaultMessage: 'Pick a unit' },
     moveAction: { id: 'auth/users/move-action', defaultMessage: 'Move here' },

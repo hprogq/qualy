@@ -15,7 +15,14 @@ import { tokens } from '../../theme/tokens.stylex.ts'
 //
 // What kind of unit it is and how many stand in it sit at the far end in two
 // columns that line up down the tree, so the shape of the place can be read
-// without opening any of it.
+// without opening any of it. The name outranks both: five levels down, the
+// indent has taken a third of the column, and a row reading "软件20..." six
+// times over tells nobody which class is which. So the kind gives way first,
+// all the way to nothing, and only then does the name begin to shorten; the
+// whole of it stays on the row's title either way.
+
+/** how far each level steps in; small, because a real tree is five or six deep */
+const INDENT = 12
 
 const QUIET = `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`
 
@@ -72,9 +79,11 @@ const styles = stylex.create({
     textAlign: 'start',
     color: 'inherit',
     cursor: 'pointer',
+    overflow: 'hidden',
   },
   word: {
     minWidth: 0,
+    flexShrink: 1,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
@@ -84,10 +93,18 @@ const styles = stylex.create({
   wordOpen: { fontWeight: 600 },
   lock: { width: 12, height: 12, flexShrink: 0, color: tokens.mutedForeground },
   spacer: { flexGrow: 1, flexShrink: 1, flexBasis: '0%', minWidth: 4 },
-  kind: { flexShrink: 0, fontSize: 11, color: QUIET },
+  // gives way long before the name does
+  kind: {
+    minWidth: 0,
+    flexShrink: 9999,
+    overflow: 'hidden',
+    whiteSpace: 'nowrap',
+    fontSize: 11,
+    color: QUIET,
+  },
   tally: {
     flexShrink: 0,
-    width: '3.4rem',
+    minWidth: '2.25rem',
     textAlign: 'right',
     fontSize: 11,
     fontVariantNumeric: 'tabular-nums',
@@ -130,7 +147,7 @@ export function TreeRow({
     <div {...stylex.props(styles.row, open && styles.rowOpen)}>
       {/* the indent belongs to the row, not to a control: the deeper the unit,
           the wider the strip in front of it that must not look pressable */}
-      <span aria-hidden style={{ width: depth * 16, flexShrink: 0 }} />
+      <span aria-hidden style={{ width: depth * INDENT, flexShrink: 0 }} />
       {folds ? (
         <button
           type="button"
@@ -152,6 +169,7 @@ export function TreeRow({
         type="button"
         aria-current={open}
         data-node-name={name}
+        title={kind !== undefined && kind !== '' ? `${name} ${kind}` : name}
         onClick={() => {
           if (folds && collapsed) onToggle()
           onOpen()

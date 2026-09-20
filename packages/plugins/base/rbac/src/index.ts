@@ -32,6 +32,7 @@ const plugin = Plugin.define(
     visibility: permissionOf('iam.role.read'),
     navigation: {
       label: message('rbac/navigation/roles', 'Roles'),
+      icon: 'shield-check',
       order: 30,
       group: 'org/organization',
     },

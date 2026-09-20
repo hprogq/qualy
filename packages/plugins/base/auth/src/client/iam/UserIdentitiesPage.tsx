@@ -7,7 +7,6 @@ import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Blank, EditorSkeleton, SectionHead } from '@qualy/ui/screen'
-import { PageContainer } from '@qualy/ui/page-container'
 import { Badge } from '@qualy/ui/badge'
 import { Stagger } from '@qualy/ui/reveal'
 import { iamMessages as m } from '../i18n.ts'
@@ -107,7 +106,7 @@ export default function UserIdentitiesPage() {
     new Date(iso).toLocaleDateString(locale, { month: 'short', day: 'numeric' })
 
   return (
-    <PageContainer size="default" xstyle={styles.page}>
+    <div {...stylex.props(styles.page)}>
       <AsyncSection
         pending={user.isPending}
         error={user.isError ? formatError(user.error) : null}
@@ -178,6 +177,6 @@ export default function UserIdentitiesPage() {
           </>
         )}
       </AsyncSection>
-    </PageContainer>
+    </div>
   )
 }

@@ -22,11 +22,21 @@ const byOrder = (a: { order?: number }, b: { order?: number }) => (a.order ?? 0)
 const pathOf = (item: ResolvedNavigationItem): string | undefined =>
   item.target.kind === 'page' ? item.target.path : item.target.href
 
+/** one heading of the open application's side navigation, and what is filed under it */
+export interface SectionGroup {
+  id: string
+  /** absent when the application has only one group: a lone heading repeats the tab above it */
+  label: NavigationGroup['label'] | undefined
+  items: readonly ResolvedNavigationItem[]
+}
+
 export interface AppNavigation {
   apps: readonly AppEntry[]
   activeApp: string | undefined
-  /** the sections of the open application */
+  /** the sections of the open application, flat: what a narrow window's bar carries */
   sections: readonly ResolvedNavigationItem[]
+  /** the same sections under their headings: what the side navigation carries */
+  sectionGroups: readonly SectionGroup[]
 }
 
 export function useAppNavigation(): AppNavigation {
@@ -86,5 +96,34 @@ export function useAppNavigation(): AppNavigation {
     })
     .sort((a, b) => b.length - a.length)[0]?.app
 
-  return { apps: all, activeApp: active?.id, sections: active?.items ?? [] }
+  // The open application's entries under their headings: what is filed under
+  // the application itself first, then each group nested in it. The flat
+  // list the bar carries follows the same order, so the two never disagree
+  // about which section comes first.
+  const owner = groups.find((group) => group.id === active?.id)
+  const nested = [...groups]
+    .filter((group) => owner !== undefined && group.id !== owner.id && appOf(group) === owner.id)
+    .sort(byOrder)
+  const filedUnder = (groupId: string) =>
+    (active?.items ?? []).filter((item) => item.group === groupId)
+  const clusters = (
+    owner === undefined
+      ? []
+      : [owner, ...nested].map((group) => ({
+          id: group.id,
+          label: group.label,
+          items: filedUnder(group.id),
+        }))
+  ).filter((cluster) => cluster.items.length > 0)
+  const sectionGroups: SectionGroup[] = clusters.map((cluster) => ({
+    ...cluster,
+    label: clusters.length > 1 ? cluster.label : undefined,
+  }))
+
+  return {
+    apps: all,
+    activeApp: active?.id,
+    sections: sectionGroups.length > 0 ? sectionGroups.flatMap((group) => group.items) : (active?.items ?? []),
+    sectionGroups,
+  }
 }

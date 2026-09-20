@@ -5,7 +5,7 @@ import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Access } from '@qualy/rbac-contract/plugin'
 import { Audit } from '@qualy/audit-contract/plugin'
 import { message } from '@qualy/i18n-contract'
-import { APP_SHELL, permissionOf } from '@qualy/ui-contract'
+import { APP_SHELL, PUBLIC, navigationGroups, permissionOf } from '@qualy/ui-contract'
 import { auditApiGroup } from './api.ts'
 import { entities } from './db/entities.ts'
 import { permissions } from './permissions.ts'
@@ -35,9 +35,28 @@ const plugin = Plugin.define(
     visibility: permissionOf('audit.event.read'),
     navigation: {
       label: message('audit/navigation/events', 'Audit log'),
+      icon: 'clipboard-list',
       order: 60,
-      group: 'org/organization',
+      group: 'audit/records',
     },
+  }),
+  // A heading of its own inside the organization application: reading what
+  // was done is a different errand from arranging who may do it. The parent
+  // is named by id - a group nobody registered leaves this one top-level.
+  Ui.surfaces({
+    collections: [
+      {
+        collection: navigationGroups,
+        id: 'audit/records',
+        value: {
+          id: 'audit/records',
+          label: message('audit/nav-group/records', 'Audit'),
+          order: 90,
+          parent: 'org/organization',
+        },
+        visibility: PUBLIC,
+      },
+    ],
   }),
   Access.permissions('audit', permissions),
   Audit.provider,

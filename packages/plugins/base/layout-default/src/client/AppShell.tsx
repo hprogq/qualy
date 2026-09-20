@@ -12,17 +12,21 @@ import {
 import { SectionBar, TopBar } from './TopBar.tsx'
 import { BottomBar } from './BottomBar.tsx'
 import { AppFooter } from './AppFooter.tsx'
+import { useIsBelow } from '@qualy/ui/use-mobile'
+import { useI18n } from '@qualy/web-i18n'
+import { SideNav } from './SideNav.tsx'
+import { layoutMessages as m } from './i18n.ts'
 import { useAppNavigation } from './useAppNavigation.ts'
 import { shell } from './shell.stylex.ts'
 
 // app-shell/v1 provider: applications across the top, the sections of the
 // open one under them, the page below.
 //
-// There is no permanent rail. Most of this product's screens are one of three
-// or four pages in an application, and a column standing beside them all day
-// costs more room than it navigates - a student reading their own result was
-// carrying an empty sidebar of pages they cannot open. What needs a rail is
-// working inside one thing for a while, and that has a shell of its own.
+// The sections stand down the side of a window wide enough to spare the
+// column, under the headings their plugins file them by, and only while the
+// open application has more than one: a student reading their own result
+// carries no empty column of pages they cannot open. A narrow window keeps
+// them as a row under the top bar instead.
 //
 // The bars live INSIDE the scrolling element, stuck to its top, rather than
 // above it: the page scrolls in <main>, not in the window, and a bar that
@@ -33,6 +37,9 @@ import { shell } from './shell.stylex.ts'
 
 /** how far the page must have moved before the bars turn to glass */
 const SCROLLED_AFTER = 12
+
+/** below this the sections fold back into a row under the top bar */
+const SIDE_BREAKPOINT = 1024
 
 /** above every sticky element a page keeps (10, 40), below every dialog and sheet (200) */
 const HEAD_LAYER = 50
@@ -77,6 +84,14 @@ const styles = stylex.create({
     top: 0,
     zIndex: HEAD_LAYER,
   },
+  // beside a column the bar is ruled from the start: the column's own line
+  // has to meet something, and a bar that earns its rule only once the page
+  // moves leaves that line ending in mid air
+  headRuled: {
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+  },
   // The room the bars float over, inside the scroller so the page scrolls
   // up through it. Its height is the bars' own, declared in CSS so the
   // first frame is already right; the measurement below only corrects it
@@ -97,6 +112,36 @@ const styles = stylex.create({
     height: SCROLLED_AFTER,
     marginBottom: -SCROLLED_AFTER,
     pointerEvents: 'none',
+  },
+  // the side navigation and the page beside it; alone, the page's own column
+  frame: {
+    display: 'flex',
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 0,
+  },
+  frameFilled: { minHeight: 0, flexShrink: 1 },
+  // Stuck under the bars for the height they leave, so a long page scrolls
+  // past it and a long list of sections scrolls inside it. It has no ground
+  // of its own: the page's ground runs under it, ruled off by one line.
+  side: {
+    position: 'sticky',
+    alignSelf: 'flex-start',
+    width: 220,
+    flexShrink: 0,
+    overflowY: 'auto',
+    overscrollBehaviorY: 'contain',
+    borderRightWidth: 1,
+    borderRightStyle: 'solid',
+    borderRightColor: tokens.border,
+  },
+  column: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
   },
   // the page takes whatever height the bars and the foot leave, so a short
   // page still puts the foot at the bottom of the viewport
@@ -134,7 +179,9 @@ const styles = stylex.create({
  * renders after it, rather than by the one that provides the scope.
  */
 function Shell() {
-  const { apps, activeApp, sections } = useAppNavigation()
+  const { apps, activeApp, sections, sectionGroups } = useAppNavigation()
+  const { format } = useI18n()
+  const narrow = useIsBelow(SIDE_BREAKPOINT)
   const main = useRef<HTMLElement>(null)
   const head = useRef<HTMLDivElement>(null)
   const sentinel = useRef<HTMLDivElement>(null)
@@ -151,7 +198,10 @@ function Shell() {
   // rather than assumed: a height read once was right until the first
   // rotation, and then quietly wrong by eight pixels.
   const [barHeight, setBarHeight] = useState(0)
-  const withSections = sections.length >= 2
+  const sectioned = sections.length >= 2
+  // one or the other carries the sections, never both
+  const beside = sectioned && !narrow
+  const withSections = sectioned && narrow
   useEffect(() => {
     const bars = head.current
     if (bars === null) return
@@ -198,7 +248,7 @@ function Shell() {
         ref={head}
         data-shell-head=""
         data-scrolled={scrolled ? '' : undefined}
-        {...stylex.props(styles.head)}
+        {...stylex.props(styles.head, beside && styles.headRuled)}
       >
         <TopBar
           apps={apps}
@@ -207,7 +257,7 @@ function Shell() {
           title={title}
           titleShown={titleShown}
         />
-        <SectionBar items={sections} />
+        {withSections && <SectionBar items={sections} />}
       </div>
       {/* auto, so a page that fits shows nothing. The width this once
           protected only moves where scrollbars take space, and there a track
@@ -232,10 +282,22 @@ function Shell() {
           {...stylex.props(styles.headRoom, withSections && styles.headRoomSections)}
         />
         <div ref={sentinel} aria-hidden {...stylex.props(styles.sentinel)} />
-        <div {...stylex.props(styles.page, filled && styles.pageFilled)}>
-          <Outlet />
+        <div {...stylex.props(styles.frame, filled && styles.frameFilled)}>
+          {beside && (
+            <aside
+              style={{ top: barHeight, height: `calc(100dvh - ${String(barHeight)}px)` }}
+              {...stylex.props(styles.side)}
+            >
+              <SideNav groups={sectionGroups} label={format(m.sideNav)} />
+            </aside>
+          )}
+          <div {...stylex.props(styles.column)}>
+            <div {...stylex.props(styles.page, filled && styles.pageFilled)}>
+              <Outlet />
+            </div>
+            {filled ? null : <AppFooter />}
+          </div>
         </div>
-        {filled ? null : <AppFooter />}
       </main>
       <BottomBar apps={apps} activeApp={activeApp} />
     </div>

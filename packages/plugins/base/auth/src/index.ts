@@ -75,6 +75,7 @@ const plugin = Plugin.define(
     visibility: permissionOf('auth.user.read'),
     navigation: {
       label: message('auth/navigation/users', 'Users'),
+      icon: 'users',
       order: 20,
       group: 'org/organization',
     },
@@ -163,6 +164,7 @@ const plugin = Plugin.define(
     visibility: permissionOf('auth.user-type.read'),
     navigation: {
       label: message('auth/navigation/user-types', 'User types'),
+      icon: 'id-card',
       order: 40,
       group: 'org/organization',
     },
@@ -184,6 +186,7 @@ const plugin = Plugin.define(
     visibility: permissionOf('auth.provider.read'),
     navigation: {
       label: message('auth/navigation/login-methods', 'Ways in'),
+      icon: 'key-round',
       order: 50,
       group: 'org/organization',
     },

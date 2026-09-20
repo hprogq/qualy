@@ -7,7 +7,6 @@ import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Blank, EditorSkeleton, SectionHead } from '@qualy/ui/screen'
-import { PageContainer } from '@qualy/ui/page-container'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { StatusBadge } from '../batch/StatusBadge.tsx'
@@ -113,7 +112,7 @@ export default function UserBatchesPage() {
   const items = rows.data?.pages.flatMap((page) => page.items) ?? []
 
   return (
-    <PageContainer size="default" xstyle={styles.page}>
+    <div {...stylex.props(styles.page)}>
       <SectionHead title={format(m.personBatchesTab)} count={rows.data ? items.length : undefined} />
       <AsyncSection
         pending={rows.isPending}
@@ -190,6 +189,6 @@ export default function UserBatchesPage() {
           </Button>
         )}
       </AsyncSection>
-    </PageContainer>
+    </div>
   )
 }

@@ -1,13 +1,13 @@
 import type { MessageCatalog } from '@qualy/i18n-contract'
 
 export default {
+  'directory-import/record/close': '关闭',
   'directory-import/audit/commit': '导入用户',
   'directory-import/audit/reverse': '撤销用户导入',
   'directory-import/audit/clean-nodes': '清理导入创建的组织节点',
   'directory-import/users/action': '导入用户',
   'directory-import/import/title': '导入用户',
   'directory-import/import/hint': '用现有的表格批量添加人员，表格里出现的组织单位会一并创建',
-  'directory-import/import/back': '用户',
   'directory-import/step/upload': '文件',
   'directory-import/step/sheet': '工作表',
   'directory-import/step/mapping': '列对应',
@@ -82,8 +82,6 @@ export default {
   'directory-import/records/loading': '正在读取导入记录',
   'directory-import/records/failed': '导入记录暂时无法读取',
   'directory-import/records/retry': '重试',
-  'directory-import/record/title': '导入 {filename}',
-  'directory-import/record/back': '导入用户',
   'directory-import/record/counts': '创建 {users} 人，已存在 {existing} 人，新建 {nodes} 个单位',
   'directory-import/record/standing': '{living} 人仍在，{deleted} 人已删除',
   'directory-import/record/by': '操作人',

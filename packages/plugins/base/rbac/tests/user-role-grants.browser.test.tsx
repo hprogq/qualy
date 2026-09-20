@@ -157,8 +157,10 @@ describe('the grants of one person', () => {
   it('grants at the tenant when that is the chosen scope', async () => {
     const create = vi.fn(() => Effect.succeed({ id: 'created-grant' }))
     open({ createRoleGrant: create })
+    // the form is a dialog over the section, opened from its heading
+    await page.getByRole('button', { name: '授予角色' }).click()
     await expect.element(page.getByRole('combobox', { name: '角色' })).toBeInTheDocument()
-    await page.getByRole('button', { name: '授予' }).click()
+    await page.getByRole('button', { name: '授予', exact: true }).click()
     await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(1))
     expect(create).toHaveBeenCalledWith({
       payload: { userId: USER_ID, roleId: ROLE_ID, target: { kind: 'tenant' } },
@@ -188,11 +190,13 @@ describe('the grants of one person', () => {
         },
       },
     )
+    // the form is a dialog over the section, opened from its heading
+    await page.getByRole('button', { name: '授予角色' }).click()
     await expect.element(page.getByRole('combobox', { name: '生效范围' })).toBeInTheDocument()
     await page.getByRole('combobox', { name: '生效范围' }).click()
     await page.getByRole('option', { name: '某个组织节点' }).click()
     // no unit yet: nothing is asked for, and nothing can be granted
-    await expect.element(page.getByRole('button', { name: '授予' })).toBeDisabled()
+    await expect.element(page.getByRole('button', { name: '授予', exact: true })).toBeDisabled()
     await page.getByRole('button', { name: '分部' }).click()
     await page.getByRole('combobox', { name: '覆盖' }).click()
     await page.getByRole('option', { name: '仅该节点' }).click()
@@ -201,7 +205,7 @@ describe('the grants of one person', () => {
         query: { userId: USER_ID, target: 'org-node', orgNodeId: BRANCH_NODE_ID, coverage: 'self' },
       }),
     )
-    await page.getByRole('button', { name: '授予' }).click()
+    await page.getByRole('button', { name: '授予', exact: true }).click()
     await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(1))
     expect(create).toHaveBeenCalledWith({
       payload: {
@@ -216,7 +220,9 @@ describe('the grants of one person', () => {
   // on here, which is different from a list that has not arrived
   it('says so when nothing can be granted rather than offering an empty picker', async () => {
     open({ getRoleGrantOptions: () => Effect.succeed({ roles: [] }) })
+    // the form is a dialog over the section, opened from its heading
+    await page.getByRole('button', { name: '授予角色' }).click()
     await expect.element(page.getByTestId('grant-nothing-offered')).toBeInTheDocument()
-    await expect.element(page.getByRole('button', { name: '授予' })).toBeDisabled()
+    await expect.element(page.getByRole('button', { name: '授予', exact: true })).toBeDisabled()
   })
 })

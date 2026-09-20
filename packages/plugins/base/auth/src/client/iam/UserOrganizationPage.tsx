@@ -7,7 +7,6 @@ import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection, Feedback } from '@qualy/ui/admin'
 import { EditorSkeleton, SectionHead } from '@qualy/ui/screen'
-import { PageContainer } from '@qualy/ui/page-container'
 import { Button } from '@qualy/ui/button'
 import { iamMessages as m } from '../i18n.ts'
 import { NodePicker } from './NodePicker.tsx'
@@ -115,7 +114,7 @@ export default function UserOrganizationPage() {
   })
 
   return (
-    <PageContainer size="default" xstyle={styles.page}>
+    <div {...stylex.props(styles.page)}>
       <AsyncSection
         pending={user.isPending}
         error={user.isError ? formatError(user.error) : null}
@@ -181,6 +180,6 @@ export default function UserOrganizationPage() {
           </>
         )}
       </AsyncSection>
-    </PageContainer>
+    </div>
   )
 }

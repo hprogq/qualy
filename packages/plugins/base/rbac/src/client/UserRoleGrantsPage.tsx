@@ -16,10 +16,17 @@ import {
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import * as stylex from '@stylexjs/stylex'
-import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { AsyncSection, ConfirmDialog, Feedback } from '@qualy/ui/admin'
-import { SectionHead } from '@qualy/ui/screen'
-import { PageContainer } from '@qualy/ui/page-container'
+import { AsyncSection, ConfirmDialog, Feedback, FormDialog } from '@qualy/ui/admin'
+import { PlusIcon } from 'lucide-react'
+import {
+  Card,
+  CardEmpty,
+  Cell,
+  SectionHead,
+  Table,
+  TableHead,
+  TableRow,
+} from '@qualy/ui/screen'
 import { Button } from '@qualy/ui/button'
 import { rbacMessages as m } from './i18n.ts'
 import { GrantRoleForm } from './GrantRoleForm.tsx'
@@ -37,66 +44,18 @@ import { useMoment } from './when.ts'
 // presenter it registered, and where nobody has, the kind is named plainly.
 
 const styles = stylex.create({
-  page: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 28,
-  },
-  section: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 12,
-  },
-  hint: {
-    fontSize: '0.875rem',
-    lineHeight: '1.25rem',
-    color: tokens.mutedForeground,
-  },
-  list: {
-    display: 'flex',
-    flexDirection: 'column',
-    borderRadius: 14,
-    backgroundColor: tokens.surface,
-    boxShadow: `0 0 0 1px ${tokens.border}, 0 1px 2px rgb(0 0 0 / 0.04)`,
-  },
-  row: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 16,
-    borderTopWidth: { default: 1, ':first-child': 0 },
-    borderTopStyle: 'solid',
-    borderTopColor: tokens.border,
-    paddingInline: 16,
-    paddingBlock: 10,
-  },
-  rowText: {
-    minWidth: 0,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 2,
-  },
-  roleName: {
-    fontSize: '0.875rem',
-    lineHeight: '1.25rem',
-    fontWeight: 500,
-  },
-  where: {
-    fontSize: '0.75rem',
-    lineHeight: '1rem',
-    color: tokens.mutedForeground,
-  },
+  page: { display: 'flex', flexDirection: 'column', gap: 28 },
+  section: { display: 'flex', flexDirection: 'column', gap: 12 },
   // where the grant came from and how long it holds, said by whoever knows
   origin: {
     display: 'flex',
+    minWidth: 0,
     flexWrap: 'wrap',
     alignItems: 'center',
     columnGap: 12,
     rowGap: 2,
-    fontSize: '0.75rem',
-    lineHeight: '1rem',
-    color: tokens.mutedForeground,
   },
+  end: { display: 'flex', justifyContent: 'flex-end' },
 })
 
 type Grant = {
@@ -123,6 +82,7 @@ export default function UserRoleGrantsPage() {
   // by pressing again
   const [revoking, setRevoking] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
+  const [granting, setGranting] = useState(false)
 
   const grants = useQuery(query.access.getUserRoleGrants.queryOptions({ params: { userId } }))
   const items: readonly Grant[] = grants.data?.grants ?? []
@@ -157,10 +117,19 @@ export default function UserRoleGrantsPage() {
   )
 
   return (
-    <PageContainer size="default" xstyle={styles.page}>
+    <div {...stylex.props(styles.page)}>
       <section {...stylex.props(styles.section)}>
-        <SectionHead title={format(m.organizationalSection)} count={organizational.length} />
-        <p {...stylex.props(styles.hint)}>{format(m.organizationalHint)}</p>
+        <SectionHead
+          title={format(m.organizationalSection)}
+          count={organizational.length}
+          aside={format(m.organizationalHint)}
+          actions={
+            <Button size="sm" variant="outline" onClick={() => setGranting(true)}>
+              <PlusIcon aria-hidden />
+              {format(m.grantOpen)}
+            </Button>
+          }
+        />
         <Feedback message={feedback} />
         <AsyncSection
           pending={grants.isPending}
@@ -169,72 +138,97 @@ export default function UserRoleGrantsPage() {
           retryLabel={format(commonMessages.retry)}
           onRetry={() => void grants.refetch()}
         >
-          {organizational.length === 0 ? (
-            <p {...stylex.props(styles.hint)}>{format(m.organizationalEmpty)}</p>
-          ) : (
-            <ul {...stylex.props(styles.list)}>
-              {organizational.map((grant) => (
-                <li
-                  key={grant.id}
-                  data-testid="grant-row"
-                  data-grant-kind="organizational"
-                  {...stylex.props(styles.row)}
-                >
-                  <div {...stylex.props(styles.rowText)}>
-                    <p {...stylex.props(styles.roleName)}>{grant.roleName}</p>
-                    <p {...stylex.props(styles.where)}>{where(grant)}</p>
-                    {(grant.validFrom !== null || grant.validUntil !== null) && (
-                      <p {...stylex.props(styles.origin)}>{window(grant)}</p>
-                    )}
-                  </div>
-                  {grant.manageable && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      // per-row pending: revoking one grant must not freeze the
-                      // controls of every other row
-                      disabled={revoke.isPending && revoke.variables === grant.id}
-                      onClick={() => setRevoking(grant.id)}
-                    >
-                      {format(m.revokeAction)}
-                    </Button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
+          <Card>
+            {organizational.length === 0 ? (
+              <CardEmpty>{format(m.organizationalEmpty)}</CardEmpty>
+            ) : (
+              <Table columns="minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr) 4.5rem">
+                <TableHead>
+                  <span>{format(m.grantRole)}</span>
+                  <span>{format(m.grantScope)}</span>
+                  <span>{format(m.columnWindow)}</span>
+                  <span />
+                </TableHead>
+                {organizational.map((grant) => (
+                  <TableRow key={grant.id} data-testid="grant-row" data-grant-kind="organizational">
+                    <Cell lead>{grant.roleName}</Cell>
+                    <Cell title={where(grant)}>{where(grant)}</Cell>
+                    <Cell tone={grant.validFrom === null && grant.validUntil === null ? 'quiet' : 'muted'}>
+                      {grant.validFrom === null && grant.validUntil === null ? (
+                        format(m.windowOpen)
+                      ) : (
+                        <span {...stylex.props(styles.origin)}>{window(grant)}</span>
+                      )}
+                    </Cell>
+                    <span {...stylex.props(styles.end)}>
+                      {grant.manageable && (
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          // per-row pending: revoking one grant must not freeze
+                          // the controls of every other row
+                          disabled={revoke.isPending && revoke.variables === grant.id}
+                          onClick={() => setRevoking(grant.id)}
+                        >
+                          {format(m.revokeAction)}
+                        </Button>
+                      )}
+                    </span>
+                  </TableRow>
+                ))}
+              </Table>
+            )}
+          </Card>
         </AsyncSection>
-        <GrantRoleForm userId={userId} />
       </section>
 
       <section {...stylex.props(styles.section)}>
-        <SectionHead title={format(m.confinedSection)} count={confined.length} />
-        <p {...stylex.props(styles.hint)}>{format(m.confinedHint)}</p>
-        {!grants.isPending &&
-          (confined.length === 0 ? (
-            <p {...stylex.props(styles.hint)}>{format(m.confinedEmpty)}</p>
-          ) : (
-            <ul {...stylex.props(styles.list)}>
-              {confined.map((grant) => (
-                <li
-                  key={grant.id}
-                  data-testid="grant-row"
-                  data-grant-kind="confined"
-                  {...stylex.props(styles.row)}
-                >
-                  <div {...stylex.props(styles.rowText)}>
-                    <p {...stylex.props(styles.roleName)}>{grant.roleName}</p>
-                    <p {...stylex.props(styles.where)}>{where(grant)}</p>
-                    <p {...stylex.props(styles.origin)}>
-                      <ConfinedOrigin grant={grant} />
-                      {window(grant)}
-                    </p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          ))}
+        <SectionHead
+          title={format(m.confinedSection)}
+          count={confined.length}
+          aside={format(m.confinedHint)}
+        />
+        {!grants.isPending && (
+          <Card>
+            {confined.length === 0 ? (
+              <CardEmpty>{format(m.confinedEmpty)}</CardEmpty>
+            ) : (
+              <Table columns="minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.6fr)">
+                <TableHead>
+                  <span>{format(m.grantRole)}</span>
+                  <span>{format(m.grantScope)}</span>
+                  <span>{format(m.columnOrigin)}</span>
+                </TableHead>
+                {confined.map((grant) => (
+                  <TableRow
+                    key={grant.id}
+                    height="regular"
+                    data-testid="grant-row"
+                    data-grant-kind="confined"
+                  >
+                    <Cell lead>{grant.roleName}</Cell>
+                    <Cell title={where(grant)}>{where(grant)}</Cell>
+                    <Cell>
+                      <span {...stylex.props(styles.origin)}>
+                        <ConfinedOrigin grant={grant} />
+                        {window(grant)}
+                      </span>
+                    </Cell>
+                  </TableRow>
+                ))}
+              </Table>
+            )}
+          </Card>
+        )}
       </section>
+
+      <FormDialog
+        open={granting}
+        title={format(m.grantOpen)}
+        onClose={() => setGranting(false)}
+      >
+        <GrantRoleForm userId={userId} onGranted={() => setGranting(false)} />
+      </FormDialog>
 
       <ConfirmDialog
         open={revoking !== null}
@@ -251,7 +245,7 @@ export default function UserRoleGrantsPage() {
           if (id !== null) revoke.mutate(id)
         }}
       />
-    </PageContainer>
+    </div>
   )
 }
 

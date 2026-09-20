@@ -8,7 +8,6 @@ import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection } from '@qualy/ui/admin'
 import { EditorSkeleton, Facts, SectionHead } from '@qualy/ui/screen'
-import { PageContainer } from '@qualy/ui/page-container'
 import { iamMessages as m } from '../i18n.ts'
 import { authApi } from '../api.ts'
 
@@ -78,7 +77,7 @@ export default function UserProfilePage() {
   const roles = user.data?.roles ?? []
 
   return (
-    <PageContainer size="default" xstyle={styles.page}>
+    <div {...stylex.props(styles.page)}>
       <AsyncSection
         pending={user.isPending}
         error={user.isError ? formatError(user.error) : null}
@@ -175,6 +174,6 @@ export default function UserProfilePage() {
           </>
         )}
       </AsyncSection>
-    </PageContainer>
+    </div>
   )
 }

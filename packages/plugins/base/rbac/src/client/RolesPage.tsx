@@ -67,6 +67,8 @@ export default function RolesPage() {
 
   /** who may hold it: everybody, the listed kinds, or - on a draft - nothing said yet */
   const holders = (role: RoleRow) => {
+    // the canonical administrator is exempt, which is not the same as unset
+    if (role.systemKey !== null) return { words: format(m.exemptWord), unset: false }
     if (role.holderPolicy.mode === 'unrestricted') return { words: format(m.anyoneWord), unset: false }
     const names = namesOf(role.holderPolicy.userTypeIds, options.data?.userTypes ?? [])
     return names === '' ? { words: format(m.unsetWord), unset: true } : { words: names, unset: false }

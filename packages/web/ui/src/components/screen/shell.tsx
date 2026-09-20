@@ -5,6 +5,7 @@ import type { StyleXStyles } from '@stylexjs/stylex'
 import { tokens } from '../../theme/tokens.stylex.ts'
 import { breakpoints } from '../../theme/breakpoints.stylex.ts'
 import { PageContainer } from '../page-container.tsx'
+import { Reveal } from '../reveal.tsx'
 import { Tabs, TabsList, TabsTrigger } from '../tabs.tsx'
 
 const styles = stylex.create({
@@ -96,9 +97,11 @@ const styles = stylex.create({
   stack: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 14,
     paddingTop: { default: 18, [breakpoints.tablet]: 18, [breakpoints.desktop]: 18 },
   },
+  // the page arrives as one thing, a beat after its heading: the cards of a
+  // page are read at a glance, so they do not queue up one behind another
+  arrival: { display: 'flex', minWidth: 0, flexDirection: 'column', flexGrow: 1, gap: 14 },
 })
 
 /**
@@ -164,7 +167,9 @@ export function Screen({
         </PageContainer>
       </div>
       <PageContainer size={size} xstyle={styles.stack}>
-        {children}
+        <Reveal delay={0.05} className={stylex.props(styles.arrival).className}>
+          {children}
+        </Reveal>
       </PageContainer>
     </>
   )

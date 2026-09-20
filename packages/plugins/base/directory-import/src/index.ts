@@ -4,7 +4,7 @@ import { Db } from '@qualy/plugin-database/plugin'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Audit } from '@qualy/audit-contract/plugin'
 import { message } from '@qualy/i18n-contract'
-import { APP_SHELL, permissionOf, usersPageActions } from '@qualy/ui-contract'
+import { permissionOf, usersPageActions } from '@qualy/ui-contract'
 import { directoryImportActions } from './actions.ts'
 import { directoryApiGroup } from './api.ts'
 import { entities } from './db/entities.ts'
@@ -38,20 +38,8 @@ const plugin = Plugin.define(
   Db.entities(entities, { dependsOn: ['@qualy/plugin-org', '@qualy/plugin-auth', '@qualy/plugin-rbac'] }),
   Audit.actions('directory', directoryImportActions),
   Ui.i18n('./client/i18n'),
-  Ui.page({
-    id: 'directory-import/users',
-    path: '/organization/users/import',
-    component: Ui.react('./client/ImportUsersPage'),
-    layout: APP_SHELL,
-    visibility: permissionOf('auth.user.manage'),
-  }),
-  Ui.page({
-    id: 'directory-import/record',
-    path: '/organization/users/imports/:importId',
-    component: Ui.react('./client/ImportRecordPage'),
-    layout: APP_SHELL,
-    visibility: permissionOf('auth.user.manage'),
-  }),
+  // no page of its own: importing is a dialog over the roster it adds to, and
+  // what was imported before is a sheet beside it
   Ui.surfaces({
     slots: [
       {

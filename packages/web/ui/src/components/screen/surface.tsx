@@ -552,7 +552,16 @@ export function Cell({
 }) {
   if (lead) {
     return (
-      <span {...stylex.props(styles.cell, styles.cellLead, strong && styles.cellStrong)} title={title}>
+      <span
+        {...stylex.props(
+          styles.cell,
+          styles.cellLead,
+          strong && styles.cellStrong,
+          tone === 'quiet' && styles.cellQuiet,
+          numeric && styles.cellNumeric,
+        )}
+        title={title}
+      >
         {children}
       </span>
     )

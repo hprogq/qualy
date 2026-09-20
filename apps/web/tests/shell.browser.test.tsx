@@ -184,6 +184,20 @@ const shell = (element: React.ReactNode, path: string, route: string) =>
   })
 
 describe('the application shell', () => {
+  it('stands the open application\'s sections down the side of a wide window, and in a row on a narrow one', async () => {
+    await page.viewport(1440, 900)
+    shell(<AppShell />, '/organization/users', '/organization/users')
+    const side = page.getByTestId('side-nav')
+    await expect.element(side).toBeVisible()
+    await expect.element(side.getByRole('link', { name: '用户管理' })).toHaveAttribute('aria-current', 'page')
+    await expect.element(side.getByRole('link', { name: '角色管理' })).toBeVisible()
+    // one or the other carries the sections, never both
+    await page.viewport(800, 900)
+    await vi.waitFor(() => expect(document.querySelector('[data-testid="side-nav"]')).toBeNull())
+    await expect.element(page.getByRole('link', { name: '角色管理' })).toBeVisible()
+    await page.viewport(1280, 800)
+  })
+
   it('shows one tab per application and the sections of the open one', async () => {
     shell(<AppShell />, '/organization/users', '/organization/users')
 

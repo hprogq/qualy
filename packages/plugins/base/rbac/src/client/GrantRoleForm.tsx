@@ -64,7 +64,14 @@ const styles = stylex.create({
   },
 })
 
-export function GrantRoleForm({ userId }: { userId: string }) {
+export function GrantRoleForm({
+  userId,
+  onGranted,
+}: {
+  userId: string
+  /** the grant landed; whoever opened the form may put it away */
+  onGranted?: () => void
+}) {
   const api = useApi(accessApi)
   const run = useRunApi()
   const query = useApiQuery(accessApi)
@@ -115,6 +122,7 @@ export function GrantRoleForm({ userId }: { userId: string }) {
     onSuccess: async () => {
       setRoleId('')
       await queryClient.invalidateQueries({ queryKey: query.access.key() })
+      onGranted?.()
     },
     onError: (error: unknown) => setFeedback(formatError(error)),
   })

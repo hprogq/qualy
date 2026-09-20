@@ -77,7 +77,6 @@ export default {
   'auth/login-methods/code-hint': '创建后不可更改',
   'auth/login-methods/order': '登录页次序',
   'auth/users/account-count': '{count, plural, other {# 个账号}}',
-  'auth/users/column-accounts': '账号',
   'auth/users/units': '组织',
   'auth/users/units-count': '共 {count} 个',
   'auth/users/expand-all': '展开全部',
@@ -246,6 +245,6 @@ export default {
   'auth/confirm/user-delete-body':
     '其角色与登录账号将被收回。此人以后可以恢复，收回的权限与账号不会随之恢复。',
   'auth/users/view': '人员范围',
-  'auth/users/view-living': '在册',
+  'auth/users/view-living': '现有',
   'auth/users/view-deleted': '已删除',
 } satisfies MessageCatalog

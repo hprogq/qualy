@@ -66,7 +66,7 @@ const styles = stylex.create({
     gap: 20,
     gridTemplateColumns: {
       default: 'minmax(0, 1fr)',
-      [breakpoints.desktop]: '276px minmax(0, 1fr)',
+      [breakpoints.desktop]: '300px minmax(0, 1fr)',
     },
   },
   searchBox: { width: { default: '13rem', [breakpoints.phone]: '100%' } },
@@ -157,14 +157,23 @@ export default function UsersPage() {
   }, [nodes, options.data?.orgTypes])
   const activeUnit = units.find((unit) => unit.id === active?.orgNodeId)
 
-  const pathOf = (nodeId: string): string => {
+  const namesTo = (nodeId: string): string[] => {
     const byId = new Map(nodes.map((entry) => [entry.orgNodeId, entry]))
     const names: string[] = []
     for (let at = byId.get(nodeId); at; at = at.parentId ? byId.get(at.parentId) : undefined) {
       names.unshift(at.name)
     }
-    // the unit on show is the context, so a path under it starts below it
-    return names.join(' / ')
+    return names
+  }
+  // The end of a path says where somebody is; the middle only says how to
+  // get there. So a long one keeps its first step and its last two, and the
+  // whole of it is on the cell's title.
+  const pathOf = (nodeId: string) => {
+    const names = namesTo(nodeId)
+    const whole = names.join(' / ')
+    const short =
+      names.length <= 3 ? whole : [names[0], '…', ...names.slice(-2)].join(' / ')
+    return { whole, short }
   }
 
   return (
@@ -266,13 +275,12 @@ export default function UsersPage() {
               retryLabel={format(commonMessages.retry)}
               onRetry={() => void users.refetch()}
             >
-              <Table columns="minmax(0, 1fr) 7.5rem 5rem minmax(0, 1.2fr) 6rem 4.5rem" openable>
+              <Table columns="8.5rem minmax(0, 0.8fr) 5.5rem minmax(0, 1.4fr) 4.5rem" openable>
                 <TableHead>
-                  <span>{format(m.columnName)}</span>
                   <span>{businessNo}</span>
+                  <span>{format(m.columnName)}</span>
                   <span>{format(m.columnType)}</span>
                   <span>{format(m.columnUnit)}</span>
-                  <span>{format(m.columnAccounts)}</span>
                   <span>{format(m.columnStatus)}</span>
                 </TableHead>
                 {rows.length === 0 ? (
@@ -288,28 +296,19 @@ export default function UsersPage() {
                       data-user-status={user.status}
                       data-accounts={user.identityCount}
                     >
-                      <Cell lead strong={user.id === openUserId}>
-                        {user.displayName}
-                      </Cell>
-                      <Cell numeric tone={user.businessNo === null ? 'quiet' : 'muted'}>
+                      <Cell lead numeric tone={user.businessNo === null ? 'quiet' : 'plain'}>
                         {user.businessNo ?? format(m.personNoBusinessNo, { businessNo })}
                       </Cell>
-                      <Cell>{user.userType?.name ?? '—'}</Cell>
-                      <Cell
-                        title={
-                          user.primaryOrgNode === null ? undefined : pathOf(user.primaryOrgNode.id)
-                        }
-                      >
-                        {user.primaryOrgNode === null
-                          ? '—'
-                          : pathOf(user.primaryOrgNode.id) || user.primaryOrgNode.name}
+                      <Cell strong={user.id === openUserId} tone="plain">
+                        {user.displayName}
                       </Cell>
-                      {/* whether somebody can sign in at all is decided here, so
-                          the one who cannot is what the column marks */}
-                      {user.identityCount === 0 ? (
-                        <Status tone="warn">{format(m.accountNone)}</Status>
+                      <Cell>{user.userType?.name ?? '—'}</Cell>
+                      {user.primaryOrgNode === null ? (
+                        <Cell>—</Cell>
                       ) : (
-                        <Status>{format(m.accountCount, { count: user.identityCount })}</Status>
+                        <Cell title={pathOf(user.primaryOrgNode.id).whole || undefined}>
+                          {pathOf(user.primaryOrgNode.id).short || user.primaryOrgNode.name}
+                        </Cell>
                       )}
                       <Status tone={user.status === 'active' ? 'plain' : 'bad'}>
                         {format(

@@ -7,6 +7,9 @@ import { definePluginMessages } from '@qualy/i18n-contract'
 const i18n = definePluginMessages({
   namespace: 'layout',
   messages: {
+    sideNav: { id: 'layout/shell/side-nav', defaultMessage: 'Sections' },
+    personSections: { id: 'layout/person/sections', defaultMessage: 'Sections of this record' },
+    personAccount: { id: 'layout/person/account', defaultMessage: 'Account' },
     toggleSidebar: {
       id: 'layout/shell/toggle-sidebar',
       defaultMessage: 'Toggle sidebar',

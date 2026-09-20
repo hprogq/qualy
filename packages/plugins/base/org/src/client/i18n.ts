@@ -137,10 +137,9 @@ const i18n = definePluginMessages({
       id: 'org/rule/legend-cross',
       defaultMessage: 'A rule that skips a level',
     },
-    ruleLegendLayers: {
-      id: 'org/rule/legend-layers',
-      defaultMessage: 'Laid out by the longest way down; each type appears once',
-    },
+    zoomIn: { id: 'org/rules/zoom-in', defaultMessage: 'Zoom in' },
+    zoomOut: { id: 'org/rules/zoom-out', defaultMessage: 'Zoom out' },
+    zoomFit: { id: 'org/rules/zoom-fit', defaultMessage: 'Fit to width' },
     typeInvolvedRules: {
       id: 'org/type/involved-rules',
       defaultMessage: '{count, plural, one {In # hierarchy rule} other {In # hierarchy rules}}',

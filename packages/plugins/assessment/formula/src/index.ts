@@ -86,6 +86,7 @@ const plugin = Plugin.define(
     visibility: permissionOf('assessment.formula.author'),
     navigation: {
       label: message('assessment-formula/navigation/formulas', 'Scoring formulas'),
+      icon: 'sigma',
       order: 20,
       group: 'library/main',
     },
@@ -101,6 +102,7 @@ const plugin = Plugin.define(
     visibility: permissionOf('assessment.formula.author'),
     navigation: {
       label: message('assessment-formula/navigation/templates', 'Formula templates'),
+      icon: 'file-text',
       order: 30,
       group: 'library/main',
     },

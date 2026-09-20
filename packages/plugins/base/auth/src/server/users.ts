@@ -247,6 +247,9 @@ const listUsers = (
                 eb('u.enabled', '=', input.status === 'active'),
               ]),
       )
+      // by the identifier people are actually looked up by, with those who
+      // have none yet first: they are the ones still waiting to be finished
+      .orderBy((eb) => sql<string>`coalesce(${eb.ref('u.businessNo')}, '')`)
       .orderBy('u.displayName')
       .orderBy('u.id')
       .limit(input.limit)
@@ -270,11 +273,16 @@ const listUsers = (
     }
     if (input.after !== undefined) {
       // the sort key in full, so a page boundary between two people sharing a
-      // display name does not repeat or skip either of them
-      const [name, id] = [input.after[0] ?? '', input.after[1] ?? '']
+      // number (or having none) and a display name does not repeat or skip
+      // either of them
+      const [businessNo, name, id] = [
+        input.after[0] ?? '',
+        input.after[1] ?? '',
+        input.after[2] ?? '',
+      ]
       found = found.where(
         (eb) =>
-          sql<boolean>`(${eb.ref('u.displayName')}, ${eb.ref('u.id')}::text) > (${name}, ${id})`,
+          sql<boolean>`(coalesce(${eb.ref('u.businessNo')}, ''), ${eb.ref('u.displayName')}, ${eb.ref('u.id')}::text) > (${businessNo}, ${name}, ${id})`,
       )
     }
     return found.execute()

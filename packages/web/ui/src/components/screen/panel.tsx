@@ -32,6 +32,11 @@ const styles = stylex.create({
     width: { default: 420, [breakpoints.phone]: '100%' },
     flexBasis: { default: 420, [breakpoints.phone]: '100%' },
   },
+  // a record with a table of its own to show
+  besideWide: {
+    width: { default: 760, [breakpoints.phone]: '100%' },
+    flexBasis: { default: 760, [breakpoints.phone]: '100%' },
+  },
   below: {
     maxHeight: '88dvh',
     gap: 0,
@@ -120,7 +125,7 @@ export function DetailSheet({
   /** at the far end of the head, before the way out */
   actions?: ReactNode
   footer?: ReactNode
-  width?: 'regular' | 'narrow'
+  width?: 'regular' | 'narrow' | 'wide'
   closeLabel: string
   testId?: string
   children: ReactNode
@@ -131,7 +136,15 @@ export function DetailSheet({
       <SheetContent
         side={phone ? 'bottom' : 'right'}
         showCloseButton={false}
-        xstyle={phone ? styles.below : [styles.beside, width === 'narrow' && styles.besideNarrow]}
+        xstyle={
+          phone
+            ? styles.below
+            : [
+                styles.beside,
+                width === 'narrow' && styles.besideNarrow,
+                width === 'wide' && styles.besideWide,
+              ]
+        }
         data-testid={testId}
       >
         <div {...stylex.props(styles.head)}>

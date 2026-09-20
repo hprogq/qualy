@@ -63,10 +63,6 @@ const issueOther = defineMessage<{ reason: string }>()({
   id: 'directory-import/issue/other',
   defaultMessage: 'Could not be read ({reason})',
 })
-const recordTitle = defineMessage<{ filename: string }>()({
-  id: 'directory-import/record/title',
-  defaultMessage: 'Import of {filename}',
-})
 const recordCounts = defineMessage<{ users: number; existing: number; nodes: number }>()({
   id: 'directory-import/record/counts',
   defaultMessage:
@@ -122,7 +118,6 @@ const i18n = definePluginMessages({
       defaultMessage:
         'Bring people in from a spreadsheet you already have. Units named in it are created along the way',
     },
-    back: { id: 'directory-import/import/back', defaultMessage: 'Users' },
     stepUpload: { id: 'directory-import/step/upload', defaultMessage: 'File' },
     stepSheet: { id: 'directory-import/step/sheet', defaultMessage: 'Sheet' },
     stepMapping: { id: 'directory-import/step/mapping', defaultMessage: 'Columns' },
@@ -231,14 +226,13 @@ const i18n = definePluginMessages({
     done,
     openRecord: { id: 'directory-import/done/open-record', defaultMessage: 'Open the record' },
     importAnother: { id: 'directory-import/done/another', defaultMessage: 'Import another file' },
+    recordClose: { id: 'directory-import/record/close', defaultMessage: 'Close' },
     recordsTitle: { id: 'directory-import/records/title', defaultMessage: 'Past imports' },
     recordsEmpty: { id: 'directory-import/records/empty', defaultMessage: 'Nothing has been imported yet' },
     recordsLoadMore: { id: 'directory-import/records/load-more', defaultMessage: 'Load more' },
     recordsLoading: { id: 'directory-import/records/loading', defaultMessage: 'Loading imports' },
     recordsFailed: { id: 'directory-import/records/failed', defaultMessage: 'Past imports could not be loaded' },
     retry: { id: 'directory-import/records/retry', defaultMessage: 'Try again' },
-    recordTitle,
-    recordBack: { id: 'directory-import/record/back', defaultMessage: 'Import users' },
     recordCounts,
     recordStanding,
     recordBy: { id: 'directory-import/record/by', defaultMessage: 'By' },

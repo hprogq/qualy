@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { NavLink, Outlet, useParams } from 'react-router'
+import { NavLink, Outlet, useLocation, useParams } from 'react-router'
+import { Reveal } from '@qualy/ui/reveal'
 import { PanelLeftIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
 import { Loader } from '@qualy/brand/loader'
@@ -271,6 +272,85 @@ const styles = stylex.create({
     flexBasis: '0%',
     flexDirection: 'column',
     overflowY: 'auto',
+  },
+  // Around one person the rail is part of the page rather than of the
+  // window: the banner above is held to a measure, and a rail out at the
+  // window's edge left the sections two hand-widths from what they open. So
+  // the sections stand inside the same measure, beside their content.
+  personMain: {
+    minHeight: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    overflowY: 'auto',
+    backgroundColor: tokens.background,
+  },
+  personSeat: {
+    display: 'flex',
+    width: '100%',
+    maxWidth: '72rem',
+    marginInline: 'auto',
+    alignItems: 'flex-start',
+    gap: 28,
+    paddingInline: { default: 24, [breakpoints.phone]: 16 },
+    paddingTop: 20,
+    // clear of the capsule a narrow window floats at its foot
+    paddingBottom: { default: 24, '@media (max-width: 1023.98px)': 96 },
+  },
+  personNav: {
+    position: 'sticky',
+    top: 20,
+    display: 'flex',
+    width: 200,
+    flexShrink: 0,
+    flexDirection: 'column',
+    gap: 18,
+    paddingTop: 2,
+  },
+  personGroup: { display: 'flex', flexDirection: 'column', gap: 2 },
+  personHeading: {
+    margin: 0,
+    paddingInline: 12,
+    paddingBottom: 6,
+    fontSize: 11,
+    fontWeight: 600,
+    letterSpacing: '0.06em',
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
+  },
+  personList: { display: 'flex', flexDirection: 'column', gap: 2, margin: 0, padding: 0, listStyle: 'none' },
+  personEntry: {
+    display: 'flex',
+    height: 34,
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 8,
+    paddingInline: 12,
+    borderRadius: 8,
+    fontSize: 13.5,
+    textDecoration: 'none',
+    transitionProperty: 'background-color, color',
+    transitionDuration: '150ms',
+  },
+  personEntryIdle: {
+    color: { default: tokens.surfaceMutedForeground, ':hover': tokens.foreground },
+    backgroundColor: {
+      default: 'transparent',
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 70%, transparent)`,
+    },
+  },
+  personEntryActive: {
+    fontWeight: 600,
+    color: tokens.foreground,
+    backgroundColor: tokens.surfaceMuted,
+  },
+  personWord: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  personContent: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
   },
   drawerPanel: {
     maxHeight: '82dvh',
@@ -551,6 +631,45 @@ function RailEntry({
   )
 }
 
+/** one section of a person's record, in the list beside it */
+function PersonEntry({
+  label,
+  to,
+  page,
+  exact,
+}: {
+  label: ResolvedNavigationItem['label']
+  to: string
+  page?: NamespacedId
+  exact: boolean
+}) {
+  const navigation = usePendingNavigation(to)
+  const prefetch = usePagePrefetch()
+  const warm = page === undefined ? undefined : () => prefetch(page)
+  return (
+    <li>
+      <NavLink
+        end={exact}
+        to={to}
+        onClick={navigation.onClick}
+        onPointerEnter={warm}
+        onFocus={warm}
+        aria-busy={navigation.pending || undefined}
+        className={({ isActive }) =>
+          stylex.props(
+            styles.personEntry,
+            isActive || navigation.pending ? styles.personEntryActive : styles.personEntryIdle,
+          ).className ?? ''
+        }
+      >
+        <span {...stylex.props(styles.personWord)}>
+          <LocalizedText value={label} />
+        </span>
+      </NavLink>
+    </li>
+  )
+}
+
 /** one cell of the drawer's grid: the same entry, sized for a thumb */
 function DrawerEntry({
   id,
@@ -629,6 +748,7 @@ function CapableRailShell({ navigation, context, badge, banner = false }: RailSh
   const groups = useUiCollection(navigationGroups)
   const capabilities = useWorkspaceCapabilities()
   const params = useParams()
+  const { pathname } = useLocation()
   const { format } = useI18n()
   const narrow = useIsBelow(SHELL_BREAKPOINT)
   const drawer = useNavDrawer()
@@ -762,6 +882,56 @@ function CapableRailShell({ navigation, context, badge, banner = false }: RailSh
           <UiSlot token={context} />
         </div>
       </div>
+      {banner ? (
+        <main {...stylex.props(styles.personMain)}>
+          <div {...stylex.props(styles.personSeat)}>
+            {!narrow && (
+              <nav
+                aria-label={format(m.personSections)}
+                data-testid="person-sections"
+                {...stylex.props(styles.personNav)}
+              >
+                {[
+                  // what nobody filed under a heading is the record itself
+                  ...(loose.length > 0
+                    ? [{ id: 'account', label: undefined, items: loose }]
+                    : []),
+                  ...sections.map((section) => ({
+                    id: section.id,
+                    label: section.label,
+                    items: section.items,
+                  })),
+                ].map((group) => (
+                  <section key={group.id} {...stylex.props(styles.personGroup)}>
+                    <p {...stylex.props(styles.personHeading)}>
+                      {group.label === undefined ? (
+                        format(m.personAccount)
+                      ) : (
+                        <LocalizedText value={group.label} />
+                      )}
+                    </p>
+                    <ul {...stylex.props(styles.personList)}>
+                      {group.items.map((item) => (
+                        <PersonEntry
+                          key={item.id}
+                          label={item.label}
+                          to={item.to}
+                          page={item.target.kind === 'page' ? item.target.pageId : undefined}
+                          exact={hasEntriesBelow(item.to, paths)}
+                        />
+                      ))}
+                    </ul>
+                  </section>
+                ))}
+              </nav>
+            )}
+            {/* each section arrives as its own page would */}
+            <Reveal key={pathname} className={stylex.props(styles.personContent).className}>
+              <Outlet />
+            </Reveal>
+          </div>
+        </main>
+      ) : (
       <div {...stylex.props(styles.body)}>
         {/* Collapsed to a strip rather than to nothing, so the control that
             brings it back stays where it was taken from; on a narrow screen
@@ -784,6 +954,7 @@ function CapableRailShell({ navigation, context, badge, banner = false }: RailSh
           <Outlet />
         </main>
       </div>
+      )}
 
       {/* The one capsule the narrow shell owns. It does navigation and
           nothing else - no badge, no page actions, no slots for either - and

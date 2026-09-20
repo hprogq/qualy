@@ -1,6 +1,9 @@
 import type { MessageCatalog } from '@qualy/i18n-contract'
 
 export default {
+  'layout/shell/side-nav': '分区导航',
+  'layout/person/sections': '档案分区',
+  'layout/person/account': '账户',
   'layout/shell/toggle-sidebar': '收起或展开侧边栏',
   'layout/shell/nav': '导航',
   'layout/shell/other-modules': '其他模块',

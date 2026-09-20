@@ -8,7 +8,6 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Blank, EditorSkeleton, SectionHead } from '@qualy/ui/screen'
-import { PageContainer } from '@qualy/ui/page-container'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { useWhen } from '../batch/when.ts'
@@ -121,7 +120,7 @@ export default function UserEntriesPage() {
   }
 
   return (
-    <PageContainer size="default" xstyle={styles.page}>
+    <div {...stylex.props(styles.page)}>
       <SectionHead title={format(m.personEntriesTab)} count={rows.data ? items.length : undefined} />
       <AsyncSection
         pending={rows.isPending}
@@ -198,6 +197,6 @@ export default function UserEntriesPage() {
           </Button>
         )}
       </AsyncSection>
-    </PageContainer>
+    </div>
   )
 }

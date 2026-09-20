@@ -374,6 +374,48 @@ describe.runIf(postgresAvailable).concurrent('users', () => {
 })
 
 describe.runIf(postgresAvailable).concurrent('what a caller may read about people', () => {
+  it('lists by number with the unnumbered first, and a page boundary neither repeats nor skips', async () => {
+    const db = await createTestContext('effect-users-order')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const iam = yield* Iam
+          for (const [name, no] of [
+            ['Zed', '2023001'],
+            ['Amy', '2023010'],
+            ['Bob', null],
+            ['Cat', '2023002'],
+          ] as const) {
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, business_no, user_type_id, primary_org_node_id)
+              values (${f.tenant}, ${name}, ${no}, ${f.staff}, ${f.right})`)
+          }
+          const first = yield* iam.users.list(f.as, { orgNodeId: f.right, scope: 'self', limit: 3 })
+          const last = first.at(-1)!
+          const rest = yield* iam.users.list(f.as, {
+            orgNodeId: f.right,
+            scope: 'self',
+            limit: 50,
+            after: [last.businessNo ?? '', last.displayName, last.id],
+          })
+          return [...first, ...rest].map((row) => `${row.businessNo ?? '-'} ${row.displayName}`)
+        }),
+      )
+      const listed = ok(exit)
+      // whoever the fixture already stood there has no number, and neither
+      // has Bob: they lead, by name; then the numbers, ascending
+      const numbered = listed.filter((row) => !row.startsWith('-'))
+      expect(numbered).toEqual(['2023001 Zed', '2023002 Cat', '2023010 Amy'])
+      expect(listed.slice(0, listed.length - numbered.length).every((row) => row.startsWith('-'))).toBe(true)
+      expect(listed).toContain('- Bob')
+      expect(new Set(listed).size).toBe(listed.length)
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('intersects the requested scope with the one the caller was actually granted', async () => {
     // The recorded failure: the requested scope alone decided this, so a bare
     // self grant at a node returned every user below it. A partial subtree is

@@ -5,7 +5,9 @@ import { useApi, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { supportedLocales, type SupportedLocale } from '@qualy/i18n-contract'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { AsyncSection, Field, PageHeader, Panel } from '@qualy/ui/admin'
+import { AsyncSection, Field } from '@qualy/ui/admin'
+import { Reveal } from '@qualy/ui/reveal'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { PageContainer } from '@qualy/ui/page-container'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
@@ -15,36 +17,67 @@ import { settingsApi } from './api.ts'
 import { settingsMessages as m } from './i18n.ts'
 import { TERMINOLOGY_KEY, useTerminology } from './terms.ts'
 
-// The words this tenant uses, one light section per term rather than a
-// table: a dozen terms at most, each with a box per language. A box left
-// empty means the default; the default is written under it so nobody has
-// to remember what "empty" resolves to.
+// The words this tenant uses, drawn the way the rest of the library is: a
+// masthead, then one white sheet per category with a term to a row. A dozen
+// terms at most, each with a box per language beside its name. A box left
+// empty means the default; the default is written under it so nobody has to
+// remember what "empty" resolves to.
 
 const styles = stylex.create({
-  // the page's own width and gutters come from the container, as every
-  // other page in the library gets them; without it this screen ran edge to
-  // edge of whatever the shell gave it
-  page: { display: 'flex', flexDirection: 'column', gap: 24 },
-  list: { display: 'flex', flexDirection: 'column', gap: 24 },
-  term: {
+  page: {
     display: 'flex',
+    flexGrow: 1,
     flexDirection: 'column',
-    gap: 14,
-    paddingTop: 16,
+    gap: { default: 20, [breakpoints.phone]: 16 },
+  },
+  heading: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 4 },
+  title: { margin: 0, fontSize: 20, fontWeight: 600, letterSpacing: '-0.025em' },
+  hint: { margin: 0, fontSize: 14, color: tokens.mutedForeground },
+  section: { display: 'flex', flexDirection: 'column', gap: 12 },
+  sectionLabel: { fontSize: 13, fontWeight: 500, color: tokens.mutedForeground },
+  sheet: {
+    overflow: 'hidden',
+    borderRadius: tokens.radiusLg,
+    backgroundColor: tokens.surface,
+    boxShadow: tokens.elevation1,
+  },
+  // the name on one side, what it is called on the other; stacked where the
+  // two will not fit abreast
+  term: {
+    display: 'grid',
+    alignItems: 'start',
+    columnGap: 32,
+    rowGap: 14,
+    gridTemplateColumns: {
+      default: 'minmax(0, 15rem) minmax(0, 1fr)',
+      '@media (max-width: 899.98px)': 'minmax(0, 1fr)',
+    },
+    paddingInline: 20,
+    paddingBlock: 18,
     borderTopWidth: { default: 1, ':first-child': 0 },
     borderTopStyle: 'solid',
     borderTopColor: tokens.divider,
   },
-  termHead: { display: 'flex', flexDirection: 'column', gap: 4 },
+  termHead: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 5 },
   termTitle: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 500 },
   termNote: { margin: 0, fontSize: 12, lineHeight: 1.6, color: tokens.mutedForeground },
+  words: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 12 },
   boxes: {
     display: 'grid',
     gap: 16,
-    gridTemplateColumns: { default: 'minmax(0, 1fr)', '@media (min-width: 720px)': 'repeat(2, minmax(0, 1fr))' },
+    gridTemplateColumns: {
+      default: 'minmax(0, 1fr)',
+      '@media (min-width: 640px)': 'repeat(2, minmax(0, 1fr))',
+    },
   },
   actions: { display: 'flex', justifyContent: 'flex-end', gap: 8 },
-  empty: { margin: 0, fontSize: 14, color: tokens.mutedForeground },
+  empty: {
+    margin: 0,
+    paddingInline: 20,
+    paddingBlock: 28,
+    fontSize: 14,
+    color: tokens.mutedForeground,
+  },
 })
 
 const LOCALE_NAME = {
@@ -59,8 +92,11 @@ export default function TerminologyPage() {
   const terms = terminology.data?.terms ?? []
   return (
     <PageContainer>
-      <div {...stylex.props(styles.page)} data-testid="terminology-page">
-        <PageHeader title={format(m.title)} description={format(m.hint)} />
+      <Reveal className={stylex.props(styles.page).className}>
+        <div {...stylex.props(styles.heading)} data-testid="terminology-page">
+          <h1 {...stylex.props(styles.title)}>{format(m.title)}</h1>
+          <p {...stylex.props(styles.hint)}>{format(m.hint)}</p>
+        </div>
         <AsyncSection
           pending={terminology.isPending}
           error={terminology.isError ? formatError(terminology.error) : null}
@@ -69,26 +105,29 @@ export default function TerminologyPage() {
           onRetry={() => void terminology.refetch()}
         >
           {terms.length === 0 ? (
-            <p {...stylex.props(styles.empty)}>{format(m.empty)}</p>
+            <div {...stylex.props(styles.sheet)}>
+              <p {...stylex.props(styles.empty)}>{format(m.empty)}</p>
+            </div>
           ) : (
-            <div {...stylex.props(styles.list)}>
-              {categories.map((category) => {
-                const own = terms
-                  .filter((term) => term.categoryId === category.id)
-                  .sort((a, b) => a.order - b.order)
-                if (own.length === 0) return null
-                return (
-                  <Panel key={category.id} title={formatText(category.label)}>
+            categories.map((category) => {
+              const own = terms
+                .filter((term) => term.categoryId === category.id)
+                .sort((a, b) => a.order - b.order)
+              if (own.length === 0) return null
+              return (
+                <section key={category.id} {...stylex.props(styles.section)}>
+                  <span {...stylex.props(styles.sectionLabel)}>{formatText(category.label)}</span>
+                  <div {...stylex.props(styles.sheet)}>
                     {own.map((term) => (
                       <TermEditor key={`${term.id}:${term.version}`} term={term} />
                     ))}
-                  </Panel>
-                )
-              })}
-            </div>
+                  </div>
+                </section>
+              )
+            })
           )}
         </AsyncSection>
-      </div>
+      </Reveal>
     </PageContainer>
   )
 }
@@ -141,39 +180,42 @@ function TermEditor({ term }: { term: Term }) {
           <p {...stylex.props(styles.termNote)}>{formatText(term.description)}</p>
         )}
       </div>
-      <div {...stylex.props(styles.boxes)}>
-        {supportedLocales.map((locale) => (
-          <Field
-            key={locale}
-            label={format(LOCALE_NAME[locale])}
-            hint={format(m.defaultWord, { value: term.defaults[locale] ?? '' })}
+      <div {...stylex.props(styles.words)}>
+        <div {...stylex.props(styles.boxes)}>
+          {supportedLocales.map((locale) => (
+            <Field
+              key={locale}
+              label={format(LOCALE_NAME[locale])}
+              hint={format(m.defaultWord, { value: term.defaults[locale] ?? '' })}
+            >
+              {(id) => (
+                <Input
+                  id={id}
+                  value={drafts[locale]}
+                  maxLength={term.maxLength}
+                  placeholder={term.defaults[locale]}
+                  disabled={saving}
+                  onChange={(event) =>
+                    setDrafts((current) => ({ ...current, [locale]: event.target.value }))
+                  }
+                />
+              )}
+            </Field>
+          ))}
+        </div>
+        <div {...stylex.props(styles.actions)}>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={saving || (!customised && !dirty)}
+            onClick={() => void write({ 'zh-CN': '', 'en-US': '' })}
           >
-            {(id) => (
-              <Input
-                id={id}
-                value={drafts[locale]}
-                maxLength={term.maxLength}
-                placeholder={term.defaults[locale]}
-                disabled={saving}
-                onChange={(event) =>
-                  setDrafts((current) => ({ ...current, [locale]: event.target.value }))
-                }
-              />
-            )}
-          </Field>
-        ))}
-      </div>
-      <div {...stylex.props(styles.actions)}>
-        <Button
-          variant="ghost"
-          disabled={saving || (!customised && !dirty)}
-          onClick={() => void write({ 'zh-CN': '', 'en-US': '' })}
-        >
-          {format(m.reset)}
-        </Button>
-        <Button disabled={saving || !dirty} onClick={() => void write(drafts)}>
-          {format(m.save)}
-        </Button>
+            {format(m.reset)}
+          </Button>
+          <Button size="sm" disabled={saving || !dirty} onClick={() => void write(drafts)}>
+            {format(m.save)}
+          </Button>
+        </div>
       </div>
     </div>
   )

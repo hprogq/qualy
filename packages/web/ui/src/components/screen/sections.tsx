@@ -19,8 +19,9 @@ const styles = stylex.create({
     gap: 8,
   },
   headTitle: {
+    margin: 0,
     flexShrink: 0,
-    fontSize: '0.875rem',
+    fontSize: 15,
     lineHeight: '1.25rem',
     fontWeight: 600,
   },

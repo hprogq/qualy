@@ -3,6 +3,7 @@ import type { MessageCatalog } from '@qualy/i18n-contract'
 export default {
   'audit/permission/event-read': '查看审计日志',
   'audit/permission-group/audit': '审计',
+  'audit/nav-group/records': '审计',
   'audit/navigation/events': '审计日志',
   'audit/events/title': '审计日志',
   'audit/events/hint': '管理操作的完整记录，最新在前。',

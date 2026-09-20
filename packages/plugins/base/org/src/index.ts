@@ -36,6 +36,7 @@ const plugin = Plugin.define(
     visibility: permissionOf('org.tree.read'),
     navigation: {
       label: message('org/navigation/organization', 'Organization tree'),
+      icon: 'building-2',
       order: 10,
       group: 'org/organization',
     },

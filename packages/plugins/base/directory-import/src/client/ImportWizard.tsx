@@ -4,11 +4,9 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tansta
 import { FileSpreadsheetIcon, PlusIcon, XIcon } from 'lucide-react'
 import {
   cursorPages,
-  PageLink,
   UiSlot,
   useApi,
   useApiQuery,
-  usePageQueryState,
   useRunApi,
 } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
@@ -26,7 +24,7 @@ import { Input } from '@qualy/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { Spinner } from '@qualy/ui/spinner'
 import { Steps } from '@qualy/ui/steps'
-import { Screen } from '@qualy/ui/screen'
+import { Card, CardEmpty } from '@qualy/ui/screen'
 import { toast } from '@qualy/ui/toast'
 import { directoryApi } from './api.ts'
 import { directoryImportMessages as m } from './i18n.ts'
@@ -44,15 +42,7 @@ const styles = stylex.create({
     alignItems: 'start',
     gridTemplateColumns: { default: 'minmax(0, 1fr)', '@media (min-width: 1024px)': 'minmax(0, 1fr) 20rem' },
   },
-  card: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 20,
-    padding: 20,
-    borderRadius: 14,
-    backgroundColor: tokens.background,
-    boxShadow: `0 0 0 1px ${tokens.border}, 0 1px 2px rgb(0 0 0 / 0.04)`,
-  },
+  wizard: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 20 },
   stack: { display: 'flex', flexDirection: 'column', gap: 16 },
   row: { display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' },
   spacer: { flexGrow: 1 },
@@ -95,14 +85,25 @@ const styles = stylex.create({
   list: { margin: 0, paddingLeft: 18, fontSize: 13, lineHeight: 1.7 },
   record: {
     display: 'flex',
+    width: '100%',
     flexDirection: 'column',
     gap: 2,
+    paddingInline: 16,
     paddingBlock: 10,
+    borderWidth: 0,
+    backgroundColor: {
+      default: 'transparent',
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
+    },
+    fontFamily: 'inherit',
+    textAlign: 'start',
+    color: 'inherit',
+    cursor: 'pointer',
     borderTopWidth: { default: 1, ':first-child': 0 },
     borderTopStyle: 'solid',
     borderTopColor: tokens.divider,
   },
-  recordName: { fontSize: 13, fontWeight: 500, textDecorationLine: { default: 'none', ':hover': 'underline' } },
+  recordName: { fontSize: 13, fontWeight: 500 },
   recordMeta: { fontSize: 12, color: tokens.mutedForeground },
 })
 
@@ -126,14 +127,26 @@ const XLSX = {
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
 }
 
-export default function ImportUsersPage() {
+/**
+ * The five steps of one import, for whoever gives them a frame.
+ *
+ * It reports the record it made rather than navigating to it: the wizard sits
+ * in a dialog over the roster, and where a record opens is the roster's say.
+ */
+export function ImportWizard({
+  anchorNodeId,
+  onOpenRecord,
+}: {
+  /** the unit the reader was looking at, offered as where the import hangs */
+  anchorNodeId: string | null
+  onOpenRecord: (importId: string) => void
+}) {
   const { format, formatError } = useI18n()
   const businessNo = useTerm(authTerms.businessNumber)
   const api = useApi(directoryApi)
   const query = useApiQuery(directoryApi)
   const run = useRunApi()
   const queryClient = useQueryClient()
-  const [anchorParam] = usePageQueryState('anchor')
 
   const options = useQuery(query.directory.getUserImportOptions.queryOptions({}))
 
@@ -144,7 +157,7 @@ export default function ImportUsersPage() {
   const [displayNameColumn, setDisplayNameColumn] = useState('')
   const [businessNoColumn, setBusinessNoColumn] = useState('')
   const [userTypeId, setUserTypeId] = useState('')
-  const [anchor, setAnchor] = useState<string | null>(anchorParam ?? null)
+  const [anchor, setAnchor] = useState<string | null>(anchorNodeId)
   const [levels, setLevels] = useState<readonly LevelDraft[]>([])
   const [preview, setPreview] = useState<Preview | null>(null)
   const [done, setDone] = useState<Done | null>(null)
@@ -255,19 +268,7 @@ export default function ImportUsersPage() {
   )
 
   return (
-    <Screen
-      title={format(m.title)}
-      description={format(m.hint)}
-      size="wide"
-      actions={
-        <Button variant="ghost" size="sm" asChild>
-          <PageLink page="auth/users">{format(m.back)}</PageLink>
-        </Button>
-      }
-    >
-      <div {...stylex.props(styles.page)}>
-        <div {...stylex.props(styles.split)}>
-          <div {...stylex.props(styles.card)}>
+          <div {...stylex.props(styles.wizard)} data-testid="import-wizard" data-step={at}>
             <Steps steps={steps} current={at} onSelect={(index) => index < at && done === null && setAt(index)} />
 
             {at === 0 && (
@@ -595,11 +596,7 @@ export default function ImportUsersPage() {
                   {format(m.done, { users: done.createdUsers, nodes: done.createdNodes })}
                 </p>
                 <div {...stylex.props(styles.row)}>
-                  <Button asChild>
-                    <PageLink page="directory-import/record" params={{ importId: done.importId }}>
-                      {format(m.openRecord)}
-                    </PageLink>
-                  </Button>
+                  <Button onClick={() => onOpenRecord(done.importId)}>{format(m.openRecord)}</Button>
                   <Button variant="outline" onClick={restart}>
                     {format(m.importAnother)}
                   </Button>
@@ -607,11 +604,6 @@ export default function ImportUsersPage() {
               </div>
             )}
           </div>
-
-          <ImportRecords />
-        </div>
-      </div>
-    </Screen>
   )
 }
 
@@ -648,7 +640,8 @@ function ColumnChoice({
 }
 
 /** what was imported before, newest first, each a way into its record */
-function ImportRecords() {
+/** what has been imported before, newest first; a row opens its record */
+export function ImportRecords({ onOpen }: { onOpen: (importId: string) => void }) {
   const { format, formatError, locale } = useI18n()
   const api = useApi(directoryApi)
   const query = useApiQuery(directoryApi)
@@ -661,8 +654,7 @@ function ImportRecords() {
   })
   const items = imports.data?.pages.flatMap((page) => page.items) ?? []
   return (
-    <aside {...stylex.props(styles.card)} data-testid="import-records">
-      <p {...stylex.props(styles.sectionTitle)}>{format(m.recordsTitle)}</p>
+    <Card data-testid="import-records">
       <AsyncSection
         pending={imports.isPending}
         error={imports.isError ? formatError(imports.error) : null}
@@ -671,14 +663,19 @@ function ImportRecords() {
         onRetry={() => void imports.refetch()}
       >
         {items.length === 0 ? (
-          <p {...stylex.props(styles.quiet)}>{format(m.recordsEmpty)}</p>
+          <CardEmpty>{format(m.recordsEmpty)}</CardEmpty>
         ) : (
           <div>
             {items.map((one) => (
-              <div key={one.id} {...stylex.props(styles.record)} data-testid="import-record" data-import={one.id}>
-                <PageLink page="directory-import/record" params={{ importId: one.id }} {...stylex.props(styles.recordName)}>
-                  {one.filename}
-                </PageLink>
+              <button
+                key={one.id}
+                type="button"
+                onClick={() => onOpen(one.id)}
+                {...stylex.props(styles.record)}
+                data-testid="import-record"
+                data-import={one.id}
+              >
+                <span {...stylex.props(styles.recordName)}>{one.filename}</span>
                 <span {...stylex.props(styles.recordMeta)}>
                   {format(m.recordCounts, {
                     users: one.createdUserCount,
@@ -687,9 +684,9 @@ function ImportRecords() {
                   })}
                 </span>
                 <span {...stylex.props(styles.recordMeta)}>
-                  {[one.actorName, whenText(locale, one.createdAt)].filter(Boolean).join(' · ')}
+                  {[one.actorName, whenText(locale, one.createdAt)].filter(Boolean).join('  ')}
                 </span>
-              </div>
+              </button>
             ))}
             {imports.hasNextPage && (
               <Button variant="ghost" size="sm" disabled={imports.isFetchingNextPage} onClick={() => void imports.fetchNextPage()}>
@@ -699,6 +696,6 @@ function ImportRecords() {
           </div>
         )}
       </AsyncSection>
-    </aside>
+    </Card>
   )
 }

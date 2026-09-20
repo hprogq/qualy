@@ -6,7 +6,6 @@ import {
   PageLink,
   useApi,
   useApiQuery,
-  usePageRouteParams,
   useRunApi,
 } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
@@ -16,7 +15,7 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection, ConfirmDialog, Field, FormDialog } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
-import { Screen } from '@qualy/ui/screen'
+import { DetailSheet } from '@qualy/ui/screen'
 import { Textarea } from '@qualy/ui/textarea'
 import { toast } from '@qualy/ui/toast'
 import { directoryApi } from './api.ts'
@@ -36,7 +35,7 @@ const styles = stylex.create({
     gap: 16,
     padding: 20,
     borderRadius: 14,
-    backgroundColor: tokens.background,
+    backgroundColor: tokens.surface,
     boxShadow: `0 0 0 1px ${tokens.border}, 0 1px 2px rgb(0 0 0 / 0.04)`,
   },
   facts: {
@@ -68,10 +67,21 @@ const styles = stylex.create({
   danger: { color: tokens.danger },
 })
 
-export default function ImportRecordPage() {
+/**
+ * One import's record, in a sheet beside the roster: what it did, what has
+ * become of the people since, and the two ways of taking it back.
+ */
+export function ImportRecordSheet({
+  importId,
+  open,
+  onClose,
+}: {
+  importId: string
+  open: boolean
+  onClose: () => void
+}) {
   const { format, formatError, locale } = useI18n()
   const businessNo = useTerm(authTerms.businessNumber)
-  const { importId } = usePageRouteParams('importId')
   const api = useApi(directoryApi)
   const query = useApiQuery(directoryApi)
   const run = useRunApi()
@@ -129,14 +139,13 @@ export default function ImportRecordPage() {
   } as const
 
   return (
-    <Screen
-      title={found === undefined ? format(m.recordBack) : format(m.recordTitle, { filename: found.import.filename })}
-      size="wide"
-      actions={
-        <Button variant="ghost" size="sm" asChild>
-          <PageLink page="directory-import/users">{format(m.recordBack)}</PageLink>
-        </Button>
-      }
+    <DetailSheet
+      open={open}
+      onClose={onClose}
+      width="wide"
+      title={found === undefined ? format(m.recordsTitle) : found.import.filename}
+      closeLabel={format(m.recordClose)}
+      testId="import-record-sheet"
     >
       <AsyncSection
         pending={detail.isPending}
@@ -334,6 +343,6 @@ export default function ImportRecordPage() {
         onConfirm={() => clean.mutate()}
         onCancel={() => setCleaning(false)}
       />
-    </Screen>
+    </DetailSheet>
   )
 }

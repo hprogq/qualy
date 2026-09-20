@@ -1,4 +1,4 @@
-import ImportRecordPage from '../src/client/ImportRecordPage.tsx'
+import { ImportRecordSheet } from '../src/client/ImportRecord.tsx'
 import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
@@ -60,10 +60,7 @@ const open = (stubs: Record<string, unknown> = {}) =>
         ...stubs,
       },
     } as never),
-    routes: [
-      { path: '/organization/users/imports/:importId', element: <ImportRecordPage /> },
-    ] as never,
-    route: `/organization/users/imports/${IMPORT_ID}`,
+    children: <ImportRecordSheet importId={IMPORT_ID} open onClose={() => undefined} />,
   })
 
 describe('the record of an import', () => {

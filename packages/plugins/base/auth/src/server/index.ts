@@ -287,7 +287,7 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
         // every filter is in the fingerprint: a cursor from one question
         // applied to another silently skips or repeats people
         const fingerprint = `users:${query.orgNodeId}:${scope}:${query.search ?? ''}:${query.userTypeId ?? ''}:${query.status ?? ''}`
-        const key = readQueryCursor(query.cursor, fingerprint, ['text', 'uuid'])
+        const key = readQueryCursor(query.cursor, fingerprint, ['text', 'text', 'uuid'])
         if (key === null) return yield* cursorUnusable()
         const found = yield* iam.users.list(principal, {
           orgNodeId: query.orgNodeId,
@@ -304,7 +304,7 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
           items: items.map(toUserDto),
           nextCursor:
             found.length > limit && last
-              ? encodeQueryCursor(fingerprint, [last.displayName, last.id])
+              ? encodeQueryCursor(fingerprint, [last.businessNo ?? '', last.displayName, last.id])
               : null,
         }
       }),

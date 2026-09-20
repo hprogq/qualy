@@ -14,6 +14,7 @@ const i18n = definePluginMessages({
       id: 'audit/permission-group/audit',
       defaultMessage: 'Audit',
     },
+    navGroup: { id: 'audit/nav-group/records', defaultMessage: 'Audit' },
     navigation: {
       id: 'audit/navigation/events',
       defaultMessage: 'Audit log',

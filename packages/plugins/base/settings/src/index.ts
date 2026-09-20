@@ -50,6 +50,7 @@ const plugin = Plugin.define(
     visibility: permissionOf('settings.terminology.manage'),
     navigation: {
       label: message('settings/navigation/terminology', 'Terminology'),
+      icon: 'book-a',
       order: 40,
       group: 'library/main',
     },

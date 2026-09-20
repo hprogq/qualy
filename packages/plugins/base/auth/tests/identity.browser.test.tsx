@@ -462,7 +462,7 @@ describe('roles screen', () => {
     // the tab whose data did load is unaffected. Only the permissions tab
     // draws from the catalog: creation takes identity and kind, and
     // everything a role needs before it can be activated comes afterwards.
-    await page.getByRole('tab', { name: '可担任的人' }).click()
+    await page.getByRole('tab', { name: '任职条件' }).click()
     await expect
       .element(page.getByRole('tab', { name: '仅指定类型', exact: false }).first())
       .toBeInTheDocument()

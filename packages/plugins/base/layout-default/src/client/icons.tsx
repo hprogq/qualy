@@ -1,5 +1,6 @@
 import type { ComponentType, SVGProps } from 'react'
 import {
+  BookAIcon,
   BriefcaseIcon,
   Building2Icon,
   CalendarClockIcon,
@@ -17,6 +18,7 @@ import {
   Settings2Icon,
   SettingsIcon,
   ShieldCheckIcon,
+  SigmaIcon,
   StampIcon,
   UserRoundIcon,
   UsersIcon,
@@ -35,6 +37,7 @@ import {
 // cost the reader the way in.
 
 const ICONS: Record<string, ComponentType<SVGProps<SVGSVGElement>>> = {
+  'book-a': BookAIcon,
   briefcase: BriefcaseIcon,
   'building-2': Building2Icon,
   'calendar-clock': CalendarClockIcon,
@@ -52,6 +55,7 @@ const ICONS: Record<string, ComponentType<SVGProps<SVGSVGElement>>> = {
   'settings-2': Settings2Icon,
   settings: SettingsIcon,
   'shield-check': ShieldCheckIcon,
+  sigma: SigmaIcon,
   stamp: StampIcon,
   'user-round': UserRoundIcon,
   users: UsersIcon,
