@@ -18694,3 +18694,41 @@ pnpm vitest run tools/tests apps/server/tests    413 passed(supervisor 4/4,新�
   而旧测试仍去填它。四条改写为新规则(申报字段不在表单上、认定值随请求走、请求里没有该字段),单跑
   `Test Files 1 passed (1)`,`Tests 5 passed (5)`;tests 工程 tsc 通过。
 
+
+## 项目编辑页按设计稿复刻、参评填报控件与审核认定预览(2026-09-20)
+
+夜间任务第 1 至 3 项。裁决记录见 docs/assessment-design.md §32.80、§32.81。
+
+### 项目编辑页(对照 Claude Design 3a 至 3g、4a 至 4g,以 4c/4d 为准)
+
+- 截图取证:临时浏览器用例把十个画面截到 `tests/shots/`(不提交),交给子代理逐屏与设计稿 HTML 比对,两轮。
+- 头部:返回项目配置 | 面包屑;标题 + 草稿/已发布标签 + 处理方式标签;元信息「未发布 · 第 n 版 · 今天 10:24 保存」;
+  预览/保存/更多;页签带待完成红点,右侧「还有 N 项待完成」弹层(440px,行高 52px)。
+- 基本信息:处理方式单选卡(选中 2px 描边)、录入方式复选卡;说明字段标签内联提示;hint 一律不带句号。
+- 表单与计分:计分方式卡片显示公式名 + 绿点 `v3` + 公式描述(`functionDescription` 经 catalog/DTO/API 新增,
+  formula 的 `CalculatorSummary` 槽位渲染)、更换公式对话框(计分方式带标签,版本片为 `v3 + 发布名`,选中带外环);
+  取值下拉 32px 高、固定值 88px;布尔常量用是/否 Choice;direct 模式关联字段锁定必填;自动模式说明句带结果。
+- 记录与审核:计分上限压成一行灰字(`item-ceiling` 钩子保留);审核步骤只在末尾添加,上移/下移禁用态无底色;
+  步骤未设处理人的行内文案与待完成清单统一;分隔符 `，`→`、`。
+- 侧栏:头部分隔线 + 自己的关闭钮与 `‹ n/N ›` 分页;内容顶部 18px;文本字段的格式要求折进「更多设置」。
+- 未采纳/留给用户:共享遮罩的 blur(8px)与设计的 8% 压暗(UI 平台已关账,需裁决);添加字段的多选卡(驱动无多选);
+  侧栏表单标签字重(平台 Field 样式)。
+
+### 参评填报与审核页
+
+- `EvidenceForm`:选择/布尔 → `Choice`(可选字段带「未填写」项),日期 → `DatePicker`(新增 `min`/`max`,
+  取材料窗口 ∩ 字段边界);编辑器的日期边界、每人条数输入同样去掉原生控件。
+- 审核页申报内容按表单的词展示(选项标签、是/否);驳回建议表的选择/布尔/日期换产品控件,⌥数字聚焦改为聚焦座位内控件。
+- 通过对话框:宽版,左侧申报内容(附件为文件行),右侧认定表单 + **计分预览**块:填完即调
+  `previewDetermination`(新端点 `POST .../determination-previews`,与决定路径同一判定与算术,只读),
+  显示「按当前认定计 X 分」/公式拒绝原文/契约问题;停顿 400ms 再问,同值命中缓存。
+
+### 验收(实际执行)
+
+- `pnpm typecheck`:仅临时截图用例 `zz-shots.browser.test.tsx`(不提交)两处类型错误,其余全部通过;
+  `fast-refresh` / `catalogs` / `client-paths` / `api-paths` / `error-codes`:`Test Files 5 passed (5)`,`Tests 19 passed (19)`。
+- 浏览器:`item-editor` + 截图用例:`Test Files 2 passed (2)`,`Tests 24 passed (24)`;
+  `evidence-fields` + `review-recognition` + `scoring-failures` + `review-layout` + `entry-workflow`:
+  `Test Files 5 passed (5)`,`Tests 61 passed (61)`(含新增两条:申报内容按标签展示、预览显示分值与公式拒绝)。
+- node:`determination-probe` + `recognition` + `effect-api-parity` + `catalogs` + `api-paths`:
+  `Test Files 5 passed (5)`,`Tests 51 passed (51)`(含新增预览用例:接受/拒绝/缺值/停机/非审核人)。

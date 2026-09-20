@@ -8,7 +8,9 @@ import { entryRefusalMessage } from './refusals.ts'
 import { parseDecimal } from '@qualy/value-schema'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { Button } from '@qualy/ui/button'
-import { NativeSelect } from '@qualy/ui/native-select'
+import { DatePicker } from '@qualy/ui/date-picker'
+import { usePickerWords } from '@qualy/web-i18n/picker-words'
+import { Choice } from '../items/Choice.tsx'
 import { Field } from '@qualy/ui/admin'
 import { Dropzone, FileTile, type Accept, type FileRejection } from '@qualy/ui/dropzone'
 import { Input } from '@qualy/ui/input'
@@ -152,6 +154,15 @@ const acceptOf = (list: readonly string[] | undefined): Accept | undefined => {
 const INTEGER_DRAFT = /^-?\d+$/
 
 /**
+ * The pick that un-answers an optional choice.
+ *
+ * The product's select has no empty row, so a field nobody has to answer
+ * offers its unanswered state as a choice of its own; it never reaches the
+ * payload, it only takes the key back out.
+ */
+const UNANSWERED = '\u0000unanswered'
+
+/**
  * The words under a field: what the administrator wrote for it, and after
  * that whatever the field's own rule has to say - a date's window, say.
  * The two are one line each; a field with neither has no hint at all.
@@ -194,7 +205,8 @@ export function EvidenceForm({
   /** false while any draft cannot materialize; submit gates listen here */
   onValidityChange?: (valid: boolean) => void
 }) {
-  const { format, formatError } = useI18n()
+  const { format, formatError, locale } = useI18n()
+  const words = usePickerWords()
   const [uploaded, setUploaded] = useState<Record<string, UploadedFile>>({})
   const [uploading, setUploading] = useState<{ field: string; names: readonly string[] } | null>(
     null,
@@ -339,19 +351,23 @@ export function EvidenceForm({
               hint={hintOf(field)}
             >
               {(id) => (
-                <NativeSelect
+                <Choice
                   id={id}
                   value={chosen}
                   disabled={disabled}
-                  onChange={(event) => {
-                    if (event.target.value === '') dropField(field.key)
-                    else setField(field.key, event.target.value === 'true')
+                  placeholder={words.unanswered}
+                  options={[
+                    ...(field.required === true
+                      ? []
+                      : [{ value: UNANSWERED, label: words.unanswered }]),
+                    { value: 'true', label: format(m.recognitionYes) },
+                    { value: 'false', label: format(m.recognitionNo) },
+                  ]}
+                  onChange={(next) => {
+                    if (next === UNANSWERED) dropField(field.key)
+                    else setField(field.key, next === 'true')
                   }}
-                >
-                  <option value="" />
-                  <option value="true">{format(m.recognitionYes)}</option>
-                  <option value="false">{format(m.recognitionNo)}</option>
-                </NativeSelect>
+                />
               )}
             </Field>
           )
@@ -379,14 +395,21 @@ export function EvidenceForm({
               hint={hintOf(field, window)}
             >
               {(id) => (
-                <Input
+                <DatePicker
                   id={id}
-                  type="date"
-                  value={(value[field.key] as string | undefined) ?? ''}
-                  min={floor}
-                  max={ceiling}
+                  value={(value[field.key] as string | undefined) ?? null}
+                  min={floor === undefined ? undefined : String(floor)}
+                  max={ceiling === undefined ? undefined : String(ceiling)}
                   disabled={disabled}
-                  onChange={(event) => setField(field.key, event.target.value)}
+                  placeholder={words.unanswered}
+                  {...(field.required === true ? {} : { clearLabel: words.clear })}
+                  localeTag={locale}
+                  monthLabel={words.month}
+                  yearLabel={words.year}
+                  onChange={(next) => {
+                    if (next === null) dropField(field.key)
+                    else setField(field.key, next)
+                  }}
                 />
               )}
             </Field>
@@ -413,29 +436,27 @@ export function EvidenceForm({
               hint={hintOf(field)}
             >
               {(id) => (
-                <NativeSelect
+                <Choice
                   id={id}
                   value={chosen}
                   disabled={disabled}
-                  onChange={(event) => {
-                    // '' is "unanswered": the key leaves the payload rather
+                  placeholder={words.unanswered}
+                  options={[
+                    ...(field.required === true
+                      ? []
+                      : [{ value: UNANSWERED, label: words.unanswered }]),
+                    ...offered.map((option) => ({ value: option.value, label: option.label })),
+                    ...(retired === undefined
+                      ? []
+                      : [{ value: retired.value, label: retired.label, disabled: true }]),
+                  ]}
+                  onChange={(next) => {
+                    // unanswered takes the key out of the payload rather
                     // than filing an empty string as a chosen value
-                    if (event.target.value === '') dropField(field.key)
-                    else setField(field.key, event.target.value)
+                    if (next === UNANSWERED) dropField(field.key)
+                    else setField(field.key, next)
                   }}
-                >
-                  <option value="" />
-                  {offered.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                  {retired !== undefined && (
-                    <option value={retired.value} disabled>
-                      {retired.label}
-                    </option>
-                  )}
-                </NativeSelect>
+                />
               )}
             </Field>
           )

@@ -10,6 +10,7 @@
     "./actions": "./src/actions.ts",
     "./api": "./src/api.ts",
     "./client/CalculatorEditor": "./src/client/CalculatorEditor.tsx",
+    "./client/CalculatorSummary": "./src/client/CalculatorSummary.tsx",
     "./client/FormulaCodeEditor": "./src/client/FormulaCodeEditor.tsx",
     "./client/FormulaEditorPage": "./src/client/FormulaEditorPage.tsx",
     "./client/FormulaListPage": "./src/client/FormulaListPage.tsx",

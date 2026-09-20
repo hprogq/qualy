@@ -35,6 +35,8 @@ export function DatePicker({
   localeTag,
   monthLabel,
   yearLabel,
+  min,
+  max,
   disabled,
   className,
   xstyle,
@@ -43,6 +45,9 @@ export function DatePicker({
   /** a calendar date as YYYY-MM-DD, or null when nothing is set */
   value: string | null
   onChange: (next: string | null) => void
+  /** the first and last day on offer, as YYYY-MM-DD; days outside cannot be picked */
+  min?: string | null
+  max?: string | null
   /** what the field says while nothing is chosen */
   placeholder?: string
   /**
@@ -71,6 +76,8 @@ export function DatePicker({
       onChange={(next) => onChange(typeof next === 'string' && next !== '' ? next : null)}
       placeholder={placeholder}
       disabled={disabled}
+      {...(min === undefined || min === null || min === '' ? {} : { minDate: min })}
+      {...(max === undefined || max === null || max === '' ? {} : { maxDate: max })}
       firstDayOfWeek={FIRST_DAY_OF_WEEK}
       valueFormatter={({ date }) => {
         const day = Array.isArray(date) ? date[0] : date

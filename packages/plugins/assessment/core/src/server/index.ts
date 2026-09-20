@@ -1288,6 +1288,7 @@ export class Assessment extends Context.Service<
     readonly listReviewInbox: ReviewMethods['listReviewInbox']
     readonly listAwaitingSupplements: ReviewMethods['listAwaitingSupplements']
     readonly getReviewInstance: ReviewMethods['getReviewInstance']
+    readonly previewDetermination: ReviewMethods['previewDetermination']
     readonly decideReview: ReviewMethods['decideReview']
     readonly appealEntry: ReviewMethods['appealEntry']
     /** the supplement exchange: ask, take back, answer (§32.65 ⑤) */
@@ -6436,6 +6437,19 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           principal,
         )
         return { review: reviewDto(review) }
+      }),
+    )
+    .handle(
+      'previewDetermination',
+      Effect.fn('assessment.previewDetermination.handler')(function* ({ params, payload }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        return yield* assessment.previewDetermination(
+          principal.tenantId,
+          params.instanceId,
+          payload.values,
+          principal,
+        )
       }),
     )
     .handle(

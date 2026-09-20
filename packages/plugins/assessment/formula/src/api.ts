@@ -234,6 +234,8 @@ const bindingOptionView = Schema.Struct({
   versionId: Schema.String,
   functionId: Schema.String,
   functionName: Schema.String,
+  /** what the author wrote under the name; the question editor shows it */
+  functionDescription: Schema.NullOr(Schema.String),
   versionNo: Schema.Number,
   releaseName: Schema.NullOr(Schema.String),
   publishedAt: Schema.String,

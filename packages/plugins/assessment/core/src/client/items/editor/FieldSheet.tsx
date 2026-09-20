@@ -153,7 +153,7 @@ export function FieldSheet({
           testId="field-sheet"
         >
           <div {...stylex.props(styles.group)}>
-            <Field label={format(m.itemsName)} required>
+            <Field label={format(m.itemsName)}>
               {(id) => (
                 <Input
                   id={id}

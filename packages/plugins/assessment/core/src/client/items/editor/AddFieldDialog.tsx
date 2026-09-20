@@ -37,6 +37,7 @@ const styles = stylex.create({
   card: {
     display: 'flex',
     flexDirection: 'column',
+    alignItems: 'flex-start',
     gap: 6,
     padding: 12,
     borderRadius: 10,
@@ -78,7 +79,7 @@ const GROUPS: readonly { label: MessageDescriptor; cards: readonly Card[] }[] = 
   {
     label: m.itemsTypeGroupChoice,
     cards: [
-      { type: 'choice', name: m.itemsTypeChoice, hint: m.itemsTypeChoiceHint, icon: CircleDotIcon },
+      { type: 'choice', name: m.itemsTypeSingleChoice, hint: m.itemsTypeChoiceHint, icon: CircleDotIcon },
       { type: 'boolean', name: m.itemsTypeBoolean, hint: m.itemsTypeBooleanHint, icon: ToggleRightIcon },
     ],
   },
@@ -114,7 +115,7 @@ export function AddFieldDialog({
 
   if (field === null) {
     return (
-      <FormDialog open={open} title={format(m.itemsFieldAdd)} onClose={onClose}>
+      <FormDialog open={open} size="medium" restfulFocus title={format(m.itemsFieldAdd)} onClose={onClose}>
         <div {...stylex.props(styles.stack)} data-testid="add-field-types">
           <Input
             value={search}
@@ -155,6 +156,7 @@ export function AddFieldDialog({
   return (
     <FormDialog
       open={open}
+      size="medium"
       title={
         <span {...stylex.props(styles.head)}>
           <Button

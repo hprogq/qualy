@@ -20,7 +20,7 @@ const styles = stylex.create({
   stack: { display: 'flex', flexDirection: 'column', gap: 32 },
   grid: {
     display: 'grid',
-    gap: 16,
+    rowGap: 16,
     columnGap: 24,
     gridTemplateColumns: {
       default: null,
@@ -32,6 +32,7 @@ const styles = stylex.create({
     gridColumn: { default: null, [breakpoints.tablet]: '1 / -1', [breakpoints.desktop]: '1 / -1' },
   },
   fullWidth: { width: '100%' },
+  labelHint: { marginLeft: 8, fontWeight: 400, color: tokens.mutedForeground },
   cards: {
     display: 'grid',
     gap: 12,
@@ -63,9 +64,10 @@ const styles = stylex.create({
     color: 'inherit',
     borderWidth: 0,
     transitionProperty: 'box-shadow, background-color',
+    transitionDuration: '120ms',
   },
   cardChosen: { boxShadow: `0 0 0 2px ${tokens.foreground}` },
-  cardLocked: { cursor: 'default', opacity: 0.6 },
+  cardLocked: { cursor: 'default', opacity: 0.55 },
   radio: {
     display: 'inline-flex',
     flexShrink: 0,
@@ -73,7 +75,7 @@ const styles = stylex.create({
     height: 16,
     marginTop: 2,
     borderRadius: '9999px',
-    boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${tokens.foreground} 20%, transparent)`,
+    boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${tokens.foreground} 22%, transparent)`,
     backgroundColor: tokens.background,
   },
   radioOn: { boxShadow: `inset 0 0 0 5px ${tokens.foreground}` },
@@ -86,7 +88,7 @@ const styles = stylex.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 4,
-    boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${tokens.foreground} 20%, transparent)`,
+    boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${tokens.foreground} 22%, transparent)`,
     backgroundColor: tokens.background,
     color: tokens.background,
   },
@@ -127,7 +129,7 @@ export function BasicsTab({
   return (
     <div {...stylex.props(styles.stack)}>
       <section {...stylex.props(styles.grid)}>
-        <Field label={format(m.itemsFieldTitle)} required>
+        <Field label={format(m.itemsFieldTitle)}>
           {(id) => (
             <Input
               id={id}
@@ -151,7 +153,10 @@ export function BasicsTab({
           )}
         </Field>
         <div {...stylex.props(styles.span)}>
-          <Field label={format(m.itemsFieldDescription)} hint={format(m.itemsDescriptionHint)}>
+          <Field
+            label={format(m.itemsFieldDescription)}
+            aside={<span {...stylex.props(styles.labelHint)}>{format(m.itemsDescriptionHint)}</span>}
+          >
             {(id) => (
               <Textarea
                 id={id}
@@ -203,7 +208,11 @@ export function BasicsTab({
           hint={format(m.itemsChannelsHint)}
           testId="channel-cards"
         >
-          <div role="group" aria-label={format(m.itemsChannels)} {...stylex.props(styles.cards, styles.cardsTwo)}>
+          <div
+            role="group"
+            aria-label={format(m.itemsChannels)}
+            {...stylex.props(styles.cards, styles.cardsTwo)}
+          >
             <ChannelCard
               name={format(m.itemsChannelParticipant)}
               hint={format(m.itemsChannelParticipantHint)}
@@ -225,6 +234,7 @@ export function BasicsTab({
   )
 }
 
+/** one door: a card that is a checkbox, so both may stand open at once */
 function ChannelCard({
   name,
   hint,
@@ -246,7 +256,7 @@ function ChannelCard({
       aria-label={name}
       data-channel={channel}
       onClick={onToggle}
-      {...stylex.props(styles.card, checked && styles.cardChosen)}
+      {...stylex.props(styles.card)}
     >
       <span aria-hidden {...stylex.props(styles.box, checked && styles.boxOn)}>
         {checked && <CheckIcon {...stylex.props(styles.checkGlyph)} strokeWidth={3} />}

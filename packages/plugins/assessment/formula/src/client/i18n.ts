@@ -940,6 +940,18 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/binding/calculator',
       defaultMessage: 'A published formula',
     },
+    summaryVersion: {
+      id: 'assessment-formula/binding/summary-version',
+      defaultMessage: 'v{no}',
+    },
+    summaryUnchosen: {
+      id: 'assessment-formula/binding/summary-unchosen',
+      defaultMessage: 'No version chosen yet',
+    },
+    summaryUnknown: {
+      id: 'assessment-formula/binding/summary-unknown',
+      defaultMessage: 'A version this round cannot read',
+    },
     bindingTitle: {
       id: 'assessment-formula/binding/title',
       defaultMessage: 'Formula',

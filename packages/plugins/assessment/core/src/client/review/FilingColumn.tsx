@@ -10,7 +10,7 @@ import { useLingering } from '@qualy/ui/use-lingering'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../i18n.ts'
 import { AttachmentLink } from '../entry/AttachmentLink.tsx'
-import { attachmentContentUrl, fieldsOf } from '../entry/model.ts'
+import { attachmentContentUrl, displayValueOf, fieldsOf } from '../entry/model.ts'
 import {
   idsOf,
   timeLabel,
@@ -403,6 +403,10 @@ export const FilingColumn = memo(function FilingColumn({
   // certificate, and folding it away left the reading order with a hole
   const fields = fieldsOf(review.form.formConfig)
   const record = (review.revision.payload ?? {}) as Record<string, unknown>
+  // read through the form's own words: a choice as its label, a yes as a yes
+  const words = { yes: format(m.recognitionYes), no: format(m.recognitionNo) }
+  const shown = (field: (typeof fields)[number], raw: unknown) =>
+    displayValueOf(field, raw, words) || valueOf(raw)
   // The version being read against. The default - the one just before this -
   // travels with the review itself, so the page's first paint already holds
   // the comparison it opens with; only a version picked by hand comes from
@@ -427,13 +431,13 @@ export const FilingColumn = memo(function FilingColumn({
   const was = new Map<string, { value: string; ids: readonly string[] }>(
     against === null
       ? []
-      : valuesOf(against.formConfig, against.payload).map((v) => [v.key, v] as const),
+      : valuesOf(against.formConfig, against.payload, words).map((v) => [v.key, v] as const),
   )
   const lingeringAgainst = useLingering(against)
   const changes =
     against === null
       ? 0
-      : fields.filter((field) => (was.get(field.key)?.value ?? '') !== valueOf(record[field.key]))
+      : fields.filter((field) => (was.get(field.key)?.value ?? '') !== shown(field, record[field.key]))
           .length
   // The materials, numbered once across the whole filing in the order the
   // questions ask for them - the same numbers the 1-9 keys open. A file
@@ -570,7 +574,7 @@ export const FilingColumn = memo(function FilingColumn({
         </div>
         <dl {...stylex.props(styles.fieldList)}>
           {fields.map((field) => {
-            const now = valueOf(record[field.key])
+            const now = shown(field, record[field.key])
             const previous = was.get(field.key)
             const before = previous?.value ?? ''
             const changed = against !== null && before !== now

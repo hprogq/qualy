@@ -14,6 +14,7 @@ export const bindingOptionDto = (version: BindableFormulaVersion) => ({
   versionId: version.versionId,
   functionId: version.functionId,
   functionName: version.functionName,
+  functionDescription: version.functionDescription,
   versionNo: version.versionNo,
   releaseName: version.releaseName,
   publishedAt: isoInstant(version.publishedAt),

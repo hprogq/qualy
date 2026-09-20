@@ -256,6 +256,23 @@ const fieldOf = (raw: Record<string, unknown>): FieldDraft => {
   }
 }
 
+/**
+ * A choice narrowing as the value layer will read it: labels only for the
+ * values it still admits. A label left behind for a value that was taken
+ * out is not a narrowing the profile accepts, and a stored one must not
+ * read back as "exceeds the formula".
+ */
+const tidyChoice = (schema: AtomicSchema | null): AtomicSchema | null => {
+  if (schema === null || !('enum' in schema)) return schema
+  const held = schema as ChoiceSchema & { 'x-qualy-enumLabels'?: Record<string, string> }
+  const labels = held['x-qualy-enumLabels']
+  if (labels === undefined) return schema
+  const kept = Object.fromEntries(
+    Object.entries(labels).filter(([value]) => held.enum.includes(value)),
+  )
+  return { ...held, 'x-qualy-enumLabels': kept } as AtomicSchema
+}
+
 const scoringDraftOf = (stored: unknown): ScoringDraft => {
   if (stored === null || typeof stored !== 'object' || Array.isArray(stored)) {
     return { language: 'v1' }
@@ -273,7 +290,7 @@ const scoringDraftOf = (stored: unknown): ScoringDraft => {
     // an existing fact's handle is that identity
     recognitions: Object.fromEntries(
       Object.entries(original.recognitions ?? {}).map(([id, one]) => {
-        const refinement = (one.refinement ?? null) as AtomicSchema | null
+        const refinement = tidyChoice((one.refinement ?? null) as AtomicSchema | null)
         return [
           id,
           {
@@ -803,13 +820,20 @@ const fieldToWire = (field: FieldDraft, draft: Draft, contract: Contract | null,
           locale,
           (value) => field.options.find((one) => one.value === value)?.id,
         )
+  // the filing side of a determination wears the determination's words,
+  // and under direct handling it is what the arithmetic reads, so it is
+  // required whatever the box says
+  const linked = link !== undefined && parameter !== undefined
+  const label = linked ? link.recognition.label : shaped.label
+  const description = linked ? link.recognition.description : shaped.description
+  const required = shaped.required || (linked && draft.mode === 'direct')
   const base = {
     id: shaped.id.trim() === '' ? shaped.key.trim() : shaped.id.trim(),
     key: shaped.key.trim(),
     type: shaped.type,
-    label: shaped.label.trim(),
-    ...(shaped.description.trim() === '' ? {} : { description: shaped.description.trim() }),
-    ...(shaped.required ? { required: true } : {}),
+    label: label.trim(),
+    ...(description.trim() === '' ? {} : { description: description.trim() }),
+    ...(required ? { required: true } : {}),
   }
   switch (shaped.type) {
     case 'text':
@@ -1132,11 +1156,6 @@ export const problemsOf = (input: {
           found.push({ area: 'scoring', code: 'link-field-missing', entity: { kind: 'recognition', handle: binding.handle }, subject: recognition.label })
         } else if (draft.mode === 'direct' && recognition.fieldId === null) {
           found.push({ area: 'scoring', code: 'recognition-unlinked', entity: { kind: 'recognition', handle: binding.handle }, subject: recognition.label })
-        } else if (draft.mode === 'direct' && recognition.fieldId !== null) {
-          const field = draft.fields.find((one) => one.id === recognition.fieldId)
-          if (field !== undefined && !field.required) {
-            found.push({ area: 'scoring', code: 'link-field-optional', entity: { kind: 'field', key: field.key }, subject: field.label })
-          }
         }
       }
       for (const parameter of Object.keys(draft.scoring.bindings).sort()) {

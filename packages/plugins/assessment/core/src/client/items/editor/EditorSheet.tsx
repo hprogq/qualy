@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
+import { ChevronLeftIcon, ChevronRightIcon, XIcon } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
+import { commonMessages } from '@qualy/web-i18n/messages'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Button } from '@qualy/ui/button'
@@ -30,17 +31,34 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
     fontVariantNumeric: 'tabular-nums',
   },
+  stack: { display: 'flex', flexDirection: 'column', gap: 24 },
+  footer: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  backSeat: { marginLeft: -8 },
+  rule: { width: 1, height: 14, marginInline: 4, backgroundColor: tokens.border, flexShrink: 0 },
+  closeSeat: { marginRight: -8, color: tokens.mutedForeground },
+  headRule: {
+    paddingInline: 20,
+    paddingBlock: 12,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
+  },
+  footRule: {
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.divider,
+    paddingInline: 20,
+    paddingBlock: 12,
+  },
   body: {
     flexGrow: 1,
     flexShrink: 1,
     flexBasis: '0%',
     overflowY: 'auto',
     paddingInline: 20,
+    paddingTop: 18,
     paddingBottom: 20,
   },
-  stack: { display: 'flex', flexDirection: 'column', gap: 24 },
-  footer: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  backSeat: { marginLeft: -8 },
 })
 
 export function EditorSheet({
@@ -70,8 +88,8 @@ export function EditorSheet({
   const { format } = useI18n()
   return (
     <Sheet open={open} onOpenChange={(next) => !next && onClose()}>
-      <SheetContent side="right" xstyle={styles.panel} data-testid={testId}>
-        <SheetHeader>
+      <SheetContent side="right" xstyle={styles.panel} showCloseButton={false} data-testid={testId}>
+        <SheetHeader className={stylex.props(styles.headRule).className}>
           <div {...stylex.props(styles.head)}>
             {onBack !== undefined && (
               <Button
@@ -113,12 +131,24 @@ export function EditorSheet({
                 </Button>
               </span>
             )}
+            <span aria-hidden {...stylex.props(styles.rule)} />
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className={stylex.props(styles.closeSeat).className}
+              onClick={onClose}
+              aria-label={format(commonMessages.close)}
+            >
+              <XIcon aria-hidden />
+            </Button>
           </div>
         </SheetHeader>
         <div {...stylex.props(styles.body)}>
           <div {...stylex.props(styles.stack)}>{children}</div>
         </div>
-        {footer !== undefined && <SheetFooter xstyle={styles.footer}>{footer}</SheetFooter>}
+        {footer !== undefined && (
+          <SheetFooter xstyle={[styles.footer, styles.footRule]}>{footer}</SheetFooter>
+        )}
       </SheetContent>
     </Sheet>
   )

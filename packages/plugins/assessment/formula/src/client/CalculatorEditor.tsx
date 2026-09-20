@@ -4,7 +4,6 @@ import { useInfiniteQuery } from '@tanstack/react-query'
 import { useApi, useApiQuery, useRunApi, cursorPages } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
-import { Badge } from '@qualy/ui/badge'
 import { Feedback, Field } from '@qualy/ui/admin'
 import type { CalculatorEditorContext } from '@qualy/plugin-assessment/surfaces'
 import { formulaApi } from './api.ts'
@@ -70,8 +69,11 @@ const styles = stylex.create({
   chosen: {
     backgroundColor: tokens.primary,
     color: tokens.primaryForeground,
+    boxShadow: `0 0 0 2px ${tokens.background}, 0 0 0 3px ${tokens.primary}`,
   },
   held: { opacity: 0.55 },
+  versionNo: { fontVariantNumeric: 'tabular-nums' },
+  versionName: { opacity: 0.8 },
 })
 
 interface Option {
@@ -194,10 +196,16 @@ export default function CalculatorEditor({ context }: { context: CalculatorEdito
                         context.onChange({ ref: REF, config: { versionId: option.versionId } })
                       }
                     >
-                      {option.releaseName ??
-                        format(m.releaseOrdinal, { number: option.versionNo })}
+                      <span {...stylex.props(styles.versionNo)}>
+                        {format(m.summaryVersion, { no: option.versionNo })}
+                      </span>
+                      {option.releaseName !== null && (
+                        <span {...stylex.props(styles.versionName)}>{option.releaseName}</span>
+                      )}
                       {option.current && !option.bindableForNew ? (
-                        <Badge variant="secondary">{format(m.bindingKeptOnly)}</Badge>
+                        <span {...stylex.props(styles.versionName)}>
+                          {format(m.bindingKeptOnly)}
+                        </span>
                       ) : null}
                     </button>
                   )

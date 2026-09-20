@@ -5,7 +5,7 @@ import { Access } from '@qualy/rbac-contract/plugin'
 import { Audit } from '@qualy/audit-contract/plugin'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Scoring } from '@qualy/plugin-assessment/plugin'
-import { calculatorEditorSlot } from '@qualy/plugin-assessment/surfaces'
+import { calculatorEditorSlot, calculatorSummarySlot } from '@qualy/plugin-assessment/surfaces'
 import { APP_SHELL, permissionOf } from '@qualy/ui-contract'
 import { message } from '@qualy/i18n-contract'
 import { permissions } from './permissions.ts'
@@ -134,6 +134,13 @@ const plugin = Plugin.define(
         key: calculatorEditorSlot.key,
         id: 'assessment-formula/calculator-editor',
         component: Ui.react('./client/CalculatorEditor'),
+        visibility: permissionOf('assessment.batch.manage'),
+        order: 20,
+      },
+      {
+        key: calculatorSummarySlot.key,
+        id: 'assessment-formula/calculator-summary',
+        component: Ui.react('./client/CalculatorSummary'),
         visibility: permissionOf('assessment.batch.manage'),
         order: 20,
       },

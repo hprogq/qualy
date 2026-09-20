@@ -1,23 +1,28 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { CheckIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
+import { useQuery } from '@tanstack/react-query'
+import { useApi, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Field, FormDialog, RequiredMark } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
 import { Input } from '@qualy/ui/input'
-import { NativeSelect } from '@qualy/ui/native-select'
+import { DatePicker } from '@qualy/ui/date-picker'
 import { Kbd, KbdGroup } from '@qualy/ui/kbd'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@qualy/ui/sheet'
 import { Textarea } from '@qualy/ui/textarea'
 import { Chip, ChipGroup } from '@qualy/ui/chip'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
+import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { displayValueOf, fieldsOf } from '../entry/model.ts'
 import type { EvidenceFieldSpec } from '../entry/EvidenceForm.tsx'
 import { offeredOptions } from '../entry/model.ts'
+import { AttachmentLink } from '../entry/AttachmentLink.tsx'
+import { Choice } from '../items/Choice.tsx'
 import { SlideKey } from './touch.tsx'
 import { useFinePointer } from './pointer.ts'
 import { ValueFieldsForm } from '@qualy/web-value-form/InputValueForm'
@@ -25,7 +30,7 @@ import { usePickerWords } from '@qualy/web-i18n/picker-words'
 import { draftsFromFields, materializeFields, type FieldDraft } from '@qualy/web-value-form/model'
 import { parseDecimal, type AtomicSchema } from '@qualy/value-schema'
 import { changedSeedKeys, recognitionProblemText } from './recognition.ts'
-import type { ReviewDto } from './model.ts'
+import { idsOf, valueOf, type ReviewDto } from './model.ts'
 
 // The two decisions that carry a word: sending back, and escalating. Each
 // dialog collects the word (and the picked reason when the batch configured
@@ -139,6 +144,57 @@ const styles = stylex.create({
     flexDirection: 'column',
     gap: 20,
   },
+  // what was filed on the left, what is determined on the right: the
+  // reviewer reads the claim and writes the finding in one glance, on a
+  // desk; on a phone the two stack, the filing first
+  columns: {
+    display: 'grid',
+    gridTemplateColumns: {
+      default: 'minmax(0, 1fr)',
+      [breakpoints.desktop]: 'minmax(0, 5fr) minmax(0, 6fr)',
+    },
+    columnGap: 24,
+    rowGap: 20,
+    alignItems: 'start',
+  },
+  filing: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+    borderRadius: tokens.radiusLg,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 55%, transparent)`,
+    padding: 16,
+  },
+  filingList: { display: 'flex', flexDirection: 'column', gap: 10, margin: 0 },
+  filingRow: { display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 },
+  filingLabel: { fontSize: 12, color: tokens.mutedForeground },
+  filingValue: { margin: 0, fontSize: 14, lineHeight: 1.5, overflowWrap: 'anywhere' },
+  filingFiles: { display: 'flex', flexDirection: 'column', gap: 4 },
+  preview: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    paddingInline: 12,
+    paddingBlock: 10,
+    fontSize: 13,
+    lineHeight: 1.5,
+  },
+  previewOk: {
+    borderColor: `color-mix(in oklab, ${tokens.success} 45%, transparent)`,
+    backgroundColor: `color-mix(in oklab, ${tokens.success} 8%, transparent)`,
+  },
+  previewBad: {
+    borderColor: `color-mix(in oklab, ${tokens.danger} 45%, transparent)`,
+    backgroundColor: `color-mix(in oklab, ${tokens.danger} 6%, transparent)`,
+  },
+  previewTitle: { fontSize: 12, fontWeight: 600, color: 'var(--q-surface-muted-foreground)' },
+  previewQuiet: { color: tokens.mutedForeground },
+  previewBadWords: { color: tokens.danger },
+  previewAmount: { fontSize: 15, fontWeight: 600, fontVariantNumeric: 'tabular-nums' },
   // The verdict solids: the semantic tokens mixed toward black stand in for
   // the fixed emerald and rose shades, hover a step darker, in both schemes.
   // The verdict keys paint their own ground, so they also owe their own
@@ -241,6 +297,20 @@ const styles = stylex.create({
   suggestInput: {
     height: 32,
     fontSize: 14,
+  },
+  suggestSeat: { display: 'block', minWidth: 0 },
+  // the same two looks, for a widget that takes one style at a time
+  suggestPickChanged: {
+    height: 32,
+    fontSize: 14,
+    borderColor: tokens.focusRing,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
+  },
+  suggestPickIdle: {
+    height: 32,
+    fontSize: 14,
+    backgroundColor: `color-mix(in oklab, ${tokens.input} 10%, transparent)`,
+    color: tokens.mutedForeground,
   },
   suggestChanged: {
     borderColor: tokens.focusRing,
@@ -521,6 +591,17 @@ export function ApproveDialog({
     locked !== null ||
     (materialized.value !== null && (!changed || determinationReason.trim() !== ''))
 
+  // what these values would come to, said while they are typed: the same
+  // judge and arithmetic the decision runs, a beat after the typing stops
+  const preview = useDeterminationPreview(
+    review.id,
+    form === null
+      ? null
+      : locked !== null
+        ? (locked.values as Record<string, unknown>)
+        : materialized.value,
+  )
+
   const confirm = () => {
     if (!ready) return
     const recognition =
@@ -538,50 +619,49 @@ export function ApproveDialog({
     })
   }
 
-  const body = (
-    <>
-      {form !== null && (
-        <div {...stylex.props(styles.panel)} data-testid="recognition-form">
-          <p {...stylex.props(recognitionStyles.sectionLabel)}>{format(m.recognitionSection)}</p>
-          {locked !== null && (
-            <p {...stylex.props(recognitionStyles.quietNote)}>{format(m.recognitionLockedNote)}</p>
-          )}
-          <ValueFieldsForm
-            words={words}
-            fields={fields}
-            drafts={drafts}
-            onDraft={(id, draft) => setDrafts((current) => ({ ...current, [id]: draft }))}
-            locale={locale}
-            disabled={locked !== null}
-            problems={problems}
-            scope="recognition"
-          />
-          {changed && (
-            <Field label={format(m.recognitionReasonLabel)}>
-              {(id) => (
-                <Input
-                  id={id}
-                  value={determinationReason}
-                  onChange={(event) => setDeterminationReason(event.target.value)}
-                />
-              )}
-            </Field>
-          )}
-        </div>
+  const determination = form !== null && (
+    <div {...stylex.props(styles.panel)} data-testid="recognition-form">
+      <p {...stylex.props(recognitionStyles.sectionLabel)}>{format(m.recognitionSection)}</p>
+      {locked !== null && (
+        <p {...stylex.props(recognitionStyles.quietNote)}>{format(m.recognitionLockedNote)}</p>
       )}
-      <Field label={format(m.reviewComment)} hint={fine ? format(m.reviewApproveHint) : undefined}>
-        {(id) => (
-          <Textarea
-            id={id}
-            value={comment}
-            rows={3}
-            // eslint-disable-next-line jsx-a11y/no-autofocus
-            autoFocus={fine && form === null}
-            onChange={(event) => setComment(event.target.value)}
-          />
-        )}
-      </Field>
-    </>
+      <ValueFieldsForm
+        words={words}
+        fields={fields}
+        drafts={drafts}
+        onDraft={(id, draft) => setDrafts((current) => ({ ...current, [id]: draft }))}
+        locale={locale}
+        disabled={locked !== null}
+        problems={problems}
+        scope="recognition"
+      />
+      <ScorePreview preview={preview} fields={fields} />
+      {changed && (
+        <Field label={format(m.recognitionReasonLabel)}>
+          {(id) => (
+            <Input
+              id={id}
+              value={determinationReason}
+              onChange={(event) => setDeterminationReason(event.target.value)}
+            />
+          )}
+        </Field>
+      )}
+    </div>
+  )
+  const commentField = (
+    <Field label={format(m.reviewComment)} hint={fine ? format(m.reviewApproveHint) : undefined}>
+      {(id) => (
+        <Textarea
+          id={id}
+          value={comment}
+          rows={3}
+          // eslint-disable-next-line jsx-a11y/no-autofocus
+          autoFocus={fine && form === null}
+          onChange={(event) => setComment(event.target.value)}
+        />
+      )}
+    </Field>
   )
 
   if (!fine) {
@@ -597,7 +677,9 @@ export function ApproveDialog({
         onConfirm={confirm}
       >
         {caution}
-        {body}
+        {form !== null && <FiledValues review={review} />}
+        {determination}
+        {commentField}
       </DecisionSheet>
     )
   }
@@ -605,6 +687,7 @@ export function ApproveDialog({
   return (
     <FormDialog
       open={open}
+      size={form === null ? 'default' : 'wide'}
       title={format(m.reviewApproveTitle, { name: review.participantName })}
       description={format(m.reviewRejectSubtitle, {
         item: review.itemTitle,
@@ -640,9 +723,184 @@ export function ApproveDialog({
         }}
       >
         {caution}
-        {body}
+        {form === null ? null : (
+          <div {...stylex.props(styles.columns)}>
+            <FiledValues review={review} />
+            {determination}
+          </div>
+        )}
+        {commentField}
       </div>
     </FormDialog>
+  )
+}
+
+/** how long the typing has to rest before the arithmetic is asked */
+const PREVIEW_SETTLE_MS = 400
+
+type PreviewState =
+  | { readonly kind: 'incomplete' }
+  | { readonly kind: 'checking' }
+  | { readonly kind: 'unavailable' }
+  | { readonly kind: 'refused'; readonly reason: string }
+  | {
+      readonly kind: 'issues'
+      readonly issues: readonly { readonly recognitionId: string; readonly reason: string }[]
+    }
+  | { readonly kind: 'amount'; readonly amount: string }
+
+/**
+ * The decision path's judgement of the values as they stand, asked a beat
+ * after the last keystroke.
+ *
+ * Nothing is asked while a field is still empty: the screen already says
+ * what is missing, and the arithmetic has nothing to add. Keyed by the
+ * values themselves, so stepping back to an answer already asked about
+ * costs no round trip.
+ */
+function useDeterminationPreview(
+  instanceId: string,
+  values: Record<string, unknown> | null,
+): PreviewState {
+  const api = useApi(assessmentApi)
+  const run = useRunApi()
+  const key = values === null ? null : JSON.stringify(values)
+  const [settledKey, setSettledKey] = useState(key)
+  useEffect(() => {
+    const timer = setTimeout(() => setSettledKey(key), PREVIEW_SETTLE_MS)
+    return () => clearTimeout(timer)
+  }, [key])
+  const settled = useMemo(
+    () => (settledKey === null ? null : (JSON.parse(settledKey) as Record<string, unknown>)),
+    [settledKey],
+  )
+  // the endpoint is reached only from inside the query: a screen with no
+  // determination to preview never asks, and never needs the door to exist
+  const asked = useQuery({
+    queryKey: ['assessment', 'previewDetermination', instanceId, settledKey],
+    queryFn: () =>
+      run(
+        api.assessment.previewDetermination({
+          params: { instanceId },
+          payload: { values: settled ?? {} },
+        }),
+      ),
+    enabled: settled !== null,
+    staleTime: 60_000,
+    retry: false,
+  })
+  if (values === null) return { kind: 'incomplete' }
+  if (settledKey !== key || asked.isPending) return { kind: 'checking' }
+  if (asked.isError || asked.data === undefined) return { kind: 'unavailable' }
+  if (asked.data.refusal !== null) return { kind: 'refused', reason: asked.data.refusal }
+  if (asked.data.issues.length > 0) return { kind: 'issues', issues: asked.data.issues }
+  if (asked.data.amount !== null) return { kind: 'amount', amount: asked.data.amount }
+  return { kind: 'unavailable' }
+}
+
+/** what the determination would score, or what stops it, under the form */
+function ScorePreview({
+  preview,
+  fields,
+}: {
+  preview: PreviewState
+  fields: readonly { readonly id: string; readonly schema: AtomicSchema }[]
+}) {
+  const { format } = useI18n()
+  const bad = preview.kind === 'refused' || preview.kind === 'issues'
+  const words =
+    preview.kind === 'amount'
+      ? format(m.reviewPreviewAmount, { amount: preview.amount })
+      : preview.kind === 'refused'
+        ? format(m.reviewPreviewRefused, { reason: preview.reason })
+        : preview.kind === 'issues'
+          ? recognitionProblemText(
+              format,
+              fields.find((field) => field.id === preview.issues[0]!.recognitionId)?.schema,
+              preview.issues[0]!.reason,
+            )
+          : preview.kind === 'checking'
+            ? format(m.reviewPreviewChecking)
+            : preview.kind === 'unavailable'
+              ? format(m.reviewPreviewUnavailable)
+              : format(m.reviewPreviewIncomplete)
+  return (
+    <div
+      {...stylex.props(
+        styles.preview,
+        preview.kind === 'amount' && styles.previewOk,
+        bad && styles.previewBad,
+      )}
+      data-testid="score-preview"
+      data-preview={preview.kind}
+      {...(preview.kind === 'amount' ? { 'data-amount': preview.amount } : {})}
+      aria-live="polite"
+    >
+      <span {...stylex.props(styles.previewTitle)}>{format(m.reviewPreviewTitle)}</span>
+      <span
+        {...stylex.props(
+          preview.kind === 'amount' && styles.previewAmount,
+          bad && styles.previewBadWords,
+          !bad && preview.kind !== 'amount' && styles.previewQuiet,
+        )}
+      >
+        {words}
+      </span>
+    </div>
+  )
+}
+
+/** the filing being judged, beside the form that judges it */
+function FiledValues({ review }: { review: ReviewDto }) {
+  const { format } = useI18n()
+  const words = { yes: format(m.recognitionYes), no: format(m.recognitionNo) }
+  const record = (review.revision.payload ?? {}) as Record<string, unknown>
+  const fields = fieldsOf(review.form.formConfig)
+  return (
+    <section
+      {...stylex.props(styles.filing)}
+      data-testid="approve-filing"
+      aria-label={format(m.reviewPayloadTitle)}
+    >
+      <p {...stylex.props(recognitionStyles.sectionLabel)}>{format(m.reviewPayloadTitle)}</p>
+      <dl {...stylex.props(styles.filingList)}>
+        {fields.map((field) => {
+          const raw = record[field.key]
+          const ids = field.type === 'attachment' ? idsOf(raw) : []
+          const text = displayValueOf(field, raw, words) || valueOf(raw)
+          return (
+            <div key={field.key} {...stylex.props(styles.filingRow)}>
+              <dt {...stylex.props(styles.filingLabel)}>{field.label}</dt>
+              <dd {...stylex.props(styles.filingValue)}>
+                {field.type === 'attachment' ? (
+                  ids.length === 0 ? (
+                    <span {...stylex.props(styles.previewQuiet)}>
+                      {format(m.reviewPreviewNoFiles)}
+                    </span>
+                  ) : (
+                    <span {...stylex.props(styles.filingFiles)}>
+                      {ids.map((attachmentId) => (
+                        <AttachmentLink key={attachmentId} attachmentId={attachmentId} variant="line" />
+                      ))}
+                    </span>
+                  )
+                ) : text === '' ? (
+                  '–'
+                ) : (
+                  text
+                )}
+              </dd>
+            </div>
+          )
+        })}
+        {review.revision.note !== null && review.revision.note !== '' && (
+          <div {...stylex.props(styles.filingRow)}>
+            <dt {...stylex.props(styles.filingLabel)}>{format(m.entryNote)}</dt>
+            <dd {...stylex.props(styles.filingValue)}>{review.revision.note}</dd>
+          </div>
+        )}
+      </dl>
+    </section>
   )
 }
 
@@ -669,7 +927,8 @@ export function RejectDialog({
   onClose: () => void
   onConfirm: (decision: WordedDecision) => void
 }) {
-  const { format } = useI18n()
+  const { format, locale } = useI18n()
+  const pickerWords = usePickerWords()
   const fine = useFinePointer()
   const [reason, setReason] = useState('')
   const [comment, setComment] = useState('')
@@ -710,9 +969,17 @@ export function RejectDialog({
         event.preventDefault()
         setSuggesting(true)
         // the row has to exist before it can take the cursor
-        requestAnimationFrame(() =>
-          document.querySelector<HTMLInputElement>(`[data-suggest-slot="${digit}"]`)?.focus(),
-        )
+        requestAnimationFrame(() => {
+          // the seat is the input itself, or the widget whose trigger is inside it
+          const seat = document.querySelector<HTMLElement>(`[data-suggest-slot="${digit}"]`)
+          const focusable =
+            seat === null
+              ? null
+              : seat.matches('input, button, [tabindex]')
+                ? seat
+                : seat.querySelector<HTMLElement>('input, button, [tabindex]')
+          focusable?.focus()
+        })
       }
     }
     document.addEventListener('keydown', down)
@@ -872,6 +1139,8 @@ export function RejectDialog({
                     keepLabel={format(m.reviewSuggestKeep)}
                     yesLabel={format(m.recognitionYes)}
                     noLabel={format(m.recognitionNo)}
+                    pickerWords={pickerWords}
+                    locale={locale}
                     onChange={(next) =>
                       setSuggested((current) => ({ ...current, [field.key]: next }))
                     }
@@ -911,6 +1180,9 @@ const materializeSuggestion = (field: EvidenceFieldSpec, draft: string): unknown
   return field.type === 'integer' ? Number(trimmed) : trimmed
 }
 
+/** the pick that keeps their answer, in a list that must name every row */
+const KEEP_THEIRS = '\u0000keep'
+
 function FieldRow({
   slot,
   field,
@@ -919,6 +1191,8 @@ function FieldRow({
   keepLabel,
   yesLabel,
   noLabel,
+  pickerWords,
+  locale,
   onChange,
 }: {
   slot: number
@@ -928,6 +1202,8 @@ function FieldRow({
   keepLabel: string
   yesLabel: string
   noLabel: string
+  pickerWords: ReturnType<typeof usePickerWords>
+  locale: string
   onChange: (next: string) => void
 }) {
   const changed = value.trim() !== ''
@@ -947,33 +1223,43 @@ function FieldRow({
         {original || '–'}
       </span>
       {field.type === 'choice' || field.type === 'boolean' ? (
-        <NativeSelect
-          data-suggest-slot={slot}
-          className={
-            stylex.props(styles.suggestInput, changed ? styles.suggestChanged : styles.suggestIdle)
-              .className
-          }
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-        >
-          {/* '' keeps theirs, like an untouched text box */}
-          <option value="">{keepLabel}</option>
-          {field.type === 'boolean' ? (
-            <>
-              <option value="true">{yesLabel}</option>
-              <option value="false">{noLabel}</option>
-            </>
-          ) : (
-            offeredOptions(field).map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))
-          )}
-        </NativeSelect>
+        <span data-suggest-slot={slot} {...stylex.props(styles.suggestSeat)}>
+          <Choice
+            aria-label={field.label}
+            xstyle={changed ? styles.suggestPickChanged : styles.suggestPickIdle}
+            value={value === '' ? KEEP_THEIRS : value}
+            options={[
+              // keeping theirs is the first row, like an untouched text box
+              { value: KEEP_THEIRS, label: keepLabel },
+              ...(field.type === 'boolean'
+                ? [
+                    { value: 'true', label: yesLabel },
+                    { value: 'false', label: noLabel },
+                  ]
+                : offeredOptions(field).map((option) => ({
+                    value: option.value,
+                    label: option.label,
+                  }))),
+            ]}
+            onChange={(next) => onChange(next === KEEP_THEIRS ? '' : next)}
+          />
+        </span>
+      ) : field.type === 'date' ? (
+        <span data-suggest-slot={slot} {...stylex.props(styles.suggestSeat)}>
+          <DatePicker
+            value={value === '' ? null : value}
+            placeholder={keepLabel}
+            clearLabel={pickerWords.clear}
+            localeTag={locale}
+            monthLabel={pickerWords.month}
+            yearLabel={pickerWords.year}
+            xstyle={changed ? styles.suggestPickChanged : styles.suggestPickIdle}
+            onChange={(next) => onChange(next ?? '')}
+          />
+        </span>
       ) : (
         <Input
-          type={field.type === 'date' ? 'date' : 'text'}
+          type="text"
           inputMode={
             field.type === 'integer' ? 'numeric' : field.type === 'decimal' ? 'decimal' : undefined
           }

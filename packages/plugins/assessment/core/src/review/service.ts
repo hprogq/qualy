@@ -16,11 +16,20 @@ import {
   recognitionFormFields,
   sameRecognition,
   seedFromEvidence,
+  type RecognitionIssue,
   type RecognitionValues,
 } from '../scoring/recognition.ts'
-import { readScoringPlan } from '../scoring/plan.ts'
+import { frozenCalculatorOf, readScoringPlan } from '../scoring/plan.ts'
+import { evaluateRecognition } from '../scoring/evaluate.ts'
+import { formatAmount } from '../scoring/builtins.ts'
 import { isUuid } from '../item/uuid.ts'
-import { ProbeNeeded, probeIdentity, settleWithProbe } from '../scoring/failure-boundary.ts'
+import {
+  ProbeNeeded,
+  mapEvaluationFailure,
+  mapRuntimeFailure,
+  probeIdentity,
+  settleWithProbe,
+} from '../scoring/failure-boundary.ts'
 import { ScoringRuntimeCatalog } from '../plugin.ts'
 import {
   currentRecognitionOf,
@@ -440,7 +449,31 @@ export interface AwaitingItem {
   readonly answeredAt: number | null
 }
 
+/**
+ * What a candidate determination would be worth, said before anybody
+ * commits to it.
+ *
+ * The same three answers the decision path gives, in the order it gives
+ * them: the contract's issues with the values, the rule's own refusal of
+ * them, or the amount. A screen that shows this while the reviewer types
+ * never has to learn any of it after the decision has left their hands.
+ */
+export interface DeterminationPreview {
+  readonly issues: readonly RecognitionIssue[]
+  /** what the arithmetic gives, as decimal text; null while anything stops it */
+  readonly amount: string | null
+  /** the rule's refusal of these values, in its own words */
+  readonly refusal: string | null
+}
+
 export interface ReviewMethods {
+  /** the decision path's judgement of a determination, without the decision */
+  readonly previewDetermination: (
+    tenantId: string,
+    instanceId: string,
+    values: unknown,
+    as: Principal,
+  ) => Effect.Effect<DeterminationPreview, ReviewNotFound | ScoringUnavailable, ScoringRuntimeCatalog>
   readonly listReviewInbox: (
     tenantId: string,
     page: { cursor?: string; limit?: string; batchId?: string },
@@ -1206,6 +1239,69 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
       }
       return null
     })
+
+  const previewDetermination: ReviewMethods['previewDetermination'] = Effect.fn(
+    'Assessment.previewDetermination',
+  )(function* (tenantId, instanceId, values, as) {
+    const runtime = yield* ScoringRuntimeCatalog
+    // Only whoever may decide gets an answer: the preview is the decision
+    // path's judgement, and a reader who could not decide learns nothing
+    // from it - not even that there is something here to judge.
+    const site = yield* dieQuery(
+      withDb(
+        Effect.gen(function* () {
+          const row = yield* instanceOf(tenantId, instanceId)
+          if (row === null) return yield* new ReviewNotFound()
+          const judge = yield* mayRead(tenantId, row, as)
+          if (!judge) return yield* new ReviewNotFound()
+          // judged under the contract the round opened under, scored by
+          // the question as it stands today: exactly what the decision does
+          const contract = yield* revisionOf(tenantId, row.recognitionRevisionId)
+          if (contract === null) return yield* new ReviewNotFound()
+          const plan = yield* Effect.orDie(readScoringPlan(contract))
+          const question = yield* itemOf(tenantId, row.itemId)
+          const current =
+            question === null || question.currentRevisionId === null
+              ? null
+              : yield* revisionOf(tenantId, question.currentRevisionId)
+          const livePlan =
+            current === null || current.id === contract.id
+              ? plan
+              : yield* Effect.orDie(readScoringPlan(current))
+          return { row, plan, livePlan }
+        }),
+      ),
+    )
+    const issues = judgeRecognition(site.plan.recognitionSchemas, values)
+    if (issues.length > 0) return { issues, amount: null, refusal: null }
+    const candidate = canonicalRecognition(site.plan.recognitionSchemas, values as RecognitionValues)
+    const where = {
+      tenantId,
+      batchId: site.row.batchId,
+      itemId: site.row.itemId,
+      plan: site.livePlan,
+    }
+    const prepared = yield* runtime
+      .prepare(site.livePlan.calculator.ref, frozenCalculatorOf(site.livePlan), {
+        tenantId,
+        batchId: site.row.batchId,
+      })
+      .pipe(Effect.catch((error) => mapRuntimeFailure('settlement', where, error)))
+    const evaluated = yield* Effect.result(
+      evaluateRecognition(prepared, {
+        itemId: site.row.itemId,
+        plan: site.livePlan,
+        recognition: candidate,
+      }).pipe(Effect.catch((error) => mapEvaluationFailure('settlement', where, error))),
+    )
+    if (Result.isSuccess(evaluated)) {
+      return { issues: [], amount: formatAmount(evaluated.success.amount), refusal: null }
+    }
+    if (evaluated.failure instanceof DeterminationRefused) {
+      return { issues: [], amount: null, refusal: evaluated.failure.reason }
+    }
+    return yield* Effect.fail(evaluated.failure)
+  })
 
   const decideReview: ReviewMethods['decideReview'] = Effect.fn('Assessment.decideReview')(
     function* (tenantId, instanceId, input, as) {
@@ -2742,6 +2838,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
   })
 
   return {
+    previewDetermination,
     listReviewInbox,
     listAwaitingSupplements,
     getReviewInstance,

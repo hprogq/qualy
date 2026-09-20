@@ -8,7 +8,7 @@ import { commonMessages } from '@qualy/web-i18n/messages'
 import { kindOf, type AtomicSchema, type ChoiceSchema } from '@qualy/value-schema'
 import type { FieldDraft as ValueDraft } from '@qualy/web-value-form/model'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { BannerBack, ConfirmDialog, Feedback, PageHeader } from '@qualy/ui/admin'
+import { BannerBack, ConfirmDialog, Feedback } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@qualy/ui/dropdown-menu'
 import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
@@ -78,19 +78,44 @@ import { boundsWords, type LinkVerdict } from './words.ts'
 
 const styles = stylex.create({
   root: { display: 'flex', minHeight: 0, flexGrow: 1, flexShrink: 1, flexBasis: '0%', flexDirection: 'column' },
-  titleText: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  titleRow: { display: 'inline-flex', alignItems: 'center', gap: 10, minWidth: 0 },
+  band: { display: 'flex', flexDirection: 'column', gap: 12, paddingTop: 4 },
+  trail: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    fontSize: 13,
+    color: tokens.mutedForeground,
+    minWidth: 0,
+  },
+  trailRule: { width: 1, height: 14, backgroundColor: tokens.border, flexShrink: 0 },
+  trailName: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  titleRow: { display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flexWrap: 'wrap' },
+  titleWords: { display: 'flex', minWidth: 0, flexGrow: 1, flexDirection: 'column', gap: 4 },
+  titleLine: { display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 },
+  title: {
+    margin: 0,
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 20,
+    lineHeight: 1.4,
+    fontWeight: 600,
+    letterSpacing: '-0.025em',
+  },
   meta: {
     display: 'flex',
     alignItems: 'center',
     gap: 10,
     fontSize: 12,
-    color: tokens.mutedForeground,
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
     fontVariantNumeric: 'tabular-nums',
     flexWrap: 'wrap',
   },
-  trailSep: { paddingInline: 6, color: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)` },
-  tabsRow: { display: 'flex', alignItems: 'flex-end', gap: 20, paddingTop: 4, flexWrap: 'wrap' },
+  actions: { display: 'flex', flexShrink: 0, alignItems: 'center', gap: 8 },
+  tabsRow: { display: 'flex', alignItems: 'flex-end', gap: 20, minWidth: 0 },
+  tabList: { gap: 20 },
+  tab: { paddingInline: 2 },
   tabLabel: { display: 'inline-flex', alignItems: 'center', gap: 7 },
   spacer: { flexGrow: 1 },
   body: { display: 'flex', flexDirection: 'column', gap: 16, paddingTop: 24, paddingBottom: 40, maxWidth: 1152 },
@@ -203,42 +228,46 @@ export function ItemEditor({
     draft.scoring.language === 'v2'
       ? draft.scoring.calculator
       : { ref: 'fixed@1', config: { value: draft.fixedValue } }
-  const onCalculatorChange = (next: { ref: string; config: unknown }) => {
-    if (draft.scoring.language === 'v2') {
-      const rebound = next.ref !== draft.scoring.calculator.ref
-      patchScoring((scoring) => ({
-        calculator: next,
-        ...(rebound ? { recognitions: {}, bindings: {} } : {}),
-        configured: true,
-        touched: true,
-        original: scoring.original,
-      }))
-      return
-    }
-    if (next.ref === 'fixed@1' && draft.scoring.language === 'v1') {
-      patch({ fixedValue: String((next.config as { value?: unknown })?.value ?? '') })
-    }
-  }
-  const onCalculatorPicked = (ref: string) => {
-    if (ref === chosenCalculator.ref) return
-    if (draft.scoring.language === 'v1' && ref === 'fixed@1') return
-    if (draft.scoring.language === 'v1') {
-      patch({
+  /**
+   * The arithmetic chosen and configured in one act.
+   *
+   * The legacy language keeps its own amount for as long as the method is
+   * the fixed one; anything else moves the question into the versioned
+   * language, and once there it never goes back. A different reference
+   * clears the facts and bindings: they answered the old contract.
+   */
+  const onCalculatorApply = (next: { ref: string; config: unknown }) =>
+    setDraft((previous) => {
+      if (previous.scoring.language === 'unsupported') return previous
+      const amount = String((next.config as { value?: unknown } | null)?.value ?? '')
+      if (previous.scoring.language === 'v1') {
+        if (next.ref === 'fixed@1') return { ...previous, fixedValue: amount }
+        return {
+          ...previous,
+          scoring: {
+            language: 'v2',
+            original: null,
+            calculator: next,
+            recognitions: {},
+            bindings: {},
+            touched: true,
+            configured: true,
+          },
+        }
+      }
+      const rebound = next.ref !== previous.scoring.calculator.ref
+      return {
+        ...previous,
+        ...(next.ref === 'fixed@1' ? { fixedValue: amount } : {}),
         scoring: {
-          language: 'v2',
-          original: null,
-          calculator: { ref, config: {} },
-          recognitions: {},
-          bindings: {},
+          ...previous.scoring,
+          calculator: next,
+          ...(rebound ? { recognitions: {}, bindings: {} } : {}),
           touched: true,
-          configured: false,
+          configured: true,
         },
-      })
-      return
-    }
-    if (draft.scoring.language !== 'v2') return
-    patchScoring(() => ({ calculator: { ref, config: {} }, recognitions: {}, bindings: {}, configured: false }))
-  }
+      }
+    })
 
   // asked a beat after the typing stops: the form only decides which
   // fields may feed a parameter, and re-asking on every letter rebuilt the
@@ -683,12 +712,14 @@ export function ItemEditor({
   const modeChip = format(
     draft.mode === 'automatic' ? m.itemsModeAutomatic : draft.mode === 'direct' ? m.itemsModeDirect : m.itemsModeReview,
   )
-  const savedWhen =
-    revision === null
-      ? null
-      : new Intl.DateTimeFormat(locale, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(
-          new Date(revision.createdAt),
-        )
+  const savedWhen = ((): string | null => {
+    if (revision === null) return null
+    const at = new Date(revision.createdAt)
+    const time = new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(at)
+    return at.toDateString() === new Date().toDateString()
+      ? format(m.itemsTodayAt, { time })
+      : new Intl.DateTimeFormat(locale, { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(at)
+  })()
   const recognitionHandles = recognitionRows(draft, contract).map((row) => row.handle)
   const methodLabel = calculators.find((one) => one.ref === chosenCalculator.ref)?.label ?? null
   const automaticLocked = item !== null && item.status !== 'draft'
@@ -807,45 +838,55 @@ export function ItemEditor({
   return (
     <div {...stylex.props(styles.root)} data-testid="item-editor" data-mode={draft.mode} data-panel={area}>
       <BatchBanner>
-        <PageHeader
-          variant="banner"
-          title={
-            <span {...stylex.props(styles.titleRow)}>
-              <span {...stylex.props(styles.titleText)}>
-                {draft.title.trim() === '' ? format(m.itemsUntitled) : draft.title}
-              </span>
-              <Tag tall testId="item-standing">
-                {item === null
-                  ? format(m.itemsStatusComposing)
-                  : item.status === 'voided'
-                    ? format(m.itemsStatusVoided)
-                    : item.status === 'active'
-                      ? format(m.structureStatusLive)
-                      : format(m.itemsStatusDraft)}
-              </Tag>
-              <Tag tall outline testId="item-mode">
-                {modeChip}
-              </Tag>
-            </span>
-          }
-          description={
-            <>
-              <BannerBack label={format(m.itemsBack)} onBack={onCancel}>
-                {format(m.itemsBack)}
-              </BannerBack>
-              {trail.map((name, index) => (
-                <span key={`${index}:${name}`}>
-                  <span {...stylex.props(styles.trailSep)}>&rsaquo;</span>
-                  {name}
-                </span>
-              ))}
-            </>
-          }
-          actions={
-            <>
+        <div {...stylex.props(styles.band)}>
+          <div {...stylex.props(styles.trail)}>
+            <BannerBack label={format(m.itemsBack)} onBack={onCancel}>
+              {format(m.itemsBack)}
+            </BannerBack>
+            {trail.length > 0 && (
+              <>
+                <span aria-hidden {...stylex.props(styles.trailRule)} />
+                <span {...stylex.props(styles.trailName)}>{trail[trail.length - 1]}</span>
+              </>
+            )}
+          </div>
+          <div {...stylex.props(styles.titleRow)}>
+            <div {...stylex.props(styles.titleWords)}>
+              <div {...stylex.props(styles.titleLine)}>
+                <h1 {...stylex.props(styles.title)}>
+                  {draft.title.trim() === '' ? format(m.itemsUntitled) : draft.title}
+                </h1>
+                <Tag tall testId="item-standing">
+                  {item === null || item.status === 'draft'
+                    ? format(m.itemsStatusComposing)
+                    : item.status === 'voided'
+                      ? format(m.itemsStatusVoided)
+                      : format(m.structureStatusLive)}
+                </Tag>
+                <Tag tall outline testId="item-mode">
+                  {modeChip}
+                </Tag>
+              </div>
+              <div {...stylex.props(styles.meta)} data-testid="item-meta">
+                {item !== null && (
+                  <span>
+                    {format(item.status === 'active' ? m.structureStatusLive : m.itemsStatusDraft)}
+                  </span>
+                )}
+                {revision !== null && <span>{format(m.itemsVersionNo, { no: revision.revisionNo })}</span>}
+                {item === null ? (
+                  <span>{format(m.itemsVersionNew)}</span>
+                ) : dirty ? (
+                  <span data-testid="item-unsaved">{format(m.itemsUnsaved)}</span>
+                ) : (
+                  savedWhen !== null && <span>{format(m.itemsSavedAt, { when: savedWhen })}</span>
+                )}
+              </div>
+            </div>
+            <div {...stylex.props(styles.actions)}>
               <Button variant="outline" onClick={() => setSheet({ kind: 'preview' })}>
                 <EyeIcon aria-hidden />
-                {format(m.itemsPreviewTitle)}
+                {format(m.itemsPreview)}
               </Button>
               <Button disabled={save.isPending} onClick={onSave} data-testid="item-save">
                 {format(m.entrySave)}
@@ -854,7 +895,7 @@ export function ItemEditor({
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
-                      variant="outline"
+                      variant="ghost"
                       size="icon"
                       aria-label={format(m.itemsMoreActions)}
                       className={stylex.props(styles.menuButton).className}
@@ -867,44 +908,38 @@ export function ItemEditor({
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}
-            </>
-          }
-        />
-        <div {...stylex.props(styles.meta)} data-testid="item-meta">
-          {revision !== null && (
-            <span>{format(item?.status === 'active' ? m.itemsPublishedVersion : m.itemsDraftVersion, { no: revision.revisionNo })}</span>
-          )}
-          {item === null ? (
-            <span>{format(m.itemsVersionNew)}</span>
-          ) : dirty ? (
-            <span data-testid="item-unsaved">{format(m.itemsUnsaved)}</span>
-          ) : (
-            savedWhen !== null && <span>{format(m.itemsSavedAt, { when: savedWhen })}</span>
-          )}
-        </div>
-        <div {...stylex.props(styles.tabsRow)}>
-          <Tabs value={area} onValueChange={(next) => setPanelParam(next)}>
-            <TabsList>
-              {AREAS.filter((one) => one !== 'rules' || draft.mode !== 'automatic').map((one) => (
-                <TabsTrigger key={one} value={one} data-area={one} data-pending={problemAreas.has(one)}>
-                  <span {...stylex.props(styles.tabLabel)}>
-                    <Dot tone={problemAreas.has(one) ? 'pending' : 'ok'} />
-                    {format(
-                      one === 'basics'
-                        ? m.itemsTabBasics
-                        : one === 'scoring'
-                          ? draft.mode === 'automatic'
-                            ? m.itemsTabScoring
-                            : m.itemsTabForm
-                          : m.itemsTabRules,
-                    )}
-                  </span>
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
-          <span {...stylex.props(styles.spacer)} />
-          <PendingList problems={problems} onGo={jumpTo} />
+            </div>
+          </div>
+          <div {...stylex.props(styles.tabsRow)}>
+            <Tabs value={area} onValueChange={(next) => setPanelParam(next)}>
+              <TabsList xstyle={styles.tabList}>
+                {AREAS.filter((one) => one !== 'rules' || draft.mode !== 'automatic').map((one) => (
+                  <TabsTrigger
+                    key={one}
+                    value={one}
+                    xstyle={styles.tab}
+                    data-area={one}
+                    data-pending={problemAreas.has(one)}
+                  >
+                    <span {...stylex.props(styles.tabLabel)}>
+                      <Dot tone={problemAreas.has(one) ? 'pending' : 'ok'} />
+                      {format(
+                        one === 'basics'
+                          ? m.itemsTabBasics
+                          : one === 'scoring'
+                            ? draft.mode === 'automatic'
+                              ? m.itemsTabScoring
+                              : m.itemsTabForm
+                            : m.itemsTabRules,
+                      )}
+                    </span>
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+            <span {...stylex.props(styles.spacer)} />
+            <PendingList problems={problems} onGo={jumpTo} />
+          </div>
         </div>
       </BatchBanner>
 
@@ -924,8 +959,7 @@ export function ItemEditor({
             chosenCalculator={chosenCalculator}
             placement={placement}
             problems={problems}
-            onCalculatorPicked={onCalculatorPicked}
-            onCalculatorChange={onCalculatorChange}
+            onCalculatorApply={onCalculatorApply}
             onSource={onSource}
             onConstant={onConstant}
             onOpenRecognition={(handle) => setSheet({ kind: 'recognition', handle })}

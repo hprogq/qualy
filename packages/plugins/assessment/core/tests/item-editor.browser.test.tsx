@@ -538,7 +538,7 @@ describe('records and review', () => {
     await sheet().getByRole('button', { name: '关闭' }).click()
     await expect.element(page.getByTestId('chain-step').first()).toHaveAttribute('data-step-complete', 'true')
 
-    await page.getByTestId('chain-normal').getByRole('button', { name: '添加审核步骤' }).nth(1).click()
+    await page.getByTestId('chain-normal').getByRole('button', { name: '添加审核步骤' }).first().click()
     await sheet().getByRole('textbox', { name: '环节名称' }).fill('专业复审')
     await sheet().getByRole('checkbox', { name: '审核员' }).click()
     await sheet().getByRole('button', { name: '关闭' }).click()

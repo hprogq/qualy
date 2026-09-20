@@ -80,3 +80,20 @@ export interface CalculatorEditorContext {
    *  shape of `config` and nothing else reads into it */
   readonly onChange: (calculator: { readonly ref: string; readonly config: unknown }) => void
 }
+
+/**
+ * Saying what the chosen calculator is, in one line, where the question
+ * editor shows its scoring method. The owner of the arithmetic renders it:
+ * a formula's name and version are the formula plugin's to know, and the
+ * editor only offers the seat and the reference.
+ */
+export const calculatorSummarySlot = defineUiSlot({
+  key: 'assessment/calculator-summary',
+  cardinality: 'many',
+})
+
+export interface CalculatorSummaryContext {
+  readonly batchId: string
+  readonly itemId: string | null
+  readonly calculator: { readonly ref: string; readonly config: unknown }
+}

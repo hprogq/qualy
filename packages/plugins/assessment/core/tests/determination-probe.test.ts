@@ -173,6 +173,54 @@ describe.runIf(postgresAvailable)('proving a determination before it is a fact',
     probeHold.until = Promise.resolve()
   })
 
+  it('says what a determination would come to before anybody commits to it', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('dp-preview')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN, scoring: probeScoring() })
+          const { entryId, instanceId } = yield* claimed(f, g, g.p1)
+          const ask = (values: unknown, who: string = f.reviewer) =>
+            assessment.previewDetermination(f.t, instanceId, values, f.principal(who))
+          const accepted = yield* ask(determination(3).values)
+          const refused = yield* ask(determination(7).values)
+          const missing = yield* ask({ 'rec-level': 'national' })
+          const outage = yield* Effect.exit(ask(determination(8).values))
+          // the subject may read the round; the arithmetic's answer is not theirs
+          const subject = yield* Effect.exit(ask(determination(3).values, f.s1))
+          return {
+            accepted,
+            refused,
+            missing,
+            outage: tagOf(outage),
+            subject: tagOf(subject),
+            entry: yield* entryOf(entryId),
+            rows: yield* recognitionsOf(entryId),
+          }
+        }),
+      ),
+    )
+
+    expect(result.accepted).toEqual({ issues: [], amount: '10.00', refusal: null })
+    expect(result.refused).toEqual({
+      issues: [],
+      amount: null,
+      refusal: 'only the first 5 are recognised',
+    })
+    expect(result.missing).toEqual({
+      issues: [{ recognitionId: 'rec-ordinal', reason: 'missing' }],
+      amount: null,
+      refusal: null,
+    })
+    expect(result.outage?._tag).toBe('ASSESSMENT_SCORING_UNAVAILABLE')
+    expect(result.subject?._tag).toBe('ASSESSMENT_REVIEW_NOT_FOUND')
+    // a preview writes nothing: the claim is where it was, undetermined
+    expect(result.entry.status).toBe('in_review')
+    expect(result.rows).toEqual([])
+  })
+
   it("refuses a last word the rule will not score, in the rule's words, and writes nothing", async () => {
     const result = ok(
       await run(

@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 // six of those in one form is where the form disappears.
 export function Choice({
   id,
+  'aria-label': ariaLabel,
   value,
   options,
   placeholder,
@@ -21,9 +22,11 @@ export function Choice({
   onChange,
 }: {
   id?: string
+  /** the control's spoken name, for a seat whose row already shows it */
+  'aria-label'?: string
   /** empty means nothing is chosen yet, which is what the placeholder is for */
   value: string
-  options: readonly { value: string; label: string; description?: string }[]
+  options: readonly { value: string; label: string; description?: string; disabled?: boolean }[]
   placeholder?: string
   disabled?: boolean
   xstyle?: StyleXStyles
@@ -31,12 +34,17 @@ export function Choice({
 }) {
   return (
     <Select value={value === '' ? undefined : value} disabled={disabled} onValueChange={onChange}>
-      <SelectTrigger id={id} xstyle={xstyle}>
+      <SelectTrigger id={id} xstyle={xstyle} {...(ariaLabel === undefined ? {} : { 'aria-label': ariaLabel })}>
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>
         {options.map((option) => (
-          <SelectItem key={option.value} value={option.value} description={option.description}>
+          <SelectItem
+            key={option.value}
+            value={option.value}
+            description={option.description}
+            {...(option.disabled === true ? { disabled: true } : {})}
+          >
             {option.label}
           </SelectItem>
         ))}

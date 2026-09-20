@@ -1099,6 +1099,32 @@ const i18n = definePluginMessages({
       id: 'assessment/review/payload-title',
       defaultMessage: 'Submission content',
     },
+    // what the determination being typed would come to, said as it is typed
+    reviewPreviewTitle: { id: 'assessment/review/preview-title', defaultMessage: 'Score preview' },
+    reviewPreviewAmount: {
+      id: 'assessment/review/preview-amount',
+      defaultMessage: 'This determination scores {amount}',
+    },
+    reviewPreviewChecking: {
+      id: 'assessment/review/preview-checking',
+      defaultMessage: 'Working it out',
+    },
+    reviewPreviewRefused: {
+      id: 'assessment/review/preview-refused',
+      defaultMessage: 'The rule does not accept this determination: {reason}',
+    },
+    reviewPreviewIncomplete: {
+      id: 'assessment/review/preview-incomplete',
+      defaultMessage: 'The score appears once every field is filled in',
+    },
+    reviewPreviewUnavailable: {
+      id: 'assessment/review/preview-unavailable',
+      defaultMessage: 'The score cannot be worked out right now; it is checked again on approval',
+    },
+    reviewPreviewNoFiles: {
+      id: 'assessment/review/preview-no-files',
+      defaultMessage: 'No files',
+    },
     // ------------------------------------------------------------------
     // one participant's whole account, as whoever runs the round reads it
     participantResultsTab: {
@@ -4087,16 +4113,16 @@ const i18n = definePluginMessages({
     },
     itemsCeilingHow: {
       id: 'assessment/items/ceiling-how',
-      defaultMessage: '{value} × {count, plural, one {# entry} other {# entries}}.',
+      defaultMessage: '{value} each × {count, plural, one {# entry} other {# entries}}',
     },
     itemsCeilingHowMax: {
       id: 'assessment/items/ceiling-how-max',
-      defaultMessage: '{value}, counting the highest entry only.',
+      defaultMessage: '{value} each, counting the highest entry only',
     },
     itemsCeilingHowTopN: {
       id: 'assessment/items/ceiling-how-top-n',
       defaultMessage:
-        '{value} × {count, plural, one {the highest entry} other {the # highest entries}}.',
+        '{value} each × {count, plural, one {the highest entry} other {the # highest entries}}',
     },
     itemsGrantedValue: {
       id: 'assessment/items/granted-value',
@@ -4108,7 +4134,19 @@ const i18n = definePluginMessages({
     },
     itemsCeilingHowAny: {
       id: 'assessment/items/ceiling-how-any',
-      defaultMessage: 'Entry count is unlimited, so the item has no upper limit of its own.',
+      defaultMessage: '{value} each, any number of entries',
+    },
+    itemsCeilingLine: {
+      id: 'assessment/items/ceiling-line',
+      defaultMessage: '{how}; the item is capped at {value}.',
+    },
+    itemsCeilingLineOpen: {
+      id: 'assessment/items/ceiling-line-open',
+      defaultMessage: '{how}; the item has no cap of its own.',
+    },
+    itemsCeilingLineRule: {
+      id: 'assessment/items/ceiling-line-rule',
+      defaultMessage: 'Each determination is worth what {name} works out; the cap follows the formula.',
     },
     itemsCeilingSectionCapped: {
       id: 'assessment/items/ceiling-section-capped',
@@ -5177,6 +5215,27 @@ const i18n = definePluginMessages({
     itemsOptional: { id: 'assessment/items/optional', defaultMessage: 'Optional' },
     // ---- scoring tab ----
     itemsScoringMethod: { id: 'assessment/items/scoring-method', defaultMessage: 'Scoring method' },
+    itemsScoringChange: { id: 'assessment/items/scoring-change', defaultMessage: 'Change formula' },
+    itemsScoringPick: {
+      id: 'assessment/items/scoring-pick',
+      defaultMessage: 'Choose the scoring method',
+    },
+    itemsScoringUse: { id: 'assessment/items/scoring-use', defaultMessage: 'Use this method' },
+    itemsScoringFixedNote: {
+      id: 'assessment/items/scoring-fixed-note',
+      defaultMessage: 'Every approved record counts the same amount',
+    },
+    itemsPreview: { id: 'assessment/items/preview', defaultMessage: 'Preview' },
+    itemsTodayAt: { id: 'assessment/items/today-at', defaultMessage: 'Today {time}' },
+    itemsVersionNo: { id: 'assessment/items/version-no', defaultMessage: 'Version {no}' },
+    itemsRangeWithScale: {
+      id: 'assessment/items/range-with-scale',
+      defaultMessage: '{range}, up to {scale, plural, one {# decimal place} other {# decimal places}}',
+    },
+    itemsTypeSingleChoice: {
+      id: 'assessment/items/type-single-choice',
+      defaultMessage: 'Single choice',
+    },
     itemsParameters: { id: 'assessment/items/parameters', defaultMessage: 'Formula parameters' },
     itemsParametersHint: {
       id: 'assessment/items/parameters-hint',
@@ -5239,6 +5298,11 @@ const i18n = definePluginMessages({
     itemsSummaryBlock: { id: 'assessment/items/summary-block', defaultMessage: 'List display' },
     itemsSummaryAuto: { id: 'assessment/items/summary-auto', defaultMessage: 'Automatic' },
     itemsSummaryCustom: { id: 'assessment/items/summary-custom', defaultMessage: 'Custom' },
+    itemsSummaryEdit: { id: 'assessment/items/summary-edit', defaultMessage: 'Edit' },
+    itemsFilesWithKinds: {
+      id: 'assessment/items/files-with-kinds',
+      defaultMessage: 'up to {count, plural, one {# file} other {# files}}, {kinds}',
+    },
     itemsSummaryBlockHint: {
       id: 'assessment/items/summary-block-hint',
       defaultMessage: 'Used as the summary in record lists.',
@@ -5341,6 +5405,7 @@ const i18n = definePluginMessages({
     itemsGoToSettings: { id: 'assessment/items/go-to-settings', defaultMessage: 'Go to settings' },
     // ---- the submission field panel and the add-field dialog ----
     itemsFieldHint: { id: 'assessment/items/field-hint', defaultMessage: 'Hint' },
+    itemsFieldAdvanced: { id: 'assessment/items/field-advanced', defaultMessage: 'More settings' },
     itemsFieldPattern: { id: 'assessment/items/field-pattern', defaultMessage: 'Pattern' },
     itemsFieldPatternHint: {
       id: 'assessment/items/field-pattern-hint',
@@ -5570,10 +5635,6 @@ const i18n = definePluginMessages({
     itemsProblemUnlinked: {
       id: 'assessment/items/problem-unlinked',
       defaultMessage: 'Needs a submission field',
-    },
-    itemsProblemLinkOptional: {
-      id: 'assessment/items/problem-link-optional',
-      defaultMessage: 'A linked field must be required',
     },
     itemsProblemBindingOrphan: {
       id: 'assessment/items/problem-binding-orphan',

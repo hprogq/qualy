@@ -234,7 +234,9 @@ export function BatchScreen({
         >
           {batch && (
             <div {...stylex.props(styles.sectionStack)}>
-              {batch.status === 'draft' && (
+              {/* said on the section, not over a question being composed:
+                  the band has handed over, and the body is the question's */}
+              {batch.status === 'draft' && showing === 'section' && (
                 <p {...stylex.props(styles.draftNote)}>{format(m.draftBanner)}</p>
               )}
               {children(batch)}

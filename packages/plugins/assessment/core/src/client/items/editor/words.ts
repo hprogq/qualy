@@ -10,6 +10,7 @@ import {
 } from '@qualy/value-schema'
 import type { MessageDescriptor } from '@qualy/i18n-contract'
 import { assessmentMessages as m } from '../../i18n.ts'
+import { FILE_KINDS, kindsOf } from '../../file-kinds.ts'
 import { linkOf, type Contract, type Draft, type EditorArea, type EditorProblem, type FieldDraft, type FieldType } from './model.ts'
 
 // The words the editor uses for types, bounds and what is left to do.
@@ -19,7 +20,16 @@ import { linkOf, type Contract, type Draft, type EditorArea, type EditorProblem,
 // field read alike wherever they meet.
 
 export type Format = (message: MessageDescriptor, values?: Record<string, unknown>) => string
+/** kept for callers that still pass one; the words themselves join with the product's separator */
 export type ListJoin = (items: readonly string[]) => string
+
+/** names side by side, with the separator the language uses for a list of names */
+const named = (items: readonly string[], format: Format): string =>
+  items.join(format(m.listSeparator))
+
+/** whole sentences one after another: a space between them, unless the language writes none */
+export const sentences = (parts: readonly string[], locale: string): string =>
+  parts.filter((one) => one !== '').join(locale.startsWith('zh') ? '' : ' ')
 
 export const TYPE_LABEL: Record<FieldType, MessageDescriptor> = {
   text: m.itemsTypeText,
@@ -65,7 +75,6 @@ const PROBLEM_LABEL: Record<string, MessageDescriptor> = {
   'refinement-widens': m.itemsProblemRefinementWidens,
   'link-field-missing': m.itemsProblemLinkMissing,
   'recognition-unlinked': m.itemsProblemUnlinked,
-  'link-field-optional': m.itemsProblemLinkOptional,
   'binding-orphan': m.itemsProblemBindingOrphan,
   'stages-required': m.itemsProblemStagesRequired,
   'stage-unset': m.itemsProblemStageUnset,
@@ -111,8 +120,10 @@ export const boundsWords = (
             : max !== undefined
               ? format(m.itemsRangeMax, { max })
               : ''
-      const scale = format(m.itemsScaleNote, { scale: held[MAX_SCALE] })
-      return range === '' ? scale : listJoin([range, scale])
+      const scale = held[MAX_SCALE]
+      return range === ''
+        ? format(m.itemsScaleNote, { scale })
+        : format(m.itemsRangeWithScale, { range, scale })
     }
     case 'text': {
       const held = schema as { minLength?: number; maxLength?: number }
@@ -127,10 +138,11 @@ export const boundsWords = (
     }
     case 'choice': {
       const choice = schema as ChoiceSchema
-      return listJoin(choice.enum.map((value) => choiceLabel(choice, value, locale)))
+      return named(choice.enum.map((value) => choiceLabel(choice, value, locale)), format)
     }
+    // a yes or no has no bounds to speak of: the kind is the whole sentence
     case 'boolean':
-      return listJoin([format(m.itemsYes), format(m.itemsNo)])
+      return ''
     case 'date':
       return format(m.itemsAnyValue)
   }
@@ -164,23 +176,39 @@ export const fieldBoundsWords = (
               ? format(m.itemsRangeMax, { max })
               : ''
       if (field.type === 'integer') return range === '' ? format(m.itemsAnyValue) : range
-      const scale = format(m.itemsScaleNote, { scale: Number(field.maxScale) >= 0 ? Number(field.maxScale) : 2 })
-      return range === '' ? scale : listJoin([range, scale])
+      const scale = Number(field.maxScale) >= 0 ? Number(field.maxScale) : 2
+      return range === ''
+        ? format(m.itemsScaleNote, { scale })
+        : format(m.itemsRangeWithScale, { range, scale })
     }
     case 'choice':
-      return listJoin(
+      return named(
         field.options.filter((one) => one.enabled).map((one) => one.label.trim() || one.value),
+        format,
       )
     case 'boolean':
-      return listJoin([format(m.itemsYes), format(m.itemsNo)])
+      return ''
     case 'date': {
       const min = field.min.trim()
       const max = field.max.trim()
       if (min !== '' && max !== '') return format(m.itemsLimitDates, { from: min, until: max })
       return format(m.itemsAnyValue)
     }
-    case 'attachment':
-      return format(m.itemsLimitFiles, { count: Number(field.maxCount) > 0 ? Number(field.maxCount) : 1 })
+    case 'attachment': {
+      const count = Number(field.maxCount) > 0 ? Number(field.maxCount) : 1
+      const kinds = kindsOf(
+        field.accept
+          .split(',')
+          .map((token) => token.trim())
+          .filter((token) => token !== ''),
+      )
+        .picked.map((id) => FILE_KINDS.find((kind) => kind.id === id))
+        .filter((kind) => kind !== undefined)
+        .map((kind) => format(kind.name))
+      return kinds.length === 0
+        ? format(m.itemsLimitFiles, { count })
+        : format(m.itemsFilesWithKinds, { count, kinds: named(kinds, format) })
+    }
   }
 }
 

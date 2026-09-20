@@ -24,6 +24,7 @@ export interface BindableFormulaVersion {
   readonly versionId: string
   readonly functionId: string
   readonly functionName: string
+  readonly functionDescription: string | null
   readonly versionNo: number
   readonly releaseName: string | null
   readonly publishedAt: Date | string
@@ -108,6 +109,7 @@ interface CandidateRow {
   readonly versionId: string
   readonly functionId: string
   readonly functionName: string
+  readonly functionDescription: string | null
   readonly versionNo: number
   readonly releaseName: string | null
   readonly publishedAt: Date | string
@@ -120,6 +122,7 @@ const toBindable = (row: CandidateRow): BindableFormulaVersion => ({
   versionId: row.versionId,
   functionId: row.functionId,
   functionName: row.functionName,
+  functionDescription: row.functionDescription ?? null,
   versionNo: Number(row.versionNo),
   releaseName: row.releaseName ?? null,
   publishedAt: row.publishedAt,
@@ -147,6 +150,7 @@ export const make = Effect.fn('BindableFormulaCatalog.make')(function* () {
                 'v.id as versionId',
                 'v.functionId as functionId',
                 'f.name as functionName',
+                'f.description as functionDescription',
                 'v.versionNo as versionNo',
                 'v.releaseName as releaseName',
                 'v.publishedAt as publishedAt',
@@ -215,6 +219,7 @@ export const make = Effect.fn('BindableFormulaCatalog.make')(function* () {
                 'v.id as versionId',
                 'v.functionId as functionId',
                 'f.name as functionName',
+                'f.description as functionDescription',
                 'v.versionNo as versionNo',
                 'v.releaseName as releaseName',
                 'v.publishedAt as publishedAt',
@@ -268,12 +273,12 @@ export const make = Effect.fn('BindableFormulaCatalog.make')(function* () {
           ),
         ).pipe(Effect.orDie)
         if (version === undefined) return yield* refuse('version-not-found')
-        const found = version as unknown as Omit<CandidateRow, 'functionName'>
+        const found = version as unknown as Omit<CandidateRow, 'functionName' | 'functionDescription'>
         const fn = yield* database(
           db.query((k) =>
             k
               .selectFrom('FormulaFunction')
-              .select(['id', 'name', 'archivedAt'])
+              .select(['id', 'name', 'description', 'archivedAt'])
               .where('tenantId', '=', tenantId)
               .where('id', '=', found.functionId)
               .forShare()
@@ -285,9 +290,17 @@ export const make = Effect.fn('BindableFormulaCatalog.make')(function* () {
           // broken invariant, not a state this catalog explains
           return yield* Effect.die(new Error('a formula version outlived its function'))
         }
-        const holder = fn as unknown as { name: string; archivedAt: unknown }
+        const holder = fn as unknown as {
+          name: string
+          description: string | null
+          archivedAt: unknown
+        }
         if (holder.archivedAt !== null) return yield* refuse('function-archived')
-        return toBindable({ ...found, functionName: holder.name })
+        return toBindable({
+          ...found,
+          functionName: holder.name,
+          functionDescription: holder.description ?? null,
+        })
       }),
   })
 })

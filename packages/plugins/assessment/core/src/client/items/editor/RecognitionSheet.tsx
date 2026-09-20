@@ -150,7 +150,9 @@ export function RecognitionSheet({
         <p {...stylex.props(styles.hint)}>
           {format(m.itemsLinkExistingHint, {
             name: title,
-            type: listJoin([kindWords(admitted, format), boundsWords(admitted, locale, format, listJoin)]),
+            type: [kindWords(admitted, format), boundsWords(admitted, locale, format, listJoin)]
+              .filter((one) => one !== '')
+              .join(format(m.listSeparator)),
           })}
         </p>
         {draft.fields.length === 0 ? (
@@ -243,7 +245,7 @@ export function RecognitionSheet({
       testId="recognition-sheet"
     >
       <div {...stylex.props(styles.group)}>
-        <Field label={format(m.itemsName)} required>
+        <Field label={format(m.itemsName)}>
           {(id) => (
             <Input
               id={id}
@@ -384,7 +386,7 @@ export function RangeEditor({
               }
             />
             <Input
-              className={stylex.props(styles.optionInput).className}
+              wrapperXstyle={styles.optionInput}
               value={option.label}
               disabled={!option.enabled}
               aria-label={choiceLabel(source, option.value, locale)}

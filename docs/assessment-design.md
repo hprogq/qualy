@@ -1584,3 +1584,7 @@ Entry。批量撤销沿这些已物化的记录进行，**绝不按 target 说�
 六、**公式发布门**：每个参数必须有 title、每个选项必须有 label，且默认语言下互不重复（`parameter-title-missing`、`parameter-title-duplicate`、`choice-label-missing`、`choice-label-duplicate`）。
 
 七、**与设计稿的已知偏离**（三处，均已实现为本条所述）：① direct 模式的 reviewPolicy 是 `{mode:'none'}`，服务端不接受任何环节，记录与审核页因此不显示复核流程（设计稿写"只留复核流程"）；② 计分方式卡片里的"更换公式"实现为计算器选择器加各计算器自己的编辑器槽位，公式名与版本由 formula 插件的编辑器展示，core 不读公式名；③ "取消勾选已被认定结果使用的选项"的前置拦截（设计稿 4g 第一个对话框）前端没有计数数据源，改为保存时由服务端拒绝并翻译展示。
+
+**32.80 认定预览：审核人填写认定值时即按决定路径判定并算分**（2026-09-20，用户裁决）。审核通过对话框在认定值每次变化后（停顿约 0.4 秒）调用 `POST /assessment/review/instances/{instanceId}/determination-previews`，服务端以**与 decideReview 完全相同的顺序**回答：契约对值的问题（`issues`，含 `missing`/`unknown`）、公式对这组值的拒绝（`refusal`，公式自己的话）、或算出的分值（`amount`，按题目当前版本的计划评估）。预览只读、不写任何行、不计入 settlement 指标；只有能对该轮作出决定的人得到回答，其余人得到 `ASSESSMENT_REVIEW_NOT_FOUND`。对话框同时把参评人的申报内容（选项按标签、布尔按是/否、附件按文件）放在认定表单左侧；服务端提交时仍照常判定，预览不是提交的授权。
+
+**32.81 参评填报与审核建议一律使用产品自己的控件**（2026-09-20）。EvidenceForm 的选择、布尔、日期字段与驳回建议表的同类字段改用 `Choice`/`DatePicker`（日期带材料窗口与字段自身边界的交集为可选范围）；可选的选择/布尔字段以"未填写"作为一个选项回到未作答，`UNANSWERED` 哨兵永不进入 payload。审核页申报内容列按表单自己的词展示值（`displayValueOf`），不再显示 `provincial` 之类的稳定值。

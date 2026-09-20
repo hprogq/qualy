@@ -84,12 +84,13 @@ export function FormDialog({
   title: ReactNode
   description?: ReactNode
   /**
-   * How much room the task needs. `wide` is for a form that has something to
+   * How much room the task needs. `medium` is for a grid of choices that
+   * wants three across. `wide` is for a form that has something to
    * say beside it - the terms it is answering, what was already answered -
    * which at the default width would sit under the form instead of next to
    * it and stop being context.
    */
-  size?: 'default' | 'wide'
+  size?: 'default' | 'medium' | 'wide'
   /**
    * Open with the focus resting on the dialog itself rather than on its
    * first control. For a dialog whose first control is a choice made by
@@ -110,7 +111,7 @@ export function FormDialog({
           a dialog without a footer simply leaves the last one empty. */}
       <DialogContent
         restfulFocus={restfulFocus}
-        size={size === 'wide' ? '56rem' : '32rem'}
+        size={size === 'wide' ? '56rem' : size === 'medium' ? '35rem' : '32rem'}
         className={stylex.props(styles.formShell).className}
       >
         <DialogHeader>

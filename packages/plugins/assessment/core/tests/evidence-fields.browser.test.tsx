@@ -174,10 +174,8 @@ describe('filing typed evidence', () => {
     await startFiling()
     const { userEvent } = await import('vitest/browser')
     // the screen offers the words; the wire carries the value
-    await userEvent.selectOptions(
-      page.getByLabelText('赛事级别', { exact: false }).element(),
-      '省部级',
-    )
+    await page.getByLabelText('赛事级别', { exact: false }).click()
+    await page.getByRole('option', { name: '省部级' }).click()
     await userEvent.fill(page.getByLabelText('获奖序位', { exact: false }).element(), '2')
     await userEvent.fill(page.getByLabelText('训练时长', { exact: false }).element(), '3.50')
     await page.getByRole('button', { name: '存为草稿', exact: false }).click()
@@ -192,10 +190,8 @@ describe('filing typed evidence', () => {
     open({ createEntry: created as never })
     await startFiling()
     const { userEvent } = await import('vitest/browser')
-    await userEvent.selectOptions(
-      page.getByLabelText('赛事级别', { exact: false }).element(),
-      '国家级',
-    )
+    await page.getByLabelText('赛事级别', { exact: false }).click()
+    await page.getByRole('option', { name: '国家级' }).click()
     await userEvent.fill(page.getByLabelText('获奖序位', { exact: false }).element(), '2')
     // the optional decimal holds a draft no schema admits: the door must
     // shut rather than let the typo file as "left blank"

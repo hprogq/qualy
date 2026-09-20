@@ -29,7 +29,7 @@ const styles = stylex.create({
   },
   triggerPending: { color: tokens.warningForeground },
   triggerOk: { color: tokens.mutedForeground, cursor: 'default' },
-  panel: { width: 400, padding: 0 },
+  panel: { padding: 0 },
   head: {
     display: 'flex',
     alignItems: 'center',
@@ -50,7 +50,7 @@ const styles = stylex.create({
     gap: 12,
     minHeight: 52,
     paddingInline: 16,
-    paddingBlock: 8,
+    paddingBlock: 6,
     borderBottomWidth: { default: 1, ':last-child': 0 },
     borderBottomStyle: 'solid',
     borderBottomColor: tokens.divider,
@@ -65,8 +65,15 @@ const styles = stylex.create({
     cursor: 'pointer',
   },
   words: { display: 'flex', minWidth: 0, flexGrow: 1, flexDirection: 'column', gap: 2 },
-  subject: { fontSize: 13.5, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  reason: { fontSize: 12, color: tokens.mutedForeground },
+  subject: {
+    fontSize: 13.5,
+    lineHeight: 1.3,
+    fontWeight: 500,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  reason: { fontSize: 12, lineHeight: 1.3, color: tokens.mutedForeground },
   area: { fontSize: 12, color: tokens.mutedForeground, whiteSpace: 'nowrap' },
   icon13: { width: 13, height: 13 },
   icon14: { width: 14, height: 14, color: tokens.mutedForeground },
@@ -103,7 +110,7 @@ export function PendingList({
           <ChevronDownIcon aria-hidden {...stylex.props(styles.icon13)} />
         </button>
       </PopoverTrigger>
-      <PopoverContent xstyle={styles.panel}>
+      <PopoverContent width={440} xstyle={styles.panel}>
         <div {...stylex.props(styles.head)}>
           <Dot tone="pending" />
           <span {...stylex.props(styles.headTitle)}>

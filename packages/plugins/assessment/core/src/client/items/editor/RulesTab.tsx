@@ -21,6 +21,7 @@ import type { StageDraft } from '../StageSheet.tsx'
 import { countedEntries, type Folding } from '../structure.ts'
 import { EditorSection } from './Rows.tsx'
 import { foldingOf, type Draft } from './model.ts'
+import { sentences } from './words.ts'
 
 // How many records one person may hold, how they fold into a score, and the
 // steps a submission walks. The chain is a list read top to bottom, one step
@@ -32,6 +33,7 @@ const styles = stylex.create({
   w208: { width: 208 },
   w112: { width: 112 },
   w240: { width: 240 },
+  w320: { width: 320 },
   w96: { width: 96 },
   fullWidth: { width: '100%' },
   inlineRow: { display: 'flex', alignItems: 'center', gap: 10 },
@@ -44,20 +46,7 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
   },
   tabular: { fontVariantNumeric: 'tabular-nums' },
-  band: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 14,
-    borderRadius: tokens.radiusLg,
-    backgroundColor: tokens.surfaceMuted,
-    paddingInline: 14,
-    paddingBlock: 12,
-  },
-  bandCell: { display: 'flex', flexShrink: 0, flexDirection: 'column', gap: 2 },
-  bandLabel: { fontSize: 12, whiteSpace: 'nowrap', color: tokens.mutedForeground },
-  bandValue: { fontSize: 16, fontWeight: 600, fontVariantNumeric: 'tabular-nums' },
-  divider: { height: 28, width: 1, backgroundColor: tokens.border },
-  prose: { fontSize: 12, lineHeight: 1.625, color: tokens.mutedForeground },
+  prose: { margin: 0, fontSize: 13, lineHeight: 1.6, color: tokens.mutedForeground },
   note: { margin: 0, fontSize: 13, color: tokens.mutedForeground },
   chain: {
     display: 'flex',
@@ -90,6 +79,8 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
   },
   startDot: { width: 6, height: 6, borderRadius: '9999px', backgroundColor: tokens.mutedForeground },
+  endWords: { display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0, flexWrap: 'wrap' },
+  endName: { fontSize: 13, fontWeight: 500, color: tokens.foreground },
   gap: {
     display: 'flex',
     alignItems: 'center',
@@ -163,7 +154,11 @@ const styles = stylex.create({
   coverageOk: { fontSize: 12, color: tokens.mutedForeground },
   coverageBad: { fontSize: 12, color: tokens.danger },
   stepControls: { display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 },
-  mutedControl: { color: tokens.mutedForeground },
+  mutedControl: {
+    color: tokens.mutedForeground,
+    backgroundColor: { default: null, ':disabled': 'transparent' },
+    opacity: { default: null, ':disabled': 0.35 },
+  },
   inlineFlex: { display: 'inline-flex' },
   icon12: { width: 12, height: 12 },
 })
@@ -210,8 +205,7 @@ export function RulesTab({
                 <div {...stylex.props(styles.inlineRow)}>
                   <Input
                     id={id}
-                    type="number"
-                    min={1}
+                    inputMode="numeric"
                     className={stylex.props(styles.w96, styles.tabular).className}
                     disabled={entries === null}
                     value={draft.maxEntries}
@@ -228,7 +222,7 @@ export function RulesTab({
               )}
             </Field>
           </div>
-          <div {...stylex.props(styles.w208)}>
+          <div {...stylex.props(styles.w320)}>
             <Field label={format(m.itemsFolding)} hint={format(m.itemsFoldingHint)}>
               {(id) => (
                 <Choice
@@ -335,7 +329,7 @@ function ScoringSummary({
   method: { ref: string; label: UiText | null }
   placement: Placement
 }) {
-  const { format, formatText } = useI18n()
+  const { format, formatText, locale } = useI18n()
   const perEntryAmount = method.ref === 'fixed@1'
   const methodName =
     method.label === null ? format(m.itemsScoringMethodFixed) : formatText(method.label)
@@ -346,45 +340,36 @@ function ScoringSummary({
         : format(m.itemsCeilingSectionCapped, { name: section.name, value: trimAmount(section.cap) }),
     )
     .join(format(m.listSeparator))
+  const value = trimAmount(each.trim())
+  const how = !perEntryAmount
+    ? null
+    : folding.rule === 'max'
+      ? format(m.itemsCeilingHowMax, { value })
+      : folding.rule === 'top-n'
+        ? format(m.itemsCeilingHowTopN, { value, count: counted ?? folding.n })
+        : counted === null
+          ? format(m.itemsCeilingHowAny, { value })
+          : format(m.itemsCeilingHow, { value, count: counted })
+  const line = !perEntryAmount
+    ? format(m.itemsCeilingLineRule, { name: methodName })
+    : ceiling === null
+      ? format(m.itemsCeilingLineOpen, { how })
+      : format(m.itemsCeilingLine, { how, value: ceiling })
   return (
-    <div {...stylex.props(styles.band)}>
-      <div {...stylex.props(styles.bandCell)}>
-        <p {...stylex.props(styles.bandLabel)}>{format(m.itemsCeiling)}</p>
-        <p
-          {...stylex.props(styles.bandValue)}
-          data-testid="item-ceiling"
-          data-ceiling={!perEntryAmount ? 'by-rule' : (ceiling ?? 'unlimited')}
-        >
-          {!perEntryAmount
-            ? format(m.itemsCeilingByRule)
-            : ceiling === null
-              ? format(m.structureUnlimited)
-              : ceiling}
-        </p>
-      </div>
-      <div aria-hidden {...stylex.props(styles.divider)} />
-      <p {...stylex.props(styles.prose)}>
-        {!perEntryAmount
-          ? format(m.itemsCeilingHowRule, { name: methodName })
-          : folding.rule === 'max'
-            ? format(m.itemsCeilingHowMax, { value: trimAmount(each.trim()) })
-            : folding.rule === 'top-n'
-              ? format(m.itemsCeilingHowTopN, { value: trimAmount(each.trim()), count: counted ?? folding.n })
-              : counted === null
-                ? format(m.itemsCeilingHowAny)
-                : format(m.itemsCeilingHow, { value: trimAmount(each.trim()), count: counted })}
-        {` ${format(m.itemsCeilingSource, { name: methodName })}`}
-        {chain !== '' && ` ${format(m.itemsCeilingNote, { chain })}`}
-      </p>
-    </div>
+    <p
+      {...stylex.props(styles.prose)}
+      data-testid="item-ceiling"
+      data-ceiling={!perEntryAmount ? 'by-rule' : (ceiling ?? 'unlimited')}
+    >
+      {sentences([line, chain === '' ? '' : format(m.itemsCeilingNote, { chain })], locale)}
+    </p>
   )
 }
 
 /**
  * One route, read top to bottom: where a submission enters, every step it
- * passes, where it leaves. The place to add a step sits between any two,
- * always on show: somebody who does not yet know where steps come from
- * cannot know where to hover.
+ * passes, where it leaves. Steps are added at the end and moved with the
+ * arrows: one place to press, always on show.
  */
 function StepList({
   batchId,
@@ -413,15 +398,15 @@ function StepList({
         <span {...stylex.props(styles.endMark)}>
           <span aria-hidden {...stylex.props(styles.startDot)} />
         </span>
-        <span>
-          {format(chain === 'normal' ? m.itemsFlowSubmit : m.itemsEscalated)}
-          {' '}
-          {format(chain === 'normal' ? m.itemsFlowSubmitBy : m.itemsEscalationBy)}
+        <span {...stylex.props(styles.endWords)}>
+          <span {...stylex.props(styles.endName)}>
+            {format(chain === 'normal' ? m.itemsFlowSubmit : m.itemsEscalated)}
+          </span>
+          <span>{format(chain === 'normal' ? m.itemsFlowSubmitBy : m.itemsEscalationBy)}</span>
         </span>
       </div>
       {steps.map((step, index) => (
         <div key={step.key}>
-          <Gap label={addLabel} onAdd={() => onAdd(index)} />
           <StepRow
             batchId={batchId}
             stage={step}
@@ -441,10 +426,11 @@ function StepList({
         <span {...stylex.props(styles.endMark)}>
           <CheckIcon aria-hidden {...stylex.props(styles.icon12)} />
         </span>
-        <span>
-          {format(chain === 'normal' ? m.itemsFlowDone : m.itemsEscalationSettled)}
-          {' '}
-          {format(chain === 'normal' ? m.itemsFlowDoneSub : m.itemsEscalationSettledSub)}
+        <span {...stylex.props(styles.endWords)}>
+          <span {...stylex.props(styles.endName)}>
+            {format(chain === 'normal' ? m.itemsFlowDone : m.itemsEscalationSettled)}
+          </span>
+          <span>{format(chain === 'normal' ? m.itemsFlowDoneSub : m.itemsEscalationSettledSub)}</span>
         </span>
       </div>
     </div>
@@ -502,7 +488,7 @@ function StepRow({
       <div {...stylex.props(styles.stepBody)}>
         <button
           type="button"
-          {...stylex.props(styles.stepName, (!named || !settled) && styles.stepNameBad)}
+          {...stylex.props(styles.stepName, !named && styles.stepNameBad)}
           onClick={onOpen}
         >
           {named ? stage.label.trim() : format(m.itemsStageUnnamed)}
@@ -511,7 +497,7 @@ function StepRow({
         {settled ? (
           <StageCoverage batchId={batchId} stage={stage} />
         ) : (
-          <p {...stylex.props(styles.coverageOk)}>{format(m.itemsStageUnsetHint)}</p>
+          <p {...stylex.props(styles.coverageBad)}>{format(m.itemsStageUnsetHint)}</p>
         )}
       </div>
       <span {...stylex.props(styles.stepControls)}>

@@ -6,7 +6,10 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Field } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@qualy/ui/collapsible'
 import { Input } from '@qualy/ui/input'
+import { DatePicker } from '@qualy/ui/date-picker'
+import { usePickerWords } from '@qualy/web-i18n/picker-words'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { acceptOf, FILE_KINDS, kindsOf, unwritableTokens } from '../../file-kinds.ts'
 import { assessmentMessages as m } from '../../i18n.ts'
@@ -22,6 +25,26 @@ import { TYPE_LABEL } from './words.ts'
 const styles = stylex.create({
   group: { display: 'flex', flexDirection: 'column', gap: 12 },
   pair: { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 },
+  more: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 4,
+    padding: 0,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+    fontFamily: 'inherit',
+    fontSize: 12.5,
+    color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
+    cursor: 'pointer',
+  },
+  moreGlyph: {
+    width: 12,
+    height: 12,
+    transitionProperty: 'transform',
+    transitionDuration: '120ms',
+  },
+  moreGlyphOpen: { transform: 'rotate(90deg)' },
+  moreBody: { paddingTop: 10 },
   checkLabel: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5 },
   quiet: { fontSize: 12, color: tokens.mutedForeground },
   options: { display: 'flex', flexDirection: 'column', gap: 6 },
@@ -160,7 +183,7 @@ export function FieldSettingsForm({
   return (
     <>
       <div {...stylex.props(styles.group)}>
-        <Field label={format(m.itemsName)} required>
+        <Field label={format(m.itemsName)}>
           {(id) => (
             <Input
               id={id}
@@ -247,7 +270,11 @@ function TypeSettings({
   onChange: (next: FieldDraft) => void
   onDisableOption?: ((optionId: string) => void) | undefined
 }) {
-  const { format } = useI18n()
+  const { format, locale } = useI18n()
+  const words = usePickerWords()
+  // the pattern is the one setting most fields never need: folded until it
+  // holds something, and remembered open once it has been looked at
+  const [more, setMore] = useState(field.pattern.trim() !== '')
   const patch = (next: Partial<FieldDraft>) => onChange({ ...field, ...next })
   switch (field.type) {
     case 'text':
@@ -265,9 +292,28 @@ function TypeSettings({
               )}
             </Field>
           </div>
-          <Field label={format(m.itemsFieldPattern)} hint={format(m.itemsFieldPatternHint)}>
-            {(id) => <Input id={id} value={field.pattern} onChange={(event) => patch({ pattern: event.target.value })} />}
-          </Field>
+          <Collapsible open={more} onOpenChange={setMore}>
+            <CollapsibleTrigger {...stylex.props(styles.more)}>
+              <ChevronRightIcon
+                aria-hidden
+                {...stylex.props(styles.moreGlyph, more && styles.moreGlyphOpen)}
+              />
+              {format(m.itemsFieldAdvanced)}
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div {...stylex.props(styles.moreBody)}>
+                <Field label={format(m.itemsFieldPattern)} hint={format(m.itemsFieldPatternHint)}>
+                  {(id) => (
+                    <Input
+                      id={id}
+                      value={field.pattern}
+                      onChange={(event) => patch({ pattern: event.target.value })}
+                    />
+                  )}
+                </Field>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
         </div>
       )
     case 'integer':
@@ -311,25 +357,31 @@ function TypeSettings({
           <div {...stylex.props(styles.pair)}>
             <Field label={format(m.itemsFieldMinDate)}>
               {(id) => (
-                <Input
+                <DatePicker
                   id={id}
-                  type="date"
+                  value={field.min === '' ? null : field.min}
                   min={materialRange.start}
                   max={materialRange.end}
-                  value={field.min}
-                  onChange={(event) => patch({ min: event.target.value })}
+                  clearLabel={words.clear}
+                  localeTag={locale}
+                  monthLabel={words.month}
+                  yearLabel={words.year}
+                  onChange={(next) => patch({ min: next ?? '' })}
                 />
               )}
             </Field>
             <Field label={format(m.itemsFieldMaxDate)}>
               {(id) => (
-                <Input
+                <DatePicker
                   id={id}
-                  type="date"
+                  value={field.max === '' ? null : field.max}
                   min={materialRange.start}
                   max={materialRange.end}
-                  value={field.max}
-                  onChange={(event) => patch({ max: event.target.value })}
+                  clearLabel={words.clear}
+                  localeTag={locale}
+                  monthLabel={words.month}
+                  yearLabel={words.year}
+                  onChange={(next) => patch({ max: next ?? '' })}
                 />
               )}
             </Field>
@@ -459,7 +511,7 @@ export function OptionsEditor({
                 <GripVerticalIcon {...stylex.props(styles.icon12)} />
               </span>
               <Input
-                className={stylex.props(styles.optionInput).className}
+                wrapperXstyle={styles.optionInput}
                 value={option.label}
                 placeholder={format(m.itemsOptionPlaceholder)}
                 aria-label={format(m.itemsOptionPlaceholder)}

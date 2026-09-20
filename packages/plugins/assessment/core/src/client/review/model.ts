@@ -280,6 +280,8 @@ export const idsOf = (raw: unknown): readonly string[] =>
 export const valuesOf = (
   formConfig: unknown,
   payload: unknown,
+  /** the words for a yes and a no; without them a boolean prints as nothing */
+  words?: { readonly yes: string; readonly no: string },
 ): readonly { key: string; label: string; value: string; ids: readonly string[] }[] =>
   fieldsOf(formConfig).map((field) => {
     const record = (payload ?? {}) as Record<string, unknown>
@@ -288,7 +290,7 @@ export const valuesOf = (
       key: field.key,
       label: field.label,
       // through the field's own words: a choice reads as its label
-      value: displayValueOf(field, raw) || valueOf(raw),
+      value: displayValueOf(field, raw, words) || valueOf(raw),
       ids: field.type === 'attachment' ? idsOf(raw) : [],
     }
   })

@@ -2,15 +2,17 @@ import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { ChevronRightIcon, InfoIcon, PlusIcon } from 'lucide-react'
 import { UiSlot } from '@qualy/web-runtime'
-import { useI18n, useList } from '@qualy/web-i18n'
+import { useI18n } from '@qualy/web-i18n'
+import { commonMessages } from '@qualy/web-i18n/messages'
 import { usePickerWords } from '@qualy/web-i18n/picker-words'
-import { inputOrder, type AtomicSchema } from '@qualy/value-schema'
+import { inputOrder, kindOf, type AtomicSchema } from '@qualy/value-schema'
 import { AtomicValueField } from '@qualy/web-value-form/InputValueForm'
 import { draftFromValue, type FieldDraft as ValueDraft } from '@qualy/web-value-form/model'
 import type { UiText } from '@qualy/i18n-contract'
-import { Feedback } from '@qualy/ui/admin'
+import { Feedback, Field, FormDialog } from '@qualy/ui/admin'
+import { Button } from '@qualy/ui/button'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { calculatorEditorSlot } from '../../../surfaces.ts'
+import { calculatorEditorSlot, calculatorSummarySlot } from '../../../surfaces.ts'
 import { assessmentMessages as m } from '../../i18n.ts'
 import { trimAmount } from '../../entry/model.ts'
 import { Choice } from '../Choice.tsx'
@@ -38,7 +40,7 @@ import {
   type Draft,
   type EditorProblem,
 } from './model.ts'
-import { TYPE_LABEL, boundsWords, fieldBoundsWords, kindWords } from './words.ts'
+import { TYPE_LABEL, boundsWords, fieldBoundsWords, kindWords, sentences } from './words.ts'
 
 // The arithmetic and the form it is fed from, as three lists under one
 // method: what the formula takes, what a reviewer determines, what a
@@ -49,27 +51,36 @@ const styles = stylex.create({
   stack: { display: 'flex', flexDirection: 'column', gap: 32 },
   methodCard: {
     display: 'flex',
-    flexDirection: 'column',
-    gap: 12,
+    alignItems: 'center',
+    gap: 14,
+    minWidth: 0,
     paddingInline: 16,
     paddingBlock: 12,
     borderRadius: 12,
     backgroundColor: tokens.background,
     boxShadow: `0 0 0 1px ${tokens.border}, 0 1px 2px rgb(0 0 0 / 0.04)`,
   },
-  methodRow: { display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 },
-  methodName: { flexGrow: 1, minWidth: 0, fontSize: 14, fontWeight: 500 },
-  methodPick: { width: 208, flexShrink: 0 },
+  methodWords: { display: 'flex', minWidth: 0, flexGrow: 1, flexDirection: 'column', gap: 3 },
+  methodName: { fontSize: 14, fontWeight: 500 },
+  methodNote: { fontSize: 12, color: tokens.mutedForeground },
+  methodAmount: { paddingTop: 6 },
+  methodChange: { flexShrink: 0 },
   status: { fontSize: 13, color: tokens.mutedForeground },
+  dialogStack: { display: 'flex', flexDirection: 'column', gap: 16 },
+  dialogFooter: { display: 'flex', justifyContent: 'flex-end', gap: 8 },
   sourceCell: { display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flexWrap: 'wrap' },
-  sourcePick: { width: 132, flexShrink: 0 },
+  sourcePick: { width: 120, height: 32, flexShrink: 0 },
+  sourcePickWide: { width: 132, height: 32, flexShrink: 0 },
   sourcePickUnset: {
-    width: 132,
+    width: 120,
+    height: 32,
     flexShrink: 0,
-    boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${tokens.warning} 70%, transparent)`,
     borderRadius: tokens.radiusMd,
+    boxShadow: `0 0 0 1px color-mix(in oklab, ${tokens.warning} 70%, transparent)`,
   },
-  valueSeat: { minWidth: 0, flexGrow: 1, maxWidth: 220 },
+  valueSeat: { width: 88, minWidth: 0 },
+  valueSeatWide: { width: 132, minWidth: 0 },
+  fullWidth: { width: '100%' },
   summary: {
     display: 'flex',
     flexDirection: 'column',
@@ -115,6 +126,18 @@ export type ContractState =
   | { kind: 'unavailable' }
   | { kind: 'ready' }
 
+/** what a value takes, said as kind then bounds; the bounds may be nothing */
+function Takes({ schema, locale }: { schema: AtomicSchema; locale: string }) {
+  const { format } = useI18n()
+  const bounds = boundsWords(schema, locale, format, () => '')
+  return (
+    <span {...stylex.props(rowWords.pair)}>
+      <span>{kindWords(schema, format)}</span>
+      {bounds !== '' && <span>{bounds}</span>}
+    </span>
+  )
+}
+
 export function ScoringTab({
   draft,
   batchId,
@@ -125,8 +148,7 @@ export function ScoringTab({
   chosenCalculator,
   placement,
   problems,
-  onCalculatorPicked,
-  onCalculatorChange,
+  onCalculatorApply,
   onSource,
   onConstant,
   onOpenRecognition,
@@ -144,8 +166,8 @@ export function ScoringTab({
   chosenCalculator: { ref: string; config: unknown }
   placement: Placement
   problems: readonly EditorProblem[]
-  onCalculatorPicked: (ref: string) => void
-  onCalculatorChange: (next: { ref: string; config: unknown }) => void
+  /** the arithmetic chosen and configured, in one act */
+  onCalculatorApply: (next: { ref: string; config: unknown }) => void
   /** what feeds a parameter: a determination, a fixed value, or the form itself */
   onSource: (parameter: string, source: 'recognition' | 'constant' | 'filed') => void
   onConstant: (parameter: string, draft: ValueDraft) => void
@@ -156,67 +178,96 @@ export function ScoringTab({
   onOpenSummary: () => void
 }) {
   const { format, formatText, locale } = useI18n()
-  const listJoin = useList()
   const words = usePickerWords()
+  const [choosing, setChoosing] = useState(false)
   const automatic = draft.mode === 'automatic'
   const review = draft.mode === 'review'
   const versioned = draft.scoring.language === 'v2'
+  const fixed = chosenCalculator.ref === 'fixed@1'
   const parameters = contract === null ? [] : inputOrder(contract.inputSchema)
   const chosenLabel = calculators.find((one) => one.ref === chosenCalculator.ref)?.label
   const methodName =
     chosenLabel === undefined ? format(m.itemsCalculatorFixed) : formatText(chosenLabel)
   const problemOf = (parameter: string) =>
     problems.find((one) => one.entity?.kind === 'parameter' && one.entity.parameter === parameter)
+  const slotContext = { batchId, itemId, calculator: chosenCalculator }
 
   return (
     <div {...stylex.props(styles.stack)}>
       <EditorSection title={format(m.itemsScoringMethod)} testId="scoring-method">
-        <div {...stylex.props(styles.methodCard)}>
-          <div {...stylex.props(styles.methodRow)}>
-            <span {...stylex.props(styles.methodName)} data-testid="scoring-method-name">
-              {methodName}
-            </span>
-            {calculators.length > 1 && draft.scoring.language !== 'unsupported' && (
-              <div {...stylex.props(styles.methodPick)}>
-                <Choice
-                  value={chosenCalculator.ref}
-                  options={calculators.map((option) => ({
-                    value: option.ref,
-                    label: formatText(option.label),
-                  }))}
-                  onChange={onCalculatorPicked}
+        {draft.scoring.language === 'unsupported' ? (
+          <Feedback message={format(m.itemsScoringUnsupported)} />
+        ) : (
+          <div {...stylex.props(styles.methodCard)}>
+            {fixed ? (
+              <div {...stylex.props(styles.methodWords)}>
+                <span {...stylex.props(styles.methodName)} data-testid="scoring-method-name">
+                  {methodName}
+                </span>
+                <span {...stylex.props(styles.methodNote)}>{format(m.itemsScoringFixedNote)}</span>
+                {/* the amount is the whole configuration of a fixed method,
+                    so it is edited right here rather than behind a dialog */}
+                <div {...stylex.props(styles.methodAmount)}>
+                  <UiSlot
+                    token={calculatorEditorSlot}
+                    context={{
+                      ...slotContext,
+                      amountPer: automatic ? ('item' as const) : ('entry' as const),
+                      disabled: false,
+                      onChange: onCalculatorApply,
+                    }}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div {...stylex.props(styles.methodWords)} data-testid="scoring-method-name">
+                {/* whoever owns the arithmetic says what it is */}
+                <UiSlot
+                  token={calculatorSummarySlot}
+                  context={slotContext}
+                  fallback={<span {...stylex.props(styles.methodName)}>{methodName}</span>}
                 />
               </div>
             )}
+            {calculators.length > 1 && (
+              <Button
+                variant="outline"
+                size="sm"
+                className={stylex.props(styles.methodChange).className}
+                onClick={() => setChoosing(true)}
+              >
+                {format(m.itemsScoringChange)}
+              </Button>
+            )}
           </div>
-          {draft.scoring.language === 'unsupported' ? (
-            <Feedback message={format(m.itemsScoringUnsupported)} />
-          ) : (
-            <UiSlot
-              token={calculatorEditorSlot}
-              context={{
-                batchId,
-                itemId,
-                calculator: chosenCalculator,
-                amountPer: automatic ? ('item' as const) : ('entry' as const),
-                disabled: false,
-                onChange: onCalculatorChange,
-              }}
-            />
-          )}
-          {versioned && contractState.kind === 'pending' && (
-            <p {...stylex.props(styles.status)} data-testid="contract-pending">
-              {format(m.itemsContractPending)}
-            </p>
-          )}
-          {versioned && contractState.kind === 'refused' && (
-            <Feedback message={format(m.itemsScoringUnreadable)} />
-          )}
-          {versioned && contractState.kind === 'unavailable' && (
-            <Feedback message={format(m.itemsContractRetrying)} />
-          )}
-        </div>
+        )}
+        {versioned && contractState.kind === 'pending' && (
+          <p {...stylex.props(styles.status)} data-testid="contract-pending">
+            {format(m.itemsContractPending)}
+          </p>
+        )}
+        {versioned && contractState.kind === 'refused' && (
+          <Feedback message={format(m.itemsScoringUnreadable)} />
+        )}
+        {versioned && contractState.kind === 'unavailable' && (
+          <Feedback message={format(m.itemsContractRetrying)} />
+        )}
       </EditorSection>
+
+      {choosing && (
+        <ScoringMethodDialog
+          batchId={batchId}
+          itemId={itemId}
+          calculators={calculators}
+          chosen={chosenCalculator}
+          amountPer={automatic ? 'item' : 'entry'}
+          onApply={(next) => {
+            onCalculatorApply(next)
+            setChoosing(false)
+          }}
+          onClose={() => setChoosing(false)}
+        />
+      )}
 
       {versioned && contract !== null && (
         <EditorSection
@@ -235,18 +286,14 @@ export function ScoringTab({
             {parameters.length === 0 && <EmptyRow>{format(m.itemsParametersNone)}</EmptyRow>}
             {parameters.map((parameter) => {
               const schema = parameterSchemaOf(contract, parameter)!
-              const binding = draft.scoring.language === 'v2' ? draft.scoring.bindings[parameter] : undefined
+              const binding =
+                draft.scoring.language === 'v2' ? draft.scoring.bindings[parameter] : undefined
               const problem = problemOf(parameter)
               return (
                 <ListRow
                   key={parameter}
                   name={parameterTitle(contract, parameter, locale)}
-                  takes={
-                    <span {...stylex.props(rowWords.pair)}>
-                      <span>{kindWords(schema, format)}</span>
-                      <span>{boundsWords(schema, locale, format, listJoin)}</span>
-                    </span>
-                  }
+                  takes={<Takes schema={schema} locale={locale} />}
                   third={
                     <ParameterSource
                       parameter={parameter}
@@ -293,11 +340,14 @@ export function ScoringTab({
               const schema = parameterSchemaOf(contract, parameter)!
               const admitted = admittedSchemaOf(recognition, schema)
               const field = draft.fields.find((one) => one.id === recognition.fieldId)
+              const bounds = boundsWords(admitted, locale, format, () => '')
               return (
                 <ListRow
                   key={handle}
-                  name={recognition.label.trim() === '' ? format(m.itemsFieldUnnamed) : recognition.label}
-                  takes={boundsWords(admitted, locale, format, listJoin)}
+                  name={
+                    recognition.label.trim() === '' ? format(m.itemsFieldUnnamed) : recognition.label
+                  }
+                  takes={bounds === '' ? kindWords(admitted, format) : bounds}
                   third={
                     field === undefined ? (
                       <span {...stylex.props(rowWords.quiet)}>{format(m.itemsUnlinkedRow)}</span>
@@ -352,24 +402,95 @@ export function ScoringTab({
         <div {...stylex.props(styles.note)} data-testid="automatic-note">
           <InfoIcon aria-hidden {...stylex.props(styles.noteIcon)} />
           <span>
-            {[
-              format(m.itemsAutomaticNote),
-              chosenCalculator.ref === 'fixed@1' && draft.fixedValue.trim() !== ''
-                ? format(m.itemsAutomaticResult, { value: trimAmount(draft.fixedValue.trim()) })
-                : '',
-              placement.sections[0] !== undefined && placement.sections[0].cap !== null
-                ? format(m.itemsAutomaticCap, {
-                    group: placement.sections[0].name,
-                    cap: trimAmount(placement.sections[0].cap),
-                  })
-                : '',
-            ]
-              .filter((one) => one !== '')
-              .join(' ')}
+            {sentences(
+              [
+                format(m.itemsAutomaticNote),
+                fixed && draft.fixedValue.trim() !== ''
+                  ? format(m.itemsAutomaticResult, { value: trimAmount(draft.fixedValue.trim()) })
+                  : '',
+                placement.sections[0] !== undefined && placement.sections[0].cap !== null
+                  ? format(m.itemsAutomaticCap, {
+                      group: placement.sections[0].name,
+                      cap: trimAmount(placement.sections[0].cap),
+                    })
+                  : '',
+              ],
+              locale,
+            )}
           </span>
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * Choosing what does the arithmetic, and letting its owner configure it,
+ * behind one dialog: the question keeps its current method until the
+ * choice is confirmed, so browsing the list disturbs nothing.
+ */
+function ScoringMethodDialog({
+  batchId,
+  itemId,
+  calculators,
+  chosen,
+  amountPer,
+  onApply,
+  onClose,
+}: {
+  batchId: string
+  itemId: string | null
+  calculators: readonly { ref: string; label: UiText }[]
+  chosen: { ref: string; config: unknown }
+  amountPer: 'entry' | 'item'
+  onApply: (next: { ref: string; config: unknown }) => void
+  onClose: () => void
+}) {
+  const { format, formatText } = useI18n()
+  const [candidate, setCandidate] = useState(chosen)
+  return (
+    <FormDialog
+      open
+      title={format(m.itemsScoringPick)}
+      onClose={onClose}
+      footer={
+        <div {...stylex.props(styles.dialogFooter)}>
+          <Button variant="outline" onClick={onClose}>
+            {format(commonMessages.cancel)}
+          </Button>
+          <Button onClick={() => onApply(candidate)}>{format(m.itemsScoringUse)}</Button>
+        </div>
+      }
+    >
+      <div {...stylex.props(styles.dialogStack)} data-testid="scoring-method-dialog">
+        <Field label={format(m.itemsScoringMethod)}>
+          {(id) => (
+            <Choice
+              id={id}
+              value={candidate.ref}
+              options={calculators.map((option) => ({
+                value: option.ref,
+                label: formatText(option.label),
+              }))}
+              onChange={(ref) => {
+                if (ref !== candidate.ref) setCandidate({ ref, config: {} })
+              }}
+            />
+          )}
+        </Field>
+        <UiSlot
+          token={calculatorEditorSlot}
+          context={{
+            batchId,
+            itemId,
+            calculator: candidate,
+            amountPer,
+            disabled: false,
+            onChange: setCandidate,
+          }}
+        />
+      </div>
+    </FormDialog>
   )
 }
 
@@ -396,19 +517,44 @@ function ParameterSource({
   onConstant: (draft: ValueDraft) => void
 }) {
   const { format } = useI18n()
+  const kind = kindOf(schema)
   const constantSeat =
     binding?.kind === 'constant' ? (
-      <div {...stylex.props(styles.valueSeat)} data-testid="parameter-value">
-        <AtomicValueField
-          hideLabel
-          words={words}
-          schema={schema}
-          name={parameter}
-          draft={binding.draft ?? draftFromValue(schema, binding.value)}
-          locale={locale}
-          label={parameterTitle(null, parameter, locale)}
-          onDraft={onConstant}
-        />
+      <div
+        {...stylex.props(kind === 'text' || kind === 'choice' ? styles.valueSeatWide : styles.valueSeat)}
+        data-testid="parameter-value"
+      >
+        {kind === 'boolean' ? (
+          // a yes or no is chosen, not ticked: an unticked box reads as "no"
+          // for somebody who never reached it
+          <Choice
+            value={
+              (binding.draft ?? binding.value) === true
+                ? 'yes'
+                : (binding.draft ?? binding.value) === false
+                  ? 'no'
+                  : ''
+            }
+            placeholder={words.unanswered}
+            xstyle={styles.fullWidth}
+            options={[
+              { value: 'yes', label: format(m.itemsYes) },
+              { value: 'no', label: format(m.itemsNo) },
+            ]}
+            onChange={(next) => onConstant(next === 'yes')}
+          />
+        ) : (
+          <AtomicValueField
+            hideLabel
+            words={words}
+            schema={schema}
+            name={parameter}
+            draft={binding.draft ?? draftFromValue(schema, binding.value)}
+            locale={locale}
+            label={parameterTitle(null, parameter, locale)}
+            onDraft={onConstant}
+          />
+        )}
       </div>
     ) : null
   if (mode === 'automatic') {
@@ -424,13 +570,26 @@ function ParameterSource({
       </div>
     )
   }
-  const chosen = binding === undefined ? '' : binding.kind === 'constant' ? 'constant' : mode === 'direct' ? 'filed' : 'recognition'
+  const chosen =
+    binding === undefined
+      ? ''
+      : binding.kind === 'constant'
+        ? 'constant'
+        : mode === 'direct'
+          ? 'filed'
+          : 'recognition'
   return (
     <div {...stylex.props(styles.sourceCell)}>
       <Choice
         value={chosen}
         placeholder={format(m.itemsSourceUnset)}
-        xstyle={chosen === '' ? styles.sourcePickUnset : styles.sourcePick}
+        xstyle={
+          chosen === ''
+            ? styles.sourcePickUnset
+            : mode === 'direct'
+              ? styles.sourcePickWide
+              : styles.sourcePick
+        }
         options={[
           mode === 'direct'
             ? { value: 'filed', label: format(m.itemsSourceFiled) }
@@ -460,7 +619,6 @@ function FormRows({
   onReorder: (orderedKeys: readonly string[]) => void
 }) {
   const { format } = useI18n()
-  const listJoin = useList()
   const [held, setHeld] = useState<string | null>(null)
   const [drop, setDrop] = useState<{ key: string; edge: 'before' | 'after' } | null>(null)
   const edgeOf = (event: React.DragEvent) => {
@@ -491,6 +649,10 @@ function FormRows({
             : link.recognition.label.trim() === ''
               ? format(m.itemsFieldUnnamed)
               : link.recognition.label
+        const bounds =
+          admitted === null
+            ? fieldBoundsWords(field, format, () => '')
+            : boundsWords(admitted, locale, format, () => '')
         return (
           <ListRow
             key={field.key}
@@ -507,16 +669,16 @@ function FormRows({
                 <span>
                   {admitted === null ? format(TYPE_LABEL[field.type]) : kindWords(admitted, format)}
                 </span>
-                <span>
-                  {admitted === null
-                    ? fieldBoundsWords(field, format, listJoin)
-                    : boundsWords(admitted, locale, format, listJoin)}
-                </span>
+                {bounds !== '' && <span>{bounds}</span>}
               </span>
             }
             third={
               <span {...stylex.props(styles.requirement)}>
-                {format(field.required ? m.itemsFieldRequired : m.itemsOptional)}
+                {format(
+                  field.required || (link !== undefined && draft.mode === 'direct')
+                    ? m.itemsFieldRequired
+                    : m.itemsOptional,
+                )}
               </span>
             }
             handle={<DragHandle onPress={() => setHeld(field.key)} onRelease={() => setHeld(null)} />}
@@ -581,7 +743,7 @@ function SummaryBlock({
         <Tag>{format(chosen.length > 0 ? m.itemsSummaryCustom : m.itemsSummaryAuto)}</Tag>
         <span {...stylex.props(styles.spacer)} />
         <button type="button" {...stylex.props(styles.linkButton)} onClick={onOpen}>
-          {format(m.itemsSummaryCustom)}
+          {format(chosen.length > 0 ? m.itemsSummaryEdit : m.itemsSummaryCustom)}
           <ChevronRightIcon aria-hidden {...stylex.props(rowWords.icon12)} />
         </button>
       </div>

@@ -170,6 +170,8 @@ describe('a last word the rule sends back', () => {
               handledToday: 0,
             }),
           decideReview: decided,
+          previewDetermination: () =>
+            Effect.succeed({ issues: [], amount: '4.00', refusal: null }),
         },
       } as never),
       routes: [

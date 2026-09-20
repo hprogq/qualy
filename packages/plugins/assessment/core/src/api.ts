@@ -1368,6 +1368,25 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     }).middleware(Authenticated),
   )
   .add(
+    // what a determination would come to, asked while it is being written:
+    // the same judge and the same arithmetic the decision runs, so a screen
+    // can say "3.50" or "the rule refuses this" before anything is staged
+    HttpApiEndpoint.post(
+      'previewDetermination',
+      '/assessment/review/instances/:instanceId/determination-previews',
+      {
+        params: Schema.Struct({ instanceId: uuidInput }),
+        payload: Schema.Struct({ values: configJson }),
+        success: Schema.Struct({
+          issues: Schema.Array(Schema.Struct({ recognitionId: Schema.String, reason: Schema.String })),
+          amount: Schema.NullOr(Schema.String),
+          refusal: Schema.NullOr(Schema.String),
+        }),
+        error: [ReviewNotFound, ScoringUnavailable, BadRequest],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
     HttpApiEndpoint.post('decideReview', '/assessment/review/instances/:instanceId/decisions', {
       params: Schema.Struct({ instanceId: uuidInput }),
       payload: Schema.Struct({

@@ -145,6 +145,7 @@ const open = (fixture: ReturnType<typeof review>, stubs: Record<string, unknown>
         getReviewInstance: () => Effect.succeed({ review: fixture }),
         getEntryHistory: () => Effect.succeed({ revisions: [], events: [], rounds: [] }),
         listReviewInbox: () => Effect.succeed({ items: [], nextCursor: null, handledToday: 0 }),
+        previewDetermination: () => Effect.succeed({ issues: [], amount: '10.00', refusal: null }),
         ...stubs,
       },
     } as never),
@@ -222,7 +223,50 @@ const choiceAt = (form: Element, parameter: string) => {
   }
 }
 
+const previewAt = () => document.querySelector('[data-testid="score-preview"]')
+
 describe('approving with a determination', () => {
+  it('shows the filing beside the form, through the words the form offered', async () => {
+    open(review())
+    await openApprove()
+    const filing = document.querySelector('[data-testid="approve-filing"]')!
+    expect(filing).not.toBeNull()
+    // the option's label is what the student picked; the stable value is
+    // the wire's business, not the reader's
+    expect(filing.textContent).toContain('省部级')
+    expect(filing.textContent).not.toContain('provincial')
+    expect(filing.textContent).toContain('中国机器人大赛')
+  })
+
+  it('says what the determination would score as it is typed, and what the rule refuses', async () => {
+    const preview = vi.fn((request: { payload: { values: Record<string, unknown> } }) =>
+      Effect.succeed(
+        request.payload.values['rec-ordinal'] === 7
+          ? { issues: [], amount: null, refusal: 'only the first 5 are recognised' }
+          : { issues: [], amount: '10.00', refusal: null },
+      ),
+    )
+    open(review(), { previewDetermination: preview as never })
+    await openApprove()
+    const form = document.querySelector('[data-testid="recognition-form"]')!
+    // nothing is asked while a field is still empty
+    expect(previewAt()?.getAttribute('data-preview')).toBe('incomplete')
+    const ordinal = form.querySelector('[data-parameter="rec-ordinal"] input') as HTMLInputElement
+    const { userEvent } = await import('vitest/browser')
+    await userEvent.fill(ordinal, '2')
+    await vi.waitFor(() => expect(previewAt()?.getAttribute('data-preview')).toBe('amount'), {
+      timeout: 4_000,
+    })
+    expect(previewAt()?.getAttribute('data-amount')).toBe('10.00')
+    expect(preview).toHaveBeenCalled()
+    await userEvent.fill(ordinal, '7')
+    await vi.waitFor(() => expect(previewAt()?.getAttribute('data-preview')).toBe('refused'), {
+      timeout: 4_000,
+    })
+    // the rule's sentence is business data the reviewer has to read
+    expect(previewAt()?.textContent).toContain('only the first 5 are recognised')
+  })
+
   it('leaves a fixed question exactly as before: no form, no key on the wire', async () => {
     const decided = stagedDecide()
     open(review({ recognitionForm: null }), { decideReview: decided as never })
