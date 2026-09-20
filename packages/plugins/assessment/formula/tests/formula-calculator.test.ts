@@ -522,10 +522,15 @@ describe.runIf(postgresAvailable)('the formula calculator', () => {
           // it hands back: a stub that crosses each, over the same frozen
           // contract, so the sorting is proven without waiting for a worker
           // to actually wedge
+          const asked = { soft: 0, hard: 0 }
           const timingOut = (phase: 'soft' | 'hard') =>
             formula1.bind.pipe(
               Effect.provideService(Sandbox, {
-                invoke: () => Effect.fail(new SandboxTimeout({ phase })),
+                invoke: () =>
+                  Effect.suspend(() => {
+                    asked[phase] += 1
+                    return Effect.fail(new SandboxTimeout({ phase }))
+                  }),
               } as unknown as Sandbox['Service']),
               authoringOn,
             )
@@ -533,11 +538,13 @@ describe.runIf(postgresAvailable)('the formula calculator', () => {
           const hardly = yield* (yield* timingOut('hard')).prepare(frozen, host)
           const soft = yield* Effect.exit(softly.evaluate({ mode: 'ok', value: '1.00' }))
           const hard = yield* Effect.exit(hardly.evaluate({ mode: 'ok', value: '1.00' }))
-          return { answered, refused, looped, soft, hard }
+          return { answered, refused, looped, soft, hard, asked }
         }),
       ),
     )
     expect(outcome.answered).toBe('7.5')
+    // a starved host is asked once more; a wedged worker is not
+    expect(outcome.asked).toEqual({ soft: 2, hard: 1 })
     const refusal = failureOf(outcome.refused) as CalculatorEvaluationError
     expect(refusal.kind).toBe('refusal')
     expect(refusal.reason).toBe('refused by policy')

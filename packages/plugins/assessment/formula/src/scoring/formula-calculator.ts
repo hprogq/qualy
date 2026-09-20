@@ -378,6 +378,14 @@ export const formula1: CalculatorRegistration<
                   limits: FORMULA_SCORING_LIMITS,
                 })
                 .pipe(
+                  // the soft deadline is wall clock over the whole worker
+                  // envelope, so a starved host crosses it for a healthy
+                  // formula; the program is pure, so asking once more costs
+                  // nothing and a formula that is really slow fails again
+                  Effect.retry({
+                    times: 1,
+                    while: (error) => error._tag === 'SandboxTimeout' && error.phase === 'soft',
+                  }),
                   Effect.mapError(evaluationFailure),
                   Effect.flatMap((answer) => {
                     const read = decodeFormulaEnvelope(answer.output)
