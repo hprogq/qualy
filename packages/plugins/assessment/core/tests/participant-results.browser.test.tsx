@@ -157,6 +157,11 @@ const screen = (
       app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
       assessment: {
         getBatch: () => Effect.succeed({ batch }),
+        // the roster's own doors: this page adds people to the round now
+        previewImport: () => Effect.succeed({ candidates: 0 }),
+        importParticipants: () => Effect.succeed({ added: 0 }),
+        addParticipants: () => Effect.succeed({ added: 0, skipped: 0 }),
+        setParticipantStatus: () => Effect.succeed({ ok: true }),
         listParticipants: () =>
           Effect.succeed({
             items: [participant(), participant({ id: OTHER_ID, displayName: '王君惠' })],

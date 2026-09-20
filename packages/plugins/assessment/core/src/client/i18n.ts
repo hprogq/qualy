@@ -4896,6 +4896,10 @@ const i18n = definePluginMessages({
       id: 'assessment/roster/picker-unavailable',
       defaultMessage: 'Your account does not have permission to browse people.',
     },
+    rosterUnitsResize: {
+      id: 'assessment/roster/units-resize',
+      defaultMessage: 'Resize the unit column',
+    },
     rosterUnits: { id: 'assessment/roster/units', defaultMessage: 'Organization unit' },
     rosterEmpty: {
       id: 'assessment/roster/empty',

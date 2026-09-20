@@ -55,7 +55,6 @@ export default {
   'assessment/nav-group/batch-admin': '管理',
   'assessment/navigation/batches': '全部测评',
   'assessment/navigation/phases': '阶段安排',
-  'assessment/navigation/participants': '参评名单',
   'assessment/navigation/access': '人员权限',
   'assessment/navigation/overview': '概览',
   'assessment/navigation/settings': '批次设置',
@@ -1497,6 +1496,7 @@ export default {
   'assessment/roster/import-confirm': '导入',
   'assessment/roster/import-candidates':
     '{count, plural, =0 {没有可新增的人员} other {将新增 # 人}}',
+  'assessment/roster/units-resize': '调整组织栏宽度',
   'assessment/roster/units': '所在单位',
   'assessment/roster/empty': '暂无参评人员。',
   'assessment/roster/column-name': '姓名',

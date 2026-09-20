@@ -73,6 +73,7 @@ export default function ParticipantResultsPage() {
           {participantId === '' ? (
             <ParticipantResultList
               batchId={batch.id}
+              manageable={batch.manageable}
               onOpen={(id) =>
                 address({ participant: id, view: '', entry: '' }, { history: 'push' })
               }
@@ -80,6 +81,7 @@ export default function ParticipantResultsPage() {
           ) : (
             <ParticipantResultDetail
               batchId={batch.id}
+              manageable={batch.manageable}
               participantId={participantId}
               view={view === 'entries' ? 'entries' : 'score'}
               entryId={entryId}

@@ -1,6 +1,6 @@
 import BatchListPage from '../src/client/BatchListPage.tsx'
 import BatchPhasesPage from '../src/client/BatchPhasesPage.tsx'
-import BatchParticipantsPage from '../src/client/BatchParticipantsPage.tsx'
+import ParticipantResultsPage from '../src/client/result/ParticipantResultsPage.tsx'
 import BatchAccessPage from '../src/client/BatchAccessPage.tsx'
 import BatchOverviewPage from '../src/client/BatchOverviewPage.tsx'
 import BatchSettingsPage from '../src/client/BatchSettingsPage.tsx'
@@ -199,7 +199,7 @@ const PAGES = [
   { id: 'assessment/batches', path: '/assessment/batches' },
   { id: 'assessment/batch', path: '/assessment/batches/:batchId' },
   { id: 'assessment/batch-phases', path: '/assessment/batches/:batchId/phases' },
-  { id: 'assessment/batch-participants', path: '/assessment/batches/:batchId/participants' },
+  { id: 'assessment/batch-results', path: '/assessment/batches/:batchId/results' },
   { id: 'assessment/batch-access', path: '/assessment/batches/:batchId/access' },
   { id: 'assessment/batch-settings', path: '/assessment/batches/:batchId/settings' },
   // where the card's agenda lines lead; no route is mounted for them here,
@@ -227,8 +227,8 @@ const screen = (over: Stubs = {}, route = `/assessment/batches/${BATCH_ID}/phase
       { path: '/assessment/batches/:batchId', element: workspace(<BatchOverviewPage />) },
       { path: '/assessment/batches/:batchId/phases', element: workspace(<BatchPhasesPage />) },
       {
-        path: '/assessment/batches/:batchId/participants',
-        element: workspace(<BatchParticipantsPage />),
+        path: '/assessment/batches/:batchId/results',
+        element: workspace(<ParticipantResultsPage />),
       },
       { path: '/assessment/batches/:batchId/access', element: workspace(<BatchAccessPage />) },
       { path: '/assessment/batches/:batchId/settings', element: workspace(<BatchSettingsPage />) },
@@ -932,7 +932,7 @@ describe('the stage plan', () => {
 
 describe('the participants tab', () => {
   it('offers a draft the same two ways in that a running batch has', async () => {
-    screen({}, `/assessment/batches/${BATCH_ID}/participants`)
+    screen({}, `/assessment/batches/${BATCH_ID}/results`)
     // the roster exists from the moment the batch does, so a draft is a list
     // to check and add to rather than a screen waiting for a scope
     await expect.element(page.getByRole('button', { name: '从组织导入' })).toBeVisible()
@@ -980,11 +980,11 @@ describe('the participants tab', () => {
       }),
       routes: [
         {
-          path: '/assessment/batches/:batchId/participants',
-          element: workspace(<BatchParticipantsPage />),
+          path: '/assessment/batches/:batchId/results',
+          element: workspace(<ParticipantResultsPage />),
         },
       ],
-      route: `/assessment/batches/${BATCH_ID}/participants`,
+      route: `/assessment/batches/${BATCH_ID}/results`,
       registry: {
         slots: { 'iam/people-import-picker': { 'auth/people-import-picker': PeopleImportPicker } },
       },

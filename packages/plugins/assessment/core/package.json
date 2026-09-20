@@ -12,7 +12,6 @@
     "./client/BatchAccessPage": "./src/client/BatchAccessPage.tsx",
     "./client/BatchListPage": "./src/client/BatchListPage.tsx",
     "./client/BatchOverviewPage": "./src/client/BatchOverviewPage.tsx",
-    "./client/BatchParticipantsPage": "./src/client/BatchParticipantsPage.tsx",
     "./client/BatchPhasesPage": "./src/client/BatchPhasesPage.tsx",
     "./client/BatchSettingsPage": "./src/client/BatchSettingsPage.tsx",
     "./client/access/BatchGrantPresenter": "./src/client/access/BatchGrantPresenter.tsx",

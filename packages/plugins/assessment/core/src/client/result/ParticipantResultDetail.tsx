@@ -1,12 +1,14 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { ArrowLeftIcon } from 'lucide-react'
-import { useApiQuery } from '@qualy/web-runtime'
+import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { isApiErrorCode, useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import { AsyncSection, PageHeader, BannerBack } from '@qualy/ui/admin'
+import { AsyncSection, ConfirmDialog, PageHeader, BannerBack } from '@qualy/ui/admin'
+import { toast } from '@qualy/ui/toast'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { Count } from '@qualy/ui/count'
@@ -91,6 +93,7 @@ const styles = stylex.create({
 export function ParticipantResultDetail({
   batchId,
   participantId,
+  manageable,
   view,
   entryId,
   onView,
@@ -100,6 +103,8 @@ export function ParticipantResultDetail({
 }: {
   batchId: string
   participantId: string
+  /** whether this reader may take somebody off the round or put them back */
+  manageable: boolean
   view: 'score' | 'entries'
   /** which claim is open, if any; the drawer over either half */
   entryId: string
@@ -110,7 +115,10 @@ export function ParticipantResultDetail({
   onBack: () => void
 }) {
   const query = useApiQuery(assessmentApi)
+  const api = useApi(assessmentApi)
+  const run = useRunApi()
   const queryClient = useQueryClient()
+  const [excluding, setExcluding] = useState(false)
   const { format, formatError } = useI18n()
   const businessNo = useTerm(authTerms.businessNumber)
 
@@ -175,6 +183,24 @@ export function ParticipantResultDetail({
   const unavailable =
     result.error !== null && isApiErrorCode(result.error, 'ASSESSMENT_SCORING_UNAVAILABLE')
 
+  // Taking somebody off the round, or putting them back. It belongs to the
+  // person rather than to the list: the list is how somebody is found, and
+  // this is the page that says what taking them off would leave behind.
+  const setStatus = useMutation({
+    mutationFn: (status: 'active' | 'excluded') =>
+      run(
+        api.assessment.setParticipantStatus({
+          params: { batchId, participantId },
+          payload: { status },
+        }),
+      ).then((answer) => ({ ...answer, status })),
+    onSuccess: (answer: { status: 'active' | 'excluded' }) => {
+      setExcluding(false)
+      toast.success(format(answer.status === 'excluded' ? m.toastExcluded : m.toastRestored))
+      void queryClient.invalidateQueries({ queryKey: query.assessment.key() })
+    },
+  })
+
   return (
     <div {...stylex.props(styles.column)}>
       {/* The band above stops being the section and becomes this person.
@@ -199,6 +225,25 @@ export function ParticipantResultDetail({
                 )}
               </>
             )
+          }
+          actions={
+            manageable && participant !== undefined ? (
+              <Button
+                size="sm"
+                variant="outline"
+                data-testid="participant-standing"
+                disabled={setStatus.isPending}
+                onClick={() =>
+                  participant.status === 'excluded'
+                    ? setStatus.mutate('active')
+                    : // taking somebody off is worth a question, because
+                      // what it keeps is not obvious
+                      setExcluding(true)
+                }
+              >
+                {format(participant.status === 'excluded' ? m.restore : m.exclude)}
+              </Button>
+            ) : undefined
           }
           description={
             <>
@@ -288,6 +333,17 @@ export function ParticipantResultDetail({
           </AsyncSection>
         )}
       </Swap>
+      <ConfirmDialog
+        open={excluding}
+        title={format(m.excludeTitle, { name: participant?.displayName ?? '' })}
+        description={format(m.excludeBody)}
+        confirmLabel={format(m.exclude)}
+        cancelLabel={format(commonMessages.cancel)}
+        pending={setStatus.isPending}
+        tone="destructive"
+        onConfirm={() => setStatus.mutate('excluded')}
+        onCancel={() => setExcluding(false)}
+      />
     </div>
   )
 }

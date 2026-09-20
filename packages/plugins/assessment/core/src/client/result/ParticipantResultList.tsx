@@ -1,14 +1,18 @@
 import { useEffect, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { ChevronDownIcon, ChevronRightIcon } from 'lucide-react'
-import { UiSlot, useApiQuery } from '@qualy/web-runtime'
+import { UiSlot, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { orgNodePicker } from '@qualy/ui-contract'
-import { AsyncSection } from '@qualy/ui/admin'
+import { AsyncSection, Feedback } from '@qualy/ui/admin'
+import { toast } from '@qualy/ui/toast'
+import { ResizableSplit } from '@qualy/ui/screen'
+import { AddPeopleDialog } from '../roster/AddPeopleDialog.tsx'
+import { ImportDialog } from '../roster/ImportDialog.tsx'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@qualy/ui/collapsible'
@@ -64,6 +68,8 @@ const styles = stylex.create({
   listHead: { display: 'flex', alignItems: 'baseline', gap: 8 },
   listTitle: { fontSize: 14, fontWeight: 600 },
   listCount: { fontSize: 12, color: tokens.mutedForeground },
+  listSpacer: { flexGrow: 1 },
+  listActions: { display: 'flex', flexShrink: 0, alignItems: 'center', gap: 8 },
   rows: {
     display: 'flex',
     flexDirection: 'column',
@@ -116,13 +122,22 @@ const styles = stylex.create({
 
 export function ParticipantResultList({
   batchId,
+  manageable,
   onOpen,
 }: {
   batchId: string
+  /** whether this reader may add people to the round */
+  manageable: boolean
   onOpen: (participantId: string) => void
 }) {
   const query = useApiQuery(assessmentApi)
+  const api = useApi(assessmentApi)
+  const run = useRunApi()
+  const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
+  const [failure, setFailure] = useState<string | null>(null)
+  const [adding, setAdding] = useState(false)
+  const [importing, setImporting] = useState(false)
   const businessNo = useTerm(authTerms.businessNumber)
   const [units, setUnits] = useState<readonly string[]>([])
   const [unitScope, setUnitScope] = useState<'self' | 'subtree'>('subtree')
@@ -159,6 +174,45 @@ export function ParticipantResultList({
 
   const rows = participants.data?.items ?? []
 
+  // targeted invalidation: only this plugin's reads, never the whole cache
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: query.assessment.key() })
+  const onError = (error: unknown) => setFailure(formatError(error))
+  const addPeople = useMutation({
+    mutationFn: (userIds: readonly string[]) =>
+      run(
+        api.assessment.addParticipants({
+          params: { batchId },
+          payload: { userIds: [...userIds] },
+        }),
+      ),
+    onMutate: () => setFailure(null),
+    onSuccess: (result: { added: number }) => {
+      setAdding(false)
+      toast.success(format(m.toastAdded, { count: result.added }))
+      invalidate()
+    },
+    onError,
+  })
+  const importPeople = useMutation({
+    mutationFn: (selection: { orgNodeIds: readonly string[]; userTypeIds: readonly string[] }) =>
+      run(
+        api.assessment.importParticipants({
+          params: { batchId },
+          payload: {
+            orgNodeIds: [...selection.orgNodeIds],
+            userTypeIds: [...selection.userTypeIds],
+          },
+        }),
+      ),
+    onMutate: () => setFailure(null),
+    onSuccess: (result: { added: number }) => {
+      setImporting(false)
+      toast.success(format(m.toastImported, { count: result.added }))
+      invalidate()
+    },
+    onError,
+  })
+
   const tree = (
     <UiSlot
       token={orgNodePicker}
@@ -194,42 +248,64 @@ export function ParticipantResultList({
 
   return (
     <div {...stylex.props(styles.panel)}>
-      <div {...stylex.props(styles.columns)}>
-        {/* On a phone the tree is a second screenful in front of the list
+      <Feedback message={failure} />
+      <ResizableSplit
+        storageKey="qualy:assessment-roster-tree"
+        initial={300}
+        min={240}
+        max={480}
+        handleLabel={format(m.rosterUnitsResize)}
+        side={
+          <>
+            {/* On a phone the tree is a second screenful in front of the list
             somebody came for, so it folds behind a disclosure that says what
-            it is. With room for two columns it is simply there: a heading
-            over a tree that is already open is a word doing no work, and a
-            control that cannot be pressed is worse than one that is absent. */}
-        <aside {...stylex.props(styles.unitsAside)}>
-          {narrow ? (
-            <Collapsible open={unitsOpen} onOpenChange={setUnitsOpen}>
-              <CollapsibleTrigger asChild>
-                <Button variant="ghost" className={stylex.props(styles.unitsTrigger).className}>
-                  <span {...stylex.props(styles.unitsWord)}>{format(m.rosterUnits)}</span>
-                  <ChevronDownIcon
-                    aria-hidden
-                    className={
-                      stylex.props(styles.unitsChevron, unitsOpen && styles.unitsChevronOpen)
-                        .className
-                    }
-                  />
-                </Button>
-              </CollapsibleTrigger>
-              <CollapsibleContent className={stylex.props(styles.unitsSeat).className}>
-                {tree}
-              </CollapsibleContent>
-            </Collapsible>
-          ) : (
-            tree
-          )}
-        </aside>
-
+                it is. With room for two columns it is simply there: a
+                heading over a tree that is already open is a word doing no
+                work, and a control that cannot be pressed is worse than one
+                that is absent, and how wide it should be is the reader's. */}
+            <aside {...stylex.props(styles.unitsAside)}>
+              {narrow ? (
+                <Collapsible open={unitsOpen} onOpenChange={setUnitsOpen}>
+                  <CollapsibleTrigger asChild>
+                    <Button variant="ghost" className={stylex.props(styles.unitsTrigger).className}>
+                      <span {...stylex.props(styles.unitsWord)}>{format(m.rosterUnits)}</span>
+                      <ChevronDownIcon
+                        aria-hidden
+                        className={
+                          stylex.props(styles.unitsChevron, unitsOpen && styles.unitsChevronOpen)
+                            .className
+                        }
+                      />
+                    </Button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className={stylex.props(styles.unitsSeat).className}>
+                    {tree}
+                  </CollapsibleContent>
+                </Collapsible>
+              ) : (
+                tree
+              )}
+            </aside>
+          </>
+        }
+      >
         <section aria-label={format(m.participantResultsTab)} {...stylex.props(styles.listColumn)}>
           <div {...stylex.props(styles.listHead)}>
             <h3 {...stylex.props(styles.listTitle)}>{format(m.tabRoster)}</h3>
             <span {...stylex.props(styles.listCount)}>
               {format(m.participantCount, { count: rows.length })}
             </span>
+            <span {...stylex.props(styles.listSpacer)} />
+            {manageable && (
+              <span {...stylex.props(styles.listActions)}>
+                <Button size="sm" variant="outline" onClick={() => setImporting(true)}>
+                  {format(m.importFromOrganization)}
+                </Button>
+                <Button size="sm" onClick={() => setAdding(true)}>
+                  {format(m.addPeople)}
+                </Button>
+              </span>
+            )}
           </div>
           <AsyncSection
             pending={participants.isPending}
@@ -296,7 +372,21 @@ export function ParticipantResultList({
             </div>
           )}
         </section>
-      </div>
+      </ResizableSplit>
+
+      <AddPeopleDialog
+        open={adding}
+        pending={addPeople.isPending}
+        onAdd={(userIds) => addPeople.mutate(userIds)}
+        onClose={() => setAdding(false)}
+      />
+      <ImportDialog
+        batchId={batchId}
+        open={importing}
+        pending={importPeople.isPending}
+        onImport={(selection) => importPeople.mutate(selection)}
+        onClose={() => setImporting(false)}
+      />
     </div>
   )
 }
