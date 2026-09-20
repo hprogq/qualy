@@ -369,6 +369,14 @@ const personExcludedAtMessage = defineMessage<{ when: string }>()({
   defaultMessage: 'Taken off {when}',
 })
 
+const reviewLinkedFromMessage = defineMessage<{ name: string }>()({
+  id: 'assessment/review/linked-from',
+  defaultMessage: 'Takes its value from the filed {name}',
+})
+const reviewLinkedToMessage = defineMessage<{ names: string }>()({
+  id: 'assessment/review/linked-to',
+  defaultMessage: 'Filled into: {names}',
+})
 const i18n = definePluginMessages({
   namespace: 'assessment',
   messages: {
@@ -376,6 +384,10 @@ const i18n = definePluginMessages({
     personAnchorColumn: { id: 'assessment/person/anchor-column', defaultMessage: 'Recorded at' },
     personMembershipColumn: { id: 'assessment/person/membership-column', defaultMessage: 'Standing' },
     personIncludedColumn: { id: 'assessment/person/included-column', defaultMessage: 'Joined' },
+    reviewLinkedTag: { id: 'assessment/review/linked-tag', defaultMessage: 'Linked' },
+    reviewLinkedFrom: reviewLinkedFromMessage,
+    reviewLinkedTo: reviewLinkedToMessage,
+    reviewResetToFiled: { id: 'assessment/review/reset-to-filed', defaultMessage: 'Reset to what was filed' },
     nodeUsageManaged: {
       id: 'assessment/node-usage/managed',
       defaultMessage: 'Rounds administered from here',

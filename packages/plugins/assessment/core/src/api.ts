@@ -1134,6 +1134,10 @@ const reviewDetailView = Schema.Struct({
       /** opaque recognition ids with their frozen schemas, in display order */
       fields: Schema.Array(Schema.Struct({ id: Schema.String, schema: configJson })),
       seed: configJson,
+      /** what the filing says each determination should be, whatever the round opens on */
+      filed: configJson,
+      /** determination id -> the payload key of the filed field it takes its value from */
+      sources: Schema.Record(Schema.String, Schema.String),
       locked: Schema.NullOr(Schema.Struct({ values: configJson, hash: Schema.String })),
     }),
   ),

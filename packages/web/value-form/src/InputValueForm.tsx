@@ -6,6 +6,7 @@
  * words for problems - this module renders structure, not copy.
  */
 
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useEffect, useRef, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import {
@@ -26,6 +27,33 @@ import { Field } from '@qualy/ui/admin'
 import { checkField, fieldsOfInput, type FieldDraft, type ValueFieldSpec } from './model.ts'
 
 const styles = stylex.create({
+  pair: {
+    display: 'inline-flex',
+    alignSelf: 'flex-start',
+    height: 34,
+    overflow: 'hidden',
+    borderRadius: 8,
+    boxShadow: `inset 0 0 0 1px ${tokens.border}`,
+  },
+  pairOne: {
+    display: 'inline-flex',
+    minWidth: '3.5rem',
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingInline: 14,
+    borderWidth: 0,
+    backgroundColor: { default: 'transparent', ':hover': tokens.surfaceMuted },
+    fontFamily: 'inherit',
+    fontSize: 13,
+    color: tokens.mutedForeground,
+    cursor: 'pointer',
+  },
+  pairOn: {
+    backgroundColor: { default: tokens.foreground, ':hover': tokens.foreground },
+    color: tokens.background,
+    fontWeight: 500,
+  },
   grid: { display: 'flex', flexDirection: 'column', gap: '0.625rem' },
   key: {
     display: 'inline-flex',
@@ -63,6 +91,15 @@ export interface ValueFieldWords {
   /** the calendar's caption pickers, read out but never shown */
   readonly month: string
   readonly year: string
+  /**
+   * The two answers to a yes-or-no field. Given, the field is two blocks side
+   * by side with neither pressed until somebody presses one; not given, it is
+   * the platform's three-state box. Somebody deciding a claim reads "neither
+   * pressed" as unanswered at a glance, and reads a box wearing a dash as a
+   * thing they do not recognise.
+   */
+  readonly yes?: string
+  readonly no?: string
 }
 
 /**
@@ -152,6 +189,31 @@ const AtomicControl = ({
   words: ValueFieldWords
 }) => {
   const kind = kindOf(schema)
+  if (kind === 'boolean' && words.yes !== undefined && words.no !== undefined) {
+    const answers = [
+      { value: true, label: words.yes },
+      { value: false, label: words.no },
+    ] as const
+    return (
+      // unanswered is neither pressed, so a field nobody reached is never
+      // quietly reported as "no"
+      <span role="radiogroup" id={id} data-answered={draft !== undefined} {...stylex.props(styles.pair)}>
+        {answers.map((answer) => (
+          <button
+            key={String(answer.value)}
+            type="button"
+            role="radio"
+            aria-checked={draft === answer.value}
+            disabled={disabled}
+            {...stylex.props(styles.pairOne, draft === answer.value && styles.pairOn)}
+            onClick={() => onDraft(answer.value)}
+          >
+            {answer.label}
+          </button>
+        ))}
+      </span>
+    )
+  }
   if (kind === 'boolean')
     // Three states on purpose. Unanswered wears the platform's mixed mark,
     // and only a person's click turns it into an explicit yes or no - so a

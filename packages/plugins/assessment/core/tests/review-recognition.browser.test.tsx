@@ -418,10 +418,11 @@ describe('approving with a determination', () => {
     // unanswered blocks the approval outright
     await expect.element(approve).toBeDisabled()
     // an explicit answer opens it - and an explicit NO is an answer too
-    const box = page.getByRole('dialog').getByRole('checkbox', { name: '已核验获奖证书' })
-    await box.click()
+    const group = page.getByRole('dialog').getByRole('radiogroup')
+    await expect.element(group).toHaveAttribute('data-answered', 'false')
+    await group.getByRole('radio').nth(0).click()
     await expect.element(approve).toBeEnabled()
-    await box.click()
+    await group.getByRole('radio').nth(1).click()
     await expect.element(approve).toBeEnabled()
     await confirmAndWait(decided)
     const payload = decidedPayload(decided)

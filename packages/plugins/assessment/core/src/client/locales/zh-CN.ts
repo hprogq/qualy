@@ -1,6 +1,10 @@
 import type { MessageCatalog } from '@qualy/i18n-contract'
 
 export default {
+  'assessment/review/linked-tag': '关联',
+  'assessment/review/linked-from': '取自申报的{name}',
+  'assessment/review/linked-to': '关联认定项：{names}',
+  'assessment/review/reset-to-filed': '重置为申报值',
   'assessment/person/batch-column': '批次',
   'assessment/person/anchor-column': '参评组织',
   'assessment/person/membership-column': '参评状态',

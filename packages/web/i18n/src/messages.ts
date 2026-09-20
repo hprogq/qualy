@@ -29,6 +29,8 @@ export const commonMessages = {
   // for a panel whose changes have already been made, where 'cancel' would
   // promise to undo something
   close: { id: 'common/action/close', defaultMessage: 'Close' },
+  yes: { id: 'common/answer/yes', defaultMessage: 'Yes' },
+  no: { id: 'common/answer/no', defaultMessage: 'No' },
   loading: { id: 'common/state/loading', defaultMessage: 'Loading' },
   // under the wordmark once a cold start has run past six seconds; said
   // again in bootstrap.ts for before the catalogs, and held in step by a test

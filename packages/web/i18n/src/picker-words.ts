@@ -3,7 +3,7 @@ import { commonMessages } from './messages.ts'
 
 
 /**
- * The four words a generated form's pickers need.
+ * The words a generated form's pickers need.
  *
  * A form built from a schema renders structure and takes its copy from
  * whoever mounts it, and every caller wants the same four: what a picker
@@ -18,6 +18,8 @@ export function usePickerWords(): {
   readonly clear: string
   readonly month: string
   readonly year: string
+  readonly yes: string
+  readonly no: string
 } {
   const { format } = useI18n()
   return {
@@ -25,5 +27,8 @@ export function usePickerWords(): {
     clear: format(commonMessages.clear),
     month: format(commonMessages.calendarMonth),
     year: format(commonMessages.calendarYear),
+    // the two blocks of a yes-or-no field, neither pressed until answered
+    yes: format(commonMessages.yes),
+    no: format(commonMessages.no),
   }
 }

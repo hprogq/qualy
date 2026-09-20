@@ -294,7 +294,8 @@ describe('reading the paper', () => {
   // before it for the few pixels between two lines measured separately, by
   // which time that section was nowhere on the screen.
   it('never names a section the rail has already left', async () => {
-    await page.viewport(390, 844)
+    // short enough that the last section's head is carried up past the strip
+    await page.viewport(390, 480)
     paper(`/assessment/batches/${BATCH_ID}/my-entries`)
     await expect.element(page.getByRole('heading', { name: '品德题目 1' })).toBeVisible()
     const scroller = document.querySelector('main') as HTMLElement

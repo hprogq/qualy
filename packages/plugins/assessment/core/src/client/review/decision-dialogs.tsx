@@ -3,7 +3,8 @@ import { CheckIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
 import { useQuery } from '@tanstack/react-query'
 import { useApi, useRunApi } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+import { useI18n, useList } from '@qualy/web-i18n'
+
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Field, FormDialog, RequiredMark } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
@@ -28,7 +29,7 @@ import { useFinePointer } from './pointer.ts'
 import { ValueFieldsForm } from '@qualy/web-value-form/InputValueForm'
 import { usePickerWords } from '@qualy/web-i18n/picker-words'
 import { draftsFromFields, materializeFields, type FieldDraft } from '@qualy/web-value-form/model'
-import { parseDecimal, type AtomicSchema } from '@qualy/value-schema'
+import { declaredTitle, parseDecimal, type AtomicSchema } from '@qualy/value-schema'
 import { changedSeedKeys, recognitionProblemText } from './recognition.ts'
 import { idsOf, valueOf, type ReviewDto } from './model.ts'
 
@@ -144,25 +145,92 @@ const styles = stylex.create({
     flexDirection: 'column',
     gap: 20,
   },
+  panelTight: { display: 'flex', flexDirection: 'column', gap: 10 },
   // what was filed on the left, what is determined on the right: the
   // reviewer reads the claim and writes the finding in one glance, on a
   // desk; on a phone the two stack, the filing first
+  // Two halves that scroll on their own, in a body of one height. With
+  // twenty things to determine the form is long, and what the form is about -
+  // the filing, and what the values come to - must not leave the screen while
+  // it is filled in. So the left half is the filing over the score, the score
+  // pinned to its foot; the right half is everything the reviewer writes.
   columns: {
     display: 'grid',
     gridTemplateColumns: {
       default: 'minmax(0, 1fr)',
       [breakpoints.desktop]: 'minmax(0, 5fr) minmax(0, 6fr)',
     },
-    columnGap: 24,
+    columnGap: 20,
     rowGap: 20,
-    alignItems: 'start',
+    height: { default: null, [breakpoints.desktop]: 'min(64vh, 38rem)' },
+  },
+  half: { display: 'flex', minWidth: 0, minHeight: 0, flexDirection: 'column', gap: 12 },
+  halfScroll: {
+    display: 'flex',
+    minHeight: 0,
+    flexGrow: 1,
+    flexDirection: 'column',
+    gap: 16,
+    overflowY: { default: 'visible', [breakpoints.desktop]: 'auto' },
+    // room for the focus ring of whatever stands at the edge
+    paddingInline: 2,
+    paddingBottom: 2,
+    overscrollBehavior: 'contain',
+  },
+  writeCard: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 14,
+    borderRadius: tokens.radiusLg,
+    padding: 16,
+    backgroundColor: tokens.surface,
+    boxShadow: `0 0 0 1px ${tokens.border}, 0 1px 2px rgb(0 0 0 / 0.04)`,
+  },
+  // under a determination that takes its value from the filing: which filed
+  // field, and the way back to what was filed once it has been typed over
+  sourceLine: {
+    display: 'flex',
+    minWidth: 0,
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: -6,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  linkTag: {
+    display: 'inline-flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    height: 18,
+    paddingInline: 6,
+    borderRadius: 5,
+    fontSize: 11,
+    backgroundColor: tokens.surfaceMuted,
+    color: tokens.surfaceMutedForeground,
+    cursor: 'default',
+  },
+  resetLink: {
+    padding: 0,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+    fontFamily: 'inherit',
+    fontSize: 12,
+    color: tokens.foreground,
+    cursor: 'pointer',
+    textDecorationLine: { default: 'none', ':hover': 'underline' },
+    textUnderlineOffset: 3,
   },
   filing: {
     display: 'flex',
+    minHeight: 0,
+    flexGrow: 1,
     flexDirection: 'column',
     gap: 12,
+    overflowY: { default: 'visible', [breakpoints.desktop]: 'auto' },
     borderRadius: tokens.radiusLg,
-    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 55%, transparent)`,
+    backgroundColor: tokens.surfaceInset,
+    boxShadow: `inset 0 0 0 1px ${tokens.divider}`,
     padding: 16,
   },
   filingList: { display: 'flex', flexDirection: 'column', gap: 10, margin: 0 },
@@ -170,31 +238,31 @@ const styles = stylex.create({
   filingLabel: { fontSize: 12, color: tokens.mutedForeground },
   filingValue: { margin: 0, fontSize: 14, lineHeight: 1.5, overflowWrap: 'anywhere' },
   filingFiles: { display: 'flex', flexDirection: 'column', gap: 4 },
+  // What the values come to, pinned under the filing. A figure when there is
+  // one, said large because it is what the whole form is for; otherwise one
+  // quiet line saying what is still in the way. Neutral ground either way: a
+  // green panel read as "approved" before anything had been decided.
   preview: {
     display: 'flex',
-    flexDirection: 'column',
-    gap: 2,
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 12,
     borderRadius: tokens.radiusLg,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: tokens.border,
-    paddingInline: 12,
-    paddingBlock: 10,
+    paddingInline: 16,
+    paddingBlock: 12,
     fontSize: 13,
-    lineHeight: 1.5,
+    backgroundColor: tokens.surface,
+    boxShadow: `0 0 0 1px ${tokens.border}, 0 1px 2px rgb(0 0 0 / 0.04)`,
   },
-  previewOk: {
-    borderColor: `color-mix(in oklab, ${tokens.success} 45%, transparent)`,
-    backgroundColor: `color-mix(in oklab, ${tokens.success} 8%, transparent)`,
-  },
+  previewOk: { boxShadow: `0 0 0 1px ${tokens.foreground}, 0 1px 2px rgb(0 0 0 / 0.04)` },
   previewBad: {
-    borderColor: `color-mix(in oklab, ${tokens.danger} 45%, transparent)`,
-    backgroundColor: `color-mix(in oklab, ${tokens.danger} 6%, transparent)`,
+    boxShadow: `0 0 0 1px color-mix(in oklab, ${tokens.danger} 55%, transparent)`,
   },
   previewTitle: { fontSize: 12, fontWeight: 600, color: 'var(--q-surface-muted-foreground)' },
   previewQuiet: { color: tokens.mutedForeground },
   previewBadWords: { color: tokens.danger },
-  previewAmount: { fontSize: 15, fontWeight: 600, fontVariantNumeric: 'tabular-nums' },
+  previewWords: { minWidth: 0, flexGrow: 1, textAlign: 'right' },
+  previewAmount: { fontSize: 20, fontWeight: 600, letterSpacing: '-0.02em', fontVariantNumeric: 'tabular-nums' },
   // The verdict solids: the semantic tokens mixed toward black stand in for
   // the fixed emerald and rose shades, hover a step darker, in both schemes.
   // The verdict keys paint their own ground, so they also owe their own
@@ -561,6 +629,20 @@ export function ApproveDialog({
     [form],
   )
   const seed = (form?.seed ?? {}) as Record<string, unknown>
+  // `?? {}` guards fixtures and callers built before the two fields existed
+  const filed = (form?.filed ?? {}) as Record<string, unknown>
+  const sources = (form?.sources ?? {}) as Record<string, string>
+  const filedFields = useMemo(() => fieldsOf(review.form.formConfig), [review.form.formConfig])
+  // the other way round, for the filing's side: which determinations read each filed field
+  const linked = useMemo(() => {
+    const found = new Map<string, string[]>()
+    for (const field of fields) {
+      const key = sources[field.id]
+      if (key === undefined) continue
+      found.set(key, [...(found.get(key) ?? []), declaredTitle(field.schema, locale) ?? field.id])
+    }
+    return found
+  }, [fields, sources, locale])
   const locked = form?.locked ?? null
   const [drafts, setDrafts] = useState<Record<string, FieldDraft>>(() =>
     draftsFromFields(
@@ -625,17 +707,57 @@ export function ApproveDialog({
       {locked !== null && (
         <p {...stylex.props(recognitionStyles.quietNote)}>{format(m.recognitionLockedNote)}</p>
       )}
-      <ValueFieldsForm
-        words={words}
-        fields={fields}
-        drafts={drafts}
-        onDraft={(id, draft) => setDrafts((current) => ({ ...current, [id]: draft }))}
-        locale={locale}
-        disabled={locked !== null}
-        problems={problems}
-        scope="recognition"
-      />
-      <ScorePreview preview={preview} fields={fields} />
+      {fields.map((field) => {
+        const sourceKey = sources[field.id]
+        const sourceLabel =
+          sourceKey === undefined ? undefined : filedFields.find((one) => one.key === sourceKey)?.label
+        const filedValue = Object.hasOwn(filed, field.id) ? filed[field.id] : undefined
+        // typed over: what stands here is no longer what the filing said
+        const moved =
+          filedValue !== undefined &&
+          JSON.stringify(materializeFields([field], drafts).value?.[field.id] ?? null) !==
+            JSON.stringify(filedValue)
+        return (
+          <div key={field.id} {...stylex.props(styles.panelTight)} data-recognition={field.id}>
+            <ValueFieldsForm
+              words={words}
+              fields={[field]}
+              drafts={drafts}
+              onDraft={(id, draft) => setDrafts((current) => ({ ...current, [id]: draft }))}
+              locale={locale}
+              disabled={locked !== null}
+              problems={problems}
+              scope="recognition"
+            />
+            {sourceLabel !== undefined && (
+              <p {...stylex.props(styles.sourceLine)} data-testid="recognition-source">
+                <span
+                  {...stylex.props(styles.linkTag)}
+                  title={format(m.reviewLinkedFrom, { name: sourceLabel })}
+                >
+                  {format(m.reviewLinkedTag)}
+                </span>
+                <span>{format(m.reviewLinkedFrom, { name: sourceLabel })}</span>
+                {moved && locked === null && (
+                  <button
+                    type="button"
+                    data-testid="recognition-reset"
+                    {...stylex.props(styles.resetLink)}
+                    onClick={() =>
+                      setDrafts((current) => ({
+                        ...current,
+                        ...draftsFromFields([field], { [field.id]: filedValue }),
+                      }))
+                    }
+                  >
+                    {format(m.reviewResetToFiled)}
+                  </button>
+                )}
+              </p>
+            )}
+          </div>
+        )
+      })}
       {changed && (
         <Field label={format(m.recognitionReasonLabel)}>
           {(id) => (
@@ -677,8 +799,9 @@ export function ApproveDialog({
         onConfirm={confirm}
       >
         {caution}
-        {form !== null && <FiledValues review={review} />}
+        {form !== null && <FiledValues review={review} linked={linked} />}
         {determination}
+        {form !== null && <ScorePreview preview={preview} fields={fields} />}
         {commentField}
       </DecisionSheet>
     )
@@ -723,13 +846,22 @@ export function ApproveDialog({
         }}
       >
         {caution}
-        {form === null ? null : (
-          <div {...stylex.props(styles.columns)}>
-            <FiledValues review={review} />
-            {determination}
+        {form === null ? (
+          commentField
+        ) : (
+          <div {...stylex.props(styles.columns)} data-testid="approve-columns">
+            <div {...stylex.props(styles.half)}>
+              <FiledValues review={review} linked={linked} />
+              <ScorePreview preview={preview} fields={fields} />
+            </div>
+            <div {...stylex.props(styles.half)}>
+              <div {...stylex.props(styles.halfScroll)}>
+                <div {...stylex.props(styles.writeCard)}>{determination}</div>
+                <div {...stylex.props(styles.writeCard)}>{commentField}</div>
+              </div>
+            </div>
           </div>
         )}
-        {commentField}
       </div>
     </FormDialog>
   )
@@ -839,6 +971,7 @@ function ScorePreview({
       <span {...stylex.props(styles.previewTitle)}>{format(m.reviewPreviewTitle)}</span>
       <span
         {...stylex.props(
+          styles.previewWords,
           preview.kind === 'amount' && styles.previewAmount,
           bad && styles.previewBadWords,
           !bad && preview.kind !== 'amount' && styles.previewQuiet,
@@ -851,8 +984,16 @@ function ScorePreview({
 }
 
 /** the filing being judged, beside the form that judges it */
-function FiledValues({ review }: { review: ReviewDto }) {
+function FiledValues({
+  review,
+  linked,
+}: {
+  review: ReviewDto
+  /** payload key of a filed field -> the determinations that take their value from it */
+  linked?: ReadonlyMap<string, readonly string[]>
+}) {
   const { format } = useI18n()
+  const listJoin = useList()
   const words = { yes: format(m.recognitionYes), no: format(m.recognitionNo) }
   const record = (review.revision.payload ?? {}) as Record<string, unknown>
   const fields = fieldsOf(review.form.formConfig)
@@ -870,7 +1011,24 @@ function FiledValues({ review }: { review: ReviewDto }) {
           const text = displayValueOf(field, raw, words) || valueOf(raw)
           return (
             <div key={field.key} {...stylex.props(styles.filingRow)}>
-              <dt {...stylex.props(styles.filingLabel)}>{field.label}</dt>
+              <dt {...stylex.props(styles.filingLabel)}>
+                {field.label}
+                {(linked?.get(field.key)?.length ?? 0) > 0 && (
+                  <>
+                    {' '}
+                    <span
+                      {...stylex.props(styles.linkTag)}
+                      data-testid="filed-linked"
+                      data-field={field.key}
+                      title={format(m.reviewLinkedTo, {
+                        names: listJoin(linked?.get(field.key) ?? []),
+                      })}
+                    >
+                      {format(m.reviewLinkedTag)}
+                    </span>
+                  </>
+                )}
+              </dt>
               <dd {...stylex.props(styles.filingValue)}>
                 {field.type === 'attachment' ? (
                   ids.length === 0 ? (

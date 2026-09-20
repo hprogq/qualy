@@ -303,6 +303,10 @@ export interface ReviewDetailView {
   readonly recognitionForm: {
     readonly fields: readonly { readonly id: string; readonly schema: unknown }[]
     readonly seed: Readonly<Record<string, unknown>>
+    /** what the filing says each determination should be, whatever the round opens on */
+    readonly filed: Readonly<Record<string, unknown>>
+    /** determination id -> the payload key of the filed field it takes its value from */
+    readonly sources: Readonly<Record<string, string>>
     readonly locked: {
       readonly values: Readonly<Record<string, unknown>>
       readonly hash: string
@@ -1099,7 +1103,15 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
       if (fields === null) return null
       const seed = yield* recognitionSeed(tenantId, row.id, plan, row)
       const locked = yield* lockedProposalOf(tenantId, row.id)
-      return { fields, seed, locked }
+      // which filed field each determination takes its value from, and what
+      // that value is: the screen marks the pair and can put the filed value
+      // back after a reviewer has typed over it
+      const filed = yield* filedRecognition(tenantId, plan, row)
+      const sources: Record<string, string> = Object.create(null)
+      for (const [recognitionId, binding] of Object.entries(plan.defaultBindings)) {
+        sources[recognitionId] = binding.payloadKey ?? binding.fieldId
+      }
+      return { fields, seed, locked, filed, sources }
     })
 
   /**
@@ -1130,6 +1142,39 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
    * files new material and resubmits, and the first person to read the new
    * material would be handed the level determined from the old.
    */
+  /**
+   * What the filing itself says each determination should be, through the
+   * defaults the plan recorded - whatever the round opens on.
+   *
+   * Read the way this round reads it: the filing may have been written
+   * against an older form, and the round judges it under the current one,
+   * so the defaults come from the carried material rather than from the
+   * original answer to a question that has since changed.
+   */
+  const filedRecognition = (
+    tenantId: string,
+    plan: ScoringPlan,
+    row: {
+      readonly revisionId: string
+      readonly itemType: string
+      readonly recognitionRevisionId: string
+    },
+  ) =>
+    Effect.gen(function* () {
+      const filing = yield* revisionPayloadOf(tenantId, row.revisionId)
+      const driver = deps.itemTypes.get(row.itemType)
+      const written =
+        filing.itemRevisionId === null || driver?.projectPayload === undefined
+          ? null
+          : yield* revisionOf(tenantId, filing.itemRevisionId)
+      const judged = yield* revisionOf(tenantId, row.recognitionRevisionId)
+      const carried =
+        written === null || judged === null || driver?.projectPayload === undefined
+          ? filing.payload
+          : driver.projectPayload(written.formConfig, judged.formConfig, filing.payload)
+      return seedFromEvidence(plan, carried)
+    })
+
   const recognitionSeed = (
     tenantId: string,
     instanceId: string,
@@ -1152,22 +1197,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
       if (said !== null) return said
       const revisited = yield* revisitedRecognition(tenantId, row)
       if (revisited !== null) return revisited
-      // read the way this round reads it: the filing may have been written
-      // against an older form, and the round judges it under the current
-      // one, so the defaults come from the carried material rather than
-      // from the original answer to a question that has since changed
-      const filing = yield* revisionPayloadOf(tenantId, row.revisionId)
-      const driver = deps.itemTypes.get(row.itemType)
-      const written =
-        filing.itemRevisionId === null || driver?.projectPayload === undefined
-          ? null
-          : yield* revisionOf(tenantId, filing.itemRevisionId)
-      const judged = yield* revisionOf(tenantId, row.recognitionRevisionId)
-      const carried =
-        written === null || judged === null || driver?.projectPayload === undefined
-          ? filing.payload
-          : driver.projectPayload(written.formConfig, judged.formConfig, filing.payload)
-      return seedFromEvidence(plan, carried)
+      return yield* filedRecognition(tenantId, plan, row)
     })
 
   /**
