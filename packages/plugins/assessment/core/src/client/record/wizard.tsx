@@ -183,15 +183,6 @@ const styles = stylex.create({
     marginBottom: { default: 8, [wide]: 0 },
     overflowWrap: 'anywhere',
   },
-  // a field and the sentence that explains it, side by side: the words use
-  // the width the input does not want
-  aside: {
-    display: 'grid',
-    gap: { default: 6, [wide]: 16 },
-    gridTemplateColumns: { default: null, [wide]: 'minmax(0, 1fr) minmax(0, 2fr)' },
-    alignItems: 'start',
-  },
-  asideText: { fontSize: 12, lineHeight: 1.7, color: tokens.mutedForeground, textWrap: 'pretty' },
   // what the reader is about to do, said before they do it rather than in
   // the confirmation afterwards
   notice: {
@@ -344,16 +335,6 @@ export function WizardRecapRow({ term, children }: { term: string; children: Rea
       <dt {...stylex.props(styles.recapTerm)}>{term}</dt>
       <dd {...stylex.props(styles.recapValue)}>{children}</dd>
     </>
-  )
-}
-
-/** a field with the sentence that explains it beside it */
-export function WizardAside({ children, said }: { children: ReactNode; said: string }) {
-  return (
-    <div {...stylex.props(styles.aside)}>
-      {children}
-      <p {...stylex.props(styles.asideText)}>{said}</p>
-    </div>
   )
 }
 

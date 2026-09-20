@@ -1513,6 +1513,10 @@ const i18n = definePluginMessages({
       id: 'assessment/record/needs-result',
       defaultMessage: 'The determination is not filled in',
     },
+    recordNeedsFormula: {
+      id: 'assessment/record/needs-formula',
+      defaultMessage: 'The scoring rule does not accept this determination',
+    },
     recordNeedsBasis: {
       id: 'assessment/record/needs-basis',
       defaultMessage: 'No reason has been written',
@@ -1520,11 +1524,6 @@ const i18n = definePluginMessages({
     recordReadyToCheck: {
       id: 'assessment/record/ready-to-check',
       defaultMessage: 'Ready to check who this reaches',
-    },
-    recordResultAside: {
-      id: 'assessment/record/result-aside',
-      defaultMessage:
-        'These are the values the scoring formula reads, not the score itself. The score is worked out from them by this item\u2019s formula, and follows it if the formula changes.',
     },
     recordCheckTitle: {
       id: 'assessment/record/check-title',

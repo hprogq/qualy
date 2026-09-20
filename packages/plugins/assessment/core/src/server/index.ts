@@ -982,6 +982,22 @@ export class Assessment extends Context.Service<
       | ScoringUnavailable,
       ScoringRuntimeCatalog
     >
+    /** what a determination being composed would score, before anything is written */
+    readonly previewRecordDetermination: (
+      tenantId: string,
+      batchId: string,
+      itemId: string,
+      values: unknown,
+      as: Principal,
+    ) => Effect.Effect<
+      {
+        readonly issues: readonly { readonly recognitionId: string; readonly reason: string }[]
+        readonly amount: string | null
+        readonly refusal: string | null
+      },
+      BatchNotFound | AccessDenied | ItemNotFound | ScoringUnavailable,
+      ScoringRuntimeCatalog
+    >
     /** the act itself, all of it or none of it */
     readonly recordAdministrativeBatch: (
       tenantId: string,
@@ -2454,6 +2470,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
     ...entryMethods,
     ...importMethods,
     previewAdministrativeRecord: recordMethods.preview,
+    previewRecordDetermination: recordMethods.previewDetermination,
     recordAdministrativeBatch: recordMethods.record,
     listAdministrativeRecords: recordMethods.list,
     getAdministrativeRecord: recordMethods.detail,
@@ -5912,6 +5929,20 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           blocked: seen.blocked,
           targetFingerprint: seen.targetFingerprint,
         }
+      }),
+    )
+    .handle(
+      'previewRecordDetermination',
+      Effect.fn('assessment.previewRecordDetermination.handler')(function* ({ params, payload }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        return yield* assessment.previewRecordDetermination(
+          principal.tenantId,
+          params.batchId,
+          payload.itemId,
+          payload.values,
+          principal,
+        )
       }),
     )
     .handle(

@@ -160,6 +160,8 @@ const open = (stubs: Record<string, unknown>) =>
           Effect.succeed({ units: [{ id: 'node', name: '一班', parentId: null }] }),
         listScoreGroups: () => Effect.succeed({ groups: [], version: 1 }),
         listAdministrativeEntries: () => Effect.succeed({ entries: [], nextCursor: null }),
+        previewRecordDetermination: () =>
+          Effect.succeed({ issues: [], amount: '6.00', refusal: null }),
         getRecognitionContract: ((request: { params: { itemId: string } }) =>
           Effect.succeed({
             contract: contractOf(request?.params?.itemId === ITEM_B ? REVISION_B : REVISION_A),

@@ -30,6 +30,9 @@ const styles = stylex.create({
   fill: { display: 'flex', minHeight: 0, minWidth: 0, flexGrow: 1, flexDirection: 'column' },
 })
 
+/** long enough for the panel to be gone, short enough to be over before it reopens */
+const CLOSING_MS = 400
+
 export function ManualRecordView({
   batchId,
   materialRange,
@@ -110,9 +113,17 @@ export function ManualRecordView({
               wire={wire}
               onGo={setAt}
               onRecorded={() => {
-                setAttempt((count) => count + 1)
-                setAt(0)
+                // The errand closes; the sheet behind it must not visibly
+                // rewind while it does. Whoever opened it decides what
+                // closing means, and the reset waits for the panel to be
+                // gone - a wizard snapping back to "choose a question"
+                // during the fade reads as the filing having failed.
                 onDone?.()
+                window.setTimeout(() => {
+                  setAttempt((count) => count + 1)
+                  setAt(0)
+                  setItemId('')
+                }, CLOSING_MS)
               }}
             />
           )}

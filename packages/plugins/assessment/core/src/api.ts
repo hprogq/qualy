@@ -2952,6 +2952,30 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   )
   .add(
     /**
+     * What one determination being composed would score, asked while the
+     * office is still typing it: no targets, no filing, nothing written.
+     * The formula's refusal and a value the contract will not take are met
+     * here rather than on the press that files the act for everybody.
+     */
+    HttpApiEndpoint.post(
+      'previewRecordDetermination',
+      '/assessment/batches/:batchId/record-determination-previews',
+      {
+        params: Schema.Struct({ batchId: uuidInput }),
+        payload: Schema.Struct({ itemId: uuidInput, values: configJson }),
+        success: Schema.Struct({
+          issues: Schema.Array(
+            Schema.Struct({ recognitionId: Schema.String, reason: Schema.String }),
+          ),
+          amount: Schema.NullOr(Schema.String),
+          refusal: Schema.NullOr(Schema.String),
+        }),
+        error: [BatchNotFound, AccessDenied, ItemNotFound, ScoringUnavailable],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
+    /**
      * The act itself: every confirmed person or none of them.
      *
      * The fingerprint names the set that was confirmed and the exclusions

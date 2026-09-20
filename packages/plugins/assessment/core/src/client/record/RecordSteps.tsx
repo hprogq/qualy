@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { useMutation } from '@tanstack/react-query'
-import { useApi, useRunApi } from '@qualy/web-runtime'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { ValueFieldsForm } from '@qualy/web-value-form/InputValueForm'
 import { usePickerWords } from '@qualy/web-i18n/picker-words'
 import { draftsFromFields, materializeFields, type FieldDraft } from '@qualy/web-value-form/model'
@@ -19,7 +19,6 @@ import { EvidenceForm, type EvidencePayload } from '../entry/EvidenceForm.tsx'
 import { fieldsOf, type ItemDto } from '../entry/model.ts'
 import { RecordTargets, type RecordTarget } from './RecordTargets.tsx'
 import {
-  WizardAside,
   WizardBody,
   WizardFoot,
   WizardNotice,
@@ -48,6 +47,40 @@ import {
 // a different set is a different list.
 
 const styles = stylex.create({
+  score: {
+    display: 'flex',
+    minHeight: 54,
+    alignItems: 'center',
+    gap: 14,
+    borderRadius: 12,
+    paddingInline: 14,
+    paddingBlock: 10,
+    backgroundColor: tokens.surfaceInset,
+    boxShadow: `inset 0 0 0 1px ${tokens.divider}`,
+  },
+  scoreBad: {
+    backgroundColor: tokens.surface,
+    boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${tokens.danger} 55%, transparent)`,
+  },
+  scoreText: { display: 'flex', minWidth: 0, flexGrow: 1, flexDirection: 'column', gap: 2 },
+  scoreTitle: {
+    fontSize: 11.5,
+    fontWeight: 600,
+    letterSpacing: '0.04em',
+    color: tokens.mutedForeground,
+  },
+  scoreWords: { fontSize: 12.5, lineHeight: 1.5, color: tokens.mutedForeground },
+  scoreWordsBad: { fontSize: 13, color: tokens.danger },
+  scoreFigure: { display: 'flex', flexShrink: 0, alignItems: 'baseline', gap: 4 },
+  scoreAmount: {
+    flexShrink: 0,
+    fontSize: 24,
+    fontWeight: 600,
+    letterSpacing: '-0.02em',
+    fontVariantNumeric: 'tabular-nums',
+  },
+  scoreDash: { color: tokens.border },
+  scoreUnit: { fontSize: 13, color: tokens.mutedForeground },
   count: { fontSize: 14, fontWeight: 500 },
   blockedBox: {
     display: 'flex',
@@ -132,6 +165,7 @@ export function RecordSteps({
   onRecorded: () => void
 }) {
   const api = useApi(assessmentApi)
+  const query = useApiQuery(assessmentApi)
   const run = useRunApi()
   const { format, formatError, locale } = useI18n()
   const words = usePickerWords()
@@ -236,6 +270,26 @@ export function RecordSteps({
           basis: basis.trim(),
         }
 
+  // What it would score, asked a beat after the typing stops. The formula's
+  // own refusal is met here, where the determination can still be changed,
+  // rather than on the press that files the act for everybody at once.
+  const settled = useSettled(
+    wire === null || materialized.value === null ? null : JSON.stringify(materialized.value),
+  )
+  const scored = useQuery({
+    ...query.assessment.previewRecordDetermination.queryOptions({
+      params: { batchId },
+      payload: { itemId: item.id, values: settled === null ? {} : JSON.parse(settled) },
+    }),
+    enabled: settled !== null,
+    staleTime: 60_000,
+    retry: false,
+  })
+  const refused =
+    settled !== null && !scored.isPending && !scored.isError && scored.data?.refusal !== null
+      ? (scored.data?.refusal ?? null)
+      : null
+
   // Named in the order the sheet is filled, so the state says the first
   // thing to go and do rather than all of them at once.
   const missing =
@@ -247,7 +301,9 @@ export function RecordSteps({
           ? m.recordNeedsResult
           : basis.trim() === ''
             ? m.recordNeedsBasis
-            : null
+            : refused !== null
+              ? m.recordNeedsFormula
+              : null
 
   const check = useMutation({
     mutationFn: (excluded: readonly string[]) =>
@@ -445,24 +501,35 @@ export function RecordSteps({
             title={format(m.recordRecognition)}
             note={format(m.recordSectionResultNote)}
           >
-            {/* the sentence that keeps somebody from reading these as the
-                score: they are what the formula reads, and the width the
-                inputs do not want is exactly where it goes */}
-            <WizardAside said={format(m.recordResultAside)}>
-              <div data-testid="record-recognition">
-                <ValueFieldsForm
-                  words={words}
-                  fields={fields}
-                  drafts={recognitionDrafts}
-                  onDraft={(id, draft) => {
-                    setDirty((current) => new Set(current).add(id))
-                    setRecognitionDrafts((current) => ({ ...current, [id]: draft }))
-                  }}
-                  locale={locale}
-                  scope="record"
-                />
-              </div>
-            </WizardAside>
+            <div data-testid="record-recognition">
+              <ValueFieldsForm
+                words={words}
+                fields={fields}
+                drafts={recognitionDrafts}
+                onDraft={(id, draft) => {
+                  setDirty((current) => new Set(current).add(id))
+                  setRecognitionDrafts((current) => ({ ...current, [id]: draft }))
+                }}
+                locale={locale}
+                scope="record"
+              />
+            </div>
+            {/* what it comes to, and what stops it, said while it is typed */}
+            <RecordScore
+              state={
+                settled === null
+                  ? { kind: 'incomplete' }
+                  : scored.isPending
+                    ? { kind: 'checking' }
+                    : scored.isError
+                      ? { kind: 'unavailable' }
+                      : refused !== null
+                        ? { kind: 'refused', reason: refused }
+                        : scored.data?.amount !== null && scored.data?.amount !== undefined
+                          ? { kind: 'amount', amount: scored.data.amount }
+                          : { kind: 'unavailable' }
+              }
+            />
           </WizardSection>
         )}
 
@@ -491,5 +558,73 @@ export function RecordSteps({
         </Button>
       </WizardFoot>
     </>
+  )
+}
+
+/** how long the typing has to rest before the arithmetic is asked */
+const SETTLE_MS = 400
+
+/** the same value a beat after it stopped changing */
+function useSettled(value: string | null): string | null {
+  const [settled, setSettled] = useState(value)
+  useEffect(() => {
+    const timer = setTimeout(() => setSettled(value), SETTLE_MS)
+    return () => clearTimeout(timer)
+  }, [value])
+  return settled === value ? settled : null
+}
+
+type ScoreState =
+  | { readonly kind: 'incomplete' }
+  | { readonly kind: 'checking' }
+  | { readonly kind: 'unavailable' }
+  | { readonly kind: 'refused'; readonly reason: string }
+  | { readonly kind: 'amount'; readonly amount: string }
+
+/**
+ * What the determination would score, under the question's own formula.
+ *
+ * One card of one height in every state, so the sheet does not jump while the
+ * values are typed; only a refusal changes ground, because it is the one
+ * state that also stops the act.
+ */
+function RecordScore({ state }: { state: ScoreState }) {
+  const { format } = useI18n()
+  const bad = state.kind === 'refused'
+  const words =
+    state.kind === 'amount'
+      ? format(m.reviewPreviewStands)
+      : state.kind === 'refused'
+        ? format(m.reviewPreviewRefused, { reason: state.reason })
+        : state.kind === 'checking'
+          ? format(m.reviewPreviewChecking)
+          : state.kind === 'unavailable'
+            ? format(m.reviewPreviewUnavailable)
+            : format(m.reviewPreviewIncomplete)
+  return (
+    <div
+      {...stylex.props(styles.score, bad && styles.scoreBad)}
+      data-testid="record-score"
+      data-preview={state.kind}
+      {...(state.kind === 'amount' ? { 'data-amount': state.amount } : {})}
+      aria-live="polite"
+    >
+      <span {...stylex.props(styles.scoreText)}>
+        <span {...stylex.props(styles.scoreTitle)}>{format(m.reviewPreviewTitle)}</span>
+        <span {...stylex.props(styles.scoreWords, bad && styles.scoreWordsBad)}>{words}</span>
+      </span>
+      {state.kind === 'amount' ? (
+        <span {...stylex.props(styles.scoreFigure)}>
+          <span {...stylex.props(styles.scoreAmount)}>{state.amount}</span>
+          <span {...stylex.props(styles.scoreUnit)}>{format(m.reviewPreviewUnit)}</span>
+        </span>
+      ) : (
+        !bad && (
+          <span aria-hidden {...stylex.props(styles.scoreAmount, styles.scoreDash)}>
+            –
+          </span>
+        )
+      )}
+    </div>
   )
 }

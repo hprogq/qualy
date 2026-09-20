@@ -1,4 +1,4 @@
-import { Effect } from 'effect'
+import { Effect, Result } from 'effect'
 import { hashCanonicalJson } from '@qualy/value-schema/hash'
 import { transaction, type Orm } from '@qualy/plugin-database/server'
 import type { Principal } from '@qualy/rbac-contract'
@@ -27,7 +27,15 @@ import {
   type ItemTypeDriver,
 } from '../plugin.ts'
 import type { ActionDecision } from '../administrative-import/service.ts'
-import { proveSettlements } from '../scoring/failure-boundary.ts'
+import {
+  mapEvaluationFailure,
+  mapRuntimeFailure,
+  proveSettlements,
+} from '../scoring/failure-boundary.ts'
+import { evaluateRecognition } from '../scoring/evaluate.ts'
+import { formatAmount } from '../scoring/builtins.ts'
+import { canonicalRecognition, judgeRecognition } from '../scoring/recognition.ts'
+import { frozenCalculatorOf } from '../scoring/plan.ts'
 import { readScoringPlan } from '../scoring/plan.ts'
 import { provenRecognition } from '../scoring/proven-recognition.ts'
 import {
@@ -292,6 +300,74 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
     )
 
     return { batch, item, revision, plan, decoded, files, determination }
+  })
+
+  /**
+   * What a determination being composed would score, asked while it is typed.
+   *
+   * The same judgement the act itself makes, over the item alone: no targets,
+   * no filing, nothing written. It exists so a refusal from the formula and a
+   * value the contract will not take are met where they can still be
+   * corrected - the office used to meet both on the press that files the act
+   * for everybody at once.
+   */
+  const previewDetermination = Effect.fn('Assessment.previewRecordDetermination')(function* (
+    tenantId: string,
+    batchId: string,
+    itemId: string,
+    values: unknown,
+    as: Principal,
+  ) {
+    const runtime = yield* ScoringRuntimeCatalog
+    const site = yield* withDb(
+      Effect.gen(function* () {
+        const batch = yield* oneBatch(tenantId, batchId)
+        if (!batch) return yield* new BatchNotFound()
+        if (!(yield* deps.holdsRecord(tenantId, batchId, as.userId))) {
+          return yield* new AccessDenied({ reason: 'assessment.entry.record' })
+        }
+        const item = yield* itemOf(tenantId, itemId)
+        if (item === null || item.batchId !== batchId || item.currentRevisionId === null) {
+          return yield* new ItemNotFound()
+        }
+        const revision = yield* itemRevisionOf(tenantId, item.currentRevisionId)
+        if (revision === null) return yield* new ItemNotFound()
+        return { item, revision, plan: yield* Effect.orDie(readScoringPlan(revision)) }
+      }),
+    )
+    const wrong = judgeRecognition(site.plan.recognitionSchemas, values)
+    if (wrong.length > 0) {
+      return {
+        issues: wrong.map((issue) => ({
+          recognitionId: issue.recognitionId,
+          reason: issue.reason,
+        })),
+        amount: null,
+        refusal: null,
+      }
+    }
+    const candidate = canonicalRecognition(
+      site.plan.recognitionSchemas,
+      values as Record<string, unknown>,
+    )
+    const where = { tenantId, batchId, itemId: site.item.id, plan: site.plan }
+    const prepared = yield* runtime
+      .prepare(site.plan.calculator.ref, frozenCalculatorOf(site.plan), { tenantId, batchId })
+      .pipe(Effect.catch((error) => mapRuntimeFailure('settlement', where, error)))
+    const evaluated = yield* Effect.result(
+      evaluateRecognition(prepared, {
+        itemId: site.item.id,
+        plan: site.plan,
+        recognition: candidate,
+      }).pipe(Effect.catch((error) => mapEvaluationFailure('settlement', where, error))),
+    )
+    if (Result.isSuccess(evaluated)) {
+      return { issues: [], amount: formatAmount(evaluated.success.amount), refusal: null }
+    }
+    if (evaluated.failure instanceof DeterminationRefused) {
+      return { issues: [], amount: null, refusal: evaluated.failure.reason }
+    }
+    return yield* Effect.fail(evaluated.failure)
   })
 
   const preview = Effect.fn('Assessment.previewAdministrativeRecord')(function* (
@@ -811,7 +887,7 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
     }
   })
 
-  return { preview, record, reverse, list, detail, shapeOf }
+  return { preview, previewDetermination, record, reverse, list, detail, shapeOf }
 }
 
 export type { ScoringUnavailable }

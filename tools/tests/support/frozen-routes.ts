@@ -144,6 +144,7 @@ export const FROZEN_ROUTES = [
   'GET /assessment/administrative-imports/{importId}/source/content',
   'POST /assessment/administrative-imports/{importId}/reversals',
   'POST /assessment/batches/{batchId}/administrative-record-previews',
+  'POST /assessment/batches/{batchId}/record-determination-previews',
   'POST /assessment/batches/{batchId}/administrative-records',
   'GET /assessment/batches/{batchId}/administrative-records',
   'GET /assessment/administrative-records/{operationId}',
