@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
-import { PlusIcon } from 'lucide-react'
+import { PlusIcon, Trash2Icon } from 'lucide-react'
 import {
   useApi,
   useRunApi,
@@ -21,6 +21,7 @@ import { orgApi } from './api.ts'
 import { shapeOf, type Run } from './shape.ts'
 import { NodeDialogs, type NodeTask } from './structure/NodeDialogs.tsx'
 import { NodePanel } from './structure/NodePanel.tsx'
+import { RecycleBin } from './structure/RecycleBin.tsx'
 import { TreeTable } from './structure/TreeTable.tsx'
 import { NewTypeDialog } from './types/NewTypeDialog.tsx'
 import { TypesView } from './types/TypesView.tsx'
@@ -48,6 +49,7 @@ export default function OrgPage() {
   const [selectedTypeId, setSelectedTypeId] = usePageQueryState('type')
   const [feedback, setFeedback] = useState<string | null>(null)
   const [creatingType, setCreatingType] = useState(false)
+  const [binOpen, setBinOpen] = useState(false)
   const [task, setTask] = useState<NodeTask | null>(null)
   // two address keys in one write: separate writes from one press race
   const writeAddress = usePageQueryUpdate()
@@ -131,12 +133,17 @@ export default function OrgPage() {
       }
       actions={
         rootManageable &&
-        types && (
+        (types ? (
           <Button onClick={() => setCreatingType(true)}>
             <PlusIcon aria-hidden />
             {format(m.newTypeTitle)}
           </Button>
-        )
+        ) : (
+          <Button variant="ghost" data-testid="org-bin-open" onClick={() => setBinOpen(true)}>
+            <Trash2Icon aria-hidden />
+            {format(m.binTitle)}
+          </Button>
+        ))
       }
     >
       <Feedback message={feedback} />
@@ -172,6 +179,13 @@ export default function OrgPage() {
           />
         )}
       </AsyncSection>
+      <RecycleBin
+        open={binOpen}
+        shape={shape}
+        api={api}
+        run={run}
+        onClose={() => setBinOpen(false)}
+      />
       {shown !== null && (
         <DetailSheet
           open={open !== undefined && !types}

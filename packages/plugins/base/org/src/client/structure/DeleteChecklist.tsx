@@ -49,7 +49,6 @@ const styles = stylex.create({
   words: { display: 'flex', minWidth: 0, flexGrow: 1, flexDirection: 'column', gap: 2 },
   what: { fontSize: 13 },
   which: { fontSize: 12, lineHeight: 1.5, color: tokens.mutedForeground },
-  kept: { color: tokens.warningForeground },
   way: {
     flexShrink: 0,
     fontSize: 12,
@@ -109,7 +108,9 @@ export function DeleteChecklist({
   const query = useApiQuery(orgApi)
   const usage = useQuery(query.org.getNodeUsage.queryOptions({ params: { nodeId } }))
   const children = usage.data?.children ?? childCount
-  const held = usage.data?.usage ?? []
+  // only what still stands on the unit holds it: a closed round or a grant
+  // long withdrawn merely remembers it, and the unit is kept for them
+  const held = (usage.data?.usage ?? []).filter((one) => one.clearable)
   const clear = usage.isSuccess && children === 0 && held.length === 0
 
   return (
@@ -172,9 +173,6 @@ export function DeleteChecklist({
                 <span {...stylex.props(styles.what)}>
                   {format(m.holdLine, { label: formatText(one.label), count: one.count })}
                 </span>
-                {!one.clearable && (
-                  <span {...stylex.props(styles.which, styles.kept)}>{format(m.holdKept)}</span>
-                )}
                 {one.examples.length > 0 && (
                   <span {...stylex.props(styles.which)}>
                     {one.count > one.examples.length
@@ -189,7 +187,7 @@ export function DeleteChecklist({
                   params={one.target.params}
                   search={one.target.search}
                 >
-                  {format(one.clearable ? m.holdGo : m.holdLook)}
+                  {format(m.holdGo)}
                 </Way>
               )}
             </li>
@@ -198,13 +196,7 @@ export function DeleteChecklist({
       </ul>
       <div {...stylex.props(styles.foot)}>
         <span {...stylex.props(styles.verdict)}>
-          {format(
-            clear
-              ? m.holdVerdictClear
-              : held.some((one) => !one.clearable)
-                ? m.holdVerdictKept
-                : m.holdVerdictHeld,
-          )}
+          {format(clear ? m.holdVerdictClear : m.holdVerdictHeld)}
         </span>
         <Button size="sm" variant="outline" disabled={!clear} onClick={onDelete}>
           {format(m.deleteNode)}

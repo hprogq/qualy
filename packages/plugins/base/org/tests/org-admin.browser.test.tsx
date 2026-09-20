@@ -79,6 +79,7 @@ const world = () => ({
       }),
     // what holds a unit in place, as the server counts it: the college has
     // the class under it, and nothing else points at anything
+    listDeletedNodes: () => Effect.succeed({ nodes: [] }),
     getNodeUsage: ({ params }: { params: { nodeId: string } }) =>
       Effect.succeed({
         isRoot: params.nodeId === ROOT,
@@ -274,6 +275,82 @@ describe('the organization screen', () => {
     expect(hold?.getAttribute('data-count')).toBe('12')
     // by name, because a count alone is still a search
     await expect.element(page.getByText('张明远', { exact: false })).toBeVisible()
+  })
+
+  it('does not let what merely remembers a unit bar its delete', async () => {
+    const client = world()
+    client.org.getNodeUsage = () =>
+      Effect.succeed({
+        isRoot: false,
+        children: 0,
+        usage: [
+          {
+            kind: 'archived-rounds',
+            label: { kind: 'literal' as const, value: '已归档批次' },
+            count: 2,
+            clearable: false,
+            examples: [],
+            target: null,
+          },
+        ],
+      }) as never
+    renderScreen({
+      client: fakeClient(client),
+      route: `/admin/org?node=${KLASS}`,
+      children: <OrgPage />,
+    })
+    await expect
+      .element(page.getByTestId('node-delete'))
+      .toHaveAttribute('data-removable', 'true')
+    expect(document.querySelector('[data-hold="archived-rounds"]')).toBeNull()
+  })
+
+  it('lists what was deleted and puts one back, holding a unit whose parent is gone too', async () => {
+    const restore = vi.fn(() => Effect.succeed({ ok: true as const }))
+    const client = world()
+    renderScreen({
+      client: fakeClient({
+        ...client,
+        org: {
+          ...client.org,
+          restoreNode: restore,
+          listDeletedNodes: () =>
+            Effect.succeed({
+              nodes: [
+                {
+                  id: 'gone-1',
+                  name: '软件工程 2201 班',
+                  orgTypeId: 'none',
+                  parentName: '软件学院',
+                  restorable: true,
+                  deletedAt: '2026-09-20T08:00:00.000Z',
+                },
+                {
+                  id: 'gone-2',
+                  name: '旧实验班',
+                  orgTypeId: 'none',
+                  parentName: '旧学院',
+                  restorable: false,
+                  deletedAt: '2026-09-19T08:00:00.000Z',
+                },
+              ],
+            }),
+        },
+      }),
+      route: '/admin/org',
+      children: <OrgPage />,
+    })
+    await page.getByTestId('org-bin-open').click()
+    const rows = page.getByTestId('bin-row')
+    await expect.element(rows.first()).toBeVisible()
+    expect(rows.elements().map((row) => row.getAttribute('data-restorable'))).toEqual([
+      'true',
+      'false',
+    ])
+    await expect.element(rows.nth(1).getByRole('button')).toBeDisabled()
+    await rows.first().getByRole('button').click()
+    await expect.poll(() => restore.mock.calls.length).toBe(1)
+    expect((restore.mock.calls[0] as unknown[])[0]).toMatchObject({ params: { nodeId: 'gone-1' } })
   })
 
   it('opens a unit from the tree and creates a child of a legal type only', async () => {

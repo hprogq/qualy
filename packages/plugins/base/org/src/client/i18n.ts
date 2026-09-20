@@ -27,6 +27,10 @@ const assignmentIncompatible = defineMessage<{ assignmentCount: number }>()({
     '{assignmentCount, plural, one {# role assignment does} other {# role assignments do}} not allow the new organization type.',
 })
 
+const binWhereMessage = defineMessage<{ parent: string; when: string }>()({
+  id: 'org/bin/where',
+  defaultMessage: 'Under {parent}, deleted {when}',
+})
 const peopleCountMessage = defineMessage<{ count: number }>()({
   id: 'org/nodes/people-count',
   defaultMessage: '{count, plural, =0 {nobody} one {# person} other {# people}}',
@@ -315,18 +319,21 @@ const i18n = definePluginMessages({
     holdLine: holdLineMessage,
     holdExamplesMore: holdExamplesMoreMessage,
     holdGo: { id: 'org/node/hold-go', defaultMessage: 'Go there' },
-    holdLook: { id: 'org/node/hold-look', defaultMessage: 'Look' },
-    holdKept: {
-      id: 'org/node/hold-kept',
-      defaultMessage: 'Kept as history, and cannot be cleared',
+    binTitle: { id: 'org/bin/title', defaultMessage: 'Recycle bin' },
+    binHint: {
+      id: 'org/bin/hint',
+      defaultMessage: 'Deleted units are kept here and go back where they stood',
     },
-    holdVerdictKept: {
-      id: 'org/node/hold-verdict-kept',
-      defaultMessage: 'This unit carries history that cannot be cleared, so it cannot be removed.',
+    binEmpty: { id: 'org/bin/empty', defaultMessage: 'Nothing has been deleted' },
+    binWhere: binWhereMessage,
+    binParentFirst: {
+      id: 'org/bin/parent-first',
+      defaultMessage: 'Restore the unit it stood under first',
     },
+    binRestore: { id: 'org/bin/restore', defaultMessage: 'Restore' },
     holdVerdictClear: {
       id: 'org/node/hold-verdict-clear',
-      defaultMessage: 'Nothing holds this unit in place. Removing it cannot be undone.',
+      defaultMessage: 'Nothing stands on this unit. It goes to the bin and can be restored.',
     },
     holdVerdictHeld: {
       id: 'org/node/hold-verdict-held',
