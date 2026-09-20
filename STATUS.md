@@ -19210,3 +19210,33 @@ B 放开这几条外键、只在进行中的批次上拦删除;C 维持。现在
   从存活行 join 节点名的查询不动(历史要能读出名字);恢复时校验父节点未删除、同级不重名、类型规则仍成立;回收站列表 + 恢复接口 + 审计动作。尚未动工。
 - 审核人可见性缺专门的服务端测试(遮蔽 / 放开两态)与「我的申报」展示最终认定值。
 - 其余 Batch D 项见上一节清单(本地草稿、名单与结果合并、统一认定模态框整套、日期题时间范围校验、审核工作列表骨架屏)。
+
+## 组织软删除与回收站、通过模态框定稿(2026-09-21 续二)
+
+### 做了什么
+
+- **组织软删除(用户裁决:全部软删除、随时可恢复)**:`org_nodes.deleted_at`(迁移 `20260920215329_org-node-soft-delete.sql`,同级重名唯一索引改为只约束未删除行)。
+  删除 = 移出架构、行保留:仍须无下级,且「仍站在其上」的东西(在岗人员、有效授权、进行中批次——各 reporter 的 `clearable` 项)清空;
+  只是「记得它」的历史引用(已归档批次、已撤销授权)不再阻塞,清单里也不再列出。行不删所以外键不再说话,`Org.deleteNode` 因此**必须**带一个 `held` 判定(handler 用 `NodeUsageCatalog` 现算,在取租户锁之前问)。
+  org 自己的读取(`nodeColumns`、下级计数、类型规则占用)只读未删除;其他插件里「校验新引用」与「枚举供选择」的查询加过滤
+  (auth 站位校验与用户页组织树、rbac 授权锚点校验、assessment 批次范围与专项授权节点校验、范围选项、公式模板库共享范围);从存活行 join 节点名的查询不动,历史仍能读出名字。
+  **例外**:目录导入撤销自己刚建、无人用过的单位仍走硬删(`purgeUnused`,外键 restrict 兜底)——那是撤销创建,不是删除。
+- **回收站**:`GET /org/deleted-nodes`、`PUT /org/deleted-nodes/{nodeId}/status`(均已登记 frozen-routes);恢复时复核上级仍在(否则 `ORG_NODE_PARENT_DELETED`)、类型规则仍成立、同级不重名(索引裁决);审计动作 `org.node.restore`。
+  组织架构页右上「回收站」开 Sheet,列出单位、原上级、删除时间,上级也在回收站的置灰并说明。
+- **通过模态框定稿**:左侧整栏申报内容;右侧认定项 + 审核意见同一滚动区,计分预览固定在其下;未关联字段不再带标记与提示;
+  两个滚动区改用共享 `ScrollArea`,仍可下滚时底部淡出;模态框加高;右上汇总增加「N 项填写有误」;窄屏不显示申报内容;
+  已写内容在关闭重开后保留(按轮次存于页面生命周期内,确认后清除);审核意见与认定调整说明各自带说明(前者写给参评人员,后者随认定结果留存供复核与申诉查阅)。
+
+### 验收(实际执行)
+
+- `pnpm typecheck`:`exit 0`。
+- `pnpm test`:`Test Files 276 passed | 3 skipped (279)`,`Tests 2027 passed | 17 skipped (2044)`。
+- `pnpm test:browser`(全量一次):`Test Files 2 failed | 63 passed (65)`,`Tests 3 failed | 486 passed (489)`。三条失败:
+  `batch-admin` 的「阶段可开放的操作数」断言 13 → 15(新增两个可见性码,已改);`record-recognition` 两条超时,单独重跑 `record-recognition batch-admin` → `Tests 42 passed (42)`,判定为全量负载下的超时。
+- `pnpm qualy database verify`:`72 committed migration(s) build the declared schema, zero drift`。
+- 之后的小改(淡出、加高、有误计数)只重跑了 `review-recognition review-layout` → `Tests 26 passed (26)` 与 catalogs 门禁,未再跑全量。
+
+### 未做与下一步
+
+- 软删除缺口:assessment / rbac 的 node-usage reporter 与新 `held` 判定之间没有端到端测试(现有的是 org 单测 + 浏览器桩);`typeHasNodes` 仍把回收站里的单位算作「类型在用」(外键如此),界面未单独说明。
+- 「我的申报」展示最终认定值;其余 Batch D 项(本地草稿 IndexedDB 化、名单与结果合并、统一认定模态框整套、日期题时间范围校验、审核工作列表骨架屏)。

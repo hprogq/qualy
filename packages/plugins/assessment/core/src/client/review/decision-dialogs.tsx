@@ -179,7 +179,7 @@ const styles = stylex.create({
     },
     columnGap: 24,
     rowGap: 20,
-    height: { default: null, [breakpoints.desktop]: 'min(52dvh, 34rem)' },
+    height: { default: null, [breakpoints.desktop]: 'min(66dvh, 46rem)' },
   },
   half: { display: 'flex', minWidth: 0, minHeight: 0, flexDirection: 'column' },
   halfHead: { display: 'flex', flexShrink: 0, alignItems: 'baseline', gap: 8, paddingBottom: 10 },
@@ -195,6 +195,33 @@ const styles = stylex.create({
   },
   halfNoteInk: { color: tokens.surfaceMutedForeground },
   halfNoteWarn: { color: tokens.warning },
+  halfNoteBad: { color: tokens.danger },
+  fadedHolder: {
+    position: 'relative',
+    display: 'flex',
+    minHeight: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+  },
+  fade: {
+    position: 'absolute',
+    insetInline: 0,
+    bottom: 0,
+    height: 36,
+    pointerEvents: 'none',
+    opacity: 0,
+    transitionProperty: 'opacity',
+    transitionDuration: '150ms',
+  },
+  fadeOn: { opacity: 1 },
+  fadeSurface: {
+    backgroundImage: `linear-gradient(to bottom, transparent, ${tokens.surface})`,
+  },
+  fadeInset: {
+    backgroundImage: `linear-gradient(to bottom, transparent, ${tokens.surfaceInset})`,
+  },
   halfArea: { minHeight: 0, flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
   // room for the focus ring of whatever stands at the edge, and for the bar
   halfInner: { paddingLeft: 2, paddingRight: 16, paddingBottom: 2 },
@@ -663,6 +690,46 @@ export function DecisionSheet({
 }
 
 /**
+ * A scroll area that says it scrolls: while more lies below, its foot fades
+ * into the ground it stands on. The shared bar only shows itself under a
+ * pointer, and a column cut off at a clean edge reads as a column that ended.
+ */
+function FadedScroll({ ground, children }: { ground: 'surface' | 'inset'; children: ReactNode }) {
+  const holder = useRef<HTMLDivElement>(null)
+  const [more, setMore] = useState(false)
+  useEffect(() => {
+    const viewport = holder.current?.querySelector<HTMLElement>(
+      '[data-slot="scroll-area-viewport"]',
+    )
+    if (viewport === null || viewport === undefined) return
+    const read = () =>
+      setMore(viewport.scrollTop + viewport.clientHeight < viewport.scrollHeight - 4)
+    read()
+    viewport.addEventListener('scroll', read, { passive: true })
+    const watch = new ResizeObserver(read)
+    watch.observe(viewport)
+    if (viewport.firstElementChild !== null) watch.observe(viewport.firstElementChild)
+    return () => {
+      viewport.removeEventListener('scroll', read)
+      watch.disconnect()
+    }
+  }, [])
+  return (
+    <div ref={holder} {...stylex.props(styles.fadedHolder)} data-more={more}>
+      <ScrollArea xstyle={styles.halfArea}>{children}</ScrollArea>
+      <span
+        aria-hidden
+        {...stylex.props(
+          styles.fade,
+          ground === 'inset' ? styles.fadeInset : styles.fadeSurface,
+          more && styles.fadeOn,
+        )}
+      />
+    </div>
+  )
+}
+
+/**
  * Approving, with room for a word.
  *
  * The lightest of the four: no reason list, no suggestion grid, one
@@ -1019,11 +1086,17 @@ export function ApproveDialog({
                   data-count={fields.length}
                   data-moved={movedIds.length}
                   data-missing={missingIds.length}
+                  data-wrong={problems.size}
                 >
                   {format(m.reviewSummaryCount, { count: fields.length })}
                   {movedIds.length > 0 && (
                     <span {...stylex.props(styles.halfNoteInk)}>
                       {format(m.reviewSummaryDiffer, { count: movedIds.length })}
+                    </span>
+                  )}
+                  {problems.size > 0 && (
+                    <span {...stylex.props(styles.halfNoteBad)}>
+                      {format(m.reviewSummaryWrong, { count: problems.size })}
                     </span>
                   )}
                   {missingIds.length > 0 && (
@@ -1034,14 +1107,14 @@ export function ApproveDialog({
                 </p>
               </div>
               {fine ? (
-                <ScrollArea xstyle={styles.halfArea}>
+                <FadedScroll ground="surface">
                   <div {...stylex.props(styles.halfInner)}>
                     {determination}
                     <div {...stylex.props(styles.reasonBlock, styles.afterFields)}>
                       {commentField}
                     </div>
                   </div>
-                </ScrollArea>
+                </FadedScroll>
               ) : (
                 determination
               )}
@@ -1226,7 +1299,7 @@ function FiledValues({
           {format(m.entryVersionNo, { no: review.revision.revisionNo })}
         </p>
       </div>
-      <ScrollArea xstyle={styles.halfArea}>
+      <FadedScroll ground="inset">
         <dl {...stylex.props(styles.filingList)}>
           {fields.map((field) => {
             const raw = record[field.key]
@@ -1285,7 +1358,7 @@ function FiledValues({
             </div>
           )}
         </dl>
-      </ScrollArea>
+      </FadedScroll>
     </section>
   )
 }

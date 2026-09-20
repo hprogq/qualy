@@ -12,6 +12,7 @@ export default {
   'assessment/review/preview-unit': '分',
   'assessment/review/summary-count': '{count} 项',
   'assessment/review/summary-differ': '{count} 项与申报不同',
+  'assessment/review/summary-wrong': '{count} 项填写有误',
   'assessment/review/summary-missing': '{count} 项待填',
   'assessment/review/linked-to': '关联认定项：{names}',
   'assessment/review/reset-to-filed': '恢复',

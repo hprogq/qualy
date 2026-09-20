@@ -390,6 +390,10 @@ const reviewSummaryDifferMessage = defineMessage<{ count: number }>()({
   id: 'assessment/review/summary-differ',
   defaultMessage: '{count} differ from the filing',
 })
+const reviewSummaryWrongMessage = defineMessage<{ count: number }>()({
+  id: 'assessment/review/summary-wrong',
+  defaultMessage: '{count} filled in wrongly',
+})
 const reviewSummaryMissingMessage = defineMessage<{ count: number }>()({
   id: 'assessment/review/summary-missing',
   defaultMessage: '{count} to fill in',
@@ -423,6 +427,7 @@ const i18n = definePluginMessages({
     reviewSummaryCount: reviewSummaryCountMessage,
     reviewSummaryDiffer: reviewSummaryDifferMessage,
     reviewSummaryMissing: reviewSummaryMissingMessage,
+    reviewSummaryWrong: reviewSummaryWrongMessage,
     reviewLinkedTo: reviewLinkedToMessage,
     reviewResetToFiled: { id: 'assessment/review/reset-to-filed', defaultMessage: 'Restore' },
     nodeUsageManaged: {
