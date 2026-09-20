@@ -906,6 +906,7 @@ const i18n = definePluginMessages({
       defaultMessage: 'The action is not available for the entry in its current state.',
     },
     entryNote: { id: 'assessment/entry/note', defaultMessage: 'Note' },
+    entryRecordBasis: { id: 'assessment/entry/record-basis', defaultMessage: 'Basis' },
     entryStatusDraft: { id: 'assessment/entry/status-draft', defaultMessage: 'Draft' },
     entryStatusInReview: { id: 'assessment/entry/status-in-review', defaultMessage: 'In review' },
     entryStatusRevising: {

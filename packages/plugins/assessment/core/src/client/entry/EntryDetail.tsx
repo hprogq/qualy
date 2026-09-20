@@ -416,6 +416,7 @@ export function EntryDetail({
 }) {
   const query = useApiQuery(assessmentApi)
   const { format } = useI18n()
+  const yesNo = { yes: format(m.recognitionYes), no: format(m.recognitionNo) }
   const [tab, setTab] = useState<'content' | 'trail'>('content')
   const payload = (entry.currentRevision?.payload ?? {}) as Record<string, unknown>
   const revisionNo = entry.currentRevision?.revisionNo
@@ -547,7 +548,10 @@ export function EntryDetail({
                       </span>
                     </div>
                     {(entry.refusal.comment ?? '') !== '' && (
-                      <p {...stylex.props(styles.prose)}>{entry.refusal.comment}</p>
+                      <div>
+                        <p {...stylex.props(styles.fieldLabel)}>{format(m.reviewComment)}</p>
+                        <p {...stylex.props(styles.prose)}>{entry.refusal.comment}</p>
+                      </div>
                     )}
                     <SuggestedChanges
                       suggested={entry.refusal.suggestedPayload}
@@ -644,9 +648,7 @@ export function EntryDetail({
                           )
                         ) : (
                           <p {...stylex.props(styles.fieldValue)}>
-                            {typeof value === 'string' && value !== ''
-                              ? value
-                              : format(m.entryFieldCleared)}
+                            {displayValueOf(field, value, yesNo) || format(m.entryFieldCleared)}
                           </p>
                         )}
                       </div>
@@ -654,7 +656,13 @@ export function EntryDetail({
                   })}
                   {(entry.currentRevision?.note ?? null) !== null && (
                     <div {...stylex.props(styles.field)}>
-                      <p {...stylex.props(styles.fieldLabel)}>{format(m.entryNote)}</p>
+                      <p {...stylex.props(styles.fieldLabel)}>
+                        {format(
+                          entry.source === 'record' || entry.source === 'import'
+                            ? m.entryRecordBasis
+                            : m.entryNote,
+                        )}
+                      </p>
                       <p {...stylex.props(styles.fieldValue)}>{entry.currentRevision!.note}</p>
                     </div>
                   )}

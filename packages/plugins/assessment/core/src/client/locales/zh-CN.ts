@@ -100,6 +100,7 @@ export default {
   'assessment/entry/refuse-out-of-scope': '当前阶段不包含该项目或该参评人员。',
   'assessment/entry/refuse-other': '当前状态下无法执行该操作。',
   'assessment/entry/note': '备注',
+  'assessment/entry/record-basis': '认定依据',
   'assessment/entry/status-draft': '草稿',
   'assessment/entry/status-in-review': '审核中',
   'assessment/entry/status-revising': '待重新提交',

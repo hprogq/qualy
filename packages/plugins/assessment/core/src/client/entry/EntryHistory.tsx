@@ -715,8 +715,22 @@ function LifecycleMark({ marker, no }: { marker: 'started' | 'ended'; no: number
 }
 
 /** somebody's own words, quoted rather than restated */
-function Quoted({ children, tone }: { children: ReactNode; tone?: 'alert' }) {
-  return <p {...stylex.props(styles.quoted, tone === 'alert' && styles.quotedAlert)}>{children}</p>
+function Quoted({
+  children,
+  tone,
+  label,
+}: {
+  children: ReactNode
+  tone?: 'alert'
+  /** what kind of words these are, where the line above does not say */
+  label?: string
+}) {
+  return (
+    <div {...stylex.props(styles.quoted, tone === 'alert' && styles.quotedAlert)}>
+      {label !== undefined && <p {...stylex.props(styles.quietNote)}>{label}</p>}
+      <p>{children}</p>
+    </div>
+  )
 }
 
 /** how a re-routed round begins: where it came from, and on whose word */
@@ -856,7 +870,9 @@ function Act({
           </Badge>
         </div>
       )}
-      {event.comment !== null && event.comment !== '' && <Quoted>{event.comment}</Quoted>}
+      {event.comment !== null && event.comment !== '' && (
+        <Quoted label={format(m.reviewComment)}>{event.comment}</Quoted>
+      )}
     </>
   )
 }
