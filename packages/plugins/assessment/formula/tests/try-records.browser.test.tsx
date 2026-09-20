@@ -1,6 +1,6 @@
 import { act } from 'react'
 import { renderHook } from 'vitest-browser-react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useTryRecords } from '../src/client/try-records.ts'
 import { forgetFormulaLocally } from '../src/client/local-store.ts'
 import { keepLocalDraft, readLocalDraft } from '../src/client/local-draft.ts'
@@ -12,10 +12,26 @@ import { keepLocalDraft, readLocalDraft } from '../src/client/local-draft.ts'
 // move to a different source. Both are deterministic here - the test drives
 // the hook and waits for the answer rather than hoping the timing repeats -
 // because a race reproduced by luck is a race that comes back.
+//
+// The store is the browser's own, shared by every test file of this origin
+// and outliving each of them - the one thing the harness cannot clear for a
+// test, since it is this plugin's and nobody else's. So each case works on
+// a formula of its own, and takes its rows with it whether it passed or
+// not: on CI a case that failed once left its rows to the retry, which then
+// counted them and failed again, and a formula id shared across attempts
+// was what let one stray row become a whole run's red.
 
-const FN = '01a04f4b-83a1-763f-9fbc-bfa53bc98ecb'
+let FN = ''
 
 const outcome = { actual: '7.5' } as never
+
+beforeEach(() => {
+  FN = crypto.randomUUID()
+})
+
+afterEach(async () => {
+  await forgetFormulaLocally(FN)
+})
 
 /** waits until the hook's list says something, so no assertion races the read */
 const settles = async (read: () => readonly { id: string }[], count: number) =>
@@ -41,7 +57,6 @@ describe('what this browser remembers about its tries', () => {
 
     const third = await renderHook(() => useTryRecords(FN, 'draft'))
     await settles(() => third.result.current.records, 2)
-    act(() => third.result.current.clear())
     await third.unmount()
   })
 
@@ -67,7 +82,6 @@ describe('what this browser remembers about its tries', () => {
 
     const back = await renderHook(() => useTryRecords(FN, 'draft'))
     await settles(() => back.result.current.records, 1)
-    act(() => back.result.current.clear())
     await back.unmount()
   })
 

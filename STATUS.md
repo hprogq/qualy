@@ -18826,3 +18826,33 @@ pnpm vitest run tools/tests apps/server/tests    413 passed(supervisor 4/4,新�
   + `shell.browser.test.tsx`:首轮 `Tests 2 failed | 33 passed (35)`(alertdialog 角色、顶栏「测评」与分组标签同名);
   修后 rbac 文件全绿,`shell.browser.test.tsx` 全文件 `Tests 1 failed | 15 passed (16)`(Banner 需要 stub
   `getUserOptions`,姓名与徽标同段),最后单例复跑 `Tests 1 passed`。
+
+## CI 浏览器套件的间歇失败:try-records 与共享的 IndexedDB(2026-09-20)
+
+夜间任务第 5 项。用 `gh run list` / `gh run view --log-failed` 读了 main 最近 12 次运行(通过 6、失败 6)。
+
+- **证据**:最近 6 次失败里 5 次只有 `browser` job 红(`ci`、`browser-webkit`、`image` 全绿),其中 4 次是同一个文件
+  `packages/plugins/assessment/formula/tests/try-records.browser.test.tsx` 的前两个用例
+  (`keeps a try …` 与 `shows nothing …`),断言都是「期望 2 条得到 N 条」,N 在同一用例的两次尝试间递增
+  (3→5、5→7、4→6、3→5),第二个用例接着从第一个留下的数量再加 1(6→7、8→9)。
+  第 5 次(9 月 18 日 01:50)是另一种:`localization.browser.test.tsx` 整文件 `Failed to import test file … Vitest failed to
+  find the runner`,即 tester iframe 在负载下没初始化起来,与 try-records 无关。
+- **日志严格能推出的**:每次首轮尝试开始时该 formula 的 `draft` scope 里已经有 1 到 3 条不属于本用例的记录;用例失败后
+  尾部的 `clear()` 不再执行,重试把上一次的行一起数进去,于是一条杂散记录变成整轮红。try-records 用的是 IndexedDB
+  (`qualy-formula-local`),按 origin 共享,浏览器套件的各文件并行跑在同一 origin 的多个 iframe 里,harness 只清
+  localStorage,从不清这个库。
+- **未能确认的**:那 1 到 3 条杂散记录从哪来。仓库里没有第二处使用该 formula id;排序上看最可能是同一文件的一次
+  未完成执行(与第 5 次失败同类的 iframe 初始化问题)留下的行,其次是并行文件写同一 scope——后者与 id 唯一相矛盾。
+  本地把 9 个 formula 浏览器文件一起跑三轮(`Test Files 9 passed`,`Tests 56 passed`,三轮相同)没有复现。
+- **修法**(不依赖根因):每个用例 `beforeEach` 取一个新的 `crypto.randomUUID()` 作为 formula id,`afterEach`
+  `forgetFormulaLocally(FN)` 无论成败都清掉自己的行;用例尾部的 `clear()` 撤掉(读回断言保留)。这样杂散行与本用例
+  永不同 scope,失败的尝试也不再给重试留行。单文件复跑 `Tests 4 passed (4)`,formula tests 工程 tsc exit=0。
+- **下次再红时补的观测**:若仍是该文件,在用例开头先读一次 scope 并把读到的行打印到 stderr(id、at、scopeKey),
+  能直接指认写入者;若是 `failed to find the runner`,那是 orchestrator 层的问题,与本文件无关。
+
+## 夜间任务收口(2026-09-20)
+
+五项全部完成并各自提交(未 push):项目编辑页复刻 + 填报控件 + 认定预览(`a9c724bf9`)、术语库与设置内核
+(`91a7ecf6f`)、用户导入(`cc7d6ae6e`,含补跑的 lock)、用户详情壳(`382f03b9b`)、CI 间歇失败(本次提交)。
+留给用户裁决的:共享遮罩的模糊与设计稿 8% 压暗的差异(UI 平台已关账)、添加字段的多选卡(驱动无多选)、
+docs/directory-import.md 列出的 v1 未做项、用户详情页的审计分组(audit 插件尚无按人的页面)。
