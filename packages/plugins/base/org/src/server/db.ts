@@ -207,6 +207,8 @@ export const ruleInUse = (tenantId: string, parentTypeId: string, childTypeId: s
             .onRef('parent.id', '=', 'child.parentId'),
         )
         .where('child.tenantId', '=', tenantId)
+        // a unit in the bin holds no rule open; putting it back asks again
+        .where('child.deletedAt', 'is', null)
         .where('parent.orgTypeId', '=', parentTypeId)
         .where('child.orgTypeId', '=', childTypeId)
         .select('child.id')
@@ -236,6 +238,9 @@ export const deleteRule = (tenantId: string, parentTypeId: string, childTypeId: 
 const nodeColumns = (k: Db) =>
   k
     .selectFrom('OrgNode')
+    // the structure is the units still standing; the ones taken out of it
+    // are read by their own two queries below
+    .where('deletedAt', 'is', null)
     .select([
       'id',
       'parentId',
@@ -294,6 +299,7 @@ export const incompatibleChildTypes = (tenantId: string, nodeId: string, newType
       .selectFrom('OrgNode as child')
       .where('child.tenantId', '=', tenantId)
       .where('child.parentId', '=', nodeId)
+      .where('child.deletedAt', 'is', null)
       .where((eb) =>
         eb.not(
           eb.exists(
@@ -329,6 +335,7 @@ export const hasChildren = (tenantId: string, nodeId: string) =>
         .select('id')
         .where('tenantId', '=', tenantId)
         .where('parentId', '=', nodeId)
+        .where('deletedAt', 'is', null)
         .limit(1)
         .executeTakeFirst(),
     )
@@ -349,6 +356,7 @@ export const countChildren = (tenantId: string, nodeId: string) =>
         .select((eb) => eb.fn.countAll<string>().as('count'))
         .where('tenantId', '=', tenantId)
         .where('parentId', '=', nodeId)
+        .where('deletedAt', 'is', null)
         .executeTakeFirstOrThrow(),
     )
     .pipe(Effect.map((row) => Number(row.count)))
@@ -371,9 +379,80 @@ export const updateNodeFields = (
       .execute(),
   )
 
+/**
+ * Takes a unit out of the structure without dropping its row.
+ *
+ * Closed rounds and withdrawn grants still point at it, and a unit removed
+ * by mistake has to be able to come back with its id - and so everything
+ * that ever named it - intact.
+ */
 export const deleteNode = (tenantId: string, nodeId: string) =>
   db.query((k) =>
+    k
+      .updateTable('OrgNode')
+      .set({ deletedAt: sql<Date>`now()`, updatedAt: sql<Date>`now()` })
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', nodeId)
+      .where('deletedAt', 'is', null)
+      .execute(),
+  )
+
+/**
+ * Drops a unit's row outright.
+ *
+ * Only for undoing the creation of a unit nothing has ever used - an import
+ * taking back what it made. Every reference is a restrict foreign key, so the
+ * database itself refuses the moment anything points here.
+ */
+export const purgeNode = (tenantId: string, nodeId: string) =>
+  db.query((k) =>
     k.deleteFrom('OrgNode').where('tenantId', '=', tenantId).where('id', '=', nodeId).execute(),
+  )
+
+/** the units taken out of the structure, most recently first */
+export const deletedNodes = (tenantId: string) =>
+  db.query((k) =>
+    k
+      .selectFrom('OrgNode as n')
+      .leftJoin('OrgNode as parent', (join) =>
+        join.onRef('parent.tenantId', '=', 'n.tenantId').onRef('parent.id', '=', 'n.parentId'),
+      )
+      .select([
+        'n.id',
+        'n.name',
+        'n.orgTypeId',
+        'n.parentId',
+        'n.deletedAt',
+        'parent.name as parentName',
+        'parent.deletedAt as parentDeletedAt',
+        sql<string>`n.path::text`.as('path'),
+      ])
+      .where('n.tenantId', '=', tenantId)
+      .where('n.deletedAt', 'is not', null)
+      .orderBy('n.deletedAt', 'desc')
+      .orderBy('n.id')
+      .execute(),
+  )
+
+export const oneDeletedNode = (tenantId: string, nodeId: string) =>
+  db.query((k) =>
+    k
+      .selectFrom('OrgNode')
+      .select(['id', 'name', 'parentId', 'orgTypeId', sql<string>`path::text`.as('path')])
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', nodeId)
+      .where('deletedAt', 'is not', null)
+      .executeTakeFirst(),
+  )
+
+export const restoreNode = (tenantId: string, nodeId: string) =>
+  db.query((k) =>
+    k
+      .updateTable('OrgNode')
+      .set({ deletedAt: null, updatedAt: sql<Date>`now()` })
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', nodeId)
+      .execute(),
   )
 
 /**

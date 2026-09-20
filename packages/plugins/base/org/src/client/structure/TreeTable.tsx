@@ -252,7 +252,11 @@ export function TreeTable({
               variant="ghost"
               aria-label={format(m.rowAdd, { name: node.name })}
               aria-disabled={!canHold(node) || undefined}
-              title={canHold(node) ? undefined : format(m.rowAddBarred, { type: typeName(node.orgTypeId) })}
+              title={
+                canHold(node)
+                  ? undefined
+                  : format(m.rowAddBarred, { type: typeName(node.orgTypeId) })
+              }
               data-row-action="create"
               data-barred={!canHold(node)}
               className={stylex.props(!canHold(node) && styles.barred).className}
@@ -276,7 +280,9 @@ export function TreeTable({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={() => onOpen(node.id)}>{format(m.rowOpen)}</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onOpen(node.id)}>
+                {format(m.rowOpen)}
+              </DropdownMenuItem>
               {node.manageable && (
                 <DropdownMenuItem onSelect={() => onTask({ kind: 'rename', nodeId: node.id })}>
                   {format(m.rename)}

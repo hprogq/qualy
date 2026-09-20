@@ -212,7 +212,7 @@ export function NodePanel({
           ))}
         </nav>
         {!inSheet && (
-        <div {...stylex.props(styles.headRow)}>
+          <div {...stylex.props(styles.headRow)}>
             {!inSheet && (
               <>
                 <h2 {...stylex.props(styles.headName)}>{node.name}</h2>
@@ -325,7 +325,10 @@ export function NodePanel({
               </PageLink>
             ) : undefined,
           },
-          { label: format(m.childrenTitle), value: format(m.countUnits, { count: children.length }) },
+          {
+            label: format(m.childrenTitle),
+            value: format(m.countUnits, { count: children.length }),
+          },
         ]}
       />
 

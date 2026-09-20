@@ -171,6 +171,7 @@ export const placementAllowed = (tenantId: string, userTypeId: string, orgNodeId
           )
           .where('t.tenantId', '=', tenantId)
           .where('t.id', '=', userTypeId)
+          .where('n.deletedAt', 'is', null)
           .select((eb) =>
             placementLegal(
               {

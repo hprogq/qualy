@@ -34,7 +34,8 @@ const peopleCountMessage = defineMessage<{ count: number }>()({
 
 const moveNowhereMessage = defineMessage<{ type: string }>()({
   id: 'org/node/move-nowhere',
-  defaultMessage: 'As the rules stand, no other unit may hold a {type}. Let another kind of unit hold it, and the places of that kind appear here.',
+  defaultMessage:
+    'As the rules stand, no other unit may hold a {type}. Let another kind of unit hold it, and the places of that kind appear here.',
 })
 const rowAddBarredMessage = defineMessage<{ type: string }>()({
   id: 'org/tree/row-add-barred',
@@ -44,7 +45,8 @@ const namedTask = (id: string, defaultMessage: string) =>
   defineMessage<{ name: string }>()({ id, defaultMessage })
 const holdChildrenMessage = defineMessage<{ count: number }>()({
   id: 'org/node/hold-children',
-  defaultMessage: '{count, plural, one {# unit} other {# units}} under it: move or remove them first',
+  defaultMessage:
+    '{count, plural, one {# unit} other {# units}} under it: move or remove them first',
 })
 const holdLineMessage = defineMessage<{ label: string; count: number }>()({
   id: 'org/node/hold-line',
@@ -81,6 +83,10 @@ const i18n = definePluginMessages({
     'audit.org.node.delete': {
       id: 'org/audit/node-delete',
       defaultMessage: 'Delete organization unit',
+    },
+    'audit.org.node.restore': {
+      id: 'org/audit/node-restore',
+      defaultMessage: 'Restore organization unit',
     },
     'audit.org.type.create': {
       id: 'org/audit/type-create',
@@ -270,16 +276,26 @@ const i18n = definePluginMessages({
     renameNamed: namedTask('org/node/rename-named', 'Rename {name}'),
     moveNamed: namedTask('org/node/move-named', 'Move {name} to'),
     moveBarredSelf: { id: 'org/node/move-barred-self', defaultMessage: 'the unit being moved' },
-    moveBarredBelow: { id: 'org/node/move-barred-below', defaultMessage: 'under the unit being moved' },
+    moveBarredBelow: {
+      id: 'org/node/move-barred-below',
+      defaultMessage: 'under the unit being moved',
+    },
     moveNowhere: moveNowhereMessage,
-    moveNowhereTitle: { id: 'org/node/move-nowhere-title', defaultMessage: 'There is nowhere to move it' },
-    moveNowhereRules: { id: 'org/node/move-nowhere-rules', defaultMessage: 'See the rules for this kind' },
+    moveNowhereTitle: {
+      id: 'org/node/move-nowhere-title',
+      defaultMessage: 'There is nowhere to move it',
+    },
+    moveNowhereRules: {
+      id: 'org/node/move-nowhere-rules',
+      defaultMessage: 'See the rules for this kind',
+    },
     moveBarredCurrent: { id: 'org/node/move-barred-current', defaultMessage: 'its parent now' },
     moveBarredType: { id: 'org/node/move-barred-type', defaultMessage: 'cannot hold this kind' },
     moveBarredReach: { id: 'org/node/move-barred-reach', defaultMessage: 'not yours to manage' },
     moveConsequence: {
       id: 'org/node/move-consequence',
-      defaultMessage: 'Everything under it moves along, and so does who administers it and its people',
+      defaultMessage:
+        'Everything under it moves along, and so does who administers it and its people',
     },
     rowAdd: namedTask('org/tree/row-add', 'New unit under {name}'),
     rowAddBarred: rowAddBarredMessage,
@@ -321,7 +337,8 @@ const i18n = definePluginMessages({
     foldBranch: { id: 'org/tree/fold-branch', defaultMessage: 'Fold or unfold' },
     typeIsRootHint: {
       id: 'org/types/is-root-hint',
-      defaultMessage: 'This is the kind of the root unit, which always exists, so it cannot be deleted.',
+      defaultMessage:
+        'This is the kind of the root unit, which always exists, so it cannot be deleted.',
     },
     typeFreeHint: { id: 'org/type/free-hint', defaultMessage: 'No unit uses this type.' },
     ruleCount: {
@@ -365,6 +382,10 @@ const i18n = definePluginMessages({
     ORG_NODE_IS_ROOT: {
       id: 'org/error/node-is-root',
       defaultMessage: 'The root node cannot be moved or deleted.',
+    },
+    ORG_NODE_PARENT_DELETED: {
+      id: 'org/error/node-parent-deleted',
+      defaultMessage: 'The unit it stood under has been deleted too. Restore that one first.',
     },
     ORG_NODE_HAS_CHILDREN: {
       id: 'org/error/node-has-children',

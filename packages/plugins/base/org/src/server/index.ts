@@ -15,6 +15,10 @@ import {
   insertRule,
   insertType,
   deleteNode as deleteNodeRow,
+  deletedNodes,
+  purgeNode,
+  oneDeletedNode,
+  restoreNode as restoreNodeRow,
   countChildren,
   hasChildren,
   incompatibleChildTypes,
@@ -43,6 +47,7 @@ import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
 import {
   AssignmentIncompatible,
   NodeNotFound,
+  NodeParentDeleted,
   PlacementBlocked,
   RuleViolation,
   TypeNotFound,
@@ -66,6 +71,7 @@ import {
   type PutRuleError,
   type UpdateTypeError,
   type DeleteNodeError,
+  type RestoreNodeError,
   type UpdateNodeError,
 } from './errors.ts'
 import type { Principal } from '@qualy/rbac-contract'
@@ -74,6 +80,7 @@ import type { AuditActor } from '@qualy/audit-contract'
 import {
   NodeCreated,
   NodeDeleted,
+  NodeRestored,
   NodeMoved,
   NodeRetyped,
   NodeUpdated,
@@ -178,7 +185,35 @@ export class Org extends Context.Service<
       tenantId: string,
       nodeId: string,
       as: Principal,
+      /**
+       * Whether anything still stands on the unit - people, grants in force,
+       * a round under way. The row is kept, so no foreign key answers this
+       * any more; the plugins that own those things do, and org cannot see
+       * them, so whoever calls says how to ask. Required on purpose: a
+       * caller that forgot would take a unit away from under the people at it.
+       */
+      held: Effect.Effect<boolean>,
     ) => Effect.Effect<void, DeleteNodeError>
+    /** the units taken out of the structure; the tenant's to read, at the root */
+    readonly listDeletedNodes: (
+      tenantId: string,
+      as: Principal,
+    ) => Effect.Effect<
+      readonly {
+        id: string
+        name: string
+        orgTypeId: string
+        parentName: string | null
+        restorable: boolean
+        deletedAt: Date
+      }[],
+      AccessDenied
+    >
+    readonly restoreNode: (
+      tenantId: string,
+      nodeId: string,
+      as: Principal,
+    ) => Effect.Effect<void, RestoreNodeError>
 
     readonly createNode: (
       tenantId: string,
@@ -419,15 +454,45 @@ export const make = Effect.fn('Org.make')(function* () {
     tenantId: string,
     nodeId: string,
     as: Principal,
+    held: Effect.Effect<boolean>,
   ) {
+    // asked before the lock is taken: the answer comes from other plugins'
+    // own connections, and the tenant lock is not held across those
+    yield* rbac.requireAt(as, 'org.tree.manage', nodeId)
+    if (yield* held) return yield* new NodeInUse()
     yield* write(tenantId, nodeId, as, (node) =>
       Effect.gen(function* () {
         if (!node.parentId) return yield* new NodeIsRoot()
         const children = yield* hasChildren(tenantId, nodeId)
         if (children) return yield* new NodeHasChildren()
-        // Users and assignments still block through their restrict foreign
-        // keys, and so does anything else that points here.
+        // Taken out of the structure, not dropped: whoever still stands here
+        // or holds a grant here is asked about before this is called, and
+        // what merely remembers the unit keeps a row to remember.
         yield* deleteNodeRow(tenantId, nodeId)
+        yield* audit.record(NodeDeleted, {
+          tenantId,
+          actor: actorOf(as),
+          target: { id: node.id, label: node.name },
+          details: {},
+        })
+      }),
+    )
+  })
+
+  /**
+   * Undoes the creation of a unit nothing has used: the row is dropped, not
+   * binned - there is nothing to remember and nothing to put back.
+   */
+  const purgeUnused = Effect.fn('Org.purgeUnused')(function* (
+    tenantId: string,
+    nodeId: string,
+    as: Principal,
+  ) {
+    yield* write(tenantId, nodeId, as, (node) =>
+      Effect.gen(function* () {
+        if (!node.parentId) return yield* new NodeIsRoot()
+        if (yield* hasChildren(tenantId, nodeId)) return yield* new NodeHasChildren()
+        yield* purgeNode(tenantId, nodeId)
         yield* audit.record(NodeDeleted, {
           tenantId,
           actor: actorOf(as),
@@ -484,6 +549,69 @@ export const make = Effect.fn('Org.make')(function* () {
       // every caller's error type
       Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
     )
+
+  const listDeletedNodes = Effect.fn('Org.listDeletedNodes')(function* (
+    tenantId: string,
+    as: Principal,
+  ) {
+    const rows = yield* withDb(
+      Effect.gen(function* () {
+        yield* atRoot(tenantId, as)
+        return yield* deletedNodes(tenantId).pipe(Effect.orDie)
+      }),
+    )
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      orgTypeId: row.orgTypeId,
+      parentName: row.parentName,
+      restorable: row.parentDeletedAt === null,
+      deletedAt: new Date(row.deletedAt!),
+    }))
+  })
+
+  /**
+   * Puts a unit back where it stood.
+   *
+   * The structure may have moved on while it was away, so what a new unit is
+   * asked is asked again: the unit it stood under is still standing, and the
+   * kinds still fit. Whether somebody has taken its name is the index's to
+   * decide - the partial unique index counts it again the moment it is back.
+   */
+  const restoreNode = Effect.fn('Org.restoreNode')(function* (
+    tenantId: string,
+    nodeId: string,
+    as: Principal,
+  ) {
+    yield* withDb(
+      transaction(
+        Effect.gen(function* () {
+          yield* lockTenant(tenantId)
+          const gone = yield* oneDeletedNode(tenantId, nodeId)
+          if (!gone || gone.parentId === null) return yield* new NodeNotFound()
+          const parent = yield* oneNode(tenantId, gone.parentId)
+          if (!parent) return yield* new NodeParentDeleted()
+          yield* rbac.requireAt(as, 'org.tree.manage', parent.id)
+          if (!(yield* ruleExists(tenantId, parent.orgTypeId, gone.orgTypeId))) {
+            return yield* new RuleViolation({
+              reason: 'parent-child type combination is no longer allowed by the rules',
+            })
+          }
+          yield* restoreNodeRow(tenantId, nodeId)
+          yield* audit.record(NodeRestored, {
+            tenantId,
+            actor: actorOf(as),
+            target: { id: gone.id, label: gone.name },
+            organizationId: gone.id,
+            details: {},
+          })
+        }),
+      ),
+    ).pipe(
+      translateConstraints(nodeConstraints),
+      Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
+    )
+  })
 
   // a read: no constraint can fire, so dying here keeps the caller's error
   // type narrow without hiding anything translatable
@@ -761,7 +889,9 @@ export const make = Effect.fn('Org.make')(function* () {
     types: (tenantId) =>
       withDb(listTypes(tenantId)).pipe(
         Effect.orDie,
-        Effect.map((rows) => rows.map((row) => ({ id: row.id, name: row.name, sortOrder: row.sortOrder }))),
+        Effect.map((rows) =>
+          rows.map((row) => ({ id: row.id, name: row.name, sortOrder: row.sortOrder })),
+        ),
       ),
     rules: (tenantId) =>
       withDb(listRules(tenantId)).pipe(
@@ -791,7 +921,7 @@ export const make = Effect.fn('Org.make')(function* () {
         }),
       ),
     deleteUnused: (tenantId, nodeId, as) =>
-      deleteNode(tenantId, nodeId, as).pipe(
+      purgeUnused(tenantId, nodeId, as).pipe(
         Effect.map(() => 'deleted' as const),
         Effect.catchTags({
           ORG_NODE_NOT_FOUND: () => Effect.succeed('missing' as const),
@@ -808,6 +938,8 @@ export const make = Effect.fn('Org.make')(function* () {
     changeNodeType,
     updateNode,
     deleteNode,
+    listDeletedNodes,
+    restoreNode,
     createNode,
     moveNode,
 
@@ -1043,17 +1175,20 @@ export const make = Effect.fn('Org.make')(function* () {
  * that keeps the graph acyclic.
  */
 /** the service alone; the entry composes it with what the plugin registers */
-export const serviceLayer: Layer.Layer<Org | OrgProvisioning, never, Orm | Rbac | Placement | Audit> =
-  Layer.effectContext(
-    Effect.gen(function* () {
-      const org = yield* make()
-      return Context.empty().pipe(
-        Context.add(Org, org),
-        // the port a directory import materialises units through
-        Context.add(OrgProvisioning, org.provisioning),
-      )
-    }),
-  )
+export const serviceLayer: Layer.Layer<
+  Org | OrgProvisioning,
+  never,
+  Orm | Rbac | Placement | Audit
+> = Layer.effectContext(
+  Effect.gen(function* () {
+    const org = yield* make()
+    return Context.empty().pipe(
+      Context.add(Org, org),
+      // the port a directory import materialises units through
+      Context.add(OrgProvisioning, org.provisioning),
+    )
+  }),
+)
 
 // --- api ---
 
@@ -1148,8 +1283,41 @@ export const orgApiHandlers = HttpApiBuilder.group(local, 'org', (handlers) =>
       'deleteNode',
       Effect.fn('org.deleteNode.handler')(function* ({ params }) {
         const org = yield* Org
+        const catalog = yield* NodeUsageCatalog
         const principal = yield* CurrentUser
-        yield* org.deleteNode(principal.tenantId, params.nodeId, principal)
+        // The row stays, so no foreign key speaks up any more: what still
+        // stands on the unit - people, grants in force, a round under way -
+        // is asked of the plugins that own it. What merely remembers the unit
+        // (a closed round, a grant withdrawn) is why the row stays, and holds
+        // nothing.
+        yield* org.deleteNode(
+          principal.tenantId,
+          params.nodeId,
+          principal,
+          Effect.map(catalog.usageOf(principal.tenantId, params.nodeId), (usage) =>
+            usage.some((one) => one.clearable && one.count > 0),
+          ),
+        )
+        return { ok: true as const }
+      }),
+    )
+    .handle(
+      'listDeletedNodes',
+      Effect.fn('org.listDeletedNodes.handler')(function* () {
+        const org = yield* Org
+        const principal = yield* CurrentUser
+        const nodes = yield* org.listDeletedNodes(principal.tenantId, principal)
+        return {
+          nodes: nodes.map((node) => ({ ...node, deletedAt: node.deletedAt.toISOString() })),
+        }
+      }),
+    )
+    .handle(
+      'restoreNode',
+      Effect.fn('org.restoreNode.handler')(function* ({ params }) {
+        const org = yield* Org
+        const principal = yield* CurrentUser
+        yield* org.restoreNode(principal.tenantId, params.nodeId, principal)
         return { ok: true as const }
       }),
     )

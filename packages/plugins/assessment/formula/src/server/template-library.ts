@@ -585,6 +585,7 @@ export const make = Effect.fn('FormulaTemplateLibrary.make')(function* () {
               // organization to whoever holds a leaf of it
               .select(['n.id', 'n.name', 'n.depth', 'n.parentId'])
               .where('n.tenantId', '=', tenantId)
+              .where('n.deletedAt', 'is', null)
               .where((eb) =>
                 scopeCoverage(scope, {
                   id: eb.ref('n.id'),
@@ -645,6 +646,8 @@ export const make = Effect.fn('FormulaTemplateLibrary.make')(function* () {
                         .select(['id', sql<string>`path::text`.as('path')])
                         .where('tenantId', '=', tenantId)
                         .where('id', 'in', desired)
+                        // a template is newly shared only with units still standing
+                        .where('deletedAt', 'is', null)
                         .execute(),
                     )
                     .pipe(Effect.orDie)) as unknown as NodeRow[])

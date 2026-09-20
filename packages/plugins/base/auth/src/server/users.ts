@@ -139,6 +139,8 @@ const orgNodeExists = (tenantId: string, orgNodeId: string) =>
       .select('id')
       .where('tenantId', '=', tenantId)
       .where('id', '=', orgNodeId)
+      // nobody is placed at a unit that has left the structure
+      .where('deletedAt', 'is', null)
       .executeTakeFirst(),
   )
 
@@ -522,6 +524,7 @@ const placeableNodes = (
         }).as('manageable'),
       ])
       .where('n.tenantId', '=', tenantId)
+      .where('n.deletedAt', 'is', null)
       .where((eb) =>
         scopeCoverage(scopes.read, {
           id: eb.ref('n.id'),

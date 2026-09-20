@@ -691,6 +691,8 @@ export const nodesByIds = (tenantId: string, nodeIds: readonly string[]) =>
             .select(['id', 'path'])
             .where('tenantId', '=', tenantId)
             .where('id', 'in', nodeIds)
+            // what a round or a grant newly points at has to be standing
+            .where('deletedAt', 'is', null)
             .execute(),
         )
         .pipe(Effect.map((found) => found as { id: string; path: string }[]))
@@ -2629,6 +2631,7 @@ export const scopeOptions = (tenantId: string, held: AuthorizationScope) =>
           )`.as('parentId'),
         ])
         .where('tenantId', '=', tenantId)
+        .where('deletedAt', 'is', null)
         .where((eb) =>
           scopeCoverage(held, {
             id: eb.ref('OrgNode.id'),

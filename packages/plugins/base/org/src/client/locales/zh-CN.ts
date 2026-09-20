@@ -116,6 +116,7 @@ export default {
   'org/error/rule-in-use': '已有组织依赖该层级规则，无法删除。',
   'org/error/node-in-use': '仍有用户或角色授权关联该组织。',
   'org/error/node-is-root': '根组织无法移动或删除。',
+  'org/error/node-parent-deleted': '上级组织也已删除，请先恢复上级组织。',
   'org/error/node-has-children': '请先移走或删除所有下级组织。',
   'org/error/assignment-incompatible': '有 {assignmentCount} 个角色授权不支持新的组织类型。',
   'org/error/placement-incompatible':
@@ -134,6 +135,7 @@ export default {
   'org/audit/node-move': '移动组织',
   'org/audit/node-retype': '修改组织类型',
   'org/audit/node-delete': '删除组织',
+  'org/audit/node-restore': '恢复组织',
   'org/audit/type-create': '新建组织类型',
   'org/audit/type-update': '编辑组织类型',
   'org/audit/type-delete': '删除组织类型',

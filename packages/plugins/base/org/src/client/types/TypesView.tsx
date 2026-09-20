@@ -58,10 +58,14 @@ export function TypesView({
             </TableHead>
             {shape.types.map((type) => {
               const holds = namesOf(
-                shape.rules.filter((rule) => rule.parentTypeId === type.id).map((rule) => rule.childTypeId),
+                shape.rules
+                  .filter((rule) => rule.parentTypeId === type.id)
+                  .map((rule) => rule.childTypeId),
               )
               const under = namesOf(
-                shape.rules.filter((rule) => rule.childTypeId === type.id).map((rule) => rule.parentTypeId),
+                shape.rules
+                  .filter((rule) => rule.childTypeId === type.id)
+                  .map((rule) => rule.parentTypeId),
               )
               const selected = type.id === open?.id
               return (
@@ -77,7 +81,9 @@ export function TypesView({
                   <Cell lead strong={selected}>
                     {type.name}
                   </Cell>
-                  <Cell numeric>{format(m.countUnits, { count: shape.nodesOfType.get(type.id) ?? 0 })}</Cell>
+                  <Cell numeric>
+                    {format(m.countUnits, { count: shape.nodesOfType.get(type.id) ?? 0 })}
+                  </Cell>
                   <Cell tone={holds.length === 0 ? 'quiet' : 'plain'} title={listJoin(holds)}>
                     {holds.length === 0 ? format(m.none) : listJoin(holds)}
                   </Cell>

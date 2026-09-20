@@ -50,7 +50,15 @@ export const shapeOf = (input: {
   for (const node of input.nodes) {
     nodesOfType.set(node.orgTypeId, (nodesOfType.get(node.orgTypeId) ?? 0) + 1)
   }
-  return { nodes: input.nodes, byId, childrenOf, roots, types: input.types, rules: input.rules, nodesOfType }
+  return {
+    nodes: input.nodes,
+    byId,
+    childrenOf,
+    roots,
+    types: input.types,
+    rules: input.rules,
+    nodesOfType,
+  }
 }
 
 // ---- the rules as a picture ------------------------------------------------
@@ -96,7 +104,10 @@ export interface RulesGraph {
 export const rulesGraphOf = (shape: OrgShape): RulesGraph => {
   const known = new Set(shape.types.map((type) => type.id))
   const rules = shape.rules.filter(
-    (rule) => known.has(rule.parentTypeId) && known.has(rule.childTypeId) && rule.parentTypeId !== rule.childTypeId,
+    (rule) =>
+      known.has(rule.parentTypeId) &&
+      known.has(rule.childTypeId) &&
+      rule.parentTypeId !== rule.childTypeId,
   )
   const parentsOf = new Map<string, string[]>()
   for (const rule of rules) {
@@ -112,7 +123,8 @@ export const rulesGraphOf = (shape: OrgShape): RulesGraph => {
     if (known !== undefined) return known
     if (walking.has(id)) return 0
     const next = new Set(walking).add(id)
-    const layer = Math.max(-1, ...(parentsOf.get(id) ?? []).map((parent) => depth(parent, next))) + 1
+    const layer =
+      Math.max(-1, ...(parentsOf.get(id) ?? []).map((parent) => depth(parent, next))) + 1
     layerOf.set(id, layer)
     return layer
   }
@@ -207,7 +219,10 @@ export const rulesGraphOf = (shape: OrgShape): RulesGraph => {
   }
 
   return {
-    width: Math.max(1056, MARGIN_X * 2 + NODE_WIDTH + (Math.max(1, layers.length) - 1) * COLUMN_PITCH),
+    width: Math.max(
+      1056,
+      MARGIN_X * 2 + NODE_WIDTH + (Math.max(1, layers.length) - 1) * COLUMN_PITCH,
+    ),
     height: top + band + 16,
     nodes,
     edges,

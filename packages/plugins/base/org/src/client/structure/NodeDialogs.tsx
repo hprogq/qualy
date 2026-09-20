@@ -108,10 +108,15 @@ export function NodeDialogs({
   const submit = () => {
     const work =
       task.kind === 'create'
-        ? api.org.createNode({ payload: { parentId: node.id, orgTypeId: typeId, name: name.trim() } })
+        ? api.org.createNode({
+            payload: { parentId: node.id, orgTypeId: typeId, name: name.trim() },
+          })
         : task.kind === 'rename'
           ? api.org.updateNode({ params: { nodeId: node.id }, payload: { name: name.trim() } })
-          : api.org.setNodePlacement({ params: { nodeId: node.id }, payload: { parentId: targetId } })
+          : api.org.setNodePlacement({
+              params: { nodeId: node.id },
+              payload: { parentId: targetId },
+            })
     setBusy(true)
     void run(work)
       .then(onDone)
@@ -143,9 +148,9 @@ export function NodeDialogs({
             {format(commonMessages.cancel)}
           </Button>
           {!nowhere && (
-          <Button type="submit" form="org-node-task" disabled={!ready || busy}>
-            {format(task.kind === 'create' ? m.create : task.kind === 'rename' ? m.save : m.move)}
-          </Button>
+            <Button type="submit" form="org-node-task" disabled={!ready || busy}>
+              {format(task.kind === 'create' ? m.create : task.kind === 'rename' ? m.save : m.move)}
+            </Button>
           )}
         </>
       }
@@ -238,7 +243,10 @@ export function NodeDialogs({
                 }
                 // no picker installed: the legal places, by name
                 fallback={
-                  <Select value={targetId === '' ? undefined : targetId} onValueChange={setTargetId}>
+                  <Select
+                    value={targetId === '' ? undefined : targetId}
+                    onValueChange={setTargetId}
+                  >
                     <SelectTrigger aria-label={format(m.moveTo)}>
                       <SelectValue placeholder={format(m.selectParent)} />
                     </SelectTrigger>

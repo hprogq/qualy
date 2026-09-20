@@ -76,7 +76,13 @@ const styles = stylex.create({
     color: QUIET,
   },
   legendItem: { display: 'inline-flex', alignItems: 'center', gap: 8 },
-  legendLine: { width: 24, height: 0, borderTopWidth: 1.25, borderTopStyle: 'solid', borderTopColor: LINE },
+  legendLine: {
+    width: 24,
+    height: 0,
+    borderTopWidth: 1.25,
+    borderTopStyle: 'solid',
+    borderTopColor: LINE,
+  },
   legendLineCross: { borderTopStyle: 'dashed' },
 })
 
@@ -97,7 +103,9 @@ export function RulesGraph({
   const [dragging, setDragging] = useState(false)
   // read by the click that follows a drag, which arrives after the state has already been put back
   const dragged = useRef(false)
-  const grip = useRef<{ x: number; y: number; left: number; top: number; moved: boolean } | null>(null)
+  const grip = useRef<{ x: number; y: number; left: number; top: number; moved: boolean } | null>(
+    null,
+  )
   const fit = () => {
     const room = (seat.current?.clientWidth ?? 0) - 32
     if (room > 0 && graph.width > 0) setZoom(clamp(Math.min(1, room / graph.width)))
@@ -130,7 +138,9 @@ export function RulesGraph({
   return (
     <Card xstyle={styles.card} data-testid="rules-graph" data-rules={graph.edges.length}>
       <CardHead title={format(m.rulesTitle)} note={format(m.ruleArrowHint)}>
-        <span {...stylex.props(styles.headCount)}>{format(m.ruleCount, { count: graph.edges.length })}</span>
+        <span {...stylex.props(styles.headCount)}>
+          {format(m.ruleCount, { count: graph.edges.length })}
+        </span>
         {graph.nodes.length > 0 && (
           <span {...stylex.props(styles.zoom)} data-testid="rules-zoom" data-zoom={zoom}>
             <Button
@@ -250,7 +260,12 @@ export function RulesGraph({
               {graph.nodes.map((node) => {
                 const open = node.id === openId
                 return (
-                  <g key={node.id} data-type-node={node.id} data-open={open} onClick={() => onOpen(node.id)}>
+                  <g
+                    key={node.id}
+                    data-type-node={node.id}
+                    data-open={open}
+                    onClick={() => onOpen(node.id)}
+                  >
                     <rect
                       x={node.x}
                       y={node.y}
@@ -259,7 +274,11 @@ export function RulesGraph({
                       rx={10}
                       {...stylex.props(styles.box, open && styles.boxOpen)}
                     />
-                    <text x={node.x + 14} y={node.y + 20} {...stylex.props(styles.name, open && styles.nameOpen)}>
+                    <text
+                      x={node.x + 14}
+                      y={node.y + 20}
+                      {...stylex.props(styles.name, open && styles.nameOpen)}
+                    >
                       {node.name}
                     </text>
                     <text x={node.x + 14} y={node.y + 35} {...stylex.props(styles.count)}>

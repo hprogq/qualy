@@ -36,9 +36,21 @@ const styles = stylex.create({
   grow: { flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
   tags: { display: 'flex', flexWrap: 'wrap', gap: 6, paddingInline: 16, paddingBlock: 12 },
   quiet: { fontSize: 12.5, color: tokens.mutedForeground },
-  deleteRow: { display: 'flex', alignItems: 'center', gap: 12, paddingInline: 16, paddingBlock: 12 },
+  deleteRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    paddingInline: 16,
+    paddingBlock: 12,
+  },
   deleteTitle: { flexShrink: 0, fontSize: 13, fontWeight: 600 },
-  deleteWhy: { minWidth: 0, flexGrow: 1, fontSize: 12, lineHeight: 1.5, color: tokens.mutedForeground },
+  deleteWhy: {
+    minWidth: 0,
+    flexGrow: 1,
+    fontSize: 12,
+    lineHeight: 1.5,
+    color: tokens.mutedForeground,
+  },
   numeric: { fontVariantNumeric: 'tabular-nums' },
 })
 
@@ -96,7 +108,9 @@ export function TypeSheet({
     // stops at the pair that refused with the rest untouched and refetched
     let work: Promise<unknown> = Promise.resolve()
     for (const childTypeId of adds) {
-      work = work.then(() => run(api.org.putRule({ params: { parentTypeId: type.id, childTypeId } })))
+      work = work.then(() =>
+        run(api.org.putRule({ params: { parentTypeId: type.id, childTypeId } })),
+      )
     }
     for (const childTypeId of removals) {
       work = work.then(() =>
@@ -117,7 +131,11 @@ export function TypeSheet({
       onClose={onClose}
       title={type.name}
       titleAside={<Tag>{format(m.typeNodeCount, { count: inUse })}</Tag>}
-      meta={<MetaLine items={[format(m.typesTitle), format(m.typeInvolvedRules, { count: involved })]} />}
+      meta={
+        <MetaLine
+          items={[format(m.typesTitle), format(m.typeInvolvedRules, { count: involved })]}
+        />
+      }
       actions={
         canManage ? (
           <Button size="xs" variant="ghost" onClick={() => setRenaming((now) => !now)}>
@@ -132,10 +150,20 @@ export function TypeSheet({
           <>
             {dirty && <UnsavedMark>{format(m.unsaved)}</UnsavedMark>}
             <Spacer />
-            <Button size="sm" variant="ghost" disabled={!dirty || saving} onClick={() => setDraft(stored)}>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={!dirty || saving}
+              onClick={() => setDraft(stored)}
+            >
               {format(m.discard)}
             </Button>
-            <Button size="sm" disabled={!dirty || saving} onClick={saveRules} data-testid="type-save">
+            <Button
+              size="sm"
+              disabled={!dirty || saving}
+              onClick={saveRules}
+              data-testid="type-save"
+            >
               {format(m.save)}
             </Button>
           </>
@@ -147,8 +175,8 @@ export function TypeSheet({
           {...stylex.props(styles.form)}
           onSubmit={(event) => {
             event.preventDefault()
-            void run(api.org.updateType({ params: { typeId: type.id }, payload: { name } })).then(() =>
-              setRenaming(false),
+            void run(api.org.updateType({ params: { typeId: type.id }, payload: { name } })).then(
+              () => setRenaming(false),
             )
           }}
         >

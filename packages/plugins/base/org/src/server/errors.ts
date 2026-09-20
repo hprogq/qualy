@@ -66,7 +66,16 @@ export class NodeHasChildren extends Schema.TaggedError<NodeHasChildren>()(
   { httpApiStatus: 409, identifier: 'OrgNodeHasChildren' },
 ) {}
 
+/** a unit in the bin whose parent is in the bin too: the parent comes back first */
+export class NodeParentDeleted extends Schema.TaggedError<NodeParentDeleted>()(
+  'ORG_NODE_PARENT_DELETED',
+  {},
+  { httpApiStatus: 409, identifier: 'OrgNodeParentDeleted' },
+) {}
+
 export type UpdateNodeError = NodeNotFound | AccessDenied | NodeConstraintError
+export type RestoreNodeError =
+  NodeNotFound | NodeParentDeleted | RuleViolation | AccessDenied | NodeConstraintError
 export type DeleteNodeError =
   NodeNotFound | NodeIsRoot | NodeHasChildren | AccessDenied | NodeConstraintError
 

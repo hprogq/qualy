@@ -48,6 +48,14 @@ export const NodeDeleted = AuditAction.define({
   details: Schema.Struct({}),
 })
 
+export const NodeRestored = AuditAction.define({
+  code: 'org.node.restore',
+  target: 'org.node',
+  version: 1,
+  name: message('org/audit/node-restore', 'Restore organization unit'),
+  details: Schema.Struct({}),
+})
+
 export const TypeCreated = AuditAction.define({
   code: 'org.type.create',
   target: 'org.type',
@@ -94,6 +102,7 @@ export const orgActions = [
   NodeMoved,
   NodeRetyped,
   NodeDeleted,
+  NodeRestored,
   TypeCreated,
   TypeUpdated,
   TypeDeleted,

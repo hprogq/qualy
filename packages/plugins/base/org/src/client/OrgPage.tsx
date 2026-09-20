@@ -178,7 +178,9 @@ export default function OrgPage() {
           onClose={() => setSelectedId('')}
           width="wide"
           title={shown.name}
-          titleAside={<Tag>{shape.types.find((type) => type.id === shown.orgTypeId)?.name ?? ''}</Tag>}
+          titleAside={
+            <Tag>{shape.types.find((type) => type.id === shown.orgTypeId)?.name ?? ''}</Tag>
+          }
           closeLabel={format(commonMessages.close)}
           testId="node-sheet"
           // what is done to the unit sits at the foot of its sheet, where a

@@ -337,6 +337,7 @@ const orgNodeType = (tenantId: string, orgNodeId: string) =>
       .select(['id', 'orgTypeId'])
       .where('tenantId', '=', tenantId)
       .where('id', '=', orgNodeId)
+      .where('deletedAt', 'is', null)
       .executeTakeFirst(),
   )
 

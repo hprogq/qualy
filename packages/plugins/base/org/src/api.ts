@@ -16,6 +16,7 @@ import {
   TypeInUse,
   AssignmentIncompatible,
   NodeHasChildren,
+  NodeParentDeleted,
   NodeIsRoot,
   NodeNotFound,
   PlacementBlocked,
@@ -114,6 +115,43 @@ export const orgApiGroup = HttpApiGroup.make('org')
       params: Schema.Struct({ nodeId: uuidInput }),
       success: Schema.Struct({ ok: Schema.Literal(true) }),
       error: [NodeNotFound, NodeIsRoot, NodeHasChildren, AccessDenied, NodeConflict, NodeInUse],
+    }).middleware(Authenticated),
+  )
+  // The units taken out of the structure, and the way back for one of them.
+  // Nothing is ever dropped: closed rounds and withdrawn grants still name a
+  // unit long after it has left the tree.
+  .add(
+    HttpApiEndpoint.get('listDeletedNodes', '/org/deleted-nodes', {
+      success: Schema.Struct({
+        nodes: Schema.Array(
+          Schema.Struct({
+            id: Schema.String,
+            name: Schema.String,
+            orgTypeId: Schema.String,
+            /** where it stood, in words, root first */
+            parentName: Schema.NullOr(Schema.String),
+            /** false while the unit it stood under is in the bin as well */
+            restorable: Schema.Boolean,
+            deletedAt: Schema.String,
+          }),
+        ),
+      }),
+      error: [AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.put('restoreNode', '/org/deleted-nodes/:nodeId/status', {
+      params: Schema.Struct({ nodeId: uuidInput }),
+      payload: Schema.Struct({ status: Schema.Literal('active') }),
+      success: Schema.Struct({ ok: Schema.Literal(true) }),
+      error: [
+        NodeNotFound,
+        NodeParentDeleted,
+        RuleViolation,
+        AccessDenied,
+        NodeConflict,
+        NodeInUse,
+      ],
     }).middleware(Authenticated),
   )
   // What holds one unit in place, asked before a delete is offered: its own

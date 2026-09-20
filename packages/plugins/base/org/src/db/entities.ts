@@ -119,6 +119,10 @@ export const OrgNode = defineEntity({
     path: p.string().type('ltree'),
     depth: p.smallint().default(0),
     sortOrder: p.smallint().default(0),
+    // A unit taken out of the structure is kept, not dropped: rounds that
+    // have closed and grants long withdrawn still name it, and it can be put
+    // back. Everything that enumerates units reads the ones still standing.
+    deletedAt: p.datetime().nullable(),
     createdAt: p.datetime().defaultRaw('now()'),
     updatedAt: p.datetime().defaultRaw('now()'),
   },
@@ -145,7 +149,7 @@ export const OrgNode = defineEntity({
     {
       name: 'uq_org_nodes_tenant_parent_name',
       expression:
-        'create unique index uq_org_nodes_tenant_parent_name on org_nodes (tenant_id, parent_id, name) where parent_id is not null',
+        'create unique index uq_org_nodes_tenant_parent_name on org_nodes (tenant_id, parent_id, name) where parent_id is not null and deleted_at is null',
     },
     {
       name: 'uq_org_nodes_tenant_root_name',

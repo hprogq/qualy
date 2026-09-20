@@ -58,11 +58,22 @@ const styles = stylex.create({
     textUnderlineOffset: 3,
   },
   foot: { display: 'flex', alignItems: 'center', gap: 12, paddingInline: 16, paddingBlock: 12 },
-  verdict: { minWidth: 0, flexGrow: 1, fontSize: 12, lineHeight: 1.5, color: tokens.mutedForeground },
+  verdict: {
+    minWidth: 0,
+    flexGrow: 1,
+    fontSize: 12,
+    lineHeight: 1.5,
+    color: tokens.mutedForeground,
+  },
   bone: { marginInline: 16, marginBlock: 12 },
 })
 
-function Way({ pageId, params, search, children }: {
+function Way({
+  pageId,
+  params,
+  search,
+  children,
+}: {
   pageId: string
   params: Readonly<Record<string, string>>
   search: Readonly<Record<string, string>>
@@ -102,7 +113,11 @@ export function DeleteChecklist({
   const clear = usage.isSuccess && children === 0 && held.length === 0
 
   return (
-    <Card data-testid="node-delete" data-removable={clear} data-holds={held.length + (children > 0 ? 1 : 0)}>
+    <Card
+      data-testid="node-delete"
+      data-removable={clear}
+      data-holds={held.length + (children > 0 ? 1 : 0)}
+    >
       <CardHead title={format(m.deleteNode)} />
       <ul {...stylex.props(styles.list)}>
         <li {...stylex.props(styles.line)} data-hold="children" data-count={children}>
@@ -122,7 +137,12 @@ export function DeleteChecklist({
           </span>
         </li>
         {usage.isPending ? (
-          <Skeleton height={14} width="60%" radius={4} className={stylex.props(styles.bone).className} />
+          <Skeleton
+            height={14}
+            width="60%"
+            radius={4}
+            className={stylex.props(styles.bone).className}
+          />
         ) : usage.isError ? (
           <li {...stylex.props(styles.line)}>
             <span {...stylex.props(styles.which)}>{format(m.holdUnknown)}</span>
@@ -164,7 +184,11 @@ export function DeleteChecklist({
                 )}
               </span>
               {one.target !== null && (
-                <Way pageId={one.target.pageId} params={one.target.params} search={one.target.search}>
+                <Way
+                  pageId={one.target.pageId}
+                  params={one.target.params}
+                  search={one.target.search}
+                >
                   {format(one.clearable ? m.holdGo : m.holdLook)}
                 </Way>
               )}

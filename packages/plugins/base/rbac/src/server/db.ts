@@ -75,6 +75,8 @@ export const orgNodeExists = (tenantId: string, orgNodeId: string) =>
         .select('id')
         .where('tenantId', '=', tenantId)
         .where('id', '=', orgNodeId)
+        // a unit that has left the structure anchors nothing new
+        .where('deletedAt', 'is', null)
         .executeTakeFirst(),
     )
     .pipe(Effect.map((row) => row !== undefined))

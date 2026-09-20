@@ -467,15 +467,13 @@ describe.runIf(postgresAvailable).concurrent('changing a node type across three 
     }
   })
 
-  it('answers a foreign key it has never heard of the same way', async () => {
-    // A plugin above this one may point at a node - a round's management
-    // boundary does - and org must not learn that plugin's constraint names
-    // to answer for it: the dependency runs the other way. Deleting a node is
-    // the one place where every reference means the same thing to a reader.
+  it('drops a unit it is undoing only while nothing points at it, whatever the table', async () => {
+    // Undoing an import's own unit is the one place a row is still dropped,
+    // and a plugin above this one may point at a node - a round's management
+    // boundary does. Org must not learn that plugin's constraint names to
+    // answer for it: every reference means the same thing here.
     const db = await createTestContext('effect-org-unknown-fk')
     try {
-      // a table this plugin knows nothing about, made the way a plugin above
-      // it would have made one
       await db.query(`create table upstairs (
         tenant_id uuid not null,
         org_node_id uuid not null,
@@ -495,20 +493,20 @@ describe.runIf(postgresAvailable).concurrent('changing a node type across three 
           yield* runSql(sql`
             insert into upstairs (tenant_id, org_node_id) values (${f.tenant}, ${child})`)
           const org = yield* Org
-          const blocked = yield* Effect.result(org.deleteNode(f.tenant, child, f.principal))
-          return { tag: tagOf(blocked) }
+          return {
+            undone: yield* org.provisioning.deleteUnused(f.tenant, child, f.principal),
+          }
         }),
       )
-      expect(ok(exit).tag).toBe('ORG_NODE_IN_USE')
+      expect(ok(exit).undone).toBe('in-use')
     } finally {
       await db.dispose()
     }
   })
 
-  it('answers a restrict foreign key with the domain error, not a defect', async () => {
-    // the delete is blocked by a user standing on the node, which no service
-    // check prevents without a race: the constraint is what actually decides,
-    // so its violation has to arrive as ORG_NODE_IN_USE rather than a 500
+  it('refuses to bin a unit while its caller says something stands on it', async () => {
+    // the row is kept, so no foreign key speaks up: the plugins that own the
+    // people and the grants are asked, through whoever calls
     const db = await createTestContext('effect-org-in-use')
     try {
       const exit = await run(
@@ -521,11 +519,10 @@ describe.runIf(postgresAvailable).concurrent('changing a node type across three 
               insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
               values (${f.tenant}, ${f.node}, ${f.collegeType}, 'Leaf', 'r.leaf', 1) returning id`),
           ).id
-          // someone stands on the leaf, so the restrict fk holds it
-          yield* runSql(sql`
-            update users set primary_org_node_id = ${child} where tenant_id = ${f.tenant}`)
           const org = yield* Org
-          const blocked = yield* Effect.result(org.deleteNode(f.tenant, child, f.principal))
+          const blocked = yield* Effect.result(
+            org.deleteNode(f.tenant, child, f.principal, Effect.succeed(true)),
+          )
           return { tag: tagOf(blocked) }
         }),
       )

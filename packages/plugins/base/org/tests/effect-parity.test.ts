@@ -217,9 +217,9 @@ describe.runIf(postgresAvailable).concurrent('tree behaviours nothing else asser
           )
           return {
             move: yield* Effect.result(org.moveNode(f.tenant, f.root, college.id, f.principal)),
-            remove: yield* Effect.result(org.deleteNode(f.tenant, f.root, f.principal)),
+            remove: yield* Effect.result(org.deleteNode(f.tenant, f.root, f.principal, Effect.succeed(false))),
             // and a node that still has children is not deletable either
-            occupied: yield* Effect.result(org.deleteNode(f.tenant, college.id, f.principal)),
+            occupied: yield* Effect.result(org.deleteNode(f.tenant, college.id, f.principal, Effect.succeed(false))),
           }
         }),
       )
@@ -227,6 +227,69 @@ describe.runIf(postgresAvailable).concurrent('tree behaviours nothing else asser
       expect(tagOf(answer.move)).toBe('ORG_NODE_IS_ROOT')
       expect(tagOf(answer.remove)).toBe('ORG_NODE_IS_ROOT')
       expect(tagOf(answer.occupied)).toBe('ORG_NODE_HAS_CHILDREN')
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  // A unit is taken out of the structure, never dropped: what closed rounds
+  // and withdrawn grants remember keeps resolving, and the unit can come back.
+  it('bins a unit instead of dropping it, frees its name, and puts it back', async () => {
+    const db = await createTestContext('effect-org-bin')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const org = yield* Org
+          const make = (parentId: string, orgTypeId: string, name: string) =>
+            org.createNode(f.tenant, { parentId, orgTypeId, name }, f.principal)
+          const free = Effect.succeed(false)
+          const arts = yield* make(f.root, f.college, 'Arts')
+          const maths = yield* make(arts.id, f.department, 'Maths')
+          // something still stands on it: refused, and nothing is binned
+          const held = yield* Effect.result(
+            org.deleteNode(f.tenant, maths.id, f.principal, Effect.succeed(true)),
+          )
+          yield* org.deleteNode(f.tenant, maths.id, f.principal, free)
+          const gone = yield* Effect.result(org.readNode(f.tenant, maths.id, f.principal))
+          // the name is free for a sibling while it is away
+          const twin = yield* make(arts.id, f.department, 'Maths')
+          const binned = yield* org.listDeletedNodes(f.tenant, f.principal)
+          // and it cannot come back onto a name somebody has since taken
+          const clash = yield* Effect.result(org.restoreNode(f.tenant, maths.id, f.principal))
+          yield* org.deleteNode(f.tenant, twin.id, f.principal, free)
+          yield* org.restoreNode(f.tenant, maths.id, f.principal)
+          const back = yield* org.readNode(f.tenant, maths.id, f.principal)
+          // a unit whose parent is in the bin too waits for the parent
+          yield* org.deleteNode(f.tenant, maths.id, f.principal, free)
+          yield* org.deleteNode(f.tenant, arts.id, f.principal, free)
+          const orphan = yield* Effect.result(org.restoreNode(f.tenant, maths.id, f.principal))
+          const after = yield* org.listDeletedNodes(f.tenant, f.principal)
+          return {
+            held: tagOf(held),
+            gone: tagOf(gone),
+            binned: binned.map((node) => [node.name, node.parentName, node.restorable]),
+            clash: tagOf(clash),
+            back: back.id === maths.id,
+            orphan: tagOf(orphan),
+            waiting: after.map((node) => [node.name, node.restorable]),
+          }
+        }),
+      )
+      expect(ok(exit)).toEqual({
+        held: 'ORG_NODE_IN_USE',
+        gone: 'ORG_NODE_NOT_FOUND',
+        binned: [['Maths', 'Arts', true]],
+        clash: 'ORG_NODE_CONFLICT',
+        back: true,
+        orphan: 'ORG_NODE_PARENT_DELETED',
+        waiting: [
+          ['Arts', true],
+          ['Maths', false],
+          ['Maths', false],
+        ],
+      })
     } finally {
       await db.dispose()
     }
