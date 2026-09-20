@@ -48,7 +48,7 @@ const recordItem = (f: Seeded, batchId: string, over?: { scoring?: unknown }) =>
         scoreGroupId: groups.groups[0]!.id,
         maxEntries: null,
         config: {
-          entrySource: 'administrative',
+          entryChannels: ['administrative'],
           formConfig: {},
           scoringConfig: over?.scoring ?? {
             calculator: { ref: 'fixed@1', config: { value: '-1.00' } },
@@ -477,7 +477,7 @@ describe.runIf(postgresAvailable)('recognitions', () => {
           // the administrator renames the second step, which moves every
           // open round onto the new chain
           const swapped = {
-            entrySource: 'student' as const,
+            entryChannels: ['participant'] as const,
             formConfig: { files: {} },
             scoringConfig: gradedScoring,
             reviewPolicy: {
@@ -878,7 +878,7 @@ describe.runIf(postgresAvailable)('recognitions', () => {
           // the administrator renames the appeal step, which moves the open
           // appeal onto a new chain
           const renamed = {
-            entrySource: 'administrative' as const,
+            entryChannels: ['administrative'] as const,
             formConfig: {},
             scoringConfig: gradedScoring,
             reviewPolicy: {
@@ -1188,7 +1188,7 @@ describe.runIf(postgresAvailable)('recognitions', () => {
           // approved and unscorable - and nothing would say so until
           // somebody opened a results page
           const renamed = {
-            entrySource: 'student' as const,
+            entryChannels: ['participant'] as const,
             formConfig: { files: {} },
             scoringConfig: {
               ...gradedScoring,
@@ -1239,7 +1239,7 @@ describe.runIf(postgresAvailable)('recognitions', () => {
           // a round is open and has determined nothing yet
           const { entryId } = yield* claimed(f, g, g.p1)
           const renamed = {
-            entrySource: 'student' as const,
+            entryChannels: ['participant'] as const,
             formConfig: { files: {} },
             scoringConfig: {
               ...gradedScoring,
@@ -1324,7 +1324,7 @@ describe.runIf(postgresAvailable)('recognitions', () => {
               g.item.id,
               {
                 config: {
-                  entrySource: 'student' as const,
+                  entryChannels: ['participant'] as const,
                   formConfig: { files: {} },
                   scoringConfig: narrowScoring,
                   reviewPolicy: policyOf(f),
@@ -1377,7 +1377,7 @@ describe.runIf(postgresAvailable)('recognitions', () => {
               g.item.id,
               {
                 config: {
-                  entrySource: 'student' as const,
+                  entryChannels: ['participant'] as const,
                   formConfig: { files: {} },
                   scoringConfig: narrowScoring,
                   reviewPolicy: policyOf(f),
@@ -1416,7 +1416,7 @@ describe.runIf(postgresAvailable)('recognitions', () => {
             g.item.id,
             {
               config: {
-                entrySource: 'student' as const,
+                entryChannels: ['participant'] as const,
                 formConfig: { files: {} },
                 scoringConfig: twoFactScoring,
                 reviewPolicy: policyOf(f),
@@ -1485,7 +1485,7 @@ describe.runIf(postgresAvailable)('recognitions', () => {
           // the same determinations, a different amount: nothing a round
           // could produce becomes unreadable, so there is nothing to refuse
           const repriced = {
-            entrySource: 'student' as const,
+            entryChannels: ['participant'] as const,
             formConfig: { files: {} },
             scoringConfig: gradedScoring,
             reviewPolicy: {

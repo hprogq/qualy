@@ -48,7 +48,7 @@ export const PASSTHROUGH = `import { Schema, defineFormula } from '@qualy/formul
 
 export default defineFormula({
   input: Schema.input({
-    value: Schema.decimal({ minimum: '0', maximum: '10', maxScale: 2 }),
+    value: Schema.decimal({ minimum: '0', maximum: '10', maxScale: 2, title: '分值' }),
   }),
   output: Schema.scoreAmount({ maxScale: 2 }),
   run: (input) => input.value,
@@ -268,7 +268,7 @@ const publishFormula = async (db: Db, api: Api, tenantId: string, name: string) 
 }
 
 const itemConfig = (kind: DatasetBatch['kind'], versionId: string | null) => ({
-  entrySource: 'administrative',
+  entryChannels: ['administrative'],
   formConfig: {},
   scoringConfig:
     kind === 'control'

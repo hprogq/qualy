@@ -83,7 +83,7 @@ const panelWorld = (f: Seeded, over?: { scoring?: unknown }) =>
         scoreGroupId: groups.groups[0]!.id,
         maxEntries: 1,
         config: {
-          entrySource: 'student',
+          entryChannels: ['participant'],
           formConfig: {},
           scoringConfig: over?.scoring ?? {
             calculator: { ref: 'fixed@1', config: { value: '1.00' } },
@@ -455,7 +455,7 @@ describe.runIf(postgresAvailable)('the sitting', () => {
               scoreGroupId: groups.groups[0]!.id,
               maxEntries: 1,
               config: {
-                entrySource: 'student',
+                entryChannels: ['participant'],
                 formConfig: {},
                 scoringConfig: {
                   calculator: { ref: 'fixed@1', config: { value: '1.00' } },

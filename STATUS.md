@@ -18620,3 +18620,74 @@ pnpm vitest run tools/tests apps/server/tests    413 passed(supervisor 4/4,新�
 - **5 个 formula 浏览器测试文件共用同一个 formula id**:浏览器套件的文件在同一个 origin 上并行跑,于是它们
   共享同一份「本地草稿」与「试运行记录」,谁和谁同时跑就可能读到对方的行、或丢掉自己的。表现为一个没改过的
   文件里试运行数多了一条。现在各用各的 id。两个文件一起跑复现不出来,整套才行。
+
+## 项目编辑页重做:处理方式、录入方式与认定字段(2026-09-20)
+
+按 docs/item-edit.md 的完整讨论与 Claude Design 设计稿(3a 至 3g、4a 至 4g)重做题目编辑页,前后端一并改。
+裁决记录见 docs/assessment-design.md §32.79。
+
+### 领域与服务端
+
+- **处理方式三选一不落库**:`review | direct | automatic` 由 itemType 与 reviewPolicy 推导;切换到或离开
+  automatic 只在 draft 且无条目时允许(`updateItem` 接受 `itemType`,否则 `item-type-frozen`)。declaration
+  不再新建:evidence 允许零字段,参评端零字段即确认申报。
+- **`entryChannels` 取代 `entrySource`**:两扇门可同时开;列 `entry_channels`(jsonb),迁移
+  `20260919230709_item-entry-channels.sql` 回填并删除 `entry_source`(destructive 已批),升级测试
+  `migration-upgrade.test.ts` 建旧形态跑迁移断言三种回填。非 derived 题至少一个通道,已有条目后不得移除
+  通道。createEntry 按申报对象是否本人分门(participant / administrative),门未开拒 `entry-channel-closed`。
+- **证据驱动**:字段 `description`;text 的 `minLength`、`pattern`;新增 boolean;选项 `{id?, value, label,
+  enabled?}`(enum 只含 enabled,投影按 id 重映射);`draftFields` 逐字段报问题,previewScoring 用它,一个
+  未命名字段不再让整张表单消失。
+- **行政认定只问一次**:record(单人与批量)与 import 的模板、表单不再重复询问被直接绑定的申报字段,
+  服务端由认定值填入 payload(`scoring/bound-evidence.ts`)。
+- **公式发布门**:参数无 title、选项无 label、或默认语言下重复即拒绝发布。写测试时发现门本身从未生效:
+  `parameterSchemaAt` 要的是 `/name` 形式的路径,传裸参数名永远拿不到 schema——已修,测试钉住。
+
+### 前端(`client/items/editor/`,替换 ItemConfigEditor / FieldTable / ScoringBindingEditor)
+
+- `model.ts` 纯数据:Draft(mode、两扇门、扁平 FieldDraft、RecognitionDraft 含 description)、`configOf`
+  写出 entryChannels / formConfig / scoringConfig / reviewPolicy / displayConfig,被关联的申报字段按认定
+  schema 写出;`problemsOf` 产出 `EditorProblem {area, code, entity}` 驱动页签圆点、待完成清单与保存跳转。
+- 外壳:横幅(返回项目配置、标题、草稿/未发布/已发布与处理方式两枚标签、版本与未保存状态)、预览/保存/
+  更多操作;三个页签 基本信息 / 表单与计分(automatic 下叫 计分)/ 记录与审核(automatic 下隐藏),
+  `?panel=` 进地址;右侧「还有 N 项待完成」下拉,点行切页签并打开对应面板;保存永远可点,有待完成项时
+  先跳到第一项。
+- 基本信息:名称、所属分组、说明;处理方式三张单选卡;录入方式两张多选卡。改为提交即生效时若有认定字段
+  未关联,弹清单并「新增并切换」;改为自动计分时若有参数取认定值,只指路。
+- 表单与计分:计分方式卡(选择器 + 各计算器自己的编辑器槽位);公式参数表(取值:认定值/固定值,direct 下
+  用户申报值/固定值,automatic 下直接填值);认定字段表(review);申报表单表(拖动排序,关联字段带标签,
+  底部添加字段与列表展示区块)。
+- 面板:认定字段(名称、说明、认定范围或选项加恢复默认、申报字段区:新增并关联 / 关联已有 / 申报时必填 /
+  解除关联;关联已有单选字段走选项对应确认对话框);申报字段(普通字段全量编辑,已发布的选项 × 是停用,
+  已停用区可恢复;关联字段在 review 下只读概览加跳转,在 direct 下可改名称、提示、范围并同时写进认定);
+  添加字段两屏 Modal(选类型、配置并添加,名称或选项为空时添加不可用);列表展示;参评人员界面预览;
+  审核步骤沿用 StageSheet,审核流程改竖向列表。
+- 文案全部经 catalog,新增 178 个键,旧编辑器独占的 104 个键连同 zh-CN 一并删除;`items/field-title` 改为
+  「项目名称」。
+
+### 验收(实际执行)
+
+- `pnpm typecheck`:通过(`typecheck client component references` 后 exit=0,只剩既有 suggestion)。
+- `vitest run administrative-records / administrative-import / formula-library`:`Test Files 3 passed (3)`,
+  `Tests 37 passed (37)`,含新增三条(单人行政认定与导入的绑定字段回填、公式发布拒绝无标题参数)。
+- `vitest run evidence/tests/driver.test.ts`(与上一轮同批):通过。
+- 浏览器(逐文件):`item-editor.browser.test.tsx` + `scoring-failures.browser.test.tsx`:
+  `Test Files 2 passed (2)`,`Tests 19 passed (19)`;`localization.browser.test.tsx` +
+  `batch-admin.browser.test.tsx`:`Test Files 2 passed (2)`,`Tests 40 passed (40)`;模块挪动后再跑
+  `item-editor` + `review-recognition` + `evidence-fields`:`Test Files 3 passed (3)`,`Tests 28 passed (28)`。
+- `pnpm test`(全量 node):第一遍 `Test Files 3 failed | 266 passed | 3 skipped (272)`,
+  `Tests 5 failed | 1984 passed | 17 skipped (2006)`。三个文件:① `tools/tests/fast-refresh.test.ts`
+  点名五个组件文件导出了非组件(`offeredOptions`、`sheetStyles`、`fieldComplete`、`linkVerdictOf`、`rowWords`),
+  已分别挪进 `entry/model.ts`、`editor/shared-styles.ts`、`editor/model.ts`、`editor/words.ts`;
+  ② `formula-http.test.ts` 三条:其 IDENTITY 公式的参数没有 title,发布门修好后被正确拒绝,fixture 补 title;
+  ③ `binding-catalog.test.ts`「makes an archive wait for the item revision」在全量并行下拿到
+  `function-archived`,单独重跑通过(`4 tests` 全绿),与本轮改动无关,是负载下的时序抖动,记录待观察。
+  修后重跑这四个文件:`Test Files 4 passed (4)`,`Tests 24 passed (24)`(含 catalogs.test)。
+
+### 未做与下一步
+
+- 设计稿 4g 第一个对话框(取消勾选已被认定结果使用的选项)前端无计数数据源,靠服务端保存时拒绝;
+  4e 之外的「调整并关联」目前不接变更影响检查(保存时服务端照常检查)。
+- direct 模式的复核流程:服务端 `{mode:'none'}` 不接受任何环节,页面不显示(§32.79 七)。
+- 待跑一次完整 `pnpm test:browser` 确认无跨文件干扰(本轮只跑了直接受影响的四个文件)。
+

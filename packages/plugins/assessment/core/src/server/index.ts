@@ -4830,7 +4830,7 @@ const itemDto = (item: ItemView) => ({
       : {
           id: item.currentRevision.id,
           revisionNo: item.currentRevision.revisionNo,
-          entrySource: item.currentRevision.entrySource,
+          entryChannels: item.currentRevision.entryChannels,
           formConfig: item.currentRevision.formConfig,
           scoringConfig: item.currentRevision.scoringConfig,
           reviewPolicy: item.currentRevision.reviewPolicy,
@@ -4843,13 +4843,13 @@ const itemDto = (item: ItemView) => ({
 
 /** exactOptionalPropertyTypes: an absent displayConfig stays absent */
 const configInput = (config: {
-  entrySource: 'student' | 'administrative'
+  entryChannels: readonly ('participant' | 'administrative')[]
   formConfig: unknown
   scoringConfig: unknown
   reviewPolicy: unknown
   displayConfig?: unknown
 }) => ({
-  entrySource: config.entrySource,
+  entryChannels: config.entryChannels,
   formConfig: config.formConfig,
   scoringConfig: config.scoringConfig,
   reviewPolicy: config.reviewPolicy,
@@ -6657,6 +6657,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           params.itemId,
           {
             ...(payload.title !== undefined ? { title: payload.title } : {}),
+            ...(payload.itemType !== undefined ? { itemType: payload.itemType } : {}),
             ...(payload.scoreGroupId !== undefined ? { scoreGroupId: payload.scoreGroupId } : {}),
             ...(payload.maxEntries !== undefined ? { maxEntries: payload.maxEntries } : {}),
             ...(payload.sortOrder !== undefined ? { sortOrder: payload.sortOrder } : {}),

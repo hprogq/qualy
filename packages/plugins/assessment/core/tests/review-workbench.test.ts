@@ -79,7 +79,7 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
               scoreGroupId: groups.groups[0]!.id,
               maxEntries: 2,
               config: {
-                entrySource: 'student',
+                entryChannels: ['participant'],
                 formConfig: {
                   files: {},
                   fields: [
@@ -312,7 +312,7 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
               scoreGroupId: groups.groups[0]!.id,
               maxEntries: 3,
               config: {
-                entrySource: 'student',
+                entryChannels: ['participant'],
                 formConfig: { files: {} },
                 scoringConfig: {
                   calculator: { ref: 'fixed@1', config: { value: '3.00' } },
@@ -486,7 +486,7 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
               scoreGroupId: groups.groups[0]!.id,
               maxEntries: null,
               config: {
-                entrySource: 'administrative',
+                entryChannels: [] as const,
                 formConfig: {},
                 scoringConfig: {
                   calculator: { ref: 'fixed@1', config: { value: '3.00' } },
@@ -539,7 +539,7 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
               scoreGroupId: groups.groups[0]!.id,
               maxEntries: 5,
               config: {
-                entrySource: 'student',
+                entryChannels: ['participant'],
                 formConfig: { files: {} },
                 scoringConfig: {
                   calculator: { ref: 'fixed@1', config: { value: '0.20' } },
@@ -563,7 +563,7 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
                 scoreGroupId: groups.groups[0]!.id,
                 maxEntries: 1,
                 config: {
-                  entrySource: 'student',
+                  entryChannels: ['participant'],
                   formConfig: { files: {} },
                   scoringConfig: {
                     calculator: { ref: 'fixed@1', config: { value: '1.00' } },
@@ -1254,7 +1254,7 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
               scoreGroupId: groups.groups[0]!.id,
               maxEntries: 1,
               config: {
-                entrySource: 'student',
+                entryChannels: ['participant'],
                 formConfig: {},
                 scoringConfig: {
                   calculator: { ref: 'fixed@1', config: { value: '0.50' } },

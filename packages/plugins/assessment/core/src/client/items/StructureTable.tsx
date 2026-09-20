@@ -736,10 +736,14 @@ function ItemRow({
   const each = row.each === undefined ? '' : trimAmount(row.each)
   const most = composing ? '' : row.most === undefined ? format(m.structureUnlimited) : row.most
   const source =
-    row.source === undefined
+    row.channels === undefined || row.channels.length === 0
       ? ''
       : format(
-          row.source === 'student' ? m.itemsEntrySourceStudent : m.itemsEntrySourceAdministrative,
+          row.channels.includes('participant')
+            ? row.channels.includes('administrative')
+              ? m.itemsEntrySourceBoth
+              : m.itemsEntrySourceStudent
+            : m.itemsEntrySourceAdministrative,
         )
   const steps = row.steps === undefined ? '' : format(m.structureSteps, { count: row.steps })
   const name = (

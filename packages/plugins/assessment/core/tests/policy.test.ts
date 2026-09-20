@@ -19,18 +19,17 @@ const policy = (normal: unknown[], escalation: unknown[] = []) => ({
   escalation: { stages: escalation },
 })
 
-const reasons = (entrySource: 'student' | 'administrative', value: unknown) =>
-  validateReviewPolicy(entrySource, value).map((issue) => issue.reason)
+const reasons = (value: unknown) => validateReviewPolicy(value).map((issue) => issue.reason)
 
 describe('the review policy shape', () => {
   it('accepts one roleAt stage ending there', () => {
-    expect(reasons('student', policy([stage()]))).toEqual([])
+    expect(reasons(policy([stage()]))).toEqual([])
   })
 
   it('accepts several role ids in one stage', () => {
     const single = stage()
     single.selector.roleIds.push(randomUUID())
-    expect(reasons('student', policy([single]))).toEqual([])
+    expect(reasons(policy([single]))).toEqual([])
   })
 
   it('accepts two routes that share no steps', () => {
@@ -38,7 +37,6 @@ describe('the review policy shape', () => {
     // entirely rather than carrying on down the same list (§32.62)
     expect(
       reasons(
-        'student',
         policy(
           [stage(), stage()],
           [
@@ -56,21 +54,21 @@ describe('the review policy shape', () => {
   it('accepts a policy with no escalation route at all', () => {
     // nothing says a question must have one; escalating is then simply
     // not offered
-    expect(reasons('student', { normal: { stages: [stage()] } })).toEqual([])
+    expect(reasons({ normal: { stages: [stage()] } })).toEqual([])
   })
 
   it('seats a panel only on an escalation middle step', () => {
     // `all` is the sitting's shape (§32.66): the ordinary route confirms one
     // voice at a time, and the escalation route's last step must speak with
     // one final voice - a split there would have nowhere left to go
-    expect(reasons('student', policy([stage({ quorum: { type: 'all' } })]))).toContain(
+    expect(reasons(policy([stage({ quorum: { type: 'all' } })]))).toContain(
       'policy-quorum-all-normal',
     )
-    expect(reasons('student', policy([stage()], [stage({ quorum: { type: 'all' } })]))).toContain(
+    expect(reasons(policy([stage()], [stage({ quorum: { type: 'all' } })]))).toContain(
       'policy-quorum-all-terminal',
     )
     expect(
-      reasons('student', policy([stage()], [stage({ quorum: { type: 'all' } }), stage()])),
+      reasons(policy([stage()], [stage({ quorum: { type: 'all' } }), stage()])),
     ).toEqual([])
   })
 
@@ -78,30 +76,29 @@ describe('the review policy shape', () => {
     // atLeast's count is policy that must hold even when eligibility shrinks
     // the room, and no aggregation rule for it has been ruled
     expect(
-      reasons('student', policy([stage({ quorum: { type: 'atLeast', count: 2 } })])),
+      reasons(policy([stage({ quorum: { type: 'atLeast', count: 2 } })])),
     ).toContain('policy-quorum-not-counted')
   })
 
   it('takes a spoken name for a step, and refuses a blank one', () => {
-    expect(reasons('student', policy([stage({ label: '班委初审' })]))).toEqual([])
-    expect(reasons('student', policy([stage({ label: '   ' })]))).toContain('policy-label-invalid')
-    expect(reasons('student', policy([stage({ label: '名'.repeat(51) })]))).toContain(
+    expect(reasons(policy([stage({ label: '班委初审' })]))).toEqual([])
+    expect(reasons(policy([stage({ label: '   ' })]))).toContain('policy-label-invalid')
+    expect(reasons(policy([stage({ label: '名'.repeat(51) })]))).toContain(
       'policy-label-invalid',
     )
   })
 
   it('refuses everything outside the grammar, by name', () => {
-    expect(reasons('student', policy([]))).toContain('policy-stages-required')
+    expect(reasons(policy([]))).toContain('policy-stages-required')
     expect(
       reasons(
-        'student',
         policy([{ id: 's', selector: { kind: 'whoeverIsAround' }, quorum: { type: 'any' } }]),
       ),
     ).toContain('policy-selector-kind')
-    expect(reasons('student', policy([stage({ quorum: { type: 'mostOf' } })]))).toContain(
+    expect(reasons(policy([stage({ quorum: { type: 'mostOf' } })]))).toContain(
       'policy-quorum-type',
     )
-    expect(reasons('student', { ...policy([stage()]), sideChain: {} })).toContain(
+    expect(reasons({ ...policy([stage()]), sideChain: {} })).toContain(
       'policy-unknown-key',
     )
   })
@@ -110,22 +107,22 @@ describe('the review policy shape', () => {
     // still read and still walked, never written again: accepting both
     // shapes is how the two routes would drift back into being a prefix of
     // one another (§32.62)
-    expect(reasons('student', { stages: [stage()], normalTerminal: 0 })).toEqual([
+    expect(reasons({ stages: [stage()], normalTerminal: 0 })).toEqual([
       'policy-version-legacy',
     ])
   })
 
   it('insists every step is named, and named once', () => {
-    expect(reasons('student', policy([{ ...stage(), id: undefined }]))).toContain(
+    expect(reasons(policy([{ ...stage(), id: undefined }]))).toContain(
       'policy-stage-id-required',
     )
-    expect(reasons('student', policy([{ ...stage(), id: 'Not A Name' }]))).toContain(
+    expect(reasons(policy([{ ...stage(), id: 'Not A Name' }]))).toContain(
       'policy-stage-id-required',
     )
     // across both routes, because migrating an in-flight round asks "is this
     // step still here" of the whole policy
     const twice = stage({ id: 'same' })
-    expect(reasons('student', policy([twice], [{ ...stage(), id: 'same' }]))).toContain(
+    expect(reasons(policy([twice], [{ ...stage(), id: 'same' }]))).toContain(
       'policy-stage-id-duplicate',
     )
   })
@@ -133,7 +130,6 @@ describe('the review policy shape', () => {
   it('refuses stages whose parts are not what they say', () => {
     expect(
       reasons(
-        'student',
         policy([
           stage({
             selector: { kind: 'roleAt', nodeTypeId: 'not-a-uuid', roleIds: [randomUUID()] },
@@ -143,19 +139,18 @@ describe('the review policy shape', () => {
     ).toContain('policy-node-type-required')
     expect(
       reasons(
-        'student',
         policy([stage({ selector: { kind: 'roleAt', nodeTypeId: randomUUID(), roleIds: [] } })]),
       ),
     ).toContain('policy-roles-required')
-    expect(reasons('student', 'not even an object')).toEqual(['policy-not-an-object'])
+    expect(reasons('not even an object')).toEqual(['policy-not-an-object'])
   })
 
   it('holds administrative items to the same shape: the chain is their remedy', () => {
     // recording never walks the chain, but an appeal later resolves it from
     // this very revision - a policy with no chain would be immutable history
     // with no way back (assessment-design §13/§15)
-    expect(reasons('administrative', policy([stage()]))).toEqual([])
-    expect(reasons('administrative', {})).toContain('policy-stages-required')
+    expect(reasons(policy([stage()]))).toEqual([])
+    expect(reasons({})).toContain('policy-stages-required')
   })
 
   it('refuses unknown keys at every level, not only the top', () => {
@@ -172,7 +167,7 @@ describe('the review policy shape', () => {
         someFutureRule: true,
       },
     ])
-    const found = reasons('student', smuggling)
+    const found = reasons(smuggling)
     expect(found.filter((reason) => reason === 'policy-unknown-key')).toHaveLength(3)
   })
 })

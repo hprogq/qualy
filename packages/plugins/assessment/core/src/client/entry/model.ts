@@ -1,4 +1,5 @@
 import type { MessageDescriptor } from '@qualy/i18n-contract'
+import type { EvidenceChoiceOptionSpec, EvidenceFieldSpec } from './EvidenceForm.tsx'
 import { assessmentMessages as m } from '../i18n.ts'
 import { assessmentUrls } from '../api.ts'
 
@@ -95,7 +96,8 @@ export interface ItemDto {
   currentRevision: {
     id: string
     revisionNo: number
-    entrySource: 'student' | 'administrative'
+    /** the doors open on this question: participants filing, the office recording, or both */
+    entryChannels: readonly EntryChannel[]
     formConfig: unknown
     scoringConfig: unknown
     reviewPolicy: unknown
@@ -106,11 +108,20 @@ export interface ItemDto {
   createdAt: string
 }
 
+/** one door a question's records come in through */
+export type EntryChannel = 'participant' | 'administrative'
+
+/** whether a question opens this door at all */
+export const opensTo = (item: ItemDto, channel: EntryChannel): boolean =>
+  item.currentRevision?.entryChannels.includes(channel) === true
+
+/** a question the office records and nobody files: recorded, in the participant's eyes */
+export const recordedOnly = (item: ItemDto): boolean =>
+  opensTo(item, 'administrative') && !opensTo(item, 'participant')
+
 /** the questions this office records directly, in the batch's own order */
 export const administrativeItemsOf = (items: readonly ItemDto[]): readonly ItemDto[] =>
-  items.filter(
-    (item) => item.status === 'active' && item.currentRevision?.entrySource === 'administrative',
-  )
+  items.filter((item) => item.status === 'active' && opensTo(item, 'administrative'))
 
 export const entryStatusMessage: Record<EntryDto['status'], MessageDescriptor> = {
   draft: m.entryStatusDraft,
@@ -152,10 +163,15 @@ export const fieldsOf = (
 export const displayValueOf = (
   field: import('./EvidenceForm.tsx').EvidenceFieldSpec,
   raw: unknown,
+  /** the words for a yes and a no; a boolean prints as nothing without them */
+  words?: { readonly yes: string; readonly no: string },
 ): string => {
   if (typeof raw === 'number') return String(raw)
+  if (typeof raw === 'boolean') return words === undefined ? '' : raw ? words.yes : words.no
   if (typeof raw !== 'string') return ''
   if (field.type === 'choice') {
+    // every option the field ever had, retired ones included: an answer
+    // filed under an option since taken off the form keeps its words
     const chosen = (field.options ?? []).find((option) => option.value === raw)
     if (chosen !== undefined) return chosen.label
   }
@@ -292,3 +308,9 @@ export const unitsOf = (value: string | number): number => {
 
 /** whole ten-thousandths back into something to read */
 export const amountOf = (units: number): string => trimAmount((units / 10_000).toFixed(4))
+
+/** the options a choice field still offers: a disabled one keeps its words for old records only */
+export const offeredOptions = (
+  field: EvidenceFieldSpec,
+): readonly EvidenceChoiceOptionSpec[] =>
+  (field.options ?? []).filter((option) => option.enabled !== false)

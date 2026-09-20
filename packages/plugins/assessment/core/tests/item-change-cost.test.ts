@@ -24,7 +24,7 @@ const stage = (f: Seeded, id: string, label?: string) => ({
 })
 
 const configWith = (f: Seeded, stages: readonly unknown[]) => ({
-  entrySource: 'student' as const,
+  entryChannels: ['participant'] as const,
   formConfig: { files: {} },
   scoringConfig: {
     calculator: { ref: 'fixed@1', config: { value: '3.00' } },

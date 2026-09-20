@@ -327,7 +327,7 @@ record/import 来源 ──创建即──▶ approved（trusted，不建审核�
 
 **entry_revisions（不可变）**：`entry_id, revision_no(唯一对), payload(jsonb), actor_id, subject_id, source, note?, created_at`。学生自改、代录提交、驳回重提、行政录入——**一律追加，禁止 UPDATE 内容**。审核决定、公示行、复审轮全部锚定具体 `revision_id`，杜绝"公示按旧材料算、点开看到新材料"。附件走**关系表** `entry_revision_attachments(revision_id, attachment_id, position)`——不用 `uuid[]`（要真实 FK 与顺序）。
 
-**谁能创建条目，由题目说了算；该不该审，由这条事实的性质说了算——不是何时录**（裁决 §32.16，取代早先"按时间分流"的表述）。题目配置 `entrySource`：
+**谁能创建条目，由题目说了算；该不该审，由这条事实的性质说了算——不是何时录**（裁决 §32.16，取代早先"按时间分流"的表述）。题目配置 `entryChannels`（可同时打开两扇门；原单选 `entrySource` 已由裁决 §32.79 取代，下文 `student` 即 `participant` 通道）：
 
 - `student`：学生本人创建、编辑、提交、撤回自己的条目。**修改永远只有本人**——审核人发现填错走"驳回 + 修改建议"（下段）。**代录（source='proxy'）是一个原子动作 = 创建代理 Revision 并立即提交**（裁决 §32.20）：持 `assessment.entry.proxy` 的人（受 org-scope 管辖）替学生提交其本可自己提交的东西（漏报的教官证书），subject=学生、actor=录入人，学生端明示，**照常走完整审核链**。不存在"代理草稿"中间态——"班长提前造的 draft 归谁"在结构上不存在；原子动作完成后条目与学生自提完全同构（撤回/修订/重提都是学生自己的事，proxy actor 无任何后续特权）。proxy 自身作为受控码就是它的窗口（矩阵：预填报 ×、正式填报 ✓）；模板校验 lint："proxy ✓ 而 submit × 的 profile 语义存疑"。
 - `administrative`：**只有持 `assessment.entry.record` 的人**能创建，学生完全无入口。两个 source 的分界是**行政事实经什么入口形成，不是它一次作用于几个人**（裁决 §32.78）：`source='record'` 是工作人员在产品内直接作出的认定，既可针对单个参评人，也可把同一份认定内容一次性物化给多个参评人；`source='import'` 是由外部文件批量导入的行政事实，文件及其行关系本身就是来源凭据，因而逐行的人员、材料与认定值可以各不相同。二者都是 trusted administrative fact，**不因目标人数不同而改变 source**。承载组织以自身权威断言的事实：处分决定、职能部门定级名单、正式扣分、立功通报、低频特殊加分（三等功、合理化建议采纳、见义勇为定级）。**trusted：不建 ReviewInstance，创建即 confirmed fact**——让下级审核链去审上级的正式认定是层级倒置，录入方即裁定方。约束四条：`entry.record` 权限（org-scope、管理层级）；**依据必填**（文号/名单引用，可附文件），学生端显示"来源：学院录入 · 依据 XX 号文件"；SCHEDULED 冻结期照禁；救济 = 学生申诉轮或 staff 复查轮（终点=辅导员，恰合政策"更正需辅导员复核批准"）。由此"提审关闭后待审数单调递减"**无条件成立**：record 任何时段都不产生审核实例，proxy 与 submit 同受门控、收尾期本就关闭。
@@ -1568,3 +1568,19 @@ Entry。批量撤销沿这些已物化的记录进行，**绝不按 target 说�
 九、**与禁止网格编辑的关系**。这条能力只有「一份内容 × 一组对象」，没有网格、没有逐人差异。它不
 得演化成逐人不同内容的在线 Excel，也不得触碰 `source='student'|'proxy'` 的既有学生材料——§28
 「绝不替学生修改已填内容」不受本条影响。
+
+**32.79 项目编辑页重做：处理方式显式三选一、录入方式多选、认定字段是关联申报字段的唯一配置源**（2026-09-20，用户裁决，依据 docs/item-edit.md 的完整讨论与设计稿 3a 至 3g、4a 至 4g）。
+
+一、**处理方式不落库，由既有事实推导**。`review | direct | automatic` 三选一：automatic ⇔ `itemType='constant'`；direct ⇔ `reviewPolicy.mode='none'`；否则 review。切换到或离开 automatic 只在题目 draft 且无条目时允许（服务端 `item-type-frozen`，`updateItem` 因此接受 `itemType`）。`declaration` 题型不再新建：evidence 允许零字段，参评端零字段即"确认申报"；存量 declaration 继续可读可编辑，打开不改型。
+
+二、**`entryChannels: ('participant'|'administrative')[]` 取代 `entrySource`**。列 `entry_channels`（jsonb）；迁移回填 constant→`[]`、student→`['participant']`、其余→`['administrative']`，`entry_source` 列删除。非 derived 题至少一个通道；已有条目后不得移除通道（`entry-channels-frozen`）。createEntry 按"申报对象是否本人"分门：本人走 participant（`entry.create`），他人走 administrative（`entry.record`）；门未开则拒 `entry-channel-closed`。`recognitionSourceOf`：derived→`none`；participant 且无审核→`automatic`；participant→`review`；否则 `administrative`。
+
+三、**认定字段是关联申报字段的唯一配置源**。名称、说明（存于 `refinement.description` 注解层，算术不读）、认定范围（`refinement`）都在认定字段面板改；被关联的申报字段在保存时由编辑器按认定 schema 写出（类型、边界、选项值），服务端保留 ⊆ 校验不放松。选项模型 `{id?, value, label, enabled?}`：id 与 value 由系统生成，用户只改 label；停用的选项保留 id、value、label，投影按 id 重映射，enum 只含 enabled；关联已有单选字段时一次性确认选项对应关系（设计稿 4e），确认后申报选项保留 id、value 对齐公式值、名称改为认定字段的名称。解除关联后申报字段以当时的形状独立存在。
+
+四、**证据字段扩展**：所有字段 `description`（填写提示）；text 增 `minLength`、`pattern`；新增 `boolean` 类型；required 的 text 至少 1 字。摘要字段不含 attachment 与 boolean。
+
+五、**行政认定只问一次**。record 与 import 的模板、表单不再重复询问被直接绑定的申报字段；服务端由认定值填入 payload（`fillBoundEvidence`），只对 assignment 为 direct 的绑定，需要转换（如整数进小数）的绑定仍照常询问。
+
+六、**公式发布门**：每个参数必须有 title、每个选项必须有 label，且默认语言下互不重复（`parameter-title-missing`、`parameter-title-duplicate`、`choice-label-missing`、`choice-label-duplicate`）。
+
+七、**与设计稿的已知偏离**（三处，均已实现为本条所述）：① direct 模式的 reviewPolicy 是 `{mode:'none'}`，服务端不接受任何环节，记录与审核页因此不显示复核流程（设计稿写"只留复核流程"）；② 计分方式卡片里的"更换公式"实现为计算器选择器加各计算器自己的编辑器槽位，公式名与版本由 formula 插件的编辑器展示，core 不读公式名；③ "取消勾选已被认定结果使用的选项"的前置拦截（设计稿 4g 第一个对话框）前端没有计数数据源，改为保存时由服务端拒绝并翻译展示。

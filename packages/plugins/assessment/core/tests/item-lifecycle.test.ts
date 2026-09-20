@@ -39,7 +39,7 @@ const compose = (f: Seeded, batchId: string, scoreGroupId: string, title: string
         scoreGroupId,
         maxEntries: 1,
         config: {
-          entrySource: 'student',
+          entryChannels: ['participant'],
           formConfig: { files: {} },
           scoringConfig: {
             calculator: { ref: 'fixed@1', config: { value } },
@@ -94,7 +94,7 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
               scoreGroupId: g.item.scoreGroupId,
               maxEntries: 1,
               config: {
-                entrySource: 'student',
+                entryChannels: ['participant'],
                 formConfig: { files: {} },
                 scoringConfig: {
                   calculator: { ref: 'fixed@1', config: { value: '1.00' } },
@@ -174,7 +174,7 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
               scoreGroupId: groups.groups[0]!.id,
               maxEntries: 1,
               config: {
-                entrySource: 'student',
+                entryChannels: ['participant'],
                 formConfig: { files: {} },
                 scoringConfig: {
                   calculator: { ref: 'fixed@1', config: { value: '1.00' } },

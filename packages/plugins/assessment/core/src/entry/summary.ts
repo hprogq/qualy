@@ -75,7 +75,7 @@ export const projectEntrySummary = (input: {
     return configured
       .flatMap((id) => {
         const field = byIdentity.get(id)
-        if (field === undefined || field.type === 'attachment') return []
+        if (field === undefined || field.type === 'attachment' || field.type === 'boolean') return []
         return [
           {
             fieldId: id,
@@ -90,7 +90,8 @@ export const projectEntrySummary = (input: {
   for (const field of fields as readonly FormField[]) {
     if (parts.length >= SUMMARY_FIELDS_MOST) break
     const identity = identityOf(field)
-    if (identity === null || field.type === 'attachment') continue
+    // a file count and a yes-or-no name no claim, so neither identifies one
+    if (identity === null || field.type === 'attachment' || field.type === 'boolean') continue
     const value = valueOf(record, field)
     if (value === '') continue
     parts.push({

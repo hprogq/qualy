@@ -28,7 +28,7 @@ const at = (f: Seeded, id: string) => ({
 })
 
 const config = (f: Seeded, scoring: unknown) => ({
-  entrySource: 'student' as const,
+  entryChannels: ['participant'] as const,
   formConfig: { files: {} },
   scoringConfig: scoring,
   reviewPolicy: { normal: { stages: [at(f, 'class')] }, escalation: { stages: [] } },
@@ -111,7 +111,7 @@ const granted = (f: Seeded, batchId: string, fails?: 'refusal' | 'execution' | '
         scoreGroupId: groups.groups[0]!.id,
         maxEntries: null,
         config: {
-          entrySource: 'student' as const,
+          entryChannels: [] as const,
           formConfig: {},
           scoringConfig: {
             calculator: {

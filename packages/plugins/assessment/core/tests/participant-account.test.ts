@@ -7,7 +7,7 @@ import { errorOf, GATED, ok, one, run, runningBatch, seed } from './support/roun
 
 /** the shape every item in these rounds is configured with */
 const itemConfig = (f: { classType: string; reviewRole: string }) => ({
-  entrySource: 'student' as const,
+  entryChannels: ['participant'] as const,
   formConfig: { files: {} },
   scoringConfig: {
     calculator: { ref: 'fixed@1', config: { value: '1.00' } },
@@ -297,7 +297,7 @@ describe.runIf(postgresAvailable)("one participant's account, read by staff", ()
               title: '行政登记',
               scoreGroupId: g.item.scoreGroupId,
               maxEntries: 1,
-              config: { ...itemConfig(f), entrySource: 'administrative' as const },
+              config: { ...itemConfig(f), entryChannels: ['administrative'] as const },
             },
             admin,
           )

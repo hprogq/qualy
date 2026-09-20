@@ -565,6 +565,22 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/contract/parameter-name',
       defaultMessage: 'a parameter name must be a short identifier',
     },
+    contractParameterTitleMissing: {
+      id: 'assessment-formula/contract/parameter-title-missing',
+      defaultMessage: 'Give this parameter a title before publishing; people configuring an item read it.',
+    },
+    contractParameterTitleDuplicate: {
+      id: 'assessment-formula/contract/parameter-title-duplicate',
+      defaultMessage: 'Two parameters share this title; give each its own.',
+    },
+    contractChoiceLabelMissing: {
+      id: 'assessment-formula/contract/choice-label-missing',
+      defaultMessage: 'Give this choice a label before publishing; people configuring an item read it.',
+    },
+    contractChoiceLabelDuplicate: {
+      id: 'assessment-formula/contract/choice-label-duplicate',
+      defaultMessage: 'Two choices of this parameter share a label; give each its own.',
+    },
     profileTooManyParameters: {
       id: 'assessment-formula/contract/too-many-parameters',
       defaultMessage: 'the formula takes more parameters than a form can ask for',

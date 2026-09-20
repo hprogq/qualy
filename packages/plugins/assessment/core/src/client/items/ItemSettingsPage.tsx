@@ -22,13 +22,13 @@ import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
-import { ItemConfigEditor } from './ItemConfigEditor.tsx'
+import { ItemEditor } from './editor/ItemEditor.tsx'
 import { GroupEditor } from './GroupEditor.tsx'
 import { PaperStart } from './PaperStart.tsx'
 import { StructureTable } from './StructureTable.tsx'
 import { itemCeiling, structureRows, type StructureRow } from './structure.ts'
 import type { GroupTarget, Placement, TreeDraft, TreeGroup, TreeSelection } from './paper.ts'
-import type { Draft as QuestionDraft } from './ItemConfigEditor.tsx'
+import type { Draft as QuestionDraft } from './editor/model.ts'
 import { ReasonDialog } from './ReasonDialog.tsx'
 import { VoidQuestionDialog } from './VoidQuestionDialog.tsx'
 import { amountOf, trimAmount, unitsOf, type ItemDto } from '../entry/model.ts'
@@ -574,7 +574,7 @@ function Editor({
 
   const editorArea =
     (selectedItem !== null || writing !== null) && options.data !== undefined ? (
-      <ItemConfigEditor
+      <ItemEditor
         key={selectedItem?.id ?? writing?.localId ?? 'item'}
         batchId={batchId}
         batchStatus={batchStatus}

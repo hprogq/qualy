@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { Effect, Exit, Result, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
-import { evidenceDriver, evidenceConfig } from '../src/driver.ts'
+import { evidenceDriver, evidenceConfig, optionLabelOf } from '../src/driver.ts'
 import { assignmentPlan, normalizeAtomicSchema } from '@qualy/value-schema'
 import type { ItemPayloadInvalid } from '@qualy/plugin-assessment/plugin'
 
@@ -40,9 +40,14 @@ describe('what an administrator may configure', () => {
     expect(
       Exit.isSuccess(decodeConfig({ fields: [{ key: 'note', type: 'text', label: '备注' }] })),
     ).toBe(true)
+    // a form with nothing to fill in is a form somebody confirms: it reads
+    // the empty payload, and refuses an answer to a field it does not have
+    expect(Exit.isSuccess(decodeConfig({ fields: [] }))).toBe(true)
+    expect(
+      issuesOf(Effect.runSyncExit(evidenceDriver.decodePayload({ fields: [] }, { x: 1 }, batch))),
+    ).toEqual([{ field: 'x', reason: 'unknown-field' }])
     // an unreadable config never reaches field checks
     const unreadable = [
-      { fields: [] },
       {
         fields: [
           { key: 'a', type: 'text', label: 'A' },
@@ -457,6 +462,150 @@ describe('the typed fields', () => {
     }
     const carried = evidenceDriver.projectPayload!(before, after, { n: '3' })
     expect(carried).toEqual({})
+  })
+})
+
+describe('the fields the value profile speaks', () => {
+  const config = {
+    fields: [
+      {
+        key: 'code',
+        type: 'text',
+        label: '证书编号',
+        description: '以证书右上角为准',
+        minLength: 8,
+        maxLength: 20,
+        pattern: '^[A-Z]{2}[0-9]+$',
+      },
+      { key: 'team', type: 'boolean', label: '是否团队', required: true },
+      {
+        id: 'level',
+        key: 'level',
+        type: 'choice',
+        label: '级别',
+        options: [
+          { id: 'o1', value: 'national', label: '国家级' },
+          { id: 'o2', value: 'provincial', label: '省级' },
+          { id: 'o3', value: 'city', label: '市级', enabled: false },
+        ],
+      },
+    ],
+  }
+  const reasonsOf = (exit: Exit.Exit<unknown, unknown>) =>
+    issuesOf(exit).map((issue) => `${issue.field}:${issue.reason}`)
+
+  it('holds a text to its shortest length and its format, and a yes-or-no to being one', () => {
+    expect(Exit.isSuccess(decode(config, { code: 'AB12345678', team: false }))).toBe(true)
+    expect(reasonsOf(decode(config, { code: 'AB1', team: true }))).toContain('code:too-short')
+    expect(reasonsOf(decode(config, { code: 'ab12345678', team: true }))).toContain(
+      'code:pattern-mismatch',
+    )
+    // an optional text left blank is an absence, not a too-short answer
+    expect(Exit.isSuccess(decode(config, { code: '', team: true }))).toBe(true)
+    expect(reasonsOf(decode(config, { team: 'yes' }))).toContain('team:not-a-boolean')
+    expect(reasonsOf(decode(config, {}))).toContain('team:required')
+  })
+
+  it('offers a retired option to nobody, and keeps its words', () => {
+    expect(reasonsOf(decode(config, { team: true, level: 'city' }))).toContain('level:not-a-choice')
+    expect(Exit.isSuccess(decode(config, { team: true, level: 'provincial' }))).toBe(true)
+    const level = evidenceDriver.bindableFields!(config, batch).find((one) => one.fieldId === 'level')!
+    expect(level.schema).toMatchObject({
+      enum: ['national', 'provincial'],
+      'x-qualy-enumLabels': { national: '国家级', provincial: '省级' },
+    })
+    expect(optionLabelOf(config.fields[2] as never, 'city')).toBe('市级')
+    // a choice with nothing on offer is not a choice
+    expect(
+      Result.isFailure(
+        Schema.decodeUnknownResult(evidenceConfig)({
+          fields: [
+            { key: 'c', type: 'choice', label: 'C', options: [{ value: 'a', label: 'A', enabled: false }] },
+          ],
+        }),
+      ),
+    ).toBe(true)
+  })
+
+  it('carries the words on the schema, so a binding and a form agree on them', () => {
+    const code = evidenceDriver.bindableFields!(config, batch).find((one) => one.fieldId === 'code')!
+    expect(code.schema).toMatchObject({
+      type: 'string',
+      minLength: 8,
+      maxLength: 20,
+      pattern: '^[A-Z]{2}[0-9]+$',
+      title: '证书编号',
+      description: '以证书右上角为准',
+    })
+  })
+
+  it('refuses a pattern outside the regex dialect, at configuration', () => {
+    expect(
+      Result.isFailure(
+        Schema.decodeUnknownResult(evidenceConfig)({
+          fields: [{ key: 't', type: 'text', label: 'T', pattern: '(?<=a)b' }],
+        }),
+      ),
+    ).toBe(true)
+  })
+
+  it('follows a chosen option by its identity when its value was respelled', () => {
+    // a field bound to a scoring parameter takes the parameter's own
+    // values; an answer filed under the old spelling still names the option
+    const before = {
+      fields: [
+        {
+          id: 'level',
+          key: 'level',
+          type: 'choice',
+          label: '级别',
+          options: [
+            { id: 'o1', value: 'ox1', label: '国家级' },
+            { id: 'o2', value: 'ox2', label: '省级' },
+          ],
+        },
+      ],
+    }
+    expect(evidenceDriver.projectPayload!(before, config, { level: 'ox2' })).toEqual({
+      level: 'provincial',
+    })
+    // an option the new form no longer has keeps the value it had, and the
+    // decoder says so
+    expect(evidenceDriver.projectPayload!(before, config, { level: 'ox9' })).toEqual({
+      level: 'ox9',
+    })
+  })
+})
+
+describe('a form still being composed', () => {
+  it('reads every field it can and names the others one by one', () => {
+    const read = evidenceDriver.draftFields!(
+      {
+        fields: [
+          { id: 'a', key: 'a', type: 'text', label: '活动名称', maxLength: 50 },
+          { id: 'b', key: 'b', type: 'integer', label: '', min: 1, max: 8 },
+          { id: 'c', key: 'c', type: 'integer', label: '名次', min: 9, max: 1 },
+          { id: 'a', key: 'd', type: 'text', label: '重复' },
+          { id: 'e', key: 'e', type: 'date', label: '日期', min: '2027-01-01' },
+          { id: 'f', key: 'f', type: 'attachment', label: '证书', maxCount: 1 },
+        ],
+      },
+      batch,
+    )
+    expect(read.issues).toEqual([
+      { path: 'formConfig.fields[1]', reason: 'field-unnamed' },
+      { path: 'formConfig.fields[2]', reason: 'field-invalid' },
+      { path: 'formConfig.fields[3]', reason: 'field-duplicate' },
+      { path: 'formConfig.fields[4]', reason: 'date-window-empty' },
+    ])
+    expect(read.bindableFields.map((one) => one.fieldId)).toEqual(['a'])
+  })
+
+  it('reports a form that is not a list of fields as a whole', () => {
+    expect(evidenceDriver.draftFields!({}, batch)).toEqual({
+      issues: [{ path: 'formConfig', reason: 'form-config-invalid' }],
+      bindableFields: [],
+    })
   })
 })
 

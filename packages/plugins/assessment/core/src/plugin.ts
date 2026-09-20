@@ -61,6 +61,33 @@ export interface BatchContext {
  * cannot read payloads, so the driver names what the payload cites. Without
  * it, core would have to hard-code every driver's field layout.
  */
+/** one field of a question a scoring parameter may be bound to */
+export interface BindableField {
+  /** the field's identity across revisions of the form */
+  readonly fieldId: string
+  /**
+   * Where this revision's payloads keep the field's answer.
+   *
+   * Identity and address are different questions - a field keeps its id
+   * while its key stays pinned to the slot old payloads already use - and
+   * nothing here promises the two are ever equal. The plan freezes the
+   * address, because seeding reads payloads; compatibility reasons about
+   * the identity.
+   */
+  readonly payloadKey: string
+  readonly schema: AtomicSchema
+  /**
+   * Whether every filing of this question is guaranteed to carry it.
+   *
+   * A schema says what the value looks like when it is there, which is a
+   * different question from whether it is always there. It matters where
+   * nobody will be asked afterwards: a question that approves itself has
+   * only its defaults, so seeding one from a field a student may leave
+   * blank produces a claim that is approved and cannot be scored.
+   */
+  readonly always: boolean
+}
+
 export interface ItemTypeDriver {
   readonly id: string
   /** validates an item's form configuration when an administrator saves it */
@@ -109,34 +136,25 @@ export interface ItemTypeDriver {
    * field or a choice field is. A driver without one offers no bindable
    * field, which is every driver in this phase.
    */
-  readonly bindableFields?: (
+  readonly bindableFields?: (config: unknown, batch: BatchContext) => readonly BindableField[]
+  /**
+   * The same fields, read off a form that is still being composed.
+   *
+   * A configuration under construction is not a configuration: a field
+   * without a name yet, or two that collide, makes the whole form
+   * undecodable - and the editor asks this question while the form is being
+   * built out of the very parameters the answer names. So a driver that can
+   * read a form field by field says which fields it could read and what is
+   * wrong with each of the others, instead of refusing the lot. Never used
+   * for a save; the strict schema still judges what is stored.
+   */
+  readonly draftFields?: (
     config: unknown,
     batch: BatchContext,
-  ) => readonly {
-    /** the field's identity across revisions of the form */
-    readonly fieldId: string
-    /**
-     * Where this revision's payloads keep the field's answer.
-     *
-     * Identity and address are different questions - a field keeps its id
-     * while its key stays pinned to the slot old payloads already use - and
-     * nothing here promises the two are ever equal. The plan freezes the
-     * address, because seeding reads payloads; compatibility reasons about
-     * the identity.
-     */
-    readonly payloadKey: string
-    readonly schema: AtomicSchema
-    /**
-     * Whether every filing of this question is guaranteed to carry it.
-     *
-     * A schema says what the value looks like when it is there, which is a
-     * different question from whether it is always there. It matters where
-     * nobody will be asked afterwards: a question that approves itself has
-     * only its defaults, so seeding one from a field a student may leave
-     * blank produces a claim that is approved and cannot be scored.
-     */
-    readonly always: boolean
-  }[]
+  ) => {
+    readonly issues: readonly { readonly path: string; readonly reason: string }[]
+    readonly bindableFields: readonly BindableField[]
+  }
   /** who acts: students filing, staff working a task, or nobody (derived) */
   readonly interaction: 'entry' | 'task' | 'derived'
   /** the scoring references this kind of question defaults to */

@@ -278,7 +278,7 @@ describe('a rule that re-prices what stands', () => {
     currentRevision: {
       id: REVISION_ID,
       revisionNo: 1,
-      entrySource: 'student',
+      entryChannels: ['participant'],
       formConfig: {
         files: {},
         fields: [{ id: 'claimed-level', key: 'claimed-level', label: '获奖级别', type: 'text' }],
@@ -421,8 +421,8 @@ describe('a rule that re-prices what stands', () => {
   }
 
   const retitleAndSave = async () => {
-    await expect.element(page.getByRole('textbox', { name: '标题' })).toBeVisible()
-    await page.getByRole('textbox', { name: '标题' }).fill('学生干部任职(改名)')
+    await expect.element(page.getByRole('textbox', { name: '项目名称' })).toBeVisible()
+    await page.getByRole('textbox', { name: '项目名称' }).fill('学生干部任职(改名)')
     await page.getByRole('button', { name: '保存', exact: false }).click()
   }
 
@@ -480,6 +480,6 @@ describe('a rule that re-prices what stands', () => {
     await expect.element(page.getByRole('alert').first()).toBeVisible()
     expect(document.querySelector('[data-testid="impact-scoring"]')).toBeNull()
     await vi.waitFor(() => expect(sent).toHaveLength(1))
-    await expect.element(page.getByRole('textbox', { name: '标题' })).toBeVisible()
+    await expect.element(page.getByRole('textbox', { name: '项目名称' })).toBeVisible()
   }, 30_000)
 })

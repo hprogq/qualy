@@ -10,6 +10,7 @@ import { assessmentMessages as m } from '../i18n.ts'
 const SENTENCES: Record<string, MessageDescriptor> = {
   'not-your-entry': m.refuseNotYours,
   'not-your-participant': m.refuseNotYours,
+  'entry-channel-closed': m.refuseChannelClosed,
   'participant-not-found': m.refuseNotYours,
   'participant-not-active': m.refuseNotActive,
   'participant-out-of-reach': m.refuseOutOfReach,

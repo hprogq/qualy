@@ -50,7 +50,7 @@ const IDENTITY = `import { Schema, defineFormula } from '@qualy/formula'
 
 export default defineFormula({
   input: Schema.input({
-    value: Schema.decimal({ minimum: '0.00', maximum: '10.00', maxScale: 2 }),
+    value: Schema.decimal({ minimum: '0.00', maximum: '10.00', maxScale: 2, title: '分值' }),
   }),
   output: Schema.scoreAmount({ maxScale: 2 }),
   run: (input) => input.value,
@@ -162,6 +162,45 @@ describe.runIf(postgresAvailable)('the formula library', () => {
       ),
     )
     expect([...outcome].sort()).toEqual(['One', 'Three', 'Two'])
+  }, 120_000)
+
+  it('refuses to publish while a parameter has no words a reader could go by', async () => {
+    const refused = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('fx-untitled')
+          const library = yield* FormulaLibrary
+          const as = f.principal(f.admin)
+          const created = yield* library.createFunction(f.t, { name: '无题' }, as)
+          const drafted = yield* library.updateDraft(
+            f.t,
+            created.id,
+            {
+              expectedDraftRevision: created.draftRevision,
+              // the same arithmetic, with the parameter's title left off
+              draftSourceTs: IDENTITY.replace(", title: '分值'", ''),
+              draftTests: [{ name: 'three', input: { value: '3.00' }, expected: '3' }],
+            },
+            as,
+          )
+          return yield* Effect.flip(
+            library.publish(
+              f.t,
+              created.id,
+              { expectedDraftRevision: drafted.draftRevision, releaseName: 'first' },
+              as,
+            ),
+          )
+        }),
+      ),
+    )
+    // a version people configure questions by, without ever seeing the
+    // source, has to name its parameters for them
+    expect(refused._tag).toBe('ASSESSMENT_FORMULA_CONTRACT_INVALID')
+    expect(
+      ((refused as { issues?: readonly { reason: string }[] }).issues ?? []).map((one) => one.reason),
+    ).toEqual(['parameter-title-missing'])
   }, 120_000)
 
   it('deletes a draft nobody published, and refuses once one exists', async () => {
@@ -512,7 +551,7 @@ export default { ...definition, input: undefined } as unknown as typeof definiti
 
 export default defineFormula({
   input: Schema.input({
-    ordinal: Schema.integer({ minimum: 1, maximum: 10 }),
+    ordinal: Schema.integer({ minimum: 1, maximum: 10, title: '序位' }),
   }),
   output: Schema.decimal({ minimum: '0.00', maximum: '5.00', maxScale: 2 }),
   run: (input, q) => {

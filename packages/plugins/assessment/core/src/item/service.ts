@@ -44,6 +44,7 @@ import {
 import { judgeRecognition, recognitionFormFields } from '../scoring/recognition.ts'
 import { normalizeScoringAuthoring } from '../scoring/authoring.ts'
 import { policyModeOf } from '../review/chain.ts'
+import type { EntryChannel } from './channels.ts'
 import { validateItemConfig, type Catalogs, type ItemConfigInput } from './config.ts'
 import {
   cancelReviewInstance,
@@ -124,7 +125,7 @@ export interface MaterialRange {
 export interface ItemRevisionView {
   readonly id: string
   readonly revisionNo: number
-  readonly entrySource: 'student' | 'administrative'
+  readonly entryChannels: readonly EntryChannel[]
   readonly formConfig: unknown
   readonly scoringConfig: unknown
   readonly reviewPolicy: unknown
@@ -170,6 +171,12 @@ export interface CreateItemInput {
 
 export interface UpdateItemInput {
   readonly title?: string
+  /**
+   * What kind of question this is, for a question nothing has happened to
+   * yet: a draft with no filings may still become a derived question or
+   * stop being one. Refused once anything stands under it.
+   */
+  readonly itemType?: string
   readonly scoreGroupId?: string
   readonly maxEntries?: number | null
   readonly sortOrder?: number
@@ -406,7 +413,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
   const toRevisionView = (row: ItemRevisionRow): ItemRevisionView => ({
     id: row.id,
     revisionNo: row.revisionNo,
-    entrySource: row.entrySource,
+    entryChannels: row.entryChannels,
     formConfig: row.formConfig,
     scoringConfig: row.scoringConfig,
     reviewPolicy: row.reviewPolicy,
@@ -445,7 +452,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
 
   /** whether a submitted configuration differs from the stored current one */
   const configChanged = (current: ItemRevisionRow, config: ItemConfigInput) =>
-    current.entrySource !== config.entrySource ||
+    !sameJson([...current.entryChannels], [...config.entryChannels]) ||
     !sameJson(current.formConfig, config.formConfig) ||
     !sameJson(current.scoringConfig, config.scoringConfig) ||
     !sameJson(current.reviewPolicy, config.reviewPolicy) ||
@@ -483,17 +490,20 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
   }) =>
     Effect.gen(function* () {
       const issues = [...(yield* validateItemConfig(catalogs, input.item.itemType, input.config))]
-      // once anything has been filed against the item, who may file is no
-      // longer negotiable: the resource policy reads it from the current
-      // revision, and flipping it would strand every existing entry on a
-      // path that no longer exists. Void and replace is the way to change
-      // what kind of question this is.
+      // once anything has been filed against the item, a door it came in
+      // through may not be shut: the resource policy reads the doors from
+      // the current revision, and closing one would strand every entry that
+      // used it on a path that no longer exists. Opening another door is
+      // harmless. Void and replace is the way to change what kind of
+      // question this is.
       if (
         input.current !== null &&
-        input.config.entrySource !== input.current.entrySource &&
+        input.current.entryChannels.some(
+          (channel) => !input.config.entryChannels.includes(channel),
+        ) &&
         (yield* itemHasEntries(input.tenantId, input.item.id))
       ) {
-        issues.push({ path: 'entrySource', reason: 'entry-source-frozen' })
+        issues.push({ path: 'entryChannels', reason: 'entry-channels-frozen' })
       }
       const driver = catalogs.itemTypes.get(input.item.itemType) as ItemTypeDriver | undefined
       if (driver?.configIssues !== undefined) {
@@ -637,7 +647,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
         batch: { materialRange: input.materialRange },
         recognitionSource: recognitionSourceOf({
           interaction: deps.catalogs.itemTypes.get(input.item.itemType)?.interaction,
-          entrySource: input.config.entrySource,
+          entryChannels: input.config.entryChannels,
           reviewMode: policyModeOf(input.config.reviewPolicy),
         }),
       })
@@ -1042,7 +1052,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
         tenantId: input.tenantId,
         itemId: input.item.id,
         revisionNo,
-        entrySource: input.config.entrySource,
+        entryChannels: input.config.entryChannels,
         formConfig: input.config.formConfig,
         scoringConfig: input.config.scoringConfig,
         scoringPlan: compiled.plan,
@@ -1310,6 +1320,24 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
                   })
                 }
               }
+              // What kind of question it is may still move while nothing has
+              // happened to it: a draft nobody has filed into. Anything more
+              // is a void and a replacement, because every filing, round and
+              // determination stands under the kind it was made for.
+              let target = item
+              if (input.itemType !== undefined && input.itemType !== item.itemType) {
+                if (!catalogs.itemTypes.has(input.itemType)) {
+                  return yield* new ItemConfigInvalid({
+                    issues: [{ path: 'itemType', reason: 'item-type-not-installed' }],
+                  })
+                }
+                if (item.status !== 'draft' || (yield* itemHasEntries(tenantId, itemId))) {
+                  return yield* new ItemConfigInvalid({
+                    issues: [{ path: 'itemType', reason: 'item-type-frozen' }],
+                  })
+                }
+                target = { ...item, itemType: input.itemType }
+              }
               const current =
                 item.currentRevisionId === null
                   ? null
@@ -1348,6 +1376,9 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
               const fieldDiff: Record<string, unknown> = {}
               if (input.title !== undefined && input.title !== item.title) {
                 fieldDiff['title'] = [item.title, input.title]
+              }
+              if (target.itemType !== item.itemType) {
+                fieldDiff['itemType'] = [item.itemType, target.itemType]
               }
               if (input.scoreGroupId !== undefined && input.scoreGroupId !== item.scoreGroupId) {
                 fieldDiff['scoreGroupId'] = [item.scoreGroupId, input.scoreGroupId]
@@ -1394,6 +1425,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
                       itemId,
                       fields: {
                         ...(input.title !== undefined ? { title: input.title } : {}),
+                        ...(target.itemType !== item.itemType ? { itemType: target.itemType } : {}),
                         ...(input.scoreGroupId !== undefined
                           ? { scoreGroupId: input.scoreGroupId }
                           : {}),
@@ -1407,7 +1439,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
                 const materialRange = deps.parseRange(String(batch!.materialRange))
                 const nextPlan = yield* compiledCandidate({
                   tenantId,
-                  item,
+                  item: target,
                   materialRange,
                   config,
                   previous: current,
@@ -1435,10 +1467,10 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
                   recognitionEvaluationHash(currentPlan) !==
                     recognitionEvaluationHash(nextPlan.plan)
                 const derived =
-                  deps.catalogs.itemTypes.get(item.itemType)?.interaction === 'derived'
+                  deps.catalogs.itemTypes.get(target.itemType)?.interaction === 'derived'
                 const counted = yield* impactUnder({
                   tenantId,
-                  item,
+                  item: target,
                   current,
                   materialRange,
                   config,
@@ -1538,7 +1570,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
                 yield* applyFields
                 const appended = yield* appendRevision({
                   tenantId,
-                  item,
+                  item: target,
                   current,
                   materialRange,
                   config,
@@ -2019,7 +2051,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
                 current,
                 materialRange: deps.parseRange(String(batch!.materialRange)),
                 config: {
-                  entrySource: current.entrySource,
+                  entryChannels: current.entryChannels,
                   formConfig: current.formConfig,
                   scoringConfig: current.scoringConfig,
                   reviewPolicy: current.reviewPolicy,
@@ -2098,20 +2130,39 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
             // produces is what the bindable fields are read from. A form it
             // cannot read yet is reported rather than refused: the screen
             // asks this question while the form is still being built out of
-            // the very parameters this call is here to name.
-            const formConfig = yield* Effect.match(
-              Schema.decodeUnknownEffect(driver.configSchema as Schema.Codec<unknown>)(
-                input.formConfig,
-              ),
-              { onSuccess: (value: unknown) => ({ value }), onFailure: () => null },
-            )
-            const formIssues =
-              formConfig === null
-                ? [{ path: 'formConfig', reason: 'form-config-invalid' }]
-                : (driver.configIssues?.(formConfig.value, { materialRange })?.map((issue) => ({
-                    path: issue.path,
-                    reason: issue.reason,
-                  })) ?? [])
+            // the very parameters this call is here to name. A driver that
+            // can read a form field by field says which fields it could
+            // read and names the others one by one, so one field without a
+            // name yet does not make every other field disappear.
+            const form = yield* Effect.gen(function* () {
+              if (driver.draftFields !== undefined) {
+                return driver.draftFields(input.formConfig, { materialRange })
+              }
+              const formConfig = yield* Effect.match(
+                Schema.decodeUnknownEffect(driver.configSchema as Schema.Codec<unknown>)(
+                  input.formConfig,
+                ),
+                { onSuccess: (value: unknown) => ({ value }), onFailure: () => null },
+              )
+              if (formConfig === null) {
+                return {
+                  issues: [{ path: 'formConfig', reason: 'form-config-invalid' }],
+                  bindableFields: [],
+                }
+              }
+              const issues =
+                driver.configIssues?.(formConfig.value, { materialRange })?.map((issue) => ({
+                  path: issue.path,
+                  reason: issue.reason,
+                })) ?? []
+              return {
+                issues,
+                bindableFields:
+                  issues.length > 0
+                    ? []
+                    : (driver.bindableFields?.(formConfig.value, { materialRange }) ?? []),
+              }
+            })
 
             const calculator = catalogs.calculators.get(input.calculator.ref)
             if (calculator === undefined) {
@@ -2175,14 +2226,13 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
               },
               inputSchema: compiled.contract.inputSchema,
               outputSchema: compiled.contract.outputSchema,
-              form: { valid: formIssues.length === 0, issues: formIssues },
-              // nothing to bind against a form that cannot be read; the
-              // parameters are still named, which is the point
-              bindableFields: (
-                formConfig === null || formIssues.length > 0
-                  ? []
-                  : (driver.bindableFields?.(formConfig.value, { materialRange }) ?? [])
-              ).map((field) => ({
+              form: {
+                valid: form.issues.length === 0,
+                issues: form.issues.map((issue) => ({ path: issue.path, reason: issue.reason })),
+              },
+              // what could be read is offered for binding; the parameters
+              // are named either way, which is the point
+              bindableFields: form.bindableFields.map((field) => ({
                 fieldId: field.fieldId,
                 payloadKey: field.payloadKey,
                 schema: field.schema,

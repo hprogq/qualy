@@ -376,7 +376,10 @@ function SuggestedChanges({
     <div {...stylex.props(styles.suggested)} data-testid="suggested-changes">
       <p {...stylex.props(styles.quietNote)}>{format(m.entrySuggestedTitle)}</p>
       {rows.map((field) => {
-        const said = displayValueOf(field, record[field.key])
+        const said = displayValueOf(field, record[field.key], {
+          yes: format(m.recognitionYes),
+          no: format(m.recognitionNo),
+        })
         return (
           <p key={field.key} {...stylex.props(styles.suggestedLine)}>
             <span {...stylex.props(styles.suggestedLabel)}>{field.label}</span>

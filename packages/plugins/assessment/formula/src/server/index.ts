@@ -30,6 +30,8 @@ import {
   assignmentPlan,
   canonicalDecimal,
   constraintOf,
+  declaredTitle,
+  inputOrder,
   kindOf,
   normalizeAtomicSchema,
   normalizeInputSchema,
@@ -1203,6 +1205,46 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
       return { ...prepared, report } satisfies CompiledFormula
     })
 
+  /**
+   * The words a contract owes the people who will configure it.
+   *
+   * Titles and choice labels are annotations - nothing about validation,
+   * assignability or hashing reads them - which is exactly why they can be
+   * missing without the contract being unsound. Published versions are
+   * held to them all the same, because a version nobody can read is not
+   * one anybody can safely bind.
+   */
+  const contractWordsIssues = (
+    schema: NormalizedInputSchema,
+  ): readonly { path: string; reason: string }[] => {
+    const issues: { path: string; reason: string }[] = []
+    const titles = new Map<string, string>()
+    for (const parameter of inputOrder(schema)) {
+      const property = parameterSchemaAt(schema, `/${parameter}`)
+      if (property === undefined) continue
+      const at = `input.properties.${parameter}`
+      const title = declaredTitle(property, '')?.trim() ?? ''
+      if (title === '') issues.push({ path: `${at}.title`, reason: 'parameter-title-missing' })
+      else if (titles.has(title)) {
+        issues.push({ path: `${at}.title`, reason: 'parameter-title-duplicate' })
+      } else titles.set(title, parameter)
+      if (kindOf(property) !== 'choice') continue
+      const labels = (property as { 'x-qualy-enumLabels'?: Record<string, string> })[
+        'x-qualy-enumLabels'
+      ]
+      const seen = new Set<string>()
+      for (const value of (property as { enum: readonly string[] }).enum) {
+        const label = labels?.[value]?.trim() ?? ''
+        if (label === '') {
+          issues.push({ path: `${at}.x-qualy-enumLabels.${value}`, reason: 'choice-label-missing' })
+        } else if (seen.has(label)) {
+          issues.push({ path: `${at}.x-qualy-enumLabels.${value}`, reason: 'choice-label-duplicate' })
+        } else seen.add(label)
+      }
+    }
+    return issues
+  }
+
   const listFunctions = Effect.fn('FormulaLibrary.listFunctions')(function* (
     tenantId: string,
     page: { cursor?: string; limit?: string },
@@ -1730,6 +1772,15 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     // the toolchain identities come back WITH the artifact, from whichever
     // compiler process actually produced it
     const compiled = yield* compile(row.draftSourceTs, row.draftTests)
+    // What a person will read. A published version is offered to people
+    // configuring a question who never see the source: a parameter with no
+    // title, or a choice with no words for a value, could only reach them
+    // as the identifier the code uses - and asking them to configure `a`
+    // is asking them to guess what the author meant. So a version is not
+    // publishable until every parameter and every choice has its words,
+    // and no two of them wear the same ones, in the default language.
+    const unworded = contractWordsIssues(compiled.inputSchema)
+    if (unworded.length > 0) return yield* new FormulaContractInvalid({ issues: unworded })
 
     // What publication is idempotent over: the EXECUTABLE identity alone -
     // source, examples and the whole toolchain. What the author calls it is

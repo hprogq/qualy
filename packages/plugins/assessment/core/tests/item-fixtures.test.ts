@@ -25,7 +25,7 @@ describe('the first two real configurations', () => {
   it('expresses discharged-veteran +3: one attachment, one review stage', () => {
     const issues = Effect.runSync(
       validateItemConfig(catalogs, 'evidence', {
-        entrySource: 'student',
+        entryChannels: ['participant'],
         formConfig: {
           fields: [
             {
@@ -61,7 +61,7 @@ describe('the first two real configurations', () => {
   it('expresses an administrative -1: recorded with its basis, chain held for appeals', () => {
     const issues = Effect.runSync(
       validateItemConfig(catalogs, 'evidence', {
-        entrySource: 'administrative',
+        entryChannels: ['administrative'],
         formConfig: {
           fields: [
             { key: 'basis', type: 'text', label: '依据（文号）', required: true },

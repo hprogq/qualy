@@ -36,6 +36,7 @@ import {
 } from './plan.ts'
 import { db } from '../server/db.ts'
 import { policyModeOf } from '../review/chain.ts'
+import { readEntryChannels } from '../item/channels.ts'
 
 const RANGE = /^\[(\d{4}-\d{2}-\d{2}),(\d{4}-\d{2}-\d{2})\)$/
 
@@ -51,7 +52,7 @@ interface PendingRevision {
   readonly tenantId: string
   readonly batchId: string
   readonly itemType: string
-  readonly entrySource: 'student' | 'administrative'
+  readonly entryChannels: unknown
   readonly formConfig: unknown
   readonly scoringConfig: unknown
   readonly reviewPolicy: unknown
@@ -167,7 +168,7 @@ export const sweepScoringPlans = (deps: BackfillDeps) =>
                  i.tenant_id as "tenantId",
                  i.batch_id as "batchId",
                  i.item_type as "itemType",
-                 r.entry_source as "entrySource",
+                 r.entry_channels as "entryChannels",
                  r.form_config as "formConfig",
                  r.scoring_config as "scoringConfig",
                  r.review_policy as "reviewPolicy",
@@ -196,7 +197,7 @@ export const sweepScoringPlans = (deps: BackfillDeps) =>
           batch,
           recognitionSource: recognitionSourceOf({
             interaction: deps.itemTypes.get(revision.itemType)?.interaction,
-            entrySource: revision.entrySource,
+            entryChannels: readEntryChannels(revision.entryChannels),
             reviewMode: policyModeOf(revision.reviewPolicy),
           }),
         })

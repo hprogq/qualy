@@ -38,7 +38,7 @@ const finishedMeanwhile = <A, E, R>(act: Effect.Effect<A, E, R>) =>
   Effect.timeoutOption(act, Duration.seconds(3)).pipe(Effect.map(Option.isSome))
 
 const config = (f: Seeded, scoring: unknown) => ({
-  entrySource: 'student' as const,
+  entryChannels: ['participant'] as const,
   formConfig: { files: {} },
   scoringConfig: scoring,
   reviewPolicy: { normal: { stages: [at(f, 'class')] }, escalation: { stages: [] } },

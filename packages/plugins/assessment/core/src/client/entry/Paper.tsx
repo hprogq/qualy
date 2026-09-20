@@ -19,7 +19,14 @@ import { projectEntrySummary } from '../../entry/summary.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { EntryStanding } from './EntryStanding.tsx'
 import { entryRefusalReason } from './refusals.ts'
-import { fieldsOf, trimAmount, type EntryDto, type FilingGateDto, type ItemDto } from './model.ts'
+import {
+  fieldsOf,
+  recordedOnly,
+  trimAmount,
+  type EntryDto,
+  type FilingGateDto,
+  type ItemDto,
+} from './model.ts'
 import {
   chainNamesOf,
   eachWorth,
@@ -1304,7 +1311,7 @@ function Question({
   const chain = chainNamesOf(item)
   const live = entries.filter((entry) => entry.status !== 'voided')
   const counted = itemScore(standing, item.id)
-  const recorded = item.currentRevision?.entrySource === 'administrative'
+  const recorded = recordedOnly(item)
   const voided = item.status === 'voided'
   const granted = item.itemType === 'constant'
   const declared = item.itemType === 'declaration'

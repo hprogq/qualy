@@ -99,7 +99,7 @@ const item = (over: Partial<ItemDto> = {}): ItemDto => ({
   currentRevision: {
     id: REVISION_ID,
     revisionNo: 1,
-    entrySource: 'student',
+    entryChannels: ['participant'],
     formConfig: {
       fields: [{ key: 'summary', type: 'text', label: '事项说明', required: true }],
     },
@@ -866,7 +866,7 @@ describe('filing a claim', () => {
       currentRevision: {
         id: MOVED,
         revisionNo: 2,
-        entrySource: 'student' as const,
+        entryChannels: ['participant'] as const,
         formConfig: {
           fields: [{ key: 'unit', type: 'text', label: '所在部队', required: true }],
         },

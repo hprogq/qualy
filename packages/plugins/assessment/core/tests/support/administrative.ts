@@ -60,7 +60,7 @@ export const recordItem = (
         scoreGroupId: groups.groups[0]!.id,
         maxEntries: over?.maxEntries ?? null,
         config: {
-          entrySource: 'administrative',
+          entryChannels: ['administrative'],
           formConfig: over?.formConfig ?? {},
           scoringConfig: over?.scoringConfig ?? {
             calculator: { ref: 'fixed@1', config: { value: '-1.00' } },

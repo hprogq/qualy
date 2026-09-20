@@ -105,7 +105,7 @@ const standing = (
   })
 
 const config = (f: Seeded, scoring: unknown) => ({
-  entrySource: 'student' as const,
+  entryChannels: ['participant'] as const,
   formConfig: { files: {} },
   scoringConfig: scoring,
   reviewPolicy: { normal: { stages: [at(f, 'class')] }, escalation: { stages: [] } },
@@ -510,7 +510,7 @@ describe.runIf(postgresAvailable)('what a scoring change makes of what stands', 
           const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
           const groups = yield* assessment.listScoreGroups(f.t, g.batch.id, admin)
           const grant = (amount: string, fails?: 'refusal' | 'execution') => ({
-            entrySource: 'student' as const,
+            entryChannels: [] as const,
             formConfig: {},
             scoringConfig: {
               calculator: {

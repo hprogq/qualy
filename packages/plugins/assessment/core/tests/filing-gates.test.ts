@@ -74,7 +74,7 @@ describe.runIf(postgresAvailable)('filing gates on the entries read', () => {
               scoreGroupId: g.item.scoreGroupId,
               maxEntries: 1,
               config: {
-                entrySource: 'student',
+                entryChannels: ['participant'],
                 formConfig: { files: {} },
                 scoringConfig: {
                   calculator: { ref: 'fixed@1', config: { value: '1.00' } },

@@ -7,6 +7,9 @@ import { Assessment } from '../src/server/index.ts'
 import { ASSESSMENT_LIVE_CHANNEL } from '../src/live/events.ts'
 import { counts, numbered, recordItem, workbook } from './support/administrative.ts'
 import { errorOf, ok, one, run, runningBatch, seed } from './support/round.ts'
+import { gradedScoring } from './support/catalogs.ts'
+import ExcelJS from 'exceljs'
+import { META_SHEET } from '../src/administrative-import/workbook.ts'
 
 // A whole workbook of administrative facts, written or not written.
 //
@@ -673,6 +676,60 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
     expect(found.payload).toEqual({ 'claimed-level-slot': 'national' })
   })
 
+  it('leaves the bound field out of the template, and writes it from the determination', async () => {
+    const found = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('ai-bound')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f)
+          yield* numbered(f)
+          // the level the office determines is the level a filing would
+          // claim: asking the file for both would be asking twice
+          const item = yield* recordItem(f, g.batch.id, { scoringConfig: gradedScoring })
+          const revision = one<{ id: string }>(
+            yield* runSql(
+              sql`select current_revision_id as id from assessment_items where id = ${item.id}`,
+            ),
+          ).id
+          const template = yield* assessment.administrativeImportTemplate(
+            f.t,
+            item.id,
+            'zh-CN',
+            f.principal(f.recorder),
+          )
+          const book = new ExcelJS.Workbook()
+          yield* Effect.promise(() => book.xlsx.load(template.bytes as unknown as ArrayBuffer))
+          const meta = JSON.parse(String(book.getWorksheet(META_SHEET)!.getCell('A1').value)) as {
+            columns: { kind: string; key: string }[]
+          }
+          const filled = yield* workbook(f, item.id, f.recorder, [
+            ['2023001', 'Zhang San', '甲', 'provincial'],
+          ])
+          const done = yield* assessment.commitAdministrativeImport(
+            f.t,
+            g.batch.id,
+            { attachmentId: filled, itemId: item.id, expectedItemRevisionId: revision },
+            f.principal(f.recorder),
+          )
+          const payload = one<{ payload: Record<string, unknown> }>(
+            yield* runSql(sql`
+              select v.payload from entries e
+                join entry_revisions v on v.tenant_id = e.tenant_id and v.id = e.current_revision_id
+               where e.item_id = ${item.id}`),
+          ).payload
+          return { columns: meta.columns, done, payload }
+        }),
+      ),
+    )
+    // one column for the fact: the determination's, never a second one
+    expect(found.columns.map((one) => [one.kind, one.key])).toEqual([['recognition', 'rec-level']])
+    expect(found.done.importedCount).toBe(1)
+    // and the filing side is written from what was determined
+    expect(found.payload).toEqual({ 'claimed-level-slot': 'provincial' })
+  })
+
   // A basis or a name the database has no room for passed every judgment the
   // preview made and failed only inside the commit's transaction, where the
   // column refused it: nothing was written, but the reader was told the
@@ -876,9 +933,9 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
               runSql(sql`
                 with moved as (
                   insert into assessment_item_revisions
-                    (tenant_id, item_id, revision_no, entry_source, form_config, scoring_config,
+                    (tenant_id, item_id, revision_no, entry_channels, form_config, scoring_config,
                      scoring_plan, review_policy, display_config, created_by, reason)
-                  select tenant_id, item_id, revision_no + 1, entry_source, form_config,
+                  select tenant_id, item_id, revision_no + 1, entry_channels, form_config,
                          scoring_config, scoring_plan, review_policy, display_config, created_by,
                          'edited while a file was open'
                     from assessment_item_revisions where id = ${revision}

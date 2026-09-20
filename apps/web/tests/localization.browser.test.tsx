@@ -54,7 +54,7 @@ const item = () => ({
   currentRevision: {
     id: REVISION_ID,
     revisionNo: 1,
-    entrySource: 'student',
+    entryChannels: ['participant'],
     formConfig: { fields: [{ key: 'summary', type: 'text', label: '事项说明', required: true }] },
     scoringConfig: {},
     reviewPolicy: {},

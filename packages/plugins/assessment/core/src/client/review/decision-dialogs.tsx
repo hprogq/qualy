@@ -17,6 +17,7 @@ import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { assessmentMessages as m } from '../i18n.ts'
 import { displayValueOf, fieldsOf } from '../entry/model.ts'
 import type { EvidenceFieldSpec } from '../entry/EvidenceForm.tsx'
+import { offeredOptions } from '../entry/model.ts'
 import { SlideKey } from './touch.tsx'
 import { useFinePointer } from './pointer.ts'
 import { ValueFieldsForm } from '@qualy/web-value-form/InputValueForm'
@@ -863,9 +864,14 @@ export function RejectDialog({
                     key={field.key}
                     slot={index + 1}
                     field={field}
-                    original={displayValueOf(field, filed[field.key])}
+                    original={displayValueOf(field, filed[field.key], {
+                      yes: format(m.recognitionYes),
+                      no: format(m.recognitionNo),
+                    })}
                     value={suggested[field.key] ?? ''}
                     keepLabel={format(m.reviewSuggestKeep)}
+                    yesLabel={format(m.recognitionYes)}
+                    noLabel={format(m.recognitionNo)}
                     onChange={(next) =>
                       setSuggested((current) => ({ ...current, [field.key]: next }))
                     }
@@ -898,9 +904,10 @@ const suggestionDraftInvalid = (field: EvidenceFieldSpec, draft: string): boolea
   return false
 }
 
-/** the value a suggestion actually files: numbers as numbers */
+/** the value a suggestion actually files: numbers as numbers, a yes or no as itself */
 const materializeSuggestion = (field: EvidenceFieldSpec, draft: string): unknown => {
   const trimmed = draft.trim()
+  if (field.type === 'boolean') return trimmed === 'true'
   return field.type === 'integer' ? Number(trimmed) : trimmed
 }
 
@@ -910,6 +917,8 @@ function FieldRow({
   original,
   value,
   keepLabel,
+  yesLabel,
+  noLabel,
   onChange,
 }: {
   slot: number
@@ -917,6 +926,8 @@ function FieldRow({
   original: string
   value: string
   keepLabel: string
+  yesLabel: string
+  noLabel: string
   onChange: (next: string) => void
 }) {
   const changed = value.trim() !== ''
@@ -935,7 +946,7 @@ function FieldRow({
       <span {...stylex.props(styles.rowTheirs, changed && styles.rowStruck)}>
         {original || '–'}
       </span>
-      {field.type === 'choice' ? (
+      {field.type === 'choice' || field.type === 'boolean' ? (
         <NativeSelect
           data-suggest-slot={slot}
           className={
@@ -947,11 +958,18 @@ function FieldRow({
         >
           {/* '' keeps theirs, like an untouched text box */}
           <option value="">{keepLabel}</option>
-          {(field.options ?? []).map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
+          {field.type === 'boolean' ? (
+            <>
+              <option value="true">{yesLabel}</option>
+              <option value="false">{noLabel}</option>
+            </>
+          ) : (
+            offeredOptions(field).map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))
+          )}
         </NativeSelect>
       ) : (
         <Input

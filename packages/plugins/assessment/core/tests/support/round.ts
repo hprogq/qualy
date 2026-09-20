@@ -334,7 +334,7 @@ export const runningBatch = (
         scoreGroupId: groups.groups[0]!.id,
         maxEntries: 1,
         config: {
-          entrySource: 'student',
+          entryChannels: ['participant'],
           formConfig: { files: {} },
           scoringConfig: over?.scoring ?? {
             calculator: { ref: 'fixed@1', config: { value: '3.00' } },

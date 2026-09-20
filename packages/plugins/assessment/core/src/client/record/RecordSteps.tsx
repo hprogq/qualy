@@ -160,6 +160,20 @@ export function RecordSteps({
         : wire.fields.map((field) => ({ id: field.id, schema: field.schema as AtomicSchema })),
     [wire],
   )
+  // A field the determination stands for is asked once, as the
+  // determination: the office IS the determination, so the filing side of
+  // such a field is written by the server from what the office decides.
+  // Only a field carried over unchanged can be left out; one the
+  // determination converts (a whole number read as a decimal) has no single
+  // way back and stays on the form.
+  const filed = useMemo(() => {
+    const bound = new Set(
+      (wire?.defaults ?? [])
+        .filter((one) => one.assignment.kind === 'direct')
+        .map((one) => one.payloadKey),
+    )
+    return fieldsOf(item.currentRevision?.formConfig).filter((field) => !bound.has(field.key))
+  }, [wire, item])
   const [recognitionDrafts, setRecognitionDrafts] = useState<Record<string, FieldDraft>>({})
   const [dirty, setDirty] = useState<ReadonlySet<string>>(new Set())
   const seed = useMemo(() => {
@@ -409,7 +423,7 @@ export function RecordSteps({
           <EvidenceForm
             session={session}
             onValidityChange={setEvidenceValid}
-            fields={fieldsOf(item.currentRevision?.formConfig)}
+            fields={filed}
             value={payload}
             onChange={setPayload}
             doors={{

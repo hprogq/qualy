@@ -1,5 +1,6 @@
 import { Effect } from 'effect'
 import { sql } from 'kysely'
+import { readEntryChannels, type EntryChannel } from './channels.ts'
 import { db } from '../server/db.ts'
 
 // The item and score-group rows, as the configuration screens need them.
@@ -175,7 +176,8 @@ export const deleteGroups = (tenantId: string, batchId: string, ids: readonly st
 export interface ItemRevisionRow {
   id: string
   revisionNo: number
-  entrySource: 'student' | 'administrative'
+  /** the doors open on this configuration; empty for a derived question */
+  entryChannels: readonly EntryChannel[]
   formConfig: unknown
   scoringConfig: unknown
   /** the compiled execution plan; null on revisions saved before it existed */
@@ -293,6 +295,8 @@ export const updateItemFields = (input: {
     scoreGroupId?: string
     maxEntries?: number | null
     sortOrder?: number
+    /** only while nothing has been filed: what kind of question this is */
+    itemType?: string
   }
 }) =>
   db.query((k) =>
@@ -300,6 +304,7 @@ export const updateItemFields = (input: {
       .updateTable('AssessmentItem')
       .set({
         ...(input.fields.title !== undefined ? { title: input.fields.title } : {}),
+        ...(input.fields.itemType !== undefined ? { itemType: input.fields.itemType } : {}),
         ...(input.fields.scoreGroupId !== undefined
           ? { scoreGroupId: input.fields.scoreGroupId }
           : {}),
@@ -315,7 +320,7 @@ export const updateItemFields = (input: {
 const revisionColumns = [
   'id',
   'revisionNo',
-  'entrySource',
+  'entryChannels',
   'formConfig',
   'scoringConfig',
   'scoringPlan',
@@ -328,7 +333,7 @@ const revisionColumns = [
 const toRevision = (row: Record<string, unknown>): ItemRevisionRow => ({
   id: String(row['id']),
   revisionNo: Number(row['revisionNo']),
-  entrySource: String(row['entrySource']) as ItemRevisionRow['entrySource'],
+  entryChannels: readEntryChannels(row['entryChannels']),
   formConfig: row['formConfig'],
   scoringConfig: row['scoringConfig'],
   scoringPlan: row['scoringPlan'] ?? null,
@@ -422,7 +427,7 @@ export const insertItemRevision = (input: {
   tenantId: string
   itemId: string
   revisionNo: number
-  entrySource: 'student' | 'administrative'
+  entryChannels: readonly EntryChannel[]
   formConfig: unknown
   scoringConfig: unknown
   scoringPlan: unknown
@@ -439,7 +444,7 @@ export const insertItemRevision = (input: {
           tenantId: input.tenantId,
           itemId: input.itemId,
           revisionNo: input.revisionNo,
-          entrySource: input.entrySource,
+          entryChannels: jsonb([...input.entryChannels]),
           formConfig: jsonb(input.formConfig),
           scoringConfig: jsonb(input.scoringConfig),
           scoringPlan: jsonb(input.scoringPlan),

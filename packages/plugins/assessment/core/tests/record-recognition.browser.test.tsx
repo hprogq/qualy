@@ -58,7 +58,7 @@ const item = (id: string, revisionId: string, title: string) => ({
   currentRevision: {
     id: revisionId,
     revisionNo: 1,
-    entrySource: 'administrative',
+    entryChannels: ['administrative'],
     formConfig: {
       fields: [
         {

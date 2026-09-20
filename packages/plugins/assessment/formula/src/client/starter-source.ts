@@ -7,7 +7,7 @@ export const MINIMAL_EXAMPLE = `import { Schema, defineFormula } from '@qualy/fo
 
 export default defineFormula({
   input: Schema.input({
-    value: Schema.decimal({ maxScale: 2 }),
+    value: Schema.decimal({ maxScale: 2, title: '分值' }),
   }),
   output: Schema.scoreAmount({ maxScale: 2 }),
   run: (input) => input.value,

@@ -465,10 +465,14 @@ const attachmentDescriptor = Schema.Struct({
   ]),
 })
 
+/** one door a question's records come in through */
+const entryChannel = Schema.Literals(['participant', 'administrative'])
+
 const itemRevisionView = Schema.Struct({
   id: Schema.String,
   revisionNo: Schema.Number,
-  entrySource: Schema.Literals(['student', 'administrative']),
+  /** the doors open on this configuration; none for a derived question */
+  entryChannels: Schema.Array(entryChannel),
   formConfig: configJson,
   scoringConfig: configJson,
   reviewPolicy: configJson,
@@ -538,7 +542,7 @@ const changeEffects = Schema.Struct({
 })
 
 const itemConfigPayload = Schema.Struct({
-  entrySource: Schema.Literals(['student', 'administrative']),
+  entryChannels: Schema.Array(entryChannel),
   formConfig: configJson,
   scoringConfig: configJson,
   reviewPolicy: configJson,
@@ -2006,6 +2010,8 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       payload: changed(
         {
           title: Schema.optional(trimmedName(255)),
+          /** what kind of question this is; only a draft nothing was filed into may change it */
+          itemType: Schema.optional(itemTypeCode),
           scoreGroupId: Schema.optional(uuidInput),
           maxEntries: Schema.optional(Schema.NullOr(positiveCount)),
           sortOrder: Schema.optional(sortOrder),
@@ -2025,7 +2031,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
            */
           effects: Schema.optional(changeEffects),
         },
-        ['title', 'scoreGroupId', 'maxEntries', 'sortOrder', 'config'],
+        ['title', 'itemType', 'scoreGroupId', 'maxEntries', 'sortOrder', 'config'],
       ),
       success: Schema.Struct({ item: itemView }),
       error: [

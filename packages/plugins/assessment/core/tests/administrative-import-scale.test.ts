@@ -59,7 +59,7 @@ describe.runIf(postgresAvailable)('an administrative import at scale', () => {
               scoreGroupId: groups.groups[0]!.id,
               maxEntries: 1,
               config: {
-                entrySource: 'administrative',
+                entryChannels: ['administrative'],
                 formConfig: {},
                 scoringConfig: {
                   calculator: { ref: 'fixed@1', config: { value: '2.00' } },

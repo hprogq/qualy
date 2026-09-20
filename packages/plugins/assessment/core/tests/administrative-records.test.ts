@@ -38,7 +38,7 @@ const recordItem = (f: Seeded, batchId: string, over?: { scoring?: unknown; titl
         scoreGroupId: groups.groups[0]!.id,
         maxEntries: null,
         config: {
-          entrySource: 'administrative',
+          entryChannels: ['administrative'],
           formConfig: {},
           scoringConfig: over?.scoring ?? {
             calculator: { ref: 'fixed@1', config: { value: '-1.00' } },
@@ -275,6 +275,42 @@ describe.runIf(postgresAvailable)('the administrative record book', () => {
     expect(row.recognition!.fields.map((field) => field.id)).toEqual(['rec-level'])
     // and the schema beside it is the frozen one, not a bare opaque key
     expect(row.recognition!.fields[0]!.schema).not.toBeUndefined()
+  })
+
+  it('asks the office once: a bound field left blank is written from the determination', async () => {
+    const read = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('ar-bound')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f)
+          const admin = f.principal(f.admin)
+          // the level a filing would claim is the level the office determines:
+          // one fact, two addresses, and the office is asked for it once
+          const award = yield* recordItem(f, g.batch.id, {
+            scoring: gradedScoring,
+            title: '荣誉称号',
+          })
+          const entry = yield* assessment.createEntry(
+            f.t,
+            {
+              itemId: award.id,
+              participantId: g.p1,
+              payload: {},
+              note: '校发〔2026〕7 号',
+              recognition: { values: { 'rec-level': 'provincial' } },
+            },
+            admin,
+          )
+          return yield* assessment.getEntry(f.t, entry.id, admin)
+        }),
+      ),
+    )
+    // the filing side carries what was determined, at the field's own address
+    expect((read.currentRevision?.payload as Record<string, unknown>)['claimed-level-slot']).toBe(
+      'provincial',
+    )
   })
 
   it('finds a person by name or by business number, in sql', async () => {

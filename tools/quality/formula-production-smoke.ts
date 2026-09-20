@@ -283,7 +283,7 @@ const chain = async (base: string, databaseUrl: string): Promise<{ tenantId: str
       scoreGroupId: groups.groups[0]!.id,
       maxEntries: 1,
       config: {
-        entrySource: 'administrative',
+        entryChannels: ['administrative'],
         formConfig: {},
         scoringConfig: {
           version: 2,

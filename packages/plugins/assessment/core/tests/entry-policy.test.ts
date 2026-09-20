@@ -74,7 +74,7 @@ describe.runIf(postgresAvailable)('the entry resource policy', () => {
               scoreGroupId: groups.groups[0]!.id,
               maxEntries: null,
               config: {
-                entrySource: 'administrative',
+                entryChannels: ['administrative'],
                 formConfig: {},
                 scoringConfig: {
                   calculator: { ref: 'fixed@1', config: { value: '-1.00' } },
@@ -151,8 +151,9 @@ describe.runIf(postgresAvailable)('the entry resource policy', () => {
     // the audit's case: record over college A says nothing about college B
     expect(refusalOf(result.outOfReach)?.reason).toBe('participant-out-of-reach')
     expect(refusalOf(result.noBasis)?.reason).toBe('basis-required')
-    // a student does not hold record, whatever item they aim at
-    expect(refusalOf(result.studentRecords)?.reason).toBe('permission-not-held')
+    // a participant at a question only the office records is told the door
+    // is shut, in those words: not that they lack the office's permission
+    expect(refusalOf(result.studentRecords)?.reason).toBe('entry-channel-closed')
   })
 
   it('refuses to file an answer against a question that moved while it was written', async () => {
@@ -180,7 +181,7 @@ describe.runIf(postgresAvailable)('the entry resource policy', () => {
             g.item.id,
             {
               config: {
-                entrySource: 'student',
+                entryChannels: ['participant'],
                 formConfig: { files: {} },
                 scoringConfig: {
                   calculator: { ref: 'fixed@1', config: { value: '4.00' } },
@@ -559,7 +560,7 @@ describe.runIf(postgresAvailable)('the entry resource policy', () => {
             s1,
           )
           const config = (over: Record<string, unknown>) => ({
-            entrySource: 'student' as const,
+            entryChannels: ['participant'] as const,
             formConfig: { files: {} },
             scoringConfig: {
               calculator: { ref: 'fixed@1', config: { value: '3.00' } },
@@ -786,7 +787,7 @@ describe.runIf(postgresAvailable)('the entry resource policy', () => {
             g.item.id,
             {
               config: {
-                entrySource: 'student',
+                entryChannels: ['participant'],
                 formConfig: { files: { maxFileBytes: 1024 } },
                 scoringConfig: {
                   calculator: { ref: 'fixed@1', config: { value: '3.00' } },

@@ -16,6 +16,7 @@ import {
 import { ProbeNeeded, probeIdentity, settleWithProbe } from '../scoring/failure-boundary.ts'
 import { ScoringRuntimeCatalog } from '../plugin.ts'
 import { readScoringPlan } from '../scoring/plan.ts'
+import { fillBoundEvidence } from '../scoring/bound-evidence.ts'
 import type { ScoringPlan } from '../scoring/plan.ts'
 
 /**
@@ -58,6 +59,7 @@ import {
   myActionRowsOf,
 } from './db.ts'
 import { itemOf, revisionOf, type ItemRevisionRow, type ItemRow } from '../item/db.ts'
+import { opensTo } from '../item/channels.ts'
 import {
   activeItemIdsOf,
   attachmentsOfRevisions,
@@ -791,15 +793,37 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                   : yield* revisionOf(tenantId, item.currentRevisionId)
               if (revision === null) return yield* refuse('create', 'item-not-configured')
 
-              // who is filing is the item's decision, never the caller's: a
-              // student question takes the participant themselves, an
-              // administrative one takes staff whose accepted authority covers
-              // this participant's frozen anchor
-              const administrative = revision.entrySource === 'administrative'
-              const code = administrative ? 'assessment.entry.record' : 'assessment.entry.create'
-              if (!administrative && participant.userId !== as.userId) {
+              // Which door this comes through is who is filing for whom: a
+              // person filing for themselves takes the participant door,
+              // anybody else is the office recording a fact about them. The
+              // question says which doors are open, and a shut door is a
+              // refusal about the question, not a permission the caller
+              // lacks - a participant at a question only the office records
+              // is told so, and staff at a question only its participants
+              // file hear the same words they always did.
+              const administrative = participant.userId !== as.userId
+              if (administrative && !opensTo(revision.entryChannels, 'administrative')) {
                 return yield* refuse('create', 'not-your-participant')
               }
+              if (!administrative && !opensTo(revision.entryChannels, 'participant')) {
+                // At a question only the office records, a member of that
+                // office asking about themselves is a registrar recording
+                // against themselves, and that is the refusal that names
+                // the rule. Anybody else at the same door is simply told it
+                // is shut - which is what a participant who lacks the
+                // office's authority is actually looking at.
+                const office = yield* deps.authorize(as, 'assessment.entry.record', item.batchId, {
+                  itemId: item.id,
+                  participantId: participant.id,
+                })
+                return yield* refuse(
+                  'create',
+                  opensTo(revision.entryChannels, 'administrative') && office.allowed
+                    ? 'self-record-refused'
+                    : 'entry-channel-closed',
+                )
+              }
+              const code = administrative ? 'assessment.entry.record' : 'assessment.entry.create'
               const decision = yield* deps.authorize(as, code, item.batchId, {
                 itemId: item.id,
                 participantId: participant.id,
@@ -839,8 +863,24 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               const materialRange = deps.parseRange(String(batch!.materialRange))
               const driver = driverOf(item)
               if (driver === undefined) return yield* refuse('create', 'item-type-not-installed')
-              const decoded = yield* decodePayload(driver, revision, input.payload, materialRange)
               const plan = yield* Effect.orDie(readScoringPlan(revision))
+              // a field the determination stands for is not asked of the
+              // office twice: whatever it left blank is written from what it
+              // determined, and the decoder then judges the two as one
+              const payload =
+                administrative &&
+                typeof input.payload === 'object' &&
+                input.payload !== null &&
+                !Array.isArray(input.payload)
+                  ? fillBoundEvidence(
+                      plan,
+                      input.payload as Record<string, unknown>,
+                      input.recognition === undefined
+                        ? {}
+                        : ((input.recognition.values ?? {}) as Record<string, unknown>),
+                    )
+                  : input.payload
+              const decoded = yield* decodePayload(driver, revision, payload, materialRange)
               // a determination is a thing only an approving door may carry:
               // a student filing a claim does not get to say what it is worth
               if (!administrative && input.recognition !== undefined) {
@@ -1094,7 +1134,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             item.currentRevisionId === null
               ? null
               : yield* revisionOf(tenantId, item.currentRevisionId)
-          if (revision === null || revision.entrySource !== 'student') {
+          if (revision === null || !opensTo(revision.entryChannels, 'participant')) {
             return yield* refuse('edit', 'entry-not-editable')
           }
           const decision = yield* deps

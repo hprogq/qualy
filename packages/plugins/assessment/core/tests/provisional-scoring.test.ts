@@ -23,7 +23,7 @@ interface ItemSpec {
   title: string
   value: string
   group: number
-  entrySource: 'student' | 'administrative'
+  entryChannels: readonly ('participant' | 'administrative')[]
 }
 
 /** a running round with the given groups and fixed-amount items */
@@ -106,7 +106,7 @@ const scoringBatch = (
           scoreGroupId: groupIds[item.group]!,
           maxEntries: 1,
           config: {
-            entrySource: item.entrySource,
+            entryChannels: item.entryChannels,
             formConfig: { files: {} },
             scoringConfig: {
               calculator: { ref: 'fixed@1', config: { value: item.value } },
@@ -201,10 +201,10 @@ describe.runIf(postgresAvailable)('the provisional account', () => {
           const g = yield* scoringBatch(f, {
             groups: [{ name: '文体', cap: '10.00' }],
             items: [
-              { title: '退役复学', value: '3.00', group: 0, entrySource: 'student' },
-              { title: '违纪扣分', value: '-1.00', group: 0, entrySource: 'administrative' },
-              { title: '志愿服务', value: '2.00', group: 0, entrySource: 'student' },
-              { title: '晨读打卡', value: '1.00', group: 0, entrySource: 'student' },
+              { title: '退役复学', value: '3.00', group: 0, entryChannels: ['participant'] },
+              { title: '违纪扣分', value: '-1.00', group: 0, entryChannels: ['administrative'] },
+              { title: '志愿服务', value: '2.00', group: 0, entryChannels: ['participant'] },
+              { title: '晨读打卡', value: '1.00', group: 0, entryChannels: ['participant'] },
             ],
           })
           const s1 = f.principal(f.s1)
@@ -285,8 +285,8 @@ describe.runIf(postgresAvailable)('the provisional account', () => {
           const g = yield* scoringBatch(f, {
             groups: [{ name: '文体', cap: '10.00' }],
             items: [
-              { title: '退役复学', value: '3.00', group: 0, entrySource: 'student' },
-              { title: '志愿服务', value: '2.00', group: 0, entrySource: 'student' },
+              { title: '退役复学', value: '3.00', group: 0, entryChannels: ['participant'] },
+              { title: '志愿服务', value: '2.00', group: 0, entryChannels: ['participant'] },
             ],
           })
           const s1 = f.principal(f.s1)
@@ -352,7 +352,7 @@ describe.runIf(postgresAvailable)('the provisional account', () => {
             itemType: 'evidence' | 'constant'
             title: string
             maxEntries: number | null
-            entrySource: 'student' | 'administrative'
+            entryChannels: readonly ('participant' | 'administrative')[]
           }) =>
             assessment.createItem(
               f.t,
@@ -363,7 +363,7 @@ describe.runIf(postgresAvailable)('the provisional account', () => {
                 scoreGroupId: g.groupIds[0]!,
                 maxEntries: over.maxEntries,
                 config: {
-                  entrySource: over.entrySource,
+                  entryChannels: over.entryChannels,
                   formConfig: over.itemType === 'evidence' ? { files: {} } : {},
                   scoringConfig: {
                     calculator: { ref: 'fixed@1', config: { value: '3.00' } },
@@ -381,7 +381,7 @@ describe.runIf(postgresAvailable)('the provisional account', () => {
             itemType: 'evidence',
             title: '两笔通过',
             maxEntries: null,
-            entrySource: 'administrative',
+            entryChannels: ['administrative'],
           })
           yield* activate(twice.id)
           // an active question nobody filed under
@@ -389,7 +389,7 @@ describe.runIf(postgresAvailable)('the provisional account', () => {
             itemType: 'evidence',
             title: '无人申报',
             maxEntries: 1,
-            entrySource: 'student',
+            entryChannels: ['participant'],
           })
           yield* activate(empty.id)
           // a derived question: granted to the roster, computed with no entry
@@ -397,7 +397,7 @@ describe.runIf(postgresAvailable)('the provisional account', () => {
             itemType: 'constant',
             title: '基础分',
             maxEntries: null,
-            entrySource: 'administrative',
+            entryChannels: [] as const,
           })
           yield* activate(granted.id)
           // and one still composed as a draft: not part of the account at all
@@ -405,7 +405,7 @@ describe.runIf(postgresAvailable)('the provisional account', () => {
             itemType: 'evidence',
             title: '未发布',
             maxEntries: 1,
-            entrySource: 'administrative',
+            entryChannels: ['administrative'],
           })
           const recorder = f.principal(f.recorder)
           yield* assessment.createEntry(
@@ -447,8 +447,8 @@ describe.runIf(postgresAvailable)('the provisional account', () => {
               { name: '扣分', floor: '0.00' },
             ],
             items: [
-              { title: '获奖', value: '3.00', group: 0, entrySource: 'student' },
-              { title: '违纪', value: '-1.00', group: 1, entrySource: 'administrative' },
+              { title: '获奖', value: '3.00', group: 0, entryChannels: ['participant'] },
+              { title: '违纪', value: '-1.00', group: 1, entryChannels: ['administrative'] },
             ],
           })
           const award = yield* approved(f, g.items[0]!, g.p1, f.s1)
@@ -495,7 +495,7 @@ describe.runIf(postgresAvailable)('the provisional account', () => {
             f,
             {
               groups: [{ name: '文体', cap: '10.00' }],
-              items: [{ title: '退役复学', value: '3.00', group: 0, entrySource: 'student' }],
+              items: [{ title: '退役复学', value: '3.00', group: 0, entryChannels: ['participant'] }],
             },
             'none',
           )
@@ -593,7 +593,7 @@ describe.runIf(postgresAvailable)('the provisional account', () => {
                 scoreGroupId: groupId,
                 maxEntries: 1,
                 config: {
-                  entrySource: 'student',
+                  entryChannels: ['participant'],
                   formConfig: { files: {} },
                   scoringConfig: {
                     calculator: { ref: 'fixed@1', config: { value } },
@@ -666,7 +666,7 @@ describe.runIf(postgresAvailable)('the provisional account', () => {
           const assessment = yield* Assessment
           const g = yield* scoringBatch(f, {
             groups: [{ name: '文体', cap: '10.00' }],
-            items: [{ title: '退役复学', value: '3.00', group: 0, entrySource: 'student' }],
+            items: [{ title: '退役复学', value: '3.00', group: 0, entryChannels: ['participant'] }],
           })
           yield* approved(f, g.items[0]!, g.p1, f.s1)
           // the void act itself is a later conversation; the scorer's answer

@@ -220,7 +220,7 @@ const draftBatch = (
   })
 
 const studentConfig = (over: Partial<Record<string, unknown>> = {}) => ({
-  entrySource: 'student' as const,
+  entryChannels: ['participant'] as const,
   formConfig: { required: ['certificate'] },
   scoringConfig: {
     calculator: { ref: 'fixed@1', config: { value: '3.00' } },
@@ -809,7 +809,10 @@ describe.runIf(postgresAvailable)('item configuration', () => {
           const f = yield* seed('item-policy')
           const assessment = yield* Assessment
           const { batch, groupId } = yield* draftBatch(f, 'Round')
-          const create = (reviewPolicy: unknown, entrySource: 'student' | 'administrative') =>
+          const create = (
+            reviewPolicy: unknown,
+            entryChannels: readonly ('participant' | 'administrative')[],
+          ) =>
             Effect.exit(
               assessment.createItem(
                 f.tenant,
@@ -819,7 +822,7 @@ describe.runIf(postgresAvailable)('item configuration', () => {
                   title: 'policy probe',
                   scoreGroupId: groupId,
                   maxEntries: null,
-                  config: studentConfig({ entrySource, reviewPolicy }),
+                  config: studentConfig({ entryChannels, reviewPolicy }),
                 },
                 f.principal,
               ),
@@ -834,13 +837,11 @@ describe.runIf(postgresAvailable)('item configuration', () => {
             escalation: { stages: escalation },
           })
           return {
-            twoRoutes: yield* create(routes([stage('n1'), stage('n2')], [stage('d1')]), 'student'),
+            twoRoutes: yield* create(routes([stage('n1'), stage('n2')], [stage('d1')]), ['participant']),
             unknownSelector: yield* create(
               routes([
                 { id: 'n1', selector: { kind: 'whoeverIsAround' }, quorum: { type: 'any' } },
-              ]),
-              'student',
-            ),
+              ]), ['participant']),
             nearestRole: yield* create(
               routes([
                 {
@@ -848,25 +849,17 @@ describe.runIf(postgresAvailable)('item configuration', () => {
                   selector: { kind: 'nearestRole', roleId: randomUUID() },
                   quorum: { type: 'any' },
                 },
-              ]),
-              'student',
-            ),
+              ]), ['participant']),
             quorumAll: yield* create(
-              routes([{ ...stage('n1'), quorum: { type: 'all' } }]),
-              'student',
-            ),
+              routes([{ ...stage('n1'), quorum: { type: 'all' } }]), ['participant']),
             unnamedStage: yield* create(
-              routes([{ selector: stage('n1').selector, quorum: { type: 'any' } }]),
-              'student',
-            ),
+              routes([{ selector: stage('n1').selector, quorum: { type: 'any' } }]), ['participant']),
             oneListWithAMarker: yield* create(
-              { stages: [stage('n1')], normalTerminal: 0 },
-              'student',
-            ),
+              { stages: [stage('n1')], normalTerminal: 0 }, ['participant']),
             // the trusted path never walks the chain on the way in, but an
             // appeal resolves it from this very revision: it must be there
-            administrativeChain: yield* create(routes([stage('n1')]), 'administrative'),
-            administrativeEmpty: yield* create({}, 'administrative'),
+            administrativeChain: yield* create(routes([stage('n1')]), ['administrative']),
+            administrativeEmpty: yield* create({}, ['administrative']),
           }
         }),
       ),
@@ -1443,7 +1436,7 @@ describe.runIf(postgresAvailable)('item configuration', () => {
           const beforeEntries = yield* assessment.updateItem(
             f.tenant,
             item.id,
-            { config: studentConfig({ entrySource: 'administrative' }) },
+            { config: studentConfig({ entryChannels: ['administrative'] }) },
             f.principal,
           )
           yield* assessment.updateItem(f.tenant, item.id, { config: studentConfig() }, f.principal)
@@ -1461,7 +1454,7 @@ describe.runIf(postgresAvailable)('item configuration', () => {
             assessment.updateItem(
               f.tenant,
               item.id,
-              { config: studentConfig({ entrySource: 'administrative' }) },
+              { config: studentConfig({ entryChannels: ['administrative'] }) },
               f.principal,
             ),
           )
@@ -1470,9 +1463,9 @@ describe.runIf(postgresAvailable)('item configuration', () => {
       ),
     )
 
-    expect(result.beforeEntries.currentRevision?.entrySource).toBe('administrative')
+    expect(result.beforeEntries.currentRevision?.entryChannels).toEqual(['administrative'])
     const issues = errorOf<{ issues?: readonly { reason: string }[] }>(result.frozen)
-    expect((issues?.issues ?? []).map((issue) => issue.reason)).toContain('entry-source-frozen')
+    expect((issues?.issues ?? []).map((issue) => issue.reason)).toContain('entry-channels-frozen')
   })
 
   it('writes nothing down for a change that changed nothing', async () => {
@@ -1620,8 +1613,8 @@ describe.runIf(postgresAvailable)('item configuration', () => {
           ).id
           yield* runSql(sql`
             insert into assessment_item_revisions
-              (tenant_id, item_id, revision_no, entry_source, form_config, scoring_config, review_policy, display_config, created_by)
-            values (${f.tenant}, ${ghostItem}, 1, 'student', '{}', '{}', '{}', '{}', ${f.principal.userId})`)
+              (tenant_id, item_id, revision_no, entry_channels, form_config, scoring_config, review_policy, display_config, created_by)
+            values (${f.tenant}, ${ghostItem}, 1, '["participant"]', '{}', '{}', '{}', '{}', ${f.principal.userId})`)
           yield* runSql(sql`
             update assessment_items set current_revision_id =
               (select id from assessment_item_revisions where item_id = ${ghostItem})

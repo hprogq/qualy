@@ -976,8 +976,8 @@ describe.runIf(postgresAvailable)('the stored-plan boot gate', () => {
       // exactly the gate in question
       const revision = await one(
         `insert into assessment_item_revisions
-           (tenant_id, item_id, revision_no, entry_source, form_config, scoring_config, review_policy, display_config, created_by)
-         values ($1, $2, 1, 'student', '{}',
+           (tenant_id, item_id, revision_no, entry_channels, form_config, scoring_config, review_policy, display_config, created_by)
+         values ($1, $2, 1, '["participant"]', '{}',
                  '{"calculator":{"ref":"fixed@1","config":{"value":"3"}},"aggregator":{"ref":"sum@1","config":{}}}',
                  '{}', '{}', $3) returning id`,
         [tenant, item, user],
@@ -1584,6 +1584,98 @@ describe.runIf(postgresAvailable)('the recognition-history repair', () => {
       expect(twiceRows[1]!.supersedes_id).toBe(oldest)
       expect(twiceRows[2]!.supersedes_id).toBe(twiceRows[1]!.id)
       expect(await pointerOf(twice)).toBe(latest)
+    } finally {
+      await db.dispose()
+    }
+  })
+})
+
+// A revision named exactly one door; now it names a list. Replaying the
+// lineage into an empty database proves nothing about the rows that were
+// there, so this builds the shape the step upgrades FROM, puts three
+// questions in it, and reads what each became.
+
+const CHANNELS = '20260919230709_item-entry-channels.sql'
+
+describe.runIf(postgresAvailable)('the item-entry-channels migration', () => {
+  it('turns each door into a list, and a derived question into no door at all', async () => {
+    expect(fs.existsSync(path.join(MIGRATIONS_FOLDER, CHANNELS))).toBe(true)
+    const before = lineageBefore(CHANNELS, 'entry-channels')
+    const db = await createTestContext('entry-channels-upgrade', {
+      migrations: 'apply',
+      migrationsFolder: before,
+    })
+    try {
+      const one = async (sql: string, values: unknown[] = []) =>
+        (await db.row<{ id: string }>(sql, values)).id
+      const tenant = await one(
+        `insert into tenants (slug, name) values ('doors', 'Doors') returning id`,
+      )
+      const orgType = await one(
+        `insert into org_types (tenant_id, name) values ($1, 'Class') returning id`,
+        [tenant],
+      )
+      const node = await one(
+        `insert into org_nodes (tenant_id, org_type_id, name, path, depth)
+         values ($1, $2, 'Class', 'doors', 0) returning id`,
+        [tenant, orgType],
+      )
+      const userType = await one(
+        `insert into user_types (tenant_id, code, name, placement_mode)
+         values ($1, 'student', 'Student', 'unrestricted') returning id`,
+        [tenant],
+      )
+      const user = await one(
+        `insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+         values ($1, 'Admin', $2, $3) returning id`,
+        [tenant, userType, node],
+      )
+      const batch = await one(
+        `insert into assessment_batches (tenant_id, name, material_range)
+         values ($1, 'Doors', daterange('2026-03-01', '2026-09-01')) returning id`,
+        [tenant],
+      )
+      const group = await one(
+        `insert into score_groups (tenant_id, batch_id, name) values ($1, $2, '文体') returning id`,
+        [tenant, batch],
+      )
+      const question = async (itemType: string, title: string, entrySource: string) => {
+        const item = await one(
+          `insert into assessment_items (tenant_id, batch_id, item_type, title, score_group_id, status)
+           values ($1, $2, $3, $4, $5, 'active') returning id`,
+          [tenant, batch, itemType, title, group],
+        )
+        return one(
+          `insert into assessment_item_revisions
+             (tenant_id, item_id, revision_no, entry_source, form_config, scoring_config, review_policy, display_config, created_by)
+           values ($1, $2, 1, $3, '{}', '{}', '{}', '{}', $4) returning id`,
+          [tenant, item, entrySource, user],
+        )
+      }
+      const filed = await question('evidence', '申报', 'student')
+      const recorded = await question('evidence', '认定', 'administrative')
+      // the editor wrote 'administrative' on a derived question because it
+      // had to write something; nobody files one, and now it says so
+      const granted = await question('constant', '基础分', 'administrative')
+
+      const { applied } = await runMigrations(db.url, { folder: MIGRATIONS_FOLDER, entities: [] })
+      expect(applied).toBeGreaterThan(0)
+
+      const channelsOf = async (id: string) =>
+        (
+          await db.row<{ entry_channels: unknown }>(
+            `select entry_channels from assessment_item_revisions where id = $1`,
+            [id],
+          )
+        ).entry_channels
+      expect(await channelsOf(filed)).toEqual(['participant'])
+      expect(await channelsOf(recorded)).toEqual(['administrative'])
+      expect(await channelsOf(granted)).toEqual([])
+      const leftover = await db.query(
+        `select column_name from information_schema.columns
+         where table_name = 'assessment_item_revisions' and column_name = 'entry_source'`,
+      )
+      expect(leftover.rows).toHaveLength(0)
     } finally {
       await db.dispose()
     }

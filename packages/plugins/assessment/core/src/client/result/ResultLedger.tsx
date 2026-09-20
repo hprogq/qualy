@@ -36,7 +36,7 @@ export type LedgerItem = {
   scoreGroupId: string
   sortOrder: number
   status: string
-  currentRevision: { entrySource: 'student' | 'administrative' } | null
+  currentRevision: { entryChannels: readonly ('participant' | 'administrative')[] } | null
 }
 
 type ResultGroup = {
@@ -696,7 +696,8 @@ function GroupRows({
               {format(
                 item.status === 'voided'
                   ? m.resultLineVoided
-                  : item.currentRevision?.entrySource === 'administrative'
+                  : item.currentRevision?.entryChannels.includes('administrative') === true &&
+                      !item.currentRevision.entryChannels.includes('participant')
                     ? m.paperEmptyRecorded
                     : m.resultLineNone,
               )}

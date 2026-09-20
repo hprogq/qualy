@@ -105,6 +105,14 @@ export const contractReasonWords = (format: Format, reason: string): string => {
     case 'annotation-too-long':
     case 'label-too-long':
       return format(m.profileWordsTooLong)
+    case 'parameter-title-missing':
+      return format(m.contractParameterTitleMissing)
+    case 'parameter-title-duplicate':
+      return format(m.contractParameterTitleDuplicate)
+    case 'choice-label-missing':
+      return format(m.contractChoiceLabelMissing)
+    case 'choice-label-duplicate':
+      return format(m.contractChoiceLabelDuplicate)
     case 'not-a-score-amount':
       return format(m.contractNotScoreAmount)
     case 'not-a-decimal':

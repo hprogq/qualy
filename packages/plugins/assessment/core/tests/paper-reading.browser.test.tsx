@@ -32,7 +32,7 @@ const question = (n: number, title: string, group: string) => ({
   currentRevision: {
     id: `3000000${n}-3333-4333-8333-333333333330`,
     revisionNo: 1,
-    entrySource: 'student' as const,
+    entryChannels: ['participant'] as const,
     formConfig: { fields: [{ key: 'summary', type: 'text', label: '事项说明', required: true }] },
     scoringConfig: { calculator: { config: { value: '1.00' } } },
     reviewPolicy: { stages: [{ nodeType: 'class' }, { nodeType: 'college' }] },

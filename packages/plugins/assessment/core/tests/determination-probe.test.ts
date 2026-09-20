@@ -134,7 +134,7 @@ const recordItem = (f: Seeded, batchId: string, over: { maxEntries: number | nul
         scoreGroupId: groups.groups[0]!.id,
         maxEntries: over.maxEntries,
         config: {
-          entrySource: 'administrative',
+          entryChannels: ['administrative'],
           formConfig: {},
           scoringConfig: probeScoring(),
           reviewPolicy: {
@@ -360,7 +360,7 @@ describe.runIf(postgresAvailable)('proving a determination before it is a fact',
                   scoreGroupId: groups.groups[0]!.id,
                   maxEntries: null,
                   config: {
-                    entrySource: 'student',
+                    entryChannels: ['participant'],
                     formConfig: {},
                     scoringConfig: scoring,
                     reviewPolicy: { mode: 'none' },
@@ -439,7 +439,7 @@ describe.runIf(postgresAvailable)('proving a determination before it is a fact',
             g.item.id,
             {
               config: {
-                entrySource: 'student',
+                entryChannels: ['participant'],
                 formConfig: { files: {} },
                 scoringConfig: probeScoring({ maxOrdinal: 7 }),
                 reviewPolicy: {
@@ -573,7 +573,7 @@ describe.runIf(postgresAvailable)('proving a determination before it is a fact',
           const b3 = yield* appoint(f, g.batch.id, 'B3', panelRole)
           const groups = yield* assessment.listScoreGroups(f.t, g.batch.id, admin)
           const config = (scoring: unknown) => ({
-            entrySource: 'student' as const,
+            entryChannels: ['participant'] as const,
             formConfig: {},
             scoringConfig: scoring,
             reviewPolicy: {

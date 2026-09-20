@@ -167,10 +167,7 @@ const checkRoute = (
   }
 }
 
-export const validateReviewPolicy = (
-  _entrySource: 'student' | 'administrative',
-  policy: unknown,
-): readonly PolicyIssue[] => {
+export const validateReviewPolicy = (policy: unknown): readonly PolicyIssue[] => {
   if (!isRecord(policy)) return [{ path: 'reviewPolicy', reason: 'policy-not-an-object' }]
 
   const issues: PolicyIssue[] = []

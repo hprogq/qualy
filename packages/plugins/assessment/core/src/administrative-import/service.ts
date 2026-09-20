@@ -24,6 +24,8 @@ import {
 } from '../entry/administrative-write.ts'
 import type { EntryStatus } from '../entry/db.ts'
 import { itemOf, revisionOf as itemRevisionOf, revisionsByIdOf } from '../item/db.ts'
+import { opensTo } from '../item/channels.ts'
+import { boundEvidenceKeys, fillBoundEvidence } from '../scoring/bound-evidence.ts'
 import { announce } from '../live/events.ts'
 import {
   ScoringRuntimeCatalog,
@@ -32,7 +34,7 @@ import {
   type ItemTypeDriver,
 } from '../plugin.ts'
 import { proveSettlements } from '../scoring/failure-boundary.ts'
-import { readScoringPlan } from '../scoring/plan.ts'
+import { readScoringPlan, type ScoringPlan } from '../scoring/plan.ts'
 import { currentRecognitionsOfEntries } from '../scoring/recognition-db.ts'
 import {
   canonicalRecognition,
@@ -414,11 +416,20 @@ export interface AdministrativeImportMethods {
  * scale, a date held to the round. A field no cell can carry, such as a
  * file, is simply not offered.
  */
-const evidenceFieldsOf = (driver: ItemTypeDriver, formConfig: unknown, batch: BatchContext) =>
-  (driver.bindableFields?.(formConfig, batch) ?? []).map((one) => ({
-    key: one.payloadKey,
-    schema: one.schema,
-  }))
+const evidenceFieldsOf = (
+  driver: ItemTypeDriver,
+  formConfig: unknown,
+  batch: BatchContext,
+  plan: ScoringPlan,
+) =>
+  (driver.bindableFields?.(formConfig, batch) ?? [])
+    // a field the determination stands for is the determination's column,
+    // not a second column that could only agree with it or contradict it
+    .filter((one) => !boundEvidenceKeys(plan).has(one.payloadKey))
+    .map((one) => ({
+      key: one.payloadKey,
+      schema: one.schema,
+    }))
 
 /** whether the question insists on material a workbook cannot carry */
 const requiresAttachment = (formConfig: unknown): boolean => {
@@ -500,7 +511,7 @@ export const makeAdministrativeImportMethods = (
     if (revision === null) {
       return yield* new EntryActionRefused({ action: 'import', reason: 'item-not-configured' })
     }
-    if (revision.entrySource !== 'administrative') {
+    if (!opensTo(revision.entryChannels, 'administrative')) {
       return yield* new EntryActionRefused({ action: 'import', reason: 'item-not-administrative' })
     }
     const driver = deps.itemTypes.get(item.itemType)
@@ -657,7 +668,12 @@ export const makeAdministrativeImportMethods = (
     )
 
     const recognitionFields = recognitionFormFields(ready.plan) ?? []
-    const evidenceFields = evidenceFieldsOf(ready.driver, ready.revision.formConfig, ready.context)
+    const evidenceFields = evidenceFieldsOf(
+      ready.driver,
+      ready.revision.formConfig,
+      ready.context,
+      ready.plan,
+    )
     // What each column MEANS, decided from the frozen revision rather than
     // read out of the file. The workbook may say where a field was put; a
     // hidden sheet saying what a word stands for is a hidden sheet rewriting
@@ -718,7 +734,13 @@ export const makeAdministrativeImportMethods = (
       row.issues.some((one) => one.severity === 'error')
         ? Effect.succeed(row)
         : Effect.result(
-            ready.driver.decodePayload(ready.revision.formConfig, row.payload, ready.context),
+            ready.driver.decodePayload(
+              ready.revision.formConfig,
+              // the columns the file did not have: what the office
+              // determined is what the filing side of a bound field says
+              fillBoundEvidence(ready.plan, row.payload, row.recognition),
+              ready.context,
+            ),
           ).pipe(
             Effect.map((result) =>
               Result.isSuccess(result)
@@ -874,7 +896,12 @@ export const makeAdministrativeImportMethods = (
           itemRevisionId: ready.revision.id,
           itemTitle: ready.item.title,
           locale,
-          evidence: evidenceFieldsOf(ready.driver, ready.revision.formConfig, ready.context),
+          evidence: evidenceFieldsOf(
+            ready.driver,
+            ready.revision.formConfig,
+            ready.context,
+            ready.plan,
+          ),
           recognition: fields.map((field) => ({ id: field.id, schema: field.schema })),
         }),
       )

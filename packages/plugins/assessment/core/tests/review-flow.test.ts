@@ -578,7 +578,7 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
               scoreGroupId: groups.groups[0]!.id,
               maxEntries: 1,
               config: {
-                entrySource: 'student',
+                entryChannels: ['participant'],
                 formConfig: {},
                 scoringConfig: {
                   calculator: { ref: 'fixed@1', config: { value: '1.00' } },
@@ -707,7 +707,7 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
               scoreGroupId: groups.groups[0]!.id,
               maxEntries: 1,
               config: {
-                entrySource: 'student',
+                entryChannels: ['participant'],
                 formConfig: {},
                 scoringConfig: {
                   calculator: { ref: 'fixed@1', config: { value: '1.00' } },
@@ -848,7 +848,7 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
                   scoreGroupId: groups.groups[0]!.id,
                   maxEntries: 1,
                   config: {
-                    entrySource: 'student',
+                    entryChannels: ['participant'],
                     formConfig: {},
                     scoringConfig: {
                       calculator: { ref: 'fixed@1', config: { value: '1.00' } },
@@ -1084,7 +1084,7 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
 
           // the same step, pointed at the role somebody actually holds
           const fixed = {
-            entrySource: 'student' as const,
+            entryChannels: ['participant'] as const,
             formConfig: {},
             scoringConfig: {
               calculator: { ref: 'fixed@1', config: { value: '3.00' } },
@@ -1256,7 +1256,7 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           )
           // the same two steps, reordered: both survive, the past does not
           const swapped = {
-            entrySource: 'student' as const,
+            entryChannels: ['participant'] as const,
             formConfig: { files: {} },
             scoringConfig: {
               calculator: { ref: 'fixed@1', config: { value: '3.00' } },
@@ -1390,7 +1390,7 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           // the administrator renames the ladder's step, which moves every
           // open round onto the new chain
           const swapped = {
-            entrySource: 'student' as const,
+            entryChannels: ['participant'] as const,
             formConfig: { files: {} },
             scoringConfig: {
               calculator: { ref: 'fixed@1', config: { value: '3.00' } },
@@ -2108,7 +2108,7 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
               scoreGroupId: groups.groups[0]!.id,
               maxEntries: 1,
               config: {
-                entrySource: 'student',
+                entryChannels: ['participant'],
                 formConfig: {},
                 scoringConfig: {
                   calculator: { ref: 'fixed@1', config: { value: '1.00' } },

@@ -2,6 +2,7 @@ import { Effect, Schema } from 'effect'
 import { SUMMARY_FIELDS_MOST, summaryFieldIdsOf } from '../entry/summary.ts'
 import type { AggregatorDriver, CalculatorDefinition, ItemTypeDriver } from '../plugin.ts'
 import { validateReviewPolicy, type PolicyIssue } from './policy.ts'
+import { isEntryChannel, type EntryChannel } from './channels.ts'
 
 // One saved configuration, checked against everything it cites.
 //
@@ -13,7 +14,8 @@ import { validateReviewPolicy, type PolicyIssue } from './policy.ts'
 // form should not discover the scoring reference next.
 
 export interface ItemConfigInput {
-  readonly entrySource: 'student' | 'administrative'
+  /** the doors open on this question; a derived question names none */
+  readonly entryChannels: readonly EntryChannel[]
   readonly formConfig: unknown
   readonly scoringConfig: unknown
   readonly reviewPolicy: unknown
@@ -78,7 +80,7 @@ export const validateItemConfig = (
         const type = known.get(id)
         if (type === undefined) {
           issues.push({ path: 'displayConfig.entrySummary', reason: 'summary-field-unknown' })
-        } else if (type === 'attachment') {
+        } else if (type === 'attachment' || type === 'boolean') {
           issues.push({ path: 'displayConfig.entrySummary', reason: 'summary-field-attachment' })
         }
       }
@@ -88,6 +90,18 @@ export const validateItemConfig = (
     if (driver === undefined) {
       issues.push({ path: 'itemType', reason: 'item-type-not-installed' })
     } else {
+      // The doors, held to the kind of question: a filed question needs at
+      // least one open, a derived question - nobody files it - has none. A
+      // door named twice, or one this build does not know, is refused
+      // rather than read as the doors it happens to contain.
+      const channels = input.entryChannels
+      if (!Array.isArray(channels) || !channels.every(isEntryChannel)) {
+        issues.push({ path: 'entryChannels', reason: 'entry-channels-invalid' })
+      } else if (new Set(channels).size !== channels.length) {
+        issues.push({ path: 'entryChannels', reason: 'entry-channels-invalid' })
+      } else if (driver.interaction === 'derived' ? channels.length > 0 : channels.length === 0) {
+        issues.push({ path: 'entryChannels', reason: 'entry-channels-required' })
+      }
       issues.push(
         ...(yield* decodeIssues(
           'formConfig',
@@ -133,6 +147,6 @@ export const validateItemConfig = (
       }
     }
 
-    issues.push(...validateReviewPolicy(input.entrySource, input.reviewPolicy))
+    issues.push(...validateReviewPolicy(input.reviewPolicy))
     return issues
   })

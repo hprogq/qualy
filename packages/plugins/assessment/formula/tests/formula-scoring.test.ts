@@ -173,8 +173,8 @@ const MOODY = `import { Schema, defineFormula } from '@qualy/formula'
 
 export default defineFormula({
   input: Schema.input({
-    mode: Schema.choice({ ok: '正常', refuse: '拒绝' }),
-    value: Schema.decimal({ minimum: '0.00', maximum: '10.00', maxScale: 2 }),
+    mode: Schema.choice({ ok: '正常', refuse: '拒绝' }, { title: '模式' }),
+    value: Schema.decimal({ minimum: '0.00', maximum: '10.00', maxScale: 2, title: '分值' }),
   }),
   output: Schema.scoreAmount({ maxScale: 2 }),
   run(input, q) {
@@ -192,7 +192,7 @@ const BALLAST = '${'x'.repeat(240 * 1024)}'
 
 export default defineFormula({
   input: Schema.input({
-    value: Schema.decimal({ minimum: '0.00', maximum: '10.00', maxScale: 2 }),
+    value: Schema.decimal({ minimum: '0.00', maximum: '10.00', maxScale: 2, title: '分值' }),
   }),
   output: Schema.scoreAmount({ maxScale: 2 }),
   run(input, q) {
@@ -207,7 +207,7 @@ const PASSTHROUGH = `import { Schema, defineFormula } from '@qualy/formula'
 
 export default defineFormula({
   input: Schema.input({
-    value: Schema.decimal({ minimum: '0.00', maximum: '10.00', maxScale: 2 }),
+    value: Schema.decimal({ minimum: '0.00', maximum: '10.00', maxScale: 2, title: '分值' }),
   }),
   output: Schema.scoreAmount({ maxScale: 2 }),
   run: (input) => input.value,
@@ -292,7 +292,7 @@ const roundWithGroup = (
 
 /** one question's configuration, scored by an exact published version */
 const boundConfig = (versionId: string, valueId?: string) => ({
-  entrySource: 'student' as const,
+  entryChannels: ['participant'] as const,
   formConfig: {},
   scoringConfig: {
     version: 2,
@@ -441,7 +441,7 @@ describe.runIf(postgresAvailable)('formula scoring, end to end', () => {
                 scoreGroupId: groupId,
                 maxEntries: 1,
                 config: {
-                  entrySource: 'student',
+                  entryChannels: ['participant'],
                   formConfig: {},
                   scoringConfig: {
                     version: 2,
@@ -651,7 +651,7 @@ describe.runIf(postgresAvailable)('formula scoring, end to end', () => {
     // by a save or by a preview.
     const administrative = (versionId: string, valueId?: string) => ({
       ...boundConfig(versionId, valueId),
-      entrySource: 'administrative' as const,
+      entryChannels: ['administrative'] as const,
     })
     const opened = ok(
       await Effect.runPromiseExit(
@@ -929,7 +929,7 @@ describe.runIf(postgresAvailable)('formula scoring, end to end', () => {
 
 export default defineFormula({
   input: Schema.input({
-    value: Schema.decimal({ minimum: '0.00', maximum: '10.00', maxScale: 2 }),
+    value: Schema.decimal({ minimum: '0.00', maximum: '10.00', maxScale: 2, title: '分值' }),
   }),
   output: Schema.scoreAmount({ maxScale: 2 }),
   run(input, q) {
@@ -944,7 +944,7 @@ export default defineFormula({
 
 export default defineFormula({
   input: Schema.input({
-    value: Schema.decimal({ minimum: '0.00', maximum: '10.00', maxScale: 2 }),
+    value: Schema.decimal({ minimum: '0.00', maximum: '10.00', maxScale: 2, title: '分值' }),
   }),
   output: Schema.scoreAmount({ maxScale: 2 }),
   run: (_input, q) => q.decimal.fromInteger(4),
@@ -999,7 +999,7 @@ export default defineFormula({
             ).id
             const recorded = (versionId: string, valueId?: string) => ({
               ...boundConfig(versionId, valueId),
-              entrySource: 'administrative' as const,
+              entryChannels: ['administrative'] as const,
             })
             const ask = (title: string, versionId: string) =>
               Effect.gen(function* () {

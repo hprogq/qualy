@@ -730,6 +730,10 @@ const i18n = definePluginMessages({
       id: 'assessment/entry/issue-other',
       defaultMessage: 'did not pass validation',
     },
+    refuseChannelClosed: {
+      id: 'assessment/entry/refuse-channel-closed',
+      defaultMessage: 'This item is recorded by staff and cannot be filed by participants.',
+    },
     refuseNotYours: {
       id: 'assessment/entry/refuse-not-yours',
       defaultMessage: 'Only the owner of the entry can modify it.',
@@ -2107,20 +2111,19 @@ const i18n = definePluginMessages({
       defaultMessage: 'could not be saved.',
     },
     itemsGroupsSaved: { id: 'assessment/items/groups-saved', defaultMessage: 'Groups saved.' },
-    itemsListTitle: { id: 'assessment/items/list-title', defaultMessage: 'Items' },
     itemsFieldTitle: { id: 'assessment/items/field-title', defaultMessage: 'Title' },
     itemsFieldGroup: { id: 'assessment/items/field-group', defaultMessage: 'Group' },
     itemsFieldMax: {
       id: 'assessment/items/field-max',
       defaultMessage: 'Entries per participant',
     },
-    itemsFieldEntrySource: {
-      id: 'assessment/items/field-entry-source',
-      defaultMessage: 'Submission method',
-    },
     itemsEntrySourceStudent: {
       id: 'assessment/items/entry-source-student',
       defaultMessage: 'Submitted by participants',
+    },
+    itemsEntrySourceBoth: {
+      id: 'assessment/items/entry-source-both',
+      defaultMessage: 'Participants and staff',
     },
     itemsEntrySourceAdministrative: {
       id: 'assessment/items/entry-source-administrative',
@@ -2156,7 +2159,6 @@ const i18n = definePluginMessages({
     itemsPublished: { id: 'assessment/items/published', defaultMessage: 'Published.' },
     itemsFieldAdd: { id: 'assessment/items/form-add', defaultMessage: 'Add field' },
     itemsFieldRemove: { id: 'assessment/items/form-remove', defaultMessage: 'Delete field' },
-    itemsFieldLabel: { id: 'assessment/items/field-label', defaultMessage: 'Display name' },
     itemsFieldType: { id: 'assessment/items/field-type', defaultMessage: 'Type' },
     itemsTypeText: { id: 'assessment/items/type-text', defaultMessage: 'Text' },
     itemsTypeDate: { id: 'assessment/items/type-date', defaultMessage: 'Date' },
@@ -2201,21 +2203,9 @@ const i18n = definePluginMessages({
       id: 'assessment/items/type-integer',
       defaultMessage: 'Number',
     },
-    itemsTypeDecimal: {
-      id: 'assessment/items/type-decimal',
-      defaultMessage: 'Amount',
-    },
     itemsTypeChoice: {
       id: 'assessment/items/type-choice',
       defaultMessage: 'Choice',
-    },
-    itemsLimitRange: {
-      id: 'assessment/items/limit-range',
-      defaultMessage: '{from} to {until}',
-    },
-    itemsLimitChoices: {
-      id: 'assessment/items/limit-choices',
-      defaultMessage: '{count, plural, other {# options}}',
     },
     itemsFieldMinValue: {
       id: 'assessment/items/field-min-value',
@@ -2229,25 +2219,9 @@ const i18n = definePluginMessages({
       id: 'assessment/items/field-max-scale',
       defaultMessage: 'Decimal places',
     },
-    itemsChoiceOptions: {
-      id: 'assessment/items/choice-options',
-      defaultMessage: 'Options',
-    },
-    itemsChoiceValue: {
-      id: 'assessment/items/choice-value',
-      defaultMessage: 'Stored value',
-    },
-    itemsChoiceLabel: {
-      id: 'assessment/items/choice-label',
-      defaultMessage: 'Shown as',
-    },
     itemsChoiceAdd: {
       id: 'assessment/items/choice-add',
       defaultMessage: 'Add an option',
-    },
-    itemsChoiceRemove: {
-      id: 'assessment/items/choice-remove',
-      defaultMessage: 'Remove this option',
     },
     itemsTypeAttachment: { id: 'assessment/items/type-attachment', defaultMessage: 'File' },
     itemsFieldRequired: { id: 'assessment/items/field-required', defaultMessage: 'Required' },
@@ -2287,215 +2261,9 @@ const i18n = definePluginMessages({
       id: 'assessment/items/contract-retrying',
       defaultMessage: 'The scoring parameters could not be read just now',
     },
-    itemsFormIncomplete: {
-      id: 'assessment/items/form-incomplete',
-      defaultMessage: 'The filing fields are not finished',
-    },
-    itemsBindingTally: {
-      id: 'assessment/items/binding-tally',
-      defaultMessage:
-        '{total, plural, one {# parameter} other {# parameters}} 　 {done} set 　 {left} to go',
-    },
-    itemsBindingAllSet: {
-      id: 'assessment/items/binding-all-set',
-      defaultMessage: '{total, plural, one {# parameter} other {# parameters}} 　 all set',
-    },
-    itemsBindingColumnParameter: {
-      id: 'assessment/items/binding-column-parameter',
-      defaultMessage: 'Parameter',
-    },
-    itemsBindingColumnTakes: {
-      id: 'assessment/items/binding-column-takes',
-      defaultMessage: 'Takes',
-    },
-    itemsBindingColumnSource: {
-      id: 'assessment/items/binding-column-source',
-      defaultMessage: 'Comes from',
-    },
-    itemsBindingUnset: { id: 'assessment/items/binding-unset', defaultMessage: 'Not set' },
-    itemsBindingPrefilled: {
-      id: 'assessment/items/binding-prefilled',
-      defaultMessage: 'Prefilled determination',
-    },
-    itemsBindingManual: {
-      id: 'assessment/items/binding-manual',
-      defaultMessage: 'Determined by hand',
-    },
-    itemsBindingPrefilledFrom: {
-      id: 'assessment/items/binding-prefilled-from',
-      defaultMessage: 'Prefilled from {field}',
-    },
-    itemsBindingSheetTitle: {
-      id: 'assessment/items/binding-sheet-title',
-      defaultMessage: 'Where this parameter comes from',
-    },
-    itemsBindingSheetHint: {
-      id: 'assessment/items/binding-sheet-hint',
-      defaultMessage: 'The arithmetic reads it under this name whatever feeds it.',
-    },
-    itemsBindingTakesTitle: {
-      id: 'assessment/items/binding-takes-title',
-      defaultMessage: 'What it takes',
-    },
-    itemsBindingPrefillUnavailable: {
-      id: 'assessment/items/binding-prefill-unavailable',
-      defaultMessage: 'A filing field cannot express what this parameter takes',
-    },
-    itemsBindingPrefillField: {
-      id: 'assessment/items/binding-prefill-field',
-      defaultMessage: 'Filing field',
-    },
-    itemsBindingPrefillMade: {
-      id: 'assessment/items/binding-prefill-made',
-      defaultMessage: 'A filing field was added for it',
-    },
-    itemsBindingConstantHint: {
-      id: 'assessment/items/binding-constant-hint',
-      defaultMessage: 'The same value for everybody',
-    },
-    itemsBindingManualHint: {
-      id: 'assessment/items/binding-manual-hint',
-      defaultMessage: 'Somebody determines it while reviewing',
-    },
-    itemsBindingPrefillHint: {
-      id: 'assessment/items/binding-prefill-hint',
-      defaultMessage: 'A filing field suggests it, and it can still be changed',
-    },
-    itemsBindingSource: {
-      id: 'assessment/items/binding-source',
-      defaultMessage: 'Comes from',
-    },
-    itemsBindingConstant: {
-      id: 'assessment/items/binding-constant',
-      defaultMessage: 'A fixed value',
-    },
-    itemsBindingRecognition: {
-      id: 'assessment/items/binding-recognition',
-      defaultMessage: 'A recognised fact',
-    },
-    itemsBindingValue: {
-      id: 'assessment/items/binding-value',
-      defaultMessage: 'Value',
-    },
-    itemsRecognitionLabel: {
-      id: 'assessment/items/recognition-label',
-      defaultMessage: 'What to call it',
-    },
-    itemsRecognitionDefault: {
-      id: 'assessment/items/recognition-default',
-      defaultMessage: 'Suggested from',
-    },
-    itemsRecognitionNoDefault: {
-      id: 'assessment/items/recognition-no-default',
-      defaultMessage: 'Nothing; ask for it',
-    },
-    itemsNeedCalculatorConfig: {
-      id: 'assessment/items/need-calculator-config',
-      defaultMessage: 'Finish setting up the scoring',
-    },
     itemsContractPending: {
       id: 'assessment/items/contract-pending',
       defaultMessage: 'Reading what this arithmetic needs…',
-    },
-    itemsContractUnavailable: {
-      id: 'assessment/items/contract-unavailable',
-      defaultMessage: 'What this arithmetic needs could not be read, so it cannot be saved yet.',
-    },
-    itemsBindingDiagnosticSourceRecognition: {
-      id: 'assessment/items/binding-diagnostic-source-recognition',
-      defaultMessage: 'The fact’s own range',
-    },
-    itemsBindingDiagnosticSourceDefault: {
-      id: 'assessment/items/binding-diagnostic-source-default',
-      defaultMessage: 'Suggested from {field}',
-    },
-    itemsBindingDiagnosticExpected: {
-      id: 'assessment/items/binding-diagnostic-expected',
-      defaultMessage: 'Needs {facet}',
-    },
-    itemsBindingDiagnosticActual: {
-      id: 'assessment/items/binding-diagnostic-actual',
-      defaultMessage: 'Gets {facet}',
-    },
-    itemsBindingFacetMin: {
-      id: 'assessment/items/binding-facet-min',
-      defaultMessage: 'at least {constraint}',
-    },
-    itemsBindingFacetMax: {
-      id: 'assessment/items/binding-facet-max',
-      defaultMessage: 'at most {constraint}',
-    },
-    itemsBindingFacetScale: {
-      id: 'assessment/items/binding-facet-scale',
-      defaultMessage: '{constraint} decimal places',
-    },
-    itemsBindingFacetMinLength: {
-      id: 'assessment/items/binding-facet-min-length',
-      defaultMessage: 'at least {constraint} characters',
-    },
-    itemsBindingFacetMaxLength: {
-      id: 'assessment/items/binding-facet-max-length',
-      defaultMessage: 'at most {constraint} characters',
-    },
-    itemsBindingFacetPattern: {
-      id: 'assessment/items/binding-facet-pattern',
-      defaultMessage: 'format {constraint}',
-    },
-    itemsBindingFacetChoices: {
-      id: 'assessment/items/binding-facet-choices',
-      defaultMessage: 'one of {constraint}',
-    },
-    itemsBindingReasonKindMismatch: {
-      id: 'assessment/items/binding-reason-kind-mismatch',
-      defaultMessage: 'Not the same kind of value.',
-    },
-    itemsBindingReasonTextLengthWidens: {
-      id: 'assessment/items/binding-reason-text-length-widens',
-      defaultMessage: 'Allows a length the fact does not.',
-    },
-    itemsBindingReasonPatternUnprovable: {
-      id: 'assessment/items/binding-reason-pattern-unprovable',
-      defaultMessage: 'Its format cannot be shown to fit.',
-    },
-    itemsBindingReasonRangeWidens: {
-      id: 'assessment/items/binding-reason-range-widens',
-      defaultMessage: 'Allows values outside the range.',
-    },
-    itemsBindingReasonScaleWidens: {
-      id: 'assessment/items/binding-reason-scale-widens',
-      defaultMessage: 'Allows more decimal places.',
-    },
-    itemsBindingReasonChoiceWidens: {
-      id: 'assessment/items/binding-reason-choice-widens',
-      defaultMessage: 'Includes options the fact does not admit: {extra}.',
-    },
-    itemsBindingReasonConverterDomainExceeds: {
-      id: 'assessment/items/binding-reason-converter-domain-exceeds',
-      defaultMessage: 'Whole numbers here can fall outside the range.',
-    },
-    itemsBindingReasonRequiresConversion: {
-      id: 'assessment/items/binding-reason-requires-conversion',
-      defaultMessage: 'Would need converting, which a narrowing may not.',
-    },
-    itemsBindingReasonUnknownParameter: {
-      id: 'assessment/items/binding-reason-unknown-parameter',
-      defaultMessage: 'This arithmetic has no such parameter.',
-    },
-    itemsBindingReasonDefaultFieldUnknown: {
-      id: 'assessment/items/binding-reason-default-field-unknown',
-      defaultMessage: 'This field is no longer on the form.',
-    },
-    itemsBindingReasonRefinementNotInProfile: {
-      id: 'assessment/items/binding-reason-refinement-not-in-profile',
-      defaultMessage: 'The fact’s range is not a legal rule.',
-    },
-    itemsBindingReasonOther: {
-      id: 'assessment/items/binding-reason-other',
-      defaultMessage: 'Cannot feed it ({reason}).',
-    },
-    itemsCalculator: {
-      id: 'assessment/items/calculator',
-      defaultMessage: 'Where the score comes from',
     },
     itemsCalculatorFixed: {
       id: 'assessment/items/calculator-fixed',
@@ -2597,60 +2365,9 @@ const i18n = definePluginMessages({
       id: 'assessment/entry/granted',
       defaultMessage: 'Automatically counted 　 no submission required',
     },
-    itemsKind: { id: 'assessment/items/kind', defaultMessage: 'Item type' },
-    itemsKindEvidence: {
-      id: 'assessment/items/kind-evidence',
-      defaultMessage: 'Form entry',
-    },
-    itemsKindEvidenceHint: {
-      id: 'assessment/items/kind-evidence-hint',
-      defaultMessage: 'Enter information or upload supporting material before submitting',
-    },
-    itemsKindDeclaration: {
-      id: 'assessment/items/kind-declaration',
-      defaultMessage: 'Confirmation',
-    },
-    itemsKindDeclarationHint: {
-      id: 'assessment/items/kind-declaration-hint',
-      defaultMessage: 'No fields required; confirm and submit',
-    },
-    itemsKindConstant: {
-      id: 'assessment/items/kind-constant',
-      defaultMessage: 'Automatic',
-    },
-    itemsKindConstantHint: {
-      id: 'assessment/items/kind-constant-hint',
-      defaultMessage: 'No participant action required; the system applies the score automatically',
-    },
-    itemsDeclaredHint: {
-      id: 'assessment/items/declared-hint',
-      defaultMessage: 'A single confirmation completes the submission',
-    },
-    itemsDeclaredBody: {
-      id: 'assessment/items/declared-body',
-      defaultMessage:
-        'Participants submit the item by confirming once. Use the description above to state exactly what they are confirming.',
-    },
-    itemsGrantedTitle: {
-      id: 'assessment/items/granted-title',
-      defaultMessage: 'Eligible participants',
-    },
-    itemsGrantedHint: {
-      id: 'assessment/items/granted-hint',
-      defaultMessage: 'No submission or review required',
-    },
     itemsGrantedBody: {
       id: 'assessment/items/granted-body',
       defaultMessage: 'Every participant in the batch receives the value configured below.',
-    },
-    itemsReviewWorkflow: {
-      id: 'assessment/items/review-workflow',
-      defaultMessage: 'Use review workflow',
-    },
-    itemsReviewNone: { id: 'assessment/items/review-none', defaultMessage: 'No review required' },
-    itemsReviewNoneHint: {
-      id: 'assessment/items/review-none-hint',
-      defaultMessage: 'The score is counted immediately after submission.',
     },
     resultDerived: {
       id: 'assessment/result/derived',
@@ -3951,9 +3668,7 @@ const i18n = definePluginMessages({
         'The submission is in the escalation workflow; the final review step determines the outcome.',
     },
     itemsTabBasics: { id: 'assessment/items/tab-basics', defaultMessage: 'Basic information' },
-    itemsTabFields: { id: 'assessment/items/tab-fields', defaultMessage: 'Submission fields' },
     itemsTabScoring: { id: 'assessment/items/tab-scoring', defaultMessage: 'Scoring' },
-    itemsTabReview: { id: 'assessment/items/tab-review', defaultMessage: 'Review workflow' },
     itemsSummaryTitle: { id: 'assessment/items/summary-title', defaultMessage: 'Claim summary' },
     itemsSummaryHint: {
       id: 'assessment/items/summary-hint',
@@ -4002,23 +3717,6 @@ const i18n = definePluginMessages({
     itemsTreeSummaryNoCap: {
       id: 'assessment/items/tree-summary-no-cap',
       defaultMessage: '{count, plural, one {# item} other {# items}}',
-    },
-    itemsBasicsHint: {
-      id: 'assessment/items/basics-hint',
-      defaultMessage: 'The title and instructions are shown on the participant submission screen.',
-    },
-    itemsFieldsHint: {
-      id: 'assessment/items/fields-hint',
-      defaultMessage: 'Participants complete the fields in this order. Drag to reorder them.',
-    },
-    itemsScoringHint: {
-      id: 'assessment/items/scoring-hint',
-      defaultMessage: 'Set the score for each approved entry. Use a negative value for deductions.',
-    },
-    itemsChainHintNew: {
-      id: 'assessment/items/chain-hint-new',
-      defaultMessage:
-        'Submissions move through the review steps in order; the final step determines the outcome.',
     },
     itemsImpactTitle: {
       id: 'assessment/items/impact-title',
@@ -4126,11 +3824,6 @@ const i18n = definePluginMessages({
       id: 'assessment/items/impact-scoring-note',
       defaultMessage:
         'Saving applies the new rule to every determination already in force; the amounts above are recalculated when results are read.',
-    },
-    itemsChainHintRecorded: {
-      id: 'assessment/items/chain-hint-recorded',
-      defaultMessage:
-        'Staff-recorded entries count immediately; the review workflow is used only if the result is contested.',
     },
     structureDragHint: {
       id: 'assessment/items/structure-drag-hint',
@@ -4272,10 +3965,6 @@ const i18n = definePluginMessages({
       id: 'assessment/items/review-roles-hint',
       defaultMessage: 'Reviewers are people holding any selected role in the relevant unit.',
     },
-    itemsFormEmpty: {
-      id: 'assessment/items/form-empty',
-      defaultMessage: 'No fields have been added. At least one field is required.',
-    },
     itemsFieldReason: { id: 'assessment/items/field-reason', defaultMessage: 'Reason for change' },
     itemsSaved: { id: 'assessment/items/saved', defaultMessage: 'Item saved.' },
     itemsVoid: { id: 'assessment/items/void', defaultMessage: 'Disable' },
@@ -4331,10 +4020,6 @@ const i18n = definePluginMessages({
 
     /** one question, opened out of the structure */
     itemsBack: { id: 'assessment/items/back', defaultMessage: 'Back to structure' },
-    itemsPaperPosition: {
-      id: 'assessment/items/paper-position',
-      defaultMessage: 'Item {index} of {total}',
-    },
     itemsPublishedVersion: {
       id: 'assessment/items/published-version',
       defaultMessage: 'Published 　 version {no}',
@@ -4364,14 +4049,6 @@ const i18n = definePluginMessages({
     },
     // the file kinds an administrator picks from, shared by the question's
     // own fields and by a reviewer asking for more material
-    itemsGrantedRoster: {
-      id: 'assessment/items/granted-roster',
-      defaultMessage: 'Batch participant roster',
-    },
-    itemsGrantedRosterCount: {
-      id: 'assessment/items/granted-roster-count',
-      defaultMessage: '{count, plural, one {# participant} other {# participants}}',
-    },
     fileKindPdf: { id: 'assessment/files/kind-pdf', defaultMessage: 'PDF' },
     fileKindImage: { id: 'assessment/files/kind-image', defaultMessage: 'Images' },
     fileKindWord: { id: 'assessment/files/kind-word', defaultMessage: 'Word documents' },
@@ -4395,22 +4072,6 @@ const i18n = definePluginMessages({
     itemsAcceptUnwritable: {
       id: 'assessment/items/accept-unwritable',
       defaultMessage: 'Invalid formats: {tokens}',
-    },
-    itemsFieldCount: {
-      id: 'assessment/items/field-count',
-      defaultMessage: '{count, plural, =0 {No fields} one {# field} other {# fields}}',
-    },
-    itemsRequiredCount: {
-      id: 'assessment/items/required-count',
-      defaultMessage: '{count} required',
-    },
-    itemsFieldOpenHint: {
-      id: 'assessment/items/field-open-hint',
-      defaultMessage: 'Select a field to edit its settings',
-    },
-    itemsKindLocked: {
-      id: 'assessment/items/kind-locked',
-      defaultMessage: 'The item type cannot be changed after creation.',
     },
     itemsCeilingSource: {
       id: 'assessment/items/ceiling-source',
@@ -4468,7 +4129,6 @@ const i18n = definePluginMessages({
       defaultMessage:
         '{count, plural, one {# unit has no reviewer} other {# units have no reviewer}}',
     },
-    itemsStageUnset: { id: 'assessment/items/stage-unset', defaultMessage: 'Not configured' },
     itemsStageUnsetHint: {
       id: 'assessment/items/stage-unset-hint',
       defaultMessage: 'Select the review level and reviewer roles.',
@@ -4486,45 +4146,9 @@ const i18n = definePluginMessages({
       id: 'assessment/items/escalation-settled-sub',
       defaultMessage: 'The final review step determines the outcome',
     },
-    itemsCannotSave: {
-      id: 'assessment/items/cannot-save',
-      defaultMessage: 'Cannot save yet: {reasons}.',
-    },
-    itemsNeedTitle: { id: 'assessment/items/need-title', defaultMessage: 'item title is missing' },
-    itemsNeedGroup: { id: 'assessment/items/need-group', defaultMessage: 'no group is selected' },
-    itemsNeedValue: {
-      id: 'assessment/items/need-value',
-      defaultMessage: 'score per approved entry is missing',
-    },
-    itemsNeedFieldLabel: {
-      id: 'assessment/items/need-field-label',
-      defaultMessage: 'a submission field has no name',
-    },
-    itemsNeedStage: {
-      id: 'assessment/items/need-stage',
-      defaultMessage: 'a review step is incomplete',
-    },
     itemsEscalationAddStep: {
       id: 'assessment/items/escalation-add-step',
       defaultMessage: 'Add escalation step',
-    },
-    itemsPlacementTitle: {
-      id: 'assessment/items/placement-title',
-      defaultMessage: 'Scoring position',
-    },
-    itemsPlacementSubtotal: {
-      id: 'assessment/items/placement-subtotal',
-      defaultMessage: '{name} subtotal',
-    },
-    itemsPlacementCap: {
-      id: 'assessment/items/placement-cap',
-      defaultMessage: '{name} limit',
-    },
-    itemsPlacementPaper: { id: 'assessment/items/placement-paper', defaultMessage: 'Batch total' },
-    itemsVersionTitle: { id: 'assessment/items/version-title', defaultMessage: 'Version' },
-    itemsVersionNote: {
-      id: 'assessment/items/version-note',
-      defaultMessage: 'Version {no}, saved {date}.',
     },
     itemsVersionNew: {
       id: 'assessment/items/version-new',
@@ -5472,6 +5096,525 @@ const i18n = definePluginMessages({
       defaultMessage:
         'The selected template defines a single stage rather than a complete timeline and cannot replace the stage plan.',
     },
+    // ---- the question editor: shell, tabs and the list of what is left ----
+    itemsMode: { id: 'assessment/items/mode', defaultMessage: 'Handling' },
+    itemsModeReview: {
+      id: 'assessment/items/mode-review',
+      defaultMessage: 'Takes effect after review',
+    },
+    itemsModeReviewHint: {
+      id: 'assessment/items/mode-review-hint',
+      defaultMessage: 'Participants submit, then reviewers confirm.',
+    },
+    itemsModeDirect: {
+      id: 'assessment/items/mode-direct',
+      defaultMessage: 'Takes effect on submission',
+    },
+    itemsModeDirectHint: {
+      id: 'assessment/items/mode-direct-hint',
+      defaultMessage: 'Participants submit and it counts at once, without review.',
+    },
+    itemsModeAutomatic: {
+      id: 'assessment/items/mode-automatic',
+      defaultMessage: 'Scored automatically',
+    },
+    itemsModeAutomaticHint: {
+      id: 'assessment/items/mode-automatic-hint',
+      defaultMessage: 'Nothing to submit; the system scores every participant once.',
+    },
+    itemsModeLocked: {
+      id: 'assessment/items/mode-locked',
+      defaultMessage: 'Automatic scoring can only be switched on or off while the item is unpublished.',
+    },
+    itemsChannels: { id: 'assessment/items/channels', defaultMessage: 'Entry method' },
+    itemsChannelsHint: {
+      id: 'assessment/items/channels-hint',
+      defaultMessage: 'More than one may be chosen',
+    },
+    itemsChannelParticipant: {
+      id: 'assessment/items/channel-participant',
+      defaultMessage: 'Participants submit',
+    },
+    itemsChannelParticipantHint: {
+      id: 'assessment/items/channel-participant-hint',
+      defaultMessage: 'Participants fill in the form and submit it themselves.',
+    },
+    itemsChannelAdministrative: {
+      id: 'assessment/items/channel-administrative',
+      defaultMessage: 'Staff record',
+    },
+    itemsChannelAdministrativeHint: {
+      id: 'assessment/items/channel-administrative-hint',
+      defaultMessage:
+        'Authorised staff record the determination directly, by hand or by import, and it takes effect at once.',
+    },
+    itemsTabForm: { id: 'assessment/items/tab-form', defaultMessage: 'Form and scoring' },
+    itemsTabRules: { id: 'assessment/items/tab-rules', defaultMessage: 'Records and review' },
+    itemsPendingCount: {
+      id: 'assessment/items/pending-count',
+      defaultMessage: '{count, plural, one {# item} other {# items}} still to complete',
+    },
+    itemsPendingHint: {
+      id: 'assessment/items/pending-hint',
+      defaultMessage: 'Save before publishing',
+    },
+    itemsPendingNone: {
+      id: 'assessment/items/pending-none',
+      defaultMessage: 'Ready to save',
+    },
+    itemsUnsaved: { id: 'assessment/items/unsaved', defaultMessage: 'Unsaved changes' },
+    itemsSavedAt: { id: 'assessment/items/saved-at', defaultMessage: 'Saved {when}' },
+    itemsMoreActions: { id: 'assessment/items/more-actions', defaultMessage: 'More actions' },
+    itemsDescriptionHint: {
+      id: 'assessment/items/description-hint',
+      defaultMessage: 'Shown on the submission and determination pages: scope, required materials and the like',
+    },
+    itemsDone: { id: 'assessment/items/done', defaultMessage: 'Done' },
+    itemsAdd: { id: 'assessment/items/add', defaultMessage: 'Add' },
+    itemsPrevious: { id: 'assessment/items/previous', defaultMessage: 'Previous' },
+    itemsNext: { id: 'assessment/items/next', defaultMessage: 'Next' },
+    itemsName: { id: 'assessment/items/name', defaultMessage: 'Name' },
+    itemsOptional: { id: 'assessment/items/optional', defaultMessage: 'Optional' },
+    // ---- scoring tab ----
+    itemsScoringMethod: { id: 'assessment/items/scoring-method', defaultMessage: 'Scoring method' },
+    itemsParameters: { id: 'assessment/items/parameters', defaultMessage: 'Formula parameters' },
+    itemsParametersHint: {
+      id: 'assessment/items/parameters-hint',
+      defaultMessage: 'Parameters that take a determined value become determination fields below.',
+    },
+    itemsParametersNone: {
+      id: 'assessment/items/parameters-none',
+      defaultMessage: 'This method takes no parameters',
+    },
+    itemsColumnParameter: { id: 'assessment/items/column-parameter', defaultMessage: 'Parameter' },
+    itemsColumnTypeRange: {
+      id: 'assessment/items/column-type-range',
+      defaultMessage: 'Type and range',
+    },
+    itemsColumnSource: { id: 'assessment/items/column-source', defaultMessage: 'Value from' },
+    itemsColumnValue: { id: 'assessment/items/column-value', defaultMessage: 'Value' },
+    itemsColumnField: { id: 'assessment/items/column-field', defaultMessage: 'Field' },
+    itemsColumnRange: { id: 'assessment/items/column-range', defaultMessage: 'Determination range' },
+    itemsColumnLinkedField: {
+      id: 'assessment/items/column-linked-field',
+      defaultMessage: 'Submission field',
+    },
+    itemsColumnRequirement: {
+      id: 'assessment/items/column-requirement',
+      defaultMessage: 'Requirement',
+    },
+    itemsSourceRecognition: {
+      id: 'assessment/items/source-recognition',
+      defaultMessage: 'Determined value',
+    },
+    itemsSourceConstant: { id: 'assessment/items/source-constant', defaultMessage: 'Fixed value' },
+    itemsSourceFiled: { id: 'assessment/items/source-filed', defaultMessage: 'Submitted value' },
+    itemsSourceUnset: { id: 'assessment/items/source-unset', defaultMessage: 'To be set' },
+    itemsRecognitions: { id: 'assessment/items/recognitions', defaultMessage: 'Determination fields' },
+    itemsRecognitionsHint: {
+      id: 'assessment/items/recognitions-hint',
+      defaultMessage:
+        'Determined by reviewers. Once linked to a submission field, the submitted value is filled in by default and may be changed during review.',
+    },
+    itemsRecognitionsEmpty: {
+      id: 'assessment/items/recognitions-empty',
+      defaultMessage: 'No parameter takes a determined value yet',
+    },
+    itemsLinked: { id: 'assessment/items/linked', defaultMessage: 'Linked' },
+    itemsLinkedTag: { id: 'assessment/items/linked-tag', defaultMessage: 'Linked determination' },
+    itemsParameterTag: { id: 'assessment/items/parameter-tag', defaultMessage: 'Formula parameter' },
+    itemsUnlinkedRow: {
+      id: 'assessment/items/unlinked-row',
+      defaultMessage: 'No submission field; determined by reviewers',
+    },
+    itemsForm: { id: 'assessment/items/form', defaultMessage: 'Submission form' },
+    itemsFormHint: {
+      id: 'assessment/items/form-hint',
+      defaultMessage: 'Participants fill in the fields in this order; drag to reorder.',
+    },
+    itemsFormNone: {
+      id: 'assessment/items/form-none',
+      defaultMessage: 'No fields yet; participants confirm with one press',
+    },
+    itemsSummaryBlock: { id: 'assessment/items/summary-block', defaultMessage: 'List display' },
+    itemsSummaryAuto: { id: 'assessment/items/summary-auto', defaultMessage: 'Automatic' },
+    itemsSummaryCustom: { id: 'assessment/items/summary-custom', defaultMessage: 'Custom' },
+    itemsSummaryBlockHint: {
+      id: 'assessment/items/summary-block-hint',
+      defaultMessage: 'Used as the summary in record lists.',
+    },
+    itemsSummaryAutoHint: {
+      id: 'assessment/items/summary-auto-hint',
+      defaultMessage: 'The first fields are shown until you choose',
+    },
+    itemsAutomaticNote: {
+      id: 'assessment/items/automatic-note',
+      defaultMessage: 'Scored once for every participant.',
+    },
+    itemsAutomaticResult: {
+      id: 'assessment/items/automatic-result',
+      defaultMessage: 'Result {value} pts.',
+    },
+    itemsAutomaticCap: {
+      id: 'assessment/items/automatic-cap',
+      defaultMessage: 'Counted under the {cap} pts limit of {group}.',
+    },
+    // ---- the determination field panel ----
+    itemsRecognitionTag: {
+      id: 'assessment/items/recognition-tag',
+      defaultMessage: 'Determination field',
+    },
+    itemsFieldTag: { id: 'assessment/items/field-tag', defaultMessage: 'Submission field' },
+    itemsRecognitionDescription: {
+      id: 'assessment/items/recognition-description',
+      defaultMessage: 'Description',
+    },
+    itemsRecognitionDescriptionPlaceholder: {
+      id: 'assessment/items/recognition-description-placeholder',
+      defaultMessage: 'Shown on the determination page',
+    },
+    itemsRange: { id: 'assessment/items/range', defaultMessage: 'Determination range' },
+    itemsOptions: { id: 'assessment/items/options', defaultMessage: 'Options' },
+    itemsRestoreDefault: { id: 'assessment/items/restore-default', defaultMessage: 'Restore default' },
+    itemsFieldMinLength: {
+      id: 'assessment/items/field-min-length',
+      defaultMessage: 'Minimum length',
+    },
+    itemsLinkSection: { id: 'assessment/items/link-section', defaultMessage: 'Submission field' },
+    itemsLinkedHint: {
+      id: 'assessment/items/linked-hint',
+      defaultMessage: 'The submitted value is filled in by default and may be changed during review.',
+    },
+    itemsLinkRequired: {
+      id: 'assessment/items/link-required',
+      defaultMessage: 'Required on submission',
+    },
+    itemsLinkRequiredHint: {
+      id: 'assessment/items/link-required-hint',
+      defaultMessage: 'When off, reviewers determine it if left blank',
+    },
+    itemsUnlink: { id: 'assessment/items/unlink', defaultMessage: 'Unlink' },
+    itemsUnlinkedHint: {
+      id: 'assessment/items/unlinked-hint',
+      defaultMessage: 'No submission field; determined by reviewers.',
+    },
+    itemsLinkNew: {
+      id: 'assessment/items/link-new',
+      defaultMessage: 'Add a submission field and link it',
+    },
+    itemsLinkExisting: {
+      id: 'assessment/items/link-existing',
+      defaultMessage: 'Link an existing field',
+    },
+    itemsLinkExistingHint: {
+      id: 'assessment/items/link-existing-hint',
+      defaultMessage:
+        'Choose a submission field for {name} ({type}). The type must match and the range must agree.',
+    },
+    itemsLinkExistingNone: {
+      id: 'assessment/items/link-existing-none',
+      defaultMessage: 'No submission field to link yet',
+    },
+    itemsLinkFits: { id: 'assessment/items/link-fits', defaultMessage: 'Range matches' },
+    itemsLinkDiffers: { id: 'assessment/items/link-differs', defaultMessage: 'Range differs' },
+    itemsLinkAdjustAction: {
+      id: 'assessment/items/link-adjust-action',
+      defaultMessage: 'Adjust and link',
+    },
+    itemsLinkAction: { id: 'assessment/items/link-action', defaultMessage: 'Link' },
+    itemsLinkKindMismatch: {
+      id: 'assessment/items/link-kind-mismatch',
+      defaultMessage: 'Different type; cannot link',
+    },
+    itemsLinkTaken: {
+      id: 'assessment/items/link-taken',
+      defaultMessage: 'Linked to another determination field',
+    },
+    itemsGoToRecognition: {
+      id: 'assessment/items/go-to-recognition',
+      defaultMessage: 'Go to determination field',
+    },
+    itemsLinkedFromRecognition: {
+      id: 'assessment/items/linked-from-recognition',
+      defaultMessage: 'All settings of this field come from its determination field',
+    },
+    itemsGoToSettings: { id: 'assessment/items/go-to-settings', defaultMessage: 'Go to settings' },
+    // ---- the submission field panel and the add-field dialog ----
+    itemsFieldHint: { id: 'assessment/items/field-hint', defaultMessage: 'Hint' },
+    itemsFieldPattern: { id: 'assessment/items/field-pattern', defaultMessage: 'Pattern' },
+    itemsFieldPatternHint: {
+      id: 'assessment/items/field-pattern-hint',
+      defaultMessage: 'A regular expression the whole answer must match; leave blank for none',
+    },
+    itemsFieldHintPlaceholder: {
+      id: 'assessment/items/field-hint-placeholder',
+      defaultMessage: 'Shown below the field',
+    },
+    itemsOptionPlaceholder: {
+      id: 'assessment/items/option-placeholder',
+      defaultMessage: 'Option name',
+    },
+    itemsOptionEmpty: {
+      id: 'assessment/items/option-empty',
+      defaultMessage: 'Option name is required',
+    },
+    itemsOptionRemove: { id: 'assessment/items/option-remove', defaultMessage: 'Remove option' },
+    itemsOptionDisable: { id: 'assessment/items/option-disable', defaultMessage: 'Disable option' },
+    itemsDisabledOptions: {
+      id: 'assessment/items/disabled-options',
+      defaultMessage: 'Disabled options',
+    },
+    itemsOptionRestore: { id: 'assessment/items/option-restore', defaultMessage: 'Restore' },
+    itemsAddFieldSearch: {
+      id: 'assessment/items/add-field-search',
+      defaultMessage: 'Search field types',
+    },
+    itemsAddFieldNoMatch: {
+      id: 'assessment/items/add-field-no-match',
+      defaultMessage: 'No field type matches',
+    },
+    itemsTypeGroupBasic: { id: 'assessment/items/type-group-basic', defaultMessage: 'Basic' },
+    itemsTypeGroupChoice: { id: 'assessment/items/type-group-choice', defaultMessage: 'Choice' },
+    itemsTypeGroupOther: { id: 'assessment/items/type-group-other', defaultMessage: 'Other' },
+    itemsTypeTextHint: {
+      id: 'assessment/items/type-text-hint',
+      defaultMessage: 'One or more lines of text',
+    },
+    itemsTypeNumber: { id: 'assessment/items/type-number', defaultMessage: 'Number' },
+    itemsTypeNumberHint: {
+      id: 'assessment/items/type-number-hint',
+      defaultMessage: 'Whole number or decimal',
+    },
+    itemsTypeDateHint: { id: 'assessment/items/type-date-hint', defaultMessage: 'Pick a date' },
+    itemsTypeChoiceHint: {
+      id: 'assessment/items/type-choice-hint',
+      defaultMessage: 'Pick one option',
+    },
+    itemsTypeBooleanHint: { id: 'assessment/items/type-boolean-hint', defaultMessage: 'Yes or no' },
+    itemsTypeAttachmentHint: {
+      id: 'assessment/items/type-attachment-hint',
+      defaultMessage: 'Upload supporting files',
+    },
+    itemsNewField: { id: 'assessment/items/new-field', defaultMessage: 'New submission field' },
+    itemsNumberKind: { id: 'assessment/items/number-kind', defaultMessage: 'Number kind' },
+    itemsBackToTypes: { id: 'assessment/items/back-to-types', defaultMessage: 'Back to field types' },
+    // ---- dialogs ----
+    itemsUnlinkTitle: { id: 'assessment/items/unlink-title', defaultMessage: 'Unlink' },
+    itemsUnlinkHint: {
+      id: 'assessment/items/unlink-hint',
+      defaultMessage:
+        'After unlinking, {field} stays on the form and can be edited freely; it no longer fills in the determination field.',
+    },
+    itemsToDirectTitle: {
+      id: 'assessment/items/to-direct-title',
+      defaultMessage: 'Change to take effect on submission',
+    },
+    itemsToDirectHint: {
+      id: 'assessment/items/to-direct-hint',
+      defaultMessage:
+        '{count, plural, one {# determination field has} other {# determination fields have}} no submission field: {names}. Continuing adds a required submission field for each and links it.',
+    },
+    itemsToDirectConfirm: {
+      id: 'assessment/items/to-direct-confirm',
+      defaultMessage: 'Add and switch',
+    },
+    itemsToAutomaticTitle: {
+      id: 'assessment/items/to-automatic-title',
+      defaultMessage: 'Change to automatic scoring',
+    },
+    itemsToAutomaticHint: {
+      id: 'assessment/items/to-automatic-hint',
+      defaultMessage:
+        '{count, plural, one {# parameter takes} other {# parameters take}} a determined value: {names}. Automatic scoring uses fixed values only; change them under form and scoring first.',
+    },
+    itemsGoToScoring: {
+      id: 'assessment/items/go-to-scoring',
+      defaultMessage: 'Go to form and scoring',
+    },
+    itemsDeleteFieldTitle: {
+      id: 'assessment/items/delete-field-title',
+      defaultMessage: 'Delete field {name}',
+    },
+    itemsDeleteFieldHint: {
+      id: 'assessment/items/delete-field-hint',
+      defaultMessage:
+        'Records already filed no longer show this answer once the change is saved. This cannot be undone.',
+    },
+    itemsDeleteBlockedTitle: {
+      id: 'assessment/items/delete-blocked-title',
+      defaultMessage: 'Cannot delete {name}',
+    },
+    itemsDeleteBlockedHint: {
+      id: 'assessment/items/delete-blocked-hint',
+      defaultMessage: 'This field is linked to the determination field {recognition}. Unlink it first.',
+    },
+    itemsDisableOptionTitle: {
+      id: 'assessment/items/disable-option-title',
+      defaultMessage: 'Disable option {name}',
+    },
+    itemsDisableOptionHint: {
+      id: 'assessment/items/disable-option-hint',
+      defaultMessage:
+        'New submissions can no longer choose it. Existing records are unaffected, and it can be restored at any time.',
+    },
+    itemsDisable: { id: 'assessment/items/disable', defaultMessage: 'Disable' },
+    itemsAdjustTitle: { id: 'assessment/items/adjust-title', defaultMessage: 'Adjust and link' },
+    itemsAdjustHint: {
+      id: 'assessment/items/adjust-hint',
+      defaultMessage: '{field} currently allows {current}; once linked it allows {next}.',
+    },
+    itemsMappingTitle: {
+      id: 'assessment/items/mapping-title',
+      defaultMessage: 'Confirm option mapping',
+    },
+    itemsMappingHint: {
+      id: 'assessment/items/mapping-hint',
+      defaultMessage:
+        'Linking submission field {field} to determination field {recognition}. Choose the determination option each submission option stands for; both sides then share one set of options.',
+    },
+    itemsMappingNote: {
+      id: 'assessment/items/mapping-note',
+      defaultMessage:
+        'Existing records convert by this mapping. One determination option cannot stand for two submission options.',
+    },
+    itemsMappingConfirm: {
+      id: 'assessment/items/mapping-confirm',
+      defaultMessage: 'Confirm and link',
+    },
+    itemsMappingPick: { id: 'assessment/items/mapping-pick', defaultMessage: 'Choose' },
+    itemsMappingFrom: {
+      id: 'assessment/items/mapping-from',
+      defaultMessage: 'Submission field {name}',
+    },
+    itemsMappingTo: {
+      id: 'assessment/items/mapping-to',
+      defaultMessage: 'Determination field {name}',
+    },
+    // ---- rules tab ----
+    itemsRulesCounts: {
+      id: 'assessment/items/rules-counts',
+      defaultMessage: 'Records and scoring',
+    },
+    itemsReviewChain: { id: 'assessment/items/review-chain', defaultMessage: 'Review process' },
+    itemsReviewChainHint: {
+      id: 'assessment/items/review-chain-hint',
+      defaultMessage: 'Submissions pass these steps in order.',
+    },
+    itemsDirectNote: {
+      id: 'assessment/items/direct-note',
+      defaultMessage: 'Takes effect on submission; there are no review steps.',
+    },
+    // ---- what stands between the question and a save ----
+    itemsProblemTitle: { id: 'assessment/items/problem-title', defaultMessage: 'Title is missing' },
+    itemsProblemGroup: { id: 'assessment/items/problem-group', defaultMessage: 'No group chosen' },
+    itemsProblemChannels: {
+      id: 'assessment/items/problem-channels',
+      defaultMessage: 'Choose at least one entry method',
+    },
+    itemsProblemFieldUnnamed: {
+      id: 'assessment/items/problem-field-unnamed',
+      defaultMessage: 'Field has no name',
+    },
+    itemsProblemFieldOptions: {
+      id: 'assessment/items/problem-field-options',
+      defaultMessage: 'Choice needs at least one option',
+    },
+    itemsProblemFieldInvalid: {
+      id: 'assessment/items/problem-field-invalid',
+      defaultMessage: 'Field settings are not valid',
+    },
+    itemsProblemFieldDateWindow: {
+      id: 'assessment/items/problem-field-date-window',
+      defaultMessage: 'Date window falls outside the batch range',
+    },
+    itemsProblemFixedValue: {
+      id: 'assessment/items/problem-fixed-value',
+      defaultMessage: 'Score per entry is missing',
+    },
+    itemsProblemCalculatorUnset: {
+      id: 'assessment/items/problem-calculator-unset',
+      defaultMessage: 'Scoring method is not configured',
+    },
+    itemsProblemContractPending: {
+      id: 'assessment/items/problem-contract-pending',
+      defaultMessage: 'Reading the formula parameters',
+    },
+    itemsProblemContractRefused: {
+      id: 'assessment/items/problem-contract-refused',
+      defaultMessage: 'The formula parameters could not be read',
+    },
+    itemsProblemParameterUnset: {
+      id: 'assessment/items/problem-parameter-unset',
+      defaultMessage: 'Parameter has no value yet',
+    },
+    itemsProblemConstantRequired: {
+      id: 'assessment/items/problem-constant-required',
+      defaultMessage: 'Fixed value is missing',
+    },
+    itemsProblemRecognitionAutomatic: {
+      id: 'assessment/items/problem-recognition-automatic',
+      defaultMessage: 'Automatic scoring uses fixed values only',
+    },
+    itemsProblemRecognitionUnnamed: {
+      id: 'assessment/items/problem-recognition-unnamed',
+      defaultMessage: 'Determination field has no name',
+    },
+    itemsProblemRefinementWidens: {
+      id: 'assessment/items/problem-refinement-widens',
+      defaultMessage: 'Determination range exceeds what the formula allows',
+    },
+    itemsProblemLinkMissing: {
+      id: 'assessment/items/problem-link-missing',
+      defaultMessage: 'Linked submission field no longer exists',
+    },
+    itemsProblemUnlinked: {
+      id: 'assessment/items/problem-unlinked',
+      defaultMessage: 'Needs a submission field',
+    },
+    itemsProblemLinkOptional: {
+      id: 'assessment/items/problem-link-optional',
+      defaultMessage: 'A linked field must be required',
+    },
+    itemsProblemBindingOrphan: {
+      id: 'assessment/items/problem-binding-orphan',
+      defaultMessage: 'The formula no longer has this parameter',
+    },
+    itemsProblemStagesRequired: {
+      id: 'assessment/items/problem-stages-required',
+      defaultMessage: 'Add at least one review step',
+    },
+    itemsProblemStageUnset: {
+      id: 'assessment/items/problem-stage-unset',
+      defaultMessage: 'Review step is not set up',
+    },
+    itemsProblemMaxEntries: {
+      id: 'assessment/items/problem-max-entries',
+      defaultMessage: 'Entries per person must be at least 1',
+    },
+    itemsProblemTopN: {
+      id: 'assessment/items/problem-top-n',
+      defaultMessage: 'Number of entries must be at least 1',
+    },
+    // ---- the words for a type and its bounds ----
+    itemsKindNumber: { id: 'assessment/items/kind-number', defaultMessage: 'Decimal' },
+    itemsRangeBetween: { id: 'assessment/items/range-between', defaultMessage: '{min} to {max}' },
+    itemsRangeMin: { id: 'assessment/items/range-min', defaultMessage: 'at least {min}' },
+    itemsRangeMax: { id: 'assessment/items/range-max', defaultMessage: 'at most {max}' },
+    itemsScaleNote: {
+      id: 'assessment/items/scale-note',
+      defaultMessage: 'up to {scale, plural, one {# decimal place} other {# decimal places}}',
+    },
+    itemsLengthMin: {
+      id: 'assessment/items/length-min',
+      defaultMessage: 'at least {min} characters',
+    },
+    itemsLengthBetween: {
+      id: 'assessment/items/length-between',
+      defaultMessage: '{min} to {max} characters',
+    },
+    itemsAnyValue: { id: 'assessment/items/any-value', defaultMessage: 'Any value' },
+    itemsYes: { id: 'assessment/items/yes', defaultMessage: 'Yes' },
+    itemsNo: { id: 'assessment/items/no', defaultMessage: 'No' },
   },
   errors: defineErrorTranslations<ErrorsByCode<typeof assessmentErrors>>()({
     ASSESSMENT_BATCH_NOT_FOUND: {

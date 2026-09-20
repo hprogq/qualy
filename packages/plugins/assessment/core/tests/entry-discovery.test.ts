@@ -262,7 +262,7 @@ describe.runIf(postgresAvailable)('finding entries again', () => {
 
 /** the one standard student item shape these cases reuse */
 const itemConfig = (f: { classType: string; reviewRole: string }) => ({
-  entrySource: 'student' as const,
+  entryChannels: ['participant'] as const,
   formConfig: { files: {} },
   scoringConfig: {
     calculator: { ref: 'fixed@1', config: { value: '1.00' } },

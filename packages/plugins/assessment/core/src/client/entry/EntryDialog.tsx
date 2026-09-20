@@ -20,6 +20,7 @@ import { Basis } from './Basis.tsx'
 import { EvidenceForm, type EvidencePayload } from './EvidenceForm.tsx'
 import { carryPayload, chainNamesOf, eachWorth, roomLeft } from './standing.ts'
 import {
+  displayValueOf,
   fieldsOf,
   trimAmount,
   type ActionAvailability,
@@ -671,8 +672,11 @@ export function EntryDialog({
 const summary = (entry: EntryDto, item: ItemDto): string => {
   const fields = fieldsOf(item.currentRevision?.formConfig)
   const payload = (entry.currentRevision?.payload ?? {}) as Record<string, unknown>
+  // through the one reading of a value: a chosen option prints its words,
+  // never the stable value behind them
   const said = fields
-    .map((field) => payload[field.key])
-    .filter((value): value is string => typeof value === 'string' && value.trim() !== '')
+    .filter((field) => field.type !== 'attachment' && field.type !== 'boolean')
+    .map((field) => displayValueOf(field, payload[field.key]))
+    .filter((value) => value.trim() !== '')
   return said.length === 0 ? item.title : said.join('　')
 }

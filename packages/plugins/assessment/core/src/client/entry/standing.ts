@@ -1,6 +1,16 @@
 import type { MessageDescriptor } from '@qualy/i18n-contract'
 import { assessmentMessages as m } from '../i18n.ts'
-import { amountOf, fieldsOf, trimAmount, unitsOf, type EntryDto, type ItemDto } from './model.ts'
+import type { EvidencePayload } from './EvidenceForm.tsx'
+import {
+  amountOf,
+  fieldsOf,
+  opensTo,
+  recordedOnly,
+  trimAmount,
+  unitsOf,
+  type EntryDto,
+  type ItemDto,
+} from './model.ts'
 
 // The round as a participant reads it: one row per group and per question,
 // each already carrying what its line has to say.
@@ -119,9 +129,7 @@ export const roomLeft = (item: ItemDto, entries: readonly EntryDto[]): number | 
 
 /** whether this person may still put something into this question */
 export const mayFile = (item: ItemDto, entries: readonly EntryDto[]): boolean =>
-  item.status === 'active' &&
-  item.currentRevision?.entrySource === 'student' &&
-  (roomLeft(item, entries) ?? 1) > 0
+  item.status === 'active' && opensTo(item, 'participant') && (roomLeft(item, entries) ?? 1) > 0
 
 /** what one approved claim is worth, when the question pays a flat amount */
 export const eachWorth = (item: ItemDto): string | undefined =>
@@ -298,7 +306,7 @@ const itemRow = (
                     ? 'approved'
                     : item.itemType === 'constant'
                       ? 'granted'
-                      : item.currentRevision?.entrySource === 'administrative'
+                      : recordedOnly(item)
                         ? 'recorded'
                         : mayFile(item, entries)
                           ? 'open'
@@ -325,13 +333,13 @@ const itemRow = (
 export const carryPayload = (
   from: ItemDto,
   to: ItemDto,
-  payload: Record<string, string | number | readonly string[]>,
-): Record<string, string | number | readonly string[]> => {
+  payload: EvidencePayload,
+): EvidencePayload => {
   const was = fieldsOf(from.currentRevision?.formConfig)
   const now = fieldsOf(to.currentRevision?.formConfig)
   const identity = (field: { id?: string; key: string }) => field.id ?? field.key
   const held = new Map(was.map((field) => [identity(field), field] as const))
-  const carried: Record<string, string | number | readonly string[]> = {}
+  const carried: EvidencePayload = {}
   for (const field of now) {
     const before = held.get(identity(field))
     if (before === undefined || before.type !== field.type) continue

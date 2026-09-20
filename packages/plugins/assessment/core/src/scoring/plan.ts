@@ -387,19 +387,27 @@ export type RecognitionSource =
 /**
  * Who determines this question's recognised facts, from how it is filed and
  * how it is judged. Derived questions come first: nobody files them at all.
+ *
+ * A question may open more than one door, and every door has to be able
+ * to finish the same determination: the answer is therefore the door that
+ * can promise the least. A participant filing into a question nobody
+ * reviews is the one door where nobody can be asked afterwards, so its
+ * presence makes the whole question automatic; a participant filing into a
+ * reviewed question is answered by the reviewer; a question only the office
+ * records is answered by the office as it records.
  */
 export const recognitionSourceOf = (input: {
   readonly interaction: 'entry' | 'task' | 'derived' | undefined
-  readonly entrySource: 'student' | 'administrative'
+  readonly entryChannels: readonly ('participant' | 'administrative')[]
   readonly reviewMode: 'none' | 'workflow'
 }): RecognitionSource =>
   input.interaction === 'derived'
     ? 'none'
-    : input.entrySource === 'administrative'
-      ? 'administrative'
-      : input.reviewMode === 'none'
+    : input.entryChannels.includes('participant')
+      ? input.reviewMode === 'none'
         ? 'automatic'
         : 'review'
+      : 'administrative'
 
 /**
  * What one calculator freezes for one configuration, or why it cannot.

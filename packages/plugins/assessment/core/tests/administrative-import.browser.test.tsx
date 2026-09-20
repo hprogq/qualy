@@ -58,7 +58,7 @@ const item = {
   currentRevision: {
     id: REVISION_ID,
     revisionNo: 4,
-    entrySource: 'administrative',
+    entryChannels: ['administrative'],
     formConfig: { fields: [] },
     scoringConfig: {},
     reviewPolicy: {},

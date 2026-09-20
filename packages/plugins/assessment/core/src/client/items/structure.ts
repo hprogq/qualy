@@ -18,7 +18,8 @@ export interface StructureRow {
   each?: string | undefined
   /** how many entries one person may file, for a question */
   most?: string | undefined
-  source?: 'student' | 'administrative' | undefined
+  /** the doors open on a question: who files it */
+  channels?: readonly ('participant' | 'administrative')[] | undefined
   steps?: number | undefined
   status?: 'draft' | 'active' | 'voided' | 'composing' | undefined
   cap?: string | null
@@ -135,7 +136,7 @@ export const structureRows = (
         name: item.title,
         each: eachOf(item),
         most: item.maxEntries === null ? undefined : String(item.maxEntries),
-        source: item.currentRevision?.entrySource,
+        channels: item.currentRevision?.entryChannels,
         steps: stepsOf(item),
         status: item.status as StructureRow['status'],
       })

@@ -25,6 +25,7 @@ import {
   LOOKS_LIKE_A_PHOTOGRAPH,
   sizeLabel,
   sizeLimitLabel,
+  offeredOptions,
 } from './model.ts'
 
 // The form an administrator composed, drawn field by field. The page hands
@@ -81,22 +82,35 @@ export interface EvidenceFieldSpec {
   /** what this field is called across versions of the form; older forms have none */
   readonly id?: string
   readonly key: string
-  readonly type: 'text' | 'date' | 'integer' | 'decimal' | 'choice' | 'attachment'
+  readonly type: 'text' | 'date' | 'integer' | 'decimal' | 'choice' | 'boolean' | 'attachment'
   readonly label: string
+  /** the administrator's words under the field on how to fill it in */
+  readonly description?: string
   readonly required?: boolean
+  readonly minLength?: number
   readonly maxLength?: number
+  readonly pattern?: string
   /** integer bounds arrive as numbers; date and decimal bounds as strings */
   readonly min?: string | number
   readonly max?: string | number
   readonly maxScale?: number
-  readonly options?: readonly { readonly value: string; readonly label: string }[]
+  readonly options?: readonly EvidenceChoiceOptionSpec[]
   readonly maxCount?: number
   /** the largest one file may be; the round's own rule, in bytes */
   readonly maxFileBytes?: number
   readonly accept?: readonly string[]
 }
 
-export type EvidencePayload = Record<string, string | number | readonly string[]>
+/** one option as the form receives it; a retired one keeps its words and is not offered */
+export interface EvidenceChoiceOptionSpec {
+  readonly id?: string
+  readonly value: string
+  readonly label: string
+  readonly enabled?: boolean
+}
+
+/** the options a new filing may pick from: everything not retired */
+export type EvidencePayload = Record<string, string | number | boolean | readonly string[]>
 
 /** why a file was not added, said about that file */
 const REFUSALS = {
@@ -136,6 +150,16 @@ const acceptOf = (list: readonly string[] | undefined): Accept | undefined => {
  * as an empty answer.
  */
 const INTEGER_DRAFT = /^-?\d+$/
+
+/**
+ * The words under a field: what the administrator wrote for it, and after
+ * that whatever the field's own rule has to say - a date's window, say.
+ * The two are one line each; a field with neither has no hint at all.
+ */
+const hintOf = (field: EvidenceFieldSpec, rule?: string): string | undefined => {
+  const said = [field.description?.trim() ?? '', rule ?? ''].filter((one) => one !== '')
+  return said.length === 0 ? undefined : said.join(' ')
+}
 
 export function EvidenceForm({
   session,
@@ -194,7 +218,7 @@ export function EvidenceForm({
   const latest = useRef(value)
   latest.current = value
 
-  const setField = (key: string, next: string | number | readonly string[]) =>
+  const setField = (key: string, next: EvidencePayload[string]) =>
     onChange({ ...value, [key]: next })
   const dropField = (key: string) => {
     const { [key]: gone, ...rest } = value
@@ -247,7 +271,7 @@ export function EvidenceForm({
         key={field.key}
         label={field.label}
         required={field.required === true}
-        hint={invalid ? format(m.entryNumberUnreadable) : undefined}
+        hint={invalid ? format(m.entryNumberUnreadable) : hintOf(field)}
       >
         {(id) => (
           <Input
@@ -283,7 +307,12 @@ export function EvidenceForm({
       {fields.map((field) => {
         if (field.type === 'text') {
           return (
-            <Field key={field.key} label={field.label} required={field.required === true}>
+            <Field
+              key={field.key}
+              label={field.label}
+              required={field.required === true}
+              hint={hintOf(field)}
+            >
               {(id) => (
                 <Input
                   id={id}
@@ -292,6 +321,37 @@ export function EvidenceForm({
                   disabled={disabled}
                   onChange={(event) => setField(field.key, event.target.value)}
                 />
+              )}
+            </Field>
+          )
+        }
+        if (field.type === 'boolean') {
+          // Three states, not two: an optional yes-or-no left alone is
+          // unanswered, and a switch has no way to say so. '' is the
+          // unanswered state and leaves the payload, like an unpicked choice.
+          const held = value[field.key]
+          const chosen = held === true ? 'true' : held === false ? 'false' : ''
+          return (
+            <Field
+              key={field.key}
+              label={field.label}
+              required={field.required === true}
+              hint={hintOf(field)}
+            >
+              {(id) => (
+                <NativeSelect
+                  id={id}
+                  value={chosen}
+                  disabled={disabled}
+                  onChange={(event) => {
+                    if (event.target.value === '') dropField(field.key)
+                    else setField(field.key, event.target.value === 'true')
+                  }}
+                >
+                  <option value="" />
+                  <option value="true">{format(m.recognitionYes)}</option>
+                  <option value="false">{format(m.recognitionNo)}</option>
+                </NativeSelect>
               )}
             </Field>
           )
@@ -307,16 +367,16 @@ export function EvidenceForm({
             .filter(Boolean)
             .sort()
             .at(0)
+          const window =
+            floor === undefined || ceiling === undefined
+              ? undefined
+              : format(m.entryDateWithin, { start: floor, end: ceiling })
           return (
             <Field
               key={field.key}
               label={field.label}
               required={field.required === true}
-              hint={
-                floor === undefined || ceiling === undefined
-                  ? undefined
-                  : format(m.entryDateWithin, { start: floor, end: ceiling })
-              }
+              hint={hintOf(field, window)}
             >
               {(id) => (
                 <Input
@@ -339,8 +399,19 @@ export function EvidenceForm({
 
         if (field.type === 'choice') {
           const chosen = typeof value[field.key] === 'string' ? (value[field.key] as string) : ''
+          const offered = offeredOptions(field)
+          // an answer naming an option since retired stays readable: it is
+          // listed, disabled, so the words are there and nobody re-picks it
+          const retired = (field.options ?? []).find(
+            (option) => option.value === chosen && option.enabled === false,
+          )
           return (
-            <Field key={field.key} label={field.label} required={field.required === true}>
+            <Field
+              key={field.key}
+              label={field.label}
+              required={field.required === true}
+              hint={hintOf(field)}
+            >
               {(id) => (
                 <NativeSelect
                   id={id}
@@ -354,11 +425,16 @@ export function EvidenceForm({
                   }}
                 >
                   <option value="" />
-                  {(field.options ?? []).map((option) => (
+                  {offered.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
                   ))}
+                  {retired !== undefined && (
+                    <option value={retired.value} disabled>
+                      {retired.label}
+                    </option>
+                  )}
                 </NativeSelect>
               )}
             </Field>
@@ -428,7 +504,12 @@ export function EvidenceForm({
         }
 
         return (
-          <Field key={field.key} label={field.label} required={field.required === true}>
+          <Field
+            key={field.key}
+            label={field.label}
+            required={field.required === true}
+            hint={hintOf(field)}
+          >
             {() => (
               <PhotoProvider maskOpacity={0.85}>
                 <div {...stylex.props(styles.files)}>

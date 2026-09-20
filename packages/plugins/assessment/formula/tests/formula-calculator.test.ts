@@ -68,8 +68,8 @@ const MOODY = `import { Schema, defineFormula } from '@qualy/formula'
 
 export default defineFormula({
   input: Schema.input({
-    mode: Schema.choice({ ok: '正常', refuse: '拒绝', loop: '循环' }),
-    value: Schema.decimal({ minimum: '0.00', maximum: '10.00', maxScale: 2 }),
+    mode: Schema.choice({ ok: '正常', refuse: '拒绝', loop: '循环' }, { title: '模式' }),
+    value: Schema.decimal({ minimum: '0.00', maximum: '10.00', maxScale: 2, title: '分值' }),
   }),
   output: Schema.scoreAmount({ maxScale: 2 }),
   run(input, q) {

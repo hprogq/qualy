@@ -165,8 +165,8 @@ describe.runIf(postgresAvailable)('a service-backed calculator, through the real
     )
     const revision = await one(
       `insert into assessment_item_revisions
-         (tenant_id, item_id, revision_no, entry_source, form_config, scoring_config, review_policy, display_config, created_by)
-       values ($1, $2, 1, 'administrative', '{}', $3::jsonb, '{}', '{}', $4) returning id`,
+         (tenant_id, item_id, revision_no, entry_channels, form_config, scoring_config, review_policy, display_config, created_by)
+       values ($1, $2, 1, '["administrative"]', '{}', $3::jsonb, '{}', '{}', $4) returning id`,
       [tenant, item, SCORING_CONFIG, user],
     )
 

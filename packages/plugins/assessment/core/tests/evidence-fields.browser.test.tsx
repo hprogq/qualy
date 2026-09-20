@@ -53,7 +53,7 @@ const item = () => ({
   currentRevision: {
     id: REVISION_ID,
     revisionNo: 1,
-    entrySource: 'student',
+    entryChannels: ['participant'],
     formConfig: {
       fields: [
         {

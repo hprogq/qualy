@@ -18,6 +18,8 @@ import {
   ScoringUnavailable,
 } from '../errors.ts'
 import { itemOf, revisionOf as itemRevisionOf } from '../item/db.ts'
+import { opensTo } from '../item/channels.ts'
+import { fillBoundEvidence } from '../scoring/bound-evidence.ts'
 import {
   ScoringRuntimeCatalog,
   type AttachmentRef,
@@ -227,7 +229,7 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
       })
     }
     const revision = yield* withDb(itemRevisionOf(tenantId, item.currentRevisionId))
-    if (revision === null || revision.entrySource !== 'administrative') {
+    if (revision === null || !opensTo(revision.entryChannels, 'administrative')) {
       return yield* new ItemNotFound()
     }
 
@@ -244,8 +246,20 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
     // refused one at a time is refused here too. The driver's own error is
     // an internal shape; on the wire this is the same refusal a single
     // filing gets, because it is the same problem.
+    // a field the determination stands for is not asked of the office
+    // twice: whatever it left blank is written from what it determined
+    const payload =
+      typeof input.payload === 'object' && input.payload !== null && !Array.isArray(input.payload)
+        ? fillBoundEvidence(
+            plan,
+            input.payload as Record<string, unknown>,
+            input.recognition === undefined
+              ? {}
+              : ((input.recognition.values ?? {}) as Record<string, unknown>),
+          )
+        : input.payload
     const decoded = yield* driver
-      .decodePayload(revision.formConfig, input.payload, context)
+      .decodePayload(revision.formConfig, payload, context)
       .pipe(
         Effect.catchTag('ASSESSMENT_ITEM_PAYLOAD_INVALID', (error) =>
           Effect.fail(new EntryPayloadInvalid({ issues: error.issues })),

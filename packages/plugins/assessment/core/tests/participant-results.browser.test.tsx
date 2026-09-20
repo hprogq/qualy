@@ -66,7 +66,7 @@ const item = {
   currentRevision: {
     id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
     revisionNo: 1,
-    entrySource: 'student',
+    entryChannels: ['participant'],
     formConfig: { files: {} },
     scoringConfig: null,
     reviewPolicy: null,

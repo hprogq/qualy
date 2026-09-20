@@ -229,6 +229,9 @@ export interface AtomicValueFieldProps {
   readonly explain?: ExplainFieldProblem
   /** see {@link FieldAuthoring}; ignored when a label is given */
   readonly authoring?: FieldAuthoring
+  /** keep the label for assistive technology but draw none: for a control
+   *  sitting in a row that already names it */
+  readonly hideLabel?: boolean
 }
 
 /**
@@ -247,6 +250,7 @@ export function AtomicValueField({
   words,
   explain,
   authoring,
+  hideLabel = false,
 }: AtomicValueFieldProps) {
   const description = displayDescription(schema, locale)
   const live = useLiveProblem(schema, name, draft, explain)
@@ -260,6 +264,7 @@ export function AtomicValueField({
   const note = authoring?.noteOf?.(schema, name)
   return (
     <Field
+      hideLabel={hideLabel}
       label={
         label ??
         (authored === undefined

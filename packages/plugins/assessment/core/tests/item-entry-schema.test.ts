@@ -79,8 +79,8 @@ describe.runIf(postgresAvailable)('assessment item and entry schema', () => {
     const itemRevisionId = (
       await db.row<{ id: string }>(
         `insert into assessment_item_revisions
-           (tenant_id, item_id, revision_no, entry_source, form_config, scoring_config, review_policy, display_config, created_by)
-         values ($1, $2, 1, 'student', '{}', '{"calculator":"fixed@1"}', '{}', '{}', $3) returning id`,
+           (tenant_id, item_id, revision_no, entry_channels, form_config, scoring_config, review_policy, display_config, created_by)
+         values ($1, $2, 1, '["participant"]', '{}', '{"calculator":"fixed@1"}', '{}', '{}', $3) returning id`,
         [f.tenantId, itemId, f.userId],
       )
     ).id
@@ -302,8 +302,8 @@ describe.runIf(postgresAvailable)('assessment item and entry schema', () => {
     const otherRevisionId = (
       await db.row<{ id: string }>(
         `insert into assessment_item_revisions
-           (tenant_id, item_id, revision_no, entry_source, form_config, scoring_config, review_policy, display_config, created_by)
-         values ($1, $2, 1, 'student', '{}', '{}', '{}', '{}', $3) returning id`,
+           (tenant_id, item_id, revision_no, entry_channels, form_config, scoring_config, review_policy, display_config, created_by)
+         values ($1, $2, 1, '["participant"]', '{}', '{}', '{}', '{}', $3) returning id`,
         [f.tenantId, otherItemId, f.userId],
       )
     ).id
@@ -394,8 +394,8 @@ describe.runIf(postgresAvailable)('assessment item and entry schema', () => {
       await pgCode(
         db.query(
           `insert into assessment_item_revisions
-             (tenant_id, item_id, revision_no, entry_source, form_config, scoring_config, review_policy, display_config, created_by)
-           values ($1, $2, 1, 'student', '{}', '{}', '{}', '{}', $3)`,
+             (tenant_id, item_id, revision_no, entry_channels, form_config, scoring_config, review_policy, display_config, created_by)
+           values ($1, $2, 1, '["participant"]', '{}', '{}', '{}', '{}', $3)`,
           [f.tenantId, g.itemId, f.userId],
         ),
       ),

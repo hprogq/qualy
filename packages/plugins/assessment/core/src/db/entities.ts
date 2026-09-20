@@ -781,9 +781,11 @@ export const AssessmentItemRevision = defineEntity({
     tenantId: tenantOf('assessment_item_revisions_tenant_id_tenants_id_fkey'),
     itemId: p.uuid(),
     revisionNo: p.integer(),
-    // who may create entries on this configuration: the students themselves,
-    // or only staff recording an administrative fact
-    entrySource: p.string().length(31),
+    // who may create entries on this configuration: participants filing for
+    // themselves, staff recording an administrative fact, or both - a list,
+    // because a question may take either door. Empty for a derived question
+    // nobody files at all.
+    entryChannels: p.json<string[]>(),
     formConfig: p.json<Record<string, unknown>>(),
     scoringConfig: p.json<Record<string, unknown>>(),
     // The compiled execution plan for this revision's arithmetic: server
@@ -803,10 +805,6 @@ export const AssessmentItemRevision = defineEntity({
     {
       name: 'chk_assessment_item_revisions_no_positive',
       expression: 'revision_no >= 1',
-    },
-    {
-      name: 'chk_assessment_item_revisions_entry_source',
-      expression: `entry_source IN ('student', 'administrative')`,
     },
   ],
   indexes: [
