@@ -19,6 +19,7 @@ import {
   type RecognitionIssue,
   type RecognitionValues,
 } from '../scoring/recognition.ts'
+import { kindOf, type ChoiceSchema } from '@qualy/value-schema'
 import { frozenCalculatorOf, readScoringPlan } from '../scoring/plan.ts'
 import { evaluateRecognition } from '../scoring/evaluate.ts'
 import { formatAmount } from '../scoring/builtins.ts'
@@ -477,7 +478,11 @@ export interface ReviewMethods {
     instanceId: string,
     values: unknown,
     as: Principal,
-  ) => Effect.Effect<DeterminationPreview, ReviewNotFound | ScoringUnavailable, ScoringRuntimeCatalog>
+  ) => Effect.Effect<
+    DeterminationPreview,
+    ReviewNotFound | ScoringUnavailable,
+    ScoringRuntimeCatalog
+  >
   readonly listReviewInbox: (
     tenantId: string,
     page: { cursor?: string; limit?: string; batchId?: string },
@@ -1099,10 +1104,48 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
       const contract = yield* revisionOf(tenantId, row.recognitionRevisionId)
       if (contract === null) return null
       const plan = yield* Effect.orDie(readScoringPlan(contract))
-      const fields = recognitionFormFields(plan)
-      if (fields === null) return null
+      const frozenFields = recognitionFormFields(plan)
+      if (frozenFields === null) return null
       const seed = yield* recognitionSeed(tenantId, row.id, plan, row)
       const locked = yield* lockedProposalOf(tenantId, row.id)
+      // The question may have narrowed a choice since this round opened. The
+      // decision would refuse a value today's plan no longer reads, so the
+      // form stops offering it rather than letting the reviewer find out by
+      // being refused. A sitting's locked text is shown as it was cast.
+      const question = yield* itemOf(tenantId, row.itemId)
+      const live =
+        locked !== null || question === null || question.currentRevisionId === null
+          ? null
+          : question.currentRevisionId === contract.id
+            ? null
+            : yield* revisionOf(tenantId, question.currentRevisionId)
+      const livePlan = live === null ? null : yield* readScoringPlan(live).pipe(Effect.option)
+      const fields =
+        livePlan === null || livePlan._tag !== 'Some'
+          ? frozenFields
+          : frozenFields.map((field) => {
+              const today = Object.hasOwn(livePlan.value.recognitionSchemas, field.id)
+                ? livePlan.value.recognitionSchemas[field.id]
+                : undefined
+              if (
+                today === undefined ||
+                kindOf(field.schema) !== 'choice' ||
+                kindOf(today) !== 'choice'
+              ) {
+                return field
+              }
+              const admitted = new Set((today as ChoiceSchema).enum)
+              const offered = (field.schema as ChoiceSchema).enum.filter((value) =>
+                admitted.has(value),
+              )
+              // nothing in common is a reshaping the save already refuses
+              return offered.length === 0
+                ? field
+                : {
+                    id: field.id,
+                    schema: { ...field.schema, enum: offered } as typeof field.schema,
+                  }
+            })
       // which filed field each determination takes its value from, and what
       // that value is: the screen marks the pair and can put the filed value
       // back after a reviewer has typed over it
@@ -1304,7 +1347,10 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
     )
     const issues = judgeRecognition(site.plan.recognitionSchemas, values)
     if (issues.length > 0) return { issues, amount: null, refusal: null }
-    const candidate = canonicalRecognition(site.plan.recognitionSchemas, values as RecognitionValues)
+    const candidate = canonicalRecognition(
+      site.plan.recognitionSchemas,
+      values as RecognitionValues,
+    )
     const where = {
       tenantId,
       batchId: site.row.batchId,

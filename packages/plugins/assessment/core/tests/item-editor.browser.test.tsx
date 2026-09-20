@@ -982,14 +982,15 @@ describe('what already stands under a question', () => {
       surfaces: BOTH_CALCULATORS,
       preview: levelPreview(),
       standing: [
-        { recognitionId: RECOGNITION_ID, records: 2, openRounds: 1, determined: ['province'], pending: ['city'] },
+        { recognitionId: RECOGNITION_ID, records: 2, openRounds: 1, determined: ['province'] },
       ],
     })
     await page.getByTestId('recognition-row').click()
     const option = (value: string) => seat(`[data-testid="recognition-option"][data-value="${value}"]`)
-    // determined, or still in play for a round that is open: neither can be let go of
+    // what somebody was determined as cannot be let go of
     await expect.element((await option('province')).getByRole('checkbox')).toBeDisabled()
-    await expect.element((await option('city')).getByRole('checkbox')).toBeDisabled()
+    // a round still open holds nothing: it is stopped at its own decision
+    await expect.element((await option('city')).getByRole('checkbox')).toBeEnabled()
     // nothing stands on this one, so it is the administrator's to narrow away
     await expect.element((await option('school')).getByRole('checkbox')).toBeEnabled()
     expect(
@@ -997,7 +998,7 @@ describe('what already stands under a question', () => {
         .getByTestId('option-held')
         .elements()
         .map((node) => node.getAttribute('data-held-by')),
-    ).toEqual(['pending', 'determined'])
+    ).toEqual(['determined'])
     await page.getByTestId('option-held').first().hover()
     await expect.element(page.getByRole('tooltip')).toBeVisible()
   })

@@ -23,7 +23,14 @@ import {
   type RecognitionDraft,
   type Standing,
 } from './model.ts'
-import { TYPE_LABEL, boundsWords, fieldBoundsWords, kindWords, linkVerdictOf, type LinkVerdict } from './words.ts'
+import {
+  TYPE_LABEL,
+  boundsWords,
+  fieldBoundsWords,
+  kindWords,
+  linkVerdictOf,
+  type LinkVerdict,
+} from './words.ts'
 
 // One determination, owned here in full: what it is called, what it admits,
 // and which submission field starts it. The field it is linked to keeps its
@@ -41,7 +48,10 @@ const styles = stylex.create({
     fontFamily: 'inherit',
     fontSize: 12,
     fontWeight: 500,
-    color: { default: tokens.foreground, ':disabled': `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)` },
+    color: {
+      default: tokens.foreground,
+      ':disabled': `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)`,
+    },
     backgroundColor: 'transparent',
     borderWidth: 0,
     padding: 0,
@@ -50,7 +60,12 @@ const styles = stylex.create({
   optionRow: { display: 'flex', alignItems: 'center', gap: 10 },
   optionInput: { flexGrow: 1, minWidth: 0 },
   optionOff: { color: tokens.mutedForeground },
-  optionLock: { display: 'inline-flex', flexShrink: 0, color: tokens.mutedForeground, cursor: 'help' },
+  optionLock: {
+    display: 'inline-flex',
+    flexShrink: 0,
+    color: tokens.mutedForeground,
+    cursor: 'help',
+  },
   optionLockIcon: { width: 14, height: 14 },
   heldHint: { margin: 0, fontSize: 12, color: tokens.mutedForeground },
   pair: { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 },
@@ -89,7 +104,11 @@ const styles = stylex.create({
   candidateDim: { color: tokens.mutedForeground },
   candidateWords: { display: 'flex', minWidth: 0, flexGrow: 1, flexDirection: 'column', gap: 2 },
   candidateName: { fontSize: 13.5, fontWeight: 500 },
-  candidateTakes: { fontSize: 12, color: tokens.mutedForeground, fontVariantNumeric: 'tabular-nums' },
+  candidateTakes: {
+    fontSize: 12,
+    color: tokens.mutedForeground,
+    fontVariantNumeric: 'tabular-nums',
+  },
   verdict: { fontSize: 12, color: tokens.mutedForeground, whiteSpace: 'nowrap' },
   verdictDiffers: { color: tokens.warningForeground },
   hint: { margin: 0, fontSize: 12.5, color: tokens.mutedForeground },
@@ -139,7 +158,8 @@ export function RecognitionSheet({
         )
       : undefined
   const parameter = row?.[0]
-  const recognition = draft.scoring.language === 'v2' ? draft.scoring.recognitions[handle] : undefined
+  const recognition =
+    draft.scoring.language === 'v2' ? draft.scoring.recognitions[handle] : undefined
   const schema = parameter === undefined ? undefined : parameterSchemaOf(contract, parameter)
   if (recognition === undefined || schema === undefined || parameter === undefined) return null
   const admitted = admittedSchemaOf(recognition, schema)
@@ -169,7 +189,15 @@ export function RecognitionSheet({
         ) : (
           <div {...stylex.props(styles.candidates)}>
             {draft.fields.map((field) => {
-              const verdict = linkVerdictOf(draft, contract, admitted, field, format, listJoin, locale)
+              const verdict = linkVerdictOf(
+                draft,
+                contract,
+                admitted,
+                field,
+                format,
+                listJoin,
+                locale,
+              )
               const dim = verdict.kind === 'kind-mismatch' || verdict.kind === 'taken'
               const name = field.label.trim() === '' ? format(m.itemsFieldUnnamed) : field.label
               return (
@@ -199,7 +227,11 @@ export function RecognitionSheet({
                       <span {...stylex.props(styles.verdict, styles.verdictDiffers)}>
                         {format(m.itemsLinkDiffers)}
                       </span>
-                      <Button size="sm" variant="outline" onClick={() => onLinkExisting(field.id, verdict)}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => onLinkExisting(field.id, verdict)}
+                      >
                         {format(m.itemsLinkAdjustAction)}
                       </Button>
                     </>
@@ -283,7 +315,11 @@ export function RecognitionSheet({
 
       <div {...stylex.props(styles.block)}>
         <span {...stylex.props(styles.blockTitle)}>{format(m.itemsLinkSection)}</span>
-        <div {...stylex.props(styles.linkBox)} data-testid="recognition-link" data-linked={linked !== undefined}>
+        <div
+          {...stylex.props(styles.linkBox)}
+          data-testid="recognition-link"
+          data-linked={linked !== undefined}
+        >
           {linked === undefined ? (
             <>
               <p {...stylex.props(styles.quietLine)}>{format(m.itemsUnlinkedHint)}</p>
@@ -356,23 +392,22 @@ export function RangeEditor({
   const kind = kindOf(parameter)
   const admitted = admittedSchemaOf(recognition, parameter)
   const description = recognition.description
-  const [typed, setTyped] = useState<{ min: string; max: string }>(() => boundsTyped(admitted, parameter))
+  const [typed, setTyped] = useState<{ min: string; max: string }>(() =>
+    boundsTyped(admitted, parameter),
+  )
   if (kind === 'boolean' || kind === 'date') return null
   // narrowed means narrowed: a description alone rides on the annotation
   // layer and is not something "restore default" should offer to undo
   const narrowed =
-    JSON.stringify(recognition.refinement) !== JSON.stringify(refinementOf(parameter, {}, description))
+    JSON.stringify(recognition.refinement) !==
+    JSON.stringify(refinementOf(parameter, {}, description))
   const heading = title ?? format(kind === 'choice' ? m.itemsOptions : m.itemsRange)
 
   if (kind === 'choice') {
     const source = parameter as ChoiceSchema
     const held = admitted as ChoiceSchema
-    const pinnedBy = (value: string): 'determined' | 'pending' | null =>
-      standing?.determined.includes(value) === true
-        ? 'determined'
-        : standing?.pending.includes(value) === true
-          ? 'pending'
-          : null
+    const pinnedBy = (value: string): 'determined' | null =>
+      standing?.determined.includes(value) === true ? 'determined' : null
     const options = source.enum.map((value) => ({
       value,
       enabled: held.enum.includes(value),
@@ -380,7 +415,8 @@ export function RangeEditor({
         ? choiceLabel(held, value, locale)
         : choiceLabel(source, value, locale),
     }))
-    const write = (next: typeof options) => onRefinement(refinementOf(parameter, { options: next }, description))
+    const write = (next: typeof options) =>
+      onRefinement(refinementOf(parameter, { options: next }, description))
     return (
       <div {...stylex.props(styles.block)} data-testid="recognition-range" data-kind="choice">
         <div {...stylex.props(styles.blockHead)}>
@@ -409,7 +445,11 @@ export function RangeEditor({
               disabled={option.enabled && pinnedBy(option.value) !== null}
               aria-label={option.label}
               onCheckedChange={(next) =>
-                write(options.map((one) => (one.value === option.value ? { ...one, enabled: next === true } : one)))
+                write(
+                  options.map((one) =>
+                    one.value === option.value ? { ...one, enabled: next === true } : one,
+                  ),
+                )
               }
             />
             <Input
@@ -418,7 +458,11 @@ export function RangeEditor({
               disabled={!option.enabled}
               aria-label={choiceLabel(source, option.value, locale)}
               onChange={(event) =>
-                write(options.map((one) => (one.value === option.value ? { ...one, label: event.target.value } : one)))
+                write(
+                  options.map((one) =>
+                    one.value === option.value ? { ...one, label: event.target.value } : one,
+                  ),
+                )
               }
             />
             {option.enabled && pinnedBy(option.value) !== null && (
@@ -434,11 +478,7 @@ export function RangeEditor({
                       <LockIcon aria-hidden {...stylex.props(styles.optionLockIcon)} />
                     </span>
                   </TooltipTrigger>
-                  <TooltipContent>
-                    {format(
-                      pinnedBy(option.value) === 'determined' ? m.itemsOptionHeldDetermined : m.itemsOptionHeldPending,
-                    )}
-                  </TooltipContent>
+                  <TooltipContent>{format(m.itemsOptionHeldDetermined)}</TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             )}
@@ -463,7 +503,9 @@ export function RangeEditor({
     onRefinement(
       refinementOf(
         parameter,
-        kind === 'text' ? { minLength: next.min, maxLength: next.max } : { min: next.min, max: next.max },
+        kind === 'text'
+          ? { minLength: next.min, maxLength: next.max }
+          : { min: next.min, max: next.max },
         description,
       ),
     )
@@ -521,7 +563,10 @@ export function RangeEditor({
 }
 
 /** the bounds a schema states, as the text a person would type for them */
-const boundsTyped = (schema: AtomicSchema, parameter: AtomicSchema): { min: string; max: string } => {
+const boundsTyped = (
+  schema: AtomicSchema,
+  parameter: AtomicSchema,
+): { min: string; max: string } => {
   const kind = kindOf(parameter)
   const held = schema as unknown as Record<string, unknown>
   const say = (value: unknown) => (value === undefined ? '' : String(value))

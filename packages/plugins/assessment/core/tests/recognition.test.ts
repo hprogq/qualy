@@ -1388,8 +1388,8 @@ describe.runIf(postgresAvailable)('recognitions', () => {
     // and what each determination already holds, so the editor can keep it
     // from being let go of in the first place
     expect(result.read.standing).toEqual([
-      { recognitionId: 'rec-level', records: 1, openRounds: 0, determined: ['national'], pending: [] },
-      { recognitionId: 'rec-ordinal', records: 1, openRounds: 0, determined: ['9'], pending: [] },
+      { recognitionId: 'rec-level', records: 1, openRounds: 0, determined: ['national'] },
+      { recognitionId: 'rec-ordinal', records: 1, openRounds: 0, determined: ['9'] },
     ])
   })
 
@@ -1436,6 +1436,67 @@ describe.runIf(postgresAvailable)('recognitions', () => {
     )
 
     expect(result?.issues).toBeUndefined()
+  })
+
+  // Rounds keep opening for as long as claims are filed, so a narrowing that
+  // waited for none to be open would wait for ever. It goes through, and the
+  // round's own decision is where a value narrowed away is stopped.
+  it('lets a window narrow while a round is open, and stops the narrowed value at the decision', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rec-narrow-open')
+          const assessment = yield* Assessment
+          const g = yield* twoFacted(f)
+          const { instanceId } = yield* claimed(f, g, g.p1)
+          const narrowed = yield* Effect.exit(
+            assessment.updateItem(
+              f.t,
+              g.item.id,
+              {
+                config: {
+                  entryChannels: ['participant'] as const,
+                  formConfig: { files: {} },
+                  scoringConfig: narrowScoring,
+                  reviewPolicy: policyOf(f),
+                },
+                reason: '收紧序位',
+              },
+              f.principal(f.admin),
+            ),
+          )
+          // 9 is inside the contract the round opened with and outside the
+          // plan that would have to score it
+          const outside = yield* Effect.exit(
+            assessment.decideReview(
+              f.t,
+              instanceId,
+              {
+                decision: 'approve',
+                comment: 'checked',
+                recognition: { values: { 'rec-level': 'national', 'rec-ordinal': 9 } },
+              },
+              f.principal(f.reviewer),
+            ),
+          )
+          const inside = yield* Effect.exit(
+            assessment.decideReview(
+              f.t,
+              instanceId,
+              {
+                decision: 'approve',
+                comment: 'checked',
+                recognition: { values: { 'rec-level': 'national', 'rec-ordinal': 3 } },
+              },
+              f.principal(f.reviewer),
+            ),
+          )
+          return { narrowed: narrowed._tag, outside: outside._tag, inside: inside._tag }
+        }),
+      ),
+    )
+    expect(result).toEqual({ narrowed: 'Success', outside: 'Failure', inside: 'Success' })
   })
 
   it('holds an open round to the window it opened with', async () => {

@@ -5816,10 +5816,6 @@ const i18n = definePluginMessages({
       id: 'assessment/items/option-held-determined',
       defaultMessage: 'A record is already determined as this option, so it stays',
     },
-    itemsOptionHeldPending: {
-      id: 'assessment/items/option-held-pending',
-      defaultMessage: 'A record under review may still be determined as this option',
-    },
     itemsOptionsHeldHint: {
       id: 'assessment/items/options-held-hint',
       defaultMessage: 'Options that records already use stay in the range',

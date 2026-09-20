@@ -1846,7 +1846,6 @@ export default {
   'assessment/items/problem-recognitions-refused': '认定字段的设置不被接受',
   'assessment/items/problem-parameters-refused': '公式参数的设置不被接受',
   'assessment/items/option-held-determined': '已有记录认定为该选项，不能取消',
-  'assessment/items/option-held-pending': '审核中的记录仍可能认定为该选项，审核结束前不能取消',
   'assessment/items/options-held-hint': '已有相关认定记录使用部分选项，无法取消勾选',
   'assessment/items/mode-locked-to-automatic': '项目发布后不可改为自动计分',
   'assessment/items/mode-locked-from-automatic': '自动计分项目发布后不可改为其他处理方式',

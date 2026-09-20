@@ -1301,7 +1301,6 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
             records: Schema.Number,
             openRounds: Schema.Number,
             determined: Schema.Array(Schema.String),
-            pending: Schema.Array(Schema.String),
           }),
         ),
       }),

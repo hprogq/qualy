@@ -46,7 +46,7 @@ import {
   recognitionFormFields,
   type RecognitionValues,
 } from '../scoring/recognition.ts'
-import { assignmentPlan, type NormalizedAtomicSchema } from '@qualy/value-schema'
+import { assignmentPlan, kindOf, type NormalizedAtomicSchema } from '@qualy/value-schema'
 import { normalizeScoringAuthoring } from '../scoring/authoring.ts'
 import { policyModeOf } from '../review/chain.ts'
 import type { EntryChannel } from './channels.ts'
@@ -405,8 +405,6 @@ export interface ItemCheckView {
     readonly openRounds: number
     /** values somebody has determined */
     readonly determined: readonly string[]
-    /** values no claim holds yet, that an open round may still settle on */
-    readonly pending: readonly string[]
   }[]
 }
 
@@ -776,10 +774,28 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
   }) =>
     Effect.gen(function* () {
       const entries: string[] = []
-      const causes = new Map<string, { recognitionId: string; reason: StrandingReason; entries: Set<string>; values: Set<string> }>()
-      const blame = (recognitionId: string, reason: StrandingReason, entryId: string, value?: unknown) => {
+      const causes = new Map<
+        string,
+        {
+          recognitionId: string
+          reason: StrandingReason
+          entries: Set<string>
+          values: Set<string>
+        }
+      >()
+      const blame = (
+        recognitionId: string,
+        reason: StrandingReason,
+        entryId: string,
+        value?: unknown,
+      ) => {
         const key = `${recognitionId}\u0000${reason}`
-        const held = causes.get(key) ?? { recognitionId, reason, entries: new Set<string>(), values: new Set<string>() }
+        const held = causes.get(key) ?? {
+          recognitionId,
+          reason,
+          entries: new Set<string>(),
+          values: new Set<string>(),
+        }
         held.entries.add(entryId)
         if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
           held.values.add(String(value))
@@ -792,8 +808,10 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
         if (!entries.includes(entryId)) entries.push(entryId)
         for (const issue of wrong) {
           if (issue.recognitionId === '') continue
-          if (issue.reason === 'missing') blame(issue.recognitionId, 'strands-determination-missing', entryId)
-          else if (issue.reason === 'unknown') blame(issue.recognitionId, 'strands-determination-removed', entryId)
+          if (issue.reason === 'missing')
+            blame(issue.recognitionId, 'strands-determination-missing', entryId)
+          else if (issue.reason === 'unknown')
+            blame(issue.recognitionId, 'strands-determination-removed', entryId)
           // the value is named only where the value is the fault
           else {
             blame(
@@ -829,19 +847,32 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
         const frozen = yield* revisionOf(input.tenantId, revisionId)
         if (frozen === null) continue
         const under = yield* readScoringPlan(frozen).pipe(Effect.option)
-        if (under._tag === 'Some' && carriesInto(under.value.recognitionSchemas, input.schemas)) continue
+        if (under._tag === 'Some' && carriesInto(under.value.recognitionSchemas, input.schemas))
+          continue
         const before = under._tag === 'Some' ? under.value.recognitionSchemas : {}
+        // What an open round stops is a change of SHAPE: a name taken away,
+        // a name added, a kind swapped - its reviewer would be answering a
+        // form the new plan cannot read at all. Narrowing the values of a
+        // name both sides keep does not stop here. Rounds keep opening for
+        // as long as claims are filed, so waiting for none to be open is
+        // waiting for ever; and the decision proves every determination
+        // against the plan as it stands that day before writing it, so a
+        // value narrowed away is refused at the moment it would be settled.
+        const reshaped: [string, StrandingReason][] = []
+        for (const name of Object.keys(before)) {
+          if (!Object.hasOwn(input.schemas, name))
+            reshaped.push([name, 'strands-determination-removed'])
+          else if (kindOf(before[name]!) !== kindOf(input.schemas[name]!)) {
+            reshaped.push([name, 'strands-open-round'])
+          }
+        }
+        for (const name of Object.keys(input.schemas)) {
+          if (!Object.hasOwn(before, name)) reshaped.push([name, 'strands-open-round'])
+        }
+        if (reshaped.length === 0) continue
         for (const entryId of entryIds) {
           if (!entries.includes(entryId)) entries.push(entryId)
-          for (const name of Object.keys(before)) {
-            if (!Object.hasOwn(input.schemas, name)) blame(name, 'strands-determination-removed', entryId)
-            else if (assignmentPlan(before[name]!, input.schemas[name]!).kind !== 'direct') {
-              blame(name, 'strands-open-round', entryId)
-            }
-          }
-          for (const name of Object.keys(input.schemas)) {
-            if (!Object.hasOwn(before, name)) blame(name, 'strands-open-round', entryId)
-          }
+          for (const [name, reason] of reshaped) blame(name, reason, entryId)
         }
       }
       return {
@@ -858,10 +889,11 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
   /**
    * What the question's determinations may not let go of.
    *
-   * Two kinds of value hold a determination open: one somebody has already
-   * determined, and one a round still open may yet settle on - a round
-   * judges by the contract it opened with, so everything that contract
-   * admits is still in play until the round concludes.
+   * A value somebody has already determined holds the determination open.
+   * What a round still open MAY settle on does not: rounds keep opening for
+   * as long as claims are filed, and the decision proves each determination
+   * against the plan of the day, so a value narrowed away is refused when it
+   * would be settled rather than kept on offer for ever.
    */
   const standingUnder = (input: {
     tenantId: string
@@ -870,11 +902,18 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
     rounds: readonly { readonly entryId: string; readonly recognitionRevisionId: string }[]
   }) =>
     Effect.gen(function* () {
-      const held = new Map<string, { records: Set<string>; rounds: Set<string>; determined: Set<string>; pending: Set<string> }>()
+      const held = new Map<
+        string,
+        { records: Set<string>; rounds: Set<string>; determined: Set<string> }
+      >()
       const of = (recognitionId: string) => {
         const known = held.get(recognitionId)
         if (known !== undefined) return known
-        const fresh = { records: new Set<string>(), rounds: new Set<string>(), determined: new Set<string>(), pending: new Set<string>() }
+        const fresh = {
+          records: new Set<string>(),
+          rounds: new Set<string>(),
+          determined: new Set<string>(),
+        }
         held.set(recognitionId, fresh)
         return fresh
       }
@@ -883,7 +922,11 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
         for (const [recognitionId, value] of Object.entries(values as Record<string, unknown>)) {
           const under = of(recognitionId)
           under.records.add(entryId)
-          if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+          if (
+            typeof value === 'string' ||
+            typeof value === 'number' ||
+            typeof value === 'boolean'
+          ) {
             if (under.determined.size < STANDING_VALUES_MOST) under.determined.add(String(value))
           }
         }
@@ -903,12 +946,9 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
         if (frozen === null) continue
         const plan = yield* readScoringPlan(frozen).pipe(Effect.option)
         if (plan._tag !== 'Some') continue
-        for (const [recognitionId, schema] of Object.entries(plan.value.recognitionSchemas)) {
+        for (const recognitionId of Object.keys(plan.value.recognitionSchemas)) {
           const under = of(recognitionId)
           for (const entryId of entryIds) under.rounds.add(entryId)
-          const offered = (schema as { enum?: readonly unknown[] }).enum
-          if (!Array.isArray(offered)) continue
-          for (const value of offered) under.pending.add(String(value))
         }
       }
       return [...held.entries()].map(([recognitionId, under]) => ({
@@ -916,7 +956,6 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
         records: under.records.size,
         openRounds: under.rounds.size,
         determined: [...under.determined].sort(),
-        pending: [...under.pending].filter((value) => !under.determined.has(value)).sort(),
       }))
     })
 
@@ -1740,7 +1779,9 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
                 // out. It is refused at the save, which is the only moment
                 // anybody is looking (§35).
                 if (counted.stranded.length > 0) {
-                  return yield* new ItemConfigInvalid({ issues: strandingIssues(counted.stranding) })
+                  return yield* new ItemConfigInvalid({
+                    issues: strandingIssues(counted.stranding),
+                  })
                 }
                 // What stands determined, and whether the candidate rule can
                 // take it. The shape check above says the values still fit
@@ -2129,10 +2170,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
           // is built out of these groups - so every screen showing either is
           // now showing the old arithmetic. Said inside the transaction, the
           // way the other configuration writes announce theirs.
-          yield* announce(tenantId, batchId, [
-            { kind: 'item-changed' },
-            { kind: 'result-changed' },
-          ])
+          yield* announce(tenantId, batchId, [{ kind: 'item-changed' }, { kind: 'result-changed' }])
           return { groups: yield* groupsView(tenantId, batchId), version: version + 1 }
         }),
       ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error))),
@@ -2378,8 +2416,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
               issues.push({ path: 'scoreGroupId', reason: 'group-not-in-batch' })
             }
 
-            const stored =
-              input.itemId === undefined ? null : yield* itemOf(tenantId, input.itemId)
+            const stored = input.itemId === undefined ? null : yield* itemOf(tenantId, input.itemId)
             const existing = stored !== null && stored.batchId === batchId ? stored : null
             if (existing?.status === 'voided') {
               return { issues: [{ path: 'item', reason: 'item-voided' }], standing: [] }
@@ -2429,14 +2466,18 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
               current: current?.scoringConfig ?? null,
               submitted: input.config.scoringConfig,
               mint: (count) =>
-                Effect.succeed(Array.from({ length: count }, (_unused, index) => placeholder(index))),
+                Effect.succeed(
+                  Array.from({ length: count }, (_unused, index) => placeholder(index)),
+                ),
             })
             // what stands under the question is a fact about the question,
             // whatever is being composed over it
             const live = existing === null ? [] : yield* liveEntryPayloads(tenantId, existing.id)
             const rounds = existing === null ? [] : yield* openRoundsOfItem(tenantId, existing.id)
             const standing =
-              existing === null ? [] : yield* standingUnder({ tenantId, itemId: existing.id, live, rounds })
+              existing === null
+                ? []
+                : yield* standingUnder({ tenantId, itemId: existing.id, live, rounds })
             if ('issues' in normalized) {
               return { issues: [...issues, ...normalized.issues], standing }
             }
@@ -2447,7 +2488,10 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
               let minted = 0
               for (const one of submitted as { handle?: unknown; id?: unknown }[]) {
                 if (typeof one?.handle !== 'string') continue
-                handleOf.set(typeof one.id === 'string' ? one.id : placeholder(minted++), one.handle)
+                handleOf.set(
+                  typeof one.id === 'string' ? one.id : placeholder(minted++),
+                  one.handle,
+                )
               }
             }
             const config = { ...input.config, scoringConfig: normalized.config }
