@@ -919,6 +919,25 @@ const entryView = Schema.Struct({
     }),
   ),
   /**
+   * What the claim currently stands recognised as, under the question
+   * version that judged it. Only what stands now (§32.85); null where
+   * nothing has been determined, and on the write paths.
+   */
+  recognition: Schema.NullOr(
+    Schema.Struct({
+      id: Schema.String,
+      source: Schema.Literals(['review', 'record', 'import', 'system']),
+      /** the filing version it judged; a later one means it judged older material */
+      entryRevisionId: Schema.String,
+      /** opaque ids with the frozen schemas that name them, in order */
+      fields: Schema.Array(Schema.Struct({ id: Schema.String, schema: configJson })),
+      values: configJson,
+      createdAt: Schema.String,
+      /** null where this reader is not told who determined it */
+      actorName: Schema.NullOr(Schema.String),
+    }),
+  ),
+  /**
    * Each act in one of three states: offered, offered disabled with the
    * reason on hover, or not spoken of. Discovery through the same gate the
    * act itself answers to, so an enabled button is a call that goes through.

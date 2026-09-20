@@ -932,6 +932,70 @@ describe('filing a claim', () => {
     expect(words).not.toContain('所在部队')
   })
 
+  // What the claim was finally recognised as, which is what the score is
+  // worked out from. Whose determination it was is the phase's to open
+  // (§32.85), and the server sends no name when it is shut.
+  it('reads back what the claim was recognised as, without naming who unless it may', async () => {
+    const withStanding = (actorName: string | null) =>
+      entry({
+        status: 'approved',
+        recognition: {
+          id: 'rec-1',
+          source: 'review' as const,
+          entryRevisionId: REVISION_ID,
+          fields: [
+            {
+              id: 'rec-level',
+              schema: {
+                type: 'string',
+                enum: ['school', 'province'],
+                title: '认定级别',
+                'x-qualy-enumLabels': { school: '校级', province: '省级' },
+              },
+            },
+            { id: 'rec-hours', schema: { type: 'number', title: '认定时长' } },
+          ],
+          values: { 'rec-level': 'province', 'rec-hours': 12 },
+          createdAt: '2026-04-02T02:30:00.000Z',
+          actorName,
+        },
+      })
+    const show = (actorName: string | null) =>
+      screen(
+        {
+          listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
+          listMyEntries: () =>
+            Effect.succeed({
+              participantId: PARTICIPANT_ID,
+              entries: [withStanding(actorName)],
+              nextCursor: null,
+              attention: { unreadItemIds: [] },
+            }),
+          getEntryHistory: () =>
+            Effect.succeed({
+              entry: withStanding(actorName),
+              events: [],
+              rounds: [],
+              revisions: [],
+            }),
+        },
+        `/assessment/batches/${BATCH_ID}/my-entries`,
+        [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+      )
+
+    show(null)
+    await page.getByTestId('claim-row').first().click()
+    await expect.element(page.getByTestId('entry-recognized')).toBeVisible()
+    const said = () =>
+      (document.querySelector('[data-testid="entry-recognized"]') as HTMLElement).textContent ?? ''
+    // the values in the words of the version that judged them, not the ids
+    expect(said()).toContain('认定级别')
+    expect(said()).toContain('省级')
+    expect(said()).toContain('12')
+    expect(said()).not.toContain('rec-level')
+    expect(said()).not.toContain('李老师')
+  })
+
   it('shows the question\u2019s routes by step name, and never who holds them', async () => {
     screen(
       {

@@ -20,6 +20,7 @@ import { assessmentMessages as m } from '../i18n.ts'
 import { AttachmentLink } from './AttachmentLink.tsx'
 import { EntryTrail } from './EntryHistory.tsx'
 import { EntryStanding } from './EntryStanding.tsx'
+import { choiceLabel, displayTitle, kindOf, type AtomicSchema } from '@qualy/value-schema'
 import { displayValueOf, fieldsOf, type EntryDto, type ItemDto } from './model.ts'
 
 // One claim, in full, in a drawer over the list it came from.
@@ -668,6 +669,8 @@ export function EntryDetail({
                   )}
                 </section>
 
+                <RecognizedValues entry={entry} />
+
                 {/* what a reviewer asked for and what answered it, one
                     section per ask: the requirement and the material stay
                     together, because apart neither says what it is for */}
@@ -725,6 +728,71 @@ export function EntryDetail({
         <div {...stylex.props(styles.actionBar)}>{footer}</div>
       </SheetContent>
     </Sheet>
+  )
+}
+
+/**
+ * What the claim was finally recognised as.
+ *
+ * Not what each reviewer along the way thought: a determination a later
+ * round replaced is the middle of an argument, and putting every round's
+ * beside a name invites one (§32.85). This is what it stands at now, which
+ * is what the score is worked out from.
+ *
+ * The values are addressed by ids that name nothing on their own, so the
+ * frozen contract that judged them travels with them; an id it does not know
+ * is not printed at all.
+ */
+function RecognizedValues({ entry }: { entry: EntryDto }) {
+  const { format, locale } = useI18n()
+  const standing = entry.recognition ?? null
+  if (standing === null) return null
+  const values = (standing.values ?? {}) as Record<string, unknown>
+  const rows = standing.fields.flatMap((field) => {
+    if (!Object.hasOwn(values, field.id)) return []
+    const value = values[field.id]
+    if (value === null || value === undefined || value === '') return []
+    const schema = field.schema as AtomicSchema
+    return [
+      {
+        id: field.id,
+        label: displayTitle(schema, field.id, locale),
+        text:
+          kindOf(schema) === 'choice'
+            ? (choiceLabel(schema as never, String(value), locale) ?? String(value))
+            : typeof value === 'boolean'
+              ? format(value ? m.recognitionYes : m.recognitionNo)
+              : String(value),
+      },
+    ]
+  })
+  if (rows.length === 0) return null
+  // a determination judges one version of a filing; a later revision means
+  // the reader is looking at a decision about older material
+  const stale =
+    entry.currentRevision !== null && entry.currentRevision.id !== standing.entryRevisionId
+  return (
+    <section {...stylex.props(styles.section)} data-testid="entry-recognized" data-stale={stale}>
+      <div {...stylex.props(styles.sectionHead)}>
+        <p {...stylex.props(styles.sectionTitle)}>{format(m.recognitionTitle)}</p>
+        <span aria-hidden {...stylex.props(styles.sectionRule)} />
+        <p {...stylex.props(styles.sectionNote)}>
+          {standing.actorName === null
+            ? timeOf(standing.createdAt)
+            : format(m.recognitionBy, {
+                who: standing.actorName,
+                when: timeOf(standing.createdAt),
+              })}
+        </p>
+      </div>
+      {rows.map((row) => (
+        <div key={row.id} {...stylex.props(styles.field)} data-recognized={row.id}>
+          <p {...stylex.props(styles.fieldLabel)}>{row.label}</p>
+          <p {...stylex.props(styles.fieldValue)}>{row.text}</p>
+        </div>
+      ))}
+      {stale && <p {...stylex.props(styles.fieldCleared)}>{format(m.recognitionStale)}</p>}
+    </section>
   )
 }
 

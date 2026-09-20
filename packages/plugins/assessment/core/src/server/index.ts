@@ -4771,6 +4771,21 @@ const entryDto = (entry: EntryView) => ({
         },
   currentReviewInstanceId: entry.currentReviewInstanceId,
   createdAt: new Date(entry.createdAt).toISOString(),
+  recognition:
+    entry.recognition === null
+      ? null
+      : {
+          id: entry.recognition.id,
+          source: entry.recognition.source,
+          entryRevisionId: entry.recognition.entryRevisionId,
+          fields: entry.recognition.fields.map((field) => ({
+            id: field.id,
+            schema: field.schema,
+          })),
+          values: entry.recognition.values,
+          createdAt: new Date(entry.recognition.createdAt).toISOString(),
+          actorName: entry.recognition.actorName,
+        },
   supplement:
     entry.supplement === null
       ? null

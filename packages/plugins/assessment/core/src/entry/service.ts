@@ -16,6 +16,7 @@ import {
 import { ProbeNeeded, probeIdentity, settleWithProbe } from '../scoring/failure-boundary.ts'
 import { ScoringRuntimeCatalog } from '../plugin.ts'
 import { readScoringPlan } from '../scoring/plan.ts'
+import { recognitionFormFields } from '../scoring/recognition.ts'
 import { fillBoundEvidence } from '../scoring/bound-evidence.ts'
 import type { ScoringPlan } from '../scoring/plan.ts'
 
@@ -180,6 +181,16 @@ export interface EntryView {
   readonly supplement: EntrySupplementView | null
   /** the last word said against it, while it is waiting on its owner */
   readonly refusal: EntryRefusalView | null
+  /**
+   * What the claim currently stands recognised as, in the words of the
+   * question version that judged it.
+   *
+   * Only what stands now: a determination a later round replaced is the
+   * middle of an argument, and showing every round's by name invites one
+   * (§32.85). Null where nothing has been determined, and on the write paths,
+   * which do not read it.
+   */
+  readonly recognition: EntryRecognitionView | null
   readonly capabilities: {
     readonly edit: ActionAvailability
     readonly submit: ActionAvailability
@@ -187,6 +198,19 @@ export interface EntryView {
     readonly appeal: ActionAvailability
     readonly abandon: ActionAvailability
   }
+}
+
+export interface EntryRecognitionView {
+  readonly id: string
+  readonly source: 'review' | 'record' | 'import' | 'system'
+  /** the filing version it judged: a later revision means it judged older material */
+  readonly entryRevisionId: string
+  /** opaque ids with the frozen schemas that name them, in the contract's order */
+  readonly fields: readonly { readonly id: string; readonly schema: unknown }[]
+  readonly values: Record<string, unknown>
+  readonly createdAt: number
+  /** null where this reader is not told who determined it */
+  readonly actorName: string | null
 }
 
 export interface CreateEntryInput {
@@ -590,6 +614,8 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
     refusal?: EntryRefusalView | null,
     /** the open round's provenance, where the caller looked it up */
     standing?: { origin: string; begun: boolean },
+    /** what it stands recognised as, where the caller read it */
+    recognition?: EntryRecognitionView | null,
   ): EntryView => {
     const own = participant !== null && participant.userId === as.userId
     const active = own && participant.status === 'active'
@@ -619,6 +645,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
         refusal == null || (entry.status !== 'rejected' && entry.status !== 'needs_revision')
           ? null
           : refusal,
+      recognition: recognition ?? null,
       supplement:
         supplement == null
           ? null
@@ -1103,6 +1130,35 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             shown.supplement === null ? null : { ...shown.supplement, requestedByName: null },
         }
 
+  /**
+   * What one claim stands recognised as, in the words of the version that
+   * judged it.
+   *
+   * The values are addressed by opaque ids the browser cannot read, so the
+   * frozen contract that names them travels with them - the question may
+   * have been edited since, and the determination is still about the
+   * version it was made under.
+   */
+  const recognitionOf = (tenantId: string, entry: EntryRow, veiled: boolean) =>
+    Effect.gen(function* () {
+      if (entry.currentRecognitionId === null) return null
+      const standing = (yield* currentRecognitionsOfEntries(tenantId, [entry.id]))[0]
+      if (standing === undefined) return null
+      const judged = yield* revisionOf(tenantId, standing.itemRevisionId)
+      const plan = judged === null ? null : yield* readScoringPlan(judged).pipe(Effect.option)
+      const fields =
+        plan === null || plan._tag !== 'Some' ? null : recognitionFormFields(plan.value)
+      return {
+        id: standing.id,
+        source: standing.source,
+        entryRevisionId: standing.entryRevisionId,
+        fields: fields ?? [],
+        values: standing.values,
+        createdAt: standing.createdAt,
+        actorName: veiled ? null : standing.createdByName,
+      }
+    })
+
   const getEntry: EntryMethods['getEntry'] = Effect.fn('Assessment.getEntry')(
     function* (tenantId, entryId, as) {
       return yield* withDb(
@@ -1120,6 +1176,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             entry.status === 'in_review' && entry.currentReviewInstanceId !== null
               ? yield* withdrawStandingsOf(tenantId, [entry.currentReviewInstanceId])
               : new Map<string, { origin: string; begun: boolean }>()
+          const veiled = yield* reviewersVeiled(tenantId, entry.batchId, participant, as)
           return veil(
             view(
               entry,
@@ -1132,8 +1189,9 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               entry.currentReviewInstanceId === null
                 ? undefined
                 : standings.get(entry.currentReviewInstanceId),
+              yield* recognitionOf(tenantId, entry, veiled),
             ),
-            yield* reviewersVeiled(tenantId, entry.batchId, participant, as),
+            veiled,
           )
         }).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
       )
@@ -1699,6 +1757,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                   entry.currentReviewInstanceId === null
                     ? undefined
                     : standings.get(entry.currentReviewInstanceId),
+                  yield* recognitionOf(tenantId, entry, veiled),
                 ),
                 veiled,
               ),

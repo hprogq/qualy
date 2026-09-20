@@ -140,6 +140,8 @@ export const recognitionById = (tenantId: string, entryId: string, recognitionId
  */
 export interface RecognitionDetail extends RecognitionRow {
   readonly entryId: string
+  /** the question version it was judged under, which names its own fields */
+  readonly itemRevisionId: string
   readonly source: 'review' | 'record' | 'import' | 'system'
   readonly createdAt: number
   readonly createdBy: string | null
@@ -167,6 +169,7 @@ export const currentRecognitionsOfEntries = (tenantId: string, entryIds: readonl
               'r.values',
               'r.supersedesId',
               'r.entryRevisionId',
+              'r.itemRevisionId',
               'r.source',
               'r.createdBy',
               'u.displayName as createdByName',
@@ -186,6 +189,7 @@ export const currentRecognitionsOfEntries = (tenantId: string, entryIds: readonl
                 values: (one['values'] ?? {}) as Record<string, unknown>,
                 supersedesId: one['supersedesId'] == null ? null : String(one['supersedesId']),
                 entryRevisionId: String(one['entryRevisionId']),
+                itemRevisionId: String(one['itemRevisionId']),
                 source: String(one['source']) as RecognitionDetail['source'],
                 createdAt: Number(one['createdMs'] ?? 0),
                 createdBy: one['createdBy'] == null ? null : String(one['createdBy']),
