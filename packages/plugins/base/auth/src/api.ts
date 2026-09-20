@@ -43,6 +43,9 @@ import {
   IdentityIdentifierTaken,
   IdentityInputInvalid,
   IdentityNotFound,
+  ProviderConfigInvalid,
+  ProviderConflict,
+  ProviderKindUnavailable,
 } from './server/errors.ts'
 
 // The identity api this plugin serves, as definitions only.
@@ -242,6 +245,89 @@ export const identityApiGroup = HttpApiGroup.make('identity')
     HttpApiEndpoint.get('listAuthProviders', '/auth/providers', {
       success: Schema.Struct({ providers: Schema.Array(authProvider) }),
       error: [AccessDenied],
+    }).middleware(Authenticated),
+  )
+  // The kinds of entrance that can be added, each with what it needs to be
+  // told. What a CAS server or an OAuth client needs is the driver's
+  // knowledge; the form is built from what it declares here.
+  .add(
+    HttpApiEndpoint.get('listAuthProviderKinds', '/auth/provider-kinds', {
+      success: Schema.Struct({
+        kinds: Schema.Array(
+          Schema.Struct({
+            type: Schema.String,
+            label: UiTextSchema,
+            fields: Schema.Array(
+              Schema.Struct({
+                key: Schema.String,
+                label: UiTextSchema,
+                hint: Schema.NullOr(UiTextSchema),
+                kind: Schema.Literals(['text', 'url', 'secret']),
+                required: Schema.Boolean,
+              }),
+            ),
+          }),
+        ),
+      }),
+      error: [AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.post('createAuthProvider', '/auth/providers', {
+      payload: Schema.Struct({
+        type: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(32)),
+        // the address it answers at, which is in every sign-in url and never moves
+        code: kebabCode,
+        name: trimmedName(100),
+        values: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+      }),
+      success: Schema.Struct({ id: Schema.String }),
+      error: [ProviderKindUnavailable, ProviderConfigInvalid, ProviderConflict, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.patch('updateAuthProvider', '/auth/providers/:providerId', {
+      params: Schema.Struct({ providerId: uuidInput }),
+      payload: changed(
+        {
+          version: expectedVersion,
+          name: Schema.optional(trimmedName(100)),
+          values: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+        },
+        ['name', 'values'],
+      ),
+      success: Schema.Struct({ version: Schema.Number }),
+      error: [
+        ProviderNotFound,
+        ProviderVersionConflict,
+        ProviderKindUnavailable,
+        ProviderConfigInvalid,
+        AccessDenied,
+      ],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.put('setAuthProviderStatus', '/auth/providers/:providerId/status', {
+      params: Schema.Struct({ providerId: uuidInput }),
+      payload: Schema.Struct({ version: expectedVersion, status: resourceStatus }),
+      success: Schema.Struct({ version: Schema.Number }),
+      error: [
+        ProviderNotFound,
+        ProviderVersionConflict,
+        RecoveryChannelRequired,
+        LastAdministrator,
+        AccessDenied,
+      ],
+    }).middleware(Authenticated),
+  )
+  // the order of the sign-in page is one fact about all of them, replaced whole
+  .add(
+    HttpApiEndpoint.put('setAuthProviderOrder', '/auth/provider-order', {
+      payload: Schema.Struct({
+        providerIds: Schema.Array(uuidInput).check(Schema.isMaxLength(50)),
+      }),
+      success: Schema.Struct({ ok: Schema.Literal(true) }),
+      error: [ProviderNotFound, AccessDenied],
     }).middleware(Authenticated),
   )
   .add(

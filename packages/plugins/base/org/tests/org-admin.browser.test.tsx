@@ -150,11 +150,11 @@ describe('the organization screen', () => {
       children: <OrgPage />,
     })
 
-    await page.getByRole('button', { name: '移动到' }).click()
+    await page.getByRole('button', { name: '移动至' }).click()
     // no unit picker is installed in this harness, so the dialog falls back
     // to the legal places by name - the same set the picker would leave live
     await expect.element(page.getByTestId('node-task')).toHaveAttribute('data-task', 'move')
-    await page.getByRole('combobox', { name: '移动到' }).click()
+    await page.getByRole('combobox', { name: '移动至' }).click()
     const listbox = page.getByRole('listbox')
     await expect.element(listbox).toBeVisible()
     // the one legal destination, and none of the illegal ones
@@ -185,7 +185,7 @@ describe('the organization screen', () => {
       children: <OrgPage />,
     })
 
-    const del = page.getByRole('button', { name: '删除节点' })
+    const del = page.getByRole('button', { name: '删除组织' })
     await expect.element(del).toBeEnabled()
     await del.click()
     await expect.element(page.getByRole('alertdialog')).toBeInTheDocument()
@@ -193,7 +193,7 @@ describe('the organization screen', () => {
     expect(remove).not.toHaveBeenCalled()
 
     await del.click()
-    await page.getByRole('alertdialog').getByRole('button', { name: '删除节点' }).click()
+    await page.getByRole('alertdialog').getByRole('button', { name: '删除组织' }).click()
     await vi.waitFor(() => expect(remove).toHaveBeenCalledTimes(1))
     expect(remove).toHaveBeenCalledWith({ params: { nodeId: KLASS } })
   })
@@ -205,7 +205,7 @@ describe('the organization screen', () => {
       route: `/admin/org?node=${COLLEGE}`,
       children: <OrgPage />,
     })
-    const del = page.getByRole('button', { name: '删除节点' })
+    const del = page.getByRole('button', { name: '删除组织' })
     await expect.element(del).toBeDisabled()
     // the bar names its reason as data, beside the struck action
     await expect.element(page.getByRole('alertdialog')).not.toBeInTheDocument()
@@ -237,7 +237,7 @@ describe('the organization screen', () => {
       route: `/admin/org?node=${COLLEGE}`,
       children: <OrgPage />,
     })
-    await expect.element(page.getByRole('button', { name: '删除节点' })).toBeDisabled()
+    await expect.element(page.getByRole('button', { name: '删除组织' })).toBeDisabled()
     await expect
       .element(page.getByTestId('node-delete'))
       .toHaveAttribute('data-removable', 'false')
@@ -269,7 +269,7 @@ describe('the organization screen', () => {
       route: `/admin/org?node=${KLASS}`,
       children: <OrgPage />,
     })
-    await expect.element(page.getByRole('button', { name: '删除节点' })).toBeDisabled()
+    await expect.element(page.getByRole('button', { name: '删除组织' })).toBeDisabled()
     const hold = document.querySelector('[data-testid="node-delete"] [data-hold="people"]')
     expect(hold?.getAttribute('data-count')).toBe('12')
     // by name, because a count alone is still a search
@@ -299,7 +299,7 @@ describe('the organization screen', () => {
     // a college may hold classes and nothing else, so the dialog offers
     // exactly that - already chosen, since there is nothing to choose between -
     // and the rule never gets a chance to become an error
-    await page.getByRole('button', { name: '新建子节点' }).click()
+    await page.getByRole('button', { name: '新建下级组织' }).click()
     const task = page.getByTestId('node-task')
     await expect.element(task).toHaveAttribute('data-task', 'create')
     await task.getByRole('combobox').click()

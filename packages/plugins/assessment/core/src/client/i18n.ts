@@ -368,14 +368,14 @@ const personExcludedAtMessage = defineMessage<{ when: string }>()({
   id: 'assessment/person/excluded-at',
   defaultMessage: 'Taken off {when}',
 })
-const grantFromBatchMessage = defineMessage<{ name: string }>()({
-  id: 'assessment/access/grant-from-batch',
-  defaultMessage: 'From the round {name}',
-})
 
 const i18n = definePluginMessages({
   namespace: 'assessment',
   messages: {
+    personBatchColumn: { id: 'assessment/person/batch-column', defaultMessage: 'Round' },
+    personAnchorColumn: { id: 'assessment/person/anchor-column', defaultMessage: 'Recorded at' },
+    personMembershipColumn: { id: 'assessment/person/membership-column', defaultMessage: 'Standing' },
+    personIncludedColumn: { id: 'assessment/person/included-column', defaultMessage: 'Joined' },
     nodeUsageManaged: {
       id: 'assessment/node-usage/managed',
       defaultMessage: 'Rounds administered from here',
@@ -455,12 +455,10 @@ const i18n = definePluginMessages({
     personColumnWhen: { id: 'assessment/person/column-when', defaultMessage: 'Filed' },
     personLoadMore: { id: 'assessment/person/load-more', defaultMessage: 'Load more' },
     // a grant confined to one round, explained on the grants screen
-    grantFromBatch: grantFromBatchMessage,
     grantFromSomeBatch: {
       id: 'assessment/access/grant-from-some-batch',
       defaultMessage: 'From an assessment round',
     },
-    grantOpenBatch: { id: 'assessment/access/grant-open-batch', defaultMessage: 'Open the round' },
     batchesTitle: { id: 'assessment/batch/title', defaultMessage: 'Assessment batches' },
     batchesHint: {
       id: 'assessment/batch/hint',

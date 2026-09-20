@@ -37,9 +37,7 @@ import {
 } from '@qualy/ui/screen'
 import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
-import { Input } from '@qualy/ui/input'
 import { Pager } from '@qualy/ui/pager'
-import { toast } from '@qualy/ui/toast'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { Spinner } from '@qualy/ui/spinner'
 import { useLingering } from '@qualy/ui/use-lingering'
@@ -47,6 +45,7 @@ import { iamMessages as m } from '../i18n.ts'
 import { NewUserForm } from './NewUserForm.tsx'
 import { PersonSheet } from './users/PersonSheet.tsx'
 import { UnitPath } from './users/UnitPath.tsx'
+import { UserJump } from './users/UserJump.tsx'
 import { UnitTree, type UnitNode } from './users/UnitTree.tsx'
 import { rememberRoster } from './users/roster-address.ts'
 import { authApi } from '../api.ts'
@@ -77,7 +76,6 @@ const styles = stylex.create({
   searchBox: { width: { default: '13rem', [breakpoints.phone]: '100%' } },
   typeFilter: { width: '8.5rem', flexShrink: 0 },
   away: { width: 14, height: 14, flexShrink: 0, color: tokens.mutedForeground },
-  jump: { width: { default: '11rem', [breakpoints.phone]: '100%' } },
   removed: {
     display: 'inline-flex',
     flexShrink: 0,
@@ -122,8 +120,6 @@ export default function UsersPage() {
   const navigate = usePageNavigate()
   const write = usePageQueryUpdate()
   const structureHref = usePageHref('org/page')
-  const [jump, setJump] = useState('')
-  const [jumping, setJumping] = useState(false)
   const [draft, setDraft] = useState(search)
   const [creating, setCreating] = useState(false)
   const shownUserId = useLingering(openUserId === '' ? null : openUserId)
@@ -171,28 +167,6 @@ export default function UsersPage() {
 
   // where this roster is, for the way back from somebody's own page
   useEffect(() => rememberRoster(window.location.search), [anchor, scope, typeFilter, search, removed, pageParam])
-
-  /** straight to one person's page by their number */
-  const jumpTo = async () => {
-    const wanted = jump.trim()
-    const root = nodes.find((entry) => entry.parentId === null) ?? nodes[0]
-    if (wanted === '' || root === undefined || jumping) return
-    setJumping(true)
-    try {
-      const found = await runApi(
-        api.identity.listUsers({
-          query: { orgNodeId: root.orgNodeId, scope: 'subtree', status: 'any', search: wanted, page: '1', limit: '20' },
-        }),
-      )
-      const exact = found.items.find((user) => user.businessNo?.toLowerCase() === wanted.toLowerCase())
-      if (exact === undefined) toast.error(format(m.jumpMissing, { businessNo, value: wanted }))
-      else navigate('auth/user-detail', { params: { userId: exact.id } })
-    } catch (error) {
-      toast.error(formatError(error))
-    } finally {
-      setJumping(false)
-    }
-  }
 
   // each unit with what kind it is and how many it holds, alone and with
   // everything under it: the tree shows whichever reading the scope asks for
@@ -250,25 +224,10 @@ export default function UsersPage() {
       size="broad"
       actions={
         <>
-          <form
-            data-testid="user-jump"
-            onSubmit={(event) => {
-              event.preventDefault()
-              void jumpTo()
-            }}
-          >
-            <Input
-              name="user-jump"
-              inputMode="search"
-              enterKeyHint="go"
-              aria-label={format(m.jumpLabel, { businessNo })}
-              placeholder={format(m.jumpLabel, { businessNo })}
-              value={jump}
-              disabled={jumping}
-              onChange={(event) => setJump(event.target.value)}
-              wrapperXstyle={styles.jump}
-            />
-          </form>
+          <UserJump
+            rootNodeId={(nodes.find((entry) => entry.parentId === null) ?? nodes[0])?.orgNodeId}
+            businessNo={businessNo}
+          />
           {/* whatever else can be done with people as a whole, by whoever
               offers it: an import, an export */}
           <UiSlot

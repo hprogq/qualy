@@ -48,6 +48,8 @@ const stubs = (over: Record<string, unknown> = {}) => ({
   app: { getManifest: () => Effect.succeed(emptyManifest()) },
   identity: {
     listAuthProviders: () => Effect.succeed({ providers: [provider()] }),
+    // the kinds that can be added: none installed here says so
+    listAuthProviderKinds: () => Effect.succeed({ kinds: [] }),
     listUserTypes: () =>
       Effect.succeed({
         userTypes: [userType(), userType({ id: FACULTY_ID, code: 'faculty', name: '教职工' })],
@@ -69,7 +71,8 @@ describe('login methods screen', () => {
     await expect.element(page.getByRole('heading', { name: '账号密码' })).toBeInTheDocument()
     // nothing to save until something changes: a save button live on arrival
     // invites a write that says nothing
-    const save2 = page.getByRole('button', { name: '保存', exact: false })
+    // the sheet has two things to save, each in its own card: this is the audience's
+    const save2 = page.getByTestId('audience-panel').getByRole('button', { name: '保存', exact: false })
     await expect.element(save2).toBeDisabled()
 
     // narrowing the door from "anyone" to a named list is one decision, and

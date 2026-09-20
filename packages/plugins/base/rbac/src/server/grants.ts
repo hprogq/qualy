@@ -1,3 +1,4 @@
+import { pageWindow } from '@qualy/api-kit/schema'
 import { Effect } from 'effect'
 
 import {
@@ -140,11 +141,11 @@ const withinScope = (
  */
 const grantRows = (
   tenantId: string,
-  filter: { userId?: string; orgNodeId?: string },
+  filter: { userId?: string; orgNodeId?: string; roleId?: string },
   scope: GrantScope | undefined,
-  page: { after?: string; limit: number } | undefined,
+  page: { after?: string; offset?: number; limit: number; count?: boolean } | undefined,
 ) =>
-  db.query((k) => {
+  db.query(async (k) => {
     let found = k
       .selectFrom('RoleGrant as g')
       .innerJoin('User as u', (join) =>
@@ -222,18 +223,36 @@ const grantRows = (
             )
         ).as('manageable'),
       ])
-      .orderBy('g.id')
 
     // stated only when asked for, rather than `(? is null or ...)` wrapped
     // around each: an absent filter is now an absent clause
     if (filter.userId !== undefined) found = found.where('g.userId', '=', filter.userId)
     if (filter.orgNodeId !== undefined) found = found.where('g.orgNodeId', '=', filter.orgNodeId)
+    if (filter.roleId !== undefined) found = found.where('g.roleId', '=', filter.roleId)
+    // how many match, for a list walked by page number: counted over exactly
+    // the filter and the reach the rows themselves are read through
+    const total =
+      page?.count === true
+        ? Number(
+            (
+              await found
+                .clearSelect()
+                .select((eb) => eb.fn.countAll<string>().as('count'))
+                .executeTakeFirstOrThrow()
+            ).count,
+          )
+        : null
     if (page?.after !== undefined) found = found.where('g.id', '>', page.after)
+    // by holder for a page a person reads, by id for a cursor a program follows
+    found =
+      page?.offset === undefined
+        ? found.orderBy('g.id')
+        : found.orderBy('u.displayName').orderBy('g.id').offset(page.offset)
     if (page) found = found.limit(page.limit)
-    return found.execute()
+    return { rows: await found.execute(), total }
   })
 
-export type GrantRow = Effect.Success<ReturnType<typeof grantRows>>[number]
+export type GrantRow = Effect.Success<ReturnType<typeof grantRows>>['rows'][number]
 
 const roleForGrant = (tenantId: string, roleId: string) =>
   db.query((k) =>
@@ -866,10 +885,35 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     /** the grants the caller may see, with whether they may change each one */
     list: (
       tenantId: string,
-      filter: { userId?: string; orgNodeId?: string },
+      filter: { userId?: string; orgNodeId?: string; roleId?: string },
       scope: GrantScope,
       page?: { after?: string; limit: number },
-    ) => withDb(grantRows(tenantId, filter, scope, page).pipe(Effect.orDie)),
+    ) =>
+      withDb(
+        grantRows(tenantId, filter, scope, page).pipe(
+          Effect.map((found) => found.rows),
+          Effect.orDie,
+        ),
+      ),
+
+    /** the same grants by page number, with how many there are in all */
+    page: (
+      tenantId: string,
+      filter: { userId?: string; orgNodeId?: string; roleId?: string },
+      scope: GrantScope,
+      page: { page: number; limit: number },
+    ) =>
+      withDb(
+        Effect.gen(function* () {
+          const counted = yield* grantRows(tenantId, filter, scope, { limit: 0, count: true })
+          const window = pageWindow(page.page, page.limit, counted.total ?? 0)
+          const found = yield* grantRows(tenantId, filter, scope, {
+            offset: window.offset,
+            limit: page.limit,
+          })
+          return { rows: found.rows, total: counted.total ?? 0, page: window.page }
+        }).pipe(Effect.orDie),
+      ),
 
     options,
 

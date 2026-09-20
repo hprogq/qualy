@@ -1,3 +1,4 @@
+import { FieldFill } from '../field-fill.ts'
 import { useId, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '../../theme/tokens.stylex.ts'
@@ -239,7 +240,7 @@ export function Field({
           </>
         )}
       </FormFieldLabel>
-      {children(id)}
+      <FieldFill value>{children(id)}</FieldFill>
       {hint && <FormFieldDescription>{hint}</FormFieldDescription>}
     </FormField>
   )

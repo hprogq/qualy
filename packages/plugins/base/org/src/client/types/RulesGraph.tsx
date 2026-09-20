@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { MinusIcon, PlusIcon } from 'lucide-react'
+import { FoldHorizontalIcon, ZoomInIcon, ZoomOutIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
 import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -137,24 +137,34 @@ export function RulesGraph({
               size="icon-xs"
               variant="ghost"
               aria-label={format(m.zoomOut)}
+              title={format(m.zoomOut)}
               disabled={zoom <= ZOOM_MIN}
               onClick={() => setZoom((now) => clamp(now - ZOOM_STEP))}
             >
-              <MinusIcon aria-hidden />
+              <ZoomOutIcon aria-hidden />
             </Button>
             <span {...stylex.props(styles.zoomFigure)}>{`${String(Math.round(zoom * 100))}%`}</span>
             <Button
               size="icon-xs"
               variant="ghost"
               aria-label={format(m.zoomIn)}
+              title={format(m.zoomIn)}
               disabled={zoom >= ZOOM_MAX}
               onClick={() => setZoom((now) => clamp(now + ZOOM_STEP))}
             >
-              <PlusIcon aria-hidden />
+              <ZoomInIcon aria-hidden />
             </Button>
-            {/* said in words: every drawing of "fit" also reads as "full screen" */}
-            <Button size="xs" variant="ghost" onClick={fit}>
-              {format(m.zoomFit)}
+            {/* arrows closing on a line: drawn in to the width. The corner
+                brackets that usually mean "fit" also mean "full screen", which
+                is the opposite of what this does to a wide picture */}
+            <Button
+              size="icon-xs"
+              variant="ghost"
+              aria-label={format(m.zoomFit)}
+              title={format(m.zoomFit)}
+              onClick={fit}
+            >
+              <FoldHorizontalIcon aria-hidden />
             </Button>
           </span>
         )}

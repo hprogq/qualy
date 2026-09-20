@@ -398,6 +398,83 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
       }),
     )
     .handle(
+      'listAuthProviderKinds',
+      Effect.fn('iam.listAuthProviderKinds.handler')(function* () {
+        const iam = yield* Iam
+        const rbac = yield* Rbac
+        const principal = yield* CurrentUser
+        yield* rbac.require(principal, 'auth.provider.read')
+        return { kinds: yield* iam.providers.kinds }
+      }),
+    )
+    .handle(
+      'createAuthProvider',
+      Effect.fn('iam.createAuthProvider.handler')(function* ({ payload }) {
+        const iam = yield* Iam
+        const rbac = yield* Rbac
+        const principal = yield* CurrentUser
+        yield* rbac.require(principal, 'auth.provider.manage')
+        return {
+          id: yield* iam.providers.create(
+            principal.tenantId,
+            {
+              type: payload.type,
+              code: payload.code,
+              name: payload.name,
+              values: payload.values ?? {},
+            },
+            principal,
+          ),
+        }
+      }),
+    )
+    .handle(
+      'updateAuthProvider',
+      Effect.fn('iam.updateAuthProvider.handler')(function* ({ params, payload }) {
+        const iam = yield* Iam
+        const rbac = yield* Rbac
+        const principal = yield* CurrentUser
+        yield* rbac.require(principal, 'auth.provider.manage')
+        return {
+          version: yield* iam.providers.update(
+            principal.tenantId,
+            params.providerId,
+            { expectedVersion: payload.version, name: payload.name, values: payload.values },
+            principal,
+          ),
+        }
+      }),
+    )
+    .handle(
+      'setAuthProviderStatus',
+      Effect.fn('iam.setAuthProviderStatus.handler')(function* ({ params, payload }) {
+        const iam = yield* Iam
+        const rbac = yield* Rbac
+        const principal = yield* CurrentUser
+        yield* rbac.require(principal, 'auth.provider.manage')
+        return {
+          version: yield* iam.providers.setStatus(
+            principal.tenantId,
+            params.providerId,
+            payload.status,
+            payload.version,
+            principal,
+          ),
+        }
+      }),
+    )
+    .handle(
+      'setAuthProviderOrder',
+      Effect.fn('iam.setAuthProviderOrder.handler')(function* ({ payload }) {
+        const iam = yield* Iam
+        const rbac = yield* Rbac
+        const principal = yield* CurrentUser
+        yield* rbac.require(principal, 'auth.provider.manage')
+        yield* iam.providers.reorder(principal.tenantId, payload.providerIds, principal)
+        return { ok: true as const }
+      }),
+    )
+    .handle(
       'setAuthProviderAudience',
       Effect.fn('iam.setAuthProviderAudience.handler')(function* ({ params, payload }) {
         const iam = yield* Iam

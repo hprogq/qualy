@@ -31,6 +31,7 @@ import { Input } from '@qualy/ui/input'
 import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
 import { rbacMessages as m } from './i18n.ts'
 import { accessApi } from './api.ts'
+import { RoleHolders } from './RoleHolders.tsx'
 
 // One role, on a page of its own.
 //
@@ -45,7 +46,7 @@ import { accessApi } from './api.ts'
 /** the row as the api answers it, not a copy that can drift from it */
 export type RoleRow = ApiResult<typeof accessApi, 'access', 'listRoles'>['roles'][number]
 
-type Tab = 'permissions' | 'eligibility' | 'appointment'
+type Tab = 'permissions' | 'eligibility' | 'appointment' | 'holders'
 
 const QUIET = `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`
 
@@ -529,6 +530,9 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
                   {format(m.tabAppointment)}
                 </TabsTrigger>
               )}
+              <TabsTrigger value="holders" xstyle={styles.tab}>
+                {format(m.factHolders)}
+              </TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
@@ -752,6 +756,7 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
 
         {/* which offices this one appoints: the WHAT of granting, beside
             iam.grant.manage's WHERE. Nothing ticked means it appoints nobody. */}
+        {tab === 'holders' && <RoleHolders roleId={role.id} />}
         {tab === 'appointment' && !locked && (
           <AsyncSection
             pending={allRoles.isPending || grantable.isPending}

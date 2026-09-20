@@ -170,7 +170,7 @@ describe('the formula workbench', () => {
       typeInto(model, '// typed\n')
       await page.getByRole('tab', { name: /试运行/ }).click()
       await vi.waitFor(() => expect(drawn(model)).toBe(false), { timeout: 5_000 })
-      await page.getByRole('tab', { name: /源码/ }).click()
+      await page.getByRole('tab', { name: /代码/ }).click()
       await vi.waitFor(() => expect(drawn(model)).toBe(true), { timeout: 5_000 })
       // the same model, drawn again, with its history intact
       expect(model.isDisposed()).toBe(false)

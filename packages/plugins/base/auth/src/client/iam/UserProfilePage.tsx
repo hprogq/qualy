@@ -7,7 +7,19 @@ import { authTerms } from '@qualy/auth-contract/terms'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection } from '@qualy/ui/admin'
-import { EditorSkeleton, Facts, SectionHead } from '@qualy/ui/screen'
+import {
+  Card,
+  CardEmpty,
+  Cell,
+  DefLine,
+  DefList,
+  EditorSkeleton,
+  SectionHead,
+  Status,
+  Table,
+  TableHead,
+  TableRow,
+} from '@qualy/ui/screen'
 import { iamMessages as m } from '../i18n.ts'
 import { authApi } from '../api.ts'
 
@@ -90,46 +102,36 @@ export default function UserProfilePage() {
           <>
             <section {...stylex.props(styles.section)}>
               <SectionHead title={format(m.profileSection)} />
-              <Facts
-                columns={3}
-                items={[
-                  { label: format(m.nameLabel), value: record.displayName },
-                  {
-                    label: businessNoWord,
-                    value:
-                      record.businessNo ??
-                      format(m.personNoBusinessNo, { businessNo: businessNoWord }),
-                  },
-                  {
-                    label: format(m.userTypeLabel),
-                    value: record.userType?.name ?? format(m.rolesNone),
-                  },
-                  {
-                    label: format(m.columnStatus),
-                    value: format(
-                      record.status === 'deleted'
-                        ? m.deletedBadge
-                        : record.status === 'disabled'
-                          ? m.disabledBadge
-                          : m.statusActive,
-                    ),
-                  },
-                  {
-                    label: format(m.personPlacement),
-                    value:
-                      path.length === 0
-                        ? format(m.rolesNone)
-                        : path.map((node) => node.name).join(' / '),
-                  },
-                  {
-                    label: format(m.accountsLabel),
-                    value:
-                      record.identityCount === 0
-                        ? format(m.accountNone)
-                        : format(m.accountCount, { count: record.identityCount }),
-                  },
-                ]}
-              />
+              <Card data-testid="person-profile">
+                <DefList>
+                  <DefLine label={format(m.nameLabel)}>{record.displayName}</DefLine>
+                  <DefLine label={businessNoWord}>
+                    {record.businessNo ?? format(m.personNoBusinessNo, { businessNo: businessNoWord })}
+                  </DefLine>
+                  <DefLine label={format(m.userTypeLabel)}>
+                    {record.userType?.name ?? format(m.rolesNone)}
+                  </DefLine>
+                  <DefLine label={format(m.columnStatus)}>
+                    <Status tone={record.status === 'active' ? 'ok' : 'bad'}>
+                      {format(
+                        record.status === 'deleted'
+                          ? m.deletedBadge
+                          : record.status === 'disabled'
+                            ? m.disabledBadge
+                            : m.statusActive,
+                      )}
+                    </Status>
+                  </DefLine>
+                  <DefLine label={format(m.personPlacement)}>
+                    {path.length === 0 ? format(m.rolesNone) : path.map((node) => node.name).join(' / ')}
+                  </DefLine>
+                  <DefLine label={format(m.accountsLabel)}>
+                    {record.identityCount === 0
+                      ? format(m.accountNone)
+                      : format(m.accountCount, { count: record.identityCount })}
+                  </DefLine>
+                </DefList>
+              </Card>
             </section>
 
             <section {...stylex.props(styles.section)}>
@@ -147,29 +149,33 @@ export default function UserProfilePage() {
                   </PageLink>
                 }
               />
-              {roles.length === 0 ? (
-                <p {...stylex.props(styles.quiet)}>{format(m.personNoRoles)}</p>
-              ) : (
-                <ul {...stylex.props(styles.roleList)}>
-                  {roles.map((role) => (
-                    <li key={role.grantId} {...stylex.props(styles.roleRow)}>
-                      <span {...stylex.props(styles.roleName)}>{role.roleName}</span>
-                      <span {...stylex.props(styles.roleWhere)}>
-                        {role.scoped
-                          ? format(m.personRoleScoped)
-                          : role.orgNodeName === null
-                            ? format(m.personRoleTenantWide)
-                            : format(
-                                role.coverage === 'subtree'
-                                  ? m.personRoleSubtree
-                                  : m.personRoleHere,
-                                { node: role.orgNodeName },
-                              )}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <Card data-testid="person-roles" data-count={roles.length}>
+                {roles.length === 0 ? (
+                  <CardEmpty>{format(m.personNoRoles)}</CardEmpty>
+                ) : (
+                  <Table columns="minmax(0, 1fr) minmax(0, 1.4fr)">
+                    <TableHead>
+                      <span>{format(m.rolesLabel)}</span>
+                      <span>{format(m.columnUnit)}</span>
+                    </TableHead>
+                    {roles.map((role) => (
+                      <TableRow key={role.grantId} height="compact">
+                        <Cell lead>{role.roleName}</Cell>
+                        <Cell>
+                          {role.scoped
+                            ? format(m.personRoleScoped)
+                            : role.orgNodeName === null
+                              ? format(m.personRoleTenantWide)
+                              : format(
+                                  role.coverage === 'subtree' ? m.personRoleSubtree : m.personRoleHere,
+                                  { node: role.orgNodeName },
+                                )}
+                        </Cell>
+                      </TableRow>
+                    ))}
+                  </Table>
+                )}
+              </Card>
             </section>
           </>
         )}

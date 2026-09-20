@@ -14,6 +14,7 @@ const i18n = definePluginMessages({
       defaultMessage:
         '2 to 64 characters: lowercase letters, digits, dot, underscore or hyphen, starting with a letter or digit',
     },
+    entranceLabel: { id: 'auth-local/entrance/label', defaultMessage: 'Name and password' },
     bindingPassword: { id: 'auth-local/binding/password', defaultMessage: 'Password' },
     identifier: { id: 'auth-local/field/identifier', defaultMessage: 'Username' },
     password: { id: 'auth-local/field/password', defaultMessage: 'Password' },

@@ -13,6 +13,11 @@
 export const FROZEN_ROUTES = [
   'DELETE /auth/session',
   'PUT /auth/providers/{providerId}/audience',
+  'GET /auth/provider-kinds',
+  'POST /auth/providers',
+  'PATCH /auth/providers/{providerId}',
+  'PUT /auth/providers/{providerId}/status',
+  'PUT /auth/provider-order',
   'GET /auth/login-methods',
   'GET /auth/providers',
   'GET /auth/session',

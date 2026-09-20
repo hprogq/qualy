@@ -6,10 +6,11 @@ import { useState } from 'react'
 import { useApi, useRunApi, useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import { Feedback } from '@qualy/ui/admin'
+import { Feedback, Field } from '@qualy/ui/admin'
 import {
   Card,
   CardEmpty,
+  CardFoot,
   CardHead,
   CardHint,
   DefLine,
@@ -24,14 +25,18 @@ import {
   UnsavedMark,
 } from '@qualy/ui/screen'
 import { Button } from '@qualy/ui/button'
+import { Input } from '@qualy/ui/input'
 import { iamMessages as m } from '../../i18n.ts'
 import { authApi } from '../../api.ts'
+import { MethodFields, type EntranceKind } from './MethodFields.tsx'
 
 // One entrance, opened beside the table.
 //
-// The only thing an administrator owns about an entrance is who it lets
-// through; what kind it is, where it answers and where it stands on the
-// sign-in page come from the assembly and are read here, not edited.
+// What an administrator owns about an entrance: what it is called, whether
+// it is in service, who it lets through, and whatever its kind needs to be
+// told. Where it answers is fixed when it is made - it is in every sign-in
+// link - and where it stands on the sign-in page is set by dragging it in
+// the list, not by typing a number here.
 
 export type ProviderRow = ApiResult<
   typeof authApi,
@@ -50,6 +55,16 @@ const styles = stylex.create({
   aside: { fontSize: 11.5, color: tokens.mutedForeground },
   figure: { fontVariantNumeric: 'tabular-nums' },
   warn: { color: tokens.warningForeground },
+  fields: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 14,
+    paddingInline: 16,
+    paddingBlock: 14,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
+  },
 })
 
 const storedOf = (provider: ProviderRow): string[] =>
@@ -60,6 +75,7 @@ export function MethodSheet({
   provider,
   position,
   userTypes,
+  kind,
   canManage,
   onClose,
 }: {
@@ -68,6 +84,8 @@ export function MethodSheet({
   /** where it stands on the sign-in page, counted from one */
   position: number
   userTypes: readonly UserTypeRow[]
+  /** what its kind needs to be told; absent when its driver declares nothing */
+  kind: EntranceKind | undefined
   canManage: boolean
   onClose: () => void
 }) {
@@ -78,6 +96,8 @@ export function MethodSheet({
   const { format, formatError, locale } = useI18n()
   const figure = new Intl.NumberFormat(locale)
   const [feedback, setFeedback] = useState<string | null>(null)
+  const [name, setName] = useState<string | null>(null)
+  const [values, setValues] = useState<Record<string, string> | null>(null)
   // the draft is kept only while it differs from what is stored, so a save
   // that brings back new server state needs no re-seeding
   const [draft, setDraft] = useState<{ mode: Mode; userTypeIds: string[] } | null>(null)
@@ -112,6 +132,42 @@ export function MethodSheet({
     onError: (error: unknown) => setFeedback(formatError(error)),
   })
 
+  const refresh = () => queryClient.invalidateQueries({ queryKey: query.identity.key() })
+  const saveDetails = useMutation({
+    mutationFn: () =>
+      runApi(
+        api.identity.updateAuthProvider({
+          params: { providerId: provider.id },
+          payload: {
+            version: provider.version,
+            ...(name === null || name.trim() === provider.name ? {} : { name: name.trim() }),
+            ...(values === null ? {} : { values }),
+          },
+        }),
+      ),
+    onMutate: () => setFeedback(null),
+    onSuccess: async () => {
+      await refresh()
+      setName(null)
+      setValues(null)
+    },
+    onError: (error: unknown) => setFeedback(formatError(error)),
+  })
+  const setStatus = useMutation({
+    mutationFn: (status: 'active' | 'disabled') =>
+      runApi(
+        api.identity.setAuthProviderStatus({
+          params: { providerId: provider.id },
+          payload: { version: provider.version, status },
+        }),
+      ),
+    onMutate: () => setFeedback(null),
+    onSuccess: refresh,
+    onError: (error: unknown) => setFeedback(formatError(error)),
+  })
+  const detailsDirty =
+    (name !== null && name.trim() !== '' && name.trim() !== provider.name) || values !== null
+
   return (
     <DetailSheet
       open={open}
@@ -123,25 +179,6 @@ export function MethodSheet({
       }
       closeLabel={format(commonMessages.close)}
       testId="method-sheet"
-      footer={
-        canManage ? (
-          <>
-            {dirty && <UnsavedMark>{format(m.unsaved)}</UnsavedMark>}
-            <Spacer />
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={!dirty || save.isPending}
-              onClick={() => setDraft(null)}
-            >
-              {format(m.discard)}
-            </Button>
-            <Button size="sm" disabled={!dirty || save.isPending} onClick={() => save.mutate()}>
-              {format(m.save)}
-            </Button>
-          </>
-        ) : undefined
-      }
     >
       <Feedback message={feedback} />
 
@@ -198,9 +235,66 @@ export function MethodSheet({
             format(mode === 'allow-list' ? m.audienceListedHint : m.audienceEveryone)
           )}
         </CardHint>
+        {canManage && (
+          <CardFoot inset>
+            {dirty && <UnsavedMark>{format(m.unsaved)}</UnsavedMark>}
+            <Spacer />
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={!dirty || save.isPending}
+              onClick={() => setDraft(null)}
+            >
+              {format(m.discard)}
+            </Button>
+            <Button size="sm" disabled={!dirty || save.isPending} onClick={() => save.mutate()}>
+              {format(m.save)}
+            </Button>
+          </CardFoot>
+        )}
       </Card>
 
-      <Card>
+      <Card data-testid="method-details" data-status={provider.status}>
+        <CardHead title={format(m.methodDetails)}>
+          {canManage ? (
+            <Segmented
+              label={format(m.columnStatus)}
+              value={provider.status}
+              onChange={(next) => {
+                if (next !== provider.status && !setStatus.isPending) setStatus.mutate(next)
+              }}
+              options={[
+                { value: 'active', label: format(m.typeEnabled) },
+                { value: 'disabled', label: format(m.statusDisabled) },
+              ]}
+            />
+          ) : (
+            <span {...stylex.props(styles.modeWord)}>
+              {format(provider.status === 'active' ? m.typeEnabled : m.statusDisabled)}
+            </span>
+          )}
+        </CardHead>
+        <div {...stylex.props(styles.fields)}>
+          <Field label={format(m.nameLabel)}>
+            {(id) => (
+              <Input
+                id={id}
+                disabled={!canManage}
+                value={name ?? provider.name}
+                onChange={(event) => setName(event.target.value)}
+              />
+            )}
+          </Field>
+          {kind !== undefined && kind.fields.length > 0 && (
+            <MethodFields
+              kind={kind}
+              editing
+              disabled={!canManage}
+              values={values ?? {}}
+              onChange={setValues}
+            />
+          )}
+        </div>
         <DefList>
           <DefLine label={format(m.providerKindLabel)}>{provider.type}</DefLine>
           <DefLine label={format(m.providerCodeLabel)}>
@@ -209,8 +303,33 @@ export function MethodSheet({
           </DefLine>
           <DefLine label={format(m.providerOrderLabel)}>
             <span {...stylex.props(styles.figure)}>{position}</span>
+            <span {...stylex.props(styles.aside)}>{format(m.methodOrderHint)}</span>
           </DefLine>
         </DefList>
+        {canManage && (
+          <CardFoot inset>
+            {detailsDirty && <UnsavedMark>{format(m.unsaved)}</UnsavedMark>}
+            <Spacer />
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={!detailsDirty || saveDetails.isPending}
+              onClick={() => {
+                setName(null)
+                setValues(null)
+              }}
+            >
+              {format(m.discard)}
+            </Button>
+            <Button
+              size="sm"
+              disabled={!detailsDirty || saveDetails.isPending}
+              onClick={() => saveDetails.mutate()}
+            >
+              {format(m.save)}
+            </Button>
+          </CardFoot>
+        )}
       </Card>
     </DetailSheet>
   )

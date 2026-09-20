@@ -1,3 +1,4 @@
+import { Skeleton } from '@qualy/ui/skeleton'
 import { useQuery } from '@tanstack/react-query'
 import type { ResourceGrantContext } from '@qualy/ui-contract'
 import { PageLink, useApiQuery } from '@qualy/web-runtime'
@@ -39,17 +40,25 @@ export default function BatchGrantPresenter({ context }: { context: ResourceGran
   })
   const name = batch.data?.batch.name
 
+  // The column this sits in is already headed "comes from", so the round's
+  // own name is the whole answer, and it is the way to the round. While the
+  // name is on its way a bar holds its place: a sentence that is about to be
+  // replaced by a different sentence is a flicker, not information.
   return (
     <span data-testid="grant-origin-batch" data-batch-id={batchId} {...stylex.props(styles.line)}>
-      <span>{name === undefined ? format(m.grantFromSomeBatch) : format(m.grantFromBatch, { name })}</span>
-      {name !== undefined && (
+      {batch.isPending ? (
+        <Skeleton height={11} width="8rem" radius={4} />
+      ) : name === undefined ? (
+        <span>{format(m.grantFromSomeBatch)}</span>
+      ) : (
         <PageLink
           page="assessment/batch"
           params={{ batchId }}
           className={stylex.props(styles.link).className}
-          unavailable={null}
+          // a reader who may not open rounds still reads which one it is
+          unavailable={<span>{name}</span>}
         >
-          {format(m.grantOpenBatch)}
+          {name}
         </PageLink>
       )}
     </span>

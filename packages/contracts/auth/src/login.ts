@@ -104,10 +104,49 @@ export type IdentityBinding =
       readonly by: UiText
     }
 
+/**
+ * What one entrance of a driver's kind needs to be told, beyond its name.
+ *
+ * A local entrance needs nothing. A CAS one needs the server's address; an
+ * OAuth one a client id and a secret. The core cannot know any of that, so
+ * the driver says what to ask for - the form is built from these - and turns
+ * what was typed into the `config` it will read back when somebody signs in.
+ *
+ * `secret` fields are write-only: they are asked for, handed to `prepare`,
+ * and never sent back to a screen. Editing an entrance leaves a secret box
+ * empty, and empty means "as it was".
+ */
+export interface EntranceField {
+  readonly key: string
+  readonly label: UiText
+  readonly hint?: UiText
+  readonly kind: 'text' | 'url' | 'secret'
+  readonly required: boolean
+}
+
+export interface EntranceKind {
+  /** what this kind of entrance is called when one is being added */
+  readonly label: UiText
+  readonly fields: readonly EntranceField[]
+  /**
+   * What was typed, turned into the stored config; `previous` is what is
+   * stored now, so a secret left empty can be carried over.
+   */
+  readonly prepare?: (input: {
+    readonly values: Readonly<Record<string, string>>
+    readonly previous: Readonly<Record<string, unknown>> | undefined
+  }) => Effect.Effect<
+    | { readonly ok: true; readonly config: Readonly<Record<string, unknown>> }
+    | { readonly ok: false; readonly invalid: string }
+  >
+}
+
 export interface LoginDriver {
   readonly type: string
   readonly presentation: LoginPresentationDeclaration
   readonly binding?: IdentityBinding
+  /** absent = entrances of this kind are provisioned, never added by an administrator */
+  readonly entrance?: EntranceKind
 }
 
 /** every login driver this assembly serves, as its drivers registered them */
@@ -128,6 +167,8 @@ export class LoginDrivers extends Context.Service<
     readonly forType: (
       type: string,
     ) => Effect.Effect<{ driver: LoginDriver; owner: string } | undefined>
+    /** every driver this assembly serves, in the order they registered */
+    readonly all: Effect.Effect<readonly { driver: LoginDriver; owner: string }[]>
   }
 >()('@qualy/auth-contract/LoginDrivers') {}
 
@@ -155,6 +196,7 @@ export const loginDriversLayer: Layer.Layer<LoginDrivers> = Layer.sync(LoginDriv
         () => Effect.sync(() => drivers.delete(driver.type)),
       ).pipe(Effect.orDie, Effect.asVoid),
     forType: (type) => Effect.sync(() => drivers.get(type)),
+    all: Effect.sync(() => [...drivers.values()]),
   })
 })
 

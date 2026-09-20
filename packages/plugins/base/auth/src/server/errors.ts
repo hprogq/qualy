@@ -234,6 +234,31 @@ export class IdentityNotFound extends Schema.TaggedError<IdentityNotFound>()(
   { httpApiStatus: 404, identifier: 'IdentityNotFound' },
 ) {}
 
+/** an address another entrance of this tenant already answers at */
+export class ProviderConflict extends Schema.TaggedError<ProviderConflict>()(
+  'AUTH_PROVIDER_CONFLICT',
+  {},
+  { httpApiStatus: 409, identifier: 'AuthProviderConflict' },
+) {}
+
+/** no installed driver makes entrances of this kind, or it does not let them be added */
+export class ProviderKindUnavailable extends Schema.TaggedError<ProviderKindUnavailable>()(
+  'AUTH_PROVIDER_KIND_UNAVAILABLE',
+  {},
+  { httpApiStatus: 422, identifier: 'AuthProviderKindUnavailable' },
+) {}
+
+/** what was typed for this kind of entrance cannot be one; `field` says which box */
+export class ProviderConfigInvalid extends Schema.TaggedError<ProviderConfigInvalid>()(
+  'AUTH_PROVIDER_CONFIG_INVALID',
+  { field: Schema.String },
+  { httpApiStatus: 422, identifier: 'AuthProviderConfigInvalid' },
+) {}
+
+export const providerConstraints: Record<string, () => ProviderConflict> = {
+  uq_auth_providers_tenant_code: () => new ProviderConflict(),
+}
+
 export const identityConstraints: Record<string, () => IdentityIdentifierTaken> = {
   uq_user_identities_login: () => new IdentityIdentifierTaken(),
 }

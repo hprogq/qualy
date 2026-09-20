@@ -27,36 +27,20 @@ import { accessApi } from './api.ts'
 type Coverage = 'self' | 'subtree'
 
 const styles = stylex.create({
-  form: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 12,
-    borderTopWidth: 1,
-    borderTopStyle: 'solid',
-    borderTopColor: tokens.border,
-    paddingTop: 16,
-  },
+  // stands in a dialog: one question under another, each the width of the
+  // dialog, with the way to commit at the foot where a dialog's buttons go
+  form: { display: 'flex', flexDirection: 'column', gap: 16 },
   row: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    alignItems: 'flex-end',
-    gap: 8,
+    display: 'grid',
+    alignItems: 'end',
+    gap: 12,
+    gridTemplateColumns: { default: 'repeat(2, minmax(0, 1fr))', '@media (max-width: 480px)': 'minmax(0, 1fr)' },
   },
-  scopeField: {
-    width: '11rem',
-  },
-  coverageField: {
-    width: '12rem',
-  },
-  roleField: {
-    width: '14rem',
-  },
-  pickerSeat: {
-    display: 'flex',
-    minWidth: 0,
-    maxWidth: '32rem',
-    flexDirection: 'column',
-  },
+  scopeField: { width: '100%' },
+  coverageField: { width: '100%' },
+  roleField: { width: '100%' },
+  pickerSeat: { display: 'flex', minWidth: 0, flexDirection: 'column' },
+  foot: { display: 'flex', justifyContent: 'flex-end', paddingTop: 4 },
   quietNote: {
     fontSize: '0.875rem',
     lineHeight: '1.25rem',
@@ -188,8 +172,7 @@ export function GrantRoleForm({
         </div>
       )}
 
-      <div {...stylex.props(styles.row)}>
-        <Field label={format(m.grantRole)}>
+      <Field label={format(m.grantRole)}>
           {(id) => (
             <Select
               value={selected}
@@ -208,12 +191,7 @@ export function GrantRoleForm({
               </SelectContent>
             </Select>
           )}
-        </Field>
-
-        <Button type="submit" size="sm" disabled={grant.isPending || selected === ''}>
-          {format(m.grantSubmit)}
-        </Button>
-      </div>
+      </Field>
 
       {/* an empty list is an answer, not a missing one: this caller holds
           nothing that may be passed on at this target */}
@@ -222,6 +200,11 @@ export function GrantRoleForm({
           {format(m.grantRolesEmpty)}
         </p>
       )}
+      <div {...stylex.props(styles.foot)}>
+        <Button type="submit" disabled={grant.isPending || selected === ''}>
+          {format(m.grantSubmit)}
+        </Button>
+      </div>
     </form>
   )
 }

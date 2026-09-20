@@ -28,7 +28,9 @@ import {
   TableRow,
 } from '@qualy/ui/screen'
 import { Button } from '@qualy/ui/button'
+import { Skeleton } from '@qualy/ui/skeleton'
 import { rbacMessages as m } from './i18n.ts'
+import { GrantOrigin } from './GrantOrigin.tsx'
 import { GrantRoleForm } from './GrantRoleForm.tsx'
 import { accessApi } from './api.ts'
 import { useMoment } from './when.ts'
@@ -210,7 +212,7 @@ export default function UserRoleGrantsPage() {
                     <Cell title={where(grant)}>{where(grant)}</Cell>
                     <Cell>
                       <span {...stylex.props(styles.origin)}>
-                        <ConfinedOrigin grant={grant} />
+                        <GrantOrigin grant={grant} />
                         {window(grant)}
                       </span>
                     </Cell>
@@ -246,46 +248,5 @@ export default function UserRoleGrantsPage() {
         }}
       />
     </div>
-  )
-}
-
-/**
- * Where a confined grant came from, in the words of whoever owns the object.
- *
- * Exactly one renderer, looked up by the object's kind, rather than every
- * renderer in the slot: a slot renders all its contributions, and three
- * owners registering three explanations would each be asked about the
- * other two's objects. A kind nobody speaks for is named plainly.
- */
-function ConfinedOrigin({ grant }: { grant: Grant }) {
-  const { format } = useI18n()
-  const presenters = useUiCollection(resourceGrantPresenters)
-  const resource = grant.resource!
-  const presenter = presenters.find(
-    (candidate) => candidate.namespace === resource.namespace && candidate.type === resource.type,
-  )
-  const plain = (
-    <span data-testid="grant-origin-plain">
-      {format(m.confinedPlain, { namespace: resource.namespace, type: resource.type })}
-    </span>
-  )
-  if (presenter === undefined) return plain
-  const context: ResourceGrantContext = {
-    grant: {
-      id: grant.id,
-      roleName: grant.roleName,
-      resource,
-      validFrom: grant.validFrom,
-      validUntil: grant.validUntil,
-    },
-  }
-  return (
-    <PluginSurface
-      surface={{ kind: 'slot', slot: resourceGrantRenderer.key, id: presenter.renderer }}
-      props={{ context }}
-      loading={plain}
-      fallback={() => plain}
-      missing={plain}
-    />
   )
 }

@@ -453,8 +453,23 @@ export const accessApiGroup = HttpApiGroup.make('access')
   )
   .add(
     HttpApiEndpoint.get('listRoleGrants', '/iam/role-grants', {
-      query: Schema.Struct({ orgNodeId: Schema.optional(uuidInput), ...pageQuery }),
-      success: pageOf(grantShape),
+      query: Schema.Struct({
+        orgNodeId: Schema.optional(uuidInput),
+        /** everybody holding one role, for that role's own page */
+        roleId: Schema.optional(uuidInput),
+        ...pageQuery,
+        // read forwards by cursor, or walked by page number: naming a page
+        // switches the answer to a counted one
+        page: Schema.optional(Schema.String),
+      }),
+      success: Schema.Struct({
+        items: Schema.Array(grantShape),
+        nextCursor: Schema.NullOr(Schema.String),
+        /** present only when a page was asked for by number */
+        total: Schema.NullOr(Schema.Number),
+        page: Schema.NullOr(Schema.Number),
+        pageSize: Schema.NullOr(Schema.Number),
+      }),
       error: [BadRequest, AccessDenied],
     }).middleware(Authenticated),
   )

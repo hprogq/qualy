@@ -1,5 +1,6 @@
 'use client'
 
+import { FieldFill } from './field-fill.ts'
 import * as React from 'react'
 import { Combobox, InputBase as MInputBase, InputPlaceholder, useCombobox } from '@mantine/core'
 import * as stylex from '@stylexjs/stylex'
@@ -130,6 +131,8 @@ const triggerStyles = stylex.create({
     // whose field must fill or fix its width says so through xstyle
     width: 'fit-content',
   },
+  // inside a form field: the width of the field, like the input above it
+  fill: { width: '100%' },
 })
 
 const styles = stylex.create({
@@ -227,7 +230,8 @@ function SelectTrigger({
   // the product marks invalid controls with aria-invalid; the widget wants
   // its own error prop
   const invalid = ariaInvalid === true || ariaInvalid === 'true'
-  const sx = stylex.props(triggerStyles.base, xstyle)
+  const fill = React.useContext(FieldFill)
+  const sx = stylex.props(triggerStyles.base, fill && triggerStyles.fill, xstyle)
   return (
     // `aria-expanded` is stated HERE rather than on the button, because the
     // widget clones its child with a config that always carries that key -

@@ -35,6 +35,9 @@ const PASSWORD_MAX_LENGTH = 128
 const driver: LoginDriver = {
   type: 'local',
   presentation: { mode: 'component', component: Ui.react('./client/LoginMethod') },
+  // An entrance of this kind needs nothing beyond its name: there is no
+  // server to point at and no client to register.
+  entrance: { label: message('auth-local/entrance/label', 'Name and password'), fields: [] },
   // A local account is a name and a password, and whoever administers the
   // person may set both. What a password is and how it is kept stays here:
   // the core is handed a digest and stores it.

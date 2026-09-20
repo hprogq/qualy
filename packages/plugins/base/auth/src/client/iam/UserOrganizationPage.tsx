@@ -6,7 +6,7 @@ import { commonMessages } from '@qualy/web-i18n/messages'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection, Feedback } from '@qualy/ui/admin'
-import { EditorSkeleton, SectionHead } from '@qualy/ui/screen'
+import { Card, CardEmpty, EditorSkeleton, SectionHead, Tag } from '@qualy/ui/screen'
 import { Button } from '@qualy/ui/button'
 import { iamMessages as m } from '../i18n.ts'
 import { NodePicker } from './NodePicker.tsx'
@@ -27,35 +27,30 @@ const styles = stylex.create({
     flexDirection: 'column',
     gap: 12,
   },
-  chain: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 4,
-    borderRadius: 14,
-    backgroundColor: tokens.surface,
-    boxShadow: `0 0 0 1px ${tokens.border}, 0 1px 2px rgb(0 0 0 / 0.04)`,
-    paddingInline: 16,
-    paddingBlock: 12,
-  },
+  // the way down to where they stand, a level to a row, the last one theirs
+  chain: { display: 'flex', flexDirection: 'column', margin: 0, padding: 0, listStyle: 'none' },
   step: {
     display: 'flex',
+    minHeight: 40,
     alignItems: 'center',
-    gap: 8,
-    fontSize: '0.875rem',
-    lineHeight: '1.25rem',
+    gap: 12,
+    paddingInline: 16,
+    borderBottomWidth: { default: 1, ':last-child': 0 },
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
+    fontSize: 13,
     color: tokens.mutedForeground,
   },
-  stepHere: {
-    color: tokens.foreground,
-    fontWeight: 500,
-  },
+  stepHere: { color: tokens.foreground, fontWeight: 600 },
   stepDepth: {
+    width: '1.25rem',
     flexShrink: 0,
+    textAlign: 'right',
     fontVariantNumeric: 'tabular-nums',
-    fontSize: '0.75rem',
-    lineHeight: '1rem',
+    fontSize: 11,
     color: `color-mix(in oklab, ${tokens.mutedForeground} 70%, transparent)`,
   },
+  stepSpacer: { flexGrow: 1 },
   quiet: {
     fontSize: '0.875rem',
     lineHeight: '1.25rem',
@@ -65,7 +60,9 @@ const styles = stylex.create({
     display: 'flex',
     flexWrap: 'wrap',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
+    paddingInline: 16,
+    paddingBlock: 14,
   },
   picker: {
     width: '18rem',
@@ -127,8 +124,9 @@ export default function UserOrganizationPage() {
           <>
             <section {...stylex.props(styles.section)}>
               <SectionHead title={format(m.personPlacement)} />
+              <Card>
               {path.length === 0 ? (
-                <p {...stylex.props(styles.quiet)}>{format(m.placementEmpty)}</p>
+                <CardEmpty>{format(m.placementEmpty)}</CardEmpty>
               ) : (
                 <ol data-testid="org-chain" {...stylex.props(styles.chain)}>
                   {path.map((node, depth) => (
@@ -139,10 +137,13 @@ export default function UserOrganizationPage() {
                     >
                       <span {...stylex.props(styles.stepDepth)}>{depth + 1}</span>
                       <span>{node.name}</span>
+                      <span {...stylex.props(styles.stepSpacer)} />
+                      {depth === path.length - 1 && <Tag>{format(m.columnUnit)}</Tag>}
                     </li>
                   ))}
                 </ol>
               )}
+              </Card>
             </section>
 
             {manageable && record.status !== 'deleted' && (
@@ -152,6 +153,7 @@ export default function UserOrganizationPage() {
                 {moved && feedback === null && (
                   <Feedback message={format(m.saved)} tone="success" />
                 )}
+                <Card>
                 <div {...stylex.props(styles.moveRow)}>
                   <NodePicker
                     label={format(m.moveLabel)}
@@ -175,6 +177,7 @@ export default function UserOrganizationPage() {
                     {format(m.moveAction)}
                   </Button>
                 </div>
+                </Card>
               </section>
             )}
           </>

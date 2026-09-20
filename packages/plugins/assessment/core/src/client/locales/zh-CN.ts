@@ -1,6 +1,10 @@
 import type { MessageCatalog } from '@qualy/i18n-contract'
 
 export default {
+  'assessment/person/batch-column': '批次',
+  'assessment/person/anchor-column': '参评组织',
+  'assessment/person/membership-column': '参评状态',
+  'assessment/person/included-column': '加入时间',
   'assessment/node-usage/managed-archived': '由该组织管理的已归档批次',
   'assessment/node-usage/participants-archived': '参评人员记录在该组织的已归档批次',
   'assessment/node-usage/managed': '由该组织管理的批次',
@@ -25,9 +29,7 @@ export default {
   'assessment/person/column-source': '来源',
   'assessment/person/column-when': '申报时间',
   'assessment/person/load-more': '加载更多',
-  'assessment/access/grant-from-batch': '来自批次 {name}',
-  'assessment/access/grant-from-some-batch': '来自一个测评批次',
-  'assessment/access/grant-open-batch': '查看批次',
+  'assessment/access/grant-from-some-batch': '一个测评批次',
   'assessment/nav-group/library': '资源库',
   'assessment/nav-group/batch-admin': '管理',
   'assessment/navigation/batches': '全部测评',

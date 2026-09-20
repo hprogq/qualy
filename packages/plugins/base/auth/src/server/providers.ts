@@ -5,10 +5,21 @@ import { Rbac } from '@qualy/rbac-contract/effect'
 import type { Principal } from '@qualy/rbac-contract'
 import { Audit } from '@qualy/audit-contract/effect'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../constants.ts'
-import { ProviderAudienceUpdated } from '../actions.ts'
+import { LoginDrivers } from '@qualy/auth-contract/login'
+import { translateConstraints } from '@qualy/plugin-database/server/constraints'
+import {
+  ProviderAudienceUpdated,
+  ProviderCreated,
+  ProvidersReordered,
+  ProviderStatusChanged,
+  ProviderUpdated,
+} from '../actions.ts'
 import { actorOf } from './audit-actor.ts'
 import { db, lockTenant } from './db.ts'
 import {
+  ProviderConfigInvalid,
+  providerConstraints,
+  ProviderKindUnavailable,
   ProviderNotFound,
   ProviderVersionConflict,
   RecoveryChannelRequired,
@@ -55,7 +66,7 @@ const oneProvider = (tenantId: string, providerId: string) =>
   db.query((k) =>
     k
       .selectFrom('AuthProvider')
-      .select(['id', 'name', 'version'])
+      .select(['id', 'name', 'version', 'type', 'config', 'enabled'])
       .where('tenantId', '=', tenantId)
       .where('id', '=', providerId)
       .executeTakeFirst(),
@@ -150,8 +161,256 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
   const withDb = yield* withDatabase
   const rbac = yield* Rbac
   const audit = yield* Audit
+  const drivers = yield* LoginDrivers
+
+  /** one write under the tenant's lock, with a taken address said as one */
+  const write = <A, E, R>(tenantId: string, body: () => Effect.Effect<A, E, R>) =>
+    withDb(
+      transaction(
+        Effect.gen(function* () {
+          yield* lockTenant(tenantId)
+          return yield* body()
+        }),
+      ),
+    ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
+
+  /** the driver's own say on what an entrance of its kind is made of */
+  const kindOf = Effect.fn('Iam.providers.kindOf')(function* (type: string) {
+    const entrance = (yield* drivers.forType(type))?.driver.entrance
+    if (entrance === undefined) return yield* new ProviderKindUnavailable()
+    return entrance
+  })
+
+  /** what was typed, turned by the driver into what it will read at sign-in */
+  const configFrom = Effect.fn('Iam.providers.configFrom')(function* (
+    type: string,
+    values: Readonly<Record<string, string>>,
+    previous: Readonly<Record<string, unknown>> | undefined,
+  ) {
+    const kind = yield* kindOf(type)
+    for (const field of kind.fields) {
+      const typed = (values[field.key] ?? '').trim()
+      // a secret left empty on an edit means "as it was"
+      const kept = field.kind === 'secret' && previous?.[field.key] !== undefined
+      if (field.required && typed === '' && !kept) {
+        return yield* new ProviderConfigInvalid({ field: field.key })
+      }
+    }
+    if (kind.prepare === undefined) return {}
+    const prepared = yield* kind.prepare({ values, previous })
+    if (!prepared.ok) return yield* new ProviderConfigInvalid({ field: prepared.invalid })
+    return prepared.config
+  })
 
   return {
+    /**
+     * The kinds of entrance an administrator may add, each with what it
+     * needs to be told. Only drivers that say entrances of their kind can be
+     * made are listed; the rest are provisioned and never offered.
+     */
+    kinds: Effect.gen(function* () {
+      return (yield* drivers.all).flatMap(({ driver }) =>
+        driver.entrance === undefined
+          ? []
+          : [
+              {
+                type: driver.type,
+                label: driver.entrance.label,
+                fields: driver.entrance.fields.map((field) => ({
+                  key: field.key,
+                  label: field.label,
+                  hint: field.hint ?? null,
+                  kind: field.kind,
+                  required: field.required,
+                })),
+              },
+            ],
+      )
+    }),
+
+    create: Effect.fn('Iam.providers.create')(function* (
+      tenantId: string,
+      input: {
+        type: string
+        code: string
+        name: string
+        values: Readonly<Record<string, string>>
+      },
+      as: Principal,
+    ) {
+      const config = yield* configFrom(input.type, input.values, undefined)
+      return yield* write(tenantId, () =>
+        Effect.gen(function* () {
+          // a new entrance goes to the end of the sign-in page
+          const last = yield* db.query((k) =>
+            k
+              .selectFrom('AuthProvider')
+              .select((eb) => eb.fn.max('sortOrder').as('sortOrder'))
+              .where('tenantId', '=', tenantId)
+              .executeTakeFirst(),
+          )
+          // only an insert can land on an address already taken
+          const created = yield* db
+            .query((k) =>
+            k
+              .insertInto('AuthProvider')
+              .values({
+                tenantId,
+                code: input.code,
+                type: input.type,
+                name: input.name,
+                config: JSON.stringify(config) as never,
+                sortOrder: Number(last?.sortOrder ?? -1) + 1,
+              })
+              .returning('id')
+              .executeTakeFirstOrThrow(),
+            )
+            .pipe(translateConstraints(providerConstraints))
+          yield* audit.record(ProviderCreated, {
+            tenantId,
+            actor: yield* actorOf(tenantId, as),
+            target: { id: created.id, label: input.name },
+            details: { type: input.type, code: input.code },
+          })
+          return created.id
+        }),
+      )
+    }),
+
+    /** the name and what the driver was told; the address and the kind never move */
+    update: Effect.fn('Iam.providers.update')(function* (
+      tenantId: string,
+      providerId: string,
+      input: {
+        expectedVersion: number
+        name?: string | undefined
+        values?: Readonly<Record<string, string>> | undefined
+      },
+      as: Principal,
+    ) {
+      const before = yield* withDb(oneProvider(tenantId, providerId)).pipe(Effect.orDie)
+      if (!before) return yield* new ProviderNotFound()
+      const config =
+        input.values === undefined
+          ? undefined
+          : yield* configFrom(
+              before.type,
+              input.values,
+              (before.config ?? {}) as Readonly<Record<string, unknown>>,
+            )
+      return yield* write(tenantId, () =>
+        Effect.gen(function* () {
+          const provider = yield* oneProvider(tenantId, providerId)
+          if (!provider) return yield* new ProviderNotFound()
+          if (provider.version !== input.expectedVersion) {
+            return yield* new ProviderVersionConflict({ currentVersion: provider.version })
+          }
+          yield* db.query((k) =>
+            k
+              .updateTable('AuthProvider')
+              .set({
+                ...(input.name === undefined ? {} : { name: input.name }),
+                ...(config === undefined ? {} : { config: JSON.stringify(config) as never }),
+                version: provider.version + 1,
+              })
+              .where('tenantId', '=', tenantId)
+              .where('id', '=', providerId)
+              .execute(),
+          )
+          yield* audit.record(ProviderUpdated, {
+            tenantId,
+            actor: yield* actorOf(tenantId, as),
+            target: { id: provider.id, label: input.name ?? provider.name },
+            details: {
+              fields: [
+                ...(input.name === undefined ? [] : ['name']),
+                ...(config === undefined ? [] : ['config']),
+              ],
+            },
+          })
+          return provider.version + 1
+        }),
+      )
+    }),
+
+    /**
+     * In service or out of it. Closing a door can lock a tenant out exactly
+     * as narrowing one can, so the same two facts are re-read on the state
+     * being committed.
+     */
+    setStatus: Effect.fn('Iam.providers.setStatus')(function* (
+      tenantId: string,
+      providerId: string,
+      status: 'active' | 'disabled',
+      expectedVersion: number,
+      as: Principal,
+    ) {
+      return yield* write(tenantId, () =>
+        Effect.gen(function* () {
+          const provider = yield* oneProvider(tenantId, providerId)
+          if (!provider) return yield* new ProviderNotFound()
+          if (provider.version !== expectedVersion) {
+            return yield* new ProviderVersionConflict({ currentVersion: provider.version })
+          }
+          yield* db.query((k) =>
+            k
+              .updateTable('AuthProvider')
+              .set({ enabled: status === 'active', version: provider.version + 1 })
+              .where('tenantId', '=', tenantId)
+              .where('id', '=', providerId)
+              .execute(),
+          )
+          if (!(yield* recoveryTypeAdmitted(tenantId))) return yield* new RecoveryChannelRequired()
+          yield* rbac.assertTenantKeepsAdministrator(tenantId)
+          yield* audit.record(ProviderStatusChanged, {
+            tenantId,
+            actor: yield* actorOf(tenantId, as),
+            target: { id: provider.id, label: provider.name },
+            details: { status },
+          })
+          return provider.version + 1
+        }),
+      )
+    }),
+
+    /**
+     * The order of the sign-in page, said whole: every entrance, first to
+     * last. A list that names a stranger or leaves one out is refused rather
+     * than half applied.
+     */
+    reorder: Effect.fn('Iam.providers.reorder')(function* (
+      tenantId: string,
+      providerIds: readonly string[],
+      as: Principal,
+    ) {
+      return yield* write(tenantId, () =>
+        Effect.gen(function* () {
+          const standing = yield* providerRows(tenantId)
+          const known = new Set(standing.map((row) => row.id))
+          const asked = [...new Set(providerIds)]
+          if (asked.length !== standing.length || asked.some((id) => !known.has(id))) {
+            return yield* new ProviderNotFound()
+          }
+          for (const [index, id] of asked.entries()) {
+            yield* db.query((k) =>
+              k
+                .updateTable('AuthProvider')
+                .set({ sortOrder: index })
+                .where('tenantId', '=', tenantId)
+                .where('id', '=', id)
+                .execute(),
+            )
+          }
+          yield* audit.record(ProvidersReordered, {
+            tenantId,
+            actor: yield* actorOf(tenantId, as),
+            target: { id: tenantId },
+            details: { order: asked },
+          })
+        }),
+      )
+    }),
+
     list: Effect.fn('Iam.providers.list')(function* (tenantId: string) {
       const found = yield* withDb(providerRows(tenantId)).pipe(
         Effect.catchTag('QueryFailed', (error) => Effect.die(error)),

@@ -17,7 +17,7 @@ import { Api } from '@qualy/api-kit/plugin'
 import { CurrentUser } from '@qualy/auth-contract/session'
 import { UiAuthorizer } from '@qualy/plugin-ui-registry/server/authorizer'
 import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
-import { BadRequest, codeFrom, cursorUnusable, pageSize } from '@qualy/api-kit/schema'
+import { BadRequest, codeFrom, cursorUnusable, pageNumber, pageSize } from '@qualy/api-kit/schema'
 import { Audit } from '@qualy/audit-contract/effect'
 import { GrantRevoked } from '../actions.ts'
 import { accessApiGroup } from '../api.ts'
@@ -764,13 +764,29 @@ export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers
         const access = yield* Access
         const principal = yield* CurrentUser
         const limit = pageSize(query.limit, DEFAULT_PAGE_SIZE)
+        const filter = { orgNodeId: query.orgNodeId, roleId: query.roleId }
+        if (query.page !== undefined) {
+          const found = yield* access.grants.page(
+            principal.tenantId,
+            filter,
+            yield* access.grantScopeFor(principal),
+            { page: pageNumber(query.page), limit },
+          )
+          return {
+            items: found.rows.map(toGrantShape),
+            nextCursor: null,
+            total: found.total,
+            page: found.page,
+            pageSize: limit,
+          }
+        }
         // the cursor belongs to this filter and no other
-        const fingerprint = `grants:${query.orgNodeId ?? ''}`
+        const fingerprint = `grants:${query.orgNodeId ?? ''}:${query.roleId ?? ''}`
         const key = readQueryCursor(query.cursor, fingerprint, ['uuid'])
         if (key === null) return yield* cursorUnusable()
         const found = yield* access.grants.list(
           principal.tenantId,
-          { orgNodeId: query.orgNodeId },
+          filter,
           yield* access.grantScopeFor(principal),
           { after: key?.[0], limit: limit + 1 },
         )
@@ -780,6 +796,9 @@ export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers
           items: items.map(toGrantShape),
           nextCursor:
             found.length > limit && last ? encodeQueryCursor(fingerprint, [last.id]) : null,
+          total: null,
+          page: null,
+          pageSize: null,
         }
       }),
     )

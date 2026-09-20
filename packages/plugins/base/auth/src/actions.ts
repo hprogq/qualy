@@ -134,6 +134,39 @@ export const ProviderAudienceUpdated = AuditAction.define({
   details: Schema.Struct({ mode: placementMode, userTypeCount: Schema.Number }),
 })
 
+export const ProviderCreated = AuditAction.define({
+  code: 'auth.provider.create',
+  target: 'auth.provider',
+  version: 1,
+  name: message('auth/audit/provider-create', 'Add an entrance'),
+  details: Schema.Struct({ type: Schema.String, code: Schema.String }),
+})
+
+export const ProviderUpdated = AuditAction.define({
+  code: 'auth.provider.update',
+  target: 'auth.provider',
+  version: 1,
+  name: message('auth/audit/provider-update', 'Edit an entrance'),
+  // which settings moved, never what they moved to: a config carries secrets
+  details: Schema.Struct({ fields: Schema.Array(Schema.String) }),
+})
+
+export const ProviderStatusChanged = AuditAction.define({
+  code: 'auth.provider.status',
+  target: 'auth.provider',
+  version: 1,
+  name: message('auth/audit/provider-status', 'Enable or disable an entrance'),
+  details: Schema.Struct({ status: Schema.Literals(['active', 'disabled']) }),
+})
+
+export const ProvidersReordered = AuditAction.define({
+  code: 'auth.provider.reorder',
+  target: 'auth.provider',
+  version: 1,
+  name: message('auth/audit/provider-reorder', 'Reorder the sign-in page'),
+  details: Schema.Struct({ order: Schema.Array(id) }),
+})
+
 // A way in, written for a person or withdrawn from them. The entrance is in
 // the details and the account name is not: who could come in as whom is what
 // an investigation asks, and the name they typed at the door is theirs.
@@ -176,4 +209,8 @@ export const userActions = [
   UserTypePlacementUpdated,
   UserTypeDeleted,
   ProviderAudienceUpdated,
+  ProviderCreated,
+  ProviderUpdated,
+  ProviderStatusChanged,
+  ProvidersReordered,
 ] as const

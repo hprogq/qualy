@@ -1,13 +1,32 @@
 import { useInfiniteQuery } from '@tanstack/react-query'
-import { GraduationCapIcon } from 'lucide-react'
-import { cursorPages, PageLink, useApi, useApiQuery, usePageRouteParams, useRunApi } from '@qualy/web-runtime'
+import {
+  cursorPages,
+  useApi,
+  useApiQuery,
+  usePageHref,
+  usePageNavigate,
+  usePageRouteParams,
+  useRunApi,
+} from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection } from '@qualy/ui/admin'
-import { Blank, EditorSkeleton, SectionHead } from '@qualy/ui/screen'
-import { Badge } from '@qualy/ui/badge'
+import {
+  Card,
+  CardEmpty,
+  CardFoot,
+  Cell,
+  EditorSkeleton,
+  LeadWord,
+  SectionHead,
+  Spacer,
+  Status,
+  Table,
+  TableHead,
+  TableRow,
+} from '@qualy/ui/screen'
 import { Button } from '@qualy/ui/button'
 import { StatusBadge } from '../batch/StatusBadge.tsx'
 import { useWhen } from '../batch/when.ts'
@@ -94,6 +113,9 @@ export default function UserBatchesPage() {
   const query = useApiQuery(assessmentApi)
   const { format, formatError } = useI18n()
   const when = useWhen()
+  const navigate = usePageNavigate()
+  // a row is a way into the round only for a reader who may open rounds
+  const batchReachable = usePageHref('assessment/batch', { params: { batchId: '0' } }) !== undefined
 
   const rows = useInfiniteQuery({
     queryKey: [
@@ -122,72 +144,60 @@ export default function UserBatchesPage() {
         onRetry={() => void rows.refetch()}
         skeleton={<EditorSkeleton />}
       >
-        {items.length === 0 ? (
-          <Blank
-            icon={<GraduationCapIcon />}
-            title={format(m.personBatchesEmpty)}
-            xstyle={styles.compactBlank}
-          />
-        ) : (
-          <ul {...stylex.props(styles.list)}>
-            {items.map(({ batch, membership }) => (
-              <li
-                key={batch.id}
-                data-testid="person-batch"
-                data-batch-id={batch.id}
-                data-membership={membership.status}
-                {...stylex.props(styles.row)}
-              >
-                <div {...stylex.props(styles.text)}>
-                  <p {...stylex.props(styles.name)}>
-                    <span>{batch.name}</span>
-                    <StatusBadge status={batch.status} currentPhaseId={batch.currentPhaseId} />
-                    {membership.status === 'excluded' ? (
-                      <Badge variant="outline">{format(m.personMembershipExcluded)}</Badge>
-                    ) : (
-                      <Badge variant="secondary">{format(m.personMembershipActive)}</Badge>
-                    )}
-                  </p>
-                  <p {...stylex.props(styles.meta)}>
-                    <span>{membership.anchorNodeName ?? format(m.personAnchorGone)}</span>
-                    {batch.currentPhaseName !== null && <span>{batch.currentPhaseName}</span>}
-                    <span>
-                      {format(m.personIncludedAt, {
-                        when: when.moment(new Date(membership.includedAt).getTime()),
-                      })}
-                    </span>
-                    {membership.excludedAt !== null && (
-                      <span>
-                        {format(m.personExcludedAt, {
-                          when: when.moment(new Date(membership.excludedAt).getTime()),
-                        })}
-                      </span>
-                    )}
-                  </p>
-                </div>
-                <PageLink
-                  page="assessment/batch"
-                  params={{ batchId: batch.id }}
-                  className={stylex.props(styles.link).className}
-                  unavailable={null}
+        <Card>
+          {items.length === 0 ? (
+            <CardEmpty>{format(m.personBatchesEmpty)}</CardEmpty>
+          ) : (
+            <Table columns="minmax(0, 1.4fr) minmax(0, 1fr) 6rem 8.5rem" openable={batchReachable}>
+              <TableHead>
+                <span>{format(m.personBatchColumn)}</span>
+                <span>{format(m.personAnchorColumn)}</span>
+                <span>{format(m.personMembershipColumn)}</span>
+                <span>{format(m.personIncludedColumn)}</span>
+              </TableHead>
+              {items.map(({ batch, membership }) => (
+                <TableRow
+                  key={batch.id}
+                  data-testid="person-batch"
+                  data-batch-id={batch.id}
+                  data-membership={membership.status}
+                  {...(batchReachable
+                    ? { onOpen: () => navigate('assessment/batch', { params: { batchId: batch.id } }) }
+                    : {})}
                 >
-                  {format(m.personOpenBatch)}
-                </PageLink>
-              </li>
-            ))}
-          </ul>
-        )}
-        {rows.hasNextPage && (
-          <Button
-            variant="outline"
-            size="sm"
-            className={stylex.props(styles.more).className}
-            disabled={rows.isFetchingNextPage}
-            onClick={() => void rows.fetchNextPage()}
-          >
-            {format(m.personLoadMore)}
-          </Button>
-        )}
+                  <Cell lead>
+                    <LeadWord>{batch.name}</LeadWord>
+                    <StatusBadge status={batch.status} currentPhaseId={batch.currentPhaseId} />
+                  </Cell>
+                  <Cell title={membership.anchorNodeName ?? undefined}>
+                    {membership.anchorNodeName ?? format(m.personAnchorGone)}
+                  </Cell>
+                  <Status tone={membership.status === 'excluded' ? 'bad' : 'plain'}>
+                    {format(
+                      membership.status === 'excluded'
+                        ? m.personMembershipExcluded
+                        : m.personMembershipActive,
+                    )}
+                  </Status>
+                  <Cell numeric>{when.moment(new Date(membership.includedAt).getTime())}</Cell>
+                </TableRow>
+              ))}
+            </Table>
+          )}
+          {rows.hasNextPage && (
+            <CardFoot>
+              <Spacer />
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={rows.isFetchingNextPage}
+                onClick={() => void rows.fetchNextPage()}
+              >
+                {format(m.personLoadMore)}
+              </Button>
+            </CardFoot>
+          )}
+        </Card>
       </AsyncSection>
     </div>
   )

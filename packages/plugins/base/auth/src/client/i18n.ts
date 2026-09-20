@@ -51,11 +51,15 @@ const identitySecretHintMessage = defineMessage<{ count: number }>()({
 })
 const jumpLabelMessage = defineMessage<{ businessNo: string }>()({
   id: 'auth/users/jump',
-  defaultMessage: 'Go to a {businessNo}',
+  defaultMessage: 'Name or {businessNo}',
 })
-const jumpMissingMessage = defineMessage<{ businessNo: string; value: string }>()({
-  id: 'auth/users/jump-missing',
-  defaultMessage: 'Nobody has the {businessNo} {value}.',
+const jumpHintMessage = defineMessage<{ businessNo: string }>()({
+  id: 'auth/users/jump-hint',
+  defaultMessage: 'Type a name or a {businessNo}. Arrows choose, Enter opens their page',
+})
+const methodMoveMessage = defineMessage<{ name: string }>()({
+  id: 'auth/login-methods/move',
+  defaultMessage: 'Move {name}. Drag, or use the up and down arrows',
 })
 const lookAtMessage = defineMessage<{ name: string }>()({
   id: 'auth/users/look-at',
@@ -192,6 +196,10 @@ const i18n = definePluginMessages({
     // renders whatever language its reader asked for
     'audit.auth.user.create': { id: 'auth/audit/user-create', defaultMessage: 'Create user' },
     'audit.auth.user.update': { id: 'auth/audit/user-update', defaultMessage: 'Edit user' },
+    'audit.auth.provider.create': { id: 'auth/audit/provider-create', defaultMessage: 'Add an entrance' },
+    'audit.auth.provider.update': { id: 'auth/audit/provider-update', defaultMessage: 'Edit an entrance' },
+    'audit.auth.provider.status': { id: 'auth/audit/provider-status', defaultMessage: 'Enable or disable an entrance' },
+    'audit.auth.provider.reorder': { id: 'auth/audit/provider-reorder', defaultMessage: 'Reorder the sign-in page' },
     'audit.auth.identity.bind': {
       id: 'auth/audit/identity-bind',
       defaultMessage: 'Set a sign-in account for a user',
@@ -424,7 +432,30 @@ const i18n = definePluginMessages({
     neverUsed: { id: 'auth/person/never-used', defaultMessage: 'Never used' },
     entranceDisabled: { id: 'auth/person/entrance-disabled', defaultMessage: 'Entrance disabled' },
     jumpLabel: jumpLabelMessage,
-    jumpMissing: jumpMissingMessage,
+    methodNew: { id: 'auth/login-methods/new', defaultMessage: 'Add a way in' },
+    methodKindPick: { id: 'auth/login-methods/kind-pick', defaultMessage: 'Choose a kind' },
+    methodNameHint: {
+      id: 'auth/login-methods/name-hint',
+      defaultMessage: 'What people see on the sign-in page',
+    },
+    methodCodeHint: {
+      id: 'auth/login-methods/code-hint-new',
+      defaultMessage: 'Lowercase letters, digits and hyphens. It is part of every sign-in link, so it cannot be changed later',
+    },
+    methodSecretKept: {
+      id: 'auth/login-methods/secret-kept',
+      defaultMessage: 'Leave empty to keep the one in use',
+    },
+    methodDetails: { id: 'auth/login-methods/details', defaultMessage: 'Settings' },
+    methodOrderHint: {
+      id: 'auth/login-methods/order-hint',
+      defaultMessage: 'Drag it in the list to move it',
+    },
+    methodMove: methodMoveMessage,
+    typeMembersTitle: { id: 'auth/user-types/members', defaultMessage: 'People of this type' },
+    jumpOpen: { id: 'auth/users/jump-open', defaultMessage: 'Find a person' },
+    jumpHint: jumpHintMessage,
+    jumpNone: { id: 'auth/users/jump-none', defaultMessage: 'Nobody matches' },
     lookAt: lookAtMessage,
     pageSummary: pageSummaryMessage,
     pagerLabel: { id: 'auth/users/pager', defaultMessage: 'Pages' },
@@ -692,6 +723,18 @@ const i18n = definePluginMessages({
     USER_DELETED: {
       id: 'auth/error/user-deleted',
       defaultMessage: 'This person is deleted. Restore them first.',
+    },
+    AUTH_PROVIDER_CONFLICT: {
+      id: 'auth/error/provider-conflict',
+      defaultMessage: 'Another way in already answers at that address.',
+    },
+    AUTH_PROVIDER_KIND_UNAVAILABLE: {
+      id: 'auth/error/provider-kind-unavailable',
+      defaultMessage: 'Ways in of this kind cannot be added here.',
+    },
+    AUTH_PROVIDER_CONFIG_INVALID: {
+      id: 'auth/error/provider-config-invalid',
+      defaultMessage: 'One of the settings for this kind of way in is missing or not valid.',
     },
     IDENTITY_BINDING_UNSUPPORTED: {
       id: 'auth/error/identity-binding-unsupported',

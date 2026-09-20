@@ -4,7 +4,7 @@ import RolesPage from '@qualy/plugin-rbac/client/RolesPage'
 import RolePage from '@qualy/plugin-rbac/client/RolePage'
 import UsersPage from '../src/client/iam/UsersPage.tsx'
 import { describe, expect, it, vi } from 'vitest'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import type { ApiResult, ClientOf } from '@qualy/web-runtime/api'
 import type { authApi } from '@qualy/plugin-auth/client/api'
 import type { accessApi } from '@qualy/plugin-rbac/client/api'
@@ -127,6 +127,10 @@ const identityStubs = (over: Stubs<'identity'> = {}): Stubs<'identity'> => ({
       userTypes: [],
     }),
   listAuthProviders: () => Effect.succeed({ providers: [] }),
+  listAuthProviderKinds: () => Effect.succeed({ kinds: [] }),
+  // the people of a type, which a type's own page lists
+  listUsers: () =>
+    Effect.succeed({ items: [], nextCursor: null, total: 0, page: 1, pageSize: 20 }),
   ...over,
 })
 
@@ -750,5 +754,58 @@ describe('users workspace', () => {
     await vi.waitFor(() =>
       expect(asked().some((query) => query.status === 'any' && query.page === '1')).toBe(true),
     )
+  })
+
+  // Somebody who knows who they want types and goes: no tree, no filters, no
+  // pages, and no mouse.
+  it('finds a person by name or number and goes to them from the keyboard', async () => {
+    const list = vi.fn(() =>
+      Effect.succeed({
+        items: [
+          user({ id: USER_ID, displayName: '张明远', businessNo: '2023010101' }),
+          user({ id: SECOND_USER_ID, displayName: '张文静', businessNo: '2023010102' }),
+        ],
+        nextCursor: null,
+        total: 2,
+        page: 1,
+        pageSize: 8,
+      }),
+    )
+    renderScreen({
+      client: fakeClient({
+        ...rosterStubs({ listUsers: list }),
+        app: {
+          getManifest: () =>
+            Effect.succeed({
+              ...emptyManifest(),
+              pages: [
+                { id: 'auth/user-detail', path: '/people/:userId', layout: 'admin' },
+              ],
+            }),
+        },
+      }),
+      routes: [
+        { path: '/admin/users', element: <UsersPage /> },
+        { path: '/people/:userId', element: <p data-testid="landed" /> },
+      ] as never,
+      route: '/admin/users',
+    })
+    await page.getByTestId('user-jump-open').click()
+    const box = page.getByRole('combobox', { name: /姓名或/ })
+    // a search for other people is what a password manager likes to fill in
+    await expect.element(box).toHaveAttribute('autocomplete', 'off')
+    await box.fill('张')
+    await vi.waitFor(() =>
+      expect(document.querySelectorAll('[data-testid="user-jump-option"]')).toHaveLength(2),
+    )
+    // asked across the whole tenant, not under whatever unit the roster shows
+    expect(
+      (list.mock.calls as unknown as [{ query: { search?: string; scope?: string } }][]).some(
+        (call) => call[0].query.search === '张' && call[0].query.scope === 'subtree',
+      ),
+    ).toBe(true)
+    await userEvent.keyboard('{ArrowDown}{Enter}')
+    await expect.element(page.getByTestId('landed')).toBeInTheDocument()
+    expect(addressNow()).toContain(`/people/${SECOND_USER_ID}`)
   })
 })

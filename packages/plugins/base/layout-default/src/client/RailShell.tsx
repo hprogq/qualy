@@ -277,6 +277,9 @@ const styles = stylex.create({
   // window: the banner above is held to a measure, and a rail out at the
   // window's edge left the sections two hand-widths from what they open. So
   // the sections stand inside the same measure, beside their content.
+  bannerBones: { display: 'flex', alignItems: 'center', gap: 16, paddingTop: 34 },
+  bannerBoneWords: { display: 'flex', flexDirection: 'column', gap: 10 },
+  railBones: { display: 'flex', flexDirection: 'column', gap: 18, paddingInline: 12, paddingBlock: 14 },
   personMain: {
     minHeight: 0,
     flexGrow: 1,
@@ -765,6 +768,11 @@ function CapableRailShell({ navigation, context, badge, banner = false }: RailSh
       item.capability === undefined ||
       (capabilities.status === 'ready' && capabilities.values.has(item.capability)),
   )
+  // how many entries are still waiting to hear whether they may be shown
+  const awaited =
+    capabilities.status === 'ready'
+      ? 0
+      : entries.filter((item) => item.capability !== undefined).length
   const addressable = admitted.flatMap((item) => {
     const to = item.target.kind === 'page' ? fill(item.target.path, params) : item.target.href
     return to === undefined ? [] : [{ ...item, to }]
@@ -832,6 +840,17 @@ function CapableRailShell({ navigation, context, badge, banner = false }: RailSh
             ))}
           </ul>
         )}
+        {/* Entries that wait on what the open workspace may do are not drawn
+            until it says: drawn and then taken away is worse than late. While
+            it has not said, their places are held, so the rail does not stand
+            as one entry over an empty column. */}
+        {awaited > 0 && (
+          <div {...stylex.props(styles.railBones)} aria-hidden data-testid="rail-bones">
+            {Array.from({ length: Math.min(awaited, 8) }, (_, index) => (
+              <Skeleton key={index} height={14} width={`${String([62, 48, 70, 54][index % 4])}%`} radius={4} />
+            ))}
+          </div>
+        )}
         {sections.map((section) => (
           <section key={section.id}>
             <p {...stylex.props(styles.sectionLabel)}>
@@ -879,7 +898,25 @@ function CapableRailShell({ navigation, context, badge, banner = false }: RailSh
       <div {...stylex.props(styles.contextBar, banner ? styles.contextBanner : styles.contextLine)}>
         {banner && <span aria-hidden {...stylex.props(styles.hairlines)} />}
         <div {...stylex.props(styles.contextSeat, banner && styles.contextSeatBanner)}>
-          <UiSlot token={context} />
+          {/* the strip is filled by another plugin's chunk, which arrives a
+              moment after the shell: its outline stands in until it does, so
+              the bar never opens as an empty band */}
+          <UiSlot
+            token={context}
+            loading={
+              banner ? (
+                <div {...stylex.props(styles.bannerBones)} aria-hidden>
+                  <Skeleton height={52} width={52} radius={9999} />
+                  <div {...stylex.props(styles.bannerBoneWords)}>
+                    <Skeleton height={20} width="9rem" radius={6} />
+                    <Skeleton height={11} width="18rem" radius={4} />
+                  </div>
+                </div>
+              ) : (
+                <Skeleton height={14} width="14rem" radius={4} />
+              )
+            }
+          />
         </div>
       </div>
       {banner ? (

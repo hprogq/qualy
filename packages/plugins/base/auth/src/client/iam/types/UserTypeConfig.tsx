@@ -41,6 +41,7 @@ import { Input } from '@qualy/ui/input'
 import { iamMessages as m } from '../../i18n.ts'
 import { authApi } from '../../api.ts'
 import { useUserTypeFacts } from './facts.ts'
+import { TypeMembers } from './TypeMembers.tsx'
 
 // One user type's own page.
 //
@@ -379,6 +380,8 @@ export function UserTypeConfig({
               </CardFoot>
             )}
           </Card>
+
+          <TypeMembers userTypeId={userType.id} />
 
           <Card data-testid="type-lifecycle" data-populated={populated}>
             <CardHead title={format(m.lifecycleLabel)} />
