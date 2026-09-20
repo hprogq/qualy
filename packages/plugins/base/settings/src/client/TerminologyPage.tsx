@@ -6,6 +6,7 @@ import { useI18n } from '@qualy/web-i18n'
 import { supportedLocales, type SupportedLocale } from '@qualy/i18n-contract'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection, Field, PageHeader, Panel } from '@qualy/ui/admin'
+import { PageContainer } from '@qualy/ui/page-container'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
@@ -20,6 +21,9 @@ import { TERMINOLOGY_KEY, useTerminology } from './terms.ts'
 // to remember what "empty" resolves to.
 
 const styles = stylex.create({
+  // the page's own width and gutters come from the container, as every
+  // other page in the library gets them; without it this screen ran edge to
+  // edge of whatever the shell gave it
   page: { display: 'flex', flexDirection: 'column', gap: 24 },
   list: { display: 'flex', flexDirection: 'column', gap: 24 },
   term: {
@@ -54,36 +58,38 @@ export default function TerminologyPage() {
   const categories = [...(terminology.data?.categories ?? [])].sort((a, b) => a.order - b.order)
   const terms = terminology.data?.terms ?? []
   return (
-    <div {...stylex.props(styles.page)}>
-      <PageHeader title={format(m.title)} description={format(m.hint)} />
-      <AsyncSection
-        pending={terminology.isPending}
-        error={terminology.isError ? formatError(terminology.error) : null}
-        loadingLabel={format(m.loading)}
-        retryLabel={format(m.retry)}
-        onRetry={() => void terminology.refetch()}
-      >
-        {terms.length === 0 ? (
-          <p {...stylex.props(styles.empty)}>{format(m.empty)}</p>
-        ) : (
-          <div {...stylex.props(styles.list)}>
-            {categories.map((category) => {
-              const own = terms
-                .filter((term) => term.categoryId === category.id)
-                .sort((a, b) => a.order - b.order)
-              if (own.length === 0) return null
-              return (
-                <Panel key={category.id} title={formatText(category.label)}>
-                  {own.map((term) => (
-                    <TermEditor key={`${term.id}:${term.version}`} term={term} />
-                  ))}
-                </Panel>
-              )
-            })}
-          </div>
-        )}
-      </AsyncSection>
-    </div>
+    <PageContainer>
+      <div {...stylex.props(styles.page)} data-testid="terminology-page">
+        <PageHeader title={format(m.title)} description={format(m.hint)} />
+        <AsyncSection
+          pending={terminology.isPending}
+          error={terminology.isError ? formatError(terminology.error) : null}
+          loadingLabel={format(m.loading)}
+          retryLabel={format(m.retry)}
+          onRetry={() => void terminology.refetch()}
+        >
+          {terms.length === 0 ? (
+            <p {...stylex.props(styles.empty)}>{format(m.empty)}</p>
+          ) : (
+            <div {...stylex.props(styles.list)}>
+              {categories.map((category) => {
+                const own = terms
+                  .filter((term) => term.categoryId === category.id)
+                  .sort((a, b) => a.order - b.order)
+                if (own.length === 0) return null
+                return (
+                  <Panel key={category.id} title={formatText(category.label)}>
+                    {own.map((term) => (
+                      <TermEditor key={`${term.id}:${term.version}`} term={term} />
+                    ))}
+                  </Panel>
+                )
+              })}
+            </div>
+          )}
+        </AsyncSection>
+      </div>
+    </PageContainer>
   )
 }
 

@@ -6,7 +6,7 @@ import { Access } from '@qualy/rbac-contract/plugin'
 import { Audit } from '@qualy/audit-contract/plugin'
 import { Settings } from '@qualy/settings-contract/plugin'
 import { message } from '@qualy/i18n-contract'
-import { APP_SHELL, navigationGroups, permissionOf } from '@qualy/ui-contract'
+import { APP_SHELL, permissionOf } from '@qualy/ui-contract'
 import { settingsActions } from './actions.ts'
 import { settingsApiGroup } from './api.ts'
 import { entities } from './db/entities.ts'
@@ -37,32 +37,22 @@ const plugin = Plugin.define(
   Access.permissions('settings', permissions),
   Audit.actions('settings', settingsActions),
   Ui.i18n('./client/i18n'),
+  // Filed in the library beside the formulas rather than in a settings
+  // section of its own: what a tenant calls a thing is material the product
+  // is assembled from, like a formula, not a switch on how the system runs.
+  // The group belongs to whoever declared it, exactly as the user and role
+  // pages sit in the organization group they did not declare.
   Ui.page({
     id: 'settings/terminology',
-    path: '/settings/terminology',
+    path: '/library/terminology',
     component: Ui.react('./client/TerminologyPage'),
     layout: APP_SHELL,
     visibility: permissionOf('settings.terminology.manage'),
     navigation: {
       label: message('settings/navigation/terminology', 'Terminology'),
-      order: 10,
-      group: 'settings/system',
+      order: 40,
+      group: 'library/main',
     },
-  }),
-  Ui.surfaces({
-    collections: [
-      {
-        collection: navigationGroups,
-        id: 'settings/system',
-        value: {
-          id: 'settings/system',
-          label: message('settings/nav-group/system', 'System settings'),
-          order: 90,
-          icon: 'settings',
-        },
-        visibility: permissionOf('settings.terminology.manage'),
-      },
-    ],
   }),
   Api.group(settingsApiGroup, settingsApiHandlers),
   Plugin.layer(serviceLayer),

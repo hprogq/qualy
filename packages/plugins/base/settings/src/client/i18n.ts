@@ -26,7 +26,6 @@ const i18n = definePluginMessages({
       id: 'settings/permission-group/settings',
       defaultMessage: 'System settings',
     },
-    navGroup: { id: 'settings/nav-group/system', defaultMessage: 'System settings' },
     navigation: { id: 'settings/navigation/terminology', defaultMessage: 'Terminology' },
     auditTermUpdate: { id: 'settings/audit/term-update', defaultMessage: 'Change terminology' },
     title: { id: 'settings/terminology/title', defaultMessage: 'Terminology' },
