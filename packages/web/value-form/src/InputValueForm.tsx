@@ -7,7 +7,7 @@
  */
 
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import {
   choiceLabel,
@@ -136,6 +136,8 @@ export interface ValueFieldsFormProps {
   readonly explain?: ExplainFieldProblem
   /** see {@link FieldAuthoring} */
   readonly authoring?: FieldAuthoring
+  /** a small mark for one field's label line, by the field's id */
+  readonly asideOf?: (id: string) => ReactNode
 }
 
 /**
@@ -294,6 +296,8 @@ export interface AtomicValueFieldProps {
   /** keep the label for assistive technology but draw none: for a control
    *  sitting in a row that already names it */
   readonly hideLabel?: boolean
+  /** a small mark riding the label's line, where no authoring key does */
+  readonly labelAside?: ReactNode
 }
 
 /**
@@ -313,6 +317,7 @@ export function AtomicValueField({
   explain,
   authoring,
   hideLabel = false,
+  labelAside,
 }: AtomicValueFieldProps) {
   const description = displayDescription(schema, locale)
   const live = useLiveProblem(schema, name, draft, explain)
@@ -339,7 +344,9 @@ export function AtomicValueField({
           ? { hint: note }
           : { note })}
       {...(authored === undefined
-        ? {}
+        ? labelAside === undefined
+          ? {}
+          : { aside: labelAside }
         : {
             aside: (
               <code
@@ -436,6 +443,7 @@ export function ValueFieldsForm({
   words,
   explain,
   authoring,
+  asideOf,
 }: ValueFieldsFormProps) {
   return (
     <div {...stylex.props(styles.grid)} data-testid={`value-form-${scope}`}>
@@ -454,6 +462,7 @@ export function ValueFieldsForm({
             {...(explain === undefined ? {} : { explain })}
             {...(problem === undefined ? {} : { problem })}
             {...(authoring === undefined ? {} : { authoring })}
+            {...(asideOf === undefined ? {} : { labelAside: asideOf(field.id) })}
           />
         )
       })}

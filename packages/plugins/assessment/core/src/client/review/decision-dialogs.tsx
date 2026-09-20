@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { CheckIcon } from 'lucide-react'
+import { CheckIcon, CircleAlertIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
 import { useQuery } from '@tanstack/react-query'
 import { useApi, useRunApi } from '@qualy/web-runtime'
@@ -29,7 +29,13 @@ import { useFinePointer } from './pointer.ts'
 import { ValueFieldsForm } from '@qualy/web-value-form/InputValueForm'
 import { usePickerWords } from '@qualy/web-i18n/picker-words'
 import { draftsFromFields, materializeFields, type FieldDraft } from '@qualy/web-value-form/model'
-import { declaredTitle, parseDecimal, type AtomicSchema } from '@qualy/value-schema'
+import {
+  choiceLabel,
+  declaredTitle,
+  kindOf,
+  parseDecimal,
+  type AtomicSchema,
+} from '@qualy/value-schema'
 import { changedSeedKeys, recognitionProblemText } from './recognition.ts'
 import { idsOf, valueOf, type ReviewDto } from './model.ts'
 
@@ -49,6 +55,8 @@ const RESTING = {
   reject: `color-mix(in oklab, ${tokens.danger} 80%, black)`,
   escalate: `color-mix(in oklab, ${tokens.primary} 90%, transparent)`,
 } as const
+
+const spin = stylex.keyframes({ to: { transform: 'rotate(360deg)' } })
 
 const styles = stylex.create({
   // the drawer's own shape, merged into the sheet's
@@ -146,123 +154,203 @@ const styles = stylex.create({
     gap: 20,
   },
   panelTight: { display: 'flex', flexDirection: 'column', gap: 10 },
-  // what was filed on the left, what is determined on the right: the
-  // reviewer reads the claim and writes the finding in one glance, on a
-  // desk; on a phone the two stack, the filing first
-  // Two halves that scroll on their own, in a body of one height. With
-  // twenty things to determine the form is long, and what the form is about -
-  // the filing, and what the values come to - must not leave the screen while
-  // it is filled in. So the left half is the filing over the score, the score
-  // pinned to its foot; the right half is everything the reviewer writes.
+  // Two halves that scroll on their own, in a body of one height: what was
+  // filed on a tinted card to the left, what is determined to the right. The
+  // filing must not leave the screen while a long form is filled in; what the
+  // values come to and the word for the participant stay at the dialog's foot.
   columns: {
     display: 'grid',
     gridTemplateColumns: {
       default: 'minmax(0, 1fr)',
       [breakpoints.desktop]: 'minmax(0, 5fr) minmax(0, 6fr)',
     },
-    columnGap: 20,
+    columnGap: 24,
     rowGap: 20,
-    height: { default: null, [breakpoints.desktop]: 'min(64vh, 38rem)' },
+    height: { default: null, [breakpoints.desktop]: 'min(52dvh, 34rem)' },
   },
-  half: { display: 'flex', minWidth: 0, minHeight: 0, flexDirection: 'column', gap: 12 },
+  half: { display: 'flex', minWidth: 0, minHeight: 0, flexDirection: 'column' },
+  halfHead: { display: 'flex', flexShrink: 0, alignItems: 'baseline', gap: 8, paddingBottom: 10 },
+  halfTitle: { margin: 0, fontSize: 13, fontWeight: 600, color: tokens.surfaceMutedForeground },
+  halfNote: {
+    display: 'inline-flex',
+    gap: 8,
+    margin: 0,
+    whiteSpace: 'nowrap',
+    fontSize: 12,
+    fontVariantNumeric: 'tabular-nums',
+    color: tokens.mutedForeground,
+  },
+  halfNoteInk: { color: tokens.surfaceMutedForeground },
+  halfNoteWarn: { color: tokens.warning },
   halfScroll: {
-    display: 'flex',
     minHeight: 0,
     flexGrow: 1,
-    flexDirection: 'column',
-    gap: 16,
     overflowY: { default: 'visible', [breakpoints.desktop]: 'auto' },
     // room for the focus ring of whatever stands at the edge
     paddingInline: 2,
+    paddingRight: { default: 2, [breakpoints.desktop]: 14 },
     paddingBottom: 2,
     overscrollBehavior: 'contain',
   },
-  writeCard: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 14,
-    borderRadius: tokens.radiusLg,
-    padding: 16,
-    backgroundColor: tokens.surface,
-    boxShadow: `0 0 0 1px ${tokens.border}, 0 1px 2px rgb(0 0 0 / 0.04)`,
+  fieldStack: { display: 'flex', flexDirection: 'column', gap: 14 },
+  fieldOne: { display: 'flex', flexDirection: 'column', gap: 6 },
+  fieldLocked: { opacity: 0.6 },
+  reasonBlock: {
+    marginTop: 2,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.divider,
   },
-  // under a determination that takes its value from the filing: which filed
-  // field, and the way back to what was filed once it has been typed over
+  // under a determination typed away from the filing: what the filing said,
+  // struck through, and the way back to it
   sourceLine: {
     display: 'flex',
     minWidth: 0,
-    flexWrap: 'wrap',
-    alignItems: 'center',
+    alignItems: 'baseline',
     gap: 8,
-    marginTop: -6,
+    margin: 0,
     fontSize: 12,
+    lineHeight: 1.55,
     color: tokens.mutedForeground,
   },
+  noShrink: { flexShrink: 0 },
+  struck: { minWidth: 0, overflowWrap: 'anywhere', textDecorationLine: 'line-through' },
   linkTag: {
     display: 'inline-flex',
     flexShrink: 0,
     alignItems: 'center',
     height: 18,
     paddingInline: 6,
-    borderRadius: 5,
+    borderRadius: 4,
     fontSize: 11,
+    fontWeight: 400,
     backgroundColor: tokens.surfaceMuted,
     color: tokens.surfaceMutedForeground,
     cursor: 'default',
   },
+  linkTagBare: {
+    backgroundColor: 'transparent',
+    boxShadow: `inset 0 0 0 1px ${tokens.border}`,
+    color: tokens.mutedForeground,
+  },
   resetLink: {
+    flexShrink: 0,
     padding: 0,
     borderWidth: 0,
     backgroundColor: 'transparent',
     fontFamily: 'inherit',
     fontSize: 12,
-    color: tokens.foreground,
+    color: tokens.surfaceMutedForeground,
     cursor: 'pointer',
-    textDecorationLine: { default: 'none', ':hover': 'underline' },
-    textUnderlineOffset: 3,
+    textDecorationLine: 'underline',
+    textUnderlineOffset: 2,
   },
   filing: {
+    display: 'flex',
+    minWidth: 0,
+    minHeight: 0,
+    flexDirection: 'column',
+    overflow: 'hidden',
+    borderRadius: tokens.radiusLg,
+    backgroundColor: tokens.surfaceInset,
+    boxShadow: `inset 0 0 0 1px ${tokens.divider}`,
+  },
+  filingHead: { paddingInline: 16, paddingTop: 14 },
+  filingList: {
     display: 'flex',
     minHeight: 0,
     flexGrow: 1,
     flexDirection: 'column',
     gap: 12,
+    margin: 0,
     overflowY: { default: 'visible', [breakpoints.desktop]: 'auto' },
-    borderRadius: tokens.radiusLg,
-    backgroundColor: tokens.surfaceInset,
-    boxShadow: `inset 0 0 0 1px ${tokens.divider}`,
-    padding: 16,
+    paddingInline: 16,
+    paddingBottom: 14,
+    overscrollBehavior: 'contain',
   },
-  filingList: { display: 'flex', flexDirection: 'column', gap: 10, margin: 0 },
   filingRow: { display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 },
   filingLabel: { fontSize: 12, color: tokens.mutedForeground },
-  filingValue: { margin: 0, fontSize: 14, lineHeight: 1.5, overflowWrap: 'anywhere' },
+  filingValue: { margin: 0, fontSize: 14, lineHeight: 1.55, overflowWrap: 'anywhere' },
   filingFiles: { display: 'flex', flexDirection: 'column', gap: 4 },
-  // What the values come to, pinned under the filing. A figure when there is
-  // one, said large because it is what the whole form is for; otherwise one
-  // quiet line saying what is still in the way. Neutral ground either way: a
-  // green panel read as "approved" before anything had been decided.
+  // the dialog's foot: the score beside the word for the participant, and
+  // under them what is still missing and the two keys
+  foot: { display: 'flex', minWidth: 0, flexGrow: 1, flexDirection: 'column', gap: 10 },
+  footPair: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 5fr) minmax(0, 6fr)',
+    columnGap: 24,
+    alignItems: 'end',
+  },
+  footNote: {
+    minWidth: 0,
+    padding: 0,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+    fontFamily: 'inherit',
+    fontSize: 12.5,
+    textAlign: 'left',
+    color: tokens.mutedForeground,
+    cursor: 'pointer',
+    textDecorationLine: { default: 'none', ':hover': 'underline' },
+    textUnderlineOffset: 2,
+  },
   preview: {
     display: 'flex',
-    flexShrink: 0,
+    minHeight: 58,
     alignItems: 'center',
-    gap: 12,
-    borderRadius: tokens.radiusLg,
-    paddingInline: 16,
-    paddingBlock: 12,
-    fontSize: 13,
-    backgroundColor: tokens.surface,
-    boxShadow: `0 0 0 1px ${tokens.border}, 0 1px 2px rgb(0 0 0 / 0.04)`,
+    gap: 14,
+    borderRadius: 12,
+    paddingInline: 14,
+    paddingBlock: 10,
+    backgroundColor: tokens.surfaceInset,
+    boxShadow: `inset 0 0 0 1px ${tokens.divider}`,
   },
-  previewOk: { boxShadow: `0 0 0 1px ${tokens.foreground}, 0 1px 2px rgb(0 0 0 / 0.04)` },
   previewBad: {
-    boxShadow: `0 0 0 1px color-mix(in oklab, ${tokens.danger} 55%, transparent)`,
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: tokens.surface,
+    boxShadow: `inset 0 0 0 1px ${tokens.border}`,
   },
-  previewTitle: { fontSize: 12, fontWeight: 600, color: 'var(--q-surface-muted-foreground)' },
+  previewAlert: { width: 15, height: 15, flexShrink: 0, marginTop: 1, color: tokens.danger },
+  previewText: { display: 'flex', minWidth: 0, flexGrow: 1, flexDirection: 'column', gap: 2 },
+  previewTitle: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    fontSize: 11.5,
+    fontWeight: 600,
+    letterSpacing: '0.04em',
+    color: tokens.mutedForeground,
+  },
+  previewDot: { width: 6, height: 6, borderRadius: 9999, backgroundColor: tokens.border },
+  previewDotOn: { backgroundColor: tokens.success },
+  previewSpin: {
+    width: 8,
+    height: 8,
+    borderRadius: 9999,
+    borderWidth: 2,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    borderTopColor: tokens.surfaceMutedForeground,
+    animationName: spin,
+    animationDuration: '0.8s',
+    animationTimingFunction: 'linear',
+    animationIterationCount: 'infinite',
+  },
   previewQuiet: { color: tokens.mutedForeground },
-  previewBadWords: { color: tokens.danger },
-  previewWords: { minWidth: 0, flexGrow: 1, textAlign: 'right' },
-  previewAmount: { fontSize: 20, fontWeight: 600, letterSpacing: '-0.02em', fontVariantNumeric: 'tabular-nums' },
+  previewWords: { fontSize: 12.5, lineHeight: 1.5, color: tokens.mutedForeground },
+  previewWordsInk: { fontSize: 13, color: tokens.foreground },
+  previewFigure: { display: 'flex', flexShrink: 0, alignItems: 'baseline', gap: 4 },
+  previewAmount: {
+    flexShrink: 0,
+    fontSize: 24,
+    fontWeight: 600,
+    letterSpacing: '-0.02em',
+    fontVariantNumeric: 'tabular-nums',
+  },
+  previewDash: { color: tokens.border },
+  previewUnit: { fontSize: 13, color: tokens.mutedForeground },
   // The verdict solids: the semantic tokens mixed toward black stand in for
   // the fixed emerald and rose shades, hover a step darker, in both schemes.
   // The verdict keys paint their own ground, so they also owe their own
@@ -609,6 +697,7 @@ export function ApproveDialog({
   onConfirm: (decision: WordedDecision) => void
 }) {
   const { format, locale } = useI18n()
+  const listJoin = useList()
   const words = usePickerWords()
   const fine = useFinePointer()
   const [comment, setComment] = useState(initial?.comment ?? '')
@@ -684,8 +773,10 @@ export function ApproveDialog({
         : materialized.value,
   )
 
+  // values the rule will not take are stopped here, not after the press
+  const blocked = preview.kind === 'refused' || preview.kind === 'issues'
   const confirm = () => {
-    if (!ready) return
+    if (!ready || blocked) return
     const recognition =
       form === null
         ? undefined
@@ -701,24 +792,61 @@ export function ApproveDialog({
     })
   }
 
+  const titleOf = (id: string) => {
+    const field = fields.find((one) => one.id === id)
+    return field === undefined ? id : (declaredTitle(field.schema, locale) ?? id)
+  }
+  // a filed value in the words the reviewer reads it in
+  const sayFiled = (schema: AtomicSchema, value: unknown) =>
+    typeof value === 'boolean'
+      ? value
+        ? format(m.recognitionYes)
+        : format(m.recognitionNo)
+      : kindOf(schema) === 'choice'
+        ? (choiceLabel(schema as never, String(value), locale) ?? String(value))
+        : String(value)
+  const movedIds = fields
+    .filter((field) => {
+      if (sources[field.id] === undefined || !Object.hasOwn(filed, field.id)) return false
+      const now = materializeFields([field], drafts).value?.[field.id]
+      return now !== undefined && JSON.stringify(now) !== JSON.stringify(filed[field.id])
+    })
+    .map((field) => field.id)
+  const missingIds = [...materialized.issues]
+    .filter(([id, reason]) => id !== '' && reason === 'required')
+    .map(([id]) => id)
+  const changedNames =
+    changed && materialized.value !== null
+      ? changedSeedKeys(seed, materialized.value).map(titleOf)
+      : []
+  const reach = (id: string) => {
+    const row = document.querySelector(`[data-recognition="${CSS.escape(id)}"]`)
+    row?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    row?.querySelector<HTMLElement>('input, button, [tabindex]')?.focus({ preventScroll: true })
+  }
+
   const determination = form !== null && (
-    <div {...stylex.props(styles.panel)} data-testid="recognition-form">
-      <p {...stylex.props(recognitionStyles.sectionLabel)}>{format(m.recognitionSection)}</p>
-      {locked !== null && (
-        <p {...stylex.props(recognitionStyles.quietNote)}>{format(m.recognitionLockedNote)}</p>
-      )}
+    <div {...stylex.props(styles.fieldStack)} data-testid="recognition-form">
       {fields.map((field) => {
         const sourceKey = sources[field.id]
         const sourceLabel =
-          sourceKey === undefined ? undefined : filedFields.find((one) => one.key === sourceKey)?.label
+          sourceKey === undefined
+            ? undefined
+            : filedFields.find((one) => one.key === sourceKey)?.label
         const filedValue = Object.hasOwn(filed, field.id) ? filed[field.id] : undefined
-        // typed over: what stands here is no longer what the filing said
-        const moved =
-          filedValue !== undefined &&
-          JSON.stringify(materializeFields([field], drafts).value?.[field.id] ?? null) !==
-            JSON.stringify(filedValue)
+        const moved = movedIds.includes(field.id)
+        const empty =
+          !Object.hasOwn(drafts, field.id) ||
+          drafts[field.id] === '' ||
+          drafts[field.id] === undefined
         return (
-          <div key={field.id} {...stylex.props(styles.panelTight)} data-recognition={field.id}>
+          <div
+            key={field.id}
+            {...stylex.props(styles.fieldOne, locked !== null && styles.fieldLocked)}
+            data-recognition={field.id}
+            data-linked={sourceLabel !== undefined}
+            data-moved={moved}
+          >
             <ValueFieldsForm
               words={words}
               fields={[field]}
@@ -728,56 +856,81 @@ export function ApproveDialog({
               disabled={locked !== null}
               problems={problems}
               scope="recognition"
+              asideOf={() =>
+                locked !== null ? (
+                  <span {...stylex.props(styles.linkTag)}>{format(m.reviewTagLocked)}</span>
+                ) : sourceLabel !== undefined ? (
+                  <span {...stylex.props(styles.linkTag)} data-testid="recognition-source">
+                    {format(m.reviewTagLinked, { name: sourceLabel })}
+                  </span>
+                ) : (
+                  <span {...stylex.props(styles.linkTag, styles.linkTagBare)}>
+                    {format(m.reviewTagUnlinked)}
+                  </span>
+                )
+              }
             />
-            {sourceLabel !== undefined && (
-              <p {...stylex.props(styles.sourceLine)} data-testid="recognition-source">
-                <span
-                  {...stylex.props(styles.linkTag)}
-                  title={format(m.reviewLinkedFrom, { name: sourceLabel })}
+            {moved && locked === null && (
+              <p {...stylex.props(styles.sourceLine)}>
+                <span {...stylex.props(styles.noShrink)}>{format(m.reviewFiledWas)}</span>
+                <span {...stylex.props(styles.struck)}>{sayFiled(field.schema, filedValue)}</span>
+                <button
+                  type="button"
+                  data-testid="recognition-reset"
+                  {...stylex.props(styles.resetLink)}
+                  onClick={() =>
+                    setDrafts((current) => ({
+                      ...current,
+                      ...draftsFromFields([field], { [field.id]: filedValue }),
+                    }))
+                  }
                 >
-                  {format(m.reviewLinkedTag)}
-                </span>
-                <span>{format(m.reviewLinkedFrom, { name: sourceLabel })}</span>
-                {moved && locked === null && (
-                  <button
-                    type="button"
-                    data-testid="recognition-reset"
-                    {...stylex.props(styles.resetLink)}
-                    onClick={() =>
-                      setDrafts((current) => ({
-                        ...current,
-                        ...draftsFromFields([field], { [field.id]: filedValue }),
-                      }))
-                    }
-                  >
-                    {format(m.reviewResetToFiled)}
-                  </button>
-                )}
+                  {format(m.reviewResetToFiled)}
+                </button>
               </p>
+            )}
+            {sourceLabel === undefined && locked === null && empty && (
+              <p {...stylex.props(styles.sourceLine)}>{format(m.reviewUnlinkedNote)}</p>
             )}
           </div>
         )
       })}
+      {locked !== null && (
+        <p {...stylex.props(styles.sourceLine)}>{format(m.recognitionLockedNote)}</p>
+      )}
       {changed && (
-        <Field label={format(m.recognitionReasonLabel)}>
-          {(id) => (
-            <Input
-              id={id}
-              value={determinationReason}
-              onChange={(event) => setDeterminationReason(event.target.value)}
-            />
-          )}
-        </Field>
+        <div {...stylex.props(styles.reasonBlock)}>
+          <Field
+            label={format(m.recognitionReasonLabel)}
+            required
+            hint={format(m.reviewReasonNames, { names: listJoin(changedNames) })}
+          >
+            {(id) => (
+              <Input
+                id={id}
+                value={determinationReason}
+                onChange={(event) => setDeterminationReason(event.target.value)}
+              />
+            )}
+          </Field>
+        </div>
       )}
     </div>
   )
   const commentField = (
-    <Field label={format(m.reviewComment)} hint={fine ? format(m.reviewApproveHint) : undefined}>
+    <Field
+      label={format(m.reviewComment)}
+      {...(!fine
+        ? {}
+        : form === null
+          ? { hint: format(m.reviewApproveHint) }
+          : { note: format(m.reviewApproveHint) })}
+    >
       {(id) => (
         <Textarea
           id={id}
           value={comment}
-          rows={3}
+          rows={fine && form !== null ? 2 : 3}
           // eslint-disable-next-line jsx-a11y/no-autofocus
           autoFocus={fine && form === null}
           onChange={(event) => setComment(event.target.value)}
@@ -818,19 +971,42 @@ export function ApproveDialog({
       })}
       onClose={onClose}
       footer={
-        <div {...stylex.props(styles.footerRow, styles.footerEnd)}>
-          <Button variant="outline" onClick={onClose}>
-            {format(commonMessages.cancel)}
-            <Kbd>Esc</Kbd>
-          </Button>
-          <Button
-            className={stylex.props(styles.approveSolid, styles.approveLift).className}
-            disabled={!ready}
-            onClick={confirm}
-          >
-            {format(m.reviewApprove)}
-            <Kbd className={stylex.props(styles.onSolid).className}>⌘↵</Kbd>
-          </Button>
+        <div {...stylex.props(styles.foot)}>
+          {form !== null && (
+            <div {...stylex.props(styles.footPair)}>
+              <ScorePreview
+                preview={preview}
+                fields={fields}
+                missing={missingIds[0] === undefined ? undefined : titleOf(missingIds[0])}
+              />
+              {commentField}
+            </div>
+          )}
+          <div {...stylex.props(styles.footerRow)}>
+            {form !== null && locked === null && missingIds[0] !== undefined && (
+              <button
+                type="button"
+                data-testid="approve-missing"
+                {...stylex.props(styles.footNote)}
+                onClick={() => reach(missingIds[0]!)}
+              >
+                {format(m.reviewFillFirst, { name: titleOf(missingIds[0]) })}
+              </button>
+            )}
+            <span {...stylex.props(styles.spacer)} />
+            <Button variant="outline" onClick={onClose}>
+              {format(commonMessages.cancel)}
+              <Kbd>Esc</Kbd>
+            </Button>
+            <Button
+              className={stylex.props(styles.approveSolid, styles.approveLift).className}
+              disabled={!ready || blocked}
+              onClick={confirm}
+            >
+              {format(m.reviewApprove)}
+              <Kbd className={stylex.props(styles.onSolid).className}>⌘↵</Kbd>
+            </Button>
+          </div>
         </div>
       }
     >
@@ -850,16 +1026,33 @@ export function ApproveDialog({
           commentField
         ) : (
           <div {...stylex.props(styles.columns)} data-testid="approve-columns">
-            <div {...stylex.props(styles.half)}>
-              <FiledValues review={review} linked={linked} />
-              <ScorePreview preview={preview} fields={fields} />
-            </div>
-            <div {...stylex.props(styles.half)}>
-              <div {...stylex.props(styles.halfScroll)}>
-                <div {...stylex.props(styles.writeCard)}>{determination}</div>
-                <div {...stylex.props(styles.writeCard)}>{commentField}</div>
+            <FiledValues review={review} linked={linked} />
+            <section {...stylex.props(styles.half)}>
+              <div {...stylex.props(styles.halfHead)}>
+                <p {...stylex.props(styles.halfTitle)}>{format(m.recognitionSection)}</p>
+                <span {...stylex.props(styles.spacer)} />
+                <p
+                  {...stylex.props(styles.halfNote)}
+                  data-testid="recognition-summary"
+                  data-count={fields.length}
+                  data-moved={movedIds.length}
+                  data-missing={missingIds.length}
+                >
+                  {format(m.reviewSummaryCount, { count: fields.length })}
+                  {movedIds.length > 0 && (
+                    <span {...stylex.props(styles.halfNoteInk)}>
+                      {format(m.reviewSummaryDiffer, { count: movedIds.length })}
+                    </span>
+                  )}
+                  {missingIds.length > 0 && (
+                    <span {...stylex.props(styles.halfNoteWarn)}>
+                      {format(m.reviewSummaryMissing, { count: missingIds.length })}
+                    </span>
+                  )}
+                </p>
               </div>
-            </div>
+              <div {...stylex.props(styles.halfScroll)}>{determination}</div>
+            </section>
           </div>
         )}
       </div>
@@ -930,19 +1123,29 @@ function useDeterminationPreview(
   return { kind: 'unavailable' }
 }
 
-/** what the determination would score, or what stops it, under the form */
+/**
+ * What the determination would score, or what stops it.
+ *
+ * One card of one height in every state, so the foot of the dialog does not
+ * jump while the values are typed: a figure where there is one, a grey dash
+ * where there is not yet. Only a refusal changes ground, because it is the
+ * one state that also stops the approval.
+ */
 function ScorePreview({
   preview,
   fields,
+  missing,
 }: {
   preview: PreviewState
   fields: readonly { readonly id: string; readonly schema: AtomicSchema }[]
+  /** the first field still unanswered, named rather than alluded to */
+  missing?: string | undefined
 }) {
   const { format } = useI18n()
   const bad = preview.kind === 'refused' || preview.kind === 'issues'
   const words =
     preview.kind === 'amount'
-      ? format(m.reviewPreviewAmount, { amount: preview.amount })
+      ? format(m.reviewPreviewStands)
       : preview.kind === 'refused'
         ? format(m.reviewPreviewRefused, { reason: preview.reason })
         : preview.kind === 'issues'
@@ -955,30 +1158,50 @@ function ScorePreview({
             ? format(m.reviewPreviewChecking)
             : preview.kind === 'unavailable'
               ? format(m.reviewPreviewUnavailable)
-              : format(m.reviewPreviewIncomplete)
+              : missing === undefined
+                ? format(m.reviewPreviewIncomplete)
+                : format(m.reviewPreviewNeeds, { name: missing })
   return (
     <div
-      {...stylex.props(
-        styles.preview,
-        preview.kind === 'amount' && styles.previewOk,
-        bad && styles.previewBad,
-      )}
+      {...stylex.props(styles.preview, bad && styles.previewBad)}
       data-testid="score-preview"
       data-preview={preview.kind}
       {...(preview.kind === 'amount' ? { 'data-amount': preview.amount } : {})}
       aria-live="polite"
     >
-      <span {...stylex.props(styles.previewTitle)}>{format(m.reviewPreviewTitle)}</span>
-      <span
-        {...stylex.props(
-          styles.previewWords,
-          preview.kind === 'amount' && styles.previewAmount,
-          bad && styles.previewBadWords,
-          !bad && preview.kind !== 'amount' && styles.previewQuiet,
+      {bad && <CircleAlertIcon aria-hidden {...stylex.props(styles.previewAlert)} />}
+      <span {...stylex.props(styles.previewText)}>
+        <span {...stylex.props(styles.previewTitle)}>
+          {!bad &&
+            (preview.kind === 'checking' ? (
+              <span aria-hidden {...stylex.props(styles.previewSpin)} />
+            ) : (
+              <span
+                aria-hidden
+                {...stylex.props(
+                  styles.previewDot,
+                  preview.kind === 'amount' && styles.previewDotOn,
+                )}
+              />
+            ))}
+          {format(m.reviewPreviewTitle)}
+        </span>
+        <span {...stylex.props(styles.previewWords, bad && styles.previewWordsInk)}>{words}</span>
+        {bad && (
+          <span {...stylex.props(styles.previewWords)}>{format(m.reviewPreviewFixFirst)}</span>
         )}
-      >
-        {words}
       </span>
+      {!bad &&
+        (preview.kind === 'amount' ? (
+          <span {...stylex.props(styles.previewFigure)}>
+            <span {...stylex.props(styles.previewAmount)}>{preview.amount}</span>
+            <span {...stylex.props(styles.previewUnit)}>{format(m.reviewPreviewUnit)}</span>
+          </span>
+        ) : (
+          <span aria-hidden {...stylex.props(styles.previewAmount, styles.previewDash)}>
+            –
+          </span>
+        ))}
     </div>
   )
 }
@@ -1003,7 +1226,13 @@ function FiledValues({
       data-testid="approve-filing"
       aria-label={format(m.reviewPayloadTitle)}
     >
-      <p {...stylex.props(recognitionStyles.sectionLabel)}>{format(m.reviewPayloadTitle)}</p>
+      <div {...stylex.props(styles.halfHead, styles.filingHead)}>
+        <p {...stylex.props(styles.halfTitle)}>{format(m.reviewPayloadTitle)}</p>
+        <span {...stylex.props(styles.spacer)} />
+        <p {...stylex.props(styles.halfNote)}>
+          {format(m.entryVersionNo, { no: review.revision.revisionNo })}
+        </p>
+      </div>
       <dl {...stylex.props(styles.filingList)}>
         {fields.map((field) => {
           const raw = record[field.key]
@@ -1038,7 +1267,11 @@ function FiledValues({
                   ) : (
                     <span {...stylex.props(styles.filingFiles)}>
                       {ids.map((attachmentId) => (
-                        <AttachmentLink key={attachmentId} attachmentId={attachmentId} variant="line" />
+                        <AttachmentLink
+                          key={attachmentId}
+                          attachmentId={attachmentId}
+                          variant="line"
+                        />
                       ))}
                     </span>
                   )

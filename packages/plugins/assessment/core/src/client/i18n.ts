@@ -369,9 +369,33 @@ const personExcludedAtMessage = defineMessage<{ when: string }>()({
   defaultMessage: 'Taken off {when}',
 })
 
-const reviewLinkedFromMessage = defineMessage<{ name: string }>()({
-  id: 'assessment/review/linked-from',
-  defaultMessage: 'Takes its value from the filed {name}',
+const reviewTagLinkedMessage = defineMessage<{ name: string }>()({
+  id: 'assessment/review/tag-linked',
+  defaultMessage: 'Linked: {name}',
+})
+const reviewReasonNamesMessage = defineMessage<{ names: string }>()({
+  id: 'assessment/review/reason-names',
+  defaultMessage: '{names} differ from the filing',
+})
+const reviewFillFirstMessage = defineMessage<{ name: string }>()({
+  id: 'assessment/review/fill-first',
+  defaultMessage: 'Fill in {name} before approving',
+})
+const reviewPreviewNeedsMessage = defineMessage<{ name: string }>()({
+  id: 'assessment/review/preview-needs',
+  defaultMessage: 'The score shows once {name} is filled in',
+})
+const reviewSummaryCountMessage = defineMessage<{ count: number }>()({
+  id: 'assessment/review/summary-count',
+  defaultMessage: '{count, plural, one {# field} other {# fields}}',
+})
+const reviewSummaryDifferMessage = defineMessage<{ count: number }>()({
+  id: 'assessment/review/summary-differ',
+  defaultMessage: '{count} differ from the filing',
+})
+const reviewSummaryMissingMessage = defineMessage<{ count: number }>()({
+  id: 'assessment/review/summary-missing',
+  defaultMessage: '{count} to fill in',
 })
 const reviewLinkedToMessage = defineMessage<{ names: string }>()({
   id: 'assessment/review/linked-to',
@@ -385,9 +409,31 @@ const i18n = definePluginMessages({
     personMembershipColumn: { id: 'assessment/person/membership-column', defaultMessage: 'Standing' },
     personIncludedColumn: { id: 'assessment/person/included-column', defaultMessage: 'Joined' },
     reviewLinkedTag: { id: 'assessment/review/linked-tag', defaultMessage: 'Linked' },
-    reviewLinkedFrom: reviewLinkedFromMessage,
+    reviewTagLinked: reviewTagLinkedMessage,
+    reviewTagUnlinked: { id: 'assessment/review/tag-unlinked', defaultMessage: 'Not linked' },
+    reviewTagLocked: { id: 'assessment/review/tag-locked', defaultMessage: 'Settled by the sitting' },
+    reviewFiledWas: { id: 'assessment/review/filed-was', defaultMessage: 'Filed as' },
+    reviewUnlinkedNote: {
+      id: 'assessment/review/unlinked-note',
+      defaultMessage: 'Determined by the reviewer',
+    },
+    reviewReasonNames: reviewReasonNamesMessage,
+    reviewFillFirst: reviewFillFirstMessage,
+    reviewPreviewNeeds: reviewPreviewNeedsMessage,
+    reviewPreviewStands: {
+      id: 'assessment/review/preview-stands',
+      defaultMessage: 'Under the determination as it stands',
+    },
+    reviewPreviewFixFirst: {
+      id: 'assessment/review/preview-fix-first',
+      defaultMessage: 'Correct it before approving',
+    },
+    reviewPreviewUnit: { id: 'assessment/review/preview-unit', defaultMessage: 'pts' },
+    reviewSummaryCount: reviewSummaryCountMessage,
+    reviewSummaryDiffer: reviewSummaryDifferMessage,
+    reviewSummaryMissing: reviewSummaryMissingMessage,
     reviewLinkedTo: reviewLinkedToMessage,
-    reviewResetToFiled: { id: 'assessment/review/reset-to-filed', defaultMessage: 'Reset to what was filed' },
+    reviewResetToFiled: { id: 'assessment/review/reset-to-filed', defaultMessage: 'Restore' },
     nodeUsageManaged: {
       id: 'assessment/node-usage/managed',
       defaultMessage: 'Rounds administered from here',
@@ -1181,10 +1227,6 @@ const i18n = definePluginMessages({
     },
     // what the determination being typed would come to, said as it is typed
     reviewPreviewTitle: { id: 'assessment/review/preview-title', defaultMessage: 'Score preview' },
-    reviewPreviewAmount: {
-      id: 'assessment/review/preview-amount',
-      defaultMessage: 'This determination scores {amount}',
-    },
     reviewPreviewChecking: {
       id: 'assessment/review/preview-checking',
       defaultMessage: 'Working it out',

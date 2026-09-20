@@ -314,9 +314,9 @@ describe('approving with a determination', () => {
     const hours = form.querySelector('[data-parameter="rec-hours"] input') as HTMLInputElement
     await userEvent.fill(hours, '3.50')
     // same number as the seed? no - 3.5 differs from 2, so a reason is owed
-    await expect.element(page.getByRole('dialog').getByText('认定调整说明')).toBeVisible()
+    await expect.element(page.getByRole('dialog').getByRole('textbox', { name: '认定调整说明' })).toBeVisible()
     await userEvent.fill(
-      page.getByRole('dialog').getByLabelText('认定调整说明').element() as HTMLInputElement,
+      page.getByRole('dialog').getByRole('textbox', { name: '认定调整说明' }).element() as HTMLInputElement,
       '按打卡记录核定',
     )
     await confirmAndWait(decided)
@@ -353,13 +353,13 @@ describe('approving with a determination', () => {
       '2',
     )
     await choiceAt(form, 'rec-level').pick('省部级')
-    await expect.element(page.getByRole('dialog').getByText('认定调整说明')).toBeVisible()
+    await expect.element(page.getByRole('dialog').getByRole('textbox', { name: '认定调整说明' })).toBeVisible()
     // the gate holds until the explanation is written
     await expect
       .element(page.getByRole('dialog').getByRole('button', { name: /^通过/ }))
       .toBeDisabled()
     await userEvent.fill(
-      page.getByRole('dialog').getByLabelText('认定调整说明').element() as HTMLInputElement,
+      page.getByRole('dialog').getByRole('textbox', { name: '认定调整说明' }).element() as HTMLInputElement,
       '证书落款为省级主办单位',
     )
     await confirmAndWait(decided)
