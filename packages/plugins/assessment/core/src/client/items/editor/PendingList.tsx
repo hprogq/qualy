@@ -182,7 +182,10 @@ export function PendingList({
       <PopoverTrigger asChild>
         <button
           type="button"
-          {...stylex.props(styles.capsule, tone === 'error' ? styles.capsuleError : styles.capsulePending)}
+          {...stylex.props(
+            styles.capsule,
+            tone === 'error' ? styles.capsuleError : styles.capsulePending,
+          )}
           data-testid="pending-trigger"
           data-count={problems.length}
           data-tone={tone}

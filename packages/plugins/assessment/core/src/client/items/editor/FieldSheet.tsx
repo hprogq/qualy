@@ -154,7 +154,8 @@ export function FieldSheet({
                 onChange({ ...field, label: event.target.value })
                 // under direct handling nobody names the determination
                 // apart from the field, so the one name serves both
-                if (draft.mode === 'direct') onRecognition(link.handle, { label: event.target.value })
+                if (draft.mode === 'direct')
+                  onRecognition(link.handle, { label: event.target.value })
               }}
             />
           )}
@@ -237,11 +238,17 @@ export function FieldSheet({
           <div {...stylex.props(styles.banner)} data-testid="field-linked-banner">
             <LinkIcon aria-hidden {...stylex.props(styles.bannerIcon)} />
             <span {...stylex.props(styles.bannerName)}>
-              {link.recognition.label.trim() === '' ? format(m.itemsFieldUnnamed) : link.recognition.label}
+              {link.recognition.label.trim() === ''
+                ? format(m.itemsFieldUnnamed)
+                : link.recognition.label}
             </span>
             <span {...stylex.props(styles.bannerWords)}>{format(m.itemsFieldLinkedRange)}</span>
             <span {...stylex.props(styles.spacer)} />
-            <button type="button" {...stylex.props(styles.go)} onClick={() => onGoToRecognition(link.handle)}>
+            <button
+              type="button"
+              {...stylex.props(styles.go)}
+              onClick={() => onGoToRecognition(link.handle)}
+            >
               {format(m.itemsGoToSettings)}
               <ChevronRightIcon aria-hidden {...stylex.props(styles.icon12)} />
             </button>
@@ -266,7 +273,11 @@ export function FieldSheet({
       onClose={onClose}
       footer={
         <>
-          <Button variant="ghost" className={stylex.props(styles.danger).className} onClick={onDelete}>
+          <Button
+            variant="ghost"
+            className={stylex.props(styles.danger).className}
+            onClick={onDelete}
+          >
             {format(m.itemsFieldRemove)}
           </Button>
           <span {...stylex.props(sheetStyles.footerSpacer)} />

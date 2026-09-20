@@ -361,11 +361,7 @@ export function AdministrativeImportView({
     (preview.summary.warnings === 0 || confirmed) &&
     !commit.isPending
 
-  const steps = [
-    format(m.recordStepItem),
-    format(m.importStepFile),
-    format(m.importStepConfirm),
-  ]
+  const steps = [format(m.recordStepItem), format(m.importStepFile), format(m.importStepConfirm)]
 
   return (
     <AsyncSection

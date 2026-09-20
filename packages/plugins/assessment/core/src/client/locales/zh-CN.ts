@@ -16,6 +16,8 @@ export default {
   'assessment/review/preview-unit': '分',
   'assessment/review/summary-count': '{count} 项',
   'assessment/review/summary-differ': '{count} 项与申报不同',
+  'assessment/review/draft-restored': '已恢复 {when} 在本机填写、尚未提交的内容',
+  'assessment/review/draft-discard': '重新填写',
   'assessment/review/summary-wrong': '{count} 项填写有误',
   'assessment/review/summary-missing': '{count} 项待填',
   'assessment/review/linked-to': '关联认定项：{names}',

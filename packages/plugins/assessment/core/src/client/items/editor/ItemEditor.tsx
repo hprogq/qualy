@@ -82,7 +82,14 @@ import { boundsWords, type LinkVerdict } from './words.ts'
 // will happen, why, and where to go next.
 
 const styles = stylex.create({
-  root: { display: 'flex', minHeight: 0, flexGrow: 1, flexShrink: 1, flexBasis: '0%', flexDirection: 'column' },
+  root: {
+    display: 'flex',
+    minHeight: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+  },
   // three rows, each doing one thing: where this is, what it is, and the
   // ways around it. The last row is the tabs, and it stands on the band's
   // own bottom rule.
@@ -271,7 +278,9 @@ export function ItemEditor({
   }, [draft, onHold])
 
   const [panelParam, setPanelParam] = usePageQueryState('panel', 'basics', { history: 'replace' })
-  const area: EditorArea = AREAS.includes(panelParam as EditorArea) ? (panelParam as EditorArea) : 'basics'
+  const area: EditorArea = AREAS.includes(panelParam as EditorArea)
+    ? (panelParam as EditorArea)
+    : 'basics'
   const [sheet, setSheet] = useState<OpenSheet | null>(null)
   const lingeringSheet = useLingering(sheet)
   const [adding, setAdding] = useState<{ open: true } | null>(null)
@@ -279,7 +288,11 @@ export function ItemEditor({
   const [ask, setAsk] = useState<Ask | null>(null)
   const lingeringAsk = useLingering(ask)
   // what a save was refused for, and the composition it was refused on
-  const [refusal, setRefusal] = useState<{ at: string; when: number; issues: readonly Issue[] } | null>(null)
+  const [refusal, setRefusal] = useState<{
+    at: string
+    when: number
+    issues: readonly Issue[]
+  } | null>(null)
   const [refused, setRefused] = useState<Refused | null>(null)
   const [failed, setFailed] = useState(false)
   const [dismissed, setDismissed] = useState(false)
@@ -292,10 +305,17 @@ export function ItemEditor({
   const lingeringImpact = useLingering(impact)
 
   const patch = (next: Partial<Draft>) => setDraft((previous) => ({ ...previous, ...next }))
-  const patchScoring = (next: (scoring: Extract<ScoringDraft, { language: 'v2' }>) => Partial<Extract<ScoringDraft, { language: 'v2' }>>) =>
+  const patchScoring = (
+    next: (
+      scoring: Extract<ScoringDraft, { language: 'v2' }>,
+    ) => Partial<Extract<ScoringDraft, { language: 'v2' }>>,
+  ) =>
     setDraft((previous) =>
       previous.scoring.language === 'v2'
-        ? { ...previous, scoring: { ...previous.scoring, ...next(previous.scoring), touched: true } }
+        ? {
+            ...previous,
+            scoring: { ...previous.scoring, ...next(previous.scoring), touched: true },
+          }
         : previous,
     )
 
@@ -417,13 +437,16 @@ export function ItemEditor({
         }),
       ),
     enabled:
-      draft.scoreGroupId !== '' && draft.scoring.language !== 'unsupported' && contractState.kind !== 'pending',
+      draft.scoreGroupId !== '' &&
+      draft.scoring.language !== 'unsupported' &&
+      contractState.kind !== 'pending',
     placeholderData: keepPreviousData,
     retry: false,
   })
   // what stands under the question does not depend on what is being typed,
   // so the last answer is good until a newer one replaces it
-  const standing = (checkQuery.data as { standing?: readonly Standing[] } | undefined)?.standing ?? NO_STANDING
+  const standing =
+    (checkQuery.data as { standing?: readonly Standing[] } | undefined)?.standing ?? NO_STANDING
   const serverIssues = ((): readonly Issue[] => {
     const checked = (checkQuery.data as { issues: readonly Issue[] } | undefined)?.issues
     const fresh = checkQuery.isSuccess && !checkQuery.isPlaceholderData && askedCheck === checkKey
@@ -451,7 +474,11 @@ export function ItemEditor({
   const wrong = problems.some((one) => one.tone === 'error')
   const toneOf = (one: EditorArea): 'ok' | 'pending' | 'error' => {
     const here = problems.filter((candidate) => candidate.area === one)
-    return here.some((candidate) => candidate.tone === 'error') ? 'error' : here.length > 0 ? 'pending' : 'ok'
+    return here.some((candidate) => candidate.tone === 'error')
+      ? 'error'
+      : here.length > 0
+        ? 'pending'
+        : 'ok'
   }
   // a refused save is over once everything it was refused for is corrected
   useEffect(() => {
@@ -474,7 +501,10 @@ export function ItemEditor({
       JSON.stringify(item.currentRevision.scoringConfig)
   const placementMoved = item !== null && draft.scoreGroupId !== item.scoreGroupId
   const needsReason =
-    item !== null && item.status === 'active' && batchStatus === 'active' && (scoringMoved || placementMoved)
+    item !== null &&
+    item.status === 'active' &&
+    batchStatus === 'active' &&
+    (scoringMoved || placementMoved)
 
   // ---- fields -------------------------------------------------------------
   const patchField = (key: string, next: FieldDraft) =>
@@ -489,11 +519,18 @@ export function ItemEditor({
       ...previous,
       fields: previous.fields.map((field) =>
         field.key === key
-          ? { ...blankField(type, minted), label: field.label, description: field.description, required: field.required }
+          ? {
+              ...blankField(type, minted),
+              label: field.label,
+              description: field.description,
+              required: field.required,
+            }
           : field,
       ),
     }))
-    setSheet((open) => (open?.kind === 'field' && open.key === key ? { kind: 'field', key: minted } : open))
+    setSheet((open) =>
+      open?.kind === 'field' && open.key === key ? { kind: 'field', key: minted } : open,
+    )
   }
   const storedOptionIds = useMemo(() => {
     const ids = new Set<string>()
@@ -533,16 +570,27 @@ export function ItemEditor({
   const setRefinement = (handle: string, refinement: AtomicSchema | null) =>
     patchScoring((scoring) => {
       const current = scoring.recognitions[handle]
-      return current === undefined ? {} : { recognitions: { ...scoring.recognitions, [handle]: { ...current, refinement } } }
+      return current === undefined
+        ? {}
+        : { recognitions: { ...scoring.recognitions, [handle]: { ...current, refinement } } }
     })
 
   /** the shape a linked field would keep if it stood alone */
-  const standaloneField = (field: FieldDraft, recognition: RecognitionDraft, parameter: AtomicSchema): FieldDraft => {
+  const standaloneField = (
+    field: FieldDraft,
+    recognition: RecognitionDraft,
+    parameter: AtomicSchema,
+  ): FieldDraft => {
     const admitted = admittedSchemaOf(recognition, parameter)
     // its own name and hint stay: a linked field was never called by the
     // determination's name, so there is nothing to give back
     return {
-      ...fieldFromSchema(admitted, field, locale, (value) => field.options.find((one) => one.value === value)?.id),
+      ...fieldFromSchema(
+        admitted,
+        field,
+        locale,
+        (value) => field.options.find((one) => one.value === value)?.id,
+      ),
       label: field.label.trim() === '' ? recognition.label : field.label,
       description: field.description.trim() === '' ? recognition.description : field.description,
     }
@@ -567,7 +615,9 @@ export function ItemEditor({
     if (draft.mode === 'direct') {
       setDraft((previous) => ({
         ...previous,
-        fields: previous.fields.map((one) => (one.id === fieldId ? { ...one, required: true } : one)),
+        fields: previous.fields.map((one) =>
+          one.id === fieldId ? { ...one, required: true } : one,
+        ),
       }))
     }
   }
@@ -581,7 +631,11 @@ export function ItemEditor({
     if (field.type === 'choice') setAsk({ kind: 'mapping', handle, fieldId })
     else setAsk({ kind: 'adjust', handle, fieldId })
   }
-  const applyMapping = (handle: string, fieldId: string, mapping: Readonly<Record<string, string>>) => {
+  const applyMapping = (
+    handle: string,
+    fieldId: string,
+    mapping: Readonly<Record<string, string>>,
+  ) => {
     const recognition = recognitionOf(handle)
     const seat = parameterOf(handle)
     if (recognition === undefined || seat === undefined) return
@@ -597,7 +651,9 @@ export function ItemEditor({
           return {
             id: before?.id ?? nextOptionKey(),
             value,
-            label: (admitted['x-qualy-enumLabels'] as Record<string, string> | undefined)?.[value] ?? value,
+            label:
+              (admitted['x-qualy-enumLabels'] as Record<string, string> | undefined)?.[value] ??
+              value,
             enabled: true,
           }
         })
@@ -623,7 +679,9 @@ export function ItemEditor({
     setDraft((previous) => ({
       ...previous,
       fields: previous.fields.filter((one) => one.key !== key),
-      summaryFieldIds: previous.summaryFieldIds.filter((id) => previous.fields.some((one) => one.key !== key && one.id === id)),
+      summaryFieldIds: previous.summaryFieldIds.filter((id) =>
+        previous.fields.some((one) => one.key !== key && one.id === id),
+      ),
     }))
     setSheet((open) => (open?.kind === 'field' && open.key === key ? null : open))
   }
@@ -632,7 +690,12 @@ export function ItemEditor({
       ...previous,
       fields: previous.fields.map((field) =>
         field.key === key
-          ? { ...field, options: field.options.map((one) => (one.id === optionId ? { ...one, enabled: false } : one)) }
+          ? {
+              ...field,
+              options: field.options.map((one) =>
+                one.id === optionId ? { ...one, enabled: false } : one,
+              ),
+            }
           : field,
       ),
     }))
@@ -651,21 +714,29 @@ export function ItemEditor({
         setDraft((previous) => ({
           ...previous,
           fields: previous.fields.map((field) =>
-            field.id === recognition.fieldId ? standaloneField(field, recognition, seat.schema) : field,
+            field.id === recognition.fieldId
+              ? standaloneField(field, recognition, seat.schema)
+              : field,
           ),
         }))
       }
       patchScoring((scoring) => {
         const recognitions = { ...scoring.recognitions }
         if (handle !== null) delete recognitions[handle]
-        return { recognitions, bindings: { ...scoring.bindings, [parameter]: { kind: 'constant', value: undefined } } }
+        return {
+          recognitions,
+          bindings: { ...scoring.bindings, [parameter]: { kind: 'constant', value: undefined } },
+        }
       })
       return
     }
     if (binding?.kind === 'recognition') return
     const handle = handleFor(parameter)
     patchScoring((scoring) => ({
-      recognitions: { ...scoring.recognitions, [handle]: freshRecognition(contract, parameter, locale) },
+      recognitions: {
+        ...scoring.recognitions,
+        [handle]: freshRecognition(contract, parameter, locale),
+      },
       bindings: { ...scoring.bindings, [parameter]: { kind: 'recognition', handle } },
     }))
     if (source === 'filed') {
@@ -685,7 +756,14 @@ export function ItemEditor({
       setDraft((previous) => ({ ...previous, fields: [...previous.fields, field] }))
       patchScoring((scoring) => {
         const current = scoring.recognitions[handle]
-        return current === undefined ? {} : { recognitions: { ...scoring.recognitions, [handle]: { ...current, fieldId: field.id } } }
+        return current === undefined
+          ? {}
+          : {
+              recognitions: {
+                ...scoring.recognitions,
+                [handle]: { ...current, fieldId: field.id },
+              },
+            }
       })
     }
   }
@@ -711,17 +789,23 @@ export function ItemEditor({
     }
     const doors = draft.participant || draft.administrative ? {} : { participant: true }
     if (next === 'direct') {
-      const unlinked = recognitionRows(draft, contract).filter((row) => row.recognition.fieldId === null)
+      const unlinked = recognitionRows(draft, contract).filter(
+        (row) => row.recognition.fieldId === null,
+      )
       if (unlinked.length > 0) {
         setAsk({ kind: 'to-direct', handles: unlinked.map((row) => row.handle) })
         return
       }
-      const linkedIds = new Set(recognitionRows(draft, contract).map((row) => row.recognition.fieldId))
+      const linkedIds = new Set(
+        recognitionRows(draft, contract).map((row) => row.recognition.fieldId),
+      )
       setDraft((previous) => ({
         ...previous,
         ...doors,
         mode: 'direct',
-        fields: previous.fields.map((field) => (linkedIds.has(field.id) ? { ...field, required: true } : field)),
+        fields: previous.fields.map((field) =>
+          linkedIds.has(field.id) ? { ...field, required: true } : field,
+        ),
       }))
       return
     }
@@ -746,7 +830,10 @@ export function ItemEditor({
       const [moved] = reordered.splice(at, 1)
       reordered.splice(target, 0, moved!)
       const others = previous.stages.filter((candidate) => candidate.chain !== stage.chain)
-      return { ...previous, stages: stage.chain === 'normal' ? [...reordered, ...others] : [...others, ...reordered] }
+      return {
+        ...previous,
+        stages: stage.chain === 'normal' ? [...reordered, ...others] : [...others, ...reordered],
+      }
     })
   /** a new step is composed in its panel; the chain does not hold it yet */
   const addStage = (chain: 'normal' | 'escalation') => {
@@ -762,11 +849,17 @@ export function ItemEditor({
     setDraft((previous) => {
       const own = previous.stages.filter((one) => one.chain === next.chain)
       const others = previous.stages.filter((one) => one.chain !== next.chain)
-      return { ...previous, stages: next.chain === 'normal' ? [...own, next, ...others] : [...others, ...own, next] }
+      return {
+        ...previous,
+        stages: next.chain === 'normal' ? [...own, next, ...others] : [...others, ...own, next],
+      }
     })
   }
   const removeStage = (key: string) =>
-    setDraft((previous) => ({ ...previous, stages: previous.stages.filter((one) => one.key !== key) }))
+    setDraft((previous) => ({
+      ...previous,
+      stages: previous.stages.filter((one) => one.key !== key),
+    }))
 
   // ---- going to what is unfinished ---------------------------------------
   const jumpTo = (target: EditorProblem) => {
@@ -858,7 +951,12 @@ export function ItemEditor({
       const said = error as { _tag?: string; issues?: readonly Issue[] } & ChangeImpact
       if (said?._tag === 'ASSESSMENT_ITEM_CHANGE_DECISION_REQUIRED') {
         setAskingReason(false)
-        setImpact({ impactToken: said.impactToken, form: said.form, review: said.review, scoring: said.scoring })
+        setImpact({
+          impactToken: said.impactToken,
+          form: said.form,
+          review: said.review,
+          scoring: said.scoring,
+        })
         return
       }
       setImpact(null)
@@ -874,7 +972,10 @@ export function ItemEditor({
                 : said?._tag === 'ASSESSMENT_SCORING_UNAVAILABLE'
                   ? { kind: 'scoring' }
                   : {
-                      kind: said?._tag === 'ASSESSMENT_ITEM_SCORING_INCOMPATIBLE' ? 'incompatible' : 'other',
+                      kind:
+                        said?._tag === 'ASSESSMENT_ITEM_SCORING_INCOMPATIBLE'
+                          ? 'incompatible'
+                          : 'other',
                       words: formatError(error),
                     },
         )
@@ -906,7 +1007,10 @@ export function ItemEditor({
         if (first !== undefined) setPanelParam(first.area)
       }
       if (read.loose.length > 0) {
-        setRefused({ kind: 'loose', reasons: read.loose.map((one) => `${one.path}: ${one.reason}`) })
+        setRefused({
+          kind: 'loose',
+          reasons: read.loose.map((one) => `${one.path}: ${one.reason}`),
+        })
       }
     },
   })
@@ -973,7 +1077,11 @@ export function ItemEditor({
   const revision = item?.currentRevision ?? null
   const heading = draft.title.trim() === '' ? format(m.itemsUntitled) : draft.title
   const modeChip = format(
-    draft.mode === 'automatic' ? m.itemsModeAutomatic : draft.mode === 'direct' ? m.itemsModeDirect : m.itemsModeReview,
+    draft.mode === 'automatic'
+      ? m.itemsModeAutomatic
+      : draft.mode === 'direct'
+        ? m.itemsModeDirect
+        : m.itemsModeReview,
   )
   const savedWhen = ((): string | null => {
     if (revision === null) return null
@@ -981,7 +1089,12 @@ export function ItemEditor({
     const time = new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(at)
     return at.toDateString() === new Date().toDateString()
       ? format(m.itemsTodayAt, { time })
-      : new Intl.DateTimeFormat(locale, { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(at)
+      : new Intl.DateTimeFormat(locale, {
+          month: 'long',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        }).format(at)
   })()
   const recognitionHandles = recognitionRows(draft, contract).map((row) => row.handle)
   const methodLabel = calculators.find((one) => one.ref === chosenCalculator.ref)?.label ?? null
@@ -991,7 +1104,11 @@ export function ItemEditor({
     switch (asked.kind) {
       case 'unlink': {
         const name = recognitionOf(asked.handle)?.label ?? ''
-        return { title: format(m.itemsUnlinkTitle), body: format(m.itemsUnlinkHint, { field: name }), confirm: format(m.itemsUnlink) }
+        return {
+          title: format(m.itemsUnlinkTitle),
+          body: format(m.itemsUnlinkHint, { field: name }),
+          confirm: format(m.itemsUnlink),
+        }
       }
       case 'delete-field': {
         const field = draft.fields.find((one) => one.key === asked.key)
@@ -1033,7 +1150,9 @@ export function ItemEditor({
           title: format(m.itemsToAutomaticTitle),
           body: format(m.itemsToAutomaticHint, {
             count: asked.parameters.length,
-            names: listJoin(asked.parameters.map((parameter) => parameterTitle(contract, parameter, locale))),
+            names: listJoin(
+              asked.parameters.map((parameter) => parameterTitle(contract, parameter, locale)),
+            ),
           }),
           confirm: format(m.itemsGoToScoring),
         }
@@ -1041,7 +1160,10 @@ export function ItemEditor({
         const recognition = recognitionOf(asked.handle)
         const seat = parameterOf(asked.handle)
         const field = draft.fields.find((one) => one.id === asked.fieldId)
-        const admitted = recognition === undefined || seat === undefined ? null : admittedSchemaOf(recognition, seat.schema)
+        const admitted =
+          recognition === undefined || seat === undefined
+            ? null
+            : admittedSchemaOf(recognition, seat.schema)
         return {
           title: format(m.itemsAdjustTitle),
           body: format(m.itemsAdjustHint, {
@@ -1077,12 +1199,16 @@ export function ItemEditor({
         break
       case 'to-direct': {
         for (const handle of asked.handles) linkNewField(handle)
-        const linkedIds = new Set(recognitionRows(draft, contract).map((row) => row.recognition.fieldId))
+        const linkedIds = new Set(
+          recognitionRows(draft, contract).map((row) => row.recognition.fieldId),
+        )
         setDraft((previous) => ({
           ...previous,
           mode: 'direct',
           ...(previous.participant || previous.administrative ? {} : { participant: true }),
-          fields: previous.fields.map((field) => (linkedIds.has(field.id) ? { ...field, required: true } : field)),
+          fields: previous.fields.map((field) =>
+            linkedIds.has(field.id) ? { ...field, required: true } : field,
+          ),
         }))
         break
       }
@@ -1099,12 +1225,22 @@ export function ItemEditor({
   }
 
   return (
-    <div {...stylex.props(styles.root)} data-testid="item-editor" data-mode={draft.mode} data-panel={area}>
+    <div
+      {...stylex.props(styles.root)}
+      data-testid="item-editor"
+      data-mode={draft.mode}
+      data-panel={area}
+    >
       <BatchBanner>
         <div {...stylex.props(styles.band)} data-testid="item-band">
           <div {...stylex.props(styles.trailRow)}>
             <nav aria-label={format(m.itemsBack)} {...stylex.props(styles.trail)}>
-              <button type="button" {...stylex.props(styles.back)} onClick={onCancel} data-testid="item-back">
+              <button
+                type="button"
+                {...stylex.props(styles.back)}
+                onClick={onCancel}
+                data-testid="item-back"
+              >
                 <ArrowLeftIcon aria-hidden {...stylex.props(styles.backIcon)} />
                 {format(m.itemsCrumbRoot)}
               </button>
@@ -1126,10 +1262,18 @@ export function ItemEditor({
               data-revision={revision?.revisionNo ?? 0}
               data-standing={item?.status ?? 'new'}
             >
-              <span>{revision === null ? format(m.itemsVersionNew) : format(m.itemsVersionNo, { no: revision.revisionNo })}</span>
+              <span>
+                {revision === null
+                  ? format(m.itemsVersionNew)
+                  : format(m.itemsVersionNo, { no: revision.revisionNo })}
+              </span>
               <span aria-hidden {...stylex.props(styles.metaRule)} />
-              <span>{format(item?.status === 'active' ? m.structureStatusLive : m.itemsStatusDraft)}</span>
-              {(dirty || savedWhen !== null) && <span aria-hidden {...stylex.props(styles.metaRule)} />}
+              <span>
+                {format(item?.status === 'active' ? m.structureStatusLive : m.itemsStatusDraft)}
+              </span>
+              {(dirty || savedWhen !== null) && (
+                <span aria-hidden {...stylex.props(styles.metaRule)} />
+              )}
               {dirty ? (
                 <span {...stylex.props(styles.metaUnsaved)} data-testid="item-unsaved">
                   <Dot tone="pending" />
@@ -1143,7 +1287,9 @@ export function ItemEditor({
 
           <div {...stylex.props(styles.titleRow)}>
             <div {...stylex.props(styles.titleLine)}>
-              <h1 {...stylex.props(styles.title, draft.title.trim() === '' && styles.titleUnset)}>{heading}</h1>
+              <h1 {...stylex.props(styles.title, draft.title.trim() === '' && styles.titleUnset)}>
+                {heading}
+              </h1>
               <Tag tall testId="item-standing">
                 {item === null || item.status === 'draft'
                   ? format(m.itemsStatusComposing)
@@ -1189,29 +1335,31 @@ export function ItemEditor({
             <div {...stylex.props(styles.tabsSeat)}>
               <Tabs value={area} onValueChange={(next) => setPanelParam(next)}>
                 <TabsList xstyle={styles.tabList}>
-                  {AREAS.filter((one) => one !== 'rules' || draft.mode !== 'automatic').map((one) => (
-                    <TabsTrigger
-                      key={one}
-                      value={one}
-                      xstyle={styles.tab}
-                      data-area={one}
-                      data-pending={toneOf(one) !== 'ok'}
-                      data-tone={toneOf(one)}
-                    >
-                      <span {...stylex.props(styles.tabLabel)}>
-                        <Dot tone={toneOf(one)} />
-                        {format(
-                          one === 'basics'
-                            ? m.itemsTabBasics
-                            : one === 'scoring'
-                              ? draft.mode === 'automatic'
-                                ? m.itemsTabScoring
-                                : m.itemsTabForm
-                              : m.itemsTabRules,
-                        )}
-                      </span>
-                    </TabsTrigger>
-                  ))}
+                  {AREAS.filter((one) => one !== 'rules' || draft.mode !== 'automatic').map(
+                    (one) => (
+                      <TabsTrigger
+                        key={one}
+                        value={one}
+                        xstyle={styles.tab}
+                        data-area={one}
+                        data-pending={toneOf(one) !== 'ok'}
+                        data-tone={toneOf(one)}
+                      >
+                        <span {...stylex.props(styles.tabLabel)}>
+                          <Dot tone={toneOf(one)} />
+                          {format(
+                            one === 'basics'
+                              ? m.itemsTabBasics
+                              : one === 'scoring'
+                                ? draft.mode === 'automatic'
+                                  ? m.itemsTabScoring
+                                  : m.itemsTabForm
+                                : m.itemsTabRules,
+                          )}
+                        </span>
+                      </TabsTrigger>
+                    ),
+                  )}
                 </TabsList>
               </Tabs>
             </div>
@@ -1242,19 +1390,38 @@ export function ItemEditor({
             actions={
               refused.kind === 'conflict' ? (
                 <>
-                  <Button variant="outline" size="sm" disabled={reloading || save.isPending} onClick={() => void reload()}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={reloading || save.isPending}
+                    onClick={() => void reload()}
+                  >
                     {format(m.itemsFailReload)}
                   </Button>
-                  <Button size="sm" disabled={reloading || save.isPending || wrong} onClick={() => void overwrite()}>
+                  <Button
+                    size="sm"
+                    disabled={reloading || save.isPending || wrong}
+                    onClick={() => void overwrite()}
+                  >
                     {format(m.itemsFailOverwrite)}
                   </Button>
                 </>
               ) : refused.kind === 'loose' && item !== null ? (
-                <Button variant="outline" size="sm" disabled={reloading} onClick={() => void reload()}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={reloading}
+                  onClick={() => void reload()}
+                >
                   {format(m.itemsFailReload)}
                 </Button>
               ) : refused.kind === 'scoring' || refused.kind === 'other' ? (
-                <Button variant="outline" size="sm" disabled={save.isPending || wrong} onClick={retry}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={save.isPending || wrong}
+                  onClick={retry}
+                >
                   {format(m.itemsFailRetry)}
                 </Button>
               ) : undefined
@@ -1331,12 +1498,16 @@ export function ItemEditor({
             const fieldId = recognitionOf(lingeringSheet.handle)?.fieldId
             setDraft((previous) => ({
               ...previous,
-              fields: previous.fields.map((one) => (one.id === fieldId ? { ...one, required } : one)),
+              fields: previous.fields.map((one) =>
+                one.id === fieldId ? { ...one, required } : one,
+              ),
             }))
           }}
           onUnlink={() => setAsk({ kind: 'unlink', handle: lingeringSheet.handle })}
           onLinkNew={() => linkNewField(lingeringSheet.handle)}
-          onLinkExisting={(fieldId, verdict) => linkExisting(lingeringSheet.handle, fieldId, verdict)}
+          onLinkExisting={(fieldId, verdict) =>
+            linkExisting(lingeringSheet.handle, fieldId, verdict)
+          }
           onPage={(handle) => setSheet({ kind: 'recognition', handle })}
           onClose={() => setSheet(null)}
         />
@@ -1354,7 +1525,9 @@ export function ItemEditor({
           onRetype={(type) => retypeField(lingeringSheet.key, type)}
           onRecognition={patchRecognition}
           onRefinement={setRefinement}
-          onDisableOption={(optionId) => setAsk({ kind: 'disable-option', key: lingeringSheet.key, optionId })}
+          onDisableOption={(optionId) =>
+            setAsk({ kind: 'disable-option', key: lingeringSheet.key, optionId })
+          }
           onDelete={() => {
             const field = draft.fields.find((one) => one.key === lingeringSheet.key)
             const link = field === undefined ? undefined : linkOf(draft, contract, field.id)
@@ -1402,7 +1575,11 @@ export function ItemEditor({
           )
         })()}
       {lingeringSheet?.kind === 'preview' && (
-        <PreviewSheet open={sheet?.kind === 'preview'} draft={draft} onClose={() => setSheet(null)} />
+        <PreviewSheet
+          open={sheet?.kind === 'preview'}
+          draft={draft}
+          onClose={() => setSheet(null)}
+        />
       )}
 
       {askedAdding !== null && (
@@ -1425,15 +1602,23 @@ export function ItemEditor({
           const field = draft.fields.find((one) => one.id === lingeringAsk.fieldId)
           if (recognition === undefined || seat === undefined || field === undefined) return null
           const admitted = admittedSchemaOf(recognition, seat.schema) as ChoiceSchema
-          const labels = (admitted['x-qualy-enumLabels'] as Record<string, string> | undefined) ?? {}
+          const labels =
+            (admitted['x-qualy-enumLabels'] as Record<string, string> | undefined) ?? {}
           return (
             <ChoiceMappingDialog
               open={ask?.kind === 'mapping'}
               fieldName={field.label}
               recognitionName={recognition.label}
-              fieldOptions={field.options.filter((one) => one.enabled).map((one) => ({ id: one.id, label: one.label }))}
-              recognitionOptions={admitted.enum.map((value) => ({ value, label: labels[value] ?? value }))}
-              onConfirm={(mapping) => applyMapping(lingeringAsk.handle, lingeringAsk.fieldId, mapping)}
+              fieldOptions={field.options
+                .filter((one) => one.enabled)
+                .map((one) => ({ id: one.id, label: one.label }))}
+              recognitionOptions={admitted.enum.map((value) => ({
+                value,
+                label: labels[value] ?? value,
+              }))}
+              onConfirm={(mapping) =>
+                applyMapping(lingeringAsk.handle, lingeringAsk.fieldId, mapping)
+              }
               onClose={() => setAsk(null)}
             />
           )
@@ -1479,4 +1664,3 @@ export function ItemEditor({
     </div>
   )
 }
-

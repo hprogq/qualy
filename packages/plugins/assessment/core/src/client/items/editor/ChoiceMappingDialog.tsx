@@ -115,15 +115,24 @@ export function ChoiceMappingDialog({
             const value = mapping[option.id] ?? ''
             const taken = value !== '' && chosen.filter((one) => one === value).length > 1
             return (
-              <div key={option.id} {...stylex.props(styles.grid, styles.row)} data-testid="mapping-row">
+              <div
+                key={option.id}
+                {...stylex.props(styles.grid, styles.row)}
+                data-testid="mapping-row"
+              >
                 <span>{option.label}</span>
                 <ArrowRightIcon aria-hidden {...stylex.props(styles.arrow)} />
                 <Choice
                   value={value}
                   placeholder={format(m.itemsMappingPick)}
                   xstyle={value === '' || taken ? styles.unset : styles.fullWidth}
-                  options={recognitionOptions.map((one) => ({ value: one.value, label: one.label }))}
-                  onChange={(next) => setMapping((previous) => ({ ...previous, [option.id]: next }))}
+                  options={recognitionOptions.map((one) => ({
+                    value: one.value,
+                    label: one.label,
+                  }))}
+                  onChange={(next) =>
+                    setMapping((previous) => ({ ...previous, [option.id]: next }))
+                  }
                 />
               </div>
             )

@@ -108,7 +108,13 @@ const styles = stylex.create({
   radioOn: { boxShadow: `inset 0 0 0 5px ${tokens.foreground}` },
   problemLine: { margin: 0, fontSize: 12, color: tokens.danger },
   ceilingValue: { fontSize: 18, fontWeight: 600, letterSpacing: '-0.01em' },
-  ceilingProse: { margin: 0, fontSize: 12, lineHeight: 1.55, color: tokens.mutedForeground, textWrap: 'pretty' },
+  ceilingProse: {
+    margin: 0,
+    fontSize: 12,
+    lineHeight: 1.55,
+    color: tokens.mutedForeground,
+    textWrap: 'pretty',
+  },
   note: { margin: 0, fontSize: 13, color: tokens.mutedForeground },
   // ---- the chain -------------------------------------------------------
   chain: {
@@ -134,7 +140,12 @@ const styles = stylex.create({
     borderRadius: '9999px',
   },
   markEnd: { backgroundColor: tokens.surfaceMuted, color: tokens.mutedForeground },
-  startDot: { width: 8, height: 8, borderRadius: '9999px', backgroundColor: tokens.mutedForeground },
+  startDot: {
+    width: 8,
+    height: 8,
+    borderRadius: '9999px',
+    backgroundColor: tokens.mutedForeground,
+  },
   markStep: {
     marginTop: 6,
     backgroundColor: tokens.foreground,
@@ -343,7 +354,10 @@ function RulesCard({
     .map((section) =>
       section.cap === null
         ? format(m.itemsCeilingSectionFree, { name: section.name })
-        : format(m.itemsCeilingSectionCapped, { name: section.name, value: trimAmount(section.cap) }),
+        : format(m.itemsCeilingSectionCapped, {
+            name: section.name,
+            value: trimAmount(section.cap),
+          }),
     )
     .join(format(m.listSeparator))
   const value = trimAmount(draft.fixedValue.trim())
@@ -375,7 +389,11 @@ function RulesCard({
         <span {...stylex.props(styles.cellLabel)} id="item-entries-label">
           {format(m.itemsFieldMax)}
         </span>
-        <div role="radiogroup" aria-labelledby="item-entries-label" {...stylex.props(styles.radios)}>
+        <div
+          role="radiogroup"
+          aria-labelledby="item-entries-label"
+          {...stylex.props(styles.radios)}
+        >
           <div {...stylex.props(styles.choiceLine)}>
             <button
               type="button"
@@ -387,7 +405,10 @@ function RulesCard({
               }}
               {...stylex.props(styles.radioRow, entries !== null && styles.radioRowOn)}
             >
-              <span aria-hidden {...stylex.props(styles.radio, entries !== null && styles.radioOn)} />
+              <span
+                aria-hidden
+                {...stylex.props(styles.radio, entries !== null && styles.radioOn)}
+              />
               {format(m.itemsMaxEntriesSome)}
             </button>
             {entries !== null && (
@@ -414,7 +435,10 @@ function RulesCard({
               onClick={() => onPatch({ maxEntries: '' })}
               {...stylex.props(styles.radioRow, entries === null && styles.radioRowOn)}
             >
-              <span aria-hidden {...stylex.props(styles.radio, entries === null && styles.radioOn)} />
+              <span
+                aria-hidden
+                {...stylex.props(styles.radio, entries === null && styles.radioOn)}
+              />
               {format(m.itemsMaxEntriesAny)}
             </button>
           </div>
@@ -430,7 +454,11 @@ function RulesCard({
         <span {...stylex.props(styles.cellLabel)} id="item-folding-label">
           {format(m.itemsFolding)}
         </span>
-        <div role="radiogroup" aria-labelledby="item-folding-label" {...stylex.props(styles.radios)}>
+        <div
+          role="radiogroup"
+          aria-labelledby="item-folding-label"
+          {...stylex.props(styles.radios)}
+        >
           {foldings.map(([rule, label]) => {
             const on = draft.folding === rule
             return (
@@ -442,7 +470,11 @@ function RulesCard({
                   disabled={unsupported}
                   data-folding={rule}
                   onClick={() => onPatch({ folding: rule })}
-                  {...stylex.props(styles.radioRow, on && styles.radioRowOn, unsupported && styles.radioRowOff)}
+                  {...stylex.props(
+                    styles.radioRow,
+                    on && styles.radioRowOn,
+                    unsupported && styles.radioRowOff,
+                  )}
                 >
                   <span aria-hidden {...stylex.props(styles.radio, on && styles.radioOn)} />
                   {label}
@@ -530,9 +562,17 @@ function StepChain({
   const asked = steps.map((stage) => {
     const roleIds = stage.kind === 'roleAt' ? stage.roleIds : [stage.roleId]
     const askable = stage.kind === 'roleAt' && stage.nodeTypeId !== '' && roleIds.length > 0
-    return askable ? { nodeTypeId: stage.nodeTypeId, roleIds, key: `${stage.nodeTypeId}|${[...roleIds].sort().join(',')}` } : null
+    return askable
+      ? {
+          nodeTypeId: stage.nodeTypeId,
+          roleIds,
+          key: `${stage.nodeTypeId}|${[...roleIds].sort().join(',')}`,
+        }
+      : null
   })
-  const distinct = [...new Map(asked.flatMap((one) => (one === null ? [] : [[one.key, one] as const]))).values()]
+  const distinct = [
+    ...new Map(asked.flatMap((one) => (one === null ? [] : [[one.key, one] as const]))).values(),
+  ]
   const answers = useQueries({
     queries: distinct.map((one) =>
       query.assessment.reviewCoverage.queryOptions({
@@ -542,7 +582,9 @@ function StepChain({
     ),
   })
   const coverage = asked.map((one) =>
-    one === null ? undefined : answers[distinct.findIndex((candidate) => candidate.key === one.key)],
+    one === null
+      ? undefined
+      : answers[distinct.findIndex((candidate) => candidate.key === one.key)],
   )
   const block = chain === 'normal' ? 'review' : 'escalation'
   const problemOf = (key: string) =>
@@ -612,32 +654,44 @@ function StepChain({
                     <span {...stylex.props(styles.cardWho)}>
                       <span>
                         {stage.kind === 'roleAt'
-                          ? (options.orgTypes.find((one) => one.id === stage.nodeTypeId)?.name ?? '')
+                          ? (options.orgTypes.find((one) => one.id === stage.nodeTypeId)?.name ??
+                            '')
                           : format(m.itemsStageWalkUp)}
                       </span>
                       <span aria-hidden {...stylex.props(styles.rule)} />
                       <span {...stylex.props(styles.roles)}>
                         {options.roles
                           .filter((role) =>
-                            stage.kind === 'roleAt' ? stage.roleIds.includes(role.id) : role.id === stage.roleId,
+                            stage.kind === 'roleAt'
+                              ? stage.roleIds.includes(role.id)
+                              : role.id === stage.roleId,
                           )
                           .map((role) => (
                             <Tag key={role.id}>{role.name}</Tag>
                           ))}
                       </span>
                       <span>
-                        {format(stage.participation === 'all' ? m.itemsStageRuleAll : m.itemsStageRuleAny)}
+                        {format(
+                          stage.participation === 'all' ? m.itemsStageRuleAll : m.itemsStageRuleAny,
+                        )}
                       </span>
                     </span>
                   )}
                   {problem !== undefined && (
-                    <span {...stylex.props(styles.coverage, styles.bad)} role="alert" data-testid="step-problem">
+                    <span
+                      {...stylex.props(styles.coverage, styles.bad)}
+                      role="alert"
+                      data-testid="step-problem"
+                    >
                       {problemWords(problem, format)}
                     </span>
                   )}
                 </span>
                 {problem === undefined && nodes !== undefined && (
-                  <span {...stylex.props(styles.coverage, uncovered > 0 && styles.bad)} data-testid="step-coverage">
+                  <span
+                    {...stylex.props(styles.coverage, uncovered > 0 && styles.bad)}
+                    data-testid="step-coverage"
+                  >
                     {nodes.length === 0
                       ? format(m.itemsReviewNoUnits)
                       : uncovered === 0
@@ -651,7 +705,12 @@ function StepChain({
           )
         })}
 
-        <button type="button" {...stylex.props(styles.addButton)} onClick={onAdd} data-testid="chain-add">
+        <button
+          type="button"
+          {...stylex.props(styles.addButton)}
+          onClick={onAdd}
+          data-testid="chain-add"
+        >
           <span {...stylex.props(styles.rail)}>
             <span {...stylex.props(styles.mark, styles.markAdd)}>
               <PlusIcon aria-hidden {...stylex.props(styles.icon13)} />

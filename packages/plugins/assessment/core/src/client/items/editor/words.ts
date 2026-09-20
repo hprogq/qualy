@@ -203,7 +203,10 @@ export const takesOf = (schema: AtomicSchema, locale: string, format: Format): T
             : max !== undefined
               ? format(m.itemsRangeMax, { max })
               : undefined
-      return { ...(range === undefined ? {} : { range }), note: format(m.itemsScaleNote, { scale: held[MAX_SCALE] }) }
+      return {
+        ...(range === undefined ? {} : { range }),
+        note: format(m.itemsScaleNote, { scale: held[MAX_SCALE] }),
+      }
     }
     case 'text': {
       const words = boundsWords(schema, locale, format, () => '')
@@ -242,7 +245,9 @@ export const fieldTakesOf = (field: FieldDraft, format: Format): TakesParts => {
     }
     case 'choice':
       return {
-        names: field.options.filter((one) => one.enabled).map((one) => one.label.trim() || one.value),
+        names: field.options
+          .filter((one) => one.enabled)
+          .map((one) => one.label.trim() || one.value),
       }
     case 'boolean':
       return {}
@@ -297,7 +302,8 @@ export const boundsWords = (
       if (held.minLength !== undefined && held.minLength > 0 && held.maxLength !== undefined) {
         return format(m.itemsLengthBetween, { min: held.minLength, max: held.maxLength })
       }
-      if (held.maxLength !== undefined) return format(m.itemsLimitMaxLength, { count: held.maxLength })
+      if (held.maxLength !== undefined)
+        return format(m.itemsLimitMaxLength, { count: held.maxLength })
       if (held.minLength !== undefined && held.minLength > 0) {
         return format(m.itemsLengthMin, { min: held.minLength })
       }
@@ -305,7 +311,10 @@ export const boundsWords = (
     }
     case 'choice': {
       const choice = schema as ChoiceSchema
-      return named(choice.enum.map((value) => choiceLabel(choice, value, locale)), format)
+      return named(
+        choice.enum.map((value) => choiceLabel(choice, value, locale)),
+        format,
+      )
     }
     // a yes or no has no bounds to speak of: the kind is the whole sentence
     case 'boolean':
@@ -316,11 +325,7 @@ export const boundsWords = (
 }
 
 /** a form field's own bounds, as the pen holds them: the same sentence for a field nobody linked */
-export const fieldBoundsWords = (
-  field: FieldDraft,
-  format: Format,
-  listJoin: ListJoin,
-): string => {
+export const fieldBoundsWords = (field: FieldDraft, format: Format, listJoin: ListJoin): string => {
   switch (field.type) {
     case 'text': {
       const min = Number(field.minLength) || 0
@@ -384,10 +389,7 @@ export const kindWords = (schema: AtomicSchema, format: Format): string =>
   format(KIND_LABEL[kindOf(schema)])
 
 export type LinkVerdict =
-  | { kind: 'fits' }
-  | { kind: 'differs' }
-  | { kind: 'kind-mismatch' }
-  | { kind: 'taken' }
+  { kind: 'fits' } | { kind: 'differs' } | { kind: 'kind-mismatch' } | { kind: 'taken' }
 
 /** whether an existing field could stand in for this determination */
 export const linkVerdictOf = (
@@ -400,13 +402,15 @@ export const linkVerdictOf = (
   locale: string,
 ): LinkVerdict => {
   if (linkOf(draft, contract, field.id) !== undefined) return { kind: 'taken' }
-  if (field.type === 'attachment' || field.type !== kindOf(admitted)) return { kind: 'kind-mismatch' }
+  if (field.type === 'attachment' || field.type !== kindOf(admitted))
+    return { kind: 'kind-mismatch' }
   // agreement is read off the same sentence the two lists print: two
   // fields that read alike to a person are alike to the arithmetic, since
   // the sentence names every bound the value layer compares
   const same =
     field.type === 'choice'
       ? false
-      : fieldBoundsWords(field, format, listJoin) === boundsWords(admitted, locale, format, listJoin)
+      : fieldBoundsWords(field, format, listJoin) ===
+        boundsWords(admitted, locale, format, listJoin)
   return same ? { kind: 'fits' } : { kind: 'differs' }
 }

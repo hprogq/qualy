@@ -167,7 +167,9 @@ export function SummarySection({
       testId="summary-block"
       aside={
         problem === undefined ? (
-          <Tag testId="summary-mode">{format(custom ? m.itemsSummaryCustom : m.itemsSummaryAuto)}</Tag>
+          <Tag testId="summary-mode">
+            {format(custom ? m.itemsSummaryCustom : m.itemsSummaryAuto)}
+          </Tag>
         ) : (
           <SectionCount tone="error">{problem}</SectionCount>
         )

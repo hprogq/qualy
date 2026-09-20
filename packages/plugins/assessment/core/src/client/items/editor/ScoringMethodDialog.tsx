@@ -115,12 +115,21 @@ export function ScoringMethodDialog({
         if (!next) onClose()
       }}
     >
-      <DialogContent size="45rem" showCloseButton={false} xstyle={styles.panel} data-testid="scoring-method-dialog">
+      <DialogContent
+        size="45rem"
+        showCloseButton={false}
+        xstyle={styles.panel}
+        data-testid="scoring-method-dialog"
+      >
         <div {...stylex.props(styles.head)}>
           <DialogTitle {...stylex.props(styles.title)}>{format(m.itemsScoringPick)}</DialogTitle>
           <span {...stylex.props(styles.spacer)} />
           {calculators.length > 1 && (
-            <div role="radiogroup" aria-label={format(m.itemsScoringMethod)} {...stylex.props(styles.methods)}>
+            <div
+              role="radiogroup"
+              aria-label={format(m.itemsScoringMethod)}
+              {...stylex.props(styles.methods)}
+            >
               {calculators.map((option) => {
                 const on = option.ref === candidate.ref
                 return (
@@ -134,7 +143,10 @@ export function ScoringMethodDialog({
                     onClick={() => {
                       // the question's own configuration comes back with its
                       // method; another method starts from nothing
-                      if (!on) setCandidate(option.ref === chosen.ref ? chosen : { ref: option.ref, config: {} })
+                      if (!on)
+                        setCandidate(
+                          option.ref === chosen.ref ? chosen : { ref: option.ref, config: {} },
+                        )
                     }}
                   >
                     {formatText(option.label)}

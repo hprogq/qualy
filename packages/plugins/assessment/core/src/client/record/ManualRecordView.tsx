@@ -11,13 +11,7 @@ import { assessmentMessages as m } from '../i18n.ts'
 import { administrativeItemsOf, type ItemDto } from '../entry/model.ts'
 import { RecordSteps, type RecognitionWire } from './RecordSteps.tsx'
 import { ItemPicker } from './ItemPicker.tsx'
-import {
-  NoAdministrativeItems,
-  Wizard,
-  WizardBody,
-  WizardFoot,
-  WizardRail,
-} from './wizard.tsx'
+import { NoAdministrativeItems, Wizard, WizardBody, WizardFoot, WizardRail } from './wizard.tsx'
 
 // Writing one administrative fact: which question, about whom, and what the
 // office determines by recording it.
@@ -69,11 +63,7 @@ export function ManualRecordView({
   // filed against another.
   const session = `${item?.currentRevision?.id ?? 'no-revision'}:${attempt}`
 
-  const steps = [
-    format(m.recordStepItem),
-    format(m.recordStepFill),
-    format(m.recordStepConfirm),
-  ]
+  const steps = [format(m.recordStepItem), format(m.recordStepFill), format(m.recordStepConfirm)]
 
   return (
     <AsyncSection

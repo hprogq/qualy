@@ -1,7 +1,8 @@
 import ReviewInstancePage from '../src/client/review/ReviewInstancePage.tsx'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
+import { readDraft, writeDraft } from '../src/client/local-store.ts'
 import { apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The approval collecting an explicit determination.
@@ -17,7 +18,14 @@ import { apiError, emptyManifest, fakeClient, renderScreen } from './support/scr
 const BATCH_ID = '11111111-1111-4111-8111-111111111111'
 const ITEM_ID = '22222222-2222-4222-8222-222222222222'
 const ENTRY_ID = '33333333-3333-4333-8333-333333333333'
-const INSTANCE_ID = '55555555-5555-4555-8555-555555555555'
+// A fresh round per test on purpose. Unsent words are kept in this browser
+// against the round they belong to (IndexedDB, shared by every test file on
+// this origin), so a test that types and does not confirm would hand its
+// draft to whichever test opened the same round next.
+let INSTANCE_ID = crypto.randomUUID()
+beforeEach(() => {
+  INSTANCE_ID = crypto.randomUUID()
+})
 
 const PAGES = [
   { id: 'assessment/review-instance', path: '/assessment/batches/:batchId/reviews/:instanceId' },
@@ -442,6 +450,66 @@ describe('approving with a determination', () => {
     expect((payload['recognition'] as { values: Record<string, unknown> }).values).toEqual({
       'rec-verified': false,
     })
+  })
+
+  // A panel closed and reopened keeps its words on its own - it stays
+  // mounted. What the browser's own store is for is the other way of losing
+  // them: the tab reloaded, the browser restarted, the machine slept.
+  it('writes unsent words into this browser, and stops once the approval is sent', async () => {
+    const id = `${INSTANCE_ID}:approve`
+    const decided = stagedDecide()
+    open(review(), { decideReview: decided as never })
+    await openApprove()
+    const { userEvent } = await import('vitest/browser')
+    await userEvent.fill(
+      page.getByRole('dialog').getByRole('textbox', { name: '审核意见' }).element() as HTMLElement,
+      '材料齐全，按一等奖认定',
+    )
+    const form = document.querySelector('[data-testid="recognition-form"]')!
+    await userEvent.fill(
+      form.querySelector('[data-parameter="rec-ordinal"] input') as HTMLInputElement,
+      '3',
+    )
+    const kept = await vi.waitFor(
+      async () => {
+        const row = await readDraft(id)
+        if (row === null) throw new Error('nothing kept yet')
+        return row
+      },
+      { timeout: 4_000 },
+    )
+    expect(kept.value).toMatchObject({
+      comment: '材料齐全，按一等奖认定',
+      values: { 'rec-ordinal': '3' },
+    })
+    // and once it has been said for real, this browser has nothing to keep
+    await confirmAndWait(decided)
+    await expect.poll(() => readDraft(id), { timeout: 4_000 }).toBeNull()
+  })
+
+  it('puts unsent words back when the page comes up again', async () => {
+    const id = `${INSTANCE_ID}:approve`
+    // what the last visit left behind, before this one draws anything
+    await writeDraft(id, {
+      comment: '等待奖状原件',
+      reason: '',
+      values: { 'rec-level': 'national', 'rec-ordinal': '5', 'rec-hours': '2' },
+    })
+    open(review())
+    await openApprove()
+    await expect.element(page.getByTestId('draft-note')).toBeVisible()
+    const comment = () =>
+      page.getByRole('dialog').getByRole('textbox', { name: '审核意见' }).element() as HTMLElement
+    await expect.poll(() => (comment() as HTMLTextAreaElement).value).toBe('等待奖状原件')
+    const form = document.querySelector('[data-testid="recognition-form"]')!
+    expect(
+      (form.querySelector('[data-parameter="rec-ordinal"] input') as HTMLInputElement).value,
+    ).toBe('5')
+
+    // starting again drops it here and in the store, so the next page is clean
+    await page.getByTestId('draft-discard').click()
+    await expect.poll(() => (comment() as HTMLTextAreaElement).value).toBe('')
+    await expect.poll(() => readDraft(id), { timeout: 4_000 }).toBeNull()
   })
 
   it('keeps the refusal entirely out of it', async () => {

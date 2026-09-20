@@ -135,7 +135,10 @@ export default function UserBatchesPage() {
 
   return (
     <div {...stylex.props(styles.page)}>
-      <SectionHead title={format(m.personBatchesTab)} count={rows.data ? items.length : undefined} />
+      <SectionHead
+        title={format(m.personBatchesTab)}
+        count={rows.data ? items.length : undefined}
+      />
       <AsyncSection
         pending={rows.isPending}
         error={rows.isError ? formatError(rows.error) : null}
@@ -162,7 +165,10 @@ export default function UserBatchesPage() {
                   data-batch-id={batch.id}
                   data-membership={membership.status}
                   {...(batchReachable
-                    ? { onOpen: () => navigate('assessment/batch', { params: { batchId: batch.id } }) }
+                    ? {
+                        onOpen: () =>
+                          navigate('assessment/batch', { params: { batchId: batch.id } }),
+                      }
                     : {})}
                 >
                   <Cell lead>

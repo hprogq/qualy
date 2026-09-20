@@ -1,5 +1,12 @@
 import { useInfiniteQuery } from '@tanstack/react-query'
-import { cursorPages, PageLink, useApi, useApiQuery, usePageRouteParams, useRunApi } from '@qualy/web-runtime'
+import {
+  cursorPages,
+  PageLink,
+  useApi,
+  useApiQuery,
+  usePageRouteParams,
+  useRunApi,
+} from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import * as stylex from '@stylexjs/stylex'
@@ -131,7 +138,10 @@ export default function UserEntriesPage() {
 
   return (
     <div {...stylex.props(styles.page)}>
-      <SectionHead title={format(m.personEntriesTab)} count={rows.data ? items.length : undefined} />
+      <SectionHead
+        title={format(m.personEntriesTab)}
+        count={rows.data ? items.length : undefined}
+      />
       <AsyncSection
         pending={rows.isPending}
         error={rows.isError ? formatError(rows.error) : null}

@@ -288,7 +288,9 @@ export function AdministrativeEntryList({
                   >
                     <span {...stylex.props(styles.name)}>{row.participant.displayName}</span>
                     <span {...stylex.props(styles.meta)}>
-                      <span>{row.participant.businessNo ?? format(m.noBusinessNoShort, { businessNo })}</span>
+                      <span>
+                        {row.participant.businessNo ?? format(m.noBusinessNoShort, { businessNo })}
+                      </span>
                       <span aria-hidden {...stylex.props(styles.tick)} />
                       <span>
                         {format(

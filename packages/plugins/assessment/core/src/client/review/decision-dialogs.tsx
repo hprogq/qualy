@@ -25,6 +25,8 @@ import type { EvidenceFieldSpec } from '../entry/EvidenceForm.tsx'
 import { offeredOptions } from '../entry/model.ts'
 import { AttachmentLink } from '../entry/AttachmentLink.tsx'
 import { Choice } from '../items/Choice.tsx'
+import { DraftNote } from './DraftNote.tsx'
+import { useLocalDraft } from './use-draft.ts'
 import { SlideKey } from './touch.tsx'
 import { useFinePointer } from './pointer.ts'
 import { ValueFieldsForm } from '@qualy/web-value-form/InputValueForm'
@@ -56,18 +58,6 @@ const RESTING = {
   reject: `color-mix(in oklab, ${tokens.danger} 80%, black)`,
   escalate: `color-mix(in oklab, ${tokens.primary} 90%, transparent)`,
 } as const
-
-/**
- * What a reviewer had written in an approval they then closed.
- *
- * The dialog is unmounted when it shuts, and on a narrow screen it is shut
- * often - the filing is behind it. Kept per round for as long as the page
- * lives, and dropped the moment the approval is confirmed.
- */
-const approveDrafts = new Map<
-  string,
-  { comment: string; reason: string; drafts: Record<string, FieldDraft> }
->()
 
 const spin = stylex.keyframes({ to: { transform: 'rotate(360deg)' } })
 
@@ -775,10 +765,7 @@ export function ApproveDialog({
   const listJoin = useList()
   const words = usePickerWords()
   const fine = useFinePointer()
-  const draftKey = `${review.id}:${review.recognitionForm?.locked?.hash ?? 'open'}`
-  // what the rule sent back outranks what was merely left unfinished
-  const kept = initial === undefined ? approveDrafts.get(draftKey) : undefined
-  const [comment, setComment] = useState(initial?.comment ?? kept?.comment ?? '')
+  const [comment, setComment] = useState(initial?.comment ?? '')
 
   // The determination, where the frozen contract asks for one. The wire
   // hands the fields as opaque ids with their frozen schemas; a sitting
@@ -812,19 +799,35 @@ export function ApproveDialog({
   }, [fields, sources, locale])
   const locked = form?.locked ?? null
   const [drafts, setDrafts] = useState<Record<string, FieldDraft>>(() =>
-    kept !== undefined && locked === null
-      ? kept.drafts
-      : draftsFromFields(
-          fields,
-          (locked?.values ?? initial?.recognition?.values ?? seed) as Record<string, unknown>,
-        ),
+    draftsFromFields(
+      fields,
+      (locked?.values ?? initial?.recognition?.values ?? seed) as Record<string, unknown>,
+    ),
   )
-  const [determinationReason, setDeterminationReason] = useState(
-    initial?.recognition?.reason ?? kept?.reason ?? '',
+  const [determinationReason, setDeterminationReason] = useState(initial?.recognition?.reason ?? '')
+  // what the rule sent back outranks what was merely left unfinished, and a
+  // settled sitting is read-only, so neither keeps a draft
+  const blank = useMemo(
+    () => draftsFromFields(fields, (locked?.values ?? seed) as Record<string, unknown>),
+    [fields, locked, seed],
   )
-  useEffect(() => {
-    approveDrafts.set(draftKey, { comment, reason: determinationReason, drafts })
-  }, [draftKey, comment, determinationReason, drafts])
+  const draft = useLocalDraft<{
+    comment: string
+    reason: string
+    values: Record<string, FieldDraft>
+  }>({
+    id: initial === undefined && locked === null ? `${review.id}:approve` : null,
+    value: { comment, reason: determinationReason, values: drafts },
+    empty: (one) =>
+      one.comment === '' &&
+      one.reason === '' &&
+      JSON.stringify(one.values) === JSON.stringify(blank),
+    onRestore: (one) => {
+      setComment(one.comment)
+      setDeterminationReason(one.reason)
+      setDrafts(one.values)
+    },
+  })
   const materialized = useMemo(() => materializeFields(fields, drafts), [fields, drafts])
   const changed =
     form !== null &&
@@ -871,7 +874,7 @@ export function ApproveDialog({
               values: materialized.value!,
               ...(changed ? { reason: determinationReason.trim() } : {}),
             }
-    approveDrafts.delete(draftKey)
+    draft.forget()
     onConfirm({
       comment: comment.trim(),
       ...(recognition === undefined ? {} : { recognition }),
@@ -1049,6 +1052,14 @@ export function ApproveDialog({
         onClose={onClose}
         onConfirm={confirm}
       >
+        <DraftNote
+          draft={draft}
+          onDiscard={() => {
+            setComment('')
+            setDeterminationReason('')
+            setDrafts(blank)
+          }}
+        />
         {caution}
         {determination}
         {form !== null && <ScorePreview preview={preview} fields={fields} />}
@@ -1119,6 +1130,14 @@ export function ApproveDialog({
           }
         }}
       >
+        <DraftNote
+          draft={draft}
+          onDiscard={() => {
+            setComment('')
+            setDeterminationReason('')
+            setDrafts(blank)
+          }}
+        />
         {caution}
         {form === null ? (
           commentField
@@ -1453,6 +1472,29 @@ export function RejectDialog({
   const [suggested, setSuggested] = useState<Record<string, string>>({})
   const commentBox = useRef<HTMLTextAreaElement | null>(null)
   const ready = comment.trim() !== '' && (reasons.length === 0 || reason !== '')
+  const draft = useLocalDraft<{
+    reason: string
+    comment: string
+    suggested: Record<string, string>
+    suggesting: boolean
+  }>({
+    id: `${review.id}:reject`,
+    value: { reason, comment, suggested, suggesting },
+    empty: (one) =>
+      one.reason === '' && one.comment === '' && Object.keys(one.suggested).length === 0,
+    onRestore: (one) => {
+      setReason(one.reason)
+      setComment(one.comment)
+      setSuggested(one.suggested)
+      setSuggesting(one.suggesting)
+    },
+  })
+  const startAgain = () => {
+    setReason('')
+    setComment('')
+    setSuggested({})
+    setSuggesting(false)
+  }
 
   // The dialog opens with the cursor in the box, so its keys are read from
   // the document rather than from the panel - a handler on the panel hears
@@ -1505,6 +1547,7 @@ export function RejectDialog({
         .filter((field) => (suggested[field.key] ?? '').trim() !== '')
         .map((field) => [field.key, materializeSuggestion(field, suggested[field.key]!)]),
     )
+    draft.forget()
     onConfirm({
       ...(reason === '' ? {} : { reason }),
       comment: comment.trim(),
@@ -1526,6 +1569,7 @@ export function RejectDialog({
         onClose={onClose}
         onConfirm={confirm}
       >
+        <DraftNote draft={draft} onDiscard={startAgain} />
         {caution}
         <ReasonPicker reasons={reasons} value={reason} onChange={setReason} />
         <Field required label={format(m.reviewComment)} hint={format(m.reviewCommentHint)}>
@@ -1587,6 +1631,7 @@ export function RejectDialog({
           }
         }}
       >
+        <DraftNote draft={draft} onDiscard={startAgain} />
         {caution}
         <ReasonPicker
           reasons={reasons}

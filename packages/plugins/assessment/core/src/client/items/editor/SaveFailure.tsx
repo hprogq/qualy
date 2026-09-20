@@ -96,7 +96,12 @@ export function FailureList({
   const { format } = useI18n()
   if (problems.length === 0) return null
   return (
-    <div {...stylex.props(styles.card)} role="alert" data-testid="save-failure" data-count={problems.length}>
+    <div
+      {...stylex.props(styles.card)}
+      role="alert"
+      data-testid="save-failure"
+      data-count={problems.length}
+    >
       <div {...stylex.props(styles.head)}>
         <span {...stylex.props(styles.mark)}>
           <CircleAlertIcon aria-hidden {...stylex.props(styles.markIcon)} />

@@ -423,7 +423,9 @@ export function EntryDialog({
       // the write went through and the handing on did not: say so, or the
       // screen reads as though nothing was kept
       setProblem(
-        entry === null && created !== null ? `${said} ${format(m.entrySubmitFailedDraftKept)}` : said,
+        entry === null && created !== null
+          ? `${said} ${format(m.entrySubmitFailedDraftKept)}`
+          : said,
       )
     },
   })

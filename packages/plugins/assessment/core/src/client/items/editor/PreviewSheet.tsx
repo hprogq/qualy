@@ -82,7 +82,8 @@ export function PreviewSheet({
   onClose: () => void
 }) {
   const { format } = useI18n()
-  const perEntryAmount = draft.scoring.language !== 'v2' || draft.scoring.calculator.ref === 'fixed@1'
+  const perEntryAmount =
+    draft.scoring.language !== 'v2' || draft.scoring.calculator.ref === 'fixed@1'
   return (
     <SidePanel
       open={open}
@@ -143,9 +144,17 @@ export function PreviewSheet({
                       {format(m.itemsPreviewUpload, { count: Number(field.maxCount) || 1 })}
                     </div>
                   ) : (
-                    <div {...stylex.props(styles.input)} data-testid="preview-control" data-field-type={field.type}>
+                    <div
+                      {...stylex.props(styles.input)}
+                      data-testid="preview-control"
+                      data-field-type={field.type}
+                    >
                       {format(
-                        field.type === 'date' ? m.itemsPreviewDate : picked ? m.itemsPreviewChoose : m.itemsPreviewFill,
+                        field.type === 'date'
+                          ? m.itemsPreviewDate
+                          : picked
+                            ? m.itemsPreviewChoose
+                            : m.itemsPreviewFill,
                       )}
                       {field.type === 'date' ? (
                         <CalendarIcon aria-hidden {...stylex.props(styles.inputIcon)} />

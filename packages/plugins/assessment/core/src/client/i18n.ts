@@ -390,6 +390,10 @@ const reviewSummaryDifferMessage = defineMessage<{ count: number }>()({
   id: 'assessment/review/summary-differ',
   defaultMessage: '{count} differ from the filing',
 })
+const reviewDraftRestoredMessage = defineMessage<{ when: string }>()({
+  id: 'assessment/review/draft-restored',
+  defaultMessage: 'Put back from what you wrote here on {when}, still unsent',
+})
 const reviewSummaryWrongMessage = defineMessage<{ count: number }>()({
   id: 'assessment/review/summary-wrong',
   defaultMessage: '{count} filled in wrongly',
@@ -446,6 +450,8 @@ const i18n = definePluginMessages({
     reviewSummaryDiffer: reviewSummaryDifferMessage,
     reviewSummaryMissing: reviewSummaryMissingMessage,
     reviewSummaryWrong: reviewSummaryWrongMessage,
+    reviewDraftRestored: reviewDraftRestoredMessage,
+    reviewDraftDiscard: { id: 'assessment/review/draft-discard', defaultMessage: 'Start again' },
     reviewLinkedTo: reviewLinkedToMessage,
     reviewResetToFiled: { id: 'assessment/review/reset-to-filed', defaultMessage: 'Restore' },
     nodeUsageManaged: {

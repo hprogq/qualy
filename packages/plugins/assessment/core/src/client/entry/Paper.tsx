@@ -1401,15 +1401,15 @@ function Question({
             </div>
           )}
           {RESERVED.basis && (
-          <p
-            {...stylex.props(
-              styles.basisRow,
-              (terms.length > 0 || routes.length > 0) && styles.termsDivided,
-            )}
-          >
-            <span {...stylex.props(styles.keepShort)}>{format(m.myEntriesBasis)}</span>
-            <span {...stylex.props(styles.basisWords)}>{format(m.myEntriesBasisSoon)}</span>
-          </p>
+            <p
+              {...stylex.props(
+                styles.basisRow,
+                (terms.length > 0 || routes.length > 0) && styles.termsDivided,
+              )}
+            >
+              <span {...stylex.props(styles.keepShort)}>{format(m.myEntriesBasis)}</span>
+              <span {...stylex.props(styles.basisWords)}>{format(m.myEntriesBasisSoon)}</span>
+            </p>
           )}
         </div>
         <span {...stylex.props(styles.termsFoot)} />

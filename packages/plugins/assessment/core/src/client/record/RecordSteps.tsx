@@ -339,7 +339,11 @@ export function RecordSteps({
             <WizardRecap>
               <WizardRecapRow term={format(m.recordActItem)}>{item.title}</WizardRecapRow>
               <WizardRecapRow term={format(m.recordTargets)}>
-                <span {...stylex.props(styles.count)} data-testid="record-preview" data-eligible={seen.eligibleCount}>
+                <span
+                  {...stylex.props(styles.count)}
+                  data-testid="record-preview"
+                  data-eligible={seen.eligibleCount}
+                >
                   {format(m.recordTargetsSummary, { count: seen.eligibleCount })}
                 </span>
               </WizardRecapRow>
@@ -474,10 +478,7 @@ export function RecordSteps({
           <Feedback message={problem} />
         </WizardSection>
       </WizardBody>
-      <WizardFoot
-        status={format(missing ?? m.recordReadyToCheck)}
-        blocked={missing !== null}
-      >
+      <WizardFoot status={format(missing ?? m.recordReadyToCheck)} blocked={missing !== null}>
         <Button variant="outline" onClick={() => onGo(0)} data-testid="record-step-back">
           {format(m.recordStepBack)}
         </Button>

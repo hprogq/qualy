@@ -221,7 +221,9 @@ export function BasicsTab({
         <div {...stylex.props(styles.span)}>
           <Field
             label={format(m.itemsFieldDescription)}
-            aside={<span {...stylex.props(styles.labelHint)}>{format(m.itemsDescriptionHint)}</span>}
+            aside={
+              <span {...stylex.props(styles.labelHint)}>{format(m.itemsDescriptionHint)}</span>
+            }
           >
             {(id) => (
               <Textarea
@@ -241,7 +243,8 @@ export function BasicsTab({
             const chosen = draft.mode === mode
             // the automatic card, and the way out of it, lock together: a
             // published question is one kind of thing for good
-            const locked = automaticLocked && (mode === 'automatic') !== (draft.mode === 'automatic')
+            const locked =
+              automaticLocked && (mode === 'automatic') !== (draft.mode === 'automatic')
             const card = (
               <button
                 key={mode}
@@ -254,7 +257,11 @@ export function BasicsTab({
                 onClick={() => {
                   if (!chosen && !locked) onMode(mode)
                 }}
-                {...stylex.props(styles.card, chosen && styles.cardChosen, locked && styles.cardLocked)}
+                {...stylex.props(
+                  styles.card,
+                  chosen && styles.cardChosen,
+                  locked && styles.cardLocked,
+                )}
               >
                 <span aria-hidden {...stylex.props(styles.radio, chosen && styles.radioOn)} />
                 <span {...stylex.props(styles.words)}>
@@ -270,12 +277,20 @@ export function BasicsTab({
               <TooltipProvider key={mode}>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <span {...stylex.props(styles.cardSeat)} data-testid="mode-locked" data-locked-mode={mode}>
+                    <span
+                      {...stylex.props(styles.cardSeat)}
+                      data-testid="mode-locked"
+                      data-locked-mode={mode}
+                    >
                       {card}
                     </span>
                   </TooltipTrigger>
                   <TooltipContent>
-                    {format(mode === 'automatic' ? m.itemsModeLockedToAutomatic : m.itemsModeLockedFromAutomatic)}
+                    {format(
+                      mode === 'automatic'
+                        ? m.itemsModeLockedToAutomatic
+                        : m.itemsModeLockedFromAutomatic,
+                    )}
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -300,7 +315,10 @@ export function BasicsTab({
           <div
             role="group"
             aria-label={format(m.itemsChannels)}
-            {...stylex.props(styles.channelList, channelsProblem !== undefined && styles.channelListBad)}
+            {...stylex.props(
+              styles.channelList,
+              channelsProblem !== undefined && styles.channelListBad,
+            )}
           >
             <ChannelCard
               name={format(m.itemsChannelParticipant)}

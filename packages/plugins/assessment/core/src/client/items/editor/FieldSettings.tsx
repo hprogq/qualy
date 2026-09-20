@@ -250,29 +250,31 @@ export function FieldSettingsForm({
               <Choice
                 id={id}
                 value={field.type}
-                options={(['text', 'integer', 'decimal', 'date', 'choice', 'boolean', 'attachment'] as const).map(
-                  (type) => ({ value: type, label: format(TYPE_LABEL[type]) }),
-                )}
+                options={(
+                  ['text', 'integer', 'decimal', 'date', 'choice', 'boolean', 'attachment'] as const
+                ).map((type) => ({ value: type, label: format(TYPE_LABEL[type]) }))}
                 onChange={(next) => onRetype(next as FieldType)}
               />
             )}
           </Field>
         )}
-        {numberKind && onRetype !== undefined && (field.type === 'integer' || field.type === 'decimal') && (
-          <Field label={format(m.itemsNumberKind)}>
-            {(id) => (
-              <Choice
-                id={id}
-                value={field.type}
-                options={[
-                  { value: 'integer', label: format(TYPE_LABEL.integer) },
-                  { value: 'decimal', label: format(TYPE_LABEL.decimal) },
-                ]}
-                onChange={(next) => onRetype(next as FieldType)}
-              />
-            )}
-          </Field>
-        )}
+        {numberKind &&
+          onRetype !== undefined &&
+          (field.type === 'integer' || field.type === 'decimal') && (
+            <Field label={format(m.itemsNumberKind)}>
+              {(id) => (
+                <Choice
+                  id={id}
+                  value={field.type}
+                  options={[
+                    { value: 'integer', label: format(TYPE_LABEL.integer) },
+                    { value: 'decimal', label: format(TYPE_LABEL.decimal) },
+                  ]}
+                  onChange={(next) => onRetype(next as FieldType)}
+                />
+              )}
+            </Field>
+          )}
       </div>
 
       <TypeSettings
@@ -321,12 +323,22 @@ function TypeSettings({
           <div {...stylex.props(styles.pair)}>
             <Field label={format(m.itemsFieldMinLength)}>
               {(id) => (
-                <Input id={id} inputMode="numeric" value={field.minLength} onChange={(event) => patch({ minLength: event.target.value })} />
+                <Input
+                  id={id}
+                  inputMode="numeric"
+                  value={field.minLength}
+                  onChange={(event) => patch({ minLength: event.target.value })}
+                />
               )}
             </Field>
             <Field label={format(m.itemsFieldMaxLength)}>
               {(id) => (
-                <Input id={id} inputMode="numeric" value={field.maxLength} onChange={(event) => patch({ maxLength: event.target.value })} />
+                <Input
+                  id={id}
+                  inputMode="numeric"
+                  value={field.maxLength}
+                  onChange={(event) => patch({ maxLength: event.target.value })}
+                />
               )}
             </Field>
           </div>
@@ -383,7 +395,12 @@ function TypeSettings({
           {field.type === 'decimal' && (
             <Field label={format(m.itemsFieldMaxScale)}>
               {(id) => (
-                <Input id={id} inputMode="numeric" value={field.maxScale} onChange={(event) => patch({ maxScale: event.target.value })} />
+                <Input
+                  id={id}
+                  inputMode="numeric"
+                  value={field.maxScale}
+                  onChange={(event) => patch({ maxScale: event.target.value })}
+                />
               )}
             </Field>
           )}
@@ -446,12 +463,22 @@ function TypeSettings({
           <div {...stylex.props(styles.pair)}>
             <Field label={format(m.itemsFieldMaxCount)}>
               {(id) => (
-                <Input id={id} inputMode="numeric" value={field.maxCount} onChange={(event) => patch({ maxCount: event.target.value })} />
+                <Input
+                  id={id}
+                  inputMode="numeric"
+                  value={field.maxCount}
+                  onChange={(event) => patch({ maxCount: event.target.value })}
+                />
               )}
             </Field>
             <Field label={format(m.itemsFieldMaxSize)}>
               {(id) => (
-                <Input id={id} inputMode="decimal" value={field.maxSizeMb} onChange={(event) => patch({ maxSizeMb: event.target.value })} />
+                <Input
+                  id={id}
+                  inputMode="decimal"
+                  value={field.maxSizeMb}
+                  onChange={(event) => patch({ maxSizeMb: event.target.value })}
+                />
               )}
             </Field>
           </div>
@@ -506,14 +533,20 @@ export function OptionsEditor({
   const add = () =>
     onChange([...options, { id: nextOptionKey(), value: '', label: '', enabled: true }].map(valued))
   return (
-    <div {...stylex.props(styles.options)} data-testid="options-editor" data-empty={live.length === 0}>
+    <div
+      {...stylex.props(styles.options)}
+      data-testid="options-editor"
+      data-empty={live.length === 0}
+    >
       <span {...stylex.props(styles.optionsLabel)}>{format(m.itemsOptions)}</span>
       {live.length === 0 && (
         <div {...stylex.props(styles.optionsEmpty)} data-testid="options-empty">
           <span aria-hidden {...stylex.props(styles.optionsEmptyMedia)}>
             <ListIcon {...stylex.props(styles.icon16)} />
           </span>
-          <span {...stylex.props(styles.optionsEmptyTitle)}>{format(m.itemsOptionsEmptyTitle)}</span>
+          <span {...stylex.props(styles.optionsEmptyTitle)}>
+            {format(m.itemsOptionsEmptyTitle)}
+          </span>
           <span {...stylex.props(styles.optionsEmptyHint)}>{format(m.itemsOptionsEmptyHint)}</span>
           <Button
             type="button"
@@ -535,7 +568,8 @@ export function OptionsEditor({
               {...stylex.props(
                 styles.optionRow,
                 held === option.id && styles.optionLifted,
-                drop?.id === option.id && (drop.edge === 'before' ? styles.optionMarkBefore : styles.optionMarkAfter),
+                drop?.id === option.id &&
+                  (drop.edge === 'before' ? styles.optionMarkBefore : styles.optionMarkAfter),
               )}
               data-testid="option-row"
               data-option-id={option.id}
@@ -576,7 +610,11 @@ export function OptionsEditor({
                 aria-label={format(m.itemsOptionPlaceholder)}
                 aria-invalid={blank || undefined}
                 onChange={(event) =>
-                  onChange(options.map((one) => (one.id === option.id ? { ...one, label: event.target.value } : one)))
+                  onChange(
+                    options.map((one) =>
+                      one.id === option.id ? { ...one, label: event.target.value } : one,
+                    ),
+                  )
                 }
               />
               <Button
@@ -584,7 +622,9 @@ export function OptionsEditor({
                 size="icon-sm"
                 onClick={() => remove(option)}
                 aria-label={format(
-                  storedOptionIds.has(option.id) && onDisable !== undefined ? m.itemsOptionDisable : m.itemsOptionRemove,
+                  storedOptionIds.has(option.id) && onDisable !== undefined
+                    ? m.itemsOptionDisable
+                    : m.itemsOptionRemove,
                 )}
               >
                 <XIcon aria-hidden />
@@ -622,13 +662,24 @@ export function OptionsEditor({
           </button>
           {showDisabled &&
             off.map((option) => (
-              <div key={option.id} {...stylex.props(styles.disabledRow)} data-testid="disabled-option" data-option-id={option.id}>
+              <div
+                key={option.id}
+                {...stylex.props(styles.disabledRow)}
+                data-testid="disabled-option"
+                data-option-id={option.id}
+              >
                 <span {...stylex.props(styles.disabledName)}>{option.label}</span>
                 <span {...stylex.props(styles.spacer)} />
                 <button
                   type="button"
                   {...stylex.props(styles.restore)}
-                  onClick={() => onChange(options.map((one) => (one.id === option.id ? { ...one, enabled: true } : one)))}
+                  onClick={() =>
+                    onChange(
+                      options.map((one) =>
+                        one.id === option.id ? { ...one, enabled: true } : one,
+                      ),
+                    )
+                  }
                 >
                   {format(m.itemsOptionRestore)}
                 </button>
@@ -677,7 +728,10 @@ function AcceptPicker({ accept, onChange }: { accept: string; onChange: (next: s
               {...stylex.props(styles.kindButton, on ? styles.kindOn : styles.kindOff)}
             >
               <span {...stylex.props(styles.kindHead)}>
-                <span aria-hidden {...stylex.props(styles.kindBox, on ? styles.kindBoxOn : styles.kindBoxOff)}>
+                <span
+                  aria-hidden
+                  {...stylex.props(styles.kindBox, on ? styles.kindBoxOn : styles.kindBoxOff)}
+                >
                   {on && <CheckIcon {...stylex.props(styles.icon12)} strokeWidth={3} />}
                 </span>
                 <span {...stylex.props(styles.kindName)}>{format(kind.name)}</span>

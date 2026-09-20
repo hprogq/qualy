@@ -15,7 +15,10 @@ const styles = stylex.create({
     minHeight: 0,
     flexGrow: 1,
     gap: 0,
-    gridTemplateColumns: { default: 'minmax(0, 1fr)', [LG]: 'minmax(0, 0.9fr) minmax(0, 1.1fr) 19rem' },
+    gridTemplateColumns: {
+      default: 'minmax(0, 1fr)',
+      [LG]: 'minmax(0, 0.9fr) minmax(0, 1.1fr) 19rem',
+    },
   },
   column: {
     display: 'flex',
@@ -40,7 +43,12 @@ const bar = (width: string, height = 11) => <Skeleton height={height} width={wid
 
 export function BenchSkeleton() {
   return (
-    <div {...stylex.props(styles.bench)} role="presentation" aria-hidden data-testid="bench-skeleton">
+    <div
+      {...stylex.props(styles.bench)}
+      role="presentation"
+      aria-hidden
+      data-testid="bench-skeleton"
+    >
       <div {...stylex.props(styles.column, styles.first)}>
         {bar('42%', 16)}
         {['58%', '74%', '46%', '66%'].map((width, index) => (

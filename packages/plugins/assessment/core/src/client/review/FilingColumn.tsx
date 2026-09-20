@@ -438,8 +438,9 @@ export const FilingColumn = memo(function FilingColumn({
   const changes =
     against === null
       ? 0
-      : fields.filter((field) => (was.get(field.key)?.value ?? '') !== shown(field, record[field.key]))
-          .length
+      : fields.filter(
+          (field) => (was.get(field.key)?.value ?? '') !== shown(field, record[field.key]),
+        ).length
   // The materials, numbered once across the whole filing in the order the
   // questions ask for them - the same numbers the 1-9 keys open. A file
   // taken out this version has no number: it is not one of the things to
@@ -486,19 +487,19 @@ export const FilingColumn = memo(function FilingColumn({
       innerXstyle={styles.inner}
       footer={
         !RESERVED.insight ? undefined : (
-        // What the machine noticed, on the pane's own floor: there whatever
-        // the filing's length, so the checks always sit after the evidence,
-        // never over it. The caveat is part of the block: a machine's note
-        // without its error bar reads as a verdict.
-        <aside {...stylex.props(styles.insight)}>
-          <div {...stylex.props(styles.insightHead)}>
-            <SparklesIcon aria-hidden className={stylex.props(styles.insightIcon).className} />
-            <p {...stylex.props(styles.insightTitle)}>{format(m.reviewInsight)}</p>
-            <span {...stylex.props(styles.spacer)} />
-            <p {...stylex.props(styles.insightCaveat)}>{format(m.reviewInsightCaveat)}</p>
-          </div>
-          <p {...stylex.props(styles.insightBody)}>{format(m.reviewInsightSoon)}</p>
-        </aside>
+          // What the machine noticed, on the pane's own floor: there whatever
+          // the filing's length, so the checks always sit after the evidence,
+          // never over it. The caveat is part of the block: a machine's note
+          // without its error bar reads as a verdict.
+          <aside {...stylex.props(styles.insight)}>
+            <div {...stylex.props(styles.insightHead)}>
+              <SparklesIcon aria-hidden className={stylex.props(styles.insightIcon).className} />
+              <p {...stylex.props(styles.insightTitle)}>{format(m.reviewInsight)}</p>
+              <span {...stylex.props(styles.spacer)} />
+              <p {...stylex.props(styles.insightCaveat)}>{format(m.reviewInsightCaveat)}</p>
+            </div>
+            <p {...stylex.props(styles.insightBody)}>{format(m.reviewInsightSoon)}</p>
+          </aside>
         )
       }
     >

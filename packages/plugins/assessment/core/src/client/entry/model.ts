@@ -310,7 +310,5 @@ export const unitsOf = (value: string | number): number => {
 export const amountOf = (units: number): string => trimAmount((units / 10_000).toFixed(4))
 
 /** the options a choice field still offers: a disabled one keeps its words for old records only */
-export const offeredOptions = (
-  field: EvidenceFieldSpec,
-): readonly EvidenceChoiceOptionSpec[] =>
+export const offeredOptions = (field: EvidenceFieldSpec): readonly EvidenceChoiceOptionSpec[] =>
   (field.options ?? []).filter((option) => option.enabled !== false)

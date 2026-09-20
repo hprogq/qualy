@@ -28,7 +28,12 @@ const styles = stylex.create({
   sectionSpacer: { flexGrow: 1 },
   sectionAside: { flexShrink: 0, fontSize: 12, whiteSpace: 'nowrap' },
   asideError: { color: tokens.danger },
-  asidePending: { display: 'inline-flex', alignItems: 'center', gap: 6, color: tokens.warningForeground },
+  asidePending: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    color: tokens.warningForeground,
+  },
   card: {
     overflow: 'hidden',
     borderRadius: 14,
@@ -112,7 +117,14 @@ const styles = stylex.create({
   },
   foldSide: { gridRow: { default: null, [breakpoints.phone]: '1 / span 2' }, alignSelf: 'center' },
   nameColumn: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 3 },
-  name: { display: 'flex', minWidth: 0, alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 600 },
+  name: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 8,
+    fontSize: 14,
+    fontWeight: 600,
+  },
   nameText: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   nameUnset: { color: tokens.mutedForeground, fontWeight: 500 },
   described: {
@@ -242,7 +254,13 @@ const gridOf = (layout: ListLayout) =>
   layout === 'values' ? styles.gridValues : layout === 'open' ? styles.gridOpen : styles.gridDrag
 
 /** what a block of the editor says about itself at its far end: how many are wrong, or how many wait */
-export function SectionCount({ tone, children }: { tone: 'error' | 'pending'; children: ReactNode }) {
+export function SectionCount({
+  tone,
+  children,
+}: {
+  tone: 'error' | 'pending'
+  children: ReactNode
+}) {
   return tone === 'error' ? (
     <span {...stylex.props(styles.sectionAside, styles.asideError)} data-tone="error">
       {children}
@@ -405,12 +423,17 @@ export function ListRow({
   dragProps?: HTMLAttributes<HTMLElement>
 }) {
   const attributes = Object.fromEntries(
-    Object.entries(data ?? {}).map(([key, value]) => [`data-${key}`, value === undefined ? undefined : String(value)]),
+    Object.entries(data ?? {}).map(([key, value]) => [
+      `data-${key}`,
+      value === undefined ? undefined : String(value),
+    ]),
   )
   const values = layout === 'values'
   const body = (
     <>
-      {layout === 'drag' && <span {...stylex.props(styles.cellWrap, styles.foldSide)}>{handle}</span>}
+      {layout === 'drag' && (
+        <span {...stylex.props(styles.cellWrap, styles.foldSide)}>{handle}</span>
+      )}
       <span {...stylex.props(styles.nameColumn, values && styles.wordsLowered)}>
         <span {...stylex.props(styles.name)}>
           <span {...stylex.props(styles.nameText, unnamed && styles.nameUnset)}>{name}</span>
@@ -488,7 +511,12 @@ export function ListRow({
 
 export function DragHandle({ onPress, onRelease }: { onPress: () => void; onRelease: () => void }) {
   return (
-    <span aria-hidden onPointerDown={onPress} onPointerUp={onRelease} {...stylex.props(styles.handle)}>
+    <span
+      aria-hidden
+      onPointerDown={onPress}
+      onPointerUp={onRelease}
+      {...stylex.props(styles.handle)}
+    >
       <GripVerticalIcon {...stylex.props(styles.icon12)} />
     </span>
   )

@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { FileIcon, PlusIcon, TypeIcon, XIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
 import { useI18n } from '@qualy/web-i18n'
+import { DraftNote } from './DraftNote.tsx'
+import { useLocalDraft } from './use-draft.ts'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { Field, FormDialog } from '@qualy/ui/admin'
@@ -109,11 +111,14 @@ export interface WordedSupplement {
 
 export function SupplementDialog({
   open,
+  instanceId,
   onClose,
   onConfirm,
 }: {
   /** false while it animates shut; it keeps drawing what it was showing */
   open: boolean
+  /** the round the ask belongs to, which is what an unsent draft hangs on */
+  instanceId: string
   onClose: () => void
   onConfirm: (worded: WordedSupplement) => void
 }) {
@@ -123,6 +128,21 @@ export function SupplementDialog({
   const [pieces, setPieces] = useState<readonly Piece[]>([
     { label: '', kind: 'file', required: true },
   ])
+
+  const blankPieces: readonly Piece[] = [{ label: '', kind: 'file', required: true }]
+  const draft = useLocalDraft<{ instructions: string; pieces: readonly Piece[] }>({
+    id: `${instanceId}:supplement`,
+    value: { instructions, pieces },
+    empty: (one) =>
+      one.instructions === '' &&
+      one.pieces.length === 1 &&
+      one.pieces[0]?.label === '' &&
+      one.pieces[0]?.kind === 'file',
+    onRestore: (one) => {
+      setInstructions(one.instructions)
+      setPieces(one.pieces)
+    },
+  })
 
   const edit = (index: number, next: Partial<Piece>) =>
     setPieces((current) =>
@@ -180,7 +200,8 @@ export function SupplementDialog({
     pieces.length > 0 &&
     pieces.every((piece) => piece.label.trim() !== '')
 
-  const confirm = () =>
+  const confirm = () => {
+    draft.forget()
     onConfirm({
       instructions: instructions.trim(),
       requirements: pieces.map((piece) => ({
@@ -189,9 +210,17 @@ export function SupplementDialog({
         required: piece.required,
       })),
     })
+  }
 
   const body = (
     <div {...stylex.props(styles.body)}>
+      <DraftNote
+        draft={draft}
+        onDiscard={() => {
+          setInstructions('')
+          setPieces(blankPieces)
+        }}
+      />
       <Field label={format(m.supplementInstructionsLabel)} required>
         {(id) => (
           <Textarea

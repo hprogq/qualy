@@ -134,7 +134,11 @@ export function StageSheet({
   return (
     <EditorSheet
       open={open}
-      title={local.label.trim() === '' ? format(fresh ? m.itemsStageNew : m.itemsStageUnnamed) : local.label.trim()}
+      title={
+        local.label.trim() === ''
+          ? format(fresh ? m.itemsStageNew : m.itemsStageUnnamed)
+          : local.label.trim()
+      }
       tag={format(m.itemsStageSettings)}
       onClose={onClose}
       testId="stage-sheet"
@@ -210,7 +214,12 @@ export function StageSheet({
               onChange={(event) => patch({ label: event.target.value })}
             />
             {says('label') && (
-              <p {...stylex.props(styles.problem)} role="alert" data-testid="stage-problem" data-about="label">
+              <p
+                {...stylex.props(styles.problem)}
+                role="alert"
+                data-testid="stage-problem"
+                data-about="label"
+              >
                 {format(m.itemsStageLabelRequired)}
               </p>
             )}
@@ -248,7 +257,12 @@ export function StageSheet({
                   onChange={(nodeTypeId) => patch({ nodeTypeId })}
                 />
                 {says('level') && (
-                  <p {...stylex.props(styles.problem)} role="alert" data-testid="stage-problem" data-about="level">
+                  <p
+                    {...stylex.props(styles.problem)}
+                    role="alert"
+                    data-testid="stage-problem"
+                    data-about="level"
+                  >
                     {format(m.itemsStageLevelRequired)}
                   </p>
                 )}
@@ -277,7 +291,12 @@ export function StageSheet({
                   ))}
                 </div>
                 {says('roles') && (
-                  <p {...stylex.props(styles.problem)} role="alert" data-testid="stage-problem" data-about="roles">
+                  <p
+                    {...stylex.props(styles.problem)}
+                    role="alert"
+                    data-testid="stage-problem"
+                    data-about="roles"
+                  >
                     {format(m.itemsStageRolesRequired)}
                   </p>
                 )}
@@ -285,7 +304,12 @@ export function StageSheet({
             )}
           </Field>
           {coverage.data !== undefined && (
-            <p {...stylex.props(styles.coverageNote, uncovered.length > 0 && styles.coverageUncovered)}>
+            <p
+              {...stylex.props(
+                styles.coverageNote,
+                uncovered.length > 0 && styles.coverageUncovered,
+              )}
+            >
               {coverage.data.nodes.length === 0
                 ? format(m.itemsReviewNoUnits)
                 : uncovered.length === 0
@@ -308,7 +332,12 @@ export function StageSheet({
                 onChange={(roleId) => patch({ roleId })}
               />
               {says('role') && (
-                <p {...stylex.props(styles.problem)} role="alert" data-testid="stage-problem" data-about="role">
+                <p
+                  {...stylex.props(styles.problem)}
+                  role="alert"
+                  data-testid="stage-problem"
+                  data-about="role"
+                >
                   {format(m.itemsStageRoleRequired)}
                 </p>
               )}

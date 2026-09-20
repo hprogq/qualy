@@ -38,6 +38,7 @@ import {
 } from './decision-dialogs.tsx'
 import { SupplementDialog, type WordedSupplement } from './SupplementDialog.tsx'
 import { WORKBENCH_PARTS, type WorkbenchPart } from './Pane.tsx'
+import { forgetStaleDrafts } from '../local-store.ts'
 import { useBenchColumns } from './bench-columns.tsx'
 import { QueueRail } from './QueueRail.tsx'
 import { PartStrip, PersonStrip, RunStrip } from './WorkbenchStrips.tsx'
@@ -69,6 +70,9 @@ import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 // The decision surface's own styles; the reading workbench around it keeps
 // its utility classes until its own migration pass.
 const lg = '@media (min-width: 1024px)'
+
+/** how long an unsent draft is worth keeping: a month of ordinary interruptions */
+const KEEP_DRAFTS_MS = 30 * 24 * 60 * 60 * 1000
 
 const styles = stylex.create({
   siblingTitle: {
@@ -869,6 +873,10 @@ function Workbench({ batch }: { batch: BatchDto }) {
   // spies on it mounts in the same commit, and a ref would still be null
   // when its effect first looked.
   const [stack, setStack] = useState<HTMLDivElement | null>(null)
+  // unsent words nobody came back for, swept once a session
+  useEffect(() => {
+    void forgetStaleDrafts(KEEP_DRAFTS_MS)
+  }, [])
   const columns = useBenchColumns(stack, {
     flow: format(m.reviewResizeFlow),
     about: format(m.reviewResizeAbout),
@@ -1507,6 +1515,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
         {lingeringDialog === 'supplement' && review !== undefined && (
           <SupplementDialog
             open={dialog === 'supplement'}
+            instanceId={instanceId}
             onClose={() => setDialog(null)}
             onConfirm={stageSupplement}
           />

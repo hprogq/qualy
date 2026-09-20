@@ -43,7 +43,8 @@ import type { ItemOptions } from '../options.ts'
 /** how a question's records come to be */
 export type Mode = 'review' | 'direct' | 'automatic'
 
-export type FieldType = 'text' | 'date' | 'integer' | 'decimal' | 'choice' | 'boolean' | 'attachment'
+export type FieldType =
+  'text' | 'date' | 'integer' | 'decimal' | 'choice' | 'boolean' | 'attachment'
 
 /** one option of a choice field; a person edits the label and nothing else */
 export interface OptionDraft {
@@ -96,8 +97,7 @@ export interface RecognitionDraft {
 
 /** what feeds one calculator parameter */
 export type BindingDraft =
-  | { kind: 'constant'; value: unknown; draft?: ValueDraft }
-  | { kind: 'recognition'; handle: string }
+  { kind: 'constant'; value: unknown; draft?: ValueDraft } | { kind: 'recognition'; handle: string }
 
 /** the stored versioned language, carried whole */
 export interface StoredScoringV2 {
@@ -170,7 +170,8 @@ export interface Contract {
  * are minted equal and never change. Not a counter: `f1` is a name the next
  * question would mint as well.
  */
-export const nextKey = (): string => `f${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
+export const nextKey = (): string =>
+  `f${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
 
 /** an option's permanent name, and - until a formula lends it one - its value */
 export const nextOptionKey = (): string =>
@@ -216,7 +217,8 @@ export const blankStage = (options: ItemOptions, chain: 'normal' | 'escalation')
 const own = <T>(record: Readonly<Record<string, T>> | undefined, key: string): T | undefined =>
   record !== undefined && Object.hasOwn(record, key) ? record[key] : undefined
 
-const said = (value: unknown): string => (value === undefined || value === null ? '' : String(value))
+const said = (value: unknown): string =>
+  value === undefined || value === null ? '' : String(value)
 
 // ---- reading what is stored --------------------------------------------
 
@@ -243,7 +245,8 @@ const fieldOf = (raw: Record<string, unknown>): FieldDraft => {
     pattern: said(raw['pattern']),
     min: said(raw['min']),
     max: said(raw['max']),
-    maxScale: type === 'decimal' ? (raw['maxScale'] === undefined ? '2' : said(raw['maxScale'])) : '',
+    maxScale:
+      type === 'decimal' ? (raw['maxScale'] === undefined ? '2' : said(raw['maxScale'])) : '',
     options: Array.isArray(raw['options'])
       ? (raw['options'] as Record<string, unknown>[]).map((option) => ({
           id: said(option['id'] ?? option['value']),
@@ -523,7 +526,11 @@ export const fieldFromSchema = (
   optionIdFor: (value: string) => string | undefined = () => undefined,
 ): FieldDraft => {
   const kind = kindOf(schema)
-  const next: FieldDraft = { ...blankField(fieldTypeOf(kind), base.key), ...base, type: fieldTypeOf(kind) }
+  const next: FieldDraft = {
+    ...blankField(fieldTypeOf(kind), base.key),
+    ...base,
+    type: fieldTypeOf(kind),
+  }
   const bounds = schema as {
     minimum?: unknown
     maximum?: unknown
@@ -591,8 +598,14 @@ export const refinementOf = (
     switch (kind) {
       case 'integer': {
         const source = parameter as { minimum: number; maximum: number }
-        const min = narrowing.min?.trim() === '' || narrowing.min === undefined ? source.minimum : Number(narrowing.min)
-        const max = narrowing.max?.trim() === '' || narrowing.max === undefined ? source.maximum : Number(narrowing.max)
+        const min =
+          narrowing.min?.trim() === '' || narrowing.min === undefined
+            ? source.minimum
+            : Number(narrowing.min)
+        const max =
+          narrowing.max?.trim() === '' || narrowing.max === undefined
+            ? source.maximum
+            : Number(narrowing.max)
         if (min === source.minimum && max === source.maximum) return null
         return { type: 'integer', minimum: min, maximum: max }
       }
@@ -602,8 +615,14 @@ export const refinementOf = (
           [DECIMAL_MINIMUM]?: string
           [DECIMAL_MAXIMUM]?: string
         }
-        const min = narrowing.min?.trim() === '' || narrowing.min === undefined ? source[DECIMAL_MINIMUM] : narrowing.min.trim()
-        const max = narrowing.max?.trim() === '' || narrowing.max === undefined ? source[DECIMAL_MAXIMUM] : narrowing.max.trim()
+        const min =
+          narrowing.min?.trim() === '' || narrowing.min === undefined
+            ? source[DECIMAL_MINIMUM]
+            : narrowing.min.trim()
+        const max =
+          narrowing.max?.trim() === '' || narrowing.max === undefined
+            ? source[DECIMAL_MAXIMUM]
+            : narrowing.max.trim()
         if (min === source[DECIMAL_MINIMUM] && max === source[DECIMAL_MAXIMUM]) return null
         return {
           type: 'string',
@@ -615,8 +634,14 @@ export const refinementOf = (
       }
       case 'text': {
         const source = parameter as { minLength?: number; maxLength?: number; pattern?: string }
-        const min = narrowing.minLength?.trim() === '' || narrowing.minLength === undefined ? source.minLength : Number(narrowing.minLength)
-        const max = narrowing.maxLength?.trim() === '' || narrowing.maxLength === undefined ? source.maxLength : Number(narrowing.maxLength)
+        const min =
+          narrowing.minLength?.trim() === '' || narrowing.minLength === undefined
+            ? source.minLength
+            : Number(narrowing.minLength)
+        const max =
+          narrowing.maxLength?.trim() === '' || narrowing.maxLength === undefined
+            ? source.maxLength
+            : Number(narrowing.maxLength)
         if (min === source.minLength && max === source.maxLength) return null
         return {
           type: 'string',
@@ -759,7 +784,10 @@ const draftScoringOf = (
       const outcome = schema === undefined ? undefined : materializeField(schema, binding.draft)
       return [
         parameter,
-        { kind: 'constant' as const, value: outcome?.kind === 'value' ? outcome.value : binding.draft },
+        {
+          kind: 'constant' as const,
+          value: outcome?.kind === 'value' ? outcome.value : binding.draft,
+        },
       ]
     }),
   ),
@@ -813,7 +841,12 @@ export const linkOf = (
  * determination carries the determination's own type and bounds, whatever
  * it held: the two are one fact, and the determination is where it is set.
  */
-const fieldToWire = (field: FieldDraft, draft: Draft, contract: Contract | null, locale: string) => {
+const fieldToWire = (
+  field: FieldDraft,
+  draft: Draft,
+  contract: Contract | null,
+  locale: string,
+) => {
   const link = linkOf(draft, contract, field.id)
   const parameter = link === undefined ? undefined : parameterSchemaOf(contract, link.parameter)
   const shaped =
@@ -1056,10 +1089,16 @@ export const stageIssuesOf = (
 ]
 
 /** whether a narrowing still fits inside what the parameter admits */
-export const narrowingFits = (refinement: AtomicSchema | null, parameter: AtomicSchema): boolean => {
+export const narrowingFits = (
+  refinement: AtomicSchema | null,
+  parameter: AtomicSchema,
+): boolean => {
   if (refinement === null) return true
   try {
-    return assignmentPlan(normalizeAtomicSchema(refinement), normalizeAtomicSchema(parameter)).kind === 'direct'
+    return (
+      assignmentPlan(normalizeAtomicSchema(refinement), normalizeAtomicSchema(parameter)).kind ===
+      'direct'
+    )
   } catch {
     return false
   }
@@ -1096,7 +1135,8 @@ export const boundProblem = (
     const source = parameter as { minLength?: number; maxLength?: number }
     const value = Number(text)
     if (side === 'min' && value < (source.minLength ?? 0)) return 'widens'
-    if (side === 'max' && source.maxLength !== undefined && value > source.maxLength) return 'widens'
+    if (side === 'max' && source.maxLength !== undefined && value > source.maxLength)
+      return 'widens'
     return null
   }
   return null
@@ -1271,7 +1311,10 @@ export const problemsOf = (input: {
       }
     }
     const schema = fieldSchemaOf(field)
-    if (schema !== null && !found.some((one) => one.entity?.kind === 'field' && one.entity.key === field.key)) {
+    if (
+      schema !== null &&
+      !found.some((one) => one.entity?.kind === 'field' && one.entity.key === field.key)
+    ) {
       try {
         normalizeAtomicSchema(schema)
       } catch {
@@ -1293,7 +1336,8 @@ export const problemsOf = (input: {
       const at = /^formConfig\.fields\[(\d+)\]$/.exec(issue.path)
       const field = at === null ? undefined : draft.fields[Number(at[1])]
       if (field === undefined || issue.reason === 'field-unnamed') continue
-      if (found.some((one) => one.entity?.kind === 'field' && one.entity.key === field.key)) continue
+      if (found.some((one) => one.entity?.kind === 'field' && one.entity.key === field.key))
+        continue
       found.push({
         area: 'scoring',
         block: 'form',
@@ -1314,7 +1358,12 @@ export const problemsOf = (input: {
   if (draft.scoring.language === 'v1') {
     const amount = draft.fixedValue.trim()
     if (amount === '') {
-      found.push({ area: 'scoring', block: 'method', code: 'fixed-value-required', tone: 'pending' })
+      found.push({
+        area: 'scoring',
+        block: 'method',
+        code: 'fixed-value-required',
+        tone: 'pending',
+      })
     } else if (!/^-?\d+(\.\d+)?$/.test(amount)) {
       found.push({ area: 'scoring', block: 'method', code: 'fixed-value-invalid', tone: 'error' })
     }
@@ -1335,7 +1384,14 @@ export const problemsOf = (input: {
         const binding = own(draft.scoring.bindings, parameter)
         const seat = { kind: 'parameter' as const, parameter }
         if (binding === undefined) {
-          found.push({ area: 'scoring', block: 'parameters', code: 'parameter-unset', entity: seat, subject: title, tone: 'pending' })
+          found.push({
+            area: 'scoring',
+            block: 'parameters',
+            code: 'parameter-unset',
+            entity: seat,
+            subject: title,
+            tone: 'pending',
+          })
           continue
         }
         if (binding.kind === 'constant') {
@@ -1359,35 +1415,94 @@ export const problemsOf = (input: {
         }
         const recognition = own(draft.scoring.recognitions, binding.handle)
         if (recognition === undefined) {
-          found.push({ area: 'scoring', block: 'parameters', code: 'parameter-unset', entity: seat, subject: title, tone: 'pending' })
+          found.push({
+            area: 'scoring',
+            block: 'parameters',
+            code: 'parameter-unset',
+            entity: seat,
+            subject: title,
+            tone: 'pending',
+          })
           continue
         }
         if (draft.mode === 'automatic') {
-          found.push({ area: 'scoring', block: 'parameters', code: 'recognition-in-automatic', entity: seat, subject: title, tone: 'error' })
+          found.push({
+            area: 'scoring',
+            block: 'parameters',
+            code: 'recognition-in-automatic',
+            entity: seat,
+            subject: title,
+            tone: 'error',
+          })
           continue
         }
         const fact = { kind: 'recognition' as const, handle: binding.handle }
         if (recognition.label.trim() === '') {
-          found.push({ area: 'scoring', block: 'recognitions', code: 'recognition-unnamed', entity: fact, subject: title, tone: 'error' })
+          found.push({
+            area: 'scoring',
+            block: 'recognitions',
+            code: 'recognition-unnamed',
+            entity: fact,
+            subject: title,
+            tone: 'error',
+          })
         }
         if (!narrowingFits(recognition.refinement, schema)) {
-          found.push({ area: 'scoring', block: 'recognitions', code: 'refinement-widens', entity: fact, subject: recognition.label, tone: 'error' })
+          found.push({
+            area: 'scoring',
+            block: 'recognitions',
+            code: 'refinement-widens',
+            entity: fact,
+            subject: recognition.label,
+            tone: 'error',
+          })
         } else if (
           kindOf(schema) === 'choice' &&
           recognition.refinement !== null &&
           (recognition.refinement as ChoiceSchema).enum.length === 0
         ) {
-          found.push({ area: 'scoring', block: 'recognitions', code: 'refinement-empty', entity: fact, subject: recognition.label, tone: 'error' })
+          found.push({
+            area: 'scoring',
+            block: 'recognitions',
+            code: 'refinement-empty',
+            entity: fact,
+            subject: recognition.label,
+            tone: 'error',
+          })
         }
-        if (recognition.fieldId !== null && !draft.fields.some((field) => field.id === recognition.fieldId)) {
-          found.push({ area: 'scoring', block: 'recognitions', code: 'link-field-missing', entity: fact, subject: recognition.label, tone: 'error' })
+        if (
+          recognition.fieldId !== null &&
+          !draft.fields.some((field) => field.id === recognition.fieldId)
+        ) {
+          found.push({
+            area: 'scoring',
+            block: 'recognitions',
+            code: 'link-field-missing',
+            entity: fact,
+            subject: recognition.label,
+            tone: 'error',
+          })
         } else if (draft.mode === 'direct' && recognition.fieldId === null) {
-          found.push({ area: 'scoring', block: 'recognitions', code: 'recognition-unlinked', entity: fact, subject: recognition.label, tone: 'pending' })
+          found.push({
+            area: 'scoring',
+            block: 'recognitions',
+            code: 'recognition-unlinked',
+            entity: fact,
+            subject: recognition.label,
+            tone: 'pending',
+          })
         }
       }
       for (const parameter of Object.keys(draft.scoring.bindings).sort()) {
         if (!Object.hasOwn(contract.inputSchema.properties, parameter)) {
-          found.push({ area: 'scoring', block: 'parameters', code: 'binding-orphan', entity: { kind: 'parameter', parameter }, subject: parameter, tone: 'error' })
+          found.push({
+            area: 'scoring',
+            block: 'parameters',
+            code: 'binding-orphan',
+            entity: { kind: 'parameter', parameter },
+            subject: parameter,
+            tone: 'error',
+          })
         }
       }
     }
@@ -1406,14 +1521,29 @@ export const problemsOf = (input: {
         found.push({ area: 'rules', block, code: 'stage-unnamed', entity, tone: 'error' })
       }
       if (wanting.some((one) => one !== 'label')) {
-        found.push({ area: 'rules', block, code: 'stage-unset', entity, subject: stage.label.trim(), tone: 'error' })
+        found.push({
+          area: 'rules',
+          block,
+          code: 'stage-unset',
+          entity,
+          subject: stage.label.trim(),
+          tone: 'error',
+        })
       }
     }
   }
-  if (draft.mode !== 'automatic' && draft.maxEntries.trim() !== '' && !/^[1-9]\d*$/.test(draft.maxEntries.trim())) {
+  if (
+    draft.mode !== 'automatic' &&
+    draft.maxEntries.trim() !== '' &&
+    !/^[1-9]\d*$/.test(draft.maxEntries.trim())
+  ) {
     found.push({ area: 'rules', block: 'counts', code: 'max-entries-invalid', tone: 'error' })
   }
-  if (draft.mode !== 'automatic' && draft.folding === 'top-n' && !/^[1-9]\d*$/.test(draft.topN.trim())) {
+  if (
+    draft.mode !== 'automatic' &&
+    draft.folding === 'top-n' &&
+    !/^[1-9]\d*$/.test(draft.topN.trim())
+  ) {
     found.push({ area: 'rules', block: 'counts', code: 'top-n-invalid', tone: 'error' })
   }
   return found
@@ -1465,7 +1595,10 @@ export const problemsFromIssues = (input: {
   readonly contract: Contract | null
   readonly locale: string
   readonly issues: readonly ServerIssue[]
-}): { readonly placed: readonly EditorProblem[]; readonly loose: readonly { path: string; reason: string }[] } => {
+}): {
+  readonly placed: readonly EditorProblem[]
+  readonly loose: readonly { path: string; reason: string }[]
+} => {
   const { draft, contract, locale } = input
   const placed: EditorProblem[] = []
   const loose: { path: string; reason: string }[] = []
@@ -1482,7 +1615,9 @@ export const problemsFromIssues = (input: {
     // where filing takes effect at once there is no list of determinations:
     // the field IS the determination, so that is the row the fault is on
     const filed =
-      draft.mode === 'direct' ? draft.fields.find((one) => one.id === recognition.fieldId) : undefined
+      draft.mode === 'direct'
+        ? draft.fields.find((one) => one.id === recognition.fieldId)
+        : undefined
     placed.push({
       area: 'scoring',
       ...(filed === undefined
@@ -1506,13 +1641,17 @@ export const problemsFromIssues = (input: {
           )?.[0]
     const schema = parameter === undefined ? undefined : parameterSchemaOf(contract, parameter)
     const named = values.map((value) =>
-      schema !== undefined && kindOf(schema) === 'choice' ? choiceLabel(schema as ChoiceSchema, value, locale) : value,
+      schema !== undefined && kindOf(schema) === 'choice'
+        ? choiceLabel(schema as ChoiceSchema, value, locale)
+        : value,
     )
     return new Intl.ListFormat(locale, { style: 'short', type: 'conjunction' }).format(named)
   }
   // claims named one by one say nothing a screen can use; they are counted
   // only when nothing said which determination they hang on
-  const strandedClaims = input.issues.filter((one) => one.reason === 'strands-existing-recognition').length
+  const strandedClaims = input.issues.filter(
+    (one) => one.reason === 'strands-existing-recognition',
+  ).length
   const causesSaid = input.issues.some((one) => STRANDS[one.reason] !== undefined)
   if (strandedClaims > 0 && !causesSaid) {
     placed.push({
@@ -1578,7 +1717,9 @@ export const problemsFromIssues = (input: {
       const handle =
         issue.handle ??
         (factById !== null
-          ? handles.find((one) => one === factById[1] || scoring?.recognitions[one]?.id === factById[1])
+          ? handles.find(
+              (one) => one === factById[1] || scoring?.recognitions[one]?.id === factById[1],
+            )
           : handles[Number(factByIndex![1])])
       const strands = STRANDS[reason]
       if (strands !== undefined) {
@@ -1593,7 +1734,10 @@ export const problemsFromIssues = (input: {
             : strands === 'recognition-strands-round' && fresh
               ? 'recognition-strands-round-new'
               : strands
-        if (reason !== 'strands-determination-removed' && recognitionAt(handle, reason, said, { count, names })) {
+        if (
+          reason !== 'strands-determination-removed' &&
+          recognitionAt(handle, reason, said, { count, names })
+        ) {
           continue
         }
         placed.push({
@@ -1663,7 +1807,9 @@ export const problemsFromIssues = (input: {
           code:
             reason === 'policy-label-invalid'
               ? 'stage-unnamed'
-              : reason === 'policy-node-type-required' || reason === 'policy-roles-required' || reason === 'policy-role-required'
+              : reason === 'policy-node-type-required' ||
+                  reason === 'policy-roles-required' ||
+                  reason === 'policy-role-required'
                 ? 'stage-unset'
                 : reason.startsWith('policy-quorum')
                   ? 'stage-quorum'
@@ -1677,7 +1823,13 @@ export const problemsFromIssues = (input: {
       }
     }
     if (path === 'reviewPolicy.normal.stages' && reason === 'policy-stages-required') {
-      placed.push({ area: 'rules', block: 'review', code: 'stages-required', tone: 'error', reason })
+      placed.push({
+        area: 'rules',
+        block: 'review',
+        code: 'stages-required',
+        tone: 'error',
+        reason,
+      })
       continue
     }
     if (path.startsWith('reviewPolicy')) {
@@ -1709,25 +1861,46 @@ export const problemsFromIssues = (input: {
       continue
     }
     if (path.startsWith('displayConfig.entrySummary')) {
-      placed.push({ area: 'scoring', block: 'summary', code: 'summary-invalid', tone: 'error', reason })
+      placed.push({
+        area: 'scoring',
+        block: 'summary',
+        code: 'summary-invalid',
+        tone: 'error',
+        reason,
+      })
       continue
     }
     if (path.startsWith('scoringConfig.aggregator') || path.startsWith('aggregator')) {
-      placed.push({ area: 'rules', block: 'counts', code: 'folding-refused', tone: 'error', reason })
+      placed.push({
+        area: 'rules',
+        block: 'counts',
+        code: 'folding-refused',
+        tone: 'error',
+        reason,
+      })
       continue
     }
     if (path.startsWith('scoringConfig.recognitions')) {
       placed.push({
         area: 'scoring',
         block: 'recognitions',
-        code: reason === 'recognition-without-determiner' ? 'recognition-in-automatic' : 'recognitions-refused',
+        code:
+          reason === 'recognition-without-determiner'
+            ? 'recognition-in-automatic'
+            : 'recognitions-refused',
         tone: 'error',
         reason,
       })
       continue
     }
     if (path.startsWith('scoringConfig.bindings')) {
-      placed.push({ area: 'scoring', block: 'parameters', code: 'parameters-refused', tone: 'error', reason })
+      placed.push({
+        area: 'scoring',
+        block: 'parameters',
+        code: 'parameters-refused',
+        tone: 'error',
+        reason,
+      })
       continue
     }
     if (path.startsWith('scoringConfig') || path.startsWith('calculator')) {
@@ -1762,7 +1935,7 @@ export const mergedProblems = (
   server: readonly EditorProblem[],
 ): readonly EditorProblem[] => {
   const keyOf = (one: EditorProblem) =>
-    `${one.area}:${one.entity === undefined ? one.block ?? '' : JSON.stringify(one.entity)}`
+    `${one.area}:${one.entity === undefined ? (one.block ?? '') : JSON.stringify(one.entity)}`
   const taken = new Set(local.map(keyOf))
   return [...local, ...server.filter((one) => !taken.has(keyOf(one)))]
 }
@@ -1773,18 +1946,30 @@ const parameterTitleOf = (contract: Contract | null, parameter: string, locale: 
 }
 
 /** the words a parameter goes by, for a row or a panel title */
-export const parameterTitle = (contract: Contract | null, parameter: string, locale: string): string => {
+export const parameterTitle = (
+  contract: Contract | null,
+  parameter: string,
+  locale: string,
+): string => {
   const schema = parameterSchemaOf(contract, parameter)
   return schema === undefined ? parameter : displayTitle(schema, parameter, locale)
 }
 
-export const parameterDescription = (contract: Contract | null, parameter: string, locale: string): string | undefined => {
+export const parameterDescription = (
+  contract: Contract | null,
+  parameter: string,
+  locale: string,
+): string | undefined => {
   const schema = parameterSchemaOf(contract, parameter)
   return schema === undefined ? undefined : displayDescription(schema, locale)
 }
 
 /** a fresh determination for one parameter, named after it */
-export const freshRecognition = (contract: Contract | null, parameter: string, locale: string): RecognitionDraft => ({
+export const freshRecognition = (
+  contract: Contract | null,
+  parameter: string,
+  locale: string,
+): RecognitionDraft => ({
   id: null,
   label: parameterTitle(contract, parameter, locale),
   description: parameterDescription(contract, parameter, locale) ?? '',

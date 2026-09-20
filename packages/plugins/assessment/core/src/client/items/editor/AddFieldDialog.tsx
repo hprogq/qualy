@@ -79,13 +79,30 @@ const GROUPS: readonly { label: MessageDescriptor; cards: readonly Card[] }[] = 
   {
     label: m.itemsTypeGroupChoice,
     cards: [
-      { type: 'choice', name: m.itemsTypeSingleChoice, hint: m.itemsTypeChoiceHint, icon: CircleDotIcon },
-      { type: 'boolean', name: m.itemsTypeBoolean, hint: m.itemsTypeBooleanHint, icon: ToggleRightIcon },
+      {
+        type: 'choice',
+        name: m.itemsTypeSingleChoice,
+        hint: m.itemsTypeChoiceHint,
+        icon: CircleDotIcon,
+      },
+      {
+        type: 'boolean',
+        name: m.itemsTypeBoolean,
+        hint: m.itemsTypeBooleanHint,
+        icon: ToggleRightIcon,
+      },
     ],
   },
   {
     label: m.itemsTypeGroupOther,
-    cards: [{ type: 'attachment', name: m.itemsTypeAttachment, hint: m.itemsTypeAttachmentHint, icon: FileIcon }],
+    cards: [
+      {
+        type: 'attachment',
+        name: m.itemsTypeAttachment,
+        hint: m.itemsTypeAttachmentHint,
+        icon: FileIcon,
+      },
+    ],
   },
 ]
 
@@ -115,7 +132,13 @@ export function AddFieldDialog({
 
   if (field === null) {
     return (
-      <FormDialog open={open} size="medium" restfulFocus title={format(m.itemsFieldAdd)} onClose={onClose}>
+      <FormDialog
+        open={open}
+        size="medium"
+        restfulFocus
+        title={format(m.itemsFieldAdd)}
+        onClose={onClose}
+      >
         <div {...stylex.props(styles.stack)} data-testid="add-field-types">
           <Input
             value={search}
@@ -124,7 +147,9 @@ export function AddFieldDialog({
             aria-label={format(m.itemsAddFieldSearch)}
             onChange={(event) => setSearch(event.target.value)}
           />
-          {shown.length === 0 && <p {...stylex.props(styles.none)}>{format(m.itemsAddFieldNoMatch)}</p>}
+          {shown.length === 0 && (
+            <p {...stylex.props(styles.none)}>{format(m.itemsAddFieldNoMatch)}</p>
+          )}
           {shown.map((group) => (
             <div key={group.label.id} {...stylex.props(styles.group)}>
               <span {...stylex.props(styles.groupLabel)}>{format(group.label)}</span>
@@ -191,7 +216,14 @@ export function AddFieldDialog({
           numberKind={numberTyped}
           onChange={setField}
           // still unsaved, so a different type is still the same new field
-          onRetype={(type) => setField({ ...blankField(type, field.key), label: field.label, description: field.description, required: field.required })}
+          onRetype={(type) =>
+            setField({
+              ...blankField(type, field.key),
+              label: field.label,
+              description: field.description,
+              required: field.required,
+            })
+          }
         />
       </div>
     </FormDialog>

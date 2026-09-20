@@ -396,7 +396,9 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
                             fallback={
                               <PersonCell
                                 name={row.displayName}
-                                secondary={row.businessNo ?? format(m.noBusinessNoShort, { businessNo })}
+                                secondary={
+                                  row.businessNo ?? format(m.noBusinessNoShort, { businessNo })
+                                }
                               />
                             }
                           />

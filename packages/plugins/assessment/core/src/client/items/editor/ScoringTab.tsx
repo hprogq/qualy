@@ -5,7 +5,13 @@ import { UiSlot } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { usePickerWords } from '@qualy/web-i18n/picker-words'
-import { choiceLabel, inputOrder, kindOf, type AtomicSchema, type ChoiceSchema } from '@qualy/value-schema'
+import {
+  choiceLabel,
+  inputOrder,
+  kindOf,
+  type AtomicSchema,
+  type ChoiceSchema,
+} from '@qualy/value-schema'
 import { draftFromValue, type FieldDraft as ValueDraft } from '@qualy/web-value-form/model'
 import type { MessageDescriptor, UiText } from '@qualy/i18n-contract'
 import { Feedback } from '@qualy/ui/admin'
@@ -243,7 +249,9 @@ export function ScoringTab({
 
   /** what is wrong with a block as a whole, rather than with one of its rows */
   const blockProblems = (block: EditorBlock) =>
-    problems.filter((one) => one.block === block && one.entity === undefined && one.tone === 'error')
+    problems.filter(
+      (one) => one.block === block && one.entity === undefined && one.tone === 'error',
+    )
   const blockLines = (block: EditorBlock) =>
     blockProblems(block).map((one) => (
       <p
@@ -268,7 +276,9 @@ export function ScoringTab({
     }
     if (counted.pending > 0) {
       return (
-        <SectionCount tone="pending">{format(m.itemsBlockPending, { count: counted.pending })}</SectionCount>
+        <SectionCount tone="pending">
+          {format(m.itemsBlockPending, { count: counted.pending })}
+        </SectionCount>
       )
     }
     return undefined
@@ -281,7 +291,10 @@ export function ScoringTab({
           <Feedback message={format(m.itemsScoringUnsupported)} />
         ) : (
           <div
-            {...stylex.props(styles.methodCard, methodProblem !== undefined && styles.methodCardBad)}
+            {...stylex.props(
+              styles.methodCard,
+              methodProblem !== undefined && styles.methodCardBad,
+            )}
             data-invalid={methodProblem === undefined ? undefined : true}
           >
             {fixed ? (
@@ -452,7 +465,8 @@ export function ScoringTab({
               // a choice narrowed says how far, as kept over offered: the
               // names may be cut short, the count never is
               const offered = kindOf(schema) === 'choice' ? (schema as ChoiceSchema).enum.length : 0
-              const kept = kindOf(admitted) === 'choice' ? (admitted as ChoiceSchema).enum.length : 0
+              const kept =
+                kindOf(admitted) === 'choice' ? (admitted as ChoiceSchema).enum.length : 0
               const unnamed = recognition.label.trim() === ''
               return (
                 <ListRow
@@ -735,7 +749,10 @@ function ConstantValue({
           placeholder={words.unanswered}
           invalid={invalid}
           xstyle={styles.valueControl}
-          options={choice.enum.map((value) => ({ value, label: choiceLabel(choice, value, locale) }))}
+          options={choice.enum.map((value) => ({
+            value,
+            label: choiceLabel(choice, value, locale),
+          }))}
           onChange={(next) => onChange(next)}
         />
       </span>
@@ -743,7 +760,10 @@ function ConstantValue({
   }
   if (kind === 'date') {
     return (
-      <span {...stylex.props(styles.valueSeat, invalid && styles.dateBad)} data-testid="parameter-value">
+      <span
+        {...stylex.props(styles.valueSeat, invalid && styles.dateBad)}
+        data-testid="parameter-value"
+      >
         <DatePicker
           value={typeof typed === 'string' && typed !== '' ? typed : null}
           placeholder={words.unanswered}
@@ -806,7 +826,8 @@ function FormRows({
     <>
       {draft.fields.map((field) => {
         const link = linkOf(draft, contract, field.id)
-        const parameter = link === undefined ? undefined : parameterSchemaOf(contract, link.parameter)
+        const parameter =
+          link === undefined ? undefined : parameterSchemaOf(contract, link.parameter)
         const admitted =
           link === undefined || parameter === undefined
             ? null
@@ -850,7 +871,9 @@ function FormRows({
               </span>
             }
             problem={problem === undefined ? undefined : problemWords(problem, format)}
-            handle={<DragHandle onPress={() => setHeld(field.key)} onRelease={() => setHeld(null)} />}
+            handle={
+              <DragHandle onPress={() => setHeld(field.key)} onRelease={() => setHeld(null)} />
+            }
             onOpen={() => onOpenField(field.key)}
             lifted={held === field.key}
             mark={drop?.key === field.key ? drop.edge : null}
