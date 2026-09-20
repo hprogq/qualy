@@ -1,199 +1,90 @@
-import { memo } from 'react'
-import { ArrowLeftIcon } from 'lucide-react'
+import { memo, useEffect, useRef, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { useI18n } from '@qualy/web-i18n'
+import { commonMessages } from '@qualy/web-i18n/messages'
+import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
+import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
-import { ScrollArea } from '@qualy/ui/scroll-area'
-import { Sheet, SheetContent, SheetTitle } from '@qualy/ui/sheet'
+import { Kbd } from '@qualy/ui/kbd'
+import { CardEmpty, DetailSheet, FootNote } from '@qualy/ui/screen'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../i18n.ts'
 import { useDayClock, type InboxItemDto } from './model.ts'
 
-const wide = '@media (min-width: 84rem)'
-
 const styles = stylex.create({
-  aside: {
-    position: 'relative',
-    display: {
-      default: 'none',
-      [wide]: 'flex',
-    },
-    minHeight: 0,
-    flexShrink: 0,
-    overflow: 'hidden',
-    transitionProperty: 'width',
-    transitionDuration: '200ms',
-    transitionTimingFunction: 'linear',
-  },
-  asideOpen: {
-    width: 224,
-  },
-  asideFolded: {
-    width: 44,
-  },
-  sheet: { width: { default: 320, '@media (max-width: 480px)': '100%' }, maxWidth: '100%', padding: 0, gap: 0 },
   list: {
     display: 'flex',
-    height: '100%',
-    width: '100%',
-    flexShrink: 0,
     flexDirection: 'column',
-    transitionProperty: 'opacity',
-    transitionDuration: '150ms',
-    transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
-  },
-  listHidden: {
-    opacity: 0,
-  },
-  head: {
-    display: 'flex',
-    flexShrink: 0,
-    alignItems: 'center',
-    gap: 4,
-    borderBottomWidth: 1,
-    borderBottomStyle: 'solid',
-    borderBottomColor: tokens.border,
-    paddingBlock: 8,
-    paddingRight: 6,
-    paddingLeft: 4,
-  },
-  headTitle: {
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    fontSize: 14,
-    fontWeight: 600,
-  },
-  headCount: {
-    flexShrink: 0,
-    fontSize: 12,
-    color: tokens.mutedForeground,
-    fontVariantNumeric: 'tabular-nums',
-  },
-  spacer: {
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: '0%',
-  },
-  scroller: {
-    minHeight: 0,
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: '0%',
-  },
-  rowList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 1,
-    padding: 6,
+    gap: 2,
+    marginBlock: 0,
+    marginInline: -6,
+    padding: 0,
+    listStyleType: 'none',
   },
   row: {
     display: 'flex',
     width: '100%',
     alignItems: 'center',
-    gap: 8,
-    borderRadius: tokens.radiusLg,
-    borderLeftWidth: 2,
-    borderLeftStyle: 'solid',
+    gap: 12,
+    borderWidth: 0,
+    borderRadius: 10,
     paddingInline: 10,
-    paddingBlock: 8,
+    paddingBlock: 10,
+    backgroundColor: { default: 'transparent', ':hover': tokens.surfaceInset },
+    fontFamily: 'inherit',
     textAlign: 'left',
-    transitionProperty: 'color, background-color, border-color',
+    color: 'inherit',
+    cursor: 'pointer',
+    outlineStyle: 'none',
   },
-  // a tint and a heavier name say which one is open; the rule that ran down
-  // its rounded edge bent into a bracket
-  rowCurrent: {
-    borderLeftColor: 'transparent',
-    backgroundColor: tokens.surfaceMuted,
-  },
-  rowIdle: {
-    borderLeftColor: 'transparent',
-    backgroundColor: {
-      default: 'transparent',
-      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
-    },
-  },
-  rowWords: {
-    display: 'flex',
+  // where the arrow keys stand: the same ground a pointer leaves
+  rowAt: { backgroundColor: tokens.surfaceMuted },
+  face: { width: 32, height: 32, flexShrink: 0 },
+  faceText: { fontSize: 13, fontWeight: 500 },
+  words: { display: 'flex', minWidth: 0, flexGrow: 1, flexDirection: 'column', gap: 2 },
+  nameLine: { display: 'flex', minWidth: 0, alignItems: 'center', gap: 8 },
+  name: {
     minWidth: 0,
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: '0%',
-    flexDirection: 'column',
-    gap: 1,
-  },
-  rowName: {
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
     fontSize: 14,
+    fontWeight: 500,
   },
-  rowNameCurrent: {
-    fontWeight: 600,
-  },
-  rowItem: {
+  item: {
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
-    fontSize: 12,
+    fontSize: 12.5,
     color: tokens.mutedForeground,
   },
-  rowClock: {
+  clock: {
     flexShrink: 0,
     fontSize: 12,
     color: tokens.mutedForeground,
     fontVariantNumeric: 'tabular-nums',
   },
-  folded: {
-    position: 'absolute',
-    insetBlock: 0,
-    left: 0,
-    display: 'flex',
-    width: 44,
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: 6,
-    paddingBlock: 8,
-    transitionProperty: 'opacity',
-    transitionDuration: '150ms',
-    transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
-  },
-  foldedHidden: {
-    pointerEvents: 'none',
-    opacity: 0,
-  },
-  foldedRule: {
-    marginBlock: 2,
-    height: 1,
-    width: 20,
-    backgroundColor: tokens.border,
-  },
-  foldedCount: {
-    borderRadius: '9999px',
-    backgroundColor: tokens.surfaceMuted,
-    paddingInline: 6,
-    paddingBlock: 2,
-    fontSize: 12,
-    fontWeight: 500,
-    color: tokens.mutedForeground,
-    fontVariantNumeric: 'tabular-nums',
-  },
+  count: { fontSize: 13, color: tokens.mutedForeground, fontVariantNumeric: 'tabular-nums' },
+  keys: { display: 'inline-flex', alignItems: 'center', gap: 6 },
+  spacer: { flexGrow: 1 },
 })
 
 /**
- * What is still to do in this run, down the left.
+ * Who else is waiting in this run, brought out from the side.
  *
  * A filing leaves the list the moment its disposition is staged, not when
  * the five seconds are up: from the reviewer's side it is dealt with, and a
  * row that lingers greyed out for five seconds reads as one that did not
  * take. Taking it back with ⌘Z puts it back, because then it really was not
  * dealt with.
+ *
+ * Beside the workbench it stood there all session to be used a few times in
+ * it, and took a column from the three that are read on every filing. So it
+ * is a sheet, and like the rest of the workbench it answers to the keyboard:
+ * the arrows (or J and K) walk it, Enter opens the one stood on.
  */
-// The four panes are memoized: the root re-renders on every keystroke in
-// the decision bar and on every overlay opening or closing, and each of
-// those re-rendered three columns and a queue for nothing - the sibling
-// dialog's entrance visibly lost its first frames to that commit.
+// Memoized: the root re-renders on every keystroke in the decision bar and
+// on every overlay opening or closing.
 export const QueueRail = memo(function QueueRail({
   rows,
   currentId,
@@ -206,7 +97,6 @@ export const QueueRail = memo(function QueueRail({
   rows: readonly InboxItemDto[]
   currentId: string
   remainingCount: number
-  /** whether the column is showing its list, or folded to a strip */
   open: boolean
   onToggle: () => void
   onOpen: (id: string) => void
@@ -214,53 +104,123 @@ export const QueueRail = memo(function QueueRail({
 }) {
   const { format } = useI18n()
   const dayClock = useDayClock()
+  const [at, setAt] = useState(0)
+  const list = useRef<HTMLUListElement>(null)
+
+  // opening stands on the filing being read, which is where a jump starts from
+  useEffect(() => {
+    if (!open) return
+    const found = rows.findIndex((row) => row.instanceId === currentId)
+    setAt(found === -1 ? 0 : found)
+    // rows and currentId are read at the moment of opening only
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    list.current?.querySelector(`[data-queue-index="${at}"]`)?.scrollIntoView({ block: 'nearest' })
+  }, [open, at])
+
+  useEffect(() => {
+    if (!open) return
+    const down = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return
+      const step =
+        event.key === 'ArrowDown' || event.key === 'j' || event.key === 'J'
+          ? 1
+          : event.key === 'ArrowUp' || event.key === 'k' || event.key === 'K'
+            ? -1
+            : 0
+      if (step !== 0) {
+        event.preventDefault()
+        setAt((current) => Math.min(Math.max(current + step, 0), Math.max(rows.length - 1, 0)))
+        return
+      }
+      if (event.key === 'Enter') {
+        const row = rows[at]
+        if (row === undefined) return
+        event.preventDefault()
+        onOpen(row.instanceId)
+        onToggle()
+        return
+      }
+      if (event.key === 'q' || event.key === 'Q') {
+        event.preventDefault()
+        onToggle()
+      }
+    }
+    window.addEventListener('keydown', down)
+    return () => window.removeEventListener('keydown', down)
+  }, [open, rows, at, onOpen, onToggle])
+
   return (
-    // Beside the workbench it stood there all session to be used a few times
-    // in it, and took a column from the three that are read on every filing.
-    // Who else is waiting is looked up when the reviewer wants to jump, so it
-    // comes out from the side when asked for and goes away again.
-    <Sheet open={open} onOpenChange={(next) => !next && onToggle()}>
-      <SheetContent side="left" showCloseButton={false} xstyle={styles.sheet} data-testid="queue-sheet">
-        <nav {...stylex.props(styles.list)}>
-          <div {...stylex.props(styles.head)}>
-            <SheetTitle {...stylex.props(styles.headTitle)}>{format(m.reviewQueueTitle)}</SheetTitle>
-            <span {...stylex.props(styles.headCount)}>{remainingCount}</span>
-            <span {...stylex.props(styles.spacer)} />
-            <Button variant="ghost" size="sm" onClick={onBack}>
-              <ArrowLeftIcon aria-hidden />
-              {format(m.reviewBackToQueue)}
-            </Button>
-          </div>
-          <ScrollArea className={stylex.props(styles.scroller).className}>
-            <ul {...stylex.props(styles.rowList)}>
-              {rows.map((row) => {
-                const current = row.instanceId === currentId
-                return (
-                  <li key={row.instanceId}>
-                    <button
-                      type="button"
-                      aria-current={current || undefined}
-                      onClick={() => {
-                        onOpen(row.instanceId)
-                        onToggle()
-                      }}
-                      {...stylex.props(styles.row, current ? styles.rowCurrent : styles.rowIdle)}
-                    >
-                      <span {...stylex.props(styles.rowWords)}>
-                        <span {...stylex.props(styles.rowName, current && styles.rowNameCurrent)}>
-                          {row.participantName}
-                        </span>
-                        <span {...stylex.props(styles.rowItem)}>{row.itemTitle}</span>
-                      </span>
-                      <span {...stylex.props(styles.rowClock)}>{dayClock(row.submittedAt)}</span>
-                    </button>
-                  </li>
-                )
-              })}
-            </ul>
-          </ScrollArea>
-        </nav>
-      </SheetContent>
-    </Sheet>
+    <DetailSheet
+      open={open}
+      onClose={onToggle}
+      title={format(m.reviewQueueTitle)}
+      titleAside={<span {...stylex.props(styles.count)}>{remainingCount}</span>}
+      width="narrow"
+      closeLabel={format(commonMessages.close)}
+      testId="queue-sheet"
+      footer={
+        <>
+          <FootNote>
+            <span {...stylex.props(styles.keys)}>
+              <Kbd>↑</Kbd>
+              <Kbd>↓</Kbd>
+              {format(m.reviewQueueKeysMove)}
+              <Kbd>↵</Kbd>
+              {format(m.reviewQueueKeysOpen)}
+            </span>
+          </FootNote>
+          <span {...stylex.props(styles.spacer)} />
+          <Button variant="outline" size="sm" onClick={onBack}>
+            {format(m.reviewBackToQueue)}
+          </Button>
+        </>
+      }
+    >
+      {rows.length === 0 ? (
+        <CardEmpty>{format(m.reviewQueueEmpty)}</CardEmpty>
+      ) : (
+        <ul ref={list} {...stylex.props(styles.list)}>
+          {rows.map((row, index) => {
+            const current = row.instanceId === currentId
+            return (
+              <li key={row.instanceId}>
+                <button
+                  type="button"
+                  data-testid="queue-row"
+                  data-queue-index={index}
+                  data-current={current}
+                  data-at={index === at}
+                  aria-current={current || undefined}
+                  onPointerMove={() => setAt(index)}
+                  onClick={() => {
+                    onOpen(row.instanceId)
+                    onToggle()
+                  }}
+                  {...stylex.props(styles.row, index === at && styles.rowAt)}
+                >
+                  <Avatar className={stylex.props(styles.face).className}>
+                    <AvatarFallback className={stylex.props(styles.faceText).className}>
+                      {row.participantName.slice(0, 1)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span {...stylex.props(styles.words)}>
+                    <span {...stylex.props(styles.nameLine)}>
+                      <span {...stylex.props(styles.name)}>{row.participantName}</span>
+                      {current && <Badge variant="secondary">{format(m.reviewQueueCurrent)}</Badge>}
+                    </span>
+                    <span {...stylex.props(styles.item)}>{row.itemTitle}</span>
+                  </span>
+                  <span {...stylex.props(styles.clock)}>{dayClock(row.submittedAt)}</span>
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </DetailSheet>
   )
 })

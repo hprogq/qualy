@@ -291,6 +291,22 @@ describe('one workbench, three widths', () => {
     await expect.element(page.getByTestId('queue-sheet').getByText('李明')).toBeVisible()
   })
 
+  it('opens the queue from the keyboard and walks it with the arrows', async () => {
+    page.viewport(1680, 950)
+    open()
+    await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
+    const { userEvent } = await import('vitest/browser')
+    await userEvent.keyboard('q')
+    await expect.element(page.getByTestId('queue-sheet')).toBeVisible()
+    const stoodOn = () =>
+      document.querySelector('[data-testid="queue-row"][data-at="true"]')?.getAttribute('data-queue-index')
+    const before = stoodOn()
+    await userEvent.keyboard('{ArrowDown}')
+    await expect.poll(stoodOn).not.toBe(before)
+    await userEvent.keyboard('q')
+    await expect.poll(() => document.querySelector('[data-testid="queue-sheet"]')).toBeNull()
+  })
+
   it('keeps the queue inside the width it is given', async () => {
     page.viewport(390, 844)
     queue()

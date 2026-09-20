@@ -2677,7 +2677,12 @@ const i18n = definePluginMessages({
       id: 'assessment/review/about-section',
       defaultMessage: 'About this question',
     },
-    reviewQueueKey: { id: 'assessment/review/queue-key', defaultMessage: 'Queue' },
+    reviewQueueKey: { id: 'assessment/review/queue-key', defaultMessage: 'Pending' },
+    reviewQueueKeysMove: { id: 'assessment/review/queue-keys-move', defaultMessage: 'Move' },
+    reviewQueueKeysOpen: { id: 'assessment/review/queue-keys-open', defaultMessage: 'Open' },
+    reviewQueueCurrent: { id: 'assessment/review/queue-current', defaultMessage: 'Open now' },
+    reviewQueueEmpty: { id: 'assessment/review/queue-empty', defaultMessage: 'Nothing else is waiting' },
+    reviewKeyQueue: { id: 'assessment/review/key-queue', defaultMessage: 'Pending reviews' },
     timeYesterday: { id: 'assessment/time/yesterday', defaultMessage: 'Yesterday' },
     entrySubmittedToast: {
       id: 'assessment/entry/submitted-toast',

@@ -202,12 +202,7 @@ const styles = stylex.create({
   keysHint: {
     display: { default: 'none', [lg]: 'inline-flex' },
     flexShrink: 0,
-    alignItems: 'center',
-    padding: 2,
-    borderWidth: 0,
-    borderRadius: 6,
-    backgroundColor: { default: 'transparent', ':hover': tokens.surfaceMuted },
-    cursor: 'pointer',
+    color: tokens.mutedForeground,
   },
   runAt: {
     fontSize: 12,
@@ -400,17 +395,6 @@ export function PersonStrip({
       >
         <ChevronLeftIcon aria-hidden />
       </Button>
-      <Button
-        variant="outline"
-        size="sm"
-        data-testid="queue-key"
-        className={stylex.props(styles.queueKey).className}
-        onClick={onQueue}
-      >
-        <ListIcon aria-hidden className={stylex.props(styles.queueKeyIcon).className} />
-        {format(m.reviewQueueKey)}
-        <span {...stylex.props(styles.queueKeyCount)}>{of}</span>
-      </Button>
       <Avatar className={stylex.props(styles.avatar).className}>
         <AvatarFallback className={stylex.props(styles.avatarFace).className}>
           {review.participantName.slice(0, 1)}
@@ -457,23 +441,35 @@ export function PersonStrip({
           {format(m.reviewHadSupplements)}
         </Badge>
       )}
-      {/* the keys hint belongs to a keyboard; without one the letters are
+      {/* who else is waiting: looked up when the reviewer wants to jump, so
+          it sits with the other ways of moving about rather than by the name */}
+      <Button
+        variant="ghost"
+        size="sm"
+        data-testid="queue-key"
+        data-count={of}
+        className={stylex.props(styles.queueKey).className}
+        onClick={onQueue}
+      >
+        <ListIcon aria-hidden className={stylex.props(styles.queueKeyIcon).className} />
+        {format(m.reviewQueueKey)}
+        <span {...stylex.props(styles.queueKeyCount)}>{of}</span>
+        {fine && <Kbd>Q</Kbd>}
+      </Button>
+      {/* the keys panel belongs to a keyboard; without one the letters are
           not mounted and the panel would document controls that do not
           exist here */}
       {fine && (
-        // a control, not a caption: the panel it names could only be brought
-        // from the keyboard, which is an odd thing to require of somebody
-        // who is asking what the keys are
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
           data-testid="keys-open"
-          aria-label={format(m.reviewKeysTitle)}
-          title={format(m.reviewKeysTitle)}
-          {...stylex.props(styles.keysHint)}
+          className={stylex.props(styles.keysHint).className}
           onClick={onKeys}
         >
+          {format(m.reviewKeysTitle)}
           <Kbd>?</Kbd>
-        </button>
+        </Button>
       )}
       {at !== null && (
         <p {...stylex.props(styles.runAt)}>{format(m.reviewRunPosition, { at, count: of })}</p>

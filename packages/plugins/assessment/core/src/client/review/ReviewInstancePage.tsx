@@ -1073,6 +1073,11 @@ function Workbench({ batch }: { batch: BatchDto }) {
           event.preventDefault()
           setKeysOpen((open) => !open)
           return
+        case 'q':
+        case 'Q':
+          event.preventDefault()
+          setQueueOpen(true)
+          return
         case 'a':
         case 'A':
           event.preventDefault()
@@ -1778,6 +1783,7 @@ function KeysPanel({ onClose }: { onClose: () => void }) {
     ['⌘↵', m.reviewKeySubmit],
     ['⌘Z', m.reviewKeyUndo],
     ['J / K', m.reviewKeyMove],
+    ['Q', m.reviewKeyQueue],
     ['1–9', m.reviewKeyFiles],
     ['D', m.reviewKeyCompare],
     ['⇧D', m.reviewKeyVersions],
