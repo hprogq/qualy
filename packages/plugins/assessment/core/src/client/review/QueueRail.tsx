@@ -147,11 +147,18 @@ export const QueueRail = memo(function QueueRail({
       if (event.key === 'q' || event.key === 'Q') {
         event.preventDefault()
         onToggle()
+        return
+      }
+      // Esc shuts this sheet, as it shuts every other; leaving the workbench
+      // for the list is a different act and has a key of its own
+      if (event.key === 'b' || event.key === 'B') {
+        event.preventDefault()
+        onBack()
       }
     }
     window.addEventListener('keydown', down)
     return () => window.removeEventListener('keydown', down)
-  }, [open, rows, at, onOpen, onToggle])
+  }, [open, rows, at, onOpen, onToggle, onBack])
 
   return (
     <DetailSheet
@@ -176,6 +183,7 @@ export const QueueRail = memo(function QueueRail({
           <span {...stylex.props(styles.spacer)} />
           <Button variant="outline" size="sm" onClick={onBack}>
             {format(m.reviewBackToQueue)}
+            <Kbd>B</Kbd>
           </Button>
         </>
       }

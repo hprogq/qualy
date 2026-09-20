@@ -63,6 +63,7 @@ const styles = stylex.create({
     borderTopColor: tokens.border,
     paddingTop: 16,
   },
+  blockFirst: { borderTopWidth: 0, paddingTop: 0 },
   headRow: {
     display: 'flex',
     alignItems: 'baseline',
@@ -349,7 +350,9 @@ function AboutParts({
         </section>
       )}
 
-      <section {...stylex.props(styles.block)}>
+      {/* first on the rail while the clause above is put away: a rule over
+          the first block divides it from nothing */}
+      <section {...stylex.props(styles.block, !RESERVED.basis && styles.blockFirst)}>
         <p {...stylex.props(styles.caption)}>{format(m.reviewChainTitle)}</p>
         <Route
           stages={review.chain.normal}

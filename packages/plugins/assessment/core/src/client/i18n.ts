@@ -407,15 +407,24 @@ const i18n = definePluginMessages({
   messages: {
     personBatchColumn: { id: 'assessment/person/batch-column', defaultMessage: 'Round' },
     personAnchorColumn: { id: 'assessment/person/anchor-column', defaultMessage: 'Recorded at' },
-    personMembershipColumn: { id: 'assessment/person/membership-column', defaultMessage: 'Standing' },
+    personMembershipColumn: {
+      id: 'assessment/person/membership-column',
+      defaultMessage: 'Standing',
+    },
     personIncludedColumn: { id: 'assessment/person/included-column', defaultMessage: 'Joined' },
     reviewLinkedTag: { id: 'assessment/review/linked-tag', defaultMessage: 'Linked' },
     reviewTagLinked: reviewTagLinkedMessage,
-    reviewTagLocked: { id: 'assessment/review/tag-locked', defaultMessage: 'Settled by the sitting' },
+    reviewTagLocked: {
+      id: 'assessment/review/tag-locked',
+      defaultMessage: 'Settled by the sitting',
+    },
     reviewFiledWas: { id: 'assessment/review/filed-was', defaultMessage: 'Filed as' },
     reviewAdjustHint: reviewAdjustHintMessage,
     reviewFillFirst: reviewFillFirstMessage,
-    reviewStandingReady: { id: 'assessment/review/standing-ready', defaultMessage: 'Ready to approve' },
+    reviewStandingReady: {
+      id: 'assessment/review/standing-ready',
+      defaultMessage: 'Ready to approve',
+    },
     reviewStandingRefused: {
       id: 'assessment/review/standing-refused',
       defaultMessage: 'The scoring rule does not accept these values',
@@ -486,7 +495,10 @@ const i18n = definePluginMessages({
     // the batch list
     // one person's record: the rounds they were in, and what they filed
     personGroup: { id: 'assessment/nav-group/user-detail', defaultMessage: 'Assessment' },
-    personBatchesTab: { id: 'assessment/person/batches-tab', defaultMessage: 'Rounds taken part in' },
+    personBatchesTab: {
+      id: 'assessment/person/batches-tab',
+      defaultMessage: 'Rounds taken part in',
+    },
     personEntriesTab: { id: 'assessment/person/entries-tab', defaultMessage: 'Claims filed' },
     personBatchesEmpty: {
       id: 'assessment/person/batches-empty',
@@ -2684,10 +2696,21 @@ const i18n = definePluginMessages({
     },
     reviewQueueKey: { id: 'assessment/review/queue-key', defaultMessage: 'Pending' },
     reviewStageVeiled: { id: 'assessment/review/stage-veiled', defaultMessage: 'A later step' },
+    reviewResizeFlow: {
+      id: 'assessment/review/resize-flow',
+      defaultMessage: 'Resize the review trail column',
+    },
+    reviewResizeAbout: {
+      id: 'assessment/review/resize-about',
+      defaultMessage: 'Resize the reference column',
+    },
     reviewQueueKeysMove: { id: 'assessment/review/queue-keys-move', defaultMessage: 'Move' },
     reviewQueueKeysOpen: { id: 'assessment/review/queue-keys-open', defaultMessage: 'Open' },
     reviewQueueCurrent: { id: 'assessment/review/queue-current', defaultMessage: 'Open now' },
-    reviewQueueEmpty: { id: 'assessment/review/queue-empty', defaultMessage: 'Nothing else is waiting' },
+    reviewQueueEmpty: {
+      id: 'assessment/review/queue-empty',
+      defaultMessage: 'Nothing else is waiting',
+    },
     reviewKeyQueue: { id: 'assessment/review/key-queue', defaultMessage: 'Pending reviews' },
     timeYesterday: { id: 'assessment/time/yesterday', defaultMessage: 'Yesterday' },
     entrySubmittedToast: {
@@ -4276,7 +4299,8 @@ const i18n = definePluginMessages({
     },
     itemsCeilingLineRule: {
       id: 'assessment/items/ceiling-line-rule',
-      defaultMessage: 'Each determination is worth what {name} works out; the cap follows the formula.',
+      defaultMessage:
+        'Each determination is worth what {name} works out; the cap follows the formula.',
     },
     itemsCeilingSectionCapped: {
       id: 'assessment/items/ceiling-section-capped',
@@ -5308,7 +5332,8 @@ const i18n = definePluginMessages({
     },
     itemsModeLocked: {
       id: 'assessment/items/mode-locked',
-      defaultMessage: 'Once published, a question cannot move between automatic scoring and the other ways of handling',
+      defaultMessage:
+        'Once published, a question cannot move between automatic scoring and the other ways of handling',
     },
     itemsChannels: { id: 'assessment/items/channels', defaultMessage: 'Entry method' },
     itemsChannelsHint: {
@@ -5351,7 +5376,8 @@ const i18n = definePluginMessages({
     itemsMoreActions: { id: 'assessment/items/more-actions', defaultMessage: 'More actions' },
     itemsDescriptionHint: {
       id: 'assessment/items/description-hint',
-      defaultMessage: 'Shown on the submission and determination pages: scope, required materials and the like',
+      defaultMessage:
+        'Shown on the submission and determination pages: scope, required materials and the like',
     },
     itemsDone: { id: 'assessment/items/done', defaultMessage: 'Done' },
     itemsAdd: { id: 'assessment/items/add', defaultMessage: 'Add' },
@@ -5376,7 +5402,8 @@ const i18n = definePluginMessages({
     itemsVersionNo: { id: 'assessment/items/version-no', defaultMessage: 'Version {no}' },
     itemsRangeWithScale: {
       id: 'assessment/items/range-with-scale',
-      defaultMessage: '{range}, up to {scale, plural, one {# decimal place} other {# decimal places}}',
+      defaultMessage:
+        '{range}, up to {scale, plural, one {# decimal place} other {# decimal places}}',
     },
     itemsTypeSingleChoice: {
       id: 'assessment/items/type-single-choice',
@@ -5399,7 +5426,10 @@ const i18n = definePluginMessages({
     itemsColumnSource: { id: 'assessment/items/column-source', defaultMessage: 'Value from' },
     itemsColumnValue: { id: 'assessment/items/column-value', defaultMessage: 'Value' },
     itemsColumnField: { id: 'assessment/items/column-field', defaultMessage: 'Field' },
-    itemsColumnRange: { id: 'assessment/items/column-range', defaultMessage: 'Determination range' },
+    itemsColumnRange: {
+      id: 'assessment/items/column-range',
+      defaultMessage: 'Determination range',
+    },
     itemsColumnLinkedField: {
       id: 'assessment/items/column-linked-field',
       defaultMessage: 'Submission field',
@@ -5415,7 +5445,10 @@ const i18n = definePluginMessages({
     itemsSourceConstant: { id: 'assessment/items/source-constant', defaultMessage: 'Fixed value' },
     itemsSourceFiled: { id: 'assessment/items/source-filed', defaultMessage: 'Submitted value' },
     itemsSourceUnset: { id: 'assessment/items/source-unset', defaultMessage: 'To be set' },
-    itemsRecognitions: { id: 'assessment/items/recognitions', defaultMessage: 'Determination fields' },
+    itemsRecognitions: {
+      id: 'assessment/items/recognitions',
+      defaultMessage: 'Determination fields',
+    },
     itemsRecognitionsHint: {
       id: 'assessment/items/recognitions-hint',
       defaultMessage:
@@ -5427,7 +5460,10 @@ const i18n = definePluginMessages({
     },
     itemsLinked: { id: 'assessment/items/linked', defaultMessage: 'Linked' },
     itemsLinkedTag: { id: 'assessment/items/linked-tag', defaultMessage: 'Linked determination' },
-    itemsParameterTag: { id: 'assessment/items/parameter-tag', defaultMessage: 'Formula parameter' },
+    itemsParameterTag: {
+      id: 'assessment/items/parameter-tag',
+      defaultMessage: 'Formula parameter',
+    },
     itemsUnlinkedRow: {
       id: 'assessment/items/unlinked-row',
       defaultMessage: 'No submission field; determined by reviewers',
@@ -5485,7 +5521,10 @@ const i18n = definePluginMessages({
     },
     itemsRange: { id: 'assessment/items/range', defaultMessage: 'Determination range' },
     itemsOptions: { id: 'assessment/items/options', defaultMessage: 'Options' },
-    itemsRestoreDefault: { id: 'assessment/items/restore-default', defaultMessage: 'Restore default' },
+    itemsRestoreDefault: {
+      id: 'assessment/items/restore-default',
+      defaultMessage: 'Restore default',
+    },
     itemsFieldMinLength: {
       id: 'assessment/items/field-min-length',
       defaultMessage: 'Minimum length',
@@ -5493,7 +5532,8 @@ const i18n = definePluginMessages({
     itemsLinkSection: { id: 'assessment/items/link-section', defaultMessage: 'Submission field' },
     itemsLinkedHint: {
       id: 'assessment/items/linked-hint',
-      defaultMessage: 'The submitted value is filled in by default and may be changed during review.',
+      defaultMessage:
+        'The submitted value is filled in by default and may be changed during review.',
     },
     itemsLinkRequired: {
       id: 'assessment/items/link-required',
@@ -5608,7 +5648,10 @@ const i18n = definePluginMessages({
     },
     itemsNewField: { id: 'assessment/items/new-field', defaultMessage: 'New submission field' },
     itemsNumberKind: { id: 'assessment/items/number-kind', defaultMessage: 'Number kind' },
-    itemsBackToTypes: { id: 'assessment/items/back-to-types', defaultMessage: 'Back to field types' },
+    itemsBackToTypes: {
+      id: 'assessment/items/back-to-types',
+      defaultMessage: 'Back to field types',
+    },
     // ---- dialogs ----
     itemsUnlinkTitle: { id: 'assessment/items/unlink-title', defaultMessage: 'Unlink' },
     itemsUnlinkHint: {
@@ -5657,7 +5700,8 @@ const i18n = definePluginMessages({
     },
     itemsDeleteBlockedHint: {
       id: 'assessment/items/delete-blocked-hint',
-      defaultMessage: 'This field is linked to the determination field {recognition}. Unlink it first.',
+      defaultMessage:
+        'This field is linked to the determination field {recognition}. Unlink it first.',
     },
     itemsDisableOptionTitle: {
       id: 'assessment/items/disable-option-title',
@@ -5804,27 +5848,33 @@ const i18n = definePluginMessages({
     },
     itemsProblemStrandsValue: {
       id: 'assessment/items/problem-strands-value',
-      defaultMessage: '{count, plural, one {# record is} other {# records are}} already determined as {names}: keep it in the range',
+      defaultMessage:
+        '{count, plural, one {# record is} other {# records are}} already determined as {names}: keep it in the range',
     },
     itemsProblemStrands: {
       id: 'assessment/items/problem-strands',
-      defaultMessage: '{count, plural, one {# record has} other {# records have}} a determined value outside this range',
+      defaultMessage:
+        '{count, plural, one {# record has} other {# records have}} a determined value outside this range',
     },
     itemsProblemStrandsMissing: {
       id: 'assessment/items/problem-strands-missing',
-      defaultMessage: '{count, plural, one {# record is} other {# records are}} already determined without it: a determination cannot be added now',
+      defaultMessage:
+        '{count, plural, one {# record is} other {# records are}} already determined without it: a determination cannot be added now',
     },
     itemsProblemStrandsRound: {
       id: 'assessment/items/problem-strands-round',
-      defaultMessage: '{count, plural, one {# record is} other {# records are}} under review: the range cannot be narrowed until that ends',
+      defaultMessage:
+        '{count, plural, one {# record is} other {# records are}} under review: the range cannot be narrowed until that ends',
     },
     itemsProblemStrandsRoundNew: {
       id: 'assessment/items/problem-strands-round-new',
-      defaultMessage: '{count, plural, one {# record is} other {# records are}} under review: a determination cannot be added until that ends',
+      defaultMessage:
+        '{count, plural, one {# record is} other {# records are}} under review: a determination cannot be added until that ends',
     },
     itemsProblemStrandsRemoved: {
       id: 'assessment/items/problem-strands-removed',
-      defaultMessage: '{count, plural, one {# record relies} other {# records rely}} on a determination that was taken away: set its parameter back to a determined value',
+      defaultMessage:
+        '{count, plural, one {# record relies} other {# records rely}} on a determination that was taken away: set its parameter back to a determined value',
     },
     itemsProblemRecognitionsRefused: {
       id: 'assessment/items/problem-recognitions-refused',
@@ -6000,7 +6050,8 @@ const i18n = definePluginMessages({
     },
     itemsProblemModeFrozen: {
       id: 'assessment/items/problem-mode-frozen',
-      defaultMessage: 'A published question, or one with records, cannot move to or from automatic scoring',
+      defaultMessage:
+        'A published question, or one with records, cannot move to or from automatic scoring',
     },
     itemsProblemModeUnavailable: {
       id: 'assessment/items/problem-mode-unavailable',
@@ -6040,7 +6091,8 @@ const i18n = definePluginMessages({
     },
     itemsSaveFailedCount: {
       id: 'assessment/items/save-failed-count',
-      defaultMessage: 'Not saved: {count, plural, one {# thing to correct} other {# things to correct}}',
+      defaultMessage:
+        'Not saved: {count, plural, one {# thing to correct} other {# things to correct}}',
     },
     itemsSaveFailedHint: {
       id: 'assessment/items/save-failed-hint',
@@ -6064,11 +6116,13 @@ const i18n = definePluginMessages({
     },
     itemsParametersWrong: {
       id: 'assessment/items/parameters-wrong',
-      defaultMessage: '{count, plural, one {# parameter value is not acceptable} other {# parameter values are not acceptable}}',
+      defaultMessage:
+        '{count, plural, one {# parameter value is not acceptable} other {# parameter values are not acceptable}}',
     },
     itemsStagesWrong: {
       id: 'assessment/items/stages-wrong',
-      defaultMessage: '{count, plural, one {# step is set wrongly} other {# steps are set wrongly}}',
+      defaultMessage:
+        '{count, plural, one {# step is set wrongly} other {# steps are set wrongly}}',
     },
     itemsFailConflictTitle: {
       id: 'assessment/items/fail-conflict-title',
@@ -6076,7 +6130,8 @@ const i18n = definePluginMessages({
     },
     itemsFailConflictHint: {
       id: 'assessment/items/fail-conflict-hint',
-      defaultMessage: 'Reloading drops what you changed here. Saving over it keeps yours and replaces theirs.',
+      defaultMessage:
+        'Reloading drops what you changed here. Saving over it keeps yours and replaces theirs.',
     },
     itemsFailReload: {
       id: 'assessment/items/fail-reload',
@@ -6136,11 +6191,13 @@ const i18n = definePluginMessages({
     },
     itemsFailLooseTitle: {
       id: 'assessment/items/fail-loose-title',
-      defaultMessage: 'Not saved: {count, plural, one {# setting was} other {# settings were}} not accepted',
+      defaultMessage:
+        'Not saved: {count, plural, one {# setting was} other {# settings were}} not accepted',
     },
     itemsFailLooseHint: {
       id: 'assessment/items/fail-loose-hint',
-      defaultMessage: 'The page has no place for these. Reload and try again, and tell whoever runs the system if it repeats.',
+      defaultMessage:
+        'The page has no place for these. Reload and try again, and tell whoever runs the system if it repeats.',
     },
     itemsFailRetry: {
       id: 'assessment/items/fail-retry',
@@ -6224,15 +6281,18 @@ const i18n = definePluginMessages({
     },
     itemsReviewChainLong: {
       id: 'assessment/items/review-chain-long',
-      defaultMessage: 'Filed records are reviewed step by step in this order. Records entered by staff do not go through it.',
+      defaultMessage:
+        'Filed records are reviewed step by step in this order. Records entered by staff do not go through it.',
     },
     itemsEscalationLong: {
       id: 'assessment/items/escalation-long',
-      defaultMessage: 'Used when an approved record is disputed. With no step here a reviewer cannot ask for one.',
+      defaultMessage:
+        'Used when an approved record is disputed. With no step here a reviewer cannot ask for one.',
     },
     itemsSummarySectionHint: {
       id: 'assessment/items/summary-section-hint',
-      defaultMessage: 'The fields that name a record wherever records are listed; the first is its title',
+      defaultMessage:
+        'The fields that name a record wherever records are listed; the first is its title',
     },
     itemsSummaryNoFields: {
       id: 'assessment/items/summary-no-fields',

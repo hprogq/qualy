@@ -38,6 +38,7 @@ import {
 } from './decision-dialogs.tsx'
 import { SupplementDialog, type WordedSupplement } from './SupplementDialog.tsx'
 import { WORKBENCH_PARTS, type WorkbenchPart } from './Pane.tsx'
+import { useBenchColumns } from './bench-columns.tsx'
 import { QueueRail } from './QueueRail.tsx'
 import { PartStrip, PersonStrip, RunStrip } from './WorkbenchStrips.tsx'
 import { EscalationNotice } from './EscalationNotice.tsx'
@@ -201,13 +202,18 @@ const styles = stylex.create({
     overflowY: 'hidden',
     overscrollBehaviorX: 'contain',
     scrollbarWidth: 'none',
+    // the column handles stand on it
+    position: 'relative',
     gridTemplateColumns: {
       default: null,
       // Each column has a floor. Without one the fixed rail at the end kept
       // its width and the other two paid for it, and the middle one - how the
       // filing has been handled - went under 200px on a laptop. The rail gives
       // first; below every floor the bench scrolls sideways instead.
-      [lg]: 'minmax(17rem, 0.9fr) minmax(18rem, 1.1fr) minmax(15rem, 19rem)',
+      // and each of the outer two is as wide as the reviewer dragged it,
+      // once they have (bench-columns.tsx); until then the three share the
+      // width nearly evenly, the reference column a little the narrowest
+      [lg]: 'var(--bench-flow, minmax(17rem, 1fr)) minmax(18rem, 1.1fr) var(--bench-about, minmax(16rem, 0.85fr))',
     },
     gridTemplateRows: {
       default: null,
@@ -863,6 +869,10 @@ function Workbench({ batch }: { batch: BatchDto }) {
   // spies on it mounts in the same commit, and a ref would still be null
   // when its effect first looked.
   const [stack, setStack] = useState<HTMLDivElement | null>(null)
+  const columns = useBenchColumns(stack, {
+    flow: format(m.reviewResizeFlow),
+    about: format(m.reviewResizeAbout),
+  })
   const beside = useBeside()
   // Which faces of this round have been under the reader, this sitting.
   // Session memory, not a record: it exists so the dot on an unread face
@@ -1335,7 +1345,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
                       focal point at all. Each face keeps its own vertical
                       scroll either way, so leaving and returning finds a
                       reading where it was left. */}
-                  <div ref={setStack} {...stylex.props(styles.pager)}>
+                  <div ref={setStack} {...stylex.props(styles.pager)} style={columns.vars}>
                     <FlowColumn review={review} onTrail={openTrail} lifted={!beside} />
                     <FilingColumn
                       review={review}
@@ -1345,6 +1355,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
                       onPart={(part) => partGo.current?.(part)}
                     />
                     <ContextRail review={review} onOpenSibling={setOpenSibling} />
+                    {columns.handles}
                   </div>
                 </Drill>
                 {bar && <DecisionBar review={review} onDialog={setDialog} />}

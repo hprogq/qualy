@@ -291,6 +291,26 @@ describe('one workbench, three widths', () => {
     await expect.element(page.getByTestId('queue-sheet').getByText('李明')).toBeVisible()
   })
 
+  it('lets the outer columns be dragged, within a floor and a ceiling', async () => {
+    page.viewport(1680, 950)
+    window.localStorage.removeItem('qualy:review-bench-columns')
+    open()
+    await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
+    const { userEvent } = await import('vitest/browser')
+    const handle = page.getByTestId('bench-handle-flow')
+    const flowWidth = () =>
+      document.querySelector<HTMLElement>('[data-workbench-part="flow"]')?.getBoundingClientRect()
+        .width ?? 0
+    const before = flowWidth()
+    ;(handle.element() as HTMLElement).focus()
+    await userEvent.keyboard('{ArrowRight}')
+    await expect.poll(flowWidth).toBeGreaterThan(before)
+    // held at the floor however far it is pushed
+    for (let press = 0; press < 40; press += 1) await userEvent.keyboard('{ArrowLeft}')
+    await expect.poll(() => Math.round(flowWidth())).toBe(272)
+    window.localStorage.removeItem('qualy:review-bench-columns')
+  })
+
   it('opens the queue from the keyboard and walks it with the arrows', async () => {
     page.viewport(1680, 950)
     open()

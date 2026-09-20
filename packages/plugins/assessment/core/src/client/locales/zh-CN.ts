@@ -684,6 +684,8 @@ export default {
   'assessment/review/about-section': '评审依据',
   'assessment/review/queue-key': '待审核',
   'assessment/review/stage-veiled': '后续审核步骤',
+  'assessment/review/resize-flow': '调整审核过程栏宽度',
+  'assessment/review/resize-about': '调整参考信息栏宽度',
   'assessment/review/queue-keys-move': '选择',
   'assessment/review/queue-keys-open': '打开',
   'assessment/review/queue-current': '当前',
