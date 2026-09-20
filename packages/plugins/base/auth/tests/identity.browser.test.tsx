@@ -1,5 +1,7 @@
 import UserTypesPage from '../src/client/iam/UserTypesPage.tsx'
+import UserTypePage from '../src/client/iam/UserTypePage.tsx'
 import RolesPage from '@qualy/plugin-rbac/client/RolesPage'
+import RolePage from '@qualy/plugin-rbac/client/RolePage'
 import UsersPage from '../src/client/iam/UsersPage.tsx'
 import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
@@ -149,6 +151,31 @@ const stubs = ({
 })
 
 describe('user types screen', () => {
+  it('lists each type with where it may belong and who lets it in', async () => {
+    renderScreen({
+      client: fakeClient(
+        stubs({
+          identity: {
+            listUserTypes: () =>
+              Effect.succeed({
+                userTypes: [userType({ userCount: 3 })],
+                capabilities: { canManage: false },
+              }),
+          },
+        }),
+      ),
+      children: <UserTypesPage />,
+    })
+
+    const row = page.getByTestId('type-row')
+    await expect.element(row).toHaveAttribute('data-users', '3')
+    // no entrance is in service in these stubs, and the row says so rather
+    // than leaving the cell blank
+    await expect.element(row).toHaveAttribute('data-entrances', '0')
+    // and no way to make more of them
+    expect(await page.getByText('新建用户类型').elements()).toHaveLength(0)
+  })
+
   it('shows no management controls to a reader who may not manage', async () => {
     renderScreen({
       client: fakeClient(
@@ -162,20 +189,22 @@ describe('user types screen', () => {
           },
         }),
       ),
-      route: `/admin/user-types?type=${USER_TYPE_ID}`,
-      children: <UserTypesPage />,
+      path: '/admin/user-types/:typeId',
+      route: `/admin/user-types/${USER_TYPE_ID}`,
+      children: <UserTypePage />,
     })
 
     await expect.element(page.getByText('学生').first()).toBeInTheDocument()
     // the placement panel arrives on a second query, so wait for the panel
     // itself rather than for whatever renders first
     await expect.element(page.getByTestId('placement-panel')).toBeInTheDocument()
-    // the policy is legible - the rule is stated, and the radio marking the
-    // current mode is there to read. Asserting this first matters: a screen
-    // that rendered nothing at all would satisfy "no controls" vacuously.
-    const modes = await page.getByRole('radio').elements()
-    expect(modes.length).toBeGreaterThan(0)
-    for (const mode of modes) expect(mode).toBeDisabled()
+    // the policy is legible - the rule is stated, with nothing to switch it
+    // by. Asserting this first matters: a screen that rendered nothing at all
+    // would satisfy "no controls" vacuously.
+    await expect
+      .element(page.getByTestId('placement-panel'))
+      .toHaveAttribute('data-mode', 'unrestricted')
+    expect(await page.getByRole('tab').elements()).toHaveLength(0)
     // and nothing on it acts
     expect(await page.getByRole('button', { name: '保存', exact: false }).elements()).toHaveLength(
       0,
@@ -200,11 +229,14 @@ describe('user types screen', () => {
           },
         }),
       ),
-      route: `/admin/user-types?type=${USER_TYPE_ID}`,
-      children: <UserTypesPage />,
+      path: '/admin/user-types/:typeId',
+      route: `/admin/user-types/${USER_TYPE_ID}`,
+      children: <UserTypePage />,
     })
 
-    await expect.element(page.getByTestId('type-summary')).toHaveAttribute('data-users', '3')
+    await expect
+      .element(page.getByTestId('type-lifecycle'))
+      .toHaveAttribute('data-populated', 'true')
     // disabling a populated type is refused server side, so the control says
     // so instead of producing an error after a round trip
     await expect.element(page.getByRole('button', { name: '停用' })).toBeDisabled()
@@ -230,8 +262,9 @@ describe('user types screen', () => {
           },
         }),
       ),
-      route: `/admin/user-types?type=${USER_TYPE_ID}`,
-      children: <UserTypesPage />,
+      path: '/admin/user-types/:typeId',
+      route: `/admin/user-types/${USER_TYPE_ID}`,
+      children: <UserTypePage />,
     })
 
     // the policy the type was read with, offered for editing
@@ -249,7 +282,7 @@ describe('user types screen', () => {
 
     // saying "anywhere" is a decision the reader makes, not one that falls
     // out of an empty list
-    await page.getByRole('radio', { name: '不限' }).first().click()
+    await page.getByRole('tab', { name: '不限' }).first().click()
     await expect.element(save2).toBeEnabled()
     await save2.click()
     await expect.element(page.getByTestId('feedback')).toHaveAttribute('data-tone', 'success')
@@ -283,8 +316,9 @@ describe('user types screen', () => {
           },
         }),
       ),
-      route: `/admin/user-types?type=${USER_TYPE_ID}`,
-      children: <UserTypesPage />,
+      path: '/admin/user-types/:typeId',
+      route: `/admin/user-types/${USER_TYPE_ID}`,
+      children: <UserTypePage />,
     })
 
     await expect.element(page.getByText('学生').first()).toBeInTheDocument()
@@ -382,8 +416,9 @@ describe('roles screen', () => {
           },
         }),
       ),
-      route: `/admin/roles?role=${ADMIN_ROLE_ID}`,
-      children: <RolesPage />,
+      path: '/admin/roles/:roleId',
+      route: `/admin/roles/${ADMIN_ROLE_ID}`,
+      children: <RolePage />,
     })
 
     await expect.element(page.getByText('租户管理员').first()).toBeInTheDocument()
@@ -391,10 +426,10 @@ describe('roles screen', () => {
     expect(await page.getByRole('button', { name: '重命名' }).elements()).toHaveLength(0)
     expect(await page.getByRole('button', { name: '保存权限' }).elements()).toHaveLength(0)
     expect(await page.getByRole('tab', { name: '可任命' }).elements()).toHaveLength(0)
-    // and its status tab offers nothing destructive either
-    await page.getByRole('tab', { name: '状态' }).click()
-    expect(await page.getByRole('button', { name: '删除' }).elements()).toHaveLength(0)
-    expect(await page.getByRole('button', { name: '停用' }).elements()).toHaveLength(0)
+    // and its standing offers nothing to switch and nothing destructive
+    await expect.element(page.getByTestId('role-standing')).toHaveAttribute('data-status', 'active')
+    expect(await page.getByRole('button', { name: '删除角色' }).elements()).toHaveLength(0)
+    expect(await page.getByRole('tab', { name: '停用' }).elements()).toHaveLength(0)
   })
 
   it('does not present a failed supporting query as an empty picker', async () => {
@@ -413,8 +448,9 @@ describe('roles screen', () => {
           },
         }),
       ),
-      route: `/admin/roles?role=${ROLE_ID}`,
-      children: <RolesPage />,
+      path: '/admin/roles/:roleId',
+      route: `/admin/roles/${ROLE_ID}`,
+      children: <RolePage />,
     })
 
     await expect.element(page.getByText('院系管理员').first()).toBeInTheDocument()
@@ -428,11 +464,8 @@ describe('roles screen', () => {
     // everything a role needs before it can be activated comes afterwards.
     await page.getByRole('tab', { name: '可担任的人' }).click()
     await expect
-      .element(page.getByRole('radio', { name: '仅指定类型', exact: false }).first())
+      .element(page.getByRole('tab', { name: '仅指定类型', exact: false }).first())
       .toBeInTheDocument()
-    // and creation, which draws from nothing, still asks its two questions
-    await page.getByRole('button', { name: '新建组织角色' }).click()
-    await expect.element(page.getByRole('group', { name: '生效范围' })).toBeInTheDocument()
   })
 
   // The form used to collect permissions and eligibility and then send only
@@ -507,8 +540,9 @@ describe('roles screen', () => {
           },
         }),
       ),
-      route: `/admin/roles?role=${ROLE_ID}`,
-      children: <RolesPage />,
+      path: '/admin/roles/:roleId',
+      route: `/admin/roles/${ROLE_ID}`,
+      children: <RolePage />,
     })
 
     const manage = page.getByRole('checkbox', { name: '编辑批次', exact: false })
@@ -546,22 +580,22 @@ describe('roles screen', () => {
           },
         }),
       ),
-      route: `/admin/roles?role=${ROLE_ID}`,
-      children: <RolesPage />,
+      path: '/admin/roles/:roleId',
+      route: `/admin/roles/${ROLE_ID}`,
+      children: <RolePage />,
     })
 
     await expect.element(page.getByText('院系管理员').first()).toBeInTheDocument()
     // deleting a role is a decision about its standing, so it lives with the
     // rest of them rather than beside what the role may do
-    await page.getByRole('tab', { name: '状态' }).click()
-    await page.getByRole('button', { name: '删除' }).click()
+    await page.getByRole('button', { name: '删除角色' }).click()
     // it asks before it acts, in a dialog of its own
     await expect.element(page.getByRole('alertdialog')).toBeInTheDocument()
     await page.getByRole('button', { name: '取消' }).click()
     expect(remove).not.toHaveBeenCalled()
 
-    await page.getByRole('button', { name: '删除' }).first().click()
-    await page.getByRole('button', { name: '删除' }).last().click()
+    await page.getByRole('button', { name: '删除角色' }).click()
+    await page.getByRole('alertdialog').getByRole('button', { name: '删除', exact: true }).click()
     expect(remove).toHaveBeenCalledTimes(1)
     // deleting states the version it read, so a role edited meanwhile is a
     // refusal rather than a surprise
@@ -621,12 +655,19 @@ describe('users workspace', () => {
     await page.getByRole('button', { name: /张明远/ }).click()
     // the open person is address state, not component state
     await vi.waitFor(() => expect(addressNow()).toContain(`user=${USER_ID}`))
+    expect(
+      document.querySelector('[data-testid="roster-row"][data-selected="true"]'),
+    ).not.toBeNull()
+    // the panel answers with the person, their standing and their roles -
+    // and with nothing that changes them: the one way on is their own page
+    const sheet = page.getByTestId('person-sheet')
+    await expect.element(sheet).toBeVisible()
     await expect
-      .element(page.getByRole('button', { name: /张明远/ }))
-      .toHaveAttribute('aria-current', 'true')
-    // the pane answers with the person, their standing and their roles
-    await expect.element(page.getByText('本部 / 分部')).toBeVisible()
-    await expect.element(page.getByText('审核员')).toBeVisible()
+      .element(sheet.getByTestId('person-status'))
+      .toHaveAttribute('data-status', 'active')
+    await expect.element(sheet.getByText('审核员')).toBeVisible()
+    expect(sheet.getByRole('combobox').elements()).toHaveLength(0)
+    expect(sheet.getByRole('textbox').elements()).toHaveLength(0)
   })
 
   it('a deep link opens straight onto the person it names', async () => {
@@ -635,11 +676,13 @@ describe('users workspace', () => {
       route: `/admin/users?user=${USER_ID}`,
       children: <UsersPage />,
     })
-    // no clicks: the address alone opens the pane
-    await expect.element(page.getByText('本部 / 分部')).toBeVisible()
-    await expect
-      .element(page.getByRole('button', { name: /张明远/ }))
-      .toHaveAttribute('aria-current', 'true')
+    // no clicks: the address alone opens the panel, on the row it names
+    await expect.element(page.getByTestId('person-sheet')).toBeVisible()
+    await vi.waitFor(() =>
+      expect(
+        document.querySelector('[data-testid="roster-row"][data-selected="true"]'),
+      ).not.toBeNull(),
+    )
   })
 
   it('asks the server for the unit the tree has selected', async () => {

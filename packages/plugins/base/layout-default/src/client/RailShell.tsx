@@ -103,9 +103,26 @@ const styles = stylex.create({
   // a floor rather than a height: the person arrives a moment after the
   // shell, and the floor is what keeps the page from moving when they do
   contextBanner: {
-    minHeight: 96,
-    paddingBlock: 14,
+    minHeight: 120,
+    overflow: 'hidden',
+    paddingTop: 14,
+    paddingBottom: 20,
+    paddingInline: { default: 24, [breakpoints.phone]: 16 },
   },
+  // the hairlines every other band in the product opens on, gathered in the
+  // far corner and gone before they reach the words
+  hairlines: {
+    position: 'absolute',
+    inset: 0,
+    pointerEvents: 'none',
+    opacity: 0.06,
+    color: tokens.foreground,
+    backgroundImage:
+      'repeating-linear-gradient(-45deg, currentColor 0 1px, transparent 1px 24px)',
+    maskImage: 'radial-gradient(130% 115% at 100% 0%, black, transparent 62%)',
+  },
+  // the banner keeps the measure the pages under it are read at
+  contextSeatBanner: { position: 'relative', maxWidth: '72rem', marginInline: 'auto' },
   contextSeat: {
     minWidth: 0,
     flexGrow: 1,
@@ -740,7 +757,8 @@ function CapableRailShell({ navigation, context, badge, banner = false }: RailSh
           the shell does, and a bar that grows from empty to filled moves every
           page below it just as the reader starts reading */}
       <div {...stylex.props(styles.contextBar, banner ? styles.contextBanner : styles.contextLine)}>
-        <div {...stylex.props(styles.contextSeat)}>
+        {banner && <span aria-hidden {...stylex.props(styles.hairlines)} />}
+        <div {...stylex.props(styles.contextSeat, banner && styles.contextSeatBanner)}>
           <UiSlot token={context} />
         </div>
       </div>

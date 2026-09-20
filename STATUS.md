@@ -18943,3 +18943,66 @@ docs/assessment-design.md §32.83。
   client-paths / browser-graph)`Test Files 7 passed (7)`,`Tests 42 passed (42)`;`item-editor` + `scoring-failures`
   浏览器 `Test Files 2 passed (2)`,`Tests 35 passed (35)`。本轮未跑全量浏览器套件(改动限于编辑器与其服务端)。
 
+
+## 组织与权限各页按设计稿重做;术语库归入资源库(2026-09-20)
+
+依据 Claude Design 项目的 `组织与权限.dc.html`(桌面 1a 至 1k)。设计稿经 MCP 读取时在 256 KiB 处被截断,
+中途改由用户提供的本地完整文件逐节读样式后实现;该文件是用户的未跟踪资料,不进版本库。
+
+### 平台原语(`@qualy/ui/screen`,均为新增,旧原语未删)
+
+- `Screen` 自绘页首带(返回链接 `BandBack`、标题旁标签 `titleAside`、`size: default | broad | wide | full`);
+  `PageContainer` 增 `broad`(1280)。
+- `surface.tsx`:`Card / CardHead / CardHint / CardEmpty / CardFoot`、`FactStrip`、`DefList / DefLine`、
+  `Table / TableHead / TableRow / Cell / LeadWord`(行可整行打开,手机端折成两行)、`Status`(无异常不打点)、`Tag`、
+  `MetaLine`、`TickGrid / Tick`。`panel.tsx`:`DetailSheet`(桌面右侧 460 / 420,手机自底部)、`UnsavedMark`、`FootNote`。
+  `tree.tsx`:`TreeRow`。`field.tsx`:`SearchField`。
+- `useList` 改为 `conjunction / narrow`:中文此前 `unit` 风格会把「学院研究所班级」连写。
+
+### 各页
+
+- **组织结构 / 组织类型(1a、1b)**:`OrgPage` 拆为 `structure/`(树 + 节点面板:面包屑、五项事实、下级表、删除说明三态、
+  修改类型)与 `types/`(规则 DAG 图 + 类型表 + 类型 Sheet)。`shape.ts` 做最长路径分层布局,跨层边走顶部虚线。
+- **用户(1c、1d、1k)**:左组织树卡 + 右名册卡(表头筛选、子树人数在客户端汇总);点行开只读速览 Sheet,
+  唯一动作是查看详情;详情横幅按 1k(返回、52px 头像、标签、状态点、带标签的事实、编辑资料 / 调动 / 更多)。
+  分区页(登录账号、组织归属、角色授权)的列表容器改为白色卡片。
+- **角色(1e、1f)**:列表拆成租户级 / 组织级两张表卡;配置改为独立子页 `rbac/role`
+  (`/organization/roles/:roleId`):状态条、五项事实、权限 / 可担任的人 / 可任命三个下划线页签,保存沿用既有的影响面确认。
+- **用户类型(1g、1h)**:列表是一张整表(允许归属、登录入口、可担任角色、状态;无入口接纳时橙点);配置改为独立子页
+  `auth/user-type`(`/organization/user-types/:typeId`):左栏本页可改(允许归属、停用与删除,阻碍原因写在按钮旁),
+  右栏只读事实(登录入口、可担任角色)并指向各自的修改页。三处事实的推导收在 `iam/types/facts.ts`,
+  读不到(无权限)与「没有」分开表达。
+- **登录方式(1i)**:整表 + `MethodSheet`;唯一可改项是允许登录的用户类型,名单为空时 Sheet 内与列表都标出。
+- **审计日志(1j)**:宽度 1280、表卡、失败与被拒打红点、IP 与关联 id 等宽、展开行为 `<dl>`;手机端表格保持列宽横向滚动。
+- **术语库**:页面移到资源库分组(`/library/terminology`,`library/main` order 40),只剩它一项的「设置」分组随之消失;
+  页面补上 `PageContainer`,此前内容贴边。
+
+### 与设计稿的有意偏离
+
+1. 设计稿的 220px 左侧导航未采用:应用壳(TopBar + 横向分区条)是平台已关账的部分,本轮不动。
+2. 输入框保持平台的 36px(设计 32px):Mantine 的高度走内联变量,类名覆盖不了,理由写在 `field.tsx`。
+3. 人员详情的分区导航沿用用户详情壳的侧栏,没有搬进页面内容区。
+4. Sheet 的遮罩用产品现有的模糊幕,不是设计稿的纯色幕;两栏页的页首带与正文同宽(broad)。
+5. 规则图在手机端隐藏,只留类型表;移动端 2a 至 2m 的专门版式(分区切换器、底部固定操作条)未做,只做了通用折叠。
+6. 1h 的「N 个组织」、1i 的「管理员用户类型必须保留密码登录」未做:前者接口没有该计数,后者不是服务端现有规则,不写进界面。
+7. 系统用户类型的允许归属保持只读(既有规则),设计稿示例里可编辑。
+
+### 验收(实际执行)
+
+- `pnpm typecheck`:`exit 0`(根工程、web 侧、全部插件 client 与 tests 工程、组件引用检查)。
+- `pnpm test:browser` 全量一次:`Test Files 64 passed (64)`,`Tests 478 passed (478)`,133.73s。受影响文件已随结构更新:
+  `identity.browser.test.tsx`(用户类型与角色改为渲染子页并带路由参数,新增列表行事实一条)、
+  `login-methods.browser.test.tsx`(模式切换由 radio 改为 segmented 的 tab)、`org-admin.browser.test.tsx`(新增规则图一条)。
+- `pnpm qualy resolve --frozen-lockfile`:`qualy.lock.json is up to date`,`exit 0`。
+- `pnpm exec vitest run tools/tests`:`Test Files 2 failed | 50 passed (52)`,`Tests 2 failed | 325 passed (327)`。
+  一条是本轮误删的 `auth/users/placement` 中文键(描述器的导航标签在用),补回后 `catalogs.test.ts` 单跑
+  `Tests 11 passed (11)`。**另一条未修**:`seed.test.ts` 期望 `permissions: 31`、实得 32。本轮工作区没有改动任何权限声明
+  或 qualy.yml(非 client 的改动只有三处页面声明与两个 package.json 的 exports),属此前提交留下的过期期望,留给用户确认后改数。
+- 截图核对(用户类型列表 / 配置页、登录方式 Sheet 等)人工看过后删除。
+
+### 未做与下一步
+
+- 移动端 2a 至 2m 的专门版式。
+- 旧原语 `Rail / RailRow / EditorHead / DefRow / Barred / SaveBar / PickList` 已无生产调用方(`ModeChoice / PickGrid` 仅
+  `NewUserTypeForm` 在用),可在确认后删除。
+- `seed.test.ts` 的权限数。

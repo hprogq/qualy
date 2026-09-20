@@ -167,6 +167,15 @@ const plugin = Plugin.define(
       group: 'org/organization',
     },
   }),
+  // one user type's own page: reached from its row, so it files no entry
+  Ui.page({
+    id: 'auth/user-type',
+    path: '/organization/user-types/:typeId',
+    component: Ui.react('./client/iam/UserTypePage'),
+    layout: APP_SHELL,
+    title: message('auth/user-types/edit', 'User type configuration'),
+    visibility: permissionOf('auth.user-type.read'),
+  }),
   Ui.page({
     id: 'auth/login-methods',
     path: '/organization/login-methods',

@@ -352,16 +352,26 @@ describe.runIf(postgresAvailable)('the user lifecycle', () => {
           const asStranger = { tenantId: f.tenant, userId: stranger, sessionId: 's' }
           // the person is enabled, so this asks for what already holds
           const agreeing = yield* Effect.result(
-            iam.users.setStatus(f.tenant, f.person, { status: 'active', expectedVersion: 1 }, {
-              ...asStranger,
-            }),
+            iam.users.setStatus(
+              f.tenant,
+              f.person,
+              { status: 'active', expectedVersion: 1 },
+              {
+                ...asStranger,
+              },
+            ),
           )
           // and the other way round, which used to be the refusal that told
           // them the same thing from the other side
           const changing = yield* Effect.result(
-            iam.users.setStatus(f.tenant, f.person, { status: 'disabled', expectedVersion: 1 }, {
-              ...asStranger,
-            }),
+            iam.users.setStatus(
+              f.tenant,
+              f.person,
+              { status: 'disabled', expectedVersion: 1 },
+              {
+                ...asStranger,
+              },
+            ),
           )
           yield* iam.users.setStatus(
             f.tenant,
@@ -376,9 +386,14 @@ describe.runIf(postgresAvailable)('the user lifecycle', () => {
             f.as,
           )
           const agreeingDeleted = yield* Effect.result(
-            iam.users.setStatus(f.tenant, f.person, { status: 'deleted', expectedVersion: 3 }, {
-              ...asStranger,
-            }),
+            iam.users.setStatus(
+              f.tenant,
+              f.person,
+              { status: 'deleted', expectedVersion: 3 },
+              {
+                ...asStranger,
+              },
+            ),
           )
           return {
             agreeing: tagOf(agreeing),

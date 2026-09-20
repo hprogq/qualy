@@ -84,22 +84,99 @@ const i18n = definePluginMessages({
       id: 'org/permission/tree-manage',
       defaultMessage: 'Manage the organization',
     },
-    loadFailedTitle: {
-      id: 'org/state/load-failed',
-      defaultMessage: 'Could not load organization data',
-    },
     loadFailedHint: {
       id: 'org/state/load-failed-hint',
       defaultMessage: 'Check your connection or permissions and try again.',
+    },
+    unitsTitle: { id: 'org/tree/units', defaultMessage: 'Units' },
+    treeCounts: {
+      id: 'org/tree/counts',
+      defaultMessage: '{total} in all, {manageable} you can change',
+    },
+    peopleHere: {
+      id: 'org/nodes/people-here',
+      defaultMessage: 'People here',
+    },
+    countUnits: {
+      id: 'org/node/count-units',
+      defaultMessage: '{count}',
+    },
+    typeColumn: {
+      id: 'org/node/type-column',
+      defaultMessage: 'Type',
+    },
+    childrenColumn: {
+      id: 'org/node/children-column',
+      defaultMessage: 'Under it',
+    },
+    deleteLineChildren: {
+      id: 'org/node/delete-line-children',
+      defaultMessage: 'Removing this unit: move or remove the {count, plural, one {# unit} other {# units}} under it first. People and role grants are checked when it is removed',
+    },
+    deleteLinePeople: {
+      id: 'org/node/delete-line-people',
+      defaultMessage: 'Removing this unit: {count, plural, one {# person stands} other {# people stand}} here and must be moved first. Role grants are checked when it is removed',
+    },
+    deleteLineFree: {
+      id: 'org/node/delete-line-free',
+      defaultMessage: 'Removing this unit: people and role grants are checked when it is removed',
+    },
+    ruleArrowHint: {
+      id: 'org/rule/arrow-hint',
+      defaultMessage: 'An arrow runs from a type to each type it may hold',
+    },
+    ruleGraphTitle: {
+      id: 'org/rule/graph-title',
+      defaultMessage: 'The hierarchy rules between organization types',
+    },
+    ruleLegendNear: {
+      id: 'org/rule/legend-near',
+      defaultMessage: 'A rule between neighbouring levels',
+    },
+    ruleLegendCross: {
+      id: 'org/rule/legend-cross',
+      defaultMessage: 'A rule that skips a level',
+    },
+    ruleLegendLayers: {
+      id: 'org/rule/legend-layers',
+      defaultMessage: 'Laid out by the longest way down; each type appears once',
+    },
+    typeInvolvedRules: {
+      id: 'org/type/involved-rules',
+      defaultMessage: '{count, plural, one {In # hierarchy rule} other {In # hierarchy rules}}',
+    },
+    unsaved: {
+      id: 'org/state/unsaved',
+      defaultMessage: 'Unsaved changes',
+    },
+    discard: {
+      id: 'org/action/discard',
+      defaultMessage: 'Discard',
+    },
+    allowedUnderHint: {
+      id: 'org/type/allowed-under-hint',
+      defaultMessage: 'Decided where the holding type lists what it may hold; change it there',
+    },
+    typeCountColumn: {
+      id: 'org/type/count-column',
+      defaultMessage: 'Units',
+    },
+    typeDeleteTitle: {
+      id: 'org/type/delete-title',
+      defaultMessage: 'Delete type',
+    },
+    none: {
+      id: 'org/type/none',
+      defaultMessage: 'None',
+    },
+    noneTopKind: {
+      id: 'org/type/none-top',
+      defaultMessage: 'None, a top type',
     },
     treeTitle: { id: 'org/tree/title', defaultMessage: 'Organization' },
     treeEmpty: {
       id: 'org/tree/empty',
       defaultMessage: 'No organization nodes are visible to you.',
-    },
-    selectHint: {
-      id: 'org/tree/select-hint',
-      defaultMessage: 'Open a unit to see its details.',
     },
     readOnly: { id: 'org/node/read-only', defaultMessage: 'You may only view this node.' },
     unknownType: { id: 'org/type/unknown', defaultMessage: 'Unknown type' },
@@ -117,8 +194,6 @@ const i18n = definePluginMessages({
     deleteNode: { id: 'org/action/delete-node', defaultMessage: 'Delete node' },
     typesTitle: { id: 'org/type/title', defaultMessage: 'Organization types' },
     rulesTitle: { id: 'org/rule/title', defaultMessage: 'Hierarchy rules' },
-    parentType: { id: 'org/rule/parent-type', defaultMessage: 'Parent type' },
-    childType: { id: 'org/rule/child-type', defaultMessage: 'Child type' },
     delete: { id: 'org/action/delete', defaultMessage: 'Delete' },
     structureHint: {
       id: 'org/page/structure-hint',
@@ -132,20 +207,11 @@ const i18n = definePluginMessages({
     viewTypes: { id: 'org/view/types', defaultMessage: 'Types' },
     searchPlaceholder: { id: 'org/tree/search', defaultMessage: 'Search units' },
     searchEmpty: { id: 'org/tree/search-empty', defaultMessage: 'No unit matches the search.' },
-    unitCount: {
-      id: 'org/tree/unit-count',
-      defaultMessage: '{count, plural, one {# unit} other {# units}}',
-    },
     parentLabel: { id: 'org/node/parent', defaultMessage: 'Parent' },
     pathLabel: { id: 'org/node/path', defaultMessage: 'Position' },
     siblingRank: { id: 'org/node/sibling-rank', defaultMessage: '{rank} of {total}' },
     rankLabel: { id: 'org/node/rank', defaultMessage: 'Rank among siblings' },
     childrenTitle: { id: 'org/node/children', defaultMessage: 'Children' },
-    childCount: {
-      id: 'org/node/child-count',
-      defaultMessage: '{count, plural, one {# child} other {# children}}',
-    },
-    open: { id: 'org/action/open', defaultMessage: 'Open' },
     allowedHere: { id: 'org/node/allowed-here', defaultMessage: 'May hold: {types}' },
     noChildrenAllowed: {
       id: 'org/node/no-children-allowed',
@@ -153,28 +219,8 @@ const i18n = definePluginMessages({
     },
     childrenEmpty: { id: 'org/node/children-empty', defaultMessage: 'No children yet.' },
     peopleTitle: { id: 'org/nodes/people', defaultMessage: 'People' },
-    peopleHint: {
-      id: 'org/nodes/people-hint',
-      defaultMessage: 'The roster is maintained on the users screen.',
-    },
     peopleOpen: { id: 'org/nodes/people-open', defaultMessage: 'Open the roster' },
-    pickNodeTitle: { id: 'org/nodes/pick-title', defaultMessage: 'Open a unit' },
-    pickNodeBody: {
-      id: 'org/nodes/pick-body',
-      defaultMessage: 'Its name, its place and the units under it are maintained here.',
-    },
-    pickTypeTitle: { id: 'org/types/pick-title', defaultMessage: 'Open a kind of unit' },
-    pickTypeBody: {
-      id: 'org/types/pick-body',
-      defaultMessage: 'Which kinds may sit under which is set here.',
-    },
     peopleCount: peopleCountMessage,
-    deleteTitle: { id: 'org/node/delete-title', defaultMessage: 'Delete this unit' },
-    deleteBlockedChildren: {
-      id: 'org/node/delete-blocked-children',
-      defaultMessage:
-        'Move or delete {count, plural, one {its # child} other {its # children}} first.',
-    },
     confirmDeleteNode: {
       id: 'org/node/confirm-delete',
       defaultMessage: 'Delete "{name}"?',
@@ -191,9 +237,9 @@ const i18n = definePluginMessages({
     allowedChildrenTitle: { id: 'org/type/allowed-children', defaultMessage: 'Allowed children' },
     allowedChildrenHint: {
       id: 'org/type/allowed-children-hint',
-      defaultMessage: 'Ticked types can be created and moved under units of this type.',
+      defaultMessage:
+        'Ticked types can be created and moved under units of this type. Unticking one that units already use is refused on save',
     },
-    saveRules: { id: 'org/type/save-rules', defaultMessage: 'Save' },
     allowedUnder: { id: 'org/type/allowed-under', defaultMessage: 'Allowed under' },
     allowedUnderNone: {
       id: 'org/type/allowed-under-none',
@@ -209,25 +255,12 @@ const i18n = definePluginMessages({
       defaultMessage: 'Its hierarchy rules go with it.',
     },
     newTypeTitle: { id: 'org/type/new', defaultMessage: 'New type' },
-    saved: { id: 'org/state/saved', defaultMessage: 'Saved.' },
     save: { id: 'org/action/save', defaultMessage: 'Save' },
     expandAll: { id: 'org/tree/expand-all', defaultMessage: 'Expand all' },
     // the twistie's spoken name; the unit's own name is appended to it, so
     // a screen reader hears which branch is being folded
     foldBranch: { id: 'org/tree/fold-branch', defaultMessage: 'Fold or unfold' },
-    manageableCount: {
-      id: 'org/tree/manageable-count',
-      defaultMessage: '{count} you may manage',
-    },
-    chosenCount: { id: 'org/type/chosen-count', defaultMessage: '{count} chosen' },
-    handleOneByOne: { id: 'org/node/handle-one-by-one', defaultMessage: 'Open the first' },
-    deleteChecksServer: {
-      id: 'org/node/delete-checks-server',
-      defaultMessage: 'People and role grants are checked when you delete.',
-    },
     typeFreeHint: { id: 'org/type/free-hint', defaultMessage: 'No unit uses this type.' },
-    ladderTitle: { id: 'org/type/ladder', defaultMessage: 'Hierarchy' },
-    ladderEmpty: { id: 'org/type/ladder-empty', defaultMessage: 'No rules yet.' },
     ruleCount: {
       id: 'org/type/rule-count',
       defaultMessage: '{count, plural, one {# rule} other {# rules}}',

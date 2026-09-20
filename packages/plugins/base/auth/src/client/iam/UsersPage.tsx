@@ -1,8 +1,15 @@
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { usersPageActions, type UsersPageActionsContext } from '@qualy/ui-contract'
 import { useEffect, useMemo, useState } from 'react'
-import { Building2Icon, PlusIcon, SearchIcon, UserRoundIcon } from 'lucide-react'
-import { PageLink, useApi, useRunApi, useApiQuery, usePageQueryState, cursorPages, UiSlot } from '@qualy/web-runtime'
+import { PlusIcon } from 'lucide-react'
+import {
+  useApi,
+  useRunApi,
+  useApiQuery,
+  usePageQueryState,
+  cursorPages,
+  UiSlot,
+} from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
@@ -11,24 +18,38 @@ import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { AsyncSection, Feedback } from '@qualy/ui/admin'
-import { Blank, RailSkeleton, Screen, SectionHead, Segmented } from '@qualy/ui/screen'
-import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
+import {
+  Card,
+  CardEmpty,
+  CardFoot,
+  CardHead,
+  Cell,
+  Screen,
+  SearchField,
+  Segmented,
+  Spacer,
+  Status,
+  Table,
+  TableHead,
+  TableRow,
+} from '@qualy/ui/screen'
 import { Button } from '@qualy/ui/button'
-import { Input } from '@qualy/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
-import { initialsOf } from '@qualy/ui/person'
-import { Skeleton } from '@qualy/ui/skeleton'
 import { Spinner } from '@qualy/ui/spinner'
+import { useLingering } from '@qualy/ui/use-lingering'
 import { iamMessages as m } from '../i18n.ts'
 import { NewUserForm } from './NewUserForm.tsx'
-import { NodePicker, type PickableNode } from './NodePicker.tsx'
-import { OrgTree } from './OrgTree.tsx'
+import { PersonSheet } from './users/PersonSheet.tsx'
+import { UnitTree, type UnitNode } from './users/UnitTree.tsx'
 import { authApi } from '../api.ts'
 
 // People are administered where they stand, so the screen reads left to
-// right: the unit you are looking at, the people standing there, and the one
-// you have open. Three columns rather than a list and a route, because
-// checking who somebody is should not cost the roster you were reading.
+// right: the unit you are looking at, and the people standing there. The
+// roster's own heading says which unit and how many, so the two halves never
+// have to be read against each other to know what the list is a list of.
+//
+// Opening somebody looks at them beside the roster and changes nothing;
+// everything that can be done to a person is done on their own page.
 //
 // The unit, the scope, the filters and the open person all live in the query
 // string: exactly the state somebody wants back after a reload, or in a link
@@ -37,195 +58,20 @@ import { authApi } from '../api.ts'
 // rather than the absence of one
 const ALL_TYPES = 'all'
 
-const rosterColumns = 'minmax(0, 1.3fr) 7rem 5rem minmax(0, 1.2fr) 3.5rem'
-
 const styles = stylex.create({
-  emptyNote: {
-    fontSize: '0.875rem',
-    lineHeight: '1.25rem',
-    color: tokens.mutedForeground,
-  },
-  threePane: {
+  emptyNote: { margin: 0, fontSize: 14, color: tokens.mutedForeground },
+  split: {
     display: 'grid',
     alignItems: 'start',
-    gap: 24,
+    gap: 20,
     gridTemplateColumns: {
-      default: 'none',
-      '@media (min-width: 1024px)': '15rem minmax(0, 1fr) 19rem',
+      default: 'minmax(0, 1fr)',
+      [breakpoints.desktop]: '276px minmax(0, 1fr)',
     },
   },
-  pane: {
-    display: 'flex',
-    minWidth: 0,
-    flexDirection: 'column',
-    gap: 12,
-  },
-  searchSeat: {
-    position: 'relative',
-  },
-  searchGlass: {
-    pointerEvents: 'none',
-    position: 'absolute',
-    top: '50%',
-    left: 12,
-    width: 14,
-    height: 14,
-    transform: 'translateY(-50%)',
-    color: tokens.mutedForeground,
-  },
-  indentedInput: {
-    paddingLeft: 36,
-  },
-  treeBox: {
-    maxHeight: '60vh',
-    overflow: 'auto',
-    borderRadius: tokens.radiusLg,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: tokens.border,
-    padding: 4,
-  },
-  filterRow: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: 8,
-  },
-  rosterSearch: {
-    width: '100%',
-    maxWidth: {
-      default: '13rem',
-      [breakpoints.phone]: 'none',
-    },
-  },
-  awaySpinner: {
-    marginLeft: 'auto',
-  },
-  rosterBox: {
-    display: 'flex',
-    minWidth: 0,
-    flexDirection: 'column',
-    overflow: 'hidden',
-    borderRadius: tokens.radiusLg,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: tokens.border,
-  },
-  rosterHead: {
-    display: 'grid',
-    gridTemplateColumns: rosterColumns,
-    alignItems: 'center',
-    gap: 12,
-    borderBottomWidth: 1,
-    borderBottomStyle: 'solid',
-    borderBottomColor: tokens.border,
-    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
-    paddingInline: 16,
-    paddingBlock: 8,
-    fontSize: '0.75rem',
-    lineHeight: '1rem',
-    color: tokens.mutedForeground,
-  },
-  headEnd: {
-    textAlign: 'right',
-  },
-  rosterEmpty: {
-    paddingInline: 16,
-    paddingBlock: 16,
-    fontSize: '0.875rem',
-    lineHeight: '1.25rem',
-    color: tokens.mutedForeground,
-  },
-  row: {
-    display: 'grid',
-    minWidth: 0,
-    gridTemplateColumns: rosterColumns,
-    alignItems: 'center',
-    gap: 12,
-    borderTopWidth: { default: 1, ':first-child': 0 },
-    borderTopStyle: 'solid',
-    borderTopColor: tokens.border,
-    paddingInline: 16,
-    paddingBlock: 10,
-    textAlign: 'left',
-    backgroundColor: {
-      default: null,
-      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 70%, transparent)`,
-    },
-  },
-  rowOpen: {
-    backgroundColor: {
-      default: tokens.surfaceMuted,
-      ':hover': tokens.surfaceMuted,
-    },
-  },
-  cellName: {
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    fontSize: '0.875rem',
-    lineHeight: '1.25rem',
-    fontWeight: 500,
-  },
-  cellQuiet: {
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    fontSize: '0.75rem',
-    lineHeight: '1rem',
-    color: tokens.mutedForeground,
-  },
-  cellNo: {
-    fontVariantNumeric: 'tabular-nums',
-  },
-  cellStatus: {
-    textAlign: 'right',
-    fontSize: '0.75rem',
-    lineHeight: '1rem',
-    color: tokens.mutedForeground,
-  },
-  alert: {
-    color: tokens.danger,
-  },
-  footerRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 12,
-    borderTopWidth: 1,
-    borderTopStyle: 'solid',
-    borderTopColor: tokens.border,
-    paddingInline: 16,
-    paddingBlock: 8,
-  },
-  countNote: {
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    fontSize: '0.75rem',
-    lineHeight: '1rem',
-    color: tokens.mutedForeground,
-  },
-  spacer: {
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: '0%',
-  },
-  pinned: {
-    flexShrink: 0,
-  },
-  typeFilter: {
-    width: '9rem',
-  },
-  // the empty detail seat only earns its room on the wide layout
-  deskOnly: {
-    display: {
-      default: 'none',
-      '@media (min-width: 1024px)': 'flex',
-    },
-  },
+  searchBox: { width: { default: '13rem', [breakpoints.phone]: '100%' } },
+  typeFilter: { width: '8.5rem', flexShrink: 0 },
+  away: { width: 14, height: 14, flexShrink: 0, color: tokens.mutedForeground },
 })
 
 export default function UsersPage() {
@@ -241,15 +87,18 @@ export default function UsersPage() {
   const [openUserId, setOpenUserId] = usePageQueryState('user')
   const [view, setView] = usePageQueryState('view')
   const [draft, setDraft] = useState(search)
-  const [treeSearch, setTreeSearch] = useState('')
   const [creating, setCreating] = useState(false)
+  const shownUserId = useLingering(openUserId === '' ? null : openUserId)
 
   // one call gives the units this caller may see, the types they may hand
   // out, and the tree the left pane draws - no permission beyond its own
   const options = useQuery(query.identity.getUserOptions.queryOptions({ query: {} }))
   const nodes = useMemo(() => options.data?.nodes ?? [], [options.data])
+  // the first unit stands open until another is picked: a roster of nobody,
+  // waiting to be told whose, says nothing
   const active = nodes.find((entry) => entry.orgNodeId === anchor) ?? nodes[0]
   const userTypes = options.data?.userTypes ?? []
+  const within: 'self' | 'subtree' = scope === 'self' ? 'self' : 'subtree'
 
   // typing should not fire a request per keystroke
   useEffect(() => {
@@ -259,7 +108,7 @@ export default function UsersPage() {
 
   const filter = {
     orgNodeId: active?.orgNodeId ?? '',
-    scope: scope === 'self' ? ('self' as const) : ('subtree' as const),
+    scope: within,
     ...(view === 'deleted' ? { status: 'deleted' as const } : {}),
     ...(search ? { search } : {}),
     ...(typeFilter ? { userTypeId: typeFilter } : {}),
@@ -277,23 +126,36 @@ export default function UsersPage() {
   })
   const rows = useMemo(() => users.data?.pages.flatMap((page) => page.items) ?? [], [users.data])
 
-  // the tree filters client side: the units are already here, and a search
-  // answers with the matches rather than the branches leading to them
-  const treeTerm = treeSearch.trim().toLowerCase()
-  const treeNodes = useMemo(
-    () =>
-      nodes.map((entry) => ({
-        id: entry.orgNodeId,
-        name: entry.name,
-        parentId: entry.parentId,
-        manageable: entry.manageable,
-      })),
-    [nodes],
-  )
-  const treeMatches =
-    treeTerm === ''
-      ? treeNodes
-      : treeNodes.filter((node) => node.name.toLowerCase().includes(treeTerm))
+  // each unit with what kind it is and how many it holds, alone and with
+  // everything under it: the tree shows whichever reading the scope asks for
+  const units = useMemo((): readonly UnitNode[] => {
+    const kindOf = new Map((options.data?.orgTypes ?? []).map((type) => [type.id, type.name]))
+    const under = new Map<string, string[]>()
+    for (const entry of nodes) {
+      if (entry.parentId !== null) {
+        under.set(entry.parentId, [...(under.get(entry.parentId) ?? []), entry.orgNodeId])
+      }
+    }
+    const own = new Map(nodes.map((entry) => [entry.orgNodeId, entry.userCount]))
+    const totals = new Map<string, number>()
+    const totalOf = (id: string): number => {
+      const known = totals.get(id)
+      if (known !== undefined) return known
+      const total =
+        (own.get(id) ?? 0) + (under.get(id) ?? []).reduce((sum, child) => sum + totalOf(child), 0)
+      totals.set(id, total)
+      return total
+    }
+    return nodes.map((entry) => ({
+      id: entry.orgNodeId,
+      name: entry.name,
+      parentId: entry.parentId,
+      kind: kindOf.get(entry.orgTypeId) ?? '',
+      own: entry.userCount,
+      total: totalOf(entry.orgNodeId),
+    }))
+  }, [nodes, options.data?.orgTypes])
+  const activeUnit = units.find((unit) => unit.id === active?.orgNodeId)
 
   const pathOf = (nodeId: string): string => {
     const byId = new Map(nodes.map((entry) => [entry.orgNodeId, entry]))
@@ -301,6 +163,7 @@ export default function UsersPage() {
     for (let at = byId.get(nodeId); at; at = at.parentId ? byId.get(at.parentId) : undefined) {
       names.unshift(at.name)
     }
+    // the unit on show is the context, so a path under it starts below it
     return names.join(' / ')
   }
 
@@ -308,19 +171,17 @@ export default function UsersPage() {
     <Screen
       title={format(m.usersTitle)}
       description={format(m.usersHint)}
-      size="wide"
+      size="broad"
       actions={
         <>
           {/* whatever else can be done with people as a whole, by whoever
               offers it: an import, an export */}
           <UiSlot
             token={usersPageActions}
-            context={
-              { anchorNodeId: active?.orgNodeId ?? null } satisfies UsersPageActionsContext
-            }
+            context={{ anchorNodeId: active?.orgNodeId ?? null } satisfies UsersPageActionsContext}
           />
           {active?.manageable && (
-            <Button size="sm" onClick={() => setCreating(true)}>
+            <Button onClick={() => setCreating(true)}>
               <PlusIcon aria-hidden />
               {format(m.newUser)}
             </Button>
@@ -332,58 +193,44 @@ export default function UsersPage() {
       {!options.isPending && nodes.length === 0 ? (
         <p {...stylex.props(styles.emptyNote)}>{format(m.noAnchors)}</p>
       ) : (
-        <div {...stylex.props(styles.threePane)}>
-          <div {...stylex.props(styles.pane)}>
-            <div {...stylex.props(styles.searchSeat)}>
-              <SearchIcon aria-hidden {...stylex.props(styles.searchGlass)} />
-              <Input
-                name="tree-search"
-                value={treeSearch}
-                placeholder={format(m.treeSearch)}
-                aria-label={format(m.treeSearch)}
-                onChange={(event) => setTreeSearch(event.target.value)}
-                className={stylex.props(styles.indentedInput).className}
-              />
-            </div>
-            <div {...stylex.props(styles.treeBox)}>
-              <OrgTree
-                nodes={treeMatches}
-                flat={treeTerm !== ''}
-                emptyLabel={format(treeTerm === '' ? m.noAnchors : m.treeSearchEmpty)}
-                expandLabel={format(commonMessages.loading)}
-                selected={active?.orgNodeId ?? null}
-                onSelect={(node) => setAnchor(node.id)}
-              />
-            </div>
-          </div>
+        <div {...stylex.props(styles.split)}>
+          <UnitTree
+            units={units}
+            openId={active?.orgNodeId ?? null}
+            scope={within}
+            onOpen={setAnchor}
+            onScope={setScope}
+          />
 
-          <div {...stylex.props(styles.pane)}>
-            <div {...stylex.props(styles.filterRow)}>
-              <Input
+          <Card data-testid="roster">
+            <CardHead
+              title={active?.name ?? ''}
+              sub={
+                activeUnit === undefined ? undefined : (
+                  <span
+                    data-testid="roster-scope"
+                    data-scope={within}
+                    data-people={within === 'self' ? activeUnit.own : activeUnit.total}
+                  >
+                    {format(within === 'self' ? m.rosterWithinSelf : m.rosterWithinSubtree, {
+                      count: within === 'self' ? activeUnit.own : activeUnit.total,
+                    })}
+                  </span>
+                )
+              }
+            >
+              {users.isFetching && !users.isPending && (
+                <Spinner
+                  aria-label={format(commonMessages.loading)}
+                  className={stylex.props(styles.away).className}
+                />
+              )}
+              <SearchField
                 name="users-search"
-                wrapperClassName={stylex.props(styles.rosterSearch).className}
                 value={draft}
-                placeholder={format(m.searchPlaceholder)}
-                aria-label={format(m.searchPlaceholder)}
-                onChange={(event) => setDraft(event.target.value)}
-              />
-              <Segmented
-                label={format(m.scopeLabel)}
-                value={scope === 'self' ? 'self' : 'subtree'}
-                onChange={setScope}
-                options={[
-                  { value: 'self', label: format(m.scopeSelf) },
-                  { value: 'subtree', label: format(m.scopeSubtree) },
-                ]}
-              />
-              <Segmented
-                label={format(m.viewLabel)}
-                value={view === 'deleted' ? 'deleted' : 'living'}
-                onChange={(next) => setView(next === 'deleted' ? 'deleted' : '')}
-                options={[
-                  { value: 'living', label: format(m.viewLiving) },
-                  { value: 'deleted', label: format(m.viewDeleted) },
-                ]}
+                onChange={setDraft}
+                label={format(m.searchPeople, { businessNo })}
+                xstyle={styles.searchBox}
               />
               <Select
                 value={typeFilter === '' ? ALL_TYPES : typeFilter}
@@ -401,13 +248,16 @@ export default function UsersPage() {
                   ))}
                 </SelectContent>
               </Select>
-              {users.isFetching && !users.isPending && (
-                <Spinner
-                  aria-label={format(commonMessages.loading)}
-                  className={stylex.props(styles.awaySpinner).className}
-                />
-              )}
-            </div>
+              <Segmented
+                label={format(m.viewLabel)}
+                value={view === 'deleted' ? 'deleted' : 'living'}
+                onChange={(next) => setView(next === 'deleted' ? 'deleted' : '')}
+                options={[
+                  { value: 'living', label: format(m.viewLiving) },
+                  { value: 'deleted', label: format(m.viewDeleted) },
+                ]}
+              />
+            </CardHead>
 
             <AsyncSection
               pending={options.isPending || (users.isPending && active !== undefined)}
@@ -416,40 +266,52 @@ export default function UsersPage() {
               retryLabel={format(commonMessages.retry)}
               onRetry={() => void users.refetch()}
             >
-              <div {...stylex.props(styles.rosterBox)}>
-                <div {...stylex.props(styles.rosterHead)}>
+              <Table columns="minmax(0, 1fr) 7.5rem 5rem minmax(0, 1.2fr) 6rem 4.5rem" openable>
+                <TableHead>
                   <span>{format(m.columnName)}</span>
                   <span>{businessNo}</span>
                   <span>{format(m.columnType)}</span>
                   <span>{format(m.columnUnit)}</span>
-                  <span {...stylex.props(styles.headEnd)}>{format(m.columnStatus)}</span>
-                </div>
+                  <span>{format(m.columnAccounts)}</span>
+                  <span>{format(m.columnStatus)}</span>
+                </TableHead>
                 {rows.length === 0 ? (
-                  <p {...stylex.props(styles.rosterEmpty)}>{format(m.usersEmpty)}</p>
+                  <CardEmpty>{format(m.usersEmpty)}</CardEmpty>
                 ) : (
                   rows.map((user) => (
-                    <button
+                    <TableRow
                       key={user.id}
-                      type="button"
-                      aria-current={user.id === openUserId}
+                      height="compact"
+                      selected={user.id === openUserId}
+                      onOpen={() => setOpenUserId(user.id === openUserId ? '' : user.id)}
+                      data-testid="roster-row"
                       data-user-status={user.status}
-                      onClick={() => setOpenUserId(user.id === openUserId ? '' : user.id)}
-                      {...stylex.props(styles.row, user.id === openUserId && styles.rowOpen)}
+                      data-accounts={user.identityCount}
                     >
-                      <span {...stylex.props(styles.cellName)}>{user.displayName}</span>
-                      <span {...stylex.props(styles.cellQuiet, styles.cellNo)}>
-                        {user.businessNo ?? '—'}
-                      </span>
-                      <span {...stylex.props(styles.cellQuiet)}>{user.userType?.name ?? '—'}</span>
-                      <span {...stylex.props(styles.cellQuiet)}>
-                        {user.primaryOrgNode?.name ?? '—'}
-                      </span>
-                      <span
-                        {...stylex.props(
-                          styles.cellStatus,
-                          user.status === 'disabled' && styles.alert,
-                        )}
+                      <Cell lead strong={user.id === openUserId}>
+                        {user.displayName}
+                      </Cell>
+                      <Cell numeric tone={user.businessNo === null ? 'quiet' : 'muted'}>
+                        {user.businessNo ?? format(m.personNoBusinessNo, { businessNo })}
+                      </Cell>
+                      <Cell>{user.userType?.name ?? '—'}</Cell>
+                      <Cell
+                        title={
+                          user.primaryOrgNode === null ? undefined : pathOf(user.primaryOrgNode.id)
+                        }
                       >
+                        {user.primaryOrgNode === null
+                          ? '—'
+                          : pathOf(user.primaryOrgNode.id) || user.primaryOrgNode.name}
+                      </Cell>
+                      {/* whether somebody can sign in at all is decided here, so
+                          the one who cannot is what the column marks */}
+                      {user.identityCount === 0 ? (
+                        <Status tone="warn">{format(m.accountNone)}</Status>
+                      ) : (
+                        <Status>{format(m.accountCount, { count: user.identityCount })}</Status>
+                      )}
+                      <Status tone={user.status === 'active' ? 'plain' : 'bad'}>
                         {format(
                           user.status === 'deleted'
                             ? m.deletedBadge
@@ -457,38 +319,38 @@ export default function UsersPage() {
                               ? m.disabledBadge
                               : m.statusActive,
                         )}
-                      </span>
-                    </button>
+                      </Status>
+                    </TableRow>
                   ))
                 )}
-                <div {...stylex.props(styles.footerRow)}>
-                  <span
-                    {...stylex.props(styles.countNote)}
-                    data-testid="roster-count"
-                    data-count={rows.length}
+              </Table>
+              <CardFoot>
+                <span data-testid="roster-count" data-count={rows.length}>
+                  {format(m.loadedCount, { count: rows.length })}
+                </span>
+                <Spacer />
+                {users.hasNextPage && (
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    disabled={users.isFetchingNextPage}
+                    onClick={() => void users.fetchNextPage()}
                   >
-                    {active !== undefined &&
-                      `${pathOf(active.orgNodeId)} · ${format(m.loadedCount, { count: rows.length })}`}
-                  </span>
-                  <span {...stylex.props(styles.spacer)} />
-                  {users.hasNextPage && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className={stylex.props(styles.pinned).className}
-                      disabled={users.isFetchingNextPage}
-                      onClick={() => void users.fetchNextPage()}
-                    >
-                      {format(m.loadMore)}
-                    </Button>
-                  )}
-                </div>
-              </div>
+                    {format(m.loadMore)}
+                  </Button>
+                )}
+              </CardFoot>
             </AsyncSection>
-          </div>
-
-          <PersonPane userId={openUserId} nodes={nodes} />
+          </Card>
         </div>
+      )}
+
+      {shownUserId !== null && (
+        <PersonSheet
+          open={openUserId !== ''}
+          userId={shownUserId}
+          onClose={() => setOpenUserId('')}
+        />
       )}
 
       {active?.manageable && (
@@ -506,300 +368,5 @@ export default function UsersPage() {
         />
       )}
     </Screen>
-  )
-}
-
-const paneStyles = stylex.create({
-  stack: {
-    display: 'flex',
-    minWidth: 0,
-    flexDirection: 'column',
-    gap: 16,
-  },
-  headRow: {
-    display: 'flex',
-    minWidth: 0,
-    alignItems: 'center',
-    gap: 12,
-  },
-  frame: {
-    borderRadius: tokens.radiusLg,
-  },
-  monogram: {
-    borderRadius: tokens.radiusLg,
-    backgroundColor: tokens.primary,
-    color: tokens.primaryForeground,
-    fontSize: '0.75rem',
-    lineHeight: '1rem',
-    fontWeight: 500,
-  },
-  nameCol: {
-    minWidth: 0,
-  },
-  personName: {
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    fontSize: '0.875rem',
-    lineHeight: '1.25rem',
-    fontWeight: 600,
-  },
-  personMeta: {
-    display: 'flex',
-    minWidth: 0,
-    alignItems: 'center',
-    gap: 8,
-    fontSize: '0.75rem',
-    lineHeight: '1rem',
-    color: tokens.mutedForeground,
-  },
-  metaNo: {
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    fontVariantNumeric: 'tabular-nums',
-  },
-  alert: {
-    color: tokens.danger,
-  },
-  section: {
-    display: 'flex',
-    minWidth: 0,
-    flexDirection: 'column',
-    gap: 6,
-    borderTopWidth: 1,
-    borderTopStyle: 'solid',
-    borderTopColor: tokens.border,
-    paddingTop: 12,
-  },
-  sectionRoomy: {
-    gap: 8,
-  },
-  plainText: {
-    fontSize: '0.875rem',
-    lineHeight: '1.25rem',
-  },
-  pathText: {
-    fontSize: '0.875rem',
-    lineHeight: '1.25rem',
-    textWrap: 'pretty',
-  },
-  quietText: {
-    fontSize: '0.875rem',
-    lineHeight: '1.25rem',
-    color: tokens.mutedForeground,
-  },
-  roleList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 4,
-  },
-  roleRow: {
-    display: 'flex',
-    minWidth: 0,
-    alignItems: 'baseline',
-    gap: 8,
-    fontSize: '0.875rem',
-    lineHeight: '1.25rem',
-  },
-  roleName: {
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  },
-  roleWhere: {
-    flexShrink: 0,
-    fontSize: '0.75rem',
-    lineHeight: '1rem',
-    color: tokens.mutedForeground,
-  },
-  widthFit: {
-    width: 'fit-content',
-  },
-  skeletonStack: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 12,
-  },
-  lineTitle: { height: 40, width: 160 },
-  lineFull: { height: 16, width: '100%' },
-  linePart: { height: 16, width: '66%' },
-})
-
-/**
- * Who the open row is, beside the roster rather than instead of it.
- *
- * Enough to recognise somebody and act on them; everything else is a click
- * away on their own page, which is where editing lives.
- */
-function PersonPane({ userId, nodes }: { userId: string; nodes: readonly PickableNode[] }) {
-  const api = useApi(authApi)
-  const runApi = useRunApi()
-  const query = useApiQuery(authApi)
-  const queryClient = useQueryClient()
-  const { format, formatError } = useI18n()
-  const [destination, setDestination] = useState('')
-  const [moveError, setMoveError] = useState<string | null>(null)
-  const detail = useQuery({
-    ...query.identity.getUser.queryOptions({ params: { userId } }),
-    enabled: userId !== '',
-  })
-  const move = useMutation({
-    mutationFn: (primaryOrgNodeId: string) =>
-      runApi(
-        api.identity.setUserPlacement({
-          params: { userId },
-          payload: { primaryOrgNodeId, version: detail.data?.user.version ?? 1 },
-        }),
-      ),
-    onMutate: () => setMoveError(null),
-    onSuccess: async () => {
-      setDestination('')
-      await queryClient.invalidateQueries({ queryKey: query.identity.key() })
-    },
-    onError: (error: unknown) => setMoveError(formatError(error)),
-  })
-  // the destination is reset by the person, not by the render: opening
-  // somebody else must not carry the previous pick over to them
-  useEffect(() => {
-    setDestination('')
-    setMoveError(null)
-  }, [userId])
-
-  if (userId === '') {
-    return (
-      <Blank
-        icon={<UserRoundIcon />}
-        title={format(m.pickSomeoneTitle)}
-        description={format(m.pickSomeone)}
-        xstyle={styles.deskOnly}
-        fill
-      />
-    )
-  }
-  if (detail.isError) {
-    return <Feedback message={formatError(detail.error)} />
-  }
-  const person = detail.data
-  if (person === undefined) {
-    return (
-      <div {...stylex.props(paneStyles.skeletonStack)}>
-        <Skeleton className={stylex.props(paneStyles.lineTitle).className} />
-        <Skeleton className={stylex.props(paneStyles.lineFull).className} />
-        <Skeleton className={stylex.props(paneStyles.linePart).className} />
-      </div>
-    )
-  }
-
-  // only somewhere else, and only somewhere this caller administers
-  const movable = nodes.filter(
-    (node) => node.manageable && node.orgNodeId !== person.orgPath.at(-1)?.id,
-  )
-
-  return (
-    <div {...stylex.props(paneStyles.stack)}>
-      <div {...stylex.props(paneStyles.headRow)}>
-        <Avatar className={stylex.props(paneStyles.frame).className}>
-          <AvatarFallback className={stylex.props(paneStyles.monogram).className}>
-            {initialsOf(person.user.displayName)}
-          </AvatarFallback>
-        </Avatar>
-        <div {...stylex.props(paneStyles.nameCol)}>
-          <p {...stylex.props(paneStyles.personName)}>{person.user.displayName}</p>
-          <p {...stylex.props(paneStyles.personMeta)}>
-            <span {...stylex.props(paneStyles.metaNo)}>{person.user.businessNo ?? '—'}</span>
-            <span {...stylex.props(person.user.status !== 'active' && paneStyles.alert)}>
-              {format(
-                person.user.status === 'deleted'
-                  ? m.deletedBadge
-                  : person.user.status === 'disabled'
-                    ? m.disabledBadge
-                    : m.statusActive,
-              )}
-            </span>
-          </p>
-        </div>
-      </div>
-
-      <div {...stylex.props(paneStyles.section)}>
-        <SectionHead title={format(m.userTypeLabel)} />
-        <p {...stylex.props(paneStyles.plainText)}>{person.user.userType?.name ?? '—'}</p>
-      </div>
-
-      <div {...stylex.props(paneStyles.section)}>
-        <SectionHead title={format(m.placementSection)} />
-        <p {...stylex.props(paneStyles.pathText)}>
-          {person.orgPath.map((node) => node.name).join(' / ')}
-        </p>
-      </div>
-
-      <div {...stylex.props(paneStyles.section)}>
-        <SectionHead title={format(m.rolesLabel)} count={person.roles.length} />
-        {person.roles.length === 0 ? (
-          <p {...stylex.props(paneStyles.quietText)}>{format(m.rolesNone)}</p>
-        ) : (
-          <ul {...stylex.props(paneStyles.roleList)}>
-            {person.roles.map((role) => (
-              <li key={role.grantId} {...stylex.props(paneStyles.roleRow)}>
-                <span {...stylex.props(paneStyles.roleName)}>{role.roleName}</span>
-                <span {...stylex.props(paneStyles.roleWhere)}>
-                  {role.orgNodeName ?? format(m.personRoleTenantWide)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      <div {...stylex.props(paneStyles.section)}>
-        <SectionHead title={format(m.accountsLabel)} />
-        <p
-          {...stylex.props(
-            paneStyles.plainText,
-            person.user.identityCount === 0 && paneStyles.alert,
-          )}
-          data-accounts={person.user.identityCount}
-        >
-          {person.user.identityCount === 0
-            ? format(m.accountNone)
-            : format(m.accountCount, { count: person.user.identityCount })}
-        </p>
-      </div>
-
-      {/* moving somebody is the one edit worth having here: it is the answer
-          to what a reader just looked up, and the rules that refuse it belong
-          to the destination rather than to this form */}
-      {person.user.manageable && movable.length > 0 && (
-        <div {...stylex.props(paneStyles.section, paneStyles.sectionRoomy)}>
-          <SectionHead title={format(m.moveLabel)} />
-          <NodePicker
-            label={format(m.moveLabel)}
-            nodes={movable}
-            value={destination}
-            onChange={setDestination}
-            placeholder={format(m.movePick)}
-          />
-          <Feedback message={moveError} />
-          <Button
-            size="sm"
-            variant="outline"
-            className={stylex.props(paneStyles.widthFit).className}
-            disabled={destination === '' || move.isPending}
-            onClick={() => move.mutate(destination)}
-          >
-            {format(m.moveAction)}
-          </Button>
-        </div>
-      )}
-
-      <div {...stylex.props(paneStyles.section)}>
-        <Button size="sm" asChild>
-          <PageLink page="auth/user-detail" params={{ userId }}>
-            {format(m.fullProfile)}
-          </PageLink>
-        </Button>
-      </div>
-    </div>
   )
 }

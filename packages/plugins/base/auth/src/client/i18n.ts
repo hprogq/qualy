@@ -49,16 +49,25 @@ const accountCountMessage = defineMessage<{ count: number }>()({
 })
 const audienceSummaryMessage = defineMessage<{ count: number }>()({
   id: 'auth/login-methods/audience-summary',
-  defaultMessage: '{count, plural, =0 {no user type} one {1 user type} other {# user types}}',
+  defaultMessage:
+    '{count, plural, =0 {Open to no user type} one {Open to 1 user type} other {Open to # user types}}',
+})
+const roleCountMessage = defineMessage<{ count: number }>()({
+  id: 'auth/user-types/role-count',
+  defaultMessage: '{count, plural, one {# role} other {# roles}}',
+})
+const providerPositionMessage = defineMessage<{ position: number }>()({
+  id: 'auth/login-methods/position',
+  defaultMessage: 'No. {position} on the sign-in page',
+})
+const peopleTallyMessage = defineMessage<{ count: string }>()({
+  id: 'auth/login-methods/people-tally',
+  defaultMessage: '{count} people',
 })
 const inUseBlockerMessage = defineMessage<{ count: number }>()({
   id: 'auth/user-types/blocker-in-use',
   defaultMessage:
     '{count, plural, one {# person holds} other {# people hold}} this type, so it can be neither disabled nor deleted.',
-})
-const placementCountMessage = defineMessage<{ count: number }>()({
-  id: 'auth/user-types/placement-count',
-  defaultMessage: '{count, plural, one {# node type} other {# node types}}',
 })
 const placementInUseMessage = defineMessage<{ userCount: number }>()({
   id: 'auth/error/user-type-placement-in-use',
@@ -272,13 +281,8 @@ const i18n = definePluginMessages({
         'A user type decides how a class of people signs in and where they may belong. What they may do is decided by the roles they hold.',
     },
     userTypesEmpty: { id: 'auth/user-types/empty', defaultMessage: 'No user types yet.' },
-    userTypeSelectHint: {
-      id: 'auth/user-types/select-hint',
-      defaultMessage: 'Open a user type to set where people of that kind may belong.',
-    },
     backToUsers: { id: 'auth/users/back', defaultMessage: 'All users' },
     profileSection: { id: 'auth/users/profile', defaultMessage: 'Profile' },
-    placementSection: { id: 'auth/users/placement', defaultMessage: 'Organization placement' },
     newUser: { id: 'auth/users/new', defaultMessage: 'New user' },
     newUserHint: {
       id: 'auth/users/new-hint',
@@ -300,14 +304,9 @@ const i18n = definePluginMessages({
     identifierLabel: { id: 'auth/field/identifier', defaultMessage: 'Sign-in name' },
     anchorLabel: { id: 'auth/users/anchor', defaultMessage: 'Unit' },
     scopeLabel: { id: 'auth/users/scope', defaultMessage: 'Include the whole subtree' },
-    searchPlaceholder: { id: 'auth/users/search', defaultMessage: 'Search' },
     allowedOrgTypesLegend: {
       id: 'auth/field/allowed-org-types',
       defaultMessage: 'May be placed on these kinds of organization node',
-    },
-    placementUnrestricted: {
-      id: 'auth/field/placement-unrestricted',
-      defaultMessage: 'May be placed anywhere',
     },
     placementTenantRoot: {
       id: 'auth/field/placement-tenant-root',
@@ -316,9 +315,8 @@ const i18n = definePluginMessages({
     placementHint: {
       id: 'auth/field/placement-hint',
       defaultMessage:
-        'Where this kind of person belongs. It says nothing about what they may do, which is what roles decide.',
+        'Where this kind of person belongs. It says nothing about what they may do, which is what roles decide. Unticking a kind is refused, with the number of people, while anyone of this type belongs to a unit of that kind.',
     },
-    placementCount: placementCountMessage,
     noOptions: { id: 'auth/field/no-options', defaultMessage: 'Nothing to choose from yet.' },
     noAnchors: {
       id: 'auth/users/no-anchors',
@@ -333,14 +331,47 @@ const i18n = definePluginMessages({
     disable: { id: 'auth/action/disable', defaultMessage: 'Disable' },
     loadMore: { id: 'auth/action/load-more', defaultMessage: 'Load more' },
     treeSearch: { id: 'auth/users/tree-search', defaultMessage: 'Search units' },
-    pickSomeone: {
-      id: 'auth/users/pick-someone',
-      defaultMessage: 'Pick a row to see who they are.',
-    },
-    fullProfile: { id: 'auth/users/full-profile', defaultMessage: 'Full profile' },
     accountsLabel: { id: 'auth/users/accounts', defaultMessage: 'Sign-in accounts' },
     accountNone: { id: 'auth/users/account-none', defaultMessage: 'None bound' },
     accountCount: accountCountMessage,
+    unitsTitle: {
+      id: 'auth/users/units',
+      defaultMessage: 'Units',
+    },
+    unitsCount: {
+      id: 'auth/users/units-count',
+      defaultMessage: '{count} in all',
+    },
+    expandAll: {
+      id: 'auth/users/expand-all',
+      defaultMessage: 'Expand all',
+    },
+    foldBranch: {
+      id: 'auth/users/fold-branch',
+      defaultMessage: 'Expand or collapse',
+    },
+    rosterWithinSubtree: {
+      id: 'auth/users/roster-within-subtree',
+      defaultMessage:
+        'With the units under it, {count, plural, =0 {nobody} one {# person} other {# people}}',
+    },
+    rosterWithinSelf: {
+      id: 'auth/users/roster-within-self',
+      defaultMessage:
+        'This unit alone, {count, plural, =0 {nobody} one {# person} other {# people}}',
+    },
+    searchPeople: {
+      id: 'auth/users/search-people',
+      defaultMessage: 'Name or {businessNo}',
+    },
+    quickViewHint: {
+      id: 'auth/users/quick-view-hint',
+      defaultMessage: 'Their details, ways in and roles are changed on their own page',
+    },
+    grantCount: {
+      id: 'auth/users/grant-count',
+      defaultMessage: '{count, plural, =0 {no grants} one {# grant} other {# grants}}',
+    },
     columnAccounts: { id: 'auth/users/column-accounts', defaultMessage: 'Accounts' },
     moveLabel: { id: 'auth/users/move', defaultMessage: 'Move' },
     movePick: { id: 'auth/users/move-pick', defaultMessage: 'Pick a unit' },
@@ -365,22 +396,6 @@ const i18n = definePluginMessages({
     entranceDisabled: { id: 'auth/person/entrance-disabled', defaultMessage: 'Entrance disabled' },
     manageWaysIn: { id: 'auth/person/manage-ways-in', defaultMessage: 'Manage entrances' },
     manageRoles: { id: 'auth/person/manage-roles', defaultMessage: 'Manage roles' },
-    pickSomeoneTitle: { id: 'auth/users/pick-title', defaultMessage: 'Open somebody' },
-    pickUnitTitle: { id: 'auth/users/pick-unit-title', defaultMessage: 'Choose a unit' },
-    pickUnitBody: {
-      id: 'auth/users/pick-unit-body',
-      defaultMessage: 'The roster of whichever unit is open appears here.',
-    },
-    pickTypeTitle: { id: 'auth/user-types/pick-title', defaultMessage: 'Open a user type' },
-    pickTypeBody: {
-      id: 'auth/user-types/pick-body',
-      defaultMessage: 'Where a kind of person may belong is set here.',
-    },
-    pickProviderTitle: { id: 'auth/login-methods/pick-title', defaultMessage: 'Open an entrance' },
-    pickProviderBody: {
-      id: 'auth/login-methods/pick-body',
-      defaultMessage: 'Who may sign in through an entrance is set here.',
-    },
     rolesLabel: { id: 'auth/users/roles', defaultMessage: 'Roles' },
     rolesNone: { id: 'auth/users/roles-none', defaultMessage: 'None' },
     treeSearchEmpty: {
@@ -401,6 +416,7 @@ const i18n = definePluginMessages({
       defaultMessage: '{count, plural, one {# person listed} other {# people listed}}',
     },
     transfer: { id: 'auth/action/transfer', defaultMessage: 'Transfer' },
+    moreActions: { id: 'auth/action/more', defaultMessage: 'More' },
     saved: { id: 'auth/feedback/saved', defaultMessage: 'Saved.' },
     systemBadge: { id: 'auth/badge/system', defaultMessage: 'system' },
     disabledBadge: { id: 'auth/badge/disabled', defaultMessage: 'disabled' },
@@ -425,10 +441,6 @@ const i18n = definePluginMessages({
     confirmDisableBody: {
       id: 'auth/confirm/disable-body',
       defaultMessage: 'Their sessions end immediately.',
-    },
-    systemTypeHint: {
-      id: 'auth/user-types/system-hint',
-      defaultMessage: 'A system user type cannot be deleted; its policy stays editable.',
     },
     rename: { id: 'auth/action/rename', defaultMessage: 'Rename' },
     statusDisabled: { id: 'auth/state/disabled', defaultMessage: 'Disabled' },
@@ -464,15 +476,12 @@ const i18n = definePluginMessages({
     loginMethodsTitle: { id: 'auth/login-methods/title', defaultMessage: 'Ways in' },
     loginMethodsHint: {
       id: 'auth/login-methods/hint',
-      defaultMessage: 'Each entrance says which user types may sign in through it.',
+      defaultMessage:
+        'Each entrance says which user types may sign in through it. Entrances come with the deployment and cannot be added or removed here.',
     },
     loginMethodsEmpty: {
       id: 'auth/login-methods/empty',
       defaultMessage: 'No entrance is configured yet.',
-    },
-    loginMethodSelectHint: {
-      id: 'auth/login-methods/select-hint',
-      defaultMessage: 'Open an entrance to say who may sign in through it.',
     },
     audienceLegend: { id: 'auth/login-methods/audience', defaultMessage: 'May sign in' },
     audienceAnyone: { id: 'auth/login-methods/audience-anyone', defaultMessage: 'Anyone' },
@@ -497,6 +506,37 @@ const i18n = definePluginMessages({
       defaultMessage: 'Open to every user type',
     },
     userCount: userCountMessage,
+    columnUsers: { id: 'auth/user-types/column-users', defaultMessage: 'Users' },
+    unknownWord: { id: 'auth/word/unknown', defaultMessage: 'Not visible to you' },
+    noneWord: { id: 'auth/word/none', defaultMessage: 'None' },
+    typeEnabled: { id: 'auth/state/enabled', defaultMessage: 'Enabled' },
+    signInNoneShort: {
+      id: 'auth/user-types/sign-in-none-short',
+      defaultMessage: 'No entrance admits it',
+    },
+    backToUserTypes: { id: 'auth/user-types/back', defaultMessage: 'Back to user types' },
+    userTypeGone: {
+      id: 'auth/user-types/gone',
+      defaultMessage: 'This user type no longer exists.',
+    },
+    roleCount: roleCountMessage,
+    signInOwnerHint: {
+      id: 'auth/user-types/sign-in-owner-hint',
+      defaultMessage: 'Each way in decides whom it admits. Change it on the ways in page.',
+    },
+    openRolesOwnerHint: {
+      id: 'auth/user-types/open-roles-owner-hint',
+      defaultMessage:
+        'Each role decides which user types may hold it. Change it on the roles page.',
+    },
+    roleKindTenant: { id: 'auth/user-types/role-kind-tenant', defaultMessage: 'Tenant-wide' },
+    roleKindOrg: { id: 'auth/user-types/role-kind-org', defaultMessage: 'At a unit' },
+    providerPosition: providerPositionMessage,
+    peopleTally: peopleTallyMessage,
+    audienceListedHint: {
+      id: 'auth/login-methods/audience-listed-hint',
+      defaultMessage: 'Only people of the ticked types may sign in through it.',
+    },
   },
   errors: defineErrorTranslations<ErrorsByCode<typeof authErrors>>()({
     USER_TYPE_NOT_FOUND: {

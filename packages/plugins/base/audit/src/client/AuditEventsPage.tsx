@@ -1,14 +1,15 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { useApi, useApiQuery, usePageQueryState, useRunApi, cursorPages} from '@qualy/web-runtime'
+import { useApi, useApiQuery, usePageQueryState, useRunApi, cursorPages } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
-import { Screen } from '@qualy/ui/screen'
+import { Card, CardEmpty, CardFoot, FootNote, Screen, Spacer, Status } from '@qualy/ui/screen'
 import { Button } from '@qualy/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { auditMessages as m } from './i18n.ts'
 import { auditApi } from './api.ts'
 
@@ -19,191 +20,103 @@ import { auditApi } from './api.ts'
 // the select refuses an empty value, and "everything" is a real choice
 const ALL = 'all'
 
-const MONO =
-  'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
+const MONO = "'SFMono-Regular', ui-monospace, Menlo, Consolas, monospace"
 
 /** the six columns, stated once so the head and every row agree */
-const COLUMNS = '10.5rem minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1fr) 4rem 8rem'
+const COLUMNS = '11rem minmax(0, 0.9fr) minmax(0, 1.3fr) minmax(0, 1.1fr) 4.5rem 8rem'
 
 const styles = stylex.create({
-  filters: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    paddingBottom: 16,
-  },
-  actionFilter: {
-    width: 224,
-  },
-  outcomeFilter: {
-    width: 144,
-  },
-  table: {
-    display: 'flex',
-    minWidth: 0,
-    flexDirection: 'column',
-    overflow: 'hidden',
-    borderRadius: tokens.radiusLg,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: tokens.border,
-  },
+  ellipsis: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  filters: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
+  actionFilter: { width: { default: '14rem', [breakpoints.phone]: '100%' } },
+  outcomeFilter: { width: { default: '9rem', [breakpoints.phone]: '100%' } },
+  // six columns do not fold onto a phone; the table keeps its measure and
+  // the card scrolls sideways under it
+  scroll: { overflowX: 'auto' },
+  measure: { display: 'flex', minWidth: '46rem', flexDirection: 'column' },
   head: {
     display: 'grid',
     gridTemplateColumns: COLUMNS,
     alignItems: 'center',
-    gap: 12,
+    columnGap: 16,
+    height: 32,
+    paddingInline: 16,
     borderBottomWidth: 1,
     borderBottomStyle: 'solid',
-    borderBottomColor: tokens.border,
-    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
-    paddingInline: 16,
-    paddingBlock: 8,
-    fontSize: 12,
+    borderBottomColor: tokens.divider,
+    backgroundColor: tokens.surfaceInset,
+    fontSize: 11,
+    fontWeight: 500,
     color: tokens.mutedForeground,
   },
-  right: {
-    textAlign: 'right',
-  },
-  empty: {
-    paddingInline: 16,
-    paddingBlock: 16,
-    fontSize: 14,
-    color: tokens.mutedForeground,
-  },
+  right: { textAlign: 'right' },
   rowSeat: {
-    borderTopWidth: {
-      default: 1,
-      ':first-child': 0,
-    },
-    borderTopStyle: 'solid',
-    borderTopColor: tokens.border,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
   },
   row: {
     display: 'grid',
     width: '100%',
     minWidth: 0,
+    minHeight: 40,
     gridTemplateColumns: COLUMNS,
     alignItems: 'center',
-    gap: 12,
+    columnGap: 16,
     paddingInline: 16,
-    paddingBlock: 10,
     textAlign: 'left',
     backgroundColor: {
       default: 'transparent',
-      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 70%, transparent)`,
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
     },
   },
-  rowOpen: {
-    backgroundColor: tokens.surfaceMuted,
-  },
+  rowOpen: { backgroundColor: tokens.surfaceMuted },
   when: {
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
     fontSize: 12,
     fontVariantNumeric: 'tabular-nums',
     color: tokens.mutedForeground,
   },
-  actor: {
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    fontSize: 14,
-  },
-  action: {
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    fontSize: 14,
-    fontWeight: 500,
-  },
-  target: {
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    fontSize: 12,
-    color: tokens.mutedForeground,
-  },
-  outcome: {
-    fontSize: 12,
-  },
-  outcomeQuiet: {
-    color: tokens.mutedForeground,
-  },
-  // anything but success is the reason someone opened this page
-  outcomeBad: {
-    color: tokens.danger,
-  },
+  actor: { fontSize: 13 },
+  action: { fontSize: 13, fontWeight: 500 },
+  target: { fontSize: 12, color: tokens.mutedForeground },
+  outcome: { fontSize: 12, color: tokens.mutedForeground },
   ip: {
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
     textAlign: 'right',
+    fontFamily: MONO,
     fontSize: 12,
-    fontVariantNumeric: 'tabular-nums',
     color: tokens.mutedForeground,
   },
   detail: {
     display: 'grid',
-    gridTemplateColumns: '8rem minmax(0, 1fr)',
+    gridTemplateColumns: '5rem minmax(0, 1fr)',
     columnGap: 16,
-    rowGap: 4,
+    rowGap: 5,
+    margin: 0,
     borderTopWidth: 1,
     borderTopStyle: 'solid',
-    borderTopColor: tokens.border,
-    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 30%, transparent)`,
+    borderTopColor: tokens.divider,
+    backgroundColor: tokens.surfaceInset,
     paddingInline: 16,
     paddingBlock: 12,
     fontSize: 12,
   },
-  detailName: {
-    color: tokens.mutedForeground,
-  },
+  detailName: { color: tokens.mutedForeground },
+  detailValue: { margin: 0, minWidth: 0 },
   // correlation ids are copied into other systems, so they are read glyph
   // by glyph rather than as words
-  mono: {
-    fontFamily: MONO,
-  },
-  truncate: {
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  },
+  mono: { fontFamily: MONO },
+  // anything but success is the reason someone opened this page
+  bad: { color: tokens.danger },
+  agent: { color: tokens.mutedForeground },
   pre: {
+    margin: 0,
     overflowX: 'auto',
     whiteSpace: 'pre-wrap',
     wordBreak: 'break-all',
     fontFamily: MONO,
-  },
-  foot: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 12,
-    borderTopWidth: 1,
-    borderTopStyle: 'solid',
-    borderTopColor: tokens.border,
-    paddingInline: 16,
-    paddingBlock: 8,
-  },
-  count: {
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    fontSize: 12,
-    color: tokens.mutedForeground,
-  },
-  spacer: {
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: '0%',
-  },
-  more: {
-    flexShrink: 0,
+    fontSize: 11.5,
+    lineHeight: 1.6,
+    color: tokens.surfaceMutedForeground,
   },
 })
 
@@ -276,7 +189,7 @@ export default function AuditEventsPage() {
   }
 
   return (
-    <Screen title={format(m.title)} description={format(m.hint)} size="wide">
+    <Screen title={format(m.title)} description={format(m.hint)} size="broad">
       <div {...stylex.props(styles.filters)}>
         <Select
           value={action || ALL}
@@ -317,108 +230,122 @@ export default function AuditEventsPage() {
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void events.refetch()}
       >
-        <div {...stylex.props(styles.table)}>
-          <div {...stylex.props(styles.head)}>
-            <span>{format(m.columnTime)}</span>
-            <span>{format(m.columnActor)}</span>
-            <span>{format(m.columnAction)}</span>
-            <span>{format(m.columnTarget)}</span>
-            <span>{format(m.columnOutcome)}</span>
-            <span {...stylex.props(styles.right)}>{format(m.columnIp)}</span>
-          </div>
-          {rows.length === 0 ? (
-            <p {...stylex.props(styles.empty)}>{format(m.empty)}</p>
-          ) : (
-            rows.map((row) => (
-              <div key={row.id} {...stylex.props(styles.rowSeat)}>
-                <button
-                  type="button"
-                  aria-expanded={row.id === openId}
-                  data-event-outcome={row.outcome}
-                  onClick={() => setOpenId(row.id === openId ? '' : row.id)}
-                  {...stylex.props(styles.row, row.id === openId && styles.rowOpen)}
-                >
-                  <span {...stylex.props(styles.when)}>{when(row.occurredAt)}</span>
-                  <span {...stylex.props(styles.actor)}>{actorOf(row)}</span>
-                  <span {...stylex.props(styles.action)}>{actionOf(row)}</span>
-                  <span {...stylex.props(styles.target)}>
-                    {row.targetLabel ?? row.targetId ?? '—'}
-                  </span>
-                  <span
-                    {...stylex.props(
-                      styles.outcome,
-                      row.outcome === 'success' ? styles.outcomeQuiet : styles.outcomeBad,
-                    )}
-                  >
-                    {format(outcomeLabel[row.outcome])}
-                  </span>
-                  <span {...stylex.props(styles.ip)}>{row.clientIp ?? '—'}</span>
-                </button>
-                {row.id === openId && (
-                  <dl {...stylex.props(styles.detail)}>
-                    <dt {...stylex.props(styles.detailName)}>{format(m.detailSource)}</dt>
-                    <dd>{row.source}</dd>
-                    {row.reasonCode && (
-                      <>
-                        <dt {...stylex.props(styles.detailName)}>{format(m.detailReason)}</dt>
-                        <dd {...stylex.props(styles.mono)}>{row.reasonCode}</dd>
-                      </>
-                    )}
-                    {row.requestId && (
-                      <>
-                        <dt {...stylex.props(styles.detailName)}>{format(m.detailRequest)}</dt>
-                        <dd {...stylex.props(styles.mono)}>{row.requestId}</dd>
-                      </>
-                    )}
-                    {row.traceId && (
-                      <>
-                        <dt {...stylex.props(styles.detailName)}>{format(m.detailTrace)}</dt>
-                        <dd {...stylex.props(styles.mono)}>{row.traceId}</dd>
-                      </>
-                    )}
-                    {row.userAgent && (
-                      <>
-                        <dt {...stylex.props(styles.detailName)}>{format(m.detailUserAgent)}</dt>
-                        <dd {...stylex.props(styles.truncate)}>{row.userAgent}</dd>
-                      </>
-                    )}
-                    {Object.keys(row.details).length > 0 && (
-                      <>
-                        <dt {...stylex.props(styles.detailName)}>{format(m.detailDetails)}</dt>
-                        <dd>
-                          <pre {...stylex.props(styles.pre)}>
-                            {JSON.stringify(row.details, null, 2)}
-                          </pre>
-                        </dd>
-                      </>
-                    )}
-                  </dl>
-                )}
+        <Card data-testid="audit-table">
+          <div {...stylex.props(styles.scroll)}>
+            <div {...stylex.props(styles.measure)}>
+              <div {...stylex.props(styles.head)}>
+                <span>{format(m.columnTime)}</span>
+                <span>{format(m.columnActor)}</span>
+                <span>{format(m.columnAction)}</span>
+                <span>{format(m.columnTarget)}</span>
+                <span>{format(m.columnOutcome)}</span>
+                <span {...stylex.props(styles.right)}>{format(m.columnIp)}</span>
               </div>
-            ))
-          )}
-          <div {...stylex.props(styles.foot)}>
-            <span
-              {...stylex.props(styles.count)}
-              data-testid="audit-count"
-              data-count={rows.length}
-            >
-              {format(m.loadedCount, { count: rows.length })}
-            </span>
-            <span {...stylex.props(styles.spacer)} />
+              {rows.length === 0 ? (
+                <CardEmpty>{format(m.empty)}</CardEmpty>
+              ) : (
+                rows.map((row) => (
+                  <div key={row.id} {...stylex.props(styles.rowSeat)}>
+                    <button
+                      type="button"
+                      aria-expanded={row.id === openId}
+                      data-event-outcome={row.outcome}
+                      onClick={() => setOpenId(row.id === openId ? '' : row.id)}
+                      {...stylex.props(styles.row, row.id === openId && styles.rowOpen)}
+                    >
+                      <span {...stylex.props(styles.ellipsis, styles.when)}>
+                        {when(row.occurredAt)}
+                      </span>
+                      <span {...stylex.props(styles.ellipsis, styles.actor)}>{actorOf(row)}</span>
+                      <span {...stylex.props(styles.ellipsis, styles.action)}>{actionOf(row)}</span>
+                      <span {...stylex.props(styles.ellipsis, styles.target)}>
+                        {row.targetLabel ?? row.targetId ?? '—'}
+                      </span>
+                      <span {...stylex.props(styles.outcome)}>
+                        <Status tone={row.outcome === 'success' ? 'plain' : 'bad'}>
+                          {format(outcomeLabel[row.outcome])}
+                        </Status>
+                      </span>
+                      <span {...stylex.props(styles.ellipsis, styles.ip)}>
+                        {row.clientIp ?? '—'}
+                      </span>
+                    </button>
+                    {row.id === openId && (
+                      <dl {...stylex.props(styles.detail)}>
+                        <dt {...stylex.props(styles.detailName)}>{format(m.detailSource)}</dt>
+                        <dd {...stylex.props(styles.detailValue)}>{row.source}</dd>
+                        {row.reasonCode && (
+                          <>
+                            <dt {...stylex.props(styles.detailName)}>{format(m.detailReason)}</dt>
+                            <dd {...stylex.props(styles.detailValue, styles.mono, styles.bad)}>
+                              {row.reasonCode}
+                            </dd>
+                          </>
+                        )}
+                        {row.requestId && (
+                          <>
+                            <dt {...stylex.props(styles.detailName)}>{format(m.detailRequest)}</dt>
+                            <dd {...stylex.props(styles.detailValue, styles.mono)}>
+                              {row.requestId}
+                            </dd>
+                          </>
+                        )}
+                        {row.traceId && (
+                          <>
+                            <dt {...stylex.props(styles.detailName)}>{format(m.detailTrace)}</dt>
+                            <dd {...stylex.props(styles.detailValue, styles.mono)}>
+                              {row.traceId}
+                            </dd>
+                          </>
+                        )}
+                        {row.userAgent && (
+                          <>
+                            <dt {...stylex.props(styles.detailName)}>
+                              {format(m.detailUserAgent)}
+                            </dt>
+                            <dd
+                              {...stylex.props(styles.detailValue, styles.ellipsis, styles.agent)}
+                            >
+                              {row.userAgent}
+                            </dd>
+                          </>
+                        )}
+                        {Object.keys(row.details).length > 0 && (
+                          <>
+                            <dt {...stylex.props(styles.detailName)}>{format(m.detailDetails)}</dt>
+                            <dd {...stylex.props(styles.detailValue)}>
+                              <pre {...stylex.props(styles.pre)}>
+                                {JSON.stringify(row.details, null, 2)}
+                              </pre>
+                            </dd>
+                          </>
+                        )}
+                      </dl>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+          <CardFoot>
+            <FootNote>
+              <span data-testid="audit-count" data-count={rows.length}>
+                {format(m.loadedCount, { count: rows.length })}
+              </span>
+            </FootNote>
+            <Spacer />
             {events.hasNextPage && (
               <Button
                 size="sm"
                 variant="outline"
-                className={stylex.props(styles.more).className}
                 disabled={events.isFetchingNextPage}
                 onClick={() => void events.fetchNextPage()}
               >
                 {format(m.loadMore)}
               </Button>
             )}
-          </div>
-        </div>
+          </CardFoot>
+        </Card>
       </AsyncSection>
     </Screen>
   )

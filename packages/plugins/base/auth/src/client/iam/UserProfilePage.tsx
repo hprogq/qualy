@@ -97,9 +97,14 @@ export default function UserProfilePage() {
                   { label: format(m.nameLabel), value: record.displayName },
                   {
                     label: businessNoWord,
-                    value: record.businessNo ?? format(m.personNoBusinessNo, { businessNo: businessNoWord }),
+                    value:
+                      record.businessNo ??
+                      format(m.personNoBusinessNo, { businessNo: businessNoWord }),
                   },
-                  { label: format(m.userTypeLabel), value: record.userType?.name ?? format(m.rolesNone) },
+                  {
+                    label: format(m.userTypeLabel),
+                    value: record.userType?.name ?? format(m.rolesNone),
+                  },
                   {
                     label: format(m.columnStatus),
                     value: format(
@@ -156,7 +161,9 @@ export default function UserProfilePage() {
                           : role.orgNodeName === null
                             ? format(m.personRoleTenantWide)
                             : format(
-                                role.coverage === 'subtree' ? m.personRoleSubtree : m.personRoleHere,
+                                role.coverage === 'subtree'
+                                  ? m.personRoleSubtree
+                                  : m.personRoleHere,
                                 { node: role.orgNodeName },
                               )}
                       </span>

@@ -38,10 +38,9 @@ const styles = stylex.create({
   entranceList: {
     minWidth: 0,
     overflow: 'hidden',
-    borderRadius: tokens.radiusLg,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: tokens.border,
+    borderRadius: 14,
+    backgroundColor: tokens.surface,
+    boxShadow: `0 0 0 1px ${tokens.border}, 0 1px 2px rgb(0 0 0 / 0.04)`,
   },
   entranceRow: {
     display: 'grid',

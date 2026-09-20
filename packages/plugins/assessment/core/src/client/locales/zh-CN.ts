@@ -1040,7 +1040,8 @@ export default {
   'assessment/items/preview-no-max': '申报条数不限',
   'assessment/items/preview-value': '通过后计 {value} 分',
   'assessment/items/preview-upload': '最多上传 {count} 个文件',
-  'assessment/items/review-covered': '{count, plural, =1 {该层级的 1 个单位已配置审核人} other {该层级的 # 个单位均已配置审核人}}',
+  'assessment/items/review-covered':
+    '{count, plural, =1 {该层级的 1 个单位已配置审核人} other {该层级的 # 个单位均已配置审核人}}',
   'assessment/items/review-uncovered':
     '{names}：尚未配置上述任一角色，相关单位的申报将无法继续审核。',
   'assessment/items/review-no-units': '本批次没有参评人员隶属于该层级，无法设置该层级审核',
@@ -1675,7 +1676,8 @@ export default {
   'assessment/items/source-filed': '用户申报值',
   'assessment/items/source-unset': '待设置',
   'assessment/items/recognitions': '认定字段',
-  'assessment/items/recognitions-hint': '由审核人员认定。关联申报字段后，申报值默认填入，审核时可修改。',
+  'assessment/items/recognitions-hint':
+    '由审核人员认定。关联申报字段后，申报值默认填入，审核时可修改。',
   'assessment/items/recognitions-empty': '还没有参数取认定值',
   'assessment/items/linked': '已关联',
   'assessment/items/linked-tag': '关联认定',
@@ -1710,7 +1712,8 @@ export default {
   'assessment/items/unlinked-hint': '未关联申报字段，由审核人员认定',
   'assessment/items/link-new': '新增申报字段并关联',
   'assessment/items/link-existing': '关联已有申报字段',
-  'assessment/items/link-existing-hint': '为认定字段{name}（{type}）选择申报字段。类型必须相同，范围需一致。',
+  'assessment/items/link-existing-hint':
+    '为认定字段{name}（{type}）选择申报字段。类型必须相同，范围需一致。',
   'assessment/items/link-existing-none': '还没有可关联的申报字段',
   'assessment/items/link-fits': '范围一致',
   'assessment/items/link-differs': '范围不同',
@@ -1748,7 +1751,8 @@ export default {
   'assessment/items/number-kind': '数字类型',
   'assessment/items/back-to-types': '返回选择类型',
   'assessment/items/unlink-title': '解除关联',
-  'assessment/items/unlink-hint': '解除后，{field}仍保留在申报表单中并可自由修改，不再默认填入认定字段。',
+  'assessment/items/unlink-hint':
+    '解除后，{field}仍保留在申报表单中并可自由修改，不再默认填入认定字段。',
   'assessment/items/to-direct-title': '改为提交即生效',
   'assessment/items/to-direct-hint':
     '还有 {count} 个认定字段没有对应的申报字段：{names}。继续将为它们新增申报字段并关联，设为必填。',
@@ -1762,14 +1766,16 @@ export default {
   'assessment/items/delete-blocked-title': '无法删除{name}',
   'assessment/items/delete-blocked-hint': '该字段已关联认定字段{recognition}。请先解除关联。',
   'assessment/items/disable-option-title': '停用选项{name}',
-  'assessment/items/disable-option-hint': '停用后新的申报不能再选择该项。已有记录不受影响，可随时恢复。',
+  'assessment/items/disable-option-hint':
+    '停用后新的申报不能再选择该项。已有记录不受影响，可随时恢复。',
   'assessment/items/disable': '停用',
   'assessment/items/adjust-title': '调整并关联',
   'assessment/items/adjust-hint': '{field}当前范围为{current}，关联后范围为{next}。',
   'assessment/items/mapping-title': '确认选项对应关系',
   'assessment/items/mapping-hint':
     '将申报字段{field}关联到认定字段{recognition}。请为每个申报选项指定对应的认定选项，关联后两边使用同一组选项。',
-  'assessment/items/mapping-note': '已有申报记录会按对应关系自动转换。同一个认定选项不能对应多个申报选项。',
+  'assessment/items/mapping-note':
+    '已有申报记录会按对应关系自动转换。同一个认定选项不能对应多个申报选项。',
   'assessment/items/mapping-confirm': '确认并关联',
   'assessment/items/mapping-pick': '请选择',
   'assessment/items/mapping-from': '申报字段 {name}',
@@ -1805,13 +1811,15 @@ export default {
   'assessment/items/problem-strands': '已有 {count} 条记录的认定值不在该范围内',
   'assessment/items/problem-strands-missing': '已有 {count} 条记录完成认定，不能再新增认定字段',
   'assessment/items/problem-strands-round': '有 {count} 条记录正在审核，审核结束前不能缩小认定范围',
-  'assessment/items/problem-strands-round-new': '有 {count} 条记录正在审核，审核结束前不能新增认定字段',
-  'assessment/items/problem-strands-removed': '已有 {count} 条记录使用了被移除的认定字段，请将对应参数改回认定值',
+  'assessment/items/problem-strands-round-new':
+    '有 {count} 条记录正在审核，审核结束前不能新增认定字段',
+  'assessment/items/problem-strands-removed':
+    '已有 {count} 条记录使用了被移除的认定字段，请将对应参数改回认定值',
   'assessment/items/problem-recognitions-refused': '认定字段的设置不被接受',
   'assessment/items/problem-parameters-refused': '公式参数的设置不被接受',
   'assessment/items/option-held-determined': '已有记录认定为该选项，不能取消',
   'assessment/items/option-held-pending': '审核中的记录仍可能认定为该选项，审核结束前不能取消',
-  'assessment/items/options-held-hint': '已被记录使用的选项会保留在认定范围内',
+  'assessment/items/options-held-hint': '已有相关认定记录使用部分选项，无法取消勾选',
   'assessment/items/mode-locked-to-automatic': '项目发布后不可改为自动计分',
   'assessment/items/mode-locked-from-automatic': '自动计分项目发布后不可改为其他处理方式',
   'assessment/items/max-entries-some': '限定条数',
@@ -1870,7 +1878,8 @@ export default {
   'assessment/items/parameters-wrong': '{count} 个参数取值不符合要求',
   'assessment/items/stages-wrong': '{count} 个步骤配置有误',
   'assessment/items/fail-conflict-title': '保存失败，该项目刚被其他人修改过',
-  'assessment/items/fail-conflict-hint': '重新加载会放弃本次修改，覆盖保存会以你的版本替换对方的版本',
+  'assessment/items/fail-conflict-hint':
+    '重新加载会放弃本次修改，覆盖保存会以你的版本替换对方的版本',
   'assessment/items/fail-reload': '重新加载',
   'assessment/items/fail-overwrite': '覆盖保存',
   'assessment/items/fail-voided-title': '保存失败，项目已停用',
@@ -1886,7 +1895,8 @@ export default {
   'assessment/items/fail-incompatible-title': '保存失败，新的计分规则与已认定的记录不兼容',
   'assessment/items/fail-other-title': '保存失败',
   'assessment/items/fail-loose-title': '保存失败，{count} 处设置未被接受',
-  'assessment/items/fail-loose-hint': '页面上没有对应的位置，请重新加载后再试，仍然出现请告知系统管理员',
+  'assessment/items/fail-loose-hint':
+    '页面上没有对应的位置，请重新加载后再试，仍然出现请告知系统管理员',
   'assessment/items/fail-retry': '重试',
   'assessment/items/options-empty-title': '还没有选项',
   'assessment/items/options-empty-hint': '至少添加一个选项，参评人员才有可选内容',
@@ -1907,8 +1917,10 @@ export default {
   'assessment/items/flow-submit-line': '参评人员提交',
   'assessment/items/escalation-start-line': '审核人提请复核',
   'assessment/items/escalation-done-line': '复核完成，按复核结果处理',
-  'assessment/items/review-chain-long': '参评人员申报的记录按以下步骤依次审核。工作人员统一认定的记录不进入此流程。',
-  'assessment/items/escalation-long': '审核通过后有异议时使用。未设置复核步骤时，审核人无法提请复核。',
+  'assessment/items/review-chain-long':
+    '参评人员申报的记录按以下步骤依次审核。工作人员统一认定的记录不进入此流程。',
+  'assessment/items/escalation-long':
+    '审核通过后有异议时使用。未设置复核步骤时，审核人无法提请复核。',
   'assessment/items/summary-section-hint': '记录列表中用来认出一条申报的字段，排在第一的为标题',
   'assessment/items/summary-no-fields': '先在申报表单中添加字段',
   'assessment/items/field-linked-range': '类型与范围来自关联的认定字段',

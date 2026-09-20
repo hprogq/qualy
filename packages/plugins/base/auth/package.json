@@ -26,6 +26,7 @@
     "./client/iam/UserIdentitiesPage": "./src/client/iam/UserIdentitiesPage.tsx",
     "./client/iam/UserOrganizationPage": "./src/client/iam/UserOrganizationPage.tsx",
     "./client/iam/UserProfilePage": "./src/client/iam/UserProfilePage.tsx",
+    "./client/iam/UserTypePage": "./src/client/iam/UserTypePage.tsx",
     "./client/iam/UserTypesPage": "./src/client/iam/UserTypesPage.tsx",
     "./client/iam/UsersPage": "./src/client/iam/UsersPage.tsx",
     "./constants": "./src/constants.ts",

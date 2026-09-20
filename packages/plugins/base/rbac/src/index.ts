@@ -36,6 +36,17 @@ const plugin = Plugin.define(
       group: 'org/organization',
     },
   }),
+  // One role's own page, reached from its row: configuring a role is three
+  // tabs and two switches, which is a page's worth and was a cramped half of
+  // one while it shared the screen with the list.
+  Ui.page({
+    id: 'rbac/role',
+    path: '/organization/roles/:roleId',
+    component: Ui.react('./client/RolePage'),
+    layout: APP_SHELL,
+    title: message('rbac/roles/edit', 'Role'),
+    visibility: permissionOf('iam.role.read'),
+  }),
   // What one person has been granted, as a section of their record. The
   // page is this plugin's because the grants are: the user screen used to
   // read this api directly, which was the one edge between the two plugins

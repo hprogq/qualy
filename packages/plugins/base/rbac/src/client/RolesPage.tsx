@@ -1,77 +1,54 @@
 import { useQuery } from '@tanstack/react-query'
-import { useApiQuery, usePageQueryState } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+import { useApiQuery, usePageNavigate } from '@qualy/web-runtime'
+import { useI18n, useList } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { useState } from 'react'
-import { PlusIcon, ShieldIcon } from 'lucide-react'
-import * as stylex from '@stylexjs/stylex'
-import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { PlusIcon } from 'lucide-react'
 import { AsyncSection } from '@qualy/ui/admin'
-import { Blank, Rail, RailRow, Screen } from '@qualy/ui/screen'
+import {
+  Card,
+  CardEmpty,
+  CardHead,
+  Cell,
+  LeadWord,
+  Screen,
+  Status,
+  Table,
+  TableHead,
+  TableRow,
+  Tag,
+} from '@qualy/ui/screen'
 import { Button } from '@qualy/ui/button'
 import { rbacMessages as m } from './i18n.ts'
-import { RoleEditor, type RoleRow } from './RoleEditor.tsx'
+import type { RoleRow } from './RoleEditor.tsx'
 import { NewRoleForm } from './NewRoleForm.tsx'
 import { accessApi } from './api.ts'
 
-// Roles and what they may hold, grouped the way they take effect: a
-// tenant-wide role acts everywhere the moment it is granted, a per-unit role
-// waits to be anchored somewhere. The selected role lives in the query
-// string rather than in component state, so a role is linkable and survives
-// a reload.
+// Roles, as two tables rather than one list: a tenant-wide role acts
+// everywhere the moment it is granted, a per-unit role waits to be anchored
+// somewhere, and that difference is what somebody choosing a role is
+// choosing between.
+//
+// The columns are the parts a role is configured in - what it may do, how
+// many hold it, who may hold it, where it may be held, whether it is in
+// force - so a row says whether a role is finished without opening it. A
+// draft that has not said who may hold it shows exactly that, in the colour
+// of something waiting, because that is the reason it cannot be switched on.
 
-const styles = stylex.create({
-  split: {
-    display: 'grid',
-    alignItems: 'start',
-    gap: 24,
-    gridTemplateColumns: {
-      default: 'none',
-      '@media (min-width: 1024px)': '19rem minmax(0, 1fr)',
-    },
-  },
-  emptyNote: {
-    fontSize: '0.875rem',
-    lineHeight: '1.25rem',
-    color: tokens.mutedForeground,
-  },
-  groups: {
-    display: 'flex',
-    minWidth: 0,
-    flexDirection: 'column',
-    gap: 16,
-  },
-  group: {
-    display: 'flex',
-    minWidth: 0,
-    flexDirection: 'column',
-    gap: 6,
-  },
-  groupHead: {
-    display: 'flex',
-    alignItems: 'baseline',
-    gap: 8,
-    fontSize: '0.75rem',
-    lineHeight: '1rem',
-    fontWeight: 500,
-  },
-  groupHint: {
-    fontWeight: 400,
-    color: tokens.mutedForeground,
-  },
-})
+const COLUMNS = 'minmax(0, 1.1fr) 5.5rem 5rem minmax(0, 1fr) minmax(0, 1fr) 5rem'
 
 export default function RolesPage() {
   const query = useApiQuery(accessApi)
   const { format, formatError } = useI18n()
-  const [selected, setSelected] = usePageQueryState('role')
+  const listJoin = useList()
+  const navigate = usePageNavigate()
   const [creating, setCreating] = useState(false)
 
   const roles = useQuery(query.access.listRoles.queryOptions({ query: {} }))
+  const options = useQuery(query.access.getRoleOptions.queryOptions())
   const canManage = roles.data?.capabilities.canManage ?? false
   const all = roles.data?.roles ?? []
-  const current = all.find((role) => role.id === selected)
-  const groups: { key: string; title: string; hint: string; rows: RoleRow[] }[] = [
+  const groups: { key: 'tenant' | 'org'; title: string; hint: string; rows: RoleRow[] }[] = [
     {
       key: 'tenant',
       title: format(m.tenantGroup),
@@ -85,6 +62,26 @@ export default function RolesPage() {
       rows: all.filter((role) => role.kind === 'org'),
     },
   ]
+  const namesOf = (ids: readonly string[], among: readonly { id: string; name: string }[]) =>
+    listJoin(among.filter((one) => ids.includes(one.id)).map((one) => one.name))
+
+  /** who may hold it: everybody, the listed kinds, or - on a draft - nothing said yet */
+  const holders = (role: RoleRow) => {
+    if (role.holderPolicy.mode === 'unrestricted') return { words: format(m.anyoneWord), unset: false }
+    const names = namesOf(role.holderPolicy.userTypeIds, options.data?.userTypes ?? [])
+    return names === '' ? { words: format(m.unsetWord), unset: true } : { words: names, unset: false }
+  }
+  /** where it may be held; a tenant role is held nowhere in particular */
+  const anchors = (role: RoleRow) => {
+    if (role.anchorPolicy === null) return { words: format(m.notApplicable), unset: false, quiet: true }
+    if (role.anchorPolicy.mode === 'unrestricted') {
+      return { words: format(m.anywhereWord), unset: false, quiet: false }
+    }
+    const names = namesOf(role.anchorPolicy.orgTypeIds, options.data?.orgTypes ?? [])
+    return names === ''
+      ? { words: format(m.unsetWord), unset: true, quiet: false }
+      : { words: names, unset: false, quiet: false }
+  }
 
   return (
     <Screen
@@ -92,7 +89,7 @@ export default function RolesPage() {
       description={format(m.rolesHint)}
       actions={
         canManage && (
-          <Button size="sm" onClick={() => setCreating(true)}>
+          <Button onClick={() => setCreating(true)}>
             <PlusIcon aria-hidden />
             {format(m.newRole)}
           </Button>
@@ -106,67 +103,79 @@ export default function RolesPage() {
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void roles.refetch()}
       >
-        <div {...stylex.props(styles.split)}>
-          {all.length === 0 ? (
-            <p {...stylex.props(styles.emptyNote)}>{format(m.rolesEmpty)}</p>
-          ) : (
-            <div {...stylex.props(styles.groups)}>
-              {groups
-                .filter((group) => group.rows.length > 0)
-                .map((group) => (
-                  <section key={group.key} {...stylex.props(styles.group)}>
-                    <h2 {...stylex.props(styles.groupHead)}>
-                      {group.title}
-                      <span {...stylex.props(styles.groupHint)}>{group.hint}</span>
-                    </h2>
-                    <Rail>
-                      {group.rows.map((role) => (
-                        <RailRow
-                          key={role.id}
-                          name={role.name}
-                          badges={[
-                            ...(role.systemKey !== null ? [{ label: format(m.systemBadge) }] : []),
-                            ...(role.status === 'draft' ? [{ label: format(m.draftBadge) }] : []),
-                            ...(role.status === 'disabled'
-                              ? [{ label: format(m.disabledBadge), tone: 'alert' as const }]
-                              : []),
-                            ...(role.assignable ? [] : [{ label: format(m.unassignableBadge) }]),
-                          ]}
-                          tally={format(m.assignmentCount, { count: role.grantCount })}
-                          meta={[
-                            { text: format(m.permissionCount, { count: role.permissions.length }) },
-                          ]}
-                          selected={role.id === selected}
-                          onSelect={() => setSelected(role.id === selected ? '' : role.id)}
-                        />
-                      ))}
-                    </Rail>
-                  </section>
-                ))}
-            </div>
-          )}
-
-          {current ? (
-            <RoleEditor role={current} canManage={canManage} />
-          ) : (
-            <Blank
-              icon={<ShieldIcon />}
-              title={format(m.pickRoleTitle)}
-              description={format(m.pickRoleBody)}
-              fill
-            />
-          )}
-        </div>
+        {all.length === 0 ? (
+          <Card>
+            <CardEmpty>{format(m.rolesEmpty)}</CardEmpty>
+          </Card>
+        ) : (
+          groups
+            .filter((group) => group.rows.length > 0)
+            .map((group) => (
+              <Card key={group.key} data-testid="role-group" data-kind={group.key}>
+                <CardHead title={group.title} note={group.hint} />
+                <Table columns={COLUMNS} openable>
+                  <TableHead>
+                    <span>{format(m.rolesTitle)}</span>
+                    <span>{format(m.tabPermissions)}</span>
+                    <span>{format(m.columnGrants)}</span>
+                    <span>{format(m.columnHolders)}</span>
+                    <span>{format(m.columnAnchors)}</span>
+                    <span>{format(m.factStatus)}</span>
+                  </TableHead>
+                  {group.rows.map((role) => {
+                    const who = holders(role)
+                    const where = anchors(role)
+                    return (
+                      <TableRow
+                        key={role.id}
+                        onOpen={() => navigate('rbac/role', { params: { roleId: role.id } })}
+                        data-testid="role-row"
+                        data-role-name={role.name}
+                        data-role-status={role.status}
+                        data-assignable={role.assignable}
+                      >
+                        <Cell lead>
+                          <LeadWord>{role.name}</LeadWord>
+                          {role.systemKey !== null && <Tag>{format(m.systemBadge)}</Tag>}
+                          {!role.assignable && <Tag outline>{format(m.unassignableBadge)}</Tag>}
+                        </Cell>
+                        <Cell numeric>
+                          {role.holdsEveryPermission
+                            ? format(m.everyWord)
+                            : format(m.countItems, { count: role.permissions.length })}
+                        </Cell>
+                        <Cell numeric>{format(m.assignmentCount, { count: role.grantCount })}</Cell>
+                        <Cell tone={who.unset ? 'warn' : 'muted'} title={who.words}>
+                          {who.words}
+                        </Cell>
+                        <Cell tone={where.unset ? 'warn' : where.quiet ? 'quiet' : 'muted'} title={where.words}>
+                          {where.words}
+                        </Cell>
+                        <Status
+                          tone={role.status === 'disabled' ? 'bad' : role.status === 'draft' ? 'warn' : 'plain'}
+                        >
+                          {format(
+                            role.status === 'active'
+                              ? m.statusOn
+                              : role.status === 'draft'
+                                ? m.draftBadge
+                                : m.disabledBadge,
+                          )}
+                        </Status>
+                      </TableRow>
+                    )
+                  })}
+                </Table>
+              </Card>
+            ))
+        )}
       </AsyncSection>
 
       {canManage && (
         <NewRoleForm
           open={creating}
           onClose={() => setCreating(false)}
-          onCreated={(id) => {
-            setCreating(false)
-            setSelected(id)
-          }}
+          onCreated={(roleId) => navigate('rbac/role', { params: { roleId } })}
         />
       )}
     </Screen>

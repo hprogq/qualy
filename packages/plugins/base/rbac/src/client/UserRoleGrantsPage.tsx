@@ -55,10 +55,9 @@ const styles = stylex.create({
   list: {
     display: 'flex',
     flexDirection: 'column',
-    borderRadius: tokens.radiusLg,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: tokens.border,
+    borderRadius: 14,
+    backgroundColor: tokens.surface,
+    boxShadow: `0 0 0 1px ${tokens.border}, 0 1px 2px rgb(0 0 0 / 0.04)`,
   },
   row: {
     display: 'flex',

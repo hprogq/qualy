@@ -77,7 +77,13 @@ export function useLocale(): [SupportedLocale, (locale: SupportedLocale) => void
  */
 export function useList(): (items: readonly string[]) => string {
   const { locale } = useI18n()
-  return (items) => new Intl.ListFormat(locale, { type: 'unit', style: 'narrow' }).format(items)
+  // conjunction-narrow, not unit-narrow: a unit list in Chinese has no
+  // separator at all, so three names came out as one run-together word. This
+  // is the one form that is a plain enumeration in both languages - "A、B、C"
+  // and "A, B, C" - with no "and" before the last, which a list of names in
+  // a table cell does not want either.
+  return (items) =>
+    new Intl.ListFormat(locale, { type: 'conjunction', style: 'narrow' }).format(items)
 }
 
 const isSupported = (value: string | null | undefined): value is SupportedLocale =>

@@ -136,7 +136,7 @@ describe('the organization screen', () => {
       children: <OrgPage />,
     })
 
-    await page.getByRole('button', { name: '移动' }).click()
+    await page.getByRole('button', { name: '移动到' }).click()
     await page.getByRole('combobox', { name: '移动到' }).click()
     const listbox = page.getByRole('listbox')
     await expect.element(listbox).toBeVisible()
@@ -149,7 +149,7 @@ describe('the organization screen', () => {
     expect(await listbox.getByRole('option', { name: '示例大学' }).elements()).toHaveLength(0)
 
     await listbox.getByRole('option', { name: '外国语学院' }).click()
-    await page.getByRole('button', { name: '移动' }).last().click()
+    await page.getByRole('button', { name: '移动', exact: true }).click()
     await vi.waitFor(() => expect(move).toHaveBeenCalledTimes(1))
     expect(move).toHaveBeenCalledWith({
       params: { nodeId: KLASS },
@@ -249,11 +249,18 @@ describe('the organization screen', () => {
 
     // the unit, its place, and its children as rows
     await expect.element(page.getByRole('heading', { name: /软件学院/ })).toBeInTheDocument()
-    await expect.element(page.getByText('示例大学 / 软件学院')).toBeInTheDocument()
-    await expect.element(page.getByText('软件2301班').nth(1)).toBeInTheDocument()
+    const crumbs = page.getByRole('navigation', { name: '位置' })
+    // each step above is a way back to it; the unit itself is where you are
+    await expect.element(crumbs.getByRole('button', { name: '示例大学' })).toBeVisible()
+    expect(crumbs.element().querySelector('[aria-current="page"]')?.textContent).toBe('软件学院')
+    // and what stands under it, as a row of the table
+    await expect
+      .element(page.getByTestId('child-row'))
+      .toHaveAttribute('data-node-name', '软件2301班')
 
     // a college may hold classes and nothing else, so the create control
     // offers exactly that - the rule never gets a chance to become an error
+    await page.getByRole('button', { name: '新建子节点' }).click()
     await page.getByRole('combobox', { name: '选择类型' }).click()
     await expect.element(page.getByRole('listbox')).toBeVisible()
     await vi.waitFor(() =>
@@ -276,20 +283,20 @@ describe('the organization screen', () => {
   it('opens a branch without folding it, and folds only from the twistie', async () => {
     renderScreen({ client: fakeClient(world()), route: '/admin/org', children: <OrgPage /> })
 
-    const college = page.getByRole('button', { name: '软件学院' })
+    const college = page.getByRole('button', { name: '软件学院 学院' })
     await expect.element(college).toBeVisible()
     // pressing the name twice leaves what is under it on screen both times
     await college.click()
-    await expect.element(page.getByRole('button', { name: '软件2301班' })).toBeVisible()
+    await expect.element(page.getByRole('button', { name: '软件2301班 班级' })).toBeVisible()
     await college.click()
-    await expect.element(page.getByRole('button', { name: '软件2301班' })).toBeVisible()
+    await expect.element(page.getByRole('button', { name: '软件2301班 班级' })).toBeVisible()
     // and the unit it opened is the one the panel is showing
     await expect.element(page.getByRole('heading', { name: /软件学院/ })).toBeInTheDocument()
 
     // the twistie is what folds, and it leaves the open unit open
     await page.getByRole('button', { name: '展开或收起 软件学院' }).click()
     await vi.waitFor(async () =>
-      expect(await page.getByRole('button', { name: '软件2301班' }).elements()).toHaveLength(0),
+      expect(await page.getByRole('button', { name: '软件2301班 班级' }).elements()).toHaveLength(0),
     )
     await expect.element(page.getByRole('heading', { name: /软件学院/ })).toBeInTheDocument()
   })
@@ -307,15 +314,18 @@ describe('the organization screen', () => {
       children: <OrgPage />,
     })
 
-    await expect.element(page.getByRole('heading', { name: /学院/ }).first()).toBeInTheDocument()
+    const sheet = page.getByTestId('type-sheet')
+    await expect.element(sheet).toBeVisible()
     // the stored grammar, offered for editing: a college holds classes
-    const classBox = page.getByRole('checkbox', { name: /班级/ })
+    const classBox = sheet.getByRole('checkbox', { name: /班级/ })
     await expect.element(classBox).toBeChecked()
+    await expect.element(sheet.getByTestId('type-save')).toBeDisabled()
 
     // allow colleges to also hold colleges, stop them holding classes
     await classBox.click()
-    await page.getByRole('checkbox', { name: /学院/ }).click()
-    await page.getByRole('button', { name: '保存', exact: false }).click()
+    await sheet.getByRole('checkbox', { name: /学院/ }).click()
+    await expect.element(sheet.getByTestId('unsaved-mark')).toBeVisible()
+    await sheet.getByTestId('type-save').click()
 
     await vi.waitFor(() => expect(put).toHaveBeenCalledTimes(1))
     expect(put).toHaveBeenCalledWith({
@@ -325,6 +335,57 @@ describe('the organization screen', () => {
     expect(drop).toHaveBeenCalledWith({
       params: { parentTypeId: COLLEGE_TYPE, childTypeId: CLASS_TYPE },
     })
+  })
+
+  // The grammar is a graph, not a tree: a kind may stand under several
+  // others, and a rule may skip a level. The picture draws each kind once and
+  // takes a skipping rule round the outside; the table says the same in words.
+  it('draws the rules as one picture and one table, and opens a kind beside them', async () => {
+    const INSTITUTE_TYPE = '33333333-3333-4333-8333-333333333309'
+    const client = world()
+    client.org.listTypes = () =>
+      Effect.succeed({
+        types: [
+          { id: SCHOOL_TYPE, name: '学校', sortOrder: 0 },
+          { id: COLLEGE_TYPE, name: '学院', sortOrder: 1 },
+          { id: INSTITUTE_TYPE, name: '研究所', sortOrder: 2 },
+          { id: CLASS_TYPE, name: '班级', sortOrder: 3 },
+        ],
+      })
+    client.org.listRules = () =>
+      Effect.succeed({
+        rules: [
+          { parentTypeId: SCHOOL_TYPE, childTypeId: COLLEGE_TYPE },
+          { parentTypeId: COLLEGE_TYPE, childTypeId: INSTITUTE_TYPE },
+          { parentTypeId: INSTITUTE_TYPE, childTypeId: CLASS_TYPE },
+          // a college may hold classes directly: two levels down, so it goes round
+          { parentTypeId: COLLEGE_TYPE, childTypeId: CLASS_TYPE },
+        ],
+      })
+    renderScreen({
+      client: fakeClient(client),
+      route: '/admin/org?view=types',
+      children: <OrgPage />,
+    })
+
+    const graph = page.getByTestId('rules-graph')
+    await expect.element(graph).toHaveAttribute('data-rules', '4')
+    const lines = () => [...document.querySelectorAll('[data-rule]')]
+    expect(lines().filter((line) => line.getAttribute('data-cross') === 'true')).toHaveLength(1)
+    // every kind once, however many stand over it
+    expect(document.querySelectorAll('[data-type-node]')).toHaveLength(4)
+
+    // nothing is open until something is picked: the page is whole without it
+    expect(document.querySelector('[data-testid="type-sheet"]')).toBeNull()
+    const rows = () => page.getByTestId('type-row').elements()
+    expect(rows().map((row) => row.getAttribute('data-type-name'))).toEqual(['学校', '学院', '研究所', '班级'])
+    // a class may stand under a college and under an institute
+    expect(rows()[3]?.getAttribute('data-under')).toBe('2')
+
+    await page.getByTestId('type-row').nth(1).click()
+    await expect.element(page.getByTestId('type-sheet')).toBeVisible()
+    await expect.element(page.getByTestId('type-row').nth(1)).toHaveAttribute('data-selected', 'true')
+    expect(document.querySelector(`[data-type-node="${COLLEGE_TYPE}"]`)?.getAttribute('data-open')).toBe('true')
   })
 
   it('shows a unit it may not manage without offering a single control', async () => {

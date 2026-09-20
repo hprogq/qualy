@@ -30,6 +30,10 @@ const styles = stylex.create({
   },
   /** reading and filling in: a form, a summary, a table of a few columns */
   default: { maxWidth: '72rem' },
+  /** two things side by side - a tree and what it has open - or one table
+   *  with more columns than a form has fields: more room than reading wants,
+   *  less than a workbench takes */
+  broad: { maxWidth: 1280 },
   /** looking across: a queue, a wide grid, several panes side by side */
   wide: { maxWidth: 1440 },
   /** whatever there is: a tree, a canvas, a split view */
@@ -41,7 +45,7 @@ export function PageContainer({
   xstyle,
   ...props
 }: Omit<ComponentProps<'div'>, 'style' | 'className'> & {
-  size?: 'default' | 'wide' | 'full'
+  size?: 'default' | 'broad' | 'wide' | 'full'
   /**
    * The standard StyleX extension seat - except for the width contract,
    * which is the `size` prop's whole reason to exist.

@@ -1,102 +1,46 @@
 import { useState } from 'react'
-import * as stylex from '@stylexjs/stylex'
-import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useQuery } from '@tanstack/react-query'
-import { useApiQuery, usePageQueryState } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+import { useApiQuery, usePageNavigate } from '@qualy/web-runtime'
+import { useI18n, useList } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
-import { Blank, EditorSkeleton, RailSkeleton, Screen } from '@qualy/ui/screen'
+import {
+  Card,
+  CardEmpty,
+  Cell,
+  LeadWord,
+  Screen,
+  Status,
+  Table,
+  TableHead,
+  TableRow,
+  Tag,
+} from '@qualy/ui/screen'
 import { Button } from '@qualy/ui/button'
-import { PlusIcon, UsersRoundIcon } from 'lucide-react'
+import { PlusIcon } from 'lucide-react'
 import { iamMessages as m } from '../i18n.ts'
-import { UserTypeEditor } from './UserTypeEditor.tsx'
 import { NewUserTypeForm } from './NewUserTypeForm.tsx'
+import { useUserTypeFacts } from './types/facts.ts'
 import { authApi } from '../api.ts'
 
-// User types: the placement policy and standing of a class of people. A
-// handful of rows, so the list stays beside the one being edited; the
-// selection lives in the query string so it stays linkable.
-const styles = stylex.create({
-  // the list beside what it opens, once there is room for both
-  frame: {
-    display: 'grid',
-    alignItems: 'start',
-    gap: 24,
-    gridTemplateColumns: {
-      default: null,
-      '@media (min-width: 1024px)': '19rem minmax(0, 1fr)',
-    },
-  },
-  quiet: { fontSize: 14, lineHeight: '1.25rem', color: tokens.mutedForeground },
-  list: {
-    display: 'flex',
-    minWidth: 0,
-    flexDirection: 'column',
-    overflow: 'hidden',
-    borderRadius: tokens.radiusLg,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: tokens.border,
-  },
-  row: {
-    display: 'flex',
-    minWidth: 0,
-    flexDirection: 'column',
-    gap: 2,
-    borderTopWidth: { default: 1, ':first-child': 0 },
-    borderTopStyle: 'solid',
-    borderTopColor: tokens.border,
-    paddingInline: 12,
-    paddingBlock: 10,
-    textAlign: 'left',
-    backgroundColor: {
-      default: null,
-      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 70%, transparent)`,
-    },
-  },
-  rowOpen: { backgroundColor: tokens.surfaceMuted },
-  rowHead: { display: 'flex', minWidth: 0, alignItems: 'center', gap: 8 },
-  name: {
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    fontSize: 14,
-    lineHeight: '1.25rem',
-    fontWeight: 500,
-  },
-  nameOpen: { fontWeight: 600 },
-  mark: { flexShrink: 0, fontSize: 12, lineHeight: '1rem', color: tokens.mutedForeground },
-  markOff: { flexShrink: 0, fontSize: 12, lineHeight: '1rem', color: tokens.danger },
-  spacer: { flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
-  count: {
-    flexShrink: 0,
-    fontSize: 12,
-    lineHeight: '1rem',
-    fontVariantNumeric: 'tabular-nums',
-    color: tokens.mutedForeground,
-  },
-  summary: {
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    fontSize: 12,
-    lineHeight: '1rem',
-    color: tokens.mutedForeground,
-  },
-})
+// User types, as one table: a handful of rows, each saying where that kind of
+// person may belong, how they get in and what they may carry. The row opens
+// the type's own page; nothing is edited here.
+
+const COLUMNS = 'minmax(0, 0.9fr) 6rem minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) 4.5rem'
 
 export default function UserTypesPage() {
   const query = useApiQuery(authApi)
-  const { format, formatError } = useI18n()
-  const [selected, setSelected] = usePageQueryState('type')
+  const { format, formatError, locale } = useI18n()
+  const figure = new Intl.NumberFormat(locale)
+  const listJoin = useList()
+  const navigate = usePageNavigate()
   const [creating, setCreating] = useState(false)
 
   const types = useQuery(query.identity.listUserTypes.queryOptions({}))
+  const facts = useUserTypeFacts()
   const canManage = types.data?.capabilities.canManage ?? false
-  const current = types.data?.userTypes.find((type) => type.id === selected)
+  const rows = types.data?.userTypes ?? []
 
   return (
     <Screen
@@ -118,66 +62,75 @@ export default function UserTypesPage() {
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void types.refetch()}
       >
-        <div {...stylex.props(styles.frame)}>
-          {(types.data?.userTypes ?? []).length === 0 ? (
-            <p {...stylex.props(styles.quiet)}>{format(m.userTypesEmpty)}</p>
+        <Card>
+          {rows.length === 0 ? (
+            <CardEmpty>{format(m.userTypesEmpty)}</CardEmpty>
           ) : (
-            <div {...stylex.props(styles.list)}>
-              {(types.data?.userTypes ?? []).map((type) => (
-                <button
-                  key={type.id}
-                  type="button"
-                  aria-current={type.id === selected}
-                  {...stylex.props(styles.row, type.id === selected && styles.rowOpen)}
-                  onClick={() => setSelected(type.id === selected ? '' : type.id)}
-                >
-                  <span {...stylex.props(styles.rowHead)}>
-                    <span {...stylex.props(styles.name, type.id === selected && styles.nameOpen)}>
-                      {type.name}
-                    </span>
-                    {type.isSystem && (
-                      <span {...stylex.props(styles.mark)}>{format(m.systemBadge)}</span>
-                    )}
-                    {type.status === 'disabled' && (
-                      <span {...stylex.props(styles.markOff)}>{format(m.disabledBadge)}</span>
-                    )}
-                    <span {...stylex.props(styles.spacer)} />
-                    <span {...stylex.props(styles.count)}>
-                      {format(m.userCount, { count: type.userCount })}
-                    </span>
-                  </span>
-                  <span
-                    data-testid="type-summary"
+            <Table columns={COLUMNS} openable>
+              <TableHead>
+                <span>{format(m.userTypeLabel)}</span>
+                <span>{format(m.columnUsers)}</span>
+                <span>{format(m.placementLegend)}</span>
+                <span>{format(m.signInLabel)}</span>
+                <span>{format(m.openRolesLabel)}</span>
+                <span>{format(m.columnStatus)}</span>
+              </TableHead>
+              {rows.map((type) => {
+                const entrances = facts.entrances(type)?.filter((entrance) => entrance.admits)
+                const openRoles = facts.openRoles(type)
+                return (
+                  <TableRow
+                    key={type.id}
+                    onOpen={() => navigate('auth/user-type', { params: { typeId: type.id } })}
+                    data-testid="type-row"
                     data-users={String(type.userCount)}
                     data-placement={type.placementPolicy.mode}
-                    {...stylex.props(styles.summary)}
+                    data-status={type.status}
+                    data-entrances={entrances === undefined ? 'unknown' : String(entrances.length)}
                   >
-                    {type.placementPolicy.mode === 'allow-list'
-                      ? format(m.placementCount, {
-                          count: type.placementPolicy.orgTypeIds.length,
-                        })
-                      : format(
-                          type.placementPolicy.mode === 'tenant-root'
-                            ? m.placementTenantRoot
-                            : m.placementUnrestricted,
-                        )}
-                  </span>
-                </button>
-              ))}
-            </div>
+                    <Cell lead>
+                      <LeadWord>{type.name}</LeadWord>
+                      {type.isSystem && <Tag>{format(m.systemBadge)}</Tag>}
+                    </Cell>
+                    <Cell tone="muted" numeric>
+                      {figure.format(type.userCount)}
+                    </Cell>
+                    <Cell tone="muted">
+                      {type.placementPolicy.mode === 'allow-list'
+                        ? listJoin(facts.allowedKinds(type))
+                        : format(
+                            type.placementPolicy.mode === 'tenant-root'
+                              ? m.placementTenantRoot
+                              : m.placementAnywhere,
+                          )}
+                    </Cell>
+                    <Cell tone={entrances?.length === 0 ? 'warn' : 'muted'}>
+                      {entrances === undefined ? (
+                        format(m.unknownWord)
+                      ) : entrances.length === 0 ? (
+                        <Status tone="warn">{format(m.signInNoneShort)}</Status>
+                      ) : (
+                        listJoin(entrances.map((entrance) => entrance.name))
+                      )}
+                    </Cell>
+                    <Cell tone="muted">
+                      {openRoles === undefined
+                        ? format(m.unknownWord)
+                        : openRoles.length === 0
+                          ? format(m.noneWord)
+                          : listJoin(openRoles.map((role) => role.name))}
+                    </Cell>
+                    <Cell tone="muted">
+                      <Status tone={type.status === 'active' ? 'plain' : 'bad'}>
+                        {format(type.status === 'active' ? m.typeEnabled : m.statusDisabled)}
+                      </Status>
+                    </Cell>
+                  </TableRow>
+                )
+              })}
+            </Table>
           )}
-
-          {current ? (
-            <UserTypeEditor userType={current} canManage={canManage} />
-          ) : (
-            <Blank
-              icon={<UsersRoundIcon />}
-              title={format(m.pickTypeTitle)}
-              description={format(m.pickTypeBody)}
-              fill
-            />
-          )}
-        </div>
+        </Card>
       </AsyncSection>
 
       {canManage && (
@@ -186,7 +139,7 @@ export default function UserTypesPage() {
           onClose={() => setCreating(false)}
           onCreated={(id) => {
             setCreating(false)
-            setSelected(id)
+            navigate('auth/user-type', { params: { typeId: id } })
           }}
         />
       )}
