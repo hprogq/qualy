@@ -12,6 +12,7 @@ import { Checkbox } from '@qualy/ui/checkbox'
 import { Input } from '@qualy/ui/input'
 import { DatePicker } from '@qualy/ui/date-picker'
 import { Kbd, KbdGroup } from '@qualy/ui/kbd'
+import { ScrollArea } from '@qualy/ui/scroll-area'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@qualy/ui/sheet'
 import { Textarea } from '@qualy/ui/textarea'
 import { Chip, ChipGroup } from '@qualy/ui/chip'
@@ -182,16 +183,9 @@ const styles = stylex.create({
   },
   halfNoteInk: { color: tokens.surfaceMutedForeground },
   halfNoteWarn: { color: tokens.warning },
-  halfScroll: {
-    minHeight: 0,
-    flexGrow: 1,
-    overflowY: { default: 'visible', [breakpoints.desktop]: 'auto' },
-    // room for the focus ring of whatever stands at the edge
-    paddingInline: 2,
-    paddingRight: { default: 2, [breakpoints.desktop]: 14 },
-    paddingBottom: 2,
-    overscrollBehavior: 'contain',
-  },
+  halfArea: { minHeight: 0, flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+  // room for the focus ring of whatever stands at the edge, and for the bar
+  halfInner: { paddingLeft: 2, paddingRight: 16, paddingBottom: 2 },
   fieldStack: { display: 'flex', flexDirection: 'column', gap: 14 },
   fieldOne: { display: 'flex', flexDirection: 'column', gap: 6 },
   fieldLocked: { opacity: 0.6 },
@@ -229,11 +223,6 @@ const styles = stylex.create({
     color: tokens.surfaceMutedForeground,
     cursor: 'default',
   },
-  linkTagBare: {
-    backgroundColor: 'transparent',
-    boxShadow: `inset 0 0 0 1px ${tokens.border}`,
-    color: tokens.mutedForeground,
-  },
   resetLink: {
     flexShrink: 0,
     padding: 0,
@@ -259,15 +248,11 @@ const styles = stylex.create({
   filingHead: { paddingInline: 16, paddingTop: 14 },
   filingList: {
     display: 'flex',
-    minHeight: 0,
-    flexGrow: 1,
     flexDirection: 'column',
     gap: 12,
     margin: 0,
-    overflowY: { default: 'visible', [breakpoints.desktop]: 'auto' },
     paddingInline: 16,
     paddingBottom: 14,
-    overscrollBehavior: 'contain',
   },
   filingRow: { display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 },
   filingLabel: { fontSize: 12, color: tokens.mutedForeground },
@@ -280,7 +265,9 @@ const styles = stylex.create({
     display: 'grid',
     gridTemplateColumns: 'minmax(0, 5fr) minmax(0, 6fr)',
     columnGap: 24,
-    alignItems: 'end',
+    // the score stands as tall as the opinion beside it, so neither half
+    // leaves a hole over the other
+    alignItems: 'stretch',
   },
   footNote: {
     minWidth: 0,
@@ -835,10 +822,6 @@ export function ApproveDialog({
             : filedFields.find((one) => one.key === sourceKey)?.label
         const filedValue = Object.hasOwn(filed, field.id) ? filed[field.id] : undefined
         const moved = movedIds.includes(field.id)
-        const empty =
-          !Object.hasOwn(drafts, field.id) ||
-          drafts[field.id] === '' ||
-          drafts[field.id] === undefined
         return (
           <div
             key={field.id}
@@ -863,11 +846,7 @@ export function ApproveDialog({
                   <span {...stylex.props(styles.linkTag)} data-testid="recognition-source">
                     {format(m.reviewTagLinked, { name: sourceLabel })}
                   </span>
-                ) : (
-                  <span {...stylex.props(styles.linkTag, styles.linkTagBare)}>
-                    {format(m.reviewTagUnlinked)}
-                  </span>
-                )
+                ) : undefined
               }
             />
             {moved && locked === null && (
@@ -888,9 +867,6 @@ export function ApproveDialog({
                   {format(m.reviewResetToFiled)}
                 </button>
               </p>
-            )}
-            {sourceLabel === undefined && locked === null && empty && (
-              <p {...stylex.props(styles.sourceLine)}>{format(m.reviewUnlinkedNote)}</p>
             )}
           </div>
         )
@@ -917,25 +893,32 @@ export function ApproveDialog({
       )}
     </div>
   )
+  // a line beside the score where a determination is being made, a box of
+  // its own where the opinion is all there is to write
+  const compact = fine && form !== null
   const commentField = (
     <Field
       label={format(m.reviewComment)}
       {...(!fine
         ? {}
-        : form === null
-          ? { hint: format(m.reviewApproveHint) }
-          : { note: format(m.reviewApproveHint) })}
+        : compact
+          ? { note: format(m.reviewApproveHint) }
+          : { hint: format(m.reviewApproveHint) })}
     >
-      {(id) => (
-        <Textarea
-          id={id}
-          value={comment}
-          rows={fine && form !== null ? 2 : 3}
-          // eslint-disable-next-line jsx-a11y/no-autofocus
-          autoFocus={fine && form === null}
-          onChange={(event) => setComment(event.target.value)}
-        />
-      )}
+      {(id) =>
+        compact ? (
+          <Input id={id} value={comment} onChange={(event) => setComment(event.target.value)} />
+        ) : (
+          <Textarea
+            id={id}
+            value={comment}
+            rows={3}
+            // eslint-disable-next-line jsx-a11y/no-autofocus
+            autoFocus={fine && form === null}
+            onChange={(event) => setComment(event.target.value)}
+          />
+        )
+      }
     </Field>
   )
 
@@ -974,11 +957,7 @@ export function ApproveDialog({
         <div {...stylex.props(styles.foot)}>
           {form !== null && (
             <div {...stylex.props(styles.footPair)}>
-              <ScorePreview
-                preview={preview}
-                fields={fields}
-                missing={missingIds[0] === undefined ? undefined : titleOf(missingIds[0])}
-              />
+              <ScorePreview preview={preview} fields={fields} />
               {commentField}
             </div>
           )}
@@ -1051,7 +1030,13 @@ export function ApproveDialog({
                   )}
                 </p>
               </div>
-              <div {...stylex.props(styles.halfScroll)}>{determination}</div>
+              {fine ? (
+                <ScrollArea xstyle={styles.halfArea}>
+                  <div {...stylex.props(styles.halfInner)}>{determination}</div>
+                </ScrollArea>
+              ) : (
+                determination
+              )}
             </section>
           </div>
         )}
@@ -1134,12 +1119,9 @@ function useDeterminationPreview(
 function ScorePreview({
   preview,
   fields,
-  missing,
 }: {
   preview: PreviewState
   fields: readonly { readonly id: string; readonly schema: AtomicSchema }[]
-  /** the first field still unanswered, named rather than alluded to */
-  missing?: string | undefined
 }) {
   const { format } = useI18n()
   const bad = preview.kind === 'refused' || preview.kind === 'issues'
@@ -1158,9 +1140,7 @@ function ScorePreview({
             ? format(m.reviewPreviewChecking)
             : preview.kind === 'unavailable'
               ? format(m.reviewPreviewUnavailable)
-              : missing === undefined
-                ? format(m.reviewPreviewIncomplete)
-                : format(m.reviewPreviewNeeds, { name: missing })
+              : format(m.reviewPreviewIncomplete)
   return (
     <div
       {...stylex.props(styles.preview, bad && styles.previewBad)}
@@ -1233,64 +1213,66 @@ function FiledValues({
           {format(m.entryVersionNo, { no: review.revision.revisionNo })}
         </p>
       </div>
-      <dl {...stylex.props(styles.filingList)}>
-        {fields.map((field) => {
-          const raw = record[field.key]
-          const ids = field.type === 'attachment' ? idsOf(raw) : []
-          const text = displayValueOf(field, raw, words) || valueOf(raw)
-          return (
-            <div key={field.key} {...stylex.props(styles.filingRow)}>
-              <dt {...stylex.props(styles.filingLabel)}>
-                {field.label}
-                {(linked?.get(field.key)?.length ?? 0) > 0 && (
-                  <>
-                    {' '}
-                    <span
-                      {...stylex.props(styles.linkTag)}
-                      data-testid="filed-linked"
-                      data-field={field.key}
-                      title={format(m.reviewLinkedTo, {
-                        names: listJoin(linked?.get(field.key) ?? []),
-                      })}
-                    >
-                      {format(m.reviewLinkedTag)}
-                    </span>
-                  </>
-                )}
-              </dt>
-              <dd {...stylex.props(styles.filingValue)}>
-                {field.type === 'attachment' ? (
-                  ids.length === 0 ? (
-                    <span {...stylex.props(styles.previewQuiet)}>
-                      {format(m.reviewPreviewNoFiles)}
-                    </span>
+      <ScrollArea xstyle={styles.halfArea}>
+        <dl {...stylex.props(styles.filingList)}>
+          {fields.map((field) => {
+            const raw = record[field.key]
+            const ids = field.type === 'attachment' ? idsOf(raw) : []
+            const text = displayValueOf(field, raw, words) || valueOf(raw)
+            return (
+              <div key={field.key} {...stylex.props(styles.filingRow)}>
+                <dt {...stylex.props(styles.filingLabel)}>
+                  {field.label}
+                  {(linked?.get(field.key)?.length ?? 0) > 0 && (
+                    <>
+                      {' '}
+                      <span
+                        {...stylex.props(styles.linkTag)}
+                        data-testid="filed-linked"
+                        data-field={field.key}
+                        title={format(m.reviewLinkedTo, {
+                          names: listJoin(linked?.get(field.key) ?? []),
+                        })}
+                      >
+                        {format(m.reviewLinkedTag)}
+                      </span>
+                    </>
+                  )}
+                </dt>
+                <dd {...stylex.props(styles.filingValue)}>
+                  {field.type === 'attachment' ? (
+                    ids.length === 0 ? (
+                      <span {...stylex.props(styles.previewQuiet)}>
+                        {format(m.reviewPreviewNoFiles)}
+                      </span>
+                    ) : (
+                      <span {...stylex.props(styles.filingFiles)}>
+                        {ids.map((attachmentId) => (
+                          <AttachmentLink
+                            key={attachmentId}
+                            attachmentId={attachmentId}
+                            variant="line"
+                          />
+                        ))}
+                      </span>
+                    )
+                  ) : text === '' ? (
+                    '–'
                   ) : (
-                    <span {...stylex.props(styles.filingFiles)}>
-                      {ids.map((attachmentId) => (
-                        <AttachmentLink
-                          key={attachmentId}
-                          attachmentId={attachmentId}
-                          variant="line"
-                        />
-                      ))}
-                    </span>
-                  )
-                ) : text === '' ? (
-                  '–'
-                ) : (
-                  text
-                )}
-              </dd>
+                    text
+                  )}
+                </dd>
+              </div>
+            )
+          })}
+          {review.revision.note !== null && review.revision.note !== '' && (
+            <div {...stylex.props(styles.filingRow)}>
+              <dt {...stylex.props(styles.filingLabel)}>{format(m.entryNote)}</dt>
+              <dd {...stylex.props(styles.filingValue)}>{review.revision.note}</dd>
             </div>
-          )
-        })}
-        {review.revision.note !== null && review.revision.note !== '' && (
-          <div {...stylex.props(styles.filingRow)}>
-            <dt {...stylex.props(styles.filingLabel)}>{format(m.entryNote)}</dt>
-            <dd {...stylex.props(styles.filingValue)}>{review.revision.note}</dd>
-          </div>
-        )}
-      </dl>
+          )}
+        </dl>
+      </ScrollArea>
     </section>
   )
 }

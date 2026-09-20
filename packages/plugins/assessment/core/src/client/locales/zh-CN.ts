@@ -3,13 +3,10 @@ import type { MessageCatalog } from '@qualy/i18n-contract'
 export default {
   'assessment/review/linked-tag': '关联',
   'assessment/review/tag-linked': '关联 {name}',
-  'assessment/review/tag-unlinked': '未关联',
   'assessment/review/tag-locked': '合议已锁定',
   'assessment/review/filed-was': '申报填写',
-  'assessment/review/unlinked-note': '由审核人员认定',
   'assessment/review/reason-names': '{names} 与申报不同',
   'assessment/review/fill-first': '请先填写 {name}',
-  'assessment/review/preview-needs': '填完 {name} 后显示计分结果',
   'assessment/review/preview-stands': '按当前认定核算',
   'assessment/review/preview-fix-first': '修正后才能通过',
   'assessment/review/preview-unit': '分',

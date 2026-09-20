@@ -381,10 +381,6 @@ const reviewFillFirstMessage = defineMessage<{ name: string }>()({
   id: 'assessment/review/fill-first',
   defaultMessage: 'Fill in {name} before approving',
 })
-const reviewPreviewNeedsMessage = defineMessage<{ name: string }>()({
-  id: 'assessment/review/preview-needs',
-  defaultMessage: 'The score shows once {name} is filled in',
-})
 const reviewSummaryCountMessage = defineMessage<{ count: number }>()({
   id: 'assessment/review/summary-count',
   defaultMessage: '{count, plural, one {# field} other {# fields}}',
@@ -410,16 +406,10 @@ const i18n = definePluginMessages({
     personIncludedColumn: { id: 'assessment/person/included-column', defaultMessage: 'Joined' },
     reviewLinkedTag: { id: 'assessment/review/linked-tag', defaultMessage: 'Linked' },
     reviewTagLinked: reviewTagLinkedMessage,
-    reviewTagUnlinked: { id: 'assessment/review/tag-unlinked', defaultMessage: 'Not linked' },
     reviewTagLocked: { id: 'assessment/review/tag-locked', defaultMessage: 'Settled by the sitting' },
     reviewFiledWas: { id: 'assessment/review/filed-was', defaultMessage: 'Filed as' },
-    reviewUnlinkedNote: {
-      id: 'assessment/review/unlinked-note',
-      defaultMessage: 'Determined by the reviewer',
-    },
     reviewReasonNames: reviewReasonNamesMessage,
     reviewFillFirst: reviewFillFirstMessage,
-    reviewPreviewNeeds: reviewPreviewNeedsMessage,
     reviewPreviewStands: {
       id: 'assessment/review/preview-stands',
       defaultMessage: 'Under the determination as it stands',
