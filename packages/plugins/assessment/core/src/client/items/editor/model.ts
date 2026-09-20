@@ -71,6 +71,8 @@ export interface FieldDraft {
   pattern: string
   min: string
   max: string
+  /** date only: whether the answer must fall inside the round's material window */
+  inMaterialRange: boolean
   maxScale: string
   options: OptionDraft[]
   maxCount: string
@@ -196,6 +198,7 @@ export const blankField = (type: FieldType, key: string): FieldDraft => ({
   pattern: '',
   min: '',
   max: '',
+  inMaterialRange: false,
   maxScale: type === 'decimal' ? '2' : '',
   options: [],
   maxCount: '1',
@@ -245,6 +248,7 @@ const fieldOf = (raw: Record<string, unknown>): FieldDraft => {
     pattern: said(raw['pattern']),
     min: said(raw['min']),
     max: said(raw['max']),
+    inMaterialRange: raw['inMaterialRange'] === true,
     maxScale:
       type === 'decimal' ? (raw['maxScale'] === undefined ? '2' : said(raw['maxScale'])) : '',
     options: Array.isArray(raw['options'])
@@ -888,6 +892,7 @@ const fieldToWire = (
         ...base,
         ...(shaped.min.trim() !== '' ? { min: shaped.min.trim() } : {}),
         ...(shaped.max.trim() !== '' ? { max: shaped.max.trim() } : {}),
+        ...(shaped.inMaterialRange ? { inMaterialRange: true } : {}),
       }
     case 'integer':
       return {

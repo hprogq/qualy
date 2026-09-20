@@ -12,6 +12,12 @@ import {
 import { useI18n, useList } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Field } from '@qualy/ui/admin'
+import {
+  Field as FieldRow,
+  FieldContent,
+  FieldDescription,
+  FieldLabel,
+} from '@qualy/ui/field'
 import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@qualy/ui/collapsible'
@@ -441,9 +447,22 @@ function TypeSettings({
               )}
             </Field>
           </div>
-          <p {...stylex.props(styles.quiet)}>
-            {format(m.itemsDateWindow, { from: materialRange.start, until: materialRange.end })}
-          </p>
+          <FieldRow orientation="horizontal">
+            <Checkbox
+              checked={field.inMaterialRange}
+              data-testid="date-in-range"
+              onCheckedChange={(next) => patch({ inMaterialRange: next === true })}
+            />
+            <FieldContent>
+              <FieldLabel>{format(m.itemsDateInRange)}</FieldLabel>
+              <FieldDescription>
+                {format(m.itemsDateWindow, {
+                  from: materialRange.start,
+                  until: materialRange.end,
+                })}
+              </FieldDescription>
+            </FieldContent>
+          </FieldRow>
         </div>
       )
     case 'choice':

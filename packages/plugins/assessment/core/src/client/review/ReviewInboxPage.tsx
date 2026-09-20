@@ -417,6 +417,20 @@ const styles = stylex.create({
     alignItems: 'center',
     gap: 8,
   },
+  skTabs: { height: 36, width: 232, display: { default: 'block', [breakpoints.phone]: 'none' } },
+  skGroupHead: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
+    paddingInline: 16,
+    paddingBlock: 10,
+  },
+  skGroupTitle: { height: 16 },
+  skGroupKey: { height: 28, width: 104, flexShrink: 0 },
   skSearch: {
     height: 36,
     width: 288,
@@ -659,26 +673,42 @@ function Queue({
       retryLabel={format(commonMessages.retry)}
       onRetry={() => void inbox.refetch()}
       skeleton={
-        // the queue's own shape, greyed: the control row, then rows of
-        // work - not one anonymous slab
+        // The queue's own shape, greyed: the switch and the controls above,
+        // then work in the groups it actually arrives in - a heading with a
+        // count and its rows under it. One anonymous slab, or a flat list
+        // where the page draws grouped frames, says the page is simpler than
+        // what lands a moment later.
         <div {...stylex.props(styles.skColumn)}>
           <div {...stylex.props(styles.skControls)}>
+            <Skeleton className={stylex.props(styles.skTabs).className} />
             <Skeleton className={stylex.props(styles.skSearch).className} />
-            <Skeleton className={stylex.props(styles.skFilter).className} />
             <Skeleton className={stylex.props(styles.skFilter).className} />
             <span {...stylex.props(styles.skSpacer)} />
             <Skeleton className={stylex.props(styles.skStats).className} />
           </div>
-          <div {...stylex.props(styles.skFrame)}>
-            {['33%', '50%', '40%', '25%', '40%'].map((width, index) => (
-              <div key={index} {...stylex.props(styles.skRow)}>
-                <Skeleton className={stylex.props(styles.skName).className} />
-                <Skeleton className={stylex.props(styles.skValue).className} style={{ width }} />
-                <Skeleton className={stylex.props(styles.skWhen).className} />
-                <Skeleton className={stylex.props(styles.skChip).className} />
+          {[
+            ['38%', ['33%', '50%', '40%']],
+            ['26%', ['45%', '30%']],
+          ].map(([title, widths], group) => (
+            <div key={group} {...stylex.props(styles.skFrame)}>
+              <div {...stylex.props(styles.skGroupHead)}>
+                <Skeleton
+                  className={stylex.props(styles.skGroupTitle).className}
+                  style={{ width: title as string }}
+                />
+                <span {...stylex.props(styles.skSpacer)} />
+                <Skeleton className={stylex.props(styles.skGroupKey).className} />
               </div>
-            ))}
-          </div>
+              {(widths as string[]).map((width, index) => (
+                <div key={index} {...stylex.props(styles.skRow)}>
+                  <Skeleton className={stylex.props(styles.skName).className} />
+                  <Skeleton className={stylex.props(styles.skValue).className} style={{ width }} />
+                  <Skeleton className={stylex.props(styles.skWhen).className} />
+                  <Skeleton className={stylex.props(styles.skChip).className} />
+                </div>
+              ))}
+            </div>
+          ))}
         </div>
       }
       xstyle={styles.fill}

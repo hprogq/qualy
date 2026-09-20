@@ -2398,6 +2398,10 @@ const i18n = definePluginMessages({
       defaultMessage: 'Maximum characters',
     },
     itemsFieldMinDate: { id: 'assessment/items/field-min-date', defaultMessage: 'Earliest date' },
+    itemsDateInRange: {
+      id: 'assessment/items/date-in-range',
+      defaultMessage: 'Check against the round\u2019s material window',
+    },
     itemsDateWindow: {
       id: 'assessment/items/date-window',
       defaultMessage: 'Only materials dated from {from} to {until} count in this batch.',

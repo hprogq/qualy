@@ -95,6 +95,8 @@ export interface EvidenceFieldSpec {
   /** integer bounds arrive as numbers; date and decimal bounds as strings */
   readonly min?: string | number
   readonly max?: string | number
+  /** date only: whether the round's material window binds this field too */
+  readonly inMaterialRange?: boolean
   readonly maxScale?: number
   readonly options?: readonly EvidenceChoiceOptionSpec[]
   readonly maxCount?: number
@@ -373,13 +375,17 @@ export function EvidenceForm({
           )
         }
         if (field.type === 'date') {
-          // the picker offers exactly what the server will take: the field's
-          // own bounds narrowed by the round's material window
-          const floor = [field.min, materialRange?.start].filter(Boolean).sort().at(-1)
-          const ceiling = [
-            field.max,
-            materialRange === undefined ? undefined : lastDay(materialRange.end),
-          ]
+          // The picker offers exactly what the server will take: the field's
+          // own bounds, narrowed by the round's material window only where
+          // the question answers to it. A question about when somebody
+          // enrolled is true outside the window, and a picker that refused
+          // those days taught people to file the wrong date.
+          const bounded = field.inMaterialRange === true && materialRange !== undefined
+          const floor = [field.min, bounded ? materialRange.start : undefined]
+            .filter(Boolean)
+            .sort()
+            .at(-1)
+          const ceiling = [field.max, bounded ? lastDay(materialRange.end) : undefined]
             .filter(Boolean)
             .sort()
             .at(0)

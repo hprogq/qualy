@@ -27,7 +27,9 @@ const issuesOf = (
 const config = {
   fields: [
     { key: 'certificate-no', type: 'text', label: '证书编号', required: true, maxLength: 64 },
-    { key: 'issued-on', type: 'date', label: '签发日期', min: '2026-04-01' },
+    // dated inside the round on purpose: this question is about when the
+    // thing being claimed happened
+    { key: 'issued-on', type: 'date', label: '签发日期', min: '2026-04-01', inMaterialRange: true },
     { key: 'proof', type: 'attachment', label: '证明材料', required: true, maxCount: 2 },
   ],
 }
@@ -101,6 +103,25 @@ describe('what a payload must satisfy', () => {
     expect(issues).toContainEqual({ field: 'stray', reason: 'unknown-field' })
   })
 
+  it('leaves a date alone unless the question answers to the round', () => {
+    const loose = {
+      fields: [{ key: 'enrolled-on', type: 'date', label: '入学日期' }],
+    }
+    const decodeLoose = (payload: unknown) =>
+      Effect.runSyncExit(evidenceDriver.decodePayload(loose, payload, batch).pipe(Effect.asVoid))
+    // years before the round's window, and perfectly true
+    expect(Exit.isSuccess(decodeLoose({ 'enrolled-on': '2023-09-01' }))).toBe(true)
+    // its own bounds still hold
+    const bounded = {
+      fields: [{ key: 'enrolled-on', type: 'date', label: '入学日期', max: '2024-12-31' }],
+    }
+    expect(
+      issuesOf(
+        Effect.runSyncExit(evidenceDriver.decodePayload(bounded, { 'enrolled-on': '2025-01-01' }, batch)),
+      ),
+    ).toContainEqual({ field: 'enrolled-on', reason: 'out-of-range' })
+  })
+
   it('holds a date to the round and to the field, half-open end included', () => {
     const proof = [randomUUID()]
     const within = { 'certificate-no': 'X', proof }
@@ -172,7 +193,14 @@ describe('what a payload must satisfy', () => {
     const issues = evidenceDriver.configIssues!(
       {
         fields: [
-          { key: 'when', type: 'date', label: 'When', min: '2026-09-01', max: '2026-12-31' },
+          {
+            key: 'when',
+            type: 'date',
+            label: 'When',
+            min: '2026-09-01',
+            max: '2026-12-31',
+            inMaterialRange: true,
+          },
         ],
       },
       batch,
@@ -181,7 +209,29 @@ describe('what a payload must satisfy', () => {
     // a window clipped by the range but not emptied is fine
     expect(
       evidenceDriver.configIssues!(
-        { fields: [{ key: 'when', type: 'date', label: 'When', min: '2026-08-31' }] },
+        {
+          fields: [
+            {
+              key: 'when',
+              type: 'date',
+              label: 'When',
+              min: '2026-08-31',
+              inMaterialRange: true,
+            },
+          ],
+        },
+        batch,
+      ),
+    ).toEqual([])
+    // and the same window on a question that does not answer to the round is
+    // not empty at all - there is no round to miss
+    expect(
+      evidenceDriver.configIssues!(
+        {
+          fields: [
+            { key: 'when', type: 'date', label: 'When', min: '2026-09-01', max: '2026-12-31' },
+          ],
+        },
         batch,
       ),
     ).toEqual([])
@@ -586,7 +636,14 @@ describe('a form still being composed', () => {
           { id: 'b', key: 'b', type: 'integer', label: '', min: 1, max: 8 },
           { id: 'c', key: 'c', type: 'integer', label: '名次', min: 9, max: 1 },
           { id: 'a', key: 'd', type: 'text', label: '重复' },
-          { id: 'e', key: 'e', type: 'date', label: '日期', min: '2027-01-01' },
+          {
+            id: 'e',
+            key: 'e',
+            type: 'date',
+            label: '日期',
+            min: '2027-01-01',
+            inMaterialRange: true,
+          },
           { id: 'f', key: 'f', type: 'attachment', label: '证书', maxCount: 1 },
         ],
       },

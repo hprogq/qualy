@@ -93,6 +93,17 @@ const dateField = Schema.Struct({
   required: Schema.optional(Schema.Boolean),
   min: Schema.optional(isoDate),
   max: Schema.optional(isoDate),
+  /**
+   * Whether the answer must also fall inside the round's material window.
+   *
+   * Off unless the question says so: plenty of dates a question asks for are
+   * true outside the window it is claimed in - when somebody enrolled, when
+   * a certificate was issued - and refusing those taught people to file the
+   * wrong date. A question about when the thing being claimed happened turns
+   * it on, and then the window is the batch's, not a pair of bounds every
+   * author would have to copy.
+   */
+  inMaterialRange: Schema.optional(Schema.Boolean),
 })
 
 const integerField = Schema.Struct({
@@ -514,21 +525,24 @@ const decode = (
             issues.push({ field: entry.key, reason: 'not-a-date' })
             break
           }
+          const bounded = entry.inMaterialRange === true
           const lower =
-            entry.min !== undefined && entry.min > batch.materialRange.start
+            !bounded || (entry.min !== undefined && entry.min > batch.materialRange.start)
               ? entry.min
               : batch.materialRange.start
           const upper =
-            entry.max !== undefined && entry.max < batch.materialRange.end
+            !bounded || (entry.max !== undefined && entry.max < batch.materialRange.end)
               ? entry.max
               : batch.materialRange.end
           // the range end is exclusive; a field max is inclusive, so the
           // comparison differs by which bound won
-          const belowLower = value < lower
+          const belowLower = lower !== undefined && value < lower
           const aboveUpper =
-            entry.max !== undefined && entry.max < batch.materialRange.end
-              ? value > upper
-              : value >= upper
+            upper === undefined
+              ? false
+              : !bounded || (entry.max !== undefined && entry.max < batch.materialRange.end)
+                ? value > upper
+                : value >= upper
           if (belowLower || aboveUpper) {
             issues.push({ field: entry.key, reason: 'out-of-range' })
             break
@@ -675,6 +689,8 @@ const project = (fromConfig: unknown, toConfig: unknown, payload: unknown): unkn
 /** a date window that misses the round entirely, said for one field */
 const dateWindowEmpty = (entry: EvidenceField, batch: BatchContext): boolean => {
   if (entry.type !== 'date') return false
+  // a field that does not answer to the window cannot miss it
+  if (entry.inMaterialRange !== true) return entry.max !== undefined && entry.min !== undefined && entry.max < entry.min
   const lower =
     entry.min !== undefined && entry.min > batch.materialRange.start
       ? entry.min
