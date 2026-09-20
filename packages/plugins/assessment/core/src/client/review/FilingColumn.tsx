@@ -1,3 +1,4 @@
+import { RESERVED } from '../reserved.ts'
 import { memo } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { ChevronRightIcon, DownloadIcon, SparklesIcon } from 'lucide-react'
@@ -484,6 +485,7 @@ export const FilingColumn = memo(function FilingColumn({
       xstyle={styles.frame}
       innerXstyle={styles.inner}
       footer={
+        !RESERVED.insight ? undefined : (
         // What the machine noticed, on the pane's own floor: there whatever
         // the filing's length, so the checks always sit after the evidence,
         // never over it. The caveat is part of the block: a machine's note
@@ -497,6 +499,7 @@ export const FilingColumn = memo(function FilingColumn({
           </div>
           <p {...stylex.props(styles.insightBody)}>{format(m.reviewInsightSoon)}</p>
         </aside>
+        )
       }
     >
       {/* only below lg: on a desk the flow column is in the same glance */}

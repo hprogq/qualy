@@ -1,3 +1,4 @@
+import { RESERVED } from '../reserved.ts'
 import { useState, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { useI18n, useList } from '@qualy/web-i18n'
@@ -1399,6 +1400,7 @@ function Question({
               ))}
             </div>
           )}
+          {RESERVED.basis && (
           <p
             {...stylex.props(
               styles.basisRow,
@@ -1408,6 +1410,7 @@ function Question({
             <span {...stylex.props(styles.keepShort)}>{format(m.myEntriesBasis)}</span>
             <span {...stylex.props(styles.basisWords)}>{format(m.myEntriesBasisSoon)}</span>
           </p>
+          )}
         </div>
         <span {...stylex.props(styles.termsFoot)} />
         <div {...stylex.props(styles.wayIn)}>

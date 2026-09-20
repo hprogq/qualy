@@ -1,3 +1,4 @@
+import { RESERVED } from '../reserved.ts'
 import { memo, useMemo } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { useI18n } from '@qualy/web-i18n'
@@ -341,10 +342,12 @@ function AboutParts({
     <>
       {/* the clause. Reserved, not written: nothing in the round carries the
           wording yet, so the block holds its place. */}
-      <section {...stylex.props(styles.clauseCard)}>
-        <p {...stylex.props(styles.caption)}>{format(m.myEntriesBasis)}</p>
-        <p {...stylex.props(styles.clauseBody)}>{format(m.myEntriesBasisSoon)}</p>
-      </section>
+      {RESERVED.basis && (
+        <section {...stylex.props(styles.clauseCard)}>
+          <p {...stylex.props(styles.caption)}>{format(m.myEntriesBasis)}</p>
+          <p {...stylex.props(styles.clauseBody)}>{format(m.myEntriesBasisSoon)}</p>
+        </section>
+      )}
 
       <section {...stylex.props(styles.block)}>
         <p {...stylex.props(styles.caption)}>{format(m.reviewChainTitle)}</p>

@@ -1,8 +1,10 @@
+import { Kbd } from '@qualy/ui/kbd'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   AlertCircleIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
+  ListIcon,
   ChevronUpIcon,
   CircleArrowUpIcon,
 } from 'lucide-react'
@@ -97,10 +99,7 @@ const styles = stylex.create({
     },
   },
   queueKey: {
-    display: {
-      default: 'inline-flex',
-      [wide]: 'none',
-    },
+    display: 'inline-flex',
     height: 32,
     flexShrink: 0,
     gap: 4,
@@ -201,14 +200,14 @@ const styles = stylex.create({
     whiteSpace: 'nowrap',
   },
   keysHint: {
-    display: {
-      default: 'none',
-      [lg]: 'inline',
-    },
+    display: { default: 'none', [lg]: 'inline-flex' },
     flexShrink: 0,
-    fontSize: 12,
-    fontWeight: 500,
-    whiteSpace: 'nowrap',
+    alignItems: 'center',
+    padding: 2,
+    borderWidth: 0,
+    borderRadius: 6,
+    backgroundColor: { default: 'transparent', ':hover': tokens.surfaceMuted },
+    cursor: 'pointer',
   },
   runAt: {
     fontSize: 12,
@@ -367,6 +366,8 @@ export function PersonStrip({
   canNext,
   onMove,
   onBack,
+  onQueue,
+  onKeys,
 }: {
   review: ReviewDto
   at: number | null
@@ -376,6 +377,10 @@ export function PersonStrip({
   onMove: (step: 1 | -1) => void
   /** the way out, where the queue rail is not there to hold one */
   onBack: () => void
+  /** who else is waiting, brought out from the side */
+  onQueue: () => void
+  /** brings the keyboard's panel, and takes it away */
+  onKeys: () => void
 }) {
   const { format } = useI18n()
   const fine = useFinePointer()
@@ -387,13 +392,22 @@ export function PersonStrip({
           the person being judged owns this bar. On a phone the system back
           key is the reader's other way out. */}
       <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label={format(m.reviewBackToQueue)}
+        data-testid="queue-back"
+        onClick={onBack}
+      >
+        <ChevronLeftIcon aria-hidden />
+      </Button>
+      <Button
         variant="outline"
         size="sm"
         data-testid="queue-key"
         className={stylex.props(styles.queueKey).className}
-        onClick={onBack}
+        onClick={onQueue}
       >
-        <ChevronLeftIcon aria-hidden className={stylex.props(styles.queueKeyIcon).className} />
+        <ListIcon aria-hidden className={stylex.props(styles.queueKeyIcon).className} />
         {format(m.reviewQueueKey)}
         <span {...stylex.props(styles.queueKeyCount)}>{of}</span>
       </Button>
@@ -446,7 +460,21 @@ export function PersonStrip({
       {/* the keys hint belongs to a keyboard; without one the letters are
           not mounted and the panel would document controls that do not
           exist here */}
-      {fine && <span {...stylex.props(styles.keysHint)}>{format(m.reviewKeysHint)}</span>}
+      {fine && (
+        // a control, not a caption: the panel it names could only be brought
+        // from the keyboard, which is an odd thing to require of somebody
+        // who is asking what the keys are
+        <button
+          type="button"
+          data-testid="keys-open"
+          aria-label={format(m.reviewKeysTitle)}
+          title={format(m.reviewKeysTitle)}
+          {...stylex.props(styles.keysHint)}
+          onClick={onKeys}
+        >
+          <Kbd>?</Kbd>
+        </button>
+      )}
       {at !== null && (
         <p {...stylex.props(styles.runAt)}>{format(m.reviewRunPosition, { at, count: of })}</p>
       )}

@@ -18,7 +18,7 @@ import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { Kbd } from '@qualy/ui/kbd'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@qualy/ui/dialog'
-import { Skeleton } from '@qualy/ui/skeleton'
+import { BenchSkeleton } from './BenchSkeleton.tsx'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
 import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
@@ -127,17 +127,6 @@ const styles = stylex.create({
     borderLeftStyle: 'solid',
     borderLeftColor: tokens.border,
   },
-  benchSkeletonSeat: {
-    padding: 24,
-  },
-  benchSkeleton: {
-    height: 256,
-    width: '100%',
-  },
-  loadSkeleton: {
-    height: 384,
-    width: '100%',
-  },
   readonlyBar: {
     borderBottomWidth: 1,
     borderBottomStyle: 'solid',
@@ -208,16 +197,17 @@ const styles = stylex.create({
       default: 'x mandatory',
       [lg]: 'none',
     },
-    overflowX: {
-      default: 'auto',
-      [lg]: 'hidden',
-    },
+    overflowX: 'auto',
     overflowY: 'hidden',
     overscrollBehaviorX: 'contain',
     scrollbarWidth: 'none',
     gridTemplateColumns: {
       default: null,
-      [lg]: 'minmax(0, 0.82fr) minmax(0, 1.18fr) 21rem',
+      // Each column has a floor. Without one the fixed rail at the end kept
+      // its width and the other two paid for it, and the middle one - how the
+      // filing has been handled - went under 200px on a laptop. The rail gives
+      // first; below every floor the bench scrolls sideways instead.
+      [lg]: 'minmax(17rem, 0.9fr) minmax(18rem, 1.1fr) minmax(15rem, 19rem)',
     },
     gridTemplateRows: {
       default: null,
@@ -850,8 +840,8 @@ function Workbench({ batch }: { batch: BatchDto }) {
 
   // The queue is furniture, not a layer: it stays where it was left, and a
   // reload finds it there, but pressing back should never be about it.
-  const [rail, setRail] = usePageQueryState('queue')
-  const railOpen = rail !== 'off'
+  // who else is waiting comes out from the side when asked for
+  const [queueOpen, setQueueOpen] = useState(false)
 
   // Every decision is an act with its own panel; nothing arms silently.
   const [dialog, setDialog] = useState<'approve' | 'reject' | 'escalate' | 'supplement' | null>(
@@ -948,7 +938,8 @@ function Workbench({ batch }: { batch: BatchDto }) {
   // that just closed itself: through a render closure it saw "no overlay"
   // and ran the page's own ⌘↵ a moment after the panel had already acted.
   const overlaid = useRef(false)
-  overlaid.current = dialog !== null || trailOpen || versionsOpen || openSibling !== null
+  overlaid.current =
+    dialog !== null || trailOpen || versionsOpen || openSibling !== null || queueOpen
 
   /**
    * Log what was just staged and put the next filing on screen.
@@ -1168,7 +1159,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
         void inbox.refetch()
         void detail.refetch()
       }}
-      skeleton={<Skeleton className={stylex.props(styles.loadSkeleton).className} />}
+      skeleton={<BenchSkeleton />}
       xstyle={styles.fill}
     >
       {/* Given its height by the shell rather than measuring the window for
@@ -1196,8 +1187,8 @@ function Workbench({ batch }: { batch: BatchDto }) {
             rows={remaining}
             currentId={instanceId}
             remainingCount={remaining.length}
-            open={railOpen}
-            onToggle={() => setRail(railOpen ? 'off' : '')}
+            open={queueOpen}
+            onToggle={() => setQueueOpen(false)}
             onOpen={goTo}
             onBack={() => navigate('assessment/batch-reviews', { params: { batchId: batch.id } })}
           />
@@ -1215,9 +1206,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
                 )}
               />
             ) : review === undefined ? (
-              <div {...stylex.props(styles.benchSkeletonSeat)}>
-                <Skeleton className={stylex.props(styles.benchSkeleton).className} />
-              </div>
+              <BenchSkeleton />
             ) : (
               <>
                 {/* the run's standing, for a screen with room for it: narrow,
@@ -1242,6 +1231,8 @@ function Workbench({ batch }: { batch: BatchDto }) {
                   onBack={() =>
                     navigate('assessment/batch-reviews', { params: { batchId: batch.id } })
                   }
+                  onQueue={() => setQueueOpen(true)}
+                  onKeys={() => setKeysOpen((open) => !open)}
                 />
                 {/* A reader with no acts here - an administrator looking
                     in, a reviewer whose phase is closed - gets told the

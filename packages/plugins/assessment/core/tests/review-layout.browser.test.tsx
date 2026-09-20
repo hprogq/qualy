@@ -274,17 +274,21 @@ describe('one workbench, three widths', () => {
     // becomes the key at the left of the header instead of a rail
     expect(parts()).toEqual(['flow', 'filing', 'about'])
     await expect.element(page.getByTestId('queue-key')).toBeVisible()
-    await expect.element(page.getByText('李明')).not.toBeVisible()
+    expect(document.querySelector('[data-testid="queue-sheet"]')).toBeNull()
   })
 
-  it('stands the queue rail beside the columns only on a desk', async () => {
+  // The queue never stands beside the bench: who else is waiting is looked
+  // up when the reviewer wants to jump, so it comes out from the side when
+  // asked for, at every width, and the three columns keep the room.
+  it('brings the queue out from the side when asked, on a desk as on a laptop', async () => {
     page.viewport(1680, 950)
     open()
     await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
     expect(parts()).toEqual(['flow', 'filing', 'about'])
-    // the rail names the rest of the queue; the header key stands down
-    await expect.element(page.getByText('李明')).toBeVisible()
-    await expect.element(page.getByTestId('queue-key')).not.toBeVisible()
+    expect(document.querySelector('[data-testid="queue-sheet"]')).toBeNull()
+    await page.getByTestId('queue-key').click()
+    await expect.element(page.getByTestId('queue-sheet')).toBeVisible()
+    await expect.element(page.getByTestId('queue-sheet').getByText('李明')).toBeVisible()
   })
 
   it('keeps the queue inside the width it is given', async () => {

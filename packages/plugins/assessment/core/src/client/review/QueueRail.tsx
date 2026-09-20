@@ -1,9 +1,10 @@
 import { memo } from 'react'
-import { ArrowLeftIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
+import { ArrowLeftIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
 import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
 import { ScrollArea } from '@qualy/ui/scroll-area'
+import { Sheet, SheetContent, SheetTitle } from '@qualy/ui/sheet'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../i18n.ts'
 import { useDayClock, type InboxItemDto } from './model.ts'
@@ -30,10 +31,11 @@ const styles = stylex.create({
   asideFolded: {
     width: 44,
   },
+  sheet: { width: { default: 320, '@media (max-width: 480px)': '100%' }, maxWidth: '100%', padding: 0, gap: 0 },
   list: {
     display: 'flex',
     height: '100%',
-    width: 224,
+    width: '100%',
     flexShrink: 0,
     flexDirection: 'column',
     transitionProperty: 'opacity',
@@ -99,8 +101,10 @@ const styles = stylex.create({
     textAlign: 'left',
     transitionProperty: 'color, background-color, border-color',
   },
+  // a tint and a heavier name say which one is open; the rule that ran down
+  // its rounded edge bent into a bracket
   rowCurrent: {
-    borderLeftColor: tokens.foreground,
+    borderLeftColor: 'transparent',
     backgroundColor: tokens.surfaceMuted,
   },
   rowIdle: {
@@ -211,89 +215,52 @@ export const QueueRail = memo(function QueueRail({
   const { format } = useI18n()
   const dayClock = useDayClock()
   return (
-    // The rail is always its full width; the aside around it is what
-    // narrows and clips. Animating the contents' own layout warped every
-    // row mid-flight - the shell's rail solved this the same way, and the
-    // two folds should feel like one mechanism.
-    <aside {...stylex.props(styles.aside, open ? styles.asideOpen : styles.asideFolded)}>
-      <nav
-        {...(!open ? { inert: true, 'aria-hidden': true } : {})}
-        {...stylex.props(styles.list, !open && styles.listHidden)}
-      >
-        <div {...stylex.props(styles.head)}>
-          {/* the way out: a workbench with no door back is a dead end */}
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={format(m.reviewBackToQueue)}
-            onClick={onBack}
-          >
-            <ArrowLeftIcon aria-hidden />
-          </Button>
-          <p {...stylex.props(styles.headTitle)}>{format(m.reviewQueueTitle)}</p>
-          <span {...stylex.props(styles.headCount)}>{remainingCount}</span>
-          <span {...stylex.props(styles.spacer)} />
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={format(m.reviewQueueFold)}
-            onClick={onToggle}
-          >
-            <ChevronLeftIcon aria-hidden />
-          </Button>
-        </div>
-        <ScrollArea className={stylex.props(styles.scroller).className}>
-          <ul {...stylex.props(styles.rowList)}>
-            {rows.map((row) => {
-              const current = row.instanceId === currentId
-              return (
-                <li key={row.instanceId}>
-                  <button
-                    type="button"
-                    onClick={() => onOpen(row.instanceId)}
-                    {...stylex.props(styles.row, current ? styles.rowCurrent : styles.rowIdle)}
-                  >
-                    <span {...stylex.props(styles.rowWords)}>
-                      <span {...stylex.props(styles.rowName, current && styles.rowNameCurrent)}>
-                        {row.participantName}
+    // Beside the workbench it stood there all session to be used a few times
+    // in it, and took a column from the three that are read on every filing.
+    // Who else is waiting is looked up when the reviewer wants to jump, so it
+    // comes out from the side when asked for and goes away again.
+    <Sheet open={open} onOpenChange={(next) => !next && onToggle()}>
+      <SheetContent side="left" showCloseButton={false} xstyle={styles.sheet} data-testid="queue-sheet">
+        <nav {...stylex.props(styles.list)}>
+          <div {...stylex.props(styles.head)}>
+            <SheetTitle {...stylex.props(styles.headTitle)}>{format(m.reviewQueueTitle)}</SheetTitle>
+            <span {...stylex.props(styles.headCount)}>{remainingCount}</span>
+            <span {...stylex.props(styles.spacer)} />
+            <Button variant="ghost" size="sm" onClick={onBack}>
+              <ArrowLeftIcon aria-hidden />
+              {format(m.reviewBackToQueue)}
+            </Button>
+          </div>
+          <ScrollArea className={stylex.props(styles.scroller).className}>
+            <ul {...stylex.props(styles.rowList)}>
+              {rows.map((row) => {
+                const current = row.instanceId === currentId
+                return (
+                  <li key={row.instanceId}>
+                    <button
+                      type="button"
+                      aria-current={current || undefined}
+                      onClick={() => {
+                        onOpen(row.instanceId)
+                        onToggle()
+                      }}
+                      {...stylex.props(styles.row, current ? styles.rowCurrent : styles.rowIdle)}
+                    >
+                      <span {...stylex.props(styles.rowWords)}>
+                        <span {...stylex.props(styles.rowName, current && styles.rowNameCurrent)}>
+                          {row.participantName}
+                        </span>
+                        <span {...stylex.props(styles.rowItem)}>{row.itemTitle}</span>
                       </span>
-                      <span {...stylex.props(styles.rowItem)}>{row.itemTitle}</span>
-                    </span>
-                    <span {...stylex.props(styles.rowClock)}>{dayClock(row.submittedAt)}</span>
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-        </ScrollArea>
-      </nav>
-      {/* Folded, the rail is a handle and a number - nothing more. It used
-          to keep a column of grey faces, which at 32px against a dark ring
-          read like a wall of memorial portraits; who is waiting is the open
-          list's answer, and folded only "how many" fits honestly. */}
-      <div
-        {...(open ? { inert: true, 'aria-hidden': true } : {})}
-        {...stylex.props(styles.folded, open && styles.foldedHidden)}
-      >
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={format(m.reviewQueueUnfold)}
-          onClick={onToggle}
-        >
-          <ChevronRightIcon aria-hidden />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={format(m.reviewBackToQueue)}
-          onClick={onBack}
-        >
-          <ArrowLeftIcon aria-hidden />
-        </Button>
-        <span aria-hidden {...stylex.props(styles.foldedRule)} />
-        <span {...stylex.props(styles.foldedCount)}>{remainingCount}</span>
-      </div>
-    </aside>
+                      <span {...stylex.props(styles.rowClock)}>{dayClock(row.submittedAt)}</span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          </ScrollArea>
+        </nav>
+      </SheetContent>
+    </Sheet>
   )
 })

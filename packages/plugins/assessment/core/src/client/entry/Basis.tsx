@@ -1,3 +1,4 @@
+import { RESERVED } from '../reserved.ts'
 import * as stylex from '@stylexjs/stylex'
 import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -39,6 +40,8 @@ const styles = stylex.create({
 
 export function Basis({ compact = false }: { compact?: boolean }) {
   const { format } = useI18n()
+  // nothing in a round carries the wording yet; the seat is kept, not shown
+  if (!RESERVED.basis) return null
   return (
     <section {...stylex.props(styles.block, compact && styles.blockCompact)}>
       <p {...stylex.props(styles.title)}>{format(m.myEntriesBasis)}</p>
