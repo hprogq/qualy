@@ -417,6 +417,15 @@ describe("vite's logger, adapted", () => {
     ).toEqual(['Info:mounted', 'Warn:careful', 'Error:broken'])
   })
 
+  it('hands over the words without the colours vite wrapped them in', async () => {
+    // exactly what vite writes for a reload: the logger downstream lets no
+    // control character through, so an escape left in arrives as `[32m` text
+    const reload = '\u001b[32mpage reload \u001b[39m\u001b[2m/src/client/i18n.ts\u001b[22m'
+    expect(await captured(1, (logger) => logger.info(reload))).toEqual([
+      'Info:page reload /src/client/i18n.ts',
+    ])
+  })
+
   it('says a repeated warning once, and remembers that it warned', async () => {
     let logger: Awaited<ReturnType<typeof build>>
     const lines = await captured(1, (made) => {

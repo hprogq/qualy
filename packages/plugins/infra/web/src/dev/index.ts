@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { stripVTControlCharacters } from 'node:util'
 import { Data, Effect, Queue, Schema } from 'effect'
 import type { Logger as ViteLogger } from 'vite'
 import type { DevServiceContext } from '@qualy/plugin-kit/dev'
@@ -35,9 +36,13 @@ class WebUnservable extends Data.TaggedError('WebUnservable')<{ readonly message
  * timestamp, the level, the fiber id and the colours identical to everything
  * else the process says - with no `Effect.run*` inside a layer.
  *
- * The message is passed through as vite wrote it, colours and `[vite]` prefix
- * included. Vite's own timestamp is never asked for, because ours is already
- * in front of it.
+ * The words are passed through as vite wrote them, `[vite]` prefix included,
+ * but not its colours: the application's logger lets no control character
+ * into a line (that is what keeps one line one line, whoever wrote the
+ * value), so an escape sequence arrives there with its ESC replaced and the
+ * rest - `[32m`, `[39m` - printed as text around every path. The line is
+ * already coloured by level and source like every other one. Vite's own
+ * timestamp is never asked for, because ours is already in front of it.
  */
 export const viteLogger = Effect.gen(function* () {
   const lines = yield* Queue.make<Effect.Effect<void>>()
@@ -45,6 +50,9 @@ export const viteLogger = Effect.gen(function* () {
   const emit = (line: Effect.Effect<void>) => {
     Queue.offerUnsafe(lines, line.pipe(Effect.annotateLogs({ source: 'web:vite' })))
   }
+  // vite pads a coloured word with a space inside the colour, so taking the
+  // colour away leaves doubled spaces behind it
+  const plain = (message: string) => stripVTControlCharacters(message).replace(/ {2,}/g, ' ').trimEnd()
   // vite reads this back to decide whether a run "had warnings", so it is
   // state the adapter owns rather than something it can forward
   const state = { warned: false }
@@ -54,16 +62,16 @@ export const viteLogger = Effect.gen(function* () {
   // answered false invited the same error twice
   const loggedErrors = new WeakSet<Error>()
   return {
-    info: (message: string) => emit(Effect.logInfo(message)),
+    info: (message: string) => emit(Effect.logInfo(plain(message))),
     warn: (message: string) => {
       state.warned = true
-      emit(Effect.logWarning(message))
+      emit(Effect.logWarning(plain(message)))
     },
     warnOnce: (message: string) => {
       if (seen.has(message)) return
       seen.add(message)
       state.warned = true
-      emit(Effect.logWarning(message))
+      emit(Effect.logWarning(plain(message)))
     },
     error: (message: string, options?: { error?: Error | null }) => {
       // a websocket upgrade the backend REFUSED (401/429/503) ends with the
@@ -71,13 +79,13 @@ export const viteLogger = Effect.gen(function* () {
       // way out; that is the refusal working, not a fault worth a stack
       if (message.includes('ws proxy') && /EPIPE|ECONNRESET/.test(message)) {
         if (options?.error) loggedErrors.add(options.error)
-        emit(Effect.logDebug(message.split('\n')[0] ?? message))
+        emit(Effect.logDebug(plain(message.split('\n')[0] ?? message)))
         return
       }
       // upstream's logger counts an error as "warned" too
       state.warned = true
       if (options?.error) loggedErrors.add(options.error)
-      emit(Effect.logError(message))
+      emit(Effect.logError(plain(message)))
     },
     // the screen is shared with the application's own output, so clearing it
     // would take that away; vite is started with clearScreen off for the same
