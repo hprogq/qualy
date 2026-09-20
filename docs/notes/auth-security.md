@@ -156,3 +156,37 @@ default-src 'self'; script-src 'self' 'sha256-pKAg+of2SxxrkLJX27pRnCgcyN5Ud1dmuO
   不承诺 CAS-only 空库自举;registerProviderType 暂不带 configSchema(首个用 config 的
   驱动 = CAS 落地时再加);「按 provider 实例限制用户类型」等出现真实需求再建关联表。
 - provider 禁用只拦新登录,已有 session 不受影响(session 撤销手段 = 禁用 user/type/tenant)。
+
+## 账号绑定:由驱动声明,由基座写入(2026-09-21)
+
+此前仓库里**没有任何一条应用路径写 `user_identities`**,只有 seed;管理员无法给一个人新增或重置登录账号。
+补这条能力时的约束是:以后还会有 GitHub、企业微信、CAS、邮箱验证码,基座不能认识其中任何一种。
+
+**驱动在 `Login.driver` 里声明 `binding`(prepare 相位,纯声明 + 一个无依赖的函数)**,三种回答,缺省即不提供:
+
+| mode | 含义 | 管理员能做什么 | 例 |
+| --- | --- | --- | --- |
+| `managed` | 可由管理该用户的人代为写入 | 添加、重置、撤销 | 本地账号密码、邮箱验证码 |
+| `self` | 只能由本人走一遍驱动自己的流程 | 只读,可撤销 | GitHub、企业微信 |
+| `derived` | 凭此人已有的事实对应,不存绑定 | 无动作,只说明凭什么(`by`) | 以学工号为账号的 CAS |
+
+`managed` 另带 `identifierLabel` / `identifierHint` / `secret{label,minLength}` 与
+`prepare({identifier, secret}) → {ok, identifier, credentialHash} | {ok:false, invalid}`。
+**口令是什么、怎么存,只有驱动知道**:基座把输入原样交给 `prepare`,只存它交回来的规范化账号与摘要,永不落原文。
+
+**写入只有一处**(`Iam.users.putIdentity` / `revokeIdentity`,`/iam/users/{userId}/identities/{providerId}` 的 PUT / DELETE):
+
+- 授权:对该用户所在节点的 `auth.user.manage`;系统账号一律 `SYSTEM_ACCOUNT_PROTECTED`。
+  **摘要在事务外算**(argon2 近一秒,持租户行锁算会把全租户的写排在一个口令后面),因此事务外先判一次权限
+  (无权者既学不到账号规则也耗不了摘要),锁内用同一连接再判一次——决定写入的是锁内那次。
+- 入口受众不接纳该用户类型 → `IDENTITY_AUDIENCE_EXCLUDED`(绑了也用不了,不写)。
+- 一人一入口只有一条活绑定:再 PUT 是原地改写同一行;账号冲突走活行唯一索引翻译成 `IDENTITY_IDENTIFIER_TAKEN`,不说是谁的。
+- 改写与撤销都**结束该用户全部会话**:换了口令而旧会话还活着,等于没把任何人挡在外面。撤销是置 `revoked_at`,不删行。
+- 记录落 Audit Trail:`auth.identity.bind`(`replaced`、`endedSessions`)与 `auth.identity.revoke`;
+  详情里有入口与绑定 id,**没有账号名**。
+
+**读取**:`GET /iam/users/{userId}/entrances` 返回租户的每个入口对这个人的样子——是否接纳、活绑定、驱动声明的 `binding`
+(函数不出服务端)、以及 `manageable`。页面据此渲染,**不按类型名写分支**:`managed` 出表单(字段与标签来自驱动),
+`self` / `derived` 出一句话,未声明的什么都不出。不新增浏览器 surface 种类,`browserContractHash` 的两支 walk 未动。
+
+核心仍不断言「是否已绑定」:可登录管理员的不变量照旧只看入口受众,撤销最后一条绑定不被拦。

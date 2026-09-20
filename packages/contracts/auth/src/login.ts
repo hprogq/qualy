@@ -1,5 +1,6 @@
 import { Context, Effect, Layer, Scope } from 'effect'
 import type { HttpServerRequest } from 'effect/unstable/http/HttpServerRequest'
+import type { UiText } from '@qualy/i18n-contract'
 import type { ClientComponentRef } from '@qualy/ui-contract'
 
 // The login surface a driver plugin needs, and the registry of drivers itself.
@@ -52,9 +53,61 @@ export type LoginMethod = {
   readonly name: string
 } & LoginPresentation
 
+/**
+ * How an account of a driver's kind comes to belong to a person.
+ *
+ * Three answers, because "add a way in" is not a question every kind of
+ * entrance can be asked:
+ *
+ * - `managed`: whoever administers the person may write the binding for
+ *   them - a local name and password, an address a code is mailed to. The
+ *   driver says what it needs typed and turns that into what is stored, so
+ *   the core never learns what a password is or how one is kept.
+ * - `self`: only the person can make it, by going through the driver's own
+ *   flow (an OAuth consent). An administrator reads it and may withdraw it.
+ * - `derived`: there is nothing to add. The driver finds the person by a
+ *   fact they already have (a CAS account that IS the business number), so
+ *   the entrance works, or does not, without any binding being written.
+ *
+ * A driver that declares none of these offers nothing and is described as
+ * nothing: better absent than a control that cannot work.
+ */
+export type IdentityBinding =
+  | {
+      readonly mode: 'managed'
+      /** what the identifier is called on the form: a sign-in name, an address */
+      readonly identifierLabel: UiText
+      /** what makes one acceptable, said before it is refused */
+      readonly identifierHint?: UiText
+      /** the secret typed beside it, when this kind of account has one */
+      readonly secret?: { readonly label: UiText; readonly minLength: number }
+      /**
+       * What was typed, turned into what is stored.
+       *
+       * Answers `invalid` naming the field rather than failing: a name that
+       * cannot be a name is an answer to the person typing, not an error.
+       * The secret arrives only when `secret` is declared, and leaves only
+       * as a digest - the core stores what it is handed and never the input.
+       */
+      readonly prepare: (input: {
+        identifier: string
+        secret: string | undefined
+      }) => Effect.Effect<
+        | { readonly ok: true; readonly identifier: string; readonly credentialHash: string | null }
+        | { readonly ok: false; readonly invalid: 'identifier' | 'secret' }
+      >
+    }
+  | { readonly mode: 'self' }
+  | {
+      readonly mode: 'derived'
+      /** which fact about the person the entrance goes by, in words for a reader */
+      readonly by: UiText
+    }
+
 export interface LoginDriver {
   readonly type: string
   readonly presentation: LoginPresentationDeclaration
+  readonly binding?: IdentityBinding
 }
 
 /** every login driver this assembly serves, as its drivers registered them */

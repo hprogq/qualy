@@ -86,7 +86,7 @@ export const make = Effect.fn('Auth.make')(function* () {
 const tags: Layer.Layer<
   Placement | UserPlacement | UserProvisioning | Iam,
   never,
-  Orm | Rbac | Audit
+  Orm | Rbac | Audit | LoginDrivers
 > = Layer.effectContext(
   Effect.gen(function* () {
     const { placement, userPlacement, iam } = yield* make()
@@ -479,6 +479,80 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
               ? {}
               : { primaryOrgNodeId: payload.primaryOrgNodeId }),
           },
+          principal,
+        )
+        return { ok: true as const }
+      }),
+    )
+    .handle(
+      'listUserEntrances',
+      Effect.fn('iam.listUserEntrances.handler')(function* ({ params }) {
+        const iam = yield* Iam
+        const principal = yield* CurrentUser
+        yield* requireUserRead(principal)
+        const found = yield* iam.users.entrances(principal, params.userId)
+        return {
+          manageable: found.manageable,
+          entrances: found.entrances.map((entrance) => ({
+            providerId: entrance.providerId,
+            name: entrance.name,
+            type: entrance.type,
+            status: entrance.enabled ? ('active' as const) : ('disabled' as const),
+            // Kysely types a boolean expression as SqlBool, which is a
+            // number on some drivers; the wire says boolean
+            admits: entrance.admits === true,
+            // the declaration without its function: what to ask for, never how
+            binding:
+              entrance.binding === undefined
+                ? null
+                : entrance.binding.mode === 'managed'
+                  ? {
+                      mode: 'managed' as const,
+                      identifierLabel: entrance.binding.identifierLabel,
+                      identifierHint: entrance.binding.identifierHint ?? null,
+                      secret: entrance.binding.secret ?? null,
+                    }
+                  : entrance.binding.mode === 'derived'
+                    ? { mode: 'derived' as const, by: entrance.binding.by }
+                    : { mode: 'self' as const },
+            identity:
+              entrance.identityId === null
+                ? null
+                : {
+                    id: entrance.identityId,
+                    identifier: entrance.identifier ?? '',
+                    boundAt: String(entrance.boundAt),
+                    lastUsedAt: entrance.lastUsedAt === null ? null : String(entrance.lastUsedAt),
+                    hasCredential: entrance.hasCredential === true,
+                  },
+          })),
+        }
+      }),
+    )
+    .handle(
+      'putUserIdentity',
+      Effect.fn('iam.putUserIdentity.handler')(function* ({ params, payload }) {
+        const iam = yield* Iam
+        const principal = yield* CurrentUser
+        const id = yield* iam.users.putIdentity(
+          principal.tenantId,
+          params.userId,
+          params.providerId,
+          { identifier: payload.identifier, secret: payload.secret },
+          principal,
+        )
+        return { id }
+      }),
+    )
+    .handle(
+      'deleteUserIdentity',
+      Effect.fn('iam.deleteUserIdentity.handler')(function* ({ params }) {
+        const iam = yield* Iam
+        const principal = yield* CurrentUser
+        yield* iam.users.revokeIdentity(
+          principal.tenantId,
+          params.userId,
+          params.providerId,
           principal,
         )
         return { ok: true as const }

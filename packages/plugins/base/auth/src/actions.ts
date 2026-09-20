@@ -134,7 +134,34 @@ export const ProviderAudienceUpdated = AuditAction.define({
   details: Schema.Struct({ mode: placementMode, userTypeCount: Schema.Number }),
 })
 
+// A way in, written for a person or withdrawn from them. The entrance is in
+// the details and the account name is not: who could come in as whom is what
+// an investigation asks, and the name they typed at the door is theirs.
+export const IdentityBound = AuditAction.define({
+  code: 'auth.identity.bind',
+  target: 'auth.user',
+  version: 1,
+  name: message('auth/audit/identity-bind', 'Set a sign-in account for a user'),
+  details: Schema.Struct({
+    providerId: id,
+    identityId: id,
+    /** a first binding, or the replacement of the one that stood */
+    replaced: Schema.Boolean,
+    endedSessions: Schema.Number,
+  }),
+})
+
+export const IdentityRevoked = AuditAction.define({
+  code: 'auth.identity.revoke',
+  target: 'auth.user',
+  version: 1,
+  name: message('auth/audit/identity-revoke', 'Withdraw a sign-in account from a user'),
+  details: Schema.Struct({ providerId: id, identityId: id, endedSessions: Schema.Number }),
+})
+
 export const userActions = [
+  IdentityBound,
+  IdentityRevoked,
   UserCreated,
   UserUpdated,
   UserMoved,

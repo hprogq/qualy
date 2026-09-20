@@ -7,7 +7,13 @@ import { Api } from '@qualy/api-kit/plugin'
 import { Plugin } from '@qualy/plugin-kit'
 import { LoginSessions } from '@qualy/auth-contract/login'
 import { authLocalApiGroup, InvalidCredentials } from './api.ts'
-import { normalizeLocalIdentifier, timingEqualizerHash, verifyPassword } from './password.ts'
+import { message } from '@qualy/i18n-contract'
+import {
+  hashPassword,
+  normalizeLocalIdentifier,
+  timingEqualizerHash,
+  verifyPassword,
+} from './password.ts'
 
 // Password authentication: prove the user against a local provider instance,
 // then hand the proof to the core for session creation.
@@ -21,9 +27,42 @@ import { normalizeLocalIdentifier, timingEqualizerHash, verifyPassword } from '.
  * The proof itself is the api handler below; this is only what the login shell
  * has to render to collect it.
  */
+/** shorter than this and the argon2 cost protects very little */
+const PASSWORD_MIN_LENGTH = 8
+/** argon2 hashes any length; a bound keeps one request from hashing a megabyte */
+const PASSWORD_MAX_LENGTH = 128
+
 const driver: LoginDriver = {
   type: 'local',
   presentation: { mode: 'component', component: Ui.react('./client/LoginMethod') },
+  // A local account is a name and a password, and whoever administers the
+  // person may set both. What a password is and how it is kept stays here:
+  // the core is handed a digest and stores it.
+  binding: {
+    mode: 'managed',
+    identifierLabel: message('auth-local/binding/identifier', 'Sign-in name'),
+    identifierHint: message(
+      'auth-local/binding/identifier-hint',
+      '2 to 64 characters: lowercase letters, digits, dot, underscore or hyphen, starting with a letter or digit',
+    ),
+    secret: {
+      label: message('auth-local/binding/password', 'Password'),
+      minLength: PASSWORD_MIN_LENGTH,
+    },
+    prepare: Effect.fn('authLocal.binding.prepare')(function* ({ identifier, secret }) {
+      const name = normalizeLocalIdentifier(identifier)
+      if (name === null) return { ok: false as const, invalid: 'identifier' as const }
+      if (
+        secret === undefined ||
+        secret.length < PASSWORD_MIN_LENGTH ||
+        secret.length > PASSWORD_MAX_LENGTH
+      ) {
+        return { ok: false as const, invalid: 'secret' as const }
+      }
+      const credentialHash = yield* Effect.promise(() => hashPassword(secret))
+      return { ok: true as const, identifier: name, credentialHash }
+    }),
+  },
 }
 
 /**

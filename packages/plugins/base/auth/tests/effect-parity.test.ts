@@ -321,7 +321,8 @@ describe.runIf(postgresAvailable).concurrent('identity behaviours nothing else a
             })
           const first = yield* page()
           const last = first.at(-1)!
-          const next = yield* page([last.displayName, last.id])
+          // the sort key in full: the number (none here), the name, the id
+          const next = yield* page([last.businessNo ?? '', last.displayName, last.id])
           return {
             first: first.map((row) => row.displayName),
             next: next.map((row) => row.displayName),

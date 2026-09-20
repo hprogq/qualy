@@ -9,8 +9,11 @@ import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
 import { scopeCoverage, type AuthorizationScope, type Principal } from '@qualy/rbac-contract'
 import { placementAllowed, placementLegal } from './placement.ts'
 import { Audit } from '@qualy/audit-contract/effect'
+import { LoginDrivers } from '@qualy/auth-contract/login'
 import { actorOf } from './audit-actor.ts'
 import {
+  IdentityBound,
+  IdentityRevoked,
   UserCreated,
   UserDeleted as UserDeletedAction,
   UserDisabled,
@@ -21,6 +24,12 @@ import {
 } from '../actions.ts'
 import {
   GrantIncompatible,
+  IdentityAudienceExcluded,
+  IdentityBindingUnsupported,
+  identityConstraints,
+  IdentityInputInvalid,
+  IdentityNotFound,
+  ProviderNotFound,
   PlacementNotAllowed,
   SystemAccountProtected,
   UserDeleted,
@@ -386,6 +395,81 @@ const identitiesOf = (tenantId: string, userId: string) =>
   )
 
 /**
+ * Every entrance of the tenant as it stands for one person: whether it lets
+ * their kind through, and the live binding when there is one.
+ *
+ * Every entrance rather than only the bound ones, because the question this
+ * answers is "how could they get in", and an entrance with nothing bound is
+ * half of the answer. The credential is never selected.
+ */
+const entrancesOf = (tenantId: string, userId: string, userTypeId: string | null) =>
+  db.query((k) =>
+    k
+      .selectFrom('AuthProvider as p')
+      .leftJoin('UserIdentity as i', (join) =>
+        join
+          .onRef('i.tenantId', '=', 'p.tenantId')
+          .onRef('i.authProviderId', '=', 'p.id')
+          .on('i.userId', '=', userId)
+          .on('i.revokedAt', 'is', null),
+      )
+      .select((eb) => [
+        'p.id as providerId',
+        'p.name',
+        'p.type',
+        'p.enabled',
+        'i.id as identityId',
+        'i.identifier',
+        'i.boundAt',
+        'i.lastUsedAt',
+        eb('i.credentialHash', 'is not', null).as('hasCredential'),
+        eb
+          .or([
+            eb('p.audienceMode', '=', 'unrestricted'),
+            eb.exists(
+              eb
+                .selectFrom('AuthProviderUserType as a')
+                .select('a.id')
+                .whereRef('a.tenantId', '=', 'p.tenantId')
+                .whereRef('a.authProviderId', '=', 'p.id')
+                .where('a.userTypeId', '=', userTypeId ?? NO_TYPE),
+            ),
+          ])
+          .as('admits'),
+      ])
+      .where('p.tenantId', '=', tenantId)
+      .orderBy('p.sortOrder')
+      .orderBy('p.name')
+      .execute(),
+  )
+
+/** a person with no type is admitted by no allow-list; this id names nobody */
+const NO_TYPE = '00000000-0000-0000-0000-000000000000'
+
+/** the entrance a binding is written against; its kind names the driver that knows how */
+const providerGuard = (tenantId: string, providerId: string) =>
+  db.query((k) =>
+    k
+      .selectFrom('AuthProvider')
+      .select(['id', 'type', 'enabled'])
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', providerId)
+      .executeTakeFirst(),
+  )
+
+const liveIdentity = (tenantId: string, userId: string, providerId: string) =>
+  db.query((k) =>
+    k
+      .selectFrom('UserIdentity')
+      .select(['id'])
+      .where('tenantId', '=', tenantId)
+      .where('userId', '=', userId)
+      .where('authProviderId', '=', providerId)
+      .where('revokedAt', 'is', null)
+      .executeTakeFirst(),
+  )
+
+/**
  * The nodes a caller may place people at.
  *
  * These are the nodes actually inside the caller's coverage, not the anchors
@@ -598,6 +682,7 @@ type TypeRow = NonNullable<Effect.Success<ReturnType<typeof userTypeGuard>>>
 export const make = Effect.fn('Iam.users.make')(function* () {
   const rbac = yield* Rbac
   const audit = yield* Audit
+  const drivers = yield* LoginDrivers
   // a plain read opens no transaction, so it has nothing to take a database
   // from; supplying it here keeps the requirement off everybody who calls
   const withDb = yield* withDatabase
@@ -613,6 +698,21 @@ export const make = Effect.fn('Iam.users.make')(function* () {
     ).pipe(
       translateConstraints(userConstraints),
       Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
+    )
+
+  /**
+   * The same locked transaction for a write that touches no row of `users`:
+   * the placement constraint cannot be reached from a binding, so it is not
+   * translated here and does not appear among what these writes may answer.
+   */
+  const writeBinding = <A, E, R>(tenantId: string, body: () => Effect.Effect<A, E, R>) =>
+    withDb(
+      transaction(
+        Effect.gen(function* () {
+          yield* lockTenant(tenantId)
+          return yield* body()
+        }),
+      ),
     )
 
   /** authority over a person is authority over the node they stand at */
@@ -913,6 +1013,160 @@ export const make = Effect.fn('Iam.users.make')(function* () {
         return { user: row, orgPath, roles, identities }
       }),
     ),
+
+    /**
+     * Every entrance as it stands for one person, with the driver's own
+     * answer to whether an account of its kind can be written for them.
+     *
+     * Behind the person's read authority; `manageable` is asked separately,
+     * because reading somebody and administering them are two grants.
+     */
+    entrances: bound(
+      Effect.fn('Iam.users.entrances')(function* (principal: Principal, userId: string) {
+        const held = yield* scopes(principal)
+        const row = yield* oneUser(principal.tenantId, userId, held).pipe(Effect.orDie)
+        if (!row) return yield* new UserNotFound()
+        const found = yield* entrancesOf(principal.tenantId, userId, row.userTypeId).pipe(
+          Effect.orDie,
+        )
+        const entrances = yield* Effect.forEach(found, (entrance) =>
+          Effect.map(drivers.forType(entrance.type), (registered) => ({
+            ...entrance,
+            binding: registered?.driver.binding,
+          })),
+        )
+        return { entrances, manageable: row.manageable === true && row.deletedAt === null }
+      }),
+    ),
+
+    /**
+     * Writes the binding of one person to one entrance, whole.
+     *
+     * The driver turns what was typed into what is stored before the
+     * transaction opens - a digest costs most of a second, and holding the
+     * tenant's row lock across it would queue every other write behind one
+     * password. Everything that decides whether the write may happen is
+     * asked again inside the lock. Replacing a binding ends the sessions it
+     * opened: a changed password that leaves the old session alive has not
+     * locked anybody out.
+     */
+    putIdentity: Effect.fn('Iam.users.putIdentity')(function* (
+      tenantId: string,
+      userId: string,
+      providerId: string,
+      input: { identifier: string; secret: string | undefined },
+      as: Principal,
+    ) {
+      const provider = yield* withDb(providerGuard(tenantId, providerId)).pipe(Effect.orDie)
+      if (!provider) return yield* new ProviderNotFound()
+      const binding = (yield* drivers.forType(provider.type))?.driver.binding
+      if (binding?.mode !== 'managed') return yield* new IdentityBindingUnsupported()
+      // authority first, so somebody without it learns nothing about what a
+      // valid name looks like and costs the server no digest
+      const before = yield* withDb(requireLiveUser(tenantId, userId)).pipe(
+        Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
+      )
+      if (before.isSystem) return yield* new SystemAccountProtected()
+      yield* manages(as, before.primaryOrgNodeId!)
+      const prepared = yield* binding.prepare({
+        identifier: input.identifier,
+        secret: binding.secret === undefined ? undefined : input.secret,
+      })
+      if (!prepared.ok) return yield* new IdentityInputInvalid({ field: prepared.invalid })
+
+      return yield* writeBinding(tenantId, () =>
+        Effect.gen(function* () {
+          const user = yield* requireLiveUser(tenantId, userId)
+          if (user.isSystem) return yield* new SystemAccountProtected()
+          yield* manages(as, user.primaryOrgNodeId!)
+          const admitted = yield* entrancesOf(tenantId, userId, user.userTypeId)
+          if (admitted.find((entrance) => entrance.providerId === providerId)?.admits !== true) {
+            return yield* new IdentityAudienceExcluded()
+          }
+          const standing = yield* liveIdentity(tenantId, userId, providerId)
+          const identityId =
+            standing === undefined
+              ? (yield* db.query((k) =>
+                  k
+                    .insertInto('UserIdentity')
+                    .values({
+                      tenantId,
+                      userId,
+                      authProviderId: providerId,
+                      identifier: prepared.identifier,
+                      credentialHash: prepared.credentialHash,
+                    })
+                    .returning('id')
+                    .executeTakeFirstOrThrow(),
+                )).id
+              : (yield* db.query((k) =>
+                  k
+                    .updateTable('UserIdentity')
+                    .set({
+                      identifier: prepared.identifier,
+                      credentialHash: prepared.credentialHash,
+                    })
+                    .where('tenantId', '=', tenantId)
+                    .where('id', '=', standing.id)
+                    .returning('id')
+                    .executeTakeFirstOrThrow(),
+                )).id
+          const endedSessions = standing === undefined ? 0 : yield* deleteUserSessions(tenantId, userId)
+          yield* audit.record(IdentityBound, {
+            tenantId,
+            actor: yield* actorOf(tenantId, as),
+            target: { id: user.id, label: user.displayName },
+            organizationId: user.primaryOrgNodeId!,
+            details: { providerId, identityId, replaced: standing !== undefined, endedSessions },
+          })
+          return identityId
+        }),
+      ).pipe(
+        // two people asking for one name race to the live-rows unique index
+        translateConstraints(identityConstraints),
+        Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
+      )
+    }),
+
+    /**
+     * Withdraws one person's binding to one entrance.
+     *
+     * Withdrawn, never erased - who could come in as whom, and until when,
+     * is history - and the sessions end with it for the reason a replaced
+     * password ends them.
+     */
+    revokeIdentity: Effect.fn('Iam.users.revokeIdentity')(function* (
+      tenantId: string,
+      userId: string,
+      providerId: string,
+      as: Principal,
+    ) {
+      yield* writeBinding(tenantId, () =>
+        Effect.gen(function* () {
+          const user = yield* requireLiveUser(tenantId, userId)
+          if (user.isSystem) return yield* new SystemAccountProtected()
+          yield* manages(as, user.primaryOrgNodeId!)
+          const standing = yield* liveIdentity(tenantId, userId, providerId)
+          if (standing === undefined) return yield* new IdentityNotFound()
+          yield* db.query((k) =>
+            k
+              .updateTable('UserIdentity')
+              .set({ revokedAt: sql<Date>`now()`, revokedBy: as.userId })
+              .where('tenantId', '=', tenantId)
+              .where('id', '=', standing.id)
+              .execute(),
+          )
+          const endedSessions = yield* deleteUserSessions(tenantId, userId)
+          yield* audit.record(IdentityRevoked, {
+            tenantId,
+            actor: yield* actorOf(tenantId, as),
+            target: { id: user.id, label: user.displayName },
+            organizationId: user.primaryOrgNodeId!,
+            details: { providerId, identityId: standing.id, endedSessions },
+          })
+        }),
+      ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
+    }),
 
     /**
      * Where the caller may administer users, and which types they may hand out.

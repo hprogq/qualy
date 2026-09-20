@@ -8,6 +8,13 @@ import type * as authLocalErrors from '../api.ts'
 const i18n = definePluginMessages({
   namespace: 'auth-local',
   messages: {
+    bindingIdentifier: { id: 'auth-local/binding/identifier', defaultMessage: 'Sign-in name' },
+    bindingIdentifierHint: {
+      id: 'auth-local/binding/identifier-hint',
+      defaultMessage:
+        '2 to 64 characters: lowercase letters, digits, dot, underscore or hyphen, starting with a letter or digit',
+    },
+    bindingPassword: { id: 'auth-local/binding/password', defaultMessage: 'Password' },
     identifier: { id: 'auth-local/field/identifier', defaultMessage: 'Username' },
     password: { id: 'auth-local/field/password', defaultMessage: 'Password' },
     submit: { id: 'auth-local/action/submit', defaultMessage: 'Sign in' },

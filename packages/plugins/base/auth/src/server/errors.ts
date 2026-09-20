@@ -188,3 +188,52 @@ export const userConstraints: Record<string, () => UserPlacementNotFound> = {
 export const businessNoConstraints: Record<string, () => UserConflict> = {
   uq_users_tenant_business_no: () => new UserConflict(),
 }
+
+/**
+ * This kind of entrance takes no binding written on a person's behalf.
+ *
+ * Either the person makes it themselves, or the entrance goes by a fact they
+ * already have and keeps no binding at all. The screen offers the control
+ * only where the server said it may, so this is what a stale screen hears.
+ */
+export class IdentityBindingUnsupported extends Schema.TaggedError<IdentityBindingUnsupported>()(
+  'IDENTITY_BINDING_UNSUPPORTED',
+  {},
+  { httpApiStatus: 409, identifier: 'IdentityBindingUnsupported' },
+) {}
+
+/** the entrance does not admit this person's user type, so a binding could never be used */
+export class IdentityAudienceExcluded extends Schema.TaggedError<IdentityAudienceExcluded>()(
+  'IDENTITY_AUDIENCE_EXCLUDED',
+  {},
+  { httpApiStatus: 409, identifier: 'IdentityAudienceExcluded' },
+) {}
+
+/** what was typed cannot be an account of this kind; `field` says which box */
+export class IdentityInputInvalid extends Schema.TaggedError<IdentityInputInvalid>()(
+  'IDENTITY_INPUT_INVALID',
+  { field: Schema.Literals(['identifier', 'secret']) },
+  { httpApiStatus: 422, identifier: 'IdentityInputInvalid' },
+) {}
+
+/**
+ * Somebody else already signs in through this entrance under that name.
+ *
+ * Reached through the live-rows unique index; whose it is stays unsaid.
+ */
+export class IdentityIdentifierTaken extends Schema.TaggedError<IdentityIdentifierTaken>()(
+  'IDENTITY_IDENTIFIER_TAKEN',
+  {},
+  { httpApiStatus: 409, identifier: 'IdentityIdentifierTaken' },
+) {}
+
+/** there is no live binding of this person to that entrance to withdraw */
+export class IdentityNotFound extends Schema.TaggedError<IdentityNotFound>()(
+  'IDENTITY_NOT_FOUND',
+  {},
+  { httpApiStatus: 404, identifier: 'IdentityNotFound' },
+) {}
+
+export const identityConstraints: Record<string, () => IdentityIdentifierTaken> = {
+  uq_user_identities_login: () => new IdentityIdentifierTaken(),
+}

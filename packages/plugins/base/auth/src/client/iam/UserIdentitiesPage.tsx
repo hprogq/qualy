@@ -1,182 +1,347 @@
-import { useQuery } from '@tanstack/react-query'
-import { KeyRoundIcon } from 'lucide-react'
-import { PageLink, useApiQuery, usePageRouteParams } from '@qualy/web-runtime'
+import { useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import * as stylex from '@stylexjs/stylex'
+import type { ApiResult } from '@qualy/web-runtime/api'
+import {
+  PageLink,
+  useApi,
+  useApiQuery,
+  usePageHref,
+  usePageRouteParams,
+  useRunApi,
+} from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { AsyncSection } from '@qualy/ui/admin'
-import { Blank, EditorSkeleton, SectionHead } from '@qualy/ui/screen'
-import { Badge } from '@qualy/ui/badge'
-import { Stagger } from '@qualy/ui/reveal'
+import { AsyncSection, ConfirmDialog, Feedback, Field, FormDialog } from '@qualy/ui/admin'
+import {
+  Card,
+  CardEmpty,
+  CardHint,
+  Cell,
+  EditorSkeleton,
+  LeadWord,
+  SectionHead,
+  Status,
+  Table,
+  TableHead,
+  TableRow,
+  Tag,
+} from '@qualy/ui/screen'
+import { Button } from '@qualy/ui/button'
+import { Input } from '@qualy/ui/input'
+import { toast } from '@qualy/ui/toast'
 import { iamMessages as m } from '../i18n.ts'
 import { authApi } from '../api.ts'
 
-// The ways in that are bound to the person: through which doors they can
-// sign in, and when they last did. The doors themselves are administered on
-// their own screen; this says which of them this person holds.
+// How one person gets in, as somebody administering them reads it.
+//
+// Every entrance of the tenant is a row, bound or not, because the question
+// is "how could they sign in" and an entrance with nothing bound is half of
+// the answer. What can be done about a row is the entrance's own say, carried
+// from the server: a kind of account an administrator may write gets a form
+// made of the fields its driver asked for; one only the person can make, or
+// one that goes by a fact they already have, gets a sentence instead of a
+// control. This screen knows none of the kinds by name.
+
+type Entrance = ApiResult<
+  typeof authApi,
+  'identity',
+  'listUserEntrances'
+>['entrances'][number]
 
 const styles = stylex.create({
-  page: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 12,
-  },
+  page: { display: 'flex', flexDirection: 'column', gap: 12 },
   manageLink: {
     fontSize: '0.75rem',
     lineHeight: '1rem',
-    fontWeight: 500,
-    textDecoration: {
-      default: 'none',
-      ':hover': 'underline',
-    },
+    color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
+    textDecoration: 'none',
   },
-  compactBlank: {
-    minHeight: '14rem',
-  },
-  entranceList: {
-    minWidth: 0,
-    overflow: 'hidden',
-    borderRadius: 14,
-    backgroundColor: tokens.surface,
-    boxShadow: `0 0 0 1px ${tokens.border}, 0 1px 2px rgb(0 0 0 / 0.04)`,
-  },
-  entranceRow: {
-    display: 'grid',
-    minWidth: 0,
-    gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) auto',
-    alignItems: 'center',
-    gap: 16,
-    paddingInline: 16,
-    paddingBlock: 12,
-  },
-  // the hairline between rows is index state: the stagger wraps each row,
-  // so there is no usable first-child to key a divider on
-  entranceRowDivided: {
-    borderTopWidth: 1,
-    borderTopStyle: 'solid',
-    borderTopColor: tokens.border,
-  },
-  entranceWho: {
-    display: 'flex',
-    minWidth: 0,
-    alignItems: 'center',
-    gap: 8,
-  },
-  entranceName: {
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    fontSize: '0.875rem',
-    lineHeight: '1.25rem',
-    fontWeight: 500,
-  },
-  entranceId: {
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    fontFamily:
-      'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-    fontSize: '0.75rem',
-    color: tokens.mutedForeground,
-  },
-  entranceWhen: {
-    flexShrink: 0,
-    fontSize: '0.75rem',
-    lineHeight: '1rem',
-    color: tokens.mutedForeground,
-  },
-  pinned: {
-    flexShrink: 0,
-  },
-  alert: {
-    color: tokens.danger,
-  },
+  end: { display: 'flex', justifyContent: 'flex-end', gap: 4 },
+  form: { display: 'flex', flexDirection: 'column', gap: 14 },
+  code: { fontFamily: "'SFMono-Regular', ui-monospace, Menlo, Consolas, monospace", fontSize: 12 },
 })
 
 export default function UserIdentitiesPage() {
   const { userId } = usePageRouteParams('userId')
+  const api = useApi(authApi)
+  const run = useRunApi()
   const query = useApiQuery(authApi)
-  const { format, formatError, locale } = useI18n()
-  const user = useQuery(query.identity.getUser.queryOptions({ params: { userId } }))
-  const identities = user.data?.identities ?? []
-  const lastUsed = (iso: string) =>
+  const queryClient = useQueryClient()
+  const { format, formatText, formatError, locale } = useI18n()
+  const entrancesHref = usePageHref('auth/login-methods')
+  const [editing, setEditing] = useState<Entrance | null>(null)
+  const [revoking, setRevoking] = useState<Entrance | null>(null)
+
+  const found = useQuery(query.identity.listUserEntrances.queryOptions({ params: { userId } }))
+  const entrances = found.data?.entrances ?? []
+  const manageable = found.data?.manageable ?? false
+  const bound = entrances.filter((entrance) => entrance.identity !== null).length
+  const when = (iso: string) =>
     new Date(iso).toLocaleDateString(locale, { month: 'short', day: 'numeric' })
+
+  const revoke = useMutation({
+    mutationFn: (entrance: Entrance) =>
+      run(api.identity.deleteUserIdentity({ params: { userId, providerId: entrance.providerId } })),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: query.identity.key() })
+    },
+    onError: (error: unknown) => toast.error(formatError(error)),
+  })
+
+  /** what stands in the account column when nothing is bound */
+  const unbound = (entrance: Entrance) => {
+    if (!entrance.admits) return <Cell tone="quiet">{format(m.entranceNotAdmitted)}</Cell>
+    if (entrance.binding?.mode === 'derived') {
+      return (
+        <Cell tone="quiet">
+          {format(m.entranceDerived, { by: formatText(entrance.binding.by) })}
+        </Cell>
+      )
+    }
+    if (entrance.binding?.mode === 'self') {
+      return <Cell tone="quiet">{format(m.entranceSelf)}</Cell>
+    }
+    if (entrance.binding?.mode === 'managed') {
+      return (
+        <Cell tone="warn">
+          <Status tone="warn">{format(m.entranceUnbound)}</Status>
+        </Cell>
+      )
+    }
+    return <Cell tone="quiet">{format(m.entranceUnbound)}</Cell>
+  }
 
   return (
     <div {...stylex.props(styles.page)}>
+      <SectionHead
+        title={format(m.identitiesSection)}
+        count={found.data === undefined ? undefined : format(m.boundCount, { count: bound })}
+        actions={
+          entrancesHref !== undefined && (
+            <PageLink
+              page="auth/login-methods"
+              className={stylex.props(styles.manageLink).className}
+            >
+              {format(m.manageWaysIn)}
+            </PageLink>
+          )
+        }
+      />
       <AsyncSection
-        pending={user.isPending}
-        error={user.isError ? formatError(user.error) : null}
+        pending={found.isPending}
+        error={found.isError ? formatError(found.error) : null}
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
-        onRetry={() => void user.refetch()}
+        onRetry={() => void found.refetch()}
         skeleton={<EditorSkeleton />}
       >
-        {user.data && (
-          <>
-            <SectionHead
-              title={format(m.boundHeading)}
-              count={format(m.boundCount, { count: identities.length })}
-              actions={
-                <PageLink
-                  page="auth/login-methods"
-                  className={stylex.props(styles.manageLink).className}
-                  unavailable={null}
-                >
-                  {format(m.manageWaysIn)}
-                </PageLink>
-              }
-            />
-            {identities.length === 0 ? (
-              <Blank
-                icon={<KeyRoundIcon />}
-                title={format(m.boundEmptyTitle)}
-                description={format(m.boundEmptyBody)}
-                xstyle={styles.compactBlank}
-              />
-            ) : (
-              <Stagger className={stylex.props(styles.entranceList).className}>
-                {identities.map((identity, at) => (
-                  <div
-                    key={identity.id}
-                    data-entrance-status={identity.providerStatus}
-                    {...stylex.props(styles.entranceRow, at > 0 && styles.entranceRowDivided)}
+        <Card data-testid="entrances" data-bound={bound}>
+          {entrances.length === 0 ? (
+            <CardEmpty>{format(m.loginMethodsEmpty)}</CardEmpty>
+          ) : (
+            <Table columns="minmax(0, 1fr) minmax(0, 1.2fr) 7rem 9rem">
+              <TableHead>
+                <span>{format(m.loginMethodsTitle)}</span>
+                <span>{format(m.columnAccount)}</span>
+                <span>{format(m.columnLastUsed)}</span>
+                <span />
+              </TableHead>
+              {entrances.map((entrance) => {
+                const identity = entrance.identity
+                const writable = manageable && entrance.binding?.mode === 'managed'
+                return (
+                  <TableRow
+                    key={entrance.providerId}
+                    data-testid="entrance-row"
+                    data-entrance-type={entrance.type}
+                    data-entrance-status={entrance.status}
+                    data-binding={entrance.binding?.mode ?? 'none'}
+                    data-bound={identity !== null}
+                    data-admits={entrance.admits}
                   >
-                    <span {...stylex.props(styles.entranceWho)}>
-                      <span {...stylex.props(styles.entranceName)}>{identity.providerName}</span>
-                      <Badge variant="secondary" className={stylex.props(styles.pinned).className}>
-                        {format(identity.hasCredential ? m.localAccount : m.federatedAccount)}
-                      </Badge>
-                      {identity.providerStatus === 'disabled' && (
-                        <Badge
-                          variant="destructive"
-                          className={stylex.props(styles.pinned).className}
+                    <Cell lead>
+                      <LeadWord>{entrance.name}</LeadWord>
+                      <Tag outline>{entrance.type}</Tag>
+                      {entrance.status === 'disabled' && (
+                        <Status tone="bad">{format(m.entranceDisabled)}</Status>
+                      )}
+                    </Cell>
+                    {identity === null ? (
+                      unbound(entrance)
+                    ) : (
+                      <Cell tone="plain" title={identity.identifier}>
+                        <span {...stylex.props(styles.code)}>{identity.identifier}</span>
+                      </Cell>
+                    )}
+                    {identity === null ? (
+                      <Cell />
+                    ) : identity.lastUsedAt === null ? (
+                      <Cell tone="warn">{format(m.neverUsed)}</Cell>
+                    ) : (
+                      <Cell numeric>{when(identity.lastUsedAt)}</Cell>
+                    )}
+                    <span {...stylex.props(styles.end)}>
+                      {writable && entrance.admits && (
+                        <Button size="xs" variant="ghost" onClick={() => setEditing(entrance)}>
+                          {format(identity === null ? m.identityAdd : m.identityReset)}
+                        </Button>
+                      )}
+                      {manageable && identity !== null && (
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          disabled={revoke.isPending && revoke.variables === entrance}
+                          onClick={() => setRevoking(entrance)}
                         >
-                          {format(m.entranceDisabled)}
-                        </Badge>
+                          {format(m.identityRevoke)}
+                        </Button>
                       )}
                     </span>
-                    <span {...stylex.props(styles.entranceId)}>{identity.identifier}</span>
-                    <span
-                      {...stylex.props(
-                        styles.entranceWhen,
-                        identity.lastUsedAt === null && styles.alert,
-                      )}
-                    >
-                      {identity.lastUsedAt === null
-                        ? format(m.neverUsed)
-                        : format(m.lastUsed, { when: lastUsed(identity.lastUsedAt) })}
-                    </span>
-                  </div>
-                ))}
-              </Stagger>
-            )}
-          </>
-        )}
+                  </TableRow>
+                )
+              })}
+            </Table>
+          )}
+          {entrances.length > 0 && bound === 0 && (
+            <CardHint top>{format(m.boundEmptyBody)}</CardHint>
+          )}
+        </Card>
       </AsyncSection>
+
+      {editing !== null && (
+        <IdentityDialog
+          key={editing.providerId}
+          userId={userId}
+          entrance={editing}
+          onClose={() => setEditing(null)}
+        />
+      )}
+
+      <ConfirmDialog
+        open={revoking !== null}
+        tone="destructive"
+        title={format(m.identityRevokeTitle)}
+        description={format(m.identityRevokeBody)}
+        confirmLabel={format(m.identityRevoke)}
+        cancelLabel={format(m.cancel)}
+        pending={revoke.isPending}
+        onCancel={() => setRevoking(null)}
+        onConfirm={() => {
+          const entrance = revoking
+          setRevoking(null)
+          if (entrance !== null) revoke.mutate(entrance)
+        }}
+      />
     </div>
+  )
+}
+
+/** the fields one kind of entrance asked for, and nothing this screen decided */
+function IdentityDialog({
+  userId,
+  entrance,
+  onClose,
+}: {
+  userId: string
+  entrance: Entrance
+  onClose: () => void
+}) {
+  const api = useApi(authApi)
+  const run = useRunApi()
+  const query = useApiQuery(authApi)
+  const queryClient = useQueryClient()
+  const { format, formatText, formatError } = useI18n()
+  const binding = entrance.binding?.mode === 'managed' ? entrance.binding : null
+  const [identifier, setIdentifier] = useState(entrance.identity?.identifier ?? '')
+  const [secret, setSecret] = useState('')
+  const [feedback, setFeedback] = useState<string | null>(null)
+
+  const save = useMutation({
+    mutationFn: () =>
+      run(
+        api.identity.putUserIdentity({
+          params: { userId, providerId: entrance.providerId },
+          payload: {
+            identifier: identifier.trim(),
+            ...(binding?.secret == null ? {} : { secret }),
+          },
+        }),
+      ),
+    onMutate: () => setFeedback(null),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: query.identity.key() })
+      toast.success(format(m.saved))
+      onClose()
+    },
+    onError: (error: unknown) => setFeedback(formatError(error)),
+  })
+
+  if (binding === null) return null
+  const replacing = entrance.identity !== null
+  const ready =
+    identifier.trim() !== '' && (binding.secret === null || secret.length >= binding.secret.minLength)
+
+  return (
+    <FormDialog
+      open
+      title={format(replacing ? m.identityResetTitle : m.identityAddTitle, { name: entrance.name })}
+      {...(replacing ? { description: format(m.identityResetBody) } : {})}
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose}>
+            {format(m.cancel)}
+          </Button>
+          <Button type="submit" form="user-identity" disabled={!ready || save.isPending}>
+            {format(m.save)}
+          </Button>
+        </>
+      }
+    >
+      <form
+        id="user-identity"
+        {...stylex.props(styles.form)}
+        onSubmit={(event) => {
+          event.preventDefault()
+          if (ready) save.mutate()
+        }}
+      >
+        <Feedback message={feedback} />
+        <Field
+          label={formatText(binding.identifierLabel)}
+          {...(binding.identifierHint === null ? {} : { hint: formatText(binding.identifierHint) })}
+        >
+          {(id) => (
+            <Input
+              id={id}
+              name="identity-identifier"
+              autoComplete="off"
+              value={identifier}
+              onChange={(event) => setIdentifier(event.target.value)}
+            />
+          )}
+        </Field>
+        {binding.secret !== null && (
+          <Field
+            label={formatText(binding.secret.label)}
+            hint={format(m.identitySecretHint, { count: binding.secret.minLength })}
+          >
+            {(id) => (
+              <Input
+                id={id}
+                name="identity-secret"
+                type="password"
+                // never the browser's saved one: this is somebody else's account
+                autoComplete="new-password"
+                value={secret}
+                onChange={(event) => setSecret(event.target.value)}
+              />
+            )}
+          </Field>
+        )}
+      </form>
+    </FormDialog>
   )
 }

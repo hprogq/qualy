@@ -14,6 +14,7 @@ import {
   uuidInput,
 } from '@qualy/api-kit/schema'
 
+import { UiTextSchema } from '@qualy/i18n-contract'
 import { Authenticated, AuthRequired } from '@qualy/auth-contract/session'
 import {
   GrantIncompatible,
@@ -37,6 +38,11 @@ import {
   UserTypePlacementInUse,
   UserTypeVersionConflict,
   UserConflict,
+  IdentityAudienceExcluded,
+  IdentityBindingUnsupported,
+  IdentityIdentifierTaken,
+  IdentityInputInvalid,
+  IdentityNotFound,
 } from './server/errors.ts'
 
 // The identity api this plugin serves, as definitions only.
@@ -156,6 +162,45 @@ const userDetail = Schema.Struct({
       providerType: Schema.String,
       providerStatus: resourceStatus,
       /** carries a secret of its own, which is what a local account is */
+      hasCredential: Schema.Boolean,
+    }),
+  ),
+})
+
+/**
+ * One entrance, as it stands for one person.
+ *
+ * `binding` is the driver's own answer to "can an account of this kind be
+ * added for somebody", carried so the screen offers a control only where one
+ * can work: a form for `managed`, a sentence for `self` and `derived`, and
+ * nothing at all for a driver that declared nothing.
+ */
+const userEntrance = Schema.Struct({
+  providerId: Schema.String,
+  name: Schema.String,
+  type: Schema.String,
+  status: resourceStatus,
+  /** whether this person's user type may come through it at all */
+  admits: Schema.Boolean,
+  binding: Schema.NullOr(
+    Schema.Union([
+      Schema.Struct({
+        mode: Schema.Literal('managed'),
+        identifierLabel: UiTextSchema,
+        identifierHint: Schema.NullOr(UiTextSchema),
+        secret: Schema.NullOr(Schema.Struct({ label: UiTextSchema, minLength: Schema.Number })),
+      }),
+      Schema.Struct({ mode: Schema.Literal('self') }),
+      Schema.Struct({ mode: Schema.Literal('derived'), by: UiTextSchema }),
+    ]),
+  ),
+  /** the live binding, when there is one; never the credential */
+  identity: Schema.NullOr(
+    Schema.Struct({
+      id: Schema.String,
+      identifier: Schema.String,
+      boundAt: Schema.String,
+      lastUsedAt: Schema.NullOr(Schema.String),
       hasCredential: Schema.Boolean,
     }),
   ),
@@ -508,6 +553,52 @@ export const identityApiGroup = HttpApiGroup.make('identity')
         LastAdministrator,
         AccessDenied,
       ],
+    }).middleware(Authenticated),
+  )
+  // Every entrance in the tenant as it stands for one person: whether it
+  // admits them, what is bound, and whether anything can be. A page of its
+  // own question rather than more of getUser, which every banner reads.
+  .add(
+    HttpApiEndpoint.get('listUserEntrances', '/iam/users/:userId/entrances', {
+      params: Schema.Struct({ userId: uuidInput }),
+      success: Schema.Struct({
+        entrances: Schema.Array(userEntrance),
+        /** read and manage are separate grants; a reader gets no controls */
+        manageable: Schema.Boolean,
+      }),
+      error: [UserNotFound, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  // The binding of one person to one entrance is a resource of its own:
+  // putting it creates or replaces it whole, deleting it withdraws it. What
+  // the secret is stays the driver's business - it arrives as typed and is
+  // handed straight to the driver that declared it wants one.
+  .add(
+    HttpApiEndpoint.put('putUserIdentity', '/iam/users/:userId/identities/:providerId', {
+      params: Schema.Struct({ userId: uuidInput, providerId: uuidInput }),
+      payload: Schema.Struct({
+        identifier: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(255)),
+        secret: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(1024))),
+      }),
+      success: Schema.Struct({ id: Schema.String }),
+      error: [
+        UserNotFound,
+        UserDeleted,
+        ProviderNotFound,
+        SystemAccountProtected,
+        IdentityBindingUnsupported,
+        IdentityAudienceExcluded,
+        IdentityInputInvalid,
+        IdentityIdentifierTaken,
+        AccessDenied,
+      ],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.delete('deleteUserIdentity', '/iam/users/:userId/identities/:providerId', {
+      params: Schema.Struct({ userId: uuidInput, providerId: uuidInput }),
+      success: Schema.Struct({ ok: Schema.Literal(true) }),
+      error: [UserNotFound, UserDeleted, SystemAccountProtected, IdentityNotFound, AccessDenied],
     }).middleware(Authenticated),
   )
 

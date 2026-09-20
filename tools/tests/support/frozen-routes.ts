@@ -64,6 +64,9 @@ export const FROZEN_ROUTES = [
   'PATCH /iam/users/{userId}',
   'PUT /iam/users/{userId}/placement',
   'PUT /iam/users/{userId}/status',
+  'GET /iam/users/{userId}/entrances',
+  'PUT /iam/users/{userId}/identities/{providerId}',
+  'DELETE /iam/users/{userId}/identities/{providerId}',
   'GET /iam/users/{userId}/effective-permissions',
   'GET /iam/users/{userId}/role-grants',
 

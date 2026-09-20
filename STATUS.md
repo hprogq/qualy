@@ -19006,3 +19006,68 @@ docs/assessment-design.md §32.83。
 - 旧原语 `Rail / RailRow / EditorHead / DefRow / Barred / SaveBar / PickList` 已无生产调用方(`ModeChoice / PickGrid` 仅
   `NewUserTypeForm` 在用),可在确认后删除。
 - `seed.test.ts` 的权限数。
+
+## 组织与权限第二轮:侧栏、用户详情版式、导入改模态、登录方式绑定能力(2026-09-21)
+
+用户对上一轮逐条提的意见,全部落地;其中「给用户新增本地账号密码」按用户要求做成驱动向 auth 注册的能力,而不是写死本地密码。
+
+### 应用壳与用户详情壳(`@qualy/plugin-layout-default`)
+
+- **分区改为左侧栏**(设计稿 220px):宽窗口(≥1024)下当前应用的分区竖排在左,窄窗口仍是顶栏下的一行,二者只出其一;
+  侧栏出现时顶栏带底线,让侧栏的竖线有处可接。**支持分类**:`navigationGroups` 本就有 `parent`,此前被顶栏压平;
+  现在应用自己的分组在前、嵌套分组各成一个小标题(只有一组时不出标题)。audit 由此自立「审计」分组
+  (`audit/records`,`parent: 'org/organization'`),各分区补了图标(图标集新增 `book-a`、`sigma`)。
+- **用户详情**:横幅不动;横幅之下改为与横幅同一限宽(72rem)居中的「200px 分区导航 + 内容」,分区按来源分组
+  (无分组的归「账户」)。六个分区页不再各自套 `PageContainer`,宽度与留白归壳。窄窗口仍用原来的胶囊 + 抽屉。
+
+### 各页
+
+- 组织树:名字优先——缩进 16→12,类型列先让位直至消失,名字最后才截断,整行 `title` 给全名;用户页的树卡 276→300。
+- 租户管理员角色的「可担任的用户类型」显示「不受限制」(豁免 ≠ 未指定),任职条件页签对它给出说明而非空名单。
+  页签「可担任的人」改名「任职条件」。「在册」改「现有」。
+- 组织结构 / 组织类型:两个视图同宽(broad),切换器移到标题旁,不再因页宽与「新建类型」按钮左右跳。
+- 层级规则图:按原始尺寸绘制并可滚动,加缩小 / 放大 / 适应宽度按钮与触控板捏合(ctrl+wheel,非 passive 监听);删掉「按最长路径分层」那句。
+- 用户列表:第一列学工号、第二列姓名;**服务端排序**改为 `coalesce(business_no,'')`、姓名、id(无学工号的在最前),
+  keyset 游标随之变为三段 `['text','text','uuid']`;所在组织超过三级时折成「首级 / … / 末两级」,全路径在 `title`;删除账号列。
+- 术语库:与资源库另外两页同一版式(页首 + 每个分类一张白底 sheet、每条术语一行,左名右框),入场用 `Reveal`。
+- 动画:`Screen` 的正文统一一次 `Reveal`(页首不动,避免同应用内切换时标题闪);用户详情各分区按路径 `Reveal`。
+- 用户详情「角色授权」:两张表格卡(角色 / 范围 / 有效期|来源),授予表单收进对话框;`SectionHead` 标题 14→15px。
+- 导入用户:不再有独立页面。`directory-import/users` 与 `directory-import/record` 两个页面及其导出已删除;
+  用户页上「导入用户」开宽对话框(向导,每次打开是新的一轮),「导入记录」开侧边 Sheet,点一条记录再叠一层宽 Sheet
+  (`DetailSheet` 新增 `wide` 760)。
+
+### 登录方式绑定(设计全文:docs/notes/auth-security.md「账号绑定」一节)
+
+- 契约:`LoginDriver.binding` = `managed`(带字段声明与 `prepare`)| `self` | `derived`(带 `by`),缺省不提供。
+- auth:`GET /iam/users/{userId}/entrances`、`PUT|DELETE /iam/users/{userId}/identities/{providerId}`;
+  五个新错误码;审计动作 `auth.identity.bind` / `auth.identity.revoke`;改写与撤销结束该用户全部会话。
+- auth-local:声明 `managed`,登录名规范化 + 口令 8 至 128 位 + argon2 摘要都在驱动内。
+- 页面:用户详情「登录方式」列出租户每个入口;表单字段与标签来自驱动声明,页面不按类型名分支。
+- 实读依据(Effect):沿用本仓库已裁决的写法——`docs/agent-patterns/effect/services-layers.md`(静态事实不做成 service,
+  故 binding 进 `LoginDriver` 声明而非新 service)、`packages/plugins/base/auth/src/server/users.ts` 既有的
+  `write` / `manages` / `translateConstraints` / `Effect.fn` 形态;未引入新的 `effect/unstable` API。
+
+### 验收(实际执行)
+
+- `pnpm typecheck`:`exit 0`。
+- node:`pnpm exec vitest run packages/plugins/base/auth packages/plugins/base/auth-local packages/contracts/auth tools/tests`
+  → `Test Files 1 failed | 63 passed (64)`,`Tests 1 failed | 396 passed (397)`;唯一一条是 `seed.test.ts` 的权限数。
+  原因已查实:`settings.terminology.manage` 于 2026-09-20(91a7ecf6f)加入,而该用例上次改动在 09-01,31 + 1 = 32;
+  改数后单跑 `Tests 6 passed (6)`。新增用例:用户列表按学工号排序且翻页不重不漏;绑定、原地重置并踢会话、
+  五种拒绝(越权 / 账号不合法 / 口令不合法 / 账号被占 / 受众不接纳 / 入口不存在)且都不落库、撤销保留历史行。
+  `effect-parity` 的翻页用例随游标改为三段键。
+- 门禁:`effect-api-parity` 先红(三条新路由未登记),登记进 `tools/tests/support/frozen-routes.ts` 后与
+  `error-codes` 一起 `Tests 11 passed (11)`;`catalogs` 通过。
+- 浏览器全量 `pnpm test:browser`:`Test Files 65 passed (65)`,`Tests 483 passed (483)`。其间一次全量里
+  `batch-admin` 有一条点击超时(剩余 308ms,负载所致),该文件单跑 `Tests 37 passed (37)`,下一次全量全绿。
+  新增 / 改动:`shell.browser`(侧栏与窄窗口互斥)、`user-entrances.browser`(四条)、`user-role-grants`(先开对话框)、
+  `import-record`(改测 Sheet)、`identity`(页签改名)。
+- `pnpm qualy resolve --frozen-lockfile`:`qualy.lock.json is up to date`。
+- 截图核对(用户类型页、登录方式 Sheet、应用壳侧栏)人工看过后删除。
+
+### 未做与下一步
+
+- 移动端 2a 至 2m 的专门版式仍未做。
+- 分区导航条目右侧的记录数(设计稿有):`userDetailNavigation` 没有徽标槽,需要时照 `workspaceNavigationBadge` 加。
+- `self` / `derived` 目前没有真实驱动使用,只有契约、服务端分支与页面分支,及用替身入口写的浏览器用例。
+- 旧原语 `Rail / RailRow / EditorHead / DefRow / Barred / SaveBar / PickList` 无生产调用方,待确认后删除。

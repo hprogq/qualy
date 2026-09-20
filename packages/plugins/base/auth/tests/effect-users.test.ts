@@ -21,7 +21,7 @@ import { serviceLayer as auditLayer } from '@qualy/plugin-audit/server'
 import { AuditActionCatalog } from '@qualy/audit-contract/effect'
 import { compileActionCatalog } from '@qualy/audit-contract/plugin'
 import { userActions } from '@qualy/plugin-auth/actions'
-import { loginDriversLayer } from '@qualy/auth-contract/login'
+import { loginDriversLayer, registerLoginDriver } from '@qualy/auth-contract/login'
 import { AuthConfig } from '../src/server/sign-in.ts'
 import { Iam } from '../src/server/index.ts'
 import { serviceLayer as authLayer } from '../src/server/index.ts'
@@ -39,6 +39,31 @@ const catalog = compileCatalog([
   { owner: 'auth', permissions: authPermissions },
   { owner: 'rbac', permissions: rbacPermissions },
 ])
+
+// A driver that takes a name and a secret, standing in for the local one:
+// the core's half of a binding is what these cases are about, and the real
+// driver's half is an argon2 digest that would cost most of a second each.
+const fakeLocalDriver = registerLoginDriver({
+  type: 'local',
+  presentation: { mode: 'redirect', href: () => '/nowhere' },
+  binding: {
+    mode: 'managed',
+    identifierLabel: { kind: 'literal', value: 'Name' },
+    secret: { label: { kind: 'literal', value: 'Password' }, minLength: 8 },
+    prepare: ({ identifier, secret }) =>
+      Effect.succeed(
+        /\s/.test(identifier)
+          ? { ok: false as const, invalid: 'identifier' as const }
+          : secret === undefined || secret.length < 8
+            ? { ok: false as const, invalid: 'secret' as const }
+            : {
+                ok: true as const,
+                identifier: identifier.toLowerCase(),
+                credentialHash: `digest:${secret}`,
+              },
+      ),
+  },
+})
 
 const stack = (url: string) =>
   booted(
@@ -58,7 +83,7 @@ const stack = (url: string) =>
       Layer.provideMerge(
         Layer.mergeAll(
           databaseFor(url, { entities: authClosure }),
-          loginDriversLayer,
+          fakeLocalDriver.pipe(Layer.provideMerge(loginDriversLayer)),
           uiLayer,
           Layer.succeed(
             AuthConfig,
@@ -523,6 +548,176 @@ describe.runIf(postgresAvailable).concurrent('what a caller may read about peopl
       expect(answer.options.truncated).toBe(false)
       expect(answer.cut.nodes).toHaveLength(1)
       expect(answer.cut.truncated).toBe(true)
+    } finally {
+      await db.dispose()
+    }
+  })
+})
+
+describe.runIf(postgresAvailable).concurrent('the way in written for a person', () => {
+  const providerOf = (tenant: string) =>
+    Effect.map(
+      runSql(sql`select id from auth_providers where tenant_id = ${tenant} and code = 'local'`),
+      (found) => one_<{ id: string }>(found).id,
+    )
+  const identitiesOf = (userId: string) =>
+    Effect.map(
+      runSql(sql`
+        select id, identifier, credential_hash, revoked_at is not null as revoked
+        from user_identities where user_id = ${userId} order by bound_at, id`),
+      (found) =>
+        (found as unknown as {
+          rows: { id: string; identifier: string; credential_hash: string; revoked: boolean }[]
+        }).rows,
+    )
+
+  it('binds, replaces in place and ends the sessions the old secret opened', async () => {
+    const db = await createTestContext('effect-identity-put')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const iam = yield* Iam
+          const provider = yield* providerOf(f.tenant)
+          const first = yield* iam.users.putIdentity(
+            f.tenant,
+            f.onLeft,
+            provider,
+            { identifier: 'Ada', secret: 'first-secret' },
+            f.as,
+          )
+          yield* runSql(sql`
+            insert into sessions (tenant_id, user_id, token_hash, expires_at)
+            values (${f.tenant}, ${f.onLeft}, 'ada-session', now() + interval '1 day')`)
+          const second = yield* iam.users.putIdentity(
+            f.tenant,
+            f.onLeft,
+            provider,
+            { identifier: 'ada.l', secret: 'second-secret' },
+            f.as,
+          )
+          const sessions = one_<{ count: number }>(
+            yield* runSql(
+              sql`select count(*)::int as count, 'x' as id from sessions where user_id = ${f.onLeft}`,
+            ),
+          ).count
+          const events = (yield* runSql(sql`
+            select action_code from audit_events where target_id = ${f.onLeft} order by occurred_at, id`)) as unknown as {
+            rows: { action_code: string }[]
+          }
+          return {
+            first,
+            second,
+            sessions,
+            rows: yield* identitiesOf(f.onLeft),
+            events: events.rows.map((row) => row.action_code),
+          }
+        }),
+      )
+      const answer = ok(exit)
+      // one binding per person per entrance: the second put is the first one, rewritten
+      expect(answer.second).toBe(answer.first)
+      expect(answer.rows).toHaveLength(1)
+      // what the driver prepared is what is stored: its name, its digest, never the input
+      expect(answer.rows[0]).toMatchObject({ identifier: 'ada.l', credential_hash: 'digest:second-secret' })
+      // a changed secret that left the old session alive would have locked nobody out
+      expect(answer.sessions).toBe(0)
+      expect(answer.events).toEqual(['auth.identity.bind', 'auth.identity.bind'])
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('refuses whoever may not administer the person, a name that cannot be one, a name already taken, and an entrance that does not admit them', async () => {
+    const db = await createTestContext('effect-identity-refusals')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const iam = yield* Iam
+          const provider = yield* providerOf(f.tenant)
+          const put = (userId: string, identifier: string, secret: string | undefined) =>
+            Effect.result(iam.users.putIdentity(f.tenant, userId, provider, { identifier, secret }, f.as))
+          // Grace stands on the right branch, which the manager may read and not change
+          const outside = yield* put(f.onRight, 'grace', 'long-enough')
+          const badName = yield* put(f.onLeft, 'a d a', 'long-enough')
+          const badSecret = yield* put(f.onLeft, 'ada', 'short')
+          const other = yield* iam.users.create(
+            f.tenant,
+            { displayName: 'Bea', userTypeId: f.staff, primaryOrgNodeId: f.left },
+            f.as,
+          )
+          yield* iam.users.putIdentity(f.tenant, other, provider, { identifier: 'shared', secret: 'long-enough' }, f.as)
+          const taken = yield* put(f.onLeft, 'shared', 'long-enough')
+          // the entrance now admits nobody
+          yield* runSql(sql`update auth_providers set audience_mode = 'allow-list' where id = ${provider}`)
+          const excluded = yield* put(f.onLeft, 'ada', 'long-enough')
+          const unknown = yield* Effect.result(
+            iam.users.putIdentity(
+              f.tenant,
+              f.onLeft,
+              '00000000-0000-4000-8000-000000000000',
+              { identifier: 'ada', secret: 'long-enough' },
+              f.as,
+            ),
+          )
+          return {
+            outside: tagOf(outside),
+            badName: badName._tag === 'Failure' ? badName.failure : null,
+            badSecret: badSecret._tag === 'Failure' ? badSecret.failure : null,
+            taken: tagOf(taken),
+            excluded: tagOf(excluded),
+            unknown: tagOf(unknown),
+            rows: yield* identitiesOf(f.onLeft),
+          }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.outside).toBe('ACCESS_DENIED')
+      expect(answer.badName).toMatchObject({ _tag: 'IDENTITY_INPUT_INVALID', field: 'identifier' })
+      expect(answer.badSecret).toMatchObject({ _tag: 'IDENTITY_INPUT_INVALID', field: 'secret' })
+      expect(answer.taken).toBe('IDENTITY_IDENTIFIER_TAKEN')
+      expect(answer.excluded).toBe('IDENTITY_AUDIENCE_EXCLUDED')
+      expect(answer.unknown).toBe('AUTH_PROVIDER_NOT_FOUND')
+      // and none of the refusals wrote anything
+      expect(answer.rows).toEqual([])
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('withdraws a binding without erasing it, and says what each entrance can do for a person', async () => {
+    const db = await createTestContext('effect-identity-revoke')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const iam = yield* Iam
+          const provider = yield* providerOf(f.tenant)
+          yield* iam.users.putIdentity(f.tenant, f.onLeft, provider, { identifier: 'ada', secret: 'long-enough' }, f.as)
+          yield* iam.users.revokeIdentity(f.tenant, f.onLeft, provider, f.as)
+          const again = yield* Effect.result(iam.users.revokeIdentity(f.tenant, f.onLeft, provider, f.as))
+          // the name is free again the moment the binding is withdrawn
+          const rebound = yield* Effect.result(
+            iam.users.putIdentity(f.tenant, f.onLeft, provider, { identifier: 'ada', secret: 'long-enough' }, f.as),
+          )
+          // Grace is readable and not manageable, so her entrances carry no controls
+          const entrances = yield* iam.users.entrances(f.as, f.onRight)
+          return { again: tagOf(again), rebound: rebound._tag, rows: yield* identitiesOf(f.onLeft), entrances }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.again).toBe('IDENTITY_NOT_FOUND')
+      expect(answer.rebound).toBe('Success')
+      expect(answer.rows.map((row) => row.revoked)).toEqual([true, false])
+      expect(answer.entrances.manageable).toBe(false)
+      expect(answer.entrances.entrances).toHaveLength(1)
+      expect(answer.entrances.entrances[0]).toMatchObject({ type: 'local', identityId: null })
+      expect(answer.entrances.entrances[0]!.binding?.mode).toBe('managed')
+      expect(answer.entrances.entrances[0]!.admits === true).toBe(true)
     } finally {
       await db.dispose()
     }
