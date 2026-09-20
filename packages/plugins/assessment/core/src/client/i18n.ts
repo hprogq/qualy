@@ -373,9 +373,10 @@ const reviewTagLinkedMessage = defineMessage<{ name: string }>()({
   id: 'assessment/review/tag-linked',
   defaultMessage: 'Linked: {name}',
 })
-const reviewReasonNamesMessage = defineMessage<{ names: string }>()({
-  id: 'assessment/review/reason-names',
-  defaultMessage: '{names} differ from the filing',
+const reviewAdjustHintMessage = defineMessage<{ names: string }>()({
+  id: 'assessment/review/adjust-hint',
+  defaultMessage:
+    '{names} differ from the filing. Say why; it is kept with the determination for later review and appeals.',
 })
 const reviewFillFirstMessage = defineMessage<{ name: string }>()({
   id: 'assessment/review/fill-first',
@@ -408,7 +409,7 @@ const i18n = definePluginMessages({
     reviewTagLinked: reviewTagLinkedMessage,
     reviewTagLocked: { id: 'assessment/review/tag-locked', defaultMessage: 'Settled by the sitting' },
     reviewFiledWas: { id: 'assessment/review/filed-was', defaultMessage: 'Filed as' },
-    reviewReasonNames: reviewReasonNamesMessage,
+    reviewAdjustHint: reviewAdjustHintMessage,
     reviewFillFirst: reviewFillFirstMessage,
     reviewPreviewStands: {
       id: 'assessment/review/preview-stands',
@@ -2802,7 +2803,7 @@ const i18n = definePluginMessages({
     },
     reviewApproveHint: {
       id: 'assessment/review/approve-hint',
-      defaultMessage: 'Optional; the participant will see it.',
+      defaultMessage: 'A word for the participant. Optional; they see it once this is approved.',
     },
     reviewSlideApprove: {
       id: 'assessment/review/slide-approve',

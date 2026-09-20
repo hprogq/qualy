@@ -57,6 +57,18 @@ const RESTING = {
   escalate: `color-mix(in oklab, ${tokens.primary} 90%, transparent)`,
 } as const
 
+/**
+ * What a reviewer had written in an approval they then closed.
+ *
+ * The dialog is unmounted when it shuts, and on a narrow screen it is shut
+ * often - the filing is behind it. Kept per round for as long as the page
+ * lives, and dropped the moment the approval is confirmed.
+ */
+const approveDrafts = new Map<
+  string,
+  { comment: string; reason: string; drafts: Record<string, FieldDraft> }
+>()
+
 const spin = stylex.keyframes({ to: { transform: 'rotate(360deg)' } })
 
 const styles = stylex.create({
@@ -189,6 +201,7 @@ const styles = stylex.create({
   fieldStack: { display: 'flex', flexDirection: 'column', gap: 14 },
   fieldOne: { display: 'flex', flexDirection: 'column', gap: 6 },
   fieldLocked: { opacity: 0.6 },
+  afterFields: { marginTop: 16 },
   reasonBlock: {
     marginTop: 2,
     paddingTop: 14,
@@ -245,6 +258,8 @@ const styles = stylex.create({
     backgroundColor: tokens.surfaceInset,
     boxShadow: `inset 0 0 0 1px ${tokens.divider}`,
   },
+  // a narrow window gives the whole width to what is being written
+  filingNarrow: { display: { default: 'none', [breakpoints.desktop]: 'flex' } },
   filingHead: { paddingInline: 16, paddingTop: 14 },
   filingList: {
     display: 'flex',
@@ -261,14 +276,8 @@ const styles = stylex.create({
   // the dialog's foot: the score beside the word for the participant, and
   // under them what is still missing and the two keys
   foot: { display: 'flex', minWidth: 0, flexGrow: 1, flexDirection: 'column', gap: 10 },
-  footPair: {
-    display: 'grid',
-    gridTemplateColumns: 'minmax(0, 5fr) minmax(0, 6fr)',
-    columnGap: 24,
-    // the score stands as tall as the opinion beside it, so neither half
-    // leaves a hole over the other
-    alignItems: 'stretch',
-  },
+  // what the values come to, under the form that produces them and always in view
+  pinned: { flexShrink: 0, paddingTop: 12 },
   footNote: {
     minWidth: 0,
     padding: 0,
@@ -687,7 +696,10 @@ export function ApproveDialog({
   const listJoin = useList()
   const words = usePickerWords()
   const fine = useFinePointer()
-  const [comment, setComment] = useState(initial?.comment ?? '')
+  const draftKey = `${review.id}:${review.recognitionForm?.locked?.hash ?? 'open'}`
+  // what the rule sent back outranks what was merely left unfinished
+  const kept = initial === undefined ? approveDrafts.get(draftKey) : undefined
+  const [comment, setComment] = useState(initial?.comment ?? kept?.comment ?? '')
 
   // The determination, where the frozen contract asks for one. The wire
   // hands the fields as opaque ids with their frozen schemas; a sitting
@@ -721,12 +733,19 @@ export function ApproveDialog({
   }, [fields, sources, locale])
   const locked = form?.locked ?? null
   const [drafts, setDrafts] = useState<Record<string, FieldDraft>>(() =>
-    draftsFromFields(
-      fields,
-      (locked?.values ?? initial?.recognition?.values ?? seed) as Record<string, unknown>,
-    ),
+    kept !== undefined && locked === null
+      ? kept.drafts
+      : draftsFromFields(
+          fields,
+          (locked?.values ?? initial?.recognition?.values ?? seed) as Record<string, unknown>,
+        ),
   )
-  const [determinationReason, setDeterminationReason] = useState(initial?.recognition?.reason ?? '')
+  const [determinationReason, setDeterminationReason] = useState(
+    initial?.recognition?.reason ?? kept?.reason ?? '',
+  )
+  useEffect(() => {
+    approveDrafts.set(draftKey, { comment, reason: determinationReason, drafts })
+  }, [draftKey, comment, determinationReason, drafts])
   const materialized = useMemo(() => materializeFields(fields, drafts), [fields, drafts])
   const changed =
     form !== null &&
@@ -773,6 +792,7 @@ export function ApproveDialog({
               values: materialized.value!,
               ...(changed ? { reason: determinationReason.trim() } : {}),
             }
+    approveDrafts.delete(draftKey)
     onConfirm({
       comment: comment.trim(),
       ...(recognition === undefined ? {} : { recognition }),
@@ -879,7 +899,7 @@ export function ApproveDialog({
           <Field
             label={format(m.recognitionReasonLabel)}
             required
-            hint={format(m.reviewReasonNames, { names: listJoin(changedNames) })}
+            hint={format(m.reviewAdjustHint, { names: listJoin(changedNames) })}
           >
             {(id) => (
               <Input
@@ -893,32 +913,22 @@ export function ApproveDialog({
       )}
     </div>
   )
-  // a line beside the score where a determination is being made, a box of
-  // its own where the opinion is all there is to write
-  const compact = fine && form !== null
+  // Two different things are written here and they go to different readers:
+  // the opinion is a word for the participant, the adjustment reason (above,
+  // inside the determination) is kept with the determination for whoever
+  // reads it next. Each says so under its own box.
   const commentField = (
-    <Field
-      label={format(m.reviewComment)}
-      {...(!fine
-        ? {}
-        : compact
-          ? { note: format(m.reviewApproveHint) }
-          : { hint: format(m.reviewApproveHint) })}
-    >
-      {(id) =>
-        compact ? (
-          <Input id={id} value={comment} onChange={(event) => setComment(event.target.value)} />
-        ) : (
-          <Textarea
-            id={id}
-            value={comment}
-            rows={3}
-            // eslint-disable-next-line jsx-a11y/no-autofocus
-            autoFocus={fine && form === null}
-            onChange={(event) => setComment(event.target.value)}
-          />
-        )
-      }
+    <Field label={format(m.reviewComment)} hint={format(m.reviewApproveHint)}>
+      {(id) => (
+        <Textarea
+          id={id}
+          value={comment}
+          rows={3}
+          // eslint-disable-next-line jsx-a11y/no-autofocus
+          autoFocus={fine && form === null}
+          onChange={(event) => setComment(event.target.value)}
+        />
+      )}
     </Field>
   )
 
@@ -935,7 +945,6 @@ export function ApproveDialog({
         onConfirm={confirm}
       >
         {caution}
-        {form !== null && <FiledValues review={review} linked={linked} />}
         {determination}
         {form !== null && <ScorePreview preview={preview} fields={fields} />}
         {commentField}
@@ -955,12 +964,6 @@ export function ApproveDialog({
       onClose={onClose}
       footer={
         <div {...stylex.props(styles.foot)}>
-          {form !== null && (
-            <div {...stylex.props(styles.footPair)}>
-              <ScorePreview preview={preview} fields={fields} />
-              {commentField}
-            </div>
-          )}
           <div {...stylex.props(styles.footerRow)}>
             {form !== null && locked === null && missingIds[0] !== undefined && (
               <button
@@ -1005,7 +1008,7 @@ export function ApproveDialog({
           commentField
         ) : (
           <div {...stylex.props(styles.columns)} data-testid="approve-columns">
-            <FiledValues review={review} linked={linked} />
+            <FiledValues review={review} linked={linked} xstyle={styles.filingNarrow} />
             <section {...stylex.props(styles.half)}>
               <div {...stylex.props(styles.halfHead)}>
                 <p {...stylex.props(styles.halfTitle)}>{format(m.recognitionSection)}</p>
@@ -1032,11 +1035,19 @@ export function ApproveDialog({
               </div>
               {fine ? (
                 <ScrollArea xstyle={styles.halfArea}>
-                  <div {...stylex.props(styles.halfInner)}>{determination}</div>
+                  <div {...stylex.props(styles.halfInner)}>
+                    {determination}
+                    <div {...stylex.props(styles.reasonBlock, styles.afterFields)}>
+                      {commentField}
+                    </div>
+                  </div>
                 </ScrollArea>
               ) : (
                 determination
               )}
+              <div {...stylex.props(styles.pinned)}>
+                <ScorePreview preview={preview} fields={fields} />
+              </div>
             </section>
           </div>
         )}
@@ -1190,7 +1201,9 @@ function ScorePreview({
 function FiledValues({
   review,
   linked,
+  xstyle,
 }: {
+  xstyle?: stylex.StyleXStyles
   review: ReviewDto
   /** payload key of a filed field -> the determinations that take their value from it */
   linked?: ReadonlyMap<string, readonly string[]>
@@ -1202,7 +1215,7 @@ function FiledValues({
   const fields = fieldsOf(review.form.formConfig)
   return (
     <section
-      {...stylex.props(styles.filing)}
+      {...stylex.props(styles.filing, xstyle)}
       data-testid="approve-filing"
       aria-label={format(m.reviewPayloadTitle)}
     >
