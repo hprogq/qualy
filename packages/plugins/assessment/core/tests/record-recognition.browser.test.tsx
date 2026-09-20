@@ -9,10 +9,10 @@ const PeoplePickerView = lazy(() => import('@qualy/plugin-auth/client/iam/People
 
 // The registrar making a determination while they file the fact.
 //
-// The defaults follow the material until a field is touched - after that
-// the value is the registrar's judgment and the form stops second-guessing
-// it - and switching to another question starts a clean sheet, because one
-// contract's drafts must never leak into the next. Whatever the screen
+// A field the determination stands for is asked once, as the determination:
+// the office is not asked for the material and then for its judgment of the
+// same material. Switching to another question starts a clean sheet, because
+// one contract's drafts must never leak into the next. Whatever the screen
 // shows, the submission is explicit: the wire carries the values the
 // registrar confirmed.
 
@@ -266,58 +266,48 @@ const recognitionChoice = (parameter: string) => {
 }
 
 describe('recording with a determination', () => {
-  it('follows the material until the registrar has judged, then submits their word', async () => {
+  it('asks the office once: the bound field stays off the form, and the determination is what travels', async () => {
     const created = vi.fn((request: { payload: Record<string, unknown> }) =>
-      Effect.fail({
-        _tag: 'ASSESSMENT_ENTRY_ACTION_REFUSED',
-        action: 'create',
-        reason: 'x',
+      Effect.succeed({
+        item: { id: ITEM_A, title: '竞赛获奖登记', revisionId: REVISION_A },
+        requestedCount: 1,
+        eligibleCount: 1,
+        blocked: [],
+        targetFingerprint: 'fp',
         request,
       }),
     )
-    open({ createEntry: created as never })
+    open({ previewAdministrativeRecord: created as never })
     await waitForItems()
     await chooseItem('竞赛获奖登记')
+    const { userEvent } = await import('vitest/browser')
+    await choosePerson('周予安')
     await vi.waitFor(() => {
       if (document.querySelector('[data-testid="record-recognition"]') === null)
         throw new Error('no recognition section yet')
     })
-    const { userEvent } = await import('vitest/browser')
-    // the evidence choice seeds the determination
-    await userEvent.selectOptions(
-      page.getByLabelText('申报级别', { exact: false }).element(),
-      '国家级',
-    )
+    // the material the determination stands for is not a second question
+    expect(page.getByLabelText('申报级别', { exact: false }).elements()).toHaveLength(0)
     const recognition = recognitionChoice('rec-level')
-    await vi.waitFor(() => {
-      if (!recognition.said().includes('国家级')) throw new Error('seed not followed yet')
-    })
-    // material changes, untouched determination follows
-    await userEvent.selectOptions(
-      page.getByLabelText('申报级别', { exact: false }).element(),
-      '省部级',
-    )
-    await vi.waitFor(() => {
-      if (!recognition.said().includes('省部级')) throw new Error('still following')
-    })
-    // the registrar judges otherwise; the material moving again must not
-    // overwrite their word
     await recognition.pick('国家级')
-    await userEvent.selectOptions(
-      page.getByLabelText('申报级别', { exact: false }).element(),
-      '国家级',
-    )
-    await userEvent.selectOptions(
-      page.getByLabelText('申报级别', { exact: false }).element(),
-      '省部级',
-    )
-    expect(recognition.said()).toContain('国家级')
+    await userEvent.fill(page.getByLabelText('认定理由').element(), '校运会秩序册第 3 页')
+    await userEvent.click(page.getByTestId('record-step-next').element())
+    await vi.waitFor(() => {
+      if (created.mock.calls.length === 0) throw new Error('not asked yet')
+    })
+    const sent = created.mock.calls[0]![0]!.payload as {
+      payload?: Record<string, unknown>
+      recognition?: { values?: Record<string, unknown> }
+    }
+    // the determination travels; the filing side of it is the server's to write
+    expect(sent.recognition?.values).toEqual({ 'rec-level': 'national' })
+    expect(Object.hasOwn(sent.payload ?? {}, 'claimed-level-slot')).toBe(false)
   })
 
   it('carries a prototype-named recognition like any other id', async () => {
     // a recognition id is an opaque wire string, and `__proto__` is a legal
-    // one: the seed follows the material into it and it rides the filing as
-    // an own key - never as a mutation of some object's prototype
+    // one: it rides the filing as an own key - never as a mutation of some
+    // object's prototype
     const created = vi.fn((request: { payload: Record<string, unknown> }) =>
       Effect.succeed({
         item: { id: ITEM_A, title: '竞赛获奖登记', revisionId: REVISION_A },
@@ -363,14 +353,8 @@ describe('recording with a determination', () => {
       if (document.querySelector('[data-testid="record-recognition"]') === null)
         throw new Error('no recognition section yet')
     })
-    await userEvent.selectOptions(
-      page.getByLabelText('申报级别', { exact: false }).element(),
-      '国家级',
-    )
     const recognition = recognitionChoice('__proto__')
-    await vi.waitFor(() => {
-      if (!recognition.said().includes('国家级')) throw new Error('seed not followed yet')
-    })
+    await recognition.pick('国家级')
     await userEvent.fill(page.getByLabelText('认定理由').element(), '校运会秩序册第 3 页')
     await userEvent.click(page.getByTestId('record-step-next').element())
     await vi.waitFor(() => {
@@ -392,24 +376,16 @@ describe('recording with a determination', () => {
     open({})
     await waitForItems()
     await chooseItem('竞赛获奖登记')
-    const { userEvent } = await import('vitest/browser')
     await choosePerson('周予安')
     await vi.waitFor(() => {
       if (document.querySelector('[data-testid="record-recognition"]') === null)
         throw new Error('no recognition section yet')
     })
-    await userEvent.selectOptions(
-      page.getByLabelText('申报级别', { exact: false }).element(),
-      '国家级',
-    )
     const recognition = recognitionChoice('rec-level')
     await recognition.pick('省部级')
     await choosePerson('林晚舟')
     await vi.waitFor(() => {
-      const evidence = page
-        .getByLabelText('申报级别', { exact: false })
-        .element() as HTMLSelectElement
-      if (evidence.value === '' || !recognition.said().includes('省部级'))
+      if (!recognition.said().includes('省部级'))
         throw new Error('the finding was thrown away with the list')
     })
     // and the reader is still on the step that holds it, not looking at a
@@ -438,10 +414,6 @@ describe('recording with a determination', () => {
       if (document.querySelector('[data-testid="record-recognition"]') === null)
         throw new Error('no recognition section yet')
     })
-    await userEvent.selectOptions(
-      page.getByLabelText('申报级别', { exact: false }).element(),
-      '国家级',
-    )
     const recognition = recognitionChoice('rec-level')
     await recognition.pick('省部级')
     await userEvent.fill(page.getByLabelText('认定理由').element(), '校运会秩序册第 3 页')
@@ -472,10 +444,6 @@ describe('recording with a determination', () => {
       if (page.getByTestId('record-targets-said').elements().length > 0) {
         throw new Error('targets still chosen')
       }
-      const evidence = page
-        .getByLabelText('申报级别', { exact: false })
-        .element() as HTMLSelectElement
-      if (evidence.value !== '') throw new Error('evidence survived the filing')
       if (recognition.said().includes('省部级'))
         throw new Error('determination survived the filing')
     })

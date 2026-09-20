@@ -18689,5 +18689,8 @@ pnpm vitest run tools/tests apps/server/tests    413 passed(supervisor 4/4,新�
 - 设计稿 4g 第一个对话框(取消勾选已被认定结果使用的选项)前端无计数数据源,靠服务端保存时拒绝;
   4e 之外的「调整并关联」目前不接变更影响检查(保存时服务端照常检查)。
 - direct 模式的复核流程:服务端 `{mode:'none'}` 不接受任何环节,页面不显示(§32.79 七)。
-- 待跑一次完整 `pnpm test:browser` 确认无跨文件干扰(本轮只跑了直接受影响的四个文件)。
+- 完整 `pnpm test:browser` 已跑:`Test Files 1 failed | 60 passed (61)`,`Tests 4 failed | 445 passed (449)`。
+  失败的四条全在 `record-recognition.browser.test.tsx`:统一认定向导按「只问一次」不再显示被绑定的申报字段,
+  而旧测试仍去填它。四条改写为新规则(申报字段不在表单上、认定值随请求走、请求里没有该字段),单跑
+  `Test Files 1 passed (1)`,`Tests 5 passed (5)`;tests 工程 tsc 通过。
 
