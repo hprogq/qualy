@@ -70,6 +70,8 @@ import {
   type Mode,
   type RecognitionDraft,
   type ScoringDraft,
+  type ServerIssue,
+  type Standing,
 } from './model.ts'
 import { boundsWords, type LinkVerdict } from './words.ts'
 
@@ -160,6 +162,8 @@ const styles = stylex.create({
 
 const AREAS: readonly EditorArea[] = ['basics', 'scoring', 'rules']
 
+const NO_STANDING: readonly Standing[] = []
+
 const REFUSED_TITLE = {
   conflict: m.itemsFailConflictTitle,
   voided: m.itemsFailVoidedTitle,
@@ -198,7 +202,7 @@ type Ask =
   | { kind: 'adjust'; handle: string; fieldId: string }
   | { kind: 'mapping'; handle: string; fieldId: string }
 
-type Issue = { readonly path: string; readonly reason: string; readonly handle?: string }
+type Issue = ServerIssue
 
 /** a save the page has no row to pin on: what happened, in the words it has */
 type Refused =
@@ -417,6 +421,9 @@ export function ItemEditor({
     placeholderData: keepPreviousData,
     retry: false,
   })
+  // what stands under the question does not depend on what is being typed,
+  // so the last answer is good until a newer one replaces it
+  const standing = (checkQuery.data as { standing?: readonly Standing[] } | undefined)?.standing ?? NO_STANDING
   const serverIssues = ((): readonly Issue[] => {
     const checked = (checkQuery.data as { issues: readonly Issue[] } | undefined)?.issues
     const fresh = checkQuery.isSuccess && !checkQuery.isPlaceholderData && askedCheck === checkKey
@@ -1317,6 +1324,7 @@ export function ItemEditor({
           contract={contract}
           handle={lingeringSheet.handle}
           siblings={recognitionHandles}
+          standing={standing}
           onPatch={(next) => patchRecognition(lingeringSheet.handle, next)}
           onRefinement={(next) => setRefinement(lingeringSheet.handle, next)}
           onLinkRequired={(required) => {
@@ -1341,6 +1349,7 @@ export function ItemEditor({
           fieldKey={lingeringSheet.key}
           materialRange={materialRange}
           storedOptionIds={storedOptionIds}
+          standing={standing}
           onChange={(next) => patchField(lingeringSheet.key, next)}
           onRetype={(type) => retypeField(lingeringSheet.key, type)}
           onRecognition={patchRecognition}

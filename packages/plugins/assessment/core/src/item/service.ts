@@ -41,7 +41,12 @@ import {
   type ScoringTrial,
   type StandingDetermination,
 } from '../scoring/impact-probe.ts'
-import { judgeRecognition, recognitionFormFields } from '../scoring/recognition.ts'
+import {
+  judgeRecognition,
+  recognitionFormFields,
+  type RecognitionValues,
+} from '../scoring/recognition.ts'
+import { assignmentPlan, type NormalizedAtomicSchema } from '@qualy/value-schema'
 import { normalizeScoringAuthoring } from '../scoring/authoring.ts'
 import { policyModeOf } from '../review/chain.ts'
 import type { EntryChannel } from './channels.ts'
@@ -344,11 +349,64 @@ export interface ItemCheckInput {
  * yet: the path names it by the identity a save would mint, which the screen
  * has never seen, so the handle it composed it under rides along.
  */
+/** why a standing determination, or a round still open, does not fit a candidate */
+export type StrandingReason =
+  // a value somebody determined is outside what the candidate admits
+  | 'strands-determined-value'
+  // the candidate asks for a determination the standing ones never made
+  | 'strands-determination-missing'
+  // the candidate no longer has a determination the standing ones carry
+  | 'strands-determination-removed'
+  // a round is open under the wider contract and may still settle anywhere in it
+  | 'strands-open-round'
+
+export interface StrandingCause {
+  readonly recognitionId: string
+  readonly reason: StrandingReason
+  /** how many claims hang on it */
+  readonly count: number
+  /** the determined values the candidate would not read, where there are any to name */
+  readonly values: readonly string[]
+}
+
+export interface Stranding {
+  readonly entries: readonly string[]
+  readonly causes: readonly StrandingCause[]
+}
+
+const NO_STRANDING: Stranding = { entries: [], causes: [] }
+
+/** a refusal names values so that they can be put back, not so that it can list a register */
+const STRANDED_VALUES_MOST = 20
+
+/** as many determined values as a list of options could plausibly have */
+const STANDING_VALUES_MOST = 200
+
 export interface ItemCheckView {
   readonly issues: readonly {
     readonly path: string
     readonly reason: string
     readonly handle?: string
+    /** how many claims the issue is about, when it is about claims */
+    readonly count?: number
+    /** the values it is about, where there are any to name */
+    readonly values?: readonly string[]
+  }[]
+  /**
+   * What the question may not let go of, per determination it already has:
+   * the editor holds these shut rather than letting them be narrowed away
+   * and refusing afterwards.
+   */
+  readonly standing: readonly {
+    readonly recognitionId: string
+    /** claims that stand determined under it */
+    readonly records: number
+    /** rounds still open, which may settle on anything their contract admits */
+    readonly openRounds: number
+    /** values somebody has determined */
+    readonly determined: readonly string[]
+    /** values no claim holds yet, that an open round may still settle on */
+    readonly pending: readonly string[]
   }[]
 }
 
@@ -693,6 +751,189 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
       })
     })
 
+  /**
+   * What already stands determined under this question, and what the
+   * candidate would make of it.
+   *
+   * Scoring reads the question's CURRENT plan against a determination made
+   * under an older one, so an administrator renaming a recognition,
+   * narrowing its type or dropping it entirely would leave every approved
+   * claim approved and unscorable - and nothing would say so until somebody
+   * opened a results page. The determinations a sitting has already frozen
+   * count too: they are what an open round would settle on if it concluded.
+   *
+   * The answer names the claims, and - because a list of claims tells an
+   * administrator nothing about what to put back - the determination each
+   * one hangs on and the way it no longer fits. Read-only, so the editor
+   * can ask it while the narrowing is still being composed.
+   */
+  const strandingUnder = (input: {
+    tenantId: string
+    itemId: string
+    schemas: Readonly<Record<string, NormalizedAtomicSchema>>
+    live: readonly { readonly entryId: string; readonly recognition: RecognitionValues | null }[]
+    rounds: readonly { readonly entryId: string; readonly recognitionRevisionId: string }[]
+  }) =>
+    Effect.gen(function* () {
+      const entries: string[] = []
+      const causes = new Map<string, { recognitionId: string; reason: StrandingReason; entries: Set<string>; values: Set<string> }>()
+      const blame = (recognitionId: string, reason: StrandingReason, entryId: string, value?: unknown) => {
+        const key = `${recognitionId}\u0000${reason}`
+        const held = causes.get(key) ?? { recognitionId, reason, entries: new Set<string>(), values: new Set<string>() }
+        held.entries.add(entryId)
+        if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+          held.values.add(String(value))
+        }
+        causes.set(key, held)
+      }
+      const judge = (entryId: string, values: unknown) => {
+        const wrong = judgeRecognition(input.schemas, values)
+        if (wrong.length === 0) return
+        if (!entries.includes(entryId)) entries.push(entryId)
+        for (const issue of wrong) {
+          if (issue.recognitionId === '') continue
+          if (issue.reason === 'missing') blame(issue.recognitionId, 'strands-determination-missing', entryId)
+          else if (issue.reason === 'unknown') blame(issue.recognitionId, 'strands-determination-removed', entryId)
+          // the value is named only where the value is the fault
+          else {
+            blame(
+              issue.recognitionId,
+              'strands-determined-value',
+              entryId,
+              (values as Record<string, unknown>)[issue.recognitionId],
+            )
+          }
+        }
+      }
+      for (const row of input.live) {
+        if (row.recognition !== null) judge(row.entryId, row.recognition)
+      }
+      for (const proposal of yield* frozenProposalsOfItem(input.tenantId, input.itemId)) {
+        judge(proposal.entryId, proposal.values)
+      }
+      // And the rounds still open, which have determined nothing yet.
+      //
+      // A round judges by the contract it opened with, whatever the
+      // question says today - that is what keeps a reviewer from being
+      // asked something different halfway through. So the determination
+      // it settles on tomorrow is one THAT contract admits, and if the new
+      // plan cannot read every such determination, the round is walking
+      // toward a claim that will be approved and unscorable.
+      const contracts = new Map<string, string[]>()
+      for (const round of input.rounds) {
+        const under = contracts.get(round.recognitionRevisionId)
+        if (under === undefined) contracts.set(round.recognitionRevisionId, [round.entryId])
+        else under.push(round.entryId)
+      }
+      for (const [revisionId, entryIds] of contracts) {
+        const frozen = yield* revisionOf(input.tenantId, revisionId)
+        if (frozen === null) continue
+        const under = yield* readScoringPlan(frozen).pipe(Effect.option)
+        if (under._tag === 'Some' && carriesInto(under.value.recognitionSchemas, input.schemas)) continue
+        const before = under._tag === 'Some' ? under.value.recognitionSchemas : {}
+        for (const entryId of entryIds) {
+          if (!entries.includes(entryId)) entries.push(entryId)
+          for (const name of Object.keys(before)) {
+            if (!Object.hasOwn(input.schemas, name)) blame(name, 'strands-determination-removed', entryId)
+            else if (assignmentPlan(before[name]!, input.schemas[name]!).kind !== 'direct') {
+              blame(name, 'strands-open-round', entryId)
+            }
+          }
+          for (const name of Object.keys(input.schemas)) {
+            if (!Object.hasOwn(before, name)) blame(name, 'strands-open-round', entryId)
+          }
+        }
+      }
+      return {
+        entries: entries as readonly string[],
+        causes: [...causes.values()].map((one) => ({
+          recognitionId: one.recognitionId,
+          reason: one.reason,
+          count: one.entries.size,
+          values: [...one.values].sort().slice(0, STRANDED_VALUES_MOST),
+        })) as readonly StrandingCause[],
+      }
+    })
+
+  /**
+   * What the question's determinations may not let go of.
+   *
+   * Two kinds of value hold a determination open: one somebody has already
+   * determined, and one a round still open may yet settle on - a round
+   * judges by the contract it opened with, so everything that contract
+   * admits is still in play until the round concludes.
+   */
+  const standingUnder = (input: {
+    tenantId: string
+    itemId: string
+    live: readonly { readonly entryId: string; readonly recognition: RecognitionValues | null }[]
+    rounds: readonly { readonly entryId: string; readonly recognitionRevisionId: string }[]
+  }) =>
+    Effect.gen(function* () {
+      const held = new Map<string, { records: Set<string>; rounds: Set<string>; determined: Set<string>; pending: Set<string> }>()
+      const of = (recognitionId: string) => {
+        const known = held.get(recognitionId)
+        if (known !== undefined) return known
+        const fresh = { records: new Set<string>(), rounds: new Set<string>(), determined: new Set<string>(), pending: new Set<string>() }
+        held.set(recognitionId, fresh)
+        return fresh
+      }
+      const take = (entryId: string, values: unknown) => {
+        if (typeof values !== 'object' || values === null || Array.isArray(values)) return
+        for (const [recognitionId, value] of Object.entries(values as Record<string, unknown>)) {
+          const under = of(recognitionId)
+          under.records.add(entryId)
+          if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+            if (under.determined.size < STANDING_VALUES_MOST) under.determined.add(String(value))
+          }
+        }
+      }
+      for (const row of input.live) if (row.recognition !== null) take(row.entryId, row.recognition)
+      for (const proposal of yield* frozenProposalsOfItem(input.tenantId, input.itemId)) {
+        take(proposal.entryId, proposal.values)
+      }
+      const contracts = new Map<string, string[]>()
+      for (const round of input.rounds) {
+        const under = contracts.get(round.recognitionRevisionId)
+        if (under === undefined) contracts.set(round.recognitionRevisionId, [round.entryId])
+        else under.push(round.entryId)
+      }
+      for (const [revisionId, entryIds] of contracts) {
+        const frozen = yield* revisionOf(input.tenantId, revisionId)
+        if (frozen === null) continue
+        const plan = yield* readScoringPlan(frozen).pipe(Effect.option)
+        if (plan._tag !== 'Some') continue
+        for (const [recognitionId, schema] of Object.entries(plan.value.recognitionSchemas)) {
+          const under = of(recognitionId)
+          for (const entryId of entryIds) under.rounds.add(entryId)
+          const offered = (schema as { enum?: readonly unknown[] }).enum
+          if (!Array.isArray(offered)) continue
+          for (const value of offered) under.pending.add(String(value))
+        }
+      }
+      return [...held.entries()].map(([recognitionId, under]) => ({
+        recognitionId,
+        records: under.records.size,
+        openRounds: under.rounds.size,
+        determined: [...under.determined].sort(),
+        pending: [...under.pending].filter((value) => !under.determined.has(value)).sort(),
+      }))
+    })
+
+  /** the refusal a stranding save is answered with: why, per determination, and then which claims */
+  const strandingIssues = (stranding: Stranding) => [
+    ...stranding.causes.map((cause) => ({
+      path: `scoringConfig.recognitions.${cause.recognitionId}`,
+      reason: cause.reason,
+      count: cause.count,
+      ...(cause.values.length === 0 ? {} : { values: cause.values }),
+    })),
+    ...stranding.entries.map((entryId) => ({
+      path: `scoringConfig.recognitions:${entryId}`,
+      reason: 'strands-existing-recognition',
+    })),
+  ]
+
   const impactUnder = (input: {
     tenantId: string
     item: ItemRow
@@ -735,52 +976,22 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
       // until somebody opened a results page. The determinations a sitting
       // has already frozen count too: they are what an open round would
       // settle on if it concluded.
-      const nextPlan = input.nextPlan
-      const stranded: string[] = []
-      if ('plan' in nextPlan) {
-        for (const row of live) {
-          if (row.recognition === null) continue
-          if (judgeRecognition(nextPlan.plan.recognitionSchemas, row.recognition).length > 0) {
-            stranded.push(row.entryId)
-          }
-        }
-        for (const proposal of yield* frozenProposalsOfItem(input.tenantId, input.item.id)) {
-          if (stranded.includes(proposal.entryId)) continue
-          if (judgeRecognition(nextPlan.plan.recognitionSchemas, proposal.values).length > 0) {
-            stranded.push(proposal.entryId)
-          }
-        }
-        // And the rounds still open, which have determined nothing yet.
-        //
-        // A round judges by the contract it opened with, whatever the
-        // question says today - that is what keeps a reviewer from being
-        // asked something different halfway through. So the determination
-        // it settles on tomorrow is one THAT contract admits, and if the new
-        // plan cannot read every such determination, the round is walking
-        // toward a claim that will be approved and unscorable.
-        const contracts = new Map<string, string[]>()
-        for (const round of rounds) {
-          const under = contracts.get(round.recognitionRevisionId)
-          if (under === undefined) contracts.set(round.recognitionRevisionId, [round.entryId])
-          else under.push(round.entryId)
-        }
-        for (const [revisionId, entryIds] of contracts) {
-          const frozen = yield* revisionOf(input.tenantId, revisionId)
-          if (frozen === null) continue
-          const under = yield* readScoringPlan(frozen).pipe(Effect.option)
-          const carries =
-            under._tag === 'Some' &&
-            carriesInto(under.value.recognitionSchemas, nextPlan.plan.recognitionSchemas)
-          if (carries) continue
-          for (const entryId of entryIds) {
-            if (!stranded.includes(entryId)) stranded.push(entryId)
-          }
-        }
-      }
+      const stranding =
+        'plan' in input.nextPlan
+          ? yield* strandingUnder({
+              tenantId: input.tenantId,
+              itemId: input.item.id,
+              schemas: input.nextPlan.plan.recognitionSchemas,
+              live,
+              rounds,
+            })
+          : NO_STRANDING
+      const stranded = stranding.entries
       return {
         live,
         rounds,
         stranded: stranded as readonly string[],
+        stranding,
         incompatible: refusals as readonly Incompatible[],
         impact: impactOf({
           candidateImpactHash: input.candidateImpactHash,
@@ -1529,12 +1740,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
                 // out. It is refused at the save, which is the only moment
                 // anybody is looking (§35).
                 if (counted.stranded.length > 0) {
-                  return yield* new ItemConfigInvalid({
-                    issues: counted.stranded.map((entryId) => ({
-                      path: `scoringConfig.recognitions:${entryId}`,
-                      reason: 'strands-existing-recognition',
-                    })),
-                  })
+                  return yield* new ItemConfigInvalid({ issues: strandingIssues(counted.stranding) })
                 }
                 // What stands determined, and whether the candidate rule can
                 // take it. The shape check above says the values still fit
@@ -2159,7 +2365,13 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
             yield* deps.requireRosterReach(as, tenantId, batchId)
             const batch = yield* oneBatch(tenantId, batchId)
             const materialRange = deps.parseRange(String(batch!.materialRange))
-            const issues: { path: string; reason: string; handle?: string }[] = []
+            const issues: {
+              path: string
+              reason: string
+              handle?: string
+              count?: number
+              values?: readonly string[]
+            }[] = []
 
             const groups = yield* groupsOf(tenantId, batchId)
             if (!groups.some((group) => group.id === input.scoreGroupId)) {
@@ -2170,10 +2382,13 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
               input.itemId === undefined ? null : yield* itemOf(tenantId, input.itemId)
             const existing = stored !== null && stored.batchId === batchId ? stored : null
             if (existing?.status === 'voided') {
-              return { issues: [{ path: 'item', reason: 'item-voided' }] }
+              return { issues: [{ path: 'item', reason: 'item-voided' }], standing: [] }
             }
             if (!catalogs.itemTypes.has(input.itemType)) {
-              return { issues: [...issues, { path: 'itemType', reason: 'item-type-not-installed' }] }
+              return {
+                issues: [...issues, { path: 'itemType', reason: 'item-type-not-installed' }],
+                standing: [],
+              }
             }
             if (
               existing !== null &&
@@ -2216,8 +2431,14 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
               mint: (count) =>
                 Effect.succeed(Array.from({ length: count }, (_unused, index) => placeholder(index))),
             })
+            // what stands under the question is a fact about the question,
+            // whatever is being composed over it
+            const live = existing === null ? [] : yield* liveEntryPayloads(tenantId, existing.id)
+            const rounds = existing === null ? [] : yield* openRoundsOfItem(tenantId, existing.id)
+            const standing =
+              existing === null ? [] : yield* standingUnder({ tenantId, itemId: existing.id, live, rounds })
             if ('issues' in normalized) {
-              return { issues: [...issues, ...normalized.issues] }
+              return { issues: [...issues, ...normalized.issues], standing }
             }
             const handleOf = new Map<string, string>()
             const submitted = (input.config.scoringConfig as { recognitions?: unknown } | null)
@@ -2247,9 +2468,27 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
               ),
             )
             if ('issues' in compiled) issues.push(...compiled.issues)
+            // the same judgment a save makes of what already stands, asked
+            // while the narrowing is still being composed: the claims
+            // themselves are of no use to a screen, the causes are
+            else if (existing !== null) {
+              const stranding = yield* strandingUnder({
+                tenantId,
+                itemId: existing.id,
+                schemas: compiled.plan.recognitionSchemas,
+                live,
+                rounds,
+              })
+              issues.push(
+                ...strandingIssues(stranding).filter(
+                  (issue) => issue.reason !== 'strands-existing-recognition',
+                ),
+              )
+            }
 
             const seen = new Set<string>()
             return {
+              standing,
               issues: issues.flatMap((issue) => {
                 const key = `${issue.path}\u0000${issue.reason}`
                 if (seen.has(key)) return []

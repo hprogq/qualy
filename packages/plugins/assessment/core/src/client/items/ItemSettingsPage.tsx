@@ -92,10 +92,35 @@ const styles = stylex.create({
   editorColumn: {
     gap: 20,
   },
-  skeleton: {
-    height: 384,
-    width: '100%',
+  // The page as it will be, in outline: a heading over a card of rows, twice.
+  // One slab the height of the screen said only that something large was
+  // coming, and then everything under it moved when it arrived.
+  skeletonStack: { display: 'flex', width: '100%', flexDirection: 'column', gap: 28 },
+  skeletonBlock: { display: 'flex', flexDirection: 'column', gap: 12 },
+  skeletonCard: {
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+    borderRadius: 14,
+    backgroundColor: tokens.background,
+    boxShadow: `0 0 0 1px ${tokens.border}`,
   },
+  skeletonRow: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr)',
+    columnGap: 24,
+    alignItems: 'center',
+    height: 52,
+    paddingInline: 16,
+    borderBottomWidth: { default: 1, ':last-child': 0 },
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
+  },
+  skeletonHeading: { width: 96, height: 14, borderRadius: 4 },
+  skeletonBar: { height: 12, borderRadius: 4 },
+  skeletonBarLong: { width: '62%' },
+  skeletonBarMid: { width: '46%' },
+  skeletonBarShort: { width: '30%' },
   alert: {
     display: 'flex',
     alignItems: 'flex-start',
@@ -209,6 +234,37 @@ let composed = 0
 
 /** how the address spells a question that has no id yet */
 const DRAFT = 'draft:'
+
+const BAR_LENGTH = {
+  long: styles.skeletonBarLong,
+  mid: styles.skeletonBarMid,
+  short: styles.skeletonBarShort,
+} as const
+
+/** the page in outline while it loads: one heading-and-card per block, with that many rows */
+function StructureSkeleton({ blocks }: { blocks: readonly number[] }) {
+  const bar = (length: keyof typeof BAR_LENGTH) => (
+    <Skeleton className={stylex.props(styles.skeletonBar, BAR_LENGTH[length]).className} />
+  )
+  return (
+    <div {...stylex.props(styles.skeletonStack)} aria-hidden data-testid="structure-skeleton">
+      {blocks.map((rows, block) => (
+        <div key={block} {...stylex.props(styles.skeletonBlock)}>
+          <Skeleton className={stylex.props(styles.skeletonHeading).className} />
+          <div {...stylex.props(styles.skeletonCard)}>
+            {Array.from({ length: rows }, (_unused, row) => (
+              <div key={row} {...stylex.props(styles.skeletonRow)}>
+                {bar(row % 2 === 0 ? 'long' : 'mid')}
+                {bar(row % 2 === 0 ? 'mid' : 'long')}
+                {bar('short')}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 export default function ItemSettingsPage() {
   const { format } = useI18n()
@@ -670,7 +726,7 @@ function Editor({
         void groups.refetch()
         void items.refetch()
       }}
-      skeleton={<Skeleton className={stylex.props(styles.skeleton).className} />}
+      skeleton={<StructureSkeleton blocks={question === '' ? [6] : [1, 3, 2]} />}
       xstyle={styles.grow}
     >
       <div {...stylex.props(styles.grow, styles.editorColumn)}>

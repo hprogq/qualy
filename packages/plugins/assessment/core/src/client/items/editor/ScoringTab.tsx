@@ -241,10 +241,30 @@ export function ScoringTab({
   )
   const summaryProblem = problems.find((one) => one.block === 'summary')
 
+  /** what is wrong with a block as a whole, rather than with one of its rows */
+  const blockProblems = (block: EditorBlock) =>
+    problems.filter((one) => one.block === block && one.entity === undefined && one.tone === 'error')
+  const blockLines = (block: EditorBlock) =>
+    blockProblems(block).map((one) => (
+      <p
+        key={`${one.code}:${one.reason ?? ''}`}
+        {...stylex.props(styles.problemLine)}
+        role="alert"
+        data-testid="block-problem"
+        data-block={block}
+        data-code={one.code}
+      >
+        {problemWords(one, format)}
+      </p>
+    ))
+
   const asideOf = (block: EditorBlock, wrong: MessageDescriptor = m.itemsBlockFix) => {
     const counted = countsOf(problems, block)
     if (counted.errors > 0) {
-      return <SectionCount tone="error">{format(wrong, { count: counted.errors })}</SectionCount>
+      // the block's own count sentence is about its rows; a fault of the
+      // block as a whole is counted in the plain words
+      const said = blockProblems(block).length > 0 ? m.itemsBlockFix : wrong
+      return <SectionCount tone="error">{format(said, { count: counted.errors })}</SectionCount>
     }
     if (counted.pending > 0) {
       return (
@@ -401,6 +421,7 @@ export function ScoringTab({
               )
             })}
           </ListCard>
+          {blockLines('parameters')}
         </EditorSection>
       )}
 
@@ -479,6 +500,7 @@ export function ScoringTab({
               )
             })}
           </ListCard>
+          {blockLines('recognitions')}
         </EditorSection>
       )}
 
@@ -516,6 +538,7 @@ export function ScoringTab({
               onClick={onAddField}
             />
           </ListCard>
+          {blockLines('form')}
         </EditorSection>
       )}
 

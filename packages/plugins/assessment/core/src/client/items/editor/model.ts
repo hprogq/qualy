@@ -1429,33 +1429,104 @@ export const problemsOf = (input: {
  * sentence where the two agree. What cannot be placed is not dropped: it is
  * returned apart, for the screen to say on its own.
  */
+/** one thing the server found, as it says it */
+export interface ServerIssue {
+  readonly path: string
+  readonly reason: string
+  readonly handle?: string
+  /** how many claims it is about, when it is about claims */
+  readonly count?: number
+  /** the values it is about, where there are any to name */
+  readonly values?: readonly string[]
+}
+
+/**
+ * What a determination already holds, and so may not be narrowed away from:
+ * values somebody has determined, and values a round still open may settle on.
+ */
+export interface Standing {
+  readonly recognitionId: string
+  readonly records: number
+  readonly openRounds: number
+  readonly determined: readonly string[]
+  readonly pending: readonly string[]
+}
+
+/** why a claim that already stands would not fit what is being composed */
+const STRANDS: Readonly<Record<string, string>> = {
+  'strands-determined-value': 'recognition-strands-value',
+  'strands-determination-missing': 'recognition-strands-missing',
+  'strands-open-round': 'recognition-strands-round',
+  'strands-determination-removed': 'recognition-strands-removed',
+}
+
 export const problemsFromIssues = (input: {
   readonly draft: Draft
   readonly contract: Contract | null
   readonly locale: string
-  readonly issues: readonly { readonly path: string; readonly reason: string; readonly handle?: string }[]
+  readonly issues: readonly ServerIssue[]
 }): { readonly placed: readonly EditorProblem[]; readonly loose: readonly { path: string; reason: string }[] } => {
   const { draft, contract, locale } = input
   const placed: EditorProblem[] = []
   const loose: { path: string; reason: string }[] = []
   const scoring = draft.scoring.language === 'v2' ? draft.scoring : null
   const handles = scoring === null ? [] : Object.keys(scoring.recognitions)
-  const recognitionAt = (handle: string | undefined, reason: string, code: string) => {
+  const recognitionAt = (
+    handle: string | undefined,
+    reason: string,
+    code: string,
+    values?: Readonly<Record<string, string | number>>,
+  ) => {
     const recognition = handle === undefined ? undefined : scoring?.recognitions[handle]
     if (handle === undefined || recognition === undefined) return false
+    // where filing takes effect at once there is no list of determinations:
+    // the field IS the determination, so that is the row the fault is on
+    const filed =
+      draft.mode === 'direct' ? draft.fields.find((one) => one.id === recognition.fieldId) : undefined
     placed.push({
       area: 'scoring',
-      block: 'recognitions',
+      ...(filed === undefined
+        ? { block: 'recognitions' as const, entity: { kind: 'recognition' as const, handle } }
+        : { block: 'form' as const, entity: { kind: 'field' as const, key: filed.key } }),
       code,
-      entity: { kind: 'recognition', handle },
-      subject: recognition.label.trim(),
+      subject: (filed === undefined ? recognition.label : filed.label).trim(),
       tone: 'error',
       reason,
+      ...(values === undefined ? {} : { values }),
     })
     return true
   }
+  /** the words a determined value goes by, under the parameter its determination feeds */
+  const valueWords = (handle: string | undefined, values: readonly string[]): string => {
+    const parameter =
+      handle === undefined || scoring === null
+        ? undefined
+        : Object.entries(scoring.bindings).find(
+            ([, binding]) => binding.kind === 'recognition' && binding.handle === handle,
+          )?.[0]
+    const schema = parameter === undefined ? undefined : parameterSchemaOf(contract, parameter)
+    const named = values.map((value) =>
+      schema !== undefined && kindOf(schema) === 'choice' ? choiceLabel(schema as ChoiceSchema, value, locale) : value,
+    )
+    return new Intl.ListFormat(locale, { style: 'short', type: 'conjunction' }).format(named)
+  }
+  // claims named one by one say nothing a screen can use; they are counted
+  // only when nothing said which determination they hang on
+  const strandedClaims = input.issues.filter((one) => one.reason === 'strands-existing-recognition').length
+  const causesSaid = input.issues.some((one) => STRANDS[one.reason] !== undefined)
+  if (strandedClaims > 0 && !causesSaid) {
+    placed.push({
+      area: 'scoring',
+      block: scoring !== null && handles.length > 0 ? 'recognitions' : 'parameters',
+      code: 'recognition-strands',
+      tone: 'error',
+      reason: 'strands-existing-recognition',
+      values: { count: strandedClaims },
+    })
+  }
   for (const issue of input.issues) {
     const { path, reason } = issue
+    if (reason === 'strands-existing-recognition') continue
     const bound = /^scoringConfig\.bindings\.(.+)$/.exec(path)
     if (bound !== null && scoring !== null) {
       const parameter = bound[1]!
@@ -1509,6 +1580,32 @@ export const problemsFromIssues = (input: {
         (factById !== null
           ? handles.find((one) => one === factById[1] || scoring?.recognitions[one]?.id === factById[1])
           : handles[Number(factByIndex![1])])
+      const strands = STRANDS[reason]
+      if (strands !== undefined) {
+        const count = issue.count ?? 1
+        const names = valueWords(handle, issue.values ?? [])
+        // a determination the composition no longer has cannot be pointed at:
+        // it is said over the parameters, where it was taken away
+        const fresh = handle !== undefined && scoring?.recognitions[handle]?.id === null
+        const said =
+          strands === 'recognition-strands-value' && names === ''
+            ? 'recognition-strands'
+            : strands === 'recognition-strands-round' && fresh
+              ? 'recognition-strands-round-new'
+              : strands
+        if (reason !== 'strands-determination-removed' && recognitionAt(handle, reason, said, { count, names })) {
+          continue
+        }
+        placed.push({
+          area: 'scoring',
+          block: 'parameters',
+          code: 'recognition-strands-removed',
+          tone: 'error',
+          reason,
+          values: { count },
+        })
+        continue
+      }
       const code =
         reason === 'recognition-unattainable'
           ? 'recognition-unattainable'
@@ -1617,6 +1714,20 @@ export const problemsFromIssues = (input: {
     }
     if (path.startsWith('scoringConfig.aggregator') || path.startsWith('aggregator')) {
       placed.push({ area: 'rules', block: 'counts', code: 'folding-refused', tone: 'error', reason })
+      continue
+    }
+    if (path.startsWith('scoringConfig.recognitions')) {
+      placed.push({
+        area: 'scoring',
+        block: 'recognitions',
+        code: reason === 'recognition-without-determiner' ? 'recognition-in-automatic' : 'recognitions-refused',
+        tone: 'error',
+        reason,
+      })
+      continue
+    }
+    if (path.startsWith('scoringConfig.bindings')) {
+      placed.push({ area: 'scoring', block: 'parameters', code: 'parameters-refused', tone: 'error', reason })
       continue
     }
     if (path.startsWith('scoringConfig') || path.startsWith('calculator')) {

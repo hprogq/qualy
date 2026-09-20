@@ -156,7 +156,16 @@ export class ItemNotFound extends Schema.TaggedError<ItemNotFound>()(
 export class ItemConfigInvalid extends Schema.TaggedError<ItemConfigInvalid>()(
   'ASSESSMENT_ITEM_CONFIG_INVALID',
   {
-    issues: Schema.Array(Schema.Struct({ path: Schema.String, reason: Schema.String })),
+    issues: Schema.Array(
+      Schema.Struct({
+        path: Schema.String,
+        reason: Schema.String,
+        /** how many claims the issue is about, when it is about claims */
+        count: Schema.optional(Schema.Number),
+        /** the values it is about - the administrator's own option values, never a row */
+        values: Schema.optional(Schema.Array(Schema.String)),
+      }),
+    ),
   },
   { httpApiStatus: 422, identifier: 'AssessmentItemConfigInvalid' },
 ) {}

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { LinkIcon } from 'lucide-react'
+import { LinkIcon, LockIcon } from 'lucide-react'
 import { useI18n, useList } from '@qualy/web-i18n'
 import { choiceLabel, kindOf, type AtomicSchema, type ChoiceSchema } from '@qualy/value-schema'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -8,6 +8,7 @@ import { Field } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
 import { Input } from '@qualy/ui/input'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
 import { assessmentMessages as m } from '../../i18n.ts'
 import { EditorSheet } from './EditorSheet.tsx'
 import { sheetStyles } from './shared-styles.ts'
@@ -20,6 +21,7 @@ import {
   type Draft,
   type FieldDraft,
   type RecognitionDraft,
+  type Standing,
 } from './model.ts'
 import { TYPE_LABEL, boundsWords, fieldBoundsWords, kindWords, linkVerdictOf, type LinkVerdict } from './words.ts'
 
@@ -48,6 +50,9 @@ const styles = stylex.create({
   optionRow: { display: 'flex', alignItems: 'center', gap: 10 },
   optionInput: { flexGrow: 1, minWidth: 0 },
   optionOff: { color: tokens.mutedForeground },
+  optionLock: { display: 'inline-flex', flexShrink: 0, color: tokens.mutedForeground, cursor: 'help' },
+  optionLockIcon: { width: 14, height: 14 },
+  heldHint: { margin: 0, fontSize: 12, color: tokens.mutedForeground },
   pair: { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 },
   linkBox: {
     display: 'flex',
@@ -96,6 +101,7 @@ export function RecognitionSheet({
   contract,
   handle,
   siblings,
+  standing,
   onPatch,
   onRefinement,
   onLinkRequired,
@@ -111,6 +117,8 @@ export function RecognitionSheet({
   handle: string
   /** every determination's handle, in the arithmetic's order */
   siblings: readonly string[]
+  /** what each saved determination already holds, by its stored identity */
+  standing: readonly Standing[]
   onPatch: (next: Partial<RecognitionDraft>) => void
   onRefinement: (next: AtomicSchema | null) => void
   onLinkRequired: (required: boolean) => void
@@ -265,7 +273,13 @@ export function RecognitionSheet({
         </Field>
       </div>
 
-      <RangeEditor key={handle} parameter={schema} recognition={recognition} onRefinement={onRefinement} />
+      <RangeEditor
+        key={handle}
+        parameter={schema}
+        recognition={recognition}
+        standing={standing.find((one) => one.recognitionId === recognition.id)}
+        onRefinement={onRefinement}
+      />
 
       <div {...stylex.props(styles.block)}>
         <span {...stylex.props(styles.blockTitle)}>{format(m.itemsLinkSection)}</span>
@@ -322,11 +336,19 @@ export function RecognitionSheet({
 export function RangeEditor({
   parameter,
   recognition,
+  standing,
   onRefinement,
   title,
 }: {
   parameter: AtomicSchema
   recognition: RecognitionDraft
+  /**
+   * What this determination already holds. An option a claim was determined
+   * as, or that a round still open may settle on, cannot be taken out of the
+   * range - so it is held shut here, where the hand is, rather than let go
+   * and refused afterwards.
+   */
+  standing?: Standing | undefined
   onRefinement: (next: AtomicSchema | null) => void
   title?: string
 }) {
@@ -345,6 +367,12 @@ export function RangeEditor({
   if (kind === 'choice') {
     const source = parameter as ChoiceSchema
     const held = admitted as ChoiceSchema
+    const pinnedBy = (value: string): 'determined' | 'pending' | null =>
+      standing?.determined.includes(value) === true
+        ? 'determined'
+        : standing?.pending.includes(value) === true
+          ? 'pending'
+          : null
     const options = source.enum.map((value) => ({
       value,
       enabled: held.enum.includes(value),
@@ -377,6 +405,8 @@ export function RangeEditor({
           >
             <Checkbox
               checked={option.enabled}
+              // held only while it is in: an option already out may always come back
+              disabled={option.enabled && pinnedBy(option.value) !== null}
               aria-label={option.label}
               onCheckedChange={(next) =>
                 write(options.map((one) => (one.value === option.value ? { ...one, enabled: next === true } : one)))
@@ -391,8 +421,34 @@ export function RangeEditor({
                 write(options.map((one) => (one.value === option.value ? { ...one, label: event.target.value } : one)))
               }
             />
+            {option.enabled && pinnedBy(option.value) !== null && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      {...stylex.props(styles.optionLock)}
+                      tabIndex={0}
+                      data-testid="option-held"
+                      data-held-by={pinnedBy(option.value)}
+                    >
+                      <LockIcon aria-hidden {...stylex.props(styles.optionLockIcon)} />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {format(
+                      pinnedBy(option.value) === 'determined' ? m.itemsOptionHeldDetermined : m.itemsOptionHeldPending,
+                    )}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
           </div>
         ))}
+        {options.some((option) => option.enabled && pinnedBy(option.value) !== null) && (
+          <p {...stylex.props(styles.heldHint)} data-testid="options-held-hint">
+            {format(m.itemsOptionsHeldHint)}
+          </p>
+        )}
       </div>
     )
   }

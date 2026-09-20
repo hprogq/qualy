@@ -253,7 +253,15 @@ const open = (
     /** what the formula plugin offers this round to bind */
     formulas?: unknown
     /** what the live reading finds, asked of each composition as it settles */
-    check?: (payload: { config: unknown }) => readonly { path: string; reason: string; handle?: string }[]
+    check?: (payload: { config: unknown }) => readonly {
+      path: string
+      reason: string
+      handle?: string
+      count?: number
+      values?: readonly string[]
+    }[]
+    /** what already stands determined under the question's determinations */
+    standing?: readonly unknown[]
     /** what a save is answered with instead of being taken, one answer per press */
     refuse?: unknown[]
   } = {},
@@ -287,7 +295,7 @@ const open = (
           return Effect.succeed({ item: { id: ITEM_ID } })
         },
         checkItem: (call: { payload: { config: unknown } }) =>
-          Effect.succeed({ issues: had.check?.(call.payload) ?? [] }),
+          Effect.succeed({ issues: had.check?.(call.payload) ?? [], standing: had.standing ?? [] }),
         previewScoring: (call: { payload: { calculator: { ref: string } } }) =>
           Effect.succeed(had.preview ?? previewFor(call.payload.calculator.ref)),
       },
@@ -952,6 +960,130 @@ describe('what a participant will see', () => {
     await vi.waitFor(() => expect(controls()).toHaveLength(1))
     expect(controls()[0]?.getAttribute('data-field-type')).toBe('text')
     expect((controls()[0]?.textContent ?? '').trim()).not.toBe('')
+  })
+})
+
+describe('what already stands under a question', () => {
+  /** a question whose determination is one of three levels, with claims already determined under it */
+  const levelled = () => {
+    const item = formulaItem({ defaultFromFieldId: null })
+    ;(
+      item.currentRevision.scoringConfig as { recognitions: Record<string, { refinement: unknown }> }
+    ).recognitions[RECOGNITION_ID]!.refinement = { ...LEVEL }
+    return item
+  }
+  const levelPreview = () => previewFor('formula@1', { parameters: { level: { ...LEVEL, title: '获奖级别' } } })
+
+  it('holds shut the options that claims were determined as, and says why on hover', async () => {
+    open({
+      items: [levelled()],
+      question: ITEM_ID,
+      panel: 'scoring',
+      surfaces: BOTH_CALCULATORS,
+      preview: levelPreview(),
+      standing: [
+        { recognitionId: RECOGNITION_ID, records: 2, openRounds: 1, determined: ['province'], pending: ['city'] },
+      ],
+    })
+    await page.getByTestId('recognition-row').click()
+    const option = (value: string) => seat(`[data-testid="recognition-option"][data-value="${value}"]`)
+    // determined, or still in play for a round that is open: neither can be let go of
+    await expect.element((await option('province')).getByRole('checkbox')).toBeDisabled()
+    await expect.element((await option('city')).getByRole('checkbox')).toBeDisabled()
+    // nothing stands on this one, so it is the administrator's to narrow away
+    await expect.element((await option('school')).getByRole('checkbox')).toBeEnabled()
+    expect(
+      page
+        .getByTestId('option-held')
+        .elements()
+        .map((node) => node.getAttribute('data-held-by')),
+    ).toEqual(['pending', 'determined'])
+    await page.getByTestId('option-held').first().hover()
+    await expect.element(page.getByRole('tooltip')).toBeVisible()
+  })
+
+  it('pins a narrowing that claims do not fit on the determination, not on the scoring method', async () => {
+    open({
+      items: [levelled()],
+      question: ITEM_ID,
+      panel: 'scoring',
+      surfaces: BOTH_CALCULATORS,
+      preview: levelPreview(),
+      check: () => [
+        {
+          path: `scoringConfig.recognitions.${RECOGNITION_ID}`,
+          reason: 'strands-determined-value',
+          count: 2,
+          values: ['province'],
+        },
+      ],
+    })
+    const row = page.getByTestId('recognition-row')
+    await expect.element(row).toHaveAttribute('data-problem', 'recognition-strands-value')
+    await expect.element(row.getByTestId('row-problem')).toBeVisible()
+    expect(document.querySelector('[data-testid="method-problem"]')).toBeNull()
+    await expect.element(page.getByTestId('item-save')).toBeDisabled()
+  })
+
+  it('reads a refusal that only names claims as one about the determinations', async () => {
+    open({
+      items: [levelled()],
+      question: ITEM_ID,
+      panel: 'scoring',
+      surfaces: BOTH_CALCULATORS,
+      preview: levelPreview(),
+      refuse: [
+        apiError('ASSESSMENT_ITEM_CONFIG_INVALID', {
+          issues: [
+            { path: 'scoringConfig.recognitions:01a0bc36-05f8-7798-ad13-2aa82ed1499f', reason: 'strands-existing-recognition' },
+          ],
+        }),
+      ],
+    })
+    await expect.element(page.getByTestId('recognition-row')).toBeVisible()
+    await tab(/基本信息/).click()
+    await page.getByRole('textbox', { name: '项目名称' }).fill('竞赛获奖（改）')
+    await page.getByTestId('item-save').click()
+    await expect.element(page.getByTestId('save-failure')).toBeVisible()
+    // where the refusal took the editor, the fault is said over the determinations
+    await expect.element(editor()).toHaveAttribute('data-panel', 'scoring')
+    const said = await seat('[data-testid="block-problem"]')
+    await expect.element(said).toHaveAttribute('data-block', 'recognitions')
+    await expect.element(said).toHaveAttribute('data-code', 'recognition-strands')
+    expect(document.querySelector('[data-testid="method-problem"]')).toBeNull()
+    expect(document.querySelector('[data-testid="save-refused"]')).toBeNull()
+  })
+})
+
+describe('while the page loads', () => {
+  it('outlines the page it is about to be, rather than one slab', async () => {
+    let release: (() => void) | undefined
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    renderScreen({
+      client: fakeClient({
+        app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES, ...CALCULATOR_SURFACES }) },
+        assessment: {
+          getBatch: () => Effect.succeed({ batch: batch() }),
+          listScoreGroups: () =>
+            Effect.promise(() => held).pipe(
+              Effect.as({ groups: [paper], version: 1, capabilities: { canManage: true } }),
+            ),
+          listItems: () => Effect.succeed({ items: [], capabilities: { canManage: true } }),
+          itemOptions: () => Effect.succeed({ orgTypes: [], roles: [] }),
+          reviewAlerts: () => Effect.succeed({ groups: [] }),
+        },
+      } as never),
+      routes: [{ path: '/assessment/batches/:batchId/items', element: <ItemSettingsPage /> }] as never,
+      route: `/assessment/batches/${BATCH_ID}/items`,
+    })
+    const outline = page.getByTestId('structure-skeleton')
+    await expect.element(outline).toBeVisible()
+    // a heading and a card of rows, not a single block
+    expect(outline.element().querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(6)
+    release?.()
+    await vi.waitFor(() => expect(document.querySelector('[data-testid="structure-skeleton"]')).toBeNull())
   })
 })
 

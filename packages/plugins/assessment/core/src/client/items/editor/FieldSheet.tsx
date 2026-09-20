@@ -19,6 +19,7 @@ import {
   parameterSchemaOf,
   type Contract,
   type Draft,
+  type Standing,
   type FieldDraft,
   type FieldType,
   type RecognitionDraft,
@@ -82,6 +83,7 @@ export function FieldSheet({
   fieldKey,
   materialRange,
   storedOptionIds,
+  standing,
   onChange,
   onRetype,
   onRecognition,
@@ -98,6 +100,8 @@ export function FieldSheet({
   fieldKey: string
   materialRange: { start: string; end: string }
   storedOptionIds: ReadonlySet<string>
+  /** what each saved determination already holds, by its stored identity */
+  standing: readonly Standing[]
   onChange: (next: FieldDraft) => void
   onRetype: (type: FieldType) => void
   /** the determination a linked field stands for, edited from here under direct handling */
@@ -194,6 +198,7 @@ export function FieldSheet({
             key={link.handle}
             parameter={parameter}
             recognition={link.recognition}
+            standing={standing.find((one) => one.recognitionId === link.recognition.id)}
             onRefinement={(next) => onRefinement(link.handle, next)}
           />
           <label {...stylex.props(styles.checkLabel)}>

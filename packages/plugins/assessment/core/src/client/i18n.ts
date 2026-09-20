@@ -5706,6 +5706,50 @@ const i18n = definePluginMessages({
       id: 'assessment/items/problem-top-n',
       defaultMessage: 'Number of entries must be at least 1',
     },
+    itemsProblemStrandsValue: {
+      id: 'assessment/items/problem-strands-value',
+      defaultMessage: '{count, plural, one {# record is} other {# records are}} already determined as {names}: keep it in the range',
+    },
+    itemsProblemStrands: {
+      id: 'assessment/items/problem-strands',
+      defaultMessage: '{count, plural, one {# record has} other {# records have}} a determined value outside this range',
+    },
+    itemsProblemStrandsMissing: {
+      id: 'assessment/items/problem-strands-missing',
+      defaultMessage: '{count, plural, one {# record is} other {# records are}} already determined without it: a determination cannot be added now',
+    },
+    itemsProblemStrandsRound: {
+      id: 'assessment/items/problem-strands-round',
+      defaultMessage: '{count, plural, one {# record is} other {# records are}} under review: the range cannot be narrowed until that ends',
+    },
+    itemsProblemStrandsRoundNew: {
+      id: 'assessment/items/problem-strands-round-new',
+      defaultMessage: '{count, plural, one {# record is} other {# records are}} under review: a determination cannot be added until that ends',
+    },
+    itemsProblemStrandsRemoved: {
+      id: 'assessment/items/problem-strands-removed',
+      defaultMessage: '{count, plural, one {# record relies} other {# records rely}} on a determination that was taken away: set its parameter back to a determined value',
+    },
+    itemsProblemRecognitionsRefused: {
+      id: 'assessment/items/problem-recognitions-refused',
+      defaultMessage: 'The determinations as set are not accepted',
+    },
+    itemsProblemParametersRefused: {
+      id: 'assessment/items/problem-parameters-refused',
+      defaultMessage: 'The parameters as set are not accepted',
+    },
+    itemsOptionHeldDetermined: {
+      id: 'assessment/items/option-held-determined',
+      defaultMessage: 'A record is already determined as this option, so it stays',
+    },
+    itemsOptionHeldPending: {
+      id: 'assessment/items/option-held-pending',
+      defaultMessage: 'A record under review may still be determined as this option',
+    },
+    itemsOptionsHeldHint: {
+      id: 'assessment/items/options-held-hint',
+      defaultMessage: 'Options that records already use stay in the range',
+    },
     itemsModeLockedToAutomatic: {
       id: 'assessment/items/mode-locked-to-automatic',
       defaultMessage: 'A published question cannot be changed to automatic scoring',

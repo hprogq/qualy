@@ -1220,6 +1220,10 @@ describe.runIf(postgresAvailable)('recognitions', () => {
     // remedy a student or a reviewer could carry out, so it is not a
     // decision to offer - it is a configuration that cannot be saved
     expect(result.refused.issues).toEqual([
+      // why, per determination: the claim stands determined without the new
+      // name, and carries the one that was taken away
+      { path: 'scoringConfig.recognitions.rec-grade', reason: 'strands-determination-missing', count: 1 },
+      { path: 'scoringConfig.recognitions.rec-level', reason: 'strands-determination-removed', count: 1 },
       {
         path: `scoringConfig.recognitions:${result.entryId}`,
         reason: 'strands-existing-recognition',
@@ -1271,6 +1275,10 @@ describe.runIf(postgresAvailable)('recognitions', () => {
     // determination the new plan cannot read - so the save stops rather than
     // letting that round walk toward an unscorable approval
     expect(result.refused.issues).toEqual([
+      // the round may still settle on the name that was taken away, and can
+      // never settle on the one put in its place
+      { path: 'scoringConfig.recognitions.rec-level', reason: 'strands-determination-removed', count: 1 },
+      { path: 'scoringConfig.recognitions.rec-grade', reason: 'strands-open-round', count: 1 },
       {
         path: `scoringConfig.recognitions:${result.entryId}`,
         reason: 'strands-existing-recognition',
@@ -1318,24 +1326,36 @@ describe.runIf(postgresAvailable)('recognitions', () => {
             f.principal(f.reviewer),
           )
           // ordinal 9 was determined; the narrow calculator reads 1..5
+          const narrowed = {
+            entryChannels: ['participant'] as const,
+            formConfig: { files: {} },
+            scoringConfig: narrowScoring,
+            reviewPolicy: policyOf(f),
+          }
+          // the editor asks while the narrowing is still being composed, and
+          // is told the same thing the save would be - with nothing written
+          const read = yield* assessment.checkItem(
+            f.t,
+            g.batch.id,
+            {
+              itemId: g.item.id,
+              itemType: g.item.itemType,
+              scoreGroupId: g.item.scoreGroupId,
+              config: narrowed as never,
+            },
+            f.principal(f.admin),
+          )
           const asked = yield* Effect.exit(
             assessment.updateItem(
               f.t,
               g.item.id,
-              {
-                config: {
-                  entryChannels: ['participant'] as const,
-                  formConfig: { files: {} },
-                  scoringConfig: narrowScoring,
-                  reviewPolicy: policyOf(f),
-                },
-                reason: '收紧序位',
-              },
+              { config: narrowed, reason: '收紧序位' },
               f.principal(f.admin),
             ),
           )
           return {
             entryId,
+            read,
             refused: errorOf<{ issues: readonly { path: string; reason: string }[] }>(asked)!,
           }
         }),
@@ -1343,10 +1363,33 @@ describe.runIf(postgresAvailable)('recognitions', () => {
     )
 
     expect(result.refused.issues).toEqual([
+      // the value is the fault, so the value is named
+      {
+        path: 'scoringConfig.recognitions.rec-ordinal',
+        reason: 'strands-determined-value',
+        count: 1,
+        values: ['9'],
+      },
       {
         path: `scoringConfig.recognitions:${result.entryId}`,
         reason: 'strands-existing-recognition',
       },
+    ])
+    // asked beforehand, the cause without the claims - a screen has a row for
+    // a determination and none for somebody's record
+    expect(result.read.issues).toEqual([
+      {
+        path: 'scoringConfig.recognitions.rec-ordinal',
+        reason: 'strands-determined-value',
+        count: 1,
+        values: ['9'],
+      },
+    ])
+    // and what each determination already holds, so the editor can keep it
+    // from being let go of in the first place
+    expect(result.read.standing).toEqual([
+      { recognitionId: 'rec-level', records: 1, openRounds: 0, determined: ['national'], pending: [] },
+      { recognitionId: 'rec-ordinal', records: 1, openRounds: 0, determined: ['9'], pending: [] },
     ])
   })
 

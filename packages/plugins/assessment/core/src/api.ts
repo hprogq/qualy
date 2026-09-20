@@ -1286,6 +1286,18 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
             reason: Schema.String,
             /** the draft handle of a determination a save has not named yet */
             handle: Schema.optional(Schema.String),
+            count: Schema.optional(Schema.Number),
+            values: Schema.optional(Schema.Array(Schema.String)),
+          }),
+        ),
+        /** what each determination already holds, and so may not be narrowed away from */
+        standing: Schema.Array(
+          Schema.Struct({
+            recognitionId: Schema.String,
+            records: Schema.Number,
+            openRounds: Schema.Number,
+            determined: Schema.Array(Schema.String),
+            pending: Schema.Array(Schema.String),
           }),
         ),
       }),

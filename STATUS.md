@@ -18911,3 +18911,35 @@ docs/assessment-design.md §32.83。
 - 5c 第一步不列「仅草稿」公式、第二步不列已停止绑定的历史版本(接口只给今天可绑定的与当前绑定,见 §32.83 ⑧)。
 - 审核覆盖缺口标红但不拦保存(§32.83 ⑥,与设计稿 5d 的「保存不可点」不同),如要改成拦截需先定政策。
 
+## 已有认定下缩小认定范围:拒因说明到字段、编辑时判定、选项上锁;进页 Skeleton(2026-09-20)
+
+用户报告:已有认定记录的项目取消某认定字段的一个选项,保存被拒,界面只说「计分方式的设置不被接受」,且提交前检查不出来。
+裁决与机制见 docs/assessment-design.md §32.84。
+
+- **根因三条**:①服务端拒因 `scoringConfig.recognitions:<entryId>` 只点名记录,不说挂在哪个认定字段、为什么;
+  ②该判定只在保存路径(`impactUnder`)里,`checkItem` 没有;③前端对不认识的 `scoringConfig*` path 一律归到
+  「计分方式」区块。
+- **修法**:`strandingUnder` 抽出供保存与实时校验共用,拒因按认定字段给出四种成因(附记录数与涉及的值),逐记录条目
+  保留在后;`checkItem` 另回 `standing`(已认定的值 / 在审轮次仍可能认定的值),`RangeEditor` 据此把选中的这类选项
+  锁住并悬停说明;前端兜底按 path 前缀分到认定字段 / 公式参数 / 计分方式三个区块,各有区块级错误行;提交即生效下
+  落到关联申报字段行。
+- **同类问题清点**:保存路径里实时校验没有覆盖的只剩三种,都是本质上只能在保存时回答的——版本冲突、修改理由、
+  按新规则对已认定记录试算(`ItemScoringIncompatible`,需在事务外跑公式)。前端兜底另修了
+  `too-many-recognitions` 等区块级 path 的归位。
+- **Skeleton**:进页时原是一个 384px 高的圆角矩形;改为页面轮廓(标题条 + 若干行的卡片),结构页 6 行,
+  带 `?question=` 进入编辑器时三块。
+
+### 验收(实际执行)
+
+- 真库:`recognition.test.ts` + `item-config.test.ts`:`Test Files 2 passed (2)`,`Tests 54 passed (54)`。其中三条
+  既有用例的期望改为「成因在前、记录在后」(改名 → missing + removed;在审轮次改名 → removed + open-round;
+  收紧序位 → `strands-determined-value`,`values: ['9']`),收紧序位一条另断言 `checkItem` 在保存前给出同一成因且
+  `standing` 为 `rec-level: ['national']`、`rec-ordinal: ['9']`。
+- 浏览器:`item-editor.browser.test.tsx` `Tests 30 passed (30)`——新增四条:已认定 / 在审的选项不可取消且悬停有说明、
+  未被使用的选项仍可取消;成因落在认定字段行而 `method-problem` 不出现;只有逐记录条目的旧式拒因落到认定字段区块的
+  区块级错误行,不出「无法归位」说明卡;加载期渲染的是多块轮廓而非单块。
+- 截图核对(锁定选项面板、认定字段行上的红字、Skeleton)人工看过后删除。
+- 收口:`pnpm typecheck` `exit=0`;门禁 7 个文件(api-paths / effect-api-parity / error-codes / catalogs / fast-refresh /
+  client-paths / browser-graph)`Test Files 7 passed (7)`,`Tests 42 passed (42)`;`item-editor` + `scoring-failures`
+  浏览器 `Test Files 2 passed (2)`,`Tests 35 passed (35)`。本轮未跑全量浏览器套件(改动限于编辑器与其服务端)。
+
