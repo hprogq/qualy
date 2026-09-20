@@ -24,6 +24,19 @@ export const APP_SHELL: LayoutContractId = 'app-shell/v1'
  * path segment gives the reader nothing to hold on to.
  */
 export const WORKSPACE_SHELL: LayoutContractId = 'workspace-shell/v1'
+
+/**
+ * The shell for one person: the same applications across the top, then the
+ * person - who they are, said by whoever owns people - and a rail of every
+ * part of the product that has something to say about them, one page each.
+ *
+ * Its own contract rather than the workspace's because what is open is not a
+ * place somebody works in for a while but a record somebody looks up. The
+ * rail is registered, not enumerated: a plugin that keeps something per
+ * person declares a page whose path carries `:userId` and files an entry
+ * here, and a build without that plugin simply has no such entry.
+ */
+export const USER_DETAIL_SHELL: LayoutContractId = 'user-detail-shell/v1'
 export const BLANK_SHELL: LayoutContractId = 'blank-shell/v1'
 
 // collection surfaces carry structured data rendered by the layout itself
@@ -177,7 +190,21 @@ export const workspaceNavigation = defineUiCollection<NavigationItem, ResolvedNa
   schema: navigationItemSchema,
 })
 
-/** the sections both navigations file their entries under */
+/**
+ * The sections of one person's record.
+ *
+ * Entries name pages whose paths carry `:userId`, filled in by the shell from
+ * where the reader is - the same arrangement as the workspace rail. Auth
+ * files the person's own sections here; anything else that keeps something
+ * per person (the rounds they took part in, what they were granted) files
+ * its own, under a group of its own.
+ */
+export const userDetailNavigation = defineUiCollection<NavigationItem, ResolvedNavigationItem>({
+  key: 'iam/user-detail-navigation',
+  schema: navigationItemSchema,
+})
+
+/** the sections every navigation files its entries under */
 export const navigationGroups = defineUiCollection<NavigationGroup>({
   key: 'app-shell/navigation-groups',
   schema: navigationGroupSchema,
@@ -193,6 +220,7 @@ export const navigationGroups = defineUiCollection<NavigationGroup>({
 export const navigationCollections: readonly NamespacedId[] = [
   primaryNavigation.key,
   workspaceNavigation.key,
+  userDetailNavigation.key,
 ]
 
 export const headerActions = defineUiSlot({
@@ -259,6 +287,66 @@ export const workspaceNavigationBadge = defineUiSlot({
 /** what the shell hands a badge: which rail entry it is standing beside */
 export interface NavigationBadgeContext {
   readonly navigationId: string
+}
+
+/**
+ * Who the open person is, said by whoever owns people.
+ *
+ * The user-detail shell renders this above its rail and knows nothing about
+ * people: the contribution reads the person from the route it is mounted at,
+ * the same way the pages beside it do. Nothing else is handed down - the one
+ * thing every section shares is the id in the address, and a richer context
+ * would be a second, unwritten contract about what a person is.
+ */
+export const userDetailHeader = defineUiSlot({
+  key: 'iam/user-detail-header',
+  cardinality: 'one',
+})
+
+/**
+ * Explaining a grant that is confined to one object.
+ *
+ * Authorization knows such a grant names a `namespace/type/id` and nothing
+ * more; only the plugin that owns that kind of object knows what it is
+ * called, where it is administered and how the grant comes to be withdrawn.
+ * A presenter is that plugin's answer, keyed by the kind it speaks for. The
+ * screen that lists grants looks the kind up here and renders exactly the
+ * one renderer it names - not every renderer in the slot - and falls back to
+ * its own plain words when nobody has registered one.
+ */
+export interface ResourceGrantPresenter {
+  id: NamespacedId
+  namespace: string
+  type: string
+  /** the item id of this presenter's renderer in the resource-grant-renderer slot */
+  renderer: NamespacedId
+}
+
+export const resourceGrantPresenters = defineUiCollection<ResourceGrantPresenter>({
+  key: 'iam/resource-grant-presenters',
+  schema: Schema.Struct({
+    id: namespaced,
+    namespace: Schema.String.check(Schema.isMinLength(1)),
+    type: Schema.String.check(Schema.isMinLength(1)),
+    renderer: namespaced,
+  }),
+})
+
+/** where the renderers a presenter names are registered, by item id */
+export const resourceGrantRenderer = defineUiSlot({
+  key: 'iam/resource-grant-renderer',
+  cardinality: 'many',
+})
+
+/** what the grants screen hands a renderer: the grant, as far as authorization knows it */
+export interface ResourceGrantContext {
+  readonly grant: {
+    readonly id: string
+    readonly roleName: string
+    readonly resource: { readonly namespace: string; readonly type: string; readonly id: string }
+    readonly validFrom: string | null
+    readonly validUntil: string | null
+  }
 }
 
 /**

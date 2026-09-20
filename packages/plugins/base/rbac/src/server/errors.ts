@@ -44,6 +44,21 @@ export class GrantExists extends Schema.TaggedError<GrantExists>()(
 ) {}
 
 /**
+ * A grant confined to one object is not withdrawn here.
+ *
+ * It was made through the act of whoever owns that object - staffing a
+ * round, say - and that owner keeps its own record pointing at the grant and
+ * its own way of taking it back. Revoking the row underneath would leave the
+ * owner's record describing an authority that no longer exists, so the
+ * general endpoint refuses and names the kind of object to go to.
+ */
+export class GrantResourceBound extends Schema.TaggedError<GrantResourceBound>()(
+  'GRANT_RESOURCE_BOUND',
+  { namespace: Schema.String, type: Schema.String },
+  { httpApiStatus: 409, identifier: 'GrantResourceBound' },
+) {}
+
+/**
  * Granting or revoking the administrator role is reserved for its holders.
  *
  * Its own code rather than a plain denial: the client has a sentence for this

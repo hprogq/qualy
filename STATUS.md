@@ -18783,3 +18783,46 @@ pnpm vitest run tools/tests apps/server/tests    413 passed(supervisor 4/4,新�
   `directory-import.test.ts`(真库):`Tests 3 passed`(建单位与人员、同一上传拒绝二次导入、错误行整批拒绝、
   已存在人员判为 existing、撤销走 disable → deleted 且手工加入的人不受影响、清理只删无人使用的 1班 并保留 2班 与其年级)。
 - 浏览器:`import-record.browser.test.tsx` + `terminology.browser.test.tsx`:`Test Files 2 passed`,`Tests 5 passed`。
+
+## 用户详情壳:布局契约、按插件登记的分节与键控授权解释器(2026-09-20)
+
+夜间任务第 4 项的第三段(docs/refactor-temp.md 用户详情部分)。定案见 docs/notes/ui-composition.md「第三个壳」与 docs/assessment-design.md §32.82。
+
+- `@qualy/ui-contract`:布局契约 `USER_DETAIL_SHELL`(`user-detail-shell/v1`)、导航面 `userDetailNavigation`
+  (`iam/user-detail-navigation`,已进 `navigationCollections`)、Banner 槽位 `userDetailHeader`、键控解释器
+  `resourceGrantPresenters`(`{namespace, type, renderer}`)+ `resourceGrantRenderer` 槽位 + `ResourceGrantContext`。
+- layout-default:`WorkspaceShell` 抽成通用 `RailShell`(导航面 / 上下文槽位 / 徽标槽位 / banner 四个 props,
+  辅助函数归 `rail.ts`),`WorkspaceShell` 与新 `UserDetailShell` 各十行;图标集补 building-2 / graduation-cap /
+  id-card / key-round。
+- auth:`UserDetailPage` 拆为 Banner(`UserDetailHeader`,编辑资料 / 停用 / 启用 / 删除 / 恢复)与三张页面
+  `auth/user-detail`(基本资料)/ `auth/user-organization`(组织归属 + 移动)/ `auth/user-identities`(登录方式),
+  三条导航条目;删除 `UserGrants` / `GrantRoleForm` 与它们的文案,auth 客户端不再读 rbac 的授权接口。
+- rbac:`grantShape` 增 `resource {namespace,type,id} | null`、`validFrom`、`validUntil`;页面
+  `rbac/user-role-grants`(`/organization/users/:userId/role-grants`,可见性 `iam.grant.read`)把组织授权(带授予表单与撤销)
+  与专项授权(只读,按资源类型精确渲染一个 presenter,无则平实文字,显示有效期)分开;授予表单的单位经
+  `orgNodePicker` 槽位选择;`DELETE /iam/role-grants/{id}` 对 `resource != null` 拒绝(`GRANT_RESOURCE_BOUND` 409)。
+- assessment:`GET /assessment/users/{userId}/batches`(roster 成员 + 批次,`visibleTo` 过滤)与
+  `GET /assessment/users/{userId}/entries`(仅 `withinReach ∨ isStaff` 的批次),页面 `assessment/user-batches`
+  / `assessment/user-entries`(分组 `assessment/user-detail`「测评」),presenter `assessment/batch-grant`
+  (「来自批次 X」+ 查看批次,无权读批次时只说「来自一个测评批次」)。
+- 门禁:frozen-routes 加两条;error-codes 自动纳入新码;catalogs 校验 zh 占位符。
+
+### 验收(实际执行)
+
+- `pnpm exec tsc -p tsconfig.json`:exit=0(只剩 suggestion);rbac / auth / layout-default / assessment 四个 client 工程与
+  rbac / auth / apps-web 三个 tests 工程 exit=0(assessment tests 工程仅剩临时截图用例的两条错误)。
+- `pnpm qualy resolve --frozen-lockfile`:首轮报 lock 过期——目录导入把 rbac 加进了 `Db.entities` 的 dependsOn 而没有
+  重新 resolve,已重跑并并入该提交;本轮 exit=0。
+- 仓库门禁:首轮 `Test Files 1 failed | 12 passed (13)`,`Tests 1 failed | 92 passed (93)`,失败的是 catalogs
+  (`rbac/error/grant-resource-bound` 的中文丢了 `{namespace} {type}` 占位符,已改);复跑 catalogs + browser-contract +
+  fast-refresh + package-exports + plugin-isolation + workspace-deps + test-layers + product-dependencies + layout-default +
+  ui-registry:`Test Files 10 passed (10)`,`Tests 89 passed (89)`;api-paths / effect-api-parity / error-codes /
+  client-paths / browser-graph / audit-actions / open-world 在首轮即通过。
+- 真库:`effect-rbac.test.ts -t confined`(列表带 resource 与有效期、通用撤销答 `GRANT_RESOURCE_BOUND` 且行未撤销)
+  `Tests 1 passed`;`user-record.test.ts`(管理员看到 s1 的批次与 Class A1、被移出的 s2 带移出时间、同批参评人可见批次、
+  局外人看不到;申报记录管理员与 recorder 可见、同批参评人零条)`Tests 2 passed (2)`。
+- 浏览器:`user-role-grants.browser.test.tsx`(组织/专项分栏、专项无撤销按钮、键控 presenter 只渲染登记的那一个、
+  撤销经 alertdialog 确认、租户授予、经单位选择器槽位授予、无可授予角色时的提示)+ `identity.browser.test.tsx`
+  + `shell.browser.test.tsx`:首轮 `Tests 2 failed | 33 passed (35)`(alertdialog 角色、顶栏「测评」与分组标签同名);
+  修后 rbac 文件全绿,`shell.browser.test.tsx` 全文件 `Tests 1 failed | 15 passed (16)`(Banner 需要 stub
+  `getUserOptions`,姓名与徽标同段),最后单例复跑 `Tests 1 passed`。

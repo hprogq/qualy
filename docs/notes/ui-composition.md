@@ -9,10 +9,10 @@
 | --------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | Component       | 构建内可懒加载的 React renderer,key 为 `<plugin>/<Name>`                      | plugins.gen 聚合,生成期命名空间校验                                                                                 |
 | Page            | 一个可路由主内容单元 = 恰好一个主 Component;`{ id, path, component, layout }` | id 必填(`org/tree` 式),layout 引用契约而非实现                                                                      |
-| Layout Contract | 语义布局协议(含版本):`app-shell/v1`、`workspace-shell/v1`、`blank-shell/v1`   | 定义于 @qualy/ui-contract                                                                                           |
+| Layout Contract | 语义布局协议(含版本):`app-shell/v1`、`workspace-shell/v1`、`user-detail-shell/v1`、`blank-shell/v1` | 定义于 @qualy/ui-contract                                                                                    |
 | Layout Provider | 契约的具体实现,由布局插件 registerLayout 注册                                 | @qualy/plugin-layout-default 提供两个默认实现                                                                       |
-| Collection      | 结构化数据表面,布局统一渲染(导航/未来面包屑)                                  | `app-shell/navigation-primary` 与 `workspace-shell/navigation`(pageId 引用,manifest 期解析 path,页面消失项自动脱落) |
-| Slot            | 松耦合 renderer 表面,cardinality one/many                                     | `app-shell/header-actions`、`app-shell/user-menu`、`workspace-shell/context`                                        |
+| Collection      | 结构化数据表面,布局统一渲染(导航/未来面包屑)                                  | `app-shell/navigation-primary`、`workspace-shell/navigation`、`iam/user-detail-navigation`(pageId 引用,manifest 期解析 path,页面消失项自动脱落);`iam/resource-grant-presenters`(键控 renderer 映射) |
+| Slot            | 松耦合 renderer 表面,cardinality one/many                                     | `app-shell/header-actions`、`app-shell/user-menu`、`workspace-shell/context`、`iam/user-detail-header`、`iam/resource-grant-renderer` |
 | Theme           | 视觉 token,与结构布局分离                                                     | CSS variables 已就绪(@qualy/ui/theme.css),Provider 注册缓建                                                         |
 
 ## 两个壳,一条边界(2026-08-12 扩展)
@@ -35,6 +35,31 @@
 导航解析(pageId → path、页面不可见即脱落)因此从「只认 primaryNavigation」改为认
 `navigationCollections` 列出的每一个导航面——新增导航面必须同时进这张表,否则条目带着未解析的
 pageId 上网。
+
+## 第三个壳:用户详情(2026-09-20 扩展)
+
+用户详情原是 auth 的一张页面自己包办 Banner、登录方式与角色授权,并直接读 rbac 的接口——那是插件化之后
+不该存在的边。现在它是一个**布局契约** `user-detail-shell/v1`,与批次工作区同一种结构:
+
+- 顶部同一排应用;下面是 **Banner 槽位** `iam/user-detail-header`(cardinality one,auth 提供:头像、姓名、
+  编号、类型、所在单位、状态与整体动作);左侧是 **导航面** `iam/user-detail-navigation`(条目 path 带 `:userId`,
+  由壳用当前路由填充,分组沿用 `navigationGroups`);右侧是页面。
+- **每一节都是一张真正的 `Ui.page`**,由拥有那部分事实的插件声明并向导航面登记:auth 的基本资料 / 组织归属 /
+  登录方式,rbac 的角色授权(`/organization/users/:userId/role-grants`),assessment 的参评批次 / 申报记录
+  (`/organization/users/:userId/assessment/...`,分组 `assessment/user-detail`)。装配里没有某个插件,它的
+  条目就不在 manifest 里,用户详情照常工作;auth 不写任何 `if (assessmentInstalled)`。
+- 各节只共享地址里的 `userId`,不共享 `getUser()` 的数据:TanStack 自己去重,而一份跨插件的「用户是什么」
+  的隐性契约正是要避免的东西。
+- 实现上 layout-default 只有**一个** `RailShell`(导航面、上下文槽位、徽标槽位、是否为 Banner 作为 props),
+  `WorkspaceShell` 与 `UserDetailShell` 是两个薄封装;不存在第三份壳代码。
+
+**键控 renderer**:角色授权页把 `resource == null` 的组织授权与 `resource != null` 的专项授权分开(判据是
+资源而不是 `validUntil`——时间范围与资源范围是正交维度)。专项授权由资源拥有者解释:插件向
+`iam/resource-grant-presenters` 登记 `{namespace, type, renderer}`,页面按资源类型**精确查一个** renderer 并以
+`PluginSurface` 渲染 `iam/resource-grant-renderer` 槽位中那一个 item(不是 `UiSlot` 全渲染——三个拥有者会各被问
+两次别人的对象),没登记的类型显示平实的缺省文字。链接一律 `PageLink page=...`,renderer 查名称仍走自己的 API,
+无权读取就退化为「来自一个测评批次」。**通用 `DELETE /iam/role-grants/{id}` 拒绝资源限定的授权**
+(`GRANT_RESOURCE_BOUND`):它经资源拥有者的业务流程(如 assessment 的 removeStaff)撤销,拥有者保留着指向它的记录。
 
 ## 规则
 
@@ -62,7 +87,7 @@ apps/web      → web-runtime / ui-contract(纯路由引擎,无布局 DOM)
 | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
 | 多 Provider + 租户布局策略                                                             | 第二个布局实现插件真实出现                                              |
 | Theme Provider 注册与切换                                                              | 第二套主题或租户品牌定制需求出现                                        |
-| 页面级 Slot(user-detail/tabs 等)                                                       | 首个跨插件页面扩展需求(如用户详情追加 Tab)                              |
+| ~~页面级 Slot(user-detail/tabs 等)~~                                                   | 已于 2026-09-20 以布局契约 + 导航面落地(见「第三个壳」),不做页面级 Tab Slot |
 | Slot config schema 校验                                                                | 首个携带 config 的贡献出现                                              |
 | runtime bootstrap 插件(/runtime/bootstrap 聚合 viewer/tenant/ui + app/page 扩展 token) | 会话 7(依赖 RBAC 过滤;届时 me+manifest 合并、revision/ETag、加载 Shell) |
 | ui:validate 装配校验 CLI                                                               | manifest 与构建组件目录出现真实脱节事故                                 |

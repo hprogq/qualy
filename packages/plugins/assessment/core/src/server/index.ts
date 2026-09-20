@@ -167,6 +167,10 @@ import {
   countBatches,
   activeBatchIdsVisibleTo,
   listBatchesPage,
+  userBatchesPage,
+  userEntriesPage,
+  type UserBatchRow,
+  type UserEntryRow,
   countBatchesByStatus,
   listParticipantsPage,
   listRosterUnits,
@@ -734,6 +738,20 @@ export class Assessment extends Context.Service<
       filter: { status?: 'draft' | 'active' | 'archived'; q?: string },
       as: Principal,
     ) => Effect.Effect<number>
+    /** the rounds one person is or was in, among those the reader may see */
+    readonly listUserBatches: (
+      tenantId: string,
+      userId: string,
+      filter: { after?: { includedAt: string; id: string }; limit: number },
+      as: Principal,
+    ) => Effect.Effect<readonly UserBatchRow[]>
+    /** what one person filed, in the rounds the reader administers or works on */
+    readonly listUserEntries: (
+      tenantId: string,
+      userId: string,
+      filter: { after?: { createdAt: string; id: string }; limit: number },
+      as: Principal,
+    ) => Effect.Effect<readonly UserEntryRow[]>
     readonly getBatch: (
       tenantId: string,
       batchId: string,
@@ -2509,6 +2527,26 @@ export const make = Effect.fn('Assessment.make')(function* () {
       // there is any unit at all it could choose from
       const held = yield* rbac.listAuthorizedScope(as, MANAGE)
       return held.tenantWide || held.anchors.length > 0
+    }),
+
+    listUserBatches: Effect.fn('Assessment.listUserBatches')(function* (
+      tenantId,
+      userId,
+      filter,
+      as,
+    ) {
+      const viewer = yield* viewerOf(as)
+      return yield* dieQuery(withDb(userBatchesPage(tenantId, userId, viewer, filter)))
+    }),
+
+    listUserEntries: Effect.fn('Assessment.listUserEntries')(function* (
+      tenantId,
+      userId,
+      filter,
+      as,
+    ) {
+      const viewer = yield* viewerOf(as)
+      return yield* dieQuery(withDb(userEntriesPage(tenantId, userId, viewer, filter)))
     }),
 
     listBatches: Effect.fn('Assessment.listBatches')(function* (tenantId, filter, as) {
@@ -5685,6 +5723,97 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           entries: page.map(({ cursor: _cursor, ...row }) => row),
           nextCursor:
             found.length > limit && last ? encodeQueryCursor(fingerprint, [...last.cursor]) : null,
+        }
+      }),
+    )
+    .handle(
+      'listUserBatches',
+      Effect.fn('assessment.listUserBatches.handler')(function* ({ params, query }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const limit = pageSize(query.limit, DEFAULT_PAGE_SIZE)
+        const fingerprint = `assessment.user-batches:${params.userId}`
+        const key = readQueryCursor(query.cursor, fingerprint, ['timestamp', 'uuid'])
+        if (key === null) return yield* cursorUnusable()
+        const found = yield* assessment.listUserBatches(
+          principal.tenantId,
+          params.userId,
+          {
+            ...(key === undefined ? {} : { after: { includedAt: key[0]!, id: key[1]! } }),
+            limit: limit + 1,
+          },
+          principal,
+        )
+        const page = found.slice(0, limit)
+        const last = page[page.length - 1]
+        return {
+          items: page.map((row) => ({
+            batch: {
+              id: row.batchId,
+              name: row.name,
+              status: row.status as 'draft' | 'active' | 'archived',
+              materialRange: parseRange(row.materialRange),
+              timezone: row.timezone,
+              currentPhaseId: row.currentPhaseId,
+              currentPhaseName: row.currentPhaseName,
+              manageable: row.manageable === true,
+            },
+            membership: {
+              status: row.membershipStatus as 'active' | 'excluded',
+              includedAt: new Date(row.includedAt).toISOString(),
+              excludedAt: row.excludedAt == null ? null : new Date(row.excludedAt).toISOString(),
+              anchorNodeName: row.anchorNodeName ?? null,
+            },
+          })),
+          nextCursor:
+            found.length > limit && last
+              ? encodeQueryCursor(fingerprint, [last.cursorAt, last.membershipId])
+              : null,
+        }
+      }),
+    )
+    .handle(
+      'listUserEntries',
+      Effect.fn('assessment.listUserEntries.handler')(function* ({ params, query }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const limit = pageSize(query.limit, DEFAULT_PAGE_SIZE)
+        const fingerprint = `assessment.user-entries:${params.userId}`
+        const key = readQueryCursor(query.cursor, fingerprint, ['timestamp', 'uuid'])
+        if (key === null) return yield* cursorUnusable()
+        const found = yield* assessment.listUserEntries(
+          principal.tenantId,
+          params.userId,
+          {
+            ...(key === undefined ? {} : { after: { createdAt: key[0]!, id: key[1]! } }),
+            limit: limit + 1,
+          },
+          principal,
+        )
+        const page = found.slice(0, limit)
+        const last = page[page.length - 1]
+        return {
+          items: page.map((row) => ({
+            id: row.id,
+            batchId: row.batchId,
+            batchName: row.batchName,
+            itemId: row.itemId,
+            itemTitle: row.itemTitle,
+            status: row.status as
+              | 'draft'
+              | 'in_review'
+              | 'needs_revision'
+              | 'approved'
+              | 'rejected'
+              | 'voided',
+            source: row.source as 'self' | 'proxy' | 'record' | 'import' | 'system',
+            createdAt: new Date(row.createdAt).toISOString(),
+            updatedAt: new Date(row.updatedAt).toISOString(),
+          })),
+          nextCursor:
+            found.length > limit && last
+              ? encodeQueryCursor(fingerprint, [last.cursorAt, last.id])
+              : null,
         }
       }),
     )

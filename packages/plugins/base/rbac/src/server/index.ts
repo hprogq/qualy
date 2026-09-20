@@ -633,6 +633,16 @@ const toGrantShape = (row: GrantRow) => ({
         } as const),
   manageable: row.manageable,
   scoped: row.scoped,
+  resource:
+    row.resourceId === null
+      ? null
+      : {
+          namespace: row.resourceNamespace ?? '',
+          type: row.resourceType ?? '',
+          id: row.resourceId,
+        },
+  validFrom: row.validFrom == null ? null : new Date(row.validFrom).toISOString(),
+  validUntil: row.validUntil == null ? null : new Date(row.validUntil).toISOString(),
 })
 
 export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers) =>

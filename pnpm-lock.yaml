@@ -1579,6 +1579,9 @@ importers:
       '@qualy/plugin-audit':
         specifier: workspace:*
         version: link:../audit
+      '@qualy/testkit':
+        specifier: workspace:*
+        version: link:../../../testkit/browser
       '@qualy/tsconfig':
         specifier: workspace:*
         version: link:../../../build/tsconfig

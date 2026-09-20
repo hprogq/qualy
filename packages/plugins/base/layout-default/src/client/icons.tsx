@@ -1,11 +1,15 @@
 import type { ComponentType, SVGProps } from 'react'
 import {
   BriefcaseIcon,
+  Building2Icon,
   CalendarClockIcon,
   ChartColumnIcon,
   ClipboardListIcon,
   FileTextIcon,
+  GraduationCapIcon,
+  IdCardIcon,
   InboxIcon,
+  KeyRoundIcon,
   LayoutDashboardIcon,
   LibraryIcon,
   ListChecksIcon,
@@ -32,11 +36,15 @@ import {
 
 const ICONS: Record<string, ComponentType<SVGProps<SVGSVGElement>>> = {
   briefcase: BriefcaseIcon,
+  'building-2': Building2Icon,
   'calendar-clock': CalendarClockIcon,
   'chart-column': ChartColumnIcon,
   'clipboard-list': ClipboardListIcon,
   'file-text': FileTextIcon,
+  'graduation-cap': GraduationCapIcon,
+  'id-card': IdCardIcon,
   inbox: InboxIcon,
+  'key-round': KeyRoundIcon,
   'layout-dashboard': LayoutDashboardIcon,
   library: LibraryIcon,
   'list-checks': ListChecksIcon,

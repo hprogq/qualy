@@ -12,9 +12,13 @@ import {
   APP_SHELL,
   AUTHENTICATED,
   PUBLIC,
+  USER_DETAIL_SHELL,
   WORKSPACE_SHELL,
   navigationGroups,
   permissionOf,
+  resourceGrantPresenters,
+  resourceGrantRenderer,
+  userDetailNavigation,
   workspaceContext,
   workspaceNavigation,
   workspaceNavigationBadge,
@@ -486,6 +490,93 @@ const plugin = Plugin.define(
         id: 'assessment/reviews-waiting',
         component: Ui.react('./client/review/QueueBadge'),
         visibility: permissionOf('assessment.review.process'),
+      },
+    ],
+  }),
+  // What this plugin knows about one person, as sections of their record:
+  // the rounds they took part in and what they filed. Two pages of this
+  // plugin's own, filed under a section of the person's rail; the person's
+  // page knows nothing of rounds and this plugin nothing of the banner
+  // above. Behind the round permission: a person's claims are the business
+  // of whoever runs the rounds, and the api narrows each list to the rounds
+  // the reader may actually see.
+  Ui.page({
+    id: 'assessment/user-batches',
+    path: '/organization/users/:userId/assessment/batches',
+    component: Ui.react('./client/person/UserBatchesPage'),
+    layout: USER_DETAIL_SHELL,
+    title: message('assessment/person/batches-tab', 'Rounds taken part in'),
+    visibility: permissionOf('assessment.batch.manage'),
+  }),
+  Ui.page({
+    id: 'assessment/user-entries',
+    path: '/organization/users/:userId/assessment/entries',
+    component: Ui.react('./client/person/UserEntriesPage'),
+    layout: USER_DETAIL_SHELL,
+    title: message('assessment/person/entries-tab', 'Claims filed'),
+    visibility: permissionOf('assessment.batch.manage'),
+  }),
+  Ui.surfaces({
+    collections: [
+      {
+        collection: navigationGroups,
+        id: 'assessment/user-detail',
+        value: {
+          id: 'assessment/user-detail',
+          label: message('assessment/nav-group/user-detail', 'Assessment'),
+          order: 20,
+        },
+        visibility: PUBLIC,
+      },
+      {
+        collection: userDetailNavigation,
+        id: 'assessment/user-batches/rail',
+        value: {
+          id: 'assessment/user-batches/rail',
+          label: message('assessment/person/batches-tab', 'Rounds taken part in'),
+          target: { kind: 'page', pageId: 'assessment/user-batches' },
+          icon: 'graduation-cap',
+          order: 10,
+          group: 'assessment/user-detail',
+        },
+        visibility: permissionOf('assessment.batch.manage'),
+      },
+      {
+        collection: userDetailNavigation,
+        id: 'assessment/user-entries/rail',
+        value: {
+          id: 'assessment/user-entries/rail',
+          label: message('assessment/person/entries-tab', 'Claims filed'),
+          target: { kind: 'page', pageId: 'assessment/user-entries' },
+          icon: 'file-text',
+          order: 20,
+          group: 'assessment/user-detail',
+        },
+        visibility: permissionOf('assessment.batch.manage'),
+      },
+      // A grant confined to one round, explained: authorization knows it
+      // names an `assessment/batch`, and this is the plugin that knows what
+      // the round is called and where it is administered. Keyed by kind, so
+      // the grants screen renders this one renderer for this kind and
+      // nobody else's.
+      {
+        collection: resourceGrantPresenters,
+        id: 'assessment/batch-grant',
+        value: {
+          id: 'assessment/batch-grant',
+          namespace: 'assessment',
+          type: 'batch',
+          renderer: 'assessment/batch-grant',
+        },
+        visibility: AUTHENTICATED,
+      },
+    ],
+    slots: [
+      {
+        key: resourceGrantRenderer.key,
+        id: 'assessment/batch-grant',
+        component: Ui.react('./client/access/BatchGrantPresenter'),
+        visibility: AUTHENTICATED,
       },
     ],
   }),

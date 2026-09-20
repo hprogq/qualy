@@ -16,8 +16,10 @@ import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/h
 
 const AppShell = (await layoutComponents['app-shell/v1']!()).default
 const WorkspaceShell = (await layoutComponents['workspace-shell/v1']!()).default
+const UserDetailShell = (await layoutComponents['user-detail-shell/v1']!()).default
 
 const BATCH_ID = '11111111-1111-4111-8111-111111111111'
+const USER_ID = '66666666-6666-4666-8666-666666666666'
 
 /** what a computed colour reads as when nothing is drawn */
 const BLANK = 'rgba(0, 0, 0, 0)'
@@ -31,6 +33,7 @@ const manifest = () => ({
       { id: 'app/assessment', label: text('测评'), order: 10, icon: 'list-checks' },
       { id: 'app/organization', label: text('组织与权限'), order: 40, icon: 'users' },
       { id: 'batch/admin', label: text('批次管理'), order: 30 },
+      { id: 'assessment/user-detail', label: text('测评'), order: 20 },
     ],
     'app-shell/navigation-primary': [
       {
@@ -113,6 +116,35 @@ const manifest = () => ({
         },
         group: 'batch/admin',
         order: 20,
+      },
+    ],
+    'iam/user-detail-navigation': [
+      {
+        id: 'auth/user-detail/profile',
+        label: text('基本资料'),
+        target: { kind: 'page', pageId: 'auth/user-detail', path: '/organization/users/:userId' },
+        order: 0,
+      },
+      {
+        id: 'auth/user-detail/identities',
+        label: text('登录方式'),
+        target: {
+          kind: 'page',
+          pageId: 'auth/user-identities',
+          path: '/organization/users/:userId/identities',
+        },
+        order: 20,
+      },
+      {
+        id: 'assessment/user-batches/rail',
+        label: text('参评批次'),
+        target: {
+          kind: 'page',
+          pageId: 'assessment/user-batches',
+          path: '/organization/users/:userId/assessment/batches',
+        },
+        group: 'assessment/user-detail',
+        order: 10,
       },
     ],
   },
@@ -611,6 +643,75 @@ const slowPage = () => {
   )
   return { Page, release: () => release() }
 }
+
+describe('the user-detail shell', () => {
+  it('fills the rail with the person of the route, sections and all, under the banner slot', async () => {
+    await page.viewport(1280, 800)
+    renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.succeed({
+              ...manifest(),
+              slots: { 'iam/user-detail-header': [{ id: 'auth/user-detail-header', order: 0 }] },
+            }),
+        },
+        identity: {
+          getUser: () =>
+            Effect.succeed({
+              user: {
+                id: USER_ID,
+                businessNo: '2023123456',
+                displayName: '郭航旗',
+                status: 'active',
+                version: 1,
+                userType: { id: 'ut-1', code: 'student', name: '学生' },
+                primaryOrgNode: { id: 'n-1', name: '软件学院' },
+                identityCount: 1,
+                manageable: false,
+              },
+              orgPath: [{ id: 'n-0', name: '示例大学' }, { id: 'n-1', name: '软件学院' }],
+              roles: [],
+              identities: [],
+            }),
+          // the banner's edit form reads these once opened; the fake client
+          // has to know the endpoint for the query to be composed at all
+          getUserOptions: () => Effect.succeed({ truncated: false, nodes: [], userTypes: [] }),
+        },
+      } as never),
+      registry: {
+        slots: {
+          'iam/user-detail-header': {
+            'auth/user-detail-header': lazy(
+              () =>
+                slotComponents['iam/user-detail-header']![
+                  'auth/user-detail-header'
+                ]!() as Promise<never>,
+            ),
+          },
+        },
+      },
+      routes: [{ path: '/organization/users/:userId/identities', element: <UserDetailShell /> }],
+      route: `/organization/users/${USER_ID}/identities`,
+    })
+    // the person's own sections stand loose above the ones other plugins
+    // file under a group of their own, every path filled with the person
+    await expect
+      .element(page.getByRole('link', { name: '基本资料' }))
+      .toHaveAttribute('href', `/organization/users/${USER_ID}`)
+    await expect
+      .element(page.getByRole('link', { name: '参评批次' }))
+      .toHaveAttribute('href', `/organization/users/${USER_ID}/assessment/batches`)
+    // filed under the section its plugin registered, whose label the rail draws
+    const filed = await page.getByRole('link', { name: '参评批次' }).element()
+    expect(filed.closest('section')?.querySelector('p')?.textContent).toBe('测评')
+    // the banner is whoever owns people saying who this is
+    await expect.element(page.getByTestId('user-detail-header')).toBeVisible()
+    await expect.element(page.getByText('郭航旗', { exact: false })).toBeVisible()
+    // the applications stay above it: a person is somewhere inside the product
+    await expect.element(page.getByRole('link', { name: '组织与权限' })).toBeVisible()
+  })
+})
 
 describe('a press on the rail', () => {
   it('lights the entry at once and marks it busy after a beat, while the open page stays', async () => {

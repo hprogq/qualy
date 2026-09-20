@@ -44,6 +44,7 @@ import {
   GrantNodeNotFound,
   GrantNotEligible,
   GrantNotFound,
+  GrantResourceBound,
   GrantRuleRefused,
   GrantUserNotFound,
   RoleNotFound,
@@ -56,6 +57,7 @@ export {
   GrantNodeNotFound,
   GrantNotEligible,
   GrantNotFound,
+  GrantResourceBound,
   GrantRuleRefused,
   GrantUserNotFound,
   RoleNotFound,
@@ -195,8 +197,16 @@ const grantRows = (
         // general authorization question filters these rows out. Listed here
         // without saying so, they read as ordinary organizational authority
         // and carry the same revoke press, so the screen that administers
-        // authority showed authority that is not what it looks like.
+        // authority showed authority that is not what it looks like. The
+        // object itself is named so that whoever owns that kind of object
+        // can say what it is; the window is named because it is part of
+        // what the grant IS, and the screen that shows one says when it ends.
         sql<boolean>`g.resource_id is not null`.as('scoped'),
+        'g.resourceNamespace',
+        'g.resourceType',
+        'g.resourceId',
+        'g.validFrom',
+        'g.validUntil',
         (scope === undefined
           ? sql<boolean>`true`
           : withinScope(
@@ -363,6 +373,9 @@ const oneGrant = (tenantId: string, grantId: string) =>
         'g.roleId',
         'g.orgNodeId',
         eb.ref('g.coverage').$castTo<'self' | 'subtree' | null>().as('coverage'),
+        'g.resourceNamespace',
+        'g.resourceType',
+        'g.resourceId',
       ])
       .where('g.tenantId', '=', tenantId)
       .where('g.id', '=', grantId)
@@ -875,6 +888,14 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
         Effect.gen(function* () {
           const grant = yield* oneGrant(tenantId, grantId)
           if (!grant) return yield* new GrantNotFound()
+          // authority confined to one object goes back through the owner of
+          // that object, which keeps its own record of having accepted it
+          if (grant.resourceId !== null) {
+            return yield* new GrantResourceBound({
+              namespace: grant.resourceNamespace ?? '',
+              type: grant.resourceType ?? '',
+            })
+          }
           // one's own grant is revocable like any other: shedding a role
           // never grows anybody, and the last administrator is still kept
           // by the check below reading the state this removal leaves

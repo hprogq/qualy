@@ -11,6 +11,7 @@
     "./api": "./src/api.ts",
     "./assembly": "./src/assembly/index.ts",
     "./client/RolesPage": "./src/client/RolesPage.tsx",
+    "./client/UserRoleGrantsPage": "./src/client/UserRoleGrantsPage.tsx",
     "./client/api": "./src/client/api.ts",
     "./client/i18n": "./src/client/i18n.ts",
     "./db": "./src/db/entities.ts",
@@ -46,6 +47,7 @@
   },
   "devDependencies": {
     "@qualy/plugin-audit": "workspace:*",
+    "@qualy/testkit": "workspace:*",
     "@qualy/tsconfig": "workspace:*",
     "@types/react": "catalog:"
   }

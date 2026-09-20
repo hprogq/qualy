@@ -6,7 +6,7 @@ import { Access } from '@qualy/rbac-contract/plugin'
 import { Audit } from '@qualy/audit-contract/plugin'
 import { accessActions } from './actions.ts'
 import { message } from '@qualy/i18n-contract'
-import { APP_SHELL, permissionOf } from '@qualy/ui-contract'
+import { APP_SHELL, USER_DETAIL_SHELL, permissionOf, userDetailNavigation } from '@qualy/ui-contract'
 import { accessApiGroup } from './api.ts'
 import { compositeForeignKeys, entities } from './db/entities.ts'
 import { permissions } from './permissions.ts'
@@ -35,6 +35,29 @@ const plugin = Plugin.define(
       order: 30,
       group: 'org/organization',
     },
+  }),
+  // What one person has been granted, as a section of their record. The
+  // page is this plugin's because the grants are: the user screen used to
+  // read this api directly, which was the one edge between the two plugins
+  // that neither contract admitted.
+  Ui.page({
+    id: 'rbac/user-role-grants',
+    path: '/organization/users/:userId/role-grants',
+    component: Ui.react('./client/UserRoleGrantsPage'),
+    layout: USER_DETAIL_SHELL,
+    title: message('rbac/user-detail/role-grants', 'Role grants'),
+    visibility: permissionOf('iam.grant.read'),
+  }),
+  Ui.collection(userDetailNavigation, {
+    id: 'rbac/user-detail/role-grants',
+    value: {
+      id: 'rbac/user-detail/role-grants',
+      label: message('rbac/user-detail/role-grants', 'Role grants'),
+      target: { kind: 'page', pageId: 'rbac/user-role-grants' },
+      icon: 'shield-check',
+      order: 30,
+    },
+    visibility: permissionOf('iam.grant.read'),
   }),
   Access.permissions('rbac', permissions),
   Audit.actions('rbac', accessActions),

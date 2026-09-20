@@ -190,14 +190,6 @@ const i18n = definePluginMessages({
       id: 'auth/audit/provider-audience',
       defaultMessage: 'Change who may sign in through an entrance',
     },
-    revokeGrantTitle: {
-      id: 'auth/users/revoke-grant-title',
-      defaultMessage: 'Take this role away here?',
-    },
-    revokeGrantHint: {
-      id: 'auth/users/revoke-grant-hint',
-      defaultMessage: 'They keep every other role they hold. Granting it again is a separate act.',
-    },
     title: { id: 'auth/login/title', defaultMessage: 'Sign in to Qualy' },
 
     // the card any screen opens on a name it shows
@@ -284,46 +276,9 @@ const i18n = definePluginMessages({
       id: 'auth/user-types/select-hint',
       defaultMessage: 'Open a user type to set where people of that kind may belong.',
     },
-    userDetailTitle: { id: 'auth/users/detail-title', defaultMessage: 'User' },
     backToUsers: { id: 'auth/users/back', defaultMessage: 'All users' },
     profileSection: { id: 'auth/users/profile', defaultMessage: 'Profile' },
     placementSection: { id: 'auth/users/placement', defaultMessage: 'Organization placement' },
-    grantsSection: { id: 'auth/users/grants', defaultMessage: 'Role grants' },
-    grantsEmpty: { id: 'auth/users/grants-empty', defaultMessage: 'No role grants.' },
-    tenantWideGrant: {
-      id: 'auth/users/grant-tenant-wide',
-      defaultMessage: 'across the whole tenant',
-    },
-    scopedGrant: {
-      id: 'auth/users/grant-scoped',
-      defaultMessage: 'for one object only',
-    },
-    grantsHint: {
-      id: 'auth/users/grants-hint',
-      defaultMessage: 'Only grants inside what you administer are shown and editable.',
-    },
-    grantAdd: { id: 'auth/users/grant-add', defaultMessage: 'Grant a role' },
-    grantScope: { id: 'auth/users/grant-scope', defaultMessage: 'Where it applies' },
-    grantScopeTenant: {
-      id: 'auth/users/grant-scope-tenant',
-      defaultMessage: 'The whole tenant',
-    },
-    grantScopeNode: {
-      id: 'auth/users/grant-scope-node',
-      defaultMessage: 'One organization node',
-    },
-    grantCoverage: { id: 'auth/users/grant-coverage', defaultMessage: 'Reach' },
-    grantCoverageSelf: { id: 'auth/users/grant-coverage-self', defaultMessage: 'That node only' },
-    grantCoverageSubtree: {
-      id: 'auth/users/grant-coverage-subtree',
-      defaultMessage: 'That node and everything under it',
-    },
-    grantRole: { id: 'auth/users/grant-role', defaultMessage: 'Role' },
-    grantRolesEmpty: {
-      id: 'auth/users/grant-roles-empty',
-      defaultMessage: 'No role you hold can be granted here.',
-    },
-    grantSubmit: { id: 'auth/action/grant', defaultMessage: 'Grant' },
     newUser: { id: 'auth/users/new', defaultMessage: 'New user' },
     newUserHint: {
       id: 'auth/users/new-hint',
@@ -392,7 +347,10 @@ const i18n = definePluginMessages({
     moveAction: { id: 'auth/users/move-action', defaultMessage: 'Move here' },
     editProfile: { id: 'auth/person/edit-profile', defaultMessage: 'Edit profile' },
     profileTabIdentities: { id: 'auth/person/tab-identities', defaultMessage: 'Ways in' },
-    profileTabRoles: { id: 'auth/person/tab-roles', defaultMessage: 'Roles' },
+    placementEmpty: {
+      id: 'auth/user-detail/placement-empty',
+      defaultMessage: 'Not placed in any unit yet',
+    },
     boundHeading: { id: 'auth/person/bound', defaultMessage: 'Bound' },
     boundEmptyTitle: { id: 'auth/person/bound-empty', defaultMessage: 'No way in yet' },
     boundEmptyBody: {

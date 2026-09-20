@@ -6,6 +6,7 @@ import {
   GrantNodeNotFound,
   GrantNotEligible,
   GrantNotFound,
+  GrantResourceBound,
   GrantRuleRefused,
   GrantStranded,
   GrantUserNotFound,
@@ -144,6 +145,19 @@ const grantShape = Schema.Struct({
    * revoke press, is showing authority that is not what it looks like.
    */
   scoped: Schema.Boolean,
+  /**
+   * The object a confined grant is confined to, as authorization knows it.
+   *
+   * A kind and an id, never a name: what an `assessment/batch` is called and
+   * where it is administered is the assessment plugin's to say, and the
+   * screen that lists grants asks it through a presenter it registers.
+   */
+  resource: Schema.NullOr(
+    Schema.Struct({ namespace: Schema.String, type: Schema.String, id: Schema.String }),
+  ),
+  /** the window the grant holds in; null at either end means unbounded there */
+  validFrom: Schema.NullOr(Schema.String),
+  validUntil: Schema.NullOr(Schema.String),
 })
 
 /** why someone holds a capability */
@@ -472,7 +486,14 @@ export const accessApiGroup = HttpApiGroup.make('access')
     HttpApiEndpoint.delete('deleteRoleGrant', '/iam/role-grants/:grantId', {
       params: Schema.Struct({ grantId: uuidInput }),
       success: Schema.Struct({ ok: Schema.Literal(true) }),
-      error: [GrantNotFound, RoleNotFound, TenantAdminRequired, LastAdministrator, AccessDenied],
+      error: [
+        GrantNotFound,
+        GrantResourceBound,
+        RoleNotFound,
+        TenantAdminRequired,
+        LastAdministrator,
+        AccessDenied,
+      ],
     }).middleware(Authenticated),
   )
   .add(

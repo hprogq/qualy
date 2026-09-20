@@ -193,6 +193,47 @@ const batchListView = Schema.Struct({
 })
 
 /**
+ * A round one person is or was in, as their own record lists it.
+ *
+ * The membership travels with the round because it is what the line is
+ * about: being taken off the list ends what somebody may do in the round
+ * and does not unsay that they were in it (§32.56), so an excluded row is
+ * listed with the day it ended rather than dropped.
+ */
+const userBatchView = Schema.Struct({
+  batch: Schema.Struct({
+    id: Schema.String,
+    name: Schema.String,
+    status: batchStatus,
+    materialRange,
+    timezone: Schema.String,
+    currentPhaseId: Schema.NullOr(Schema.String),
+    currentPhaseName: Schema.NullOr(Schema.String),
+    manageable: Schema.Boolean,
+  }),
+  membership: Schema.Struct({
+    status: Schema.Literals(['active', 'excluded']),
+    includedAt: Schema.String,
+    excludedAt: Schema.NullOr(Schema.String),
+    /** the unit they were admitted from, by its current name; null once it is gone */
+    anchorNodeName: Schema.NullOr(Schema.String),
+  }),
+})
+
+/** one claim of one person, across every round the reader may see it in */
+const userEntryView = Schema.Struct({
+  id: Schema.String,
+  batchId: Schema.String,
+  batchName: Schema.String,
+  itemId: Schema.String,
+  itemTitle: Schema.String,
+  status: Schema.Literals(['draft', 'in_review', 'needs_revision', 'approved', 'rejected', 'voided']),
+  source: Schema.Literals(['self', 'proxy', 'record', 'import', 'system']),
+  createdAt: Schema.String,
+  updatedAt: Schema.String,
+})
+
+/**
  * One batch on its own; its plan and its people are their own requests.
  *
  * `capabilities` is who the reader is in this round - the standing the
@@ -2118,6 +2159,36 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         // for somebody the api would refuse
         capabilities: Schema.Struct({ create: Schema.Boolean }),
       }),
+      error: [AccessDenied, BadRequest],
+    }).middleware(Authenticated),
+  )
+  .add(
+    /**
+     * The rounds one person took part in, for their record.
+     *
+     * Roster membership, not authority: which rounds somebody helped run is
+     * a different question, answered by the grants screen through the
+     * presenter this plugin registers. Rows are the rounds the READER may
+     * see - administering them, working on them, or being in them - with
+     * the person's membership in each.
+     */
+    HttpApiEndpoint.get('listUserBatches', '/assessment/users/:userId/batches', {
+      params: Schema.Struct({ userId: uuidInput }),
+      query: Schema.Struct(pageQuery),
+      success: pageOf(userBatchView),
+      error: [AccessDenied, BadRequest],
+    }).middleware(Authenticated),
+  )
+  .add(
+    /**
+     * What one person filed, across the rounds the reader administers or
+     * works on. Fellow participants see nothing here: a claim is its owner's
+     * and the round's staff's, never the room's.
+     */
+    HttpApiEndpoint.get('listUserEntries', '/assessment/users/:userId/entries', {
+      params: Schema.Struct({ userId: uuidInput }),
+      query: Schema.Struct(pageQuery),
+      success: pageOf(userEntryView),
       error: [AccessDenied, BadRequest],
     }).middleware(Authenticated),
   )

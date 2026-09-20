@@ -15,6 +15,7 @@ import {
   AUTHENTICATED,
   BLANK_SHELL,
   PUBLIC,
+  USER_DETAIL_SHELL,
   orgNodePicker,
   peopleImportPicker,
   peoplePicker,
@@ -25,6 +26,8 @@ import {
   drawerIdentity,
   drawerSignOut,
   sidebarUser,
+  userDetailHeader,
+  userDetailNavigation,
 } from '@qualy/ui-contract'
 import { config } from './server/auth-config.ts'
 import { identityApiGroup, sessionApiGroup } from './api.ts'
@@ -78,13 +81,79 @@ const plugin = Plugin.define(
   }),
   // a detail screen is reachable from the list rather than from the
   // navigation, so it declares no entry
+  // One person, as a record with sections. The shell is the user-detail
+  // one: it puts the banner above and the sections down the side, and any
+  // plugin that keeps something per person files a section of its own. Auth
+  // owns the banner and the three sections the directory itself answers for.
   Ui.page({
     id: 'auth/user-detail',
     path: '/organization/users/:userId',
-    component: Ui.react('./client/iam/UserDetailPage'),
-    layout: APP_SHELL,
+    component: Ui.react('./client/iam/UserProfilePage'),
+    layout: USER_DETAIL_SHELL,
+    title: message('auth/users/profile', 'Profile'),
     visibility: permissionOf('auth.user.read'),
-    title: message('auth/navigation/user-detail', 'Person'),
+  }),
+  Ui.page({
+    id: 'auth/user-organization',
+    path: '/organization/users/:userId/organization',
+    component: Ui.react('./client/iam/UserOrganizationPage'),
+    layout: USER_DETAIL_SHELL,
+    title: message('auth/users/placement', 'Organization placement'),
+    visibility: permissionOf('auth.user.read'),
+  }),
+  Ui.page({
+    id: 'auth/user-identities',
+    path: '/organization/users/:userId/identities',
+    component: Ui.react('./client/iam/UserIdentitiesPage'),
+    layout: USER_DETAIL_SHELL,
+    title: message('auth/person/tab-identities', 'Ways in'),
+    visibility: permissionOf('auth.user.read'),
+  }),
+  Ui.slot({
+    key: userDetailHeader.key,
+    id: 'auth/user-detail-header',
+    component: Ui.react('./client/iam/UserDetailHeader'),
+    visibility: permissionOf('auth.user.read'),
+  }),
+  Ui.surfaces({
+    collections: [
+      {
+        collection: userDetailNavigation,
+        id: 'auth/user-detail/profile',
+        value: {
+          id: 'auth/user-detail/profile',
+          label: message('auth/users/profile', 'Profile'),
+          target: { kind: 'page', pageId: 'auth/user-detail' },
+          icon: 'id-card',
+          order: 0,
+        },
+        visibility: permissionOf('auth.user.read'),
+      },
+      {
+        collection: userDetailNavigation,
+        id: 'auth/user-detail/organization',
+        value: {
+          id: 'auth/user-detail/organization',
+          label: message('auth/users/placement', 'Organization placement'),
+          target: { kind: 'page', pageId: 'auth/user-organization' },
+          icon: 'building-2',
+          order: 10,
+        },
+        visibility: permissionOf('auth.user.read'),
+      },
+      {
+        collection: userDetailNavigation,
+        id: 'auth/user-detail/identities',
+        value: {
+          id: 'auth/user-detail/identities',
+          label: message('auth/person/tab-identities', 'Ways in'),
+          target: { kind: 'page', pageId: 'auth/user-identities' },
+          icon: 'key-round',
+          order: 20,
+        },
+        visibility: permissionOf('auth.user.read'),
+      },
+    ],
   }),
   Ui.page({
     id: 'auth/user-types',

@@ -1871,6 +1871,67 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
     }
   })
 
+  it('names the object a confined grant is confined to, and will not revoke it here', async () => {
+    const db = await createTestContext('effect-grant-confined')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const access = yield* Access
+          const rbac = yield* Rbac
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          // a grant made through some object's owner - a round staffing a
+          // reviewer, say - which is what a resource-confined row records
+          const confined = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage,
+                                       resource_namespace, resource_type, resource_id, valid_until)
+              values (${f.tenant}, ${f.anchored.userId}, ${f.plainRole}, ${f.child}, 'self',
+                      'assessment', 'batch', '11111111-1111-4111-8111-111111111111',
+                      now() + interval '7 days')
+              returning id`),
+          ).id
+          const listed = yield* access.grants.list(
+            f.tenant,
+            { userId: f.anchored.userId },
+            yield* access.grantScopeFor(f.principal),
+          )
+          const row = listed.find((grant) => grant.id === confined)
+          const keeps = (tenantId: string) => rbac.assertTenantKeepsAdministrator(tenantId)
+          const refused = tagOf(
+            yield* Effect.result(access.grants.revoke(f.tenant, confined, f.principal, keeps)),
+          )
+          const still = one<{ revoked: boolean }>(
+            yield* runSql(sql`
+              select revoked_at is not null as revoked from role_grants
+              where tenant_id = ${f.tenant} and id = ${confined}`),
+          ).revoked
+          return {
+            resource: row === undefined ? null : [row.resourceNamespace, row.resourceType, row.resourceId],
+            hasWindow: row?.validUntil != null,
+            refused,
+            still,
+          }
+        }),
+      )
+      const answer = ok(exit)
+      // the screen learns the kind of object, so whoever owns that kind can
+      // explain the grant; and the general road refuses to take it back,
+      // because the owner keeps its own record of having accepted it
+      expect(answer.resource).toEqual([
+        'assessment',
+        'batch',
+        '11111111-1111-4111-8111-111111111111',
+      ])
+      expect(answer.hasWindow).toBe(true)
+      expect(answer.refused).toBe('GRANT_RESOURCE_BOUND')
+      expect(answer.still).toBe(false)
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('lets a grant to another exceed the granter, and a grant to oneself never', async () => {
     const db = await createTestContext('effect-grant-appointment')
     try {

@@ -1,6 +1,5 @@
 import UserTypesPage from '../src/client/iam/UserTypesPage.tsx'
 import RolesPage from '@qualy/plugin-rbac/client/RolesPage'
-import UserDetailPage from '../src/client/iam/UserDetailPage.tsx'
 import UsersPage from '../src/client/iam/UsersPage.tsx'
 import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
@@ -665,99 +664,5 @@ describe('users workspace', () => {
         ),
       ).toBe(true),
     )
-  })
-})
-
-describe('granting a role on the user screen', () => {
-  const roleOptions = [{ id: ROLE_ID, code: 'reviewer', name: '审核员', kind: 'org' as const }]
-
-  it('grants at the tenant when that is the chosen scope', async () => {
-    const create = vi.fn(() => Effect.succeed({ id: 'created-grant' }))
-    renderScreen({
-      client: fakeClient(
-        stubs({
-          access: {
-            getRoleGrantOptions: () => Effect.succeed({ roles: roleOptions }),
-            createRoleGrant: create,
-          },
-        }),
-      ),
-      route: `/admin/users/${USER_ID}`,
-      path: '/admin/users/:userId',
-      children: <UserDetailPage />,
-    })
-
-    await page.getByRole('tab', { name: '角色' }).click()
-    await expect.element(page.getByRole('combobox', { name: '角色' })).toBeInTheDocument()
-    await page.getByRole('button', { name: '授予' }).click()
-
-    await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(1))
-    expect(create).toHaveBeenCalledWith({
-      payload: { userId: USER_ID, roleId: ROLE_ID, target: { kind: 'tenant' } },
-    })
-  })
-
-  it('asks the server again when the anchor changes, and sends the anchor it asked about', async () => {
-    const create = vi.fn(() => Effect.succeed({ id: 'created-grant' }))
-    const options = vi.fn(() => Effect.succeed({ roles: roleOptions }))
-    renderScreen({
-      client: fakeClient(
-        stubs({ access: { getRoleGrantOptions: options, createRoleGrant: create } }),
-      ),
-      route: `/admin/users/${USER_ID}`,
-      path: '/admin/users/:userId',
-      children: <UserDetailPage />,
-    })
-
-    await page.getByRole('tab', { name: '角色' }).click()
-    await expect.element(page.getByRole('combobox', { name: '生效范围' })).toBeInTheDocument()
-    // the controls are the product's own now, so choosing is open-then-pick
-    // rather than a native select's one-shot
-    await page.getByRole('combobox', { name: '生效范围' }).click()
-    await page.getByRole('option', { name: '某个组织节点' }).click()
-    await page.getByRole('button', { name: '某个组织节点' }).click()
-    await page.getByRole('button', { name: '分部', exact: true }).click()
-    await page.getByRole('combobox', { name: '覆盖' }).click()
-    await page.getByRole('option', { name: '仅该节点' }).click()
-
-    await vi.waitFor(() =>
-      // the target is said outright now, never inferred from which
-      // parameters happen to be present
-      expect(options).toHaveBeenCalledWith({
-        query: {
-          userId: USER_ID,
-          target: 'org-node',
-          orgNodeId: BRANCH_NODE_ID,
-          coverage: 'self',
-        },
-      }),
-    )
-
-    await page.getByRole('button', { name: '授予' }).click()
-    await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(1))
-    expect(create).toHaveBeenCalledWith({
-      payload: {
-        userId: USER_ID,
-        roleId: ROLE_ID,
-        target: { kind: 'org-node', orgNodeId: BRANCH_NODE_ID, coverage: 'self' },
-      },
-    })
-  })
-
-  // an empty list is an answer: this caller holds nothing wide enough to pass
-  // on here, which is different from a list that has not arrived
-  it('says so when nothing can be granted rather than offering an empty picker', async () => {
-    renderScreen({
-      client: fakeClient(
-        stubs({ access: { getRoleGrantOptions: () => Effect.succeed({ roles: [] }) } }),
-      ),
-      route: `/admin/users/${USER_ID}`,
-      path: '/admin/users/:userId',
-      children: <UserDetailPage />,
-    })
-
-    await page.getByRole('tab', { name: '角色' }).click()
-    await expect.element(page.getByTestId('grant-nothing-offered')).toBeInTheDocument()
-    await expect.element(page.getByRole('button', { name: '授予' })).toBeDisabled()
   })
 })

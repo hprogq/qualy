@@ -151,7 +151,7 @@ export const oneBatch = (
  * college, who could then fill it with their own people. The frozen anchors
  * are what an empty round still belongs to; the roster is what it has become.
  */
-const withinReach = (held: AuthorizationScope) =>
+export const withinReach = (held: AuthorizationScope) =>
   held.tenantWide
     ? sql<boolean>`true`
     : held.anchors.length > 0
@@ -255,7 +255,7 @@ const isParticipant = (userId: string) =>
  * this round accepted has no authority here, and reading the round is one of
  * the things authority is for.
  */
-const isStaff = (userId: string) =>
+export const isStaff = (userId: string) =>
   sql<boolean>`exists (
     select 1
     from batch_access_sources bas
@@ -486,6 +486,120 @@ export const listBatchesPage = (
         })),
       ),
     )
+
+/**
+ * The rounds one person is or was in, newest membership first, among those
+ * the reader may see at all. The visibility predicate is the batch list's
+ * own, pushed into the statement: nothing is fetched and then filtered.
+ */
+export const userBatchesPage = (
+  tenantId: string,
+  userId: string,
+  viewer: { held: AuthorizationScope; userId: string },
+  filter: { after?: { includedAt: string; id: string }; limit: number },
+) =>
+  db.query((k) => {
+    let query = k
+      .selectFrom('BatchParticipant as bp')
+      .innerJoin('AssessmentBatch', (join) =>
+        join
+          .onRef('AssessmentBatch.tenantId', '=', 'bp.tenantId')
+          .onRef('AssessmentBatch.id', '=', 'bp.batchId'),
+      )
+      .leftJoin('OrgNode as n', (join) =>
+        join.onRef('n.tenantId', '=', 'bp.tenantId').onRef('n.id', '=', 'bp.assessmentAnchorNodeId'),
+      )
+      .select([
+        'bp.id as membershipId',
+        'bp.status as membershipStatus',
+        'bp.includedAt',
+        'bp.excludedAt',
+        'n.name as anchorNodeName',
+        'AssessmentBatch.id as batchId',
+        'AssessmentBatch.name',
+        'AssessmentBatch.status',
+        'AssessmentBatch.timezone',
+        'AssessmentBatch.currentPhaseId',
+      ])
+      .select([
+        sql<string>`material_range::text`.as('materialRange'),
+        // the column as postgres writes it, for the cursor alone
+        sql<string>`bp.included_at::text`.as('cursorAt'),
+        sql<string | null>`(
+          select p.display_name from batch_phases p
+          where p.tenant_id = assessment_batches.tenant_id
+            and p.id = assessment_batches.current_phase_id
+        )`.as('currentPhaseName'),
+        withinReach(viewer.held).as('manageable'),
+      ])
+      .where('bp.tenantId', '=', tenantId)
+      .where('bp.userId', '=', userId)
+      .where(visibleTo(viewer))
+      .orderBy('bp.includedAt', 'desc')
+      .orderBy('bp.id', 'desc')
+      .limit(filter.limit)
+    if (filter.after !== undefined) {
+      query = query.where(
+        sql<boolean>`(bp.included_at, bp.id) < (${filter.after.includedAt}::timestamptz, ${filter.after.id}::uuid)`,
+      )
+    }
+    return query.execute()
+  })
+
+export type UserBatchRow = Effect.Success<ReturnType<typeof userBatchesPage>>[number]
+
+/**
+ * What one person filed, newest first, in the rounds the reader administers
+ * or works on. A round the reader is merely in with them is left out: a
+ * claim is its owner's and the round's staff's, never the room's.
+ */
+export const userEntriesPage = (
+  tenantId: string,
+  userId: string,
+  viewer: { held: AuthorizationScope; userId: string },
+  filter: { after?: { createdAt: string; id: string }; limit: number },
+) =>
+  db.query((k) => {
+    let query = k
+      .selectFrom('Entry as e')
+      .innerJoin('BatchParticipant as bp', (join) =>
+        join.onRef('bp.tenantId', '=', 'e.tenantId').onRef('bp.id', '=', 'e.participantId'),
+      )
+      .innerJoin('AssessmentBatch', (join) =>
+        join
+          .onRef('AssessmentBatch.tenantId', '=', 'e.tenantId')
+          .onRef('AssessmentBatch.id', '=', 'e.batchId'),
+      )
+      .innerJoin('AssessmentItem as i', (join) =>
+        join.onRef('i.tenantId', '=', 'e.tenantId').onRef('i.id', '=', 'e.itemId'),
+      )
+      .select([
+        'e.id',
+        'e.batchId',
+        'AssessmentBatch.name as batchName',
+        'e.itemId',
+        'i.title as itemTitle',
+        'e.status',
+        'e.source',
+        'e.createdAt',
+        'e.updatedAt',
+      ])
+      .select([sql<string>`e.created_at::text`.as('cursorAt')])
+      .where('e.tenantId', '=', tenantId)
+      .where('bp.userId', '=', userId)
+      .where(sql<boolean>`(${withinReach(viewer.held)} or ${isStaff(viewer.userId)})`)
+      .orderBy('e.createdAt', 'desc')
+      .orderBy('e.id', 'desc')
+      .limit(filter.limit)
+    if (filter.after !== undefined) {
+      query = query.where(
+        sql<boolean>`(e.created_at, e.id) < (${filter.after.createdAt}::timestamptz, ${filter.after.id}::uuid)`,
+      )
+    }
+    return query.execute()
+  })
+
+export type UserEntryRow = Effect.Success<ReturnType<typeof userEntriesPage>>[number]
 
 export const insertBatch = (input: {
   tenantId: string

@@ -67,6 +67,32 @@ const notEligibleMessage = defineMessage<{ reason: string }>()({
     '{reason, select, role-unassignable {That role cannot be granted right now.} user-disabled {A disabled user cannot be granted a role.} user-type {That role is not available to this user type.} org-type {That role cannot be anchored at this kind of node.} tenant-role-anchored {A tenant-wide role can only be granted across the whole organization.} org-role-unanchored {An organization role must be granted at a node.} other {That grant is not allowed.}}',
 })
 
+const confinedPlainMessage = defineMessage<{ namespace: string; type: string }>()({
+  id: 'rbac/grants/confined-plain',
+  defaultMessage: 'Holds within one {namespace} {type} only',
+})
+const atSubtreeMessage = defineMessage<{ node: string }>()({
+  id: 'rbac/grants/at-subtree',
+  defaultMessage: '{node} and everything under it',
+})
+const atNodeMessage = defineMessage<{ node: string }>()({
+  id: 'rbac/grants/at-node',
+  defaultMessage: '{node}',
+})
+const validUntilMessage = defineMessage<{ when: string }>()({
+  id: 'rbac/grants/valid-until',
+  defaultMessage: 'Until {when}',
+})
+const validFromMessage = defineMessage<{ when: string }>()({
+  id: 'rbac/grants/valid-from',
+  defaultMessage: 'From {when}',
+})
+const resourceBoundMessage = defineMessage<{ namespace: string; type: string }>()({
+  id: 'rbac/error/grant-resource-bound',
+  defaultMessage:
+    'This grant holds within one {namespace} {type} only and is withdrawn where that object is administered.',
+})
+
 const pickedMessage = defineMessage<{ picked: number; total: number }>()({
   id: 'rbac/roles/picked-of',
   defaultMessage: '{picked}/{total}',
@@ -110,6 +136,56 @@ const i18n = definePluginMessages({
       id: 'rbac/audit/grant-revoke',
       defaultMessage: 'Revoke role grant',
     },
+    // the person's grants, on their own page
+    navUserGrants: { id: 'rbac/user-detail/role-grants', defaultMessage: 'Role grants' },
+    organizationalSection: { id: 'rbac/grants/organizational', defaultMessage: 'In the organization' },
+    organizationalHint: {
+      id: 'rbac/grants/organizational-hint',
+      defaultMessage: 'Only grants inside what you administer are shown here',
+    },
+    organizationalEmpty: {
+      id: 'rbac/grants/organizational-empty',
+      defaultMessage: 'No organizational grants',
+    },
+    confinedSection: { id: 'rbac/grants/confined', defaultMessage: 'Within one object' },
+    confinedHint: {
+      id: 'rbac/grants/confined-hint',
+      defaultMessage: 'Granted through one object and managed where that object is',
+    },
+    confinedEmpty: { id: 'rbac/grants/confined-empty', defaultMessage: 'No confined grants' },
+    confinedPlain: confinedPlainMessage,
+    tenantWide: { id: 'rbac/grants/tenant-wide', defaultMessage: 'Across the whole tenant' },
+    atSubtree: atSubtreeMessage,
+    atNode: atNodeMessage,
+    validUntil: validUntilMessage,
+    validFrom: validFromMessage,
+    revokeAction: { id: 'rbac/action/revoke', defaultMessage: 'Revoke' },
+    revokeTitle: { id: 'rbac/grants/revoke-title', defaultMessage: 'Take this role away here?' },
+    revokeHint: {
+      id: 'rbac/grants/revoke-hint',
+      defaultMessage: 'They keep every other role they hold. Granting it again is a separate act.',
+    },
+    grantAdd: { id: 'rbac/grants/add', defaultMessage: 'Grant a role' },
+    grantScope: { id: 'rbac/grants/scope', defaultMessage: 'Where it applies' },
+    grantScopeTenant: { id: 'rbac/grants/scope-tenant', defaultMessage: 'The whole tenant' },
+    grantScopeNode: { id: 'rbac/grants/scope-node', defaultMessage: 'One unit' },
+    grantAnchor: { id: 'rbac/grants/anchor', defaultMessage: 'Unit' },
+    grantAnchorUnavailable: {
+      id: 'rbac/grants/anchor-unavailable',
+      defaultMessage: 'No unit can be chosen right now',
+    },
+    grantCoverage: { id: 'rbac/grants/coverage', defaultMessage: 'Reach' },
+    grantCoverageSelf: { id: 'rbac/grants/coverage-self', defaultMessage: 'That unit only' },
+    grantCoverageSubtree: {
+      id: 'rbac/grants/coverage-subtree',
+      defaultMessage: 'That unit and everything under it',
+    },
+    grantRole: { id: 'rbac/grants/role', defaultMessage: 'Role' },
+    grantRolesEmpty: {
+      id: 'rbac/grants/roles-empty',
+      defaultMessage: 'None of the roles you hold can be granted here',
+    },
+    grantSubmit: { id: 'rbac/action/grant', defaultMessage: 'Grant' },
     'permission.iam.role.manage': {
       id: 'rbac/permission/role-manage',
       defaultMessage: 'Manage roles',
@@ -384,6 +460,10 @@ const i18n = definePluginMessages({
       ROLE_APPOINTMENT_INVALID: {
         message: appointmentMessage,
         values: (data) => ({ reason: data.reason }),
+      },
+      GRANT_RESOURCE_BOUND: {
+        message: resourceBoundMessage,
+        values: (data) => ({ namespace: data.namespace, type: data.type }),
       },
       ROLE_USER_TYPE_NOT_FOUND: {
         id: 'rbac/error/role-user-type-not-found',

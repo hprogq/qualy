@@ -360,6 +360,19 @@ const groupFloored = defineMessage<{ raw: string; floor: string }>()({
   defaultMessage: 'Subtotal {raw}; minimum applied: {floor}',
 })
 
+const personIncludedAtMessage = defineMessage<{ when: string }>()({
+  id: 'assessment/person/included-at',
+  defaultMessage: 'Added {when}',
+})
+const personExcludedAtMessage = defineMessage<{ when: string }>()({
+  id: 'assessment/person/excluded-at',
+  defaultMessage: 'Taken off {when}',
+})
+const grantFromBatchMessage = defineMessage<{ name: string }>()({
+  id: 'assessment/access/grant-from-batch',
+  defaultMessage: 'From the round {name}',
+})
+
 const i18n = definePluginMessages({
   namespace: 'assessment',
   messages: {
@@ -392,6 +405,46 @@ const i18n = definePluginMessages({
     },
     // ------------------------------------------------------------------
     // the batch list
+    // one person's record: the rounds they were in, and what they filed
+    personGroup: { id: 'assessment/nav-group/user-detail', defaultMessage: 'Assessment' },
+    personBatchesTab: { id: 'assessment/person/batches-tab', defaultMessage: 'Rounds taken part in' },
+    personEntriesTab: { id: 'assessment/person/entries-tab', defaultMessage: 'Claims filed' },
+    personBatchesEmpty: {
+      id: 'assessment/person/batches-empty',
+      defaultMessage: 'Not in any round yet',
+    },
+    personEntriesEmpty: {
+      id: 'assessment/person/entries-empty',
+      defaultMessage: 'Nothing filed yet',
+    },
+    personMembershipActive: {
+      id: 'assessment/person/membership-active',
+      defaultMessage: 'Taking part',
+    },
+    personMembershipExcluded: {
+      id: 'assessment/person/membership-excluded',
+      defaultMessage: 'Taken off the list',
+    },
+    personIncludedAt: personIncludedAtMessage,
+    personExcludedAt: personExcludedAtMessage,
+    personAnchorGone: {
+      id: 'assessment/person/anchor-gone',
+      defaultMessage: 'Unit no longer exists',
+    },
+    personOpenBatch: { id: 'assessment/person/open-batch', defaultMessage: 'Open the round' },
+    personColumnBatch: { id: 'assessment/person/column-batch', defaultMessage: 'Round' },
+    personColumnItem: { id: 'assessment/person/column-item', defaultMessage: 'Question' },
+    personColumnStatus: { id: 'assessment/person/column-status', defaultMessage: 'Status' },
+    personColumnSource: { id: 'assessment/person/column-source', defaultMessage: 'Source' },
+    personColumnWhen: { id: 'assessment/person/column-when', defaultMessage: 'Filed' },
+    personLoadMore: { id: 'assessment/person/load-more', defaultMessage: 'Load more' },
+    // a grant confined to one round, explained on the grants screen
+    grantFromBatch: grantFromBatchMessage,
+    grantFromSomeBatch: {
+      id: 'assessment/access/grant-from-some-batch',
+      defaultMessage: 'From an assessment round',
+    },
+    grantOpenBatch: { id: 'assessment/access/grant-open-batch', defaultMessage: 'Open the round' },
     batchesTitle: { id: 'assessment/batch/title', defaultMessage: 'Assessment batches' },
     batchesHint: {
       id: 'assessment/batch/hint',
