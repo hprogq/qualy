@@ -5,12 +5,13 @@ import { UiSlot } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { usePickerWords } from '@qualy/web-i18n/picker-words'
-import { inputOrder, kindOf, type AtomicSchema } from '@qualy/value-schema'
-import { AtomicValueField } from '@qualy/web-value-form/InputValueForm'
+import { choiceLabel, inputOrder, kindOf, type AtomicSchema, type ChoiceSchema } from '@qualy/value-schema'
 import { draftFromValue, type FieldDraft as ValueDraft } from '@qualy/web-value-form/model'
-import type { UiText } from '@qualy/i18n-contract'
-import { Feedback, Field, FormDialog } from '@qualy/ui/admin'
+import type { MessageDescriptor, UiText } from '@qualy/i18n-contract'
+import { Feedback } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
+import { DatePicker } from '@qualy/ui/date-picker'
+import { Input } from '@qualy/ui/input'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { calculatorEditorSlot, calculatorSummarySlot } from '../../../surfaces.ts'
 import { assessmentMessages as m } from '../../i18n.ts'
@@ -25,98 +26,141 @@ import {
   ListCard,
   ListHead,
   ListRow,
-  PendingMark,
+  SectionCount,
   Tag,
+  TakesCell,
 } from './Rows.tsx'
+import { ScoringMethodDialog } from './ScoringMethodDialog.tsx'
 import { rowWords } from './shared-styles.ts'
+import { SummarySection } from './SummarySection.tsx'
 import {
   admittedSchemaOf,
   linkOf,
+  parameterDescription,
   parameterSchemaOf,
   parameterTitle,
   recognitionRows,
   type BindingDraft,
   type Contract,
   type Draft,
+  type EditorBlock,
   type EditorProblem,
 } from './model.ts'
-import { TYPE_LABEL, boundsWords, fieldBoundsWords, kindWords, sentences } from './words.ts'
+import { TYPE_LABEL, fieldTakesOf, kindWords, problemWords, sentences, takesOf } from './words.ts'
 
 // The arithmetic and the form it is fed from, as three lists under one
 // method: what the formula takes, what a reviewer determines, what a
-// participant fills in. Under "takes effect on submission" the middle list
+// participant fills in - and under the form, which of its fields name a
+// record in a list. Under "takes effect on submission" the middle list
 // folds into the third, and under automatic scoring only the first is left.
+//
+// What is wrong is said where it is wrong: a value the formula refuses has
+// its box outlined and one red line under it, a row that cannot stand says
+// why in its last column, and the heading of each list counts what is left.
+// The sentence is the same whether this screen found the fault or the
+// server did, because a reader cannot act differently on the two.
+
+const MONO = "'SFMono-Regular', ui-monospace, Menlo, Consolas, monospace"
 
 const styles = stylex.create({
   stack: { display: 'flex', flexDirection: 'column', gap: 32 },
   methodCard: {
     display: 'flex',
     alignItems: 'center',
-    gap: 14,
+    gap: 16,
     minWidth: 0,
+    minHeight: 56,
     paddingInline: 16,
-    paddingBlock: 12,
+    paddingBlock: 10,
     borderRadius: 12,
     backgroundColor: tokens.background,
     boxShadow: `0 0 0 1px ${tokens.border}, 0 1px 2px rgb(0 0 0 / 0.04)`,
   },
+  methodCardBad: { boxShadow: `0 0 0 1px ${tokens.danger}, 0 1px 2px rgb(0 0 0 / 0.04)` },
   methodWords: { display: 'flex', minWidth: 0, flexGrow: 1, flexDirection: 'column', gap: 3 },
-  methodName: { fontSize: 14, fontWeight: 500 },
+  methodName: { fontSize: 14, fontWeight: 600 },
   methodNote: { fontSize: 12, color: tokens.mutedForeground },
   methodAmount: { paddingTop: 6 },
-  methodChange: { flexShrink: 0 },
-  status: { fontSize: 13, color: tokens.mutedForeground },
-  dialogStack: { display: 'flex', flexDirection: 'column', gap: 16 },
-  dialogFooter: { display: 'flex', justifyContent: 'flex-end', gap: 8 },
-  sourceCell: { display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flexWrap: 'wrap' },
-  sourcePick: { width: 120, height: 32, flexShrink: 0 },
-  sourcePickWide: { width: 132, height: 32, flexShrink: 0 },
-  sourcePickUnset: {
-    width: 120,
-    height: 32,
-    flexShrink: 0,
-    borderRadius: tokens.radiusMd,
-    boxShadow: `0 0 0 1px color-mix(in oklab, ${tokens.warning} 70%, transparent)`,
-  },
-  valueSeat: { width: 88, minWidth: 0 },
-  valueSeatWide: { width: 132, minWidth: 0 },
-  fullWidth: { width: '100%' },
-  summary: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 8,
-    paddingInline: 16,
-    paddingTop: 14,
-    paddingBottom: 16,
-    borderTopWidth: 1,
-    borderTopStyle: 'solid',
-    borderTopColor: tokens.border,
-    backgroundColor: tokens.surfaceInset,
-  },
-  summaryHead: { display: 'flex', alignItems: 'center', gap: 8 },
-  summaryTitle: { fontSize: 13, fontWeight: 600 },
-  spacer: { flexGrow: 1 },
-  linkButton: {
+  methodChange: {
     display: 'inline-flex',
+    flexShrink: 0,
     alignItems: 'center',
-    gap: 3,
+    gap: 4,
     fontFamily: 'inherit',
-    fontSize: 12.5,
+    fontSize: 13,
     fontWeight: 500,
-    color: tokens.foreground,
+    color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
     backgroundColor: 'transparent',
     borderWidth: 0,
     padding: 0,
     cursor: 'pointer',
   },
-  summaryLine: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, flexWrap: 'wrap' },
-  summaryName: { fontWeight: 500 },
-  summarySlash: { color: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)` },
-  summaryHint: { margin: 0, fontSize: 12, color: tokens.mutedForeground },
+  problemLine: { margin: 0, fontSize: 12, color: tokens.danger },
+  status: { margin: 0, fontSize: 13, color: tokens.mutedForeground },
+  // the value column: how the value is come by, then the value itself
+  valueColumn: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 6 },
+  valueLine: { display: 'flex', minWidth: 0, alignItems: 'center', gap: 8 },
+  sourcePick: { width: 104, height: 34, flexShrink: 0 },
+  sourcePickWide: { width: 132, height: 34, flexShrink: 0 },
+  valueSeat: { display: 'flex', minWidth: 0, flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+  valueControl: { width: '100%', height: 34 },
+  valueMono: { fontFamily: MONO, fontSize: 13 },
+  // yes or no as two segments: chosen, not ticked, so an unanswered one is
+  // visibly neither
+  segments: {
+    display: 'inline-flex',
+    flexShrink: 0,
+    height: 34,
+    overflow: 'hidden',
+    borderRadius: 8,
+    boxShadow: `inset 0 0 0 1px ${tokens.border}`,
+  },
+  segmentsBad: { boxShadow: `inset 0 0 0 1px ${tokens.danger}` },
+  segment: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    height: 34,
+    paddingInline: 14,
+    fontFamily: 'inherit',
+    fontSize: 13,
+    color: tokens.mutedForeground,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    cursor: 'pointer',
+  },
+  segmentOn: { backgroundColor: tokens.foreground, color: tokens.background, fontWeight: 500 },
+  dateBad: { borderRadius: 8, boxShadow: `0 0 0 1px ${tokens.danger}` },
+  pendingLine: {
+    display: 'inline-flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 6,
+    fontSize: 12,
+    color: tokens.warningForeground,
+    whiteSpace: 'nowrap',
+  },
+  pendingDot: { width: 6, height: 6, borderRadius: '9999px', backgroundColor: tokens.warning },
   note: { display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: tokens.foreground },
   noteIcon: { width: 15, height: 15, flexShrink: 0, color: tokens.mutedForeground },
-  requirement: { fontSize: 13 },
-  linkedName: { fontWeight: 500 },
+  required: { fontSize: 13, fontWeight: 500 },
+  optional: { fontSize: 13, color: tokens.mutedForeground },
+  linkedLine: { display: 'flex', minWidth: 0, alignItems: 'center', gap: 8, fontSize: 13 },
+  linkedName: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontWeight: 500,
+  },
+  linkedNote: { flexShrink: 0, fontSize: 12, color: tokens.mutedForeground },
+  unlinked: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 13,
+    color: tokens.mutedForeground,
+  },
 })
 
 export type ContractState =
@@ -126,17 +170,11 @@ export type ContractState =
   | { kind: 'unavailable' }
   | { kind: 'ready' }
 
-/** what a value takes, said as kind then bounds; the bounds may be nothing */
-function Takes({ schema, locale }: { schema: AtomicSchema; locale: string }) {
-  const { format } = useI18n()
-  const bounds = boundsWords(schema, locale, format, () => '')
-  return (
-    <span {...stylex.props(rowWords.pair)}>
-      <span>{kindWords(schema, format)}</span>
-      {bounds !== '' && <span>{bounds}</span>}
-    </span>
-  )
-}
+/** how many things in one block are wrong, and how many only wait */
+const countsOf = (problems: readonly EditorProblem[], block: EditorBlock) => ({
+  errors: problems.filter((one) => one.block === block && one.tone === 'error').length,
+  pending: problems.filter((one) => one.block === block && one.tone === 'pending').length,
+})
 
 export function ScoringTab({
   draft,
@@ -155,14 +193,14 @@ export function ScoringTab({
   onOpenField,
   onAddField,
   onReorderFields,
-  onOpenSummary,
+  onSummary,
 }: {
   draft: Draft
   batchId: string
   itemId: string | null
   contract: Contract | null
   contractState: ContractState
-  calculators: readonly { ref: string; label: UiText }[]
+  calculators: readonly { ref: string; label: UiText; confirms?: 'itself' }[]
   chosenCalculator: { ref: string; config: unknown }
   placement: Placement
   problems: readonly EditorProblem[]
@@ -175,7 +213,8 @@ export function ScoringTab({
   onOpenField: (key: string) => void
   onAddField: () => void
   onReorderFields: (orderedKeys: readonly string[]) => void
-  onOpenSummary: () => void
+  /** which fields name a record in a list, in order */
+  onSummary: (fieldIds: string[]) => void
 }) {
   const { format, formatText, locale } = useI18n()
   const words = usePickerWords()
@@ -188,17 +227,43 @@ export function ScoringTab({
   const chosenLabel = calculators.find((one) => one.ref === chosenCalculator.ref)?.label
   const methodName =
     chosenLabel === undefined ? format(m.itemsCalculatorFixed) : formatText(chosenLabel)
-  const problemOf = (parameter: string) =>
-    problems.find((one) => one.entity?.kind === 'parameter' && one.entity.parameter === parameter)
+  const separator = format(m.listSeparator)
   const slotContext = { batchId, itemId, calculator: chosenCalculator }
+
+  const parameterProblem = (parameter: string) =>
+    problems.find((one) => one.entity?.kind === 'parameter' && one.entity.parameter === parameter)
+  const recognitionProblem = (handle: string) =>
+    problems.find((one) => one.entity?.kind === 'recognition' && one.entity.handle === handle)
+  const fieldProblem = (key: string) =>
+    problems.find((one) => one.entity?.kind === 'field' && one.entity.key === key)
+  const methodProblem = problems.find(
+    (one) => one.block === 'method' && one.tone === 'error' && one.code !== 'contract-refused',
+  )
+  const summaryProblem = problems.find((one) => one.block === 'summary')
+
+  const asideOf = (block: EditorBlock, wrong: MessageDescriptor = m.itemsBlockFix) => {
+    const counted = countsOf(problems, block)
+    if (counted.errors > 0) {
+      return <SectionCount tone="error">{format(wrong, { count: counted.errors })}</SectionCount>
+    }
+    if (counted.pending > 0) {
+      return (
+        <SectionCount tone="pending">{format(m.itemsBlockPending, { count: counted.pending })}</SectionCount>
+      )
+    }
+    return undefined
+  }
 
   return (
     <div {...stylex.props(styles.stack)}>
-      <EditorSection title={format(m.itemsScoringMethod)} testId="scoring-method">
+      <EditorSection title={format(m.itemsScoringMethod)} testId="scoring-method" block="method">
         {draft.scoring.language === 'unsupported' ? (
           <Feedback message={format(m.itemsScoringUnsupported)} />
         ) : (
-          <div {...stylex.props(styles.methodCard)}>
+          <div
+            {...stylex.props(styles.methodCard, methodProblem !== undefined && styles.methodCardBad)}
+            data-invalid={methodProblem === undefined ? undefined : true}
+          >
             {fixed ? (
               <div {...stylex.props(styles.methodWords)}>
                 <span {...stylex.props(styles.methodName)} data-testid="scoring-method-name">
@@ -230,16 +295,21 @@ export function ScoringTab({
               </div>
             )}
             {calculators.length > 1 && (
-              <Button
-                variant="outline"
-                size="sm"
-                className={stylex.props(styles.methodChange).className}
+              <button
+                type="button"
+                {...stylex.props(styles.methodChange)}
                 onClick={() => setChoosing(true)}
               >
                 {format(m.itemsScoringChange)}
-              </Button>
+                <ChevronRightIcon aria-hidden {...stylex.props(rowWords.icon12)} />
+              </button>
             )}
           </div>
+        )}
+        {methodProblem !== undefined && (
+          <p {...stylex.props(styles.problemLine)} role="alert" data-testid="method-problem">
+            {problemWords(methodProblem, format)}
+          </p>
         )}
         {versioned && contractState.kind === 'pending' && (
           <p {...stylex.props(styles.status)} data-testid="contract-pending">
@@ -273,10 +343,13 @@ export function ScoringTab({
         <EditorSection
           title={format(m.itemsParameters)}
           hint={review ? format(m.itemsParametersHint) : undefined}
+          aside={asideOf('parameters', m.itemsParametersWrong)}
           testId="scoring-parameters"
+          block="parameters"
         >
           <ListCard>
             <ListHead
+              layout="values"
               columns={[
                 format(m.itemsColumnParameter),
                 format(m.itemsColumnTypeRange),
@@ -288,12 +361,23 @@ export function ScoringTab({
               const schema = parameterSchemaOf(contract, parameter)!
               const binding =
                 draft.scoring.language === 'v2' ? draft.scoring.bindings[parameter] : undefined
-              const problem = problemOf(parameter)
+              const problem = parameterProblem(parameter)
               return (
                 <ListRow
                   key={parameter}
+                  layout="values"
                   name={parameterTitle(contract, parameter, locale)}
-                  takes={<Takes schema={schema} locale={locale} />}
+                  // what the parameter IS is said under its name: it
+                  // describes the parameter, never the value typed beside it
+                  description={parameterDescription(contract, parameter, locale)}
+                  takes={
+                    <TakesCell
+                      wrap
+                      kind={kindWords(schema, format)}
+                      separator={separator}
+                      {...takesOf(schema, locale, format)}
+                    />
+                  }
                   third={
                     <ParameterSource
                       parameter={parameter}
@@ -302,7 +386,7 @@ export function ScoringTab({
                       mode={draft.mode}
                       locale={locale}
                       words={words}
-                      unset={problem !== undefined && problem.code === 'parameter-unset'}
+                      problem={problem}
                       onSource={(source) => onSource(parameter, source)}
                       onConstant={(next) => onConstant(parameter, next)}
                     />
@@ -311,6 +395,7 @@ export function ScoringTab({
                   data={{
                     'parameter-row': parameter,
                     source: binding === undefined ? 'unset' : binding.kind,
+                    problem: problem?.code,
                   }}
                 />
               )
@@ -323,7 +408,9 @@ export function ScoringTab({
         <EditorSection
           title={format(m.itemsRecognitions)}
           hint={format(m.itemsRecognitionsHint)}
+          aside={asideOf('recognitions')}
           testId="scoring-recognitions"
+          block="recognitions"
         >
           <ListCard>
             <ListHead
@@ -340,27 +427,54 @@ export function ScoringTab({
               const schema = parameterSchemaOf(contract, parameter)!
               const admitted = admittedSchemaOf(recognition, schema)
               const field = draft.fields.find((one) => one.id === recognition.fieldId)
-              const bounds = boundsWords(admitted, locale, format, () => '')
+              const problem = recognitionProblem(handle)
+              // a choice narrowed says how far, as kept over offered: the
+              // names may be cut short, the count never is
+              const offered = kindOf(schema) === 'choice' ? (schema as ChoiceSchema).enum.length : 0
+              const kept = kindOf(admitted) === 'choice' ? (admitted as ChoiceSchema).enum.length : 0
+              const unnamed = recognition.label.trim() === ''
               return (
                 <ListRow
                   key={handle}
-                  name={
-                    recognition.label.trim() === '' ? format(m.itemsFieldUnnamed) : recognition.label
+                  name={unnamed ? format(m.itemsFieldUnnamed) : recognition.label}
+                  unnamed={unnamed}
+                  takes={
+                    <TakesCell
+                      kind={kindWords(admitted, format)}
+                      separator={separator}
+                      {...takesOf(admitted, locale, format)}
+                      count={
+                        offered > 0 && kept < offered
+                          ? format(m.itemsNarrowedCount, { kept, total: offered })
+                          : undefined
+                      }
+                    />
                   }
-                  takes={bounds === '' ? kindWords(admitted, format) : bounds}
                   third={
                     field === undefined ? (
-                      <span {...stylex.props(rowWords.quiet)}>{format(m.itemsUnlinkedRow)}</span>
+                      <span {...stylex.props(styles.unlinked)} title={format(m.itemsUnlinkedRow)}>
+                        {format(m.itemsUnlinkedRow)}
+                      </span>
                     ) : (
-                      <span {...stylex.props(rowWords.pair)}>
-                        <span {...stylex.props(styles.linkedName)}>{recognition.label}</span>
-                        <span {...stylex.props(rowWords.quiet)}>{format(m.itemsLinked)}</span>
+                      <span {...stylex.props(styles.linkedLine)}>
+                        {/* the field's own name: what a participant is
+                            asked and what a reviewer determines may be
+                            worded differently */}
+                        <span
+                          {...stylex.props(styles.linkedName)}
+                          title={field.label}
+                          data-testid="linked-field-name"
+                        >
+                          {field.label.trim() === '' ? format(m.itemsFieldUnnamed) : field.label}
+                        </span>
+                        <span {...stylex.props(styles.linkedNote)}>{format(m.itemsLinked)}</span>
                       </span>
                     )
                   }
+                  problem={problem === undefined ? undefined : problemWords(problem, format)}
                   onOpen={() => onOpenRecognition(handle)}
                   testId="recognition-row"
-                  data={{ handle, linked: field !== undefined }}
+                  data={{ handle, linked: field !== undefined, problem: problem?.code }}
                 />
               )
             })}
@@ -369,9 +483,16 @@ export function ScoringTab({
       )}
 
       {!automatic && (
-        <EditorSection title={format(m.itemsForm)} hint={format(m.itemsFormHint)} testId="scoring-form">
+        <EditorSection
+          title={format(m.itemsForm)}
+          hint={format(m.itemsFormHint)}
+          aside={asideOf('form')}
+          testId="scoring-form"
+          block="form"
+        >
           <ListCard>
             <ListHead
+              layout="drag"
               columns={[
                 format(m.itemsColumnField),
                 format(m.itemsColumnTypeRange),
@@ -385,6 +506,7 @@ export function ScoringTab({
               draft={draft}
               contract={contract}
               locale={locale}
+              problemOf={fieldProblem}
               onOpenField={onOpenField}
               onReorder={onReorderFields}
             />
@@ -393,9 +515,21 @@ export function ScoringTab({
               label={format(m.itemsFieldAdd)}
               onClick={onAddField}
             />
-            <SummaryBlock draft={draft} contract={contract} onOpen={onOpenSummary} />
           </ListCard>
         </EditorSection>
+      )}
+
+      {!automatic && (
+        <SummarySection
+          candidates={draft.fields.map((field) => ({
+            id: field.id,
+            name: field.label.trim() === '' ? format(m.itemsFieldUnnamed) : field.label,
+            type: field.type,
+          }))}
+          elected={draft.summaryFieldIds}
+          problem={summaryProblem === undefined ? undefined : problemWords(summaryProblem, format)}
+          onChange={onSummary}
+        />
       )}
 
       {automatic && (
@@ -425,76 +559,10 @@ export function ScoringTab({
 }
 
 /**
- * Choosing what does the arithmetic, and letting its owner configure it,
- * behind one dialog: the question keeps its current method until the
- * choice is confirmed, so browsing the list disturbs nothing.
+ * What feeds one parameter, chosen in the row itself: how the value is come
+ * by, and - for a fixed one - the value, on one line. What is wrong with it
+ * is one red line underneath, and nothing else about the row changes.
  */
-function ScoringMethodDialog({
-  batchId,
-  itemId,
-  calculators,
-  chosen,
-  amountPer,
-  onApply,
-  onClose,
-}: {
-  batchId: string
-  itemId: string | null
-  calculators: readonly { ref: string; label: UiText }[]
-  chosen: { ref: string; config: unknown }
-  amountPer: 'entry' | 'item'
-  onApply: (next: { ref: string; config: unknown }) => void
-  onClose: () => void
-}) {
-  const { format, formatText } = useI18n()
-  const [candidate, setCandidate] = useState(chosen)
-  return (
-    <FormDialog
-      open
-      title={format(m.itemsScoringPick)}
-      onClose={onClose}
-      footer={
-        <div {...stylex.props(styles.dialogFooter)}>
-          <Button variant="outline" onClick={onClose}>
-            {format(commonMessages.cancel)}
-          </Button>
-          <Button onClick={() => onApply(candidate)}>{format(m.itemsScoringUse)}</Button>
-        </div>
-      }
-    >
-      <div {...stylex.props(styles.dialogStack)} data-testid="scoring-method-dialog">
-        <Field label={format(m.itemsScoringMethod)}>
-          {(id) => (
-            <Choice
-              id={id}
-              value={candidate.ref}
-              options={calculators.map((option) => ({
-                value: option.ref,
-                label: formatText(option.label),
-              }))}
-              onChange={(ref) => {
-                if (ref !== candidate.ref) setCandidate({ ref, config: {} })
-              }}
-            />
-          )}
-        </Field>
-        <UiSlot
-          token={calculatorEditorSlot}
-          context={{
-            batchId,
-            itemId,
-            calculator: candidate,
-            amountPer,
-            disabled: false,
-            onChange: setCandidate,
-          }}
-        />
-      </div>
-    </FormDialog>
-  )
-}
-
-/** what feeds one parameter, chosen in the row itself */
 function ParameterSource({
   parameter,
   schema,
@@ -502,7 +570,7 @@ function ParameterSource({
   mode,
   locale,
   words,
-  unset,
+  problem,
   onSource,
   onConstant,
 }: {
@@ -512,61 +580,37 @@ function ParameterSource({
   mode: Draft['mode']
   locale: string
   words: ReturnType<typeof usePickerWords>
-  unset: boolean
+  problem: EditorProblem | undefined
   onSource: (source: 'recognition' | 'constant' | 'filed') => void
   onConstant: (draft: ValueDraft) => void
 }) {
   const { format } = useI18n()
-  const kind = kindOf(schema)
+  const wrong = problem !== undefined && problem.tone === 'error'
+  const valueWrong = wrong && problem.code.startsWith('constant-')
   const constantSeat =
     binding?.kind === 'constant' ? (
-      <div
-        {...stylex.props(kind === 'text' || kind === 'choice' ? styles.valueSeatWide : styles.valueSeat)}
-        data-testid="parameter-value"
-      >
-        {kind === 'boolean' ? (
-          // a yes or no is chosen, not ticked: an unticked box reads as "no"
-          // for somebody who never reached it
-          <Choice
-            value={
-              (binding.draft ?? binding.value) === true
-                ? 'yes'
-                : (binding.draft ?? binding.value) === false
-                  ? 'no'
-                  : ''
-            }
-            placeholder={words.unanswered}
-            xstyle={styles.fullWidth}
-            options={[
-              { value: 'yes', label: format(m.itemsYes) },
-              { value: 'no', label: format(m.itemsNo) },
-            ]}
-            onChange={(next) => onConstant(next === 'yes')}
-          />
-        ) : (
-          <AtomicValueField
-            hideLabel
-            words={words}
-            schema={schema}
-            name={parameter}
-            draft={binding.draft ?? draftFromValue(schema, binding.value)}
-            locale={locale}
-            label={parameterTitle(null, parameter, locale)}
-            onDraft={onConstant}
-          />
-        )}
-      </div>
+      <ConstantValue
+        parameter={parameter}
+        schema={schema}
+        typed={binding.draft ?? draftFromValue(schema, binding.value)}
+        invalid={valueWrong}
+        locale={locale}
+        words={words}
+        onChange={onConstant}
+      />
     ) : null
+  const line = wrong ? (
+    <span {...stylex.props(styles.problemLine)} role="alert" data-testid="parameter-problem">
+      {problemWords(problem, format)}
+    </span>
+  ) : null
   if (mode === 'automatic') {
     // no choosing under automatic scoring: every parameter is a fixed value,
     // and a leftover determination is said as a problem, not as a control
     return (
-      <div {...stylex.props(styles.sourceCell)}>
-        {binding?.kind === 'constant' ? (
-          constantSeat
-        ) : (
-          <PendingMark>{format(m.itemsProblemRecognitionAutomatic)}</PendingMark>
-        )}
+      <div {...stylex.props(styles.valueColumn)}>
+        {constantSeat !== null && <div {...stylex.props(styles.valueLine)}>{constantSeat}</div>}
+        {line}
       </div>
     )
   }
@@ -579,28 +623,128 @@ function ParameterSource({
           ? 'filed'
           : 'recognition'
   return (
-    <div {...stylex.props(styles.sourceCell)}>
-      <Choice
-        value={chosen}
-        placeholder={format(m.itemsSourceUnset)}
-        xstyle={
-          chosen === ''
-            ? styles.sourcePickUnset
-            : mode === 'direct'
-              ? styles.sourcePickWide
-              : styles.sourcePick
-        }
-        options={[
-          mode === 'direct'
-            ? { value: 'filed', label: format(m.itemsSourceFiled) }
-            : { value: 'recognition', label: format(m.itemsSourceRecognition) },
-          { value: 'constant', label: format(m.itemsSourceConstant) },
-        ]}
-        onChange={(next) => onSource(next as 'recognition' | 'constant' | 'filed')}
-      />
-      {constantSeat}
-      {unset && <PendingMark>{format(m.itemsSourceUnset)}</PendingMark>}
+    <div {...stylex.props(styles.valueColumn)}>
+      <div {...stylex.props(styles.valueLine)}>
+        <Choice
+          aria-label={format(m.itemsColumnSource)}
+          value={chosen}
+          placeholder={words.unanswered}
+          invalid={wrong && !valueWrong}
+          xstyle={mode === 'direct' ? styles.sourcePickWide : styles.sourcePick}
+          options={[
+            mode === 'direct'
+              ? { value: 'filed', label: format(m.itemsSourceFiled) }
+              : { value: 'recognition', label: format(m.itemsSourceRecognition) },
+            { value: 'constant', label: format(m.itemsSourceConstant) },
+          ]}
+          onChange={(next) => onSource(next as 'recognition' | 'constant' | 'filed')}
+        />
+        {constantSeat}
+        {/* a row that only waits is not tinted: the placeholder and these
+            amber words are the whole of it */}
+        {problem !== undefined && problem.tone === 'pending' && (
+          <span {...stylex.props(styles.pendingLine)} data-testid="parameter-pending">
+            <span aria-hidden {...stylex.props(styles.pendingDot)} />
+            {format(m.itemsSourceUnset)}
+          </span>
+        )}
+      </div>
+      {line}
     </div>
+  )
+}
+
+/** the fixed value itself: a number in the fixed-width face, a choice, a date, or yes and no */
+function ConstantValue({
+  parameter,
+  schema,
+  typed,
+  invalid,
+  locale,
+  words,
+  onChange,
+}: {
+  parameter: string
+  schema: AtomicSchema
+  typed: ValueDraft | undefined
+  invalid: boolean
+  locale: string
+  words: ReturnType<typeof usePickerWords>
+  onChange: (draft: ValueDraft) => void
+}) {
+  const { format } = useI18n()
+  const kind = kindOf(schema)
+  const label = parameterTitle(null, parameter, locale)
+  if (kind === 'boolean') {
+    const answers = [
+      { value: false, label: format(m.itemsNo) },
+      { value: true, label: format(m.itemsYes) },
+    ] as const
+    return (
+      <span
+        role="radiogroup"
+        aria-label={label}
+        data-testid="parameter-value"
+        {...stylex.props(styles.segments, invalid && styles.segmentsBad)}
+      >
+        {answers.map((answer) => (
+          <button
+            key={String(answer.value)}
+            type="button"
+            role="radio"
+            aria-checked={typed === answer.value}
+            {...stylex.props(styles.segment, typed === answer.value && styles.segmentOn)}
+            onClick={() => onChange(answer.value)}
+          >
+            {answer.label}
+          </button>
+        ))}
+      </span>
+    )
+  }
+  if (kind === 'choice') {
+    const choice = schema as ChoiceSchema
+    return (
+      <span {...stylex.props(styles.valueSeat)} data-testid="parameter-value">
+        <Choice
+          aria-label={label}
+          value={typeof typed === 'string' ? typed : ''}
+          placeholder={words.unanswered}
+          invalid={invalid}
+          xstyle={styles.valueControl}
+          options={choice.enum.map((value) => ({ value, label: choiceLabel(choice, value, locale) }))}
+          onChange={(next) => onChange(next)}
+        />
+      </span>
+    )
+  }
+  if (kind === 'date') {
+    return (
+      <span {...stylex.props(styles.valueSeat, invalid && styles.dateBad)} data-testid="parameter-value">
+        <DatePicker
+          value={typeof typed === 'string' && typed !== '' ? typed : null}
+          placeholder={words.unanswered}
+          clearLabel={words.clear}
+          localeTag={locale}
+          monthLabel={words.month}
+          yearLabel={words.year}
+          onChange={(next) => onChange(next ?? '')}
+        />
+      </span>
+    )
+  }
+  return (
+    <span {...stylex.props(styles.valueSeat)} data-testid="parameter-value">
+      <Input
+        aria-label={label}
+        aria-invalid={invalid || undefined}
+        wrapperXstyle={styles.valueControl}
+        className={stylex.props(kind === 'text' ? null : styles.valueMono).className}
+        value={typeof typed === 'string' ? typed : typed === undefined ? '' : String(typed)}
+        inputMode={kind === 'integer' ? 'numeric' : kind === 'decimal' ? 'decimal' : undefined}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </span>
   )
 }
 
@@ -609,18 +753,21 @@ function FormRows({
   draft,
   contract,
   locale,
+  problemOf,
   onOpenField,
   onReorder,
 }: {
   draft: Draft
   contract: Contract | null
   locale: string
+  problemOf: (key: string) => EditorProblem | undefined
   onOpenField: (key: string) => void
   onReorder: (orderedKeys: readonly string[]) => void
 }) {
   const { format } = useI18n()
   const [held, setHeld] = useState<string | null>(null)
   const [drop, setDrop] = useState<{ key: string; edge: 'before' | 'after' } | null>(null)
+  const separator = format(m.listSeparator)
   const edgeOf = (event: React.DragEvent) => {
     const box = event.currentTarget.getBoundingClientRect()
     return event.clientY < box.top + box.height / 2 ? ('before' as const) : ('after' as const)
@@ -641,22 +788,17 @@ function FormRows({
           link === undefined || parameter === undefined
             ? null
             : admittedSchemaOf(link.recognition, parameter)
-        const name =
-          link === undefined
-            ? field.label.trim() === ''
-              ? format(m.itemsFieldUnnamed)
-              : field.label
-            : link.recognition.label.trim() === ''
-              ? format(m.itemsFieldUnnamed)
-              : link.recognition.label
-        const bounds =
-          admitted === null
-            ? fieldBoundsWords(field, format, () => '')
-            : boundsWords(admitted, locale, format, () => '')
+        const unnamed = field.label.trim() === ''
+        const required = field.required || (link !== undefined && draft.mode === 'direct')
+        const problem = problemOf(field.key)
         return (
           <ListRow
             key={field.key}
-            name={name}
+            layout="drag"
+            // the field's own name, linked or not: the determination it
+            // feeds is named on its own row
+            name={unnamed ? format(m.itemsFieldUnnamed) : field.label}
+            unnamed={unnamed}
             tag={
               link === undefined ? undefined : (
                 <Tag testId="field-link-tag">
@@ -665,28 +807,37 @@ function FormRows({
               )
             }
             takes={
-              <span {...stylex.props(rowWords.pair)}>
-                <span>
-                  {admitted === null ? format(TYPE_LABEL[field.type]) : kindWords(admitted, format)}
-                </span>
-                {bounds !== '' && <span>{bounds}</span>}
-              </span>
+              admitted === null ? (
+                <TakesCell
+                  kind={format(TYPE_LABEL[field.type])}
+                  separator={separator}
+                  {...fieldTakesOf(field, format)}
+                />
+              ) : (
+                <TakesCell
+                  kind={kindWords(admitted, format)}
+                  separator={separator}
+                  {...takesOf(admitted, locale, format)}
+                />
+              )
             }
             third={
-              <span {...stylex.props(styles.requirement)}>
-                {format(
-                  field.required || (link !== undefined && draft.mode === 'direct')
-                    ? m.itemsFieldRequired
-                    : m.itemsOptional,
-                )}
+              <span {...stylex.props(required ? styles.required : styles.optional)}>
+                {format(required ? m.itemsFieldRequired : m.itemsOptional)}
               </span>
             }
+            problem={problem === undefined ? undefined : problemWords(problem, format)}
             handle={<DragHandle onPress={() => setHeld(field.key)} onRelease={() => setHeld(null)} />}
             onOpen={() => onOpenField(field.key)}
             lifted={held === field.key}
             mark={drop?.key === field.key ? drop.edge : null}
             testId="form-field-row"
-            data={{ key: field.key, linked: link !== undefined, required: field.required }}
+            data={{
+              key: field.key,
+              linked: link !== undefined,
+              required: field.required,
+              problem: problem?.code,
+            }}
             dragProps={{
               draggable: held === field.key,
               onDragStart: (event) => {
@@ -714,52 +865,5 @@ function FormRows({
         )
       })}
     </>
-  )
-}
-
-/** which fields name a record in a list, said under the form they come from */
-function SummaryBlock({
-  draft,
-  contract,
-  onOpen,
-}: {
-  draft: Draft
-  contract: Contract | null
-  onOpen: () => void
-}) {
-  const { format } = useI18n()
-  const nameOf = (id: string) => {
-    const field = draft.fields.find((one) => one.id === id)
-    if (field === undefined) return null
-    const link = linkOf(draft, contract, field.id)
-    const label = link === undefined ? field.label : link.recognition.label
-    return label.trim() === '' ? format(m.itemsFieldUnnamed) : label
-  }
-  const chosen = draft.summaryFieldIds.map(nameOf).filter((one): one is string => one !== null)
-  return (
-    <div {...stylex.props(styles.summary)} data-testid="summary-block" data-custom={chosen.length > 0}>
-      <div {...stylex.props(styles.summaryHead)}>
-        <span {...stylex.props(styles.summaryTitle)}>{format(m.itemsSummaryBlock)}</span>
-        <Tag>{format(chosen.length > 0 ? m.itemsSummaryCustom : m.itemsSummaryAuto)}</Tag>
-        <span {...stylex.props(styles.spacer)} />
-        <button type="button" {...stylex.props(styles.linkButton)} onClick={onOpen}>
-          {format(chosen.length > 0 ? m.itemsSummaryEdit : m.itemsSummaryCustom)}
-          <ChevronRightIcon aria-hidden {...stylex.props(rowWords.icon12)} />
-        </button>
-      </div>
-      {chosen.length > 0 ? (
-        <div {...stylex.props(styles.summaryLine)}>
-          {chosen.map((name, index) => (
-            <span key={`${index}:${name}`} {...stylex.props(styles.summaryLine)}>
-              {index > 0 && <span {...stylex.props(styles.summarySlash)}>/</span>}
-              <span {...stylex.props(styles.summaryName)}>{name}</span>
-            </span>
-          ))}
-        </div>
-      ) : (
-        <p {...stylex.props(styles.summaryHint)}>{format(m.itemsSummaryAutoHint)}</p>
-      )}
-      <p {...stylex.props(styles.summaryHint)}>{format(m.itemsSummaryBlockHint)}</p>
-    </div>
   )
 }

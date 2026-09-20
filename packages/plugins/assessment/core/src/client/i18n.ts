@@ -5212,7 +5212,7 @@ const i18n = definePluginMessages({
     },
     itemsModeLocked: {
       id: 'assessment/items/mode-locked',
-      defaultMessage: 'Automatic scoring can only be switched on or off while the item is unpublished.',
+      defaultMessage: 'Once published, a question cannot move between automatic scoring and the other ways of handling',
     },
     itemsChannels: { id: 'assessment/items/channels', defaultMessage: 'Entry method' },
     itemsChannelsHint: {
@@ -5248,7 +5248,7 @@ const i18n = definePluginMessages({
     },
     itemsPendingNone: {
       id: 'assessment/items/pending-none',
-      defaultMessage: 'Ready to save',
+      defaultMessage: 'Nothing to correct, ready to save',
     },
     itemsUnsaved: { id: 'assessment/items/unsaved', defaultMessage: 'Unsaved changes' },
     itemsSavedAt: { id: 'assessment/items/saved-at', defaultMessage: 'Saved {when}' },
@@ -5705,6 +5705,406 @@ const i18n = definePluginMessages({
     itemsProblemTopN: {
       id: 'assessment/items/problem-top-n',
       defaultMessage: 'Number of entries must be at least 1',
+    },
+    itemsModeLockedToAutomatic: {
+      id: 'assessment/items/mode-locked-to-automatic',
+      defaultMessage: 'A published question cannot be changed to automatic scoring',
+    },
+    itemsModeLockedFromAutomatic: {
+      id: 'assessment/items/mode-locked-from-automatic',
+      defaultMessage: 'A published automatic question cannot be changed to another handling',
+    },
+    itemsMaxEntriesSome: {
+      id: 'assessment/items/max-entries-some',
+      defaultMessage: 'A set number',
+    },
+    itemsFoldingNUnit: {
+      id: 'assessment/items/folding-n-unit',
+      defaultMessage: 'entries',
+    },
+    itemsPreviewFill: {
+      id: 'assessment/items/preview-fill',
+      defaultMessage: 'Filled in by the participant',
+    },
+    itemsPreviewChoose: {
+      id: 'assessment/items/preview-choose',
+      defaultMessage: 'Chosen by the participant',
+    },
+    itemsPreviewDate: {
+      id: 'assessment/items/preview-date',
+      defaultMessage: 'A date chosen by the participant',
+    },
+    itemsProblemFieldOptionUnnamed: {
+      id: 'assessment/items/problem-field-option-unnamed',
+      defaultMessage: 'An option has no name',
+    },
+    itemsProblemFieldOptionDuplicate: {
+      id: 'assessment/items/problem-field-option-duplicate',
+      defaultMessage: 'Two options share a name',
+    },
+    itemsProblemFieldRangeInverted: {
+      id: 'assessment/items/problem-field-range-inverted',
+      defaultMessage: 'The lower bound is above the upper one',
+    },
+    itemsProblemFieldDuplicate: {
+      id: 'assessment/items/problem-field-duplicate',
+      defaultMessage: 'Another field has the same identity',
+    },
+    itemsProblemFieldRetyped: {
+      id: 'assessment/items/problem-field-retyped',
+      defaultMessage: 'A saved field cannot change type; remove it and add a new one',
+    },
+    itemsProblemFixedValueInvalid: {
+      id: 'assessment/items/problem-fixed-value-invalid',
+      defaultMessage: 'The amount per entry must be a number',
+    },
+    itemsProblemConstantRange: {
+      id: 'assessment/items/problem-constant-range',
+      defaultMessage: 'Out of range: between {min} and {max}',
+    },
+    itemsProblemConstantBelow: {
+      id: 'assessment/items/problem-constant-below',
+      defaultMessage: 'Must not be below {min}',
+    },
+    itemsProblemConstantAbove: {
+      id: 'assessment/items/problem-constant-above',
+      defaultMessage: 'Must not be above {max}',
+    },
+    itemsProblemConstantScale: {
+      id: 'assessment/items/problem-constant-scale',
+      defaultMessage: 'At most {scale} decimal places',
+    },
+    itemsProblemConstantNotInteger: {
+      id: 'assessment/items/problem-constant-not-integer',
+      defaultMessage: 'Enter a whole number',
+    },
+    itemsProblemConstantNotNumber: {
+      id: 'assessment/items/problem-constant-not-number',
+      defaultMessage: 'Enter a number',
+    },
+    itemsProblemConstantNotDate: {
+      id: 'assessment/items/problem-constant-not-date',
+      defaultMessage: 'Enter a valid date',
+    },
+    itemsProblemConstantTooShort: {
+      id: 'assessment/items/problem-constant-too-short',
+      defaultMessage: 'At least {min} characters',
+    },
+    itemsProblemConstantTooLong: {
+      id: 'assessment/items/problem-constant-too-long',
+      defaultMessage: 'At most {max} characters',
+    },
+    itemsProblemConstantNotOffered: {
+      id: 'assessment/items/problem-constant-not-offered',
+      defaultMessage: 'Choose one of the options the formula offers',
+    },
+    itemsProblemConstantPattern: {
+      id: 'assessment/items/problem-constant-pattern',
+      defaultMessage: 'Does not match the format the formula asks for',
+    },
+    itemsProblemConstantInvalid: {
+      id: 'assessment/items/problem-constant-invalid',
+      defaultMessage: 'The formula does not accept this value',
+    },
+    itemsProblemParameterRefused: {
+      id: 'assessment/items/problem-parameter-refused',
+      defaultMessage: 'The formula does not accept this source for the parameter',
+    },
+    itemsProblemRefinementEmpty: {
+      id: 'assessment/items/problem-refinement-empty',
+      defaultMessage: 'Keep at least one option in the range',
+    },
+    itemsProblemRecognitionReused: {
+      id: 'assessment/items/problem-recognition-reused',
+      defaultMessage: 'One determination cannot feed two parameters',
+    },
+    itemsProblemRecognitionUnattainable: {
+      id: 'assessment/items/problem-recognition-unattainable',
+      defaultMessage: 'Not linked to a field, and nobody on this question can determine it',
+    },
+    itemsProblemLinkNotGuaranteed: {
+      id: 'assessment/items/problem-link-not-guaranteed',
+      defaultMessage: 'The linked field has to be required',
+    },
+    itemsProblemLinkMismatch: {
+      id: 'assessment/items/problem-link-mismatch',
+      defaultMessage: 'The linked field does not fit the range determined',
+    },
+    itemsProblemRecognitionUnbound: {
+      id: 'assessment/items/problem-recognition-unbound',
+      defaultMessage: 'No parameter of the formula reads this determination',
+    },
+    itemsProblemRecognitionRefused: {
+      id: 'assessment/items/problem-recognition-refused',
+      defaultMessage: 'The determination as set is not accepted',
+    },
+    itemsProblemStageUnnamed: {
+      id: 'assessment/items/problem-stage-unnamed',
+      defaultMessage: 'The step has no name',
+    },
+    itemsProblemStageQuorum: {
+      id: 'assessment/items/problem-stage-quorum',
+      defaultMessage: 'This step cannot be reviewed by everyone together',
+    },
+    itemsProblemStageRefused: {
+      id: 'assessment/items/problem-stage-refused',
+      defaultMessage: 'The step as set is not accepted',
+    },
+    itemsProblemPolicyRefused: {
+      id: 'assessment/items/problem-policy-refused',
+      defaultMessage: 'The review route as set is not accepted',
+    },
+    itemsProblemChannelsFrozen: {
+      id: 'assessment/items/problem-channels-frozen',
+      defaultMessage: 'A way in that records came through cannot be closed',
+    },
+    itemsProblemGroupGone: {
+      id: 'assessment/items/problem-group-gone',
+      defaultMessage: 'The group is no longer in this round',
+    },
+    itemsProblemModeFrozen: {
+      id: 'assessment/items/problem-mode-frozen',
+      defaultMessage: 'A published question, or one with records, cannot move to or from automatic scoring',
+    },
+    itemsProblemModeUnavailable: {
+      id: 'assessment/items/problem-mode-unavailable',
+      defaultMessage: 'This handling is not available right now',
+    },
+    itemsProblemSummaryInvalid: {
+      id: 'assessment/items/problem-summary-invalid',
+      defaultMessage: 'The fields shown in lists are not valid',
+    },
+    itemsProblemFoldingRefused: {
+      id: 'assessment/items/problem-folding-refused',
+      defaultMessage: 'This way of counting several records is not accepted',
+    },
+    itemsProblemCalculatorGone: {
+      id: 'assessment/items/problem-calculator-gone',
+      defaultMessage: 'The scoring method chosen is no longer available',
+    },
+    itemsProblemCalculatorOutput: {
+      id: 'assessment/items/problem-calculator-output',
+      defaultMessage: 'The formula chosen does not produce a score',
+    },
+    itemsProblemCalculatorRefused: {
+      id: 'assessment/items/problem-calculator-refused',
+      defaultMessage: 'The scoring method as set is not accepted',
+    },
+    itemsProblemFormRefused: {
+      id: 'assessment/items/problem-form-refused',
+      defaultMessage: 'The form as set is not accepted',
+    },
+    itemsCrumbRoot: {
+      id: 'assessment/items/crumb-root',
+      defaultMessage: 'Questions',
+    },
+    itemsFixCount: {
+      id: 'assessment/items/fix-count',
+      defaultMessage: '{count, plural, one {# thing to correct} other {# things to correct}}',
+    },
+    itemsSaveFailedCount: {
+      id: 'assessment/items/save-failed-count',
+      defaultMessage: 'Not saved: {count, plural, one {# thing to correct} other {# things to correct}}',
+    },
+    itemsSaveFailedHint: {
+      id: 'assessment/items/save-failed-hint',
+      defaultMessage: 'Correct them and save again; everything else is kept',
+    },
+    itemsGo: {
+      id: 'assessment/items/go',
+      defaultMessage: 'Go',
+    },
+    itemsDismiss: {
+      id: 'assessment/items/dismiss',
+      defaultMessage: 'Dismiss',
+    },
+    itemsBlockPending: {
+      id: 'assessment/items/block-pending',
+      defaultMessage: '{count, plural, one {# to set} other {# to set}}',
+    },
+    itemsBlockFix: {
+      id: 'assessment/items/block-fix',
+      defaultMessage: '{count, plural, one {# to correct} other {# to correct}}',
+    },
+    itemsParametersWrong: {
+      id: 'assessment/items/parameters-wrong',
+      defaultMessage: '{count, plural, one {# parameter value is not acceptable} other {# parameter values are not acceptable}}',
+    },
+    itemsStagesWrong: {
+      id: 'assessment/items/stages-wrong',
+      defaultMessage: '{count, plural, one {# step is set wrongly} other {# steps are set wrongly}}',
+    },
+    itemsFailConflictTitle: {
+      id: 'assessment/items/fail-conflict-title',
+      defaultMessage: 'Not saved: somebody else has just changed this question',
+    },
+    itemsFailConflictHint: {
+      id: 'assessment/items/fail-conflict-hint',
+      defaultMessage: 'Reloading drops what you changed here. Saving over it keeps yours and replaces theirs.',
+    },
+    itemsFailReload: {
+      id: 'assessment/items/fail-reload',
+      defaultMessage: 'Reload',
+    },
+    itemsFailOverwrite: {
+      id: 'assessment/items/fail-overwrite',
+      defaultMessage: 'Save over it',
+    },
+    itemsFailVoidedTitle: {
+      id: 'assessment/items/fail-voided-title',
+      defaultMessage: 'Not saved: the question has been withdrawn',
+    },
+    itemsFailVoidedHint: {
+      id: 'assessment/items/fail-voided-hint',
+      defaultMessage: 'Restore it from the menu before changing how it is set',
+    },
+    itemsFailReadOnlyTitle: {
+      id: 'assessment/items/fail-read-only-title',
+      defaultMessage: 'Not saved: the round is archived',
+    },
+    itemsFailReadOnlyHint: {
+      id: 'assessment/items/fail-read-only-hint',
+      defaultMessage: 'Questions of an archived round can no longer be changed',
+    },
+    itemsFailDeniedTitle: {
+      id: 'assessment/items/fail-denied-title',
+      defaultMessage: 'Not saved: you may not change this question',
+    },
+    itemsFailDeniedHint: {
+      id: 'assessment/items/fail-denied-hint',
+      defaultMessage: 'Ask whoever administers the round',
+    },
+    itemsFailGoneTitle: {
+      id: 'assessment/items/fail-gone-title',
+      defaultMessage: 'Not saved: the question no longer exists',
+    },
+    itemsFailGoneHint: {
+      id: 'assessment/items/fail-gone-hint',
+      defaultMessage: 'Somebody deleted it while it was open here',
+    },
+    itemsFailScoringTitle: {
+      id: 'assessment/items/fail-scoring-title',
+      defaultMessage: 'Not saved: scoring is unavailable right now',
+    },
+    itemsFailScoringHint: {
+      id: 'assessment/items/fail-scoring-hint',
+      defaultMessage: 'What you entered is kept. Try again in a moment.',
+    },
+    itemsFailIncompatibleTitle: {
+      id: 'assessment/items/fail-incompatible-title',
+      defaultMessage: 'Not saved: records already determined do not fit the new rule',
+    },
+    itemsFailOtherTitle: {
+      id: 'assessment/items/fail-other-title',
+      defaultMessage: 'Not saved',
+    },
+    itemsFailLooseTitle: {
+      id: 'assessment/items/fail-loose-title',
+      defaultMessage: 'Not saved: {count, plural, one {# setting was} other {# settings were}} not accepted',
+    },
+    itemsFailLooseHint: {
+      id: 'assessment/items/fail-loose-hint',
+      defaultMessage: 'The page has no place for these. Reload and try again, and tell whoever runs the system if it repeats.',
+    },
+    itemsFailRetry: {
+      id: 'assessment/items/fail-retry',
+      defaultMessage: 'Try again',
+    },
+    itemsOptionsEmptyTitle: {
+      id: 'assessment/items/options-empty-title',
+      defaultMessage: 'No options yet',
+    },
+    itemsOptionsEmptyHint: {
+      id: 'assessment/items/options-empty-hint',
+      defaultMessage: 'Add at least one so there is something to choose',
+    },
+    itemsNarrowedCount: {
+      id: 'assessment/items/narrowed-count',
+      defaultMessage: '{kept}/{total}',
+    },
+    itemsEntriesUnit: {
+      id: 'assessment/items/entries-unit',
+      defaultMessage: 'per person',
+    },
+    itemsCeilingHowLine: {
+      id: 'assessment/items/ceiling-how-line',
+      defaultMessage: '{how}.',
+    },
+    itemsCeilingOpen: {
+      id: 'assessment/items/ceiling-open',
+      defaultMessage: 'No ceiling',
+    },
+    itemsCeilingAmount: {
+      id: 'assessment/items/ceiling-amount',
+      defaultMessage: '{value}',
+    },
+    itemsStageNew: {
+      id: 'assessment/items/stage-new',
+      defaultMessage: 'New step',
+    },
+    itemsStageAddConfirm: {
+      id: 'assessment/items/stage-add-confirm',
+      defaultMessage: 'Add step',
+    },
+    itemsStageLabelRequired: {
+      id: 'assessment/items/stage-label-required',
+      defaultMessage: 'Name the step',
+    },
+    itemsStageLevelRequired: {
+      id: 'assessment/items/stage-level-required',
+      defaultMessage: 'Choose a level',
+    },
+    itemsStageRolesRequired: {
+      id: 'assessment/items/stage-roles-required',
+      defaultMessage: 'Choose at least one role',
+    },
+    itemsStageRoleRequired: {
+      id: 'assessment/items/stage-role-required',
+      defaultMessage: 'Choose a role',
+    },
+    itemsStageRuleAny: {
+      id: 'assessment/items/stage-rule-any',
+      defaultMessage: 'any one of them',
+    },
+    itemsStageRuleAll: {
+      id: 'assessment/items/stage-rule-all',
+      defaultMessage: 'all of them',
+    },
+    itemsFlowDoneLine: {
+      id: 'assessment/items/flow-done-line',
+      defaultMessage: 'Reviewed; counted once approved',
+    },
+    itemsFlowSubmitLine: {
+      id: 'assessment/items/flow-submit-line',
+      defaultMessage: 'A participant files',
+    },
+    itemsEscalationStartLine: {
+      id: 'assessment/items/escalation-start-line',
+      defaultMessage: 'A reviewer asks for a second look',
+    },
+    itemsEscalationDoneLine: {
+      id: 'assessment/items/escalation-done-line',
+      defaultMessage: 'Looked at again; the last step decides',
+    },
+    itemsReviewChainLong: {
+      id: 'assessment/items/review-chain-long',
+      defaultMessage: 'Filed records are reviewed step by step in this order. Records entered by staff do not go through it.',
+    },
+    itemsEscalationLong: {
+      id: 'assessment/items/escalation-long',
+      defaultMessage: 'Used when an approved record is disputed. With no step here a reviewer cannot ask for one.',
+    },
+    itemsSummarySectionHint: {
+      id: 'assessment/items/summary-section-hint',
+      defaultMessage: 'The fields that name a record wherever records are listed; the first is its title',
+    },
+    itemsSummaryNoFields: {
+      id: 'assessment/items/summary-no-fields',
+      defaultMessage: 'Add a field to the form first',
+    },
+    itemsFieldLinkedRange: {
+      id: 'assessment/items/field-linked-range',
+      defaultMessage: 'The type and range come from the determination it is linked to',
     },
     // ---- the words for a type and its bounds ----
     itemsKindNumber: { id: 'assessment/items/kind-number', defaultMessage: 'Decimal' },

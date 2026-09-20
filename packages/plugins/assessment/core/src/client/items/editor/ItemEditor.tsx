@@ -1,18 +1,19 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { EllipsisVerticalIcon, EyeIcon } from 'lucide-react'
+import { ArrowLeftIcon, ChevronRightIcon, EllipsisVerticalIcon, EyeIcon } from 'lucide-react'
 import { useApi, useRunApi, usePageQueryState, useUiCollection } from '@qualy/web-runtime'
 import { useI18n, useList } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { kindOf, type AtomicSchema, type ChoiceSchema } from '@qualy/value-schema'
 import type { FieldDraft as ValueDraft } from '@qualy/web-value-form/model'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { BannerBack, ConfirmDialog, Feedback } from '@qualy/ui/admin'
+import { ConfirmDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@qualy/ui/dropdown-menu'
 import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
 import { toast } from '@qualy/ui/toast'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { useLingering } from '@qualy/ui/use-lingering'
 import { useSettled } from '@qualy/ui/use-settled'
 import { calculatorAuthoringOptions } from '../../../surfaces.ts'
@@ -34,8 +35,8 @@ import { PreviewSheet } from './PreviewSheet.tsx'
 import { RecognitionSheet } from './RecognitionSheet.tsx'
 import { Dot, Tag } from './Rows.tsx'
 import { RulesTab } from './RulesTab.tsx'
+import { FailureList, FailureNotice } from './SaveFailure.tsx'
 import { ScoringTab, type ContractState } from './ScoringTab.tsx'
-import { SummarySheet } from './SummarySheet.tsx'
 import {
   admittedSchemaOf,
   blankField,
@@ -51,10 +52,12 @@ import {
   itemTypeOf,
   linkOf,
   maxEntriesOf,
+  mergedProblems,
   nextKey,
   nextOptionKey,
   parameterSchemaOf,
   parameterTitle,
+  problemsFromIssues,
   problemsOf,
   recognitionRows,
   stated,
@@ -78,19 +81,59 @@ import { boundsWords, type LinkVerdict } from './words.ts'
 
 const styles = stylex.create({
   root: { display: 'flex', minHeight: 0, flexGrow: 1, flexShrink: 1, flexBasis: '0%', flexDirection: 'column' },
-  band: { display: 'flex', flexDirection: 'column', gap: 12, paddingTop: 4 },
+  // three rows, each doing one thing: where this is, what it is, and the
+  // ways around it. The last row is the tabs, and it stands on the band's
+  // own bottom rule.
+  band: { display: 'flex', flexDirection: 'column', gap: 14 },
+  trailRow: { display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 },
   trail: {
     display: 'flex',
     alignItems: 'center',
     gap: 8,
+    minWidth: 0,
     fontSize: 13,
     color: tokens.mutedForeground,
-    minWidth: 0,
   },
-  trailRule: { width: 1, height: 14, backgroundColor: tokens.border, flexShrink: 0 },
-  trailName: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  // the way back IS the first level of where this is
+  back: {
+    display: 'inline-flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 6,
+    height: 28,
+    marginLeft: -8,
+    paddingInline: 8,
+    borderRadius: 8,
+    borderWidth: 0,
+    fontFamily: 'inherit',
+    fontSize: 13,
+    fontWeight: 500,
+    color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
+    backgroundColor: { default: 'transparent', ':hover': tokens.surfaceMuted },
+    cursor: 'pointer',
+  },
+  backIcon: { width: 15, height: 15 },
+  crumbRule: { width: 12, height: 12, flexShrink: 0 },
+  crumb: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    display: { default: null, [breakpoints.phone]: 'none' },
+  },
+  crumbHere: { color: tokens.foreground },
+  meta: {
+    display: { default: 'inline-flex', [breakpoints.phone]: 'none' },
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 10,
+    fontSize: 12,
+    fontVariantNumeric: 'tabular-nums',
+    whiteSpace: 'nowrap',
+  },
+  metaRule: { width: 1, height: 10, backgroundColor: tokens.border },
+  metaUnsaved: { display: 'inline-flex', alignItems: 'center', gap: 6, color: tokens.foreground },
   titleRow: { display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flexWrap: 'wrap' },
-  titleWords: { display: 'flex', minWidth: 0, flexGrow: 1, flexDirection: 'column', gap: 4 },
   titleLine: { display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 },
   title: {
     margin: 0,
@@ -98,38 +141,51 @@ const styles = stylex.create({
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
-    fontSize: 20,
-    lineHeight: 1.4,
+    fontSize: 22,
+    lineHeight: 1.3,
     fontWeight: 600,
     letterSpacing: '-0.025em',
   },
-  meta: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 10,
-    fontSize: 12,
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
-    fontVariantNumeric: 'tabular-nums',
-    flexWrap: 'wrap',
-  },
+  titleUnset: { color: tokens.mutedForeground },
   actions: { display: 'flex', flexShrink: 0, alignItems: 'center', gap: 8 },
-  tabsRow: { display: 'flex', alignItems: 'flex-end', gap: 20, minWidth: 0 },
-  tabList: { gap: 20 },
-  tab: { paddingInline: 2 },
+  tabsRow: { display: 'flex', alignItems: 'flex-end', gap: 24, minWidth: 0 },
+  tabsSeat: { minWidth: 0, overflowX: 'auto', scrollbarWidth: 'none' },
+  tabList: { gap: 24 },
+  tab: { height: 38, paddingInline: 2 },
   tabLabel: { display: 'inline-flex', alignItems: 'center', gap: 7 },
   spacer: { flexGrow: 1 },
-  body: { display: 'flex', flexDirection: 'column', gap: 16, paddingTop: 24, paddingBottom: 40, maxWidth: 1152 },
-  menuButton: { flexShrink: 0, color: tokens.mutedForeground },
+  body: { display: 'flex', flexDirection: 'column', gap: 24, paddingTop: 4, paddingBottom: 40 },
   menu: { width: 176 },
 })
 
 const AREAS: readonly EditorArea[] = ['basics', 'scoring', 'rules']
 
+const REFUSED_TITLE = {
+  conflict: m.itemsFailConflictTitle,
+  voided: m.itemsFailVoidedTitle,
+  'read-only': m.itemsFailReadOnlyTitle,
+  denied: m.itemsFailDeniedTitle,
+  gone: m.itemsFailGoneTitle,
+  scoring: m.itemsFailScoringTitle,
+  incompatible: m.itemsFailIncompatibleTitle,
+  other: m.itemsFailOtherTitle,
+} as const
+
+const REFUSED_HINT = {
+  conflict: m.itemsFailConflictHint,
+  voided: m.itemsFailVoidedHint,
+  'read-only': m.itemsFailReadOnlyHint,
+  denied: m.itemsFailDeniedHint,
+  gone: m.itemsFailGoneHint,
+  scoring: m.itemsFailScoringHint,
+  loose: m.itemsFailLooseHint,
+} as const
+
 type OpenSheet =
   | { kind: 'recognition'; handle: string }
   | { kind: 'field'; key: string }
-  | { kind: 'stage'; key: string }
-  | { kind: 'summary' }
+  // `fresh` is a step being composed: it is not in the chain until it is whole
+  | { kind: 'stage'; key: string; fresh?: StageDraft }
   | { kind: 'preview' }
 
 type Ask =
@@ -141,6 +197,14 @@ type Ask =
   | { kind: 'to-automatic'; parameters: readonly string[] }
   | { kind: 'adjust'; handle: string; fieldId: string }
   | { kind: 'mapping'; handle: string; fieldId: string }
+
+type Issue = { readonly path: string; readonly reason: string; readonly handle?: string }
+
+/** a save the page has no row to pin on: what happened, in the words it has */
+type Refused =
+  | { kind: 'conflict' | 'voided' | 'read-only' | 'denied' | 'gone' | 'scoring' }
+  | { kind: 'incompatible' | 'other'; words: string }
+  | { kind: 'loose'; reasons: readonly string[] }
 
 export function ItemEditor({
   batchId,
@@ -157,6 +221,7 @@ export function ItemEditor({
   onHold,
   onDirty,
   onCancel,
+  onReload,
   onSaved,
 }: {
   batchId: string
@@ -184,6 +249,8 @@ export function ItemEditor({
   /** whether the pane holds edits the round has not been told about yet */
   onDirty?: ((dirty: boolean) => void) | undefined
   onCancel: () => void
+  /** read the question again, because somebody else has changed it */
+  onReload?: (() => Promise<unknown>) | undefined
   onSaved: (itemId: string) => void
 }) {
   const api = useApi(assessmentApi)
@@ -207,7 +274,13 @@ export function ItemEditor({
   const askedAdding = useLingering(adding)
   const [ask, setAsk] = useState<Ask | null>(null)
   const lingeringAsk = useLingering(ask)
-  const [problem, setProblem] = useState<string | null>(null)
+  // what a save was refused for, and the composition it was refused on
+  const [refusal, setRefusal] = useState<{ at: string; when: number; issues: readonly Issue[] } | null>(null)
+  const [refused, setRefused] = useState<Refused | null>(null)
+  const [failed, setFailed] = useState(false)
+  const [dismissed, setDismissed] = useState(false)
+  const [attempted, setAttempted] = useState(false)
+  const [reloading, setReloading] = useState(false)
   const [askingReason, setAskingReason] = useState(false)
   const askedOnce = useLingering(askingReason ? true : null) === true
   const [impact, setImpact] = useState<ChangeImpact | null>(null)
@@ -313,11 +386,70 @@ export function ItemEditor({
           ? { kind: 'ready' }
           : { kind: 'pending' }
 
-  const problems = useMemo(
+  const local = useMemo(
     () => problemsOf({ draft, options, contract, contractRefused: contractQuery.isError, locale }),
     [draft, options, contract, contractQuery.isError, locale],
   )
-  const problemAreas = new Set(problems.map((one) => one.area))
+
+  // The server reads the composition as it is typed, a beat after the typing
+  // stops: the same reading a save would get, with nothing written. It is
+  // what knows whether a narrowing can still be met, whether a linked field
+  // can carry its determination, whether a fixed value fits its parameter.
+  const configNow = configOf(draft, item, contract, locale)
+  const checkKey = JSON.stringify([itemTypeOf(draft, item), draft.scoreGroupId, configNow])
+  const askedCheck = useSettled(checkKey, 600)
+  const checkQuery = useQuery({
+    queryKey: ['assessment', 'item-check', batchId, item?.id ?? 'new', askedCheck],
+    queryFn: () =>
+      run(
+        api.assessment.checkItem({
+          params: { batchId },
+          payload: {
+            itemType: itemTypeOf(draft, item),
+            scoreGroupId: draft.scoreGroupId,
+            config: configNow as never,
+            ...(item === null ? {} : { itemId: item.id }),
+          },
+        }),
+      ),
+    enabled:
+      draft.scoreGroupId !== '' && draft.scoring.language !== 'unsupported' && contractState.kind !== 'pending',
+    placeholderData: keepPreviousData,
+    retry: false,
+  })
+  const serverIssues = ((): readonly Issue[] => {
+    const checked = (checkQuery.data as { issues: readonly Issue[] } | undefined)?.issues
+    const fresh = checkQuery.isSuccess && !checkQuery.isPlaceholderData && askedCheck === checkKey
+    if (refusal !== null && refusal.at === checkKey) {
+      // nothing has changed since the save was refused, so the save's word
+      // stands; a reading taken since adds the handles a save cannot name
+      const since = fresh && checkQuery.dataUpdatedAt >= refusal.when ? (checked ?? []) : []
+      const said = new Set(since.map((one) => `${one.path}\n${one.reason}`))
+      return [...since, ...refusal.issues.filter((one) => !said.has(`${one.path}\n${one.reason}`))]
+    }
+    // the newest word on exactly what is on screen
+    if (fresh) return checked ?? []
+    // the reading cannot be had: what was said of another composition is dropped
+    if (checkQuery.isError) return []
+    // a newer answer is on its way; until it lands, what was last said stands
+    return checked ?? refusal?.issues ?? []
+  })()
+  const server = useMemo(
+    () => problemsFromIssues({ draft, contract, locale, issues: serverIssues }),
+    // the issues are compared by what they say, not by which array holds them
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [draft, contract, locale, JSON.stringify(serverIssues)],
+  )
+  const problems = useMemo(() => mergedProblems(local, server.placed), [local, server.placed])
+  const wrong = problems.some((one) => one.tone === 'error')
+  const toneOf = (one: EditorArea): 'ok' | 'pending' | 'error' => {
+    const here = problems.filter((candidate) => candidate.area === one)
+    return here.some((candidate) => candidate.tone === 'error') ? 'error' : here.length > 0 ? 'pending' : 'ok'
+  }
+  // a refused save is over once everything it was refused for is corrected
+  useEffect(() => {
+    if (failed && problems.length === 0) setFailed(false)
+  }, [failed, problems.length])
 
   // ---- dirtiness and the reason a live change needs -----------------------
   const wasSaid = useMemo(
@@ -400,10 +532,12 @@ export function ItemEditor({
   /** the shape a linked field would keep if it stood alone */
   const standaloneField = (field: FieldDraft, recognition: RecognitionDraft, parameter: AtomicSchema): FieldDraft => {
     const admitted = admittedSchemaOf(recognition, parameter)
+    // its own name and hint stay: a linked field was never called by the
+    // determination's name, so there is nothing to give back
     return {
       ...fieldFromSchema(admitted, field, locale, (value) => field.options.find((one) => one.value === value)?.id),
-      label: recognition.label,
-      description: recognition.description,
+      label: field.label.trim() === '' ? recognition.label : field.label,
+      description: field.description.trim() === '' ? recognition.description : field.description,
     }
   }
   const linkNewField = (handle: string) => {
@@ -607,16 +741,22 @@ export function ItemEditor({
       const others = previous.stages.filter((candidate) => candidate.chain !== stage.chain)
       return { ...previous, stages: stage.chain === 'normal' ? [...reordered, ...others] : [...others, ...reordered] }
     })
-  const addStage = (chain: 'normal' | 'escalation', at: number) => {
+  /** a new step is composed in its panel; the chain does not hold it yet */
+  const addStage = (chain: 'normal' | 'escalation') => {
     const stage = blankStage(options, chain)
+    setSheet({ kind: 'stage', key: stage.key, fresh: stage })
+  }
+  /** a whole step, put at the end of its chain or over what stood there */
+  const applyStage = (next: StageDraft, fresh: boolean) => {
+    if (!fresh) {
+      patchStage(next.key, next)
+      return
+    }
     setDraft((previous) => {
-      const own = previous.stages.filter((one) => one.chain === chain)
-      const others = previous.stages.filter((one) => one.chain !== chain)
-      const placed = [...own]
-      placed.splice(at, 0, stage)
-      return { ...previous, stages: chain === 'normal' ? [...placed, ...others] : [...others, ...placed] }
+      const own = previous.stages.filter((one) => one.chain === next.chain)
+      const others = previous.stages.filter((one) => one.chain !== next.chain)
+      return { ...previous, stages: next.chain === 'normal' ? [...own, next, ...others] : [...others, ...own, next] }
     })
-    setSheet({ kind: 'stage', key: stage.key })
   }
   const removeStage = (key: string) =>
     setDraft((previous) => ({ ...previous, stages: previous.stages.filter((one) => one.key !== key) }))
@@ -625,22 +765,42 @@ export function ItemEditor({
   const jumpTo = (target: EditorProblem) => {
     setPanelParam(target.area)
     const entity = target.entity
-    if (entity === undefined) return
-    if (entity.kind === 'recognition') setSheet({ kind: 'recognition', handle: entity.handle })
-    if (entity.kind === 'field') setSheet({ kind: 'field', key: entity.key })
-    if (entity.kind === 'stage') setSheet({ kind: 'stage', key: entity.key })
-    if (entity.kind === 'parameter') {
+    if (entity?.kind === 'recognition') setSheet({ kind: 'recognition', handle: entity.handle })
+    else if (entity?.kind === 'field') setSheet({ kind: 'field', key: entity.key })
+    else if (entity?.kind === 'stage') setSheet({ kind: 'stage', key: entity.key })
+    if (entity !== undefined && entity.kind !== 'parameter') return
+    const seat =
+      entity !== undefined
+        ? `[data-parameter-row="${CSS.escape(entity.parameter)}"]`
+        : target.block === undefined
+          ? null
+          : `[data-block="${target.block}"]`
+    if (seat === null) return
+    // the tab has to be on screen before anything in it can be found
+    requestAnimationFrame(() =>
       requestAnimationFrame(() => {
-        document
-          .querySelector(`[data-parameter-row="${entity.parameter}"]`)
-          ?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-      })
-    }
+        const found = document.querySelector(seat)
+        found?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+        const control =
+          found?.querySelector<HTMLElement>('[aria-invalid="true"]') ??
+          found?.querySelector<HTMLElement>('input, textarea, [role="combobox"]')
+        control?.focus({ preventScroll: true })
+      }),
+    )
   }
 
   // ---- saving -------------------------------------------------------------
   const save = useMutation({
-    mutationFn: ({ reason, effects }: { reason: string | null; effects?: ChangeEffects }) => {
+    mutationFn: ({
+      reason,
+      effects,
+      over,
+    }: {
+      reason: string | null
+      effects?: ChangeEffects
+      /** the revision to save over, when somebody else's has been read and is to be replaced */
+      over?: string | null
+    }) => {
       const config = configOf(draft, item, contract, locale)
       const maxEntries = maxEntriesOf(draft)
       const itemType = itemTypeOf(draft, item)
@@ -667,7 +827,7 @@ export function ItemEditor({
             maxEntries,
             ...(itemType === item.itemType ? {} : { itemType }),
             config: config as never,
-            expectedRevisionId: item.currentRevision?.id ?? null,
+            expectedRevisionId: over === undefined ? (item.currentRevision?.id ?? null) : over,
             ...(reason === null ? {} : { reason }),
             ...(effects === undefined ? {} : { effects }),
           },
@@ -675,40 +835,136 @@ export function ItemEditor({
       )
     },
     onMutate: ({ reason }) => {
-      setProblem(null)
+      setRefused(null)
+      setDismissed(false)
       setDraftReason(reason)
     },
     onSuccess: (result: { item: { id: string } }) => {
       toast.success(format(m.itemsSaved))
       setAskingReason(false)
       setImpact(null)
+      setRefusal(null)
+      setFailed(false)
       onSaved(result.item.id)
     },
     onError: (error: unknown) => {
-      const asked = error as { _tag?: string } & ChangeImpact
-      if (asked?._tag === 'ASSESSMENT_ITEM_CHANGE_DECISION_REQUIRED') {
+      const said = error as { _tag?: string; issues?: readonly Issue[] } & ChangeImpact
+      if (said?._tag === 'ASSESSMENT_ITEM_CHANGE_DECISION_REQUIRED') {
         setAskingReason(false)
-        setImpact({ impactToken: asked.impactToken, form: asked.form, review: asked.review, scoring: asked.scoring })
+        setImpact({ impactToken: said.impactToken, form: said.form, review: said.review, scoring: said.scoring })
         return
       }
-      setProblem(formatError(error))
-      setAskingReason(false)
       setImpact(null)
+      if (said?._tag !== 'ASSESSMENT_ITEM_CONFIG_INVALID') {
+        setAskingReason(false)
+        setRefused(
+          said?._tag === 'ASSESSMENT_BATCH_READ_ONLY'
+            ? { kind: 'read-only' }
+            : said?._tag === 'ACCESS_DENIED'
+              ? { kind: 'denied' }
+              : said?._tag === 'ASSESSMENT_ITEM_NOT_FOUND'
+                ? { kind: 'gone' }
+                : said?._tag === 'ASSESSMENT_SCORING_UNAVAILABLE'
+                  ? { kind: 'scoring' }
+                  : {
+                      kind: said?._tag === 'ASSESSMENT_ITEM_SCORING_INCOMPATIBLE' ? 'incompatible' : 'other',
+                      words: formatError(error),
+                    },
+        )
+        return
+      }
+      const issues = said.issues ?? []
+      // a live change with no reason given is asked for one, not told off
+      if (issues.some((one) => one.reason === 'reason-required')) {
+        setAskingReason(true)
+        return
+      }
+      setAskingReason(false)
+      if (issues.some((one) => one.reason === 'item-revision-conflict')) {
+        setRefused({ kind: 'conflict' })
+        return
+      }
+      if (issues.some((one) => one.reason === 'item-voided')) {
+        setRefused({ kind: 'voided' })
+        return
+      }
+      const read = problemsFromIssues({ draft, contract, locale, issues })
+      if (read.placed.length > 0) {
+        setRefusal({ at: checkKey, when: Date.now(), issues })
+        setFailed(true)
+        // the live reading names a new determination by the handle this
+        // screen holds it under; a save names it by an id nobody here has
+        void checkQuery.refetch()
+        const first = read.placed[0]
+        if (first !== undefined) setPanelParam(first.area)
+      }
+      if (read.loose.length > 0) {
+        setRefused({ kind: 'loose', reasons: read.loose.map((one) => `${one.path}: ${one.reason}`) })
+      }
     },
   })
   const onSave = () => {
+    setAttempted(true)
     const first = problems[0]
     if (first !== undefined) {
       jumpTo(first)
       return
     }
-    setProblem(null)
+    setRefused(null)
     if (needsReason) setAskingReason(true)
     else save.mutate({ reason: null })
   }
 
+  /** the question as the server holds it now, read past every cache */
+  const readAgain = async (): Promise<ItemDto | null> => {
+    if (item === null) return null
+    const listed = (await run(api.assessment.listItems({ params: { batchId } }))) as {
+      items: readonly ItemDto[]
+    }
+    return listed.items.find((one) => one.id === item.id) ?? null
+  }
+  /** drop what was composed here and take what the server holds */
+  const reload = async () => {
+    setReloading(true)
+    try {
+      const fresh = await readAgain()
+      if (fresh === null) {
+        setRefused({ kind: 'gone' })
+        return
+      }
+      setDraft(draftOf(fresh, groups, options))
+      setRefused(null)
+      setRefusal(null)
+      setFailed(false)
+      setAttempted(false)
+      await onReload?.()
+    } catch (error) {
+      setRefused({ kind: 'other', words: formatError(error) })
+    } finally {
+      setReloading(false)
+    }
+  }
+  /** keep what was composed here, over what somebody else has saved meanwhile */
+  const overwrite = async () => {
+    setReloading(true)
+    try {
+      const fresh = await readAgain()
+      if (fresh === null) {
+        setRefused({ kind: 'gone' })
+        return
+      }
+      save.mutate({ reason: draftReason, over: fresh.currentRevision?.id ?? null })
+    } catch (error) {
+      setRefused({ kind: 'other', words: formatError(error) })
+    } finally {
+      setReloading(false)
+    }
+  }
+  const retry = () => save.mutate({ reason: draftReason })
+
   // ---- what the band says --------------------------------------------------
   const revision = item?.currentRevision ?? null
+  const heading = draft.title.trim() === '' ? format(m.itemsUntitled) : draft.title
   const modeChip = format(
     draft.mode === 'automatic' ? m.itemsModeAutomatic : draft.mode === 'direct' ? m.itemsModeDirect : m.itemsModeReview,
   )
@@ -838,68 +1094,79 @@ export function ItemEditor({
   return (
     <div {...stylex.props(styles.root)} data-testid="item-editor" data-mode={draft.mode} data-panel={area}>
       <BatchBanner>
-        <div {...stylex.props(styles.band)}>
-          <div {...stylex.props(styles.trail)}>
-            <BannerBack label={format(m.itemsBack)} onBack={onCancel}>
-              {format(m.itemsBack)}
-            </BannerBack>
-            {trail.length > 0 && (
-              <>
-                <span aria-hidden {...stylex.props(styles.trailRule)} />
-                <span {...stylex.props(styles.trailName)}>{trail[trail.length - 1]}</span>
-              </>
-            )}
+        <div {...stylex.props(styles.band)} data-testid="item-band">
+          <div {...stylex.props(styles.trailRow)}>
+            <nav aria-label={format(m.itemsBack)} {...stylex.props(styles.trail)}>
+              <button type="button" {...stylex.props(styles.back)} onClick={onCancel} data-testid="item-back">
+                <ArrowLeftIcon aria-hidden {...stylex.props(styles.backIcon)} />
+                {format(m.itemsCrumbRoot)}
+              </button>
+              {trail.map((name, index) => (
+                <Fragment key={`${index}:${name}`}>
+                  <ChevronRightIcon aria-hidden {...stylex.props(styles.crumbRule)} />
+                  <span {...stylex.props(styles.crumb)}>{name}</span>
+                </Fragment>
+              ))}
+              <ChevronRightIcon aria-hidden {...stylex.props(styles.crumbRule, styles.crumb)} />
+              <span {...stylex.props(styles.crumb, styles.crumbHere)} aria-current="page">
+                {heading}
+              </span>
+            </nav>
+            <span {...stylex.props(styles.spacer)} />
+            <span
+              {...stylex.props(styles.meta)}
+              data-testid="item-meta"
+              data-revision={revision?.revisionNo ?? 0}
+              data-standing={item?.status ?? 'new'}
+            >
+              <span>{revision === null ? format(m.itemsVersionNew) : format(m.itemsVersionNo, { no: revision.revisionNo })}</span>
+              <span aria-hidden {...stylex.props(styles.metaRule)} />
+              <span>{format(item?.status === 'active' ? m.structureStatusLive : m.itemsStatusDraft)}</span>
+              {(dirty || savedWhen !== null) && <span aria-hidden {...stylex.props(styles.metaRule)} />}
+              {dirty ? (
+                <span {...stylex.props(styles.metaUnsaved)} data-testid="item-unsaved">
+                  <Dot tone="pending" />
+                  {format(m.itemsUnsaved)}
+                </span>
+              ) : (
+                savedWhen !== null && <span>{format(m.itemsSavedAt, { when: savedWhen })}</span>
+              )}
+            </span>
           </div>
+
           <div {...stylex.props(styles.titleRow)}>
-            <div {...stylex.props(styles.titleWords)}>
-              <div {...stylex.props(styles.titleLine)}>
-                <h1 {...stylex.props(styles.title)}>
-                  {draft.title.trim() === '' ? format(m.itemsUntitled) : draft.title}
-                </h1>
-                <Tag tall testId="item-standing">
-                  {item === null || item.status === 'draft'
-                    ? format(m.itemsStatusComposing)
-                    : item.status === 'voided'
-                      ? format(m.itemsStatusVoided)
-                      : format(m.structureStatusLive)}
-                </Tag>
-                <Tag tall outline testId="item-mode">
-                  {modeChip}
-                </Tag>
-              </div>
-              <div {...stylex.props(styles.meta)} data-testid="item-meta">
-                {item !== null && (
-                  <span>
-                    {format(item.status === 'active' ? m.structureStatusLive : m.itemsStatusDraft)}
-                  </span>
-                )}
-                {revision !== null && <span>{format(m.itemsVersionNo, { no: revision.revisionNo })}</span>}
-                {item === null ? (
-                  <span>{format(m.itemsVersionNew)}</span>
-                ) : dirty ? (
-                  <span data-testid="item-unsaved">{format(m.itemsUnsaved)}</span>
-                ) : (
-                  savedWhen !== null && <span>{format(m.itemsSavedAt, { when: savedWhen })}</span>
-                )}
-              </div>
+            <div {...stylex.props(styles.titleLine)}>
+              <h1 {...stylex.props(styles.title, draft.title.trim() === '' && styles.titleUnset)}>{heading}</h1>
+              <Tag tall testId="item-standing">
+                {item === null || item.status === 'draft'
+                  ? format(m.itemsStatusComposing)
+                  : item.status === 'voided'
+                    ? format(m.itemsStatusVoided)
+                    : format(m.structureStatusLive)}
+              </Tag>
+              {/* said, not offered: the handling is changed where its consequences are laid out */}
+              <Tag tall outline testId="item-mode">
+                {modeChip}
+              </Tag>
             </div>
+            <span {...stylex.props(styles.spacer)} />
             <div {...stylex.props(styles.actions)}>
               <Button variant="outline" onClick={() => setSheet({ kind: 'preview' })}>
                 <EyeIcon aria-hidden />
                 {format(m.itemsPreview)}
               </Button>
-              <Button disabled={save.isPending} onClick={onSave} data-testid="item-save">
+              <Button
+                disabled={save.isPending || reloading || wrong}
+                onClick={onSave}
+                data-testid="item-save"
+                data-blocked={wrong}
+              >
                 {format(m.entrySave)}
               </Button>
               {menu !== undefined && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={format(m.itemsMoreActions)}
-                      className={stylex.props(styles.menuButton).className}
-                    >
+                    <Button variant="outline" size="icon" aria-label={format(m.itemsMoreActions)}>
                       <EllipsisVerticalIcon aria-hidden />
                     </Button>
                   </DropdownMenuTrigger>
@@ -910,43 +1177,93 @@ export function ItemEditor({
               )}
             </div>
           </div>
+
           <div {...stylex.props(styles.tabsRow)}>
-            <Tabs value={area} onValueChange={(next) => setPanelParam(next)}>
-              <TabsList xstyle={styles.tabList}>
-                {AREAS.filter((one) => one !== 'rules' || draft.mode !== 'automatic').map((one) => (
-                  <TabsTrigger
-                    key={one}
-                    value={one}
-                    xstyle={styles.tab}
-                    data-area={one}
-                    data-pending={problemAreas.has(one)}
-                  >
-                    <span {...stylex.props(styles.tabLabel)}>
-                      <Dot tone={problemAreas.has(one) ? 'pending' : 'ok'} />
-                      {format(
-                        one === 'basics'
-                          ? m.itemsTabBasics
-                          : one === 'scoring'
-                            ? draft.mode === 'automatic'
-                              ? m.itemsTabScoring
-                              : m.itemsTabForm
-                            : m.itemsTabRules,
-                      )}
-                    </span>
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </Tabs>
+            <div {...stylex.props(styles.tabsSeat)}>
+              <Tabs value={area} onValueChange={(next) => setPanelParam(next)}>
+                <TabsList xstyle={styles.tabList}>
+                  {AREAS.filter((one) => one !== 'rules' || draft.mode !== 'automatic').map((one) => (
+                    <TabsTrigger
+                      key={one}
+                      value={one}
+                      xstyle={styles.tab}
+                      data-area={one}
+                      data-pending={toneOf(one) !== 'ok'}
+                      data-tone={toneOf(one)}
+                    >
+                      <span {...stylex.props(styles.tabLabel)}>
+                        <Dot tone={toneOf(one)} />
+                        {format(
+                          one === 'basics'
+                            ? m.itemsTabBasics
+                            : one === 'scoring'
+                              ? draft.mode === 'automatic'
+                                ? m.itemsTabScoring
+                                : m.itemsTabForm
+                              : m.itemsTabRules,
+                        )}
+                      </span>
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </Tabs>
+            </div>
             <span {...stylex.props(styles.spacer)} />
-            <PendingList problems={problems} onGo={jumpTo} />
+            <PendingList problems={problems} failed={failed} onGo={jumpTo} />
           </div>
         </div>
       </BatchBanner>
 
       <div {...stylex.props(styles.body)}>
-        {problem !== null && <Feedback message={problem} />}
+        {failed && !dismissed && (
+          <FailureList problems={problems} onGo={jumpTo} onDismiss={() => setDismissed(true)} />
+        )}
+        {refused !== null && (
+          <FailureNotice
+            kind={refused.kind}
+            title={
+              refused.kind === 'loose'
+                ? format(m.itemsFailLooseTitle, { count: refused.reasons.length })
+                : format(REFUSED_TITLE[refused.kind])
+            }
+            hint={
+              refused.kind === 'incompatible' || refused.kind === 'other'
+                ? refused.words
+                : format(REFUSED_HINT[refused.kind])
+            }
+            reasons={refused.kind === 'loose' ? refused.reasons : undefined}
+            actions={
+              refused.kind === 'conflict' ? (
+                <>
+                  <Button variant="outline" size="sm" disabled={reloading || save.isPending} onClick={() => void reload()}>
+                    {format(m.itemsFailReload)}
+                  </Button>
+                  <Button size="sm" disabled={reloading || save.isPending || wrong} onClick={() => void overwrite()}>
+                    {format(m.itemsFailOverwrite)}
+                  </Button>
+                </>
+              ) : refused.kind === 'loose' && item !== null ? (
+                <Button variant="outline" size="sm" disabled={reloading} onClick={() => void reload()}>
+                  {format(m.itemsFailReload)}
+                </Button>
+              ) : refused.kind === 'scoring' || refused.kind === 'other' ? (
+                <Button variant="outline" size="sm" disabled={save.isPending || wrong} onClick={retry}>
+                  {format(m.itemsFailRetry)}
+                </Button>
+              ) : undefined
+            }
+          />
+        )}
         {area === 'basics' && (
-          <BasicsTab draft={draft} groups={groups} automaticLocked={automaticLocked} onPatch={patch} onMode={setMode} />
+          <BasicsTab
+            draft={draft}
+            groups={groups}
+            automaticLocked={automaticLocked}
+            problems={problems}
+            attempted={attempted}
+            onPatch={patch}
+            onMode={setMode}
+          />
         )}
         {area === 'scoring' && (
           <ScoringTab
@@ -974,7 +1291,7 @@ export function ItemEditor({
                 }),
               }))
             }
-            onOpenSummary={() => setSheet({ kind: 'summary' })}
+            onSummary={(summaryFieldIds) => patch({ summaryFieldIds })}
           />
         )}
         {area === 'rules' && draft.mode !== 'automatic' && (
@@ -984,11 +1301,10 @@ export function ItemEditor({
             options={options}
             placement={placement}
             method={{ ref: chosenCalculator.ref, label: methodLabel }}
+            problems={problems}
             onPatch={patch}
             onOpenStage={(key) => setSheet({ kind: 'stage', key })}
             onAddStage={addStage}
-            onMoveStage={moveStage}
-            onRemoveStage={removeStage}
           />
         )}
       </div>
@@ -1046,39 +1362,38 @@ export function ItemEditor({
       )}
       {lingeringSheet?.kind === 'stage' &&
         (() => {
-          const stage = draft.stages.find((one) => one.key === lingeringSheet.key)
+          const composing = lingeringSheet.fresh
+          const stage = composing ?? draft.stages.find((one) => one.key === lingeringSheet.key)
           if (stage === undefined) return null
-          const escalation = draft.stages.filter((one) => one.chain === 'escalation')
+          const chain = draft.stages.filter((one) => one.chain === stage.chain)
+          const at = chain.findIndex((one) => one.key === stage.key)
           return (
             <StageSheet
+              // the panel edits a copy, and a copy belongs to one step
+              key={stage.key}
               open={sheet?.kind === 'stage'}
               batchId={batchId}
               stage={stage}
+              fresh={composing !== undefined}
               options={options}
-              panelable={
-                stage.chain === 'escalation' &&
-                escalation.findIndex((one) => one.key === stage.key) < escalation.length - 1
-              }
-              onChange={(next) => patchStage(stage.key, next)}
+              panelable={stage.chain === 'escalation' && at >= 0 && at < chain.length - 1}
+              place={at < 0 ? undefined : { index: at, total: chain.length }}
+              removable={stage.chain === 'escalation' || chain.length > 1}
+              onApply={(next) => {
+                applyStage(next, composing !== undefined)
+                setSheet(null)
+              }}
+              onMove={(delta) => moveStage(stage.key, delta)}
+              onRemove={() => {
+                removeStage(stage.key)
+                setSheet(null)
+              }}
               onClose={() => setSheet(null)}
             />
           )
         })()}
-      {lingeringSheet?.kind === 'summary' && (
-        <SummarySheet
-          open={sheet?.kind === 'summary'}
-          candidates={draft.fields.map((field) => {
-            const link = linkOf(draft, contract, field.id)
-            const label = link === undefined ? field.label : link.recognition.label
-            return { id: field.id, name: label.trim() === '' ? format(m.itemsFieldUnnamed) : label, type: field.type }
-          })}
-          elected={draft.summaryFieldIds}
-          onChange={(next) => patch({ summaryFieldIds: next })}
-          onClose={() => setSheet(null)}
-        />
-      )}
       {lingeringSheet?.kind === 'preview' && (
-        <PreviewSheet open={sheet?.kind === 'preview'} draft={draft} contract={contract} onClose={() => setSheet(null)} />
+        <PreviewSheet open={sheet?.kind === 'preview'} draft={draft} onClose={() => setSheet(null)} />
       )}
 
       {askedAdding !== null && (

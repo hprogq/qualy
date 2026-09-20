@@ -243,6 +243,7 @@ export default function ItemSettingsPage() {
       title={format(m.itemsTab)}
       description={format(m.itemsHint)}
       banner={question === '' ? 'section' : 'open'}
+      bannerFlush
     >
       {(batch) => (
         <Editor
@@ -610,6 +611,7 @@ function Editor({
           )
         }
         onCancel={() => (writing === null ? close() : closeDraft(writing.localId))}
+        onReload={refresh}
         onSaved={async (itemId) => {
           // the created row has to be in hand before it can be opened, or the
           // screen has nothing to show between the save and the refetch. The

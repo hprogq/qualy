@@ -14,7 +14,6 @@ import { sheetStyles } from './shared-styles.ts'
 import {
   admittedSchemaOf,
   boundProblem,
-  linkOf,
   parameterSchemaOf,
   refinementOf,
   type Contract,
@@ -25,8 +24,10 @@ import {
 import { TYPE_LABEL, boundsWords, fieldBoundsWords, kindWords, linkVerdictOf, type LinkVerdict } from './words.ts'
 
 // One determination, owned here in full: what it is called, what it admits,
-// and which submission field starts it. A linked field has no settings of
-// its own; this panel is where the two are set at once.
+// and which submission field starts it. The field it is linked to keeps its
+// own name and hint - what a participant is asked and what a reviewer
+// determines may be worded differently - and takes its type and range from
+// here.
 
 const styles = stylex.create({
   group: { display: 'flex', flexDirection: 'column', gap: 12 },
@@ -162,13 +163,7 @@ export function RecognitionSheet({
             {draft.fields.map((field) => {
               const verdict = linkVerdictOf(draft, contract, admitted, field, format, listJoin, locale)
               const dim = verdict.kind === 'kind-mismatch' || verdict.kind === 'taken'
-              const other = linkOf(draft, contract, field.id)
-              const name =
-                other === undefined
-                  ? field.label.trim() === ''
-                    ? format(m.itemsFieldUnnamed)
-                    : field.label
-                  : other.recognition.label
+              const name = field.label.trim() === '' ? format(m.itemsFieldUnnamed) : field.label
               return (
                 <div
                   key={field.key}
@@ -291,7 +286,9 @@ export function RecognitionSheet({
             <>
               <div {...stylex.props(styles.linkLine)}>
                 <LinkIcon aria-hidden {...stylex.props(styles.linkIcon)} />
-                <span {...stylex.props(styles.linkName)}>{title}</span>
+                <span {...stylex.props(styles.linkName)} data-testid="recognition-linked-field">
+                  {linked.label.trim() === '' ? format(m.itemsFieldUnnamed) : linked.label}
+                </span>
                 <span {...stylex.props(styles.quiet)}>{format(m.itemsLinkedHint)}</span>
               </div>
               <label {...stylex.props(styles.checkLabel)}>

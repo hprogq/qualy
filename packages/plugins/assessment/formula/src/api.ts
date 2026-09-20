@@ -238,9 +238,13 @@ const bindingOptionView = Schema.Struct({
   functionDescription: Schema.NullOr(Schema.String),
   versionNo: Schema.Number,
   releaseName: Schema.NullOr(Schema.String),
+  /** what the author said this publication changed */
+  releaseNotes: Schema.NullOr(Schema.String),
   publishedAt: Schema.String,
   /** the parameter names this version takes, for a one-line summary */
   parameters: Schema.Array(Schema.String),
+  /** the contract those names come from: titles are read in the reader's locale */
+  inputSchema: Schema.Unknown,
 })
 
 export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')

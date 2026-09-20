@@ -1337,6 +1337,7 @@ export class Assessment extends Context.Service<
     readonly listScoreGroups: ItemMethods['listScoreGroups']
     readonly replaceScoreGroups: ItemMethods['replaceScoreGroups']
     readonly previewScoring: ItemMethods['previewScoring']
+    readonly checkItem: ItemMethods['checkItem']
   }
 >()('@qualy/plugin-assessment/Assessment') {}
 
@@ -6846,6 +6847,24 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
             itemType: payload.itemType,
             formConfig: payload.formConfig,
             calculator: payload.calculator,
+            ...(payload.itemId !== undefined ? { itemId: payload.itemId } : {}),
+          },
+          principal,
+        )
+      }),
+    )
+    .handle(
+      'checkItem',
+      Effect.fn('assessment.checkItem.handler')(function* ({ params, payload }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        return yield* assessment.checkItem(
+          principal.tenantId,
+          params.batchId,
+          {
+            itemType: payload.itemType,
+            scoreGroupId: payload.scoreGroupId,
+            config: payload.config,
             ...(payload.itemId !== undefined ? { itemId: payload.itemId } : {}),
           },
           principal,

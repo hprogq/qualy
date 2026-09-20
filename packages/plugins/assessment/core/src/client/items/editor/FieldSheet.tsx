@@ -25,11 +25,12 @@ import {
 } from './model.ts'
 import { boundsWords, kindWords } from './words.ts'
 
-// One submission field. A field of its own is edited here in full; one
-// that is the filing side of a determination has no settings of its own,
-// and this panel says so and points at where they are. Under "takes effect
-// on submission" there is no determination panel, so the linked field's
-// range is edited here and written to both.
+// One submission field. A field of its own is edited here in full. One that
+// is the filing side of a determination keeps what a participant reads -
+// its name, its hint, whether it must be filled in - and takes its type and
+// range from the determination, which this panel shows and points at. Under
+// "takes effect on submission" there is no determination panel, so the
+// range is edited here and written to the determination it belongs to.
 
 const styles = stylex.create({
   group: { display: 'flex', flexDirection: 'column', gap: 12 },
@@ -130,11 +131,47 @@ export function FieldSheet({
 
   if (link !== undefined && parameter !== undefined) {
     const admitted = admittedSchemaOf(link.recognition, parameter)
-    const name = link.recognition.label.trim() === '' ? format(m.itemsFieldUnnamed) : link.recognition.label
+    const name = field.label.trim() === '' ? format(m.itemsFieldUnnamed) : field.label
+    // What a participant is asked is this field's own: its name, the hint
+    // under it, whether it must be filled in. What may be answered is the
+    // determination's, because the two are one fact and the arithmetic
+    // reads the determination.
+    const words = (
+      <div {...stylex.props(styles.group)}>
+        <Field label={format(m.itemsName)}>
+          {(id) => (
+            <Input
+              id={id}
+              value={field.label}
+              maxLength={50}
+              required
+              aria-invalid={field.label.trim() === '' || undefined}
+              onChange={(event) => {
+                onChange({ ...field, label: event.target.value })
+                // under direct handling nobody names the determination
+                // apart from the field, so the one name serves both
+                if (draft.mode === 'direct') onRecognition(link.handle, { label: event.target.value })
+              }}
+            />
+          )}
+        </Field>
+        <Field label={format(m.itemsFieldHint)}>
+          {(id) => (
+            <Input
+              id={id}
+              value={field.description}
+              maxLength={200}
+              placeholder={format(m.itemsFieldHintPlaceholder)}
+              onChange={(event) => onChange({ ...field, description: event.target.value })}
+            />
+          )}
+        </Field>
+      </div>
+    )
     if (draft.mode === 'direct') {
       // no determination panel under direct handling: the field is the
-      // only place its settings can be reached, so they are edited here
-      // and written to the determination they belong to
+      // only place the range can be reached, so it is edited here and
+      // written to the determination it belongs to
       return (
         <EditorSheet
           open={open}
@@ -152,31 +189,7 @@ export function FieldSheet({
           }
           testId="field-sheet"
         >
-          <div {...stylex.props(styles.group)}>
-            <Field label={format(m.itemsName)}>
-              {(id) => (
-                <Input
-                  id={id}
-                  value={link.recognition.label}
-                  maxLength={50}
-                  required
-                  aria-invalid={link.recognition.label.trim() === '' || undefined}
-                  onChange={(event) => onRecognition(link.handle, { label: event.target.value })}
-                />
-              )}
-            </Field>
-            <Field label={format(m.itemsFieldHint)}>
-              {(id) => (
-                <Input
-                  id={id}
-                  value={link.recognition.description}
-                  maxLength={200}
-                  placeholder={format(m.itemsFieldHintPlaceholder)}
-                  onChange={(event) => onRecognition(link.handle, { description: event.target.value })}
-                />
-              )}
-            </Field>
-          </div>
+          {words}
           <RangeEditor
             key={link.handle}
             parameter={parameter}
@@ -201,32 +214,39 @@ export function FieldSheet({
           <>
             <span {...stylex.props(sheetStyles.footerSpacer)} />
             <Button variant="outline" onClick={onClose}>
-              {format(commonMessages.close)}
+              {format(m.itemsDone)}
             </Button>
           </>
         }
         testId="field-sheet"
       >
-        <div {...stylex.props(styles.banner)} data-testid="field-linked-banner">
-          <LinkIcon aria-hidden {...stylex.props(styles.bannerIcon)} />
-          <span {...stylex.props(styles.bannerWords)}>{format(m.itemsLinkedFromRecognition)}</span>
-          <span {...stylex.props(styles.spacer)} />
-          <button type="button" {...stylex.props(styles.go)} onClick={() => onGoToRecognition(link.handle)}>
-            {format(m.itemsGoToSettings)}
-            <ChevronRightIcon aria-hidden {...stylex.props(styles.icon12)} />
-          </button>
-        </div>
-        <div {...stylex.props(styles.overview)}>
-          <span {...stylex.props(styles.overviewKey)}>{format(m.itemsName)}</span>
-          <span>{name}</span>
-          <span {...stylex.props(styles.overviewKey)}>{format(m.itemsRecognitionDescription)}</span>
-          <span>{link.recognition.description}</span>
-          <span {...stylex.props(styles.overviewKey)}>{format(m.itemsFieldType)}</span>
-          <span>{kindWords(admitted, format)}</span>
-          <span {...stylex.props(styles.overviewKey)}>{format(m.itemsColumnRange)}</span>
-          <span>{boundsWords(admitted, locale, format, listJoin)}</span>
-          <span {...stylex.props(styles.overviewKey)}>{format(m.itemsColumnRequirement)}</span>
-          <span>{format(field.required ? m.itemsFieldRequired : m.itemsOptional)}</span>
+        {words}
+        <label {...stylex.props(styles.checkLabel)}>
+          <Checkbox
+            checked={field.required}
+            onCheckedChange={(next) => onChange({ ...field, required: next === true })}
+          />
+          {format(m.itemsFieldRequired)}
+        </label>
+        <div {...stylex.props(styles.group)}>
+          <div {...stylex.props(styles.banner)} data-testid="field-linked-banner">
+            <LinkIcon aria-hidden {...stylex.props(styles.bannerIcon)} />
+            <span {...stylex.props(styles.bannerName)}>
+              {link.recognition.label.trim() === '' ? format(m.itemsFieldUnnamed) : link.recognition.label}
+            </span>
+            <span {...stylex.props(styles.bannerWords)}>{format(m.itemsFieldLinkedRange)}</span>
+            <span {...stylex.props(styles.spacer)} />
+            <button type="button" {...stylex.props(styles.go)} onClick={() => onGoToRecognition(link.handle)}>
+              {format(m.itemsGoToSettings)}
+              <ChevronRightIcon aria-hidden {...stylex.props(styles.icon12)} />
+            </button>
+          </div>
+          <div {...stylex.props(styles.overview)}>
+            <span {...stylex.props(styles.overviewKey)}>{format(m.itemsFieldType)}</span>
+            <span>{kindWords(admitted, format)}</span>
+            <span {...stylex.props(styles.overviewKey)}>{format(m.itemsColumnRange)}</span>
+            <span>{boundsWords(admitted, locale, format, listJoin)}</span>
+          </div>
         </div>
       </EditorSheet>
     )

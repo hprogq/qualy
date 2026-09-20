@@ -13,6 +13,7 @@ const version = (versionId: string): BindableFormulaVersion => ({
   functionDescription: '把两个数加起来',
   versionNo: 2,
   releaseName: '2026 秋季',
+  releaseNotes: '调整省级基准分',
   publishedAt: '2026-09-01T00:00:00.000Z',
   contractSha256: 'c'.repeat(64),
   inputSchema: {
@@ -29,8 +30,11 @@ const dto = (versionId: string) => ({
   functionDescription: '把两个数加起来',
   versionNo: 2,
   releaseName: '2026 秋季',
+  releaseNotes: '调整省级基准分',
   publishedAt: '2026-09-01T00:00:00.000Z',
   parameters: ['a', 'b'],
+  // the contract rides along, so the browser can word the parameters
+  inputSchema: { type: 'object', properties: { b: { type: 'decimal' }, a: { type: 'decimal' } } },
 })
 
 describe('the binding options answer', () => {

@@ -27,6 +27,8 @@ export interface BindableFormulaVersion {
   readonly functionDescription: string | null
   readonly versionNo: number
   readonly releaseName: string | null
+  /** what the author said this publication changed, for whoever chooses between them */
+  readonly releaseNotes: string | null
   readonly publishedAt: Date | string
   readonly contractSha256: string
   readonly inputSchema: NormalizedInputSchema
@@ -112,6 +114,7 @@ interface CandidateRow {
   readonly functionDescription: string | null
   readonly versionNo: number
   readonly releaseName: string | null
+  readonly releaseNotes: string | null
   readonly publishedAt: Date | string
   readonly contractSha256: string
   readonly inputSchema: unknown
@@ -125,6 +128,7 @@ const toBindable = (row: CandidateRow): BindableFormulaVersion => ({
   functionDescription: row.functionDescription ?? null,
   versionNo: Number(row.versionNo),
   releaseName: row.releaseName ?? null,
+  releaseNotes: row.releaseNotes ?? null,
   publishedAt: row.publishedAt,
   contractSha256: row.contractSha256,
   inputSchema: row.inputSchema as NormalizedInputSchema,
@@ -153,6 +157,7 @@ export const make = Effect.fn('BindableFormulaCatalog.make')(function* () {
                 'f.description as functionDescription',
                 'v.versionNo as versionNo',
                 'v.releaseName as releaseName',
+                'v.releaseNotes as releaseNotes',
                 'v.publishedAt as publishedAt',
                 'v.contractSha256 as contractSha256',
                 'v.inputSchema as inputSchema',
@@ -222,6 +227,7 @@ export const make = Effect.fn('BindableFormulaCatalog.make')(function* () {
                 'f.description as functionDescription',
                 'v.versionNo as versionNo',
                 'v.releaseName as releaseName',
+                'v.releaseNotes as releaseNotes',
                 'v.publishedAt as publishedAt',
                 'v.contractSha256 as contractSha256',
                 'v.inputSchema as inputSchema',
@@ -262,6 +268,7 @@ export const make = Effect.fn('BindableFormulaCatalog.make')(function* () {
                 'v.functionId as functionId',
                 'v.versionNo as versionNo',
                 'v.releaseName as releaseName',
+                'v.releaseNotes as releaseNotes',
                 'v.publishedAt as publishedAt',
                 'v.contractSha256 as contractSha256',
                 'v.inputSchema as inputSchema',

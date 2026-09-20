@@ -1980,3 +1980,109 @@ describe.runIf(postgresAvailable)('previewing a calculator contract', () => {
     expect(tagOf(result)).toBe('ACCESS_DENIED')
   })
 })
+
+// The reading a save would get, with nothing written: the editor asks it as
+// a composition settles, so a value outside its parameter or a
+// determination nothing takes is said while it is still being typed.
+describe.runIf(postgresAvailable)('reading a composition before it is saved', () => {
+  let db: Awaited<ReturnType<typeof createTestContext>>
+
+  beforeAll(async () => {
+    db = await createTestContext('assessment-item-check')
+  })
+
+  afterAll(async () => {
+    await db?.dispose()
+  })
+
+  const base = studentConfig()
+  const composed = (over: Partial<Record<string, unknown>> = {}) => ({
+    ...base,
+    scoringConfig: {
+      version: 2,
+      calculator: { ref: 'two-fact-test@1', config: {} },
+      aggregator: { ref: 'sum@1', config: {} },
+      recognitions: [{ handle: 'lvl', label: '级别', refinement: null, defaultFromFieldId: null }],
+      bindings: {
+        level: { kind: 'recognition', handle: 'lvl' },
+        ordinal: { kind: 'constant', value: 3 },
+      },
+      ...over,
+    },
+  })
+
+  it('finds what a save would refuse, names a new determination by its handle, and writes nothing', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('item-check')
+          const assessment = yield* Assessment
+          const { batch, groupId } = yield* draftBatch(f, 'Round')
+          const ask = (config: unknown) =>
+            assessment.checkItem(
+              f.tenant,
+              batch.id,
+              { itemType: 'evidence', scoreGroupId: groupId, config: config as never },
+              f.principal,
+            )
+          const sound = yield* ask(composed())
+          const outside = yield* ask(
+            composed({
+              bindings: {
+                level: { kind: 'recognition', handle: 'lvl' },
+                ordinal: { kind: 'constant', value: 11 },
+              },
+            }),
+          )
+          const spare = yield* ask(
+            composed({
+              recognitions: [
+                { handle: 'lvl', label: '级别', refinement: null, defaultFromFieldId: null },
+                { handle: 'spare', label: '多余', refinement: null, defaultFromFieldId: null },
+              ],
+            }),
+          )
+          const written = yield* Effect.promise(() =>
+            db.row<{ items: string }>(
+              `select count(*)::text as items from assessment_items where batch_id = $1`,
+              [batch.id],
+            ),
+          )
+          return { sound, outside, spare, written }
+        }),
+      ),
+    )
+
+    expect(result.sound.issues).toEqual([])
+    // the parameter takes 1 to 10: the fault is pinned on the binding that broke it
+    expect(result.outside.issues).toEqual([
+      { path: 'scoringConfig.bindings.ordinal', reason: 'constant-maximum' },
+    ])
+    // an id was never minted for it, so the handle is how the editor finds the row
+    expect(result.spare.issues.map((issue) => ({ reason: issue.reason, handle: issue.handle }))).toEqual([
+      { reason: 'recognition-unbound', handle: 'spare' },
+    ])
+    expect(result.written.items).toBe('0')
+  })
+
+  it('answers nobody who could not manage the round', async () => {
+    const result = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('item-check-authz')
+        const assessment = yield* Assessment
+        const { batch, groupId } = yield* draftBatch(f, 'Round')
+        return yield* assessment.checkItem(
+          f.tenant,
+          batch.id,
+          { itemType: 'evidence', scoreGroupId: groupId, config: composed() as never },
+          { tenantId: f.tenant, userId: f.student, sessionId: 's' },
+        )
+      }),
+    )
+
+    expect(tagOf(result)).toBe('ACCESS_DENIED')
+  })
+})
+

@@ -41,6 +41,9 @@ export const formulaAuthoringSurfaceLayer: Layer.Layer<
         ref: 'formula@1',
         label: message('assessment-formula/binding/calculator', 'A published formula'),
         order: 20,
+        // a formula, then one of its publications: the editor walks both
+        // steps and finishes the choice on its own
+        confirms: 'itself',
       },
       visibility: permissionOf('assessment.batch.manage'),
     })

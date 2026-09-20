@@ -7,35 +7,46 @@ import { Popover, PopoverContent, PopoverTrigger } from '@qualy/ui/popover'
 import { assessmentMessages as m } from '../../i18n.ts'
 import { Dot } from './Rows.tsx'
 import type { EditorProblem } from './model.ts'
-import { AREA_LABEL, problemWords } from './words.ts'
+import { AREA_LABEL, BLOCK_LABEL, problemWords } from './words.ts'
 
-// Everything still standing between the question and a save, opened from
-// the tab bar: one line per thing, saying what it is, why, and which tab
-// it is on. Pressing one goes there.
+// Everything still standing between the question and a save, as a capsule at
+// the end of the tab row: how many, and - opened - one line per thing saying
+// where it is and what it is. Pressing one goes there.
+//
+// Amber while things are only waiting to be set; red once something set is
+// wrong, and red with the words "not saved" once a save has been refused.
+// The same list whoever found the fault: a thing the server refused sits in
+// it beside a thing this screen noticed, in one sentence each.
 
 const styles = stylex.create({
-  trigger: {
+  capsule: {
     display: 'inline-flex',
+    flexShrink: 0,
     alignItems: 'center',
     gap: 6,
-    height: 36,
-    fontFamily: 'inherit',
-    fontSize: 13,
-    backgroundColor: 'transparent',
+    height: 28,
+    marginBottom: 5,
+    paddingInline: 10,
+    borderRadius: '9999px',
     borderWidth: 0,
-    padding: 0,
-    cursor: 'pointer',
+    backgroundColor: tokens.background,
+    boxShadow: `inset 0 0 0 1px ${tokens.border}`,
+    fontFamily: 'inherit',
+    fontSize: 12.5,
+    fontWeight: 500,
     whiteSpace: 'nowrap',
+    cursor: 'pointer',
   },
-  triggerPending: { color: tokens.warningForeground },
-  triggerOk: { color: tokens.mutedForeground, cursor: 'default' },
+  capsulePending: { color: tokens.warningForeground },
+  capsuleError: { color: tokens.danger },
+  capsuleOk: { color: tokens.mutedForeground, cursor: 'default', fontWeight: 400 },
   panel: { padding: 0 },
   head: {
     display: 'flex',
     alignItems: 'center',
     gap: 8,
     height: 44,
-    paddingInline: 16,
+    paddingInline: 14,
     borderBottomWidth: 1,
     borderBottomStyle: 'solid',
     borderBottomColor: tokens.divider,
@@ -43,14 +54,19 @@ const styles = stylex.create({
   headTitle: { fontSize: 13.5, fontWeight: 600 },
   spacer: { flexGrow: 1 },
   headHint: { fontSize: 12, color: tokens.mutedForeground },
+  icon12: { width: 12, height: 12 },
+})
+
+const rowStyles = stylex.create({
   row: {
     display: 'flex',
     width: '100%',
     alignItems: 'center',
     gap: 12,
-    minHeight: 52,
-    paddingInline: 16,
-    paddingBlock: 6,
+    minHeight: 40,
+    paddingInline: 14,
+    paddingBlock: 8,
+    borderWidth: 0,
     borderBottomWidth: { default: 1, ':last-child': 0 },
     borderBottomStyle: 'solid',
     borderBottomColor: tokens.divider,
@@ -61,25 +77,32 @@ const styles = stylex.create({
       default: 'transparent',
       ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 55%, transparent)`,
     },
-    borderWidth: 0,
     cursor: 'pointer',
   },
-  words: { display: 'flex', minWidth: 0, flexGrow: 1, flexDirection: 'column', gap: 2 },
-  subject: {
-    fontSize: 13.5,
-    lineHeight: 1.3,
-    fontWeight: 500,
+  where: { flexShrink: 0, fontSize: 12.5, color: tokens.mutedForeground, whiteSpace: 'nowrap' },
+  what: {
+    minWidth: 0,
+    flexGrow: 1,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
+    fontSize: 13,
   },
-  reason: { fontSize: 12, lineHeight: 1.3, color: tokens.mutedForeground },
-  area: { fontSize: 12, color: tokens.mutedForeground, whiteSpace: 'nowrap' },
-  icon13: { width: 13, height: 13 },
-  icon14: { width: 14, height: 14, color: tokens.mutedForeground },
+  subject: { fontWeight: 500 },
+  go: {
+    display: 'inline-flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 3,
+    fontSize: 12.5,
+    fontWeight: 500,
+    color: tokens.mutedForeground,
+  },
+  icon12: { width: 12, height: 12 },
 })
 
-export function PendingList({
+/** one problem as a line: where it is, what it is, and the way to it */
+export function ProblemRows({
   problems,
   onGo,
 }: {
@@ -87,64 +110,103 @@ export function PendingList({
   onGo: (problem: EditorProblem) => void
 }) {
   const { format } = useI18n()
+  return (
+    <div data-testid="pending-list">
+      {problems.map((problem, index) => {
+        const words = problemWords(problem, format)
+        return (
+          <button
+            key={`${problem.code}:${index}`}
+            type="button"
+            {...stylex.props(rowStyles.row)}
+            data-testid="pending-row"
+            data-code={problem.code}
+            data-tone={problem.tone}
+            onClick={() => onGo(problem)}
+          >
+            <span {...stylex.props(rowStyles.where)}>
+              {format(AREA_LABEL[problem.area])}
+              {problem.block !== undefined && problem.block !== 'basics' && (
+                <>
+                  {'　'}
+                  {format(BLOCK_LABEL[problem.block])}
+                </>
+              )}
+            </span>
+            <span {...stylex.props(rowStyles.what)} title={words}>
+              {problem.subject !== undefined && problem.subject !== '' && (
+                <span {...stylex.props(rowStyles.subject)}>{problem.subject} </span>
+              )}
+              {words}
+            </span>
+            <span {...stylex.props(rowStyles.go)}>
+              {format(m.itemsGo)}
+              <ChevronRightIcon aria-hidden {...stylex.props(rowStyles.icon12)} />
+            </span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+export function PendingList({
+  problems,
+  failed,
+  onGo,
+}: {
+  problems: readonly EditorProblem[]
+  /** a save was refused, and what it was refused for is still unfixed */
+  failed: boolean
+  onGo: (problem: EditorProblem) => void
+}) {
+  const { format } = useI18n()
   const [open, setOpen] = useState(false)
   if (problems.length === 0) {
     return (
-      <span {...stylex.props(styles.trigger, styles.triggerOk)} data-testid="pending-none">
+      <span {...stylex.props(styles.capsule, styles.capsuleOk)} data-testid="pending-none">
         <Dot tone="ok" />
         {format(m.itemsPendingNone)}
       </span>
     )
   }
+  const wrong = problems.filter((one) => one.tone === 'error').length
+  const tone = wrong > 0 ? 'error' : 'pending'
+  const words = failed
+    ? format(m.itemsSaveFailedCount, { count: problems.length })
+    : wrong > 0
+      ? format(m.itemsFixCount, { count: problems.length })
+      : format(m.itemsPendingCount, { count: problems.length })
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
           type="button"
-          {...stylex.props(styles.trigger, styles.triggerPending)}
+          {...stylex.props(styles.capsule, tone === 'error' ? styles.capsuleError : styles.capsulePending)}
           data-testid="pending-trigger"
           data-count={problems.length}
+          data-tone={tone}
+          data-failed={failed}
         >
-          <Dot tone="pending" />
-          {format(m.itemsPendingCount, { count: problems.length })}
-          <ChevronDownIcon aria-hidden {...stylex.props(styles.icon13)} />
+          <Dot tone={tone} />
+          {words}
+          <ChevronDownIcon aria-hidden {...stylex.props(styles.icon12)} />
         </button>
       </PopoverTrigger>
-      <PopoverContent width={440} xstyle={styles.panel}>
+      <PopoverContent width={520} xstyle={styles.panel}>
         <div {...stylex.props(styles.head)}>
-          <Dot tone="pending" />
-          <span {...stylex.props(styles.headTitle)}>
-            {format(m.itemsPendingCount, { count: problems.length })}
-          </span>
+          <Dot tone={tone} />
+          <span {...stylex.props(styles.headTitle)}>{words}</span>
           <span {...stylex.props(styles.spacer)} />
           <span {...stylex.props(styles.headHint)}>{format(m.itemsPendingHint)}</span>
         </div>
-        <div data-testid="pending-list">
-          {problems.map((problem, index) => (
-            <button
-              key={`${problem.code}:${index}`}
-              type="button"
-              {...stylex.props(styles.row)}
-              data-testid="pending-row"
-              data-code={problem.code}
-              onClick={() => {
-                setOpen(false)
-                onGo(problem)
-              }}
-            >
-              <span {...stylex.props(styles.words)}>
-                <span {...stylex.props(styles.subject)}>
-                  {problem.subject !== undefined && problem.subject !== ''
-                    ? problem.subject
-                    : format(AREA_LABEL[problem.area])}
-                </span>
-                <span {...stylex.props(styles.reason)}>{problemWords(problem, format)}</span>
-              </span>
-              <span {...stylex.props(styles.area)}>{format(AREA_LABEL[problem.area])}</span>
-              <ChevronRightIcon aria-hidden {...stylex.props(styles.icon14)} />
-            </button>
-          ))}
-        </div>
+        <ProblemRows
+          problems={problems}
+          onGo={(problem) => {
+            setOpen(false)
+            onGo(problem)
+          }}
+        />
       </PopoverContent>
     </Popover>
   )

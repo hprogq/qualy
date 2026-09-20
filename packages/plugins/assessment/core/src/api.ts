@@ -1264,6 +1264,35 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     }).middleware(Authenticated),
   )
   .add(
+    // What a save would say about a whole candidate question, asked while it
+    // is still being composed. The same gauntlet a save runs, under the same
+    // lock, writing nothing; every reason comes back at once, each with the
+    // path into the configuration it is about, so a screen can put each one
+    // where the thing it names is drawn. A candidate that is fine answers
+    // with an empty list, which is a success and not an absence.
+    HttpApiEndpoint.post('checkItem', '/assessment/batches/:batchId/item-checks', {
+      params: Schema.Struct({ batchId: uuidInput }),
+      payload: Schema.Struct({
+        /** the question being edited, when there is one */
+        itemId: Schema.optional(uuidInput),
+        itemType: itemTypeCode,
+        scoreGroupId: uuidInput,
+        config: itemConfigPayload,
+      }),
+      success: Schema.Struct({
+        issues: Schema.Array(
+          Schema.Struct({
+            path: Schema.String,
+            reason: Schema.String,
+            /** the draft handle of a determination a save has not named yet */
+            handle: Schema.optional(Schema.String),
+          }),
+        ),
+      }),
+      error: [BatchNotFound, AccessDenied, BadRequest],
+    }).middleware(Authenticated),
+  )
+  .add(
     // what a candidate's arithmetic would need, before anything is saved:
     // the real compile a save would run, so a screen never offers a binding
     // the save is about to refuse

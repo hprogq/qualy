@@ -17,8 +17,12 @@ export const bindingOptionDto = (version: BindableFormulaVersion) => ({
   functionDescription: version.functionDescription,
   versionNo: version.versionNo,
   releaseName: version.releaseName,
+  releaseNotes: version.releaseNotes,
   publishedAt: isoInstant(version.publishedAt),
   parameters: Object.keys(version.inputSchema.properties).sort(),
+  // the contract itself, for the words: a parameter's title is a matter of
+  // the reader's locale, which only the browser knows
+  inputSchema: version.inputSchema,
 })
 
 export interface CurrentBinding {

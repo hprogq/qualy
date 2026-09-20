@@ -960,17 +960,121 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/binding/parameter-count',
       defaultMessage: '{count, plural, one {# parameter} other {# parameters}}',
     },
-    bindingParameters: {
-      id: 'assessment-formula/binding/parameters',
-      defaultMessage: 'Takes {names}',
-    },
-    bindingKeptOnly: {
-      id: 'assessment-formula/binding/kept-only',
-      defaultMessage: 'Kept, not offered',
-    },
     bindingMore: {
       id: 'assessment-formula/binding/more',
       defaultMessage: 'Show more',
+    },
+    bindingSearch: {
+      id: 'assessment-formula/binding/search',
+      defaultMessage: 'Search formulas by name or description',
+    },
+    bindingColFormula: {
+      id: 'assessment-formula/binding/col-formula',
+      defaultMessage: 'Formula',
+    },
+    bindingColParameters: {
+      id: 'assessment-formula/binding/col-parameters',
+      defaultMessage: 'Parameters',
+    },
+    bindingColLatest: {
+      id: 'assessment-formula/binding/col-latest',
+      defaultMessage: 'Latest release',
+    },
+    bindingColVersion: {
+      id: 'assessment-formula/binding/col-version',
+      defaultMessage: 'Version',
+    },
+    bindingColRelease: {
+      id: 'assessment-formula/binding/col-release',
+      defaultMessage: 'Release',
+    },
+    bindingColDate: {
+      id: 'assessment-formula/binding/col-date',
+      defaultMessage: 'Date',
+    },
+    bindingCurrent: {
+      id: 'assessment-formula/binding/current',
+      defaultMessage: 'Current',
+    },
+    bindingInUse: {
+      id: 'assessment-formula/binding/in-use',
+      defaultMessage: 'In use',
+    },
+    bindingLatest: {
+      id: 'assessment-formula/binding/latest',
+      defaultMessage: 'Latest release',
+    },
+    bindingReleaseNo: {
+      id: 'assessment-formula/binding/release-no',
+      defaultMessage: 'Release {no}',
+    },
+    bindingWithdrawn: {
+      id: 'assessment-formula/binding/withdrawn',
+      defaultMessage: 'No longer offered for new questions',
+    },
+    bindingCount: {
+      id: 'assessment-formula/binding/count',
+      defaultMessage: '{count, plural, one {# formula} other {# formulas}}',
+    },
+    bindingManage: {
+      id: 'assessment-formula/binding/manage',
+      defaultMessage: 'Manage formulas',
+    },
+    bindingMoreParameters: {
+      id: 'assessment-formula/binding/more-parameters',
+      defaultMessage: '+{count}',
+    },
+    bindingEmptyTitle: {
+      id: 'assessment-formula/binding/empty-title',
+      defaultMessage: 'No published formula yet',
+    },
+    bindingEmptyHint: {
+      id: 'assessment-formula/binding/empty-hint',
+      defaultMessage: 'Publish a version of a formula, then choose it here',
+    },
+    bindingNoMatchTitle: {
+      id: 'assessment-formula/binding/no-match-title',
+      defaultMessage: 'No formula matches',
+    },
+    bindingNoMatchHint: {
+      id: 'assessment-formula/binding/no-match-hint',
+      defaultMessage: 'Try another word, or clear the search',
+    },
+    bindingLoading: {
+      id: 'assessment-formula/binding/loading',
+      defaultMessage: 'Loading formulas',
+    },
+    bindingBack: {
+      id: 'assessment-formula/binding/back',
+      defaultMessage: 'Back to the formulas',
+    },
+    bindingPrevious: {
+      id: 'assessment-formula/binding/previous',
+      defaultMessage: 'Back',
+    },
+    bindingUse: {
+      id: 'assessment-formula/binding/use',
+      defaultMessage: 'Use this version',
+    },
+    bindingImpactFresh: {
+      id: 'assessment-formula/binding/impact-fresh',
+      defaultMessage: '{count, plural, =0 {Takes no parameters} one {# parameter will need a value} other {# parameters will need values}}',
+    },
+    bindingImpactSame: {
+      id: 'assessment-formula/binding/impact-same',
+      defaultMessage: 'Same parameters as now: values and links stay as they are',
+    },
+    bindingImpactAdded: {
+      id: 'assessment-formula/binding/impact-added',
+      defaultMessage: '{count, plural, one {# parameter is new and will need a value} other {# parameters are new and will need values}}',
+    },
+    bindingImpactRemoved: {
+      id: 'assessment-formula/binding/impact-removed',
+      defaultMessage: '{count, plural, one {# parameter is no longer taken; the rest stay as they are} other {# parameters are no longer taken; the rest stay as they are}}',
+    },
+    bindingImpactChosen: {
+      id: 'assessment-formula/binding/impact-chosen',
+      defaultMessage: 'This is the version in use',
     },
     deleteFormula: {
       id: 'assessment-formula/editor/delete-formula',

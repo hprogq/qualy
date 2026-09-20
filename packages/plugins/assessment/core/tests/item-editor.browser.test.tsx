@@ -3,7 +3,7 @@ import { lazy } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
-import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The question editor as its author works it: handling chosen in the open,
 // the arithmetic's parameters fed from fixed values or determinations, a
@@ -161,6 +161,32 @@ const CALCULATOR_SURFACES = {
   },
 }
 
+/** as the formula plugin contributes it: its editor confirms the choice itself */
+const BOTH_CALCULATORS_CONFIRMING = {
+  collections: {
+    'assessment/calculator-authoring-options': [
+      ...CALCULATOR_SURFACES.collections['assessment/calculator-authoring-options'],
+      {
+        id: 'assessment-formula/calculator',
+        ref: 'formula@1',
+        label: {
+          kind: 'message',
+          id: 'assessment-formula/binding/calculator',
+          defaultMessage: 'A published formula',
+        },
+        order: 20,
+        confirms: 'itself',
+      },
+    ],
+  },
+  slots: {
+    'assessment/calculator-editor': [
+      ...CALCULATOR_SURFACES.slots['assessment/calculator-editor'],
+      { id: 'assessment-formula/calculator-editor', order: 20 },
+    ],
+  },
+}
+
 const BOTH_CALCULATORS = {
   collections: {
     'assessment/calculator-authoring-options': [
@@ -224,6 +250,12 @@ const open = (
     panel?: string
     surfaces?: { collections: Record<string, unknown[]>; slots: Record<string, unknown[]> }
     preview?: unknown
+    /** what the formula plugin offers this round to bind */
+    formulas?: unknown
+    /** what the live reading finds, asked of each composition as it settles */
+    check?: (payload: { config: unknown }) => readonly { path: string; reason: string; handle?: string }[]
+    /** what a save is answered with instead of being taken, one answer per press */
+    refuse?: unknown[]
   } = {},
 ) =>
   renderScreen({
@@ -249,14 +281,18 @@ const open = (
           return Effect.succeed({ item: { id: ITEM_ID } })
         },
         updateItem: (call: { payload: { config?: unknown; itemType?: unknown } }) => {
+          const refusal = had.refuse?.shift()
+          if (refusal !== undefined) return Effect.fail(refusal)
           had.saved?.push(call.payload)
           return Effect.succeed({ item: { id: ITEM_ID } })
         },
+        checkItem: (call: { payload: { config: unknown } }) =>
+          Effect.succeed({ issues: had.check?.(call.payload) ?? [] }),
         previewScoring: (call: { payload: { calculator: { ref: string } } }) =>
           Effect.succeed(had.preview ?? previewFor(call.payload.calculator.ref)),
       },
       assessmentFormula: {
-        listFormulaBindingOptions: () => Effect.succeed(bindingOptions()),
+        listFormulaBindingOptions: () => Effect.succeed(had.formulas ?? bindingOptions()),
       },
     } as never),
     routes: [{ path: '/assessment/batches/:batchId/items', element: <ItemSettingsPage /> }] as never,
@@ -446,6 +482,9 @@ describe('feeding the arithmetic', () => {
     })
     // a saved question's kind is settled: the card is locked
     await expect.element(page.getByRole('radio', { name: '自动计分' })).toBeDisabled()
+    // and a greyed card is never left unexplained
+    await page.getByTestId('mode-locked').hover()
+    await expect.element(page.getByRole('tooltip')).toBeVisible()
   })
 })
 
@@ -517,46 +556,83 @@ describe('records and review', () => {
     await page.getByRole('textbox', { name: '每人可申报条数' }).fill('5')
     const ceiling = page.getByTestId('item-ceiling')
     await expect.element(ceiling).toHaveAttribute('data-ceiling', '10')
-    const folding = () => page.getByRole('combobox', { name: '多条申报计分方式' })
-    await folding().click()
-    await page.getByRole('option', { name: '仅计最高一条', exact: false }).click()
+    await page.getByRole('radio', { name: '仅计最高一条' }).click()
     await expect.element(ceiling).toHaveAttribute('data-ceiling', '2')
-    await folding().click()
-    await page.getByRole('option', { name: '计最高 N 条之和', exact: false }).click()
+    await page.getByRole('radio', { name: '计最高 N 条之和' }).click()
     await expect.element(ceiling).toHaveAttribute('data-ceiling', '4')
+    // the number a choice asks for sits beside that choice, and only while it is the one chosen
+    await expect.element(page.getByRole('textbox', { name: '条数' })).toBeVisible()
+    await page.getByRole('radio', { name: '全部累加' }).click()
+    expect(page.getByRole('textbox', { name: '条数' }).elements()).toHaveLength(0)
+    // no limit is a choice with no number: the box goes rather than greying out
+    await page.getByRole('radio', { name: '不限条数' }).click()
+    expect(page.getByRole('textbox', { name: '每人可申报条数' }).elements()).toHaveLength(0)
+    await expect.element(ceiling).toHaveAttribute('data-ceiling', 'unlimited')
+    await page.getByRole('radio', { name: '限定条数' }).click()
+    await expect.element(page.getByRole('textbox', { name: '每人可申报条数' })).toHaveValue('1')
   })
 
-  it('adds a step where the press pointed, names it in its sheet, and reorders it', async () => {
+  it('composes a step in its panel, and lets it into the chain only once it is whole', async () => {
     await composeQuestion()
     await tab(/记录与审核/).click()
-    // a new question starts with no step: the chain says so and the save walks there
-    expect(page.getByTestId('chain-step').elements()).toHaveLength(0)
-    await page.getByTestId('chain-normal').getByRole('button', { name: '添加审核步骤' }).first().click()
-    const sheet = () => page.getByRole('dialog')
-    await sheet().getByRole('textbox', { name: '环节名称' }).fill('班委初审')
+    const steps = () => page.getByTestId('chain-step').elements()
+    expect(steps()).toHaveLength(0)
+    const sheet = () => page.getByTestId('stage-sheet')
+    const add = () => page.getByTestId('chain-normal').getByTestId('chain-add').click()
+
+    // unnamed, with nobody to review: the press says what is missing under
+    // each control, and the chain is left exactly as it was
+    await add()
+    await sheet().getByTestId('stage-apply').click()
+    await vi.waitFor(() =>
+      expect(
+        page
+          .getByTestId('stage-problem')
+          .elements()
+          .map((node) => node.getAttribute('data-about')),
+      ).toEqual(['label', 'roles']),
+    )
+    expect(steps()).toHaveLength(0)
+
+    await sheet().getByRole('textbox', { name: '步骤名称' }).fill('班委初审')
     await sheet().getByRole('checkbox', { name: '审核员' }).click()
-    await sheet().getByRole('button', { name: '关闭' }).click()
+    await sheet().getByTestId('stage-apply').click()
     await expect.element(page.getByTestId('chain-step').first()).toHaveAttribute('data-step-complete', 'true')
 
-    await page.getByTestId('chain-normal').getByRole('button', { name: '添加审核步骤' }).first().click()
-    await sheet().getByRole('textbox', { name: '环节名称' }).fill('专业复审')
-    await sheet().getByRole('checkbox', { name: '审核员' }).click()
-    await sheet().getByRole('button', { name: '关闭' }).click()
+    // walking away from a half-composed step leaves nothing behind
+    await add()
+    await sheet().getByRole('textbox', { name: '步骤名称' }).fill('无人认领')
+    await sheet().getByRole('button', { name: '取消' }).click()
+    await vi.waitFor(() => expect(steps()).toHaveLength(1))
+  })
 
-    const titlesNow = () =>
-      page
-        .getByTestId('chain-step')
-        .elements()
-        .map((node) => node.textContent ?? '')
+  it("moves and removes a step from the step's own panel, and keeps the last one", async () => {
+    const stageOf = (id: string, label: string) => ({
+      id,
+      label,
+      selector: { kind: 'roleAt', nodeTypeId: ORG_TYPE_ID, roleIds: [ROLE_ID] },
+      quorum: { type: 'any' },
+    })
+    const item = officerItem()
+    item.currentRevision.reviewPolicy = {
+      normal: { stages: [stageOf('s-first', '班委初审'), stageOf('s-second', '专业复审')] },
+      escalation: { stages: [] },
+    }
+    open({ items: [item], question: ITEM_ID, panel: 'rules' })
+    const steps = () => page.getByTestId('chain-step').elements()
+    const sheet = () => page.getByTestId('stage-sheet')
+    await vi.waitFor(() => expect(steps()).toHaveLength(2))
+    const titlesNow = () => steps().map((node) => node.textContent ?? '')
     expect(titlesNow()[0]).toContain('班委初审')
-    expect(titlesNow()[1]).toContain('专业复审')
-    await page.getByTestId('chain-step').first().getByRole('button', { name: '后移' }).click()
-    expect(titlesNow()[0]).toContain('专业复审')
-    await page.getByTestId('chain-step').first().getByRole('button', { name: '删除步骤' }).click()
-    expect(page.getByTestId('chain-step').elements()).toHaveLength(1)
-    await expect
-      .element(page.getByTestId('chain-step').getByRole('button', { name: '删除步骤' }))
-      .toBeDisabled()
+
+    await page.getByTestId('chain-step').first().click()
+    await sheet().getByRole('button', { name: '后移' }).click()
+    await vi.waitFor(() => expect(titlesNow()[0]).toContain('专业复审'))
+    await sheet().getByRole('button', { name: '删除步骤' }).click()
+    await vi.waitFor(() => expect(steps()).toHaveLength(1))
+    // the ordinary route keeps one step: the last cannot be taken out
+    await page.getByTestId('chain-step').first().click()
+    await expect.element(sheet().getByRole('button', { name: '删除步骤' })).toBeDisabled()
   })
 
   it('walks the save to the first unfinished thing instead of sending', async () => {
@@ -572,3 +648,310 @@ describe('records and review', () => {
     expect(saved).toHaveLength(0)
   })
 })
+
+describe('saying what is wrong where it is wrong', () => {
+  const SCORE = {
+    ...GRADE,
+    title: '等级分',
+    description: '按获奖等级折算的基础分',
+  }
+
+  it('says what a parameter is under its name, and refuses a fixed value outside its range in place', async () => {
+    open({
+      items: [formulaItem({ defaultFromFieldId: null })],
+      question: ITEM_ID,
+      panel: 'scoring',
+      surfaces: BOTH_CALCULATORS,
+      preview: previewFor('formula@1', { parameters: { level: SCORE } }),
+    })
+    const row = await parameterRow('level')
+    await expect.element(row.getByTestId('row-description')).toHaveTextContent('按获奖等级折算的基础分')
+
+    await chooseSource('level', '固定值')
+    const value = (await parameterRow('level')).getByRole('textbox')
+    await value.fill('120')
+    await expect.element(await parameterRow('level')).toHaveAttribute('data-problem', 'constant-out-of-range')
+    await expect.element(value).toHaveAttribute('aria-invalid', 'true')
+    await expect.element(page.getByTestId('parameter-problem')).toBeVisible()
+    // something set wrongly holds the save shut, and the tab and the capsule turn
+    await expect.element(page.getByTestId('item-save')).toBeDisabled()
+    await expect.element(tab(/表单与计分/)).toHaveAttribute('data-tone', 'error')
+    await expect.element(page.getByTestId('pending-trigger')).toHaveAttribute('data-tone', 'error')
+
+    await value.fill('85.5')
+    await vi.waitFor(() => expect(document.querySelector('[data-testid="parameter-problem"]')).toBeNull())
+    await expect.element(page.getByTestId('item-save')).toBeEnabled()
+  })
+
+  it('asks the server as the composition settles, and pins what it finds on the row it is about', async () => {
+    const asked: unknown[] = []
+    open({
+      items: [formulaItem({ defaultFromFieldId: null })],
+      question: ITEM_ID,
+      panel: 'scoring',
+      surfaces: BOTH_CALCULATORS,
+      check: (payload) => {
+        asked.push(payload)
+        return [{ path: `scoringConfig.recognitions.${RECOGNITION_ID}`, reason: 'recognition-unattainable' }]
+      },
+    })
+    const recognition = page.getByTestId('recognition-row')
+    await expect.element(recognition).toBeVisible()
+    await vi.waitFor(() => expect(asked.length).toBeGreaterThan(0))
+    await expect.element(recognition).toHaveAttribute('data-invalid', 'true')
+    await expect.element(recognition.getByTestId('row-problem')).toBeVisible()
+    await expect.element(page.getByTestId('item-save')).toBeDisabled()
+    // the list of what is left names it too, with the way there
+    await page.getByTestId('pending-trigger').click()
+    expect(
+      page
+        .getByTestId('pending-row')
+        .elements()
+        .map((node) => node.getAttribute('data-code')),
+    ).toContain('recognition-unattainable')
+  })
+
+  it('lists what a refused save was refused for, and thins the list as each is corrected', async () => {
+    const saved: { config?: unknown }[] = []
+    let live: readonly { path: string; reason: string }[] = []
+    open({
+      items: [officerItem()],
+      question: ITEM_ID,
+      saved,
+      check: () => live,
+      refuse: [
+        apiError('ASSESSMENT_ITEM_CONFIG_INVALID', {
+          issues: [{ path: 'formConfig.fields[0]', reason: 'field-duplicate' }],
+        }),
+      ],
+    })
+    await expect.element(page.getByRole('textbox', { name: '项目名称' })).toBeVisible()
+    await page.getByRole('textbox', { name: '项目名称' }).fill('学生干部任职（改）')
+    live = [{ path: 'formConfig.fields[0]', reason: 'field-duplicate' }]
+    await page.getByTestId('item-save').click()
+
+    const failure = page.getByTestId('save-failure')
+    await expect.element(failure).toBeVisible()
+    await expect.element(failure).toHaveAttribute('data-count', '1')
+    await expect.element(page.getByTestId('pending-trigger')).toHaveAttribute('data-failed', 'true')
+    // the refusal took the editor to the tab the fault is on, and to its row
+    await expect.element(editor()).toHaveAttribute('data-panel', 'scoring')
+    await expect.element(page.getByTestId('form-field-row')).toHaveAttribute('data-invalid', 'true')
+    expect(saved).toHaveLength(0)
+
+    // corrected: the next reading finds nothing, and the card goes with the fault
+    live = []
+    await page.getByTestId('form-field-row').click()
+    const sheet = page.getByTestId('field-sheet')
+    await sheet.getByRole('textbox', { name: '名称' }).fill('任职级别')
+    await sheet.getByRole('button', { name: '完成' }).click()
+    await vi.waitFor(() => expect(document.querySelector('[data-testid="save-failure"]')).toBeNull())
+    await expect.element(page.getByTestId('item-save')).toBeEnabled()
+  })
+
+  it('says what happened when somebody else saved first, and offers both ways on', async () => {
+    const saved: { expectedRevisionId?: unknown }[] = []
+    open({
+      items: [officerItem()],
+      question: ITEM_ID,
+      saved: saved as never,
+      refuse: [
+        apiError('ASSESSMENT_ITEM_CONFIG_INVALID', {
+          issues: [{ path: 'expectedRevisionId', reason: 'item-revision-conflict' }],
+        }),
+      ],
+    })
+    await expect.element(page.getByRole('textbox', { name: '项目名称' })).toBeVisible()
+    await page.getByRole('textbox', { name: '项目名称' }).fill('学生干部任职（改）')
+    await page.getByTestId('item-save').click()
+    const notice = page.getByTestId('save-refused')
+    await expect.element(notice).toHaveAttribute('data-kind', 'conflict')
+    expect(document.querySelector('[data-testid="save-failure"]')).toBeNull()
+
+    // saving over it sends what was composed here against the revision now held
+    await notice.getByRole('button', { name: '覆盖保存' }).click()
+    await vi.waitFor(() => expect(saved).toHaveLength(1))
+    expect(saved[0]?.expectedRevisionId).toBe(REVISION_ID)
+  })
+})
+
+describe('the form beside the arithmetic', () => {
+  it('lets a linked field go by a name of its own, and says which field a determination starts from', async () => {
+    const saved: { config?: unknown }[] = []
+    open({ items: [formulaItem()], question: ITEM_ID, panel: 'scoring', surfaces: BOTH_CALCULATORS, saved })
+    const linked = await seat('[data-testid="form-field-row"][data-linked="true"]')
+    await linked.click()
+    const sheet = page.getByTestId('field-sheet')
+    await sheet.getByRole('textbox', { name: '名称' }).fill('申报的获奖级别')
+    await sheet.getByRole('button', { name: '完成' }).click()
+
+    // the determination keeps its own name and names the field it starts from
+    const recognition = page.getByTestId('recognition-row')
+    await expect.element(recognition.getByText('认定级别', { exact: true })).toBeVisible()
+    await expect.element(recognition.getByTestId('linked-field-name')).toHaveTextContent('申报的获奖级别')
+
+    await page.getByTestId('item-save').click()
+    await vi.waitFor(() => expect(saved).toHaveLength(1))
+    const config = saved[0]?.config as {
+      formConfig: { fields: { id: string; label: string }[] }
+      scoringConfig: { recognitions: { label: string }[] | Record<string, { label: string }> }
+    }
+    expect(config.formConfig.fields.find((one) => one.id === 'claimed-level')?.label).toBe('申报的获奖级别')
+    expect(JSON.stringify(config.scoringConfig.recognitions)).toContain('认定级别')
+  })
+
+  it('keeps what a record shows in lists on the page, under the form', async () => {
+    open({ items: [officerItem()], question: ITEM_ID, panel: 'scoring' })
+    const block = page.getByTestId('summary-block')
+    await expect.element(block).toBeVisible()
+    expect(page.getByRole('dialog').elements()).toHaveLength(0)
+    await expect.element(await seat('[data-testid="summary-block"] [data-custom]')).toHaveAttribute('data-custom', 'false')
+  })
+
+  it('shows an empty choice list as one, not as a lone add link', async () => {
+    await composeQuestion()
+    await tab(/表单与计分/).click()
+    await page.getByRole('button', { name: '添加字段' }).click()
+    await (await seat('[data-field-type="choice"]')).click()
+    await expect.element(page.getByTestId('options-empty')).toBeVisible()
+    await page.getByTestId('options-empty').getByRole('button', { name: '添加选项' }).click()
+    await vi.waitFor(() => expect(document.querySelector('[data-testid="options-empty"]')).toBeNull())
+  })
+})
+
+describe('the band', () => {
+  it('says where the question is and how it is handled, and leaves the handling to the cards', async () => {
+    open({ items: [formulaItem({ defaultFromFieldId: null })], question: ITEM_ID, surfaces: BOTH_CALCULATORS })
+    await expect.element(page.getByTestId('item-back')).toBeVisible()
+    await expect.element(page.getByTestId('item-meta')).toHaveAttribute('data-revision', '1')
+    await expect.element(page.getByTestId('item-meta')).toHaveAttribute('data-standing', 'active')
+    // the handling is said in the band, never changed from it
+    const mode = page.getByTestId('item-mode')
+    await expect.element(mode).toBeVisible()
+    expect(mode.element().closest('button')).toBeNull()
+    expect(mode.element().querySelector('svg')).toBeNull()
+  })
+})
+
+describe('choosing a published formula', () => {
+  const FUNCTION_ID = '01920000-0000-7000-8000-0000000000e1'
+  const OTHER_FUNCTION_ID = '01920000-0000-7000-8000-0000000000e2'
+  const NEWER_VERSION_ID = '01920000-0000-7000-8000-0000000000f3'
+  const OTHER_VERSION_ID = '01920000-0000-7000-8000-0000000000f4'
+  const contractOf = (properties: Record<string, unknown>) => ({
+    type: 'object',
+    properties,
+    required: Object.keys(properties),
+    additionalProperties: false,
+  })
+  const option = (over: Record<string, unknown>) => ({
+    versionId: FORMULA_VERSION_ID,
+    functionId: FUNCTION_ID,
+    functionName: '竞赛加分',
+    functionDescription: '按获奖等级折算',
+    versionNo: 3,
+    releaseName: null,
+    releaseNotes: null,
+    publishedAt: '2026-01-01T00:00:00.000Z',
+    parameters: ['level'],
+    inputSchema: contractOf({ level: { ...GRADE, title: '等级分' } }),
+    ...over,
+  })
+  const formulas = () => ({
+    items: [
+      option({}),
+      option({
+        versionId: NEWER_VERSION_ID,
+        versionNo: 4,
+        releaseName: '2026 春季规则',
+        releaseNotes: '新增团队折算',
+        parameters: ['level', 'team'],
+        inputSchema: contractOf({ level: { ...GRADE, title: '等级分' }, team: { type: 'boolean', title: '是否团队' } }),
+      }),
+      option({
+        versionId: OTHER_VERSION_ID,
+        functionId: OTHER_FUNCTION_ID,
+        functionName: '志愿服务时长折算',
+        functionDescription: '按小时数分段折算',
+        versionNo: 1,
+        parameters: ['hours'],
+        inputSchema: contractOf({ hours: { type: 'integer', minimum: 0, title: '服务时长' } }),
+      }),
+    ],
+    nextCursor: null,
+    current: { ...option({}), bindableForNew: true },
+  })
+
+  it('asks which formula, then which of its publications, and changes nothing until the second is confirmed', async () => {
+    const saved: { config?: unknown }[] = []
+    open({
+      items: [formulaItem()],
+      question: ITEM_ID,
+      panel: 'scoring',
+      surfaces: BOTH_CALCULATORS_CONFIRMING,
+      formulas: formulas(),
+      saved,
+    })
+    await page.getByTestId('scoring-method').getByRole('button', { name: '更换公式' }).click()
+    const picker = page.getByTestId('formula-version-picker')
+    await expect.element(picker).toHaveAttribute('data-step', 'formula')
+    // one row per formula, however many times each was published
+    await expect.element(page.getByTestId('formula-count')).toHaveAttribute('data-count', '2')
+    const rows = () => page.getByTestId('formula-option').elements()
+    expect(rows().map((row) => row.getAttribute('data-current'))).toEqual(['true', 'false'])
+    // the frame offers no confirming button of its own beside the picker's
+    expect(page.getByTestId('scoring-method-dialog').getByRole('button', { name: '使用' }).elements()).toHaveLength(0)
+
+    await page.getByTestId('formula-option').first().click()
+    await expect.element(picker).toHaveAttribute('data-step', 'version')
+    const versions = () => page.getByTestId('formula-version-option').elements()
+    // newest first, and the one in use is the one marked: confirming it would change nothing
+    expect(versions().map((row) => row.getAttribute('data-version-id'))).toEqual([
+      NEWER_VERSION_ID,
+      FORMULA_VERSION_ID,
+    ])
+    expect(versions().map((row) => row.getAttribute('data-version-chosen'))).toEqual(['false', 'true'])
+    await expect.element(page.getByTestId('formula-version-use')).toBeDisabled()
+
+    await page.getByTestId('formula-version-option').first().click()
+    await expect.element(page.getByTestId('formula-version-use')).toBeEnabled()
+    await page.getByTestId('formula-version-use').click()
+    await vi.waitFor(() => expect(document.querySelector('[data-testid="scoring-method-dialog"]')).toBeNull())
+
+    await page.getByTestId('item-save').click()
+    await vi.waitFor(() => expect(saved).toHaveLength(1))
+    expect(
+      (saved[0]?.config as { scoringConfig: { calculator: { config: { versionId: string } } } }).scoringConfig
+        .calculator.config.versionId,
+    ).toBe(NEWER_VERSION_ID)
+  })
+
+  it('narrows the formulas by what is typed, and says so when nothing is left', async () => {
+    open({
+      items: [formulaItem()],
+      question: ITEM_ID,
+      panel: 'scoring',
+      surfaces: BOTH_CALCULATORS_CONFIRMING,
+      formulas: formulas(),
+    })
+    await page.getByTestId('scoring-method').getByRole('button', { name: '更换公式' }).click()
+    await expect.element(page.getByTestId('formula-version-picker')).toBeVisible()
+    await page.getByRole('searchbox').fill('志愿')
+    await vi.waitFor(() => expect(page.getByTestId('formula-option').elements()).toHaveLength(1))
+    await page.getByRole('searchbox').fill('不存在的公式')
+    await expect.element(page.getByTestId('formula-picker-empty')).toHaveAttribute('data-searching', 'true')
+  })
+})
+
+describe('what a participant will see', () => {
+  it('says whose each box is to fill, rather than showing it empty', async () => {
+    open({ items: [officerItem()], question: ITEM_ID })
+    await expect.element(page.getByRole('button', { name: '预览' })).toBeVisible()
+    await page.getByRole('button', { name: '预览' }).click()
+    const controls = () => page.getByTestId('preview-control').elements()
+    await vi.waitFor(() => expect(controls()).toHaveLength(1))
+    expect(controls()[0]?.getAttribute('data-field-type')).toBe('text')
+    expect((controls()[0]?.textContent ?? '').trim()).not.toBe('')
+  })
+})
+

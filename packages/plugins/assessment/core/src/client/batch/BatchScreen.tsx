@@ -5,6 +5,7 @@ import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { AsyncSection, PageHeader } from '@qualy/ui/admin'
 import { PageContainer } from '@qualy/ui/page-container'
 import { Portal } from '@qualy/ui/portal'
@@ -58,6 +59,15 @@ const styles = stylex.create({
   bandInset: {
     position: 'relative',
     paddingBlock: 24,
+  },
+  // A heading that ends in a row of tabs sits on the band's own rule: the
+  // tabs' underline IS the band's bottom edge, and room under them would
+  // float the row above a line it is meant to stand on. Said at every width,
+  // because the container states its top padding per width and a bare value
+  // here would lose to the wider one.
+  bandInsetFlush: {
+    paddingTop: { default: 14, [breakpoints.tablet]: 14, [breakpoints.desktop]: 14 },
+    paddingBottom: 0,
   },
   bannerSeat: {
     position: 'relative',
@@ -127,6 +137,7 @@ export function BatchScreen({
   size = 'default',
   chrome = 'band',
   banner,
+  bannerFlush = false,
   children,
 }: {
   /** which of the batch's pages this is; the bar above says which batch */
@@ -147,6 +158,11 @@ export function BatchScreen({
    * expected to keep the band's own shape, so the swap moves nothing.
    */
   banner?: 'section' | 'open'
+  /**
+   * Whether the heading that takes the band over ends in a row of tabs, and
+   * so stands on the band's bottom rule with no room under it.
+   */
+  bannerFlush?: boolean
   /** rendered once the batch is loaded, because a section without one is blank */
   children: (batch: BatchDto) => ReactNode
 }) {
@@ -202,7 +218,10 @@ export function BatchScreen({
             the same breath. Taking it back, the one leaving is already gone
             - the screen it belonged to left with it - so a fade in would be
             a fade up from nothing, which is the band blinking. */}
-        <PageContainer size={size} xstyle={styles.bandInset}>
+        <PageContainer
+          size={size}
+          xstyle={[styles.bandInset, bannerFlush && showing === 'open' && styles.bandInsetFlush]}
+        >
           <Resizing>
             <div {...stylex.props(styles.bannerSeat)}>
               <div

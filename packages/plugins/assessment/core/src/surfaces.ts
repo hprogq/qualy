@@ -26,6 +26,13 @@ export interface CalculatorAuthoringOption {
   /** what to call it in the chooser; the owning plugin translates it */
   readonly label: UiText
   readonly order?: number
+  /**
+   * `itself` when choosing this calculator takes steps its own editor walks
+   * through and finishes (see `CalculatorEditorContext.chooser`). The host
+   * then draws no confirming button beside it: two ways to finish one choice
+   * would leave the reader guessing which of them counts.
+   */
+  readonly confirms?: 'itself'
 }
 
 /**
@@ -44,6 +51,7 @@ export const calculatorAuthoringOptions = defineUiCollection<CalculatorAuthoring
     ref: Schema.String.check(Schema.isMinLength(1)),
     label: UiTextSchema,
     order: Schema.optional(Schema.Number),
+    confirms: Schema.optional(Schema.Literal('itself')),
   }),
 })
 
@@ -79,6 +87,18 @@ export interface CalculatorEditorContext {
   /** a change to what the question will be scored by; the editor owns the
    *  shape of `config` and nothing else reads into it */
   readonly onChange: (calculator: { readonly ref: string; readonly config: unknown }) => void
+  /**
+   * Set when the editor is drawn inside the chooser rather than in the page.
+   *
+   * The frame and the way out are the host's; everything inside is the
+   * editor's, which has the whole height to lay out in. An editor that
+   * declared `confirms: 'itself'` finishes with `commit`: the choice made
+   * and applied in one act, and the chooser shut behind it.
+   */
+  readonly chooser?: {
+    readonly commit: (calculator: { readonly ref: string; readonly config: unknown }) => void
+    readonly close: () => void
+  }
 }
 
 /**

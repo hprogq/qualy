@@ -18,6 +18,7 @@ export function Choice({
   options,
   placeholder,
   disabled,
+  invalid,
   xstyle,
   onChange,
 }: {
@@ -29,12 +30,19 @@ export function Choice({
   options: readonly { value: string; label: string; description?: string; disabled?: boolean }[]
   placeholder?: string
   disabled?: boolean
+  /** what is chosen, or that nothing is, is wrong: drawn the way a wrong input is */
+  invalid?: boolean
   xstyle?: StyleXStyles
   onChange: (value: string) => void
 }) {
   return (
     <Select value={value === '' ? undefined : value} disabled={disabled} onValueChange={onChange}>
-      <SelectTrigger id={id} xstyle={xstyle} {...(ariaLabel === undefined ? {} : { 'aria-label': ariaLabel })}>
+      <SelectTrigger
+        id={id}
+        xstyle={xstyle}
+        {...(ariaLabel === undefined ? {} : { 'aria-label': ariaLabel })}
+        {...(invalid === true ? { 'aria-invalid': true } : {})}
+      >
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>

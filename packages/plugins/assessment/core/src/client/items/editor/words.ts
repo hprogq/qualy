@@ -11,7 +11,16 @@ import {
 import type { MessageDescriptor } from '@qualy/i18n-contract'
 import { assessmentMessages as m } from '../../i18n.ts'
 import { FILE_KINDS, kindsOf } from '../../file-kinds.ts'
-import { linkOf, type Contract, type Draft, type EditorArea, type EditorProblem, type FieldDraft, type FieldType } from './model.ts'
+import {
+  linkOf,
+  type Contract,
+  type Draft,
+  type EditorArea,
+  type EditorBlock,
+  type EditorProblem,
+  type FieldDraft,
+  type FieldType,
+} from './model.ts'
 
 // The words the editor uses for types, bounds and what is left to do.
 //
@@ -59,32 +68,182 @@ export const AREA_LABEL: Record<EditorArea, MessageDescriptor> = {
 const PROBLEM_LABEL: Record<string, MessageDescriptor> = {
   'title-required': m.itemsProblemTitle,
   'group-required': m.itemsProblemGroup,
+  'group-gone': m.itemsProblemGroupGone,
   'channels-required': m.itemsProblemChannels,
+  'channels-frozen': m.itemsProblemChannelsFrozen,
+  'mode-frozen': m.itemsProblemModeFrozen,
+  'mode-unavailable': m.itemsProblemModeUnavailable,
   'field-unnamed': m.itemsProblemFieldUnnamed,
   'field-options': m.itemsProblemFieldOptions,
+  'field-option-unnamed': m.itemsProblemFieldOptionUnnamed,
+  'field-option-duplicate': m.itemsProblemFieldOptionDuplicate,
+  'field-range-inverted': m.itemsProblemFieldRangeInverted,
+  'field-duplicate': m.itemsProblemFieldDuplicate,
+  'field-retyped': m.itemsProblemFieldRetyped,
   'field-invalid': m.itemsProblemFieldInvalid,
   'field-date-window': m.itemsProblemFieldDateWindow,
+  'form-refused': m.itemsProblemFormRefused,
+  'summary-invalid': m.itemsProblemSummaryInvalid,
   'fixed-value-required': m.itemsProblemFixedValue,
+  'fixed-value-invalid': m.itemsProblemFixedValueInvalid,
   'calculator-unset': m.itemsProblemCalculatorUnset,
+  'calculator-gone': m.itemsProblemCalculatorGone,
+  'calculator-output': m.itemsProblemCalculatorOutput,
+  'calculator-refused': m.itemsProblemCalculatorRefused,
   'contract-pending': m.itemsProblemContractPending,
   'contract-refused': m.itemsProblemContractRefused,
   'parameter-unset': m.itemsProblemParameterUnset,
+  'parameter-refused': m.itemsProblemParameterRefused,
   'constant-required': m.itemsProblemConstantRequired,
+  'constant-out-of-range': m.itemsProblemConstantRange,
+  'constant-below-min': m.itemsProblemConstantBelow,
+  'constant-above-max': m.itemsProblemConstantAbove,
+  'constant-scale': m.itemsProblemConstantScale,
+  'constant-not-integer': m.itemsProblemConstantNotInteger,
+  'constant-not-number': m.itemsProblemConstantNotNumber,
+  'constant-not-date': m.itemsProblemConstantNotDate,
+  'constant-too-short': m.itemsProblemConstantTooShort,
+  'constant-too-long': m.itemsProblemConstantTooLong,
+  'constant-not-offered': m.itemsProblemConstantNotOffered,
+  'constant-pattern': m.itemsProblemConstantPattern,
+  'constant-invalid': m.itemsProblemConstantInvalid,
   'recognition-in-automatic': m.itemsProblemRecognitionAutomatic,
   'recognition-unnamed': m.itemsProblemRecognitionUnnamed,
+  'recognition-reused': m.itemsProblemRecognitionReused,
+  'recognition-unattainable': m.itemsProblemRecognitionUnattainable,
+  'recognition-unbound': m.itemsProblemRecognitionUnbound,
+  'recognition-refused': m.itemsProblemRecognitionRefused,
   'refinement-widens': m.itemsProblemRefinementWidens,
+  'refinement-empty': m.itemsProblemRefinementEmpty,
   'link-field-missing': m.itemsProblemLinkMissing,
+  'link-not-guaranteed': m.itemsProblemLinkNotGuaranteed,
+  'link-mismatch': m.itemsProblemLinkMismatch,
   'recognition-unlinked': m.itemsProblemUnlinked,
   'binding-orphan': m.itemsProblemBindingOrphan,
   'stages-required': m.itemsProblemStagesRequired,
+  'stage-unnamed': m.itemsProblemStageUnnamed,
   'stage-unset': m.itemsProblemStageUnset,
+  'stage-quorum': m.itemsProblemStageQuorum,
+  'stage-refused': m.itemsProblemStageRefused,
+  'policy-refused': m.itemsProblemPolicyRefused,
+  'folding-refused': m.itemsProblemFoldingRefused,
   'max-entries-invalid': m.itemsProblemMaxEntries,
   'top-n-invalid': m.itemsProblemTopN,
 }
 
-/** the reason a thing is unfinished, in the reader's words */
+/**
+ * The reason a thing is unfinished or wrong, in the reader's words.
+ *
+ * A code nobody wrote a sentence for is still said as something: the block
+ * it belongs to refusing what was set, which is true and tells the reader
+ * where to look - never a sentence that could be about anything.
+ */
 export const problemWords = (problem: EditorProblem, format: Format): string =>
-  format(PROBLEM_LABEL[problem.code] ?? m.itemsProblemFieldInvalid)
+  format(PROBLEM_LABEL[problem.code] ?? m.itemsProblemFieldInvalid, problem.values ?? {})
+
+/** where in a tab a problem is, as the heading that block is drawn under */
+export const BLOCK_LABEL: Record<EditorBlock, MessageDescriptor> = {
+  basics: m.itemsTabBasics,
+  mode: m.itemsMode,
+  channels: m.itemsChannels,
+  method: m.itemsScoringMethod,
+  parameters: m.itemsParameters,
+  recognitions: m.itemsRecognitions,
+  form: m.itemsForm,
+  summary: m.itemsSummaryBlock,
+  counts: m.itemsRulesCounts,
+  review: m.itemsReviewChain,
+  escalation: m.itemsEscalationTitle,
+}
+
+/**
+ * What a value takes, in the three parts a row draws apart: a range of
+ * numbers in the fixed-width face, a quieter note beside it, or a list of
+ * names that may run long and is cut rather than wrapped.
+ */
+export interface TakesParts {
+  readonly range?: string
+  readonly note?: string
+  readonly names?: readonly string[]
+}
+
+export const takesOf = (schema: AtomicSchema, locale: string, format: Format): TakesParts => {
+  const kind = kindOf(schema)
+  switch (kind) {
+    case 'integer': {
+      const { minimum, maximum } = schema as { minimum: number; maximum: number }
+      const low = minimum > Number.MIN_SAFE_INTEGER
+      const high = maximum < Number.MAX_SAFE_INTEGER
+      if (low && high) return { range: format(m.itemsRangeBetween, { min: minimum, max: maximum }) }
+      if (low) return { range: format(m.itemsRangeMin, { min: minimum }) }
+      if (high) return { range: format(m.itemsRangeMax, { max: maximum }) }
+      return {}
+    }
+    case 'decimal': {
+      const held = schema as {
+        [MAX_SCALE]: number
+        [DECIMAL_MINIMUM]?: string
+        [DECIMAL_MAXIMUM]?: string
+      }
+      const min = held[DECIMAL_MINIMUM]
+      const max = held[DECIMAL_MAXIMUM]
+      const range =
+        min !== undefined && max !== undefined
+          ? format(m.itemsRangeBetween, { min, max })
+          : min !== undefined
+            ? format(m.itemsRangeMin, { min })
+            : max !== undefined
+              ? format(m.itemsRangeMax, { max })
+              : undefined
+      return { ...(range === undefined ? {} : { range }), note: format(m.itemsScaleNote, { scale: held[MAX_SCALE] }) }
+    }
+    case 'text': {
+      const words = boundsWords(schema, locale, format, () => '')
+      return words === format(m.itemsAnyValue) ? {} : { note: words }
+    }
+    case 'choice': {
+      const choice = schema as ChoiceSchema
+      return { names: choice.enum.map((value) => choiceLabel(choice, value, locale)) }
+    }
+    case 'boolean':
+    case 'date':
+      return {}
+  }
+}
+
+/** the same three parts for a form field nobody linked, read off the pen */
+export const fieldTakesOf = (field: FieldDraft, format: Format): TakesParts => {
+  switch (field.type) {
+    case 'integer':
+    case 'decimal': {
+      const min = field.min.trim()
+      const max = field.max.trim()
+      const range =
+        min !== '' && max !== ''
+          ? format(m.itemsRangeBetween, { min, max })
+          : min !== ''
+            ? format(m.itemsRangeMin, { min })
+            : max !== ''
+              ? format(m.itemsRangeMax, { max })
+              : undefined
+      const scale = Number(field.maxScale) >= 0 ? Number(field.maxScale) : 2
+      return {
+        ...(range === undefined ? {} : { range }),
+        ...(field.type === 'decimal' ? { note: format(m.itemsScaleNote, { scale }) } : {}),
+      }
+    }
+    case 'choice':
+      return {
+        names: field.options.filter((one) => one.enabled).map((one) => one.label.trim() || one.value),
+      }
+    case 'boolean':
+      return {}
+    default: {
+      const words = fieldBoundsWords(field, format, () => '')
+      return words === format(m.itemsAnyValue) ? {} : { note: words }
+    }
+  }
+}
 
 /** the bounds a schema admits, without the kind: "1 to 8", "up to 50 characters" */
 export const boundsWords = (

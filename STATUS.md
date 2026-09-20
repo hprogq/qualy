@@ -18856,3 +18856,58 @@ pnpm vitest run tools/tests apps/server/tests    413 passed(supervisor 4/4,新�
 (`91a7ecf6f`)、用户导入(`cc7d6ae6e`,含补跑的 lock)、用户详情壳(`382f03b9b`)、CI 间歇失败(本次提交)。
 留给用户裁决的:共享遮罩的模糊与设计稿 8% 压暗的差异(UI 平台已关账)、添加字段的多选卡(驱动无多选)、
 docs/directory-import.md 列出的 v1 未做项、用户详情页的审计分组(audit 插件尚无按人的页面)。
+
+## 项目编辑页第二轮:实时校验、错误归位、步骤先编后入链、两步式更换公式(2026-09-20)
+
+依据 Claude Design「项目编辑页」5a–5e、6a–6d 与用户当日逐条指示。领域裁决与对设计稿的偏离记在
+docs/assessment-design.md §32.83。
+
+- **后端**:新增只读端点 `POST /assessment/batches/{batchId}/item-checks`(`checkItem`)——与保存同一条判定路径
+  (`normalizeScoringAuthoring → issuesOf → compiledCandidate`),拒因原样返回,不写库、不 mint 持久 id,新认定以
+  `handle` 指回草稿行;已登记 frozen-routes。公式绑定选项补 `releaseNotes` 与 `inputSchema`。
+- **根因两条**:①固定值越界无人报错——编辑器只 `materializeField`(不查范围),现在本地用 `checkField`、服务端
+  `constant-*` 拒因落同一槽位同一句话;②保存被拒只显示一句通用报错——`setProblem(formatError(error))` 把
+  `issues[{path,reason}]` 整个丢了,现在逐条按 path 归位,无法归位的另出说明卡。
+- **编辑器**:Banner 三行(返回即面包屑首级 / 22px 标题 + 状态 + 处理方式(只展示) / 38 高页签 + 胶囊),
+  bandInset 在编辑器下贴底(页签下不再有内边距);保存键「有误不可点、待完成可点并跳转」;失败清单卡与说明卡
+  (重新加载 / 覆盖保存 / 重试);关联字段保留自己的名称;参数说明在参数名下;列表展示回到申报表单下方成独立区块;
+  选项为空时的空态;审核链条重画,步骤在面板里对副本编辑、齐备才入链;申报规则两格统一为单选列、数字框在选中项右侧;
+  预览控件写明由参评人员填写;锁定的处理方式卡悬停说明原因。
+- **更换公式(5c)**:外框归 assessment(固定 720×560),两步内容归公式插件;surface 契约加
+  `CalculatorAuthoringOption.confirms` 与 `CalculatorEditorContext.chooser`。
+- **顺带修复**:开发态 Vite 日志里的 `[32m…[39m`。根因是 `32e022efb`(日志单行化)把控制字符一律替换为空格,
+  ESC 被吃掉后剩下序列正文;那条规则是对的,所以在 `viteLogger` 适配层用 `stripVTControlCharacters` 先去掉颜色。
+
+### 验收(实际执行)
+
+- `pnpm typecheck`:`exit=0`(仅 suggestion 级输出,末行 `typecheck client component references`)。
+- 门禁 12 个文件(api-paths / effect-api-parity / error-codes / catalogs / fast-refresh / client-paths /
+  plugin-isolation / workspace-deps / package-exports / browser-contract / browser-graph / formula binding-options):
+  `Test Files 12 passed (12)`,`Tests 89 passed (89)`。
+- 真库:`item-config.test.ts -t "reading a composition"`(合法配置零 issue;固定值 11 超出 1–10 →
+  `scoringConfig.bindings.ordinal: constant-maximum`;多余认定 → `recognition-unbound` 且 `handle: 'spare'`;
+  检查后 `assessment_items` 仍为 0 行;参评人调用 → `ACCESS_DENIED`)`Tests 2 passed | 23 skipped (25)`;
+  随后 item-config 全文件 + formula 全部 node 测试 + infra/web effect-web:`Test Files 28 passed (28)`,
+  `Tests 160 passed (160)`。
+- 浏览器(单文件迭代):`item-editor.browser.test.tsx` 首轮 `3 failed | 19 passed (22)`——一处是真缺陷
+  (保存被拒后,同一份草稿上更早的一次实时校验结果盖过了拒因,`failed` 当场被清掉;改为拒因在该草稿上优先,
+  之后的校验只补 handle),两处是断言写法;修后 `Tests 25 passed (25)`;连同 `scoring-failures.browser.test.tsx`
+  `Test Files 2 passed (2)`,`Tests 30 passed (30)`。中途一次把文件名写在 `--` 之后导致跑成全量,已当场停掉重跑。
+- 截图核对:5c 两步、申报规则卡、预览各截一张人工看过后删除(`apps/web/.vitest/attachments/shots`,gitignored)。
+- 浏览器全量(`pnpm test:browser`,本轮只跑一次):`Test Files 1 failed | 63 passed (64)`,
+  `Tests 1 failed | 470 passed (471)`。失败的是本轮新写的「步骤」用例:日志只说明它在全量并行负载下等一次点击
+  (`waiting for element to be visible, enabled and stable`)时撞上 15 秒单测时限,单文件两次均过——用例开合面板三次,
+  本身过长。拆成两条(编排与取消一条;以已存两步的题目测移动与删除一条)后单文件 `Tests 26 passed (26)`,
+  两条分别 412ms 与 184ms。**拆分后没有再跑全量**(约定每次改动至多一次)。
+- 拆分时新用例的 stderr 暴露一处产品缺陷:两个步骤层级与角色相同时,`useQueries` 收到重复的覆盖查询
+  (`[QueriesObserver]: Duplicate Queries found`)。改为按(层级,角色集)去重后回填到各步骤;复跑
+  `item-editor` + `scoring-failures`:`Test Files 2 passed (2)`,`Tests 31 passed (31)`,日志中该警告 0 次。
+- `pnpm qualy resolve --frozen-lockfile`:exit=0(lock 无需重算)。prettier 未作为门禁(未改动的文件本身也不过),
+  不做整体重排。
+
+### 未做 / 留给用户
+
+- 5e(手机)只做了列表行折叠与规则卡单列,未逐屏对照设计稿。
+- 5c 第一步不列「仅草稿」公式、第二步不列已停止绑定的历史版本(接口只给今天可绑定的与当前绑定,见 §32.83 ⑧)。
+- 审核覆盖缺口标红但不拦保存(§32.83 ⑥,与设计稿 5d 的「保存不可点」不同),如要改成拦截需先定政策。
+

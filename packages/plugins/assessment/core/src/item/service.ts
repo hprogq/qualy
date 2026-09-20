@@ -310,6 +310,46 @@ export interface ItemMethods {
     BatchNotFound | AccessDenied | ItemConfigInvalid,
     ScoringRuntimeCatalog | ScoringAuthoringPolicyCatalog
   >
+  readonly checkItem: (
+    tenantId: string,
+    batchId: string,
+    input: ItemCheckInput,
+    as: Principal,
+  ) => Effect.Effect<
+    ItemCheckView,
+    BatchNotFound | AccessDenied,
+    ScoringRuntimeCatalog | ScoringAuthoringPolicyCatalog
+  >
+}
+
+/**
+ * A whole candidate question, asked what a save would say about it.
+ *
+ * The same fields a save carries, and nothing a save would not: `itemId`
+ * names the question being edited, so that what is frozen on it - the doors
+ * entries came in through, the kind it has been since somebody filed - is
+ * judged against the candidate the way a save would judge it.
+ */
+export interface ItemCheckInput {
+  readonly itemId?: string
+  readonly itemType: string
+  readonly scoreGroupId: string
+  readonly config: ItemConfigInput
+}
+
+/**
+ * Every reason a save would refuse this candidate, all at once.
+ *
+ * `handle` is set on an issue about a determination the draft has not saved
+ * yet: the path names it by the identity a save would mint, which the screen
+ * has never seen, so the handle it composed it under rides along.
+ */
+export interface ItemCheckView {
+  readonly issues: readonly {
+    readonly path: string
+    readonly reason: string
+    readonly handle?: string
+  }[]
 }
 
 /**
@@ -2095,6 +2135,137 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
   )
 
   /**
+   * What a save would say about this candidate, without saving it.
+   *
+   * The same gauntlet a save runs, in the same order, under the same batch
+   * lock: the group, the kind, the authored scoring normalized against the
+   * stored one, the driver's reading of the form, the policy, the doors, and
+   * the one real compile. Nothing is written - the identities a draft's new
+   * determinations would be given are placeholders that never leave this
+   * call - and every reason is gathered rather than the first one raised,
+   * because a screen that is told one thing at a time is corrected one press
+   * at a time.
+   *
+   * What it does not ask is what only a save can be asked: whether somebody
+   * else saved first, and why a running round's arithmetic is being moved.
+   */
+  const checkItem: ItemMethods['checkItem'] = Effect.fn('Assessment.checkItem')(
+    function* (tenantId, batchId, input, as) {
+      return yield* withDb(
+        transaction(
+          Effect.gen(function* () {
+            const locked = yield* lockBatch(tenantId, batchId)
+            if (!locked) return yield* new BatchNotFound()
+            yield* deps.requireRosterReach(as, tenantId, batchId)
+            const batch = yield* oneBatch(tenantId, batchId)
+            const materialRange = deps.parseRange(String(batch!.materialRange))
+            const issues: { path: string; reason: string; handle?: string }[] = []
+
+            const groups = yield* groupsOf(tenantId, batchId)
+            if (!groups.some((group) => group.id === input.scoreGroupId)) {
+              issues.push({ path: 'scoreGroupId', reason: 'group-not-in-batch' })
+            }
+
+            const stored =
+              input.itemId === undefined ? null : yield* itemOf(tenantId, input.itemId)
+            const existing = stored !== null && stored.batchId === batchId ? stored : null
+            if (existing?.status === 'voided') {
+              return { issues: [{ path: 'item', reason: 'item-voided' }] }
+            }
+            if (!catalogs.itemTypes.has(input.itemType)) {
+              return { issues: [...issues, { path: 'itemType', reason: 'item-type-not-installed' }] }
+            }
+            if (
+              existing !== null &&
+              input.itemType !== existing.itemType &&
+              (existing.status !== 'draft' || (yield* itemHasEntries(tenantId, existing.id)))
+            ) {
+              issues.push({ path: 'itemType', reason: 'item-type-frozen' })
+            }
+            // a question nobody has saved yet is judged as the draft it
+            // would be created as; nothing reads this row but the gauntlet
+            const item: ItemRow =
+              existing !== null
+                ? { ...existing, itemType: input.itemType }
+                : {
+                    id: '00000000-0000-7000-8000-000000000000',
+                    batchId,
+                    itemType: input.itemType,
+                    title: '',
+                    scoreGroupId: input.scoreGroupId,
+                    maxEntries: null,
+                    sortOrder: 0,
+                    status: 'draft',
+                    voidReason: null,
+                    currentRevisionId: null,
+                    createdAt: 0,
+                  }
+            const current =
+              existing === null || existing.currentRevisionId === null
+                ? null
+                : yield* revisionOf(tenantId, existing.currentRevisionId)
+
+            // placeholders in ordinal order, exactly as a save would mint
+            // them, so that an issue about one can be handed back under the
+            // handle the screen composed it with
+            const placeholder = (index: number) =>
+              `00000000-0000-7000-8000-${String(index + 1).padStart(12, '0')}`
+            const normalized = yield* normalizeScoringAuthoring({
+              current: current?.scoringConfig ?? null,
+              submitted: input.config.scoringConfig,
+              mint: (count) =>
+                Effect.succeed(Array.from({ length: count }, (_unused, index) => placeholder(index))),
+            })
+            if ('issues' in normalized) {
+              return { issues: [...issues, ...normalized.issues] }
+            }
+            const handleOf = new Map<string, string>()
+            const submitted = (input.config.scoringConfig as { recognitions?: unknown } | null)
+              ?.recognitions
+            if (Array.isArray(submitted)) {
+              let minted = 0
+              for (const one of submitted as { handle?: unknown; id?: unknown }[]) {
+                if (typeof one?.handle !== 'string') continue
+                handleOf.set(typeof one.id === 'string' ? one.id : placeholder(minted++), one.handle)
+              }
+            }
+            const config = { ...input.config, scoringConfig: normalized.config }
+
+            issues.push(...(yield* issuesOf({ tenantId, item, current, materialRange, config })))
+            const compiled = yield* compiledCandidate({
+              tenantId,
+              item,
+              materialRange,
+              config,
+              previous: current,
+              as,
+            }).pipe(
+              // whoever owns the arithmetic refusing this principal is one
+              // more reason, not a different kind of answer
+              Effect.catchTag('ASSESSMENT_ITEM_CONFIG_INVALID', (refused) =>
+                Effect.succeed({ issues: refused.issues }),
+              ),
+            )
+            if ('issues' in compiled) issues.push(...compiled.issues)
+
+            const seen = new Set<string>()
+            return {
+              issues: issues.flatMap((issue) => {
+                const key = `${issue.path}\u0000${issue.reason}`
+                if (seen.has(key)) return []
+                seen.add(key)
+                const at = /^scoringConfig\.recognitions\.([^.]+)$/.exec(issue.path)
+                const handle = at === null ? undefined : handleOf.get(at[1]!)
+                return [handle === undefined ? issue : { ...issue, handle }]
+              }),
+            }
+          }),
+        ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error))),
+      )
+    },
+  )
+
+  /**
    * What this candidate configuration's calculator would need (§9.8).
    *
    * A real compile, under the batch lock, through the same seam a save
@@ -2256,5 +2427,6 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
     listScoreGroups,
     replaceScoreGroups,
     previewScoring,
+    checkItem,
   }
 }

@@ -1,6 +1,14 @@
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { CheckIcon, ChevronDownIcon, ChevronRightIcon, GripVerticalIcon, PlusIcon, XIcon } from 'lucide-react'
+import {
+  CheckIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  GripVerticalIcon,
+  ListIcon,
+  PlusIcon,
+  XIcon,
+} from 'lucide-react'
 import { useI18n, useList } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Field } from '@qualy/ui/admin'
@@ -49,6 +57,36 @@ const styles = stylex.create({
   quiet: { fontSize: 12, color: tokens.mutedForeground },
   options: { display: 'flex', flexDirection: 'column', gap: 6 },
   optionsLabel: { fontSize: 12.5, color: tokens.foreground },
+  // no options yet: a place that says so and offers the one thing to do,
+  // rather than a lone "add" floating under a heading
+  optionsEmpty: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 6,
+    paddingInline: 16,
+    paddingBlock: 20,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: tokens.border,
+    textAlign: 'center',
+  },
+  optionsEmptyMedia: {
+    display: 'inline-flex',
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+    borderRadius: tokens.radiusLg,
+    backgroundColor: tokens.surfaceMuted,
+    color: tokens.mutedForeground,
+  },
+  optionsEmptyTitle: { fontSize: 13.5, fontWeight: 500 },
+  optionsEmptyHint: { fontSize: 12, lineHeight: 1.5, color: tokens.mutedForeground },
+  optionsEmptyAction: { marginTop: 6 },
+  icon16: { width: 16, height: 16 },
   optionRow: { display: 'flex', alignItems: 'center', gap: 8 },
   optionLifted: { opacity: 0.6 },
   optionMarkBefore: { boxShadow: `inset 0 2px 0 0 ${tokens.primary}` },
@@ -465,9 +503,30 @@ export function OptionsEditor({
     }
     onChange(options.filter((one) => one.id !== option.id))
   }
+  const add = () =>
+    onChange([...options, { id: nextOptionKey(), value: '', label: '', enabled: true }].map(valued))
   return (
-    <div {...stylex.props(styles.options)} data-testid="options-editor">
+    <div {...stylex.props(styles.options)} data-testid="options-editor" data-empty={live.length === 0}>
       <span {...stylex.props(styles.optionsLabel)}>{format(m.itemsOptions)}</span>
+      {live.length === 0 && (
+        <div {...stylex.props(styles.optionsEmpty)} data-testid="options-empty">
+          <span aria-hidden {...stylex.props(styles.optionsEmptyMedia)}>
+            <ListIcon {...stylex.props(styles.icon16)} />
+          </span>
+          <span {...stylex.props(styles.optionsEmptyTitle)}>{format(m.itemsOptionsEmptyTitle)}</span>
+          <span {...stylex.props(styles.optionsEmptyHint)}>{format(m.itemsOptionsEmptyHint)}</span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className={stylex.props(styles.optionsEmptyAction).className}
+            onClick={add}
+          >
+            <PlusIcon aria-hidden />
+            {format(m.itemsChoiceAdd)}
+          </Button>
+        </div>
+      )}
       {live.map((option) => {
         const blank = option.label.trim() === ''
         return (
@@ -540,14 +599,12 @@ export function OptionsEditor({
           </div>
         )
       })}
-      <button
-        type="button"
-        {...stylex.props(styles.addOption)}
-        onClick={() => onChange([...options, { id: nextOptionKey(), value: '', label: '', enabled: true }].map(valued))}
-      >
-        <PlusIcon aria-hidden {...stylex.props(styles.icon13)} />
-        {format(m.itemsChoiceAdd)}
-      </button>
+      {live.length > 0 && (
+        <button type="button" {...stylex.props(styles.addOption)} onClick={add}>
+          <PlusIcon aria-hidden {...stylex.props(styles.icon13)} />
+          {format(m.itemsChoiceAdd)}
+        </button>
+      )}
       {off.length > 0 && (
         <div {...stylex.props(styles.disabledBox)} data-testid="disabled-options">
           <button

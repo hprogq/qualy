@@ -14,7 +14,12 @@ import {
   type ChoiceSchema,
   type NormalizedInputSchema,
 } from '@qualy/value-schema'
-import { materializeField, type FieldDraft as ValueDraft } from '@qualy/web-value-form/model'
+import {
+  checkField,
+  draftFromValue,
+  materializeField,
+  type FieldDraft as ValueDraft,
+} from '@qualy/web-value-form/model'
 import { SUMMARY_FIELDS_MOST, summaryFieldIdsOf } from '../../../entry/summary.ts'
 import type { ItemDto } from '../../entry/model.ts'
 import type { StageDraft } from '../StageSheet.tsx'
@@ -820,12 +825,14 @@ const fieldToWire = (field: FieldDraft, draft: Draft, contract: Contract | null,
           locale,
           (value) => field.options.find((one) => one.value === value)?.id,
         )
-  // the filing side of a determination wears the determination's words,
-  // and under direct handling it is what the arithmetic reads, so it is
-  // required whatever the box says
+  // The filing side of a determination takes the determination's type and
+  // bounds and keeps its own words: what a participant is asked and what a
+  // reviewer determines are one fact said to two readers, and the two may
+  // be worded differently. Under direct handling the field is what the
+  // arithmetic reads, so it is required whatever the box says.
   const linked = link !== undefined && parameter !== undefined
-  const label = linked ? link.recognition.label : shaped.label
-  const description = linked ? link.recognition.description : shaped.description
+  const label = shaped.label
+  const description = shaped.description
   const required = shaped.required || (linked && draft.mode === 'direct')
   const base = {
     id: shaped.id.trim() === '' ? shaped.key.trim() : shaped.id.trim(),
@@ -994,13 +1001,59 @@ export interface EditorProblem {
   readonly entity?: EditorEntity
   /** a name for the row, when the problem is about one */
   readonly subject?: string
+  /**
+   * Whether something is still to be chosen, or something chosen is wrong.
+   * The first is amber and waits; the second is red and is said in the
+   * place the wrong thing was typed.
+   */
+  readonly tone: 'pending' | 'error'
+  /** the numbers the sentence needs: the range, the scale, the count */
+  readonly values?: Readonly<Record<string, string | number>>
+  /** which block of the tab this is in, for the summary of a failed save */
+  readonly block?: EditorBlock
+  /** the server's own reason word, when the server is who said so */
+  readonly reason?: string
 }
 
-const stageReady = (stage: StageDraft, options: ItemOptions) =>
-  stage.label.trim() !== '' &&
-  (stage.kind === 'roleAt'
+export type EditorBlock =
+  | 'basics'
+  | 'mode'
+  | 'channels'
+  | 'method'
+  | 'parameters'
+  | 'recognitions'
+  | 'form'
+  | 'summary'
+  | 'counts'
+  | 'review'
+  | 'escalation'
+
+/** whether a step says who reviews and where; its name is judged apart */
+export const stageSettled = (stage: StageDraft, options: ItemOptions): boolean =>
+  stage.kind === 'roleAt'
     ? stage.nodeTypeId !== '' && options.roles.some((role) => stage.roleIds.includes(role.id))
-    : options.roles.some((role) => role.id === stage.roleId))
+    : options.roles.some((role) => role.id === stage.roleId)
+
+/**
+ * What stops one step from standing in a chain, one reason per control.
+ *
+ * The same judgment the panel makes before it lets a step in and the list
+ * makes of a step that was stored before the rule existed, so a step is
+ * never complete in one place and wanting in the other.
+ */
+export const stageIssuesOf = (
+  stage: StageDraft,
+  options: ItemOptions,
+): readonly ('label' | 'level' | 'roles' | 'role')[] => [
+  ...(stage.label.trim() === '' ? (['label'] as const) : []),
+  ...(stage.kind === 'roleAt' && stage.nodeTypeId === '' ? (['level'] as const) : []),
+  ...(stage.kind === 'roleAt' && !options.roles.some((role) => stage.roleIds.includes(role.id))
+    ? (['roles'] as const)
+    : []),
+  ...(stage.kind === 'nearestRole' && !options.roles.some((role) => role.id === stage.roleId)
+    ? (['role'] as const)
+    : []),
+]
 
 /** whether a narrowing still fits inside what the parameter admits */
 export const narrowingFits = (refinement: AtomicSchema | null, parameter: AtomicSchema): boolean => {
@@ -1049,6 +1102,82 @@ export const boundProblem = (
   return null
 }
 
+/** the two ends a number may lie between, as a schema states them */
+const rangeOf = (schema: AtomicSchema): { min?: string; max?: string; scale?: number } => {
+  const kind = kindOf(schema)
+  if (kind === 'integer') {
+    const { minimum, maximum } = schema as { minimum: number; maximum: number }
+    return {
+      ...(minimum > Number.MIN_SAFE_INTEGER ? { min: String(minimum) } : {}),
+      ...(maximum < Number.MAX_SAFE_INTEGER ? { max: String(maximum) } : {}),
+    }
+  }
+  if (kind === 'decimal') {
+    const held = schema as {
+      [MAX_SCALE]: number
+      [DECIMAL_MINIMUM]?: string
+      [DECIMAL_MAXIMUM]?: string
+    }
+    return {
+      ...(held[DECIMAL_MINIMUM] === undefined ? {} : { min: held[DECIMAL_MINIMUM] }),
+      ...(held[DECIMAL_MAXIMUM] === undefined ? {} : { max: held[DECIMAL_MAXIMUM] }),
+      scale: held[MAX_SCALE],
+    }
+  }
+  if (kind === 'text') {
+    const held = schema as { minLength?: number; maxLength?: number }
+    return {
+      ...(held.minLength === undefined ? {} : { min: String(held.minLength) }),
+      ...(held.maxLength === undefined ? {} : { max: String(held.maxLength) }),
+    }
+  }
+  return {}
+}
+
+/**
+ * What is wrong with a fixed value, as a code and the numbers its sentence
+ * needs. The reason words are the value layer's own - the same ones the
+ * server's compiler reports with a `constant-` in front - so a value judged
+ * here and a value judged there land on one sentence.
+ */
+export const constantProblemOf = (
+  schema: AtomicSchema,
+  reason: string,
+): { code: string; values?: Record<string, string | number> } => {
+  const range = rangeOf(schema)
+  switch (reason) {
+    case 'required':
+      return { code: 'constant-required' }
+    case 'not-an-integer':
+      return { code: 'constant-not-integer' }
+    case 'not-a-decimal':
+    case 'format':
+      return { code: kindOf(schema) === 'date' ? 'constant-not-date' : 'constant-not-number' }
+    case 'minimum':
+    case 'maximum':
+    case DECIMAL_MINIMUM:
+    case DECIMAL_MAXIMUM:
+      if (range.min !== undefined && range.max !== undefined) {
+        return { code: 'constant-out-of-range', values: { min: range.min, max: range.max } }
+      }
+      return range.min !== undefined
+        ? { code: 'constant-below-min', values: { min: range.min } }
+        : { code: 'constant-above-max', values: { max: range.max ?? '' } }
+    case MAX_SCALE:
+      return { code: 'constant-scale', values: { scale: range.scale ?? 0 } }
+    case 'minLength':
+      return { code: 'constant-too-short', values: { min: range.min ?? '' } }
+    case 'maxLength':
+      return { code: 'constant-too-long', values: { max: range.max ?? '' } }
+    case 'enum':
+      return { code: 'constant-not-offered' }
+    case 'pattern':
+      return { code: 'constant-pattern' }
+    default:
+      return { code: 'constant-invalid' }
+  }
+}
+
 export const problemsOf = (input: {
   readonly draft: Draft
   readonly options: ItemOptions
@@ -1059,37 +1188,100 @@ export const problemsOf = (input: {
 }): readonly EditorProblem[] => {
   const { draft, options, contract } = input
   const found: EditorProblem[] = []
-  if (draft.title.trim() === '') found.push({ area: 'basics', code: 'title-required' })
-  if (draft.scoreGroupId === '') found.push({ area: 'basics', code: 'group-required' })
+  if (draft.title.trim() === '') {
+    found.push({ area: 'basics', block: 'basics', code: 'title-required', tone: 'pending' })
+  }
+  if (draft.scoreGroupId === '') {
+    found.push({ area: 'basics', block: 'basics', code: 'group-required', tone: 'pending' })
+  }
   if (draft.mode !== 'automatic' && !draft.participant && !draft.administrative) {
-    found.push({ area: 'basics', code: 'channels-required' })
+    found.push({ area: 'basics', block: 'channels', code: 'channels-required', tone: 'pending' })
   }
 
   const fieldName = (field: FieldDraft) => field.label.trim()
   for (const field of draft.fields) {
     if (draft.mode === 'automatic') break
+    const entity = { kind: 'field' as const, key: field.key }
     if (field.label.trim() === '') {
-      found.push({ area: 'scoring', code: 'field-unnamed', entity: { kind: 'field', key: field.key } })
+      found.push({ area: 'scoring', block: 'form', code: 'field-unnamed', entity, tone: 'error' })
       continue
     }
-    if (field.type === 'choice' && !field.options.some((option) => option.enabled && option.label.trim() !== '')) {
-      found.push({
-        area: 'scoring',
-        code: 'field-options',
-        entity: { kind: 'field', key: field.key },
-        subject: fieldName(field),
-      })
+    const linked = linkOf(draft, contract, field.id) !== undefined
+    // a linked field's options are the determination's; its own list is not
+    // what a participant will see, so an empty one is not a fault here
+    if (!linked && field.type === 'choice') {
+      const live = field.options.filter((option) => option.enabled)
+      if (live.length === 0) {
+        found.push({
+          area: 'scoring',
+          block: 'form',
+          code: 'field-options',
+          entity,
+          subject: fieldName(field),
+          tone: 'error',
+        })
+      } else if (live.some((option) => option.label.trim() === '')) {
+        found.push({
+          area: 'scoring',
+          block: 'form',
+          code: 'field-option-unnamed',
+          entity,
+          subject: fieldName(field),
+          tone: 'error',
+        })
+      } else if (new Set(live.map((option) => option.label.trim())).size < live.length) {
+        found.push({
+          area: 'scoring',
+          block: 'form',
+          code: 'field-option-duplicate',
+          entity,
+          subject: fieldName(field),
+          tone: 'error',
+        })
+      }
+    }
+    if (!linked && (field.type === 'integer' || field.type === 'decimal')) {
+      const low = field.min.trim()
+      const high = field.max.trim()
+      if (low !== '' && high !== '' && Number(low) > Number(high)) {
+        found.push({
+          area: 'scoring',
+          block: 'form',
+          code: 'field-range-inverted',
+          entity,
+          subject: fieldName(field),
+          tone: 'error',
+        })
+        continue
+      }
+    }
+    if (!linked && field.type === 'text') {
+      const low = field.minLength.trim()
+      const high = field.maxLength.trim()
+      if (low !== '' && high !== '' && Number(low) > Number(high)) {
+        found.push({
+          area: 'scoring',
+          block: 'form',
+          code: 'field-range-inverted',
+          entity,
+          subject: fieldName(field),
+          tone: 'error',
+        })
+        continue
+      }
     }
     const schema = fieldSchemaOf(field)
-    if (schema !== null) {
+    if (schema !== null && !found.some((one) => one.entity?.kind === 'field' && one.entity.key === field.key)) {
       try {
         normalizeAtomicSchema(schema)
       } catch {
         found.push({
           area: 'scoring',
+          block: 'form',
           code: 'field-invalid',
-          entity: { kind: 'field', key: field.key },
+          entity,
           subject: fieldName(field),
+          tone: 'error',
         })
       }
     }
@@ -1104,63 +1296,98 @@ export const problemsOf = (input: {
       if (found.some((one) => one.entity?.kind === 'field' && one.entity.key === field.key)) continue
       found.push({
         area: 'scoring',
-        code: issue.reason === 'date-window-empty' ? 'field-date-window' : 'field-invalid',
+        block: 'form',
+        code:
+          issue.reason === 'date-window-empty'
+            ? 'field-date-window'
+            : issue.reason === 'field-duplicate'
+              ? 'field-duplicate'
+              : 'field-invalid',
         entity: { kind: 'field', key: field.key },
         subject: fieldName(field),
+        tone: 'error',
+        reason: issue.reason,
       })
     }
   }
 
   if (draft.scoring.language === 'v1') {
-    if (draft.fixedValue.trim() === '' || !/^-?\d+(\.\d+)?$/.test(draft.fixedValue.trim())) {
-      found.push({ area: 'scoring', code: 'fixed-value-required' })
+    const amount = draft.fixedValue.trim()
+    if (amount === '') {
+      found.push({ area: 'scoring', block: 'method', code: 'fixed-value-required', tone: 'pending' })
+    } else if (!/^-?\d+(\.\d+)?$/.test(amount)) {
+      found.push({ area: 'scoring', block: 'method', code: 'fixed-value-invalid', tone: 'error' })
     }
   } else if (draft.scoring.language === 'v2') {
     if (!draft.scoring.configured) {
-      found.push({ area: 'scoring', code: 'calculator-unset' })
+      found.push({ area: 'scoring', block: 'method', code: 'calculator-unset', tone: 'pending' })
     } else if (contract === null) {
-      found.push({ area: 'scoring', code: input.contractRefused ? 'contract-refused' : 'contract-pending' })
+      found.push({
+        area: 'scoring',
+        block: 'method',
+        code: input.contractRefused ? 'contract-refused' : 'contract-pending',
+        tone: input.contractRefused ? 'error' : 'pending',
+      })
     } else {
       for (const parameter of inputOrder(contract.inputSchema)) {
         const schema = parameterSchemaOf(contract, parameter)!
         const title = displayTitle(schema, parameter, input.locale)
         const binding = own(draft.scoring.bindings, parameter)
+        const seat = { kind: 'parameter' as const, parameter }
         if (binding === undefined) {
-          found.push({ area: 'scoring', code: 'parameter-unset', entity: { kind: 'parameter', parameter }, subject: title })
+          found.push({ area: 'scoring', block: 'parameters', code: 'parameter-unset', entity: seat, subject: title, tone: 'pending' })
           continue
         }
         if (binding.kind === 'constant') {
-          const outcome = binding.draft === undefined ? undefined : materializeField(schema, binding.draft)
-          const stored = binding.draft === undefined && binding.value !== undefined
-          if (!stored && (outcome === undefined || outcome.kind !== 'value')) {
-            found.push({ area: 'scoring', code: 'constant-required', entity: { kind: 'parameter', parameter }, subject: title })
+          // judged whole: a value the formula would refuse is refused here,
+          // with the range the refusal is about, rather than at the save
+          const typed = binding.draft ?? draftFromValue(schema, binding.value)
+          const reason = checkField(schema, typed)
+          if (reason !== undefined) {
+            const said = constantProblemOf(schema, reason)
+            found.push({
+              area: 'scoring',
+              block: 'parameters',
+              code: said.code,
+              ...(said.values === undefined ? {} : { values: said.values }),
+              entity: seat,
+              subject: title,
+              tone: 'error',
+            })
           }
           continue
         }
         const recognition = own(draft.scoring.recognitions, binding.handle)
         if (recognition === undefined) {
-          found.push({ area: 'scoring', code: 'parameter-unset', entity: { kind: 'parameter', parameter }, subject: title })
+          found.push({ area: 'scoring', block: 'parameters', code: 'parameter-unset', entity: seat, subject: title, tone: 'pending' })
           continue
         }
         if (draft.mode === 'automatic') {
-          found.push({ area: 'scoring', code: 'recognition-in-automatic', entity: { kind: 'parameter', parameter }, subject: title })
+          found.push({ area: 'scoring', block: 'parameters', code: 'recognition-in-automatic', entity: seat, subject: title, tone: 'error' })
           continue
         }
+        const fact = { kind: 'recognition' as const, handle: binding.handle }
         if (recognition.label.trim() === '') {
-          found.push({ area: 'scoring', code: 'recognition-unnamed', entity: { kind: 'recognition', handle: binding.handle }, subject: title })
+          found.push({ area: 'scoring', block: 'recognitions', code: 'recognition-unnamed', entity: fact, subject: title, tone: 'error' })
         }
         if (!narrowingFits(recognition.refinement, schema)) {
-          found.push({ area: 'scoring', code: 'refinement-widens', entity: { kind: 'recognition', handle: binding.handle }, subject: recognition.label })
+          found.push({ area: 'scoring', block: 'recognitions', code: 'refinement-widens', entity: fact, subject: recognition.label, tone: 'error' })
+        } else if (
+          kindOf(schema) === 'choice' &&
+          recognition.refinement !== null &&
+          (recognition.refinement as ChoiceSchema).enum.length === 0
+        ) {
+          found.push({ area: 'scoring', block: 'recognitions', code: 'refinement-empty', entity: fact, subject: recognition.label, tone: 'error' })
         }
         if (recognition.fieldId !== null && !draft.fields.some((field) => field.id === recognition.fieldId)) {
-          found.push({ area: 'scoring', code: 'link-field-missing', entity: { kind: 'recognition', handle: binding.handle }, subject: recognition.label })
+          found.push({ area: 'scoring', block: 'recognitions', code: 'link-field-missing', entity: fact, subject: recognition.label, tone: 'error' })
         } else if (draft.mode === 'direct' && recognition.fieldId === null) {
-          found.push({ area: 'scoring', code: 'recognition-unlinked', entity: { kind: 'recognition', handle: binding.handle }, subject: recognition.label })
+          found.push({ area: 'scoring', block: 'recognitions', code: 'recognition-unlinked', entity: fact, subject: recognition.label, tone: 'pending' })
         }
       }
       for (const parameter of Object.keys(draft.scoring.bindings).sort()) {
         if (!Object.hasOwn(contract.inputSchema.properties, parameter)) {
-          found.push({ area: 'scoring', code: 'binding-orphan', entity: { kind: 'parameter', parameter }, subject: parameter })
+          found.push({ area: 'scoring', block: 'parameters', code: 'binding-orphan', entity: { kind: 'parameter', parameter }, subject: parameter, tone: 'error' })
         }
       }
     }
@@ -1168,25 +1395,270 @@ export const problemsOf = (input: {
 
   if (draft.mode === 'review') {
     const normal = draft.stages.filter((stage) => stage.chain === 'normal')
-    if (normal.length === 0) found.push({ area: 'rules', code: 'stages-required' })
+    if (normal.length === 0) {
+      found.push({ area: 'rules', block: 'review', code: 'stages-required', tone: 'pending' })
+    }
     for (const stage of draft.stages) {
-      if (!stageReady(stage, options)) {
-        found.push({
-          area: 'rules',
-          code: 'stage-unset',
-          entity: { kind: 'stage', key: stage.key },
-          subject: stage.label.trim(),
-        })
+      const block = stage.chain === 'normal' ? ('review' as const) : ('escalation' as const)
+      const entity = { kind: 'stage' as const, key: stage.key }
+      const wanting = stageIssuesOf(stage, options)
+      if (wanting.includes('label')) {
+        found.push({ area: 'rules', block, code: 'stage-unnamed', entity, tone: 'error' })
+      }
+      if (wanting.some((one) => one !== 'label')) {
+        found.push({ area: 'rules', block, code: 'stage-unset', entity, subject: stage.label.trim(), tone: 'error' })
       }
     }
   }
-  if (draft.mode !== 'automatic' && draft.maxEntries.trim() !== '' && !(Number(draft.maxEntries) >= 1)) {
-    found.push({ area: 'rules', code: 'max-entries-invalid' })
+  if (draft.mode !== 'automatic' && draft.maxEntries.trim() !== '' && !/^[1-9]\d*$/.test(draft.maxEntries.trim())) {
+    found.push({ area: 'rules', block: 'counts', code: 'max-entries-invalid', tone: 'error' })
   }
-  if (draft.mode !== 'automatic' && draft.folding === 'top-n' && !(Number(draft.topN) >= 1)) {
-    found.push({ area: 'rules', code: 'top-n-invalid' })
+  if (draft.mode !== 'automatic' && draft.folding === 'top-n' && !/^[1-9]\d*$/.test(draft.topN.trim())) {
+    found.push({ area: 'rules', block: 'counts', code: 'top-n-invalid', tone: 'error' })
   }
   return found
+}
+
+/**
+ * The server's reasons, put where the things they are about are drawn.
+ *
+ * Every issue carries a path into the configuration that was submitted. The
+ * path is read back into the draft it was written from - the parameter, the
+ * determination, the field, the step - so that what the server found wrong
+ * is said in the very slot a local check would have used, in the same
+ * sentence where the two agree. What cannot be placed is not dropped: it is
+ * returned apart, for the screen to say on its own.
+ */
+export const problemsFromIssues = (input: {
+  readonly draft: Draft
+  readonly contract: Contract | null
+  readonly locale: string
+  readonly issues: readonly { readonly path: string; readonly reason: string; readonly handle?: string }[]
+}): { readonly placed: readonly EditorProblem[]; readonly loose: readonly { path: string; reason: string }[] } => {
+  const { draft, contract, locale } = input
+  const placed: EditorProblem[] = []
+  const loose: { path: string; reason: string }[] = []
+  const scoring = draft.scoring.language === 'v2' ? draft.scoring : null
+  const handles = scoring === null ? [] : Object.keys(scoring.recognitions)
+  const recognitionAt = (handle: string | undefined, reason: string, code: string) => {
+    const recognition = handle === undefined ? undefined : scoring?.recognitions[handle]
+    if (handle === undefined || recognition === undefined) return false
+    placed.push({
+      area: 'scoring',
+      block: 'recognitions',
+      code,
+      entity: { kind: 'recognition', handle },
+      subject: recognition.label.trim(),
+      tone: 'error',
+      reason,
+    })
+    return true
+  }
+  for (const issue of input.issues) {
+    const { path, reason } = issue
+    const bound = /^scoringConfig\.bindings\.(.+)$/.exec(path)
+    if (bound !== null && scoring !== null) {
+      const parameter = bound[1]!
+      const schema = parameterSchemaOf(contract, parameter)
+      const binding = own(scoring.bindings, parameter)
+      if (reason.startsWith('constant-') && schema !== undefined) {
+        const said = constantProblemOf(schema, reason.slice('constant-'.length))
+        placed.push({
+          area: 'scoring',
+          block: 'parameters',
+          code: said.code,
+          ...(said.values === undefined ? {} : { values: said.values }),
+          entity: { kind: 'parameter', parameter },
+          subject: parameterTitleOf(contract, parameter, locale),
+          tone: 'error',
+          reason,
+        })
+        continue
+      }
+      if (reason.startsWith('refinement-') || reason.startsWith('recognition-')) {
+        const handle = binding?.kind === 'recognition' ? binding.handle : undefined
+        const code =
+          reason === 'recognition-reused'
+            ? 'recognition-reused'
+            : reason === 'recognition-unknown'
+              ? 'parameter-unset'
+              : 'refinement-widens'
+        if (code !== 'parameter-unset' && recognitionAt(handle, reason, code)) continue
+      }
+      placed.push({
+        area: 'scoring',
+        block: 'parameters',
+        code:
+          reason === 'binding-missing' || reason === 'recognition-unknown'
+            ? 'parameter-unset'
+            : reason === 'binding-unknown-parameter'
+              ? 'binding-orphan'
+              : 'parameter-refused',
+        entity: { kind: 'parameter', parameter },
+        subject: parameterTitleOf(contract, parameter, locale),
+        tone: 'error',
+        reason,
+      })
+      continue
+    }
+    const factById = /^scoringConfig\.recognitions\.([^.[\]]+)$/.exec(path)
+    const factByIndex = /^scoringConfig\.recognitions\[(\d+)\]/.exec(path)
+    if (factById !== null || factByIndex !== null) {
+      const handle =
+        issue.handle ??
+        (factById !== null
+          ? handles.find((one) => one === factById[1] || scoring?.recognitions[one]?.id === factById[1])
+          : handles[Number(factByIndex![1])])
+      const code =
+        reason === 'recognition-unattainable'
+          ? 'recognition-unattainable'
+          : reason === 'default-field-unknown'
+            ? 'link-field-missing'
+            : reason === 'default-field-not-guaranteed'
+              ? 'link-not-guaranteed'
+              : reason.startsWith('default-')
+                ? 'link-mismatch'
+                : reason === 'recognition-unbound'
+                  ? 'recognition-unbound'
+                  : reason.startsWith('refinement-')
+                    ? 'refinement-widens'
+                    : 'recognition-refused'
+      if (recognitionAt(handle, reason, code)) continue
+      loose.push({ path, reason })
+      continue
+    }
+    const fieldByIndex = /^formConfig\.fields\[(\d+)\]/.exec(path)
+    const fieldByKey = /^formConfig\.fields\.([^.[\]]+)$/.exec(path)
+    if (fieldByIndex !== null || fieldByKey !== null) {
+      const field =
+        fieldByIndex !== null
+          ? draft.fields[Number(fieldByIndex[1])]
+          : draft.fields.find((one) => one.key === fieldByKey![1])
+      if (field !== undefined) {
+        placed.push({
+          area: 'scoring',
+          block: 'form',
+          code:
+            reason === 'field-unnamed'
+              ? 'field-unnamed'
+              : reason === 'date-window-empty'
+                ? 'field-date-window'
+                : reason === 'field-duplicate'
+                  ? 'field-duplicate'
+                  : reason === 'field-type-change-requires-new-id'
+                    ? 'field-retyped'
+                    : 'field-invalid',
+          entity: { kind: 'field', key: field.key },
+          subject: field.label.trim(),
+          tone: 'error',
+          reason,
+        })
+        continue
+      }
+    }
+    const stageAt = /^reviewPolicy\.(normal|escalation)\.stages\[(\d+)\](?:\.(.+))?$/.exec(path)
+    if (stageAt !== null) {
+      const stage = draft.stages.filter((one) => one.chain === stageAt[1])[Number(stageAt[2])]
+      if (stage !== undefined) {
+        placed.push({
+          area: 'rules',
+          block: stage.chain === 'normal' ? 'review' : 'escalation',
+          code:
+            reason === 'policy-label-invalid'
+              ? 'stage-unnamed'
+              : reason === 'policy-node-type-required' || reason === 'policy-roles-required' || reason === 'policy-role-required'
+                ? 'stage-unset'
+                : reason.startsWith('policy-quorum')
+                  ? 'stage-quorum'
+                  : 'stage-refused',
+          entity: { kind: 'stage', key: stage.key },
+          subject: stage.label.trim(),
+          tone: 'error',
+          reason,
+        })
+        continue
+      }
+    }
+    if (path === 'reviewPolicy.normal.stages' && reason === 'policy-stages-required') {
+      placed.push({ area: 'rules', block: 'review', code: 'stages-required', tone: 'error', reason })
+      continue
+    }
+    if (path.startsWith('reviewPolicy')) {
+      placed.push({ area: 'rules', block: 'review', code: 'policy-refused', tone: 'error', reason })
+      continue
+    }
+    if (path === 'entryChannels') {
+      placed.push({
+        area: 'basics',
+        block: 'channels',
+        code: reason === 'entry-channels-frozen' ? 'channels-frozen' : 'channels-required',
+        tone: 'error',
+        reason,
+      })
+      continue
+    }
+    if (path === 'scoreGroupId') {
+      placed.push({ area: 'basics', block: 'basics', code: 'group-gone', tone: 'error', reason })
+      continue
+    }
+    if (path === 'itemType') {
+      placed.push({
+        area: 'basics',
+        block: 'mode',
+        code: reason === 'item-type-frozen' ? 'mode-frozen' : 'mode-unavailable',
+        tone: 'error',
+        reason,
+      })
+      continue
+    }
+    if (path.startsWith('displayConfig.entrySummary')) {
+      placed.push({ area: 'scoring', block: 'summary', code: 'summary-invalid', tone: 'error', reason })
+      continue
+    }
+    if (path.startsWith('scoringConfig.aggregator') || path.startsWith('aggregator')) {
+      placed.push({ area: 'rules', block: 'counts', code: 'folding-refused', tone: 'error', reason })
+      continue
+    }
+    if (path.startsWith('scoringConfig') || path.startsWith('calculator')) {
+      placed.push({
+        area: 'scoring',
+        block: 'method',
+        code:
+          reason === 'calculator-not-installed'
+            ? 'calculator-gone'
+            : reason === 'output-not-a-score-amount'
+              ? 'calculator-output'
+              : reason === 'recognition-without-determiner'
+                ? 'recognition-in-automatic'
+                : 'calculator-refused',
+        tone: 'error',
+        reason,
+      })
+      continue
+    }
+    if (path === 'formConfig') {
+      placed.push({ area: 'scoring', block: 'form', code: 'form-refused', tone: 'error', reason })
+      continue
+    }
+    loose.push({ path, reason })
+  }
+  return { placed, loose }
+}
+
+/** one list out of two, the local reading first: the same thing is said once */
+export const mergedProblems = (
+  local: readonly EditorProblem[],
+  server: readonly EditorProblem[],
+): readonly EditorProblem[] => {
+  const keyOf = (one: EditorProblem) =>
+    `${one.area}:${one.entity === undefined ? one.block ?? '' : JSON.stringify(one.entity)}`
+  const taken = new Set(local.map(keyOf))
+  return [...local, ...server.filter((one) => !taken.has(keyOf(one)))]
+}
+
+const parameterTitleOf = (contract: Contract | null, parameter: string, locale: string): string => {
+  const schema = parameterSchemaOf(contract, parameter)
+  return schema === undefined ? parameter : displayTitle(schema, parameter, locale)
 }
 
 /** the words a parameter goes by, for a row or a panel title */
