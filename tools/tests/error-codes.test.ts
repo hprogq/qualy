@@ -16,6 +16,7 @@ import * as authLocal from '../../packages/plugins/base/auth-local/src/api.ts'
 import * as assessment from '../../packages/plugins/assessment/core/src/errors.ts'
 import * as assessmentFormula from '../../packages/plugins/assessment/formula/src/server/errors.ts'
 import * as settings from '../../packages/plugins/base/settings/src/server/errors.ts'
+import * as directoryImport from '../../packages/plugins/base/directory-import/src/server/errors.ts'
 import { errorMessages as authMessages } from '../../packages/plugins/base/auth/src/client/i18n.ts'
 import { errorMessages as authLocalMessages } from '../../packages/plugins/base/auth-local/src/client/i18n.ts'
 import { errorMessages as orgMessages } from '../../packages/plugins/base/org/src/client/i18n.ts'
@@ -23,6 +24,7 @@ import { errorMessages as rbacMessages } from '../../packages/plugins/base/rbac/
 import { errorMessages as assessmentMessages } from '../../packages/plugins/assessment/core/src/client/i18n.ts'
 import { errorMessages as assessmentFormulaMessages } from '../../packages/plugins/assessment/formula/src/client/i18n.ts'
 import { errorMessages as settingsMessages } from '../../packages/plugins/base/settings/src/client/i18n.ts'
+import { errorMessages as directoryImportMessages } from '../../packages/plugins/base/directory-import/src/client/i18n.ts'
 
 // The rules about error codes that no single package can enforce.
 //
@@ -82,6 +84,11 @@ const SOURCES = [
     module: settings,
     owner: '@qualy/plugin-settings',
     file: 'packages/plugins/base/settings/src/server/errors.ts',
+  },
+  {
+    module: directoryImport,
+    owner: '@qualy/plugin-directory-import',
+    file: 'packages/plugins/base/directory-import/src/server/errors.ts',
   },
   {
     module: assessmentFormula,
@@ -147,6 +154,7 @@ const translations: Record<string, readonly string[]> = {
   '@qualy/plugin-assessment': Object.keys(assessmentMessages),
   '@qualy/plugin-assessment-formula': Object.keys(assessmentFormulaMessages),
   '@qualy/plugin-settings': Object.keys(settingsMessages),
+  '@qualy/plugin-directory-import': Object.keys(directoryImportMessages),
 }
 
 describe('error codes across the assembly', () => {

@@ -1,5 +1,5 @@
 {
-  "name": "@qualy/plugin-org",
+  "name": "@qualy/plugin-directory-import",
   "version": "0.0.0",
   "private": true,
   "license": "AGPL-3.0-only",
@@ -9,23 +9,17 @@
     ".": "./src/index.ts",
     "./actions": "./src/actions.ts",
     "./api": "./src/api.ts",
-    "./client/OrgPage": "./src/client/OrgPage.tsx",
+    "./client/ImportRecordPage": "./src/client/ImportRecordPage.tsx",
+    "./client/ImportUsersAction": "./src/client/ImportUsersAction.tsx",
+    "./client/ImportUsersPage": "./src/client/ImportUsersPage.tsx",
+    "./client/api": "./src/client/api.ts",
     "./client/i18n": "./src/client/i18n.ts",
     "./db": "./src/db/entities.ts",
     "./package.json": "./package.json",
-    "./permissions": "./src/permissions.ts",
     "./server": "./src/server/index.ts"
   },
   "peerDependencies": {
     "react": "catalog:"
-  },
-  "devDependencies": {
-    "@qualy/plugin-audit": "workspace:*",
-    "@qualy/plugin-auth": "workspace:*",
-    "@qualy/plugin-rbac": "workspace:*",
-    "@qualy/testkit": "workspace:*",
-    "@qualy/tsconfig": "workspace:*",
-    "@types/react": "catalog:"
   },
   "dependencies": {
     "@mikro-orm/core": "catalog:",
@@ -37,10 +31,16 @@
     "@qualy/plugin-auth": "workspace:*",
     "@qualy/plugin-database": "workspace:*",
     "@qualy/plugin-kit": "workspace:*",
+    "@qualy/plugin-org": "workspace:*",
+    "@qualy/plugin-rbac": "workspace:*",
+    "@qualy/plugin-settings": "workspace:*",
+    "@qualy/plugin-storage": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
     "@qualy/rbac-contract": "workspace:*",
+    "@qualy/spreadsheet": "workspace:*",
     "@qualy/ui": "workspace:*",
     "@qualy/ui-contract": "workspace:*",
+    "@qualy/value-schema": "workspace:*",
     "@qualy/web-i18n": "workspace:*",
     "@qualy/web-runtime": "workspace:*",
     "@stylexjs/stylex": "catalog:",
@@ -48,5 +48,12 @@
     "effect": "catalog:",
     "kysely": "catalog:",
     "lucide-react": "^0.552.0"
+  },
+  "devDependencies": {
+    "@qualy/plugin-audit": "workspace:*",
+    "@qualy/testkit": "workspace:*",
+    "@qualy/tsconfig": "workspace:*",
+    "@types/react": "catalog:",
+    "exceljs": "catalog:"
   }
 }

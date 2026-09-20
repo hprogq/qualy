@@ -18759,3 +18759,27 @@ pnpm vitest run tools/tests apps/server/tests    413 passed(supervisor 4/4,新�
   `Test Files 6 passed (6)`,`Tests 49 passed (49)`(含模板表头断言 `统一编号 *`)。
 - `pnpm test:browser`(全量一次):`Test Files 1 failed | 62 passed (63)`,`Tests 1 failed | 463 passed (464)`;
   失败的一条是 item-editor「每人可申报条数」从 number 输入改为文本输入后 role 由 spinbutton 变为 textbox,测试已改。
+
+## 用户批量导入:目录导入插件与两个供给端口(2026-09-20)
+
+夜间任务第 4 项的第二段(docs/refactor-temp.md 用户导入部分)。定案见 docs/directory-import.md。
+
+- `@qualy/spreadsheet`(packages/core):从 assessment 的 administrative-import 抽出 archive 守卫、限额、cellText、列号换算,
+  新增 `openWorkbook / sheetsOf / readTable`;assessment 的 workbook.ts 改为消费它,模板协议(`行政认定` / `_qualy` / provenColumns)原地不动。
+- `@qualy/org-contract/effect`:`OrgProvisioning` 端口(rootNode / nodesById / childNamed / types / rules / createChild / deleteUnused),
+  org 在同一构造里同时提供 `Org` 与该端口;`@qualy/auth-contract/provisioning`:`UserProvisioning` 端口
+  (byBusinessNo / userType / placementAllowedAtType / createUsers / retireUsers),auth 的用户服务实现并经 tags 层提供。
+- `@qualy/plugin-directory-import`:四张历史表(迁移 `20260920024222_directory-imports.sql`)、12 个 `/iam/user-import*` 端点、
+  三个审计动作、页面 `/organization/users/import` 与 `/organization/users/imports/:importId`、users 页经新的
+  `usersPageActions` 槽位(ui-contract)放「导入用户」按钮。映射 = anchor + 若干 `{orgTypeId, column}` 层级,
+  服务端在诱导子图里求唯一链;preview/commit 共用一个 plan,commit 在 tenant 锁内重跑并比对 planFingerprint;
+  撤销经 `retireUsers`(完整删除语义),清理逐节点各自事务、允许部分成功。不新增权限码。
+
+### 验收(实际执行)
+
+- `pnpm plugin:add @qualy/plugin-directory-import`、`pnpm qualy generate`(`database: 20260920024222.sql`,已改名)。
+- 根工程 / directory-import client 与 tests 工程 / auth client:tsc exit=0(临时截图用例除外)。
+- `mapping.test.ts`:`Tests 7 passed`(链顺序、分叉、断链、列缺失/重复、行判定、期望树);
+  `directory-import.test.ts`(真库):`Tests 3 passed`(建单位与人员、同一上传拒绝二次导入、错误行整批拒绝、
+  已存在人员判为 existing、撤销走 disable → deleted 且手工加入的人不受影响、清理只删无人使用的 1班 并保留 2班 与其年级)。
+- 浏览器:`import-record.browser.test.tsx` + `terminology.browser.test.tsx`:`Test Files 2 passed`,`Tests 5 passed`。

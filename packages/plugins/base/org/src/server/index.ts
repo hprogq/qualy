@@ -1,4 +1,6 @@
 import { Context, Effect, Layer } from 'effect'
+import { OrgNodeRefused, OrgProvisioning } from '@qualy/org-contract/effect'
+import type { OrgNodeRef } from '@qualy/org-contract'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { Api } from '@qualy/api-kit/plugin'
 import { CurrentUser } from './session-port.ts'
@@ -20,6 +22,7 @@ import {
   lockTenant,
   moveSubtree,
   nodesById,
+  childNamed,
   oneNode,
   oneType,
   readSnapshot,
@@ -155,6 +158,8 @@ export interface RuleRow {
 export class Org extends Context.Service<
   Org,
   {
+    /** the bulk door; also provided on its own tag for the plugins that only need it */
+    readonly provisioning: OrgProvisioning['Service']
     readonly changeNodeType: (
       tenantId: string,
       nodeId: string,
@@ -713,7 +718,90 @@ export const make = Effect.fn('Org.make')(function* () {
     )
   })
 
+  /**
+   * The bulk door a directory import materialises units through: reads of
+   * the grammar and the tree, one child created on the caller's own
+   * transaction under the authority the single creation asks for, and one
+   * leaf taken away when nothing uses it.
+   */
+  const asRef = (node: {
+    id: string
+    parentId: string | null
+    orgTypeId: string
+    name: string
+    path: string
+    depth: number
+  }): OrgNodeRef => ({
+    id: node.id,
+    parentId: node.parentId,
+    orgTypeId: node.orgTypeId,
+    name: node.name,
+    path: node.path,
+    depth: node.depth,
+  })
+  const provisioning: OrgProvisioning['Service'] = {
+    rootNode: (tenantId) =>
+      withDb(rootNode(tenantId)).pipe(
+        Effect.orDie,
+        Effect.map((node) => (node ? asRef(node) : null)),
+      ),
+    nodesById: (tenantId, ids) =>
+      withDb(nodesById(tenantId, ids)).pipe(
+        Effect.orDie,
+        Effect.map((nodes) => nodes.map(asRef)),
+      ),
+    childNamed: (tenantId, parentId, name) =>
+      withDb(childNamed(tenantId, parentId, name)).pipe(
+        Effect.orDie,
+        Effect.map((node) => (node ? asRef(node) : null)),
+      ),
+    types: (tenantId) =>
+      withDb(listTypes(tenantId)).pipe(
+        Effect.orDie,
+        Effect.map((rows) => rows.map((row) => ({ id: row.id, name: row.name, sortOrder: row.sortOrder }))),
+      ),
+    rules: (tenantId) =>
+      withDb(listRules(tenantId)).pipe(
+        Effect.orDie,
+        Effect.map((rows) =>
+          rows.map((row) => ({ parentTypeId: row.parentTypeId, childTypeId: row.childTypeId })),
+        ),
+      ),
+    createChild: (tenantId, input, as) =>
+      createNode(tenantId, input, as).pipe(
+        Effect.map((node) =>
+          asRef({
+            id: node.id,
+            parentId: node.parentId,
+            orgTypeId: node.orgTypeId,
+            name: node.name,
+            path: node.path,
+            depth: node.depth,
+          }),
+        ),
+        Effect.catchTags({
+          ORG_NODE_NOT_FOUND: () => new OrgNodeRefused({ reason: 'parent-missing' }),
+          ORG_TYPE_NOT_FOUND: () => new OrgNodeRefused({ reason: 'type-missing' }),
+          ORG_NODE_RULE_VIOLATION: () => new OrgNodeRefused({ reason: 'rule' }),
+          ORG_NODE_CONFLICT: () => new OrgNodeRefused({ reason: 'duplicate' }),
+          ORG_NODE_IN_USE: () => new OrgNodeRefused({ reason: 'other' }),
+        }),
+      ),
+    deleteUnused: (tenantId, nodeId, as) =>
+      deleteNode(tenantId, nodeId, as).pipe(
+        Effect.map(() => 'deleted' as const),
+        Effect.catchTags({
+          ORG_NODE_NOT_FOUND: () => Effect.succeed('missing' as const),
+          ORG_NODE_HAS_CHILDREN: () => Effect.succeed('has-children' as const),
+          ORG_NODE_IN_USE: () => Effect.succeed('in-use' as const),
+          ORG_NODE_IS_ROOT: () => Effect.succeed('in-use' as const),
+          ORG_NODE_CONFLICT: () => Effect.succeed('in-use' as const),
+        }),
+      ),
+  }
+
   return {
+    provisioning,
     changeNodeType,
     updateNode,
     deleteNode,
@@ -947,10 +1035,17 @@ export const make = Effect.fn('Org.make')(function* () {
  * that keeps the graph acyclic.
  */
 /** the service alone; the entry composes it with what the plugin registers */
-export const serviceLayer: Layer.Layer<Org, never, Orm | Rbac | Placement | Audit> = Layer.effect(
-  Org,
-  make(),
-)
+export const serviceLayer: Layer.Layer<Org | OrgProvisioning, never, Orm | Rbac | Placement | Audit> =
+  Layer.effectContext(
+    Effect.gen(function* () {
+      const org = yield* make()
+      return Context.empty().pipe(
+        Context.add(Org, org),
+        // the port a directory import materialises units through
+        Context.add(OrgProvisioning, org.provisioning),
+      )
+    }),
+  )
 
 // --- api ---
 

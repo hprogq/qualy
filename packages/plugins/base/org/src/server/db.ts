@@ -254,6 +254,16 @@ export const oneNode = (tenantId: string, nodeId: string) =>
     nodeColumns(k).where('tenantId', '=', tenantId).where('id', '=', nodeId).executeTakeFirst(),
   )
 
+/** the child of a parent bearing exactly this name; names are unique under a parent */
+export const childNamed = (tenantId: string, parentId: string, name: string) =>
+  db.query((k) =>
+    nodeColumns(k)
+      .where('tenantId', '=', tenantId)
+      .where('parentId', '=', parentId)
+      .where('name', '=', name)
+      .executeTakeFirst(),
+  )
+
 export const rootNode = (tenantId: string) =>
   db.query((k) =>
     nodeColumns(k)

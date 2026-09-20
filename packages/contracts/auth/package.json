@@ -9,6 +9,7 @@
     ".": "./src/index.ts",
     "./login": "./src/login.ts",
     "./plugin": "./src/plugin.ts",
+    "./provisioning": "./src/provisioning.ts",
     "./session": "./src/session.ts",
     "./terms": "./src/terms.ts"
   },

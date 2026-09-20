@@ -1,7 +1,7 @@
 {
   "lockfileVersion": 2,
-  "manifestHash": "sha256:80b3cb77a86323d2d80c41529ac6da5e6aae542b38e1c195404d87f1c58e5c47",
-  "resolutionHash": "sha256:57c7057e68b2421ef0ba9497d23f1fb2a38227c4601179f18ea278e186dad9e2",
+  "manifestHash": "sha256:cdf6e1a29184acddabd3d574cca4bde2784a6572d74693f56c682f1928514c5f",
+  "resolutionHash": "sha256:51c426bbc95446ab00d7e3868c0b73a5f09e106b7170dbe5156705f289cc5e40",
   "plugins": {
     "@qualy/plugin-assessment": {
       "version": "0.0.0",
@@ -162,6 +162,25 @@
       "version": "0.0.0",
       "state": "active"
     },
+    "@qualy/plugin-directory-import": {
+      "version": "0.0.0",
+      "state": "active",
+      "contributions": {
+        "database": {
+          "entities": [
+            "DirectoryImport",
+            "DirectoryImportEvent",
+            "DirectoryImportNode",
+            "DirectoryImportRow"
+          ],
+          "dependsOn": [
+            "@qualy/plugin-auth",
+            "@qualy/plugin-org",
+            "@qualy/plugin-rbac"
+          ]
+        }
+      }
+    },
     "@qualy/plugin-layout-default": {
       "version": "0.0.0",
       "state": "active"
@@ -313,6 +332,7 @@
           "@qualy/plugin-assessment",
           "@qualy/plugin-assessment-formula",
           "@qualy/plugin-audit",
+          "@qualy/plugin-directory-import",
           "@qualy/plugin-ping",
           "@qualy/plugin-settings"
         ]
@@ -342,6 +362,7 @@
       "@qualy/plugin-auth",
       "@qualy/plugin-auth-local",
       "@qualy/plugin-database",
+      "@qualy/plugin-directory-import",
       "@qualy/plugin-layout-default",
       "@qualy/plugin-org",
       "@qualy/plugin-rbac",

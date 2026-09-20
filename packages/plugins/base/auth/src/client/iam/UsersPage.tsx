@@ -1,14 +1,8 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { usersPageActions, type UsersPageActionsContext } from '@qualy/ui-contract'
 import { useEffect, useMemo, useState } from 'react'
 import { Building2Icon, PlusIcon, SearchIcon, UserRoundIcon } from 'lucide-react'
-import {
-  PageLink,
-  useApi,
-  useRunApi,
-  useApiQuery,
-  usePageQueryState,
-  cursorPages,
-} from '@qualy/web-runtime'
+import { PageLink, useApi, useRunApi, useApiQuery, usePageQueryState, cursorPages, UiSlot } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
@@ -316,12 +310,22 @@ export default function UsersPage() {
       description={format(m.usersHint)}
       size="wide"
       actions={
-        active?.manageable && (
-          <Button size="sm" onClick={() => setCreating(true)}>
-            <PlusIcon aria-hidden />
-            {format(m.newUser)}
-          </Button>
-        )
+        <>
+          {/* whatever else can be done with people as a whole, by whoever
+              offers it: an import, an export */}
+          <UiSlot
+            token={usersPageActions}
+            context={
+              { anchorNodeId: active?.orgNodeId ?? null } satisfies UsersPageActionsContext
+            }
+          />
+          {active?.manageable && (
+            <Button size="sm" onClick={() => setCreating(true)}>
+              <PlusIcon aria-hidden />
+              {format(m.newUser)}
+            </Button>
+          )}
+        </>
       }
     >
       {options.isError && <Feedback message={formatError(options.error)} />}

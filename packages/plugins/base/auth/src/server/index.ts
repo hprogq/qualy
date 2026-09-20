@@ -1,4 +1,5 @@
 import { Context, Effect, Layer } from 'effect'
+import { UserProvisioning } from '@qualy/auth-contract/provisioning'
 import { Placement, UserPlacement } from '@qualy/auth-contract'
 import type { Principal } from '@qualy/rbac-contract'
 import { withDatabase, type Orm } from '@qualy/plugin-database/server'
@@ -82,17 +83,22 @@ export const make = Effect.fn('Auth.make')(function* () {
  * One construction provides both tags, so the port org holds and the surface
  * auth's own handlers use come from the same state rather than two.
  */
-const tags: Layer.Layer<Placement | UserPlacement | Iam, never, Orm | Rbac | Audit> =
-  Layer.effectContext(
-    Effect.gen(function* () {
-      const { placement, userPlacement, iam } = yield* make()
-      return Context.empty().pipe(
-        Context.add(Placement, placement),
-        Context.add(UserPlacement, userPlacement),
-        Context.add(Iam, iam),
-      )
-    }),
-  )
+const tags: Layer.Layer<
+  Placement | UserPlacement | UserProvisioning | Iam,
+  never,
+  Orm | Rbac | Audit
+> = Layer.effectContext(
+  Effect.gen(function* () {
+    const { placement, userPlacement, iam } = yield* make()
+    return Context.empty().pipe(
+      Context.add(Placement, placement),
+      Context.add(UserPlacement, userPlacement),
+      // the bulk door a directory import provisions through
+      Context.add(UserProvisioning, iam.users.provisioning),
+      Context.add(Iam, iam),
+    )
+  }),
+)
 
 /**
  * What this plugin contributes.
@@ -107,7 +113,7 @@ export { config } from './auth-config.ts'
 
 /** the services alone; the entry composes them with what the plugin registers */
 export const serviceLayer: Layer.Layer<
-  Placement | UserPlacement | Iam | Authenticated | Viewer | SignIn | LoginSessions,
+  Placement | UserPlacement | UserProvisioning | Iam | Authenticated | Viewer | SignIn | LoginSessions,
   never,
   Orm | Rbac | Audit | AuthConfig | LoginDrivers
 > = Layer.mergeAll(tags, sessionLayer, viewerLayer, signInLayer)

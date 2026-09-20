@@ -402,6 +402,21 @@ export interface PeopleImportContext {
  * covers, not the whole tree - and gets the same tree rendering everywhere
  * either way.
  */
+/**
+ * Where the users screen offers whatever else can be done with people as a
+ * whole: an import, an export. Rendered beside its own create button; a
+ * contribution gets the unit the reader is looking at, when there is one.
+ */
+export const usersPageActions = defineUiSlot({
+  key: 'iam/users-actions',
+  cardinality: 'many',
+})
+
+export interface UsersPageActionsContext {
+  /** the unit the list is anchored at, or null while none is chosen */
+  readonly anchorNodeId: string | null
+}
+
 export const orgNodePicker = defineUiSlot({
   key: 'iam/org-node-picker',
   cardinality: 'one',

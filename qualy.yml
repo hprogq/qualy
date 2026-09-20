@@ -63,3 +63,4 @@ plugins:
       # false to close it again - questions already bound keep running.
       authoring: true
   '@qualy/plugin-settings': {}
+  '@qualy/plugin-directory-import': {}

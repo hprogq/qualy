@@ -1,4 +1,5 @@
 import { likeContains } from '@qualy/api-kit/schema'
+import { UserProvisioning, UserProvisioningRefused } from '@qualy/auth-contract/provisioning'
 import { Effect } from 'effect'
 import { kyselyOf, query, transaction, withDatabase } from '@qualy/plugin-database/server'
 import { translateConstraints } from '@qualy/plugin-database/server/constraints'
@@ -6,7 +7,7 @@ import { db, type Db, lockTenant, userTypeGuard } from './db.ts'
 import { sql } from 'kysely'
 import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
 import { scopeCoverage, type AuthorizationScope, type Principal } from '@qualy/rbac-contract'
-import { placementAllowed } from './placement.ts'
+import { placementAllowed, placementLegal } from './placement.ts'
 import { Audit } from '@qualy/audit-contract/effect'
 import { actorOf } from './audit-actor.ts'
 import {
@@ -69,6 +70,57 @@ const userGuard = (tenantId: string, userId: string) =>
       .where('u.tenantId', '=', tenantId)
       .where('u.id', '=', userId)
       .executeTakeFirst(),
+  )
+
+/** whether this kind of person may stand at a unit of this type, judged from the type alone */
+const placementAllowedAtType = (tenantId: string, userTypeId: string, orgTypeId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('UserType as t')
+        .where('t.tenantId', '=', tenantId)
+        .where('t.id', '=', userTypeId)
+        .select((eb) =>
+          placementLegal(
+            {
+              isSystem: eb.ref('t.isSystem'),
+              placementMode: eb.ref('t.placementMode'),
+              tenantId: eb.ref('t.tenantId'),
+              id: eb.ref('t.id'),
+            },
+            sql<string>`${orgTypeId}::uuid`,
+            sql<boolean>`false`,
+          ).as('legal'),
+        )
+        .executeTakeFirst(),
+    )
+    .pipe(
+      Effect.orDie,
+      Effect.map((row) => row?.legal),
+    )
+
+/** the people carrying any of these identifiers, deleted ones included */
+const usersByBusinessNo = (tenantId: string, businessNos: readonly string[]) =>
+  db.query((k) =>
+    businessNos.length === 0
+      ? Promise.resolve([])
+      : k
+          .selectFrom('User')
+          .select(['id', 'businessNo', 'displayName', 'userTypeId', 'primaryOrgNodeId', 'enabled', 'deletedAt'])
+          .where('tenantId', '=', tenantId)
+          .where('businessNo', 'in', businessNos)
+          .execute()
+          .then((rows) =>
+            rows.map((row) => ({
+              id: row.id,
+              businessNo: row.businessNo ?? '',
+              displayName: row.displayName,
+              userTypeId: row.userTypeId,
+              primaryOrgNodeId: row.primaryOrgNodeId,
+              enabled: row.enabled,
+              deleted: row.deletedAt !== null,
+            })),
+          ),
   )
 
 const orgNodeExists = (tenantId: string, orgNodeId: string) =>
@@ -643,6 +695,157 @@ export const make = Effect.fn('Iam.users.make')(function* () {
   const readable = (scope: { read: { tenantWide: boolean; anchors: readonly unknown[] } }) =>
     scope.read.tenantWide || scope.read.anchors.length > 0
 
+  /**
+   * The bulk door, for a directory import: many people judged the way one
+   * is, on the caller's transaction, every creation and every retirement
+   * audited exactly as the single-user path audits it.
+   */
+  const provisioning: UserProvisioning['Service'] = {
+    byBusinessNo: (tenantId, businessNos) =>
+      withDb(usersByBusinessNo(tenantId, businessNos)).pipe(Effect.orDie),
+    userType: (tenantId, userTypeId) =>
+      withDb(userTypeGuard(tenantId, userTypeId)).pipe(
+        Effect.orDie,
+        Effect.map((row) =>
+          row === undefined
+            ? null
+            : { id: row.id, name: row.name, enabled: row.enabled, isSystem: row.isSystem },
+        ),
+      ),
+    placementAllowedAtType: (tenantId, userTypeId, orgTypeId) =>
+      withDb(placementAllowedAtType(tenantId, userTypeId, orgTypeId)),
+    createUsers: Effect.fn('Iam.users.createMany')(function* (tenantId, rows, as) {
+      return yield* write(tenantId, () =>
+        Effect.gen(function* () {
+          // authority once per node, not once per row: a class of forty is
+          // one node, and the answer cannot differ between its rows
+          for (const nodeId of new Set(rows.map((row) => row.primaryOrgNodeId))) {
+            yield* manages(as, nodeId)
+          }
+          // every row judged before any is written, so a refusal names a
+          // row and the transaction has nothing to undo
+          const types = new Map<string, TypeRow>()
+          for (const [index, row] of rows.entries()) {
+            let type = types.get(row.userTypeId)
+            if (type === undefined) {
+              const found = yield* userTypeGuard(tenantId, row.userTypeId)
+              if (!found) return yield* new UserProvisioningRefused({ index, reason: 'type-missing' })
+              types.set(row.userTypeId, found)
+              type = found
+            }
+            if (!type.enabled) return yield* new UserProvisioningRefused({ index, reason: 'type-disabled' })
+            if (type.isSystem) return yield* new UserProvisioningRefused({ index, reason: 'type-system' })
+          }
+          const placements = new Map<string, boolean | undefined>()
+          for (const [index, row] of rows.entries()) {
+            const key = `${row.userTypeId}:${row.primaryOrgNodeId}`
+            if (!placements.has(key)) {
+              placements.set(
+                key,
+                yield* placementAllowed(tenantId, row.userTypeId, row.primaryOrgNodeId),
+              )
+            }
+            const legal = placements.get(key)
+            if (legal === undefined) {
+              return yield* new UserProvisioningRefused({ index, reason: 'node-missing' })
+            }
+            if (!legal) return yield* new UserProvisioningRefused({ index, reason: 'placement' })
+          }
+          const actor = yield* actorOf(tenantId, as)
+          const created: { index: number; id: string }[] = []
+          for (const [index, row] of rows.entries()) {
+            const inserted = yield* insertUser({
+              tenantId,
+              displayName: row.displayName,
+              userTypeId: row.userTypeId,
+              primaryOrgNodeId: row.primaryOrgNodeId,
+              businessNo: row.businessNo,
+            }).pipe(
+              translateConstraints({
+                uq_users_tenant_business_no: () =>
+                  new UserProvisioningRefused({ index, reason: 'conflict' }),
+              }),
+            )
+            yield* audit.record(UserCreated, {
+              tenantId,
+              actor,
+              target: { id: inserted.id, label: row.displayName },
+              details: { userTypeId: row.userTypeId, orgNodeId: row.primaryOrgNodeId },
+            })
+            created.push({ index, id: inserted.id })
+          }
+          return created
+        }),
+      ).pipe(
+        // the one constraint the write can meet that names a unit: a node
+        // that vanished between the judgement and the insert
+        Effect.catchTag(
+          'USER_PLACEMENT_NOT_FOUND',
+          () => new UserProvisioningRefused({ index: 0, reason: 'node-missing' }),
+        ),
+      )
+    }),
+    retireUsers: Effect.fn('Iam.users.retireMany')(function* (tenantId, userIds, as) {
+      return yield* write(tenantId, () =>
+        Effect.gen(function* () {
+          let retired = 0
+          let skipped = 0
+          const actor = yield* actorOf(tenantId, as)
+          for (const userId of userIds) {
+            const user = yield* userGuard(tenantId, userId)
+            // gone already, by somebody's hand or a previous act: nothing to do
+            if (!user || user.deletedAt !== null || user.isSystem || user.primaryOrgNodeId === null) {
+              skipped += 1
+              continue
+            }
+            // the single-user path's two steps, with its two authorities
+            yield* manages(as, user.primaryOrgNodeId)
+            if (!(yield* rbac.canAt(as, 'auth.user.delete', user.primaryOrgNodeId))) {
+              return yield* new AccessDenied({ reason: 'not allowed to delete users here' })
+            }
+            if (user.enabled) {
+              yield* setUserEnabled(tenantId, user.id, false)
+              yield* audit.record(UserDisabled, {
+                tenantId,
+                actor,
+                target: { id: user.id, label: user.displayName },
+                details: {},
+              })
+            }
+            const revokedGrants = yield* rbac.revokeAllGrantsOfUser(tenantId, user.id, as.userId)
+            const revokedIdentities = yield* revokeUserIdentities(tenantId, user.id, as.userId)
+            const endedSessions = yield* deleteUserSessions(tenantId, user.id)
+            yield* markUserDeleted(tenantId, user.id)
+            yield* audit.record(UserDeletedAction, {
+              tenantId,
+              actor,
+              target: { id: user.id, label: user.displayName },
+              organizationId: user.primaryOrgNodeId,
+              details: {
+                userTypeId: user.userTypeId,
+                orgNodeId: user.primaryOrgNodeId,
+                revokedGrants,
+                revokedIdentities,
+                endedSessions,
+              },
+            })
+            retired += 1
+          }
+          // read after the writes: the tenant must still be able to sign in
+          if (retired > 0) yield* rbac.assertTenantKeepsAdministrator(tenantId)
+          return { retired, skipped }
+        }),
+      ).pipe(
+        // a retirement writes no unit, so the write's own placement
+        // translation cannot fire here; the type still names it
+        Effect.catchTag(
+          'USER_PLACEMENT_NOT_FOUND',
+          () => new AccessDenied({ reason: 'the unit this person stands at is gone' }),
+        ),
+      )
+    }),
+  }
+
   /** the same effect, with this layer's database supplied */
   const bound =
     <Args extends unknown[], A, E, R>(fn: (...args: Args) => Effect.Effect<A, E, R>) =>
@@ -650,6 +853,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
       withDb(fn(...args))
 
   return {
+    provisioning,
     list: bound(
       Effect.fn('Iam.users.list')(function* (
         principal: Principal,

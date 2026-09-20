@@ -1,0 +1,73 @@
+# 用户批量导入（Directory Import）
+
+状态：v1 已落地（2026-09-20）。设计讨论见 docs/refactor-temp.md（用户笔记，不入库）的用户导入部分；本文是落地后的定案。
+
+## 一句话
+
+**一次导入 = 一份 Excel + 一个工作表 + 一套字段映射 + 一条固定的组织类型链。** Import 是一次不可抹去的批量操作记录；Reverse 对它创建的用户执行正式删除语义；Node cleanup 对它创建、现在无人使用的组织节点做可重试的垃圾回收。
+
+## 分层
+
+```text
+@qualy/spreadsheet                 xlsx 引擎：archive 守卫、限额、openWorkbook / sheetsOf / readTable / cellText、列号换算
+                                   （从 assessment 的 administrative-import 抽出；统一认定的模板协议仍留在 assessment）
+@qualy/org-contract/effect         OrgProvisioning 端口：rootNode / nodesById / childNamed / types / rules /
+                                   createChild（调用方事务内，走 org 自己的 createNode 与审计）/ deleteUnused（各自事务）
+@qualy/auth-contract/provisioning  UserProvisioning 端口：byBusinessNo / userType / placementAllowedAtType /
+                                   createUsers（调用方事务内，逐节点验权、逐行判定、逐行审计）/ retireUsers（disable → deleted 全套后果）
+@qualy/plugin-directory-import     编排：上传票据、inspect、mapping、preview、commit、记录、撤销、清理；页面与 users 页的「导入用户」按钮
+```
+
+directory-import 不自己判断组织规则、站位、权限；它经端口问 org / auth / rbac / storage，服务图仍是无环的。
+
+## 组织链
+
+- 映射 = `anchorNodeId`（每一行都归在它之下，缺省为租户根）+ 若干 `{orgTypeId, column}` 层级（顺序不限）。
+- 服务端在所选类型诱导出的子图里求**唯一**顺序：每一步只允许一个「没有被其他所选类型作为子类型」且「当前类型可直接下挂」的类型；两个候选是分叉（`chain-ambiguous`），零个是缺层（`chain-broken`）。绝不借未选择的类型补路径。
+- 类型链属于整个 Import：每一行都必须填满每一级（`org-level-required`），终点类型相同；节点按（父节点，名称）逐级复用或创建，同名异类型是冲突（`node-type-conflict`）。
+- 固定前缀就是 anchor 的祖先链，来自节点自己的 parent 链，不读 Excel。
+
+## 用户
+
+- 编号（`authTerms.businessNumber` 所指的 `businessNo`）必填、文件内唯一；姓名必填；人员类型整批一个。
+- 已存在且姓名 / 类型 / 组织一致 → `existing`，跳过；不一致 → `user-conflict`（列出不同的字段）；已删除 → `user-deleted`。**不做导入即更新，不做导入即恢复。**
+- 有任一错误行整批拒绝（`USER_IMPORT_INVALID`），不做部分成功。
+
+## Preview / Commit
+
+- 文件在事务外读取（`@qualy/spreadsheet`），判定在 `plan()` 中完成：先按 mapping 求链、验证列存在、人员类型可用且可站在链尾类型、`auth.user.manage` 覆盖 anchor（有节点要建时另需 `org.tree.manage`），再折叠期望树、逐级 childNamed、批量 byBusinessNo。
+- `planFingerprint` = attachment 内容 hash + sheet/headerRow/type/链/anchor + 将建节点 + 将建/已存在的编号集合 + 错误数。Commit 在 `lockTenant` 事务内重跑 plan，指纹不同即 `USER_IMPORT_PLAN_CHANGED`。
+- Commit：父先子后 `createChild` → `createUsers` → `storage.bind` → 写 directory_imports / rows / nodes → 审计 `directory.import.commit`。任一失败整体回滚。`(tenant_id, source_attachment_id)` 唯一：同一份上传只能导入一次（`USER_IMPORT_SOURCE_USED`）。
+
+## 记录与撤销
+
+- 表：`directory_imports`（映射与链快照、计数、anchor）、`directory_import_rows`（行 → 用户，disposition created|existing）、`directory_import_nodes`（节点，disposition created|reused，orgNodeId 不设外键）、`directory_import_events`（reversed | nodes-cleaned）。不提供删除记录。
+- 读取权限：anchor 在读者 `auth.user.manage` 范围内（列表用 `scopeCoverage` 下推）。
+- Reverse：只处理 disposition=created 且仍在的用户，经 `retireUsers`（每人 disable → 撤销授权 → 撤销登录 → 结束会话 → deleted，逐人审计，最后 `assertTenantKeepsAdministrator`）；写 event 与审计 `directory.import.reverse`；已单独删除的跳过。需要 `auth.user.manage` + `auth.user.delete`（在 retireUsers 内逐人校验）。
+- Node cleanup：本次创建的节点按深度倒序，各自一个事务调用 org 的删除语义；有子节点 / 被引用的保留并列出原因；允许部分成功，可重复执行；写 event 与审计 `directory.import.clean-nodes`。
+
+## API（冻结在 frozen-routes）
+
+```text
+GET  /iam/user-import-options
+POST /iam/user-import-uploads
+POST /iam/user-import-uploads/{reservationId}/complete
+GET  /iam/user-import-uploads/{attachmentId}/workbook
+POST /iam/user-import-previews
+POST /iam/user-imports
+GET  /iam/user-imports
+GET  /iam/user-imports/{importId}
+GET  /iam/user-imports/{importId}/rows
+POST /iam/user-imports/{importId}/reversal-previews
+POST /iam/user-imports/{importId}/reversals
+POST /iam/user-imports/{importId}/node-cleanups
+```
+
+## 页面
+
+- `/organization/users/import`（五步：文件 → 工作表 → 列对应 → 预检 → 完成，右侧导入记录列表）；users 页经 `usersPageActions` 槽位放「导入用户」按钮并带上当前单位。
+- `/organization/users/imports/:importId`：概要、后续操作、组织单位、逐行（keyset 分页）、撤销（必填原因）、清理。
+
+## v1 不做
+
+原始文件下载与逐行脱敏投影、按行动态终点、多人员类型混导、导入即更新/同步、`OrgNode.externalKey`、删除导入记录、Excel 模板下载。
