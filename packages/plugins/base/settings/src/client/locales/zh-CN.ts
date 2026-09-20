@@ -7,7 +7,7 @@ export default {
   'settings/navigation/terminology': '术语库',
   'settings/audit/term-update': '修改术语',
   'settings/terminology/title': '术语库',
-  'settings/terminology/hint': '自定义本机构在界面中使用的业务称谓，留空的语言沿用系统默认',
+  'settings/terminology/hint': '设置本机构在界面中使用的业务术语，留空将沿用系统默认称谓。',
   'settings/terminology/empty': '当前没有可自定义的术语',
   'settings/terminology/load-failed': '术语暂时无法读取',
   'settings/terminology/loading': '正在读取术语',

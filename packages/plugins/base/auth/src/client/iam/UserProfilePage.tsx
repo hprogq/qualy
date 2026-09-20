@@ -22,6 +22,7 @@ import {
 } from '@qualy/ui/screen'
 import { iamMessages as m } from '../i18n.ts'
 import { authApi } from '../api.ts'
+import { PlacementPath } from './users/PlacementPath.tsx'
 
 // The person, stated: what the directory holds about them, and where each
 // of the other sections picks up. Editing is the banner's, because it edits
@@ -123,7 +124,7 @@ export default function UserProfilePage() {
                     </Status>
                   </DefLine>
                   <DefLine label={format(m.personPlacement)}>
-                    {path.length === 0 ? format(m.rolesNone) : path.map((node) => node.name).join(' / ')}
+                    <PlacementPath steps={path} empty={format(m.rolesNone)} />
                   </DefLine>
                   <DefLine label={format(m.accountsLabel)}>
                     {record.identityCount === 0

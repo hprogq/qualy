@@ -36,6 +36,10 @@ const moveNowhereMessage = defineMessage<{ type: string }>()({
   id: 'org/node/move-nowhere',
   defaultMessage: 'As the rules stand, no other unit may hold a {type}. Let another kind of unit hold it, and the places of that kind appear here.',
 })
+const rowAddBarredMessage = defineMessage<{ type: string }>()({
+  id: 'org/tree/row-add-barred',
+  defaultMessage: 'The rules let nothing stand under a {type}',
+})
 const namedTask = (id: string, defaultMessage: string) =>
   defineMessage<{ name: string }>()({ id, defaultMessage })
 const holdChildrenMessage = defineMessage<{ count: number }>()({
@@ -278,6 +282,7 @@ const i18n = definePluginMessages({
       defaultMessage: 'Everything under it moves along, and so does who administers it and its people',
     },
     rowAdd: namedTask('org/tree/row-add', 'New unit under {name}'),
+    rowAddBarred: rowAddBarredMessage,
     rowMore: namedTask('org/tree/row-more', 'More for {name}'),
     rowOpen: { id: 'org/tree/row-open', defaultMessage: 'Details' },
     collapseAll: { id: 'org/tree/collapse-all', defaultMessage: 'Collapse all' },

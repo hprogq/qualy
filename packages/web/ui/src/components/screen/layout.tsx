@@ -26,10 +26,11 @@ const styles = stylex.create({
     position: 'absolute',
     top: 0,
     bottom: 0,
-    right: -(GAP / 2) - 4,
+    right: -(GAP / 2) - 6,
     zIndex: 5,
     display: { default: 'flex', [breakpoints.phone]: 'none', [breakpoints.tablet]: 'none' },
-    width: 8,
+    width: 12,
+    alignItems: 'center',
     justifyContent: 'center',
     padding: 0,
     borderWidth: 0,
@@ -37,15 +38,33 @@ const styles = stylex.create({
     cursor: 'col-resize',
     touchAction: 'none',
   },
-  grip: {
+  // A pill standing in the middle of the boundary, always drawn: a boundary
+  // that shows itself only under the pointer is one nobody knows can move.
+  // The line the full height of it is the hover's, to say how far it reaches.
+  rule: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
     width: 2,
-    height: '100%',
     borderRadius: 1,
     backgroundColor: 'transparent',
     transitionProperty: 'background-color',
     transitionDuration: '150ms',
   },
-  gripLit: { backgroundColor: tokens.border },
+  ruleLit: { backgroundColor: tokens.border },
+  grip: {
+    position: 'sticky',
+    top: '45vh',
+    alignSelf: 'flex-start',
+    marginTop: '30vh',
+    width: 5,
+    height: 36,
+    borderRadius: 9999,
+    backgroundColor: `color-mix(in oklab, ${tokens.foreground} 22%, transparent)`,
+    transitionProperty: 'background-color',
+    transitionDuration: '150ms',
+  },
+  gripLit: { backgroundColor: `color-mix(in oklab, ${tokens.foreground} 55%, transparent)` },
   fill: { position: 'sticky', display: 'flex', minHeight: 0, flexDirection: 'column' },
 })
 
@@ -152,6 +171,7 @@ export function ResizableSplit({
             keep(next)
           }}
         >
+          <span aria-hidden {...stylex.props(styles.rule, (hover || dragging) && styles.ruleLit)} />
           <span aria-hidden {...stylex.props(styles.grip, (hover || dragging) && styles.gripLit)} />
         </button>
       </div>

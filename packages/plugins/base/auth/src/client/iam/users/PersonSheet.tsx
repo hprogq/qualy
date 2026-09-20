@@ -25,6 +25,7 @@ import {
 } from '@qualy/ui/screen'
 import { iamMessages as m } from '../../i18n.ts'
 import { authApi } from '../../api.ts'
+import { PlacementPath } from './PlacementPath.tsx'
 
 // One person, looked at without leaving the roster.
 //
@@ -174,7 +175,7 @@ export function PersonSheet({
                 {person.user.userType?.name ?? '—'}
               </DefLine>
               <DefLine label={format(m.personPlacement)}>
-                {person.orgPath.map((node) => node.name).join(' / ') || '—'}
+                <PlacementPath steps={person.orgPath} empty="—" />
               </DefLine>
               <DefLine label={format(m.accountsLabel)}>
                 <span

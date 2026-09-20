@@ -129,6 +129,7 @@ const styles = stylex.create({
     transitionDuration: '120ms',
   },
   actsShown: { opacity: 1 },
+  barred: { opacity: 0.35, cursor: 'not-allowed' },
 })
 
 export function TreeTable({
@@ -201,10 +202,16 @@ export function TreeTable({
               aria-expanded={!collapsed.has(node.id)}
               aria-label={`${format(m.foldBranch)} ${node.name}`}
               {...stylex.props(styles.twistie)}
-              onClick={() => {
+              onClick={(event) => {
                 const next = new Set(collapsed)
                 if (!next.delete(node.id)) next.add(node.id)
                 setCollapsed(next)
+                // A pressed button keeps the focus, and a row holding the
+                // focus keeps its actions on show - so every branch folded by
+                // mouse left its buttons standing for good. A press made with
+                // a pointer gives the focus back; one made from the keyboard
+                // keeps it, and that row's actions with it.
+                if (event.detail > 0) event.currentTarget.blur()
               }}
             >
               {collapsed.has(node.id) ? (
@@ -236,13 +243,23 @@ export function TreeTable({
           {under.toLocaleString()}
         </span>
         <span {...stylex.props(styles.acts, openId === node.id && styles.actsShown)}>
-          {node.manageable && canHold(node) && (
+          {node.manageable && (
+            // always there, so the column of rows reads the same down the
+            // tree; where the rules let nothing stand under this kind it is
+            // dimmed and says why, rather than missing without a word
             <Button
               size="icon-xs"
               variant="ghost"
               aria-label={format(m.rowAdd, { name: node.name })}
+              aria-disabled={!canHold(node) || undefined}
+              title={canHold(node) ? undefined : format(m.rowAddBarred, { type: typeName(node.orgTypeId) })}
               data-row-action="create"
-              onClick={() => onTask({ kind: 'create', nodeId: node.id })}
+              data-barred={!canHold(node)}
+              className={stylex.props(!canHold(node) && styles.barred).className}
+              onClick={(event) => {
+                if (canHold(node)) onTask({ kind: 'create', nodeId: node.id })
+                if (event.detail > 0) event.currentTarget.blur()
+              }}
             >
               <PlusIcon aria-hidden />
             </Button>

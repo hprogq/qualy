@@ -13,7 +13,7 @@ import { commonMessages } from '@qualy/web-i18n/messages'
 import * as stylex from '@stylexjs/stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { AsyncSection, Feedback } from '@qualy/ui/admin'
-import { DetailSheet, EditorSkeleton, Screen, Segmented, Tag } from '@qualy/ui/screen'
+import { DetailSheet, EditorSkeleton, Screen, Segmented, Spacer, Tag } from '@qualy/ui/screen'
 import { useLingering } from '@qualy/ui/use-lingering'
 import { Button } from '@qualy/ui/button'
 import { orgMessages as m } from './i18n.ts'
@@ -181,6 +181,38 @@ export default function OrgPage() {
           titleAside={<Tag>{shape.types.find((type) => type.id === shown.orgTypeId)?.name ?? ''}</Tag>}
           closeLabel={format(commonMessages.close)}
           testId="node-sheet"
+          // what is done to the unit sits at the foot of its sheet, where a
+          // sheet's actions go; removing it stays in the body, at the end of
+          // the list that says whether it can be
+          footer={
+            shown.manageable ? (
+              <>
+                <Spacer />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setTask({ kind: 'rename', nodeId: shown.id })}
+                >
+                  {format(m.rename)}
+                </Button>
+                {shown.parentId !== null && shown.subtreeManageable && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setTask({ kind: 'move', nodeId: shown.id })}
+                  >
+                    {format(m.moveTo)}
+                  </Button>
+                )}
+                {shape.rules.some((rule) => rule.parentTypeId === shown.orgTypeId) && (
+                  <Button size="sm" onClick={() => setTask({ kind: 'create', nodeId: shown.id })}>
+                    <PlusIcon aria-hidden />
+                    {format(m.createChild)}
+                  </Button>
+                )}
+              </>
+            ) : undefined
+          }
         >
           <NodePanel
             key={shown.id}

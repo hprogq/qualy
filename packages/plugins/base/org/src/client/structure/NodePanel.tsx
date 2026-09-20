@@ -211,41 +211,43 @@ export function NodePanel({
             </Fragment>
           ))}
         </nav>
+        {!inSheet && (
         <div {...stylex.props(styles.headRow)}>
-          {!inSheet && (
-            <>
-              <h2 {...stylex.props(styles.headName)}>{node.name}</h2>
-              <Tag>{typeName(node.orgTypeId)}</Tag>
-            </>
-          )}
-          <span {...stylex.props(styles.spacer)} />
-          {node.manageable && (
-            <>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => onTask({ kind: 'rename', nodeId: node.id })}
-              >
-                {format(m.rename)}
-              </Button>
-              {!isRoot && node.subtreeManageable && (
+            {!inSheet && (
+              <>
+                <h2 {...stylex.props(styles.headName)}>{node.name}</h2>
+                <Tag>{typeName(node.orgTypeId)}</Tag>
+              </>
+            )}
+            <span {...stylex.props(styles.spacer)} />
+            {node.manageable && (
+              <>
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => onTask({ kind: 'move', nodeId: node.id })}
+                  onClick={() => onTask({ kind: 'rename', nodeId: node.id })}
                 >
-                  {format(m.moveTo)}
+                  {format(m.rename)}
                 </Button>
-              )}
-              {allowedChildTypes.length > 0 && (
-                <Button size="sm" onClick={() => onTask({ kind: 'create', nodeId: node.id })}>
-                  <PlusIcon aria-hidden />
-                  {format(m.createChild)}
-                </Button>
-              )}
-            </>
-          )}
-        </div>
+                {!isRoot && node.subtreeManageable && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onTask({ kind: 'move', nodeId: node.id })}
+                  >
+                    {format(m.moveTo)}
+                  </Button>
+                )}
+                {allowedChildTypes.length > 0 && (
+                  <Button size="sm" onClick={() => onTask({ kind: 'create', nodeId: node.id })}>
+                    <PlusIcon aria-hidden />
+                    {format(m.createChild)}
+                  </Button>
+                )}
+              </>
+            )}
+          </div>
+        )}
 
         {retyping && (
           <form

@@ -207,7 +207,8 @@ export default function UserDetailHeader() {
           },
           {
             label: format(m.personPlacement),
-            value: (user.data?.orgPath ?? []).map((node) => node.name).join(' / ') || '—',
+            // the unit itself: the whole way down to it is on the profile below
+            value: user.data?.orgPath.at(-1)?.name ?? '—',
           },
           {
             label: format(m.accountsLabel),

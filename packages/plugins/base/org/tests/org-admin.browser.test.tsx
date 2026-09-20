@@ -342,8 +342,11 @@ describe('the organization screen', () => {
     expect(create).toHaveBeenCalledWith({
       payload: { parentId: COLLEGE, orgTypeId: CLASS_TYPE, name: '软件2302班' },
     })
-    // a class may hold nothing, so its row offers no way to add under it
-    expect(await page.getByRole('button', { name: '在软件2301班下新建组织' }).elements()).toHaveLength(0)
+    // a class may hold nothing: the way to add under it is there and barred,
+    // so the column reads the same down the tree and says why
+    await expect
+      .element(page.getByRole('button', { name: '在软件2301班下新建组织' }))
+      .toHaveAttribute('data-barred', 'true')
   })
 
   it('opens a branch without folding it, and folds only from the twistie', async () => {
