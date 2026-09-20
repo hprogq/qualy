@@ -19247,3 +19247,39 @@ B 放开这几条外键、只在进行中的批次上拦删除;C 维持。现在
 - 审核页三栏:左右两栏可拖拽调宽(各有上下限,中间栏保底 288px),键盘左右键微调,双击恢复默认,宽度记在本机;默认比例改为更均匀(参考信息栏略窄)。
 - 待审核 Sheet 的「返回待审核列表」加快捷键 B(Esc 仍是关闭 Sheet,与其他浮层一致);右栏隐藏评审依据后多出的分隔线去掉。
 - 验收:`review-layout review-recognition` → `Tests 27 passed (27)`(含新增拖拽上下限用例);assessment client `tsc --noEmit` `exit 0`;catalogs 门禁通过。本段未重跑全量。
+
+## Batch D 收尾:本地草稿、最终认定值、统一认定模态框、名单与结果合并(2026-09-21 续四)
+
+### 做了什么
+
+- **审核草稿存本机(IndexedDB)**:`qualy-assessment-local` / `drafts`,键 `<轮次>:<动作>`。通过(认定值 + 调整说明 + 审核意见)、退回(事由 + 意见 + 建议稿)、补材料(说明 + 要求项)三处都存;
+  面板重开时自动恢复并显示「已恢复 X 在本机填写、尚未提交的内容 · 重新填写」;动作提交即删除;工作台打开时清扫 30 天以上的残留。
+  组件关闭本来就不丢(`useLingering` 保持挂载),这一层挡的是刷新、关标签页、浏览器重启。**测试纪律**:该库按 origin 共享,浏览器套件多文件并行,
+  所以 `review-recognition` 每个用例取新的轮次 id(沿用 formula 那次事故的结论),并直接读写 store 断言往返。
+- **我的申报展示最终认定值**:`EntryView` 增加 `recognition`(当前生效的认定 + **判定它的那一版题目的冻结 schema**,浏览器据此把不透明 id 变成字段名与选项文字),
+  在 `getEntry` 与 `listMyEntries` 两条参评人读路径上计算;按 §32.85 只给最终一轮,审核人姓名受同一道阶段开关遮蔽。申报详情新增「认定结果」区块,判定的是旧版本材料时标注。
+- **日期题「校验材料时间范围」**:`inMaterialRange` 选项,默认关。关闭时该字段只受自己的 min/max 约束(入学日期这类本就在批次窗口之外),
+  打开时才叠加批次材料期,`date-window-empty` 的配置期拦截也只对打开的字段生效;填报表单的日期选择器同步——前端直接不给越界的日子。
+- **统一认定模态框**:删掉「这一栏是计分公式的取值…」整段旁注与「可以修改」;认定区下方**实时计分预览**(新端点 `POST /assessment/batches/{batchId}/record-determination-previews`,
+  只算一条认定、不解析名单、不写任何东西),公式拒绝在此拦下并挡住「下一步」;提交后的重置推迟到面板关闭之后(此前关闭动画中会闪回「选择项目」);
+  「选择参评人员」放宽到 62rem、「按组织选择」52rem;**按组织选择时列出人员**(`UnitRoster`,游标翻页),确认前就能看到「选了 2 年级」等于哪些人。
+- **审核工作列表骨架屏**:按真实的分组框架画(开关条 + 两个分组头 + 行),不再是一条平铺列表。
+- **参评名单与参评结果合并成一页**:`assessment/batch-participants` 页与其导航项删除,`RosterPanel`、`BatchParticipantsPage` 删除;
+  「参评结果」页接手加人、从组织导入(对话框原样搬入)与列表;停用/恢复移到**个人账户页顶栏**(那里才说得清停用会留下什么);
+  左侧组织树改用用户页同款 `ResizableSplit`(可拖拽、记在本机)。
+
+### 验收(实际执行)
+
+- `pnpm typecheck`:`exit 0`。
+- `pnpm test`:第一次 `Test Files 5 failed | 253 passed | 21 skipped (279)`,6 条全是 30s/60s 超时;这 5 个文件单独重跑 `Test Files 5 passed (5)`,`Tests 80 passed (80)`,判定为并发负载下的超时。
+- `pnpm test:browser`:第一次 4 个 apps/web 文件 `SyntaxError: Identifier 'filterPickedTags' has already been declared`——vite 依赖预打包缓存在本轮增删文件后失效(`@mantine/core` 被重复预打包),
+  与改动无关;`rm -rf node_modules/.vite apps/web/node_modules/.vite` 后全量重跑 **`Test Files 65 passed (65)`,`Tests 493 passed (493)`**。
+- `pnpm qualy database verify`(上一节跑过,本节无迁移改动)。
+- 新端点已登记 `frozen-routes.ts`;`catalogs` / `error-codes` / `effect-api-parity` / `browser-contract` / `client-paths` 门禁通过。
+
+### 未做与下一步
+
+- 软删除的跨插件端到端测试(reporter 与 `held` 判定串起来)仍缺。
+- 审核人可见性:服务端两态已有测试,浏览器侧「关闭时界面不出现姓名」尚无用例。
+- `typeHasNodes` 仍把回收站里的单位算作「类型在用」(外键如此),界面未单独说明。
+- 移动端 2a–2l 其余专门版式;用户详情分区导航的记录数徽标。
