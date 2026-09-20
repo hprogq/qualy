@@ -1,6 +1,8 @@
 import type { MessageCatalog } from '@qualy/i18n-contract'
 
 export default {
+  'assessment/node-usage/managed-archived': '由该组织管理的已归档批次',
+  'assessment/node-usage/participants-archived': '参评人员记录在该组织的已归档批次',
   'assessment/node-usage/managed': '由该组织管理的批次',
   'assessment/node-usage/participants': '参评人员记录在该组织的批次',
   'assessment/audit/batch-create': '新建测评批次',

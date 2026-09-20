@@ -532,6 +532,14 @@ export interface OrgNodePickerContext {
   /** shown as a toggle when given: this unit only, or everything under it */
   scope?: 'self' | 'subtree'
   onScopeChange?: (scope: 'self' | 'subtree') => void
+  /**
+   * Units that are shown and cannot be chosen, each with why in a word.
+   *
+   * For choosing where something may go: the tree is only readable whole, so
+   * a place that is not allowed stays in it, saying why it is not, rather
+   * than leaving a hole where the reader expected to find it.
+   */
+  disabled?: Readonly<Record<string, string>>
   /** when absent, the picker offers everything the reader may administer */
   nodes?: readonly {
     id: string

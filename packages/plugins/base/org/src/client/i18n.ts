@@ -32,6 +32,12 @@ const peopleCountMessage = defineMessage<{ count: number }>()({
   defaultMessage: '{count, plural, =0 {nobody} one {# person} other {# people}}',
 })
 
+const moveNowhereMessage = defineMessage<{ type: string }>()({
+  id: 'org/node/move-nowhere',
+  defaultMessage: 'As the rules stand, no other unit may hold a {type}. Let another kind of unit hold it, and the places of that kind appear here.',
+})
+const namedTask = (id: string, defaultMessage: string) =>
+  defineMessage<{ name: string }>()({ id, defaultMessage })
 const holdChildrenMessage = defineMessage<{ count: number }>()({
   id: 'org/node/hold-children',
   defaultMessage: '{count, plural, one {# unit} other {# units}} under it: move or remove them first',
@@ -256,6 +262,24 @@ const i18n = definePluginMessages({
     newTypeTitle: { id: 'org/type/new', defaultMessage: 'New type' },
     save: { id: 'org/action/save', defaultMessage: 'Save' },
     expandAll: { id: 'org/tree/expand-all', defaultMessage: 'Expand all' },
+    createUnder: namedTask('org/node/create-under', 'New unit under {name}'),
+    renameNamed: namedTask('org/node/rename-named', 'Rename {name}'),
+    moveNamed: namedTask('org/node/move-named', 'Move {name} to'),
+    moveBarredSelf: { id: 'org/node/move-barred-self', defaultMessage: 'the unit being moved' },
+    moveBarredBelow: { id: 'org/node/move-barred-below', defaultMessage: 'under the unit being moved' },
+    moveNowhere: moveNowhereMessage,
+    moveNowhereTitle: { id: 'org/node/move-nowhere-title', defaultMessage: 'There is nowhere to move it' },
+    moveNowhereRules: { id: 'org/node/move-nowhere-rules', defaultMessage: 'See the rules for this kind' },
+    moveBarredCurrent: { id: 'org/node/move-barred-current', defaultMessage: 'its parent now' },
+    moveBarredType: { id: 'org/node/move-barred-type', defaultMessage: 'cannot hold this kind' },
+    moveBarredReach: { id: 'org/node/move-barred-reach', defaultMessage: 'not yours to manage' },
+    moveConsequence: {
+      id: 'org/node/move-consequence',
+      defaultMessage: 'Everything under it moves along, and so does who administers it and its people',
+    },
+    rowAdd: namedTask('org/tree/row-add', 'New unit under {name}'),
+    rowMore: namedTask('org/tree/row-more', 'More for {name}'),
+    rowOpen: { id: 'org/tree/row-open', defaultMessage: 'Details' },
     collapseAll: { id: 'org/tree/collapse-all', defaultMessage: 'Collapse all' },
     holdNoChildren: { id: 'org/node/hold-no-children', defaultMessage: 'No units under it' },
     holdChildren: holdChildrenMessage,
@@ -270,6 +294,15 @@ const i18n = definePluginMessages({
     holdLine: holdLineMessage,
     holdExamplesMore: holdExamplesMoreMessage,
     holdGo: { id: 'org/node/hold-go', defaultMessage: 'Go there' },
+    holdLook: { id: 'org/node/hold-look', defaultMessage: 'Look' },
+    holdKept: {
+      id: 'org/node/hold-kept',
+      defaultMessage: 'Kept as history, and cannot be cleared',
+    },
+    holdVerdictKept: {
+      id: 'org/node/hold-verdict-kept',
+      defaultMessage: 'This unit carries history that cannot be cleared, so it cannot be removed.',
+    },
     holdVerdictClear: {
       id: 'org/node/hold-verdict-clear',
       defaultMessage: 'Nothing holds this unit in place. Removing it cannot be undone.',

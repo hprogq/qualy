@@ -4,7 +4,6 @@ import { HistoryIcon, UploadIcon } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
 import { FormDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
-import { DetailSheet } from '@qualy/ui/screen'
 import { useLingering } from '@qualy/ui/use-lingering'
 import type { UsersPageActionsContext } from '@qualy/ui-contract'
 import { directoryImportMessages as m } from './i18n.ts'
@@ -14,9 +13,9 @@ import { ImportRecords, ImportWizard } from './ImportWizard.tsx'
 // Importing people, from the roster and without leaving it.
 //
 // The import itself is a task with an end, so it is a dialog over the page
-// it adds to. What was imported before is reference, so it is a sheet at the
-// side - and one record opens as a second sheet over the list it was picked
-// from, which is still there when the record is put away.
+// it adds to. What was imported before is a list to look through, which is
+// also a dialog; one record opens as a sheet beside it, and the list is still
+// there when the record is put away.
 
 const styles = stylex.create({
   actions: { display: 'inline-flex', alignItems: 'center', gap: 8 },
@@ -73,15 +72,14 @@ export default function ImportUsersAction({ context }: { context: UsersPageActio
         />
       </FormDialog>
 
-      <DetailSheet
+      <FormDialog
         open={listing}
-        onClose={() => setListing(false)}
+        size="wide"
         title={format(m.recordsTitle)}
-        closeLabel={format(m.recordClose)}
-        testId="import-records-sheet"
+        onClose={() => setListing(false)}
       >
         <ImportRecords onOpen={setRecordId} />
-      </DetailSheet>
+      </FormDialog>
 
       {shown !== null && (
         <ImportRecordSheet

@@ -1,10 +1,19 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
+import { CheckIcon, CopyIcon, UserRoundIcon, XIcon } from 'lucide-react'
+import { peoplePicker, type PeoplePickerContext } from '@qualy/ui-contract'
 import * as stylex from '@stylexjs/stylex'
-import { useApi, useApiQuery, usePageQueryState, useRunApi, cursorPages } from '@qualy/web-runtime'
+import {
+  UiSlot,
+  useApi,
+  useApiQuery,
+  usePageQueryState,
+  useRunApi,
+  cursorPages,
+} from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import { AsyncSection } from '@qualy/ui/admin'
+import { AsyncSection, FormDialog } from '@qualy/ui/admin'
 import { Card, CardEmpty, CardFoot, FootNote, Screen, Spacer, Status } from '@qualy/ui/screen'
 import { Button } from '@qualy/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
@@ -100,7 +109,41 @@ const styles = stylex.create({
     paddingBlock: 12,
     fontSize: 12,
   },
-  detailName: { color: tokens.mutedForeground },
+  detailName: { color: tokens.mutedForeground, paddingTop: 2 },
+  // a value and the way to take it elsewhere: these are read in order to be
+  // pasted into a ticket, a log search, another screen
+  valueRow: { display: 'flex', minWidth: 0, alignItems: 'flex-start', gap: 6 },
+  valueText: { minWidth: 0, flexGrow: 1, paddingTop: 2 },
+  copy: {
+    display: 'inline-flex',
+    width: 20,
+    height: 20,
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 0,
+    borderWidth: 0,
+    borderRadius: 5,
+    backgroundColor: { default: 'transparent', ':hover': tokens.surfaceMuted },
+    color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
+    cursor: 'pointer',
+  },
+  copyGlyph: { width: 12, height: 12 },
+  quietId: { color: tokens.mutedForeground },
+  actorFilter: { maxWidth: '14rem' },
+  actorWord: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  pickerSeat: { minHeight: '20rem' },
+  inlineAction: {
+    padding: 0,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+    fontFamily: 'inherit',
+    fontSize: 'inherit',
+    color: tokens.mutedForeground,
+    cursor: 'pointer',
+    textDecorationLine: { default: 'none', ':hover': 'underline' },
+    textUnderlineOffset: 3,
+  },
   detailValue: { margin: 0, minWidth: 0 },
   // correlation ids are copied into other systems, so they are read glyph
   // by glyph rather than as words
@@ -151,6 +194,8 @@ export default function AuditEventsPage() {
   const [action, setAction] = usePageQueryState('action')
   const [outcome, setOutcome] = usePageQueryState('outcome')
   const [openId, setOpenId] = useState('')
+  const [actor, setActor] = usePageQueryState('actor')
+  const [pickingActor, setPickingActor] = useState(false)
 
   const options = useQuery(query.audit.getAuditEventOptions.queryOptions({}))
 
@@ -158,6 +203,7 @@ export default function AuditEventsPage() {
     outcome === 'success' || outcome === 'denied' || outcome === 'failure' ? outcome : undefined
   const filter = {
     ...(action ? { actionCode: action } : {}),
+    ...(actor ? { actorUserId: actor } : {}),
     ...(outcomeFilter !== undefined ? { outcome: outcomeFilter } : {}),
   }
   const events = useInfiniteQuery({
@@ -221,6 +267,26 @@ export default function AuditEventsPage() {
             <SelectItem value="failure">{format(m.outcomeFailure)}</SelectItem>
           </SelectContent>
         </Select>
+        {actor === '' ? (
+          <Button size="sm" variant="outline" onClick={() => setPickingActor(true)}>
+            <UserRoundIcon aria-hidden />
+            {format(m.anyActor)}
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            variant="outline"
+            className={stylex.props(styles.actorFilter).className}
+            data-testid="actor-filter"
+            data-actor={actor}
+            onClick={() => setActor('')}
+          >
+            <span {...stylex.props(styles.actorWord)}>
+              {rows.find((row) => row.actorUserId === actor)?.actorLabel ?? format(m.oneActor)}
+            </span>
+            <XIcon aria-hidden />
+          </Button>
+        )}
       </div>
 
       <AsyncSection
@@ -271,54 +337,68 @@ export default function AuditEventsPage() {
                       </span>
                     </button>
                     {row.id === openId && (
-                      <dl {...stylex.props(styles.detail)}>
-                        <dt {...stylex.props(styles.detailName)}>{format(m.detailSource)}</dt>
-                        <dd {...stylex.props(styles.detailValue)}>{row.source}</dd>
+                      <dl {...stylex.props(styles.detail)} data-testid="audit-detail">
+                        <Detail label={format(m.columnActor)} copy={row.actorUserId ?? undefined}>
+                          {actorOf(row)}
+                          {row.actorUserId !== null && (
+                            <>
+                              {' '}
+                              <button
+                                type="button"
+                                {...stylex.props(styles.inlineAction)}
+                                onClick={() => setActor(row.actorUserId ?? '')}
+                              >
+                                {format(m.onlyThisActor)}
+                              </button>
+                            </>
+                          )}
+                        </Detail>
+                        {(row.targetLabel !== null || row.targetId !== null) && (
+                          <Detail
+                            label={format(m.columnTarget)}
+                            copy={row.targetId ?? row.targetLabel ?? undefined}
+                          >
+                            {row.targetLabel ?? row.targetId}
+                            {row.targetLabel !== null && row.targetId !== null && (
+                              <span {...stylex.props(styles.quietId, styles.mono)}> {row.targetId}</span>
+                            )}
+                          </Detail>
+                        )}
+                        <Detail label={format(m.detailSource)}>{row.source}</Detail>
                         {row.reasonCode && (
-                          <>
-                            <dt {...stylex.props(styles.detailName)}>{format(m.detailReason)}</dt>
-                            <dd {...stylex.props(styles.detailValue, styles.mono, styles.bad)}>
-                              {row.reasonCode}
-                            </dd>
-                          </>
+                          <Detail label={format(m.detailReason)} copy={row.reasonCode} mono bad>
+                            {row.reasonCode}
+                          </Detail>
                         )}
                         {row.requestId && (
-                          <>
-                            <dt {...stylex.props(styles.detailName)}>{format(m.detailRequest)}</dt>
-                            <dd {...stylex.props(styles.detailValue, styles.mono)}>
-                              {row.requestId}
-                            </dd>
-                          </>
+                          <Detail label={format(m.detailRequest)} copy={row.requestId} mono>
+                            {row.requestId}
+                          </Detail>
                         )}
                         {row.traceId && (
-                          <>
-                            <dt {...stylex.props(styles.detailName)}>{format(m.detailTrace)}</dt>
-                            <dd {...stylex.props(styles.detailValue, styles.mono)}>
-                              {row.traceId}
-                            </dd>
-                          </>
+                          <Detail label={format(m.detailTrace)} copy={row.traceId} mono>
+                            {row.traceId}
+                          </Detail>
+                        )}
+                        {row.clientIp && (
+                          <Detail label={format(m.columnIp)} copy={row.clientIp} mono>
+                            {row.clientIp}
+                          </Detail>
                         )}
                         {row.userAgent && (
-                          <>
-                            <dt {...stylex.props(styles.detailName)}>
-                              {format(m.detailUserAgent)}
-                            </dt>
-                            <dd
-                              {...stylex.props(styles.detailValue, styles.ellipsis, styles.agent)}
-                            >
-                              {row.userAgent}
-                            </dd>
-                          </>
+                          <Detail label={format(m.detailUserAgent)} copy={row.userAgent} quiet>
+                            {row.userAgent}
+                          </Detail>
                         )}
                         {Object.keys(row.details).length > 0 && (
-                          <>
-                            <dt {...stylex.props(styles.detailName)}>{format(m.detailDetails)}</dt>
-                            <dd {...stylex.props(styles.detailValue)}>
-                              <pre {...stylex.props(styles.pre)}>
-                                {JSON.stringify(row.details, null, 2)}
-                              </pre>
-                            </dd>
-                          </>
+                          <Detail
+                            label={format(m.detailDetails)}
+                            copy={JSON.stringify(row.details, null, 2)}
+                          >
+                            <pre {...stylex.props(styles.pre)}>
+                              {JSON.stringify(row.details, null, 2)}
+                            </pre>
+                          </Detail>
                         )}
                       </dl>
                     )}
@@ -347,6 +427,87 @@ export default function AuditEventsPage() {
           </CardFoot>
         </Card>
       </AsyncSection>
+      <FormDialog
+        open={pickingActor}
+        size="medium"
+        title={format(m.pickActor)}
+        onClose={() => setPickingActor(false)}
+      >
+        <div {...stylex.props(styles.pickerSeat)}>
+          <UiSlot
+            token={peoplePicker}
+            context={
+              {
+                value: actor === '' ? [] : [actor],
+                onChange: (ids) => {
+                  setActor(ids[0] ?? '')
+                  setPickingActor(false)
+                },
+                single: true,
+              } satisfies PeoplePickerContext
+            }
+            fallback={<p {...stylex.props(styles.detailName)}>{format(m.pickActorUnavailable)}</p>}
+          />
+        </div>
+      </FormDialog>
     </Screen>
+  )
+}
+
+/** one line of an opened event: what it is, what it says, and the way to copy it */
+function Detail({
+  label,
+  copy,
+  mono = false,
+  bad = false,
+  quiet = false,
+  children,
+}: {
+  label: string
+  /** what goes to the clipboard; a line with nothing worth pasting has no button */
+  copy?: string | undefined
+  mono?: boolean
+  bad?: boolean
+  quiet?: boolean
+  children: ReactNode
+}) {
+  const { format } = useI18n()
+  const [copied, setCopied] = useState(false)
+  return (
+    <>
+      <dt {...stylex.props(styles.detailName)}>{label}</dt>
+      <dd {...stylex.props(styles.detailValue, styles.valueRow)}>
+        <span
+          {...stylex.props(
+            styles.valueText,
+            mono && styles.mono,
+            bad && styles.bad,
+            quiet && styles.agent,
+          )}
+        >
+          {children}
+        </span>
+        {copy !== undefined && (
+          <button
+            type="button"
+            aria-label={format(m.copyValue, { label })}
+            data-copied={copied}
+            {...stylex.props(styles.copy)}
+            onClick={() => {
+              void navigator.clipboard.writeText(copy).then(() => {
+                setCopied(true)
+                setTimeout(() => setCopied(false), 1500)
+              })
+            }}
+          >
+            {copied ? (
+              <CheckIcon aria-hidden {...stylex.props(styles.copyGlyph)} />
+            ) : (
+              <CopyIcon aria-hidden {...stylex.props(styles.copyGlyph)} />
+            )}
+          </button>
+        )}
+      </dd>
+    </>
   )
 }

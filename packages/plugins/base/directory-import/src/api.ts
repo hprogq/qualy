@@ -3,8 +3,8 @@ import { HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
 import {
   BadRequest,
   boundedText,
-  pageOf,
-  pageQuery,
+  numberedPageOf,
+  numberedPageQuery,
   trimmedName,
   uuidInput,
 } from '@qualy/api-kit/schema'
@@ -276,8 +276,10 @@ export const directoryApiGroup = HttpApiGroup.make('directory')
   )
   .add(
     HttpApiEndpoint.get('listUserImports', '/iam/user-imports', {
-      query: Schema.Struct({ ...pageQuery }),
-      success: pageOf(importSummary),
+      // walked by page number: somebody looking for last term's import goes
+      // to the last page, not through every one before it
+      query: Schema.Struct({ ...numberedPageQuery }),
+      success: numberedPageOf(importSummary),
       error: [AccessDenied, BadRequest],
     }).middleware(Authenticated),
   )
@@ -295,8 +297,8 @@ export const directoryApiGroup = HttpApiGroup.make('directory')
   .add(
     HttpApiEndpoint.get('listUserImportRows', '/iam/user-imports/:importId/rows', {
       params: Schema.Struct({ importId: uuidInput }),
-      query: Schema.Struct({ ...pageQuery }),
-      success: pageOf(importRow),
+      query: Schema.Struct({ ...numberedPageQuery }),
+      success: numberedPageOf(importRow),
       error: [UserImportNotFound, AccessDenied, BadRequest],
     }).middleware(Authenticated),
   )

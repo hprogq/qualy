@@ -132,6 +132,8 @@ export const orgApiGroup = HttpApiGroup.make('org')
             kind: Schema.String,
             label: UiTextSchema,
             count: Schema.Number,
+            /** whether anything the reader can do makes it go away */
+            clearable: Schema.Boolean,
             examples: Schema.Array(Schema.String),
             target: Schema.NullOr(
               Schema.Struct({

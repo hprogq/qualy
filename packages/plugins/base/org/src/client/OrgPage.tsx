@@ -1,7 +1,13 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { PlusIcon } from 'lucide-react'
-import { useApi, useRunApi, useApiQuery, usePageQueryState } from '@qualy/web-runtime'
+import {
+  useApi,
+  useRunApi,
+  useApiQuery,
+  usePageQueryState,
+  usePageQueryUpdate,
+} from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import * as stylex from '@stylexjs/stylex'
@@ -13,6 +19,7 @@ import { Button } from '@qualy/ui/button'
 import { orgMessages as m } from './i18n.ts'
 import { orgApi } from './api.ts'
 import { shapeOf, type Run } from './shape.ts'
+import { NodeDialogs, type NodeTask } from './structure/NodeDialogs.tsx'
 import { NodePanel } from './structure/NodePanel.tsx'
 import { TreeTable } from './structure/TreeTable.tsx'
 import { NewTypeDialog } from './types/NewTypeDialog.tsx'
@@ -41,6 +48,9 @@ export default function OrgPage() {
   const [selectedTypeId, setSelectedTypeId] = usePageQueryState('type')
   const [feedback, setFeedback] = useState<string | null>(null)
   const [creatingType, setCreatingType] = useState(false)
+  const [task, setTask] = useState<NodeTask | null>(null)
+  // two address keys in one write: separate writes from one press race
+  const writeAddress = usePageQueryUpdate()
 
   const treeQuery = useQuery(query.org.getTree.queryOptions({ query: {} }))
   const typesQuery = useQuery(query.org.listTypes.queryOptions())
@@ -158,6 +168,7 @@ export default function OrgPage() {
             onOpen={setSelectedId}
             headcountOf={headcountOf}
             headcountKnown={headcountsKnown}
+            onTask={setTask}
           />
         )}
       </AsyncSection>
@@ -180,12 +191,21 @@ export default function OrgPage() {
             run={run}
             onOpen={setSelectedId}
             onDeleted={() => setSelectedId('')}
+            onTask={setTask}
             headcount={headcountOf(shown.id)}
             headcountOf={headcountOf}
             headcountKnown={headcountsKnown}
           />
         </DetailSheet>
       )}
+      <NodeDialogs
+        task={task}
+        shape={shape}
+        api={api}
+        run={run}
+        onDone={() => setTask(null)}
+        onOpenRules={(orgTypeId) => writeAddress({ view: 'types', type: orgTypeId, node: '' })}
+      />
       <NewTypeDialog
         open={creatingType}
         api={api}

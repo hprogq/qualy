@@ -1,8 +1,12 @@
-import { definePluginMessages } from '@qualy/i18n-contract'
+import { defineMessage, definePluginMessages } from '@qualy/i18n-contract'
 
 // The audit screen's own words, plus the labels the server sends by
 // reference: the permission this plugin declares and the navigation entry.
 
+const copyValueMessage = defineMessage<{ label: string }>()({
+  id: 'audit/detail/copy',
+  defaultMessage: 'Copy {label}',
+})
 const i18n = definePluginMessages({
   namespace: 'audit',
   messages: {
@@ -15,6 +19,15 @@ const i18n = definePluginMessages({
       defaultMessage: 'Audit',
     },
     navGroup: { id: 'audit/nav-group/records', defaultMessage: 'Audit' },
+    anyActor: { id: 'audit/filter/any-actor', defaultMessage: 'Anybody' },
+    oneActor: { id: 'audit/filter/one-actor', defaultMessage: 'One person' },
+    pickActor: { id: 'audit/filter/pick-actor', defaultMessage: 'Whose operations' },
+    pickActorUnavailable: {
+      id: 'audit/filter/pick-actor-unavailable',
+      defaultMessage: 'People cannot be looked up here. Open an event and choose its actor instead.',
+    },
+    onlyThisActor: { id: 'audit/detail/only-this-actor', defaultMessage: 'Only this person' },
+    copyValue: copyValueMessage,
     navigation: {
       id: 'audit/navigation/events',
       defaultMessage: 'Audit log',

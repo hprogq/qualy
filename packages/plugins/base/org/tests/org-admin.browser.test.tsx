@@ -151,6 +151,9 @@ describe('the organization screen', () => {
     })
 
     await page.getByRole('button', { name: '移动到' }).click()
+    // no unit picker is installed in this harness, so the dialog falls back
+    // to the legal places by name - the same set the picker would leave live
+    await expect.element(page.getByTestId('node-task')).toHaveAttribute('data-task', 'move')
     await page.getByRole('combobox', { name: '移动到' }).click()
     const listbox = page.getByRole('listbox')
     await expect.element(listbox).toBeVisible()
@@ -255,6 +258,7 @@ describe('the organization screen', () => {
             kind: 'people',
             label: { kind: 'literal' as const, value: '在该组织的用户' },
             count: 12,
+            clearable: true,
             examples: ['张明远', '李文静'],
             target: null,
           },
@@ -292,10 +296,13 @@ describe('the organization screen', () => {
       .element(page.getByTestId('child-row'))
       .toHaveAttribute('data-node-name', '软件2301班')
 
-    // a college may hold classes and nothing else, so the create control
-    // offers exactly that - the rule never gets a chance to become an error
+    // a college may hold classes and nothing else, so the dialog offers
+    // exactly that - already chosen, since there is nothing to choose between -
+    // and the rule never gets a chance to become an error
     await page.getByRole('button', { name: '新建子节点' }).click()
-    await page.getByRole('combobox', { name: '选择类型' }).click()
+    const task = page.getByTestId('node-task')
+    await expect.element(task).toHaveAttribute('data-task', 'create')
+    await task.getByRole('combobox').click()
     await expect.element(page.getByRole('listbox')).toBeVisible()
     await vi.waitFor(() =>
       expect(page.getByRole('option').elements(), 'exactly the one legal child type').toHaveLength(
@@ -303,8 +310,8 @@ describe('the organization screen', () => {
       ),
     )
     await page.getByRole('option', { name: '班级' }).click()
-    await page.getByRole('textbox', { name: '名称' }).fill('软件2302班')
-    await page.getByRole('button', { name: '创建' }).click()
+    await task.getByRole('textbox', { name: '名称' }).fill('软件2302班')
+    await page.getByRole('button', { name: '创建', exact: true }).click()
     await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(1))
     expect(create).toHaveBeenCalledWith({
       payload: { parentId: COLLEGE, orgTypeId: CLASS_TYPE, name: '软件2302班' },
@@ -314,6 +321,31 @@ describe('the organization screen', () => {
   // Reading a unit and folding its branch are different errands, and the
   // rail used to do both on one press: choosing a college to look at it
   // folded the college away, taking the classes under it off the screen.
+  // What is done to a unit is offered on its own row, so adding a class to a
+  // college does not start with opening the college.
+  it('starts a task from the unit\'s own row, without opening the unit', async () => {
+    const create = vi.fn(() => Effect.succeed({ id: 'created' }))
+    const client = world()
+    renderScreen({
+      client: fakeClient({ ...client, org: { ...client.org, createNode: create } }),
+      route: '/admin/org',
+      children: <OrgPage />,
+    })
+    await page.getByRole('button', { name: '在软件学院下新建组织' }).click()
+    const task = page.getByTestId('node-task')
+    await expect.element(task).toHaveAttribute('data-task', 'create')
+    // the unit itself stayed shut
+    expect(document.querySelector('[data-testid="node-sheet"]')).toBeNull()
+    await task.getByRole('textbox', { name: '名称' }).fill('软件2302班')
+    await page.getByRole('button', { name: '创建', exact: true }).click()
+    await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(1))
+    expect(create).toHaveBeenCalledWith({
+      payload: { parentId: COLLEGE, orgTypeId: CLASS_TYPE, name: '软件2302班' },
+    })
+    // a class may hold nothing, so its row offers no way to add under it
+    expect(await page.getByRole('button', { name: '在软件2301班下新建组织' }).elements()).toHaveLength(0)
+  })
+
   it('opens a branch without folding it, and folds only from the twistie', async () => {
     renderScreen({ client: fakeClient(world()), route: '/admin/org', children: <OrgPage /> })
 

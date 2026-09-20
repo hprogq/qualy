@@ -3,6 +3,12 @@ import type { MessageCatalog } from '@qualy/i18n-contract'
 export default {
   'audit/permission/event-read': '查看审计日志',
   'audit/permission-group/audit': '审计',
+  'audit/filter/any-actor': '全部操作人',
+  'audit/filter/one-actor': '指定操作人',
+  'audit/filter/pick-actor': '选择操作人',
+  'audit/filter/pick-actor-unavailable': '当前无法查找人员，可展开一条记录后选择只看此人',
+  'audit/detail/only-this-actor': '只看此人',
+  'audit/detail/copy': '复制{label}',
   'audit/nav-group/records': '审计',
   'audit/navigation/events': '审计日志',
   'audit/events/title': '审计日志',

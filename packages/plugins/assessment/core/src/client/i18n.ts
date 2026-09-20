@@ -380,6 +380,14 @@ const i18n = definePluginMessages({
       id: 'assessment/node-usage/managed',
       defaultMessage: 'Rounds administered from here',
     },
+    nodeUsageManagedArchived: {
+      id: 'assessment/node-usage/managed-archived',
+      defaultMessage: 'Archived rounds administered from here',
+    },
+    nodeUsageParticipantsArchived: {
+      id: 'assessment/node-usage/participants-archived',
+      defaultMessage: 'Archived rounds whose participants were recorded here',
+    },
     nodeUsageParticipants: {
       id: 'assessment/node-usage/participants',
       defaultMessage: 'Rounds whose participants were recorded here',

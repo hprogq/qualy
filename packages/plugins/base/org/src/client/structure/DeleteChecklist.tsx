@@ -49,6 +49,7 @@ const styles = stylex.create({
   words: { display: 'flex', minWidth: 0, flexGrow: 1, flexDirection: 'column', gap: 2 },
   what: { fontSize: 13 },
   which: { fontSize: 12, lineHeight: 1.5, color: tokens.mutedForeground },
+  kept: { color: tokens.warningForeground },
   way: {
     flexShrink: 0,
     fontSize: 12,
@@ -137,7 +138,13 @@ export function DeleteChecklist({
           </li>
         ) : (
           held.map((one) => (
-            <li key={one.kind} {...stylex.props(styles.line)} data-hold={one.kind} data-count={one.count}>
+            <li
+              key={one.kind}
+              {...stylex.props(styles.line)}
+              data-hold={one.kind}
+              data-count={one.count}
+              data-clearable={one.clearable}
+            >
               <span {...stylex.props(styles.mark, styles.markHeld)}>
                 <XIcon aria-hidden {...stylex.props(styles.glyph)} />
               </span>
@@ -145,6 +152,9 @@ export function DeleteChecklist({
                 <span {...stylex.props(styles.what)}>
                   {format(m.holdLine, { label: formatText(one.label), count: one.count })}
                 </span>
+                {!one.clearable && (
+                  <span {...stylex.props(styles.which, styles.kept)}>{format(m.holdKept)}</span>
+                )}
                 {one.examples.length > 0 && (
                   <span {...stylex.props(styles.which)}>
                     {one.count > one.examples.length
@@ -155,7 +165,7 @@ export function DeleteChecklist({
               </span>
               {one.target !== null && (
                 <Way pageId={one.target.pageId} params={one.target.params} search={one.target.search}>
-                  {format(m.holdGo)}
+                  {format(one.clearable ? m.holdGo : m.holdLook)}
                 </Way>
               )}
             </li>
@@ -164,7 +174,13 @@ export function DeleteChecklist({
       </ul>
       <div {...stylex.props(styles.foot)}>
         <span {...stylex.props(styles.verdict)}>
-          {format(clear ? m.holdVerdictClear : m.holdVerdictHeld)}
+          {format(
+            clear
+              ? m.holdVerdictClear
+              : held.some((one) => !one.clearable)
+                ? m.holdVerdictKept
+                : m.holdVerdictHeld,
+          )}
         </span>
         <Button size="sm" variant="outline" disabled={!clear} onClick={onDelete}>
           {format(m.deleteNode)}

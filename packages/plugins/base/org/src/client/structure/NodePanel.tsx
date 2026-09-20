@@ -7,6 +7,7 @@ import { commonMessages } from '@qualy/web-i18n/messages'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { ConfirmDialog } from '@qualy/ui/admin'
 import { DeleteChecklist } from './DeleteChecklist.tsx'
+import type { NodeTask } from './NodeDialogs.tsx'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
@@ -112,6 +113,7 @@ export function NodePanel({
   headcountOf,
   headcountKnown,
   onDeleted,
+  onTask,
   inSheet = false,
 }: {
   node: OrgTreeNodeDto
@@ -127,6 +129,8 @@ export function NodePanel({
   headcountKnown: boolean
   /** the unit is gone; whoever frames this panel has nothing left to show */
   onDeleted?: () => void
+  /** a task on this unit, done in a dialog over the tree */
+  onTask: (task: NodeTask) => void
   /** the frame already says the unit's name and kind */
   inSheet?: boolean
 }) {
@@ -135,13 +139,6 @@ export function NodePanel({
   // the roster belongs to the users screen, which not every reader of the
   // tree may open: the way through is offered only where it leads somewhere
   const rosterReachable = usePageHref('auth/users') !== undefined
-  const [renaming, setRenaming] = useState(false)
-  const [name, setName] = useState(node.name)
-  const [moving, setMoving] = useState(false)
-  const [moveTargetId, setMoveTargetId] = useState('')
-  const [creating, setCreating] = useState(false)
-  const [childName, setChildName] = useState('')
-  const [childTypeId, setChildTypeId] = useState('')
   const [retyping, setRetyping] = useState(false)
   const [nextTypeId, setNextTypeId] = useState('')
   const [confirmingDelete, setConfirmingDelete] = useState(false)
@@ -224,16 +221,24 @@ export function NodePanel({
           <span {...stylex.props(styles.spacer)} />
           {node.manageable && (
             <>
-              <Button size="sm" variant="outline" onClick={() => setRenaming((now) => !now)}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => onTask({ kind: 'rename', nodeId: node.id })}
+              >
                 {format(m.rename)}
               </Button>
               {!isRoot && node.subtreeManageable && (
-                <Button size="sm" variant="outline" onClick={() => setMoving((now) => !now)}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onTask({ kind: 'move', nodeId: node.id })}
+                >
                   {format(m.moveTo)}
                 </Button>
               )}
               {allowedChildTypes.length > 0 && (
-                <Button size="sm" onClick={() => setCreating((now) => !now)}>
+                <Button size="sm" onClick={() => onTask({ kind: 'create', nodeId: node.id })}>
                   <PlusIcon aria-hidden />
                   {format(m.createChild)}
                 </Button>
@@ -242,58 +247,6 @@ export function NodePanel({
           )}
         </div>
 
-        {renaming && (
-          <form
-            {...stylex.props(styles.inlineForm)}
-            onSubmit={(event) => {
-              event.preventDefault()
-              void run(api.org.updateNode({ params: { nodeId: node.id }, payload: { name } })).then(
-                () => setRenaming(false),
-              )
-            }}
-          >
-            <Input
-              autoFocus
-              value={name}
-              aria-label={format(m.nameLabel)}
-              onChange={(event) => setName(event.target.value)}
-              wrapperClassName={stylex.props(styles.nameInput).className}
-            />
-            <Button size="sm" type="submit" disabled={name.trim() === '' || name === node.name}>
-              {format(m.save)}
-            </Button>
-          </form>
-        )}
-        {moving && (
-          <form
-            {...stylex.props(styles.inlineForm)}
-            onSubmit={(event) => {
-              event.preventDefault()
-              void run(
-                api.org.setNodePlacement({
-                  params: { nodeId: node.id },
-                  payload: { parentId: moveTargetId },
-                }),
-              ).then(() => setMoving(false))
-            }}
-          >
-            <Select value={moveTargetId} onValueChange={setMoveTargetId}>
-              <SelectTrigger aria-label={format(m.moveTo)} xstyle={styles.moveField}>
-                <SelectValue placeholder={format(m.selectParent)} />
-              </SelectTrigger>
-              <SelectContent>
-                {moveTargets.map((candidate) => (
-                  <SelectItem key={candidate.id} value={candidate.id}>
-                    {candidate.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button size="sm" type="submit" disabled={moveTargetId === ''}>
-              {format(m.move)}
-            </Button>
-          </form>
-        )}
         {retyping && (
           <form
             {...stylex.props(styles.inlineForm)}
@@ -417,49 +370,6 @@ export function NodePanel({
               )
             })}
           </Table>
-        )}
-        {creating && node.manageable && allowedChildTypes.length > 0 && (
-          <form
-            {...stylex.props(styles.createRow)}
-            onSubmit={(event) => {
-              event.preventDefault()
-              void run(
-                api.org.createNode({
-                  payload: { parentId: node.id, orgTypeId: childTypeId, name: childName },
-                }),
-              ).then(() => setChildName(''))
-            }}
-          >
-            <Input
-              autoFocus
-              value={childName}
-              placeholder={format(m.namePlaceholder)}
-              aria-label={format(m.namePlaceholder)}
-              onChange={(event) => setChildName(event.target.value)}
-              wrapperClassName={stylex.props(styles.draftInput).className}
-              className={stylex.props(styles.draftInput).className}
-            />
-            <Select value={childTypeId} onValueChange={setChildTypeId}>
-              <SelectTrigger aria-label={format(m.selectType)} xstyle={styles.kindField}>
-                <SelectValue placeholder={format(m.selectType)} />
-              </SelectTrigger>
-              <SelectContent>
-                {allowedChildTypes.map((type) => (
-                  <SelectItem key={type.id} value={type.id}>
-                    {type.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              size="sm"
-              type="submit"
-              className={stylex.props(styles.pinned).className}
-              disabled={childName.trim() === '' || childTypeId === ''}
-            >
-              {format(m.create)}
-            </Button>
-          </form>
         )}
       </Card>
 

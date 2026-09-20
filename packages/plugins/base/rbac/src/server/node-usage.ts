@@ -51,6 +51,7 @@ export const grantsAtNode: NodeUsageReporter<Orm> = {
               kind: 'grants',
               label: message('rbac/node-usage/grants', 'Role grants in force here'),
               count: await countOf(true),
+              clearable: true,
               examples: named.map((row) => `${row.displayName} ${row.roleName}`),
               // one holder's grants are withdrawn on their own record
               ...(named[0] === undefined
@@ -61,6 +62,7 @@ export const grantsAtNode: NodeUsageReporter<Orm> = {
               kind: 'grant-history',
               label: message('rbac/node-usage/grant-history', 'Withdrawn role grants kept as history'),
               count: await countOf(false),
+              clearable: false,
               examples: [],
             },
           ]

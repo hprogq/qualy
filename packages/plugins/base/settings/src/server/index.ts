@@ -141,6 +141,15 @@ const make = Effect.gen(function* () {
     } satisfies TerminologyView
   })
 
+  /** what a term is called after a write: the first override that says anything, else its default */
+  const termWord = (
+    term: { readonly defaults: Readonly<Record<string, string | undefined>> },
+    override: Readonly<Record<string, string | undefined>>,
+  ): string => {
+    const spoken = Object.values(override).find((word) => (word ?? '') !== '')
+    return spoken ?? Object.values(term.defaults).find((word) => (word ?? '') !== '') ?? ''
+  }
+
   const writeTerm: SettingsStore['Service']['writeTerm'] = Effect.fn('Settings.writeTerm')(
     function* (tenantId, settingId, input, as) {
       yield* rbac.require(as, MANAGE)
@@ -184,7 +193,10 @@ const make = Effect.gen(function* () {
             yield* audit.record(TermOverrideUpdated, {
               tenantId,
               actor: { kind: 'user', userId: as.userId },
-              target: { id: settingId },
+              // the word the tenant now uses, or the default it went back
+              // to: "auth/business-number" is this plugin's key for the term,
+              // and told a reader of the trail nothing
+              target: { id: settingId, label: termWord(term, next) },
               details: {
                 locales: Object.keys(next) as ('zh-CN' | 'en-US')[],
               },

@@ -1,8 +1,8 @@
 import { Effect } from 'effect'
 import { sql } from 'kysely'
 import { hashCanonicalJson } from '@qualy/value-schema/hash'
-import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
-import { cursorUnusable, pageSize, type BadRequest } from '@qualy/api-kit/schema'
+import { DEFAULT_PAGE_SIZE } from '@qualy/api-kit'
+import { pageNumber, pageSize, pageWindow, type BadRequest } from '@qualy/api-kit/schema'
 import type { Principal } from '@qualy/rbac-contract'
 import { scopeCoverage } from '@qualy/rbac-contract'
 import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
@@ -643,34 +643,19 @@ export const make = Effect.gen(function* () {
 
   const list = Effect.fn('DirectoryImport.list')(function* (
     tenantId: string,
-    page: { readonly cursor?: string; readonly limit?: string },
+    page: { readonly page?: string; readonly limit?: string },
     as: Principal,
   ) {
     const scope = yield* rbac.listAuthorizedScope(as, MANAGE)
     const limit = pageSize(page.limit, DEFAULT_PAGE_SIZE)
-    const key = readQueryCursor(page.cursor, 'directory-imports', ['timestamp', 'uuid'])
-    if (key === null) return yield* cursorUnusable()
+    const total = yield* dieQuery(withDb(importsCount({ tenantId, scope })))
+    const window = pageWindow(pageNumber(page.page), limit, total)
     const found = yield* dieQuery(
-      withDb(
-        importsPage({
-          tenantId,
-          scope,
-          ...(key === undefined ? {} : { after: [key[0]!, key[1]!] as const }),
-          limit: limit + 1,
-        }),
-      ),
+      withDb(importsPage({ tenantId, scope, offset: window.offset, limit })),
     )
-    const items = found.slice(0, limit)
-    const last = items.at(-1)
     const summaries = []
-    for (const row of items) summaries.push(yield* summaryOf(tenantId, row))
-    return {
-      items: summaries,
-      nextCursor:
-        found.length > limit && last
-          ? encodeQueryCursor('directory-imports', [last.cursorAt, last.id])
-          : null,
-    }
+    for (const row of found) summaries.push(yield* summaryOf(tenantId, row))
+    return { items: summaries, total, page: window.page, pageSize: limit }
   })
 
   const detail = Effect.fn('DirectoryImport.detail')(function* (
@@ -711,26 +696,20 @@ export const make = Effect.gen(function* () {
   const rows = Effect.fn('DirectoryImport.rows')(function* (
     tenantId: string,
     importId: string,
-    page: { readonly cursor?: string; readonly limit?: string },
+    page: { readonly page?: string; readonly limit?: string },
     as: Principal,
   ) {
     yield* reachable(tenantId, importId, as)
     const limit = pageSize(page.limit, DEFAULT_PAGE_SIZE)
-    const key = readQueryCursor(page.cursor, `directory-import-rows:${importId}`, ['text'])
-    if (key === null) return yield* cursorUnusable()
-    const found = yield* dieQuery(
-      withDb(
-        rowsPage({
-          tenantId,
-          importId,
-          ...(key === undefined || !/^\d+$/.test(key[0]!) ? {} : { after: Number(key[0]) }),
-          limit: limit + 1,
-        }),
-      ),
+    const total = yield* dieQuery(withDb(rowsCount(tenantId, importId)))
+    const window = pageWindow(pageNumber(page.page), limit, total)
+    const items = yield* dieQuery(
+      withDb(rowsPage({ tenantId, importId, offset: window.offset, limit })),
     )
-    const items = found.slice(0, limit)
-    const last = items.at(-1)
     return {
+      total,
+      page: window.page,
+      pageSize: limit,
       items: items.map((row) => ({
         sourceRowNo: row.sourceRowNo,
         userId: row.userId,
@@ -746,10 +725,6 @@ export const make = Effect.gen(function* () {
               ? 'active'
               : 'disabled') as 'active' | 'disabled' | 'deleted' | 'missing',
       })),
-      nextCursor:
-        found.length > limit && last
-          ? encodeQueryCursor(`directory-import-rows:${importId}`, [String(last.sourceRowNo)])
-          : null,
     }
   })
 
@@ -963,11 +938,11 @@ const importOf = (tenantId: string, importId: string) =>
 const importsPage = (input: {
   tenantId: string
   scope: Parameters<typeof scopeCoverage>[0]
-  after?: readonly [string, string] | undefined
+  offset: number
   limit: number
 }) =>
   db.query((k) => {
-    let query = importColumns(k)
+    const query = importColumns(k)
       .innerJoin('OrgNode as n', (join) =>
         join.onRef('n.tenantId', '=', 'i.tenantId').onRef('n.id', '=', 'i.anchorNodeId'),
       )
@@ -982,15 +957,33 @@ const importsPage = (input: {
       .orderBy('i.createdAt', 'desc')
       .orderBy('i.id', 'desc')
       .limit(input.limit)
-    if (input.after !== undefined) {
-      const [at, id] = input.after
-      query = query.where(
-        (eb) =>
-          sql<boolean>`(${eb.ref('i.createdAt')}, ${eb.ref('i.id')}) < (${at}::timestamptz, ${id}::uuid)`,
-      )
-    }
+      .offset(input.offset)
     return query.execute()
   })
+
+/** how many imports this reader can reach, for the page numbers */
+const importsCount = (input: {
+  tenantId: string
+  scope: Parameters<typeof scopeCoverage>[0]
+}) =>
+  db.query((k) =>
+    k
+      .selectFrom('DirectoryImport as i')
+      .innerJoin('OrgNode as n', (join) =>
+        join.onRef('n.tenantId', '=', 'i.tenantId').onRef('n.id', '=', 'i.anchorNodeId'),
+      )
+      .where('i.tenantId', '=', input.tenantId)
+      .where((eb) =>
+        scopeCoverage(input.scope, {
+          tenantId: eb.ref('n.tenantId'),
+          id: eb.ref('n.id'),
+          path: eb.ref('n.path'),
+        }),
+      )
+      .select((eb) => eb.fn.countAll<string>().as('count'))
+      .executeTakeFirstOrThrow()
+      .then((row) => Number(row.count)),
+  )
 
 const standingOf = (tenantId: string, importId: string) =>
   db.query((k) =>
@@ -1056,9 +1049,9 @@ const nodesOf = (tenantId: string, importId: string) =>
       .execute(),
   )
 
-const rowsPage = (input: { tenantId: string; importId: string; after?: number; limit: number }) =>
+const rowsPage = (input: { tenantId: string; importId: string; offset: number; limit: number }) =>
   db.query((k) => {
-    let query = k
+    const query = k
       .selectFrom('DirectoryImportRow as r')
       .leftJoin('User as u', (join) =>
         join.onRef('u.tenantId', '=', 'r.tenantId').onRef('u.id', '=', 'r.userId'),
@@ -1078,9 +1071,20 @@ const rowsPage = (input: { tenantId: string; importId: string; after?: number; l
       .where('r.importId', '=', input.importId)
       .orderBy('r.sourceRowNo', 'asc')
       .limit(input.limit)
-    if (input.after !== undefined) query = query.where('r.sourceRowNo', '>', input.after)
+      .offset(input.offset)
     return query.execute()
   })
+
+const rowsCount = (tenantId: string, importId: string) =>
+  db.query((k) =>
+    k
+      .selectFrom('DirectoryImportRow')
+      .where('tenantId', '=', tenantId)
+      .where('importId', '=', importId)
+      .select((eb) => eb.fn.countAll<string>().as('count'))
+      .executeTakeFirstOrThrow()
+      .then((row) => Number(row.count)),
+  )
 
 const livingCreatedUserIds = (tenantId: string, importId: string) =>
   db.query((k) =>

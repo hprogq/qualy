@@ -364,6 +364,31 @@ const holdsCanonicalAdmin = (tenantId: string, userId: string, canonicalKey: str
     )
     .pipe(Effect.map((row) => row !== undefined))
 
+/**
+ * What a grant is called in the trail: who, and as what.
+ *
+ * A grant has no name of its own, and its id told a reader of the audit log
+ * nothing - "withdrew 01a0b19f-..." had to be looked up to mean anything. The
+ * two names are a snapshot: the trail says what they were when it happened.
+ */
+const grantLabel = (tenantId: string, userId: string, roleId: string) =>
+  db
+    .query(async (k) => {
+      const user = await k
+        .selectFrom('User')
+        .select('displayName')
+        .where('tenantId', '=', tenantId)
+        .where('id', '=', userId)
+        .executeTakeFirst()
+      const role = await k
+        .selectFrom('Role')
+        .select('name')
+        .where('tenantId', '=', tenantId)
+        .where('id', '=', roleId)
+        .executeTakeFirst()
+      return `${user?.displayName ?? userId} / ${role?.name ?? roleId}`
+    })
+
 const oneGrant = (tenantId: string, grantId: string) =>
   db.query((k) =>
     k
@@ -818,7 +843,10 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
         yield* audit.record(GrantCreated, {
           tenantId,
           actor: actorOf(actor),
-          target: { id: created.id },
+          target: {
+            id: created.id,
+            label: yield* grantLabel(tenantId, input.userId, input.roleId),
+          },
           ...(input.target.kind === 'org-node' ? { organizationId: input.target.orgNodeId } : {}),
           details: {
             userId: input.userId,
@@ -915,7 +943,10 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
           yield* audit.record(GrantRevoked, {
             tenantId,
             actor: actorOf(actor),
-            target: { id: grantId },
+            target: {
+              id: grantId,
+              label: yield* grantLabel(tenantId, grant.userId, grant.roleId),
+            },
             ...(grant.orgNodeId === null ? {} : { organizationId: grant.orgNodeId }),
             details: { userId: grant.userId, roleId: grant.roleId },
           })

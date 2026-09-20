@@ -102,6 +102,18 @@ const mappingProblem = defineMessage<{ reason: string }>()({
   defaultMessage: 'The mapping cannot be used ({reason})',
 })
 
+const prepPeopleMessage = defineMessage<{ businessNo: string }>()({
+  id: 'directory-import/prep/people',
+  defaultMessage: 'One person to a row, with a column for their name and one for their {businessNo}',
+})
+const prepExistingMessage = defineMessage<{ businessNo: string }>()({
+  id: 'directory-import/prep/existing',
+  defaultMessage: 'Somebody whose {businessNo} already exists is left as they are, and nothing is written before you confirm the check',
+})
+const countOfMessage = defineMessage<{ count: number }>()({
+  id: 'directory-import/count-of',
+  defaultMessage: '{count, plural, one {# in all} other {# in all}}',
+})
 const i18n = definePluginMessages({
   namespace: 'directory-import',
   messages: {
@@ -226,6 +238,32 @@ const i18n = definePluginMessages({
     done,
     openRecord: { id: 'directory-import/done/open-record', defaultMessage: 'Open the record' },
     importAnother: { id: 'directory-import/done/another', defaultMessage: 'Import another file' },
+    prepTitle: { id: 'directory-import/prep/title', defaultMessage: 'What the file should hold' },
+    prepPeople: prepPeopleMessage,
+    prepUnits: {
+      id: 'directory-import/prep/units',
+      defaultMessage: 'Optionally a column for each level of unit they stand in, such as college, year and class. Units that do not exist yet are created',
+    },
+    prepHeader: {
+      id: 'directory-import/prep/header',
+      defaultMessage: 'A header row naming the columns, which need not be the first row. Which column is which is chosen in the next steps',
+    },
+    prepExisting: prepExistingMessage,
+    prepSampleUnits: { id: 'directory-import/prep/sample-units', defaultMessage: 'College|Year|Class' },
+    prepSampleRows: {
+      id: 'directory-import/prep/sample-rows',
+      defaultMessage: '2023010101|Ada Chen|Software|2023|Class 1;2023010102|Bo Li|Software|2023|Class 1',
+    },
+    recordOutcome: { id: 'directory-import/record/outcome', defaultMessage: 'What it did' },
+    recordFile: { id: 'directory-import/record/file', defaultMessage: 'File' },
+    recordReversed: { id: 'directory-import/record/reversed', defaultMessage: 'Reversed' },
+    recordUndoHint: {
+      id: 'directory-import/record/undo-hint',
+      defaultMessage: 'Reversing deletes the people it created; cleaning removes the units it created that stand empty',
+    },
+    nodePresent: { id: 'directory-import/record/node-present', defaultMessage: 'Present' },
+    pagerLabel: { id: 'directory-import/pager', defaultMessage: 'Pages' },
+    countOf: countOfMessage,
     recordClose: { id: 'directory-import/record/close', defaultMessage: 'Close' },
     recordsTitle: { id: 'directory-import/records/title', defaultMessage: 'Past imports' },
     recordsEmpty: { id: 'directory-import/records/empty', defaultMessage: 'Nothing has been imported yet' },
@@ -256,7 +294,6 @@ const i18n = definePluginMessages({
     standingDisabled: { id: 'directory-import/record/standing-disabled', defaultMessage: 'Disabled' },
     standingDeleted: { id: 'directory-import/record/standing-deleted', defaultMessage: 'Deleted' },
     standingMissing: { id: 'directory-import/record/standing-missing', defaultMessage: 'Gone' },
-    nodePresent: { id: 'directory-import/record/node-present', defaultMessage: 'Present' },
     nodeGone: { id: 'directory-import/record/node-gone', defaultMessage: 'Removed' },
     reverse: { id: 'directory-import/reverse/action', defaultMessage: 'Reverse this import' },
     reverseTitle: { id: 'directory-import/reverse/title', defaultMessage: 'Delete the people this import created?' },

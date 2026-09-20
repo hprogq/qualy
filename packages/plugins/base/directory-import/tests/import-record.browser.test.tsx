@@ -53,7 +53,9 @@ const open = (stubs: Record<string, unknown> = {}) =>
               { sourceRowNo: 2, userId: USER_ID, businessNo: '230101', displayName: '张三', orgPath: '示例大学 / 软件学院 / 2023级 / 1班', disposition: 'created', standing: 'active' },
               { sourceRowNo: 3, userId: null, businessNo: '230102', displayName: '李四', orgPath: '示例大学 / 软件学院 / 2023级 / 1班', disposition: 'existing', standing: 'missing' },
             ],
-            nextCursor: null,
+            total: 2,
+            page: 1,
+            pageSize: 20,
           }),
         previewUserImportReversal: () =>
           Effect.succeed({ toRetire: 2, alreadyGone: 0, withIdentities: 1, withGrants: 0 }),

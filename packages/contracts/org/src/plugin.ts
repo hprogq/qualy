@@ -22,6 +22,15 @@ export interface NodeUsage {
   /** the kind in words: "People", "Role grants" */
   readonly label: UiText
   readonly count: number
+  /**
+   * Whether anything a reader can do makes this go away.
+   *
+   * People can be moved and a grant in force withdrawn. A withdrawn grant
+   * kept as history, or a round that has been archived, cannot - and offering
+   * a way to "deal with" them sends the reader to a page that refuses. Said
+   * here so the screen can tell the two apart instead of finding out.
+   */
+  readonly clearable: boolean
   /** a few of them by name, so the reader knows what to look for; never the whole set */
   readonly examples: readonly string[]
   /** the page where these can be moved or withdrawn, when there is one */

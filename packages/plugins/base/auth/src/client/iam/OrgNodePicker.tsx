@@ -210,6 +210,16 @@ export default function OrgNodePicker({ context }: { context: OrgNodePickerConte
   // read the names - which are the thing they came for.
   const badge = (node: { id: string }) => {
     const kind = kindOf(nodes.find((row) => row.id === node.id) ?? {})
+    const barred = context.disabled?.[node.id]
+    // why a unit cannot be chosen takes the kind's place: it is the one
+    // thing about that row the reader needs to be told
+    if (barred !== undefined) {
+      return (
+        <span {...stylex.props(styles.kindWord)} data-picker-barred={node.id}>
+          {barred}
+        </span>
+      )
+    }
     return kind === undefined ? null : <span {...stylex.props(styles.kindWord)}>{kind}</span>
   }
 
@@ -293,8 +303,16 @@ export default function OrgNodePicker({ context }: { context: OrgNodePickerConte
             expandLabel={format(m.pickerExpand)}
             selected={context.value[0] ?? null}
             flat={filtering}
+            // choosing out of places that mostly may not be chosen wants a
+            // mark on every row; pointing at one unit of any does not
+            {...(context.disabled === undefined
+              ? {}
+              : { radio: true, barred: new Set(Object.keys(context.disabled)) })}
             meta={badge}
-            onSelect={(node) => context.onChange(context.value[0] === node.id ? [] : [node.id])}
+            onSelect={(node) => {
+              if (context.disabled?.[node.id] !== undefined) return
+              context.onChange(context.value[0] === node.id ? [] : [node.id])
+            }}
           />
         ) : filtering ? (
           matches.length === 0 ? (

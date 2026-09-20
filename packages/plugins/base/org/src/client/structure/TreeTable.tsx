@@ -1,13 +1,28 @@
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { ChevronDownIcon, ChevronRightIcon, LockIcon } from 'lucide-react'
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  ChevronsDownUpIcon,
+  ChevronsUpDownIcon,
+  EllipsisIcon,
+  LockIcon,
+  PlusIcon,
+} from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Button } from '@qualy/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@qualy/ui/dropdown-menu'
 import { Card, CardEmpty, CardHead, SearchField } from '@qualy/ui/screen'
 import { orgMessages as m } from '../i18n.ts'
 import type { OrgShape, OrgTreeNodeDto } from '../shape.ts'
+import type { NodeTask } from './NodeDialogs.tsx'
 
 // The whole structure, the whole width of the page.
 //
@@ -18,10 +33,11 @@ import type { OrgShape, OrgTreeNodeDto } from '../shape.ts'
 // like a table, and a unit opens beside it only when somebody asks for one.
 
 const QUIET = `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`
-const COLUMNS = 'minmax(0, 1fr) 8rem 6rem 6rem 1.25rem'
+const COLUMNS = 'minmax(0, 1fr) 8rem 6rem 6rem 4.5rem'
 const INDENT = 22
 
 const styles = stylex.create({
+  folds: { display: 'inline-flex', flexShrink: 0, alignItems: 'center', gap: 6 },
   tools: { width: { default: '16rem', [breakpoints.phone]: '100%' } },
   head: {
     display: { default: 'grid', [breakpoints.phone]: 'none' },
@@ -41,7 +57,7 @@ const styles = stylex.create({
   end: { textAlign: 'right' },
   row: {
     display: 'grid',
-    gridTemplateColumns: { default: COLUMNS, [breakpoints.phone]: 'minmax(0, 1fr) auto 1.25rem' },
+    gridTemplateColumns: { default: COLUMNS, [breakpoints.phone]: 'minmax(0, 1fr) auto 4.5rem' },
     alignItems: 'center',
     columnGap: 16,
     minHeight: 40,
@@ -95,7 +111,24 @@ const styles = stylex.create({
   // the one figure a phone keeps beside the name
   figurePhone: { display: 'block' },
   none: { color: QUIET },
-  way: { display: 'inline-flex', justifySelf: 'end', color: QUIET },
+  // What can be done to a unit, at the end of its own row. Quiet until the
+  // row is pointed at or holds the focus, so forty rows are not forty sets of
+  // buttons; always there on a screen with nothing to point with.
+  acts: {
+    display: 'inline-flex',
+    justifySelf: 'end',
+    alignItems: 'center',
+    gap: 2,
+    opacity: {
+      default: 0,
+      [stylex.when.ancestor(':hover')]: 1,
+      [stylex.when.ancestor(':focus-within')]: 1,
+      '@media (hover: none)': 1,
+    },
+    transitionProperty: 'opacity',
+    transitionDuration: '120ms',
+  },
+  actsShown: { opacity: 1 },
 })
 
 export function TreeTable({
@@ -104,12 +137,15 @@ export function TreeTable({
   onOpen,
   headcountOf,
   headcountKnown,
+  onTask,
 }: {
   shape: OrgShape
   openId: string | null
   onOpen: (id: string) => void
   headcountOf: (orgNodeId: string) => number
   headcountKnown: boolean
+  /** a task started from a row: a unit under it, another name, another place */
+  onTask: (task: NodeTask) => void
 }) {
   const { format } = useI18n()
   const [search, setSearch] = useState('')
@@ -119,6 +155,9 @@ export function TreeTable({
     term === '' ? null : shape.nodes.filter((node) => node.name.toLowerCase().includes(term))
   const manageable = shape.nodes.filter((node) => node.manageable).length
   const typeName = (id: string) => shape.types.find((type) => type.id === id)?.name ?? ''
+  // whether the grammar lets anything stand under a unit of this kind
+  const canHold = (node: OrgTreeNodeDto) =>
+    shape.rules.some((rule) => rule.parentTypeId === node.orgTypeId)
   const branches = shape.nodes.filter((node) => (shape.childrenOf.get(node.id) ?? []).length > 0)
 
   const rows: { node: OrgTreeNodeDto; depth: number }[] = []
@@ -144,9 +183,10 @@ export function TreeTable({
         data-depth={depth}
         data-people={headcountKnown ? people : 'unknown'}
         data-children={under}
-        {...stylex.props(styles.row, openId === node.id && styles.rowOpen)}
+        {...stylex.props(styles.row, openId === node.id && styles.rowOpen, stylex.defaultMarker())}
         onClick={(event) => {
-          if ((event.target as HTMLElement).closest('button') !== null) return
+          // a control on the row, or a menu it opened, answered for itself
+          if ((event.target as HTMLElement).closest('button, [role="menu"]') !== null) return
           onOpen(node.id)
         }}
         onKeyDown={(event) => {
@@ -195,8 +235,43 @@ export function TreeTable({
         <span {...stylex.props(styles.cell, styles.figure, under === 0 && styles.none)}>
           {under.toLocaleString()}
         </span>
-        <span aria-hidden {...stylex.props(styles.way)}>
-          <ChevronRightIcon {...stylex.props(styles.glyph)} />
+        <span {...stylex.props(styles.acts, openId === node.id && styles.actsShown)}>
+          {node.manageable && canHold(node) && (
+            <Button
+              size="icon-xs"
+              variant="ghost"
+              aria-label={format(m.rowAdd, { name: node.name })}
+              data-row-action="create"
+              onClick={() => onTask({ kind: 'create', nodeId: node.id })}
+            >
+              <PlusIcon aria-hidden />
+            </Button>
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                size="icon-xs"
+                variant="ghost"
+                aria-label={format(m.rowMore, { name: node.name })}
+                data-row-action="more"
+              >
+                <EllipsisIcon aria-hidden />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => onOpen(node.id)}>{format(m.rowOpen)}</DropdownMenuItem>
+              {node.manageable && (
+                <DropdownMenuItem onSelect={() => onTask({ kind: 'rename', nodeId: node.id })}>
+                  {format(m.rename)}
+                </DropdownMenuItem>
+              )}
+              {node.manageable && node.parentId !== null && node.subtreeManageable && (
+                <DropdownMenuItem onSelect={() => onTask({ kind: 'move', nodeId: node.id })}>
+                  {format(m.moveTo)}
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </span>
       </div>
     )
@@ -215,16 +290,28 @@ export function TreeTable({
           label={format(m.searchPlaceholder)}
           xstyle={styles.tools}
         />
-        <Button size="xs" variant="ghost" onClick={() => setCollapsed(new Set())}>
-          {format(m.expandAll)}
-        </Button>
-        <Button
-          size="xs"
-          variant="ghost"
-          onClick={() => setCollapsed(new Set(branches.map((node) => node.id)))}
-        >
-          {format(m.collapseAll)}
-        </Button>
+        {/* two marks rather than two phrases: side by side the words read as
+            a sentence, and the pair of chevrons is how every tree says this */}
+        <span {...stylex.props(styles.folds)}>
+          <Button
+            size="icon-sm"
+            variant="outline"
+            aria-label={format(m.expandAll)}
+            title={format(m.expandAll)}
+            onClick={() => setCollapsed(new Set())}
+          >
+            <ChevronsUpDownIcon aria-hidden />
+          </Button>
+          <Button
+            size="icon-sm"
+            variant="outline"
+            aria-label={format(m.collapseAll)}
+            title={format(m.collapseAll)}
+            onClick={() => setCollapsed(new Set(branches.map((node) => node.id)))}
+          >
+            <ChevronsDownUpIcon aria-hidden />
+          </Button>
+        </span>
       </CardHead>
       <div {...stylex.props(styles.head)}>
         <span>{format(m.nameLabel)}</span>

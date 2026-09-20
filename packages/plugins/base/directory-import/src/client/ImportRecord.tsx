@@ -1,8 +1,7 @@
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  cursorPages,
   PageLink,
   useApi,
   useApiQuery,
@@ -15,7 +14,21 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection, ConfirmDialog, Field, FormDialog } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
-import { DetailSheet } from '@qualy/ui/screen'
+import {
+  Card,
+  CardFoot,
+  CardHead,
+  Cell,
+  DetailSheet,
+  FactStrip,
+  FootNote,
+  Spacer,
+  Status,
+  Table,
+  TableHead,
+  TableRow,
+} from '@qualy/ui/screen'
+import { Pager } from '@qualy/ui/pager'
 import { Textarea } from '@qualy/ui/textarea'
 import { toast } from '@qualy/ui/toast'
 import { directoryApi } from './api.ts'
@@ -27,44 +40,29 @@ import { whenText } from './words.ts'
 // the people it created, and cleaning it, which removes the units it made
 // that nothing uses any more.
 
+/** rows of the source file to a page */
+const ROWS_PER_PAGE = 20
+/** units touched to a page: they arrive whole, and a big import names hundreds */
+const NODES_PER_PAGE = 10
+
 const styles = stylex.create({
-  page: { display: 'flex', flexDirection: 'column', gap: 24 },
-  card: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 16,
-    padding: 20,
-    borderRadius: 14,
-    backgroundColor: tokens.surface,
-    boxShadow: `0 0 0 1px ${tokens.border}, 0 1px 2px rgb(0 0 0 / 0.04)`,
-  },
-  facts: {
-    display: 'grid',
-    gap: 12,
-    gridTemplateColumns: { default: 'minmax(0, 1fr)', '@media (min-width: 720px)': 'repeat(2, minmax(0, 1fr))' },
-    margin: 0,
-  },
-  fact: { display: 'flex', flexDirection: 'column', gap: 2 },
-  factLabel: { fontSize: 12, color: tokens.mutedForeground },
-  factValue: { margin: 0, fontSize: 14 },
+  page: { display: 'flex', flexDirection: 'column', gap: 14 },
   row: { display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' },
   spacer: { flexGrow: 1 },
-  sectionTitle: { margin: 0, fontSize: 13, fontWeight: 600 },
-  quiet: { margin: 0, fontSize: 12, color: tokens.mutedForeground },
-  table: { width: '100%', borderCollapse: 'collapse', fontSize: 13 },
-  th: {
-    textAlign: 'start',
-    whiteSpace: 'nowrap',
-    padding: 8,
-    fontWeight: 500,
-    color: tokens.mutedForeground,
-    borderBottomWidth: 1,
-    borderBottomStyle: 'solid',
-    borderBottomColor: tokens.divider,
+  outcome: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+    paddingInline: 16,
+    paddingBlock: 12,
+    fontSize: 13,
   },
-  td: { padding: 8, borderBottomWidth: 1, borderBottomStyle: 'solid', borderBottomColor: tokens.divider },
-  line: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 },
-  danger: { color: tokens.danger },
+  quiet: { fontSize: 12, color: tokens.mutedForeground },
+  personLink: {
+    color: 'inherit',
+    textDecorationLine: { default: 'none', ':hover': 'underline' },
+    textUnderlineOffset: 3,
+  },
 })
 
 /**
@@ -87,16 +85,14 @@ export function ImportRecordSheet({
   const run = useRunApi()
   const queryClient = useQueryClient()
   const detail = useQuery(query.directory.getUserImport.queryOptions({ params: { importId } }))
-  const rows = useInfiniteQuery({
-    queryKey: [...query.directory.listUserImportRows.key({ params: { importId }, query: {} }), 'infinite'],
-    queryFn: ({ pageParam }) =>
-      run(
-        api.directory.listUserImportRows({
-          params: { importId },
-          query: pageParam === undefined ? {} : { cursor: pageParam },
-        }),
-      ),
-    ...cursorPages,
+  const [rowPage, setRowPage] = useState(1)
+  const [nodePage, setNodePage] = useState(1)
+  const rows = useQuery({
+    ...query.directory.listUserImportRows.queryOptions({
+      params: { importId },
+      query: { page: String(rowPage), limit: String(ROWS_PER_PAGE) },
+    }),
+    placeholderData: keepPreviousData,
   })
   const [reversing, setReversing] = useState(false)
   const [reason, setReason] = useState('')
@@ -107,7 +103,6 @@ export function ImportRecordSheet({
   })
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: query.directory.key() })
-    void rows.refetch()
   }
   const reverse = useMutation({
     mutationFn: () =>
@@ -130,7 +125,7 @@ export function ImportRecordSheet({
   })
 
   const found = detail.data
-  const items = rows.data?.pages.flatMap((page) => page.items) ?? []
+  const items = rows.data?.items ?? []
   const standingWords = {
     active: m.standingActive,
     disabled: m.standingDisabled,
@@ -156,48 +151,46 @@ export function ImportRecordSheet({
       >
         {found !== undefined && (
           <div {...stylex.props(styles.page)} data-testid="import-record-page">
-            <section {...stylex.props(styles.card)}>
-              <dl {...stylex.props(styles.facts)}>
-                <div {...stylex.props(styles.fact)}>
-                  <dt {...stylex.props(styles.factLabel)}>{format(m.recordBy)}</dt>
-                  <dd {...stylex.props(styles.factValue)}>{found.import.actorName ?? '–'}</dd>
-                </div>
-                <div {...stylex.props(styles.fact)}>
-                  <dt {...stylex.props(styles.factLabel)}>{format(m.recordAt)}</dt>
-                  <dd {...stylex.props(styles.factValue)}>{whenText(locale, found.import.createdAt)}</dd>
-                </div>
-                <div {...stylex.props(styles.fact)}>
-                  <dt {...stylex.props(styles.factLabel)}>{format(m.recordUnder)}</dt>
-                  <dd {...stylex.props(styles.factValue)}>
-                    {[found.import.anchorPath, ...found.import.chain.slice(found.import.anchorPath === '' ? 0 : 1)]
+            <FactStrip
+              columns={4}
+              items={[
+                { label: format(m.recordBy), value: found.import.actorName ?? '—' },
+                { label: format(m.recordAt), value: whenText(locale, found.import.createdAt) },
+                { label: format(m.recordType), value: found.import.userTypeName ?? '—' },
+                {
+                  label: format(m.recordUnder),
+                  value:
+                    [
+                      found.import.anchorPath,
+                      ...found.import.chain.slice(found.import.anchorPath === '' ? 0 : 1),
+                    ]
                       .filter((part) => part !== '')
-                      .join(' / ')}
-                  </dd>
-                </div>
-                <div {...stylex.props(styles.fact)}>
-                  <dt {...stylex.props(styles.factLabel)}>{format(m.recordType)}</dt>
-                  <dd {...stylex.props(styles.factValue)}>{found.import.userTypeName ?? '–'}</dd>
-                </div>
-              </dl>
-              <p {...stylex.props(styles.factValue)} data-testid="import-counts">
-                {format(m.recordCounts, {
-                  users: found.import.createdUserCount,
-                  existing: found.import.existingUserCount,
-                  nodes: found.import.createdNodeCount,
-                })}
-              </p>
-              <p {...stylex.props(styles.quiet)} data-testid="import-standing" data-living={found.import.standing.living}>
-                {format(m.recordStanding, found.import.standing)}
-              </p>
-              <div {...stylex.props(styles.row)}>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={found.import.standing.living === 0}
-                  onClick={() => setReversing(true)}
+                      .join(' / ') || '—',
+                },
+              ]}
+            />
+
+            <Card>
+              <CardHead title={format(m.recordOutcome)} />
+              <div {...stylex.props(styles.outcome)}>
+                <span data-testid="import-counts">
+                  {format(m.recordCounts, {
+                    users: found.import.createdUserCount,
+                    existing: found.import.existingUserCount,
+                    nodes: found.import.createdNodeCount,
+                  })}
+                </span>
+                <span
+                  {...stylex.props(styles.quiet)}
+                  data-testid="import-standing"
+                  data-living={found.import.standing.living}
                 >
-                  {format(m.reverse)}
-                </Button>
+                  {format(m.recordStanding, found.import.standing)}
+                </span>
+              </div>
+              <CardFoot inset>
+                <FootNote>{format(m.recordUndoHint)}</FootNote>
+                <Spacer />
                 <Button
                   variant="outline"
                   size="sm"
@@ -206,93 +199,149 @@ export function ImportRecordSheet({
                 >
                   {format(m.clean)}
                 </Button>
-              </div>
-            </section>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={found.import.standing.living === 0}
+                  onClick={() => setReversing(true)}
+                >
+                  {format(m.reverse)}
+                </Button>
+              </CardFoot>
+            </Card>
 
             {found.events.length > 0 && (
-              <section {...stylex.props(styles.card)}>
-                <p {...stylex.props(styles.sectionTitle)}>{format(m.recordEvents)}</p>
-                {found.events.map((event) => (
-                  <div key={event.id} {...stylex.props(styles.line)} data-testid="import-event" data-kind={event.kind}>
-                    <span>
-                      {event.kind === 'reversed'
-                        ? format(m.eventReversed, { count: event.affectedUserCount })
-                        : format(m.eventCleaned, {
-                            deleted: event.deletedNodeCount,
-                            retained: event.retainedNodeCount,
-                          })}
-                    </span>
-                    <span {...stylex.props(styles.quiet)}>
-                      {[event.actorName, whenText(locale, event.createdAt), event.reason]
-                        .filter(Boolean)
-                        .join(' · ')}
-                    </span>
-                  </div>
-                ))}
-              </section>
+              <Card>
+                <CardHead title={format(m.recordEvents)} />
+                <Table columns="minmax(0, 1.4fr) minmax(0, 1fr)">
+                  {found.events.map((event) => (
+                    <TableRow key={event.id} data-testid="import-event" data-kind={event.kind}>
+                      <Cell lead>
+                        {event.kind === 'reversed'
+                          ? format(m.eventReversed, { count: event.affectedUserCount })
+                          : format(m.eventCleaned, {
+                              deleted: event.deletedNodeCount,
+                              retained: event.retainedNodeCount,
+                            })}
+                      </Cell>
+                      <Cell title={event.reason ?? undefined}>
+                        {[event.actorName, whenText(locale, event.createdAt), event.reason]
+                          .filter(Boolean)
+                          .join('  ')}
+                      </Cell>
+                    </TableRow>
+                  ))}
+                </Table>
+              </Card>
             )}
 
             {found.nodes.length > 0 && (
-              <section {...stylex.props(styles.card)}>
-                <p {...stylex.props(styles.sectionTitle)}>{format(m.recordNodes)}</p>
-                {found.nodes.map((node) => (
-                  <div key={node.id} {...stylex.props(styles.line)} data-testid="import-node" data-present={node.present}>
-                    <span>{node.path}</span>
-                    <Badge variant="secondary">
-                      {format(node.disposition === 'created' ? m.dispositionCreated : m.dispositionReused)}
-                    </Badge>
-                    {!node.present && <Badge variant="outline">{format(m.nodeGone)}</Badge>}
-                  </div>
-                ))}
-              </section>
+              <Card>
+                <CardHead
+                  title={format(m.recordNodes)}
+                  note={format(m.countOf, { count: found.nodes.length })}
+                />
+                <Table columns="minmax(0, 1fr) 5rem 5rem">
+                  <TableHead>
+                    <span>{format(m.columnUnit)}</span>
+                    <span>{format(m.columnOutcome)}</span>
+                    <span>{format(m.columnStanding)}</span>
+                  </TableHead>
+                  {found.nodes
+                    .slice((nodePage - 1) * NODES_PER_PAGE, nodePage * NODES_PER_PAGE)
+                    .map((node) => (
+                      <TableRow
+                        key={node.id}
+                        height="compact"
+                        data-testid="import-node"
+                        data-present={node.present}
+                      >
+                        <Cell lead title={node.path}>
+                          {node.path}
+                        </Cell>
+                        <Cell>
+                          {format(
+                            node.disposition === 'created' ? m.dispositionCreated : m.dispositionReused,
+                          )}
+                        </Cell>
+                        <Status tone={node.present ? 'plain' : 'bad'}>
+                          {format(node.present ? m.nodePresent : m.nodeGone)}
+                        </Status>
+                      </TableRow>
+                    ))}
+                </Table>
+                <CardFoot>
+                  <Pager
+                    label={format(m.pagerLabel)}
+                    page={nodePage}
+                    pageSize={NODES_PER_PAGE}
+                    total={found.nodes.length}
+                    onPage={setNodePage}
+                  />
+                </CardFoot>
+              </Card>
             )}
 
-            <section {...stylex.props(styles.card)}>
-              <p {...stylex.props(styles.sectionTitle)}>{format(m.recordRows)}</p>
-              <table {...stylex.props(styles.table)}>
-                <thead>
-                  <tr>
-                    <th {...stylex.props(styles.th)}>{format(m.columnRow)}</th>
-                    <th {...stylex.props(styles.th)}>{businessNo}</th>
-                    <th {...stylex.props(styles.th)}>{format(m.columnName)}</th>
-                    <th {...stylex.props(styles.th)}>{format(m.columnUnit)}</th>
-                    <th {...stylex.props(styles.th)}>{format(m.columnOutcome)}</th>
-                    <th {...stylex.props(styles.th)}>{format(m.columnStanding)}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((row) => (
-                    <tr key={row.sourceRowNo} data-testid="import-row" data-standing={row.standing}>
-                      <td {...stylex.props(styles.td)}>{row.sourceRowNo}</td>
-                      <td {...stylex.props(styles.td)}>{row.businessNo}</td>
-                      <td {...stylex.props(styles.td)}>
-                        {row.userId === null ? (
-                          row.displayName
-                        ) : (
-                          <PageLink page="auth/user-detail" params={{ userId: row.userId }}>
-                            {row.displayName}
-                          </PageLink>
-                        )}
-                      </td>
-                      <td {...stylex.props(styles.td)}>{row.orgPath}</td>
-                      <td {...stylex.props(styles.td)}>
-                        {format(row.disposition === 'created' ? m.dispositionCreated : m.dispositionExisting)}
-                      </td>
-                      <td {...stylex.props(styles.td, row.standing === 'deleted' && styles.danger)}>
-                        {format(standingWords[row.standing])}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {rows.hasNextPage && (
-                <div>
-                  <Button variant="ghost" size="sm" disabled={rows.isFetchingNextPage} onClick={() => void rows.fetchNextPage()}>
-                    {format(m.recordsLoadMore)}
-                  </Button>
-                </div>
-              )}
-            </section>
+            <Card>
+              <CardHead
+                title={format(m.recordRows)}
+                note={format(m.countOf, { count: rows.data?.total ?? found.import.sourceRowCount })}
+              />
+              <Table columns="3.5rem 7.5rem 6rem minmax(0, 1fr) 4.5rem 4.5rem">
+                <TableHead>
+                  <span>{format(m.columnRow)}</span>
+                  <span>{businessNo}</span>
+                  <span>{format(m.columnName)}</span>
+                  <span>{format(m.columnUnit)}</span>
+                  <span>{format(m.columnOutcome)}</span>
+                  <span>{format(m.columnStanding)}</span>
+                </TableHead>
+                {items.map((row) => (
+                  <TableRow
+                    key={row.sourceRowNo}
+                    height="compact"
+                    data-testid="import-row"
+                    data-standing={row.standing}
+                  >
+                    <Cell numeric>{row.sourceRowNo}</Cell>
+                    <Cell numeric tone="plain">
+                      {row.businessNo}
+                    </Cell>
+                    <Cell tone="plain">
+                      {row.userId === null ? (
+                        row.displayName
+                      ) : (
+                        <PageLink
+                          page="auth/user-detail"
+                          params={{ userId: row.userId }}
+                          className={stylex.props(styles.personLink).className}
+                        >
+                          {row.displayName}
+                        </PageLink>
+                      )}
+                    </Cell>
+                    <Cell title={row.orgPath}>{row.orgPath}</Cell>
+                    <Cell>
+                      {format(row.disposition === 'created' ? m.dispositionCreated : m.dispositionExisting)}
+                    </Cell>
+                    <Status tone={row.standing === 'deleted' || row.standing === 'missing' ? 'bad' : 'plain'}>
+                      {format(standingWords[row.standing])}
+                    </Status>
+                  </TableRow>
+                ))}
+              </Table>
+              <CardFoot>
+                <Pager
+                  testId="import-rows-pager"
+                  label={format(m.pagerLabel)}
+                  page={rows.data?.page ?? rowPage}
+                  pageSize={ROWS_PER_PAGE}
+                  total={rows.data?.total ?? 0}
+                  disabled={rows.isFetching}
+                  onPage={setRowPage}
+                />
+              </CardFoot>
+            </Card>
           </div>
         )}
       </AsyncSection>

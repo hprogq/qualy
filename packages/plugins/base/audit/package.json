@@ -38,7 +38,8 @@
     "@stylexjs/stylex": "catalog:",
     "@tanstack/react-query": "catalog:",
     "effect": "catalog:",
-    "kysely": "catalog:"
+    "kysely": "catalog:",
+    "lucide-react": "^0.552.0"
   },
   "devDependencies": {
     "@qualy/tsconfig": "workspace:*",

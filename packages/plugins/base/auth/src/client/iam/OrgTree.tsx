@@ -78,6 +78,29 @@ const styles = stylex.create({
   rowMarked: {
     fontWeight: 500,
   },
+  // a place that may not be chosen: no hover, and said in a lighter voice
+  rowOff: { backgroundColor: { default: 'transparent', ':hover': 'transparent' } },
+  nameOff: {
+    cursor: 'not-allowed',
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 70%, transparent)`,
+  },
+  radio: {
+    display: 'inline-flex',
+    width: 15,
+    height: 15,
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 9999,
+    boxShadow: `inset 0 0 0 1.5px color-mix(in oklab, ${tokens.foreground} 45%, transparent)`,
+    backgroundColor: tokens.surface,
+  },
+  radioOn: { boxShadow: `inset 0 0 0 1.5px ${tokens.foreground}` },
+  radioOff: {
+    boxShadow: `inset 0 0 0 1.5px ${tokens.border}`,
+    backgroundColor: tokens.surfaceMuted,
+  },
+  radioDot: { width: 7, height: 7, borderRadius: 9999, backgroundColor: tokens.foreground },
   // Its own control, sized for a pointer rather than for the 14px glyph it
   // draws - and seated at the indent so that the strip in front of a deep
   // name belongs to the name, not to this.
@@ -161,8 +184,21 @@ export function OrgTree({
    * that would lead to them are not part of the answer.
    */
   flat,
+  radio,
+  barred,
   xstyle,
 }: {
+  /**
+   * A radio mark in front of every row.
+   *
+   * For choosing where something goes out of places that mostly may not be
+   * chosen: a highlighted row says which one is picked, but only a mark on
+   * every row says which ones can be - and a hollow circle that will not fill
+   * is the plainest way a row can say it cannot.
+   */
+  radio?: boolean
+  /** rows that are shown and may not be chosen */
+  barred?: ReadonlySet<string>
   nodes: readonly OrgTreeNode[]
   emptyLabel: string
   expandLabel: string
@@ -188,6 +224,8 @@ export function OrgTree({
               selected={selected ?? null}
               onSelect={onSelect}
               marked={marked}
+              radio={radio === true}
+              barred={barred}
               {...(meta !== undefined ? { meta } : {})}
             />
           </li>
@@ -207,6 +245,8 @@ export function OrgTree({
           selected={selected ?? null}
           onSelect={onSelect}
           marked={marked}
+          radio={radio === true}
+          barred={barred}
           {...(meta !== undefined ? { meta } : {})}
         />
       ))}
@@ -241,7 +281,11 @@ function Name({
   open,
   hasChildren,
   expandLabel,
+  radio = false,
+  barred,
 }: {
+  radio?: boolean
+  barred?: ReadonlySet<string> | undefined
   node: OrgTreeNode
   depth: number
   selected: string | null
@@ -253,8 +297,13 @@ function Name({
   hasChildren?: boolean
   expandLabel?: string
 }) {
+  const off = barred?.has(node.id) === true
   return (
-    <div {...stylex.props(styles.row, selected === node.id && styles.rowCurrent)}>
+    <div
+      {...stylex.props(styles.row, selected === node.id && styles.rowCurrent, off && styles.rowOff)}
+      data-tree-row={node.id}
+      data-barred={off}
+    >
       <span aria-hidden style={{ width: `${String(depth * 0.75 + 0.25)}rem`, flexShrink: 0 }} />
       {hasChildren === true && onToggle !== undefined ? (
         <button
@@ -274,10 +323,31 @@ function Name({
       )}
       <button
         type="button"
-        aria-current={selected === node.id}
-        {...stylex.props(styles.nameButton, marked?.has(node.id) === true && styles.rowMarked)}
-        onClick={() => onSelect(node)}
+        {...(radio
+          ? { role: 'radio', 'aria-checked': selected === node.id }
+          : { 'aria-current': selected === node.id })}
+        aria-disabled={off || undefined}
+        {...stylex.props(
+          styles.nameButton,
+          marked?.has(node.id) === true && styles.rowMarked,
+          off && styles.nameOff,
+        )}
+        onClick={() => {
+          if (!off) onSelect(node)
+        }}
       >
+        {radio && (
+          <span
+            aria-hidden
+            {...stylex.props(
+              styles.radio,
+              selected === node.id && styles.radioOn,
+              off && styles.radioOff,
+            )}
+          >
+            {selected === node.id && <span {...stylex.props(styles.radioDot)} />}
+          </span>
+        )}
         <span>{node.name}</span>
         {meta?.(node)}
       </button>
@@ -294,7 +364,11 @@ function Row({
   onSelect,
   marked,
   meta,
+  radio,
+  barred,
 }: {
+  radio?: boolean
+  barred?: ReadonlySet<string> | undefined
   node: OrgTreeNode
   shape: Shape
   depth: number
@@ -326,6 +400,8 @@ function Row({
           onSelect(picked)
         }}
         marked={marked}
+        radio={radio === true}
+        barred={barred}
         {...(meta !== undefined ? { meta } : {})}
       />
       {open && children.length > 0 && (
@@ -340,6 +416,8 @@ function Row({
               selected={selected}
               onSelect={onSelect}
               marked={marked}
+              radio={radio === true}
+              barred={barred}
               {...(meta !== undefined ? { meta } : {})}
             />
           ))}

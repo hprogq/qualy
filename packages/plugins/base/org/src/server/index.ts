@@ -1130,6 +1130,7 @@ export const orgApiHandlers = HttpApiBuilder.group(local, 'org', (handlers) =>
             kind: one.kind,
             label: one.label,
             count: one.count,
+            clearable: one.clearable,
             examples: [...one.examples],
             target:
               one.target === undefined

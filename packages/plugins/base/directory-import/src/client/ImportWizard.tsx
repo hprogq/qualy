@@ -1,9 +1,8 @@
 import { useMemo, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FileSpreadsheetIcon, PlusIcon, XIcon } from 'lucide-react'
 import {
-  cursorPages,
   UiSlot,
   useApi,
   useApiQuery,
@@ -24,7 +23,18 @@ import { Input } from '@qualy/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { Spinner } from '@qualy/ui/spinner'
 import { Steps } from '@qualy/ui/steps'
-import { Card, CardEmpty } from '@qualy/ui/screen'
+import {
+  Card,
+  CardEmpty,
+  CardFoot,
+  Cell,
+  LeadWord,
+  Table,
+  TableHead,
+  TableRow,
+  Tag,
+} from '@qualy/ui/screen'
+import { Pager } from '@qualy/ui/pager'
 import { toast } from '@qualy/ui/toast'
 import { directoryApi } from './api.ts'
 import { directoryImportMessages as m } from './i18n.ts'
@@ -67,6 +77,25 @@ const styles = stylex.create({
   },
   td: { padding: 8, whiteSpace: 'nowrap', borderBottomWidth: 1, borderBottomStyle: 'solid', borderBottomColor: tokens.divider },
   sectionTitle: { margin: 0, fontSize: 13, fontWeight: 600 },
+  prep: {
+    display: 'grid',
+    alignItems: 'start',
+    gap: 16,
+    gridTemplateColumns: { default: 'minmax(0, 1fr)', '@media (min-width: 820px)': 'minmax(0, 1fr) minmax(0, 1.1fr)' },
+  },
+  prepWords: { display: 'flex', flexDirection: 'column', gap: 8 },
+  prepList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+    margin: 0,
+    paddingLeft: 18,
+    fontSize: 13,
+    lineHeight: 1.55,
+    color: tokens.surfaceMutedForeground,
+  },
+  prepSample: { backgroundColor: tokens.surface },
+  issuePager: { paddingTop: 4 },
   level: { display: 'grid', gap: 12, gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) auto', alignItems: 'end' },
   picker: { minHeight: 240, maxHeight: 320 },
   summary: { display: 'grid', gap: 12, gridTemplateColumns: { default: 'minmax(0, 1fr)', '@media (min-width: 720px)': 'repeat(3, minmax(0, 1fr))' } },
@@ -161,6 +190,7 @@ export function ImportWizard({
   const [levels, setLevels] = useState<readonly LevelDraft[]>([])
   const [preview, setPreview] = useState<Preview | null>(null)
   const [done, setDone] = useState<Done | null>(null)
+  const [issuePage, setIssuePage] = useState(1)
 
   const inspect = useQuery({
     ...query.directory.inspectUserImportUpload.queryOptions({
@@ -228,6 +258,7 @@ export function ImportWizard({
     mutationFn: () => run(api.directory.previewUserImport({ payload: request() })),
     onSuccess: (found) => {
       setPreview(found)
+      setIssuePage(1)
       setAt(3)
     },
     onError: (error) => toast.error(formatError(error)),
@@ -273,6 +304,48 @@ export function ImportWizard({
 
             {at === 0 && (
               <div {...stylex.props(styles.stack)}>
+                {/* what to bring, before it is asked for: a reader handed a
+                    drop target and nothing else finds out what the file should
+                    have looked like from the errors of the one they guessed at */}
+                <div {...stylex.props(styles.prep)} data-testid="import-prep">
+                  <div {...stylex.props(styles.prepWords)}>
+                    <p {...stylex.props(styles.sectionTitle)}>{format(m.prepTitle)}</p>
+                    <ul {...stylex.props(styles.prepList)}>
+                      <li>{format(m.prepPeople, { businessNo })}</li>
+                      <li>{format(m.prepUnits)}</li>
+                      <li>{format(m.prepHeader)}</li>
+                      <li>{format(m.prepExisting, { businessNo })}</li>
+                    </ul>
+                  </div>
+                  <div {...stylex.props(styles.sample, styles.prepSample)} aria-hidden>
+                    <table {...stylex.props(styles.table)}>
+                      <thead>
+                        <tr>
+                          {[businessNo, format(m.displayNameLabel), ...format(m.prepSampleUnits).split('|')].map(
+                            (head) => (
+                              <th key={head} {...stylex.props(styles.th)}>
+                                {head}
+                              </th>
+                            ),
+                          )}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {format(m.prepSampleRows)
+                          .split(';')
+                          .map((line) => (
+                            <tr key={line}>
+                              {line.split('|').map((cell, index) => (
+                                <td key={index} {...stylex.props(styles.td)}>
+                                  {cell}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
                 <Dropzone
                   accept={XLSX}
                   multiple={false}
@@ -553,7 +626,9 @@ export function ImportWizard({
                     </p>
                     <p {...stylex.props(styles.quiet)}>{format(m.previewIssuesHint)}</p>
                     <ul {...stylex.props(styles.list)} data-testid="import-issues">
-                      {preview.issues.map((issue, index) => (
+                      {preview.issues
+                        .slice((issuePage - 1) * ISSUES_PER_PAGE, issuePage * ISSUES_PER_PAGE)
+                        .map((issue, index) => (
                         <li key={index}>
                           {issue.rowNo === null ? format(m.issueFile) : format(m.issueRow, { row: issue.rowNo })}
                           {' '}
@@ -561,6 +636,16 @@ export function ImportWizard({
                         </li>
                       ))}
                     </ul>
+                    <div {...stylex.props(styles.issuePager)}>
+                      <Pager
+                        testId="import-issues-pager"
+                        label={format(m.pagerLabel)}
+                        page={issuePage}
+                        pageSize={ISSUES_PER_PAGE}
+                        total={preview.issues.length}
+                        onPage={setIssuePage}
+                      />
+                    </div>
                   </div>
                 )}
                 {preview.createdNodes.length > 0 && (
@@ -640,19 +725,27 @@ function ColumnChoice({
 }
 
 /** what was imported before, newest first, each a way into its record */
-/** what has been imported before, newest first; a row opens its record */
+/** problems of a checked file to a page */
+const ISSUES_PER_PAGE = 10
+
+/** imports to a page of the record list */
+const RECORDS_PER_PAGE = 10
+
+/**
+ * What has been imported before, newest first, a page at a time; a row opens
+ * its record beside whatever frames this list.
+ */
 export function ImportRecords({ onOpen }: { onOpen: (importId: string) => void }) {
   const { format, formatError, locale } = useI18n()
-  const api = useApi(directoryApi)
   const query = useApiQuery(directoryApi)
-  const run = useRunApi()
-  const imports = useInfiniteQuery({
-    queryKey: [...query.directory.listUserImports.key(), 'infinite'],
-    queryFn: ({ pageParam }) =>
-      run(api.directory.listUserImports({ query: pageParam === undefined ? {} : { cursor: pageParam } })),
-    ...cursorPages,
+  const [page, setPage] = useState(1)
+  const imports = useQuery({
+    ...query.directory.listUserImports.queryOptions({
+      query: { page: String(page), limit: String(RECORDS_PER_PAGE) },
+    }),
+    placeholderData: keepPreviousData,
   })
-  const items = imports.data?.pages.flatMap((page) => page.items) ?? []
+  const items = imports.data?.items ?? []
   return (
     <Card data-testid="import-records">
       <AsyncSection
@@ -665,36 +758,52 @@ export function ImportRecords({ onOpen }: { onOpen: (importId: string) => void }
         {items.length === 0 ? (
           <CardEmpty>{format(m.recordsEmpty)}</CardEmpty>
         ) : (
-          <div>
+          <Table columns="minmax(0, 1.3fr) minmax(0, 1.4fr) 6rem 8.5rem" openable>
+            <TableHead>
+              <span>{format(m.recordFile)}</span>
+              <span>{format(m.recordOutcome)}</span>
+              <span>{format(m.recordBy)}</span>
+              <span>{format(m.recordAt)}</span>
+            </TableHead>
             {items.map((one) => (
-              <button
+              <TableRow
                 key={one.id}
-                type="button"
-                onClick={() => onOpen(one.id)}
-                {...stylex.props(styles.record)}
+                onOpen={() => onOpen(one.id)}
                 data-testid="import-record"
                 data-import={one.id}
+                data-living={one.standing.living}
               >
-                <span {...stylex.props(styles.recordName)}>{one.filename}</span>
-                <span {...stylex.props(styles.recordMeta)}>
+                <Cell lead title={one.filename}>
+                  <LeadWord>{one.filename}</LeadWord>
+                  {one.standing.living === 0 && one.createdUserCount > 0 && (
+                    <Tag outline>{format(m.recordReversed)}</Tag>
+                  )}
+                </Cell>
+                <Cell>
                   {format(m.recordCounts, {
                     users: one.createdUserCount,
                     existing: one.existingUserCount,
                     nodes: one.createdNodeCount,
                   })}
-                </span>
-                <span {...stylex.props(styles.recordMeta)}>
-                  {[one.actorName, whenText(locale, one.createdAt)].filter(Boolean).join('  ')}
-                </span>
-              </button>
+                </Cell>
+                <Cell>{one.actorName ?? '—'}</Cell>
+                <Cell numeric>{whenText(locale, one.createdAt)}</Cell>
+              </TableRow>
             ))}
-            {imports.hasNextPage && (
-              <Button variant="ghost" size="sm" disabled={imports.isFetchingNextPage} onClick={() => void imports.fetchNextPage()}>
-                {format(m.recordsLoadMore)}
-              </Button>
-            )}
-          </div>
+          </Table>
         )}
+        <CardFoot>
+          <Pager
+            testId="import-records-pager"
+            label={format(m.pagerLabel)}
+            page={imports.data?.page ?? page}
+            pageSize={RECORDS_PER_PAGE}
+            total={imports.data?.total ?? 0}
+            disabled={imports.isFetching}
+            summary={format(m.countOf, { count: imports.data?.total ?? 0 })}
+            onPage={setPage}
+          />
+        </CardFoot>
       </AsyncSection>
     </Card>
   )

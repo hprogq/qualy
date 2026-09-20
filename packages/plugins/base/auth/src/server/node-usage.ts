@@ -37,6 +37,7 @@ export const peopleAtNode: NodeUsageReporter<Orm> = {
               kind: 'people',
               label: message('auth/node-usage/people', 'People standing here'),
               count: Number(count),
+              clearable: true,
               examples: named.map((row) => row.displayName),
               target: { pageId: 'auth/users', search: { anchor: orgNodeId, scope: 'self' } },
             },
