@@ -19138,3 +19138,45 @@ B 放开这几条外键、只在进行中的批次上拦删除;C 维持。现在
 - 上面的组织删除裁决。
 - 登录方式的新增 / 排序 / 启停、节点占用的三个 reporter、`setAuthProviderOrder` 目前只有类型与装配级(parity)保障,缺服务端行为测试。
 - 移动端其余专门版式;用户详情分区导航的记录数徽标。
+
+## 审核工作台与我的申报:通过模态框重做、软超时重试、申报值按选项文字显示(2026-09-21)
+
+### 做了什么
+
+- **通过申报模态框**:左右两半各自滚动、整体定高。左半是申报内容(与认定项关联的字段带「关联」标记)与始终可见的计分预览;
+  右半是认定项与审核意见。每个认定项下有来源行(取自申报的哪一项、可重置为申报值)。是 / 否用两个方块作答,默认未选。
+  服务端 `recognitionForm` 多返回 `filed`(申报原值)与 `sources`(认定项 → 申报字段名)。
+- **审核页**:待审核列表收进左侧 Sheet;骨架屏按三栏画;智能辅助审核与评分依据经 `client/reserved.ts` 隐藏(未删);
+  快捷键提示改成 `?` 小按钮;三栏各有最小宽度,窄屏横向滚动而不是把审核过程压扁。
+- **计分软超时**:`the formula did not finish within the soft deadline of 50ms` 是墙钟时限(含 worker 启动),主机繁忙时健康公式也会越线;
+  按设计文档 §16 ⑥ 不得静默给零分,所以结果页 500 是按设计拒绝。公式是确定性纯函数,现在**只对软超时重试一次**
+  (硬超时、其余失败不重试),真慢的公式照样失败。
+- **我的申报**:申报内容里的选项按选项文字显示(此前显示 `national` 这类原始值),是 / 否按词显示;
+  退回意见与审核过程里的意见带「审核意见」标签,统一认定的备注标为「认定依据」。
+- 测试:`review-recognition` 的布尔用例跟随两方块控件;`paper-reading` 的分区条用例因隐藏评分依据后页面变短,改用更矮的视口。
+
+### 需要用户裁决(未改)
+
+**参评人能看到什么审核信息**:现状是参评人经 `getEntryHistory` 能看到每一轮每个事件的审核人姓名与 id,设计文档无裁决。
+建议:①参评人只看**当前生效的认定值**(最终一轮),与「谁审的」分开展示;各轮只留动作、时间、意见;
+②新增两个只受阶段开关管的码(不进 RBAC 目录,同 `PARTICIPANT_ACTION_CODES` / `REVIEW_ACTION_CODES` 先例):
+参评人侧「查看审核人」、审核侧「查看后续链条」,缺席即隐藏,服务端把姓名与 id 置空而不是前端打码;
+③待定的只有默认值:fail closed 会让**现有批次**立刻不再显示审核人,需确认是否接受,或迁移时给现有阶段补上该码。
+
+### 验收(实际执行)
+
+- `pnpm typecheck`:`exit 0`。
+- `pnpm exec vitest run packages/plugins/assessment/formula/tests/formula-calculator.test.ts` → `Tests 5 passed (5)`(含软超时问两次、硬超时问一次)。
+- `pnpm exec vitest run packages/plugins/assessment/core/tests/review` → `Test Files 5 passed (5)`,`Tests 65 passed (65)`。
+- 浏览器(逐文件):`review-recognition` 13 passed;`review-layout` 与之合跑 25 passed;`paper-reading` 8 passed;
+  `record-recognition entry-workflow evidence-fields` 等 5 个文件 51 条中 50 过、1 条即上述 `paper-reading`,修后单跑通过;
+  `entry-workflow participant-results record-recognition` → `Tests 40 passed (40)`。本轮**未跑**浏览器全量。
+- `pnpm exec vitest run tools/tests/catalogs.test.ts` → `Tests 11 passed (11)`。
+
+### 未做与下一步
+
+- 上面的可见性裁决;组织删除裁决(见上一节)仍待定。
+- 本地草稿(认定 / 审核意见 / 退回 / 补充说明,IndexedDB,提示恢复);参评名单与参评结果合并;
+  我的申报展示认定值(等可见性裁决);总览里可申报题目仍显示「统一认定」;
+  统一认定模态框(常驻底栏、实时校验与加分预览、公式报错前置、日期越界提前拦、参评人选择器加宽、按组织选择时先列出人员再确认、关闭时丢状态);
+  日期题「校验材料时间范围」选项;审核工作列表页骨架屏。
