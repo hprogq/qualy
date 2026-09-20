@@ -203,6 +203,65 @@ describe.runIf(postgresAvailable)('the review read boundary', () => {
     expect(result.admin).toEqual(OPEN)
   })
 
+  // Who judged a claim is kept from the person who filed it unless the phase
+  // of the moment opens it - on the server, so nothing arrives to be hidden.
+  it('names the reviewer to the participant only while the phase opens it', async () => {
+    const told = async (slug: string, profile: readonly string[]) =>
+      ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const f = yield* seed(slug)
+            const assessment = yield* Assessment
+            const g = yield* runningBatch(f, { profile: [...profile] })
+            const s1 = f.principal(f.s1)
+            const reviewer = f.principal(f.reviewer)
+            const entry = yield* assessment.createEntry(
+              f.t,
+              { itemId: g.item.id, participantId: g.p1, payload: {} },
+              s1,
+            )
+            const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+            yield* assessment.decideReview(
+              f.t,
+              sent.currentReviewInstanceId!,
+              { decision: 'reject', comment: 'not enough' },
+              reviewer,
+            )
+            const judged = (history: {
+              rounds: readonly {
+                events: readonly { kind: string; actorId: string | null; actorName: string | null }[]
+              }[]
+            }) =>
+              history.rounds
+                .flatMap((round) => round.events)
+                .filter((event) => event.actorId !== f.s1)
+                .map((event) => event.actorName !== null)
+            const own = yield* assessment.getEntryHistory(f.t, entry.id, s1)
+            const staff = yield* assessment.getEntryHistory(f.t, entry.id, f.principal(f.admin))
+            const card = yield* assessment.getEntry(f.t, entry.id, s1)
+            return {
+              shown: own.reviewersShown,
+              // nobody but the filer is named to the filer
+              named: judged(own).some(Boolean),
+              refusalNamed: card.refusal?.actorName != null,
+              staffNamed: judged(staff).some(Boolean),
+            }
+          }),
+        ),
+      )
+
+    expect(await told('veil-shut', REVIEW_OPEN)).toEqual({
+      shown: false,
+      named: false,
+      refusalNamed: false,
+      staffNamed: true,
+    })
+    expect(
+      await told('veil-open', [...REVIEW_OPEN, 'assessment.review.view-reviewers']),
+    ).toEqual({ shown: true, named: true, refusalNamed: true, staffNamed: true })
+  })
+
   it('keeps the round with its reviewer through an open ask, and a rejection ends it', async () => {
     const result = ok(
       await run(
