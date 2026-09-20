@@ -41,6 +41,9 @@ import { Pager } from '@qualy/ui/pager'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { Spinner } from '@qualy/ui/spinner'
 import { useLingering } from '@qualy/ui/use-lingering'
+import { useIsBelow } from '@qualy/ui/use-mobile'
+import { ChevronRightIcon } from 'lucide-react'
+import { DetailSheet } from '@qualy/ui/screen'
 import { iamMessages as m } from '../i18n.ts'
 import { NewUserForm } from './NewUserForm.tsx'
 import { PersonSheet } from './users/PersonSheet.tsx'
@@ -96,6 +99,27 @@ const styles = stylex.create({
   },
   unitLinkIcon: { width: 13, height: 13, flexShrink: 0, color: tokens.mutedForeground },
   look: { display: 'flex', justifyContent: 'flex-end' },
+  unitSwitch: {
+    display: 'flex',
+    width: '100%',
+    minHeight: 48,
+    alignItems: 'center',
+    gap: 10,
+    paddingInline: 14,
+    paddingBlock: 8,
+    borderWidth: 0,
+    borderRadius: 12,
+    backgroundColor: tokens.surface,
+    boxShadow: `0 0 0 1px ${tokens.border}, 0 1px 2px rgb(0 0 0 / 0.04)`,
+    fontFamily: 'inherit',
+    textAlign: 'start',
+    color: 'inherit',
+    cursor: 'pointer',
+  },
+  unitSwitchWords: { display: 'flex', minWidth: 0, flexGrow: 1, flexDirection: 'column', gap: 1 },
+  unitSwitchName: { fontSize: 14, fontWeight: 600 },
+  unitSwitchNote: { fontSize: 11.5, color: tokens.mutedForeground },
+  unitSwitchGo: { flexShrink: 0, fontSize: 13, color: tokens.surfaceMutedForeground },
 })
 
 /** how wide a name reads: a han character is one em, anything else a little over half */
@@ -120,6 +144,10 @@ export default function UsersPage() {
   const navigate = usePageNavigate()
   const write = usePageQueryUpdate()
   const structureHref = usePageHref('org/page')
+  // On a phone the tree would push the roster a screen down, so it folds to
+  // one line saying which unit is on show, and opens from the bottom to change it.
+  const phone = useIsBelow(768)
+  const [pickingUnit, setPickingUnit] = useState(false)
   const [draft, setDraft] = useState(search)
   const [creating, setCreating] = useState(false)
   const shownUserId = useLingering(openUserId === '' ? null : openUserId)
@@ -251,20 +279,44 @@ export default function UsersPage() {
           storageKey="qualy.users.tree-width"
           handleLabel={format(m.resizeTree)}
           side={
-            <UnitTree
-              units={units}
-              openId={active?.orgNodeId ?? null}
-              scope={within}
-              onOpen={asking('anchor')}
-              onScope={asking('scope')}
-            />
+            phone ? (
+              <button
+                type="button"
+                data-testid="unit-switch"
+                {...stylex.props(styles.unitSwitch)}
+                onClick={() => setPickingUnit(true)}
+              >
+                <span {...stylex.props(styles.unitSwitchWords)}>
+                  <span {...stylex.props(styles.unitSwitchName)}>{active?.name ?? ''}</span>
+                  {activeUnit !== undefined && (
+                    <span {...stylex.props(styles.unitSwitchNote)}>
+                      {format(within === 'self' ? m.rosterWithinSelf : m.rosterWithinSubtree, {
+                        count: within === 'self' ? activeUnit.own : activeUnit.total,
+                      })}
+                    </span>
+                  )}
+                </span>
+                <span {...stylex.props(styles.unitSwitchGo)}>{format(m.unitChange)}</span>
+                <ChevronRightIcon aria-hidden {...stylex.props(styles.unitLinkIcon)} />
+              </button>
+            ) : (
+              <UnitTree
+                units={units}
+                openId={active?.orgNodeId ?? null}
+                scope={within}
+                onOpen={asking('anchor')}
+                onScope={asking('scope')}
+              />
+            )
           }
         >
 
           <Card data-testid="roster">
             <CardHead
               title={
-                structureHref === undefined || active === undefined ? (
+                phone ? (
+                  format(m.usersTitle)
+                ) : structureHref === undefined || active === undefined ? (
                   (active?.name ?? '')
                 ) : (
                   <PageLink
@@ -279,7 +331,8 @@ export default function UsersPage() {
                 )
               }
               sub={
-                activeUnit === undefined ? undefined : (
+                // on a phone the line above already says which unit and how many
+                phone || activeUnit === undefined ? undefined : (
                   <span
                     data-testid="roster-scope"
                     data-scope={within}
@@ -360,12 +413,28 @@ export default function UsersPage() {
                       data-user-status={user.status}
                       data-accounts={user.identityCount}
                     >
-                      <Cell lead numeric tone={user.businessNo === null ? 'quiet' : 'plain'}>
-                        {user.businessNo ?? format(m.personNoBusinessNo, { businessNo })}
-                      </Cell>
-                      <Cell strong={user.id === openUserId} tone="plain">
-                        {user.displayName}
-                      </Cell>
+                      {/* across a table the number leads, because that is what the
+                          list is sorted by; on a phone a row is a name with
+                          its facts under it */}
+                      {phone ? (
+                        <>
+                          <Cell lead strong={user.id === openUserId}>
+                            {user.displayName}
+                          </Cell>
+                          <Cell numeric tone={user.businessNo === null ? 'quiet' : 'muted'}>
+                            {user.businessNo ?? format(m.personNoBusinessNo, { businessNo })}
+                          </Cell>
+                        </>
+                      ) : (
+                        <>
+                          <Cell lead numeric tone={user.businessNo === null ? 'quiet' : 'plain'}>
+                            {user.businessNo ?? format(m.personNoBusinessNo, { businessNo })}
+                          </Cell>
+                          <Cell strong={user.id === openUserId} tone="plain">
+                            {user.displayName}
+                          </Cell>
+                        </>
+                      )}
                       <Cell>{user.userType?.name ?? '—'}</Cell>
                       {user.primaryOrgNode === null ? (
                         <Cell>—</Cell>
@@ -423,6 +492,27 @@ export default function UsersPage() {
             </AsyncSection>
           </Card>
         </ResizableSplit>
+      )}
+
+      {phone && (
+        <DetailSheet
+          open={pickingUnit}
+          onClose={() => setPickingUnit(false)}
+          title={format(m.unitsTitle)}
+          closeLabel={format(commonMessages.close)}
+          testId="unit-sheet"
+        >
+          <UnitTree
+            units={units}
+            openId={active?.orgNodeId ?? null}
+            scope={within}
+            onOpen={(id) => {
+              asking('anchor')(id)
+              setPickingUnit(false)
+            }}
+            onScope={asking('scope')}
+          />
+        </DetailSheet>
       )}
 
       {shownUserId !== null && (

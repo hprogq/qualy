@@ -469,6 +469,7 @@ const i18n = definePluginMessages({
       defaultMessage: 'It appears on the sign-in page at once, for the user types it admits.',
     },
     personRolesConfined: { id: 'auth/person/roles-confined', defaultMessage: 'Confined to one object' },
+    unitChange: { id: 'auth/users/unit-change', defaultMessage: 'Change' },
     typeMembersTitle: { id: 'auth/user-types/members', defaultMessage: 'People of this type' },
     jumpOpen: { id: 'auth/users/jump-open', defaultMessage: 'Find a person' },
     jumpHint: jumpHintMessage,

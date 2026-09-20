@@ -112,6 +112,7 @@ export default {
   'auth/login-methods/move': '移动{name}，可拖动，也可用上下方向键',
   'auth/action/create': '创建',
   'auth/person/roles-confined': '专项授权',
+  'auth/users/unit-change': '更换',
   'auth/user-types/members': '该类型的用户',
   'auth/users/jump-open': '查找用户',
   'auth/users/jump-hint': '输入姓名或{businessNo}，上下键选择，回车打开其主页',

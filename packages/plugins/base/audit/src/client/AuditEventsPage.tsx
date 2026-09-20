@@ -39,12 +39,18 @@ const styles = stylex.create({
   filters: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
   actionFilter: { width: { default: '14rem', [breakpoints.phone]: '100%' } },
   outcomeFilter: { width: { default: '9rem', [breakpoints.phone]: '100%' } },
-  // six columns do not fold onto a phone; the table keeps its measure and
-  // the card scrolls sideways under it
-  scroll: { overflowX: 'auto' },
-  measure: { display: 'flex', minWidth: '46rem', flexDirection: 'column' },
+  // Six columns do not fit a phone, and a table that scrolls sideways hides
+  // the outcome - the one thing a reader scans this list for - off the edge.
+  // So there a row is what happened, with who, when and how it ended under it;
+  // everything else is one press away in the opened row.
+  scroll: { overflowX: { default: 'auto', [breakpoints.phone]: 'visible' } },
+  measure: {
+    display: 'flex',
+    minWidth: { default: '46rem', [breakpoints.phone]: 0 },
+    flexDirection: 'column',
+  },
   head: {
-    display: 'grid',
+    display: { default: 'grid', [breakpoints.phone]: 'none' },
     gridTemplateColumns: COLUMNS,
     alignItems: 'center',
     columnGap: 16,
@@ -65,7 +71,10 @@ const styles = stylex.create({
     borderBottomColor: tokens.divider,
   },
   row: {
-    display: 'grid',
+    display: { default: 'grid', [breakpoints.phone]: 'flex' },
+    flexWrap: { default: null, [breakpoints.phone]: 'wrap' },
+    rowGap: { default: null, [breakpoints.phone]: 3 },
+    paddingBlock: { default: 0, [breakpoints.phone]: 10 },
     width: '100%',
     minWidth: 0,
     minHeight: 40,
@@ -86,10 +95,16 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
   },
   actor: { fontSize: 13 },
-  action: { fontSize: 13, fontWeight: 500 },
+  action: {
+    fontSize: { default: 13, [breakpoints.phone]: 14 },
+    fontWeight: 500,
+    order: { default: null, [breakpoints.phone]: -1 },
+    flexBasis: { default: null, [breakpoints.phone]: '100%' },
+  },
   target: { fontSize: 12, color: tokens.mutedForeground },
   outcome: { fontSize: 12, color: tokens.mutedForeground },
   ip: {
+    display: { default: 'block', [breakpoints.phone]: 'none' },
     textAlign: 'right',
     fontFamily: MONO,
     fontSize: 12,

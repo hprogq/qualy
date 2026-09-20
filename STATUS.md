@@ -19071,3 +19071,70 @@ docs/assessment-design.md §32.83。
 - 分区导航条目右侧的记录数(设计稿有):`userDetailNavigation` 没有徽标槽,需要时照 `workspaceNavigationBadge` 加。
 - `self` / `derived` 目前没有真实驱动使用,只有契约、服务端分支与页面分支,及用替身入口写的浏览器用例。
 - 旧原语 `Rail / RailRow / EditorHead / DefRow / Barred / SaveBar / PickList` 无生产调用方,待确认后删除。
+
+## 组织与权限第三轮:页码分页、整宽组织树、占用清单、登录方式管理、移动端(2026-09-21)
+
+承接上一节,逐条处理用户第三批意见。设计文档:登录方式与账号绑定见 docs/notes/auth-security.md;分页纪律已写回 CLAUDE.md「API 纪律」。
+
+### 平台与契约
+
+- **页码分页**成为第二种分页原语:`numberedPageQuery / numberedPageOf / pageNumber / pageWindow`(api-kit)+ `@qualy/ui/pager`。
+  用在人来回走的名册上:用户名册、角色持有人、用户类型成员、导入记录与逐行;审计、选择器仍是 keyset。
+  `listUsers` 与 `listRoleGrants` 同一端点两种读法(带 `page` 即返回 `total/page/pageSize`);导入两条列表整体改为页码。
+- `@qualy/ui/screen` 新增 `ResizableSplit`(宽度存 localStorage,240–520)、`StickyFill`(底边永远贴视口底)、
+  `TableRow nested`(行内可放自己的控件)、`DetailSheet wide`;`Field` 里的 `Select` 默认撑满(`FieldFill` 上下文,工具栏里的不受影响)。
+- **`@qualy/org-contract/plugin`:`OrgUsage`**(runtime 相位扩展点)。org 在依赖图最底层,看不见指向组织的表;
+  改由 auth(在此的用户)、rbac(生效中的授权 / 已撤销的历史授权)、assessment(由此管理的批次 / 参评人记录在此的批次,各分进行中与已归档)
+  登记 reporter,`GET /org/nodes/{nodeId}/usage` 汇总;每条带 `clearable`。下级数由服务端按真实数据统计,不受查看者可见范围影响。
+- **`LoginDriver.entrance`**:驱动声明「能否新增该类型入口、需要哪些设置」(字段 `text|url|secret` + `prepare`),
+  secret 只写不读、留空沿用。auth-local 声明无字段。`OrgNodePickerContext.disabled`:显示但不可选,附原因。
+
+### 各页
+
+- **用户**:页码分页(50/页);左树可拖拽调宽、占满视口并随滚动贴底;本级/含下级与展开/收起收进「…」;人数为 0 显示 0;
+  列为 学工号 | 姓名(宽度随本页最长姓名)| 类型 | 所在组织 | 状态 | 速览;点行直达详情,行尾「ⓘ」才开速览;
+  所在组织相对当前组织、从末端起尽量多显示整段、末节点黑字、每段可点即筛选;「现有/已删除」改为「显示已删除用户」复选框(`status=any`);
+  名册标题可跳到组织架构对应节点;「查找用户」模态框(姓名或学工号、头像列表、上下键 + 回车、禁用浏览器自动填充、固定高度、初始即有内容);
+  详情页「返回」带回名册原先的组织 / 筛选 / 页码(sessionStorage)。速览里角色分「担任角色 / 专项授权」,页首只留学工号。
+- **组织架构**:整宽树表(名称 | 类型 | 本级人数 | 下级数),点行开宽 Sheet;行尾「+」与「…」(重命名 / 移动至),
+  三个任务都是 `FormDialog`;移动用组织选择器,单选圆点 + 不可选置灰并写原因,无处可移时给空状态并直达该类型的层级规则;
+  删除改为**占用清单**,逐项列出数量、示例与去处,区分可清除与历史记录;展开 / 收起为两个图标按钮。
+- **组织类型**:规则图默认适应宽度、缩放用放大镜图标、「适应宽度」用向内收拢图标、去滚动条改拖拽平移;根类型的删除原因单独说明。
+- **角色**:租户管理员显示「不受限制」;「任职条件」用两张说明卡选择规则;状态 / 可被授予先确认再生效;
+  离开有未保存更改的页签时询问保存 / 放弃 / 取消;新增「现任」页签(页码分页,专项授权显示来源并可跳转)。
+- **用户类型**:配置页新增该类型的用户列表(页码分页)。
+- **登录方式**:新增(类型 / 名称 / 地址标识 / 驱动声明的设置)、改名与设置、启停(先确认)、拖拽或方向键排序;地址标识创建后不可改。
+- **审计日志**:授权类事件的对象为「用户 / 角色」、术语事件的对象为该术语当前用词;展开行补「操作人」「对象」「IP」,
+  每项可复制;可按操作人筛选(人员选择器,或展开行里「只看此人」)。
+- **用户详情**:基本资料 / 组织归属 / 参评批次 / 申报记录改为卡片与表格;专项授权的来源只显示可点的批次名,加载时为骨架不再闪句子;
+  横幅槽位与工作区侧栏在加载时有骨架。
+- **导入**:导入记录改模态框(表格 + 页码),点记录开侧边 Sheet(事实带、结果、事件、涉及组织与逐行两张分页表);
+  向导首步说明文件应含的列并给示例表;预检问题分页。
+- **应用壳**:占满视口的工作台(公式编辑器)不出侧栏;资源库分「计分公式」「租户设置」两组。
+- **移动端**:用户页的组织树折成一行「当前组织 + 更换」,自底部弹出选择;名册行以姓名为首;审计日志改两行式,不再横向滚动;
+  其余各页沿用表格原语的手机折行。2a 至 2l 的其余专门版式(底部固定操作条等)未逐屏复刻。
+
+### 需要用户裁决(未改)
+
+**有历史引用的组织永远删不掉**:`batch_participants.assessment_anchor_node_id`、`batch_management_anchors.org_node_id` 与
+`role_grants.org_node_id`(含已撤销行)都是 `on delete restrict`,而归档批次只读、历史授权不可清。设计文档的原则是快照与活数据脱钩
+(`anchor_path` / `anchor_lineage` 已存,`batch_scope_nodes` 刻意不带外键)。选项:A 组织改为停用而非硬删(建议);
+B 放开这几条外键、只在进行中的批次上拦删除;C 维持。现在只做了如实告知(清单里标「属于历史记录,无法清除」)。
+
+### 验收(实际执行)
+
+- `pnpm typecheck`:`exit 0`。
+- node:`pnpm exec vitest run packages/plugins/base packages/contracts tools/tests` → `Test Files 84 passed (84)`,`Tests 525 passed (525)`。
+  期间一次并行运行里 `catalogs` 与 `schema-runtime` 各红一条,均为后台测试与编辑同时进行所致(一条撞上编辑中途,一条撞上
+  effect-diagnostics 的临时目录),单独重跑通过。
+- 浏览器全量 `pnpm test:browser`:`Test Files 65 passed (65)`,`Tests 486 passed (486)`。按用户手改后的中文文案更新了
+  `org-admin`(删除组织 / 移动至 / 新建下级组织)与 `formula-workbench`(代码)。
+- `pnpm qualy resolve --frozen-lockfile`:`qualy.lock.json is up to date`。
+- 新路由已登记 `frozen-routes.ts`:`GET /org/nodes/{nodeId}/usage`、`GET /auth/provider-kinds`、`POST /auth/providers`、
+  `PATCH /auth/providers/{providerId}`、`PUT /auth/providers/{providerId}/status`、`PUT /auth/provider-order`。
+
+### 未做与下一步
+
+- 上面的组织删除裁决。
+- 登录方式的新增 / 排序 / 启停、节点占用的三个 reporter、`setAuthProviderOrder` 目前只有类型与装配级(parity)保障,缺服务端行为测试。
+- 移动端其余专门版式;用户详情分区导航的记录数徽标。
