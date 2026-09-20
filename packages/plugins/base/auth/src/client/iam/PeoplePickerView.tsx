@@ -42,24 +42,29 @@ const ANY = 'any'
 
 const styles = stylex.create({
   // the units on one side, the people on the other once there is room
+  // A height of its own, so the tree and the list each scroll inside it and
+  // the pager under the list stays where it is: grown to whatever it held, a
+  // long tree made the whole picker screens tall and put "next page" several
+  // scrolls below the people it turns. The tree is the narrower half - it is
+  // a way to narrow the list, and the list is what is being chosen from.
   frame: {
     display: 'grid',
     minHeight: 0,
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: '0%',
     gap: 16,
+    height: { default: null, [breakpoints.tablet]: 'min(62vh, 30rem)', [breakpoints.desktop]: 'min(62vh, 30rem)' },
     gridTemplateColumns: {
       default: null,
-      [breakpoints.tablet]: 'minmax(0, 1fr) minmax(0, 1.4fr)',
-      [breakpoints.desktop]: 'minmax(0, 1fr) minmax(0, 1.4fr)',
+      [breakpoints.tablet]: 'minmax(0, 15rem) minmax(0, 1fr)',
+      [breakpoints.desktop]: 'minmax(0, 17rem) minmax(0, 1fr)',
     },
   },
   side: { display: 'flex', minHeight: 0, minWidth: 0, flexDirection: 'column', gap: 8 },
   sideWide: { display: 'flex', minHeight: 0, minWidth: 0, flexDirection: 'column', gap: 12 },
   heading: { fontSize: 14, lineHeight: '1.25rem', fontWeight: 500 },
   tree: {
-    minHeight: '14rem',
+    minHeight: '10rem',
+    // stacked on a phone there is no frame to fill, so it keeps to a share
+    maxHeight: { default: '14rem', [breakpoints.tablet]: 'none', [breakpoints.desktop]: 'none' },
     flexGrow: 1,
     flexShrink: 1,
     flexBasis: '0%',

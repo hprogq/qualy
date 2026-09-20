@@ -53,10 +53,16 @@ const jumpLabelMessage = defineMessage<{ businessNo: string }>()({
   id: 'auth/users/jump',
   defaultMessage: 'Name or {businessNo}',
 })
+const jumpFoundMessage = defineMessage<{ count: number }>()({
+  id: 'auth/users/jump-found',
+  defaultMessage: '{count, plural, one {# person matches} other {# people match}}',
+})
 const jumpHintMessage = defineMessage<{ businessNo: string }>()({
   id: 'auth/users/jump-hint',
   defaultMessage: 'Type a name or a {businessNo}. Arrows choose, Enter opens their page',
 })
+const methodNamed = (id: string, defaultMessage: string) =>
+  defineMessage<{ name: string }>()({ id, defaultMessage })
 const methodMoveMessage = defineMessage<{ name: string }>()({
   id: 'auth/login-methods/move',
   defaultMessage: 'Move {name}. Drag, or use the up and down arrows',
@@ -452,9 +458,21 @@ const i18n = definePluginMessages({
       defaultMessage: 'Drag it in the list to move it',
     },
     methodMove: methodMoveMessage,
+    methodDisableTitle: methodNamed('auth/login-methods/disable-title', 'Take {name} out of service?'),
+    methodEnableTitle: methodNamed('auth/login-methods/enable-title', 'Put {name} into service?'),
+    methodDisableBody: {
+      id: 'auth/login-methods/disable-body',
+      defaultMessage: 'Nobody can sign in through it from then on. People already signed in stay signed in.',
+    },
+    methodEnableBody: {
+      id: 'auth/login-methods/enable-body',
+      defaultMessage: 'It appears on the sign-in page at once, for the user types it admits.',
+    },
+    personRolesConfined: { id: 'auth/person/roles-confined', defaultMessage: 'Confined to one object' },
     typeMembersTitle: { id: 'auth/user-types/members', defaultMessage: 'People of this type' },
     jumpOpen: { id: 'auth/users/jump-open', defaultMessage: 'Find a person' },
     jumpHint: jumpHintMessage,
+    jumpFound: jumpFoundMessage,
     jumpNone: { id: 'auth/users/jump-none', defaultMessage: 'Nobody matches' },
     lookAt: lookAtMessage,
     pageSummary: pageSummaryMessage,

@@ -123,12 +123,8 @@ export function PersonSheet({
       }
       meta={
         person === undefined ? undefined : (
-          <MetaLine
-            items={[
-              person.user.businessNo ?? format(m.personNoBusinessNo, { businessNo }),
-              person.orgPath.map((node) => node.name).join(' / '),
-            ]}
-          />
+          // who, and nothing else: where they stand is said once, below
+          <MetaLine items={[person.user.businessNo ?? format(m.personNoBusinessNo, { businessNo })]} />
         )
       }
       closeLabel={format(commonMessages.close)}
@@ -199,32 +195,40 @@ export function PersonSheet({
               </DefLine>
             </DefList>
           </Card>
-          <Card>
-            <CardHead
-              title={format(m.personRoles)}
-              note={format(m.grantCount, { count: person.roles.length })}
-            />
-            {person.roles.length === 0 ? (
-              <CardEmpty>{format(m.personNoRoles)}</CardEmpty>
-            ) : (
-              person.roles.map((role) => (
-                <div key={role.grantId} {...stylex.props(styles.roleRow)}>
-                  <span {...stylex.props(styles.roleName)}>{role.roleName}</span>
-                  <span {...stylex.props(styles.spacer)} />
-                  <span {...stylex.props(styles.roleWhere)}>
-                    {role.orgNodeName === null
-                      ? format(m.personRoleTenantWide)
-                      : format(
-                          role.coverage === 'subtree' ? m.personRoleSubtree : m.personRoleHere,
-                          {
-                            node: role.orgNodeName,
-                          },
-                        )}
-                  </span>
-                </div>
-              ))
-            )}
-          </Card>
+          {/* Two lists, because they are two kinds of authority: a duty held
+              in the organization applies wherever it says, and one confined to
+              a single object confers nothing outside it. Side by side in one
+              list they read as the same thing. */}
+          {(
+            [
+              ['organizational', m.personRoles, person.roles.filter((role) => !role.scoped)],
+              ['confined', m.personRolesConfined, person.roles.filter((role) => role.scoped)],
+            ] as const
+          ).map(([kind, title, roles]) =>
+            kind === 'confined' && roles.length === 0 ? null : (
+              <Card key={kind} data-testid="person-roles" data-kind={kind} data-count={roles.length}>
+                <CardHead title={format(title)} note={format(m.grantCount, { count: roles.length })} />
+                {roles.length === 0 ? (
+                  <CardEmpty>{format(m.personNoRoles)}</CardEmpty>
+                ) : (
+                  roles.map((role) => (
+                    <div key={role.grantId} {...stylex.props(styles.roleRow)}>
+                      <span {...stylex.props(styles.roleName)}>{role.roleName}</span>
+                      <span {...stylex.props(styles.spacer)} />
+                      <span {...stylex.props(styles.roleWhere)}>
+                        {role.orgNodeName === null
+                          ? format(m.personRoleTenantWide)
+                          : format(
+                              role.coverage === 'subtree' ? m.personRoleSubtree : m.personRoleHere,
+                              { node: role.orgNodeName },
+                            )}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </Card>
+            ),
+          )}
         </>
       )}
     </DetailSheet>

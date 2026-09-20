@@ -1,6 +1,7 @@
 import type { MessageCatalog } from '@qualy/i18n-contract'
 
 export default {
+  'settings/nav-group/tenant': '租户设置',
   'settings/permission/terminology-manage': '管理术语',
   'settings/permission-group/settings': '系统设置',
   'settings/navigation/terminology': '术语库',

@@ -6,7 +6,7 @@ import { useState } from 'react'
 import { useApi, useRunApi, useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import { Feedback, Field } from '@qualy/ui/admin'
+import { ConfirmDialog, Feedback, Field } from '@qualy/ui/admin'
 import {
   Card,
   CardEmpty,
@@ -97,6 +97,7 @@ export function MethodSheet({
   const figure = new Intl.NumberFormat(locale)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [name, setName] = useState<string | null>(null)
+  const [asking, setAsking] = useState<'active' | 'disabled' | null>(null)
   const [values, setValues] = useState<Record<string, string> | null>(null)
   // the draft is kept only while it differs from what is stored, so a save
   // that brings back new server state needs no re-seeding
@@ -260,8 +261,10 @@ export function MethodSheet({
             <Segmented
               label={format(m.columnStatus)}
               value={provider.status}
+              // asked about first: taking a way in out of service locks out
+              // everybody who has no other, the moment it lands
               onChange={(next) => {
-                if (next !== provider.status && !setStatus.isPending) setStatus.mutate(next)
+                if (next !== provider.status && !setStatus.isPending) setAsking(next)
               }}
               options={[
                 { value: 'active', label: format(m.typeEnabled) },
@@ -331,6 +334,23 @@ export function MethodSheet({
           </CardFoot>
         )}
       </Card>
+      <ConfirmDialog
+        open={asking !== null}
+        {...(asking === 'disabled' ? { tone: 'destructive' as const } : {})}
+        title={format(asking === 'disabled' ? m.methodDisableTitle : m.methodEnableTitle, {
+          name: provider.name,
+        })}
+        description={format(asking === 'disabled' ? m.methodDisableBody : m.methodEnableBody)}
+        confirmLabel={format(asking === 'disabled' ? m.disable : m.enable)}
+        cancelLabel={format(m.cancel)}
+        pending={setStatus.isPending}
+        onCancel={() => setAsking(null)}
+        onConfirm={() => {
+          const next = asking
+          setAsking(null)
+          if (next !== null) setStatus.mutate(next)
+        }}
+      />
     </DetailSheet>
   )
 }

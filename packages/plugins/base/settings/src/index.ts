@@ -6,7 +6,7 @@ import { Access } from '@qualy/rbac-contract/plugin'
 import { Audit } from '@qualy/audit-contract/plugin'
 import { Settings } from '@qualy/settings-contract/plugin'
 import { message } from '@qualy/i18n-contract'
-import { APP_SHELL, permissionOf } from '@qualy/ui-contract'
+import { APP_SHELL, PUBLIC, navigationGroups, permissionOf } from '@qualy/ui-contract'
 import { settingsActions } from './actions.ts'
 import { settingsApiGroup } from './api.ts'
 import { entities } from './db/entities.ts'
@@ -34,6 +34,23 @@ const plugin = Plugin.define(
   // org for the tenant edge; overrides belong to the tenant and leave with it
   Db.entities(entities, { dependsOn: ['@qualy/plugin-org'] }),
   Settings.provider,
+  // A heading of its own inside the library: the library is one application,
+  // and what is filed in it is not all one kind of thing.
+  Ui.surfaces({
+    collections: [
+      {
+        collection: navigationGroups,
+        id: 'settings/tenant',
+        value: {
+          id: 'settings/tenant',
+          label: message('settings/nav-group/tenant', 'Tenant settings'),
+          order: 90,
+          parent: 'library/main',
+        },
+        visibility: PUBLIC,
+      },
+    ],
+  }),
   Access.permissions('settings', permissions),
   Audit.actions('settings', settingsActions),
   Ui.i18n('./client/i18n'),
@@ -52,7 +69,7 @@ const plugin = Plugin.define(
       label: message('settings/navigation/terminology', 'Terminology'),
       icon: 'book-a',
       order: 40,
-      group: 'library/main',
+      group: 'settings/tenant',
     },
   }),
   Api.group(settingsApiGroup, settingsApiHandlers),

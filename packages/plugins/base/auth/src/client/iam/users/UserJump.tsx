@@ -8,6 +8,7 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { FormDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
+import { Skeleton } from '@qualy/ui/skeleton'
 import { Spinner } from '@qualy/ui/spinner'
 import { iamMessages as m } from '../../i18n.ts'
 import { authApi } from '../../api.ts'
@@ -28,9 +29,12 @@ const FOUND = 8
 
 const styles = stylex.create({
   box: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 10 },
+  // one height whatever it holds: a box that grows and shrinks with every
+  // letter moves the dialog under the reader's eyes while they type
   list: {
     display: 'flex',
-    minHeight: '17rem',
+    height: '23.5rem',
+    overflowY: 'auto',
     flexDirection: 'column',
     gap: 2,
     margin: 0,
@@ -74,6 +78,13 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
   },
   go: { width: 13, height: 13, flexShrink: 0, color: tokens.mutedForeground },
+  caption: {
+    paddingInline: 10,
+    paddingTop: 2,
+    paddingBottom: 6,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
   note: { margin: 0, paddingInline: 10, paddingBlock: 12, fontSize: 13, color: tokens.mutedForeground },
   glass: { width: 15, height: 15, color: tokens.mutedForeground },
 })
@@ -107,15 +118,17 @@ export function UserJump({
       query: {
         orgNodeId: rootNodeId ?? '',
         scope: 'subtree',
-        search: asked,
+        ...(asked === '' ? {} : { search: asked }),
         page: '1',
         limit: String(FOUND),
       },
     }),
-    enabled: open && rootNodeId !== undefined && asked !== '',
+    // before anything is typed it lists whoever comes first, so the box
+    // opens on people rather than on an empty panel
+    enabled: open && rootNodeId !== undefined,
     placeholderData: keepPreviousData,
   })
-  const people = asked === '' ? [] : (found.data?.items ?? [])
+  const people = found.data?.items ?? []
   useEffect(() => setLit(0), [asked])
 
   const go = (userId: string) => {
@@ -181,10 +194,21 @@ export function UserJump({
             }}
           />
           <ul ref={listRef} id="user-jump-found" role="listbox" {...stylex.props(styles.list)}>
-            {asked === '' ? (
-              <li role="presentation" {...stylex.props(styles.note)}>
-                {format(m.jumpHint, { businessNo })}
-              </li>
+            <li role="presentation" {...stylex.props(styles.caption)}>
+              {asked === ''
+                ? format(m.jumpHint, { businessNo })
+                : format(m.jumpFound, { count: found.data?.total ?? people.length })}
+            </li>
+            {people.length === 0 && found.isPending ? (
+              Array.from({ length: 6 }, (_, index) => (
+                <li key={index} role="presentation" {...stylex.props(styles.row)}>
+                  <Skeleton height={30} width={30} radius={9999} />
+                  <span {...stylex.props(styles.words)}>
+                    <Skeleton height={12} width={`${String([40, 55, 35][index % 3])}%`} radius={4} />
+                    <Skeleton height={10} width="60%" radius={4} />
+                  </span>
+                </li>
+              ))
             ) : people.length === 0 && !found.isFetching ? (
               <li role="presentation" {...stylex.props(styles.note)} data-testid="user-jump-none">
                 {format(m.jumpNone)}

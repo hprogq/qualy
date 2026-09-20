@@ -12,6 +12,7 @@ import type * as formulaErrors from '../server/errors.ts'
 const i18n = definePluginMessages({
   namespace: 'assessment-formula',
   messages: {
+    navGroupLibrary: { id: 'assessment-formula/nav-group/library', defaultMessage: 'Scoring formulas' },
     'permission.assessment.formula.author': {
       id: 'assessment-formula/permission/author',
       defaultMessage: 'Write scoring formulas',

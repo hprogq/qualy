@@ -18,6 +18,7 @@ const defaultWord = defineMessage<{ value: string }>()({
 const i18n = definePluginMessages({
   namespace: 'settings',
   messages: {
+    navGroupTenant: { id: 'settings/nav-group/tenant', defaultMessage: 'Tenant settings' },
     'permission.settings.terminology.manage': {
       id: 'settings/permission/terminology-manage',
       defaultMessage: 'Manage terminology',

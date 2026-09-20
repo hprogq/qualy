@@ -182,6 +182,8 @@ function Shell() {
   const { apps, activeApp, sections, sectionGroups } = useAppNavigation()
   const { format } = useI18n()
   const narrow = useIsBelow(SIDE_BREAKPOINT)
+  // a workbench fills the room under the bars and has no foot under it
+  const filled = useScreenFillClaimed()
   const main = useRef<HTMLElement>(null)
   const head = useRef<HTMLDivElement>(null)
   const sentinel = useRef<HTMLDivElement>(null)
@@ -190,8 +192,6 @@ function Shell() {
   const { title, node: heading } = usePageTitleClaim()
   const [titleShown, setTitleShown] = useState(false)
   const bottomBar = apps.length >= 2
-  // a workbench fills the room under the bars and has no foot under it
-  const filled = useScreenFillClaimed()
   // The band both observers watch starts where the bars end, so their
   // margin is the bars' measured height - which moves with the section bar
   // and again with the width, since a phone's bar is shorter. Measured
@@ -199,8 +199,10 @@ function Shell() {
   // rotation, and then quietly wrong by eight pixels.
   const [barHeight, setBarHeight] = useState(0)
   const sectioned = sections.length >= 2
-  // one or the other carries the sections, never both
-  const beside = sectioned && !narrow
+  // one or the other carries the sections, never both - and a workbench that
+  // fills the room takes the column's room too: the way out of it is the top
+  // bar, and a list of sibling pages beside an editor is width it needs
+  const beside = sectioned && !narrow && !filled
   const withSections = sectioned && narrow
   useEffect(() => {
     const bars = head.current

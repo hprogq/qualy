@@ -468,7 +468,7 @@ describe('roles screen', () => {
     // everything a role needs before it can be activated comes afterwards.
     await page.getByRole('tab', { name: '任职条件' }).click()
     await expect
-      .element(page.getByRole('tab', { name: '仅指定类型', exact: false }).first())
+      .element(page.getByRole('radio', { name: '仅指定类型', exact: false }).first())
       .toBeInTheDocument()
   })
 
@@ -798,12 +798,15 @@ describe('users workspace', () => {
     await vi.waitFor(() =>
       expect(document.querySelectorAll('[data-testid="user-jump-option"]')).toHaveLength(2),
     )
-    // asked across the whole tenant, not under whatever unit the roster shows
-    expect(
-      (list.mock.calls as unknown as [{ query: { search?: string; scope?: string } }][]).some(
-        (call) => call[0].query.search === '张' && call[0].query.scope === 'subtree',
-      ),
-    ).toBe(true)
+    // asked across the whole tenant, not under whatever unit the roster shows;
+    // waited for, because the box opens on people before anything is typed
+    await vi.waitFor(() =>
+      expect(
+        (list.mock.calls as unknown as [{ query: { search?: string; scope?: string } }][]).some(
+          (call) => call[0].query.search === '张' && call[0].query.scope === 'subtree',
+        ),
+      ).toBe(true),
+    )
     await userEvent.keyboard('{ArrowDown}{Enter}')
     await expect.element(page.getByTestId('landed')).toBeInTheDocument()
     expect(addressNow()).toContain(`/people/${SECOND_USER_ID}`)

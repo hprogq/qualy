@@ -1,6 +1,7 @@
 import type { MessageCatalog } from '@qualy/i18n-contract'
 
 export default {
+  'assessment-formula/nav-group/library': '计分公式',
   'assessment-formula/permission/author': '编写计分公式',
   'assessment-formula/permission-hint/author': '创建、编辑、试算、发布和归档自己的计分公式。',
   'assessment-formula/permission/share': '共享计分公式',

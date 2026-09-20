@@ -103,6 +103,10 @@ const memberLineMessage = defineMessage<{ holders: number; appointers: number }>
     '{holders, plural, =0 {nobody holds it} one {1 holder} other {# holders}} · appointed by {appointers, plural, =0 {no role} one {1 role} other {# roles}}',
 })
 
+const roleNamed = (id: string, defaultMessage: string) =>
+  defineMessage<{ name: string }>()({ id, defaultMessage })
+const standingBody = (id: string, defaultMessage: string) =>
+  defineMessage<{ count: number }>()({ id, defaultMessage })
 const i18n = definePluginMessages({
   namespace: 'rbac',
   messages: {
@@ -357,6 +361,40 @@ const i18n = definePluginMessages({
     savePermissions: { id: 'rbac/roles/save-permissions', defaultMessage: 'Save permissions' },
     factStatus: { id: 'rbac/roles/fact-status', defaultMessage: 'Status' },
     factHolders: { id: 'rbac/roles/fact-holders', defaultMessage: 'Held by' },
+    standingAskOn: roleNamed('rbac/roles/ask-on', 'Put {name} into service?'),
+    standingAskOff: roleNamed('rbac/roles/ask-off', 'Take {name} out of service?'),
+    standingAskGrantable: roleNamed('rbac/roles/ask-grantable', 'Let {name} be granted?'),
+    standingAskNotGrantable: roleNamed('rbac/roles/ask-not-grantable', 'Stop {name} being granted?'),
+    standingAskStatusBody: standingBody(
+      'rbac/roles/ask-status-body',
+      '{count, plural, =0 {Nobody holds it yet.} one {# grant gains or loses what it allows at once.} other {# grants gain or lose what it allows at once.}}',
+    ),
+    standingAskGrantBody: standingBody(
+      'rbac/roles/ask-grant-body',
+      'Grants already made stay as they are; this decides whether new ones can be made.',
+    ),
+    confirm: { id: 'rbac/action/confirm', defaultMessage: 'Confirm' },
+    leaveTabTitle: { id: 'rbac/roles/leave-tab-title', defaultMessage: 'This tab has unsaved changes' },
+    leaveTabBody: {
+      id: 'rbac/roles/leave-tab-body',
+      defaultMessage: 'Save them, discard them, or stay and keep editing.',
+    },
+    eligibilityAnyoneBody: {
+      id: 'rbac/field/eligibility-anyone-body',
+      defaultMessage: 'Somebody of any user type may be granted this role',
+    },
+    eligibilityListedBody: {
+      id: 'rbac/field/eligibility-listed-body',
+      defaultMessage: 'Only people of the ticked types may be granted it. With none ticked, nobody can hold it',
+    },
+    anchorAnywhereBody: {
+      id: 'rbac/field/anchor-anywhere-body',
+      defaultMessage: 'It may be held at a unit of any kind',
+    },
+    anchorListedBody: {
+      id: 'rbac/field/anchor-listed-body',
+      defaultMessage: 'It may be held only at units of the ticked kinds',
+    },
     holdersEmpty: { id: 'rbac/holders/empty', defaultMessage: 'Nobody holds this role yet' },
     holderColumn: { id: 'rbac/holders/column', defaultMessage: 'Held by' },
     organizationalWord: { id: 'rbac/holders/organizational', defaultMessage: 'Organizational' },

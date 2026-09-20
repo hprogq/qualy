@@ -6,7 +6,7 @@ import { Audit } from '@qualy/audit-contract/plugin'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Scoring } from '@qualy/plugin-assessment/plugin'
 import { calculatorEditorSlot, calculatorSummarySlot } from '@qualy/plugin-assessment/surfaces'
-import { APP_SHELL, permissionOf } from '@qualy/ui-contract'
+import { APP_SHELL, PUBLIC, navigationGroups, permissionOf } from '@qualy/ui-contract'
 import { message } from '@qualy/i18n-contract'
 import { permissions } from './permissions.ts'
 import { formulaActions } from './actions.ts'
@@ -52,6 +52,23 @@ const plugin = Plugin.define(
     // points at; auth owns the people a template names as its author
     dependsOn: ['@qualy/plugin-org', '@qualy/plugin-auth'],
   }),
+  // A heading of its own inside the library: the library is one application,
+  // and what is filed in it is not all one kind of thing.
+  Ui.surfaces({
+    collections: [
+      {
+        collection: navigationGroups,
+        id: 'assessment-formula/library',
+        value: {
+          id: 'assessment-formula/library',
+          label: message('assessment-formula/nav-group/library', 'Scoring formulas'),
+          order: 10,
+          parent: 'library/main',
+        },
+        visibility: PUBLIC,
+      },
+    ],
+  }),
   Access.permissions('assessment-formula', permissions),
   // the shipped scoring driver: 7.3's decision, made here and nowhere else
   ...Scoring.calculator(formula1),
@@ -88,7 +105,7 @@ const plugin = Plugin.define(
       label: message('assessment-formula/navigation/formulas', 'Scoring formulas'),
       icon: 'sigma',
       order: 20,
-      group: 'library/main',
+      group: 'assessment-formula/library',
     },
   }),
   Ui.page({
@@ -104,7 +121,7 @@ const plugin = Plugin.define(
       label: message('assessment-formula/navigation/templates', 'Formula templates'),
       icon: 'file-text',
       order: 30,
-      group: 'library/main',
+      group: 'assessment-formula/library',
     },
   }),
   Ui.page({

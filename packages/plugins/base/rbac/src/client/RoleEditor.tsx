@@ -31,6 +31,7 @@ import { Input } from '@qualy/ui/input'
 import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
 import { rbacMessages as m } from './i18n.ts'
 import { accessApi } from './api.ts'
+import { ModeCards } from './ModeCards.tsx'
 import { RoleHolders } from './RoleHolders.tsx'
 
 // One role, on a page of its own.
@@ -129,6 +130,7 @@ const styles = stylex.create({
     borderBottomStyle: 'solid',
     borderBottomColor: tokens.divider,
   },
+  partBody: { paddingInline: 16, paddingTop: 10, paddingBottom: 6 },
   partHead: { display: 'flex', alignItems: 'center', gap: 10, paddingInline: 16, paddingTop: 12, flexWrap: 'wrap' },
   partTitle: { fontSize: 13, fontWeight: 600 },
   spacer: { flexGrow: 1 },
@@ -312,6 +314,10 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
   })
 
   const editable = canManage && !locked
+  const [standing, setStanding] = useState<
+    { status: 'active' | 'disabled' } | { assignable: boolean } | null
+  >(null)
+  const [leaving, setLeaving] = useState<Tab | null>(null)
   const permissionsDirty =
     [...permissions].sort().join(',') !== [...role.permissions].sort().join(',')
   const eligibilityDirty =
@@ -327,6 +333,26 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
         : '')
   const grantableDirty =
     [...grantableIds].sort().join(',') !== [...(grantable.data?.roleIds ?? [])].sort().join(',')
+  const tabDirty =
+    (tab === 'permissions' && permissionsDirty) ||
+    (tab === 'eligibility' && eligibilityDirty) ||
+    (tab === 'appointment' && grantableDirty)
+  /** put the open tab back to what is stored */
+  const discardTab = () => {
+    if (tab === 'appointment') setGrantableIds([...(grantable.data?.roleIds ?? [])])
+    else seed()
+  }
+  /** save the open tab the way its own button would, then go where the reader was going */
+  const saveTabThen = (next: Tab) => {
+    const go = { onSuccess: () => setTab(next) }
+    if (tab === 'permissions') {
+      // an active role's permissions are confirmed with their reach said out
+      // loud; that dialog takes over, and the reader moves on from there
+      if (role.status === 'active') setConfirmingPermissions(true)
+      else savePermissions.mutate(undefined as never, go)
+    } else if (tab === 'eligibility') saveEligibility.mutate(undefined as never, go)
+    else if (tab === 'appointment') saveGrantable.mutate(undefined as never, go)
+  }
 
   // permissions arrive sorted by code and grouped by whoever declared them;
   // the search narrows what is shown without touching what is ticked, so a
@@ -427,8 +453,10 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
                 value={role.status === 'active' ? 'on' : 'off'}
                 onChange={(next) => {
                   if (setStatus.isPending) return
-                  if (next === 'on' && role.status !== 'active') setStatus.mutate('active')
-                  if (next === 'off' && role.status === 'active') setStatus.mutate('disabled')
+                  // asked about first: everybody holding the role gains or
+                  // loses what it grants the moment this lands
+                  if (next === 'on' && role.status !== 'active') setStanding({ status: 'active' })
+                  if (next === 'off' && role.status === 'active') setStanding({ status: 'disabled' })
                 }}
                 options={[
                   { value: 'on', label: format(m.statusOn) },
@@ -456,7 +484,7 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
                 value={role.assignable ? 'yes' : 'no'}
                 onChange={(next) => {
                   if (setAssignable.isPending) return
-                  if ((next === 'yes') !== role.assignable) setAssignable.mutate(next === 'yes')
+                  if ((next === 'yes') !== role.assignable) setStanding({ assignable: next === 'yes' })
                 }}
                 options={[
                   { value: 'yes', label: format(m.assignableOn) },
@@ -512,7 +540,15 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
 
       <Card data-testid="role-config" data-tab={tab}>
         <div {...stylex.props(styles.tabsRow)}>
-          <Tabs value={tab} onValueChange={(next) => setTab(next as Tab)}>
+          <Tabs
+            value={tab}
+            onValueChange={(next) => {
+              // what is unsaved on the tab being left is asked about rather
+              // than kept silently behind a tab nobody is looking at
+              if (tabDirty) setLeaving(next as Tab)
+              else setTab(next as Tab)
+            }}
+          >
             <TabsList xstyle={styles.tabList}>
               <TabsTrigger value="permissions" xstyle={styles.tab}>
                 {format(m.tabPermissions)}
@@ -666,14 +702,24 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
             <div {...stylex.props(styles.part)}>
               <div {...stylex.props(styles.partHead)}>
                 <span {...stylex.props(styles.partTitle)}>{format(m.userTypesLegend)}</span>
-                <span {...stylex.props(styles.spacer)} />
-                <Segmented
+              </div>
+              <div {...stylex.props(styles.partBody)}>
+                <ModeCards
                   label={format(m.userTypesLegend)}
                   value={holderMode}
-                  onChange={(next) => editable && setHolderMode(next)}
+                  disabled={!editable}
+                  onChange={setHolderMode}
                   options={[
-                    { value: 'unrestricted', label: format(m.eligibilityAnyone) },
-                    { value: 'allow-list', label: format(m.eligibilityListed) },
+                    {
+                      value: 'unrestricted',
+                      title: format(m.eligibilityAnyone),
+                      body: format(m.eligibilityAnyoneBody),
+                    },
+                    {
+                      value: 'allow-list',
+                      title: format(m.eligibilityListed),
+                      body: format(m.eligibilityListedBody),
+                    },
                   ]}
                 />
               </div>
@@ -693,23 +739,31 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
                     />
                   ))}
                 </TickGrid>
-              ) : (
-                <CardHint top>{format(m.anyoneWord)}</CardHint>
-              )}
+              ) : null}
             </div>
 
             {role.kind === 'org' && (
               <div {...stylex.props(styles.part)}>
                 <div {...stylex.props(styles.partHead)}>
                   <span {...stylex.props(styles.partTitle)}>{format(m.orgTypesLegend)}</span>
-                  <span {...stylex.props(styles.spacer)} />
-                  <Segmented
+                </div>
+                <div {...stylex.props(styles.partBody)}>
+                  <ModeCards
                     label={format(m.orgTypesLegend)}
                     value={anchorMode}
-                    onChange={(next) => editable && setAnchorMode(next)}
+                    disabled={!editable}
+                    onChange={setAnchorMode}
                     options={[
-                      { value: 'unrestricted', label: format(m.anchorAnywhere) },
-                      { value: 'allow-list', label: format(m.anchorListed) },
+                      {
+                        value: 'unrestricted',
+                        title: format(m.anchorAnywhere),
+                        body: format(m.anchorAnywhereBody),
+                      },
+                      {
+                        value: 'allow-list',
+                        title: format(m.anchorListed),
+                        body: format(m.anchorListedBody),
+                      },
                     ]}
                   />
                 </div>
@@ -729,9 +783,7 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
                       />
                     ))}
                   </TickGrid>
-                ) : (
-                  <CardHint top>{format(m.anywhereWord)}</CardHint>
-                )}
+                ) : null}
               </div>
             )}
 
@@ -900,6 +952,77 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
         onConfirm={() => remove.mutate(undefined as never)}
         onCancel={() => setConfirmingDelete(false)}
       />
+      <ConfirmDialog
+        open={standing !== null}
+        {...(standing !== null && 'status' in standing && standing.status === 'disabled'
+          ? { tone: 'destructive' as const }
+          : {})}
+        title={format(
+          standing === null
+            ? m.standingAskOn
+            : 'status' in standing
+              ? standing.status === 'active'
+                ? m.standingAskOn
+                : m.standingAskOff
+              : standing.assignable
+                ? m.standingAskGrantable
+                : m.standingAskNotGrantable,
+          { name: role.name },
+        )}
+        description={format(
+          standing !== null && 'status' in standing ? m.standingAskStatusBody : m.standingAskGrantBody,
+          { count: role.grantCount },
+        )}
+        confirmLabel={format(m.confirm)}
+        cancelLabel={format(m.cancel)}
+        pending={setStatus.isPending || setAssignable.isPending}
+        onCancel={() => setStanding(null)}
+        onConfirm={() => {
+          const asked = standing
+          setStanding(null)
+          if (asked === null) return
+          if ('status' in asked) setStatus.mutate(asked.status)
+          else setAssignable.mutate(asked.assignable)
+        }}
+      />
+
+      <FormDialog
+        open={leaving !== null}
+        title={format(m.leaveTabTitle)}
+        description={format(m.leaveTabBody)}
+        onClose={() => setLeaving(null)}
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setLeaving(null)}>
+              {format(m.cancel)}
+            </Button>
+            <Button
+              variant="outline"
+              data-testid="leave-discard"
+              onClick={() => {
+                const next = leaving
+                setLeaving(null)
+                discardTab()
+                if (next !== null) setTab(next)
+              }}
+            >
+              {format(m.discard)}
+            </Button>
+            <Button
+              data-testid="leave-save"
+              onClick={() => {
+                const next = leaving
+                setLeaving(null)
+                if (next !== null) saveTabThen(next)
+              }}
+            >
+              {format(m.save)}
+            </Button>
+          </>
+        }
+      >
+        {null}
+      </FormDialog>
     </Screen>
   )
 }
