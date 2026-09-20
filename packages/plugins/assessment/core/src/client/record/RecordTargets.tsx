@@ -15,8 +15,10 @@ import {
   DialogTitle,
 } from '@qualy/ui/dialog'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { assessmentMessages as m } from '../i18n.ts'
 import { RosterPeoplePicker } from './RosterPeoplePicker.tsx'
+import { UnitRoster } from './UnitRoster.tsx'
 
 // Who one administrative finding is about.
 //
@@ -36,7 +38,14 @@ const styles = stylex.create({
   chosen: { fontSize: 13, color: tokens.mutedForeground },
   none: { fontSize: 13, color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)` },
   spacer: { flexGrow: 1 },
-  body: { display: 'flex', minHeight: '26rem', flexDirection: 'column' },
+  body: { display: 'flex', minHeight: 'min(62vh, 30rem)', flexDirection: 'column' },
+  unitsSplit: {
+    display: 'grid',
+    minHeight: 0,
+    flexGrow: 1,
+    gap: 16,
+    gridTemplateColumns: { default: null, [breakpoints.desktop]: 'minmax(0, 1fr) minmax(0, 1fr)' },
+  },
   quiet: { fontSize: 14, lineHeight: '1.25rem', color: tokens.mutedForeground },
 })
 
@@ -112,8 +121,12 @@ export function RecordTargets({
         </>
       )}
 
+      {/* Wide on purpose: inside is a tree to narrow by and a list to choose
+          from, and at the default width the two halves share what is left of
+          a phone-sized panel - a tree too narrow to read a unit's name in,
+          beside a list that turns a page every four people. */}
       <Dialog open={picking === 'people'} onOpenChange={(open) => !open && setPicking(null)}>
-        <DialogContent size="lg">
+        <DialogContent size="62rem">
           <DialogHeader>
             <DialogTitle>{format(m.recordPickPeople)}</DialogTitle>
           </DialogHeader>
@@ -138,7 +151,7 @@ export function RecordTargets({
       </Dialog>
 
       <Dialog open={picking === 'units'} onOpenChange={(open) => !open && setPicking(null)}>
-        <DialogContent size="lg">
+        <DialogContent size="52rem">
           <DialogHeader>
             <DialogTitle>{format(m.recordPickUnits)}</DialogTitle>
             {/* said here rather than after confirming: somebody choosing a
@@ -147,11 +160,20 @@ export function RecordTargets({
             <DialogDescription>{format(m.recordUnitsOnce)}</DialogDescription>
           </DialogHeader>
           <DialogBody xstyle={styles.body}>
-            <UiSlot
-              token={peopleImportPicker}
-              context={{ value: units, onChange: setUnits }}
-              fallback={<p {...stylex.props(styles.quiet)}>{format(m.pickerUnavailable)}</p>}
-            />
+            <div {...stylex.props(styles.unitsSplit)}>
+              <UiSlot
+                token={peopleImportPicker}
+                context={{ value: units, onChange: setUnits }}
+                fallback={<p {...stylex.props(styles.quiet)}>{format(m.pickerUnavailable)}</p>}
+              />
+              {/* the people it comes to, read before anybody confirms it:
+                  choosing a class is choosing the people in it today */}
+              <UnitRoster
+                batchId={batchId}
+                orgNodeIds={units.orgNodeIds}
+                userTypeIds={units.userTypeIds}
+              />
+            </div>
           </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPicking(null)}>

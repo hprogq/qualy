@@ -390,6 +390,10 @@ const reviewSummaryDifferMessage = defineMessage<{ count: number }>()({
   id: 'assessment/review/summary-differ',
   defaultMessage: '{count} differ from the filing',
 })
+const recordUnitRosterPageMessage = defineMessage<{ page: number }>()({
+  id: 'assessment/record/unit-roster-page',
+  defaultMessage: 'Page {page}',
+})
 const reviewDraftRestoredMessage = defineMessage<{ when: string }>()({
   id: 'assessment/review/draft-restored',
   defaultMessage: 'Put back from what you wrote here on {when}, still unsent',
@@ -1572,6 +1576,16 @@ const i18n = definePluginMessages({
       id: 'assessment/record/import/ready-to-check',
       defaultMessage: 'The file will be checked before anything is written',
     },
+    recordUnitRosterTitle: { id: 'assessment/record/unit-roster', defaultMessage: 'Who that is' },
+    recordUnitRosterNote: {
+      id: 'assessment/record/unit-roster-note',
+      defaultMessage: 'In these units today',
+    },
+    recordUnitRosterEmpty: {
+      id: 'assessment/record/unit-roster-empty',
+      defaultMessage: 'Nobody in this round stands in these units',
+    },
+    recordUnitRosterPage: recordUnitRosterPageMessage,
     recordUnitsOnce: {
       id: 'assessment/record/units-once',
       defaultMessage:
