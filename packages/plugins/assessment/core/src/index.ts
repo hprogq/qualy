@@ -1,4 +1,6 @@
 import { Layer } from 'effect'
+import { OrgUsage } from '@qualy/org-contract/plugin'
+import { batchesAtNode } from './server/node-usage.ts'
 import { Plugin } from '@qualy/plugin-kit'
 import { Cli } from '@qualy/plugin-kit/cli'
 import { Api } from '@qualy/api-kit/plugin'
@@ -77,6 +79,7 @@ const plugin = Plugin.define(
   ItemTypes.driver(declarationDriver),
   Scoring.definitionProvider,
   scoringRuntimeProvider,
+  OrgUsage.reporter(batchesAtNode),
   scoringAuthoringPolicyProvider,
   ...builtinCalculators.flatMap((calculator) => [...Scoring.calculator(calculator)]),
   ...builtinAggregators.map((aggregator) => Scoring.aggregator(aggregator)),

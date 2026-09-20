@@ -24,6 +24,7 @@ import { Skeleton } from '@qualy/ui/skeleton'
 import { initialsOf } from '@qualy/ui/person'
 import { Status, Tag } from '@qualy/ui/screen'
 import { iamMessages as m } from '../i18n.ts'
+import { rosterSearch } from './users/roster-address.ts'
 import { authApi } from '../api.ts'
 
 // Who the open person is, above every section of their record.
@@ -224,7 +225,12 @@ export default function UserDetailHeader() {
 
   return (
     <div data-testid="user-detail-header" {...stylex.props(styles.band)}>
-      <PageLink page="auth/users" className={stylex.props(styles.backLink).className}>
+      <PageLink
+        page="auth/users"
+        // back to the roster as it was left: its unit, its filter, its page
+        search={rosterSearch()}
+        className={stylex.props(styles.backLink).className}
+      >
         <ArrowLeftIcon className={stylex.props(styles.backGlyph).className} aria-hidden />
         {format(m.backToUsers)}
       </PageLink>

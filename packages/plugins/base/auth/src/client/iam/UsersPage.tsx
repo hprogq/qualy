@@ -1,13 +1,16 @@
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { usersPageActions, type UsersPageActionsContext } from '@qualy/ui-contract'
 import { useEffect, useMemo, useState } from 'react'
-import { PlusIcon } from 'lucide-react'
+import { ArrowUpRightIcon, InfoIcon, PlusIcon } from 'lucide-react'
 import {
+  PageLink,
   useApi,
   useRunApi,
   useApiQuery,
+  usePageHref,
+  usePageNavigate,
   usePageQueryState,
-  cursorPages,
+  usePageQueryUpdate,
   UiSlot,
 } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
@@ -24,23 +27,28 @@ import {
   CardFoot,
   CardHead,
   Cell,
+  ResizableSplit,
   Screen,
   SearchField,
-  Segmented,
-  Spacer,
   Status,
   Table,
   TableHead,
   TableRow,
 } from '@qualy/ui/screen'
 import { Button } from '@qualy/ui/button'
+import { Checkbox } from '@qualy/ui/checkbox'
+import { Input } from '@qualy/ui/input'
+import { Pager } from '@qualy/ui/pager'
+import { toast } from '@qualy/ui/toast'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { Spinner } from '@qualy/ui/spinner'
 import { useLingering } from '@qualy/ui/use-lingering'
 import { iamMessages as m } from '../i18n.ts'
 import { NewUserForm } from './NewUserForm.tsx'
 import { PersonSheet } from './users/PersonSheet.tsx'
+import { UnitPath } from './users/UnitPath.tsx'
 import { UnitTree, type UnitNode } from './users/UnitTree.tsx'
+import { rememberRoster } from './users/roster-address.ts'
 import { authApi } from '../api.ts'
 
 // People are administered where they stand, so the screen reads left to
@@ -48,8 +56,11 @@ import { authApi } from '../api.ts'
 // roster's own heading says which unit and how many, so the two halves never
 // have to be read against each other to know what the list is a list of.
 //
-// Opening somebody looks at them beside the roster and changes nothing;
-// everything that can be done to a person is done on their own page.
+// A row is the way to the person's own page, which is where anything is done
+// to them; the mark at its end looks at them beside the roster instead, for
+// the reader who only wants to check who this is. The roster is walked by
+// page number, because somebody administering a thousand people goes to the
+// last page and back, and "load more" fifty at a time is not going anywhere.
 //
 // The unit, the scope, the filters and the open person all live in the query
 // string: exactly the state somebody wants back after a reload, or in a link
@@ -58,21 +69,40 @@ import { authApi } from '../api.ts'
 // rather than the absence of one
 const ALL_TYPES = 'all'
 
+/** people to a page */
+const PAGE_SIZE = 50
+
 const styles = stylex.create({
   emptyNote: { margin: 0, fontSize: 14, color: tokens.mutedForeground },
-  split: {
-    display: 'grid',
-    alignItems: 'start',
-    gap: 20,
-    gridTemplateColumns: {
-      default: 'minmax(0, 1fr)',
-      [breakpoints.desktop]: '300px minmax(0, 1fr)',
-    },
-  },
   searchBox: { width: { default: '13rem', [breakpoints.phone]: '100%' } },
   typeFilter: { width: '8.5rem', flexShrink: 0 },
   away: { width: 14, height: 14, flexShrink: 0, color: tokens.mutedForeground },
+  jump: { width: { default: '11rem', [breakpoints.phone]: '100%' } },
+  removed: {
+    display: 'inline-flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 6,
+    fontSize: 12.5,
+    color: tokens.surfaceMutedForeground,
+    cursor: 'pointer',
+  },
+  unitLink: {
+    display: 'inline-flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 4,
+    color: 'inherit',
+    textDecorationLine: { default: 'none', ':hover': 'underline' },
+    textUnderlineOffset: 3,
+  },
+  unitLinkIcon: { width: 13, height: 13, flexShrink: 0, color: tokens.mutedForeground },
+  look: { display: 'flex', justifyContent: 'flex-end' },
 })
+
+/** how wide a name reads: a han character is one em, anything else a little over half */
+const emsOf = (text: string) =>
+  [...text].reduce((sum, char) => sum + (/[\u2e80-\u9fff\uf900-\ufaff\uff00-\uffef]/.test(char) ? 1 : 0.58), 0)
 
 export default function UsersPage() {
   const api = useApi(authApi)
@@ -80,12 +110,20 @@ export default function UsersPage() {
   const query = useApiQuery(authApi)
   const { format, formatError } = useI18n()
   const businessNo = useTerm(authTerms.businessNumber)
-  const [anchor, setAnchor] = usePageQueryState('anchor')
-  const [scope, setScope] = usePageQueryState('scope', 'subtree')
-  const [typeFilter, setTypeFilter] = usePageQueryState('type')
-  const [search, setSearch] = usePageQueryState('q')
+  const [anchor] = usePageQueryState('anchor')
+  const [scope] = usePageQueryState('scope', 'subtree')
+  const [typeFilter] = usePageQueryState('type')
+  const [search] = usePageQueryState('q')
   const [openUserId, setOpenUserId] = usePageQueryState('user')
-  const [view, setView] = usePageQueryState('view')
+  // whether the removed are listed among the living
+  const [removed] = usePageQueryState('removed')
+  const [pageParam, setPageParam] = usePageQueryState('page')
+  const page = Math.max(1, Number.parseInt(pageParam, 10) || 1)
+  const navigate = usePageNavigate()
+  const write = usePageQueryUpdate()
+  const structureHref = usePageHref('org/page')
+  const [jump, setJump] = useState('')
+  const [jumping, setJumping] = useState(false)
   const [draft, setDraft] = useState(search)
   const [creating, setCreating] = useState(false)
   const shownUserId = useLingering(openUserId === '' ? null : openUserId)
@@ -102,29 +140,59 @@ export default function UsersPage() {
 
   // typing should not fire a request per keystroke
   useEffect(() => {
-    const timer = setTimeout(() => setSearch(draft), 300)
+    const timer = setTimeout(() => {
+      if (draft !== search) write({ q: draft, page: '' })
+    }, 300)
     return () => clearTimeout(timer)
-  }, [draft, setSearch])
+  }, [draft, search, write])
 
   const filter = {
     orgNodeId: active?.orgNodeId ?? '',
     scope: within,
-    ...(view === 'deleted' ? { status: 'deleted' as const } : {}),
+    ...(removed === '1' ? { status: 'any' as const } : {}),
     ...(search ? { search } : {}),
     ...(typeFilter ? { userTypeId: typeFilter } : {}),
+    page: String(page),
+    limit: String(PAGE_SIZE),
   }
-  const users = useInfiniteQuery({
-    queryKey: [...query.identity.listUsers.key({ query: filter }), 'infinite'],
-    queryFn: ({ pageParam }) =>
-      runApi(
-        api.identity.listUsers({
-          query: { ...filter, ...(pageParam !== undefined ? { cursor: pageParam } : {}) },
-        }),
-      ),
-    ...cursorPages,
+  const users = useQuery({
+    ...query.identity.listUsers.queryOptions({ query: filter }),
     enabled: active !== undefined,
+    // the rows of the page being left stay up until the next one arrives, so
+    // turning a page does not blank the table
+    placeholderData: keepPreviousData,
   })
-  const rows = useMemo(() => users.data?.pages.flatMap((page) => page.items) ?? [], [users.data])
+  const rows = users.data?.items ?? []
+  const total = users.data?.total ?? 0
+  // A different question starts at its first page. Both keys go in one write:
+  // two address writes from one press race, and the second drops the first.
+  const asking = (key: 'anchor' | 'scope' | 'type' | 'removed') => (value: string) =>
+    write({ [key]: key === 'scope' && value === 'subtree' ? '' : value, page: '' })
+
+  // where this roster is, for the way back from somebody's own page
+  useEffect(() => rememberRoster(window.location.search), [anchor, scope, typeFilter, search, removed, pageParam])
+
+  /** straight to one person's page by their number */
+  const jumpTo = async () => {
+    const wanted = jump.trim()
+    const root = nodes.find((entry) => entry.parentId === null) ?? nodes[0]
+    if (wanted === '' || root === undefined || jumping) return
+    setJumping(true)
+    try {
+      const found = await runApi(
+        api.identity.listUsers({
+          query: { orgNodeId: root.orgNodeId, scope: 'subtree', status: 'any', search: wanted, page: '1', limit: '20' },
+        }),
+      )
+      const exact = found.items.find((user) => user.businessNo?.toLowerCase() === wanted.toLowerCase())
+      if (exact === undefined) toast.error(format(m.jumpMissing, { businessNo, value: wanted }))
+      else navigate('auth/user-detail', { params: { userId: exact.id } })
+    } catch (error) {
+      toast.error(formatError(error))
+    } finally {
+      setJumping(false)
+    }
+  }
 
   // each unit with what kind it is and how many it holds, alone and with
   // everything under it: the tree shows whichever reading the scope asks for
@@ -157,24 +225,23 @@ export default function UsersPage() {
   }, [nodes, options.data?.orgTypes])
   const activeUnit = units.find((unit) => unit.id === active?.orgNodeId)
 
-  const namesTo = (nodeId: string): string[] => {
-    const byId = new Map(nodes.map((entry) => [entry.orgNodeId, entry]))
-    const names: string[] = []
+  // Where somebody stands, relative to the unit on show: the roster is
+  // already about that unit, so repeating everything above it on every row
+  // only pushes the part that differs off the end of the cell. Somebody
+  // standing at the unit itself is said to stand there.
+  const byId = useMemo(() => new Map(nodes.map((entry) => [entry.orgNodeId, entry])), [nodes])
+  const stepsTo = (nodeId: string) => {
+    const steps: { id: string; name: string }[] = []
     for (let at = byId.get(nodeId); at; at = at.parentId ? byId.get(at.parentId) : undefined) {
-      names.unshift(at.name)
+      if (at.orgNodeId === active?.orgNodeId && steps.length > 0) break
+      steps.unshift({ id: at.orgNodeId, name: at.name })
     }
-    return names
+    return steps
   }
-  // The end of a path says where somebody is; the middle only says how to
-  // get there. So a long one keeps its first step and its last two, and the
-  // whole of it is on the cell's title.
-  const pathOf = (nodeId: string) => {
-    const names = namesTo(nodeId)
-    const whole = names.join(' / ')
-    const short =
-      names.length <= 3 ? whole : [names[0], '…', ...names.slice(-2)].join(' / ')
-    return { whole, short }
-  }
+  // as wide as the longest name on this page and no wider
+  const nameWidth = `${String(
+    Math.min(14, Math.max(4, ...rows.map((user) => emsOf(user.displayName)))) * 0.79 + 0.4,
+  )}rem`
 
   return (
     <Screen
@@ -183,6 +250,25 @@ export default function UsersPage() {
       size="broad"
       actions={
         <>
+          <form
+            data-testid="user-jump"
+            onSubmit={(event) => {
+              event.preventDefault()
+              void jumpTo()
+            }}
+          >
+            <Input
+              name="user-jump"
+              inputMode="search"
+              enterKeyHint="go"
+              aria-label={format(m.jumpLabel, { businessNo })}
+              placeholder={format(m.jumpLabel, { businessNo })}
+              value={jump}
+              disabled={jumping}
+              onChange={(event) => setJump(event.target.value)}
+              wrapperXstyle={styles.jump}
+            />
+          </form>
           {/* whatever else can be done with people as a whole, by whoever
               offers it: an import, an export */}
           <UiSlot
@@ -202,18 +288,37 @@ export default function UsersPage() {
       {!options.isPending && nodes.length === 0 ? (
         <p {...stylex.props(styles.emptyNote)}>{format(m.noAnchors)}</p>
       ) : (
-        <div {...stylex.props(styles.split)}>
-          <UnitTree
-            units={units}
-            openId={active?.orgNodeId ?? null}
-            scope={within}
-            onOpen={setAnchor}
-            onScope={setScope}
-          />
+        <ResizableSplit
+          storageKey="qualy.users.tree-width"
+          handleLabel={format(m.resizeTree)}
+          side={
+            <UnitTree
+              units={units}
+              openId={active?.orgNodeId ?? null}
+              scope={within}
+              onOpen={asking('anchor')}
+              onScope={asking('scope')}
+            />
+          }
+        >
 
           <Card data-testid="roster">
             <CardHead
-              title={active?.name ?? ''}
+              title={
+                structureHref === undefined || active === undefined ? (
+                  (active?.name ?? '')
+                ) : (
+                  <PageLink
+                    page="org/page"
+                    search={{ node: active.orgNodeId }}
+                    title={format(m.openInStructure)}
+                    className={stylex.props(styles.unitLink).className}
+                  >
+                    {active.name}
+                    <ArrowUpRightIcon aria-hidden {...stylex.props(styles.unitLinkIcon)} />
+                  </PageLink>
+                )
+              }
               sub={
                 activeUnit === undefined ? undefined : (
                   <span
@@ -243,7 +348,7 @@ export default function UsersPage() {
               />
               <Select
                 value={typeFilter === '' ? ALL_TYPES : typeFilter}
-                onValueChange={(next) => setTypeFilter(next === ALL_TYPES ? '' : next)}
+                onValueChange={(next) => asking('type')(next === ALL_TYPES ? '' : next)}
               >
                 <SelectTrigger aria-label={format(m.typeFilterLabel)} xstyle={styles.typeFilter}>
                   <SelectValue />
@@ -257,15 +362,13 @@ export default function UsersPage() {
                   ))}
                 </SelectContent>
               </Select>
-              <Segmented
-                label={format(m.viewLabel)}
-                value={view === 'deleted' ? 'deleted' : 'living'}
-                onChange={(next) => setView(next === 'deleted' ? 'deleted' : '')}
-                options={[
-                  { value: 'living', label: format(m.viewLiving) },
-                  { value: 'deleted', label: format(m.viewDeleted) },
-                ]}
-              />
+              <label {...stylex.props(styles.removed)} data-testid="show-removed">
+                <Checkbox
+                  checked={removed === '1'}
+                  onCheckedChange={(next) => asking('removed')(next ? '1' : '')}
+                />
+                {format(m.showRemoved)}
+              </label>
             </CardHead>
 
             <AsyncSection
@@ -275,13 +378,14 @@ export default function UsersPage() {
               retryLabel={format(commonMessages.retry)}
               onRetry={() => void users.refetch()}
             >
-              <Table columns="8.5rem minmax(0, 0.8fr) 5.5rem minmax(0, 1.4fr) 4.5rem" openable>
+              <Table columns={`8.5rem ${nameWidth} 5.5rem minmax(0, 1fr) 4.5rem 1.75rem`}>
                 <TableHead>
                   <span>{businessNo}</span>
                   <span>{format(m.columnName)}</span>
                   <span>{format(m.columnType)}</span>
                   <span>{format(m.columnUnit)}</span>
                   <span>{format(m.columnStatus)}</span>
+                  <span />
                 </TableHead>
                 {rows.length === 0 ? (
                   <CardEmpty>{format(m.usersEmpty)}</CardEmpty>
@@ -290,8 +394,9 @@ export default function UsersPage() {
                     <TableRow
                       key={user.id}
                       height="compact"
+                      nested
                       selected={user.id === openUserId}
-                      onOpen={() => setOpenUserId(user.id === openUserId ? '' : user.id)}
+                      onOpen={() => navigate('auth/user-detail', { params: { userId: user.id } })}
                       data-testid="roster-row"
                       data-user-status={user.status}
                       data-accounts={user.identityCount}
@@ -306,9 +411,15 @@ export default function UsersPage() {
                       {user.primaryOrgNode === null ? (
                         <Cell>—</Cell>
                       ) : (
-                        <Cell title={pathOf(user.primaryOrgNode.id).whole || undefined}>
-                          {pathOf(user.primaryOrgNode.id).short || user.primaryOrgNode.name}
-                        </Cell>
+                        <UnitPath
+                          steps={
+                            stepsTo(user.primaryOrgNode.id).length > 0
+                              ? stepsTo(user.primaryOrgNode.id)
+                              : [{ id: user.primaryOrgNode.id, name: user.primaryOrgNode.name }]
+                          }
+                          pickLabel={format(m.pickUnit)}
+                          onPick={asking('anchor')}
+                        />
                       )}
                       <Status tone={user.status === 'active' ? 'plain' : 'bad'}>
                         {format(
@@ -319,29 +430,40 @@ export default function UsersPage() {
                               : m.statusActive,
                         )}
                       </Status>
+                      <span {...stylex.props(styles.look)}>
+                        <Button
+                          size="icon-xs"
+                          variant="ghost"
+                          aria-label={format(m.lookAt, { name: user.displayName })}
+                          data-testid="roster-look"
+                          onClick={() => setOpenUserId(user.id === openUserId ? '' : user.id)}
+                        >
+                          <InfoIcon aria-hidden />
+                        </Button>
+                      </span>
                     </TableRow>
                   ))
                 )}
               </Table>
               <CardFoot>
-                <span data-testid="roster-count" data-count={rows.length}>
-                  {format(m.loadedCount, { count: rows.length })}
-                </span>
-                <Spacer />
-                {users.hasNextPage && (
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    disabled={users.isFetchingNextPage}
-                    onClick={() => void users.fetchNextPage()}
-                  >
-                    {format(m.loadMore)}
-                  </Button>
-                )}
+                <Pager
+                  testId="roster-pager"
+                  label={format(m.pagerLabel)}
+                  page={users.data?.page ?? page}
+                  pageSize={PAGE_SIZE}
+                  total={total}
+                  disabled={users.isFetching}
+                  summary={format(m.pageSummary, {
+                    from: total === 0 ? 0 : ((users.data?.page ?? page) - 1) * PAGE_SIZE + 1,
+                    to: ((users.data?.page ?? page) - 1) * PAGE_SIZE + rows.length,
+                    total,
+                  })}
+                  onPage={(next) => setPageParam(next === 1 ? '' : String(next))}
+                />
               </CardFoot>
             </AsyncSection>
           </Card>
-        </div>
+        </ResizableSplit>
       )}
 
       {shownUserId !== null && (

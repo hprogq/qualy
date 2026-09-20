@@ -361,6 +361,11 @@ const i18n = definePluginMessages({
     columnWindow: { id: 'rbac/grants/column-window', defaultMessage: 'In force' },
     columnOrigin: { id: 'rbac/grants/column-origin', defaultMessage: 'Comes from' },
     windowOpen: { id: 'rbac/grants/window-open', defaultMessage: 'No end date' },
+    nodeUsageGrants: { id: 'rbac/node-usage/grants', defaultMessage: 'Role grants in force here' },
+    nodeUsageGrantHistory: {
+      id: 'rbac/node-usage/grant-history',
+      defaultMessage: 'Withdrawn role grants kept as history',
+    },
     exemptWord: { id: 'rbac/roles/exempt', defaultMessage: 'not restricted' },
     exemptHint: {
       id: 'rbac/roles/exempt-hint',

@@ -32,6 +32,18 @@ const peopleCountMessage = defineMessage<{ count: number }>()({
   defaultMessage: '{count, plural, =0 {nobody} one {# person} other {# people}}',
 })
 
+const holdChildrenMessage = defineMessage<{ count: number }>()({
+  id: 'org/node/hold-children',
+  defaultMessage: '{count, plural, one {# unit} other {# units}} under it: move or remove them first',
+})
+const holdLineMessage = defineMessage<{ label: string; count: number }>()({
+  id: 'org/node/hold-line',
+  defaultMessage: '{label}: {count}',
+})
+const holdExamplesMoreMessage = defineMessage<{ names: string }>()({
+  id: 'org/node/hold-examples-more',
+  defaultMessage: '{names} and more',
+})
 const i18n = definePluginMessages({
   namespace: 'org',
   messages: {
@@ -108,18 +120,6 @@ const i18n = definePluginMessages({
     childrenColumn: {
       id: 'org/node/children-column',
       defaultMessage: 'Under it',
-    },
-    deleteLineChildren: {
-      id: 'org/node/delete-line-children',
-      defaultMessage: 'Removing this unit: move or remove the {count, plural, one {# unit} other {# units}} under it first. People and role grants are checked when it is removed',
-    },
-    deleteLinePeople: {
-      id: 'org/node/delete-line-people',
-      defaultMessage: 'Removing this unit: {count, plural, one {# person stands} other {# people stand}} here and must be moved first. Role grants are checked when it is removed',
-    },
-    deleteLineFree: {
-      id: 'org/node/delete-line-free',
-      defaultMessage: 'Removing this unit: people and role grants are checked when it is removed',
     },
     ruleArrowHint: {
       id: 'org/rule/arrow-hint',
@@ -256,9 +256,35 @@ const i18n = definePluginMessages({
     newTypeTitle: { id: 'org/type/new', defaultMessage: 'New type' },
     save: { id: 'org/action/save', defaultMessage: 'Save' },
     expandAll: { id: 'org/tree/expand-all', defaultMessage: 'Expand all' },
+    collapseAll: { id: 'org/tree/collapse-all', defaultMessage: 'Collapse all' },
+    holdNoChildren: { id: 'org/node/hold-no-children', defaultMessage: 'No units under it' },
+    holdChildren: holdChildrenMessage,
+    holdNothingElse: {
+      id: 'org/node/hold-nothing-else',
+      defaultMessage: 'Nothing else in the product points at it',
+    },
+    holdUnknown: {
+      id: 'org/node/hold-unknown',
+      defaultMessage: 'What else is using this unit could not be read.',
+    },
+    holdLine: holdLineMessage,
+    holdExamplesMore: holdExamplesMoreMessage,
+    holdGo: { id: 'org/node/hold-go', defaultMessage: 'Go there' },
+    holdVerdictClear: {
+      id: 'org/node/hold-verdict-clear',
+      defaultMessage: 'Nothing holds this unit in place. Removing it cannot be undone.',
+    },
+    holdVerdictHeld: {
+      id: 'org/node/hold-verdict-held',
+      defaultMessage: 'Clear every line above before this unit can be removed.',
+    },
     // the twistie's spoken name; the unit's own name is appended to it, so
     // a screen reader hears which branch is being folded
     foldBranch: { id: 'org/tree/fold-branch', defaultMessage: 'Fold or unfold' },
+    typeIsRootHint: {
+      id: 'org/types/is-root-hint',
+      defaultMessage: 'This is the kind of the root unit, which always exists, so it cannot be deleted.',
+    },
     typeFreeHint: { id: 'org/type/free-hint', defaultMessage: 'No unit uses this type.' },
     ruleCount: {
       id: 'org/type/rule-count',

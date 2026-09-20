@@ -376,6 +376,14 @@ const grantFromBatchMessage = defineMessage<{ name: string }>()({
 const i18n = definePluginMessages({
   namespace: 'assessment',
   messages: {
+    nodeUsageManaged: {
+      id: 'assessment/node-usage/managed',
+      defaultMessage: 'Rounds administered from here',
+    },
+    nodeUsageParticipants: {
+      id: 'assessment/node-usage/participants',
+      defaultMessage: 'Rounds whose participants were recorded here',
+    },
     // one label per permission this plugin declares. The definition
     // carries a message reference, so the role editor renders whatever
     // language its reader asked for rather than the one it was authored in.

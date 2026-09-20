@@ -6,6 +6,7 @@ import { useI18n, useList } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { ConfirmDialog } from '@qualy/ui/admin'
+import { DeleteChecklist } from './DeleteChecklist.tsx'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
@@ -99,8 +100,6 @@ const styles = stylex.create({
   // the empty seat a new unit would fill, said with a dashed edge
   draftInput: { flexGrow: 1, flexShrink: 1, flexBasis: '12rem', borderStyle: 'dashed' },
   pinned: { flexShrink: 0 },
-  deleteLine: { display: 'flex', alignItems: 'center', gap: 12, paddingInline: 4, flexWrap: 'wrap' },
-  deleteWhy: { minWidth: 0, flexGrow: 1, flexBasis: '16rem', fontSize: 12, lineHeight: 1.55, color: QUIET },
 })
 
 export function NodePanel({
@@ -112,6 +111,8 @@ export function NodePanel({
   headcount,
   headcountOf,
   headcountKnown,
+  onDeleted,
+  inSheet = false,
 }: {
   node: OrgTreeNodeDto
   shape: OrgShape
@@ -124,6 +125,10 @@ export function NodePanel({
   headcountOf: (orgNodeId: string) => number
   /** whether that count was answered at all; reading people is its own grant */
   headcountKnown: boolean
+  /** the unit is gone; whoever frames this panel has nothing left to show */
+  onDeleted?: () => void
+  /** the frame already says the unit's name and kind */
+  inSheet?: boolean
 }) {
   const { format } = useI18n()
   const listJoin = useList()
@@ -142,13 +147,6 @@ export function NodePanel({
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const isRoot = !node.parentId
   const children = shape.childrenOf.get(node.id) ?? []
-  // Both counts are read before the button is offered, so a refusal is not
-  // the first a reader hears of a rule - which means an unknown count is not
-  // a zero, and an emptiness this reader cannot see under is not an
-  // emptiness. A reader whose reach ends at this node is sent the node
-  // alone, and units full of people came back looking like leaves.
-  const removable =
-    node.subtreeVisible && children.length === 0 && headcountKnown && headcount === 0
   const typeName = (id: string) =>
     shape.types.find((type) => type.id === id)?.name ?? format(m.unknownType)
 
@@ -217,8 +215,12 @@ export function NodePanel({
           ))}
         </nav>
         <div {...stylex.props(styles.headRow)}>
-          <h2 {...stylex.props(styles.headName)}>{node.name}</h2>
-          <Tag>{typeName(node.orgTypeId)}</Tag>
+          {!inSheet && (
+            <>
+              <h2 {...stylex.props(styles.headName)}>{node.name}</h2>
+              <Tag>{typeName(node.orgTypeId)}</Tag>
+            </>
+          )}
           <span {...stylex.props(styles.spacer)} />
           {node.manageable && (
             <>
@@ -462,27 +464,14 @@ export function NodePanel({
       </Card>
 
       {/* Removing a unit is the rarest thing done here and the only one that
-          cannot be undone, so it goes last, as a line rather than a section,
-          and says up front what the server will refuse it for. */}
+          cannot be undone, so it goes last - with everything that holds the
+          unit in place listed before the button is offered. */}
       {node.manageable && !isRoot && (
-        <div {...stylex.props(styles.deleteLine)} data-testid="node-delete" data-removable={removable}>
-          <span {...stylex.props(styles.deleteWhy)}>
-            {children.length > 0
-              ? format(m.deleteLineChildren, { count: children.length })
-              : headcountKnown && headcount > 0
-                ? format(m.deleteLinePeople, { count: headcount })
-                : format(m.deleteLineFree)}
-          </span>
-          <Button
-            size="xs"
-            variant="outline"
-            className={stylex.props(styles.pinned).className}
-            disabled={!removable}
-            onClick={() => setConfirmingDelete(true)}
-          >
-            {format(m.deleteNode)}
-          </Button>
-        </div>
+        <DeleteChecklist
+          nodeId={node.id}
+          childCount={children.length}
+          onDelete={() => setConfirmingDelete(true)}
+        />
       )}
 
       <ConfirmDialog
@@ -493,7 +482,10 @@ export function NodePanel({
         cancelLabel={format(commonMessages.cancel)}
         onConfirm={() =>
           void run(api.org.deleteNode({ params: { nodeId: node.id } }))
-            .then(() => setConfirmingDelete(false))
+            .then(() => {
+              setConfirmingDelete(false)
+              onDeleted?.()
+            })
             .catch(() => setConfirmingDelete(false))
         }
         onCancel={() => setConfirmingDelete(false)}

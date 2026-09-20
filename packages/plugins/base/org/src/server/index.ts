@@ -1,3 +1,4 @@
+import { NodeUsageCatalog } from '@qualy/org-contract/plugin'
 import { Context, Effect, Layer } from 'effect'
 import { OrgNodeRefused, OrgProvisioning } from '@qualy/org-contract/effect'
 import type { OrgNodeRef } from '@qualy/org-contract'
@@ -14,6 +15,7 @@ import {
   insertRule,
   insertType,
   deleteNode as deleteNodeRow,
+  countChildren,
   hasChildren,
   incompatibleChildTypes,
   insertNode,
@@ -196,6 +198,7 @@ export class Org extends Context.Service<
       newSortOrder?: number,
     ) => Effect.Effect<NodeView, MoveNodeError>
 
+    readonly childCount: (tenantId: string, nodeId: string) => Effect.Effect<number>
     readonly readNode: (
       tenantId: string,
       nodeId: string,
@@ -808,6 +811,11 @@ export const make = Effect.fn('Org.make')(function* () {
     createNode,
     moveNode,
 
+    /** the true number of units directly under one, for whoever may read it */
+    childCount: Effect.fn('Org.childCount')(function* (tenantId: string, nodeId: string) {
+      return yield* readInSnapshot(() => countChildren(tenantId, nodeId).pipe(Effect.orDie))
+    }),
+
     readNode: Effect.fn('Org.readNode')(function* (
       tenantId: string,
       nodeId: string,
@@ -1102,6 +1110,37 @@ export const orgApiHandlers = HttpApiBuilder.group(local, 'org', (handlers) =>
         const principal = yield* CurrentUser
         const node = yield* org.updateNode(principal.tenantId, params.nodeId, payload, principal)
         return { node: toNodeDto(node) }
+      }),
+    )
+    .handle(
+      'getNodeUsage',
+      Effect.fn('org.getNodeUsage.handler')(function* ({ params }) {
+        const org = yield* Org
+        const catalog = yield* NodeUsageCatalog
+        const principal = yield* CurrentUser
+        // the same read authority as the unit itself, and the same answer
+        // for a unit the caller cannot see as for one that is not there
+        const node = yield* org.readNode(principal.tenantId, params.nodeId, principal)
+        const children = yield* org.childCount(principal.tenantId, node.id)
+        const usage = yield* catalog.usageOf(principal.tenantId, node.id)
+        return {
+          isRoot: node.parentId === null,
+          children,
+          usage: usage.map((one) => ({
+            kind: one.kind,
+            label: one.label,
+            count: one.count,
+            examples: [...one.examples],
+            target:
+              one.target === undefined
+                ? null
+                : {
+                    pageId: one.target.pageId,
+                    params: { ...(one.target.params ?? {}) },
+                    search: { ...(one.target.search ?? {}) },
+                  },
+          })),
+        }
       }),
     )
     .handle(

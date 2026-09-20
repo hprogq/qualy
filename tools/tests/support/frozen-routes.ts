@@ -216,6 +216,7 @@ export const FROZEN_ROUTES = [
   'POST /org/nodes',
   'PATCH /org/nodes/{nodeId}',
   'DELETE /org/nodes/{nodeId}',
+  'GET /org/nodes/{nodeId}/usage',
   'PUT /org/nodes/{nodeId}/placement',
   'PUT /org/nodes/{nodeId}/type',
 ]

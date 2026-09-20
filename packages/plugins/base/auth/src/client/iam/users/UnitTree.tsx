@@ -2,14 +2,30 @@ import { useMemo, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { EllipsisIcon } from 'lucide-react'
 import { Button } from '@qualy/ui/button'
-import { Card, CardEmpty, CardHead, SearchField, Segmented, TreeRow } from '@qualy/ui/screen'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@qualy/ui/dropdown-menu'
+import { Card, CardEmpty, CardHead, SearchField, StickyFill, TreeRow } from '@qualy/ui/screen'
 import { iamMessages as m } from '../../i18n.ts'
 
-// The units this reader may look into, as one card: how many there are, the
-// way to search them, whether a unit means itself or everything under it,
-// and the tree. Each row says what kind of unit it is and how many people
-// the chosen reading of it holds.
+// The units this reader may look into, as one card that runs to the bottom of
+// the window and stays there while the roster beside it scrolls: how many
+// there are, the way to search them, and the tree. Each row says what kind of
+// unit it is and how many people the chosen reading of it holds - none is
+// said as 0, because a blank in a column of numbers reads as "not counted".
+//
+// Whether a unit means itself or everything under it is a setting of the
+// whole column rather than something changed from row to row, so it lives in
+// the card's menu with the other things done to the tree as a whole.
 
 const styles = stylex.create({
   tools: {
@@ -25,8 +41,18 @@ const styles = stylex.create({
     borderBottomColor: tokens.divider,
   },
   searchBox: { width: '100%' },
-  scopeSeat: { display: 'flex', alignItems: 'center', gap: 8 },
-  scroll: { maxHeight: '62vh', minHeight: 0, overflowY: 'auto', padding: 6 },
+  card: { minHeight: 0, flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+  // fills whatever the card is given on a wide window; stacked above the
+  // roster on a narrow one, it keeps to part of the screen
+  scroll: {
+    minHeight: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    maxHeight: { default: null, '@media (max-width: 1023.98px)': '50vh' },
+    overflowY: 'auto',
+    padding: 6,
+  },
 })
 
 export interface UnitNode {
@@ -89,7 +115,7 @@ export function UnitTree({
         depth={depth}
         open={openId === unit.id}
         kind={unit.kind}
-        tally={people > 0 ? people.toLocaleString() : ''}
+        tally={people.toLocaleString()}
         expandable={folding && (childrenOf.get(unit.id) ?? []).length > 0}
         collapsed={collapsed.has(unit.id)}
         expandLabel={format(m.foldBranch)}
@@ -104,11 +130,41 @@ export function UnitTree({
   }
 
   return (
-    <Card data-testid="unit-tree">
+    <StickyFill>
+    <Card data-testid="unit-tree" data-scope={scope} xstyle={styles.card}>
       <CardHead title={format(m.unitsTitle)} note={format(m.unitsCount, { count: units.length })}>
-        <Button size="xs" variant="ghost" onClick={() => setCollapsed(new Set())}>
-          {format(m.expandAll)}
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="icon-xs" variant="ghost" aria-label={format(m.treeMenu)}>
+              <EllipsisIcon aria-hidden />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel>{format(m.scopeLabel)}</DropdownMenuLabel>
+            <DropdownMenuRadioGroup
+              value={scope}
+              onValueChange={(next) => onScope(next === 'self' ? 'self' : 'subtree')}
+            >
+              <DropdownMenuRadioItem value="subtree" data-scope-option="subtree">
+                {format(m.scopeSubtree)}
+              </DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="self" data-scope-option="self">
+                {format(m.scopeSelf)}
+              </DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => setCollapsed(new Set())}>
+              {format(m.expandAll)}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() =>
+                setCollapsed(new Set(units.filter((unit) => childrenOf.has(unit.id)).map((unit) => unit.id)))
+              }
+            >
+              {format(m.collapseAll)}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </CardHead>
       <div {...stylex.props(styles.tools)}>
         <SearchField
@@ -118,17 +174,6 @@ export function UnitTree({
           label={format(m.treeSearch)}
           xstyle={styles.searchBox}
         />
-        <div {...stylex.props(styles.scopeSeat)}>
-          <Segmented
-            label={format(m.scopeLabel)}
-            value={scope}
-            onChange={onScope}
-            options={[
-              { value: 'self', label: format(m.scopeSelf) },
-              { value: 'subtree', label: format(m.scopeSubtree) },
-            ]}
-          />
-        </div>
       </div>
       <div {...stylex.props(styles.scroll)}>
         {matches !== null ? (
@@ -144,5 +189,6 @@ export function UnitTree({
         )}
       </div>
     </Card>
+    </StickyFill>
   )
 }

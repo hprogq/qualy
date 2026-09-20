@@ -7,12 +7,15 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
-    "./effect": "./src/effect.ts"
+    "./effect": "./src/effect.ts",
+    "./plugin": "./src/plugin.ts"
   },
   "peerDependencies": {
     "effect": "catalog:"
   },
   "dependencies": {
+    "@qualy/i18n-contract": "workspace:*",
+    "@qualy/plugin-kit": "workspace:*",
     "@qualy/rbac-contract": "workspace:*"
   }
 }

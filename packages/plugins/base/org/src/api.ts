@@ -1,3 +1,4 @@
+import { UiTextSchema } from '@qualy/i18n-contract'
 import { Schema } from 'effect'
 import { boundedInt, changed, trimmedName, uuidInput } from '@qualy/api-kit/schema'
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
@@ -113,6 +114,36 @@ export const orgApiGroup = HttpApiGroup.make('org')
       params: Schema.Struct({ nodeId: uuidInput }),
       success: Schema.Struct({ ok: Schema.Literal(true) }),
       error: [NodeNotFound, NodeIsRoot, NodeHasChildren, AccessDenied, NodeConflict, NodeInUse],
+    }).middleware(Authenticated),
+  )
+  // What holds one unit in place, asked before a delete is offered: its own
+  // children, and whatever the plugins above org say is pointing at it. Org
+  // cannot see those tables, so it cannot answer this alone - and answering
+  // "something" after the delete failed sent the reader searching the whole
+  // product for a reference nothing would show them.
+  .add(
+    HttpApiEndpoint.get('getNodeUsage', '/org/nodes/:nodeId/usage', {
+      params: Schema.Struct({ nodeId: uuidInput }),
+      success: Schema.Struct({
+        isRoot: Schema.Boolean,
+        children: Schema.Number,
+        usage: Schema.Array(
+          Schema.Struct({
+            kind: Schema.String,
+            label: UiTextSchema,
+            count: Schema.Number,
+            examples: Schema.Array(Schema.String),
+            target: Schema.NullOr(
+              Schema.Struct({
+                pageId: Schema.String,
+                params: Schema.Record(Schema.String, Schema.String),
+                search: Schema.Record(Schema.String, Schema.String),
+              }),
+            ),
+          }),
+        ),
+      }),
+      error: [NodeNotFound, AccessDenied],
     }).middleware(Authenticated),
   )
   .add(

@@ -66,6 +66,48 @@ export const countedPageOf = <T, E>(item: Schema.Codec<T, E, never, never>) =>
   })
 
 /**
+ * A page asked for by its number, for a list a person walks around in.
+ *
+ * Keyset paging reads forwards and is what a feed wants. A roster somebody
+ * administers is not a feed: they go to the last page, back to the third,
+ * and want to be told there are forty. That needs an offset and a count, and
+ * both are paid for knowingly - these lists are bounded by an organization's
+ * size, not by time, and the sort key is total so a page cannot shuffle
+ * under the reader between two requests for it.
+ */
+export const numberedPageQuery = {
+  page: Schema.optional(Schema.String),
+  limit: Schema.optional(Schema.String),
+}
+
+export const numberedPageOf = <T, E>(item: Schema.Codec<T, E, never, never>) =>
+  Schema.Struct({
+    items: Schema.Array(item),
+    /** how many rows match the filter, across every page */
+    total: Schema.Number,
+    /** the page this is, counted from one; clamped to the last when asked past it */
+    page: Schema.Number,
+    pageSize: Schema.Number,
+  })
+
+/** a page number off the wire: anything unusable is the first page, not a refusal */
+export const pageNumber = (page: string | undefined): number => {
+  const parsed = Number(page)
+  return Number.isInteger(parsed) && parsed >= 1 ? parsed : 1
+}
+
+/**
+ * Where a numbered page starts, clamped so a page past the end is the last
+ * one rather than an empty screen - which is what a reader who deleted the
+ * only row of page nine should land on.
+ */
+export const pageWindow = (page: number, size: number, total: number) => {
+  const last = Math.max(1, Math.ceil(total / size))
+  const at = Math.min(page, last)
+  return { page: at, offset: (at - 1) * size }
+}
+
+/**
  * A cursor that cannot be read here.
  *
  * The tag is the code oRPC already puts on the wire for this, deliberately:

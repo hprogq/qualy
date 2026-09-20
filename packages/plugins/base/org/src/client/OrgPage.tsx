@@ -7,13 +7,14 @@ import { commonMessages } from '@qualy/web-i18n/messages'
 import * as stylex from '@stylexjs/stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { AsyncSection, Feedback } from '@qualy/ui/admin'
-import { EditorSkeleton, RailSkeleton, Screen, Segmented } from '@qualy/ui/screen'
+import { DetailSheet, EditorSkeleton, Screen, Segmented, Tag } from '@qualy/ui/screen'
+import { useLingering } from '@qualy/ui/use-lingering'
 import { Button } from '@qualy/ui/button'
 import { orgMessages as m } from './i18n.ts'
 import { orgApi } from './api.ts'
 import { shapeOf, type Run } from './shape.ts'
 import { NodePanel } from './structure/NodePanel.tsx'
-import { NodeTree } from './structure/NodeTree.tsx'
+import { TreeTable } from './structure/TreeTable.tsx'
 import { NewTypeDialog } from './types/NewTypeDialog.tsx'
 import { TypesView } from './types/TypesView.tsx'
 
@@ -27,15 +28,6 @@ import { TypesView } from './types/TypesView.tsx'
 
 const styles = stylex.create({
   viewSwitch: { marginLeft: 8 },
-  split: {
-    display: 'grid',
-    alignItems: 'start',
-    gap: 20,
-    gridTemplateColumns: {
-      default: 'minmax(0, 1fr)',
-      [breakpoints.desktop]: '300px minmax(0, 1fr)',
-    },
-  },
 })
 
 export default function OrgPage() {
@@ -99,10 +91,11 @@ export default function OrgPage() {
     [treeQuery.data, typesQuery.data, rulesQuery.data],
   )
 
-  // A page that opens on nothing asks the reader to make a choice before it
-  // will say anything, and the choice it wants is nearly always the one it
-  // could have made itself. So the root stands open until another is picked.
-  const selected = (selectedId ? shape.byId.get(selectedId) : undefined) ?? shape.roots[0]
+  // A unit opens beside the tree only when somebody asks for one; the tree
+  // itself is what the page is for.
+  const open = selectedId ? shape.byId.get(selectedId) : undefined
+  // kept while its sheet slides away, so the sheet does not empty first
+  const shown = useLingering(open ?? null)
   const rootManageable = shape.nodes.some((node) => !node.parentId && node.manageable)
   const types = view === 'types'
 
@@ -147,12 +140,7 @@ export default function OrgPage() {
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void refresh()}
-        skeleton={
-          <div {...stylex.props(styles.split)}>
-            <RailSkeleton rows={7} />
-            <EditorSkeleton />
-          </div>
-        }
+        skeleton={<EditorSkeleton />}
       >
         {types ? (
           <TypesView
@@ -164,29 +152,40 @@ export default function OrgPage() {
             canManage={rootManageable}
           />
         ) : (
-          <div {...stylex.props(styles.split)}>
-            <NodeTree
-              shape={shape}
-              openId={selected?.id ?? null}
-              onOpen={setSelectedId}
-              headcountOf={headcountOf}
-            />
-            {selected !== undefined && (
-              <NodePanel
-                key={selected.id}
-                node={selected}
-                shape={shape}
-                api={api}
-                run={run}
-                onOpen={setSelectedId}
-                headcount={headcountOf(selected.id)}
-                headcountOf={headcountOf}
-                headcountKnown={headcountsKnown}
-              />
-            )}
-          </div>
+          <TreeTable
+            shape={shape}
+            openId={open?.id ?? null}
+            onOpen={setSelectedId}
+            headcountOf={headcountOf}
+            headcountKnown={headcountsKnown}
+          />
         )}
       </AsyncSection>
+      {shown !== null && (
+        <DetailSheet
+          open={open !== undefined && !types}
+          onClose={() => setSelectedId('')}
+          width="wide"
+          title={shown.name}
+          titleAside={<Tag>{shape.types.find((type) => type.id === shown.orgTypeId)?.name ?? ''}</Tag>}
+          closeLabel={format(commonMessages.close)}
+          testId="node-sheet"
+        >
+          <NodePanel
+            key={shown.id}
+            inSheet
+            node={shown}
+            shape={shape}
+            api={api}
+            run={run}
+            onOpen={setSelectedId}
+            onDeleted={() => setSelectedId('')}
+            headcount={headcountOf(shown.id)}
+            headcountOf={headcountOf}
+            headcountKnown={headcountsKnown}
+          />
+        </DetailSheet>
+      )}
       <NewTypeDialog
         open={creatingType}
         api={api}

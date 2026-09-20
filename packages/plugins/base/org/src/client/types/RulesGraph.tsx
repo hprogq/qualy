@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { MaximizeIcon, MinusIcon, PlusIcon } from 'lucide-react'
+import { MinusIcon, PlusIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
 import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -39,7 +39,12 @@ const styles = stylex.create({
     paddingBottom: 6,
     overflow: 'auto',
     overscrollBehavior: 'contain',
+    // No bar: a track across the middle of the card cut the picture in two.
+    // The picture is dragged instead, and a trackpad still scrolls it.
+    scrollbarWidth: 'none',
+    cursor: 'grab',
   },
+  seatDragging: { cursor: 'grabbing', userSelect: 'none' },
   // centred while it fits, and scrolled from its start once it does not
   drawing: { display: 'block', flexShrink: 0, marginInline: 'auto' },
   zoom: { display: 'inline-flex', flexShrink: 0, alignItems: 'center', gap: 2 },
@@ -89,10 +94,26 @@ export function RulesGraph({
   const crossing = graph.edges.some((edge) => edge.cross)
   const seat = useRef<HTMLDivElement>(null)
   const [zoom, setZoom] = useState(1)
+  const [dragging, setDragging] = useState(false)
+  // read by the click that follows a drag, which arrives after the state has already been put back
+  const dragged = useRef(false)
+  const grip = useRef<{ x: number; y: number; left: number; top: number; moved: boolean } | null>(null)
   const fit = () => {
     const room = (seat.current?.clientWidth ?? 0) - 32
     if (room > 0 && graph.width > 0) setZoom(clamp(Math.min(1, room / graph.width)))
   }
+  // A picture wider than the card opens fitted to it, so the whole grammar is
+  // on screen first; from there the reader zooms into whichever part they
+  // came for. One that fits is left at its natural size.
+  const fitted = useRef('')
+  useEffect(() => {
+    const key = `${String(graph.width)}x${String(graph.nodes.length)}`
+    if (fitted.current === key || graph.nodes.length === 0) return
+    const room = (seat.current?.clientWidth ?? 0) - 32
+    if (room <= 0) return
+    fitted.current = key
+    if (graph.width > room) setZoom(clamp(room / graph.width))
+  }, [graph.width, graph.nodes.length])
   // a pinch arrives as a wheel with ctrl held, and claiming it needs a
   // listener that is not passive, which React's onWheel is
   useEffect(() => {
@@ -131,8 +152,9 @@ export function RulesGraph({
             >
               <PlusIcon aria-hidden />
             </Button>
-            <Button size="icon-xs" variant="ghost" aria-label={format(m.zoomFit)} onClick={fit}>
-              <MaximizeIcon aria-hidden />
+            {/* said in words: every drawing of "fit" also reads as "full screen" */}
+            <Button size="xs" variant="ghost" onClick={fit}>
+              {format(m.zoomFit)}
             </Button>
           </span>
         )}
@@ -141,7 +163,49 @@ export function RulesGraph({
         <CardEmpty>{format(m.typeListEmpty)}</CardEmpty>
       ) : (
         <>
-          <div ref={seat} {...stylex.props(styles.seat)}>
+          <div
+            ref={seat}
+            {...stylex.props(styles.seat, dragging && styles.seatDragging)}
+            onPointerDown={(event) => {
+              const node = seat.current
+              if (node === null || event.button !== 0) return
+              grip.current = {
+                x: event.clientX,
+                y: event.clientY,
+                left: node.scrollLeft,
+                top: node.scrollTop,
+                moved: false,
+              }
+            }}
+            onPointerMove={(event) => {
+              const node = seat.current
+              const held = grip.current
+              if (node === null || held === null) return
+              const dx = event.clientX - held.x
+              const dy = event.clientY - held.y
+              // a press that barely moves is a press on a box, not a drag
+              if (!held.moved && Math.hypot(dx, dy) < 4) return
+              held.moved = true
+              setDragging(true)
+              node.scrollLeft = held.left - dx
+              node.scrollTop = held.top - dy
+            }}
+            onPointerUp={() => {
+              dragged.current = grip.current?.moved ?? false
+              grip.current = null
+              setDragging(false)
+            }}
+            onPointerLeave={() => {
+              grip.current = null
+              setDragging(false)
+            }}
+            // the press that ended a drag is not a press on whatever was under it
+            onClickCapture={(event) => {
+              if (!dragged.current) return
+              dragged.current = false
+              event.stopPropagation()
+            }}
+          >
             <svg
               viewBox={`0 0 ${graph.width} ${graph.height}`}
               width={graph.width * zoom}

@@ -49,6 +49,22 @@ const identitySecretHintMessage = defineMessage<{ count: number }>()({
   id: 'auth/person/identity-secret-hint',
   defaultMessage: 'At least {count} characters',
 })
+const jumpLabelMessage = defineMessage<{ businessNo: string }>()({
+  id: 'auth/users/jump',
+  defaultMessage: 'Go to a {businessNo}',
+})
+const jumpMissingMessage = defineMessage<{ businessNo: string; value: string }>()({
+  id: 'auth/users/jump-missing',
+  defaultMessage: 'Nobody has the {businessNo} {value}.',
+})
+const lookAtMessage = defineMessage<{ name: string }>()({
+  id: 'auth/users/look-at',
+  defaultMessage: 'Look at {name}',
+})
+const pageSummaryMessage = defineMessage<{ from: number; to: number; total: number }>()({
+  id: 'auth/users/page-summary',
+  defaultMessage: '{from}-{to} of {total}',
+})
 const lastUsedMessage = defineMessage<{ when: string }>()({
   id: 'auth/person/last-used',
   defaultMessage: 'Last used {when}',
@@ -407,6 +423,18 @@ const i18n = definePluginMessages({
     lastUsed: lastUsedMessage,
     neverUsed: { id: 'auth/person/never-used', defaultMessage: 'Never used' },
     entranceDisabled: { id: 'auth/person/entrance-disabled', defaultMessage: 'Entrance disabled' },
+    jumpLabel: jumpLabelMessage,
+    jumpMissing: jumpMissingMessage,
+    lookAt: lookAtMessage,
+    pageSummary: pageSummaryMessage,
+    pagerLabel: { id: 'auth/users/pager', defaultMessage: 'Pages' },
+    resizeTree: { id: 'auth/users/resize-tree', defaultMessage: 'Resize the unit list' },
+    openInStructure: { id: 'auth/users/open-in-structure', defaultMessage: 'Open in the organization tree' },
+    showRemoved: { id: 'auth/users/show-removed', defaultMessage: 'Show deleted users' },
+    pickUnit: { id: 'auth/users/pick-unit', defaultMessage: 'Show the people of' },
+    treeMenu: { id: 'auth/users/tree-menu', defaultMessage: 'Unit list options' },
+    collapseAll: { id: 'auth/users/collapse-all', defaultMessage: 'Collapse all' },
+    nodeUsagePeople: { id: 'auth/node-usage/people', defaultMessage: 'People standing here' },
     identitiesSection: { id: 'auth/person/identities-section', defaultMessage: 'Ways in' },
     columnAccount: { id: 'auth/person/column-account', defaultMessage: 'Account' },
     columnLastUsed: { id: 'auth/person/column-last-used', defaultMessage: 'Last sign-in' },
@@ -479,9 +507,6 @@ const i18n = definePluginMessages({
       defaultMessage:
         'Their roles and sign-in accounts are withdrawn. The person can be restored later, their access cannot.',
     },
-    viewLabel: { id: 'auth/users/view', defaultMessage: 'Which people' },
-    viewLiving: { id: 'auth/users/view-living', defaultMessage: 'Current' },
-    viewDeleted: { id: 'auth/users/view-deleted', defaultMessage: 'Deleted' },
     confirmDeleteTitle: { id: 'auth/confirm/delete-title', defaultMessage: 'Delete permanently?' },
     confirmDeleteBody: { id: 'auth/confirm/delete-body', defaultMessage: 'This cannot be undone.' },
     confirmDisableTitle: { id: 'auth/confirm/disable-title', defaultMessage: 'Disable this user?' },

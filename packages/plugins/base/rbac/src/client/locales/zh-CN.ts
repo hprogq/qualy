@@ -60,6 +60,8 @@ export default {
   'rbac/grants/column-window': '有效期',
   'rbac/grants/column-origin': '来源',
   'rbac/grants/window-open': '长期有效',
+  'rbac/node-usage/grants': '在该组织生效的角色授权',
+  'rbac/node-usage/grant-history': '已撤销、作为历史保留的角色授权',
   'rbac/roles/exempt': '不受限制',
   'rbac/roles/exempt-hint': '租户管理员角色不受用户类型限制',
   'rbac/roles/anyone': '所有用户类型',

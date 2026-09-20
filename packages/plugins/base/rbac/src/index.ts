@@ -1,4 +1,6 @@
 import { Plugin } from '@qualy/plugin-kit'
+import { OrgUsage } from '@qualy/org-contract/plugin'
+import { grantsAtNode } from './server/node-usage.ts'
 import { Api } from '@qualy/api-kit/plugin'
 import { Db } from '@qualy/plugin-database/plugin'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
@@ -71,6 +73,7 @@ const plugin = Plugin.define(
     },
     visibility: permissionOf('iam.grant.read'),
   }),
+  OrgUsage.reporter(grantsAtNode),
   Access.permissions('rbac', permissions),
   Audit.actions('rbac', accessActions),
   // rbac owns the catalog: contributors declare, this compiles the value

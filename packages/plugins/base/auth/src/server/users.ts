@@ -1,4 +1,4 @@
-import { likeContains } from '@qualy/api-kit/schema'
+import { likeContains, pageWindow } from '@qualy/api-kit/schema'
 import { UserProvisioning, UserProvisioningRefused } from '@qualy/auth-contract/provisioning'
 import { Effect } from 'effect'
 import { kyselyOf, query, transaction, withDatabase } from '@qualy/plugin-database/server'
@@ -195,16 +195,23 @@ const listUsers = (
   input: {
     orgNodeId: string
     scope: 'self' | 'subtree'
-    /** absent = the living (active and disabled); 'deleted' = the removed */
-    status?: 'active' | 'disabled' | 'deleted'
+    /** absent = the living (active and disabled); 'deleted' = the removed; 'any' = both */
+    status?: 'active' | 'disabled' | 'deleted' | 'any'
     search?: string
     /** narrows to one kind of person, which is what a picker filters by */
     userTypeId?: string
     after?: readonly string[]
+    /** a numbered page: rows to skip */
+    offset?: number
+    /** count what matches instead of reading it */
+    count?: boolean
     limit: number
   },
 ) =>
-  db.query((k) => {
+  db.query(async (k) => {
+    // a removed person whose unit is gone anchors nowhere, so only a
+    // tenant-wide reader sees them; everybody else is read through their node
+    const removed = input.status === 'deleted' || input.status === 'any'
     let found = people(k, scopes.manage)
       .innerJoin('OrgNode as requested', (join) =>
         join
@@ -212,56 +219,39 @@ const listUsers = (
           .on('requested.id', '=', input.orgNodeId),
       )
       .where('u.tenantId', '=', tenantId)
+      .where((eb) => {
+        const within =
+          input.scope === 'subtree'
+            ? sql<boolean>`${eb.ref('n.path')} <@ ${eb.ref('requested.path')}`
+            : eb('n.id', '=', eb.ref('requested.id'))
+        const readable = sql<boolean>`coalesce(${scopeCoverage(scopes.read, {
+          id: eb.ref('n.id'),
+          tenantId: eb.ref('n.tenantId'),
+          path: eb.ref('n.path'),
+        })}, false)`
+        const placed = eb.and([eb('n.id', 'is not', null), within, readable])
+        // A removed person whose unit was itself removed anchors nowhere, so
+        // only a tenant-wide reader sees them - a subtree reader's authority
+        // is defined by nodes, and there is no node to define it over.
+        const adrift = eb.and([
+          eb('u.deletedAt', 'is not', null),
+          eb('n.id', 'is', null),
+          sql<boolean>`${scopes.read.tenantWide ? sql`true` : sql`false`}`,
+        ])
+        return removed ? eb.or([placed, adrift]) : placed
+      })
       .where((eb) =>
-        input.status === 'deleted'
-          ? // A removed person whose unit was itself removed anchors nowhere,
-            // so only a tenant-wide reader sees them - a subtree reader's
-            // authority is defined by nodes, and there is no node to define
-            // it over.
-            eb.or([
-              eb.and([
-                eb('n.id', 'is not', null),
-                input.scope === 'subtree'
-                  ? sql<boolean>`${eb.ref('n.path')} <@ ${eb.ref('requested.path')}`
-                  : eb('n.id', '=', eb.ref('requested.id')),
-                sql<boolean>`coalesce(${scopeCoverage(scopes.read, {
-                  id: eb.ref('n.id'),
-                  tenantId: eb.ref('n.tenantId'),
-                  path: eb.ref('n.path'),
-                })}, false)`,
-              ]),
-              eb.and([
-                eb('n.id', 'is', null),
-                sql<boolean>`${scopes.read.tenantWide ? sql`true` : sql`false`}`,
-              ]),
-            ])
-          : eb.and([
-              input.scope === 'subtree'
-                ? sql<boolean>`${eb.ref('n.path')} <@ ${eb.ref('requested.path')}`
-                : eb('n.id', '=', eb.ref('requested.id')),
-              scopeCoverage(scopes.read, {
-                id: eb.ref('n.id'),
-                tenantId: eb.ref('n.tenantId'),
-                path: eb.ref('n.path'),
-              }),
-            ]),
+        input.status === 'any'
+          ? eb.val(true)
+          : input.status === 'deleted'
+            ? eb('u.deletedAt', 'is not', null)
+            : input.status === undefined
+              ? eb('u.deletedAt', 'is', null)
+              : eb.and([
+                  eb('u.deletedAt', 'is', null),
+                  eb('u.enabled', '=', input.status === 'active'),
+                ]),
       )
-      .where((eb) =>
-        input.status === 'deleted'
-          ? eb('u.deletedAt', 'is not', null)
-          : input.status === undefined
-            ? eb('u.deletedAt', 'is', null)
-            : eb.and([
-                eb('u.deletedAt', 'is', null),
-                eb('u.enabled', '=', input.status === 'active'),
-              ]),
-      )
-      // by the identifier people are actually looked up by, with those who
-      // have none yet first: they are the ones still waiting to be finished
-      .orderBy((eb) => sql<string>`coalesce(${eb.ref('u.businessNo')}, '')`)
-      .orderBy('u.displayName')
-      .orderBy('u.id')
-      .limit(input.limit)
 
     if (input.userTypeId !== undefined) {
       found = found.where('u.userTypeId', '=', input.userTypeId)
@@ -294,10 +284,33 @@ const listUsers = (
           sql<boolean>`(coalesce(${eb.ref('u.businessNo')}, ''), ${eb.ref('u.displayName')}, ${eb.ref('u.id')}::text) > (${businessNo}, ${name}, ${id})`,
       )
     }
-    return found.execute()
+    // counted before the window is applied, over exactly the same filter
+    if (input.count === true) {
+      return {
+        items: [],
+        total: Number(
+            (
+              await found
+                .clearSelect()
+                .select((eb) => eb.fn.countAll<string>().as('count'))
+                .executeTakeFirstOrThrow()
+            ).count,
+        ),
+      }
+    }
+    const items = await found
+      // by the identifier people are actually looked up by, with those who
+      // have none yet first: they are the ones still waiting to be finished
+      .orderBy((eb) => sql<string>`coalesce(${eb.ref('u.businessNo')}, '')`)
+      .orderBy('u.displayName')
+      .orderBy('u.id')
+      .limit(input.limit)
+      .offset(input.offset ?? 0)
+      .execute()
+    return { items, total: null }
   })
 
-export type UserProjection = Effect.Success<ReturnType<typeof listUsers>>[number]
+export type UserProjection = Effect.Success<ReturnType<typeof listUsers>>['items'][number]
 
 /** one user, visible only through the caller's read scope */
 const oneUser = (
@@ -977,7 +990,37 @@ export const make = Effect.fn('Iam.users.make')(function* () {
       ) {
         const held = yield* scopes(principal)
         if (!readable(held)) return []
-        return yield* listUsers(principal.tenantId, held, input).pipe(Effect.orDie)
+        return (yield* listUsers(principal.tenantId, held, input).pipe(Effect.orDie)).items
+      }),
+    ),
+
+    /** the same list by page number, with how many there are in all */
+    page: bound(
+      Effect.fn('Iam.users.page')(function* (
+        principal: Principal,
+        input: {
+          orgNodeId: string
+          scope: 'self' | 'subtree'
+          status?: 'active' | 'disabled' | 'deleted' | 'any'
+          search?: string
+          userTypeId?: string
+          page: number
+          limit: number
+        },
+      ) {
+        const held = yield* scopes(principal)
+        if (!readable(held)) return { items: [], total: 0, page: 1 }
+        // the count decides where the window may start: a page past the end
+        // is the last page, not an empty screen
+        const counted = yield* listUsers(principal.tenantId, held, { ...input, count: true }).pipe(
+          Effect.orDie,
+        )
+        const window = pageWindow(input.page, input.limit, counted.total ?? 0)
+        const found = yield* listUsers(principal.tenantId, held, {
+          ...input,
+          offset: window.offset,
+        }).pipe(Effect.orDie)
+        return { items: found.items, total: counted.total ?? 0, page: window.page }
       }),
     ),
 

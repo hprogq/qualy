@@ -638,21 +638,24 @@ describe('users workspace', () => {
               user({ id: SECOND_USER_ID, displayName: '李文静', status: 'disabled' }),
             ],
             nextCursor: null,
+            total: 120,
+            page: 1,
+            pageSize: 50,
           }),
         getUser: () => Effect.succeed(personAnswer()),
         ...over,
       },
     })
 
-  it('opens a person from the roster and says so in the address', async () => {
+  it('looks at a person beside the roster from the mark at the end of their row, and says so in the address', async () => {
     renderScreen({
       client: fakeClient(rosterStubs()),
       route: '/admin/users',
       children: <UsersPage />,
     })
 
-    await expect.element(page.getByRole('button', { name: /张明远/ })).toBeVisible()
-    await page.getByRole('button', { name: /张明远/ }).click()
+    await expect.element(page.getByRole('button', { name: '速览张明远' })).toBeVisible()
+    await page.getByRole('button', { name: '速览张明远' }).click()
     // the open person is address state, not component state
     await vi.waitFor(() => expect(addressNow()).toContain(`user=${USER_ID}`))
     expect(
@@ -687,7 +690,13 @@ describe('users workspace', () => {
 
   it('asks the server for the unit the tree has selected', async () => {
     const list = vi.fn(() =>
-      Effect.succeed({ items: [user({ id: USER_ID, displayName: '张明远' })], nextCursor: null }),
+      Effect.succeed({
+        items: [user({ id: USER_ID, displayName: '张明远' })],
+        nextCursor: null,
+        total: 1,
+        page: 1,
+        pageSize: 50,
+      }),
     )
     renderScreen({
       client: fakeClient(rosterStubs({ listUsers: list })),
@@ -695,8 +704,9 @@ describe('users workspace', () => {
       children: <UsersPage />,
     })
 
-    await expect.element(page.getByRole('button', { name: /张明远/ })).toBeVisible()
-    await page.getByRole('button', { name: '分部' }).click()
+    await expect.element(page.getByRole('button', { name: '速览张明远' })).toBeVisible()
+    await vi.waitFor(() => expect(document.querySelector('[data-node-name="分部"]')).not.toBeNull())
+    ;(document.querySelector('[data-node-name="分部"]') as HTMLElement).click()
     await vi.waitFor(() => expect(addressNow()).toContain(`anchor=${BRANCH_NODE_ID}`))
     await vi.waitFor(() =>
       expect(
@@ -706,6 +716,39 @@ describe('users workspace', () => {
             BRANCH_NODE_ID,
         ),
       ).toBe(true),
+    )
+  })
+
+  it('walks the roster by page number, and lists the removed only when asked', async () => {
+    const list = vi.fn(() =>
+      Effect.succeed({
+        items: [user({ id: USER_ID, displayName: '张明远' })],
+        nextCursor: null,
+        total: 120,
+        page: 1,
+        pageSize: 50,
+      }),
+    )
+    renderScreen({
+      client: fakeClient(rosterStubs({ listUsers: list })),
+      route: '/admin/users',
+      children: <UsersPage />,
+    })
+    const asked = () =>
+      (list.mock.calls as unknown as [{ query: { page?: string; status?: string } }][]).map(
+        (call) => call[0].query,
+      )
+    // three pages of fifty, and the last one is one press away
+    await expect.element(page.getByTestId('roster-pager')).toHaveAttribute('data-pages', '3')
+    await page.getByRole('button', { name: '3', exact: true }).click()
+    await vi.waitFor(() => expect(addressNow()).toContain('page=3'))
+    await vi.waitFor(() => expect(asked().some((query) => query.page === '3')).toBe(true))
+    // the living by default; the removed join them only on request, and a
+    // different question starts again at its first page
+    expect(asked().every((query) => query.status === undefined)).toBe(true)
+    await page.getByTestId('show-removed').click()
+    await vi.waitFor(() =>
+      expect(asked().some((query) => query.status === 'any' && query.page === '1')).toBe(true),
     )
   })
 })

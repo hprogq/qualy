@@ -1,4 +1,6 @@
 import { Layer } from 'effect'
+import { OrgUsage } from '@qualy/org-contract/plugin'
+import { peopleAtNode } from './server/node-usage.ts'
 import { message } from '@qualy/i18n-contract'
 import { Plugin } from '@qualy/plugin-kit'
 import { Api } from '@qualy/api-kit/plugin'
@@ -261,6 +263,7 @@ const plugin = Plugin.define(
     component: Ui.react('./client/iam/OrgNodePicker'),
     visibility: permissionOf('auth.user.read'),
   }),
+  OrgUsage.reporter(peopleAtNode),
   Access.permissions('auth', permissions),
   // auth owns the sign-in registry: drivers declare, this interprets
   Login.provider,

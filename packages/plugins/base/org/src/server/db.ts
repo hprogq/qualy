@@ -334,6 +334,25 @@ export const hasChildren = (tenantId: string, nodeId: string) =>
     )
     .pipe(Effect.map((row) => row !== undefined))
 
+/**
+ * How many units stand directly under one, whoever is asking.
+ *
+ * Counted rather than read from the caller's tree on purpose: a reader whose
+ * reach ends at a unit is sent that unit alone, which looks exactly like a
+ * leaf, and "nothing under it" is not something their reach can vouch for.
+ */
+export const countChildren = (tenantId: string, nodeId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('OrgNode')
+        .select((eb) => eb.fn.countAll<string>().as('count'))
+        .where('tenantId', '=', tenantId)
+        .where('parentId', '=', nodeId)
+        .executeTakeFirstOrThrow(),
+    )
+    .pipe(Effect.map((row) => Number(row.count)))
+
 export const updateNodeFields = (
   tenantId: string,
   nodeId: string,

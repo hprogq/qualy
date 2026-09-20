@@ -6,7 +6,7 @@ import { withDatabase, type Orm } from '@qualy/plugin-database/server'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
 import { Api } from '@qualy/api-kit/plugin'
-import { codeFrom, cursorUnusable, pageSize } from '@qualy/api-kit/schema'
+import { codeFrom, cursorUnusable, pageNumber, pageSize } from '@qualy/api-kit/schema'
 import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
 import { Audit } from '@qualy/audit-contract/effect'
 
@@ -283,6 +283,27 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
         yield* requireUserRead(principal)
         const limit = pageSize(query.limit, DEFAULT_PAGE_SIZE)
         const scope = query.scope ?? 'subtree'
+        if (query.page !== undefined) {
+          const found = yield* iam.users.page(principal, {
+            orgNodeId: query.orgNodeId,
+            scope,
+            status: query.status,
+            search: query.search,
+            userTypeId: query.userTypeId,
+            page: pageNumber(query.page),
+            limit,
+          })
+          return {
+            items: found.items.map(toUserDto),
+            nextCursor: null,
+            total: found.total,
+            page: found.page,
+            pageSize: limit,
+          }
+        }
+        // read by cursor, 'any' has no meaning worth a second keyset: the
+        // pickers that read this way never ask for the removed
+        const status = query.status === 'any' ? undefined : query.status
         // the cursor belongs to this anchor, scope and search and no other
         // every filter is in the fingerprint: a cursor from one question
         // applied to another silently skips or repeats people
@@ -292,7 +313,7 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
         const found = yield* iam.users.list(principal, {
           orgNodeId: query.orgNodeId,
           scope,
-          status: query.status,
+          status,
           search: query.search,
           userTypeId: query.userTypeId,
           after: key,
@@ -306,6 +327,9 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
             found.length > limit && last
               ? encodeQueryCursor(fingerprint, [last.businessNo ?? '', last.displayName, last.id])
               : null,
+          total: null,
+          page: null,
+          pageSize: null,
         }
       }),
     )

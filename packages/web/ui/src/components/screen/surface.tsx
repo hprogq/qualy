@@ -478,6 +478,7 @@ export function TableHead({ children }: { children: ReactNode }) {
 
 export function TableRow({
   onOpen,
+  nested = false,
   selected = false,
   height = 'regular',
   children,
@@ -485,6 +486,13 @@ export function TableRow({
   ...rest
 }: {
   onOpen?: (() => void) | undefined
+  /**
+   * The row holds controls of its own - a link inside a cell, a button at
+   * its end. A button may not contain another, so the row is then a link-like
+   * box that answers a press anywhere its own controls did not take, and
+   * Enter when it has the focus.
+   */
+  nested?: boolean
   selected?: boolean
   height?: 'regular' | 'compact' | 'tight'
   children: ReactNode
@@ -514,6 +522,30 @@ export function TableRow({
     const { disabled: _disabled, ...divProps } = rest as Record<string, unknown>
     return (
       <div {...(divProps as ComponentProps<'div'>)} {...look} data-selected={selected}>
+        {body}
+      </div>
+    )
+  }
+  if (nested) {
+    const { disabled: _disabled, ...divProps } = rest as Record<string, unknown>
+    return (
+      <div
+        {...(divProps as ComponentProps<'div'>)}
+        {...look}
+        role="link"
+        tabIndex={0}
+        aria-current={selected || undefined}
+        data-selected={selected}
+        onClick={(event) => {
+          // a control inside the row answered for itself
+          if ((event.target as HTMLElement).closest('button, a, input') !== null) return
+          onOpen()
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== 'Enter' || event.target !== event.currentTarget) return
+          onOpen()
+        }}
+      >
         {body}
       </div>
     )

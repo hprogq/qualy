@@ -1,4 +1,5 @@
 import { Plugin } from '@qualy/plugin-kit'
+import { OrgUsage } from '@qualy/org-contract/plugin'
 import { Api } from '@qualy/api-kit/plugin'
 import { Db } from '@qualy/plugin-database/plugin'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
@@ -60,6 +61,7 @@ const plugin = Plugin.define(
       },
     ],
   }),
+  OrgUsage.provider,
   Access.permissions('org', permissions),
   Audit.actions('org', orgActions),
   Api.group(orgApiGroup, orgApiHandlers),

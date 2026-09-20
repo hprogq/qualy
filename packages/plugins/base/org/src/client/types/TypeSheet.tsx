@@ -66,6 +66,9 @@ export function TypeSheet({
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [saving, setSaving] = useState(false)
   const inUse = shape.nodesOfType.get(type.id) ?? 0
+  // the kind the tenant's own root is of: it cannot go while the root stands,
+  // and saying "one unit uses it" sends the reader looking for a unit to move
+  const isRootType = shape.roots.some((root) => root.orgTypeId === type.id)
 
   // the rules as stored against the rules as edited: saving writes the diff,
   // one put or delete per changed pair
@@ -215,12 +218,16 @@ export function TypeSheet({
           <div {...stylex.props(styles.deleteRow)}>
             <span {...stylex.props(styles.deleteTitle)}>{format(m.typeDeleteTitle)}</span>
             <span {...stylex.props(styles.deleteWhy)}>
-              {inUse > 0 ? format(m.typeInUseHint, { count: inUse }) : format(m.typeFreeHint)}
+              {isRootType
+                ? format(m.typeIsRootHint)
+                : inUse > 0
+                  ? format(m.typeInUseHint, { count: inUse })
+                  : format(m.typeFreeHint)}
             </span>
             <Button
               size="xs"
               variant="outline"
-              disabled={inUse > 0}
+              disabled={inUse > 0 || isRootType}
               onClick={() => setConfirmingDelete(true)}
             >
               {format(m.delete)}

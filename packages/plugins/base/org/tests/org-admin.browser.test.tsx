@@ -77,6 +77,20 @@ const world = () => ({
           { parentTypeId: COLLEGE_TYPE, childTypeId: CLASS_TYPE },
         ],
       }),
+    // what holds a unit in place, as the server counts it: the college has
+    // the class under it, and nothing else points at anything
+    getNodeUsage: ({ params }: { params: { nodeId: string } }) =>
+      Effect.succeed({
+        isRoot: params.nodeId === ROOT,
+        children: params.nodeId === COLLEGE ? 1 : 0,
+        usage: [] as {
+          kind: string
+          label: { kind: 'literal'; value: string }
+          count: number
+          examples: string[]
+          target: null
+        }[],
+      }),
   },
   // headcounts come from whoever owns people; the screen reads them and
   // tolerates being refused, so the stub answers with a roster of nobody
@@ -196,10 +210,9 @@ describe('the organization screen', () => {
 
   // A tree is what this reader may SEE, not what is there. A reader whose
   // reach ends at a unit is sent that unit alone, which on the wire is
-  // indistinguishable from a leaf - and the delete control was offered on
-  // units holding whole branches. The server refuses, but a refusal was
-  // never meant to be the first anybody hears of a rule.
-  it('keeps deletion barred where the tree stops at this unit', async () => {
+  // indistinguishable from a leaf - so what is under a unit is counted by
+  // the server, whoever is asking, and the screen believes that count.
+  it('keeps deletion barred where the server counts units the tree does not show', async () => {
     const client = world()
     client.org.getTree = () =>
       Effect.succeed({
@@ -215,27 +228,48 @@ describe('the organization screen', () => {
           }),
         ],
       })
+    client.org.getNodeUsage = () => Effect.succeed({ isRoot: false, children: 3, usage: [] })
     renderScreen({
       client: fakeClient(client),
       route: `/admin/org?node=${COLLEGE}`,
       children: <OrgPage />,
     })
     await expect.element(page.getByRole('button', { name: '删除节点' })).toBeDisabled()
+    await expect
+      .element(page.getByTestId('node-delete'))
+      .toHaveAttribute('data-removable', 'false')
   })
 
-  // The same rule for the other count. Reading people is a grant of its own
-  // and the screen tolerates being refused it - but the zero that came back
-  // was an absence of an answer, not an absence of people.
-  it('keeps deletion barred while the headcount went unanswered', async () => {
+  // Everything else that points at a unit lives in plugins org cannot see.
+  // They say so before the delete is offered - how many, a few by name - so
+  // a refusal is never the first the reader hears of it, and never says
+  // only "something".
+  it('lists what else holds a unit in place, and bars the delete while anything does', async () => {
     const client = world()
-    client.identity.getUserOptions = () =>
-      Effect.fail(new AccessDenied({ reason: 'reading people is its own grant' })) as never
+    client.org.getNodeUsage = () =>
+      Effect.succeed({
+        isRoot: false,
+        children: 0,
+        usage: [
+          {
+            kind: 'people',
+            label: { kind: 'literal' as const, value: '在该组织的用户' },
+            count: 12,
+            examples: ['张明远', '李文静'],
+            target: null,
+          },
+        ],
+      }) as never
     renderScreen({
       client: fakeClient(client),
       route: `/admin/org?node=${KLASS}`,
       children: <OrgPage />,
     })
     await expect.element(page.getByRole('button', { name: '删除节点' })).toBeDisabled()
+    const hold = document.querySelector('[data-testid="node-delete"] [data-hold="people"]')
+    expect(hold?.getAttribute('data-count')).toBe('12')
+    // by name, because a count alone is still a search
+    await expect.element(page.getByText('张明远', { exact: false })).toBeVisible()
   })
 
   it('opens a unit from the tree and creates a child of a legal type only', async () => {
@@ -283,22 +317,21 @@ describe('the organization screen', () => {
   it('opens a branch without folding it, and folds only from the twistie', async () => {
     renderScreen({ client: fakeClient(world()), route: '/admin/org', children: <OrgPage /> })
 
-    const college = page.getByRole('button', { name: '软件学院 学院' })
-    await expect.element(college).toBeVisible()
-    // pressing the name twice leaves what is under it on screen both times
-    await college.click()
-    await expect.element(page.getByRole('button', { name: '软件2301班 班级' })).toBeVisible()
-    await college.click()
-    await expect.element(page.getByRole('button', { name: '软件2301班 班级' })).toBeVisible()
-    // and the unit it opened is the one the panel is showing
+    const rowOf = (name: string) =>
+      document.querySelector<HTMLElement>(`[data-testid="tree-row"][data-node-name="${name}"]`)
+    await vi.waitFor(() => expect(rowOf('软件学院')).not.toBeNull())
+    // pressing a unit opens it beside the tree and leaves what is under it where it was
+    rowOf('软件学院')!.click()
+    await expect.element(page.getByTestId('node-sheet')).toBeVisible()
+    expect(rowOf('软件2301班')).not.toBeNull()
+    // and the unit it opened is the one the sheet is showing
     await expect.element(page.getByRole('heading', { name: /软件学院/ })).toBeInTheDocument()
 
     // the twistie is what folds, and it leaves the open unit open
+    await page.getByRole('button', { name: '关闭' }).click()
     await page.getByRole('button', { name: '展开或收起 软件学院' }).click()
-    await vi.waitFor(async () =>
-      expect(await page.getByRole('button', { name: '软件2301班 班级' }).elements()).toHaveLength(0),
-    )
-    await expect.element(page.getByRole('heading', { name: /软件学院/ })).toBeInTheDocument()
+    await vi.waitFor(() => expect(rowOf('软件2301班')).toBeNull())
+    expect(rowOf('软件学院')?.getAttribute('data-people')).toBe('0')
   })
 
   it('edits the grammar per type and saves the pair diff', async () => {

@@ -15,11 +15,10 @@ import { tokens } from '../../theme/tokens.stylex.ts'
 //
 // What kind of unit it is and how many stand in it sit at the far end in two
 // columns that line up down the tree, so the shape of the place can be read
-// without opening any of it. The name outranks both: five levels down, the
-// indent has taken a third of the column, and a row reading "软件20..." six
-// times over tells nobody which class is which. So the kind gives way first,
-// all the way to nothing, and only then does the name begin to shorten; the
-// whole of it stays on the row's title either way.
+// without opening any of it. Neither column gives way: a tree whose kinds come
+// and go with the length of the name beside them cannot be read down. Room
+// for a long name comes from a small indent and from the column itself, which
+// the reader can widen; the whole name stays on the row's title either way.
 
 /** how far each level steps in; small, because a real tree is five or six deep */
 const INDENT = 12
@@ -93,15 +92,7 @@ const styles = stylex.create({
   wordOpen: { fontWeight: 600 },
   lock: { width: 12, height: 12, flexShrink: 0, color: tokens.mutedForeground },
   spacer: { flexGrow: 1, flexShrink: 1, flexBasis: '0%', minWidth: 4 },
-  // gives way long before the name does
-  kind: {
-    minWidth: 0,
-    flexShrink: 9999,
-    overflow: 'hidden',
-    whiteSpace: 'nowrap',
-    fontSize: 11,
-    color: QUIET,
-  },
+  kind: { flexShrink: 0, whiteSpace: 'nowrap', fontSize: 11, color: QUIET },
   tally: {
     flexShrink: 0,
     minWidth: '2.25rem',

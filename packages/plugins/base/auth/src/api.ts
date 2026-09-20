@@ -441,13 +441,23 @@ export const identityApiGroup = HttpApiGroup.make('identity')
         orgNodeId: uuidInput,
         // an enum says what it means; `subtree=false` never did
         scope: Schema.optional(Schema.Literals(['self', 'subtree'])),
-        /** absent = the living; 'deleted' = the removed, for the restore view */
-        status: Schema.optional(Schema.Literals(['active', 'disabled', 'deleted'])),
+        /** absent = the living; 'deleted' = the removed; 'any' = both, for a roster that shows them together */
+        status: Schema.optional(Schema.Literals(['active', 'disabled', 'deleted', 'any'])),
         search: Schema.optional(Schema.String.check(Schema.isMaxLength(100))),
         userTypeId: Schema.optional(uuidInput),
         ...pageQuery,
+        // A picker reads forwards by cursor; the roster is walked by page
+        // number. Naming a page switches the answer to a counted one.
+        page: Schema.optional(Schema.String),
       }),
-      success: pageOf(user),
+      success: Schema.Struct({
+        items: Schema.Array(user),
+        nextCursor: Schema.NullOr(Schema.String),
+        /** present only when a page was asked for by number */
+        total: Schema.NullOr(Schema.Number),
+        page: Schema.NullOr(Schema.Number),
+        pageSize: Schema.NullOr(Schema.Number),
+      }),
       error: [BadRequest, AccessDenied],
     }).middleware(Authenticated),
   )
