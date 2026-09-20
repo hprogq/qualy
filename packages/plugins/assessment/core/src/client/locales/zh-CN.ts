@@ -5,7 +5,11 @@ export default {
   'assessment/review/tag-linked': '关联 {name}',
   'assessment/review/tag-locked': '合议已锁定',
   'assessment/review/filed-was': '申报填写',
-  'assessment/review/adjust-hint': '{names} 与申报不同。请说明调整依据，随认定结果留存，供复核与申诉时查阅',
+  'assessment/review/adjust-hint':
+    '{names} 与申报不同。请说明调整依据，随认定结果留存，供复核与申诉时查阅',
+  'assessment/review/standing-ready': '填写无误，可提交认定',
+  'assessment/review/standing-refused': '计分公式不接受当前认定',
+  'assessment/review/standing-reason-owed': '请填写认定调整说明',
   'assessment/review/fill-first': '请先填写 {name}',
   'assessment/review/preview-stands': '按当前认定核算',
   'assessment/review/preview-fix-first': '修正后才能通过',
@@ -1560,7 +1564,8 @@ export default {
   'assessment/permission-hint/entry-record': '可统一认定无需本人申报的事项。',
   'assessment/permission-hint/entry-appeal': '可对已有审核结论的申报发起申诉。',
   'assessment/permission-hint/review-view-reviewers': '参评人员可以看到自己申报的审核人员姓名。',
-  'assessment/permission-hint/review-view-chain': '审核人员可以看到本步骤之后的审核步骤及其审核人员。',
+  'assessment/permission-hint/review-view-chain':
+    '审核人员可以看到本步骤之后的审核步骤及其审核人员。',
   'assessment/permission-hint/review-escalate': '可将存在疑问的申报转入复核流程。',
   'assessment/permission-hint/review-process': '可对待审核申报执行通过、退回等审核操作。',
   'assessment/permission-hint/review-reopen': '可重新开启已结束的审核任务。',

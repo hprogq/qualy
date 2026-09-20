@@ -198,9 +198,7 @@ afterEach(() => page.viewport(1280, 800))
  */
 const choiceAt = (form: Element, parameter: string) => {
   const trigger = () =>
-    form.querySelector<HTMLElement>(
-      `[data-parameter="${parameter}"] [data-slot="select-trigger"]`,
-    )!
+    form.querySelector<HTMLElement>(`[data-parameter="${parameter}"] [data-slot="select-trigger"]`)!
   return {
     said: () => trigger().textContent ?? '',
     locked: () => trigger().hasAttribute('disabled'),
@@ -215,9 +213,7 @@ const choiceAt = (form: Element, parameter: string) => {
           throw new Error(`${label} is not offered; saw ${JSON.stringify(offered)}`)
       })
       await userEvent.click(
-        [...document.querySelectorAll('[role="option"]')].find(
-          (one) => one.textContent === label,
-        )!,
+        [...document.querySelectorAll('[role="option"]')].find((one) => one.textContent === label)!,
       )
     },
   }
@@ -314,9 +310,14 @@ describe('approving with a determination', () => {
     const hours = form.querySelector('[data-parameter="rec-hours"] input') as HTMLInputElement
     await userEvent.fill(hours, '3.50')
     // same number as the seed? no - 3.5 differs from 2, so a reason is owed
-    await expect.element(page.getByRole('dialog').getByRole('textbox', { name: '认定调整说明' })).toBeVisible()
+    await expect
+      .element(page.getByRole('dialog').getByRole('textbox', { name: '认定调整说明' }))
+      .toBeVisible()
     await userEvent.fill(
-      page.getByRole('dialog').getByRole('textbox', { name: '认定调整说明' }).element() as HTMLInputElement,
+      page
+        .getByRole('dialog')
+        .getByRole('textbox', { name: '认定调整说明' })
+        .element() as HTMLInputElement,
       '按打卡记录核定',
     )
     await confirmAndWait(decided)
@@ -353,13 +354,18 @@ describe('approving with a determination', () => {
       '2',
     )
     await choiceAt(form, 'rec-level').pick('省部级')
-    await expect.element(page.getByRole('dialog').getByRole('textbox', { name: '认定调整说明' })).toBeVisible()
+    await expect
+      .element(page.getByRole('dialog').getByRole('textbox', { name: '认定调整说明' }))
+      .toBeVisible()
     // the gate holds until the explanation is written
     await expect
       .element(page.getByRole('dialog').getByRole('button', { name: /^通过/ }))
       .toBeDisabled()
     await userEvent.fill(
-      page.getByRole('dialog').getByRole('textbox', { name: '认定调整说明' }).element() as HTMLInputElement,
+      page
+        .getByRole('dialog')
+        .getByRole('textbox', { name: '认定调整说明' })
+        .element() as HTMLInputElement,
       '证书落款为省级主办单位',
     )
     await confirmAndWait(decided)
@@ -418,10 +424,17 @@ describe('approving with a determination', () => {
     // unanswered blocks the approval outright
     await expect.element(approve).toBeDisabled()
     // an explicit answer opens it - and an explicit NO is an answer too
+    // the light at the foot says the same thing the key does
+    await expect
+      .element(page.getByTestId('approve-standing'))
+      .toHaveAttribute('data-standing', 'owed')
     const group = page.getByRole('dialog').getByRole('radiogroup')
     await expect.element(group).toHaveAttribute('data-answered', 'false')
     await group.getByRole('radio').nth(0).click()
     await expect.element(approve).toBeEnabled()
+    await expect
+      .element(page.getByTestId('approve-standing'))
+      .toHaveAttribute('data-standing', 'ready')
     await group.getByRole('radio').nth(1).click()
     await expect.element(approve).toBeEnabled()
     await confirmAndWait(decided)

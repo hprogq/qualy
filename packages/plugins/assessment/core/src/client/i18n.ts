@@ -415,6 +415,15 @@ const i18n = definePluginMessages({
     reviewFiledWas: { id: 'assessment/review/filed-was', defaultMessage: 'Filed as' },
     reviewAdjustHint: reviewAdjustHintMessage,
     reviewFillFirst: reviewFillFirstMessage,
+    reviewStandingReady: { id: 'assessment/review/standing-ready', defaultMessage: 'Ready to approve' },
+    reviewStandingRefused: {
+      id: 'assessment/review/standing-refused',
+      defaultMessage: 'The scoring rule does not accept these values',
+    },
+    reviewStandingReasonOwed: {
+      id: 'assessment/review/standing-reason-owed',
+      defaultMessage: 'Say why the determination was adjusted',
+    },
     reviewPreviewStands: {
       id: 'assessment/review/preview-stands',
       defaultMessage: 'Under the determination as it stands',

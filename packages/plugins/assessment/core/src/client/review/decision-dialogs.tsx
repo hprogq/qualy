@@ -305,7 +305,19 @@ const styles = stylex.create({
   foot: { display: 'flex', minWidth: 0, flexGrow: 1, flexDirection: 'column', gap: 10 },
   // what the values come to, under the form that produces them and always in view
   pinned: { flexShrink: 0, paddingTop: 12 },
+  standingDot: {
+    width: 7,
+    height: 7,
+    flexShrink: 0,
+    borderRadius: 9999,
+    backgroundColor: tokens.warning,
+  },
+  standingReady: { backgroundColor: tokens.success },
+  standingWrong: { backgroundColor: tokens.danger },
   footNote: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 8,
     minWidth: 0,
     padding: 0,
     borderWidth: 0,
@@ -999,6 +1011,32 @@ export function ApproveDialog({
     </Field>
   )
 
+  // Where the approval stands, in one line with a light before it: red for
+  // something written that cannot be taken, amber for something still to
+  // write, green once the key will work. Red first - a wrong value is the one
+  // that will not resolve itself by carrying on down the form.
+  const wrongId = [...problems.keys()][0]
+  const standing: { tone: 'ready' | 'owed' | 'wrong'; words: string; at?: string } | null =
+    form === null || locked !== null
+      ? null
+      : wrongId !== undefined
+        ? {
+            tone: 'wrong',
+            words: format(m.reviewSummaryWrong, { count: problems.size }),
+            at: wrongId,
+          }
+        : blocked
+          ? { tone: 'wrong', words: format(m.reviewStandingRefused) }
+          : missingIds[0] !== undefined
+            ? {
+                tone: 'owed',
+                words: format(m.reviewFillFirst, { name: titleOf(missingIds[0]) }),
+                at: missingIds[0],
+              }
+            : !ready
+              ? { tone: 'owed', words: format(m.reviewStandingReasonOwed) }
+              : { tone: 'ready', words: format(m.reviewStandingReady) }
+
   if (!fine) {
     return (
       <DecisionSheet
@@ -1032,14 +1070,25 @@ export function ApproveDialog({
       footer={
         <div {...stylex.props(styles.foot)}>
           <div {...stylex.props(styles.footerRow)}>
-            {form !== null && locked === null && missingIds[0] !== undefined && (
+            {standing !== null && (
               <button
                 type="button"
-                data-testid="approve-missing"
+                data-testid="approve-standing"
+                data-standing={standing.tone}
                 {...stylex.props(styles.footNote)}
-                onClick={() => reach(missingIds[0]!)}
+                {...(standing.at === undefined
+                  ? { disabled: true }
+                  : { onClick: () => reach(standing.at!) })}
               >
-                {format(m.reviewFillFirst, { name: titleOf(missingIds[0]) })}
+                <span
+                  aria-hidden
+                  {...stylex.props(
+                    styles.standingDot,
+                    standing.tone === 'ready' && styles.standingReady,
+                    standing.tone === 'wrong' && styles.standingWrong,
+                  )}
+                />
+                {standing.words}
               </button>
             )}
             <span {...stylex.props(styles.spacer)} />
