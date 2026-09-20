@@ -22,6 +22,7 @@
     "@qualy/plugin-rum": "workspace:*",
     "@qualy/plugin-rum-tencent": "workspace:*",
     "@qualy/plugin-sandbox": "workspace:*",
+    "@qualy/plugin-settings": "workspace:*",
     "@qualy/plugin-storage": "workspace:*",
     "@qualy/plugin-storage-cos": "workspace:*",
     "@qualy/plugin-storage-local": "workspace:*",

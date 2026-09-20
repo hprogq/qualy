@@ -34,6 +34,7 @@ const spec = (over: Partial<TemplateSpec> = {}): TemplateSpec => ({
   itemRevisionId: REVISION,
   itemTitle: '荣誉称号',
   locale: 'zh-CN',
+  businessNoLabel: '学工号',
   evidence: [
     { key: 'summary', schema: { type: 'string', title: '事项说明' } },
     { key: 'note', schema: { type: 'string', title: '备注' } },

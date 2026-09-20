@@ -288,7 +288,7 @@ describe('the words an import problem gets', () => {
     // is enough to tell a known code from the fallback
     const said = ((descriptor: { id: string }) => descriptor.id) as never
     for (const reason of ['column-missing', 'column-unknown', 'column-header-mismatch']) {
-      expect(reasonText(said, { reason })).not.toBe('assessment/record/import/reason/other')
+      expect(reasonText(said, { reason }, '编号')).not.toBe('assessment/record/import/reason/other')
     }
   })
 })

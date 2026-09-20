@@ -62,3 +62,4 @@ plugins:
       # was enabled after the existing-state audit came back clean. Set to
       # false to close it again - questions already bound keep running.
       authoring: true
+  '@qualy/plugin-settings': {}

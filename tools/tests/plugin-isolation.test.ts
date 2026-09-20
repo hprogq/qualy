@@ -372,6 +372,7 @@ const CROSS_PLUGIN_SURFACES: Readonly<Record<string, string>> = {
   '@qualy/plugin-storage/upload': 'the ticket a screen spends',
   '@qualy/plugin-rum/server': 'the reporting capability',
   '@qualy/plugin-rum/client': 'the provider registry a reporting provider registers into',
+  '@qualy/plugin-settings/client/terms': 'the hook every screen reads a tenant word through',
   '@qualy/plugin-sandbox/service': 'the sandbox capability',
   '@qualy/plugin-ui-registry/server/authorizer':
     'the single authorizer slot rbac fills; the shell fails closed without it',

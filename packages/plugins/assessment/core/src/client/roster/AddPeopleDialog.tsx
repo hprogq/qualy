@@ -4,6 +4,8 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { UiSlot } from '@qualy/web-runtime'
 import { peoplePicker } from '@qualy/ui-contract'
 import { useI18n } from '@qualy/web-i18n'
+import { useTerm } from '@qualy/plugin-settings/client/terms'
+import { authTerms } from '@qualy/auth-contract/terms'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Button } from '@qualy/ui/button'
 import { Skeleton } from '@qualy/ui/skeleton'
@@ -41,6 +43,7 @@ export function AddPeopleDialog({
   onClose: () => void
 }) {
   const { format } = useI18n()
+  const businessNo = useTerm(authTerms.businessNumber)
   const [chosen, setChosen] = useState<readonly string[]>([])
   useEffect(() => {
     if (open) setChosen([])
@@ -51,7 +54,7 @@ export function AddPeopleDialog({
       <DialogContent size="56rem">
         <DialogHeader>
           <DialogTitle>{format(m.addPeopleTitle)}</DialogTitle>
-          <DialogDescription>{format(m.addPeopleHint)}</DialogDescription>
+          <DialogDescription>{format(m.addPeopleHint, { businessNo })}</DialogDescription>
         </DialogHeader>
         <DialogBody xstyle={styles.body}>
           {/* a column, so the picker can be told to fill what is left */}

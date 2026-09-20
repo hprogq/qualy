@@ -10,9 +10,13 @@ import { assessmentMessages as m } from '../../i18n.ts'
 
 type Format = ReturnType<typeof useI18n>['format']
 
-const WORDS = {
+/** the reasons whose sentence names the tenant's word for a person's identifier */
+const WORDED = {
   'business-no-required': m.importReasonBusinessNoRequired,
   'participant-not-found': m.importReasonParticipantNotFound,
+} as const
+
+const WORDS = {
   'self-record-refused': m.importReasonSelfRecord,
   'name-mismatch': m.importReasonNameMismatch,
   'basis-required': m.importReasonBasisRequired,
@@ -65,10 +69,17 @@ export interface ImportIssue {
   readonly detail?: string | undefined
 }
 
-/** the sentence for one problem */
-export const reasonText = (format: Format, issue: Pick<ImportIssue, 'reason' | 'detail'>) => {
+/** the sentence for one problem; `businessNo` is the tenant's word for a person's identifier */
+export const reasonText = (
+  format: Format,
+  issue: Pick<ImportIssue, 'reason' | 'detail'>,
+  businessNo: string,
+) => {
   if (issue.reason === 'determination-refused') {
     return format(m.importReasonDetermination, { detail: issue.detail ?? '' })
+  }
+  if (Object.hasOwn(WORDED, issue.reason)) {
+    return format(WORDED[issue.reason as keyof typeof WORDED], { businessNo })
   }
   const word = Object.hasOwn(WORDS, issue.reason)
     ? WORDS[issue.reason as keyof typeof WORDS]
@@ -83,9 +94,14 @@ export interface ColumnNames {
 }
 
 /** which column a problem is about, as the header the reader filled in */
-export const fieldText = (format: Format, field: string | null, names: ColumnNames) => {
+export const fieldText = (
+  format: Format,
+  field: string | null,
+  names: ColumnNames,
+  businessNo: string,
+) => {
   if (field === null) return null
-  if (field === 'businessNo') return format(m.importColumnBusinessNo)
+  if (field === 'businessNo') return businessNo
   if (field === 'displayName') return format(m.importColumnName)
   if (field === 'basis') return format(m.recordBasis)
   if (field === 'recognition') return format(m.recordRecognition)

@@ -1,0 +1,53 @@
+{
+  "name": "@qualy/plugin-settings",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./actions": "./src/actions.ts",
+    "./api": "./src/api.ts",
+    "./client/TerminologyPage": "./src/client/TerminologyPage.tsx",
+    "./client/api": "./src/client/api.ts",
+    "./client/i18n": "./src/client/i18n.ts",
+    "./client/terms": "./src/client/terms.ts",
+    "./db": "./src/db/entities.ts",
+    "./package.json": "./package.json",
+    "./permissions": "./src/permissions.ts",
+    "./server": "./src/server/index.ts"
+  },
+  "peerDependencies": {
+    "react": "catalog:"
+  },
+  "dependencies": {
+    "@mikro-orm/core": "catalog:",
+    "@qualy/api-kit": "workspace:*",
+    "@qualy/audit-contract": "workspace:*",
+    "@qualy/auth-contract": "workspace:*",
+    "@qualy/i18n-contract": "workspace:*",
+    "@qualy/plugin-database": "workspace:*",
+    "@qualy/plugin-kit": "workspace:*",
+    "@qualy/plugin-org": "workspace:*",
+    "@qualy/plugin-ui-registry": "workspace:*",
+    "@qualy/rbac-contract": "workspace:*",
+    "@qualy/settings-contract": "workspace:*",
+    "@qualy/ui": "workspace:*",
+    "@qualy/ui-contract": "workspace:*",
+    "@qualy/web-i18n": "workspace:*",
+    "@qualy/web-runtime": "workspace:*",
+    "@stylexjs/stylex": "catalog:",
+    "@tanstack/react-query": "catalog:",
+    "effect": "catalog:",
+    "kysely": "catalog:"
+  },
+  "devDependencies": {
+    "@qualy/plugin-audit": "workspace:*",
+    "@qualy/plugin-auth": "workspace:*",
+    "@qualy/plugin-rbac": "workspace:*",
+    "@qualy/testkit": "workspace:*",
+    "@qualy/tsconfig": "workspace:*",
+    "@types/react": "catalog:"
+  }
+}

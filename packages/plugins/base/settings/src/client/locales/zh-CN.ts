@@ -1,0 +1,25 @@
+import type { MessageCatalog } from '@qualy/i18n-contract'
+
+export default {
+  'settings/permission/terminology-manage': '管理术语',
+  'settings/permission-group/settings': '系统设置',
+  'settings/nav-group/system': '系统设置',
+  'settings/navigation/terminology': '术语',
+  'settings/audit/term-update': '修改术语',
+  'settings/terminology/title': '术语',
+  'settings/terminology/hint': '自定义本机构在界面中使用的业务称谓，留空的语言沿用系统默认',
+  'settings/terminology/empty': '当前没有可自定义的术语',
+  'settings/terminology/load-failed': '术语暂时无法读取',
+  'settings/terminology/loading': '正在读取术语',
+  'settings/terminology/retry': '重试',
+  'settings/terminology/default': '默认：{value}',
+  'settings/terminology/save': '保存',
+  'settings/terminology/reset': '恢复默认',
+  'settings/terminology/saved': '已保存',
+  'settings/terminology/customised': '已自定义',
+  'settings/terminology/locale-zh-cn': '简体中文',
+  'settings/terminology/locale-en-us': 'English',
+  'settings/error/not-found': '该设置不存在。',
+  'settings/error/version-conflict': '该术语刚被其他人修改，请刷新后重试。',
+  'settings/error/value-invalid': '填写的内容不符合要求。',
+} satisfies MessageCatalog

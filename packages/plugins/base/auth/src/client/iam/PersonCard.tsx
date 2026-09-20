@@ -6,6 +6,8 @@ import { useQuery } from '@tanstack/react-query'
 import type { PersonCardContext } from '@qualy/ui-contract'
 import { useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
+import { useTerm } from '@qualy/plugin-settings/client/terms'
+import { authTerms } from '@qualy/auth-contract/terms'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
@@ -93,6 +95,7 @@ export default function PersonCard({ context }: { context: PersonCardContext }) 
   const [open, setOpen] = useState(false)
   const query = useApiQuery(authApi)
   const { format, formatError } = useI18n()
+  const businessNo = useTerm(authTerms.businessNumber)
 
   const detail = useQuery({
     ...query.identity.getUser.queryOptions({ params: { userId: context.userId } }),
@@ -112,7 +115,7 @@ export default function PersonCard({ context }: { context: PersonCardContext }) 
                 card arrived, and the row jump with it */}
             <PersonCell
               name={context.displayName}
-              secondary={context.businessNo ?? format(m.personNoBusinessNo)}
+              secondary={context.businessNo ?? format(m.personNoBusinessNo, { businessNo })}
             />
           </button>
         </HoverCardTrigger>
@@ -129,7 +132,7 @@ export default function PersonCard({ context }: { context: PersonCardContext }) 
               <div {...stylex.props(styles.who)}>
                 <p {...stylex.props(styles.name)}>{person.user.displayName}</p>
                 <p {...stylex.props(styles.aside)}>
-                  {person.user.businessNo ?? format(m.personNoBusinessNo)}
+                  {person.user.businessNo ?? format(m.personNoBusinessNo, { businessNo })}
                 </p>
               </div>
               <dl {...stylex.props(styles.facts)}>
@@ -169,8 +172,8 @@ export default function PersonCard({ context }: { context: PersonCardContext }) 
               <>
                 <dl {...stylex.props(styles.pairs)}>
                   <Row
-                    label={format(m.personBusinessNo)}
-                    value={person.user.businessNo ?? format(m.personNoBusinessNo)}
+                    label={businessNo}
+                    value={person.user.businessNo ?? format(m.personNoBusinessNo, { businessNo })}
                   />
                   <Row label={format(m.personUserType)} value={person.user.userType?.name ?? '—'} />
                   <Row

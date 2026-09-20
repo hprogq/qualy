@@ -2,6 +2,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useApi, useRunApi, useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
+import { useTerm } from '@qualy/plugin-settings/client/terms'
+import { authTerms } from '@qualy/auth-contract/terms'
 import * as stylex from '@stylexjs/stylex'
 import { Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
@@ -37,6 +39,7 @@ export function NewUserForm({
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
+  const businessNoWord = useTerm(authTerms.businessNumber)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [displayName, setDisplayName] = useState('')
   const [businessNo, setBusinessNo] = useState('')
@@ -104,7 +107,7 @@ export function NewUserForm({
             />
           )}
         </Field>
-        <Field label={format(m.businessNoLabel)}>
+        <Field label={businessNoWord}>
           {(id) => (
             <Input
               id={id}

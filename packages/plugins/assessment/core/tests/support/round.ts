@@ -1,4 +1,5 @@
 import { inspect } from 'node:util'
+import { TenantSettings } from '@qualy/settings-contract/effect'
 import { randomUUID } from 'node:crypto'
 import { sql } from 'kysely'
 import { Effect, Exit, Layer } from 'effect'
@@ -95,6 +96,17 @@ const stack = (url: string) => {
   ) as Layer.Layer<ScoringRuntimeCatalog | ScoringAuthoringPolicyCatalog>
   return serviceLayer.pipe(
     Layer.provideMerge(storage),
+    // the tenant's words, as the host provides them: this harness answers
+    // with a word of its own so a suite can see the term reach a workbook
+    Layer.provide(
+      Layer.succeed(
+        TenantSettings,
+        TenantSettings.of({
+          resolveTerm: (_tenantId, term, locale) =>
+            Effect.succeed(locale === 'zh-CN' ? '统一编号' : term.defaults[locale]),
+        }),
+      ),
+    ),
     Layer.provideMerge(services),
     Layer.provide(catalogLayers),
     // the boot-hook registry the service writes its backfill into; the

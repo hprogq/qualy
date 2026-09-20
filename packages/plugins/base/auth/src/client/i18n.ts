@@ -7,6 +7,20 @@ import {
 import type * as authErrors from '../server/errors.ts'
 
 // the interpolating messages declare their placeholders
+// sentences that carry the tenant's own word for a person's identifier:
+// the word is a term (useTerm), the sentence around it stays this catalog's
+const pickerSearchMessage = defineMessage<{ businessNo: string }>()({
+  id: 'auth/picker/search',
+  defaultMessage: 'Name or {businessNo}',
+})
+const noBusinessNoMessage = defineMessage<{ businessNo: string }>()({
+  id: 'auth/session/no-business-no',
+  defaultMessage: 'No {businessNo}',
+})
+const personNoBusinessNoMessage = defineMessage<{ businessNo: string }>()({
+  id: 'auth/person/no-business-no',
+  defaultMessage: 'No {businessNo}',
+})
 const userCountMessage = defineMessage<{ count: number }>()({
   id: 'auth/user-types/user-count',
   defaultMessage: '{count, plural, one {# user} other {# users}}',
@@ -90,6 +104,20 @@ const personRoleHere = defineMessage<{ node: string }>()({
 const i18n = definePluginMessages({
   namespace: 'auth',
   messages: {
+    // the words the settings screen shows for what this plugin lets a tenant
+    // rename; the term itself is declared in the auth contract
+    settingsCategoryIdentity: {
+      id: 'auth/settings/category/identity',
+      defaultMessage: 'People and sign-in',
+    },
+    settingsTermBusinessNumber: {
+      id: 'auth/settings/term/business-number',
+      defaultMessage: 'Person identifier',
+    },
+    settingsTermBusinessNumberDescription: {
+      id: 'auth/settings/term/business-number-description',
+      defaultMessage: 'The business identifier assigned to a person in this tenant.',
+    },
     // one label per permission this plugin declares. The definition
     // carries a message reference, so the role editor renders whatever
     // language its reader asked for rather than the one it was authored in.
@@ -174,8 +202,7 @@ const i18n = definePluginMessages({
 
     // the card any screen opens on a name it shows
     personOpenDetail: { id: 'auth/person/open-detail', defaultMessage: 'View details' },
-    personBusinessNo: { id: 'auth/person/business-no', defaultMessage: 'Student or staff ID' },
-    personNoBusinessNo: { id: 'auth/person/no-business-no', defaultMessage: 'None' },
+    personNoBusinessNo: personNoBusinessNoMessage,
     personUserType: { id: 'auth/person/user-type', defaultMessage: 'Type' },
     personStatus: { id: 'auth/person/status', defaultMessage: 'Status' },
     personActive: { id: 'auth/person/active', defaultMessage: 'Active' },
@@ -193,7 +220,7 @@ const i18n = definePluginMessages({
     pickerNoUnits: { id: 'auth/picker/no-units', defaultMessage: 'No units you can browse.' },
     // the twistie's spoken name; the unit's own name is appended to it
     pickerExpand: { id: 'auth/picker/expand', defaultMessage: 'Fold or unfold' },
-    pickerSearch: { id: 'auth/picker/search', defaultMessage: 'Name or ID' },
+    pickerSearch: pickerSearchMessage,
     pickerAnyType: { id: 'auth/picker/any-type', defaultMessage: 'Any type' },
     pickerScopeSelf: { id: 'auth/picker/scope-self', defaultMessage: 'This unit' },
     pickerScopeSubtree: { id: 'auth/picker/scope-subtree', defaultMessage: 'And below' },
@@ -233,7 +260,7 @@ const i18n = definePluginMessages({
     },
     signIn: { id: 'auth/action/sign-in', defaultMessage: 'Sign in' },
     signOut: { id: 'auth/action/sign-out', defaultMessage: 'Sign out' },
-    noBusinessNo: { id: 'auth/session/no-business-no', defaultMessage: 'No student or staff ID' },
+    noBusinessNo: noBusinessNoMessage,
     appearance: { id: 'auth/preference/appearance', defaultMessage: 'Appearance' },
     language: { id: 'auth/preference/language', defaultMessage: 'Language' },
     themeLight: { id: 'auth/preference/theme-light', defaultMessage: 'Light' },
@@ -313,7 +340,6 @@ const i18n = definePluginMessages({
     nameLabel: { id: 'auth/field/name', defaultMessage: 'Name' },
     codeLabel: { id: 'auth/field/code', defaultMessage: 'Code' },
     descriptionLabel: { id: 'auth/field/description', defaultMessage: 'Description' },
-    businessNoLabel: { id: 'auth/field/business-no', defaultMessage: 'Business number' },
     userTypeLabel: { id: 'auth/field/user-type', defaultMessage: 'User type' },
     selectUserType: { id: 'auth/field/select-user-type', defaultMessage: 'Select a user type' },
     identifierLabel: { id: 'auth/field/identifier', defaultMessage: 'Sign-in name' },
@@ -408,7 +434,6 @@ const i18n = definePluginMessages({
     typeFilterAll: { id: 'auth/users/type-filter-all', defaultMessage: 'All types' },
     typeFilterLabel: { id: 'auth/users/type-filter', defaultMessage: 'User type' },
     columnName: { id: 'auth/users/column-name', defaultMessage: 'Name' },
-    columnBusinessNo: { id: 'auth/users/column-business-no', defaultMessage: 'ID number' },
     columnType: { id: 'auth/users/column-type', defaultMessage: 'Type' },
     columnUnit: { id: 'auth/users/column-unit', defaultMessage: 'Unit' },
     columnStatus: { id: 'auth/users/column-status', defaultMessage: 'Status' },
@@ -571,7 +596,7 @@ const i18n = definePluginMessages({
     USER_NOT_FOUND: { id: 'auth/error/user-not-found', defaultMessage: 'User not found.' },
     USER_CONFLICT: {
       id: 'auth/error/user-conflict',
-      defaultMessage: 'That business number is already taken.',
+      defaultMessage: 'That identifier is already in use.',
     },
     USER_PLACEMENT_NOT_FOUND: {
       id: 'auth/error/user-placement-not-found',

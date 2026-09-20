@@ -24,6 +24,9 @@ export const FROZEN_ROUTES = [
   'GET /audit/events',
   'GET /audit/event-options',
 
+  'GET /tenant/terminology',
+  'PUT /tenant/terminology/{namespace}/{name}',
+
   'GET /iam/permissions',
   'POST /iam/access-evaluations',
   'GET /iam/role-options',

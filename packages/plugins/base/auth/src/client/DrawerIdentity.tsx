@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import { ChevronDownIcon } from 'lucide-react'
 import { PageLink, useApiQuery } from '@qualy/web-runtime'
 import { isAuthenticationError, useI18n } from '@qualy/web-i18n'
+import { useTerm } from '@qualy/plugin-settings/client/terms'
+import { authTerms } from '@qualy/auth-contract/terms'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
@@ -160,6 +162,7 @@ const styles = stylex.create({
 export default function DrawerIdentity() {
   const query = useApiQuery(authApi)
   const { format, formatError } = useI18n()
+  const businessNo = useTerm(authTerms.businessNumber)
   const [lineageOpen, setLineageOpen] = useState(false)
   const me = useIdentity()
 
@@ -214,7 +217,7 @@ export default function DrawerIdentity() {
             <span {...stylex.props(styles.number)}>{user.businessNo}</span>
           ) : (
             <span {...stylex.props(styles.number, styles.numberAbsent)}>
-              {format(m.noBusinessNo)}
+              {format(m.noBusinessNo, { businessNo })}
             </span>
           )}
           <span {...stylex.props(styles.spacer)} />

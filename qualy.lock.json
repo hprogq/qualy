@@ -1,7 +1,7 @@
 {
   "lockfileVersion": 2,
-  "manifestHash": "sha256:62d9d1a1195af77831e4b3f8bc29b5053da37b60d8a2c45032a7c63453e8cb25",
-  "resolutionHash": "sha256:52e87e96181e093dc1ecf23566d40b9313b7c3d64dd82169cd17d803fc32c6b6",
+  "manifestHash": "sha256:80b3cb77a86323d2d80c41529ac6da5e6aae542b38e1c195404d87f1c58e5c47",
+  "resolutionHash": "sha256:57c7057e68b2421ef0ba9497d23f1fb2a38227c4601179f18ea278e186dad9e2",
   "plugins": {
     "@qualy/plugin-assessment": {
       "version": "0.0.0",
@@ -251,6 +251,26 @@
       "version": "0.0.0",
       "state": "active"
     },
+    "@qualy/plugin-settings": {
+      "version": "0.0.0",
+      "state": "active",
+      "contributions": {
+        "database": {
+          "entities": [
+            "TenantSettingValue"
+          ],
+          "dependsOn": [
+            "@qualy/plugin-org"
+          ]
+        },
+        "permissions": {
+          "owner": "settings",
+          "codes": [
+            "settings.terminology.manage"
+          ]
+        }
+      }
+    },
     "@qualy/plugin-storage": {
       "version": "0.0.0",
       "state": "active",
@@ -293,7 +313,8 @@
           "@qualy/plugin-assessment",
           "@qualy/plugin-assessment-formula",
           "@qualy/plugin-audit",
-          "@qualy/plugin-ping"
+          "@qualy/plugin-ping",
+          "@qualy/plugin-settings"
         ]
       }
     },
@@ -306,7 +327,8 @@
           "@qualy/plugin-audit",
           "@qualy/plugin-auth",
           "@qualy/plugin-org",
-          "@qualy/plugin-rbac"
+          "@qualy/plugin-rbac",
+          "@qualy/plugin-settings"
         ]
       }
     }
@@ -325,6 +347,7 @@
       "@qualy/plugin-rbac",
       "@qualy/plugin-rum",
       "@qualy/plugin-sandbox",
+      "@qualy/plugin-settings",
       "@qualy/plugin-storage",
       "@qualy/plugin-storage-local",
       "@qualy/plugin-ui-registry",

@@ -115,6 +115,8 @@ export interface AdministrativeImportDeps {
   /** the kinds of question, each the only reader of its own payloads */
   readonly itemTypes: ReadonlyMap<string, ItemTypeDriver>
   readonly parseRange: (text: string) => { start: string; end: string }
+  /** what this tenant calls a person's identifier, for the template's first header */
+  readonly businessNoLabel: (tenantId: string, locale: string) => Effect.Effect<string>
 }
 
 interface ImportIssue {
@@ -889,6 +891,7 @@ export const makeAdministrativeImportMethods = (
     Effect.fn('Assessment.administrativeImportTemplate')(function* (tenantId, itemId, locale, as) {
       const ready = yield* administrativeQuestion(tenantId, itemId, as)
       const fields = recognitionFormFields(ready.plan) ?? []
+      const businessNoLabel = yield* deps.businessNoLabel(tenantId, locale)
       const bytes = yield* Effect.promise(() =>
         buildAdministrativeWorkbook({
           batchId: ready.item.batchId,
@@ -896,6 +899,7 @@ export const makeAdministrativeImportMethods = (
           itemRevisionId: ready.revision.id,
           itemTitle: ready.item.title,
           locale,
+          businessNoLabel,
           evidence: evidenceFieldsOf(
             ready.driver,
             ready.revision.formConfig,

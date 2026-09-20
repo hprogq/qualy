@@ -9,7 +9,7 @@ import { counts, numbered, recordItem, workbook } from './support/administrative
 import { errorOf, ok, one, run, runningBatch, seed } from './support/round.ts'
 import { gradedScoring } from './support/catalogs.ts'
 import ExcelJS from 'exceljs'
-import { META_SHEET } from '../src/administrative-import/workbook.ts'
+import { DATA_SHEET, META_SHEET } from '../src/administrative-import/workbook.ts'
 
 // A whole workbook of administrative facts, written or not written.
 //
@@ -704,6 +704,8 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
           const meta = JSON.parse(String(book.getWorksheet(META_SHEET)!.getCell('A1').value)) as {
             columns: { kind: string; key: string }[]
           }
+          // the first header is the tenant's own word for the identifier
+          const identityHeader = String(book.getWorksheet(DATA_SHEET)!.getCell('A1').value)
           const filled = yield* workbook(f, item.id, f.recorder, [
             ['2023001', 'Zhang San', '甲', 'provincial'],
           ])
@@ -719,10 +721,12 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
                 join entry_revisions v on v.tenant_id = e.tenant_id and v.id = e.current_revision_id
                where e.item_id = ${item.id}`),
           ).payload
-          return { columns: meta.columns, done, payload }
+          return { columns: meta.columns, done, payload, identityHeader }
         }),
       ),
     )
+    // the header carries the tenant's word, as the harness resolves it
+    expect(found.identityHeader).toBe('统一编号 *')
     // one column for the fact: the determination's, never a second one
     expect(found.columns.map((one) => [one.kind, one.key])).toEqual([['recognition', 'rec-level']])
     expect(found.done.importedCount).toBe(1)

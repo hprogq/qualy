@@ -18732,3 +18732,30 @@ pnpm vitest run tools/tests apps/server/tests    413 passed(supervisor 4/4,新�
   `Test Files 5 passed (5)`,`Tests 61 passed (61)`(含新增两条:申报内容按标签展示、预览显示分值与公式拒绝)。
 - node:`determination-probe` + `recognition` + `effect-api-parity` + `catalogs` + `api-paths`:
   `Test Files 5 passed (5)`,`Tests 51 passed (51)`(含新增预览用例:接受/拒绝/缺值/停机/非审核人)。
+
+## 租户设置内核与术语：人员编号可由租户自定义(2026-09-20)
+
+夜间任务第 4 项的第一段(docs/refactor-temp.md 术语部分)。定案见 docs/settings.md。
+
+- 新包 `@qualy/settings-contract`(定义 / ExtensionPoint / compileSettingCatalog / SettingCatalog / TenantSettings)与
+  `@qualy/plugin-settings`(`tenant_setting_values`、迁移 `20260920020237_tenant-setting-values.sql`、
+  GET/PUT `/tenant/terminology`、`settings.terminology.manage`、审计 `settings.term.update`、术语页
+  `/settings/terminology`、`useTerm`/`useTerminology`)。`pnpm plugin:add` 已把它写进根 package.json 与 qualy.yml。
+- `@qualy/auth-contract/terms`:`authTerms.businessNumber`(默认 学工号 / Student or staff ID),auth 描述器经
+  `Settings.definitions` 贡献;auth 与 assessment 的所有屏幕改读 `useTerm`,句子键参数化(`姓名或{businessNo}` 等),
+  `auth/person/business-no`、`auth/field/business-no`、`auth/users/column-business-no`、
+  `assessment/record/import/column-business-no` 四个同义键删除;统一认定模板首列表头经 `TenantSettings.resolveTerm`。
+- 门禁:`tools/tests/terminology.test.ts`(生产源码只许 terms.ts 写「学工号」)、frozen-routes、error-codes、
+  plugin-isolation 表面清单各加一项。
+
+### 验收(实际执行)
+
+- `pnpm qualy generate`:`database: 20260920020237.sql`(已改名带后缀),drop guard ok。
+- `pnpm typecheck`:除临时截图用例外全部通过;auth / assessment / settings 三个 client 工程与 settings tests 工程 exit=0。
+- node:`settings.test.ts` + `entity-parity`(settings)+ `api-paths` + `effect-api-parity` + `error-codes` + `catalogs` +
+  `plugin-isolation` + `workspace-deps` + `package-exports` + `audit-actions` + `product-dependencies` + `runtime-levels`:
+  首轮 parity 失败(tenants 已存在,改为 dependencies 传 org 实体)后 `Test Files 7 passed`,`Tests 88 passed`;
+  `terminology` + `administrative-import-columns` + `administrative-import` + `workspace-deps` + `catalogs` + `fast-refresh`:
+  `Test Files 6 passed (6)`,`Tests 49 passed (49)`(含模板表头断言 `统一编号 *`)。
+- `pnpm test:browser`(全量一次):`Test Files 1 failed | 62 passed (63)`,`Tests 1 failed | 463 passed (464)`;
+  失败的一条是 item-editor「每人可申报条数」从 number 输入改为文本输入后 role 由 spinbutton 变为 textbox,测试已改。

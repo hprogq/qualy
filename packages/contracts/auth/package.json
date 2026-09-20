@@ -9,14 +9,17 @@
     ".": "./src/index.ts",
     "./login": "./src/login.ts",
     "./plugin": "./src/plugin.ts",
-    "./session": "./src/session.ts"
+    "./session": "./src/session.ts",
+    "./terms": "./src/terms.ts"
   },
   "peerDependencies": {
     "effect": "catalog:"
   },
   "dependencies": {
+    "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-kit": "workspace:*",
     "@qualy/rbac-contract": "workspace:*",
+    "@qualy/settings-contract": "workspace:*",
     "@qualy/ui-contract": "workspace:*"
   }
 }

@@ -1,7 +1,16 @@
 import ExcelJS from 'exceljs'
+import { authTerms } from '@qualy/auth-contract/terms'
 import { supportedLocales } from '@qualy/i18n-contract'
 import { choiceLabel, displayTitle, kindOf, type AtomicSchema } from '@qualy/value-schema'
-import { ArchiveRefused, inspectArchive } from './archive.ts'
+import {
+  cellText,
+  columnIndex,
+  columnLetter,
+  openWorkbook,
+  SPREADSHEET_LIMITS,
+  SpreadsheetUnreadable,
+  type SpreadsheetLimits,
+} from '@qualy/spreadsheet'
 
 // Bytes in, typed rows out - and nothing else.
 //
@@ -24,14 +33,11 @@ import { ArchiveRefused, inspectArchive } from './archive.ts'
 //     what the archive inflates to (archive.ts), and only then is the reader
 //     handed the bytes; the sheet, row, column and cell ceilings follow.
 
-/** what a single workbook may cost before it is refused outright */
-export const ADMIN_IMPORT_LIMITS = {
-  maxFileBytes: 10 * 1024 * 1024,
-  maxRows: 2000,
-  maxColumns: 128,
-  maxCellChars: 4000,
-  maxSheets: 8,
-} as const
+/** what a single workbook may cost before it is refused outright: the engine's own ceilings */
+export const ADMIN_IMPORT_LIMITS: SpreadsheetLimits = SPREADSHEET_LIMITS
+
+// the engine's column arithmetic, under the names this module always exported
+export { columnIndex, columnLetter }
 
 /**
  * 2: the hidden sheet stopped carrying what a column MEANS.
@@ -108,6 +114,13 @@ export interface TemplateSpec {
   readonly itemRevisionId: string
   readonly itemTitle: string
   readonly locale: string
+  /**
+   * What this tenant calls a person's identifier, for the first column's
+   * header. Resolved by the caller from the tenant's terminology; the
+   * parser never reads the header back, so a template downloaded under
+   * one word still imports after the word changes.
+   */
+  readonly businessNoLabel: string
   readonly evidence: readonly { readonly key: string; readonly schema: AtomicSchema }[]
   readonly recognition: readonly { readonly id: string; readonly schema: AtomicSchema }[]
 }
@@ -151,28 +164,10 @@ export class WorkbookUnreadable extends Error {
   }
 }
 
-const BUSINESS_NO_HEADER = '学工号 *'
+/** the identity column: the tenant's word, then the mark for a required column */
+const businessNoHeader = (label: string) => `${label} *`
 const NAME_HEADER = '姓名'
 const BASIS_HEADER = '认定依据'
-
-/** the 1-based column index a spreadsheet letter names */
-export const columnIndex = (letter: string): number => {
-  let n = 0
-  for (const character of letter) n = n * 26 + (character.charCodeAt(0) - 64)
-  return n
-}
-
-/** the spreadsheet letter for a 1-based column index */
-export const columnLetter = (index: number): string => {
-  let n = index
-  let out = ''
-  while (n > 0) {
-    const rest = (n - 1) % 26
-    out = String.fromCharCode(65 + rest) + out
-    n = Math.floor((n - 1) / 26)
-  }
-  return out
-}
 
 /** the labels a choice schema offers, disambiguated where two collide */
 const choicesOf = (schema: AtomicSchema, locale: string) => {
@@ -210,9 +205,15 @@ const choicesOf = (schema: AtomicSchema, locale: string) => {
  * frozen revision the caller already loaded.
  */
 export const templateLayout = (
-  spec: Pick<TemplateSpec, 'locale' | 'evidence' | 'recognition'>,
+  spec: Pick<TemplateSpec, 'locale' | 'evidence' | 'recognition'> & {
+    /** absent when only the columns are wanted: proving a file never reads this header */
+    readonly businessNoLabel?: string
+  },
 ): { readonly headers: readonly string[]; readonly columns: readonly TemplateColumn[] } => {
-  const headers = [BUSINESS_NO_HEADER, NAME_HEADER]
+  const headers = [
+    businessNoHeader(spec.businessNoLabel ?? authTerms.businessNumber.defaults['zh-CN']),
+    NAME_HEADER,
+  ]
   const columns: TemplateColumn[] = []
   for (const field of spec.evidence) {
     const header = displayTitle(field.schema, field.key, spec.locale)
@@ -293,42 +294,19 @@ export const buildAdministrativeWorkbook = async (spec: TemplateSpec): Promise<U
   return new Uint8Array(bytes as ArrayBuffer)
 }
 
-/** the text of a cell, refusing the shapes this importer will not interpret */
+/** the engine's reading of a cell, refused in this module's own word */
 const textOf = (cell: ExcelJS.Cell, rowNo: number): string => {
-  const value = cell.value
-  if (value === null || value === undefined) return ''
-  if (typeof value === 'string') return value
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
-  if (value instanceof Date) {
-    // a date cell, normalised to the calendar day the file shows rather than
-    // to an instant: a serial date read as an instant drifts by a timezone
-    const y = value.getUTCFullYear()
-    const m = String(value.getUTCMonth() + 1).padStart(2, '0')
-    const d = String(value.getUTCDate()).padStart(2, '0')
-    return `${y}-${m}-${d}`
-  }
-  if (typeof value === 'object') {
-    if ('formula' in value || 'sharedFormula' in value) {
-      // the library hands back the cached result rather than running
-      // anything, and a cached result is whatever was last saved by
-      // whatever opened the file - not a fact anybody signed
-      throw new WorkbookUnreadable('formula-not-allowed', {
-        rowNo,
-        column: cell.address.replace(/\d+/g, ''),
+  try {
+    return cellText(cell, rowNo)
+  } catch (error) {
+    if (error instanceof SpreadsheetUnreadable) {
+      throw new WorkbookUnreadable(error.reason, {
+        ...(error.rowNo === null ? {} : { rowNo: error.rowNo }),
+        ...(error.column === null ? {} : { column: error.column }),
       })
     }
-    if ('richText' in value) {
-      return (value.richText as readonly { text: string }[]).map((part) => part.text).join('')
-    }
-    if ('text' in value) return String((value as { text: unknown }).text)
-    if ('error' in value) {
-      throw new WorkbookUnreadable('cell-error', {
-        rowNo,
-        column: cell.address.replace(/\d+/g, ''),
-      })
-    }
+    throw error
   }
-  return String(value)
 }
 
 /**
@@ -341,25 +319,14 @@ const textOf = (cell: ExcelJS.Cell, rowNo: number): string => {
  * parser into a second copy of the domain.
  */
 export const parseAdministrativeWorkbook = async (bytes: Uint8Array): Promise<ParsedWorkbook> => {
-  if (bytes.byteLength > ADMIN_IMPORT_LIMITS.maxFileBytes) {
-    throw new WorkbookUnreadable('file-too-large')
-  }
-  // the size of the file is not the size of the workbook: what it inflates
-  // to is found out before the reader inflates any of it
+  // the size of the file is not the size of the workbook: the engine checks
+  // what it inflates to before the reader inflates any of it
+  let book: ExcelJS.Workbook
   try {
-    inspectArchive(bytes)
+    book = await openWorkbook(bytes, ADMIN_IMPORT_LIMITS)
   } catch (error) {
-    if (!(error instanceof ArchiveRefused)) throw error
-    throw new WorkbookUnreadable(error.reason === 'too-large' ? 'file-too-large' : 'not-xlsx')
-  }
-  const book = new ExcelJS.Workbook()
-  try {
-    await book.xlsx.load(bytes as unknown as ArrayBuffer)
-  } catch {
-    throw new WorkbookUnreadable('not-xlsx')
-  }
-  if (book.worksheets.length > ADMIN_IMPORT_LIMITS.maxSheets) {
-    throw new WorkbookUnreadable('too-many-sheets')
+    if (error instanceof SpreadsheetUnreadable) throw new WorkbookUnreadable(error.reason)
+    throw error
   }
 
   const metaSheet = book.getWorksheet(META_SHEET)

@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import { ChevronLeftIcon, KeyRoundIcon } from 'lucide-react'
 import { PageLink, useApi, useRunApi, useApiQuery, usePageRouteParams } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
+import { useTerm } from '@qualy/plugin-settings/client/terms'
+import { authTerms } from '@qualy/auth-contract/terms'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -220,6 +222,7 @@ export default function UserDetailPage() {
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
+  const businessNoWord = useTerm(authTerms.businessNumber)
   const [tab, setTab] = useState<'identities' | 'roles'>('identities')
   const [feedback, setFeedback] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
@@ -529,7 +532,7 @@ export default function UserDetailPage() {
                     />
                   )}
                 </Field>
-                <Field label={format(m.businessNoLabel)}>
+                <Field label={businessNoWord}>
                   {(id) => (
                     <Input
                       id={id}

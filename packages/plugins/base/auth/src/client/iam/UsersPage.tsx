@@ -10,6 +10,8 @@ import {
   cursorPages,
 } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
+import { useTerm } from '@qualy/plugin-settings/client/terms'
+import { authTerms } from '@qualy/auth-contract/terms'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -237,6 +239,7 @@ export default function UsersPage() {
   const runApi = useRunApi()
   const query = useApiQuery(authApi)
   const { format, formatError } = useI18n()
+  const businessNo = useTerm(authTerms.businessNumber)
   const [anchor, setAnchor] = usePageQueryState('anchor')
   const [scope, setScope] = usePageQueryState('scope', 'subtree')
   const [typeFilter, setTypeFilter] = usePageQueryState('type')
@@ -412,7 +415,7 @@ export default function UsersPage() {
               <div {...stylex.props(styles.rosterBox)}>
                 <div {...stylex.props(styles.rosterHead)}>
                   <span>{format(m.columnName)}</span>
-                  <span>{format(m.columnBusinessNo)}</span>
+                  <span>{businessNo}</span>
                   <span>{format(m.columnType)}</span>
                   <span>{format(m.columnUnit)}</span>
                   <span {...stylex.props(styles.headEnd)}>{format(m.columnStatus)}</span>

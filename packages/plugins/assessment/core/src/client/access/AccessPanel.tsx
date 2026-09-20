@@ -5,6 +5,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { XIcon } from 'lucide-react'
 import { UiSlot, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
+import { useTerm } from '@qualy/plugin-settings/client/terms'
+import { authTerms } from '@qualy/auth-contract/terms'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, ConfirmDialog, Feedback } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
@@ -359,6 +361,7 @@ function SubjectRow({
   onRemove: (source: AccessSource) => void
 }) {
   const { format } = useI18n()
+  const businessNo = useTerm(authTerms.businessNumber)
   const denied = inCatalogOrder(subject.denied)
 
   return (
@@ -376,7 +379,7 @@ function SubjectRow({
           fallback={
             <PersonCell
               name={subject.displayName}
-              secondary={subject.businessNo ?? format(m.noBusinessNoShort)}
+              secondary={subject.businessNo ?? format(m.noBusinessNoShort, { businessNo })}
             />
           }
         />

@@ -514,7 +514,7 @@ describe('records and review', () => {
     await tab(/表单与计分/).click()
     await page.getByRole('textbox', { name: '每条通过计分' }).fill('2')
     await tab(/记录与审核/).click()
-    await page.getByRole('spinbutton', { name: '每人可申报条数' }).fill('5')
+    await page.getByRole('textbox', { name: '每人可申报条数' }).fill('5')
     const ceiling = page.getByTestId('item-ceiling')
     await expect.element(ceiling).toHaveAttribute('data-ceiling', '10')
     const folding = () => page.getByRole('combobox', { name: '多条申报计分方式' })

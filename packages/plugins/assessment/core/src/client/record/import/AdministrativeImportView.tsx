@@ -5,6 +5,8 @@ import { DownloadIcon, FileSpreadsheetIcon } from 'lucide-react'
 import { displayTitle, type AtomicSchema } from '@qualy/value-schema'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
+import { useTerm } from '@qualy/plugin-settings/client/terms'
+import { authTerms } from '@qualy/auth-contract/terms'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, Field } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
@@ -214,6 +216,7 @@ export function AdministrativeImportView({
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
   const { format, formatError, locale } = useI18n()
+  const businessNo = useTerm(authTerms.businessNumber)
   const items = useQuery(query.assessment.listItems.queryOptions({ params: { batchId } }))
 
   const [itemId, setItemId] = useState('')
@@ -482,7 +485,7 @@ export function AdministrativeImportView({
                       <div {...stylex.props(styles.fileIssues)}>
                         {refusal.issues.map((issue, index) => (
                           <span key={index} data-reason={issue.reason}>
-                            {reasonText(format, issue)}
+                            {reasonText(format, issue, businessNo)}
                           </span>
                         ))}
                       </div>
@@ -575,7 +578,7 @@ export function AdministrativeImportView({
                     <div {...stylex.props(styles.table)} role="table">
                       <div role="row" {...stylex.props(styles.row, styles.head)}>
                         <span role="columnheader">{format(m.importColumnRow)}</span>
-                        <span role="columnheader">{format(m.importColumnBusinessNo)}</span>
+                        <span role="columnheader">{businessNo}</span>
                         <span role="columnheader">{format(m.importColumnName)}</span>
                         <span role="columnheader">{format(m.importColumnIssues)}</span>
                       </div>
@@ -603,7 +606,7 @@ export function AdministrativeImportView({
                             {row.issues.length === 0
                               ? null
                               : row.issues.map((issue, index) => {
-                                  const where = fieldText(format, issue.field, names)
+                                  const where = fieldText(format, issue.field, names, businessNo)
                                   return (
                                     <span key={index} {...stylex.props(styles.issue)}>
                                       <Badge
@@ -619,10 +622,10 @@ export function AdministrativeImportView({
                                       </Badge>
                                       <span>
                                         {where === null
-                                          ? reasonText(format, issue)
+                                          ? reasonText(format, issue, businessNo)
                                           : format(m.importIssueAt, {
                                               field: where,
-                                              reason: reasonText(format, issue),
+                                              reason: reasonText(format, issue, businessNo),
                                             })}
                                       </span>
                                     </span>

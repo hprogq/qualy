@@ -4,6 +4,8 @@ import * as stylex from '@stylexjs/stylex'
 import { ChevronDownIcon, ChevronRightIcon } from 'lucide-react'
 import { UiSlot, useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
+import { useTerm } from '@qualy/plugin-settings/client/terms'
+import { authTerms } from '@qualy/auth-contract/terms'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { orgNodePicker } from '@qualy/ui-contract'
 import { AsyncSection } from '@qualy/ui/admin'
@@ -121,6 +123,7 @@ export function ParticipantResultList({
 }) {
   const query = useApiQuery(assessmentApi)
   const { format, formatError } = useI18n()
+  const businessNo = useTerm(authTerms.businessNumber)
   const [units, setUnits] = useState<readonly string[]>([])
   const [unitScope, setUnitScope] = useState<'self' | 'subtree'>('subtree')
   const narrow = useIsBelow(TWO_COLUMNS)
@@ -257,7 +260,7 @@ export function ParticipantResultList({
                           pressable, which is why the card belongs there. */}
                       <PersonCell
                         name={row.displayName}
-                        secondary={row.businessNo ?? format(m.noBusinessNoShort)}
+                        secondary={row.businessNo ?? format(m.noBusinessNoShort, { businessNo })}
                       />
                     </span>
                     {row.status === 'excluded' ? (

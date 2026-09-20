@@ -4,6 +4,8 @@ import * as stylex from '@stylexjs/stylex'
 import { ChevronRightIcon, PlusIcon } from 'lucide-react'
 import { cursorPages, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
+import { useTerm } from '@qualy/plugin-settings/client/terms'
+import { authTerms } from '@qualy/auth-contract/terms'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
@@ -203,6 +205,7 @@ export function AdministrativeEntryList({
   const run = useRunApi()
   const query = useApiQuery(assessmentApi)
   const { format, formatError } = useI18n()
+  const businessNo = useTerm(authTerms.businessNumber)
   const whenOf = useWhen()
   const needle = search.trim()
 
@@ -285,7 +288,7 @@ export function AdministrativeEntryList({
                   >
                     <span {...stylex.props(styles.name)}>{row.participant.displayName}</span>
                     <span {...stylex.props(styles.meta)}>
-                      <span>{row.participant.businessNo ?? format(m.noBusinessNoShort)}</span>
+                      <span>{row.participant.businessNo ?? format(m.noBusinessNoShort, { businessNo })}</span>
                       <span aria-hidden {...stylex.props(styles.tick)} />
                       <span>
                         {format(

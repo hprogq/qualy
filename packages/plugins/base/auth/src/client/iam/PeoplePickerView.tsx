@@ -5,6 +5,8 @@ import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { XIcon } from 'lucide-react'
 import type { PeoplePickerViewContext } from '@qualy/ui-contract'
 import { useI18n } from '@qualy/web-i18n'
+import { useTerm } from '@qualy/plugin-settings/client/terms'
+import { authTerms } from '@qualy/auth-contract/terms'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
@@ -129,6 +131,7 @@ const styles = stylex.create({
 
 export default function PeoplePickerView({ context }: { context: PeoplePickerViewContext }) {
   const { format } = useI18n()
+  const businessNo = useTerm(authTerms.businessNumber)
   const [typed, setTyped] = useState(context.search)
 
   // the caller hears about the search once it has stopped moving; it is the
@@ -167,7 +170,7 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
           <Input
             value={typed}
             onChange={(event) => setTyped(event.target.value)}
-            placeholder={format(m.pickerSearch)}
+            placeholder={format(m.pickerSearch, { businessNo })}
             className={stylex.props(styles.search).className}
           />
           <Select
@@ -223,7 +226,7 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
                   <span {...stylex.props(styles.rowName)}>
                     <PersonCell
                       name={row.displayName}
-                      secondary={row.businessNo ?? format(m.personNoBusinessNo)}
+                      secondary={row.businessNo ?? format(m.personNoBusinessNo, { businessNo })}
                     />
                   </span>
                   {blocked.has(row.id) && context.disabledLabel !== undefined ? (

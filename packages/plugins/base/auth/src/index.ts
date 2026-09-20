@@ -7,6 +7,8 @@ import { Login } from '@qualy/auth-contract/plugin'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Access } from '@qualy/rbac-contract/plugin'
 import { Audit } from '@qualy/audit-contract/plugin'
+import { Settings } from '@qualy/settings-contract/plugin'
+import { authTermCategories, authTerms } from '@qualy/auth-contract/terms'
 import { userActions } from './actions.ts'
 import {
   APP_SHELL,
@@ -46,6 +48,11 @@ const plugin = Plugin.define(
   },
   Db.entities(entities, { compositeForeignKeys, dependsOn: ['@qualy/plugin-org'] }),
   Audit.actions('auth', userActions),
+  // the words a tenant may choose for this domain, compiled by the settings plugin
+  Settings.definitions({
+    categories: Object.values(authTermCategories),
+    settings: Object.values(authTerms),
+  }),
   Ui.i18n('./client/i18n'),
   Ui.page({
     id: 'auth/login',

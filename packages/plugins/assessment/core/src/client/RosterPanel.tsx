@@ -4,6 +4,8 @@ import { ChevronDownIcon } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { UiSlot, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
+import { useTerm } from '@qualy/plugin-settings/client/terms'
+import { authTerms } from '@qualy/auth-contract/terms'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection, ConfirmDialog, Feedback } from '@qualy/ui/admin'
@@ -176,6 +178,7 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
+  const businessNo = useTerm(authTerms.businessNumber)
   const [failure, setFailure] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
   const [adding, setAdding] = useState(false)
@@ -393,7 +396,7 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
                             fallback={
                               <PersonCell
                                 name={row.displayName}
-                                secondary={row.businessNo ?? format(m.noBusinessNoShort)}
+                                secondary={row.businessNo ?? format(m.noBusinessNoShort, { businessNo })}
                               />
                             }
                           />

@@ -1570,10 +1570,10 @@ const i18n = definePluginMessages({
       id: 'assessment/record/list-empty-hint',
       defaultMessage: 'They appear here once anything is recorded.',
     },
-    recordSearchList: {
+    recordSearchList: defineMessage<{ businessNo: string }>()({
       id: 'assessment/record/search-list',
-      defaultMessage: 'Name or number',
-    },
+      defaultMessage: 'Name or {businessNo}',
+    }),
     recordColumnWho: { id: 'assessment/record/column-who', defaultMessage: 'Participant' },
     recordColumnItem: { id: 'assessment/record/column-item', defaultMessage: 'Item' },
     recordColumnSource: { id: 'assessment/record/column-source', defaultMessage: 'How' },
@@ -1588,10 +1588,10 @@ const i18n = definePluginMessages({
     recordSourceManual: { id: 'assessment/record/source-manual', defaultMessage: 'Recorded' },
     recordSourceImport: { id: 'assessment/record/source-import', defaultMessage: 'Imported' },
     recordPickWho: { id: 'assessment/record/pick-who', defaultMessage: 'Choose a participant' },
-    recordSearchWho: {
+    recordSearchWho: defineMessage<{ businessNo: string }>()({
       id: 'assessment/record/search-who',
-      defaultMessage: 'Name or number',
-    },
+      defaultMessage: 'Name or {businessNo}',
+    }),
     recordNobodyFound: {
       id: 'assessment/record/nobody-found',
       defaultMessage: 'Nobody in this round matches.',
@@ -1702,10 +1702,7 @@ const i18n = definePluginMessages({
       defaultMessage: '{count, plural, one {Imported # record.} other {Imported # records.}}',
     },
     importColumnRow: { id: 'assessment/record/import/column-row', defaultMessage: 'Row' },
-    importColumnBusinessNo: {
-      id: 'assessment/record/import/column-business-no',
-      defaultMessage: 'Number',
-    },
+
     importColumnName: { id: 'assessment/record/import/column-name', defaultMessage: 'Name' },
     importColumnIssues: {
       id: 'assessment/record/import/column-issues',
@@ -1733,14 +1730,14 @@ const i18n = definePluginMessages({
       id: 'assessment/record/import/refused-hint',
       defaultMessage: 'Download the template again, fill it in, and upload that.',
     },
-    importReasonBusinessNoRequired: {
+    importReasonBusinessNoRequired: defineMessage<{ businessNo: string }>()({
       id: 'assessment/record/import/reason/business-no-required',
-      defaultMessage: 'No number',
-    },
-    importReasonParticipantNotFound: {
+      defaultMessage: 'No {businessNo}',
+    }),
+    importReasonParticipantNotFound: defineMessage<{ businessNo: string }>()({
       id: 'assessment/record/import/reason/participant-not-found',
-      defaultMessage: 'That number is not among the people you may record on',
-    },
+      defaultMessage: 'That {businessNo} is not among the people you may record on',
+    }),
     importReasonSelfRecord: {
       id: 'assessment/record/import/reason/self-record-refused',
       defaultMessage: 'You cannot record on yourself',
@@ -4710,10 +4707,10 @@ const i18n = definePluginMessages({
     },
     addPeople: { id: 'assessment/roster/add', defaultMessage: 'Add participants' },
     addPeopleTitle: { id: 'assessment/roster/add-title', defaultMessage: 'Add participants' },
-    addPeopleHint: {
+    addPeopleHint: defineMessage<{ businessNo: string }>()({
       id: 'assessment/roster/add-hint',
-      defaultMessage: 'Search by name or ID, or browse the organization.',
-    },
+      defaultMessage: 'Search by name or {businessNo}, or browse the organization.',
+    }),
     addPeopleConfirm,
     pickerUnavailable: {
       id: 'assessment/roster/picker-unavailable',
@@ -4744,10 +4741,10 @@ const i18n = definePluginMessages({
     restore: { id: 'assessment/roster/restore', defaultMessage: 'Restore' },
     participantCount,
     alsoActiveIn,
-    noBusinessNoShort: {
+    noBusinessNoShort: defineMessage<{ businessNo: string }>()({
       id: 'assessment/roster/no-business-no',
-      defaultMessage: 'No institutional ID',
-    },
+      defaultMessage: 'No {businessNo}',
+    }),
     includedAt,
 
     // ------------------------------------------------------------------

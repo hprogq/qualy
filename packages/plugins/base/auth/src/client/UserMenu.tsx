@@ -2,6 +2,8 @@ import { useQuery } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
 import { PageLink, useApi, useApiQuery, useRunApi, useSessionTransition } from '@qualy/web-runtime'
 import { isAuthenticationError, useI18n } from '@qualy/web-i18n'
+import { useTerm } from '@qualy/plugin-settings/client/terms'
+import { authTerms } from '@qualy/auth-contract/terms'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
@@ -205,6 +207,7 @@ export default function UserMenu() {
   const run = useRunApi()
   const query = useApiQuery(authApi)
   const { format, formatError } = useI18n()
+  const businessNo = useTerm(authTerms.businessNumber)
   const endSession = useSessionTransition()
   const [signOutError, setSignOutError] = useState<string | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -244,7 +247,7 @@ export default function UserMenu() {
         {user.businessNo !== null ? (
           <span {...stylex.props(styles.whoNo)}>{user.businessNo}</span>
         ) : (
-          <span {...stylex.props(styles.whoNo, styles.whoNoAbsent)}>{format(m.noBusinessNo)}</span>
+          <span {...stylex.props(styles.whoNo, styles.whoNoAbsent)}>{format(m.noBusinessNo, { businessNo })}</span>
         )}
       </span>
       <Badge variant="secondary" className={stylex.props(styles.typeChip).className}>

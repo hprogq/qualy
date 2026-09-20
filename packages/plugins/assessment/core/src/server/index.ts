@@ -1,5 +1,8 @@
-import { Clock, Context, Effect, Layer, Result, Stream } from 'effect'
+import { Clock, Context, Effect, Layer, Option, Result, Stream } from 'effect'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
+import { TenantSettings } from '@qualy/settings-contract/effect'
+import { authTerms } from '@qualy/auth-contract/terms'
+import { supportedLocales, type SupportedLocale } from '@qualy/i18n-contract'
 import { HttpServerResponse } from 'effect/unstable/http'
 import { Api } from '@qualy/api-kit/plugin'
 import { Assembled } from '@qualy/api-kit/assembled'
@@ -1319,6 +1322,10 @@ export class Assessment extends Context.Service<
   }
 >()('@qualy/plugin-assessment/Assessment') {}
 
+/** a locale tag as the product speaks it; anything else reads in the default locale */
+const localeOf = (tag: string): SupportedLocale =>
+  (supportedLocales as readonly string[]).includes(tag) ? (tag as SupportedLocale) : 'zh-CN'
+
 export const make = Effect.fn('Assessment.make')(function* () {
   const withDb = yield* withDatabase
   const rbac = yield* Rbac
@@ -2373,6 +2380,16 @@ export const make = Effect.fn('Assessment.make')(function* () {
     }
   })
 
+  // The tenant's word for a person's identifier heads the workbook. Read
+  // through the settings service when the assembly has one; a harness
+  // without it gets the term's default, which is also what a tenant that
+  // never chose otherwise gets.
+  const terminology = yield* Effect.serviceOption(TenantSettings)
+  const businessNoLabel = (tenantId: string, locale: string) =>
+    Option.isSome(terminology)
+      ? terminology.value.resolveTerm(tenantId, authTerms.businessNumber, localeOf(locale))
+      : Effect.succeed(authTerms.businessNumber.defaults[localeOf(locale)])
+
   const importMethods = makeAdministrativeImportMethods({
     withDb,
     authorize: authorizeAction,
@@ -2384,6 +2401,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
     storage,
     itemTypes,
     parseRange,
+    businessNoLabel,
   })
 
   const recordMethods = administrativeRecordService({

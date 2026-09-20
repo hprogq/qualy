@@ -1,7 +1,7 @@
 import zlib from 'node:zlib'
 import ExcelJS from 'exceljs'
 import { describe, expect, it } from 'vitest'
-import { ArchiveRefused, inspectArchive } from '../src/administrative-import/archive.ts'
+import { ArchiveRefused, inspectArchive } from '@qualy/spreadsheet/archive'
 import {
   ADMIN_IMPORT_LIMITS,
   buildAdministrativeWorkbook,
@@ -34,6 +34,7 @@ const spec = (over: Partial<TemplateSpec> = {}): TemplateSpec => ({
   itemRevisionId: REVISION,
   itemTitle: '荣誉称号',
   locale: 'zh-CN',
+  businessNoLabel: '学工号',
   evidence: [{ key: 'summary', schema: { type: 'string', title: '事项说明' } }],
   recognition: [
     {

@@ -5,6 +5,8 @@ import { ChevronRightIcon, DownloadIcon } from 'lucide-react'
 import { choiceLabel, displayTitle, kindOf, type AtomicSchema } from '@qualy/value-schema'
 import { cursorPages, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
+import { useTerm } from '@qualy/plugin-settings/client/terms'
+import { authTerms } from '@qualy/auth-contract/terms'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
@@ -151,6 +153,7 @@ export function AdministrativeImportDetail({
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
   const { format, formatError, locale } = useI18n()
+  const businessNo = useTerm(authTerms.businessNumber)
   const [asking, setAsking] = useState(false)
 
   const detail = useQuery(
@@ -402,7 +405,7 @@ export function AdministrativeImportDetail({
             <div {...stylex.props(styles.card)} role="table" data-testid="import-rows">
               <div role="row" {...stylex.props(styles.row, styles.headRow)}>
                 <span role="columnheader">{format(m.importColumnRow)}</span>
-                <span role="columnheader">{format(m.importColumnBusinessNo)}</span>
+                <span role="columnheader">{businessNo}</span>
                 <span role="columnheader">{format(m.importColumnName)}</span>
                 <span role="columnheader">{format(m.importColumnStatus)}</span>
                 <span role="columnheader">{format(m.importColumnDetermination)}</span>
@@ -430,7 +433,7 @@ export function AdministrativeImportDetail({
                   >
                     {line.businessNoSnapshot ??
                       line.participant.businessNo ??
-                      format(m.noBusinessNoShort)}
+                      format(m.noBusinessNoShort, { businessNo })}
                   </span>
                   <span role="cell" {...stylex.props(styles.cell)}>
                     {line.participant.displayName}

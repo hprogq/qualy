@@ -5,6 +5,8 @@ import { ArrowLeftIcon, DownloadIcon, PlusIcon, SearchIcon } from 'lucide-react'
 import type { MessageDescriptor } from '@qualy/i18n-contract'
 import { useApiQuery, usePageQueryState, usePageQueryUpdate } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
+import { useTerm } from '@qualy/plugin-settings/client/terms'
+import { authTerms } from '@qualy/auth-contract/terms'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import {
@@ -245,6 +247,7 @@ function RecordsBody({
   address: ReturnType<typeof usePageQueryUpdate>
 }) {
   const { format } = useI18n()
+  const businessNo = useTerm(authTerms.businessNumber)
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
@@ -335,8 +338,8 @@ function RecordsBody({
                   <Input
                     name="administrative-search"
                     value={search}
-                    placeholder={format(m.recordSearchList)}
-                    aria-label={format(m.recordSearchList)}
+                    placeholder={format(m.recordSearchList, { businessNo })}
+                    aria-label={format(m.recordSearchList, { businessNo })}
                     onChange={(event) => setSearch(event.target.value)}
                     className={stylex.props(styles.searchIndent).className}
                   />

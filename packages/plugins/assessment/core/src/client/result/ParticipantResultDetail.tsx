@@ -3,6 +3,8 @@ import * as stylex from '@stylexjs/stylex'
 import { ArrowLeftIcon } from 'lucide-react'
 import { useApiQuery } from '@qualy/web-runtime'
 import { isApiErrorCode, useI18n } from '@qualy/web-i18n'
+import { useTerm } from '@qualy/plugin-settings/client/terms'
+import { authTerms } from '@qualy/auth-contract/terms'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, PageHeader, BannerBack } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
@@ -110,6 +112,7 @@ export function ParticipantResultDetail({
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
+  const businessNo = useTerm(authTerms.businessNumber)
 
   // Wake-ups carry no facts - they say "read again" - so each kind names
   // exactly what it could have changed. Invalidating everything on every
@@ -207,7 +210,7 @@ export function ParticipantResultDetail({
                 <Skeleton className={stylex.props(styles.numberBone).className} />
               ) : (
                 <span {...stylex.props(styles.truncate)}>
-                  {participant.businessNo ?? format(m.noBusinessNoShort)}
+                  {participant.businessNo ?? format(m.noBusinessNoShort, { businessNo })}
                 </span>
               )}
             </>
