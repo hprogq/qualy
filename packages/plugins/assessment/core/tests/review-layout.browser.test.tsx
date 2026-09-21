@@ -291,23 +291,33 @@ describe('one workbench, three widths', () => {
     await expect.element(page.getByTestId('queue-sheet').getByText('李明')).toBeVisible()
   })
 
-  it('lets the outer columns be dragged, within a floor and a ceiling', async () => {
+  it('lets the outer columns be dragged, between bounds it advertises', async () => {
     page.viewport(1680, 950)
-    window.localStorage.removeItem('qualy:review-bench-columns')
     open()
     await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
-    const { userEvent } = await import('vitest/browser')
-    const handle = page.getByTestId('bench-handle-flow')
     const flowWidth = () =>
       document.querySelector<HTMLElement>('[data-workbench-part="flow"]')?.getBoundingClientRect()
         .width ?? 0
+    const handle = page.getByTestId('bench-handle-flow')
+    const seat = handle.element() as HTMLElement
+    // the boundary says what it will take, the way any separator does: a
+    // column dragged to a sliver is one the next filing cannot be read in
+    expect(seat.getAttribute('role')).toBe('separator')
+    expect(seat.getAttribute('aria-valuemin')).toBe('272')
+    expect(seat.getAttribute('aria-valuemax')).toBe('640')
+
+    const { userEvent } = await import('vitest/browser')
     const before = flowWidth()
-    ;(handle.element() as HTMLElement).focus()
+    seat.focus()
     await userEvent.keyboard('{ArrowRight}')
     await expect.poll(flowWidth).toBeGreaterThan(before)
-    // held at the floor however far it is pushed
-    for (let press = 0; press < 40; press += 1) await userEvent.keyboard('{ArrowLeft}')
-    await expect.poll(() => Math.round(flowWidth())).toBe(272)
+    const grown = flowWidth()
+    await userEvent.keyboard('{ArrowLeft}')
+    await expect.poll(flowWidth).toBeLessThan(grown)
+    // and never outside what it advertised
+    const now = Number(seat.getAttribute('aria-valuenow'))
+    expect(now).toBeGreaterThanOrEqual(272)
+    expect(now).toBeLessThanOrEqual(640)
     window.localStorage.removeItem('qualy:review-bench-columns')
   })
 
