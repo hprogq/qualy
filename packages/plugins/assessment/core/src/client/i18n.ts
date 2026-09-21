@@ -394,6 +394,14 @@ const rosterRowActionsMessage = defineMessage<{ name: string }>()({
   id: 'assessment/roster/row-actions',
   defaultMessage: 'What can be done about {name}',
 })
+const recognitionAfterLatestMessage = defineMessage<{ constraint: string }>()({
+  id: 'assessment/review/recognition-after-latest',
+  defaultMessage: 'No later than {constraint}',
+})
+const recognitionBeforeEarliestMessage = defineMessage<{ constraint: string }>()({
+  id: 'assessment/review/recognition-before-earliest',
+  defaultMessage: 'No earlier than {constraint}',
+})
 const recordUnitRosterPageMessage = defineMessage<{ page: number }>()({
   id: 'assessment/record/unit-roster-page',
   defaultMessage: 'Page {page}',
@@ -2831,6 +2839,12 @@ const i18n = definePluginMessages({
       id: 'assessment/review/recognition-not-decimal',
       defaultMessage: 'Enter an amount like 3.5',
     },
+    recognitionOutOfMaterialRange: {
+      id: 'assessment/review/recognition-out-of-material-range',
+      defaultMessage: 'Outside the period this round counts material from',
+    },
+    recognitionAfterLatest: recognitionAfterLatestMessage,
+    recognitionBeforeEarliest: recognitionBeforeEarliestMessage,
     recognitionNotBoolean: {
       id: 'assessment/review/recognition-not-boolean',
       defaultMessage: 'Answer yes or no here',

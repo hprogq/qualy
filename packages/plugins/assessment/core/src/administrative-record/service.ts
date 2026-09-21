@@ -332,10 +332,14 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
         }
         const revision = yield* itemRevisionOf(tenantId, item.currentRevisionId)
         if (revision === null) return yield* new ItemNotFound()
-        return { item, revision, plan: yield* Effect.orDie(readScoringPlan(revision)) }
+        return { batch, item, revision, plan: yield* Effect.orDie(readScoringPlan(revision)) }
       }),
     )
-    const wrong = judgeRecognition(site.plan.recognitionSchemas, values)
+    const wrong = judgeRecognition(
+      site.plan.recognitionSchemas,
+      values,
+      deps.parseRange(String(site.batch.materialRange)),
+    )
     if (wrong.length > 0) {
       return {
         issues: wrong.map((issue) => ({

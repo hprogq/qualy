@@ -9,6 +9,8 @@
  */
 
 import {
+  DATE_MAXIMUM,
+  DATE_MINIMUM,
   DECIMAL_MAXIMUM,
   DECIMAL_MINIMUM,
   MAX_SCALE,
@@ -32,6 +34,11 @@ export const constraintOf = (schema: AtomicSchema, reason: string): string | und
       return withDecimalBound(schema, DECIMAL_MINIMUM)
     case MAX_SCALE:
       return numberOn(schema, MAX_SCALE)
+    case DATE_MAXIMUM:
+    case DATE_MINIMUM: {
+      const held = (schema as { [DATE_MINIMUM]?: string; [DATE_MAXIMUM]?: string })[reason]
+      return typeof held === 'string' ? held : undefined
+    }
     case 'maximum':
       return numberOn(schema, 'maximum' satisfies keyof IntegerSchema)
     case 'minimum':

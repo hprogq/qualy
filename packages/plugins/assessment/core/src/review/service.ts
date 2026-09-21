@@ -1382,7 +1382,11 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
         }),
       ),
     )
-    const issues = judgeRecognition(site.plan.recognitionSchemas, values)
+    const issues = judgeRecognition(
+      site.plan.recognitionSchemas,
+      values,
+      deps.parseRange(site.row.batchMaterialRange),
+    )
     if (issues.length > 0) return { issues, amount: null, refusal: null }
     const candidate = canonicalRecognition(
       site.plan.recognitionSchemas,
@@ -1648,7 +1652,11 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                 // refusal already written for it.
                 const offered: unknown =
                   input.recognition === undefined ? {} : input.recognition.values
-                const wrong = judgeRecognition(plan.recognitionSchemas, offered)
+                const wrong = judgeRecognition(
+                  plan.recognitionSchemas,
+                  offered,
+                  deps.parseRange(row.batchMaterialRange),
+                )
                 if (wrong.length > 0) {
                   return yield* new EntryPayloadInvalid({
                     issues: wrong.map((issue) => ({

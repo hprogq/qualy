@@ -17,6 +17,7 @@
 import { canonicalizeValues } from '@qualy/value-schema/values'
 import { applyAssignment, inputOrder } from '@qualy/value-schema'
 import { validateValue } from '@qualy/value-schema/validate'
+import { IN_MATERIAL_RANGE } from '@qualy/value-schema'
 import { hashCanonicalJson, canonicalJson } from '@qualy/value-schema/hash'
 import type { NormalizedAtomicSchema } from '@qualy/value-schema'
 import type { ScoringPlan } from './plan.ts'
@@ -36,6 +37,15 @@ export interface RecognitionIssue {
 export const judgeRecognition = (
   schemas: Readonly<Record<string, NormalizedAtomicSchema>>,
   candidate: unknown,
+  /**
+   * The round's material window, where the caller knows it.
+   *
+   * A date field may say the window binds it (`IN_MATERIAL_RANGE`), and only
+   * a caller holding the round can answer that: the schema itself carries no
+   * dates from the batch. Callers without a round leave it out, and the flag
+   * simply does not fire there.
+   */
+  materialRange?: { readonly start: string; readonly end: string },
 ): readonly RecognitionIssue[] => {
   if (typeof candidate !== 'object' || candidate === null || Array.isArray(candidate)) {
     return [{ recognitionId: '', reason: 'not-an-object' }]
@@ -48,7 +58,21 @@ export const judgeRecognition = (
       continue
     }
     const wrong = validateValue(schema, values[recognitionId])
-    if (wrong.length > 0) issues.push({ recognitionId, reason: wrong[0]!.reason })
+    if (wrong.length > 0) {
+      issues.push({ recognitionId, reason: wrong[0]!.reason })
+      continue
+    }
+    // the half-open end the batch stores: the last legal day is the one
+    // before it, exactly as a filed date is held
+    const given = values[recognitionId]
+    if (
+      materialRange !== undefined &&
+      (schema as { [IN_MATERIAL_RANGE]?: boolean })[IN_MATERIAL_RANGE] === true &&
+      typeof given === 'string' &&
+      (given < materialRange.start || given >= materialRange.end)
+    ) {
+      issues.push({ recognitionId, reason: 'out-of-material-range' })
+    }
   }
   for (const recognitionId of Object.keys(values)) {
     if (!Object.hasOwn(schemas, recognitionId)) {

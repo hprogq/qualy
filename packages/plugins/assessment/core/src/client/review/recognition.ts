@@ -23,9 +23,15 @@ export const recognitionProblemText = (
       return format(m.recognitionNotDecimal)
     case 'not-a-boolean':
       return format(m.recognitionNotBoolean)
+    case 'out-of-material-range':
+      return format(m.recognitionOutOfMaterialRange)
     default: {
       const constraint = (schema === undefined ? undefined : constraintOf(schema, reason)) ?? ''
       switch (reason) {
+        case 'x-qualy-dateMaximum':
+          return format(m.recognitionAfterLatest, { constraint })
+        case 'x-qualy-dateMinimum':
+          return format(m.recognitionBeforeEarliest, { constraint })
         case 'x-qualy-maximum':
         case 'maximum':
           return format(m.recognitionOverMax, { constraint })
