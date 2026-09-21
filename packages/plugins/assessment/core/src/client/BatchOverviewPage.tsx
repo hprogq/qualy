@@ -382,10 +382,20 @@ const styles = stylex.create({
     color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
     transitionProperty: 'color, background-color',
   },
-  activitySkeleton: {
-    height: 96,
-    width: '100%',
+  // the rows it becomes, not a rectangle the size of them: what a reader is
+  // waiting for here is a day's heading and a few lines under it, and a
+  // hundred-pixel slab says nothing about what is coming
+  activityBones: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 14,
+    paddingBlock: 2,
   },
+  activityBoneDay: { height: 11, width: '4.5rem', borderRadius: 3 },
+  activityBoneRow: { display: 'flex', alignItems: 'center', gap: 12 },
+  activityBoneMark: { width: 22, height: 22, borderRadius: 7, flexShrink: 0 },
+  activityBoneWords: { display: 'flex', minWidth: 0, flexGrow: 1, flexDirection: 'column', gap: 5 },
+  activityBoneLine: { height: 12, borderRadius: 3 },
   quietNote: {
     fontSize: 14,
     color: tokens.mutedForeground,
@@ -898,7 +908,24 @@ function MyDesk({
         </div>
 
         {activity.isPending ? (
-          <Skeleton className={stylex.props(styles.activitySkeleton).className} />
+          <div {...stylex.props(styles.activityBones)} aria-hidden data-testid="activity-bones">
+            <Skeleton className={stylex.props(styles.activityBoneDay).className} />
+            {['64%', '48%', '71%'].map((width, index) => (
+              <div key={index} {...stylex.props(styles.activityBoneRow)}>
+                <Skeleton className={stylex.props(styles.activityBoneMark).className} />
+                <div {...stylex.props(styles.activityBoneWords)}>
+                  <Skeleton
+                    className={stylex.props(styles.activityBoneLine).className}
+                    width={width}
+                  />
+                  <Skeleton
+                    className={stylex.props(styles.activityBoneLine).className}
+                    width="30%"
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
         ) : activity.isError ? (
           <p {...stylex.props(styles.failNote)}>{formatError(activity.error as never)}</p>
         ) : rows.length === 0 ? (

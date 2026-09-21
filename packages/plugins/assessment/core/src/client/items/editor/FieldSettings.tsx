@@ -736,6 +736,38 @@ function AcceptPicker({ accept, onChange }: { accept: string; onChange: (next: s
     <div {...stylex.props(styles.group)}>
       <span {...stylex.props(styles.optionsLabel)}>{format(m.itemsFieldAccept)}</span>
       <div {...stylex.props(styles.kindGrid)}>
+        {/* Picking nothing has always meant "anything", and the line at the
+            foot said so - but only to somebody who read it. A field that
+            takes whatever is brought to it is a choice an administrator
+            makes on purpose, so it is offered as one. */}
+        <button
+          type="button"
+          aria-pressed={resolved.length === 0}
+          data-testid="accept-any"
+          onClick={() => {
+            setCustom('')
+            setOther(false)
+            write([], '', false)
+          }}
+          {...stylex.props(
+            styles.kindButton,
+            resolved.length === 0 ? styles.kindOn : styles.kindOff,
+          )}
+        >
+          <span {...stylex.props(styles.kindHead)}>
+            <span
+              aria-hidden
+              {...stylex.props(
+                styles.kindBox,
+                resolved.length === 0 ? styles.kindBoxOn : styles.kindBoxOff,
+              )}
+            >
+              {resolved.length === 0 && <CheckIcon {...stylex.props(styles.icon12)} strokeWidth={3} />}
+            </span>
+            <span {...stylex.props(styles.kindName)}>{format(m.itemsAcceptAnyTile)}</span>
+          </span>
+          <span {...stylex.props(styles.kindTokens)}>{format(m.itemsAcceptAnyTokens)}</span>
+        </button>
         {FILE_KINDS.map((kind) => {
           const on = picked.includes(kind.id)
           return (

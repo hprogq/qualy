@@ -273,12 +273,30 @@ const KIND_NAMES: Record<string, string> = {
   'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'PPTX',
 }
 
-export const fileKindLabels = (accept: readonly string[] | undefined): string | null => {
+/**
+ * Whole families of type, which are written as a wildcard and read as a word.
+ *
+ * "image/*" is the commonest thing an administrator picks, and taking the
+ * part after the slash gave the reader "*" - a rule that says nothing and
+ * looks like a bug. The family is what they meant, so the family is what is
+ * said; the caller supplies the words, because this module holds no
+ * language of its own.
+ */
+const FAMILIES = ['image', 'video', 'audio', 'text'] as const
+export type FileFamily = (typeof FAMILIES)[number]
+
+export const fileKindLabels = (
+  accept: readonly string[] | undefined,
+  familyWord?: (family: FileFamily) => string,
+): string | null => {
   if (accept === undefined || accept.length === 0) return null
   const names = accept.map((one) => {
     if (one.startsWith('.')) return one.slice(1).toUpperCase()
-    const known = KIND_NAMES[one.toLowerCase()]
+    const lower = one.toLowerCase()
+    const known = KIND_NAMES[lower]
     if (known !== undefined) return known
+    const family = FAMILIES.find((one) => lower === `${one}/*`)
+    if (family !== undefined) return familyWord?.(family) ?? family.toUpperCase()
     const subtype = one.split('/').at(-1) ?? one
     return (subtype.split('.').at(-1) ?? subtype).toUpperCase()
   })

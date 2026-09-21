@@ -346,7 +346,9 @@ export function NodePanel({
         {children.length === 0 ? (
           <CardEmpty>{format(m.childrenEmpty)}</CardEmpty>
         ) : (
-          <Table columns="minmax(0, 1fr) 6rem 5rem 4.5rem" openable>
+          // the three facts take the width their own words need; a fixed
+          // share of a panel this narrow left the names with none
+          <Table columns="minmax(0, 1fr) max-content max-content max-content" openable>
             <TableHead>
               <span>{format(m.nameLabel)}</span>
               <span>{format(m.typeColumn)}</span>

@@ -57,14 +57,20 @@ const styles = stylex.create({
   // there at all; on a phone it is the first row, and it keeps the head's
   // height whether or not the name has arrived.
   head: {
+    // Across a desk the three columns are the bar's own, so this wrapper is
+    // not there at all. On a phone it is the head's first row, and three
+    // columns of its own: the way back, the name, and the corner the shell
+    // keeps for the account. The outer two are equal, so what is open is
+    // centred on the screen rather than on whatever is left of it.
     display: {
       default: 'contents',
-      [breakpoints.phone]: 'flex',
+      [breakpoints.phone]: 'grid',
+    },
+    gridTemplateColumns: {
+      default: null,
+      [breakpoints.phone]: 'minmax(52px, 1fr) auto minmax(52px, 1fr)',
     },
     backgroundColor: { default: null, [breakpoints.phone]: tokens.surface },
-    // the corner the shell keeps for the account, which stands over this row
-    // rather than in it so the rule below can reach both edges of the screen
-    paddingInlineEnd: { default: null, [breakpoints.phone]: 56 },
     // the same height the product's own bar keeps at this width: on a phone
     // this band takes that bar's place, and a head one size short of the one
     // it replaced reads as a page that has lost its top
@@ -84,6 +90,7 @@ const styles = stylex.create({
     display: 'flex',
     minWidth: 0,
     alignItems: 'center',
+    justifySelf: { default: null, [breakpoints.phone]: 'start' },
   },
   backButton: {
     // the glyph's own edge, not the control's: a ghost button's inset would
@@ -135,10 +142,8 @@ const styles = stylex.create({
       default: 'auto',
       [breakpoints.phone]: '0%',
     },
-    justifyContent: {
-      default: 'center',
-      [breakpoints.phone]: 'flex-start',
-    },
+    justifyContent: 'center',
+    justifySelf: { default: null, [breakpoints.phone]: 'center' },
   },
   nameSkeleton: {
     height: 24,
@@ -146,6 +151,7 @@ const styles = stylex.create({
   },
   // the strip's own outline: it has a rule and a ground of its own, so an
   // empty one is a band of nothing rather than a strip on its way
+  emptyStrip: { fontSize: { default: 14, [breakpoints.phone]: 13 }, color: tokens.mutedForeground },
   stripBone: { height: 12, width: '7rem' },
   stripBoneEnd: { height: 12, width: '4.5rem' },
   // never shrunk and never clipped: the clock is short by design, and a
@@ -239,6 +245,7 @@ export default function BatchContextBar() {
     ...query.assessment.getTimeline.queryOptions({ params: { batchId } }),
     staleTime: 30_000,
   })
+  const stages = plan.data?.timeline ?? []
 
   return (
     <div {...stylex.props(styles.bar)}>
@@ -284,13 +291,20 @@ export default function BatchContextBar() {
               <Skeleton className={stylex.props(styles.stripBoneEnd).className} />
             </>
           )
+        ) : stages.length === 0 ? (
+          // A round with no stages has no clock and no flow to open, and the
+          // strip was left holding one door to an empty room. It says the
+          // fact instead - the strip keeps its place, so the head does not
+          // change height from one round to the next, and whoever arranges
+          // the stages learns here that nobody has.
+          <span {...stylex.props(styles.emptyStrip)}>{format(m.noPhasesYet)}</span>
         ) : (
           <>
             <BatchProgress
               showStage
               single={head}
               flat={head}
-              timeline={plan.data?.timeline ?? []}
+              timeline={stages}
               xstyle={styles.progressText}
             />
             {/* the whole plan, one press away rather than repeated above
@@ -316,7 +330,7 @@ export default function BatchContextBar() {
             <SheetTitle>{format(m.flowTitle)}</SheetTitle>
           </SheetHeader>
           <div {...stylex.props(styles.flowBody)}>
-            <BatchFlow timeline={plan.data?.timeline ?? []} />
+            <BatchFlow timeline={stages} />
           </div>
         </SheetContent>
       </Sheet>

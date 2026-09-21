@@ -748,6 +748,8 @@ const i18n = definePluginMessages({
     noStagesYet: { id: 'assessment/batch/no-stages', defaultMessage: 'No stages configured' },
     currentStage: { id: 'assessment/batch/current-stage', defaultMessage: 'Current stage' },
     notStartedYet: { id: 'assessment/batch/not-started', defaultMessage: 'Not started' },
+    /** the head's strip where the round has no stages to be in yet */
+    noPhasesYet: { id: 'assessment/batch/no-phases', defaultMessage: 'No stages arranged yet' },
     flowTitle: { id: 'assessment/flow/title', defaultMessage: 'Stage progress' },
     flowFrom,
     flowUntil,
@@ -4310,6 +4312,10 @@ const i18n = definePluginMessages({
     // own fields and by a reviewer asking for more material
     fileKindPdf: { id: 'assessment/files/kind-pdf', defaultMessage: 'PDF' },
     fileKindImage: { id: 'assessment/files/kind-image', defaultMessage: 'Images' },
+    // the other whole families a field can be opened to, said as words
+    fileKindVideo: { id: 'assessment/files/kind-video', defaultMessage: 'Video' },
+    fileKindAudio: { id: 'assessment/files/kind-audio', defaultMessage: 'Audio' },
+    fileKindText: { id: 'assessment/files/kind-text', defaultMessage: 'Text' },
     fileKindWord: { id: 'assessment/files/kind-word', defaultMessage: 'Word documents' },
     fileKindSheet: { id: 'assessment/files/kind-sheet', defaultMessage: 'Spreadsheets' },
     fileKindSlides: { id: 'assessment/files/kind-slides', defaultMessage: 'Presentations' },
@@ -4328,6 +4334,15 @@ const i18n = definePluginMessages({
       defaultMessage: 'Allowed formats',
     },
     itemsAcceptAny: { id: 'assessment/items/accept-any', defaultMessage: 'Any format' },
+    /** the tile that says a field takes whatever is brought to it */
+    itemsAcceptAnyTile: {
+      id: 'assessment/items/accept-any-tile',
+      defaultMessage: 'No restriction',
+    },
+    itemsAcceptAnyTokens: {
+      id: 'assessment/items/accept-any-tokens',
+      defaultMessage: 'Any file the size limit allows',
+    },
     itemsAcceptUnwritable: {
       id: 'assessment/items/accept-unwritable',
       defaultMessage: 'Invalid formats: {tokens}',

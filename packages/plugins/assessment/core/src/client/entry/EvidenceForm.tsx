@@ -469,7 +469,17 @@ export function EvidenceForm({
         }
 
         const cited = (value[field.key] as readonly string[] | undefined) ?? []
-        const kinds = fileKindLabels(field.accept)
+        const kinds = fileKindLabels(field.accept, (family) =>
+          format(
+            family === 'image'
+              ? m.fileKindImage
+              : family === 'video'
+                ? m.fileKindVideo
+                : family === 'audio'
+                  ? m.fileKindAudio
+                  : m.fileKindText,
+          ),
+        )
         const most = field.maxCount ?? 1
         const room = most - cited.length
         const busy = uploading?.field === field.key
