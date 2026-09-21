@@ -122,7 +122,7 @@ export default {
   'directory-import/record/standing-disabled': '已停用',
   'directory-import/record/standing-deleted': '已删除',
   'directory-import/record/standing-missing': '不存在',
-  'directory-import/record/node-present': '仍存在',
+  'directory-import/record/node-present': '存在',
   'directory-import/record/node-gone': '已删除',
   'directory-import/reverse/action': '撤销本次导入',
   'directory-import/reverse/title': '撤销本次导入？',

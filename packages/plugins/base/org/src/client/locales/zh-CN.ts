@@ -131,7 +131,7 @@ export default {
   'org/error/invalid-move': '组织无法移动到自身或其下级组织中。',
   'org/nodes/people-count': '{count, plural, =0 {暂无人员} other {# 人}}',
   'org/nodes/people': '人员',
-  'org/nodes/people-open': '前往用户页查看',
+  'org/nodes/people-open': '前往用户页',
   'org/permission-group/structure': '组织',
   'org/permission/tree-read': '查看组织架构',
   'org/audit/node-create': '新建组织',

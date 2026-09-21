@@ -8,7 +8,7 @@ export default {
   'layout/shell/nav': '导航',
   'layout/shell/other-modules': '其他模块',
   'layout/shell/apps': '应用',
-  'layout/footer/tagline': '让评价回归成长本身。',
+  'layout/footer/tagline': '让每一份成长都有回响。',
   'layout/footer/help': '帮助中心',
   'layout/footer/contact': '联系我们',
   'layout/footer/privacy': '隐私政策',
