@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { CornerDownLeftIcon, FileTextIcon, SearchIcon, ShieldIcon } from 'lucide-react'
+import { FileTextIcon, SearchIcon, ShieldIcon } from 'lucide-react'
 import { useApiQuery, usePageNavigate, usePageQueryState } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
@@ -246,9 +246,6 @@ const styles = stylex.create({
     whiteSpace: 'nowrap',
     fontSize: 12,
     color: tokens.mutedForeground,
-  },
-  runCount: {
-    fontVariantNumeric: 'tabular-nums',
   },
   /** the column names, which name nothing once the columns are gone */
   head: {
@@ -940,11 +937,10 @@ function ByItem({ batchId, rows }: { batchId: string; rows: readonly InboxItemDt
               </span>
               <span {...stylex.props(styles.spacer)} />
               <Button size="sm" variant="outline" onClick={() => open(group.rows[0]!, run)}>
+                {/* the words alone: how many are waiting is said on the
+                    line above, and the key that starts them is a shortcut
+                    for somebody who already knows the bench */}
                 {format(m.reviewRunStart)}
-                <Badge variant="secondary" className={stylex.props(styles.runCount).className}>
-                  {group.rows.length}
-                </Badge>
-                <CornerDownLeftIcon aria-hidden />
               </Button>
             </header>
             <div {...stylex.props(styles.head)} style={{ gridTemplateColumns: GRID_ITEM }}>
@@ -1082,11 +1078,10 @@ function ByPerson({ batchId, rows }: { batchId: string; rows: readonly InboxItem
                 {format(m.reviewGroupCount, { count: person.rows.length })}
               </span>
               <Button size="sm" variant="outline" onClick={() => open(person.rows[0]!, run)}>
+                {/* the words alone: how many are waiting is said on the
+                    line above, and the key that starts them is a shortcut
+                    for somebody who already knows the bench */}
                 {format(m.reviewRunStart)}
-                <Badge variant="secondary" className={stylex.props(styles.runCount).className}>
-                  {person.rows.length}
-                </Badge>
-                <CornerDownLeftIcon aria-hidden />
               </Button>
             </header>
             <div {...stylex.props(styles.head)} style={{ gridTemplateColumns: GRID_PERSON }}>

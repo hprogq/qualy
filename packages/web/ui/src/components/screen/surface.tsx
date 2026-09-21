@@ -2,6 +2,7 @@ import {
   Children,
   cloneElement,
   createContext,
+  Fragment,
   isValidElement,
   useContext,
   useMemo,
@@ -169,14 +170,18 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
   },
   columns: (template: string) => ({
-    gridTemplateColumns: { default: template, [breakpoints.phone]: 'none' },
+    // Across, the table's own columns. On a phone, three: the name with its
+    // facts under it, then the one fact the list is scanned by, then the way
+    // in - and those two stand against the whole row rather than at the end
+    // of its second line, so a column of them reads straight down.
+    gridTemplateColumns: {
+      default: template,
+      [breakpoints.phone]: 'minmax(0, 1fr) auto auto',
+    },
   }),
   row: {
-    // a table across; on a phone, a name on its own line and the facts
-    // under it, which is how a row that cannot fit is still one row
-    display: { default: 'grid', [breakpoints.phone]: 'flex' },
-    flexWrap: { default: null, [breakpoints.phone]: 'wrap' },
-    columnGap: { default: 16, [breakpoints.phone]: 12 },
+    display: 'grid',
+    columnGap: { default: 16, [breakpoints.phone]: 10 },
     rowGap: { default: null, [breakpoints.phone]: 3 },
     alignItems: 'center',
     width: '100%',
@@ -244,13 +249,38 @@ const styles = stylex.create({
   // and one or two things about it. Which ones is the table's to say; the
   // rest are a press away in whatever the row opens.
   cellDropNarrow: { display: { default: null, [breakpoints.phone]: 'none' } },
+  // What is left of a row once the name and the fact it is scanned by have
+  // been placed: across, nothing at all - the cells are the table's own grid
+  // items - and on a phone one line under the name.
+  facts: {
+    display: { default: 'contents', [breakpoints.phone]: 'flex' },
+    gridColumn: { default: null, [breakpoints.phone]: 1 },
+    gridRow: { default: null, [breakpoints.phone]: 2 },
+    minWidth: 0,
+    flexWrap: 'wrap',
+    alignItems: 'baseline',
+    columnGap: 8,
+    rowGap: 3,
+  },
+  // one fact from the next: a hairline rather than a gap, because a run of
+  // grey words with air between them reads as one phrase
+  cellDivided: {
+    '::before': {
+      // drawn only where the facts share a line; the colour is stated flat
+      // because a conditional one would erase whatever an earlier style in
+      // the same set had put there
+      content: { default: 'none', [breakpoints.phone]: '"|"' },
+      marginInlineEnd: 8,
+      color: `color-mix(in oklab, ${QUIET} 45%, transparent)`,
+    },
+  },
   // The one fact the row is scanned BY - a count, a state - kept at the far
   // end rather than queueing in the middle of the facts. The name has the
   // line above to itself, so this sits at the end of the line under it,
   // where the eye running down a list finds every row's in the same place.
   cellEndNarrow: {
-    order: { default: null, [breakpoints.phone]: 1 },
-    marginInlineStart: { default: null, [breakpoints.phone]: 'auto' },
+    gridColumn: { default: null, [breakpoints.phone]: 2 },
+    gridRow: { default: null, [breakpoints.phone]: '1 / 3' },
     textAlign: { default: null, [breakpoints.phone]: 'end' },
   },
   cellLead: {
@@ -259,7 +289,8 @@ const styles = stylex.create({
     gap: 8,
     fontSize: 13.5,
     color: tokens.foreground,
-    flexBasis: { default: null, [breakpoints.phone]: '100%' },
+    gridColumn: { default: null, [breakpoints.phone]: 1 },
+    gridRow: { default: null, [breakpoints.phone]: 1 },
   },
   cellLeadWord: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   cellStrong: { fontWeight: 600 },
@@ -270,8 +301,10 @@ const styles = stylex.create({
   cellMono: { fontFamily: MONO, fontSize: 12 },
   cellEnd: { textAlign: { default: 'right', [breakpoints.phone]: 'start' } },
   chevron: {
-    display: { default: 'inline-flex', [breakpoints.phone]: 'none' },
+    display: 'inline-flex',
     justifySelf: 'end',
+    gridColumn: { default: null, [breakpoints.phone]: 3 },
+    gridRow: { default: null, [breakpoints.phone]: '1 / 3' },
     color: QUIET,
   },
   chevronGlyph: { width: 13, height: 13 },
@@ -583,14 +616,45 @@ export function TableRow({
   // position among the row's children, so a row that leads with something
   // that is not a cell - a drag handle, a tick - still lines its facts up
   // with the head above them.
+  // Fragments are not children.
+  //
+  // `Children.toArray` leaves a fragment whole, so a row written as
+  // `{narrow ? <><Cell/><Cell/></> : …}` arrives as ONE child - which put
+  // the name inside the run of facts and, before that, made every column
+  // after it count itself wrong when the phone asked for its head's word.
+  // The DOM is the same either way; only the counting changes.
+  const kids = flatten(Children.toArray(children)).map((child, column) =>
+    labels.length > 0 && isValidElement(child) && child.type === Cell
+      ? cloneElement(child as ReactElement<{ column?: number }>, { column })
+      : child,
+  )
+  // The row in three parts, so a phone can place them: the name, the facts
+  // under it, and whatever the row is scanned by at its end.
+  //
+  // Only the contiguous middle is gathered - from after the leading name to
+  // the first cell marked as the row's end - because the order of what is
+  // left is the order of the table's columns, and a partition would swap
+  // two of them. Across, the wrapper is `display: contents`, so the table's
+  // grid sees exactly the children it saw before.
+  const isCell = (child: ReactNode) => isValidElement(child) && child.type === Cell
+  const propsOf = (child: ReactNode) =>
+    (isValidElement(child) ? child.props : {}) as { lead?: boolean; narrow?: string }
+  let from = 0
+  while (from < kids.length && isCell(kids[from]) && propsOf(kids[from]).lead === true) from += 1
+  let until = from
+  while (until < kids.length && !(isCell(kids[until]) && propsOf(kids[until]).narrow === 'end')) {
+    until += 1
+  }
   const labelled =
-    labels.length === 0
-      ? children
-      : Children.toArray(children).map((child, column) =>
-          isValidElement(child) && child.type === Cell
-            ? cloneElement(child as ReactElement<{ column?: number }>, { column })
-            : child,
-        )
+    until > from ? (
+      <>
+        {kids.slice(0, from)}
+        <span {...stylex.props(styles.facts)}>{kids.slice(from, until)}</span>
+        {kids.slice(until)}
+      </>
+    ) : (
+      kids
+    )
   const body = (
     <>
       {labelled}
@@ -655,6 +719,7 @@ export function Cell({
   title,
   narrow = 'keep',
   unlabelled = false,
+  divided = false,
   column,
   children,
 }: {
@@ -684,6 +749,14 @@ export function Cell({
    * it is a number nobody can place.
    */
   unlabelled?: boolean
+  /**
+   * A hairline before it where the facts share one line.
+   *
+   * For the second and later facts of a stacked row: a run of grey words
+   * with only air between them reads as one phrase. Nothing across a table,
+   * where the columns already say where one fact ends.
+   */
+  divided?: boolean
   /**
    * Which column this is, filled in by the row.
    *
@@ -726,6 +799,7 @@ export function Cell({
     end && styles.cellEnd,
     narrow === 'drop' && styles.cellDropNarrow,
     narrow === 'end' && styles.cellEndNarrow,
+    divided && styles.cellDivided,
     label !== '' && styles.cellLabel,
   )
   return (
@@ -738,6 +812,13 @@ export function Cell({
     </span>
   )
 }
+
+const flatten = (nodes: readonly ReactNode[]): ReactNode[] =>
+  nodes.flatMap((child) =>
+    isValidElement(child) && child.type === Fragment
+      ? flatten(Children.toArray((child.props as { children?: ReactNode }).children))
+      : [child],
+  )
 
 /** the column's word as a CSS string, for the rule that draws it */
 const labelVar = (label: string) =>

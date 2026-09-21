@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 
 // Where somebody stands, said from the end.
 //
@@ -23,6 +24,14 @@ const LINE = 20
 
 const styles = stylex.create({
   seat: { display: 'flex', minWidth: 0, alignItems: 'center', gap: 4 },
+  // the same hairline a divided cell draws, for a fact that is not one
+  divided: {
+    '::before': {
+      content: { default: 'none', [breakpoints.phone]: '"|"' },
+      marginInlineEnd: 8,
+      color: `color-mix(in oklab, ${tokens.mutedForeground} 45%, transparent)`,
+    },
+  },
   more: { flexShrink: 0, fontSize: 12.5, color: tokens.mutedForeground },
   steps: {
     display: 'flex',
@@ -72,12 +81,15 @@ export function UnitPath({
   steps,
   onPick,
   pickLabel,
+  divided = false,
 }: {
   /** root first, the unit itself last */
   steps: readonly PathStep[]
   onPick: (unitId: string) => void
   /** spoken before a step's name: what pressing it does */
   pickLabel: string
+  /** a hairline before it, where it shares a line with the facts before it */
+  divided?: boolean
 }) {
   const seat = useRef<HTMLSpanElement>(null)
   const [clipped, setClipped] = useState(false)
@@ -94,7 +106,12 @@ export function UnitPath({
   }, [whole])
 
   return (
-    <span {...stylex.props(styles.seat)} title={whole} data-testid="unit-path" data-clipped={clipped}>
+    <span
+      {...stylex.props(styles.seat, divided && styles.divided)}
+      title={whole}
+      data-testid="unit-path"
+      data-clipped={clipped}
+    >
       {clipped && (
         <span aria-hidden {...stylex.props(styles.more)}>
           …

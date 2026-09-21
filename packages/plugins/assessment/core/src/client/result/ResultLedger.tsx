@@ -140,7 +140,9 @@ const styles = stylex.create({
   /** the two figures the total is made of, as one quiet line under it */
   mid: {
     display: { default: 'contents', [breakpoints.phone]: 'flex' },
-    gridColumn: { default: null, [breakpoints.phone]: '1 / -1' },
+    // under the name, not under the whole row: it belongs to the group the
+    // name belongs to, and run full width it read as a line of its own
+    gridColumn: { default: null, [breakpoints.phone]: 1 },
     gridRow: { default: null, [breakpoints.phone]: 2 },
     alignItems: 'baseline',
     columnGap: 10,
@@ -724,7 +726,9 @@ function GroupRows({
               : format(m.resultCapChip, { value: two(group.cap) })}
           </Badge>
         </span>
-        <span {...stylex.props(styles.mid)}>
+        {/* the same indent the name takes: a nested group's figures under
+            a parent's margin belong to the wrong group at a glance */}
+        <span {...stylex.props(styles.mid)} style={pad}>
           <span {...stylex.props(styles.groupFigure)}>
             <span {...stylex.props(styles.midWord)}>{format(m.resultItemsShort)}</span>
             {two(group.itemsTotal)}

@@ -80,6 +80,14 @@ const styles = stylex.create({
   // never squeezed to a square: the band it sits in holds a name, a count
   // and a filter or two, and a field that gave way to them stopped being a
   // field anybody could read what they had typed in
+  go: {
+    display: 'inline-flex',
+    gridColumn: 3,
+    gridRow: '1 / 3',
+    alignItems: 'center',
+    color: tokens.mutedForeground,
+  },
+  goGlyph: { width: 14, height: 14 },
   searchBox: {
     width: { default: '13rem', [breakpoints.phone]: '100%' },
     flexShrink: { default: 0, [breakpoints.phone]: 1 },
@@ -469,10 +477,13 @@ export default function UsersPage() {
                       )}
                       {/* a student number, a kind of person and a unit read
                           as themselves wherever they appear; stacked, they
-                          need no column word in front of them */}
-                      <Cell unlabelled>{user.userType?.name ?? '—'}</Cell>
+                          need no column word in front of them, only a
+                          hairline saying where one ends */}
+                      <Cell unlabelled divided={stacked}>
+                        {user.userType?.name ?? '—'}
+                      </Cell>
                       {user.primaryOrgNode === null ? (
-                        <Cell>—</Cell>
+                        <Cell divided={stacked}>—</Cell>
                       ) : (
                         // Stacked, the chain is most of the line and the
                         // last rung is the only part that tells two people
@@ -489,6 +500,7 @@ export default function UsersPage() {
                           }
                           pickLabel={format(m.pickUnit)}
                           onPick={asking('anchor')}
+                          divided={stacked}
                         />
                       )}
                       {/* what the list is scanned by, so it keeps the end of
@@ -511,6 +523,15 @@ export default function UsersPage() {
                           act on it is another press away - so there the
                           row itself is the way in, and it goes to the
                           person's own page. */}
+                      {/* stacked, the row itself is the way in, and the
+                          mark at its end says so - standing against the
+                          whole row rather than at the end of its second
+                          line, so a column of them reads straight down */}
+                      {stacked && (
+                        <span aria-hidden {...stylex.props(styles.go)}>
+                          <ChevronRightIcon {...stylex.props(styles.goGlyph)} />
+                        </span>
+                      )}
                       {!stacked && (
                         <span {...stylex.props(styles.look)}>
                           <Button
