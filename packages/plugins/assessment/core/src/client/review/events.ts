@@ -48,6 +48,10 @@ const WITHOUT_ACTOR: Record<string, MessageDescriptor> = {
  * The same conclusions when the round itself reached them: a sitting of
  * several reviewers concluding writes its transition with no actor, and
  * "somebody approved" would invent a person where there was a procedure.
+ *
+ * Only for a round that really did conclude by itself. A judge whose name
+ * this reader is not told (§32.85) is still a judge, and reading their
+ * approval as a sitting's unanimous one invents a procedure that never ran.
  */
 const ROUND_VOICE: Record<string, MessageDescriptor> = {
   approved: m.eventPanelApproved,
@@ -84,8 +88,12 @@ export const ownReviewEventMessage = (kind: string): MessageDescriptor | undefin
 export const reviewEventMessage = (
   kind: string,
   named = true,
+  byRound = false,
 ): { message: MessageDescriptor; needsActor: boolean } => {
-  if (!named) {
+  // A round with no actor at all is the procedure speaking. Where the actor
+  // exists but is withheld, the sentence keeps its shape and the name slot
+  // takes the word for whoever holds that step.
+  if (byRound || (!named && byRound)) {
     const round = ROUND_VOICE[kind]
     if (round !== undefined) return { message: round, needsActor: false }
   }

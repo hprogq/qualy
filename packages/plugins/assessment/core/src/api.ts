@@ -1844,6 +1844,13 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
                 kind: Schema.String,
                 actorId: Schema.NullOr(Schema.String),
                 actorName: Schema.NullOr(Schema.String),
+                /**
+                 * The round itself reached this, rather than a person: a
+                 * sitting that concluded on its quorum. Distinct from a
+                 * person whose name this reader is not told (§32.85), which
+                 * is a judge all the same.
+                 */
+                byRound: Schema.Boolean,
                 reason: Schema.NullOr(Schema.String),
                 comment: Schema.NullOr(Schema.String),
                 suggestedPayload: configJson,

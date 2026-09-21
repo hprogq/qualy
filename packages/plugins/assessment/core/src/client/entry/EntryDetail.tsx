@@ -18,6 +18,7 @@ import { Count } from '@qualy/ui/count'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { AttachmentLink } from './AttachmentLink.tsx'
+import { sourceLabelOf } from './source.ts'
 import { EntryTrail } from './EntryHistory.tsx'
 import { EntryStanding } from './EntryStanding.tsx'
 import { choiceLabel, displayTitle, kindOf, type AtomicSchema } from '@qualy/value-schema'
@@ -40,6 +41,32 @@ import { displayValueOf, fieldsOf, type EntryDto, type ItemDto } from './model.t
 // So the surface is here, once, and the acts arrive as a footer.
 
 const styles = stylex.create({
+  // What the round decided, in the office's own card shape: the answer above
+  // the filing it was asked of.
+  standing: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    backgroundColor: tokens.surfaceMuted,
+    paddingInline: 16,
+    paddingBlock: 14,
+  },
+  standingHead: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+  standingTitle: { margin: 0, fontSize: 13, fontWeight: 600 },
+  standingWhen: { margin: 0, fontSize: 12, color: tokens.mutedForeground },
+  standingList: {
+    display: 'grid',
+    gap: 6,
+    gridTemplateColumns: 'auto minmax(0, 1fr)',
+    margin: 0,
+  },
+  standingRow: { display: 'contents' },
+  standingLabel: { fontSize: 13, color: tokens.mutedForeground, whiteSpace: 'nowrap' },
+  standingValue: { margin: 0, fontSize: 13.5, fontWeight: 500, overflowWrap: 'anywhere' },
   panel: {
     display: 'flex',
     width: '100%',
@@ -607,6 +634,10 @@ export function EntryDetail({
                   </div>
                 )}
 
+                {/* What the round decided, above what was filed: it is the
+                    answer, and the filing is the question it was asked of. */}
+                <RecognizedValues entry={entry} />
+
                 <section {...stylex.props(styles.section)}>
                   <div {...stylex.props(styles.sectionHead)}>
                     {/* what this section holds depends on how the fact
@@ -668,8 +699,6 @@ export function EntryDetail({
                     </div>
                   )}
                 </section>
-
-                <RecognizedValues entry={entry} />
 
                 {/* what a reviewer asked for and what answered it, one
                     section per ask: the requirement and the material stay
@@ -772,11 +801,12 @@ function RecognizedValues({ entry }: { entry: EntryDto }) {
   const stale =
     entry.currentRevision !== null && entry.currentRevision.id !== standing.entryRevisionId
   return (
-    <section {...stylex.props(styles.section)} data-testid="entry-recognized" data-stale={stale}>
-      <div {...stylex.props(styles.sectionHead)}>
-        <p {...stylex.props(styles.sectionTitle)}>{format(m.recognitionTitle)}</p>
-        <span aria-hidden {...stylex.props(styles.sectionRule)} />
-        <p {...stylex.props(styles.sectionNote)}>
+    <section {...stylex.props(styles.standing)} data-testid="entry-recognized" data-stale={stale}>
+      <div {...stylex.props(styles.standingHead)}>
+        <p {...stylex.props(styles.standingTitle)}>{format(m.recognitionTitle)}</p>
+        <Badge variant="outline">{format(sourceLabelOf(standing.source))}</Badge>
+        <span {...stylex.props(styles.spacer)} />
+        <p {...stylex.props(styles.standingWhen)}>
           {standing.actorName === null
             ? timeOf(standing.createdAt)
             : format(m.recognitionBy, {
@@ -785,12 +815,14 @@ function RecognizedValues({ entry }: { entry: EntryDto }) {
               })}
         </p>
       </div>
-      {rows.map((row) => (
-        <div key={row.id} {...stylex.props(styles.field)} data-recognized={row.id}>
-          <p {...stylex.props(styles.fieldLabel)}>{row.label}</p>
-          <p {...stylex.props(styles.fieldValue)}>{row.text}</p>
-        </div>
-      ))}
+      <dl {...stylex.props(styles.standingList)}>
+        {rows.map((row) => (
+          <div key={row.id} {...stylex.props(styles.standingRow)} data-recognized={row.id}>
+            <dt {...stylex.props(styles.standingLabel)}>{row.label}</dt>
+            <dd {...stylex.props(styles.standingValue)}>{row.text}</dd>
+          </div>
+        ))}
+      </dl>
       {stale && <p {...stylex.props(styles.fieldCleared)}>{format(m.recognitionStale)}</p>}
     </section>
   )

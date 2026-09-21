@@ -1148,11 +1148,11 @@ const i18n = definePluginMessages({
     },
     eventPanelApproved: {
       id: 'assessment/event/panel-approved',
-      defaultMessage: 'The review step approved unanimously',
+      defaultMessage: 'Every reviewer at this step agreed; approved',
     },
     eventPanelEscalated: {
       id: 'assessment/event/panel-escalated',
-      defaultMessage: 'No unanimous approval; handed to the next review step',
+      defaultMessage: 'No agreement at this step; handed to the next one',
     },
     eventAppealed: {
       id: 'assessment/event/appealed',
@@ -1207,6 +1207,7 @@ const i18n = definePluginMessages({
     },
     eventOther: { id: 'assessment/event/other', defaultMessage: 'The record was updated' },
     eventSomebody: { id: 'assessment/event/somebody', defaultMessage: 'Someone' },
+    eventReviewer: { id: 'assessment/event/reviewer', defaultMessage: 'A reviewer' },
     eventYouSubmitted: {
       id: 'assessment/event/you-submitted',
       defaultMessage: 'You submitted the claim for review',
@@ -3587,7 +3588,7 @@ const i18n = definePluginMessages({
     },
     entrySheetRecorded: {
       id: 'assessment/entry-sheet/recorded',
-      defaultMessage: 'What was recorded',
+      defaultMessage: 'What was entered',
     },
     entryTrailSubmitted: {
       id: 'assessment/entry/trail-submitted',
@@ -3637,6 +3638,7 @@ const i18n = definePluginMessages({
       defaultMessage: 'Awaiting your additional material',
     },
     entryTrailReason: { id: 'assessment/entry/trail-reason', defaultMessage: 'Reason: {value}' },
+    entryTrailReasonLabel: { id: 'assessment/entry/trail-reason-label', defaultMessage: 'Reason' },
     entryTrailRound: { id: 'assessment/entry/trail-round', defaultMessage: 'Review round {no}' },
     entryRoundOngoing: {
       id: 'assessment/entry/round-ongoing',

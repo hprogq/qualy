@@ -287,6 +287,8 @@ export interface EntryRoundView {
     readonly kind: string
     readonly actorId: string | null
     readonly actorName: string | null
+    /** the round itself reached this, rather than a person */
+    readonly byRound: boolean
     readonly reason: string | null
     readonly comment: string | null
     readonly suggestedPayload: unknown
@@ -1951,10 +1953,16 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           const veiled = yield* reviewersVeiled(tenantId, entry.batchId, participant, as)
           // the participant's own acts keep their name; everybody else in a
           // round is somebody who judged it
-          const actor = (event: { actorId: string | null; actorName: string | null }) =>
-            veiled && event.actorId !== as.userId
+          // `byRound` is read before the veil and travels beside it: a round
+          // that concluded by itself (a sitting reaching quorum) and a round
+          // whose judge this reader may not be told about are different
+          // facts, and taking the name away must not turn one into the other
+          const actor = (event: { actorId: string | null; actorName: string | null }) => ({
+            byRound: event.actorId === null,
+            ...(veiled && event.actorId !== as.userId
               ? { actorId: null, actorName: null }
-              : { actorId: event.actorId, actorName: event.actorName }
+              : { actorId: event.actorId, actorName: event.actorName }),
+          })
           return {
             reviewersShown: !veiled,
             entry: veil(

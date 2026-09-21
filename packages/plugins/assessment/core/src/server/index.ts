@@ -6448,6 +6448,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
               kind: event.kind,
               actorId: event.actorId,
               actorName: event.actorName,
+              byRound: event.byRound,
               reason: event.reason,
               comment: event.comment,
               suggestedPayload: event.suggestedPayload,

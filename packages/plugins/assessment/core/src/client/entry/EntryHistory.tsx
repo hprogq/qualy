@@ -660,7 +660,9 @@ function useTrail(data: History, subject: string | undefined): readonly TrailIte
         render: () => (
           <div {...stylex.props(styles.stack)}>
             <Line title={actTitle(format, event, subject)} at={event.at} />
-            {event.reason !== null && <Quoted>{event.reason}</Quoted>}
+            {event.reason !== null && (
+              <Quoted label={format(m.entryTrailReasonLabel)}>{event.reason}</Quoted>
+            )}
           </div>
         ),
       },
@@ -753,7 +755,9 @@ function RerouteStart({
       {from !== null && (
         <p {...stylex.props(styles.quietNote)}>{format(m.entryRoundReroutedFrom, { no: from })}</p>
       )}
-      {reason !== null && reason !== '' && <Quoted>{reason}</Quoted>}
+      {reason !== null && reason !== '' && (
+        <Quoted label={format(m.entryTrailReasonLabel)}>{reason}</Quoted>
+      )}
     </div>
   )
 }
@@ -815,15 +819,22 @@ function Version({
  */
 const actTitle = (
   format: ReturnType<typeof useI18n>['format'],
-  event: { kind: string; actorName?: string | null },
+  event: { kind: string; actorName?: string | null; byRound?: boolean },
   subject: string | undefined,
 ): string => {
   const own = subject === undefined ? ownReviewEventMessage(event.kind) : undefined
   if (own !== undefined) return format(own)
-  const said = reviewEventMessage(event.kind, event.actorName != null)
+  const said = reviewEventMessage(event.kind, event.actorName != null, event.byRound === true)
   return format(
     said.message,
-    said.needsActor ? { who: event.actorName ?? format(m.eventSomebody) } : {},
+    // A judge this reader is not told the name of is still a judge, and the
+    // sentence keeps its shape around the word for whoever holds that step.
+    said.needsActor
+      ? {
+          who:
+            event.actorName ?? format(event.byRound === true ? m.eventSomebody : m.eventReviewer),
+        }
+      : {},
   )
 }
 
@@ -902,7 +913,9 @@ function Ask({ supplement, subject }: { supplement: Supplement; subject: string 
       {supplement.requestedByName !== null && (
         <p {...stylex.props(styles.quietNote)}>{supplement.requestedByName}</p>
       )}
-      <Quoted tone="alert">{supplement.instructions}</Quoted>
+      <Quoted tone="alert" label={format(m.entrySheetSupAsk)}>
+        {supplement.instructions}
+      </Quoted>
       <div {...stylex.props(styles.chipRow)}>
         {supplement.requirements.map((asked) => (
           <span key={asked.key} {...stylex.props(styles.chip)}>
