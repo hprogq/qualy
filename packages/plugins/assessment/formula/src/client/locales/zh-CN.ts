@@ -332,6 +332,8 @@ export default {
   'assessment-formula/release/info-updated': '信息更新于',
   'assessment-formula/publish/confirm': '发布',
   'assessment-formula/publish/save-and-confirm': '保存并发布',
+  'assessment-formula/publish/check-unworded': '{count, plural, other {还有 # 处参数或选项没有填写名称}}',
+  'assessment-formula/publish/check-worded': '参数与选项名称齐全',
   'assessment-formula/publish/check-unsaved': '有未保存的修改，发布前会先保存',
   'assessment-formula/history/title': '版本',
   'assessment-formula/history/releases': '发布版本',

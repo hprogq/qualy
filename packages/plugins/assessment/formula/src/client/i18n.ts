@@ -1262,6 +1262,15 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/publish/save-and-confirm',
       defaultMessage: 'Save and publish',
     },
+    publishCheckUnworded: {
+      id: 'assessment-formula/publish/check-unworded',
+      defaultMessage:
+        '{count, plural, one {# parameter or choice still has no words} other {# parameters or choices still have no words}}',
+    },
+    publishCheckWorded: {
+      id: 'assessment-formula/publish/check-worded',
+      defaultMessage: 'Every parameter and choice has its words',
+    },
     publishCheckUnsaved: {
       id: 'assessment-formula/publish/check-unsaved',
       defaultMessage: 'Unsaved changes are saved first',

@@ -108,6 +108,10 @@ const EDITOR_OPTIONS = {
   // the page owns the wheel once the editor has nothing left to scroll;
   // without this the editor pins the page under the cursor
   scrollbar: { alwaysConsumeMouseWheel: false },
+  // 16px on a touch screen, because anything smaller makes iOS Safari zoom
+  // the page the moment the editor takes focus - and the page it zooms has
+  // a fixed workbench in it, which never comes back. On a pointer device
+  // the smaller size fits more of the formula on screen.
   fontSize: 13,
   // Room for four digits. The gutter reserves this much and right-aligns
   // the number in it, so a formula that runs past line 99 had its leading
@@ -231,6 +235,7 @@ const useSessionView = (
     setSession(opened)
     const editor = monaco.editor.create(container, {
       ...EDITOR_OPTIONS,
+      ...(window.matchMedia('(pointer: coarse)').matches ? { fontSize: 16 } : {}),
       ...optionsRef.current,
       model: opened.model,
     })

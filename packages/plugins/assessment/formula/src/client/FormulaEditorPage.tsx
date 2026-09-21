@@ -65,6 +65,7 @@ import { formulaApi } from './api.ts'
 import { formulaMessages as m } from './i18n.ts'
 import { isBlankSource, useDraftPreview, type DraftContract } from './use-draft-preview.ts'
 import { ContractTable } from './ContractTable.tsx'
+import { contractWordsIssues } from '../contract-words.ts'
 import { ExampleRow, type Verdict } from './ExampleRow.tsx'
 import { exampleStyles } from './example-grid.ts'
 import { constraintNote } from './constraint-words.ts'
@@ -2907,6 +2908,18 @@ export default function FormulaEditorPage() {
 
   // ---- publishing -----------------------------------------------------------
 
+  // The same rule the publish path refuses on, read here so the author meets
+  // it while the draft is still in front of them rather than on the one press
+  // that cannot be taken back.
+  const unworded =
+    contract === null
+      ? []
+      : contractWordsIssues(
+          contract.inputSchema as never,
+          (schema, parameter) =>
+            (schema as unknown as { properties: Record<string, unknown> }).properties[parameter],
+        )
+
   const publishChecks: readonly PublishCheck[] = [
     {
       key: 'saved',
@@ -2933,6 +2946,14 @@ export default function FormulaEditorPage() {
           : structure === 'synced'
             ? format(m.contractReady)
             : structureWords,
+    },
+    {
+      key: 'words',
+      tone: unworded.length > 0 ? 'bad' : contract === null ? 'quiet' : 'good',
+      words:
+        unworded.length > 0
+          ? format(m.publishCheckUnworded, { count: unworded.length })
+          : format(m.publishCheckWorded),
     },
   ]
 
