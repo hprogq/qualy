@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -65,7 +66,7 @@ const styles = stylex.create({
     paddingBottom: 22,
   },
   /** where a row follows it, the words give up some of their own foot */
-  bandInsetAbove: { paddingBottom: 14 },
+  bandInsetAbove: { paddingBottom: 10 },
   // a page reached from a list opens on the way back to it, so the band
   // starts a little higher and ends a little sooner
   bandInsetBack: {
@@ -85,8 +86,12 @@ const styles = stylex.create({
     display: 'flex',
     minWidth: 0,
     alignItems: 'center',
-    paddingTop: 0,
-    paddingBottom: 14,
+    // The shorthand first, then the one end that differs. Given only the two
+    // long-hand ends, the container's own `paddingBlock` won and the row
+    // kept a block of air above it as well as below - two sixteens where the
+    // band's own foot had already left one.
+    paddingBlock: 0,
+    paddingBottom: 12,
   },
   // A floor under the words, so every page's band is the same height.
   //
@@ -104,7 +109,19 @@ const styles = stylex.create({
   },
   /** a page reached from a list opens on the way back, which is its own floor */
   wordsBack: { minHeight: 0, gap: 8 },
-  titleRow: { display: 'flex', minWidth: 0, alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  // The row the name is on has a height of its own, so that what rides
+  // beside it - a view switch, a chip saying what kind of thing this is -
+  // cannot change it. Anything taller than the name was making one page's
+  // band taller than the next's, and the sections hanging under the band
+  // moved by the difference.
+  titleRow: {
+    display: 'flex',
+    minWidth: 0,
+    minHeight: { default: 36, [breakpoints.phone]: 30, [breakpoints.tablet]: 30 },
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
   title: {
     margin: 0,
     minWidth: 0,
@@ -254,7 +271,10 @@ export function Screen({
   const foot = useContext(BandFoot)
   const under = foot?.node ?? null
   const claim = foot?.claim
-  useEffect(() => claim?.(), [claim])
+  // Before the paint, not after it. Claimed in an ordinary effect, the shell
+  // had already painted its own copy above the page - so the sections showed
+  // at the top of the content and then jumped into the band a frame later.
+  useLayoutEffect(() => claim?.(), [claim])
   return (
     <>
       {/* edge to edge: a band inset inside the page's own width is a card

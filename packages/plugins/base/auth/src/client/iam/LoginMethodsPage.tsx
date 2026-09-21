@@ -11,6 +11,7 @@ import {
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Button } from '@qualy/ui/button'
+import { useIsBelow } from '@qualy/ui/use-mobile'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,6 +34,7 @@ import {
   Screen,
   Status,
   Table,
+  TableSkeleton,
   TableHead,
   TableRow,
 } from '@qualy/ui/screen'
@@ -56,19 +58,14 @@ const styles = stylex.create({
   // putting rows where they belong. The handle and the two presses are one
   // column: dragging is a pointer's way and does not exist on a touch screen
   // at all, so a phone gets the presses and a pointer gets the handle.
-  order: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 2,
-    // stacked, the presses go to the end of the row rather than standing
-    // alone on the line above the name
-    order: { default: null, [breakpoints.phone]: 2 },
-    marginInlineStart: { default: null, [breakpoints.phone]: 'auto' },
-  },
+  order: { display: 'flex', alignItems: 'center', gap: 2 },
+  // stacked, it rides in the same cell as the standing, just before it: one
+  // thing at the row's end, centred against the whole row
+  standing: { display: 'inline-flex', alignItems: 'center', gap: 4 },
   step: {
-    display: { default: 'none', [breakpoints.phone]: 'inline-flex' },
-    width: 36,
-    height: 36,
+    display: 'inline-flex',
+    width: { default: 30, [breakpoints.phone]: 36 },
+    height: { default: 30, [breakpoints.phone]: 36 },
     alignItems: 'center',
     justifyContent: 'center',
     padding: 0,
@@ -110,6 +107,7 @@ export default function LoginMethodsPage() {
   const runApi = useRunApi()
   const queryClient = useQueryClient()
   const [creating, setCreating] = useState(false)
+  const phone = useIsBelow(768)
   const [lifted, setLifted] = useState<string | null>(null)
   const [over, setOver] = useState<string | null>(null)
   const providers = useQuery(query.identity.listAuthProviders.queryOptions())
@@ -141,6 +139,51 @@ export default function LoginMethodsPage() {
     reorder.mutate(ids)
   }
 
+  /**
+   * The one press that moves a method up or down.
+   *
+   * Two arrows of six-and-twenty pixels inside a row that itself opens the
+   * method were a pair of targets a thumb could not tell apart, and a
+   * mis-hit silently reordered the sign-in page. A mis-hit opens a menu now.
+   *
+   * Drawn in two places and therefore written once: beside the drag handle
+   * where a pointer can reach both, and at the row's end beside the standing
+   * where a thumb finds it centred against the whole row rather than sitting
+   * among the facts on the second line.
+   */
+  const order = (provider: { id: string; name: string }, index: number) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label={format(m.methodMove, { name: provider.name })}
+          data-testid="method-order"
+          {...stylex.props(styles.step)}
+        >
+          <ChevronsUpDownIcon aria-hidden {...stylex.props(styles.stepGlyph)} />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem
+          disabled={index === 0}
+          data-testid="method-up"
+          onSelect={() => step(provider.id, -1)}
+        >
+          <ChevronUpIcon aria-hidden />
+          {format(m.methodMoveUp, { name: provider.name })}
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          disabled={index === rows.length - 1}
+          data-testid="method-down"
+          onSelect={() => step(provider.id, 1)}
+        >
+          <ChevronDownIcon aria-hidden />
+          {format(m.methodMoveDown, { name: provider.name })}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+
   return (
     <Screen
       title={format(m.loginMethodsTitle)}
@@ -169,12 +212,16 @@ export default function LoginMethodsPage() {
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void providers.refetch()}
+        skeleton={<TableSkeleton />}
       >
         <Card>
           {rows.length === 0 ? (
             <CardEmpty>{format(m.loginMethodsEmpty)}</CardEmpty>
           ) : (
-            <Table columns={COLUMNS} openable>
+            // a kind and who may use it read as one line under the name; the
+            // one that runs out of room loses its end rather than the row
+            // gaining a line
+            <Table columns={COLUMNS} openable facts="line">
               <TableHead>
                 <span />
                 <span>{format(m.loginMethodsTitle)}</span>
@@ -219,7 +266,10 @@ export default function LoginMethodsPage() {
                         : String(provider.audience.userTypeIds.length)
                     }
                   >
-                    {canManage ? (
+                    {/* the column the drag handle rides in is a pointer's;
+                        stacked there is no such column, and a seat held open
+                        for it opened a row of its own under the facts */}
+                    {phone ? null : canManage ? (
                       <span {...stylex.props(styles.order)}>
                         <button
                           type="button"
@@ -246,41 +296,7 @@ export default function LoginMethodsPage() {
                         >
                           <GripVerticalIcon aria-hidden {...stylex.props(styles.gripGlyph)} />
                         </button>
-                        {/* One press, not two. Two arrows of six-and-twenty
-                            pixels inside a row that itself opens the method
-                            were a pair of targets a thumb could not tell
-                            apart - and a mis-hit silently reordered the
-                            sign-in page. Now a mis-hit opens a menu. */}
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button
-                              type="button"
-                              aria-label={format(m.methodMove, { name: provider.name })}
-                              data-testid="method-order"
-                              {...stylex.props(styles.step)}
-                            >
-                              <ChevronsUpDownIcon aria-hidden {...stylex.props(styles.stepGlyph)} />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              disabled={index === 0}
-                              data-testid="method-up"
-                              onSelect={() => step(provider.id, -1)}
-                            >
-                              <ChevronUpIcon aria-hidden />
-                              {format(m.methodMoveUp, { name: provider.name })}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              disabled={index === rows.length - 1}
-                              data-testid="method-down"
-                              onSelect={() => step(provider.id, 1)}
-                            >
-                              <ChevronDownIcon aria-hidden />
-                              {format(m.methodMoveDown, { name: provider.name })}
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        {order(provider, index)}
                       </span>
                     ) : (
                       <span />
@@ -319,9 +335,12 @@ export default function LoginMethodsPage() {
                       {index + 1}
                     </Cell>
                     <Cell tone="muted" narrow="end" unlabelled>
-                      <Status tone={provider.status === 'active' ? 'plain' : 'bad'}>
-                        {format(provider.status === 'active' ? m.typeEnabled : m.statusDisabled)}
-                      </Status>
+                      <span {...stylex.props(styles.standing)}>
+                        {canManage && phone && order(provider, index)}
+                        <Status tone={provider.status === 'active' ? 'plain' : 'bad'}>
+                          {format(provider.status === 'active' ? m.typeEnabled : m.statusDisabled)}
+                        </Status>
+                      </span>
                     </Cell>
                   </TableRow>
                 )

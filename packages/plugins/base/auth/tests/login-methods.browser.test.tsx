@@ -72,7 +72,9 @@ describe('login methods screen', () => {
     // nothing to save until something changes: a save button live on arrival
     // invites a write that says nothing
     // the sheet has two things to save, each in its own card: this is the audience's
-    const save2 = page.getByTestId('audience-panel').getByRole('button', { name: '保存', exact: false })
+    const save2 = page
+      .getByTestId('audience-panel')
+      .getByRole('button', { name: '保存', exact: false })
     await expect.element(save2).toBeDisabled()
 
     // narrowing the door from "anyone" to a named list is one decision, and
@@ -147,5 +149,52 @@ describe('login methods screen', () => {
     expect(await page.getByRole('button', { name: '保存', exact: false }).elements()).toHaveLength(
       0,
     )
+  })
+})
+
+describe('a method as one row of a phone', () => {
+  it('rules its facts apart only where there are two of them to rule', async () => {
+    // The row leads with a seat held open for the drag handle a pointer
+    // gets. Counted as a fact, it took the method's own name into the run
+    // with it - and every fact after that was ruled off from the one
+    // before, which filled the row with strokes. A column dropped narrow
+    // has no side to be ruled from either.
+    await page.viewport(390, 844)
+    renderScreen({
+      client: fakeClient(stubs()),
+      route: '/admin/login-methods',
+      children: <LoginMethodsPage />,
+    })
+    await expect.element(page.getByTestId('method-row').first()).toBeVisible()
+    const row = document.querySelector('[data-testid="method-row"]')!
+    const facts = row.querySelector('[class*="styles.facts"]')!
+    // the name is the row's own lead, not one of the facts under it
+    expect(facts.querySelector('[class*="styles.cellLead"]')).toBeNull()
+    // two facts on show, so one rule
+    expect(facts.querySelectorAll('[class*="factRule"]')).toHaveLength(1)
+    await page.viewport(1280, 800)
+  })
+})
+
+describe('a method as one row of a phone', () => {
+  it('stands what the row is scanned by against the whole of it', async () => {
+    // The column the drag handle rides in is a pointer's. Stacked there is
+    // no such column - and the seat held open for it opened a row of its
+    // own under the facts, which pushed the standing and the way in off the
+    // row's middle.
+    await page.viewport(390, 844)
+    renderScreen({
+      client: fakeClient(stubs()),
+      route: '/admin/login-methods',
+      children: <LoginMethodsPage />,
+    })
+    await expect.element(page.getByTestId('method-row').first()).toBeVisible()
+    const row = document.querySelector('[data-testid="method-row"]') as HTMLElement
+    const standing = row.querySelector('[data-tone]')!.closest('span[class*="cell"]')!
+    const middle = (box: DOMRect) => box.top + box.height / 2
+    expect(
+      Math.abs(middle(standing.getBoundingClientRect()) - middle(row.getBoundingClientRect())),
+    ).toBeLessThan(2)
+    await page.viewport(1280, 800)
   })
 })

@@ -36,6 +36,7 @@ import {
   Table,
   TableHead,
   TableRow,
+  TableSkeleton,
 } from '@qualy/ui/screen'
 import { Button } from '@qualy/ui/button'
 import { Pager } from '@qualy/ui/pager'
@@ -486,6 +487,7 @@ export default function UsersPage() {
               loadingLabel={format(commonMessages.loading)}
               retryLabel={format(commonMessages.retry)}
               onRetry={() => void users.refetch()}
+              skeleton={<TableSkeleton />}
             >
               {/* a number, a kind and a unit read as one line; a fact that
                   runs out of room loses its end rather than the row gaining

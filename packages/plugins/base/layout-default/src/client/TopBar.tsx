@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type ReactNode } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { NavLink } from 'react-router'
 import * as stylex from '@stylexjs/stylex'
 import { Wordmark } from '@qualy/brand/wordmark'
@@ -248,6 +248,17 @@ const styles = stylex.create({
       height: 1.5,
     },
   },
+  // The row runs past its own edge, said by fading what is under that edge.
+  //
+  // A row cut square at the screen's edge reads as a row that ends there -
+  // the chip it cuts through looks like a chip drawn badly rather than like
+  // more of them. The fade is only on the side there is more on.
+  fadeStart: { maskImage: 'linear-gradient(to right, transparent, black 14px)' },
+  fadeEnd: { maskImage: 'linear-gradient(to left, transparent, black 14px)' },
+  fadeBoth: {
+    maskImage:
+      'linear-gradient(to right, transparent, black 14px, black calc(100% - 14px), transparent)',
+  },
   // the row itself: what scrolls, and what remembers where it was
   chipRow: {
     display: 'flex',
@@ -459,6 +470,15 @@ export function SectionChips({ items }: { items: readonly ResolvedNavigationItem
   // was suddenly off the left edge. It is one row per application, so one
   // remembered offset is enough.
   const seat = useRef<HTMLDivElement>(null)
+  // which edges the row runs past, so it can say so rather than ending in a
+  // chip cut clean in half that reads as the last one
+  const [more, setMore] = useState({ start: false, end: false })
+  const read = useCallback(() => {
+    const row = seat.current
+    if (row === null) return
+    const over = row.scrollWidth - row.clientWidth
+    setMore({ start: row.scrollLeft > 1, end: over > 1 && row.scrollLeft < over - 1 })
+  }, [])
   useLayoutEffect(() => {
     const row = seat.current
     if (row === null) return
@@ -469,7 +489,11 @@ export function SectionChips({ items }: { items: readonly ResolvedNavigationItem
       block: 'nearest',
       inline: 'nearest',
     })
-  }, [])
+    read()
+    const watch = new ResizeObserver(read)
+    watch.observe(row)
+    return () => watch.disconnect()
+  }, [read])
   if (items.length < 2) return null
   return (
     <div
@@ -477,8 +501,18 @@ export function SectionChips({ items }: { items: readonly ResolvedNavigationItem
       data-testid="section-chips"
       onScroll={(event) => {
         held = event.currentTarget.scrollLeft
+        read()
       }}
-      {...stylex.props(styles.chipRow)}
+      {...stylex.props(
+        styles.chipRow,
+        more.start && more.end
+          ? styles.fadeBoth
+          : more.start
+            ? styles.fadeStart
+            : more.end
+              ? styles.fadeEnd
+              : null,
+      )}
     >
       {items.map((item) =>
         item.target.kind === 'page' ? (

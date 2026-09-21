@@ -16,6 +16,7 @@ import {
   Screen,
   Status,
   Table,
+  TableSkeleton,
   TableHead,
   TableRow,
   Tag,
@@ -119,6 +120,7 @@ export default function RolesPage() {
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void roles.refetch()}
+        skeleton={<TableSkeleton />}
       >
         {all.length === 0 ? (
           <Card>

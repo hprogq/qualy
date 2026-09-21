@@ -85,13 +85,13 @@ const switcher = (
 )
 
 const shapes: [string, string | undefined, React.ReactNode, React.ReactNode?][] = [
-  ['组织架构', '维护组织的名称、上级与下级。', one('新建组织')],
-  ['用户', '按组织管理用户、用户类型及归属关系。', several('新建用户')],
-  ['角色', '谁能做什么，以及能任命谁。', one('新建角色')],
-  ['用户类型', '谁可以站在哪里。', one('新建用户类型')],
+  ['组织架构', '名称与上下级。', one('新建组织')],
+  ['用户', '按组织管理。', several('新建用户')],
+  ['角色', '谁能做什么。', one('新建角色')],
+  ['用户类型', '谁站在哪里。', one('新建用户类型')],
   // the one this was really about: a page with no description, and no actions
   ['审计日志', undefined, null],
-  ['组织架构', '维护组织的名称、上级与下级。', one('新建组织'), switcher],
+  ['组织架构', '名称与上下级。', one('新建组织'), switcher],
 ]
 
 describe('the band every page of an application opens on', () => {
@@ -106,6 +106,10 @@ describe('the band every page of an application opens on', () => {
       await expect.element(page.getByRole('heading', { name: title }).first()).toBeVisible()
       heights.push(band().getBoundingClientRect().height)
     }
+    // said as the run rather than as a count, so a failure names the shapes
+    // that disagreed and by how much
+    // Compared as a set: the run is what a failure should print, so the
+    // shapes that disagreed and by how much are in the message.
     expect(new Set(heights.map((height) => Math.round(height))).size).toBe(1)
     await page.viewport(1280, 800)
   })

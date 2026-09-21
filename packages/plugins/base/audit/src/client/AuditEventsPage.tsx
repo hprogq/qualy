@@ -14,7 +14,16 @@ import {
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, FormDialog } from '@qualy/ui/admin'
-import { Card, CardEmpty, CardFoot, FootNote, Screen, Spacer, Status } from '@qualy/ui/screen'
+import {
+  Card,
+  CardEmpty,
+  CardFoot,
+  FootNote,
+  Screen,
+  Spacer,
+  Status,
+  TableSkeleton,
+} from '@qualy/ui/screen'
 import { Button } from '@qualy/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -134,7 +143,10 @@ const styles = stylex.create({
   },
   detail: {
     display: 'grid',
-    gridTemplateColumns: { default: '6.5rem minmax(0, 1fr)', [breakpoints.phone]: 'minmax(0, 1fr)' },
+    gridTemplateColumns: {
+      default: '6.5rem minmax(0, 1fr)',
+      [breakpoints.phone]: 'minmax(0, 1fr)',
+    },
     columnGap: 16,
     rowGap: 5,
     margin: 0,
@@ -349,6 +361,7 @@ export default function AuditEventsPage() {
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void events.refetch()}
+        skeleton={<TableSkeleton />}
       >
         <Card data-testid="audit-table">
           <div {...stylex.props(styles.scroll)}>
@@ -422,7 +435,10 @@ export default function AuditEventsPage() {
                           >
                             {row.targetLabel ?? row.targetId}
                             {row.targetLabel !== null && row.targetId !== null && (
-                              <span {...stylex.props(styles.quietId, styles.mono)}> {row.targetId}</span>
+                              <span {...stylex.props(styles.quietId, styles.mono)}>
+                                {' '}
+                                {row.targetId}
+                              </span>
                             )}
                           </Detail>
                         )}

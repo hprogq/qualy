@@ -12,7 +12,7 @@ export default {
   'audit/nav-group/records': '审计',
   'audit/navigation/events': '审计日志',
   'audit/events/title': '审计日志',
-  'audit/events/hint': '管理操作的完整记录，最新在前。',
+  'audit/events/hint': '管理和查看各类操作的记录。',
   'audit/events/any-action': '全部动作',
   'audit/events/any-outcome': '全部结果',
   'audit/events/column-time': '时间',

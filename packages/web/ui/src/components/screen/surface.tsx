@@ -17,6 +17,7 @@ import type { StyleXStyles } from '@stylexjs/stylex'
 import { tokens } from '../../theme/tokens.stylex.ts'
 import { breakpoints } from '../../theme/breakpoints.stylex.ts'
 import { Checkbox } from '../checkbox.tsx'
+import { Skeleton } from '../skeleton.tsx'
 
 // White panels on the page's own ground: the surfaces an administration
 // screen is assembled from.
@@ -154,6 +155,20 @@ const styles = stylex.create({
     fontSize: 13,
   },
   // ---- tables ----------------------------------------------------------
+  bones: { display: 'flex', flexDirection: 'column' },
+  bonesRow: {
+    display: 'flex',
+    minHeight: { default: 44, [breakpoints.phone]: 48 },
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 16,
+    paddingInline: 16,
+    borderBottomWidth: { default: 1, ':last-child': 0 },
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
+  },
+  bonesLead: { height: 13, borderRadius: 3 },
+  bonesFact: { height: 11, width: '3.5rem', borderRadius: 3, flexShrink: 0 },
   tableHead: {
     display: { default: 'grid', [breakpoints.phone]: 'none' },
     flexShrink: 0,
@@ -282,6 +297,13 @@ const styles = stylex.create({
    * eye is still reading when the room runs out.
    */
   cellHeld: { flexShrink: 0, whiteSpace: 'nowrap' },
+  /** the last of them, which is the one that gives way and says it did */
+  cellHeldLast: {
+    minWidth: 0,
+    flexShrink: 1,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+  },
   /**
    * The rule between two facts, drawn by the row.
    *
@@ -582,6 +604,30 @@ const TableColumns = createContext<{
   oneLine: false,
 })
 
+/**
+ * The shape of a table while its rows are still being fetched.
+ *
+ * Rows, not a rectangle the size of them. A reader waiting on a list is
+ * waiting for names with facts beside them, and a slab says nothing about
+ * what is coming - it also lands at whatever height it was written with and
+ * then shoves the page when the real rows arrive. These are the rows.
+ */
+export function TableSkeleton({ rows = 6 }: { rows?: number }) {
+  return (
+    <div {...stylex.props(styles.bones)} aria-hidden data-testid="table-bones">
+      {Array.from({ length: rows }, (_, index) => (
+        <div key={index} {...stylex.props(styles.bonesRow)}>
+          <Skeleton
+            className={stylex.props(styles.bonesLead).className}
+            width={['38%', '52%', '44%', '60%', '41%', '49%'][index % 6]}
+          />
+          <Skeleton className={stylex.props(styles.bonesFact).className} />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 /** the words of a head cell, for a row that has to carry them on a phone */
 const wordsOf = (node: ReactNode): string => {
   if (typeof node === 'string') return node
@@ -707,8 +753,14 @@ export function TableRow({
   const isCell = (child: ReactNode) => isValidElement(child) && child.type === Cell
   const propsOf = (child: ReactNode) =>
     (isValidElement(child) ? child.props : {}) as { lead?: boolean; narrow?: string }
+  // The run starts after the name - and after anything standing in front of
+  // it that is not a fact at all: a tick, a drag handle, a seat held open
+  // for one. Left in, such a thing took the name into the run with it, and
+  // every fact after that was ruled off from the one before.
   let from = 0
-  while (from < kids.length && isCell(kids[from]) && propsOf(kids[from]).lead === true) from += 1
+  while (from < kids.length && (!isCell(kids[from]) || propsOf(kids[from]).lead === true)) {
+    from += 1
+  }
   let until = from
   while (until < kids.length && !(isCell(kids[until]) && propsOf(kids[until]).narrow === 'end')) {
     until += 1
@@ -718,12 +770,39 @@ export function TableRow({
       <>
         {kids.slice(0, from)}
         <span {...stylex.props(styles.facts, oneLine && styles.factsOneLine)}>
-          {kids.slice(from, until).map((child, index) => (
-            <Fragment key={index}>
-              {index > 0 && <span aria-hidden {...stylex.props(styles.factRule)} />}
-              {child}
-            </Fragment>
-          ))}
+          {(() => {
+            // A rule goes BETWEEN two facts, so it is drawn only once one
+            // fact has been drawn and another follows. A row's middle holds
+            // cells this row has nothing for - and a rule beside an empty
+            // cell is a rule with nothing on one side of it, which is what
+            // filled a stacked row with strokes.
+            const run = kids.slice(from, until)
+            // which of them is the last with anything to say: on a one-line
+            // run it is the one still being read when the room runs out, so
+            // it is the one that gives way and ends in an ellipsis
+            let last = -1
+            run.forEach((child, index) => {
+              if (says(child)) last = index
+            })
+            let said = false
+            return run.map((child, index) => {
+              const speaks = says(child)
+              const rule = speaks && said
+              if (speaks) said = true
+              const give =
+                oneLine && index === last && isValidElement(child) && child.type === Cell
+              return (
+                <Fragment key={index}>
+                  {rule && <span aria-hidden {...stylex.props(styles.factRule)} />}
+                  {give
+                    ? cloneElement(child as ReactElement<{ lastOfRun?: boolean }>, {
+                        lastOfRun: true,
+                      })
+                    : child}
+                </Fragment>
+              )
+            })
+          })()}
         </span>
         {kids.slice(until)}
       </>
@@ -802,6 +881,7 @@ export function Cell({
   narrow = 'keep',
   unlabelled = false,
   clip = false,
+  lastOfRun = false,
   column,
   children,
 }: {
@@ -839,6 +919,13 @@ export function Cell({
    * paragraph and the first few words are the answer.
    */
   clip?: boolean
+  /**
+   * The last fact with anything to say, on a run held to one line.
+   *
+   * A caller never passes it: the row knows which of its facts is last,
+   * because it is the row that decided where the run begins and ends.
+   */
+  lastOfRun?: boolean
   /**
    * Which column this is, filled in by the row.
    *
@@ -881,8 +968,9 @@ export function Cell({
     end && styles.cellEnd,
     narrow === 'drop' && styles.cellDropNarrow,
     narrow === 'end' && styles.cellEndNarrow,
-    clip && styles.cellClipped,
     oneLine && styles.cellHeld,
+    lastOfRun && styles.cellHeldLast,
+    clip && styles.cellClipped,
     label !== '' && styles.cellLabel,
   )
   return (
@@ -894,6 +982,27 @@ export function Cell({
       {children}
     </span>
   )
+}
+
+/**
+ * Whether a row's child has anything to say.
+ *
+ * A cell with nothing in it is a fact this row does not have - the same test
+ * the cell itself makes before taking its column's word. Anything that is
+ * not a cell is assumed to speak: it is somebody else's component, and this
+ * cannot see inside it.
+ */
+const says = (child: ReactNode): boolean => {
+  if (!isValidElement(child)) return child !== null && child !== false && child !== ''
+  const props = child.props as { children?: ReactNode; narrow?: string }
+  // A column worth a table's width and not a phone's is not drawn here at
+  // all, and the rules are only drawn here - so it never has a side.
+  if (child.type === Cell && props.narrow === 'drop') return false
+  const held = props.children
+  // A cell with nothing in it is a fact this row does not have - the same
+  // test the cell itself makes. Anything else that is empty is a seat held
+  // open for something this row has not got either.
+  return held !== undefined && held !== null && held !== false && held !== ''
 }
 
 const flatten = (nodes: readonly ReactNode[]): ReactNode[] =>

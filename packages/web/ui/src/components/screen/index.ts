@@ -36,6 +36,7 @@ export {
   Table,
   TableHead,
   TableRow,
+  TableSkeleton,
   Tag,
   Tick,
   TickGrid,

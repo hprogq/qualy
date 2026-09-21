@@ -68,11 +68,13 @@ const styles = stylex.create({
     // at the desk's 36px next to a 20px title on a 390px screen it read as
     // the louder of the two - and it pushed the band it sits in taller than
     // every other page's.
-    height: { default: 36, [breakpoints.phone]: 30 },
+    // the same 30 from a tablet down, because that is the height the row a
+    // page's name sits on keeps open for whatever rides beside it
+    height: { default: 36, [breakpoints.phone]: 30, [breakpoints.tablet]: 30 },
     gap: 2,
     borderRadius: tokens.radiusMd,
     backgroundColor: tokens.surfaceMuted,
-    padding: { default: 3, [breakpoints.phone]: 2 },
+    padding: { default: 3, [breakpoints.phone]: 2, [breakpoints.tablet]: 2 },
   },
   trigger: {
     position: 'relative',
@@ -119,11 +121,11 @@ const styles = stylex.create({
   },
   triggerSegmented: {
     // 30 inside the list's 3px padding: 36 again; 26 inside 2 on a phone
-    height: { default: 30, [breakpoints.phone]: 26 },
+    height: { default: 30, [breakpoints.phone]: 26, [breakpoints.tablet]: 26 },
     borderRadius: `calc(${tokens.radiusMd} - 1px)`,
-    paddingInline: { default: 10, [breakpoints.phone]: 9 },
+    paddingInline: { default: 10, [breakpoints.phone]: 9, [breakpoints.tablet]: 9 },
     paddingBlock: 0,
-    fontSize: { default: 14, [breakpoints.phone]: 12.5 },
+    fontSize: { default: 14, [breakpoints.phone]: 12.5, [breakpoints.tablet]: 12.5 },
     transitionProperty: 'color, background-color, box-shadow',
   },
   // raised out of the ground rather than underlined

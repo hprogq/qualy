@@ -14,6 +14,7 @@ import {
   Screen,
   Status,
   Table,
+  TableSkeleton,
   TableHead,
   TableRow,
   Tag,
@@ -71,6 +72,7 @@ export default function UserTypesPage() {
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void types.refetch()}
+        skeleton={<TableSkeleton />}
       >
         <Card>
           {rows.length === 0 ? (
