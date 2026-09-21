@@ -1006,6 +1006,64 @@ describe('filing a claim', () => {
     expect(words).not.toContain('复核环节')
   })
 
+  // An appeal leaves the claim standing where it stood (§32.21), so its
+  // status still reads `approved` all the way through one. What must not
+  // happen is the card saying the argument is over while it is being had -
+  // and offering to start it again. Both came from reading the standing off
+  // the status alone; the open round is a separate fact and says so.
+  it('says a claim is under appeal while it is, and refuses a second one', async () => {
+    const appealed = entry({
+      status: 'approved',
+      currentReviewInstanceId: 'ri-2',
+      openRound: { origin: 'appeal' },
+      capabilities: {
+        edit: { state: 'hidden' as const, reason: null },
+        submit: { state: 'hidden' as const, reason: null },
+        withdraw: { state: 'hidden' as const, reason: null },
+        appeal: { state: 'blocked' as const, reason: 'review-already-open' },
+        abandon: { state: 'hidden' as const, reason: null },
+      },
+    })
+    screen(
+      {
+        listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
+        listMyEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: [appealed],
+            nextCursor: null,
+            attention: { unreadItemIds: [] },
+          }),
+        getEntryHistory: () =>
+          Effect.succeed({
+            reviewersShown: false,
+            entry: appealed,
+            events: [],
+            revisions: [],
+            rounds: [],
+          }),
+      },
+      `/assessment/batches/${BATCH_ID}/my-entries`,
+      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+    )
+    // the standing itself, not the word for it
+    await vi.waitFor(() => {
+      const chip = document.querySelector('[data-testid="entry-standing"]')
+      if (chip === null) throw new Error('the row has not landed yet')
+      expect(chip.getAttribute('data-entry-standing')).toBe('contested')
+      expect(chip.getAttribute('data-open-round')).toBe('appeal')
+    })
+    await page.getByTestId('claim-row').first().click()
+    await expect.element(page.getByRole('dialog')).toBeVisible()
+    // a press that would answer "still under review" is not a press
+    // the press is still drawn, with its reason, and cannot be taken: a
+    // vanished button reads as a broken page. Counted, so a change that
+    // removes it altogether does not pass this by having nothing to check.
+    const again = await page.getByRole('button', { name: '申诉', exact: true }).elements()
+    expect(again).toHaveLength(1)
+    expect(again[0]).toBeDisabled()
+  })
+
   // What the claim was finally recognised as, which is what the score is
   // worked out from. Whose determination it was is the phase's to open
   // (§32.85), and the server sends no name when it is shut.
