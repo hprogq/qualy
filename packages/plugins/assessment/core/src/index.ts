@@ -23,6 +23,7 @@ import {
   userDetailNavigation,
   workspaceContext,
   workspaceNavigation,
+  userDetailNavigationBadge,
   workspaceNavigationBadge,
 } from '@qualy/ui-contract'
 import { compositeForeignKeys, entities } from './db/entities.ts'
@@ -471,6 +472,14 @@ const plugin = Plugin.define(
         id: 'assessment/reviews-waiting',
         component: Ui.react('./client/review/QueueBadge'),
         visibility: permissionOf('assessment.review.process'),
+      },
+      {
+        // how much this plugin holds about the open person, beside the
+        // section that holds it
+        key: userDetailNavigationBadge.key,
+        id: 'assessment/person-sections',
+        component: Ui.react('./client/person/SectionBadge'),
+        visibility: permissionOf('assessment.batch.manage'),
       },
     ],
   }),

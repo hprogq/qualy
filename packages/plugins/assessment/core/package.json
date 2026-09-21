@@ -21,6 +21,7 @@
     "./client/i18n": "./src/client/i18n.ts",
     "./client/items/FixedCalculatorEditor": "./src/client/items/FixedCalculatorEditor.tsx",
     "./client/items/ItemSettingsPage": "./src/client/items/ItemSettingsPage.tsx",
+    "./client/person/SectionBadge": "./src/client/person/SectionBadge.tsx",
     "./client/person/UserBatchesPage": "./src/client/person/UserBatchesPage.tsx",
     "./client/person/UserEntriesPage": "./src/client/person/UserEntriesPage.tsx",
     "./client/record/AdministrativeRecordsPage": "./src/client/record/AdministrativeRecordsPage.tsx",

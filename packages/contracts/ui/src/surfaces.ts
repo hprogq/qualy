@@ -284,6 +284,18 @@ export const workspaceNavigationBadge = defineUiSlot({
   cardinality: 'many',
 })
 
+/**
+ * The same, beside a section of one person's record.
+ *
+ * Its own token rather than the workspace's: the two rails hold different
+ * entries, and one slot for both would put a round's queue count beside
+ * somebody's profile.
+ */
+export const userDetailNavigationBadge = defineUiSlot({
+  key: 'user-detail-shell/navigation-badge',
+  cardinality: 'many',
+})
+
 /** what the shell hands a badge: which rail entry it is standing beside */
 export interface NavigationBadgeContext {
   readonly navigationId: string
