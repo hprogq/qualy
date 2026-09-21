@@ -1,5 +1,5 @@
 import type { ComponentType, ReactNode } from 'react'
-import { ArrowLeftIcon } from 'lucide-react'
+import { ArrowLeftIcon, EllipsisIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
 import type { StyleXStyles } from '@stylexjs/stylex'
 import { tokens } from '../../theme/tokens.stylex.ts'
@@ -7,6 +7,12 @@ import { breakpoints } from '../../theme/breakpoints.stylex.ts'
 import { PageContainer } from '../page-container.tsx'
 import { Reveal } from '../reveal.tsx'
 import { Tabs, TabsList, TabsTrigger } from '../tabs.tsx'
+import { Button } from '../button.tsx'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '../dropdown-menu.tsx'
 
 const styles = stylex.create({
   band: {
@@ -102,6 +108,14 @@ const styles = stylex.create({
   // the page arrives as one thing, a beat after its heading: the cards of a
   // page are read at a glance, so they do not queue up one behind another
   arrival: { display: 'flex', minWidth: 0, flexDirection: 'column', flexGrow: 1, gap: 14 },
+  // the two halves of a band's actions: laid out beside the primary one
+  // across, folded behind a single press narrow
+  bandWide: {
+    display: { default: 'contents', [breakpoints.phone]: 'none' },
+  },
+  bandNarrow: {
+    display: { default: 'none', [breakpoints.phone]: 'inline-flex' },
+  },
 })
 
 /**
@@ -216,5 +230,51 @@ export function Segmented<T extends string>({
         ))}
       </TabsList>
     </Tabs>
+  )
+}
+
+/**
+ * The acts a page offers, laid out for the width they are offered at.
+ *
+ * Across a band there is room for four presses in a row. On a phone there
+ * is room for one, and the other three wrapped onto a second line of the
+ * heading - the page's name pushed up by a toolbar nobody came for. So the
+ * page says which one it is offering and which are the rest: the first
+ * stands, the rest fold into one press that opens them as a menu, where a
+ * thumb reaches them and each one has a full line to say its name on.
+ *
+ * Both halves are the caller's own elements. This decides where they go,
+ * never what they are - a page that wants its second act visible passes it
+ * as part of `primary`, and one with nothing to fold passes no `rest`.
+ */
+export function BandActions({
+  primary,
+  rest,
+  moreLabel,
+}: {
+  primary?: ReactNode
+  /** folded behind one press narrow, laid out beside `primary` wide */
+  rest?: ReactNode
+  /** the spoken name of the press that opens them */
+  moreLabel: string
+}) {
+  const folded = rest !== undefined && rest !== null && rest !== false
+  return (
+    <>
+      {folded && <span {...stylex.props(styles.bandWide)}>{rest}</span>}
+      {primary}
+      {folded && (
+        <span {...stylex.props(styles.bandNarrow)}>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="icon-sm" variant="ghost" aria-label={moreLabel}>
+                <EllipsisIcon aria-hidden />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">{rest}</DropdownMenuContent>
+          </DropdownMenu>
+        </span>
+      )}
+    </>
   )
 }

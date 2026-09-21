@@ -437,6 +437,12 @@ const i18n = definePluginMessages({
     movePick: { id: 'auth/users/move-pick', defaultMessage: 'Pick where they should stand' },
     moveAction: { id: 'auth/users/move-action', defaultMessage: 'Move here' },
     moveTarget: { id: 'auth/users/move-target', defaultMessage: 'Moving to' },
+    personNameLabel: { id: 'auth/field/person-name', defaultMessage: 'Name' },
+    newUserNoTypes: {
+      id: 'auth/users/new-no-types',
+      defaultMessage: 'No kind of person may stand at this unit, so nobody can be made here.',
+    },
+    newUserNoTypesGo: { id: 'auth/users/new-no-types-go', defaultMessage: 'Set where a type may stand' },
     moveNotManageable: { id: 'auth/users/move-not-manageable', defaultMessage: 'Not yours' },
     moveTypeRefused: {
       id: 'auth/users/move-type-refused',

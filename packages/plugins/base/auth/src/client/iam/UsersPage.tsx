@@ -22,6 +22,7 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { AsyncSection, Feedback } from '@qualy/ui/admin'
 import {
+  BandActions,
   Card,
   CardEmpty,
   CardFoot,
@@ -146,7 +147,13 @@ export default function UsersPage() {
   const structureHref = usePageHref('org/page')
   // On a phone the tree would push the roster a screen down, so it folds to
   // one line saying which unit is on show, and opens from the bottom to change it.
-  const phone = useIsBelow(768)
+  // Below the width where the tree and the roster sit side by side, the
+  // tree is not a column - it is a line saying which unit the roster is of,
+  // and a sheet to change it. At 900px the two-column split gave the tree a
+  // third of the screen to draw three rows in.
+  const phone = useIsBelow(1024)
+  /** where a row becomes a name with its facts under it */
+  const stacked = useIsBelow(768)
   const [pickingUnit, setPickingUnit] = useState(false)
   const [draft, setDraft] = useState(search)
   const [creating, setCreating] = useState(false)
@@ -251,24 +258,33 @@ export default function UsersPage() {
       description={format(m.usersHint)}
       size="broad"
       actions={
-        <>
-          <UserJump
-            rootNodeId={(nodes.find((entry) => entry.parentId === null) ?? nodes[0])?.orgNodeId}
-            businessNo={businessNo}
-          />
-          {/* whatever else can be done with people as a whole, by whoever
-              offers it: an import, an export */}
-          <UiSlot
-            token={usersPageActions}
-            context={{ anchorNodeId: active?.orgNodeId ?? null } satisfies UsersPageActionsContext}
-          />
-          {active?.manageable && (
-            <Button onClick={() => setCreating(true)}>
-              <PlusIcon aria-hidden />
-              {format(m.newUser)}
-            </Button>
-          )}
-        </>
+        <BandActions
+          moreLabel={format(m.moreActions)}
+          primary={
+            active?.manageable && (
+              <Button onClick={() => setCreating(true)}>
+                <PlusIcon aria-hidden />
+                {format(m.newUser)}
+              </Button>
+            )
+          }
+          rest={
+            <>
+              <UserJump
+                rootNodeId={(nodes.find((entry) => entry.parentId === null) ?? nodes[0])?.orgNodeId}
+                businessNo={businessNo}
+              />
+              {/* whatever else can be done with people as a whole, by
+                  whoever offers it: an import, an export */}
+              <UiSlot
+                token={usersPageActions}
+                context={
+                  { anchorNodeId: active?.orgNodeId ?? null } satisfies UsersPageActionsContext
+                }
+              />
+            </>
+          }
+        />
       }
     >
       {options.isError && <Feedback message={formatError(options.error)} />}
@@ -414,9 +430,9 @@ export default function UsersPage() {
                       data-accounts={user.identityCount}
                     >
                       {/* across a table the number leads, because that is what the
-                          list is sorted by; on a phone a row is a name with
+                          list is sorted by; stacked, a row is a name with
                           its facts under it */}
-                      {phone ? (
+                      {stacked ? (
                         <>
                           <Cell lead strong={user.id === openUserId}>
                             {user.displayName}
@@ -446,11 +462,18 @@ export default function UsersPage() {
                       {user.primaryOrgNode === null ? (
                         <Cell>—</Cell>
                       ) : (
+                        // Stacked, the chain is most of the line and the
+                        // last rung is the only part that tells two people
+                        // apart - everything above it is the unit the
+                        // roster is already showing. The whole address is
+                        // on the person's own page.
                         <UnitPath
                           steps={
-                            stepsTo(user.primaryOrgNode.id).length > 0
-                              ? stepsTo(user.primaryOrgNode.id)
-                              : [{ id: user.primaryOrgNode.id, name: user.primaryOrgNode.name }]
+                            stacked
+                              ? [{ id: user.primaryOrgNode.id, name: user.primaryOrgNode.name }]
+                              : stepsTo(user.primaryOrgNode.id).length > 0
+                                ? stepsTo(user.primaryOrgNode.id)
+                                : [{ id: user.primaryOrgNode.id, name: user.primaryOrgNode.name }]
                           }
                           pickLabel={format(m.pickUnit)}
                           onPick={asking('anchor')}
@@ -469,17 +492,26 @@ export default function UsersPage() {
                           )}
                         </Status>
                       </Cell>
-                      <span {...stylex.props(styles.look)}>
-                        <Button
-                          size="icon-xs"
-                          variant="ghost"
-                          aria-label={format(m.lookAt, { name: user.displayName })}
-                          data-testid="roster-look"
-                          onClick={() => setOpenUserId(user.id === openUserId ? '' : user.id)}
-                        >
-                          <InfoIcon aria-hidden />
-                        </Button>
-                      </span>
+                      {/* A glance at somebody without leaving the list is
+                          worth a press beside the row only where the list
+                          stays on screen. Stacked, the sheet covers the
+                          list it was supposed to keep you in, and every
+                          act on it is another press away - so there the
+                          row itself is the way in, and it goes to the
+                          person's own page. */}
+                      {!stacked && (
+                        <span {...stylex.props(styles.look)}>
+                          <Button
+                            size="icon-xs"
+                            variant="ghost"
+                            aria-label={format(m.lookAt, { name: user.displayName })}
+                            data-testid="roster-look"
+                            onClick={() => setOpenUserId(user.id === openUserId ? '' : user.id)}
+                          >
+                            <InfoIcon aria-hidden />
+                          </Button>
+                        </span>
+                      )}
                     </TableRow>
                   ))
                 )}
@@ -514,6 +546,7 @@ export default function UsersPage() {
           testId="unit-sheet"
         >
           <UnitTree
+            bare
             units={units}
             openId={active?.orgNodeId ?? null}
             scope={within}
@@ -535,17 +568,25 @@ export default function UsersPage() {
       )}
 
       {active?.manageable && (
-        // only the kinds of person this unit may hold: the api refuses the
-        // rest, and a picker offering them turns a rule into an error message
+        // only the kinds of person a unit may hold: the api refuses the
+        // rest, and a picker offering them turns a rule into an error
+        // message. Asked per unit, because the form may be pointed at
+        // another one than the roster is showing.
         <NewUserForm
           open={creating}
           onClose={() => setCreating(false)}
           orgNodeId={active.orgNodeId}
-          userTypes={userTypes.filter(
-            (type) =>
-              type.placementPolicy.mode === 'unrestricted' ||
-              type.placementPolicy.orgTypeIds.includes(active.orgTypeId),
-          )}
+          orgNodeName={active.name}
+          userTypesAt={(id) => {
+            const at = byId.get(id)
+            if (at === undefined) return []
+            return userTypes.filter(
+              (type) =>
+                type.placementPolicy.mode === 'unrestricted' ||
+                (type.placementPolicy.mode === 'allow-list' &&
+                  type.placementPolicy.orgTypeIds.includes(at.orgTypeId)),
+            )
+          }}
         />
       )}
     </Screen>

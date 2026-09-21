@@ -134,7 +134,7 @@ const styles = stylex.create({
   },
   detail: {
     display: 'grid',
-    gridTemplateColumns: '5rem minmax(0, 1fr)',
+    gridTemplateColumns: { default: '6.5rem minmax(0, 1fr)', [breakpoints.phone]: 'minmax(0, 1fr)' },
     columnGap: 16,
     rowGap: 5,
     margin: 0,
@@ -146,15 +146,21 @@ const styles = stylex.create({
     paddingBlock: 12,
     fontSize: 12,
   },
-  detailName: { color: tokens.mutedForeground, paddingTop: 2 },
+  detailName: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+    color: tokens.mutedForeground,
+    paddingTop: 2,
+  },
   // a value and the way to take it elsewhere: these are read in order to be
   // pasted into a ticket, a log search, another screen
   valueRow: { display: 'flex', minWidth: 0, alignItems: 'flex-start', gap: 6 },
   valueText: { minWidth: 0, flexGrow: 1, paddingTop: 2 },
   copy: {
     display: 'inline-flex',
-    width: 20,
-    height: 20,
+    width: 18,
+    height: 18,
     flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'center',
@@ -167,7 +173,13 @@ const styles = stylex.create({
   },
   copyGlyph: { width: 12, height: 12 },
   quietId: { color: tokens.mutedForeground },
-  actorFilter: { maxWidth: '14rem' },
+  // the third filter, sized like the two beside it: content-width it read
+  // as a stray button in a row of fields
+  actorFilter: {
+    maxWidth: { default: '14rem', [breakpoints.phone]: 'none' },
+    width: { default: null, [breakpoints.phone]: '100%' },
+    justifyContent: { default: null, [breakpoints.phone]: 'flex-start' },
+  },
   actorWord: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   pickerSeat: { minHeight: '20rem' },
   inlineAction: {
@@ -305,7 +317,12 @@ export default function AuditEventsPage() {
           </SelectContent>
         </Select>
         {actor === '' ? (
-          <Button size="sm" variant="outline" onClick={() => setPickingActor(true)}>
+          <Button
+            size="sm"
+            variant="outline"
+            className={stylex.props(styles.actorFilter).className}
+            onClick={() => setPickingActor(true)}
+          >
             <UserRoundIcon aria-hidden />
             {format(m.anyActor)}
           </Button>
@@ -520,18 +537,12 @@ function Detail({
   const [copied, setCopied] = useState(false)
   return (
     <>
-      <dt {...stylex.props(styles.detailName)}>{label}</dt>
-      <dd {...stylex.props(styles.detailValue, styles.valueRow)}>
-        <span
-          {...stylex.props(
-            styles.valueText,
-            mono && styles.mono,
-            bad && styles.bad,
-            quiet && styles.agent,
-          )}
-        >
-          {children}
-        </span>
+      {/* the press sits with the NAME of what it copies, not at the far end
+          of a value of unpredictable length: a column of presses drifting
+          left and right down the panel is hard to aim at, and one of them
+          landing under a wrapped line reads as belonging to the next row */}
+      <dt {...stylex.props(styles.detailName)}>
+        {label}
         {copy !== undefined && (
           <button
             type="button"
@@ -552,6 +563,18 @@ function Detail({
             )}
           </button>
         )}
+      </dt>
+      <dd {...stylex.props(styles.detailValue, styles.valueRow)}>
+        <span
+          {...stylex.props(
+            styles.valueText,
+            mono && styles.mono,
+            bad && styles.bad,
+            quiet && styles.agent,
+          )}
+        >
+          {children}
+        </span>
       </dd>
     </>
   )

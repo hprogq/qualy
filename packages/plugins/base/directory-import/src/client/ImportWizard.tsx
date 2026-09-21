@@ -107,6 +107,7 @@ const styles = stylex.create({
   // computed from the window instead and drew straight over the field
   // below it.
   picker: { display: 'flex', minHeight: 0, height: '20rem', flexDirection: 'column' },
+  recordsSeat: { minHeight: { default: '26rem', [breakpoints.phone]: '20rem' } },
   summary: { display: 'grid', gap: 12, gridTemplateColumns: { default: 'minmax(0, 1fr)', '@media (min-width: 720px)': 'repeat(3, minmax(0, 1fr))' } },
   summaryCell: {
     display: 'flex',
@@ -755,7 +756,10 @@ export function ImportRecords({ onOpen }: { onOpen: (importId: string) => void }
   })
   const items = imports.data?.items ?? []
   return (
-    <Card data-testid="import-records">
+    // A fixed seat, the design's own rule: a page of ten rows and a page of
+    // one must be the same height, or a modal that is read by paging jumps
+    // under the reader's hand every time they turn a page.
+    <Card data-testid="import-records" xstyle={styles.recordsSeat}>
       <AsyncSection
         pending={imports.isPending}
         error={imports.isError ? formatError(imports.error) : null}

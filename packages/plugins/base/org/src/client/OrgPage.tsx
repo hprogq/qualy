@@ -13,9 +13,18 @@ import { commonMessages } from '@qualy/web-i18n/messages'
 import * as stylex from '@stylexjs/stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { AsyncSection, Feedback } from '@qualy/ui/admin'
-import { DetailSheet, EditorSkeleton, Screen, Segmented, Spacer, Tag } from '@qualy/ui/screen'
+import {
+  BandActions,
+  DetailSheet,
+  EditorSkeleton,
+  Screen,
+  Segmented,
+  Spacer,
+  Tag,
+} from '@qualy/ui/screen'
 import { useLingering } from '@qualy/ui/use-lingering'
 import { Button } from '@qualy/ui/button'
+import { useIsBelow } from '@qualy/ui/use-mobile'
 import { orgMessages as m } from './i18n.ts'
 import { orgApi } from './api.ts'
 import { shapeOf, type Run } from './shape.ts'
@@ -50,6 +59,8 @@ export default function OrgPage() {
   const [feedback, setFeedback] = useState<string | null>(null)
   const [creatingType, setCreatingType] = useState(false)
   const [binOpen, setBinOpen] = useState(false)
+  // where the row stacks rather than laying itself across the card
+  const narrow = useIsBelow(768)
   const [task, setTask] = useState<NodeTask | null>(null)
   // two address keys in one write: separate writes from one press race
   const writeAddress = usePageQueryUpdate()
@@ -132,18 +143,30 @@ export default function OrgPage() {
         />
       }
       actions={
-        rootManageable &&
-        (types ? (
-          <Button onClick={() => setCreatingType(true)}>
-            <PlusIcon aria-hidden />
-            {format(m.newTypeTitle)}
-          </Button>
-        ) : (
-          <Button variant="ghost" data-testid="org-bin-open" onClick={() => setBinOpen(true)}>
-            <Trash2Icon aria-hidden />
-            {format(m.binTitle)}
-          </Button>
-        ))
+        rootManageable && (
+          <BandActions
+            moreLabel={format(m.rowMore, { name: format(m.unitsTitle) })}
+            primary={
+              types ? (
+                <Button onClick={() => setCreatingType(true)}>
+                  <PlusIcon aria-hidden />
+                  {format(m.newTypeTitle)}
+                </Button>
+              ) : undefined
+            }
+            rest={
+              types ? undefined : (
+                // where things go when they are deleted is not an act
+                // somebody came to this page to perform, and a lone
+                // dustbin standing in a heading looks like one
+                <Button variant="ghost" data-testid="org-bin-open" onClick={() => setBinOpen(true)}>
+                  <Trash2Icon aria-hidden />
+                  {format(m.binTitle)}
+                </Button>
+              )
+            }
+          />
+        )
       }
     >
       <Feedback message={feedback} />
@@ -175,6 +198,7 @@ export default function OrgPage() {
             onOpen={setSelectedId}
             headcountOf={headcountOf}
             headcountKnown={headcountsKnown}
+            narrow={narrow}
             onTask={setTask}
           />
         )}

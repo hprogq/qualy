@@ -28,6 +28,8 @@ import { iamMessages as m } from '../../i18n.ts'
 // the card's menu with the other things done to the tree as a whole.
 
 const styles = stylex.create({
+  bare: { display: 'flex', minHeight: 0, flexDirection: 'column', flexGrow: 1 },
+  toolsBare: { paddingInline: 0, paddingTop: 0 },
   tools: {
     display: 'flex',
     flexShrink: 0,
@@ -70,12 +72,22 @@ export function UnitTree({
   units,
   openId,
   scope,
+  bare = false,
   onOpen,
   onScope,
 }: {
   units: readonly UnitNode[]
   openId: string | null
   scope: 'self' | 'subtree'
+  /**
+   * Drawn without its card, for a sheet that is already one.
+   *
+   * A card inside a sheet is a second frame around the same thing: two
+   * headings, two rules, two sets of gutters, and the tree itself squeezed
+   * into what is left. The sheet has a title and edges of its own, so the
+   * tree hands them over and keeps only its tools and its rows.
+   */
+  bare?: boolean
   onOpen: (id: string) => void
   onScope: (next: 'self' | 'subtree') => void
 }) {
@@ -129,66 +141,101 @@ export function UnitTree({
     )
   }
 
-  return (
-    <StickyFill>
-    <Card data-testid="unit-tree" data-scope={scope} xstyle={styles.card}>
-      <CardHead title={format(m.unitsTitle)} note={format(m.unitsCount, { count: units.length })}>
+  // the same choices wherever they are offered from
+  const menu = (
+    <>
+      <DropdownMenuLabel>{format(m.scopeLabel)}</DropdownMenuLabel>
+      <DropdownMenuRadioGroup
+        value={scope}
+        onValueChange={(next) => onScope(next === 'self' ? 'self' : 'subtree')}
+      >
+        <DropdownMenuRadioItem value="subtree" data-scope-option="subtree">
+          {format(m.scopeSubtree)}
+        </DropdownMenuRadioItem>
+        <DropdownMenuRadioItem value="self" data-scope-option="self">
+          {format(m.scopeSelf)}
+        </DropdownMenuRadioItem>
+      </DropdownMenuRadioGroup>
+      <DropdownMenuSeparator />
+      <DropdownMenuItem onSelect={() => setCollapsed(new Set())}>
+        {format(m.expandAll)}
+      </DropdownMenuItem>
+      <DropdownMenuItem
+        onSelect={() =>
+          setCollapsed(
+            new Set(units.filter((unit) => childrenOf.has(unit.id)).map((unit) => unit.id)),
+          )
+        }
+      >
+        {format(m.collapseAll)}
+      </DropdownMenuItem>
+    </>
+  )
+
+  const tools = (
+    <div {...stylex.props(styles.tools, bare && styles.toolsBare)}>
+      <SearchField
+        name="tree-search"
+        value={search}
+        onChange={setSearch}
+        label={format(m.treeSearch)}
+        xstyle={styles.searchBox}
+      />
+      {/* in a sheet the scope and the folds have no card head to live in,
+          so they stand beside the search where a thumb finds them */}
+      {bare && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button size="icon-xs" variant="ghost" aria-label={format(m.treeMenu)}>
+            <Button size="icon-sm" variant="outline" aria-label={format(m.treeMenu)}>
               <EllipsisIcon aria-hidden />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuLabel>{format(m.scopeLabel)}</DropdownMenuLabel>
-            <DropdownMenuRadioGroup
-              value={scope}
-              onValueChange={(next) => onScope(next === 'self' ? 'self' : 'subtree')}
-            >
-              <DropdownMenuRadioItem value="subtree" data-scope-option="subtree">
-                {format(m.scopeSubtree)}
-              </DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="self" data-scope-option="self">
-                {format(m.scopeSelf)}
-              </DropdownMenuRadioItem>
-            </DropdownMenuRadioGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => setCollapsed(new Set())}>
-              {format(m.expandAll)}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onSelect={() =>
-                setCollapsed(new Set(units.filter((unit) => childrenOf.has(unit.id)).map((unit) => unit.id)))
-              }
-            >
-              {format(m.collapseAll)}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
+          <DropdownMenuContent align="end">{menu}</DropdownMenuContent>
         </DropdownMenu>
-      </CardHead>
-      <div {...stylex.props(styles.tools)}>
-        <SearchField
-          name="tree-search"
-          value={search}
-          onChange={setSearch}
-          label={format(m.treeSearch)}
-          xstyle={styles.searchBox}
-        />
-      </div>
-      <div {...stylex.props(styles.scroll)}>
-        {matches !== null ? (
-          matches.length === 0 ? (
-            <CardEmpty>{format(m.treeSearchEmpty)}</CardEmpty>
-          ) : (
-            matches.map((unit) => row(unit, 0, false))
-          )
-        ) : rows.length === 0 ? (
-          <CardEmpty>{format(m.noAnchors)}</CardEmpty>
+      )}
+    </div>
+  )
+  const list = (
+    <div {...stylex.props(styles.scroll)}>
+      {matches !== null ? (
+        matches.length === 0 ? (
+          <CardEmpty>{format(m.treeSearchEmpty)}</CardEmpty>
         ) : (
-          rows.map(({ unit, depth }) => row(unit, depth, true))
-        )}
+          matches.map((unit) => row(unit, 0, false))
+        )
+      ) : rows.length === 0 ? (
+        <CardEmpty>{format(m.noAnchors)}</CardEmpty>
+      ) : (
+        rows.map(({ unit, depth }) => row(unit, depth, true))
+      )}
+    </div>
+  )
+
+  if (bare) {
+    return (
+      <div data-testid="unit-tree" data-scope={scope} {...stylex.props(styles.bare)}>
+        {tools}
+        {list}
       </div>
-    </Card>
+    )
+  }
+
+  return (
+    <StickyFill>
+      <Card data-testid="unit-tree" data-scope={scope} xstyle={styles.card}>
+        <CardHead title={format(m.unitsTitle)} note={format(m.unitsCount, { count: units.length })}>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="icon-xs" variant="ghost" aria-label={format(m.treeMenu)}>
+                <EllipsisIcon aria-hidden />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">{menu}</DropdownMenuContent>
+          </DropdownMenu>
+        </CardHead>
+        {tools}
+        {list}
+      </Card>
     </StickyFill>
   )
 }

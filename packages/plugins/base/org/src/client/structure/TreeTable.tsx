@@ -35,9 +35,21 @@ import type { NodeTask } from './NodeDialogs.tsx'
 const QUIET = `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`
 const COLUMNS = 'minmax(0, 1fr) 8rem 6rem 6rem 4.5rem'
 const INDENT = 22
+/** narrow, a level costs less, because the name is what is left of the row */
+const INDENT_NARROW = 12
 
 const styles = stylex.create({
-  folds: { display: 'inline-flex', flexShrink: 0, alignItems: 'center', gap: 6 },
+  // Two marks side by side read as a pair to a pointer. On a phone they
+  // are two more targets in a head that already holds a name, two counts
+  // and a search field - and folding a whole tree is not what somebody
+  // opened this page on a phone to do. They fold away; the twistie on each
+  // branch still folds that branch.
+  folds: {
+    display: { default: 'inline-flex', [breakpoints.phone]: 'none' },
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 6,
+  },
   tools: { width: { default: '16rem', [breakpoints.phone]: '100%' } },
   head: {
     display: { default: 'grid', [breakpoints.phone]: 'none' },
@@ -151,6 +163,7 @@ export function TreeTable({
   onOpen,
   headcountOf,
   headcountKnown,
+  narrow = false,
   onTask,
 }: {
   shape: OrgShape
@@ -158,6 +171,8 @@ export function TreeTable({
   onOpen: (id: string) => void
   headcountOf: (orgNodeId: string) => number
   headcountKnown: boolean
+  /** the row is stacked rather than laid across, so a level costs less */
+  narrow?: boolean
   /** a task started from a row: a unit under it, another name, another place */
   onTask: (task: NodeTask) => void
 }) {
@@ -208,7 +223,10 @@ export function TreeTable({
         }}
       >
         <span {...stylex.props(styles.lead)}>
-          <span aria-hidden style={{ width: depth * INDENT, flexShrink: 0 }} />
+          <span
+            aria-hidden
+            style={{ width: depth * (narrow ? INDENT_NARROW : INDENT), flexShrink: 0 }}
+          />
           {folds ? (
             <button
               type="button"
