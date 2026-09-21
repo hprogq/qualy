@@ -487,6 +487,15 @@ export function ResultLedger({
     const scale = sum > 0 ? Number(group.final) / sum : 0
     return parts.map((one) => ({ ...one, part: one.part * scale }))
   })
+  // A division that contributed nothing is not a slice of the bar.
+  //
+  // Drawn anyway it is a segment of no width - but the bar sets its
+  // segments apart with a gap, and a gap is spent on a segment whether or
+  // not there is anything in it. Three empty divisions before a full one
+  // therefore opened a space to the left of the only slice there was, which
+  // reads as the bar starting somewhere other than its own beginning. They
+  // are in the table below, where an empty division says so in words.
+  const drawn = shares.filter((share) => share.part > 0)
 
   return (
     <div {...stylex.props(styles.standing)}>
@@ -514,7 +523,7 @@ export function ResultLedger({
         <span aria-hidden {...stylex.props(styles.rule)} />
         <div {...stylex.props(styles.barSide)}>
           <div {...stylex.props(styles.bar)}>
-            {shares.map((share, index) => (
+            {drawn.map((share, index) => (
               // the total said a second way, counted out rather than simply
               // standing there beside the number it divides
               <Portion
@@ -528,7 +537,10 @@ export function ResultLedger({
             ))}
           </div>
           <div {...stylex.props(styles.legend)}>
-            {shares.map((share, index) => (
+            {/* the same parts, in the same order and the same inks: a
+                swatch beside a name that has no slice in the bar above
+                leaves the reader hunting for a colour that is not there */}
+            {drawn.map((share, index) => (
               <span key={share.id} {...stylex.props(styles.legendItem)}>
                 <span
                   aria-hidden
