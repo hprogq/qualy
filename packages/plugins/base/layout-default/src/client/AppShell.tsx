@@ -205,6 +205,9 @@ function Shell() {
   // rather than assumed: a height read once was right until the first
   // rotation, and then quietly wrong by eight pixels.
   const [barHeight, setBarHeight] = useState(0)
+  // how much of the scroller's width its own scrollbar takes, so the bars
+  // floating over it stop short of it
+  const [gutter, setGutter] = useState(0)
   // whether the page's own band has taken the sections; a page with no band
   // leaves them here, above its content
   const [sectionsTaken, setSectionsTaken] = useState(false)
@@ -221,6 +224,21 @@ function Shell() {
     measure.observe(bars)
     setBarHeight(bars.offsetHeight)
     return () => measure.disconnect()
+  }, [])
+
+  // The bars float over the page, which is what lets the page pass under
+  // them - but they floated over its scrollbar too, and the top of the thumb
+  // was behind them. The bar ends where the scrollbar begins. Where the
+  // browser draws its scrollbars as an overlay this is zero and nothing
+  // moves.
+  useEffect(() => {
+    const root = main.current
+    if (root === null) return
+    const measure = () => setGutter(root.offsetWidth - root.clientWidth)
+    measure()
+    const watch = new ResizeObserver(measure)
+    watch.observe(root)
+    return () => watch.disconnect()
   }, [])
 
   useEffect(() => {
@@ -260,6 +278,7 @@ function Shell() {
         ref={head}
         data-shell-head=""
         data-scrolled={scrolled ? '' : undefined}
+        style={gutter === 0 ? undefined : { right: gutter }}
         {...stylex.props(styles.head, beside && styles.headRuled)}
       >
         <TopBar

@@ -83,12 +83,10 @@ const styles = stylex.create({
   // not wrap, and every page's title and actions were crushed to nothing.
   underBand: {
     display: 'flex',
+    minWidth: 0,
     alignItems: 'center',
-    gap: 6,
     paddingTop: 0,
     paddingBottom: 14,
-    overflowX: 'auto',
-    scrollbarWidth: 'none',
   },
   // A floor under the words, so every page's band is the same height.
   //

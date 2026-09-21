@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useLayoutEffect, useRef, type ReactNode } from 'react'
 import { NavLink } from 'react-router'
 import * as stylex from '@stylexjs/stylex'
 import { Wordmark } from '@qualy/brand/wordmark'
@@ -248,6 +248,16 @@ const styles = stylex.create({
       height: 1.5,
     },
   },
+  // the row itself: what scrolls, and what remembers where it was
+  chipRow: {
+    display: 'flex',
+    minWidth: 0,
+    width: '100%',
+    alignItems: 'center',
+    gap: 6,
+    overflowX: 'auto',
+    scrollbarWidth: 'none',
+  },
   chip: {
     display: 'inline-flex',
     flexShrink: 0,
@@ -441,9 +451,35 @@ export function TopBar({
  * with the open one filled in.
  */
 export function SectionChips({ items }: { items: readonly ResolvedNavigationItem[] }) {
+  // Where the row was scrolled to, kept across pages.
+  //
+  // The row belongs to the application, but it is drawn by whatever band the
+  // open page happens to draw - so moving to another page builds it again
+  // from nothing, at offset zero, and the section the reader had scrolled to
+  // was suddenly off the left edge. It is one row per application, so one
+  // remembered offset is enough.
+  const seat = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const row = seat.current
+    if (row === null) return
+    row.scrollLeft = held
+    // the open one brought back into view, for a reader who arrived by some
+    // other route than pressing it here
+    row.querySelector('[aria-current="page"]')?.scrollIntoView({
+      block: 'nearest',
+      inline: 'nearest',
+    })
+  }, [])
   if (items.length < 2) return null
   return (
-    <>
+    <div
+      ref={seat}
+      data-testid="section-chips"
+      onScroll={(event) => {
+        held = event.currentTarget.scrollLeft
+      }}
+      {...stylex.props(styles.chipRow)}
+    >
       {items.map((item) =>
         item.target.kind === 'page' ? (
           <SectionChip
@@ -463,9 +499,12 @@ export function SectionChips({ items }: { items: readonly ResolvedNavigationItem
           </a>
         ),
       )}
-    </>
+    </div>
   )
 }
+
+/** how far the sections were scrolled, the last time anybody drew them */
+let held = 0
 
 function SectionChip({
   to,

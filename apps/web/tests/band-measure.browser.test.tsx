@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
-import { BandAction, BandActions, Card, CardHead, Screen } from '@qualy/ui/screen'
+import { BandAction, BandActions, Card, CardHead, Screen, Segmented } from '@qualy/ui/screen'
 import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 
 // Every band the same height, so the row of sections hanging under it does
@@ -15,12 +15,23 @@ import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 
 const band = () => document.querySelector('[data-slot="page-container"]')!.parentElement!
 
-const draw = (title: string, description: string | undefined, actions: React.ReactNode) =>
+const draw = (
+  title: string,
+  description: string | undefined,
+  actions: React.ReactNode,
+  titleAside?: React.ReactNode,
+) =>
   renderScreen({
     client: fakeClient({ app: { getManifest: () => Effect.succeed(emptyManifest()) } } as never),
     route: '/x',
     children: (
-      <Screen title={title} description={description} size="broad" actions={actions}>
+      <Screen
+        title={title}
+        description={description}
+        size="broad"
+        actions={actions}
+        titleAside={titleAside}
+      >
         <Card>
           <CardHead title="内容" />
         </Card>
@@ -59,13 +70,28 @@ const several = (label: string) => (
   />
 )
 
-const shapes: [string, string | undefined, React.ReactNode][] = [
+// a page whose name has a view switch beside it: the shape that used to
+// push the band taller than the rest
+const switcher = (
+  <Segmented
+    label="视图"
+    value="structure"
+    onChange={() => undefined}
+    options={[
+      { value: 'structure', label: '组织结构' },
+      { value: 'types', label: '组织类型' },
+    ]}
+  />
+)
+
+const shapes: [string, string | undefined, React.ReactNode, React.ReactNode?][] = [
   ['组织架构', '维护组织的名称、上级与下级。', one('新建组织')],
   ['用户', '按组织管理用户、用户类型及归属关系。', several('新建用户')],
   ['角色', '谁能做什么，以及能任命谁。', one('新建角色')],
   ['用户类型', '谁可以站在哪里。', one('新建用户类型')],
   // the one this was really about: a page with no description, and no actions
   ['审计日志', undefined, null],
+  ['组织架构', '维护组织的名称、上级与下级。', one('新建组织'), switcher],
 ]
 
 describe('the band every page of an application opens on', () => {
@@ -75,9 +101,9 @@ describe('the band every page of an application opens on', () => {
   ])('is the same height on %s whatever the page puts in it', async (_name, width) => {
     await page.viewport(width, 900)
     const heights: number[] = []
-    for (const [title, description, actions] of shapes) {
-      draw(title, description, actions)
-      await expect.element(page.getByRole('heading', { name: title })).toBeVisible()
+    for (const [title, description, actions, aside] of shapes) {
+      draw(title, description, actions, aside)
+      await expect.element(page.getByRole('heading', { name: title }).first()).toBeVisible()
       heights.push(band().getBoundingClientRect().height)
     }
     expect(new Set(heights.map((height) => Math.round(height))).size).toBe(1)

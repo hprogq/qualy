@@ -5,6 +5,7 @@ import * as stylex from '@stylexjs/stylex'
 import { Tabs as MTabs } from '@mantine/core'
 
 import { tokens } from '../theme/tokens.stylex.ts'
+import { breakpoints } from '../theme/breakpoints.stylex.ts'
 import { seatOf } from '../lib/xstyle.ts'
 
 // A row of exclusive views under an underline. The behavior - roving
@@ -63,11 +64,15 @@ const styles = stylex.create({
   // 36px overall, because it stands in a filter row beside fields and
   // buttons and a row of controls only reads as a row when they agree.
   listSegmented: {
-    height: 36,
+    // Smaller under a thumb. A switcher rides beside a page's own name, and
+    // at the desk's 36px next to a 20px title on a 390px screen it read as
+    // the louder of the two - and it pushed the band it sits in taller than
+    // every other page's.
+    height: { default: 36, [breakpoints.phone]: 30 },
     gap: 2,
     borderRadius: tokens.radiusMd,
     backgroundColor: tokens.surfaceMuted,
-    padding: 3,
+    padding: { default: 3, [breakpoints.phone]: 2 },
   },
   trigger: {
     position: 'relative',
@@ -113,11 +118,12 @@ const styles = stylex.create({
     color: tokens.foreground,
   },
   triggerSegmented: {
-    // 30 inside the list's 3px padding: 36 again
-    height: 30,
+    // 30 inside the list's 3px padding: 36 again; 26 inside 2 on a phone
+    height: { default: 30, [breakpoints.phone]: 26 },
     borderRadius: `calc(${tokens.radiusMd} - 1px)`,
-    paddingInline: 10,
+    paddingInline: { default: 10, [breakpoints.phone]: 9 },
     paddingBlock: 0,
+    fontSize: { default: 14, [breakpoints.phone]: 12.5 },
     transitionProperty: 'color, background-color, box-shadow',
   },
   // raised out of the ground rather than underlined
