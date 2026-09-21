@@ -3123,6 +3123,11 @@ const i18n = definePluginMessages({
       id: 'assessment/review/esc-banner-title',
       defaultMessage: 'The submission is in the escalation workflow',
     },
+    reviewAppealBannerBody: {
+      id: 'assessment/review/appeal-banner-body',
+      defaultMessage:
+        'The participant is contesting a decision already made. This round settles whether it stands.',
+    },
     reviewEscBannerBody: {
       id: 'assessment/review/esc-banner-body',
       defaultMessage:
@@ -3410,6 +3415,11 @@ const i18n = definePluginMessages({
       id: 'assessment/entry/score-if-approved',
       defaultMessage: 'If approved',
     },
+    entryStatusAppealing: { id: 'assessment/entry/status-appealing', defaultMessage: 'Under appeal' },
+    entryStatusReopened: {
+      id: 'assessment/entry/status-reopened',
+      defaultMessage: 'Reopened for review',
+    },
     entryStatusAwaitingSupplement: {
       id: 'assessment/entry/status-awaiting-supplement',
       defaultMessage: 'Additional material required',
@@ -3670,6 +3680,10 @@ const i18n = definePluginMessages({
     },
     entryTrailReason: { id: 'assessment/entry/trail-reason', defaultMessage: 'Reason: {value}' },
     entryTrailReasonLabel: { id: 'assessment/entry/trail-reason-label', defaultMessage: 'Reason' },
+    reviewEscalateReason: {
+      id: 'assessment/review/escalate-reason',
+      defaultMessage: 'Why it was sent up',
+    },
     entryTrailRound: { id: 'assessment/entry/trail-round', defaultMessage: 'Review round {no}' },
     entryRoundOngoing: {
       id: 'assessment/entry/round-ongoing',

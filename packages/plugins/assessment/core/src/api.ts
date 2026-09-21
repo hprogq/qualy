@@ -919,6 +919,16 @@ const entryView = Schema.Struct({
     }),
   ),
   /**
+   * A round running right now, and what opened it.
+   *
+   * The claim's own status cannot say so: an appeal leaves it standing where
+   * it stood (§32.21), so a card would read "已认定" all through the appeal
+   * it is the subject of.
+   */
+  openRound: Schema.NullOr(
+    Schema.Struct({ origin: Schema.Literals(['initial', 'appeal', 'reopen', 'reroute']) }),
+  ),
+  /**
    * What the claim currently stands recognised as, under the question
    * version that judged it. Only while the claim stands on it: a claim back
    * under review has no conclusion to show (§32.85). Null where nothing has

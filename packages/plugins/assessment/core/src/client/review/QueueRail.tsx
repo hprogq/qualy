@@ -116,9 +116,15 @@ export const QueueRail = memo(function QueueRail({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
+  // The row stood on holds the focus, not the corner the sheet opened on:
+  // with the ring left on the close button, walking the list moved a tint
+  // down the rows while the ring stayed in the corner - two answers to
+  // "where am I" on one screen, and the wrong one was the loud one.
   useEffect(() => {
     if (!open) return
-    list.current?.querySelector(`[data-queue-index="${at}"]`)?.scrollIntoView({ block: 'nearest' })
+    const row = list.current?.querySelector<HTMLElement>(`[data-queue-index="${at}"]`)
+    row?.scrollIntoView({ block: 'nearest' })
+    row?.focus({ preventScroll: true })
   }, [open, at])
 
   useEffect(() => {
@@ -147,14 +153,10 @@ export const QueueRail = memo(function QueueRail({
       if (event.key === 'q' || event.key === 'Q') {
         event.preventDefault()
         onToggle()
-        return
       }
-      // Esc shuts this sheet, as it shuts every other; leaving the workbench
-      // for the list is a different act and has a key of its own
-      if (event.key === 'b' || event.key === 'B') {
-        event.preventDefault()
-        onBack()
-      }
+      // No second letter for leaving: Esc shuts every sheet in the product,
+      // and a key printed beside "返回待审核列表" was read as the way to shut
+      // this one - which it was not.
     }
     window.addEventListener('keydown', down)
     return () => window.removeEventListener('keydown', down)
@@ -178,12 +180,13 @@ export const QueueRail = memo(function QueueRail({
               {format(m.reviewQueueKeysMove)}
               <Kbd>↵</Kbd>
               {format(m.reviewQueueKeysOpen)}
+              <Kbd>Esc</Kbd>
+              {format(commonMessages.close)}
             </span>
           </FootNote>
           <span {...stylex.props(styles.spacer)} />
           <Button variant="outline" size="sm" onClick={onBack}>
             {format(m.reviewBackToQueue)}
-            <Kbd>B</Kbd>
           </Button>
         </>
       }

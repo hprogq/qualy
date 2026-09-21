@@ -47,6 +47,12 @@ const styles = stylex.create({
     letterSpacing: '-0.025em',
     color: tokens.foreground,
   },
+  groundsLabel: {
+    marginRight: 8,
+    fontSize: 12,
+    fontWeight: 500,
+    color: tokens.mutedForeground,
+  },
   escalationGrounds: {
     fontSize: 14,
     lineHeight: 1.625,
@@ -72,6 +78,9 @@ export function EscalationNotice({ review }: { review: ReviewDto }) {
   // card, wherever the layout chooses to stand it
   if (review.state === 'completed' || review.chain.route !== 'escalation') return null
   const appealed = review.events.find((event) => event.kind === 'appealed')
+  // an administrator sending it up says why too, and that sentence was the
+  // one thing the card never showed
+  const escalated = review.events.find((event) => event.kind === 'escalated')
   return (
     <div data-testid="escalation-card" {...stylex.props(styles.escalationCard)}>
       <CircleArrowUpIcon aria-hidden className={stylex.props(styles.escalationIcon).className} />
@@ -79,12 +88,24 @@ export function EscalationNotice({ review }: { review: ReviewDto }) {
         <p {...stylex.props(styles.escalationTitle)}>
           {format(appealed !== undefined ? m.reviewAppealBannerTitle : m.reviewEscBannerTitle)}
         </p>
-        {/* the appellant's grounds are business evidence, not chrome:
-            shown in their own words wherever they exist */}
-        {appealed !== undefined && appealed.comment !== null ? (
-          <p {...stylex.props(styles.escalationGrounds)}>{appealed.comment}</p>
-        ) : (
-          <p {...stylex.props(styles.escalationBody)}>{format(m.reviewEscBannerBody)}</p>
+        {/* What this round is, before what anybody said in it: a title and a
+            quotation with nothing between them read as the system saying
+            "测试申诉", and the reviewer had to work out whose sentence it
+            was. The grounds are still their own words - named. */}
+        <p {...stylex.props(styles.escalationBody)}>
+          {format(appealed !== undefined ? m.reviewAppealBannerBody : m.reviewEscBannerBody)}
+        </p>
+        {appealed !== undefined && appealed.comment !== null && appealed.comment !== '' && (
+          <p {...stylex.props(styles.escalationGrounds)}>
+            <span {...stylex.props(styles.groundsLabel)}>{format(m.entryAppealReason)}</span>
+            {appealed.comment}
+          </p>
+        )}
+        {appealed === undefined && escalated?.comment != null && escalated.comment !== '' && (
+          <p {...stylex.props(styles.escalationGrounds)}>
+            <span {...stylex.props(styles.groundsLabel)}>{format(m.reviewEscalateReason)}</span>
+            {escalated.comment}
+          </p>
         )}
       </div>
     </div>

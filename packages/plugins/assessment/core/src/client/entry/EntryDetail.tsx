@@ -501,6 +501,7 @@ export function EntryDetail({
                 source={entry.source}
                 revised={entry.currentReviewInstanceId !== null}
                 asked={entry.supplement !== null}
+                openRound={entry.openRound}
               />
               {revisionNo !== undefined && entry.status !== 'draft' && (
                 <span {...stylex.props(styles.versionNote)}>

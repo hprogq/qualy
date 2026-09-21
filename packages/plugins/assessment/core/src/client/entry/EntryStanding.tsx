@@ -72,9 +72,18 @@ export function EntryStanding({
   revised,
   asked,
   source,
+  openRound,
 }: {
   status: EntryDto['status']
   revised?: boolean
+  /**
+   * The round running right now, where one is.
+   *
+   * An appeal leaves the claim standing where it stood (§32.21), so the
+   * status alone reads "已认定" all through the appeal it is the subject of -
+   * which says the argument is over while it is being had.
+   */
+  openRound?: EntryDto['openRound']
   /** a reviewer is waiting for material, which outranks "in review" */
   asked?: boolean
   /**
@@ -90,24 +99,35 @@ export function EntryStanding({
 }) {
   const { format } = useI18n()
   const administrative = source === 'record' || source === 'import'
+  const contested = openRound?.origin === 'appeal' || openRound?.origin === 'reopen'
   const word =
     asked === true
       ? m.entryStatusAwaitingSupplement
-      : administrative
-        ? recordWord[status]
-        : status === 'draft' && revised === true
-          ? // a draft with a round behind it is not a fresh draft: it
-            // exists because something was asked of it
-            m.entryStatusRevising
-          : entryStatusMessage[status]
+      : contested
+        ? openRound?.origin === 'appeal'
+          ? administrative
+            ? m.recordStandingAppealed
+            : m.entryStatusAppealing
+          : m.entryStatusReopened
+        : administrative
+          ? recordWord[status]
+          : status === 'draft' && revised === true
+            ? // a draft with a round behind it is not a fresh draft: it
+              // exists because something was asked of it
+              m.entryStatusRevising
+            : entryStatusMessage[status]
   const alert = asked === true || status === 'rejected' || status === 'needs_revision'
+  const standing = asked === true ? 'awaiting_supplement' : contested ? 'contested' : status
   const hollow = status === 'draft' && asked !== true
   return (
     <span
       // the standing itself, beside the word for it: a test about what a
       // claim is doing asks this, not the sentence the word happens to be
       data-testid="entry-standing"
-      data-entry-standing={asked === true ? 'awaiting_supplement' : status}
+      data-entry-standing={standing}
+      {...(openRound === null || openRound === undefined
+        ? {}
+        : { 'data-open-round': openRound.origin })}
       {...stylex.props(styles.pill, alert && styles.pillAlert, hollow && styles.pillHollow)}
     >
       <span

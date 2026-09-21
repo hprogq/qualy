@@ -443,10 +443,10 @@ const WORK_KINDS = `('approved', 'rejected', 'escalated', 'opinion-rejected', 's
 
 export const withdrawStandingsOf = (tenantId: string, instanceIds: readonly string[]) =>
   instanceIds.length === 0
-    ? Effect.succeed(new Map<string, { origin: string; begun: boolean }>())
+    ? Effect.succeed(new Map<string, { origin: string; begun: boolean; open: boolean }>())
     : db
         .query((k) =>
-          sql<{ id: string; origin: string; begun: boolean }>`
+          sql<{ id: string; origin: string; begun: boolean; open: boolean }>`
             with recursive lineage (root_id, id) as (
               select ri.id, ri.id from review_instances ri
               where ri.tenant_id = ${tenantId} and ri.id = any(${uuidArray(instanceIds)})
@@ -472,7 +472,8 @@ export const withdrawStandingsOf = (tenantId: string, instanceIds: readonly stri
                   join lineage l2 on l2.root_id = ri.id and l2.id = pn.review_instance_id
                   where v.tenant_id = ${tenantId}
                 )
-              ) as begun
+              ) as begun,
+              (ri.state <> 'completed') as open
             from review_instances ri
             where ri.tenant_id = ${tenantId} and ri.id = any(${uuidArray(instanceIds)})
           `.execute(k),
@@ -480,7 +481,12 @@ export const withdrawStandingsOf = (tenantId: string, instanceIds: readonly stri
         .pipe(
           Effect.map(
             ({ rows }) =>
-              new Map(rows.map((row) => [row.id, { origin: row.origin, begun: row.begun }])),
+              new Map(
+                rows.map((row) => [
+                  row.id,
+                  { origin: row.origin, begun: row.begun, open: row.open },
+                ]),
+              ),
           ),
         )
 

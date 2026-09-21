@@ -242,6 +242,7 @@ export function ParticipantEntries({
                               source={entry.source}
                               revised={entry.currentReviewInstanceId !== null}
                               asked={entry.supplement !== null}
+                              openRound={entry.openRound}
                             />
                           </Cell>
                           <Cell numeric tone={counted === undefined ? 'quiet' : 'plain'}>

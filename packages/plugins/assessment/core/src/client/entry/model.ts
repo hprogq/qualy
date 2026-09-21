@@ -60,6 +60,8 @@ export interface EntryDto {
     actorName: string | null
     at: string
   } | null
+  /** a round running right now, and what opened it; null when none is */
+  openRound: { origin: 'initial' | 'appeal' | 'reopen' | 'reroute' } | null
   /** what it currently stands recognised as, under the version that judged it */
   recognition: {
     id: string

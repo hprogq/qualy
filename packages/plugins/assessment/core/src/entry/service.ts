@@ -181,6 +181,8 @@ export interface EntryView {
   readonly supplement: EntrySupplementView | null
   /** the last word said against it, while it is waiting on its owner */
   readonly refusal: EntryRefusalView | null
+  /** a round running right now, and what opened it; null when none is */
+  readonly openRound: { readonly origin: 'initial' | 'appeal' | 'reopen' | 'reroute' } | null
   /**
    * What the claim currently stands recognised as, in the words of the
    * question version that judged it.
@@ -614,8 +616,8 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
     gates?: EntryGates,
     supplement?: OpenSupplementRow | null,
     refusal?: EntryRefusalView | null,
-    /** the open round's provenance, where the caller looked it up */
-    standing?: { origin: string; begun: boolean },
+    /** the last round's provenance and whether it is still running */
+    standing?: { origin: string; begun: boolean; open: boolean },
     /** what it stands recognised as, where the caller read it */
     recognition?: EntryRecognitionView | null,
   ): EntryView => {
@@ -648,6 +650,14 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           ? null
           : refusal,
       recognition: recognition ?? null,
+      // A round running right now, and what opened it. The claim's own status
+      // cannot say so: an appeal leaves it standing where it stood (§32.21),
+      // and a card reading "已认定" through an appeal says the argument is
+      // over while it is being had.
+      openRound:
+        standing?.open === true
+          ? { origin: standing.origin as NonNullable<EntryView['openRound']>['origin'] }
+          : null,
       supplement:
         supplement == null
           ? null
@@ -705,13 +715,21 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
         // only thing a student can say about a recorded penalty. A claim the
         // rule approved by itself is neither - nobody formed an opinion
         // there, the configuration did, and that is not a thing to appeal.
-        appeal: when(
-          (entry.status === 'approved' || entry.status === 'rejected') &&
-            (entry.currentReviewInstanceId !== null ||
-              ((entry.source === 'record' || entry.source === 'import') &&
-                entry.currentRecognitionId !== null)),
-          gates?.appeal,
-        ),
+        appeal:
+          // A round already under way is what the write refuses first
+          // (`review-already-open`), and an appeal IS such a round: without
+          // this the button stayed lit through the appeal it had just
+          // opened, and pressing it answered "still under review" - a
+          // sentence about a round the reader started.
+          standing?.open === true
+            ? { state: 'blocked', reason: 'review-already-open' }
+            : when(
+                (entry.status === 'approved' || entry.status === 'rejected') &&
+                  (entry.currentReviewInstanceId !== null ||
+                    ((entry.source === 'record' || entry.source === 'import') &&
+                      entry.currentRecognitionId !== null)),
+                gates?.appeal,
+              ),
         // Giving a claim up is open across the whole life of the claim,
         // approved included (§32.69): "the school recognized it" and "its
         // owner still uses it this term" are different facts. The phase
@@ -1181,10 +1199,14 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           }
           const asked = yield* openSupplementsOfEntries(tenantId, [entryId])
           const said = yield* latestRefusalOf(tenantId, [entryId])
+          // Whatever the claim's own status says. An appeal leaves the claim
+          // standing where it stood (§32.21), so "is a round running" cannot
+          // be read off the status - and it is what decides both the word on
+          // the card and whether another appeal may be started.
           const standings =
-            entry.status === 'in_review' && entry.currentReviewInstanceId !== null
-              ? yield* withdrawStandingsOf(tenantId, [entry.currentReviewInstanceId])
-              : new Map<string, { origin: string; begun: boolean }>()
+            entry.currentReviewInstanceId === null
+              ? new Map<string, { origin: string; begun: boolean; open: boolean }>()
+              : yield* withdrawStandingsOf(tenantId, [entry.currentReviewInstanceId])
           const veiled = yield* reviewersVeiled(tenantId, entry.batchId, participant, as)
           return veil(
             view(
@@ -1740,8 +1762,11 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           // one query for the page, not one per card
           const standings = yield* withdrawStandingsOf(
             tenantId,
+            // whatever the claim's own status says: an appeal leaves it
+            // standing where it stood (§32.21), so a round running right now
+            // is not something the status can be read for
             pageRows
-              .filter((one) => one.status === 'in_review' && one.currentReviewInstanceId !== null)
+              .filter((one) => one.currentReviewInstanceId !== null)
               .map((one) => one.currentReviewInstanceId!),
           )
           const saidByEntry = yield* latestRefusalOf(
@@ -1851,7 +1876,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
         const standings = yield* withdrawStandingsOf(
           tenantId,
           pageRows
-            .filter((one) => one.status === 'in_review' && one.currentReviewInstanceId !== null)
+            .filter((one) => one.currentReviewInstanceId !== null)
             .map((one) => one.currentReviewInstanceId!),
         )
         const saidByEntry = yield* latestRefusalOf(

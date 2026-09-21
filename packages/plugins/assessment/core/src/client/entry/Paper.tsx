@@ -1714,6 +1714,7 @@ function ClaimRow({
             source={entry.source}
             revised={entry.currentReviewInstanceId !== null}
             asked={entry.supplement !== null}
+            openRound={entry.openRound}
           />
           <span {...stylex.props(styles.claimWhenNarrow)}>{verWhen}</span>
         </span>
@@ -1726,6 +1727,7 @@ function ClaimRow({
           source={entry.source}
           revised={entry.currentReviewInstanceId !== null}
           asked={entry.supplement !== null}
+          openRound={entry.openRound}
         />
       </span>
       {score !== null ? (

@@ -882,11 +882,25 @@ function Act({
         </div>
       )}
       {event.comment !== null && event.comment !== '' && (
-        <Quoted label={format(m.reviewComment)}>{event.comment}</Quoted>
+        // Whose words these are depends on the act. A reviewer deciding
+        // writes a review opinion; somebody contesting a decision writes
+        // why they contest it, and calling that "审核意见" put the filer's
+        // own sentence under the reviewer's name for it.
+        <Quoted label={format(commentLabelOf(event.kind))}>{event.comment}</Quoted>
       )}
     </>
   )
 }
+
+/** what to call the words one act carries */
+const commentLabelOf = (kind: string) =>
+  kind === 'appealed'
+    ? m.entryAppealReason
+    : kind === 'escalated'
+      ? m.reviewEscalateReason
+      : kind === 'rerouted'
+        ? m.entryTrailReasonLabel
+        : m.reviewComment
 
 function Ask({ supplement, subject }: { supplement: Supplement; subject: string | undefined }) {
   const { format } = useI18n()

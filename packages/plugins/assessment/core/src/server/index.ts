@@ -4788,6 +4788,7 @@ const entryDto = (entry: EntryView) => ({
         },
   currentReviewInstanceId: entry.currentReviewInstanceId,
   createdAt: new Date(entry.createdAt).toISOString(),
+  openRound: entry.openRound === null ? null : { origin: entry.openRound.origin },
   recognition:
     entry.recognition === null
       ? null
