@@ -7,6 +7,7 @@ import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import type { ResolvedNavigationItem } from '@qualy/ui-contract'
 import { shell } from './shell.stylex.ts'
 import { LocalizedText, useI18n } from '@qualy/web-i18n'
+import { Skeleton } from '@qualy/ui/skeleton'
 import { NavIcon } from './icons.tsx'
 import { layoutMessages as m } from './i18n.ts'
 import type { AppEntry } from './TopBar.tsx'
@@ -43,7 +44,13 @@ const styles = stylex.create({
     // belongs to.
     position: 'fixed',
     insetInline: 0,
-    bottom: 0,
+    // A pixel past the edge, with the same pixel given back inside.
+    //
+    // At bottom: 0 the browser rounds the bar's own box against the
+    // viewport's, and on a screen whose device pixels do not divide evenly
+    // the rounding left a hairline of the page showing under it - which
+    // through a blurred ground reads as a gap rather than as a seam.
+    bottom: -1,
     // ...but it keeps the floor the page keeps. Under 320 the page holds
     // its width and the window scrolls; a bar that went on shrinking with
     // the window was the one thing on screen still being squeezed, three
@@ -58,8 +65,9 @@ const styles = stylex.create({
     borderTopWidth: 1,
     borderTopStyle: 'solid',
     borderTopColor: `color-mix(in oklch, ${tokens.foreground} 8%, transparent)`,
-    // the device's own gesture area, kept clear under the row
-    paddingBottom: 'env(safe-area-inset-bottom)',
+    // the device's own gesture area, kept clear under the row, plus the
+    // pixel the box was pushed down by
+    paddingBottom: 'calc(env(safe-area-inset-bottom) + 1px)',
   },
   // the applications: drawn where the top bar has stopped drawing them
   barPhone: { display: { default: 'none', [breakpoints.phone]: 'block' } },
@@ -130,6 +138,7 @@ export function BottomBar({
   items,
   more,
   reach = 'phone',
+  pending = 0,
 }: {
   /** what a reader hears this bar called */
   label: string
@@ -138,7 +147,38 @@ export function BottomBar({
   more?: { label: string; active: boolean; onPress: () => void }
   /** how wide a window still draws it: to the phone breakpoint, or wherever the rail is folded */
   reach?: 'phone' | 'narrow'
+  /**
+   * How many cells to hold open while the entries are still being decided.
+   *
+   * The bar is the whole of this window's navigation, and a bar that is not
+   * there yet is a screen with no way off it. Worse on the way in: leaving a
+   * workspace's list for the workspace itself took the modules away and put
+   * the sections up a beat later, so the foot of the screen went empty and
+   * came back - which reads as the bar having been lost rather than changed.
+   */
+  pending?: number
 }) {
+  if (pending > 0) {
+    return (
+      <nav
+        data-testid="bottom-bar"
+        data-shell-bottom=""
+        data-pending=""
+        aria-label={label}
+        aria-busy
+        {...stylex.props(styles.bar, reach === 'narrow' ? styles.barNarrow : styles.barPhone)}
+      >
+        <div {...stylex.props(styles.row)}>
+          {Array.from({ length: pending }, (_, index) => (
+            <span key={index} aria-hidden {...stylex.props(styles.item, styles.itemIdle)}>
+              <Skeleton height={22} width={22} radius={6} />
+              <Skeleton height={9} width={28} radius={3} />
+            </span>
+          ))}
+        </div>
+      </nav>
+    )
+  }
   if (items.length < 2 && more === undefined) return null
   return (
     <nav

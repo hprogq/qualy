@@ -50,6 +50,7 @@ const styles = stylex.create({
   stageSeat: {
     display: 'inline-flex',
     minWidth: 0,
+    flexShrink: 1,
     alignItems: 'baseline',
     gap: 6,
   },
@@ -70,7 +71,8 @@ const styles = stylex.create({
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
-    fontSize: '0.8125rem',
+    // the line's own size, so the name and the time beside it read as one
+    fontSize: 'inherit',
     fontWeight: 500,
     color: tokens.foreground,
   },

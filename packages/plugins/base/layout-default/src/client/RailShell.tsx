@@ -1157,6 +1157,11 @@ function CapableRailShell({ navigation, context, badge, banner = false }: RailSh
           <BottomBar
             reach="narrow"
             label={format(m.workspaceSections)}
+            // Held open rather than drawn early. Entries gated on what the
+            // open workspace may do are not known until it says, and a bar
+            // that drew the two ungated ones first and the rest a beat later
+            // read as the navigation having been lost and found.
+            pending={awaited > 0 ? cells : 0}
             items={across.map((item) => ({
               id: item.id,
               label: item.label,

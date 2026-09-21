@@ -150,6 +150,26 @@ const manifest = () => ({
   },
 })
 
+// The same manifest with nothing waiting on the open workspace's say-so.
+//
+// The rail and the bar at the foot both hold their places open until the
+// workspace has published what this reader may do - the case above pins
+// that - so a test about what the bar DOES with its entries has to be given
+// a rail that is already settled.
+const settledManifest = () => {
+  const full = manifest()
+  const rail = full.collections['workspace-shell/navigation']!
+  return {
+    ...full,
+    collections: {
+      ...full.collections,
+      'workspace-shell/navigation': rail.filter(
+        (entry) => (entry as { capability?: string }).capability === undefined,
+      ),
+    },
+  }
+}
+
 // the same manifest with one application in it: the reader who can open
 // only their own assessment, which is most of this product's readers
 const oneAppManifest = () => {
@@ -361,11 +381,11 @@ describe('the workspace shell', () => {
 
   it('hands the bar at the foot of a phone to the open workspace\u2019s own sections', async () => {
     await page.viewport(390, 844)
-    shell(
-      <WorkspaceShell />,
-      '/assessment/batches/:batchId/phases',
-      `/assessment/batches/${BATCH_ID}/phases`,
-    )
+    renderScreen({
+      client: fakeClient({ app: { getManifest: () => Effect.succeed(settledManifest()) } }),
+      routes: [{ path: '/assessment/batches/:batchId/phases', element: <WorkspaceShell /> }],
+      route: `/assessment/batches/${BATCH_ID}/phases`,
+    })
 
     // for as long as the reader is inside a batch, every move is a move
     // between its sections - so that is what the easiest place on the
@@ -397,7 +417,7 @@ describe('the workspace shell', () => {
     // would read as though the reader were nowhere.
     await page.viewport(390, 844)
     const many = () => {
-      const full = manifest()
+      const full = settledManifest()
       const rail = full.collections['workspace-shell/navigation']!
       return {
         ...full,

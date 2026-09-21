@@ -18,7 +18,7 @@ import { assessmentApi } from './api.ts'
 import { useBatchLive } from './live.ts'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import { BatchScreen } from './batch/BatchScreen.tsx'
-import { BatchFlow, BatchFlowStrip } from './batch/BatchFlow.tsx'
+import { BatchFlow } from './batch/BatchFlow.tsx'
 import { assessmentMessages as m } from './i18n.ts'
 
 // The batch's front page as one desk (§32.73, laid out to design 2a/2b):
@@ -58,29 +58,9 @@ const styles = stylex.create({
   },
   // the stage plan on a phone: the same strip, laid over the desk rather
   // than beside it
-  planPhone: {
-    display: {
-      default: 'flex',
-      [wide]: 'none',
-    },
-    flexDirection: 'column',
-    gap: 10,
-    order: {
-      default: null,
-      [narrow]: 2,
-    },
-    marginTop: {
-      default: null,
-      [narrow]: 8,
-    },
-  },
   sectionTitle: {
     fontSize: 14,
     fontWeight: 600,
-  },
-  planSkeleton: {
-    height: 64,
-    width: '100%',
   },
   aside: {
     display: {
@@ -177,20 +157,16 @@ const styles = stylex.create({
     backgroundColor: tokens.surface,
     boxShadow: tokens.elevation1,
   },
-  // The upright plan indents its own text to clear the rail, which is not the
-  // same thing as standing off the card: the mark sits ON the column's leading
-  // edge, so without this the dot rides the card's border and every note wraps
-  // against it.
-  cardPlan: {
-    paddingBlock: 20,
-    paddingInline: 20,
-  },
-  // The strip scrolls, so its air goes INSIDE the scroller (see the rail's own
-  // lead-in) rather than around it. Padding here would end every stage short
-  // of the card's own edge, which reads as a row that failed to fit rather
-  // than as a rail there is more of.
-  cardStrip: {
-    paddingBlock: 16,
+  // The plan is a list of what has happened and what is to come, not a thing
+  // with a face: given a sheet of its own it read as a third card competing
+  // with the two that carry the work. It stands on the page's own ground, and
+  // only clears its rail - the mark sits ON the column's leading edge, so
+  // with no inset at all the dot hangs off the column.
+  asidePlan: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    paddingInlineStart: 4,
   },
   // what needs a hand sits a little proud of what merely happened
   cardRaised: {
@@ -597,22 +573,12 @@ export default function BatchOverviewPage() {
     <BatchScreen title={format(m.tabOverview)} description={format(m.overviewHint)}>
       {() => (
         <div {...stylex.props(styles.desk)}>
+          {/* No plan here on a phone: the band at the top of the screen is
+              the window's own head there, and it already carries the stage,
+              its clock and the way to the whole flow. Saying it again as the
+              first thing on the page pushed what the reader came for below
+              the fold. */}
           <div {...stylex.props(styles.main)}>
-            <section {...stylex.props(styles.planPhone)}>
-              <h2 {...stylex.props(styles.sectionTitle)}>{format(m.flowTitle)}</h2>
-              {plan.isPending ? (
-                <Skeleton className={stylex.props(styles.planSkeleton).className} />
-              ) : (
-                // the same card the other two sections sit in: three parts of
-                // one desk, each on its own sheet. The strip scrolls inside it
-                // rather than running to the screen edge - a row that escapes
-                // its card reads as a fourth thing, not as this one continuing
-                <div {...stylex.props(styles.card, styles.cardStrip)}>
-                  <BatchFlowStrip timeline={timeline} />
-                </div>
-              )}
-            </section>
-
             <MyDesk batchId={batchId} overview={overview} />
           </div>
 
@@ -625,7 +591,7 @@ export default function BatchOverviewPage() {
                 <Skeleton className={stylex.props(styles.asideSkeletonLine).className} />
               </div>
             ) : (
-              <div {...stylex.props(styles.card, styles.cardPlan)}>
+              <div {...stylex.props(styles.asidePlan)}>
                 <BatchFlow timeline={timeline} keepPast={1} />
               </div>
             )}

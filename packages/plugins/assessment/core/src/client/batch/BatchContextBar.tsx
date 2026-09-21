@@ -157,11 +157,18 @@ const styles = stylex.create({
     paddingBlock: { default: null, [breakpoints.phone]: 7 },
   },
   progressText: {
-    fontSize: 14,
+    // one size across the strip: the stage and its clock are one line, and
+    // a name a pixel larger than the time beside it reads as a heading
+    fontSize: { default: 14, [breakpoints.phone]: 13 },
+    minWidth: 0,
+    flexShrink: 1,
   },
+  // the label's own end, not the control's: a ghost button's inset would
+  // leave the word short of the margin every other line on the strip keeps
   flowButton: {
-    marginInlineEnd: -8,
+    marginInlineEnd: -12,
     flexShrink: 0,
+    fontSize: 13,
     fontWeight: 400,
     color: tokens.mutedForeground,
   },
