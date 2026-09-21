@@ -421,7 +421,11 @@ export default function UsersPage() {
                           <Cell lead strong={user.id === openUserId}>
                             {user.displayName}
                           </Cell>
-                          <Cell numeric tone={user.businessNo === null ? 'quiet' : 'muted'}>
+                          <Cell
+                            numeric
+                            unlabelled
+                            tone={user.businessNo === null ? 'quiet' : 'muted'}
+                          >
                             {user.businessNo ?? format(m.personNoBusinessNo, { businessNo })}
                           </Cell>
                         </>
@@ -435,7 +439,10 @@ export default function UsersPage() {
                           </Cell>
                         </>
                       )}
-                      <Cell>{user.userType?.name ?? '—'}</Cell>
+                      {/* a student number, a kind of person and a unit read
+                          as themselves wherever they appear; stacked, they
+                          need no column word in front of them */}
+                      <Cell unlabelled>{user.userType?.name ?? '—'}</Cell>
                       {user.primaryOrgNode === null ? (
                         <Cell>—</Cell>
                       ) : (
@@ -449,15 +456,19 @@ export default function UsersPage() {
                           onPick={asking('anchor')}
                         />
                       )}
-                      <Status tone={user.status === 'active' ? 'plain' : 'bad'}>
-                        {format(
-                          user.status === 'deleted'
-                            ? m.deletedBadge
-                            : user.status === 'disabled'
-                              ? m.disabledBadge
-                              : m.statusActive,
-                        )}
-                      </Status>
+                      {/* what the list is scanned by, so it keeps the end of
+                          the row on a phone as it keeps the last column here */}
+                      <Cell narrow="end" unlabelled>
+                        <Status tone={user.status === 'active' ? 'plain' : 'bad'}>
+                          {format(
+                            user.status === 'deleted'
+                              ? m.deletedBadge
+                              : user.status === 'disabled'
+                                ? m.disabledBadge
+                                : m.statusActive,
+                          )}
+                        </Status>
+                      </Cell>
                       <span {...stylex.props(styles.look)}>
                         <Button
                           size="icon-xs"

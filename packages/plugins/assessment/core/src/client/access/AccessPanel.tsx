@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { XIcon } from 'lucide-react'
 import { UiSlot, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
@@ -15,7 +16,7 @@ import { toast } from '@qualy/ui/toast'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@qualy/ui/empty'
 import { PersonCell } from '@qualy/ui/person'
 import { Skeleton } from '@qualy/ui/skeleton'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@qualy/ui/table'
+import { Card, Cell, Table, TableHead, TableRow } from '@qualy/ui/screen'
 import { personCard } from '@qualy/ui-contract'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
@@ -36,6 +37,9 @@ import type { AccessSelection, AccessSource, AccessSubject } from './model.ts'
 
 const PAGE_SIZE = 25
 
+/** person, where the duty comes from, what it grants, and the way to change it */
+const STAFF_COLUMNS = 'minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, 1.4fr) 6rem'
+
 const styles = stylex.create({
   page: { display: 'flex', flexDirection: 'column', gap: 20 },
   section: { display: 'flex', flexDirection: 'column', gap: 8 },
@@ -53,9 +57,7 @@ const styles = stylex.create({
     borderColor: tokens.border,
   },
   frameEmpty: { borderStyle: 'dashed' },
-  personColumn: { width: '26%' },
-  sourceColumn: { width: '28%' },
-  actionColumn: { width: 96 },
+
   pager: { display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 },
   sources: { display: 'flex', flexDirection: 'column', gap: 4 },
   source: { display: 'flex', minWidth: 0, alignItems: 'center', gap: 6 },
@@ -77,7 +79,11 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
     textDecorationLine: 'line-through',
   },
-  endCell: { textAlign: 'right' },
+  endCell: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    marginInlineStart: { default: null, [breakpoints.phone]: 'auto' },
+  },
 })
 
 export function AccessPanel({ batchId }: { batchId: string }) {
@@ -265,32 +271,27 @@ export function AccessPanel({ batchId }: { batchId: string }) {
               </EmptyHeader>
             </Empty>
           ) : (
-            <div {...stylex.props(styles.frame)}>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className={stylex.props(styles.personColumn).className}>
-                      {format(m.accessColumnPerson)}
-                    </TableHead>
-                    <TableHead className={stylex.props(styles.sourceColumn).className}>
-                      {format(m.accessColumnSources)}
-                    </TableHead>
-                    <TableHead>{format(m.accessColumnPermissions)}</TableHead>
-                    <TableHead className={stylex.props(styles.actionColumn).className} />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {staff.map((row) => (
-                    <SubjectRow
-                      key={row.userId}
-                      subject={row}
-                      onAdjust={() => setAdjusting(row.userId)}
-                      onRemove={(source) => setRemoving({ source, name: row.displayName })}
-                    />
-                  ))}
-                </TableBody>
+            /* the product's own table rather than a second one written
+               here: narrow, its rows stack into a name with its facts under
+               it, which four columns of chips squeezed into 390px never did */
+            <Card>
+              <Table columns={STAFF_COLUMNS}>
+                <TableHead>
+                  <span>{format(m.accessColumnPerson)}</span>
+                  <span>{format(m.accessColumnSources)}</span>
+                  <span>{format(m.accessColumnPermissions)}</span>
+                  <span />
+                </TableHead>
+                {staff.map((row) => (
+                  <SubjectRow
+                    key={row.userId}
+                    subject={row}
+                    onAdjust={() => setAdjusting(row.userId)}
+                    onRemove={(source) => setRemoving({ source, name: row.displayName })}
+                  />
+                ))}
               </Table>
-            </div>
+            </Card>
           )}
         </AsyncSection>
 
@@ -366,7 +367,7 @@ function SubjectRow({
 
   return (
     <TableRow>
-      <TableCell>
+      <Cell lead>
         {/* whoever owns people decides what a reader may learn about one; this
             screen only knows the name it was going to print anyway */}
         <UiSlot
@@ -383,8 +384,8 @@ function SubjectRow({
             />
           }
         />
-      </TableCell>
-      <TableCell>
+      </Cell>
+      <Cell>
         <ul {...stylex.props(styles.sources)}>
           {subject.sources.map((source) => (
             <li key={source.sourceId} {...stylex.props(styles.source)}>
@@ -421,8 +422,11 @@ function SubjectRow({
             </li>
           ))}
         </ul>
-      </TableCell>
-      <TableCell>
+      </Cell>
+      {/* a row of permission chips is a table's fact, not a phone's: what
+          somebody holds is read - and changed - in the panel the row's own
+          press opens */}
+      <Cell narrow="drop">
         {subject.effective.length === 0 && denied.length === 0 ? (
           <span {...stylex.props(styles.quiet)}>{format(m.accessNothing)}</span>
         ) : (
@@ -461,8 +465,8 @@ function SubjectRow({
             )}
           </div>
         )}
-      </TableCell>
-      <TableCell className={stylex.props(styles.endCell).className}>
+      </Cell>
+      <span {...stylex.props(styles.endCell)}>
         {/* their own row: the server refuses it too, this is so nobody is
             offered a button that answers with a refusal */}
         {subject.manageable && (
@@ -470,7 +474,7 @@ function SubjectRow({
             {format(m.accessAdjust)}
           </Button>
         )}
-      </TableCell>
+      </span>
     </TableRow>
   )
 }

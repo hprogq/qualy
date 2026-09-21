@@ -178,13 +178,17 @@ export default function UserBatchesPage() {
                   <Cell title={membership.anchorNodeName ?? undefined}>
                     {membership.anchorNodeName ?? format(m.personAnchorGone)}
                   </Cell>
-                  <Status tone={membership.status === 'excluded' ? 'bad' : 'plain'}>
-                    {format(
-                      membership.status === 'excluded'
-                        ? m.personMembershipExcluded
-                        : m.personMembershipActive,
-                    )}
-                  </Status>
+                  {/* still in the round or taken off it: what this list is
+                      scanned for, kept at the end of the stacked row */}
+                  <Cell narrow="end" unlabelled>
+                    <Status tone={membership.status === 'excluded' ? 'bad' : 'plain'}>
+                      {format(
+                        membership.status === 'excluded'
+                          ? m.personMembershipExcluded
+                          : m.personMembershipActive,
+                      )}
+                    </Status>
+                  </Cell>
                   <Cell numeric>{when.moment(new Date(membership.includedAt).getTime())}</Cell>
                 </TableRow>
               ))}

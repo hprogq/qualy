@@ -81,13 +81,22 @@ export function TypesView({
                   <Cell lead strong={selected}>
                     {type.name}
                   </Cell>
-                  <Cell numeric>
+                  {/* how many there are is what this list is scanned by, so
+                      stacked it keeps the end of the row */}
+                  <Cell numeric narrow="end" unlabelled>
                     {format(m.countUnits, { count: shape.nodesOfType.get(type.id) ?? 0 })}
                   </Cell>
                   <Cell tone={holds.length === 0 ? 'quiet' : 'plain'} title={listJoin(holds)}>
                     {holds.length === 0 ? format(m.none) : listJoin(holds)}
                   </Cell>
-                  <Cell tone={under.length === 0 ? 'quiet' : 'plain'} title={listJoin(under)}>
+                  {/* what may sit under this kind is the rule somebody came
+                      for; what this kind may sit under is the same six rules
+                      read the other way, and the picture above says both */}
+                  <Cell
+                    narrow="drop"
+                    tone={under.length === 0 ? 'quiet' : 'plain'}
+                    title={listJoin(under)}
+                  >
                     {under.length === 0 ? format(m.noneTopKind) : listJoin(under)}
                   </Cell>
                 </TableRow>

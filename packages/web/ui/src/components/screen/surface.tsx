@@ -237,6 +237,22 @@ const styles = stylex.create({
       color: QUIET,
     },
   },
+  // A column that is not worth a phone's width.
+  //
+  // Six facts stacked make three lines of small grey words, and a reader
+  // scanning a list does not read three lines per row - they read the name
+  // and one or two things about it. Which ones is the table's to say; the
+  // rest are a press away in whatever the row opens.
+  cellDropNarrow: { display: { default: null, [breakpoints.phone]: 'none' } },
+  // The one fact the row is scanned BY - a count, a state - kept at the far
+  // end rather than queueing in the middle of the facts. The name has the
+  // line above to itself, so this sits at the end of the line under it,
+  // where the eye running down a list finds every row's in the same place.
+  cellEndNarrow: {
+    order: { default: null, [breakpoints.phone]: 1 },
+    marginInlineStart: { default: null, [breakpoints.phone]: 'auto' },
+    textAlign: { default: null, [breakpoints.phone]: 'end' },
+  },
   cellLead: {
     display: 'flex',
     alignItems: 'center',
@@ -637,6 +653,8 @@ export function Cell({
   mono = false,
   end = false,
   title,
+  narrow = 'keep',
+  unlabelled = false,
   column,
   children,
 }: {
@@ -648,6 +666,24 @@ export function Cell({
   mono?: boolean
   end?: boolean
   title?: string | undefined
+  /**
+   * What becomes of this column on a phone, where the row is stacked.
+   *
+   * `keep` is a fact under the name. `end` is the one the list is scanned
+   * by - a count, a state - kept opposite the name on the first line.
+   * `drop` is a column worth a table's width and not a phone's; it is a
+   * press away in whatever the row opens.
+   */
+  narrow?: 'keep' | 'drop' | 'end'
+  /**
+   * The value says what it is, so it needs no column word beside it.
+   *
+   * For a student number, a person's kind, a unit's name - read as
+   * themselves wherever they appear. Everything else takes its head's word
+   * on a phone, because a fact with no column above it and no name beside
+   * it is a number nobody can place.
+   */
+  unlabelled?: boolean
   /**
    * Which column this is, filled in by the row.
    *
@@ -662,7 +698,8 @@ export function Cell({
   // A cell with nothing in it is a fact this row does not have, and a bare
   // column name standing on its own says the opposite.
   const said = children !== undefined && children !== null && children !== false && children !== ''
-  const label = column === undefined || !said ? '' : (labels[column] ?? '')
+  const label =
+    column === undefined || !said || unlabelled || narrow === 'end' ? '' : (labels[column] ?? '')
   if (lead) {
     return (
       <span
@@ -687,6 +724,8 @@ export function Cell({
     numeric && styles.cellNumeric,
     mono && styles.cellMono,
     end && styles.cellEnd,
+    narrow === 'drop' && styles.cellDropNarrow,
+    narrow === 'end' && styles.cellEndNarrow,
     label !== '' && styles.cellLabel,
   )
   return (

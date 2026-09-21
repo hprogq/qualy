@@ -304,7 +304,14 @@ export function ParticipantEntries({
                               openRound={entry.openRound}
                             />
                           </Cell>
-                          <Cell numeric tone={counted === undefined ? 'quiet' : 'plain'}>
+                          {/* what it is worth is what this list is read
+                              for, so stacked it keeps the end of the row */}
+                          <Cell
+                            numeric
+                            narrow="end"
+                            unlabelled
+                            tone={counted === undefined ? 'quiet' : 'plain'}
+                          >
                             {counted ?? '—'}
                           </Cell>
                         </TableRow>

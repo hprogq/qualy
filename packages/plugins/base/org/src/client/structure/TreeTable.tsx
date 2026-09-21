@@ -57,7 +57,10 @@ const styles = stylex.create({
   end: { textAlign: 'right' },
   row: {
     display: 'grid',
-    gridTemplateColumns: { default: COLUMNS, [breakpoints.phone]: 'minmax(0, 1fr) auto 4.5rem' },
+    gridTemplateColumns: {
+      default: COLUMNS,
+      [breakpoints.phone]: 'minmax(0, 1fr) auto 3.6rem',
+    },
     alignItems: 'center',
     columnGap: 16,
     minHeight: 40,
@@ -110,12 +113,22 @@ const styles = stylex.create({
   figure: { textAlign: 'right', fontVariantNumeric: 'tabular-nums' },
   // the one figure a phone keeps beside the name
   figurePhone: { display: 'block' },
+  // A unit's kind, which a phone keeps: names five levels down a structure
+  // repeat - every college has a 2301 班 - and the kind is what tells two
+  // of them apart at a glance. It shrinks away rather than pushing the
+  // name, because the name is what somebody is looking for.
+  kindPhone: { display: 'block', flexShrink: 0, fontSize: 12 },
   none: { color: QUIET },
   // What can be done to a unit, at the end of its own row. Quiet until the
   // row is pointed at or holds the focus, so forty rows are not forty sets of
   // buttons; always there on a screen with nothing to point with.
   acts: {
-    display: 'inline-flex',
+    // Narrow, the row is a way into the unit and nothing else: what can be
+    // done to it is in the panel the row opens, where it has room for a
+    // word rather than a glyph. Left here it reserved a column, and the
+    // name - the thing somebody is looking for - was the column that gave
+    // way for it.
+    display: { default: 'inline-flex', [breakpoints.phone]: 'none' },
     justifySelf: 'end',
     alignItems: 'center',
     gap: 2,
@@ -228,7 +241,7 @@ export function TreeTable({
           </span>
           {!node.manageable && <LockIcon aria-hidden {...stylex.props(styles.lock)} />}
         </span>
-        <span {...stylex.props(styles.cell)}>{typeName(node.orgTypeId)}</span>
+        <span {...stylex.props(styles.cell, styles.kindPhone)}>{typeName(node.orgTypeId)}</span>
         <span
           {...stylex.props(
             styles.cell,

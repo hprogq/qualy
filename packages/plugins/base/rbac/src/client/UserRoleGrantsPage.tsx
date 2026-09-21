@@ -161,7 +161,9 @@ export default function UserRoleGrantsPage() {
                 {organizational.map((grant) => (
                   <TableRow key={grant.id} data-testid="grant-row" data-grant-kind="organizational">
                     <Cell lead>{grant.roleName}</Cell>
-                    <Cell title={where(grant)}>{where(grant)}</Cell>
+                    <Cell title={where(grant)} unlabelled>
+                      {where(grant)}
+                    </Cell>
                     <Cell tone={grant.validFrom === null && grant.validUntil === null ? 'quiet' : 'muted'}>
                       {grant.validFrom === null && grant.validUntil === null ? (
                         format(m.windowOpen)
@@ -216,7 +218,9 @@ export default function UserRoleGrantsPage() {
                     data-grant-kind="confined"
                   >
                     <Cell lead>{grant.roleName}</Cell>
-                    <Cell title={where(grant)}>{where(grant)}</Cell>
+                    <Cell title={where(grant)} unlabelled>
+                      {where(grant)}
+                    </Cell>
                     <Cell>
                       <span {...stylex.props(styles.origin)}>
                         <GrantOrigin grant={grant} />

@@ -149,24 +149,40 @@ export default function RolesPage() {
                         </Cell>
                         {/* the column is named above, and on a phone the row
                             carries that name - so the cell is the count */}
-                        <Cell numeric>{figure.format(role.grantCount)}</Cell>
+                        {/* the number the list is scanned by: stacked, it
+                            keeps the end of the row */}
+                        <Cell numeric narrow="end">{figure.format(role.grantCount)}</Cell>
                         <Cell tone={who.unset ? 'warn' : 'muted'} title={who.words}>
                           {who.words}
                         </Cell>
-                        <Cell tone={where.unset ? 'warn' : where.quiet ? 'quiet' : 'muted'} title={where.words}>
+                        {/* where it may be anchored matters when granting
+                            one, which is not what this list is read for */}
+                        <Cell
+                          narrow="drop"
+                          tone={where.unset ? 'warn' : where.quiet ? 'quiet' : 'muted'}
+                          title={where.words}
+                        >
                           {where.words}
                         </Cell>
-                        <Status
-                          tone={role.status === 'disabled' ? 'bad' : role.status === 'draft' ? 'warn' : 'plain'}
-                        >
-                          {format(
-                            role.status === 'active'
-                              ? m.statusOn
-                              : role.status === 'draft'
-                                ? m.draftBadge
-                                : m.disabledBadge,
-                          )}
-                        </Status>
+                        <Cell narrow={role.status === 'active' ? 'drop' : 'keep'} unlabelled>
+                          <Status
+                            tone={
+                              role.status === 'disabled'
+                                ? 'bad'
+                                : role.status === 'draft'
+                                  ? 'warn'
+                                  : 'plain'
+                            }
+                          >
+                            {format(
+                              role.status === 'active'
+                                ? m.statusOn
+                                : role.status === 'draft'
+                                  ? m.draftBadge
+                                  : m.disabledBadge,
+                            )}
+                          </Status>
+                        </Cell>
                       </TableRow>
                     )
                   })}

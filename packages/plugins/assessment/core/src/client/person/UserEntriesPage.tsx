@@ -181,10 +181,14 @@ export default function UserEntriesPage() {
                   <Cell tone="plain" title={entry.itemTitle}>
                     {entry.itemTitle}
                   </Cell>
-                  <Status tone={entry.status === 'approved' ? 'ok' : 'plain'}>
-                    {statusWord[entry.status]}
-                  </Status>
-                  <Cell>{sourceWord[entry.source]}</Cell>
+                  {/* where a claim stands is what this list is scanned for,
+                      kept at the end of the stacked row */}
+                  <Cell narrow="end" unlabelled>
+                    <Status tone={entry.status === 'approved' ? 'ok' : 'plain'}>
+                      {statusWord[entry.status]}
+                    </Status>
+                  </Cell>
+                  <Cell unlabelled>{sourceWord[entry.source]}</Cell>
                   <Cell numeric>{when.moment(new Date(entry.createdAt).getTime())}</Cell>
                 </TableRow>
               ))}

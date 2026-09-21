@@ -92,7 +92,9 @@ export default function UserTypesPage() {
                       <LeadWord>{type.name}</LeadWord>
                       {type.isSystem && <Tag>{format(m.systemBadge)}</Tag>}
                     </Cell>
-                    <Cell tone="muted" numeric>
+                    {/* the number the list is scanned by: stacked, it keeps
+                        the end of the row rather than queueing among the facts */}
+                    <Cell tone="muted" numeric narrow="end" unlabelled>
                       {figure.format(type.userCount)}
                     </Cell>
                     <Cell tone="muted">
@@ -113,14 +115,20 @@ export default function UserTypesPage() {
                         listJoin(entrances.map((entrance) => entrance.name))
                       )}
                     </Cell>
-                    <Cell tone="muted">
+                    {/* two facts are what a phone row can hold and be read
+                        at a glance: where they may stand and how they get
+                        in. What they may carry is a press away. */}
+                    <Cell tone="muted" narrow="drop">
                       {openRoles === undefined
                         ? format(m.unknownWord)
                         : openRoles.length === 0
                           ? format(m.noneWord)
                           : listJoin(openRoles.map((role) => role.name))}
                     </Cell>
-                    <Cell tone="muted">
+                    {/* in force is the resting state and says nothing a
+                        phone row has room for; out of force is the reason
+                        somebody is looking at this row at all */}
+                    <Cell tone="muted" narrow={type.status === 'active' ? 'drop' : 'keep'}>
                       <Status tone={type.status === 'active' ? 'plain' : 'bad'}>
                         {format(type.status === 'active' ? m.typeEnabled : m.statusDisabled)}
                       </Status>

@@ -178,7 +178,7 @@ export default function UserIdentitiesPage() {
                     {identity === null ? (
                       unbound(entrance)
                     ) : (
-                      <Cell tone="plain" title={identity.identifier}>
+                      <Cell tone="plain" unlabelled title={identity.identifier}>
                         <span {...stylex.props(styles.code)}>{identity.identifier}</span>
                       </Cell>
                     )}

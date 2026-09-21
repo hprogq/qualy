@@ -250,7 +250,7 @@ export default function LoginMethodsPage() {
                     </Cell>
                     {/* the kind as the driver names itself; its code only
                         where no installed driver claims it */}
-                    <Cell tone="muted">
+                    <Cell tone="muted" unlabelled>
                       {(() => {
                         const kind = kinds.data?.kinds.find((one) => one.type === provider.type)
                         return kind === undefined ? provider.type : formatText(kind.label)
@@ -273,10 +273,12 @@ export default function LoginMethodsPage() {
                         )
                       )}
                     </Cell>
-                    <Cell tone="muted" numeric>
+                    {/* the order is what the presses beside the name change;
+                        the number itself is a table's fact, not a phone's */}
+                    <Cell tone="muted" numeric narrow="drop">
                       {index + 1}
                     </Cell>
-                    <Cell tone="muted">
+                    <Cell tone="muted" narrow="end" unlabelled>
                       <Status tone={provider.status === 'active' ? 'plain' : 'bad'}>
                         {format(provider.status === 'active' ? m.typeEnabled : m.statusDisabled)}
                       </Status>

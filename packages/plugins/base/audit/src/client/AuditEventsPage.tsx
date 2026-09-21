@@ -116,7 +116,15 @@ const styles = stylex.create({
     flexBasis: { default: null, [breakpoints.phone]: '100%' },
   },
   target: { fontSize: 12, color: tokens.mutedForeground },
-  outcome: { fontSize: 12, color: tokens.mutedForeground },
+  // what somebody opened this page for: stacked, it keeps the end of the
+  // row rather than queueing behind the actor and the object, so a column
+  // of rows can be scanned for the one that did not go through
+  outcome: {
+    fontSize: 12,
+    color: tokens.mutedForeground,
+    order: { default: null, [breakpoints.phone]: 1 },
+    marginInlineStart: { default: null, [breakpoints.phone]: 'auto' },
+  },
   ip: {
     display: { default: 'block', [breakpoints.phone]: 'none' },
     textAlign: 'right',

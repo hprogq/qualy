@@ -356,13 +356,39 @@ export function ParticipantResultList({
                       data-participant={row.id}
                       data-participant-status={row.status}
                     >
-                      <Cell lead numeric tone={row.businessNo === null ? 'quiet' : 'plain'}>
-                        {row.businessNo ?? format(m.noBusinessNoShort, { businessNo })}
+                      {/* across a table the number leads, because that is
+                          what the list is sorted by; stacked, a row is a
+                          person with their facts under them */}
+                      {narrow ? (
+                        <>
+                          <Cell lead>{row.displayName}</Cell>
+                          <Cell
+                            numeric
+                            unlabelled
+                            tone={row.businessNo === null ? 'quiet' : 'muted'}
+                          >
+                            {row.businessNo ?? format(m.noBusinessNoShort, { businessNo })}
+                          </Cell>
+                        </>
+                      ) : (
+                        <>
+                          <Cell lead numeric tone={row.businessNo === null ? 'quiet' : 'plain'}>
+                            {row.businessNo ?? format(m.noBusinessNoShort, { businessNo })}
+                          </Cell>
+                          <Cell tone="plain" unlabelled>
+                            {row.displayName}
+                          </Cell>
+                        </>
+                      )}
+                      {/* whether they are still in the round is what this
+                          list is scanned for, so stacked it keeps the end */}
+                      <Cell narrow="end" unlabelled>
+                        <Status tone={row.status === 'excluded' ? 'bad' : 'plain'}>
+                          {format(
+                            row.status === 'excluded' ? m.excludedBadge : m.participantActive,
+                          )}
+                        </Status>
                       </Cell>
-                      <Cell tone="plain">{row.displayName}</Cell>
-                      <Status tone={row.status === 'excluded' ? 'bad' : 'plain'}>
-                        {format(row.status === 'excluded' ? m.excludedBadge : m.participantActive)}
-                      </Status>
                       {/* the act on one person, where the person is: walking
                           into their account to take them off the round was a
                           detour through a page that answers a different
