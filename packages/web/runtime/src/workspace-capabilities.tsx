@@ -1,5 +1,4 @@
 import {
-  createContext,
   useCallback,
   useContext,
   useEffect,
@@ -7,6 +6,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { sharedContext } from './shared-context.ts'
 
 // Who the reader is inside the thing currently open, as an opaque set of
 // namespaced tokens ('assessment/review'). The shell that renders workspace
@@ -28,7 +28,7 @@ interface CapabilityScope {
   readonly publish: (values: ReadonlySet<string> | null) => void
 }
 
-const Scope = createContext<CapabilityScope | null>(null)
+const Scope = sharedContext<CapabilityScope | null>('workspace-capabilities', null)
 
 /** mounted by the workspace shell, around both its rail and its content */
 export function WorkspaceCapabilityScope({ children }: { children: ReactNode }) {

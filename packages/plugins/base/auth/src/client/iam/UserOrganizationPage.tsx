@@ -40,7 +40,7 @@ const styles = stylex.create({
   section: { display: 'flex', flexDirection: 'column', gap: 12 },
   standing: { display: 'flex', minWidth: 0, alignItems: 'center', gap: 8 },
   // the picker draws its own box; the dialog gives it a height to grow into
-  seat: { display: 'flex', minHeight: 0, height: '22rem', flexDirection: 'column' },
+  seat: { display: 'flex', minHeight: 0, height: '25rem', flexDirection: 'column' },
   chosen: {
     display: 'flex',
     minWidth: 0,

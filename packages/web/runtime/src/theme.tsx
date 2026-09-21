@@ -1,5 +1,4 @@
 import {
-  createContext,
   use,
   useCallback,
   useEffect,
@@ -8,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { sharedContext } from './shared-context.ts'
 
 // Light, dark, or whatever the machine prefers - the third is the default,
 // because a product that ignores the system setting is a product that glows
@@ -36,7 +36,7 @@ interface ThemeState {
   setChoice: (choice: ThemeChoice) => void
 }
 
-const ThemeContext = createContext<ThemeState | null>(null)
+const ThemeContext = sharedContext<ThemeState | null>('theme', null)
 
 const systemPrefersDark = () =>
   typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches

@@ -1,5 +1,4 @@
 import {
-  createContext,
   useCallback,
   useContext,
   useEffect,
@@ -7,6 +6,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { sharedContext } from './shared-context.ts'
 
 // Whether the screen currently open fills the room under the shell's bars.
 //
@@ -27,7 +27,7 @@ interface FillScope {
   readonly claim: (holding: boolean) => void
 }
 
-const Scope = createContext<FillScope | null>(null)
+const Scope = sharedContext<FillScope | null>('screen-fill', null)
 
 /** mounted by a shell, around whatever it renders screens into */
 export function ScreenFillScope({ children }: { children: ReactNode }) {

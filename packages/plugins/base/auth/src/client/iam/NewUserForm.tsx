@@ -37,7 +37,10 @@ const styles = stylex.create({
   unitWord: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   unitEmpty: { color: tokens.mutedForeground },
   chevron: { flexShrink: 0, opacity: 0.5 },
-  seat: { display: 'flex', minHeight: 0, height: '20rem', flexDirection: 'column' },
+  // Tall enough that the picker's own list never spills and hands the
+  // dialog a second scrollbar: a search row, a kind filter and a tree whose
+  // box will not go below 16rem do not fit in 20.
+  seat: { display: 'flex', minHeight: 0, height: '25rem', flexDirection: 'column' },
   // no kind of person may stand here, which is a rule somebody has to go
   // and change rather than a field they can fill in
   barred: {
@@ -166,6 +169,11 @@ export function NewUserForm({
               <Input
                 id={id}
                 autoFocus
+                // the browser reads a lone name field as its own record of
+                // the person at the keyboard and offers to fill it in; this
+                // is somebody else's name, typed by an administrator
+                autoComplete="off"
+                name="new-user-display-name"
                 value={displayName}
                 onChange={(event) => setDisplayName(event.target.value)}
               />
@@ -175,6 +183,8 @@ export function NewUserForm({
             {(id) => (
               <Input
                 id={id}
+                autoComplete="off"
+                name="new-user-business-no"
                 value={businessNo}
                 onChange={(event) => setBusinessNo(event.target.value)}
               />
@@ -241,6 +251,7 @@ export function NewUserForm({
           nothing of the first one to come back to */}
       <FormDialog
         open={picking}
+        size="medium"
         title={format(m.personPlacement)}
         description={format(m.movePick)}
         onClose={() => setPicking(false)}

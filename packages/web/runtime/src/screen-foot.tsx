@@ -1,5 +1,4 @@
 import {
-  createContext,
   useCallback,
   useContext,
   useEffect,
@@ -7,6 +6,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { sharedContext } from './shared-context.ts'
 
 // Whether the screen currently open has taken the foot of the window for
 // itself.
@@ -27,7 +27,7 @@ interface FootScope {
   readonly claim: (holding: boolean) => void
 }
 
-const Scope = createContext<FootScope | null>(null)
+const Scope = sharedContext<FootScope | null>('screen-foot', null)
 
 /** mounted by the shell, around whatever it renders screens into */
 export function ScreenFootScope({ children }: { children: ReactNode }) {

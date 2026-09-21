@@ -106,7 +106,7 @@ const styles = stylex.create({
   // given: handed a box with only a ceiling, its list took the height it
   // computed from the window instead and drew straight over the field
   // below it.
-  picker: { display: 'flex', minHeight: 0, height: '20rem', flexDirection: 'column' },
+  picker: { display: 'flex', minHeight: 0, height: '25rem', flexDirection: 'column' },
   recordsSeat: { minHeight: { default: '26rem', [breakpoints.phone]: '20rem' } },
   summary: { display: 'grid', gap: 12, gridTemplateColumns: { default: 'minmax(0, 1fr)', '@media (min-width: 720px)': 'repeat(3, minmax(0, 1fr))' } },
   summaryCell: {

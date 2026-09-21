@@ -79,6 +79,22 @@ const part = stylex.create({
   label: {
     gap: '0.375rem',
   },
+  // The widget lays a button's contents out inside an inner box, and sizes
+  // that box to what it holds - so asking the contents to sit apart did
+  // nothing, however wide the button itself was: a field-shaped button
+  // drew its value and its chevron as a pair at one end with the rest of
+  // the box empty beside them. Placement only means anything once the box
+  // being placed in is the button's own width.
+  spread: {
+    width: '100%',
+  },
+  // ...and the contents sit inside a label box within that one, which is
+  // also sized to what it holds. Both have to be the button's width before
+  // "put these at opposite ends" means anything.
+  spreadLabel: {
+    width: '100%',
+    justifyContent: 'space-between',
+  },
 })
 
 type ButtonVariant = 'default' | 'outline' | 'secondary' | 'ghost' | 'destructive' | 'link'
@@ -180,7 +196,15 @@ function Button({
     // place either
     ...(iconSize === undefined
       ? {
-          classNames: { label: stylex.props(part.label).className },
+          classNames: {
+            label:
+              justify === undefined || justify === 'center'
+                ? stylex.props(part.label).className
+                : (stylex.props(part.label, part.spreadLabel).className ?? ''),
+            ...(justify === undefined || justify === 'center'
+              ? {}
+              : { inner: stylex.props(part.spread).className ?? '' }),
+          },
           ...(justify === undefined ? {} : { justify }),
         }
       : {}),

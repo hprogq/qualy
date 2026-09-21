@@ -1,5 +1,4 @@
 import {
-  createContext,
   useCallback,
   useContext,
   useEffect,
@@ -7,6 +6,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { sharedContext } from './shared-context.ts'
 
 // What the screen currently open calls itself, and where it says so.
 //
@@ -29,7 +29,7 @@ interface TitleScope {
   readonly claim: (title: string | null, node: HTMLElement | null) => void
 }
 
-const Scope = createContext<TitleScope | null>(null)
+const Scope = sharedContext<TitleScope | null>('page-title', null)
 
 /** mounted by the shell, around whatever it renders screens into */
 export function PageTitleScope({ children }: { children: ReactNode }) {

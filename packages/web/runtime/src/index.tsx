@@ -1,7 +1,6 @@
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import {
-  createContext,
   lazy,
   useCallback,
   useContext,
@@ -12,6 +11,7 @@ import {
   type LazyExoticComponent,
   type ReactNode,
 } from 'react'
+import { sharedContext } from './shared-context.ts'
 import { Effect } from 'effect'
 import type { ClientUnsupportedReason } from '@qualy/release-contract'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
@@ -161,7 +161,7 @@ export interface Runtime {
   registry: ComponentRegistry
 }
 
-const RuntimeContext = createContext<Runtime | null>(null)
+const RuntimeContext = sharedContext<Runtime | null>('runtime', null)
 
 export interface RuntimeProviderProps {
   /** replaced by harnesses; production derives real clients per definition */
