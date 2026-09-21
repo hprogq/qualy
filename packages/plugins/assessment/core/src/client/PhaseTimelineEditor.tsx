@@ -11,6 +11,8 @@ import { Button } from '@qualy/ui/button'
 import { toast } from '@qualy/ui/toast'
 import { Skeleton } from '@qualy/ui/skeleton'
 import * as stylex from '@stylexjs/stylex'
+import { Appear } from '@qualy/ui/reveal'
+import { Ticker } from '@qualy/ui/ticker'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from './i18n.ts'
 import { useBatchLive } from './live.ts'
@@ -519,11 +521,14 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
           controls that act on it */}
       <div {...stylex.props(styles.controlsRow)}>
         <div {...stylex.props(styles.controlsSeat)}>
-          {editing && dirty > 0 && (
+          {/* how much is unsaved belongs to a moment that ends, and the
+              count moves while somebody edits: the digit that changed is
+              what ticks, and the words beside it stay still */}
+          <Appear show={editing && dirty > 0}>
             <span {...stylex.props(styles.pendingNote)}>
-              {format(m.pendingShort, { count: dirty })}
+              <Ticker value={format(m.pendingShort, { count: dirty })} />
             </span>
-          )}
+          </Appear>
           {!readOnly && editing && (
             <>
               <Button size="sm" variant="ghost" onClick={() => setTemplateOpen(true)}>

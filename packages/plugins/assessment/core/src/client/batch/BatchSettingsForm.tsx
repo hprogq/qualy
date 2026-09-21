@@ -1,12 +1,14 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
+import { Appear } from '@qualy/ui/reveal'
 import { GripVerticalIcon, PlusIcon, RotateCcwIcon, Trash2Icon, XIcon } from 'lucide-react'
 import { useApi, useApiQuery, usePageNavigate, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { ConfirmDialog, Feedback, Field } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { DateRangePicker } from '@qualy/ui/date-range-picker'
@@ -146,11 +148,15 @@ const styles = stylex.create({
   addRow: {
     display: 'flex',
     alignItems: 'center',
+    // a field and two presses: across, one line; narrow, the way back to
+    // the shipped list takes its own rather than running off the edge
+    flexWrap: 'wrap',
     gap: 8,
   },
   addInput: {
     height: 32,
-    maxWidth: 224,
+    maxWidth: { default: 224, [breakpoints.phone]: 'none' },
+    flexGrow: { default: null, [breakpoints.phone]: 1 },
     fontSize: 14,
   },
   formGaps: {
@@ -582,9 +588,13 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
             </Field>
           </FieldGroup>
           <div {...stylex.props(styles.saveRow)}>
-            {!unchanged && (
+            {/* the note belongs to a moment that ends, so the going is drawn
+                too: without it the words are simply not there any more the
+                instant a field returns to what it was, which reads as the
+                page glitching rather than as the change being undone */}
+            <Appear show={!unchanged}>
               <span {...stylex.props(styles.unsavedNote)}>{format(m.settingsUnsaved)}</span>
-            )}
+            </Appear>
             <Button type="submit" disabled={!editable || unchanged || save.isPending}>
               {format(m.saveShort)}
             </Button>

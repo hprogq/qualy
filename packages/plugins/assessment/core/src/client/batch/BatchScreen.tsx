@@ -9,7 +9,7 @@ import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { AsyncSection, PageHeader } from '@qualy/ui/admin'
 import { PageContainer } from '@qualy/ui/page-container'
 import { Portal } from '@qualy/ui/portal'
-import { Resizing } from '@qualy/ui/reveal'
+import { Resizing, Reveal } from '@qualy/ui/reveal'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import type { BatchDto } from '../phase/model.ts'
@@ -252,14 +252,21 @@ export function BatchScreen({
           xstyle={styles.fillFlex}
         >
           {batch && (
-            <div {...stylex.props(styles.sectionStack)}>
+            /* One arrival for every section of a batch, said once here.
+               Moving between sections is lateral - the same batch, read
+               another way - so only the body travels, and it travels a
+               little: the band above says which batch this is and must not
+               twitch each time somebody looks at another part of it.
+               Mount-only, so a section that draws its own movement inside
+               (a row opening, a claim stepped to) is not animated twice. */
+            <Reveal className={stylex.props(styles.sectionStack).className}>
               {/* said on the section, not over a question being composed:
                   the band has handed over, and the body is the question's */}
               {batch.status === 'draft' && showing === 'section' && (
                 <p {...stylex.props(styles.draftNote)}>{format(m.draftBanner)}</p>
               )}
               {children(batch)}
-            </div>
+            </Reveal>
           )}
         </AsyncSection>
       </PageContainer>

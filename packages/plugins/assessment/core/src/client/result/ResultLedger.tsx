@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
+import { Portion } from '@qualy/ui/reveal'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { BarChart3Icon, ChevronRightIcon } from 'lucide-react'
@@ -479,12 +480,15 @@ export function ResultLedger({
         <div {...stylex.props(styles.barSide)}>
           <div {...stylex.props(styles.bar)}>
             {top.map((group, index) => (
-              <span
+              // the total said a second way, counted out rather than simply
+              // standing there beside the number it divides
+              <Portion
                 key={group.groupId}
-                {...stylex.props(styles.segment, SEGMENT_INKS[index % SEGMENT_INKS.length])}
-                style={{
-                  width: `${Math.min(100, (Number(group.final) / denominator) * 100)}%`,
-                }}
+                share={Math.min(100, (Number(group.final) / denominator) * 100)}
+                className={
+                  stylex.props(styles.segment, SEGMENT_INKS[index % SEGMENT_INKS.length])
+                    .className
+                }
               />
             ))}
           </div>

@@ -37,6 +37,39 @@ export function Reveal({
   )
 }
 
+/**
+ * One share of a bar, drawn by growing to the width it stands for.
+ *
+ * The bar under a total is the total said a second way - how it divides -
+ * and a bar that is simply there when the screen arrives is read as a
+ * decoration beside the number. Growing, it is read as the division being
+ * counted out, which is the one thing the bar is for. The shares grow
+ * together rather than one after another: they are parts of one quantity,
+ * not a sequence, and a queue would say the last one arrived late.
+ *
+ * Reduced motion gets the finished bar, because the bar is information and
+ * not an effect.
+ */
+export function Portion({
+  share,
+  className,
+}: {
+  /** how much of the whole this is, in percent */
+  share: number
+  className?: string
+}) {
+  const reduced = useReducedMotion() === true
+  return (
+    <motion.span
+      aria-hidden
+      className={className}
+      initial={reduced ? false : { width: 0 }}
+      animate={{ width: `${share}%` }}
+      transition={{ duration: reduced ? 0 : 0.55, ease: [0.22, 0.61, 0.36, 1] }}
+    />
+  )
+}
+
 // A pane whose content is replaced in place: the new content fades up as the
 // old leaves, so a change that happened somewhere else on screen is visibly
 // the cause. Give it a `key` that changes with the content.
