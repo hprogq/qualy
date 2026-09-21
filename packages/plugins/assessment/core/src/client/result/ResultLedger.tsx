@@ -452,6 +452,41 @@ export function ResultLedger({
   }, 0)
   // the bar shares one denominator so the segments mean what they show
   const denominator = full ?? (total > 0 ? total : 1)
+  // What the bar actually divides the total into.
+  //
+  // A top group that holds other groups is not a division of the total, it
+  // is the container of one: drawn whole, a round with a single top group
+  // gets a bar with one block in it, which says nothing the number above it
+  // did not. So a container hands the bar the groups inside it, plus - where
+  // it also carries questions of its own - one part for those.
+  //
+  // Scaled to what the container actually contributed, because its own cap
+  // may have bitten: the parts of a bar have to add up to the figure the bar
+  // stands under, and a child's untrimmed value would make them add up to
+  // more. Each part still says its own real number beside it.
+  const shares = top.flatMap((group) => {
+    const inside = groups.filter((one) => one.parentGroupId === group.groupId)
+    if (inside.length === 0) {
+      return [{ id: group.groupId, name: group.name, part: Number(group.final), said: group.final }]
+    }
+    const own = Number(group.itemsTotal)
+    const parts = [
+      ...inside.map((one) => ({
+        id: one.groupId,
+        name: one.name,
+        part: Number(one.final),
+        said: one.final,
+      })),
+      // the container's own questions, where it asks any: without this the
+      // parts would silently leave them out of a bar that claims to be whole
+      ...(own > 0
+        ? [{ id: `${group.groupId}:own`, name: group.name, part: own, said: group.itemsTotal }]
+        : []),
+    ]
+    const sum = parts.reduce((into, one) => into + one.part, 0)
+    const scale = sum > 0 ? Number(group.final) / sum : 0
+    return parts.map((one) => ({ ...one, part: one.part * scale }))
+  })
 
   return (
     <div {...stylex.props(styles.standing)}>
@@ -479,12 +514,12 @@ export function ResultLedger({
         <span aria-hidden {...stylex.props(styles.rule)} />
         <div {...stylex.props(styles.barSide)}>
           <div {...stylex.props(styles.bar)}>
-            {top.map((group, index) => (
+            {shares.map((share, index) => (
               // the total said a second way, counted out rather than simply
               // standing there beside the number it divides
               <Portion
-                key={group.groupId}
-                share={Math.min(100, (Number(group.final) / denominator) * 100)}
+                key={share.id}
+                share={Math.min(100, (share.part / denominator) * 100)}
                 className={
                   stylex.props(styles.segment, SEGMENT_INKS[index % SEGMENT_INKS.length])
                     .className
@@ -493,14 +528,14 @@ export function ResultLedger({
             ))}
           </div>
           <div {...stylex.props(styles.legend)}>
-            {top.map((group, index) => (
-              <span key={group.groupId} {...stylex.props(styles.legendItem)}>
+            {shares.map((share, index) => (
+              <span key={share.id} {...stylex.props(styles.legendItem)}>
                 <span
                   aria-hidden
                   {...stylex.props(styles.swatch, SEGMENT_INKS[index % SEGMENT_INKS.length])}
                 />
-                {group.name}
-                <span {...stylex.props(styles.legendValue)}>{two(group.final)}</span>
+                {share.name}
+                <span {...stylex.props(styles.legendValue)}>{two(share.said)}</span>
               </span>
             ))}
           </div>
