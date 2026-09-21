@@ -149,10 +149,13 @@ export default function OrgPage() {
             moreLabel={format(m.rowMore, { name: format(m.unitsTitle) })}
             primary={
               types ? (
-                <Button onClick={() => setCreatingType(true)}>
-                  <PlusIcon aria-hidden />
+                <BandAction
+                  variant="primary"
+                  icon={<PlusIcon aria-hidden />}
+                  onSelect={() => setCreatingType(true)}
+                >
                   {format(m.newTypeTitle)}
-                </Button>
+                </BandAction>
               ) : undefined
             }
             rest={

@@ -5,6 +5,8 @@ import { useI18n, useList } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
 import {
+  BandAction,
+  BandActions,
   Card,
   CardEmpty,
   Cell,
@@ -48,10 +50,18 @@ export default function UserTypesPage() {
       description={format(m.userTypesHint)}
       actions={
         canManage && (
-          <Button size="sm" onClick={() => setCreating(true)}>
-            <PlusIcon aria-hidden />
-            {format(m.newUserType)}
-          </Button>
+          <BandActions
+            moreLabel={format(commonMessages.bandMore)}
+            primary={
+              <BandAction
+                variant="primary"
+                icon={<PlusIcon aria-hidden />}
+                onSelect={() => setCreating(true)}
+              >
+                {format(m.newUserType)}
+              </BandAction>
+            }
+          />
         )
       }
     >

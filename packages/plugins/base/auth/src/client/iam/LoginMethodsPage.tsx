@@ -24,6 +24,8 @@ import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
 import { useLingering } from '@qualy/ui/use-lingering'
 import {
+  BandAction,
+  BandActions,
   Card,
   CardEmpty,
   Cell,
@@ -146,10 +148,18 @@ export default function LoginMethodsPage() {
       actions={
         canManage &&
         (kinds.data?.kinds.length ?? 0) > 0 && (
-          <Button size="sm" onClick={() => setCreating(true)}>
-            <PlusIcon aria-hidden />
-            {format(m.methodNew)}
-          </Button>
+          <BandActions
+            moreLabel={format(commonMessages.bandMore)}
+            primary={
+              <BandAction
+                variant="primary"
+                icon={<PlusIcon aria-hidden />}
+                onSelect={() => setCreating(true)}
+              >
+                {format(m.methodNew)}
+              </BandAction>
+            }
+          />
         )
       }
     >

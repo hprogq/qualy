@@ -82,6 +82,9 @@ export const commonMessages = {
   clockSecond: { id: 'common/clock/second', defaultMessage: 'Second' },
   calendarMonth: { id: 'common/calendar/month', defaultMessage: 'Month' },
   calendarYear: { id: 'common/calendar/year', defaultMessage: 'Year' },
+  // the press that opens what a band had no room to lay out; every screen
+  // that folds its actions names it the same, so it is named once here
+  bandMore: { id: 'common/action/more', defaultMessage: 'More actions' },
   // a paginated list that is not showing everything says so; the alternative
   // is a silent truncation that reads as "this is all of it"
   moreResults: {

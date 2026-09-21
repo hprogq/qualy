@@ -6,6 +6,8 @@ import { useState } from 'react'
 import { PlusIcon } from 'lucide-react'
 import { AsyncSection } from '@qualy/ui/admin'
 import {
+  BandAction,
+  BandActions,
   Card,
   CardEmpty,
   CardHead,
@@ -70,13 +72,17 @@ export default function RolesPage() {
   const holders = (role: RoleRow) => {
     // the canonical administrator is exempt, which is not the same as unset
     if (role.systemKey !== null) return { words: format(m.exemptWord), unset: false }
-    if (role.holderPolicy.mode === 'unrestricted') return { words: format(m.anyoneWord), unset: false }
+    if (role.holderPolicy.mode === 'unrestricted')
+      return { words: format(m.anyoneWord), unset: false }
     const names = namesOf(role.holderPolicy.userTypeIds, options.data?.userTypes ?? [])
-    return names === '' ? { words: format(m.unsetWord), unset: true } : { words: names, unset: false }
+    return names === ''
+      ? { words: format(m.unsetWord), unset: true }
+      : { words: names, unset: false }
   }
   /** where it may be held; a tenant role is held nowhere in particular */
   const anchors = (role: RoleRow) => {
-    if (role.anchorPolicy === null) return { words: format(m.notApplicable), unset: false, quiet: true }
+    if (role.anchorPolicy === null)
+      return { words: format(m.notApplicable), unset: false, quiet: true }
     if (role.anchorPolicy.mode === 'unrestricted') {
       return { words: format(m.anywhereWord), unset: false, quiet: false }
     }
@@ -92,10 +98,18 @@ export default function RolesPage() {
       description={format(m.rolesHint)}
       actions={
         canManage && (
-          <Button onClick={() => setCreating(true)}>
-            <PlusIcon aria-hidden />
-            {format(m.newRole)}
-          </Button>
+          <BandActions
+            moreLabel={format(commonMessages.bandMore)}
+            primary={
+              <BandAction
+                variant="primary"
+                icon={<PlusIcon aria-hidden />}
+                onSelect={() => setCreating(true)}
+              >
+                {format(m.newRole)}
+              </BandAction>
+            }
+          />
         )
       }
     >
@@ -151,7 +165,9 @@ export default function RolesPage() {
                             carries that name - so the cell is the count */}
                         {/* the number the list is scanned by: stacked, it
                             keeps the end of the row */}
-                        <Cell numeric narrow="end">{figure.format(role.grantCount)}</Cell>
+                        <Cell numeric narrow="end">
+                          {figure.format(role.grantCount)}
+                        </Cell>
                         {/* a list of kinds, not a fact: whole it is a
                             paragraph, and three lines of it on a phone push
                             the count it shares a row with off the line */}

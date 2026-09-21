@@ -22,6 +22,7 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { AsyncSection, Feedback } from '@qualy/ui/admin'
 import {
+  BandAction,
   BandActions,
   Card,
   CardEmpty,
@@ -144,7 +145,12 @@ const styles = stylex.create({
     alignItems: 'center',
     gap: 10,
     paddingInline: { default: 14, [breakpoints.phone]: 0 },
-    paddingBlock: 8,
+    paddingBlock: { default: 8, [breakpoints.phone]: 12 },
+    // with no sheet around either of them, one rule is what keeps the unit
+    // from reading as the first row of the roster under it
+    borderBottomWidth: { default: 0, [breakpoints.phone]: 1 },
+    borderBottomStyle: 'solid',
+    borderBottomColor: { default: 'transparent', [breakpoints.phone]: tokens.divider },
     borderWidth: 0,
     borderRadius: { default: 12, [breakpoints.phone]: 0 },
     backgroundColor: { default: tokens.surface, [breakpoints.phone]: 'transparent' },
@@ -316,10 +322,13 @@ export default function UsersPage() {
           moreLabel={format(m.moreActions)}
           primary={
             active?.manageable && (
-              <Button onClick={() => setCreating(true)}>
-                <PlusIcon aria-hidden />
+              <BandAction
+                variant="primary"
+                icon={<PlusIcon aria-hidden />}
+                onSelect={() => setCreating(true)}
+              >
                 {format(m.newUser)}
-              </Button>
+              </BandAction>
             )
           }
           rest={
@@ -634,7 +643,15 @@ export default function UsersPage() {
                     to: ((users.data?.page ?? page) - 1) * PAGE_SIZE + rows.length,
                     total,
                   })}
-                  onPage={(next) => setPageParam(next === 1 ? '' : String(next))}
+                  onPage={(next) => {
+                    setPageParam(next === 1 ? '' : String(next))
+                    // The pager is at the FOOT of the list, so a press left
+                    // the reader looking at the foot of the next page - at
+                    // its last rows, with the first fifty above them unseen.
+                    document
+                      .querySelector('[data-testid="roster"]')
+                      ?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+                  }}
                 />
               </CardFoot>
             </AsyncSection>

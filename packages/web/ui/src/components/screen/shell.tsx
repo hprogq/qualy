@@ -55,7 +55,12 @@ const styles = stylex.create({
     justifyContent: 'space-between',
     columnGap: 20,
     rowGap: 12,
-    flexWrap: { default: null, [breakpoints.phone]: 'wrap' },
+    // One row at every width. Wrapping was what made one page's band taller
+    // than the next's - and the row of sections hanging under it therefore
+    // landed at a different height on each, which reads as the page jumping
+    // when you move between them. Narrow, the actions are one press, and one
+    // press fits beside the words.
+    flexWrap: 'nowrap',
     paddingTop: { default: 22, [breakpoints.tablet]: 22, [breakpoints.desktop]: 22 },
     paddingBottom: 22,
   },
@@ -161,6 +166,8 @@ const styles = stylex.create({
   bandNarrow: {
     display: { default: 'none', [breakpoints.phone]: 'inline-flex' },
   },
+  /** the main act sits at the end of the row, after the ones it leads */
+  primarySeat: { display: 'flex', alignItems: 'center', order: 1 },
 })
 
 /**
@@ -362,7 +369,7 @@ export function BandActions({
   /** the spoken name of the press that opens them */
   moreLabel: string
 }) {
-  const folded = rest !== undefined && rest !== null && rest !== false
+  const offered = (node: ReactNode) => node !== undefined && node !== null && node !== false
   // The actions are rendered ONCE, in the band, and the menu is a list of
   // ways to reach them - not a second copy of them.
   //
@@ -388,13 +395,17 @@ export function BandActions({
   })
   return (
     <>
-      {folded && (
+      {/* Every action, primary included, is drawn here and hidden narrow -
+          never unmounted, because what an action owns is drawn here too. */}
+      {(offered(rest) || offered(primary)) && (
         <span {...stylex.props(styles.bandWide)}>
-          <Register value={register}>{rest}</Register>
+          <Register value={register}>
+            {rest}
+            {offered(primary) && <span {...stylex.props(styles.primarySeat)}>{primary}</span>}
+          </Register>
         </span>
       )}
-      {primary}
-      {folded && rows.length > 0 && (
+      {rows.length > 0 && (
         <span {...stylex.props(styles.bandNarrow)}>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -449,7 +460,7 @@ export function BandAction({
   icon?: ReactNode
   onSelect: () => void
   /** how it is drawn where the band has room; ignored in the menu */
-  variant?: 'ghost' | 'outline'
+  variant?: 'primary' | 'ghost' | 'outline'
   testId?: string
   children: ReactNode
 }) {
@@ -464,7 +475,12 @@ export function BandAction({
     return register(id, () => latest.current)
   }, [register, id])
   return (
-    <Button size="sm" variant={variant} data-testid={testId} onClick={onSelect}>
+    <Button
+      size="sm"
+      {...(variant === 'primary' ? {} : { variant })}
+      data-testid={testId}
+      onClick={onSelect}
+    >
       {icon}
       {children}
     </Button>

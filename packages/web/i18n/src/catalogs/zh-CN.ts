@@ -56,6 +56,7 @@ export default {
   'common/release/client-protocol-title': '需要刷新页面',
   'common/release/client-protocol-hint': '页面需要刷新后才能继续使用。',
   'common/action/reload-page': '刷新页面',
+  'common/action/more': '更多操作',
   'common/state/more-results': '还有更多结果，缩小搜索范围可以看到。',
   'common/manifest/load-failed': '暂时无法加载 Qualy，请检查网络后重试。',
   'common/component/missing': '该页面暂时无法打开。',
