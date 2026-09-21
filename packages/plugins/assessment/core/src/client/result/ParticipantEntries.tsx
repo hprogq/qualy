@@ -34,14 +34,14 @@ import type { EntryDto, ItemDto } from '../entry/model.ts'
 // other instead of each carrying a box. A column of amounts is worth
 // aligning, so it gets a column.
 const styles = stylex.create({
+  // A column of cards, not a card holding cards: one card inside another
+  // showed the outer one's ground through the inner corners - a little
+  // triangle at each side of every join - and left no air between groups.
   card: {
     display: 'flex',
     minWidth: 0,
     flexDirection: 'column',
-    overflow: 'hidden',
-    borderRadius: tokens.radiusLg,
-    backgroundColor: tokens.surface,
-    boxShadow: tokens.elevation1,
+    gap: 14,
   },
   group: { display: 'flex', minWidth: 0, flexDirection: 'column' },
   // the fold: which part of the paper the claims under it answer

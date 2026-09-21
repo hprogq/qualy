@@ -1144,6 +1144,13 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
   const recognitionOf = (tenantId: string, entry: EntryRow, veiled: boolean) =>
     Effect.gen(function* () {
       if (entry.currentRecognitionId === null) return null
+      // Only while the claim actually stands on it. A determination is a
+      // round's conclusion, and a claim back under review - appealed,
+      // reopened, sent back, withdrawn - has no conclusion just now: the one
+      // it used to have is precisely what the open round is revisiting.
+      // Showing it anyway told the filer their claim was recognised as
+      // something while somebody was deciding whether it still is.
+      if (entry.status !== 'approved') return null
       const standing = (yield* currentRecognitionsOfEntries(tenantId, [entry.id]))[0]
       if (standing === undefined) return null
       const judged = yield* revisionOf(tenantId, standing.itemRevisionId)

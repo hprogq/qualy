@@ -920,8 +920,9 @@ const entryView = Schema.Struct({
   ),
   /**
    * What the claim currently stands recognised as, under the question
-   * version that judged it. Only what stands now (§32.85); null where
-   * nothing has been determined, and on the write paths.
+   * version that judged it. Only while the claim stands on it: a claim back
+   * under review has no conclusion to show (§32.85). Null where nothing has
+   * been determined, and on the write paths.
    */
   recognition: Schema.NullOr(
     Schema.Struct({

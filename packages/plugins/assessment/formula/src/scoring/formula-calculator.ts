@@ -45,6 +45,7 @@ import { BindableFormulaCatalog, type FormulaNotBindable } from '../server/bindi
 import { contractIdentityOf } from '../server/contract-identity.ts'
 import { decodeFormulaEnvelope } from '../server/envelope.ts'
 import { FORMULA_SCORING_LIMITS } from './limits.ts'
+import { SUPPORTED_VALUE_SCHEMA_PROFILES } from '../server/runtime-compatibility.ts'
 
 const REF = 'formula@1'
 export const RUNTIME_REF_KIND = 'formula-version'
@@ -201,12 +202,30 @@ const resolveFrozenWith = (
         integrity('a stored formula plan names the profiles it was proven under'),
       )
     }
+    // The two numbers describe the same language proving two artifacts: the
+    // plan's frozen schemas, and the publication they were copied from. They
+    // are stamped at different moments - a question re-saved today mints a
+    // plan under the CURRENT profile while the formula it binds keeps the one
+    // it was published under - so demanding they be equal made every new plan
+    // over an older publication unscorable, forever, on a profile bump that
+    // changed nothing about what either means.
+    //
+    // What has to hold is that both are profiles this build holds
+    // acceptance-semantics evidence for; that set is exactly where such
+    // evidence is recorded (runtime-compatibility.ts), and it admits a
+    // profile only with the reasoning attached. The regex dialect keeps its
+    // equality: no evidence has ever been written for a second one.
     if (
-      frozen.valueSchemaProfileVersion !== resolved.valueSchemaProfileVersion ||
-      frozen.regexProfileVersion !== resolved.regexProfileVersion
+      !SUPPORTED_VALUE_SCHEMA_PROFILES.has(frozen.valueSchemaProfileVersion) ||
+      !SUPPORTED_VALUE_SCHEMA_PROFILES.has(resolved.valueSchemaProfileVersion)
     ) {
       return yield* Effect.fail(
-        integrity("the frozen proving profiles are not this publication's profiles"),
+        integrity('a proving profile here is one this build cannot vouch for'),
+      )
+    }
+    if (frozen.regexProfileVersion !== resolved.regexProfileVersion) {
+      return yield* Effect.fail(
+        integrity("the frozen regex dialect is not this publication's dialect"),
       )
     }
     const identity = yield* Effect.try({

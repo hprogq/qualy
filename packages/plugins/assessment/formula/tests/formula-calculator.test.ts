@@ -426,6 +426,20 @@ describe.runIf(postgresAvailable)('the formula calculator', () => {
           const wrongProfiles = yield* Effect.exit(
             bound.verify({ ...frozen, regexProfileVersion: 999 }, host),
           )
+          const uncertifiedProfile = yield* Effect.exit(
+            bound.verify({ ...frozen, valueSchemaProfileVersion: 1 }, host),
+          )
+          // A question re-saved today mints its plan under the CURRENT value
+          // schema profile while the formula it binds keeps the one it was
+          // published under. Both are certified, so this scores; demanding
+          // they be equal made every new plan over an older publication
+          // unscorable the moment the profile moved.
+          const olderPublication = yield* Effect.exit(
+            bound.verify(
+              { ...frozen, valueSchemaProfileVersion: resolved.valueSchemaProfileVersion - 1 },
+              host,
+            ),
+          )
           // prepare re-proves the same fact and captures the artifact - and
           // still never touches the sandbox; only evaluate does, and this
           // sandbox dies on contact
@@ -438,6 +452,8 @@ describe.runIf(postgresAvailable)('the formula calculator', () => {
             wrongContract,
             missingProfiles,
             wrongProfiles,
+            uncertifiedProfile,
+            olderPublication,
             evaluated,
           }
         }),
@@ -450,10 +466,12 @@ describe.runIf(postgresAvailable)('the formula calculator', () => {
       ['wrongContract', outcome.wrongContract],
       ['missingProfiles', outcome.missingProfiles],
       ['wrongProfiles', outcome.wrongProfiles],
+      ['uncertifiedProfile', outcome.uncertifiedProfile],
     ] as const) {
       const failure = failureOf(exit) as CalculatorRuntimeError
       expect(failure.kind, name).toBe('integrity')
     }
+    expect(Exit.isSuccess(outcome.olderPublication)).toBe(true)
     // the dying sandbox was reached only by evaluate: a defect, not a failure
     expect(Exit.isFailure(outcome.evaluated)).toBe(true)
   }, 120_000)

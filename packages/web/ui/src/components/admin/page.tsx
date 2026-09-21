@@ -159,8 +159,13 @@ export function PageHeader({
     <div {...stylex.props(styles.header, variant === 'banner' && styles.headerBanner, xstyle)}>
       <div {...stylex.props(styles.headerText)}>
         <h1 {...stylex.props(styles.title)}>{title}</h1>
+        {/* A div, not a paragraph: this takes a node, and pages put real
+            content in it - a way back, a chip, an outline standing in for a
+            number that has not arrived. A <div> inside a <p> is invalid
+            markup the browser silently reshapes, which in React is a
+            hydration mismatch rather than a cosmetic one. */}
         {description !== undefined && description !== '' && (
-          <p {...stylex.props(styles.description)}>{description}</p>
+          <div {...stylex.props(styles.description)}>{description}</div>
         )}
       </div>
       {actions && <div {...stylex.props(styles.actions)}>{actions}</div>}

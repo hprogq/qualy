@@ -203,6 +203,56 @@ describe.runIf(postgresAvailable)('the review read boundary', () => {
     expect(result.admin).toEqual(OPEN)
   })
 
+  // A determination is a round's conclusion. While another round is deciding,
+  // and after a claim has been sent back, there is no conclusion to show -
+  // and the one it used to have is exactly what is being revisited.
+  it('shows the filer a determination only while their claim stands on it', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('standing-only')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const s1 = f.principal(f.s1)
+          const reviewer = f.principal(f.reviewer)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          yield* assessment.decideReview(
+            f.t,
+            sent.currentReviewInstanceId!,
+            { decision: 'approve', comment: 'fine' },
+            reviewer,
+          )
+          const settled = yield* assessment.getEntry(f.t, entry.id, s1)
+          // the office reopens it: the same determination is still on the row,
+          // and it is no longer the claim's answer
+          yield* assessment.interveneOnEntry(
+            f.t,
+            entry.id,
+            { kind: 'return', reason: '需要补充材料' },
+            f.principal(f.admin),
+          )
+          const revisited = yield* assessment.getEntry(f.t, entry.id, s1)
+          return {
+            settled: settled.recognition !== null,
+            settledStatus: settled.status,
+            revisited: revisited.recognition,
+            revisitedStatus: revisited.status,
+          }
+        }),
+      ),
+    )
+    expect(result.settledStatus).toBe('approved')
+    expect(result.settled).toBe(true)
+    expect(result.revisited).toBeNull()
+    expect(result.revisitedStatus).not.toBe('approved')
+  })
+
   // Who judged a claim is kept from the person who filed it unless the phase
   // of the moment opens it - on the server, so nothing arrives to be hidden.
   it('names the reviewer to the participant only while the phase opens it', async () => {

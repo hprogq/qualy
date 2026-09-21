@@ -635,8 +635,12 @@ export function EntryDetail({
                 )}
 
                 {/* What the round decided, above what was filed: it is the
-                    answer, and the filing is the question it was asked of. */}
-                <RecognizedValues entry={entry} />
+                    answer, and the filing is the question it was asked of.
+                    Not where the reader brought their own card for it - the
+                    office's drawer says more about a determination than this
+                    does, and two of them would disagree the moment one of
+                    them is the one being corrected. */}
+                {aside === undefined && <RecognizedValues entry={entry} />}
 
                 <section {...stylex.props(styles.section)}>
                   <div {...stylex.props(styles.sectionHead)}>
