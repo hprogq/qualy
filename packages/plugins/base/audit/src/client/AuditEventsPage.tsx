@@ -35,7 +35,14 @@ const MONO = "'SFMono-Regular', ui-monospace, Menlo, Consolas, monospace"
 const COLUMNS = '11rem minmax(0, 0.9fr) minmax(0, 1.3fr) minmax(0, 1.1fr) 4.5rem 8rem'
 
 const styles = stylex.create({
-  ellipsis: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  ellipsis: {
+    minWidth: 0,
+    // stacked, a fact that will not fit takes a second line instead of
+    // losing its end, since there is no column head left to guess it from
+    overflow: { default: 'hidden', [breakpoints.phone]: 'visible' },
+    textOverflow: { default: 'ellipsis', [breakpoints.phone]: 'clip' },
+    whiteSpace: { default: 'nowrap', [breakpoints.phone]: 'normal' },
+  },
   filters: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
   actionFilter: { width: { default: '14rem', [breakpoints.phone]: '100%' } },
   outcomeFilter: { width: { default: '9rem', [breakpoints.phone]: '100%' } },
@@ -95,6 +102,13 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
   },
   actor: { fontSize: 13 },
+  // Stacked, the head strip is gone and "李思思 王五" is two names with no
+  // stated relation. Each fact takes its column's word with it.
+  said: {
+    display: { default: 'none', [breakpoints.phone]: 'inline' },
+    marginInlineEnd: 5,
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
+  },
   action: {
     fontSize: { default: 13, [breakpoints.phone]: 14 },
     fontWeight: 500,
@@ -337,9 +351,17 @@ export default function AuditEventsPage() {
                       <span {...stylex.props(styles.ellipsis, styles.when)}>
                         {when(row.occurredAt)}
                       </span>
-                      <span {...stylex.props(styles.ellipsis, styles.actor)}>{actorOf(row)}</span>
+                      <span {...stylex.props(styles.ellipsis, styles.actor)}>
+                        <span aria-hidden {...stylex.props(styles.said)}>
+                          {format(m.columnActor)}
+                        </span>
+                        {actorOf(row)}
+                      </span>
                       <span {...stylex.props(styles.ellipsis, styles.action)}>{actionOf(row)}</span>
                       <span {...stylex.props(styles.ellipsis, styles.target)}>
+                        <span aria-hidden {...stylex.props(styles.said)}>
+                          {format(m.columnTarget)}
+                        </span>
                         {row.targetLabel ?? row.targetId ?? '—'}
                       </span>
                       <span {...stylex.props(styles.outcome)}>

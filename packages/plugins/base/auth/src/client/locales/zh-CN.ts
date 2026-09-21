@@ -62,8 +62,7 @@ export default {
   'auth/users/empty': '该组织下暂无用户。',
   'auth/navigation/login-methods': '登录方式',
   'auth/login-methods/title': '登录方式',
-  'auth/login-methods/hint':
-    '每个入口自己声明允许哪些用户类型登录。入口由部署时装配提供，此处不可新增或删除。',
+  'auth/login-methods/hint': '每个入口自己声明允许哪些用户类型登录，列表顺序就是登录页的排列顺序。',
   'auth/login-methods/empty': '还没有配置任何入口。',
   'auth/login-methods/audience': '允许登录',
   'auth/login-methods/audience-anyone': '不限',
@@ -110,6 +109,8 @@ export default {
   'auth/login-methods/disable-body': '停用后无法再通过该方式登录，已登录的用户不受影响',
   'auth/login-methods/enable-body': '启用后立即出现在登录页，面向其允许登录的用户类型',
   'auth/login-methods/move': '移动{name}，可拖动，也可用上下方向键',
+  'auth/login-methods/move-up': '{name}上移一位',
+  'auth/login-methods/move-down': '{name}下移一位',
   'auth/action/create': '创建',
   'auth/person/roles-confined': '专项授权',
   'auth/users/unit-change': '更换',

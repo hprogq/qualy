@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { GripVerticalIcon, PlusIcon } from 'lucide-react'
+import { ChevronDownIcon, ChevronUpIcon, GripVerticalIcon, PlusIcon } from 'lucide-react'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Button } from '@qualy/ui/button'
 import { toast } from '@qualy/ui/toast'
 import { useApi, useApiQuery, usePageQueryState, useRunApi } from '@qualy/web-runtime'
@@ -37,10 +38,38 @@ import { authApi } from '../api.ts'
 const COLUMNS = '1.5rem minmax(0, 0.8fr) 6rem minmax(0, 1.4fr) 6.5rem 4.5rem'
 
 const styles = stylex.create({
-  // the handle a row is moved by: the order of this list IS the order of the
-  // sign-in page, so it is set by putting rows where they belong
+  // The order of this list IS the order of the sign-in page, so it is set by
+  // putting rows where they belong. The handle and the two presses are one
+  // column: dragging is a pointer's way and does not exist on a touch screen
+  // at all, so a phone gets the presses and a pointer gets the handle.
+  order: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 2,
+    // stacked, the presses go to the end of the row rather than standing
+    // alone on the line above the name
+    order: { default: null, [breakpoints.phone]: 2 },
+    marginInlineStart: { default: null, [breakpoints.phone]: 'auto' },
+  },
+  step: {
+    display: { default: 'none', [breakpoints.phone]: 'inline-flex' },
+    width: 26,
+    height: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 0,
+    borderWidth: 0,
+    borderRadius: 6,
+    backgroundColor: { default: 'transparent', ':hover': tokens.surfaceMuted },
+    color: {
+      default: tokens.mutedForeground,
+      ':disabled': `color-mix(in oklab, ${tokens.mutedForeground} 45%, transparent)`,
+    },
+    cursor: { default: 'pointer', ':disabled': 'default' },
+  },
+  stepGlyph: { width: 15, height: 15 },
   grip: {
-    display: 'inline-flex',
+    display: { default: 'inline-flex', [breakpoints.phone]: 'none' },
     width: 20,
     height: 24,
     alignItems: 'center',
@@ -59,7 +88,7 @@ const styles = stylex.create({
 
 export default function LoginMethodsPage() {
   const query = useApiQuery(authApi)
-  const { format, formatError } = useI18n()
+  const { format, formatText, formatError } = useI18n()
   const listJoin = useList()
   const [selected, setSelected] = usePageQueryState('provider')
 
@@ -166,38 +195,67 @@ export default function LoginMethodsPage() {
                     }
                   >
                     {canManage ? (
-                      <button
-                        type="button"
-                        draggable
-                        aria-label={format(m.methodMove, { name: provider.name })}
-                        data-testid="method-grip"
-                        {...stylex.props(styles.grip)}
-                        onDragStart={(event) => {
-                          event.dataTransfer.effectAllowed = 'move'
-                          event.dataTransfer.setData('text/plain', provider.id)
-                          setLifted(provider.id)
-                        }}
-                        onDragEnd={() => {
-                          setLifted(null)
-                          setOver(null)
-                        }}
-                        // the same move without a pointer
-                        onKeyDown={(event) => {
-                          if (event.key === 'ArrowUp') step(provider.id, -1)
-                          else if (event.key === 'ArrowDown') step(provider.id, 1)
-                          else return
-                          event.preventDefault()
-                        }}
-                      >
-                        <GripVerticalIcon aria-hidden {...stylex.props(styles.gripGlyph)} />
-                      </button>
+                      <span {...stylex.props(styles.order)}>
+                        <button
+                          type="button"
+                          draggable
+                          aria-label={format(m.methodMove, { name: provider.name })}
+                          data-testid="method-grip"
+                          {...stylex.props(styles.grip)}
+                          onDragStart={(event) => {
+                            event.dataTransfer.effectAllowed = 'move'
+                            event.dataTransfer.setData('text/plain', provider.id)
+                            setLifted(provider.id)
+                          }}
+                          onDragEnd={() => {
+                            setLifted(null)
+                            setOver(null)
+                          }}
+                          // the same move without a pointer
+                          onKeyDown={(event) => {
+                            if (event.key === 'ArrowUp') step(provider.id, -1)
+                            else if (event.key === 'ArrowDown') step(provider.id, 1)
+                            else return
+                            event.preventDefault()
+                          }}
+                        >
+                          <GripVerticalIcon aria-hidden {...stylex.props(styles.gripGlyph)} />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={format(m.methodMoveUp, { name: provider.name })}
+                          data-testid="method-up"
+                          disabled={index === 0}
+                          {...stylex.props(styles.step)}
+                          onClick={() => step(provider.id, -1)}
+                        >
+                          <ChevronUpIcon aria-hidden {...stylex.props(styles.stepGlyph)} />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={format(m.methodMoveDown, { name: provider.name })}
+                          data-testid="method-down"
+                          disabled={index === rows.length - 1}
+                          {...stylex.props(styles.step)}
+                          onClick={() => step(provider.id, 1)}
+                        >
+                          <ChevronDownIcon aria-hidden {...stylex.props(styles.stepGlyph)} />
+                        </button>
+                      </span>
                     ) : (
                       <span />
                     )}
                     <Cell lead>
                       <LeadWord>{provider.name}</LeadWord>
                     </Cell>
-                    <Cell tone="muted">{provider.type}</Cell>
+                    {/* the kind as the driver names itself; its code only
+                        where no installed driver claims it */}
+                    <Cell tone="muted">
+                      {(() => {
+                        const kind = kinds.data?.kinds.find((one) => one.type === provider.type)
+                        return kind === undefined ? provider.type : formatText(kind.label)
+                      })()}
+                    </Cell>
                     <Cell tone={nobody ? 'warn' : 'muted'}>
                       {provider.audience.mode === 'unrestricted' ? (
                         format(m.audienceEveryone)

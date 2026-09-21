@@ -39,7 +39,8 @@ const COLUMNS = 'minmax(0, 1.1fr) 5.5rem 5rem minmax(0, 1fr) minmax(0, 1fr) 5rem
 
 export default function RolesPage() {
   const query = useApiQuery(accessApi)
-  const { format, formatError } = useI18n()
+  const { format, formatError, locale } = useI18n()
+  const figure = new Intl.NumberFormat(locale)
   const listJoin = useList()
   const navigate = usePageNavigate()
   const [creating, setCreating] = useState(false)
@@ -146,7 +147,9 @@ export default function RolesPage() {
                             ? format(m.everyWord)
                             : format(m.countItems, { count: role.permissions.length })}
                         </Cell>
-                        <Cell numeric>{format(m.assignmentCount, { count: role.grantCount })}</Cell>
+                        {/* the column is named above, and on a phone the row
+                            carries that name - so the cell is the count */}
+                        <Cell numeric>{figure.format(role.grantCount)}</Cell>
                         <Cell tone={who.unset ? 'warn' : 'muted'} title={who.words}>
                           {who.words}
                         </Cell>

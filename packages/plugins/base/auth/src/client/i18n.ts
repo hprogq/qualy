@@ -67,6 +67,14 @@ const methodMoveMessage = defineMessage<{ name: string }>()({
   id: 'auth/login-methods/move',
   defaultMessage: 'Move {name}. Drag, or use the up and down arrows',
 })
+const methodMoveUpMessage = defineMessage<{ name: string }>()({
+  id: 'auth/login-methods/move-up',
+  defaultMessage: 'Move {name} up',
+})
+const methodMoveDownMessage = defineMessage<{ name: string }>()({
+  id: 'auth/login-methods/move-down',
+  defaultMessage: 'Move {name} down',
+})
 const lookAtMessage = defineMessage<{ name: string }>()({
   id: 'auth/users/look-at',
   defaultMessage: 'Look at {name}',
@@ -458,6 +466,8 @@ const i18n = definePluginMessages({
       defaultMessage: 'Drag it in the list to move it',
     },
     methodMove: methodMoveMessage,
+    methodMoveUp: methodMoveUpMessage,
+    methodMoveDown: methodMoveDownMessage,
     methodDisableTitle: methodNamed('auth/login-methods/disable-title', 'Take {name} out of service?'),
     methodEnableTitle: methodNamed('auth/login-methods/enable-title', 'Put {name} into service?'),
     methodDisableBody: {
@@ -599,7 +609,7 @@ const i18n = definePluginMessages({
     loginMethodsHint: {
       id: 'auth/login-methods/hint',
       defaultMessage:
-        'Each entrance says which user types may sign in through it. Entrances come with the deployment and cannot be added or removed here.',
+        'Each entrance says which user types may sign in through it, and the list order is the order of the sign-in page.',
     },
     loginMethodsEmpty: {
       id: 'auth/login-methods/empty',

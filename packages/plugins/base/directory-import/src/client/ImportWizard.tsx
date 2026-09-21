@@ -15,6 +15,7 @@ import { upload } from '@qualy/plugin-storage/client'
 import { orgNodePicker, type OrgNodePickerContext } from '@qualy/ui-contract'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { AsyncSection, Field, Feedback } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
@@ -82,6 +83,10 @@ const styles = stylex.create({
     alignItems: 'start',
     gap: 16,
     gridTemplateColumns: { default: 'minmax(0, 1fr)', '@media (min-width: 820px)': 'minmax(0, 1fr) minmax(0, 1.1fr)' },
+    // Stacked, four rules and a sample table stand between the reader and
+    // the one thing this step asks for. The file goes first and the rules
+    // read under it; nothing is committed until the preview step anyway.
+    order: { default: null, [breakpoints.phone]: 1 },
   },
   prepWords: { display: 'flex', flexDirection: 'column', gap: 8 },
   prepList: {
@@ -97,7 +102,11 @@ const styles = stylex.create({
   prepSample: { backgroundColor: tokens.surface },
   issuePager: { paddingTop: 4 },
   level: { display: 'grid', gap: 12, gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) auto', alignItems: 'end' },
-  picker: { minHeight: 240, maxHeight: 320 },
+  // A seat with a height, because the picker grows into whatever it is
+  // given: handed a box with only a ceiling, its list took the height it
+  // computed from the window instead and drew straight over the field
+  // below it.
+  picker: { display: 'flex', minHeight: 0, height: '20rem', flexDirection: 'column' },
   summary: { display: 'grid', gap: 12, gridTemplateColumns: { default: 'minmax(0, 1fr)', '@media (min-width: 720px)': 'repeat(3, minmax(0, 1fr))' } },
   summaryCell: {
     display: 'flex',
@@ -499,7 +508,6 @@ export function ImportWizard({
                             value: anchor === null ? [] : [anchor],
                             onChange: (ids) => setAnchor(ids[0] ?? null),
                             single: true,
-                            fill: true,
                           } satisfies OrgNodePickerContext
                         }
                         fallback={<Feedback message={format(m.anchorRoot)} />}

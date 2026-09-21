@@ -55,7 +55,6 @@ const styles = stylex.create({
   unitsAside: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 8 },
   unitsTrigger: {
     width: '100%',
-    justifyContent: 'space-between',
     paddingInline: 8,
     pointerEvents: { default: null, [wide]: 'none' },
   },
@@ -273,7 +272,11 @@ export function ParticipantResultList({
               {narrow ? (
                 <Collapsible open={unitsOpen} onOpenChange={setUnitsOpen}>
                   <CollapsibleTrigger asChild>
-                    <Button variant="ghost" className={stylex.props(styles.unitsTrigger).className}>
+                    <Button
+                      variant="ghost"
+                      justify="space-between"
+                      className={stylex.props(styles.unitsTrigger).className}
+                    >
                       <span {...stylex.props(styles.unitsWord)}>{format(m.rosterUnits)}</span>
                       <ChevronDownIcon
                         aria-hidden

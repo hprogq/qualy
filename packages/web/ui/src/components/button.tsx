@@ -112,6 +112,15 @@ export interface ButtonProps extends React.ComponentProps<'button'> {
   size?: ButtonSize | null
   /** render as the single child element, keeping the button's look */
   asChild?: boolean
+  /**
+   * Where the label sits when the button is wider than its words.
+   *
+   * The widget centres its label part, which a rule on the button's own box
+   * cannot reach - so a full-width control built to read as a field, with
+   * its value at one end and a chevron at the other, came out as a centred
+   * pair floating in the middle of a wide box.
+   */
+  justify?: 'center' | 'space-between' | 'start' | 'end'
 }
 
 /**
@@ -135,6 +144,7 @@ function Button({
   className,
   children,
   disabled,
+  justify,
   style,
   ...props
 }: ButtonProps) {
@@ -166,9 +176,13 @@ function Button({
     'data-variant': v,
     'data-size': s,
     ...(disabled === undefined ? {} : { disabled }),
-    // the icon-button component has no label part to dress
+    // the icon-button component has no label part to dress, and no label to
+    // place either
     ...(iconSize === undefined
-      ? { classNames: { label: stylex.props(part.label).className } }
+      ? {
+          classNames: { label: stylex.props(part.label).className },
+          ...(justify === undefined ? {} : { justify }),
+        }
       : {}),
     style: off ? { ...noHover, ...style } : style,
   }

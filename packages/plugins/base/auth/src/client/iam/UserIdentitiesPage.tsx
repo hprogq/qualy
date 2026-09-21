@@ -13,6 +13,7 @@ import {
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { AsyncSection, ConfirmDialog, Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import {
   Card,
@@ -26,7 +27,6 @@ import {
   Table,
   TableHead,
   TableRow,
-  Tag,
 } from '@qualy/ui/screen'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
@@ -58,7 +58,12 @@ const styles = stylex.create({
     color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
     textDecoration: 'none',
   },
-  end: { display: 'flex', justifyContent: 'flex-end', gap: 4 },
+  end: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    gap: 4,
+    marginInlineStart: { default: null, [breakpoints.phone]: 'auto' },
+  },
   form: { display: 'flex', flexDirection: 'column', gap: 14 },
   code: { fontFamily: "'SFMono-Regular', ui-monospace, Menlo, Consolas, monospace", fontSize: 12 },
 })
@@ -162,8 +167,10 @@ export default function UserIdentitiesPage() {
                     data-admits={entrance.admits}
                   >
                     <Cell lead>
+                      {/* the name is the entrance; the driver's own code is
+                          ours, not the reader's, and stays on the row as
+                          data for whoever is debugging */}
                       <LeadWord>{entrance.name}</LeadWord>
-                      <Tag outline>{entrance.type}</Tag>
                       {entrance.status === 'disabled' && (
                         <Status tone="bad">{format(m.entranceDisabled)}</Status>
                       )}

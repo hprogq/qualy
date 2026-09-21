@@ -16,7 +16,12 @@ const styles = stylex.create({
     display: 'flex',
     minWidth: 0,
     alignItems: 'center',
-    gap: 8,
+    columnGap: 8,
+    rowGap: 6,
+    // On a phone the rule at the far end has nowhere to go: squeezed
+    // against an action it became an ellipsis three characters in, which
+    // is a rule nobody can read. It takes its own line instead.
+    flexWrap: { default: null, [breakpoints.phone]: 'wrap' },
   },
   headTitle: {
     margin: 0,
@@ -39,9 +44,13 @@ const styles = stylex.create({
   },
   quietNote: {
     minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
+    // last in the flow on a phone, so the line it takes is under the title
+    // and its action rather than between them
+    order: { default: null, [breakpoints.phone]: 1 },
+    flexBasis: { default: null, [breakpoints.phone]: '100%' },
+    overflow: { default: 'hidden', [breakpoints.phone]: 'visible' },
+    textOverflow: { default: 'ellipsis', [breakpoints.phone]: 'clip' },
+    whiteSpace: { default: 'nowrap', [breakpoints.phone]: 'normal' },
     fontSize: '0.75rem',
     lineHeight: '1rem',
     color: tokens.mutedForeground,

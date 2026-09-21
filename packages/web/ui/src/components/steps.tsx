@@ -2,6 +2,7 @@ import { CheckIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
 import type { StyleXStyles } from '@stylexjs/stylex'
 import { tokens } from '../theme/tokens.stylex.ts'
+import { breakpoints } from '../theme/breakpoints.stylex.ts'
 
 // Where you are in a short guided form. Presentational only: the owner keeps
 // the index, because it is the owner that knows when a step is complete.
@@ -9,8 +10,12 @@ import { tokens } from '../theme/tokens.stylex.ts'
 const styles = stylex.create({
   list: {
     display: 'flex',
+    minWidth: 0,
     alignItems: 'center',
-    gap: 12,
+    margin: 0,
+    padding: 0,
+    listStyle: 'none',
+    gap: { default: 12, [breakpoints.phone]: 8 },
   },
   item: {
     display: 'flex',
@@ -21,6 +26,7 @@ const styles = stylex.create({
     gap: 12,
   },
   connector: {
+    minWidth: 8,
     height: 1,
     flexGrow: 1,
     flexShrink: 1,
@@ -29,9 +35,12 @@ const styles = stylex.create({
   },
   label: {
     display: 'flex',
+    minWidth: 0,
     alignItems: 'center',
-    gap: 8,
+    // no word beside the dot on a phone, so no gap either
+    gap: { default: 8, [breakpoints.phone]: 0 },
   },
+  labelActive: { gap: 8 },
   button: {
     borderRadius: tokens.radiusMd,
     outline: 'none',
@@ -67,12 +76,18 @@ const styles = stylex.create({
   },
   check: { width: 14, height: 14 },
   words: {
+    // Five named steps do not fit across a phone, and the strip was simply
+    // cut off at the fourth. Narrow, only the step being filled in says its
+    // name; the others stay as numbered dots, which is still the whole
+    // shape of the form and where in it the reader is.
+    display: { default: null, [breakpoints.phone]: 'none' },
     fontSize: '0.875rem',
     lineHeight: '1.25rem',
     whiteSpace: 'nowrap',
     color: tokens.mutedForeground,
   },
   wordsActive: {
+    display: { default: null, [breakpoints.phone]: 'inline' },
     fontWeight: 500,
     color: tokens.foreground,
   },
@@ -138,7 +153,10 @@ function StepLabel({
   )
   if (!onSelect) {
     return (
-      <span aria-current={active ? 'step' : undefined} {...stylex.props(styles.label)}>
+      <span
+        aria-current={active ? 'step' : undefined}
+        {...stylex.props(styles.label, active && styles.labelActive)}
+      >
         {body}
       </span>
     )
@@ -147,7 +165,7 @@ function StepLabel({
     <button
       type="button"
       aria-current={active ? 'step' : undefined}
-      {...stylex.props(styles.label, styles.button)}
+      {...stylex.props(styles.label, active && styles.labelActive, styles.button)}
       onClick={() => onSelect(index)}
     >
       {body}

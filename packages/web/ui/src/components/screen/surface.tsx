@@ -1,7 +1,13 @@
 import {
+  Children,
+  cloneElement,
   createContext,
+  isValidElement,
   useContext,
+  useMemo,
   type ComponentProps,
+  type CSSProperties,
+  type ReactElement,
   type ReactNode,
 } from 'react'
 import { ChevronRightIcon } from 'lucide-react'
@@ -202,11 +208,34 @@ const styles = stylex.create({
   },
   cell: {
     minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
+    // Across, a cell is a column and says one line's worth; stacked on a
+    // phone it is a fact beside its name, and a fact that cannot fit takes
+    // a second line rather than losing its end to an ellipsis - there is no
+    // column head up there to guess the rest from.
+    overflow: { default: 'hidden', [breakpoints.phone]: 'visible' },
+    textOverflow: { default: 'ellipsis', [breakpoints.phone]: 'clip' },
+    whiteSpace: { default: 'nowrap', [breakpoints.phone]: 'normal' },
     fontSize: 12.5,
     color: tokens.mutedForeground,
+  },
+  // The column's name, carried into the row itself.
+  //
+  // A phone drops the head strip - six columns will not fit - and the row
+  // becomes a name with its facts under it. Unlabelled, those facts are a
+  // run of words nobody can read back to a column: "328 班级 账号密码 启用"
+  // could be anything. So each cell takes its own head's word with it, and
+  // shows it exactly where the strip is gone.
+  //
+  // Drawn rather than written: a hidden span inside the cell would join the
+  // cell's text, and every `getByText('郭航旗')` in the suite would then be
+  // looking at "姓名郭航旗". Generated content is in no text node, so what a
+  // reader sees changes and what anything reads stays the value alone.
+  cellLabel: {
+    '::before': {
+      content: { default: 'none', [breakpoints.phone]: 'var(--q-cell-label)' },
+      marginInlineEnd: 5,
+      color: QUIET,
+    },
   },
   cellLead: {
     display: 'flex',
@@ -441,10 +470,24 @@ export function DefLine({ label, children }: { label: string; children: ReactNod
   )
 }
 
-const TableColumns = createContext<{ template: string; openable: boolean }>({
+const TableColumns = createContext<{
+  template: string
+  openable: boolean
+  labels: readonly string[]
+}>({
   template: 'minmax(0, 1fr)',
   openable: false,
+  labels: [],
 })
+
+/** the words of a head cell, for a row that has to carry them on a phone */
+const wordsOf = (node: ReactNode): string => {
+  if (typeof node === 'string') return node
+  if (typeof node === 'number') return String(node)
+  if (Array.isArray(node)) return node.map(wordsOf).join('')
+  if (isValidElement<{ children?: ReactNode }>(node)) return wordsOf(node.props.children)
+  return ''
+}
 
 /**
  * A table drawn as a grid, so that a row can be one pressable thing.
@@ -452,6 +495,11 @@ const TableColumns = createContext<{ template: string; openable: boolean }>({
  * `columns` is the grid template without the way-in column; a table whose
  * rows open something says so, and every row and the head get the same
  * narrow last column for the chevron.
+ *
+ * The head's words are read off the head itself and handed down, because a
+ * phone shows no head and a row has to say them itself. Reading them here
+ * rather than asking every table to state them twice is what keeps the two
+ * from drifting apart.
  */
 export function Table({
   columns,
@@ -463,7 +511,14 @@ export function Table({
   children: ReactNode
 }) {
   const template = openable ? `${columns} 1.25rem` : columns
-  return <TableColumns value={{ template, openable }}>{children}</TableColumns>
+  const labels = useMemo(() => {
+    const head = Children.toArray(children).find(
+      (child) => isValidElement(child) && child.type === TableHead,
+    )
+    if (!isValidElement<{ children?: ReactNode }>(head)) return []
+    return Children.toArray(head.props.children).map(wordsOf)
+  }, [children])
+  return <TableColumns value={{ template, openable, labels }}>{children}</TableColumns>
 }
 
 export function TableHead({ children }: { children: ReactNode }) {
@@ -498,7 +553,7 @@ export function TableRow({
   children: ReactNode
   xstyle?: StyleXStyles
 } & Omit<ComponentProps<'button'>, 'className' | 'style' | 'onClick' | 'type' | 'children'>) {
-  const { template, openable } = useContext(TableColumns)
+  const { template, openable, labels } = useContext(TableColumns)
   const look = stylex.props(
     styles.row,
     styles.columns(template),
@@ -508,9 +563,21 @@ export function TableRow({
     selected && styles.rowSelected,
     xstyle,
   )
+  // Which column a cell is in, counted the way the grid counts it: by
+  // position among the row's children, so a row that leads with something
+  // that is not a cell - a drag handle, a tick - still lines its facts up
+  // with the head above them.
+  const labelled =
+    labels.length === 0
+      ? children
+      : Children.toArray(children).map((child, column) =>
+          isValidElement(child) && child.type === Cell
+            ? cloneElement(child as ReactElement<{ column?: number }>, { column })
+            : child,
+        )
   const body = (
     <>
-      {children}
+      {labelled}
       {openable && (
         <span aria-hidden {...stylex.props(styles.chevron)}>
           <ChevronRightIcon {...stylex.props(styles.chevronGlyph)} />
@@ -570,6 +637,7 @@ export function Cell({
   mono = false,
   end = false,
   title,
+  column,
   children,
 }: {
   lead?: boolean
@@ -580,8 +648,21 @@ export function Cell({
   mono?: boolean
   end?: boolean
   title?: string | undefined
+  /**
+   * Which column this is, filled in by the row.
+   *
+   * A caller never passes it: the row counts positions and the table holds
+   * the head's words, which is how a phone can name a fact the column head
+   * would have named.
+   */
+  column?: number
   children?: ReactNode
 }) {
+  const { labels } = useContext(TableColumns)
+  // A cell with nothing in it is a fact this row does not have, and a bare
+  // column name standing on its own says the opposite.
+  const said = children !== undefined && children !== null && children !== false && children !== ''
+  const label = column === undefined || !said ? '' : (labels[column] ?? '')
   if (lead) {
     return (
       <span
@@ -598,23 +679,30 @@ export function Cell({
       </span>
     )
   }
+  const look = stylex.props(
+    styles.cell,
+    tone === 'plain' && styles.cellPlain,
+    tone === 'quiet' && styles.cellQuiet,
+    tone === 'warn' && styles.cellWarn,
+    numeric && styles.cellNumeric,
+    mono && styles.cellMono,
+    end && styles.cellEnd,
+    label !== '' && styles.cellLabel,
+  )
   return (
     <span
-      {...stylex.props(
-        styles.cell,
-        tone === 'plain' && styles.cellPlain,
-        tone === 'quiet' && styles.cellQuiet,
-        tone === 'warn' && styles.cellWarn,
-        numeric && styles.cellNumeric,
-        mono && styles.cellMono,
-        end && styles.cellEnd,
-      )}
+      {...look}
+      style={label === '' ? look.style : { ...look.style, ...labelVar(label) }}
       title={title}
     >
       {children}
     </span>
   )
 }
+
+/** the column's word as a CSS string, for the rule that draws it */
+const labelVar = (label: string) =>
+  ({ '--q-cell-label': `"${label.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"` }) as CSSProperties
 
 /** the words of a lead cell, which give way before the tags beside them do */
 export function LeadWord({ children }: { children: ReactNode }) {

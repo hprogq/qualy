@@ -16,6 +16,7 @@ import {
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import * as stylex from '@stylexjs/stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { AsyncSection, ConfirmDialog, Feedback, FormDialog } from '@qualy/ui/admin'
 import { PlusIcon } from 'lucide-react'
 import {
@@ -57,7 +58,13 @@ const styles = stylex.create({
     columnGap: 12,
     rowGap: 2,
   },
-  end: { display: 'flex', justifyContent: 'flex-end' },
+  // stacked, the press keeps to the far end of whatever line it lands on
+  // rather than starting a new one under the first word
+  end: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    marginInlineStart: { default: null, [breakpoints.phone]: 'auto' },
+  },
 })
 
 type Grant = {

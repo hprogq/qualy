@@ -17,7 +17,6 @@ const styles = stylex.create({
   },
   triggerFace: {
     width: '100%',
-    justifyContent: 'space-between',
     fontWeight: 400,
   },
   chosenWord: {
@@ -179,6 +178,7 @@ export function NodePicker({
       <PopoverTrigger asChild>
         <Button
           variant="outline"
+          justify="space-between"
           disabled={disabled}
           {...(id === undefined ? {} : { id })}
           {...(label === undefined ? {} : { 'aria-label': label })}

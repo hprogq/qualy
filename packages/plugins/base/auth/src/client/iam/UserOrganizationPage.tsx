@@ -5,6 +5,7 @@ import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { AsyncSection, Feedback } from '@qualy/ui/admin'
 import { Card, CardEmpty, EditorSkeleton, SectionHead, Tag } from '@qualy/ui/screen'
 import { Button } from '@qualy/ui/button'
@@ -65,7 +66,9 @@ const styles = stylex.create({
     paddingBlock: 14,
   },
   picker: {
-    width: '18rem',
+    // a fixed column beside the press on a desktop; the whole line on a
+    // phone, where 18rem leaves a gap that reads as a broken control
+    width: { default: '18rem', [breakpoints.phone]: '100%' },
   },
 })
 
