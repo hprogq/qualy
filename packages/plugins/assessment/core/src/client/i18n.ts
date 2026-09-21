@@ -390,6 +390,10 @@ const reviewSummaryDifferMessage = defineMessage<{ count: number }>()({
   id: 'assessment/review/summary-differ',
   defaultMessage: '{count} differ from the filing',
 })
+const rosterRowActionsMessage = defineMessage<{ name: string }>()({
+  id: 'assessment/roster/row-actions',
+  defaultMessage: 'What can be done about {name}',
+})
 const recordUnitRosterPageMessage = defineMessage<{ page: number }>()({
   id: 'assessment/record/unit-roster-page',
   defaultMessage: 'Page {page}',
@@ -1279,11 +1283,20 @@ const i18n = definePluginMessages({
     // one participant's whole account, as whoever runs the round reads it
     participantResultsTab: {
       id: 'assessment/participant-results/tab',
-      defaultMessage: 'Participant results',
+      defaultMessage: 'Participants',
     },
+    columnItem: { id: 'assessment/column/item', defaultMessage: 'Question' },
+    columnEntrySource: { id: 'assessment/column/entry-source', defaultMessage: 'How it arrived' },
+    columnEntryStanding: { id: 'assessment/column/entry-standing', defaultMessage: 'Standing' },
+    columnEntryAmount: { id: 'assessment/column/entry-amount', defaultMessage: 'Counted' },
+    participantResultsOpen: {
+      id: 'assessment/participant-results/open',
+      defaultMessage: 'Open the account',
+    },
+    rosterRowActions: rosterRowActionsMessage,
     participantResultsHint: {
       id: 'assessment/participant-results/hint',
-      defaultMessage: "Check one participant's entries, determinations and current score.",
+      defaultMessage: 'Who takes part, and what the round has decided about each of them.',
     },
     participantResultsPick: {
       id: 'assessment/participant-results/pick',

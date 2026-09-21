@@ -6,6 +6,7 @@ import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Skeleton } from '@qualy/ui/skeleton'
+import { Card, CardHead, Cell, Table, TableHead, TableRow } from '@qualy/ui/screen'
 import { toast } from '@qualy/ui/toast'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
@@ -44,74 +45,13 @@ const styles = stylex.create({
   },
   group: { display: 'flex', minWidth: 0, flexDirection: 'column' },
   // the fold: which part of the paper the claims under it answer
-  strip: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    borderTopWidth: { default: 1, ':first-child': 0 },
-    borderTopStyle: 'solid',
-    borderTopColor: tokens.divider,
-    borderBottomWidth: 1,
-    borderBottomStyle: 'solid',
-    borderBottomColor: tokens.divider,
-    backgroundColor: tokens.surfaceMuted,
-    paddingInline: 16,
-    paddingBlock: 9,
-  },
   stripWord: { fontSize: 12, fontWeight: 500, color: tokens.mutedForeground },
-  stripCount: {
-    marginLeft: 'auto',
-    fontSize: 12,
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 80%, transparent)`,
-    fontVariantNumeric: 'tabular-nums',
-  },
   rows: { display: 'flex', minWidth: 0, flexDirection: 'column' },
-  row: {
-    display: 'grid',
-    width: '100%',
-    gridTemplateColumns: 'minmax(0, 1fr) 4.5rem 1rem',
-    alignItems: 'center',
-    columnGap: 12,
-    borderTopWidth: { default: 1, ':first-child': 0 },
-    borderTopStyle: 'solid',
-    borderTopColor: tokens.divider,
-    backgroundColor: {
-      default: 'transparent',
-      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
-    },
-    paddingInline: 16,
-    paddingBlock: 12,
-    textAlign: 'start',
-    cursor: 'pointer',
-    transitionProperty: 'background-color',
-  },
   words: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 4 },
-  title: {
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    fontSize: 14,
-    fontWeight: 500,
-  },
   under: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 },
-  rowOpen: {
-    backgroundColor: { default: tokens.surfaceMuted, ':hover': tokens.surfaceMuted },
-  },
   // its own column, so the numbers line up against each other rather than
   // against whatever length the titles happen to be
-  amount: {
-    textAlign: 'right',
-    fontSize: 14,
-    fontWeight: 600,
-    fontVariantNumeric: 'tabular-nums',
-  },
   source: { color: tokens.mutedForeground },
-  chevron: {
-    width: 16,
-    height: 16,
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)`,
-  },
   empty: {
     borderRadius: tokens.radiusLg,
     backgroundColor: tokens.surface,
@@ -263,56 +203,55 @@ export function ParticipantEntries({
             {buckets.map(([groupId, claims]) => {
               const group = groupsById.get(groupId)
               return (
-                <section key={groupId || 'ungrouped'} {...stylex.props(styles.group)}>
-                  <div {...stylex.props(styles.strip)}>
-                    <h3 {...stylex.props(styles.stripWord)}>
-                      {group?.name ?? format(m.participantResultsUngrouped)}
-                    </h3>
-                    <span {...stylex.props(styles.stripCount)}>
-                      {format(m.participantResultsClaimCount, { count: claims.length })}
-                    </span>
-                  </div>
-                  <div {...stylex.props(styles.rows)}>
+                <Card key={groupId || 'ungrouped'} data-testid="claim-group">
+                  <CardHead
+                    title={group?.name ?? format(m.participantResultsUngrouped)}
+                    note={format(m.participantResultsClaimCount, { count: claims.length })}
+                  />
+                  {/* the round's own table: the question, how the fact got
+                      here, where it stands and what it came to - the same
+                      four columns the roster reads in, rather than a run of
+                      pressable cards */}
+                  <Table columns="minmax(0, 1fr) 6rem 7.5rem 5rem" openable>
+                    <TableHead>
+                      <span>{format(m.columnItem)}</span>
+                      <span>{format(m.columnEntrySource)}</span>
+                      <span>{format(m.columnEntryStanding)}</span>
+                      <span>{format(m.columnEntryAmount)}</span>
+                    </TableHead>
                     {claims.map(({ entry }) => {
                       const item = itemsById.get(entry.itemId)
                       const counted = countedBy.get(entry.id)
                       return (
-                        <button
+                        <TableRow
                           key={entry.id}
-                          type="button"
+                          height="compact"
+                          nested
+                          selected={entry.id === entryId}
+                          onOpen={() => onEntry(entry.id)}
                           data-testid="participant-entry"
                           data-entry={entry.id}
-                          {...stylex.props(styles.row, entry.id === entryId && styles.rowOpen)}
-                          onClick={() => onEntry(entry.id)}
                         >
-                          <span {...stylex.props(styles.words)}>
-                            <span {...stylex.props(styles.title)}>
-                              {item?.title ?? format(m.itemsUntitled)}
-                            </span>
-                            <span {...stylex.props(styles.under)}>
-                              <span {...stylex.props(styles.source)}>
-                                {format(sourceLabelOf(entry.source))}
-                              </span>
-                              <EntryStanding
-                                status={entry.status}
-                                source={entry.source}
-                                revised={entry.currentReviewInstanceId !== null}
-                                asked={entry.supplement !== null}
-                              />
-                            </span>
-                          </span>
-                          {/* what it came to, when the ledger says it came to
-                              anything: the two halves of this account answer
-                              each other rather than sitting side by side. The
-                              seat is kept either way, so the chevrons stay in
-                              one line down the card. */}
-                          <span {...stylex.props(styles.amount)}>{counted ?? ''}</span>
-                          <ChevronRightIcon aria-hidden {...stylex.props(styles.chevron)} />
-                        </button>
+                          <Cell lead strong={entry.id === entryId}>
+                            {item?.title ?? format(m.itemsUntitled)}
+                          </Cell>
+                          <Cell tone="muted">{format(sourceLabelOf(entry.source))}</Cell>
+                          <Cell>
+                            <EntryStanding
+                              status={entry.status}
+                              source={entry.source}
+                              revised={entry.currentReviewInstanceId !== null}
+                              asked={entry.supplement !== null}
+                            />
+                          </Cell>
+                          <Cell numeric tone={counted === undefined ? 'quiet' : 'plain'}>
+                            {counted ?? '—'}
+                          </Cell>
+                        </TableRow>
                       )
                     })}
-                  </div>
-                </section>
+                  </Table>
+                </Card>
               )
             })}
             {entries.data?.nextCursor != null && (

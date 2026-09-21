@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { ChevronDownIcon, ChevronRightIcon } from 'lucide-react'
+import { ChevronDownIcon, EllipsisIcon } from 'lucide-react'
 import { UiSlot, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
@@ -9,6 +9,7 @@ import { authTerms } from '@qualy/auth-contract/terms'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { orgNodePicker } from '@qualy/ui-contract'
 import { AsyncSection, Feedback } from '@qualy/ui/admin'
+import { Card, CardEmpty, Cell, Status, Table, TableHead, TableRow } from '@qualy/ui/screen'
 import { toast } from '@qualy/ui/toast'
 import { ResizableSplit } from '@qualy/ui/screen'
 import { AddPeopleDialog } from '../roster/AddPeopleDialog.tsx'
@@ -16,7 +17,13 @@ import { ImportDialog } from '../roster/ImportDialog.tsx'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@qualy/ui/collapsible'
-import { PersonCell } from '@qualy/ui/person'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@qualy/ui/dropdown-menu'
+import { ConfirmDialog } from '@qualy/ui/admin'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useIsBelow } from '@qualy/ui/use-mobile'
@@ -70,52 +77,8 @@ const styles = stylex.create({
   listCount: { fontSize: 12, color: tokens.mutedForeground },
   listSpacer: { flexGrow: 1 },
   listActions: { display: 'flex', flexShrink: 0, alignItems: 'center', gap: 8 },
-  rows: {
-    display: 'flex',
-    flexDirection: 'column',
-    borderRadius: tokens.radiusLg,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: tokens.border,
-    overflow: 'hidden',
-  },
   // one person per ruled line: a card per row would make finding somebody a
   // matter of scrolling past twenty-five boxes
-  row: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 12,
-    borderWidth: 0,
-    borderBottomWidth: 1,
-    borderBottomStyle: 'solid',
-    borderBottomColor: tokens.border,
-    backgroundColor: { default: 'transparent', ':hover': tokens.surfaceMuted },
-    paddingInline: 14,
-    paddingBlock: 12,
-    textAlign: 'start',
-    cursor: 'pointer',
-    transitionProperty: 'background-color',
-    transitionDuration: '120ms',
-    ':last-child': { borderBottomWidth: 0 },
-  },
-  who: { minWidth: 0, flexGrow: 1 },
-  chevron: {
-    width: 16,
-    height: 16,
-    flexShrink: 0,
-    color: tokens.mutedForeground,
-    opacity: { default: 0.35, ':is(button:hover *)': 1 },
-  },
-  empty: {
-    borderRadius: tokens.radiusLg,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: tokens.border,
-    paddingBlock: 40,
-    textAlign: 'center',
-    fontSize: 13,
-    color: tokens.mutedForeground,
-  },
   pagerRow: { display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 },
   listSkeleton: { height: 320, width: '100%', borderRadius: 12 },
 })
@@ -138,6 +101,7 @@ export function ParticipantResultList({
   const [failure, setFailure] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [excluding, setExcluding] = useState<{ id: string; name: string } | null>(null)
   const businessNo = useTerm(authTerms.businessNumber)
   const [units, setUnits] = useState<readonly string[]>([])
   const [unitScope, setUnitScope] = useState<'self' | 'subtree'>('subtree')
@@ -208,6 +172,23 @@ export function ParticipantResultList({
     onSuccess: (result: { added: number }) => {
       setImporting(false)
       toast.success(format(m.toastImported, { count: result.added }))
+      invalidate()
+    },
+    onError,
+  })
+
+  const setStatus = useMutation({
+    mutationFn: (input: { participantId: string; status: 'active' | 'excluded' }) =>
+      run(
+        api.assessment.setParticipantStatus({
+          params: { batchId, participantId: input.participantId },
+          payload: { status: input.status },
+        }),
+      ).then((answer) => ({ ...answer, status: input.status })),
+    onMutate: () => setFailure(null),
+    onSuccess: (result: { status: 'active' | 'excluded' }) => {
+      setExcluding(null)
+      toast.success(format(result.status === 'excluded' ? m.toastExcluded : m.toastRestored))
       invalidate()
     },
     onError,
@@ -315,40 +296,75 @@ export function ParticipantResultList({
             onRetry={() => void participants.refetch()}
             skeleton={<Skeleton className={stylex.props(styles.listSkeleton).className} />}
           >
-            {rows.length === 0 ? (
-              <p {...stylex.props(styles.empty)}>{format(m.rosterEmpty)}</p>
-            ) : (
-              <div {...stylex.props(styles.rows)}>
-                {rows.map((row) => (
-                  <button
-                    key={row.id}
-                    type="button"
-                    data-testid="participant-row"
-                    data-participant={row.id}
-                    {...stylex.props(styles.row)}
-                    onClick={() => onOpen(row.id)}
-                  >
-                    <span {...stylex.props(styles.who)}>
-                      {/* the plain cell, not the person card: this row IS the
-                          way to look somebody up, and the card is a second
-                          button - nested inside this one, which is not a
-                          thing a browser will draw. The roster's rows are not
-                          pressable, which is why the card belongs there. */}
-                      <PersonCell
-                        name={row.displayName}
-                        secondary={row.businessNo ?? format(m.noBusinessNoShort, { businessNo })}
-                      />
-                    </span>
-                    {row.status === 'excluded' ? (
-                      <Badge variant="secondary">{format(m.excludedBadge)}</Badge>
-                    ) : (
-                      <Badge variant="outline">{format(m.participantActive)}</Badge>
-                    )}
-                    <ChevronRightIcon aria-hidden {...stylex.props(styles.chevron)} />
-                  </button>
-                ))}
-              </div>
-            )}
+            <Card>
+              <Table columns="8.5rem minmax(0, 1fr) 6rem 2rem">
+                <TableHead>
+                  <span>{businessNo}</span>
+                  <span>{format(m.columnParticipant)}</span>
+                  <span>{format(m.columnParticipantStatus)}</span>
+                  <span />
+                </TableHead>
+                {rows.length === 0 ? (
+                  <CardEmpty>{format(m.rosterEmpty)}</CardEmpty>
+                ) : (
+                  rows.map((row) => (
+                    <TableRow
+                      key={row.id}
+                      height="compact"
+                      nested
+                      onOpen={() => onOpen(row.id)}
+                      data-testid="participant-row"
+                      data-participant={row.id}
+                      data-participant-status={row.status}
+                    >
+                      <Cell lead numeric tone={row.businessNo === null ? 'quiet' : 'plain'}>
+                        {row.businessNo ?? format(m.noBusinessNoShort, { businessNo })}
+                      </Cell>
+                      <Cell tone="plain">{row.displayName}</Cell>
+                      <Status tone={row.status === 'excluded' ? 'bad' : 'plain'}>
+                        {format(row.status === 'excluded' ? m.excludedBadge : m.participantActive)}
+                      </Status>
+                      {/* the act on one person, where the person is: walking
+                          into their account to take them off the round was a
+                          detour through a page that answers a different
+                          question */}
+                      {manageable ? (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              size="icon-xs"
+                              variant="ghost"
+                              data-testid="participant-actions"
+                              aria-label={format(m.rosterRowActions, { name: row.displayName })}
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              <EllipsisIcon aria-hidden />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onSelect={() => onOpen(row.id)}>
+                              {format(m.participantResultsOpen)}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              data-testid="participant-standing"
+                              onSelect={() =>
+                                row.status === 'excluded'
+                                  ? setStatus.mutate({ participantId: row.id, status: 'active' })
+                                  : setExcluding({ id: row.id, name: row.displayName })
+                              }
+                            >
+                              {format(row.status === 'excluded' ? m.restore : m.exclude)}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      ) : (
+                        <span />
+                      )}
+                    </TableRow>
+                  ))
+                )}
+              </Table>
+            </Card>
           </AsyncSection>
 
           {(at > 0 || nextCursor !== null) && (
@@ -374,6 +390,19 @@ export function ParticipantResultList({
         </section>
       </ResizableSplit>
 
+      <ConfirmDialog
+        open={excluding !== null}
+        title={format(m.excludeTitle, { name: excluding?.name ?? '' })}
+        description={format(m.excludeBody)}
+        confirmLabel={format(m.exclude)}
+        cancelLabel={format(commonMessages.cancel)}
+        pending={setStatus.isPending}
+        tone="destructive"
+        onConfirm={() =>
+          excluding && setStatus.mutate({ participantId: excluding.id, status: 'excluded' })
+        }
+        onCancel={() => setExcluding(null)}
+      />
       <AddPeopleDialog
         open={adding}
         pending={addPeople.isPending}
