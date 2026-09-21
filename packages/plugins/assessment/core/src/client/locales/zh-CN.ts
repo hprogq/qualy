@@ -1335,10 +1335,10 @@ export default {
 
   'assessment/batch/switch': '切换批次',
   'assessment/batch/planned-start': '计划开始',
-  'assessment/batch/no-stages': '尚未安排阶段',
+  'assessment/batch/no-stages': '阶段尚未配置',
   'assessment/batch/current-stage': '当前阶段',
   'assessment/batch/not-started': '尚未开始',
-  'assessment/batch/no-phases': '尚未安排阶段',
+  'assessment/batch/no-phases': '阶段尚未配置',
   'assessment/flow/view': '查看全部阶段',
   'assessment/flow/full': '完整流程',
   'assessment/flow/title': '阶段进度',

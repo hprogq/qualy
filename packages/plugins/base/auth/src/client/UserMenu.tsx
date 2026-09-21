@@ -71,9 +71,16 @@ const styles = stylex.create({
     transitionDuration: '150ms',
     transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
     outline: 'none',
+    // Only where something can actually hover. A touch screen has no pointer
+    // to rest, but a browser leaves `:hover` standing on whatever was last
+    // tapped - so closing the menu left the face still wearing the ground it
+    // wears while the menu is up, which reads as a menu that did not close.
     backgroundColor: {
       default: null,
-      ':hover': tokens.surfaceMuted,
+      '@media (hover: hover)': {
+        default: null,
+        ':hover': tokens.surfaceMuted,
+      },
     },
     boxShadow: {
       default: 'none',

@@ -52,6 +52,8 @@ import { AdministrativeImportDetail } from './import/AdministrativeImportDetail.
 // reader was.
 
 const wide = '@media (min-width: 900px)'
+/** where a named act is a mark instead, because the views need the width */
+const phone = '@media (max-width: 767.98px)'
 
 const styles = stylex.create({
   grow: {
@@ -110,6 +112,12 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
   },
   searchIndent: { paddingLeft: 36 },
+  act: {
+    paddingInline: { default: null, [phone]: 0 },
+    width: { default: null, [phone]: 32 },
+    flexShrink: 0,
+  },
+  actWord: { display: { default: 'inline', [phone]: 'none' } },
   actions: {
     display: 'flex',
     gridColumnStart: { default: 2, [wide]: 3 },
@@ -345,18 +353,29 @@ function RecordsBody({
                   />
                 </div>
               )}
+              {/* Marks under a thumb and the words beside a pointer: two
+                  named acts and three views do not fit across a phone, and
+                  the acts were drawn over the views. The name stays for
+                  whoever is listening rather than looking. */}
               <div {...stylex.props(styles.actions)}>
                 <Button
                   size="sm"
                   variant="outline"
+                  aria-label={format(m.importAction)}
+                  className={stylex.props(styles.act).className}
                   onClick={() => address({ mode: 'import' }, { history: 'push' })}
                 >
                   <DownloadIcon aria-hidden {...stylex.props(styles.icon)} />
-                  {format(m.importAction)}
+                  <span {...stylex.props(styles.actWord)}>{format(m.importAction)}</span>
                 </Button>
-                <Button size="sm" onClick={() => address({ mode: 'manual' }, { history: 'push' })}>
+                <Button
+                  size="sm"
+                  aria-label={format(m.recordNewAction)}
+                  className={stylex.props(styles.act).className}
+                  onClick={() => address({ mode: 'manual' }, { history: 'push' })}
+                >
                   <PlusIcon aria-hidden {...stylex.props(styles.icon)} />
-                  {format(m.recordNewAction)}
+                  <span {...stylex.props(styles.actWord)}>{format(m.recordNewAction)}</span>
                 </Button>
               </div>
             </div>

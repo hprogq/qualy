@@ -68,7 +68,10 @@ const styles = stylex.create({
     },
     gridTemplateColumns: {
       default: null,
-      [breakpoints.phone]: 'minmax(52px, 1fr) auto minmax(52px, 1fr)',
+      // the middle may shrink to nothing before it takes either side's
+      // room: `auto` floors a track at its content, so a long name grew the
+      // middle track until it ran under the way back and the account
+      [breakpoints.phone]: 'minmax(52px, 1fr) minmax(0, auto) minmax(52px, 1fr)',
     },
     backgroundColor: { default: null, [breakpoints.phone]: tokens.surface },
     // the same height the product's own bar keeps at this width: on a phone
@@ -128,7 +131,7 @@ const styles = stylex.create({
     // the row's own end already does.
     maxWidth: {
       default: 'min(70vw, 40rem)',
-      [breakpoints.phone]: 'none',
+      [breakpoints.phone]: '100%',
     },
     flexGrow: {
       default: 0,
