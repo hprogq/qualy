@@ -142,8 +142,12 @@ const styles = stylex.create({
   },
   nameSkeleton: {
     height: 24,
-    width: 224,
+    width: { default: 224, [breakpoints.phone]: '70%' },
   },
+  // the strip's own outline: it has a rule and a ground of its own, so an
+  // empty one is a band of nothing rather than a strip on its way
+  stripBone: { height: 12, width: '7rem' },
+  stripBoneEnd: { height: 12, width: '4.5rem' },
   // never shrunk and never clipped: the clock is short by design, and a
   // column that gave way would hand its own text to the name beside it.
   // On a phone it is the second row, ruled off from the head above it and
@@ -271,27 +275,38 @@ export default function BatchContextBar() {
       </div>
 
       <div {...stylex.props(styles.tail)}>
-        {batch !== undefined && (
-          <BatchProgress
-            showStage
-            single={head}
-            flat={head}
-            timeline={plan.data?.timeline ?? []}
-            xstyle={styles.progressText}
-          />
-        )}
-        {/* the whole plan, one press away rather than repeated above every
-            section: a reader who wants it asks for it */}
-        {head && batch !== undefined && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className={stylex.props(styles.flowButton).className}
-            onClick={() => setFlowOpen(true)}
-          >
-            {format(m.fullFlow)}
-            <ChevronRightIcon aria-hidden />
-          </Button>
+        {batch === undefined ? (
+          // only where the strip is a band of its own: across a desk this
+          // column is the end of a line, and a line does not need an outline
+          head && (
+            <>
+              <Skeleton className={stylex.props(styles.stripBone).className} />
+              <Skeleton className={stylex.props(styles.stripBoneEnd).className} />
+            </>
+          )
+        ) : (
+          <>
+            <BatchProgress
+              showStage
+              single={head}
+              flat={head}
+              timeline={plan.data?.timeline ?? []}
+              xstyle={styles.progressText}
+            />
+            {/* the whole plan, one press away rather than repeated above
+                every section: a reader who wants it asks for it */}
+            {head && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className={stylex.props(styles.flowButton).className}
+                onClick={() => setFlowOpen(true)}
+              >
+                {format(m.fullFlow)}
+                <ChevronRightIcon aria-hidden />
+              </Button>
+            )}
+          </>
         )}
       </div>
 

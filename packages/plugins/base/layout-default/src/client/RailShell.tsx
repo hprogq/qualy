@@ -133,6 +133,35 @@ const styles = stylex.create({
     alignItems: 'stretch',
     paddingInline: 0,
   },
+  // The head's own outline, held while what fills it is on its way.
+  //
+  // The band is the window's head here, so an outline of one short bar is
+  // not a placeholder - it is the head having collapsed. Drawn to the shape
+  // the filler will take: a way back and a name across the top, a strip
+  // under it, so nothing moves when the real one arrives.
+  headBones: {
+    display: 'flex',
+    minWidth: 0,
+    flexGrow: 1,
+    flexDirection: 'column',
+  },
+  headBonesRow: {
+    display: 'flex',
+    minHeight: 48,
+    alignItems: 'center',
+    gap: 12,
+    paddingInline: 16,
+  },
+  headBonesStrip: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.divider,
+    paddingInline: 16,
+    paddingBlock: 11,
+  },
   headAccount: {
     position: 'absolute',
     insetInlineEnd: 16,
@@ -1034,6 +1063,17 @@ function CapableRailShell({ navigation, context, badge, banner = false }: RailSh
                   <div {...stylex.props(styles.bannerBoneWords)}>
                     <Skeleton height={20} width="9rem" radius={6} />
                     <Skeleton height={11} width="18rem" radius={4} />
+                  </div>
+                </div>
+              ) : owned ? (
+                <div {...stylex.props(styles.headBones)} aria-hidden data-testid="head-bones">
+                  <div {...stylex.props(styles.headBonesRow)}>
+                    <Skeleton height={18} width={18} radius={5} />
+                    <Skeleton height={17} width="62%" radius={5} />
+                  </div>
+                  <div {...stylex.props(styles.headBonesStrip)}>
+                    <Skeleton height={11} width="5rem" radius={3} />
+                    <Skeleton height={11} width="4rem" radius={3} />
                   </div>
                 </div>
               ) : (
