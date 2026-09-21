@@ -9,12 +9,13 @@ import {
   usePageTitleClaim,
   useScreenFillClaimed,
 } from '@qualy/web-runtime'
-import { SectionBar, TopBar } from './TopBar.tsx'
+import { SectionChips, TopBar } from './TopBar.tsx'
 import { AppsBar } from './BottomBar.tsx'
 import { AppFooter } from './AppFooter.tsx'
 import { useIsBelow } from '@qualy/ui/use-mobile'
 import { useI18n } from '@qualy/web-i18n'
 import { SideNav } from './SideNav.tsx'
+import { BandFootScope } from '@qualy/ui/screen'
 import { layoutMessages as m } from './i18n.ts'
 import { useAppNavigation } from './useAppNavigation.ts'
 import { shell } from './shell.stylex.ts'
@@ -100,12 +101,6 @@ const styles = stylex.create({
     flexShrink: 0,
     height: { default: shell.topBarHeight, [breakpoints.phone]: shell.phoneTopBarHeight },
   },
-  headRoomSections: {
-    height: {
-      default: `calc(${shell.topBarHeight} + ${shell.sectionBarHeight})`,
-      [breakpoints.phone]: `calc(${shell.phoneTopBarHeight} + ${shell.sectionBarHeight})`,
-    },
-  },
   // occupies the band the page scrolls out of first, and no room in the flow
   sentinel: {
     flexShrink: 0,
@@ -150,6 +145,18 @@ const styles = stylex.create({
     flexDirection: 'column',
     flexGrow: 1,
     flexShrink: 0,
+  },
+  // A page with no band of its own still needs its sections: they stand
+  // above its content, in the flow, rather than in a bar of chrome.
+  looseSections: {
+    display: 'flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 6,
+    overflowX: 'auto',
+    scrollbarWidth: 'none',
+    paddingInline: { default: 24, [breakpoints.phone]: 16 },
+    paddingTop: 16,
   },
   // exactly the height the bars leave, and no more however much it holds
   pageFilled: {
@@ -198,6 +205,9 @@ function Shell() {
   // rather than assumed: a height read once was right until the first
   // rotation, and then quietly wrong by eight pixels.
   const [barHeight, setBarHeight] = useState(0)
+  // whether the page's own band has taken the sections; a page with no band
+  // leaves them here, above its content
+  const [sectionsTaken, setSectionsTaken] = useState(false)
   const sectioned = sections.length >= 2
   // one or the other carries the sections, never both - and a workbench that
   // fills the room takes the column's room too: the way out of it is the top
@@ -211,7 +221,7 @@ function Shell() {
     measure.observe(bars)
     setBarHeight(bars.offsetHeight)
     return () => measure.disconnect()
-  }, [withSections])
+  }, [])
 
   useEffect(() => {
     const root = main.current
@@ -259,7 +269,6 @@ function Shell() {
           title={title}
           titleShown={titleShown}
         />
-        {withSections && <SectionBar items={sections} />}
       </div>
       {/* auto, so a page that fits shows nothing. The width this once
           protected only moves where scrollbars take space, and there a track
@@ -281,7 +290,7 @@ function Shell() {
         <div
           aria-hidden
           style={barHeight === 0 ? undefined : { height: barHeight }}
-          {...stylex.props(styles.headRoom, withSections && styles.headRoomSections)}
+          {...stylex.props(styles.headRoom)}
         />
         <div ref={sentinel} aria-hidden {...stylex.props(styles.sentinel)} />
         <div {...stylex.props(styles.frame, filled && styles.frameFilled)}>
@@ -295,7 +304,21 @@ function Shell() {
           )}
           <div {...stylex.props(styles.column)}>
             <div {...stylex.props(styles.page, filled && styles.pageFilled)}>
-              <Outlet />
+              {/* The sections hang under the page's own words rather than
+                  standing in a bar above them: a second band of chrome is
+                  one more thing to look past on a screen that has little
+                  enough room for what the reader came for. */}
+              <BandFootScope
+                value={withSections ? <SectionChips items={sections} /> : null}
+                onClaim={setSectionsTaken}
+              >
+                {withSections && !sectionsTaken && (
+                  <div {...stylex.props(styles.looseSections)}>
+                    <SectionChips items={sections} />
+                  </div>
+                )}
+                <Outlet />
+              </BandFootScope>
             </div>
             {filled ? null : <AppFooter />}
           </div>

@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
   type ComponentType,
@@ -44,8 +45,7 @@ const styles = stylex.create({
     pointerEvents: 'none',
     opacity: 0.06,
     color: tokens.foreground,
-    backgroundImage:
-      'repeating-linear-gradient(-45deg, currentColor 0 1px, transparent 1px 24px)',
+    backgroundImage: 'repeating-linear-gradient(-45deg, currentColor 0 1px, transparent 1px 24px)',
     maskImage: 'radial-gradient(130% 115% at 100% 0%, black, transparent 62%)',
   },
   bandInset: {
@@ -64,6 +64,26 @@ const styles = stylex.create({
   bandInsetBack: {
     paddingTop: { default: 14, [breakpoints.tablet]: 14, [breakpoints.desktop]: 14 },
     paddingBottom: 18,
+  },
+  // What the shell hangs under a band's words: the sections of whatever
+  // this page is part of, drawn where the reader's eye already is rather
+  // than in a bar above the page's own name.
+  //
+  // Bled back out to the window's edges, because a row that scrolls has to
+  // start and end at the screen or the last chip reads as the last section.
+  underBand: {
+    display: 'flex',
+    width: '100%',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 14,
+    marginBottom: -8,
+    marginInline: { default: -24, [breakpoints.phone]: -16 },
+    paddingInline: { default: 24, [breakpoints.phone]: 16 },
+    paddingBottom: 2,
+    overflowX: 'auto',
+    scrollbarWidth: 'none',
   },
   words: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 5 },
   wordsBack: { gap: 8 },
@@ -150,6 +170,47 @@ export function BandBack<P extends { className?: string; children?: ReactNode }>
   )
 }
 
+interface BandFoot {
+  node: ReactNode
+  /** a band saying it has drawn them, so the shell does not draw them too */
+  claim: () => () => void
+}
+
+const BandFoot = createContext<BandFoot | null>(null)
+
+/**
+ * The shell saying what belongs under the words of whatever band is drawn
+ * beneath it.
+ *
+ * The sections of the open application are the reader's, not the page's, so
+ * no page can be asked to draw them - and a bar of its own above the page's
+ * name puts them where nobody is looking. The shell hands them down; each
+ * band draws them at its foot, and says so. Nothing here knows what they
+ * are, and a page with no band of its own leaves them to the shell.
+ */
+export function BandFootScope({
+  value,
+  onClaim,
+  children,
+}: {
+  value: ReactNode
+  /** told when a band takes them, and when the band that took them goes */
+  onClaim?: (taken: boolean) => void
+  children: ReactNode
+}) {
+  const held = useRef(0)
+  const claim = useCallback(() => {
+    held.current += 1
+    onClaim?.(true)
+    return () => {
+      held.current -= 1
+      if (held.current === 0) onClaim?.(false)
+    }
+  }, [onClaim])
+  const value_ = useMemo(() => ({ node: value, claim }), [value, claim])
+  return <BandFoot value={value_}>{children}</BandFoot>
+}
+
 export function Screen({
   title,
   titleAside,
@@ -171,6 +232,10 @@ export function Screen({
   children: ReactNode
 }) {
   const sub = back !== undefined
+  const foot = useContext(BandFoot)
+  const under = foot?.node ?? null
+  const claim = foot?.claim
+  useEffect(() => claim?.(), [claim])
   return (
     <>
       {/* edge to edge: a band inset inside the page's own width is a card
@@ -185,10 +250,13 @@ export function Screen({
               {titleAside}
             </div>
             {description !== undefined && description !== '' && (
-              <p {...stylex.props(styles.description, sub && styles.descriptionBack)}>{description}</p>
+              <p {...stylex.props(styles.description, sub && styles.descriptionBack)}>
+                {description}
+              </p>
             )}
           </div>
           {actions !== undefined && <div {...stylex.props(styles.actions)}>{actions}</div>}
+          {under !== null && <div {...stylex.props(styles.underBand)}>{under}</div>}
         </PageContainer>
       </div>
       <PageContainer size={size} xstyle={styles.stack}>

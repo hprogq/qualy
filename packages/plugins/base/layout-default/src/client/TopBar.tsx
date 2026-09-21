@@ -248,6 +248,25 @@ const styles = stylex.create({
       height: 1.5,
     },
   },
+  chip: {
+    display: 'inline-flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 6,
+    height: 34,
+    paddingInline: 14,
+    borderRadius: 9999,
+    backgroundColor: tokens.surfaceMuted,
+    fontSize: 13.5,
+    whiteSpace: 'nowrap',
+    textDecoration: 'none',
+    color: tokens.mutedForeground,
+  },
+  chipOpen: {
+    backgroundColor: tokens.primary,
+    fontWeight: 500,
+    color: tokens.primaryForeground,
+  },
 })
 
 export interface AppEntry {
@@ -408,6 +427,73 @@ export function TopBar({
         <UiSlot token={sidebarUser} />
       </div>
     </div>
+  )
+}
+
+/**
+ * The same sections as a row of chips, for the foot of whatever band the
+ * page opens on.
+ *
+ * A bar of its own above the page's name is a second piece of chrome the
+ * reader has to look past to reach what they came for, and a row of
+ * underlined words at 13px is a desk's affordance. Under the words, where
+ * the eye already is, they are what they are: the parts of this application,
+ * with the open one filled in.
+ */
+export function SectionChips({ items }: { items: readonly ResolvedNavigationItem[] }) {
+  if (items.length < 2) return null
+  return (
+    <>
+      {items.map((item) =>
+        item.target.kind === 'page' ? (
+          <SectionChip
+            key={item.id}
+            to={item.target.path}
+            page={item.target.pageId}
+            label={item.label}
+          />
+        ) : (
+          <a
+            key={item.id}
+            {...stylex.props(styles.chip)}
+            href={item.target.href}
+            {...(item.target.newWindow ? { target: '_blank', rel: 'noreferrer noopener' } : {})}
+          >
+            <LocalizedText value={item.label} />
+          </a>
+        ),
+      )}
+    </>
+  )
+}
+
+function SectionChip({
+  to,
+  page,
+  label,
+}: {
+  to: string
+  page: NamespacedId
+  label: ResolvedNavigationItem['label']
+}) {
+  const navigation = usePendingNavigation(to)
+  const prefetch = usePagePrefetch()
+  return (
+    <NavLink
+      to={to}
+      end
+      data-testid="section-chip"
+      onClick={navigation.onClick}
+      onPointerEnter={() => prefetch(page)}
+      onFocus={() => prefetch(page)}
+      aria-busy={navigation.pending || undefined}
+      className={({ isActive }) =>
+        stylex.props(styles.chip, (isActive || navigation.pending) && styles.chipOpen).className ??
+        ''
+      }
+    >
+      <LocalizedText value={label} />
+    </NavLink>
   )
 }
 

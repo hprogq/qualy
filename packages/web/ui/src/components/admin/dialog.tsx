@@ -111,6 +111,30 @@ export function FormDialog({
   children: ReactNode
   footer?: ReactNode
 }) {
+  const phone = useIsBelow(768)
+  // From the foot on a phone, which is where a panel comes from there. A
+  // box floating in the middle of a handset is a desk's shape: it leaves a
+  // dead margin on all four sides, and the hand that has to reach its
+  // buttons is at the bottom of the screen, not in the middle of it.
+  if (phone) {
+    return (
+      <Sheet open={open} onOpenChange={(next) => !next && onClose()}>
+        {/* the same name whichever shape it takes: what addresses "the
+            dialog's content" is asking about the task, not about which
+            edge it came in from */}
+        <SheetContent side="bottom" data-slot="dialog-content" xstyle={styles.panelBelow}>
+          <SheetHeader>
+            <SheetTitle>{title}</SheetTitle>
+            {description && <SheetDescription>{description}</SheetDescription>}
+          </SheetHeader>
+          <div {...stylex.props(styles.panelBody)}>
+            <div {...stylex.props(styles.panelStack)}>{children}</div>
+          </div>
+          {footer && <SheetFooter xstyle={styles.panelFooter}>{footer}</SheetFooter>}
+        </SheetContent>
+      </Sheet>
+    )
+  }
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       {/* Never taller than the window, and the middle row is what gives:
