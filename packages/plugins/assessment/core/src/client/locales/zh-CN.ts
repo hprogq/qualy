@@ -605,6 +605,7 @@ export default {
   'assessment/items/field-max-length': '最长字数',
   'assessment/items/field-min-date': '最早日期',
   'assessment/items/date-in-range': '校验材料时间范围',
+  'assessment/items/date-in-range-hint': '出生日期这类本就不在批次期内的日期，保持关闭',
   'assessment/items/date-window': '本批次仅统计 {from} 至 {until} 期间的材料。',
   'assessment/items/field-max-date': '最晚日期',
   'assessment/items/field-max-count': '最多上传文件数',

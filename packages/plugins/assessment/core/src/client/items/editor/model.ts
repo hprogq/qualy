@@ -1,6 +1,9 @@
 import {
+  DATE_MAXIMUM,
+  DATE_MINIMUM,
   DECIMAL_MAXIMUM,
   DECIMAL_MINIMUM,
+  IN_MATERIAL_RANGE,
   MAX_SCALE,
   assignmentPlan,
   choiceLabel,
@@ -593,6 +596,8 @@ export const refinementOf = (
     readonly minLength?: string
     readonly maxLength?: string
     readonly options?: readonly { value: string; label: string; enabled: boolean }[]
+    /** date only: whether the round's material window binds it */
+    readonly inMaterialRange?: boolean
   },
   description: string,
 ): AtomicSchema | null => {
@@ -666,8 +671,31 @@ export const refinementOf = (
           'x-qualy-enumLabels': Object.fromEntries(kept.map((one) => [one.value, one.label])),
         }
       }
+      case 'date': {
+        const source = parameter as {
+          [DATE_MINIMUM]?: string
+          [DATE_MAXIMUM]?: string
+          [IN_MATERIAL_RANGE]?: boolean
+        }
+        const min =
+          narrowing.min?.trim() === '' || narrowing.min === undefined
+            ? undefined
+            : narrowing.min.trim()
+        const max =
+          narrowing.max?.trim() === '' || narrowing.max === undefined
+            ? undefined
+            : narrowing.max.trim()
+        const bound = narrowing.inMaterialRange ?? source[IN_MATERIAL_RANGE] === true
+        if (min === undefined && max === undefined && !bound) return null
+        return {
+          type: 'string',
+          format: 'date',
+          ...(min === undefined ? {} : { [DATE_MINIMUM]: min }),
+          ...(max === undefined ? {} : { [DATE_MAXIMUM]: max }),
+          ...(bound ? { [IN_MATERIAL_RANGE]: true } : {}),
+        }
+      }
       case 'boolean':
-      case 'date':
         return null
     }
   })()
@@ -1133,6 +1161,12 @@ export const boundProblem = (
     const high = source[DECIMAL_MAXIMUM]
     if (side === 'min' && low !== undefined && value < Number(low)) return 'widens'
     if (side === 'max' && high !== undefined && value > Number(high)) return 'widens'
+    return null
+  }
+  if (kind === 'date') {
+    // the parameter itself draws no window, so a date can only be unreadable
+    // or inverted; "widens" has nothing to widen past
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return 'unreadable'
     return null
   }
   if (kind === 'text') {

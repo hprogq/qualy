@@ -2429,6 +2429,10 @@ const i18n = definePluginMessages({
       id: 'assessment/items/date-in-range',
       defaultMessage: 'Check against the round\u2019s material window',
     },
+    itemsDateInRangeHint: {
+      id: 'assessment/items/date-in-range-hint',
+      defaultMessage: 'Leave off for a date that is true outside the round, such as a birthday',
+    },
     itemsDateWindow: {
       id: 'assessment/items/date-window',
       defaultMessage: 'Only materials dated from {from} to {until} count in this batch.',

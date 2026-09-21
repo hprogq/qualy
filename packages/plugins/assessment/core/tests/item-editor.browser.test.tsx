@@ -151,7 +151,11 @@ const CALCULATOR_SURFACES = {
       {
         id: 'assessment/fixed-calculator',
         ref: 'fixed@1',
-        label: { kind: 'message', id: 'assessment/items/calculator-fixed', defaultMessage: 'Fixed' },
+        label: {
+          kind: 'message',
+          id: 'assessment/items/calculator-fixed',
+          defaultMessage: 'Fixed',
+        },
         order: 10,
       },
     ],
@@ -270,13 +274,18 @@ const open = (
     client: fakeClient({
       app: {
         getManifest: () =>
-          Effect.succeed({ ...emptyManifest(), pages: PAGES, ...(had.surfaces ?? CALCULATOR_SURFACES) }),
+          Effect.succeed({
+            ...emptyManifest(),
+            pages: PAGES,
+            ...(had.surfaces ?? CALCULATOR_SURFACES),
+          }),
       },
       assessment: {
         getBatch: () => Effect.succeed({ batch: batch() }),
         listScoreGroups: () =>
           Effect.succeed({ groups: [paper], version: 1, capabilities: { canManage: true } }),
-        listItems: () => Effect.succeed({ items: had.items ?? [], capabilities: { canManage: true } }),
+        listItems: () =>
+          Effect.succeed({ items: had.items ?? [], capabilities: { canManage: true } }),
         itemOptions: () =>
           Effect.succeed({
             orgTypes: [{ id: ORG_TYPE_ID, code: 'class', name: '班级' }],
@@ -303,7 +312,9 @@ const open = (
         listFormulaBindingOptions: () => Effect.succeed(had.formulas ?? bindingOptions()),
       },
     } as never),
-    routes: [{ path: '/assessment/batches/:batchId/items', element: <ItemSettingsPage /> }] as never,
+    routes: [
+      { path: '/assessment/batches/:batchId/items', element: <ItemSettingsPage /> },
+    ] as never,
     registry: {
       slots: {
         'assessment/calculator-editor': {
@@ -338,13 +349,15 @@ const tab = (name: RegExp) => page.getByRole('tab', { name })
 /** the one element a data attribute names, once it is on screen */
 const seat = async (selector: string) => {
   await vi.waitFor(() => {
-    if (document.querySelector(selector) === null) throw new Error(`${selector} is not on screen yet`)
+    if (document.querySelector(selector) === null)
+      throw new Error(`${selector} is not on screen yet`)
   })
   return page.elementLocator(document.querySelector<HTMLElement>(selector)!)
 }
 
 const parameterRow = (parameter: string) => seat(`[data-parameter-row="${parameter}"]`)
-const linkedRows = () => document.querySelectorAll('[data-testid="form-field-row"][data-linked="true"]')
+const linkedRows = () =>
+  document.querySelectorAll('[data-testid="form-field-row"][data-linked="true"]')
 
 const chooseSource = async (parameter: string, option: string) => {
   const row = await parameterRow(parameter)
@@ -356,9 +369,15 @@ describe('choosing how a question is handled', () => {
   it('opens a new question on review, with participants filing, and the rules tab in place', async () => {
     await composeQuestion()
     await expect.element(editor()).toHaveAttribute('data-mode', 'review')
-    await expect.element(page.getByRole('radio', { name: '审核后生效' })).toHaveAttribute('aria-checked', 'true')
-    await expect.element(page.getByRole('checkbox', { name: '参评人员申报' })).toHaveAttribute('aria-checked', 'true')
-    await expect.element(page.getByRole('checkbox', { name: '工作人员统一认定' })).toHaveAttribute('aria-checked', 'false')
+    await expect
+      .element(page.getByRole('radio', { name: '审核后生效' }))
+      .toHaveAttribute('aria-checked', 'true')
+    await expect
+      .element(page.getByRole('checkbox', { name: '参评人员申报' }))
+      .toHaveAttribute('aria-checked', 'true')
+    await expect
+      .element(page.getByRole('checkbox', { name: '工作人员统一认定' }))
+      .toHaveAttribute('aria-checked', 'false')
     await expect.element(tab(/记录与审核/)).toBeVisible()
   })
 
@@ -402,7 +421,12 @@ describe('choosing how a question is handled', () => {
 
 describe('feeding the arithmetic', () => {
   it('lists the parameters, and a determined one becomes a determination field', async () => {
-    open({ items: [formulaItem({ defaultFromFieldId: null })], question: ITEM_ID, panel: 'scoring', surfaces: BOTH_CALCULATORS })
+    open({
+      items: [formulaItem({ defaultFromFieldId: null })],
+      question: ITEM_ID,
+      panel: 'scoring',
+      surfaces: BOTH_CALCULATORS,
+    })
     await expect.element(await parameterRow('level')).toHaveAttribute('data-source', 'recognition')
     const recognition = page.getByTestId('recognition-row')
     await expect.element(recognition).toBeVisible()
@@ -429,7 +453,9 @@ describe('feeding the arithmetic', () => {
     const sheet = page.getByTestId('recognition-sheet')
     await expect.element(sheet).toBeVisible()
     await sheet.getByRole('button', { name: '新增申报字段并关联' }).click()
-    await expect.element(sheet.getByTestId('recognition-link')).toHaveAttribute('data-linked', 'true')
+    await expect
+      .element(sheet.getByTestId('recognition-link'))
+      .toHaveAttribute('data-linked', 'true')
     await sheet.getByRole('button', { name: '完成' }).click()
 
     // the form now carries the filing side, marked as such and required
@@ -455,18 +481,27 @@ describe('feeding the arithmetic', () => {
     await page.getByTestId('recognition-row').click()
     await sheet.getByRole('button', { name: '解除关联' }).click()
     await page.getByRole('alertdialog').getByRole('button', { name: '解除关联' }).click()
-    await expect.element(sheet.getByTestId('recognition-link')).toHaveAttribute('data-linked', 'false')
+    await expect
+      .element(sheet.getByTestId('recognition-link'))
+      .toHaveAttribute('data-linked', 'false')
     await sheet.getByRole('button', { name: '完成' }).click()
     await vi.waitFor(() => expect(linkedRows()).toHaveLength(0))
     expect(page.getByTestId('form-field-row').elements()).toHaveLength(2)
   })
 
   it('asks before switching to take effect on submission while a determination has no field', async () => {
-    open({ items: [formulaItem({ defaultFromFieldId: null })], question: ITEM_ID, surfaces: BOTH_CALCULATORS })
+    open({
+      items: [formulaItem({ defaultFromFieldId: null })],
+      question: ITEM_ID,
+      surfaces: BOTH_CALCULATORS,
+    })
     await expect.element(page.getByRole('radio', { name: '提交即生效' })).toBeVisible()
     // the contract has to be in hand for the editor to know what is unlinked
     await vi.waitFor(() => {
-      if (document.querySelector('[data-testid="pending-trigger"], [data-testid="pending-none"]') === null)
+      if (
+        document.querySelector('[data-testid="pending-trigger"], [data-testid="pending-none"]') ===
+        null
+      )
         throw new Error('not settled')
     })
     await page.getByRole('radio', { name: '提交即生效' }).click()
@@ -485,7 +520,10 @@ describe('feeding the arithmetic', () => {
     open({ items: [formulaItem()], question: ITEM_ID, surfaces: BOTH_CALCULATORS })
     await expect.element(page.getByRole('radio', { name: '自动计分' })).toBeVisible()
     await vi.waitFor(() => {
-      if (document.querySelector('[data-testid="pending-trigger"], [data-testid="pending-none"]') === null)
+      if (
+        document.querySelector('[data-testid="pending-trigger"], [data-testid="pending-none"]') ===
+        null
+      )
         throw new Error('not settled')
     })
     // a saved question's kind is settled: the card is locked
@@ -538,7 +576,8 @@ describe('the submission form', () => {
     await page.getByRole('textbox', { name: '项目名称' }).fill('学生干部任职（改）')
     await page.getByTestId('item-save').click()
     await vi.waitFor(() => expect(saved).toHaveLength(1))
-    const fields = (saved[0]?.config as { formConfig: { fields: { maxFileBytes?: number }[] } }).formConfig.fields
+    const fields = (saved[0]?.config as { formConfig: { fields: { maxFileBytes?: number }[] } })
+      .formConfig.fields
     expect(fields[0]?.maxFileBytes).toBe(512 * 1024)
   })
 
@@ -605,7 +644,9 @@ describe('records and review', () => {
     await sheet().getByRole('textbox', { name: '步骤名称' }).fill('班委初审')
     await sheet().getByRole('checkbox', { name: '审核员' }).click()
     await sheet().getByTestId('stage-apply').click()
-    await expect.element(page.getByTestId('chain-step').first()).toHaveAttribute('data-step-complete', 'true')
+    await expect
+      .element(page.getByTestId('chain-step').first())
+      .toHaveAttribute('data-step-complete', 'true')
 
     // walking away from a half-composed step leaves nothing behind
     await add()
@@ -673,12 +714,16 @@ describe('saying what is wrong where it is wrong', () => {
       preview: previewFor('formula@1', { parameters: { level: SCORE } }),
     })
     const row = await parameterRow('level')
-    await expect.element(row.getByTestId('row-description')).toHaveTextContent('按获奖等级折算的基础分')
+    await expect
+      .element(row.getByTestId('row-description'))
+      .toHaveTextContent('按获奖等级折算的基础分')
 
     await chooseSource('level', '固定值')
     const value = (await parameterRow('level')).getByRole('textbox')
     await value.fill('120')
-    await expect.element(await parameterRow('level')).toHaveAttribute('data-problem', 'constant-out-of-range')
+    await expect
+      .element(await parameterRow('level'))
+      .toHaveAttribute('data-problem', 'constant-out-of-range')
     await expect.element(value).toHaveAttribute('aria-invalid', 'true')
     await expect.element(page.getByTestId('parameter-problem')).toBeVisible()
     // something set wrongly holds the save shut, and the tab and the capsule turn
@@ -687,7 +732,9 @@ describe('saying what is wrong where it is wrong', () => {
     await expect.element(page.getByTestId('pending-trigger')).toHaveAttribute('data-tone', 'error')
 
     await value.fill('85.5')
-    await vi.waitFor(() => expect(document.querySelector('[data-testid="parameter-problem"]')).toBeNull())
+    await vi.waitFor(() =>
+      expect(document.querySelector('[data-testid="parameter-problem"]')).toBeNull(),
+    )
     await expect.element(page.getByTestId('item-save')).toBeEnabled()
   })
 
@@ -700,7 +747,12 @@ describe('saying what is wrong where it is wrong', () => {
       surfaces: BOTH_CALCULATORS,
       check: (payload) => {
         asked.push(payload)
-        return [{ path: `scoringConfig.recognitions.${RECOGNITION_ID}`, reason: 'recognition-unattainable' }]
+        return [
+          {
+            path: `scoringConfig.recognitions.${RECOGNITION_ID}`,
+            reason: 'recognition-unattainable',
+          },
+        ]
       },
     })
     const recognition = page.getByTestId('recognition-row')
@@ -753,7 +805,9 @@ describe('saying what is wrong where it is wrong', () => {
     const sheet = page.getByTestId('field-sheet')
     await sheet.getByRole('textbox', { name: '名称' }).fill('任职级别')
     await sheet.getByRole('button', { name: '完成' }).click()
-    await vi.waitFor(() => expect(document.querySelector('[data-testid="save-failure"]')).toBeNull())
+    await vi.waitFor(() =>
+      expect(document.querySelector('[data-testid="save-failure"]')).toBeNull(),
+    )
     await expect.element(page.getByTestId('item-save')).toBeEnabled()
   })
 
@@ -786,7 +840,13 @@ describe('saying what is wrong where it is wrong', () => {
 describe('the form beside the arithmetic', () => {
   it('lets a linked field go by a name of its own, and says which field a determination starts from', async () => {
     const saved: { config?: unknown }[] = []
-    open({ items: [formulaItem()], question: ITEM_ID, panel: 'scoring', surfaces: BOTH_CALCULATORS, saved })
+    open({
+      items: [formulaItem()],
+      question: ITEM_ID,
+      panel: 'scoring',
+      surfaces: BOTH_CALCULATORS,
+      saved,
+    })
     const linked = await seat('[data-testid="form-field-row"][data-linked="true"]')
     await linked.click()
     const sheet = page.getByTestId('field-sheet')
@@ -796,7 +856,9 @@ describe('the form beside the arithmetic', () => {
     // the determination keeps its own name and names the field it starts from
     const recognition = page.getByTestId('recognition-row')
     await expect.element(recognition.getByText('认定级别', { exact: true })).toBeVisible()
-    await expect.element(recognition.getByTestId('linked-field-name')).toHaveTextContent('申报的获奖级别')
+    await expect
+      .element(recognition.getByTestId('linked-field-name'))
+      .toHaveTextContent('申报的获奖级别')
 
     await page.getByTestId('item-save').click()
     await vi.waitFor(() => expect(saved).toHaveLength(1))
@@ -804,7 +866,9 @@ describe('the form beside the arithmetic', () => {
       formConfig: { fields: { id: string; label: string }[] }
       scoringConfig: { recognitions: { label: string }[] | Record<string, { label: string }> }
     }
-    expect(config.formConfig.fields.find((one) => one.id === 'claimed-level')?.label).toBe('申报的获奖级别')
+    expect(config.formConfig.fields.find((one) => one.id === 'claimed-level')?.label).toBe(
+      '申报的获奖级别',
+    )
     expect(JSON.stringify(config.scoringConfig.recognitions)).toContain('认定级别')
   })
 
@@ -813,7 +877,9 @@ describe('the form beside the arithmetic', () => {
     const block = page.getByTestId('summary-block')
     await expect.element(block).toBeVisible()
     expect(page.getByRole('dialog').elements()).toHaveLength(0)
-    await expect.element(await seat('[data-testid="summary-block"] [data-custom]')).toHaveAttribute('data-custom', 'false')
+    await expect
+      .element(await seat('[data-testid="summary-block"] [data-custom]'))
+      .toHaveAttribute('data-custom', 'false')
   })
 
   it('shows an empty choice list as one, not as a lone add link', async () => {
@@ -823,13 +889,19 @@ describe('the form beside the arithmetic', () => {
     await (await seat('[data-field-type="choice"]')).click()
     await expect.element(page.getByTestId('options-empty')).toBeVisible()
     await page.getByTestId('options-empty').getByRole('button', { name: '添加选项' }).click()
-    await vi.waitFor(() => expect(document.querySelector('[data-testid="options-empty"]')).toBeNull())
+    await vi.waitFor(() =>
+      expect(document.querySelector('[data-testid="options-empty"]')).toBeNull(),
+    )
   })
 })
 
 describe('the band', () => {
   it('says where the question is and how it is handled, and leaves the handling to the cards', async () => {
-    open({ items: [formulaItem({ defaultFromFieldId: null })], question: ITEM_ID, surfaces: BOTH_CALCULATORS })
+    open({
+      items: [formulaItem({ defaultFromFieldId: null })],
+      question: ITEM_ID,
+      surfaces: BOTH_CALCULATORS,
+    })
     await expect.element(page.getByTestId('item-back')).toBeVisible()
     await expect.element(page.getByTestId('item-meta')).toHaveAttribute('data-revision', '1')
     await expect.element(page.getByTestId('item-meta')).toHaveAttribute('data-standing', 'active')
@@ -874,7 +946,10 @@ describe('choosing a published formula', () => {
         releaseName: '2026 春季规则',
         releaseNotes: '新增团队折算',
         parameters: ['level', 'team'],
-        inputSchema: contractOf({ level: { ...GRADE, title: '等级分' }, team: { type: 'boolean', title: '是否团队' } }),
+        inputSchema: contractOf({
+          level: { ...GRADE, title: '等级分' },
+          team: { type: 'boolean', title: '是否团队' },
+        }),
       }),
       option({
         versionId: OTHER_VERSION_ID,
@@ -908,7 +983,9 @@ describe('choosing a published formula', () => {
     const rows = () => page.getByTestId('formula-option').elements()
     expect(rows().map((row) => row.getAttribute('data-current'))).toEqual(['true', 'false'])
     // the frame offers no confirming button of its own beside the picker's
-    expect(page.getByTestId('scoring-method-dialog').getByRole('button', { name: '使用' }).elements()).toHaveLength(0)
+    expect(
+      page.getByTestId('scoring-method-dialog').getByRole('button', { name: '使用' }).elements(),
+    ).toHaveLength(0)
 
     await page.getByTestId('formula-option').first().click()
     await expect.element(picker).toHaveAttribute('data-step', 'version')
@@ -918,19 +995,24 @@ describe('choosing a published formula', () => {
       NEWER_VERSION_ID,
       FORMULA_VERSION_ID,
     ])
-    expect(versions().map((row) => row.getAttribute('data-version-chosen'))).toEqual(['false', 'true'])
+    expect(versions().map((row) => row.getAttribute('data-version-chosen'))).toEqual([
+      'false',
+      'true',
+    ])
     await expect.element(page.getByTestId('formula-version-use')).toBeDisabled()
 
     await page.getByTestId('formula-version-option').first().click()
     await expect.element(page.getByTestId('formula-version-use')).toBeEnabled()
     await page.getByTestId('formula-version-use').click()
-    await vi.waitFor(() => expect(document.querySelector('[data-testid="scoring-method-dialog"]')).toBeNull())
+    await vi.waitFor(() =>
+      expect(document.querySelector('[data-testid="scoring-method-dialog"]')).toBeNull(),
+    )
 
     await page.getByTestId('item-save').click()
     await vi.waitFor(() => expect(saved).toHaveLength(1))
     expect(
-      (saved[0]?.config as { scoringConfig: { calculator: { config: { versionId: string } } } }).scoringConfig
-        .calculator.config.versionId,
+      (saved[0]?.config as { scoringConfig: { calculator: { config: { versionId: string } } } })
+        .scoringConfig.calculator.config.versionId,
     ).toBe(NEWER_VERSION_ID)
   })
 
@@ -947,7 +1029,9 @@ describe('choosing a published formula', () => {
     await page.getByRole('searchbox').fill('志愿')
     await vi.waitFor(() => expect(page.getByTestId('formula-option').elements()).toHaveLength(1))
     await page.getByRole('searchbox').fill('不存在的公式')
-    await expect.element(page.getByTestId('formula-picker-empty')).toHaveAttribute('data-searching', 'true')
+    await expect
+      .element(page.getByTestId('formula-picker-empty'))
+      .toHaveAttribute('data-searching', 'true')
   })
 })
 
@@ -968,11 +1052,14 @@ describe('what already stands under a question', () => {
   const levelled = () => {
     const item = formulaItem({ defaultFromFieldId: null })
     ;(
-      item.currentRevision.scoringConfig as { recognitions: Record<string, { refinement: unknown }> }
+      item.currentRevision.scoringConfig as {
+        recognitions: Record<string, { refinement: unknown }>
+      }
     ).recognitions[RECOGNITION_ID]!.refinement = { ...LEVEL }
     return item
   }
-  const levelPreview = () => previewFor('formula@1', { parameters: { level: { ...LEVEL, title: '获奖级别' } } })
+  const levelPreview = () =>
+    previewFor('formula@1', { parameters: { level: { ...LEVEL, title: '获奖级别' } } })
 
   it('holds shut the options that claims were determined as, and says why on hover', async () => {
     open({
@@ -986,9 +1073,16 @@ describe('what already stands under a question', () => {
       ],
     })
     await page.getByTestId('recognition-row').click()
-    const option = (value: string) => seat(`[data-testid="recognition-option"][data-value="${value}"]`)
-    // what somebody was determined as cannot be let go of
-    await expect.element((await option('province')).getByRole('checkbox')).toBeDisabled()
+    const option = (value: string) =>
+      seat(`[data-testid="recognition-option"][data-value="${value}"]`)
+    // what somebody was determined as cannot be let go of: its seat holds
+    // the lock that says why, rather than a box that refuses every press
+    expect((await option('province')).getByRole('checkbox').elements()).toHaveLength(0)
+    await expect
+      .element(
+        (await option('province')).getByRole('img', { name: '已有记录认定为该选项，不能取消' }),
+      )
+      .toBeVisible()
     // a round still open holds nothing: it is stopped at its own decision
     await expect.element((await option('city')).getByRole('checkbox')).toBeEnabled()
     // nothing stands on this one, so it is the administrator's to narrow away
@@ -1036,7 +1130,10 @@ describe('what already stands under a question', () => {
       refuse: [
         apiError('ASSESSMENT_ITEM_CONFIG_INVALID', {
           issues: [
-            { path: 'scoringConfig.recognitions:01a0bc36-05f8-7798-ad13-2aa82ed1499f', reason: 'strands-existing-recognition' },
+            {
+              path: 'scoringConfig.recognitions:01a0bc36-05f8-7798-ad13-2aa82ed1499f',
+              reason: 'strands-existing-recognition',
+            },
           ],
         }),
       ],
@@ -1064,7 +1161,10 @@ describe('while the page loads', () => {
     })
     renderScreen({
       client: fakeClient({
-        app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES, ...CALCULATOR_SURFACES }) },
+        app: {
+          getManifest: () =>
+            Effect.succeed({ ...emptyManifest(), pages: PAGES, ...CALCULATOR_SURFACES }),
+        },
         assessment: {
           getBatch: () => Effect.succeed({ batch: batch() }),
           listScoreGroups: () =>
@@ -1076,7 +1176,9 @@ describe('while the page loads', () => {
           reviewAlerts: () => Effect.succeed({ groups: [] }),
         },
       } as never),
-      routes: [{ path: '/assessment/batches/:batchId/items', element: <ItemSettingsPage /> }] as never,
+      routes: [
+        { path: '/assessment/batches/:batchId/items', element: <ItemSettingsPage /> },
+      ] as never,
       route: `/assessment/batches/${BATCH_ID}/items`,
     })
     const outline = page.getByTestId('structure-skeleton')
@@ -1084,7 +1186,8 @@ describe('while the page loads', () => {
     // a heading and a card of rows, not a single block
     expect(outline.element().querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(6)
     release?.()
-    await vi.waitFor(() => expect(document.querySelector('[data-testid="structure-skeleton"]')).toBeNull())
+    await vi.waitFor(() =>
+      expect(document.querySelector('[data-testid="structure-skeleton"]')).toBeNull(),
+    )
   })
 })
-

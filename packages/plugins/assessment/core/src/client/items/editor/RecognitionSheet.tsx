@@ -2,12 +2,23 @@ import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { LinkIcon, LockIcon } from 'lucide-react'
 import { useI18n, useList } from '@qualy/web-i18n'
-import { choiceLabel, kindOf, type AtomicSchema, type ChoiceSchema } from '@qualy/value-schema'
+import {
+  choiceLabel,
+  kindOf,
+  DATE_MAXIMUM,
+  DATE_MINIMUM,
+  IN_MATERIAL_RANGE,
+  type AtomicSchema,
+  type ChoiceSchema,
+} from '@qualy/value-schema'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Field } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
 import { Input } from '@qualy/ui/input'
+import { DatePicker } from '@qualy/ui/date-picker'
+import { Field as FieldRow, FieldContent, FieldDescription, FieldLabel } from '@qualy/ui/field'
+import { usePickerWords } from '@qualy/web-i18n/picker-words'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
 import { assessmentMessages as m } from '../../i18n.ts'
 import { EditorSheet } from './EditorSheet.tsx'
@@ -389,13 +400,14 @@ export function RangeEditor({
   title?: string
 }) {
   const { format, locale } = useI18n()
+  const words = usePickerWords()
   const kind = kindOf(parameter)
   const admitted = admittedSchemaOf(recognition, parameter)
   const description = recognition.description
   const [typed, setTyped] = useState<{ min: string; max: string }>(() =>
     boundsTyped(admitted, parameter),
   )
-  if (kind === 'boolean' || kind === 'date') return null
+  if (kind === 'boolean') return null
   // narrowed means narrowed: a description alone rides on the annotation
   // layer and is not something "restore default" should offer to undo
   const narrowed =
@@ -439,19 +451,41 @@ export function RangeEditor({
             data-value={option.value}
             data-enabled={option.enabled}
           >
-            <Checkbox
-              checked={option.enabled}
-              // held only while it is in: an option already out may always come back
-              disabled={option.enabled && pinnedBy(option.value) !== null}
-              aria-label={option.label}
-              onCheckedChange={(next) =>
-                write(
-                  options.map((one) =>
-                    one.value === option.value ? { ...one, enabled: next === true } : one,
-                  ),
-                )
-              }
-            />
+            {/* An option nothing stands on is a box to tick. One a record
+                is already determined as cannot be let go of, so its seat
+                holds the lock that says why instead of a box that refuses
+                every press - a disabled control says only "no". */}
+            {option.enabled && pinnedBy(option.value) !== null ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      {...stylex.props(styles.optionLock)}
+                      tabIndex={0}
+                      role="img"
+                      aria-label={format(m.itemsOptionHeldDetermined)}
+                      data-testid="option-held"
+                      data-held-by={pinnedBy(option.value)}
+                    >
+                      <LockIcon aria-hidden {...stylex.props(styles.optionLockIcon)} />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>{format(m.itemsOptionHeldDetermined)}</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
+              <Checkbox
+                checked={option.enabled}
+                aria-label={option.label}
+                onCheckedChange={(next) =>
+                  write(
+                    options.map((one) =>
+                      one.value === option.value ? { ...one, enabled: next === true } : one,
+                    ),
+                  )
+                }
+              />
+            )}
             <Input
               wrapperXstyle={styles.optionInput}
               value={option.label}
@@ -465,23 +499,6 @@ export function RangeEditor({
                 )
               }
             />
-            {option.enabled && pinnedBy(option.value) !== null && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span
-                      {...stylex.props(styles.optionLock)}
-                      tabIndex={0}
-                      data-testid="option-held"
-                      data-held-by={pinnedBy(option.value)}
-                    >
-                      <LockIcon aria-hidden {...stylex.props(styles.optionLockIcon)} />
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent>{format(m.itemsOptionHeldDetermined)}</TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
           </div>
         ))}
         {options.some((option) => option.enabled && pinnedBy(option.value) !== null) && (
@@ -489,6 +506,82 @@ export function RangeEditor({
             {format(m.itemsOptionsHeldHint)}
           </p>
         )}
+      </div>
+    )
+  }
+
+  if (kind === 'date') {
+    const held = admitted as {
+      [DATE_MINIMUM]?: string
+      [DATE_MAXIMUM]?: string
+      [IN_MATERIAL_RANGE]?: boolean
+    }
+    const bound = held[IN_MATERIAL_RANGE] === true
+    const write = (next: { min?: string; max?: string; inMaterialRange?: boolean }) =>
+      onRefinement(
+        refinementOf(
+          parameter,
+          {
+            min: next.min ?? held[DATE_MINIMUM] ?? '',
+            max: next.max ?? held[DATE_MAXIMUM] ?? '',
+            inMaterialRange: next.inMaterialRange ?? bound,
+          },
+          description,
+        ),
+      )
+    return (
+      <div {...stylex.props(styles.block)} data-testid="recognition-range" data-kind="date">
+        <div {...stylex.props(styles.blockHead)}>
+          <span {...stylex.props(styles.blockTitle)}>{heading}</span>
+          <span {...stylex.props(styles.spacer)} />
+          <button
+            type="button"
+            {...stylex.props(styles.linkButton)}
+            disabled={!narrowed}
+            onClick={() => onRefinement(refinementOf(parameter, {}, description))}
+          >
+            {format(m.itemsRestoreDefault)}
+          </button>
+        </div>
+        <div {...stylex.props(styles.pair)}>
+          <Field label={format(m.itemsFieldMinDate)}>
+            {(id) => (
+              <DatePicker
+                id={id}
+                value={held[DATE_MINIMUM] ?? null}
+                clearLabel={words.clear}
+                localeTag={locale}
+                monthLabel={words.month}
+                yearLabel={words.year}
+                onChange={(next) => write({ min: next ?? '' })}
+              />
+            )}
+          </Field>
+          <Field label={format(m.itemsFieldMaxDate)}>
+            {(id) => (
+              <DatePicker
+                id={id}
+                value={held[DATE_MAXIMUM] ?? null}
+                clearLabel={words.clear}
+                localeTag={locale}
+                monthLabel={words.month}
+                yearLabel={words.year}
+                onChange={(next) => write({ max: next ?? '' })}
+              />
+            )}
+          </Field>
+        </div>
+        <FieldRow orientation="horizontal">
+          <Checkbox
+            checked={bound}
+            data-testid="recognition-date-in-range"
+            onCheckedChange={(next) => write({ inMaterialRange: next === true })}
+          />
+          <FieldContent>
+            <FieldLabel>{format(m.itemsDateInRange)}</FieldLabel>
+            <FieldDescription>{format(m.itemsDateInRangeHint)}</FieldDescription>
+          </FieldContent>
+        </FieldRow>
       </div>
     )
   }
