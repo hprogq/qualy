@@ -17,7 +17,7 @@ import type { StyleXStyles } from '@stylexjs/stylex'
 import { tokens } from '../../theme/tokens.stylex.ts'
 import { breakpoints } from '../../theme/breakpoints.stylex.ts'
 import { PageContainer } from '../page-container.tsx'
-import { Reveal } from '../reveal.tsx'
+import { Reveal, Settling } from '../reveal.tsx'
 import { Tabs, TabsList, TabsTrigger } from '../tabs.tsx'
 import { Button } from '../button.tsx'
 import {
@@ -93,6 +93,7 @@ const styles = stylex.create({
     paddingBlock: 0,
     paddingBottom: 12,
   },
+  underRow: { display: 'flex', minWidth: 0, width: '100%', alignItems: 'center' },
   // A floor under the words, so every page's band is the same height.
   //
   // One page has a description and the next has none, and the row of
@@ -133,6 +134,16 @@ const styles = stylex.create({
   description: {
     margin: 0,
     maxWidth: '72ch',
+    // One line where the band's height is being held to one figure: a page
+    // whose sentence is a few words longer than its neighbour's wrapped, and
+    // took the row of sections under the band down with it.
+    overflow: { default: null, [breakpoints.phone]: 'hidden', [breakpoints.tablet]: 'hidden' },
+    textOverflow: {
+      default: null,
+      [breakpoints.phone]: 'ellipsis',
+      [breakpoints.tablet]: 'ellipsis',
+    },
+    whiteSpace: { default: null, [breakpoints.phone]: 'nowrap', [breakpoints.tablet]: 'nowrap' },
     fontSize: 14,
     lineHeight: 1.6,
     color: tokens.mutedForeground,
@@ -247,8 +258,23 @@ export function BandFootScope({
   return <BandFoot value={value_}>{children}</BandFoot>
 }
 
+/**
+ * What the shell hung under this band, and the band saying it took it.
+ *
+ * For a page that draws its own masthead rather than using `Screen`: the
+ * sections of the open application still belong under its words, and the
+ * shell still needs telling that somebody has drawn them.
+ */
+export function useBandFoot(): ReactNode {
+  const foot = useContext(BandFoot)
+  const claim = foot?.claim
+  useLayoutEffect(() => claim?.(), [claim])
+  return foot?.node ?? null
+}
+
 export function Screen({
   title,
+  titleRef,
   titleAside,
   description,
   back,
@@ -257,6 +283,14 @@ export function Screen({
   children,
 }: {
   title: ReactNode
+  /**
+   * The heading itself, for whoever watches it scroll away.
+   *
+   * A phone's bar says the page's name once the page's own heading has gone
+   * under it, and the only way to know that has happened is to be given the
+   * heading.
+   */
+  titleRef?: (node: HTMLElement | null) => void
   /** beside the name: what kind of thing it is, the state it is in */
   titleAside?: ReactNode
   description?: ReactNode
@@ -268,13 +302,7 @@ export function Screen({
   children: ReactNode
 }) {
   const sub = back !== undefined
-  const foot = useContext(BandFoot)
-  const under = foot?.node ?? null
-  const claim = foot?.claim
-  // Before the paint, not after it. Claimed in an ordinary effect, the shell
-  // had already painted its own copy above the page - so the sections showed
-  // at the top of the content and then jumped into the band a frame later.
-  useLayoutEffect(() => claim?.(), [claim])
+  const under = useBandFoot()
   return (
     <>
       {/* edge to edge: a band inset inside the page's own width is a card
@@ -292,7 +320,9 @@ export function Screen({
           <div {...stylex.props(styles.words, sub && styles.wordsBack)}>
             {back}
             <div {...stylex.props(styles.titleRow)}>
-              <h1 {...stylex.props(styles.title)}>{title}</h1>
+              <h1 ref={titleRef} {...stylex.props(styles.title)}>
+                {title}
+              </h1>
               {titleAside}
             </div>
             {description !== undefined && description !== '' && (
@@ -305,7 +335,11 @@ export function Screen({
         </PageContainer>
         {under !== null && (
           <PageContainer size={size} xstyle={styles.underBand}>
-            {under}
+            {/* named, so crossing to another page moves this band from where
+                it was rather than drawing it where it now is */}
+            <Settling name="band-foot" className={stylex.props(styles.underRow).className}>
+              {under}
+            </Settling>
           </PageContainer>
         )}
       </div>

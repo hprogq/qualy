@@ -15,13 +15,12 @@ import { commonMessages } from '@qualy/web-i18n/messages'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@qualy/ui/empty'
-import { PageContainer } from '@qualy/ui/page-container'
-import { Reveal } from '@qualy/ui/reveal'
 import { AsyncSection } from '@qualy/ui/admin'
+import { Screen } from '@qualy/ui/screen'
 import { ChevronRightIcon, LibraryIcon } from 'lucide-react'
 import { formulaApi } from './api.ts'
 import { formulaMessages as m } from './i18n.ts'
-import { LibraryMasthead, LibrarySkeleton, ParameterChips } from './library.tsx'
+import { LibrarySkeleton, ParameterChips } from './library.tsx'
 import { libraryStyles as l, shortWhen } from './library-styles.ts'
 
 // Formulas other people have offered you.
@@ -79,14 +78,12 @@ export default function FormulaTemplatesPage() {
   )
 
   return (
-    <PageContainer>
-      <Reveal className={stylex.props(l.page).className}>
-        <LibraryMasthead
-          title={format(m.templatesTitle)}
-          hint={format(m.templatesHint)}
-          titleRef={titleRef}
-        />
-
+    <Screen
+      title={format(m.templatesTitle)}
+      description={format(m.templatesHint)}
+      titleRef={titleRef}
+    >
+      <div {...stylex.props(l.page)}>
         <section {...stylex.props(l.section)}>
           <div {...stylex.props(l.sectionHead)}>
             <span {...stylex.props(l.sectionLabel)}>{format(m.templatesOffered)}</span>
@@ -219,7 +216,7 @@ export default function FormulaTemplatesPage() {
             </div>
           </AsyncSection>
         </section>
-      </Reveal>
-    </PageContainer>
+      </div>
+    </Screen>
   )
 }

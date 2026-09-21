@@ -6,9 +6,9 @@ import { useI18n } from '@qualy/web-i18n'
 import { supportedLocales, type SupportedLocale } from '@qualy/i18n-contract'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection, Field } from '@qualy/ui/admin'
+import { Screen } from '@qualy/ui/screen'
 import { Reveal } from '@qualy/ui/reveal'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
-import { PageContainer } from '@qualy/ui/page-container'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
@@ -33,8 +33,12 @@ const styles = stylex.create({
   heading: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 4 },
   title: { margin: 0, fontSize: 20, fontWeight: 600, letterSpacing: '-0.025em' },
   hint: { margin: 0, fontSize: 14, color: tokens.mutedForeground },
-  section: { display: 'flex', flexDirection: 'column', gap: 12 },
+  section: { display: 'flex', flexDirection: 'column', gap: 10 },
   sectionLabel: { fontSize: 13, fontWeight: 500, color: tokens.mutedForeground },
+  // The sheet stays at every width. A roster's rows are a list, and a list
+  // on a phone is read straight off the page; these are FORMS - a name, a
+  // note and two fields each - and without a sheet under them they are a
+  // column of loose boxes with nothing saying where one term ends.
   sheet: {
     overflow: 'hidden',
     borderRadius: tokens.radiusLg,
@@ -52,8 +56,8 @@ const styles = stylex.create({
       default: 'minmax(0, 15rem) minmax(0, 1fr)',
       '@media (max-width: 899.98px)': 'minmax(0, 1fr)',
     },
-    paddingInline: 20,
-    paddingBlock: 18,
+    paddingInline: { default: 20, [breakpoints.phone]: 16 },
+    paddingBlock: { default: 18, [breakpoints.phone]: 16 },
     borderTopWidth: { default: 1, ':first-child': 0 },
     borderTopStyle: 'solid',
     borderTopColor: tokens.divider,
@@ -62,18 +66,21 @@ const styles = stylex.create({
   termTitle: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 500 },
   termNote: { margin: 0, fontSize: 12, lineHeight: 1.6, color: tokens.mutedForeground },
   words: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 12 },
+  // The two languages abreast only where both are still a field rather than
+  // a slot: inside the right-hand column of a split row, 640px left each of
+  // them about nine characters wide.
   boxes: {
     display: 'grid',
-    gap: 16,
+    gap: { default: 12, '@media (min-width: 1040px)': 16 },
     gridTemplateColumns: {
       default: 'minmax(0, 1fr)',
-      '@media (min-width: 640px)': 'repeat(2, minmax(0, 1fr))',
+      '@media (min-width: 1040px)': 'repeat(2, minmax(0, 1fr))',
     },
   },
   actions: { display: 'flex', justifyContent: 'flex-end', gap: 8 },
   empty: {
     margin: 0,
-    paddingInline: 20,
+    paddingInline: { default: 20, [breakpoints.phone]: 16 },
     paddingBlock: 28,
     fontSize: 14,
     color: tokens.mutedForeground,
@@ -91,12 +98,8 @@ export default function TerminologyPage() {
   const categories = [...(terminology.data?.categories ?? [])].sort((a, b) => a.order - b.order)
   const terms = terminology.data?.terms ?? []
   return (
-    <PageContainer>
-      <Reveal className={stylex.props(styles.page).className}>
-        <div {...stylex.props(styles.heading)} data-testid="terminology-page">
-          <h1 {...stylex.props(styles.title)}>{format(m.title)}</h1>
-          <p {...stylex.props(styles.hint)}>{format(m.hint)}</p>
-        </div>
+    <Screen title={format(m.title)} description={format(m.hint)}>
+      <div {...stylex.props(styles.page)} data-testid="terminology-page">
         <AsyncSection
           pending={terminology.isPending}
           error={terminology.isError ? formatError(terminology.error) : null}
@@ -127,8 +130,8 @@ export default function TerminologyPage() {
             })
           )}
         </AsyncSection>
-      </Reveal>
-    </PageContainer>
+      </div>
+    </Screen>
   )
 }
 

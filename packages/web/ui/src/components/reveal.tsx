@@ -38,6 +38,54 @@ export function Reveal({
 }
 
 /**
+ * A band that slides to its new place rather than appearing in it.
+ *
+ * The row of sections under a page's own words belongs to the application,
+ * but every page draws it again - so crossing from one page to the next it
+ * is built from nothing, and any difference in where it lands reads as the
+ * page jumping. Named, it is the SAME band to the animator whichever page
+ * drew it, and the animator moves it from where it was to where it is now.
+ *
+ * Nothing moves for a reader who has asked for less motion: there the band
+ * simply is where it is.
+ */
+export function Settling({
+  name,
+  className,
+  children,
+}: {
+  /** the name that makes two drawings of it one band */
+  name: string
+  className?: string
+  children: ReactNode
+}) {
+  const reduced = useReducedMotion() === true
+  // The first drawing is not a move. Arriving from a page that had no band
+  // at all, the animator had nowhere to move it FROM and slid it down from
+  // the top of the page - which is a transition between two states only one
+  // of which existed. It settles from the second drawing onwards.
+  const [seen] = useState(() => {
+    const before = drawn.has(name)
+    drawn.add(name)
+    return before
+  })
+  if (reduced || !seen) return <div className={className}>{children}</div>
+  return (
+    <motion.div
+      layoutId={name}
+      layout="position"
+      className={className}
+      transition={{ type: 'spring', stiffness: 520, damping: 44, mass: 0.7 }}
+    >
+      {children}
+    </motion.div>
+  )
+}
+
+/** the bands this page has drawn before, so a first drawing does not travel */
+const drawn = new Set<string>()
+
+/**
  * One share of a bar, drawn by growing to the width it stands for.
  *
  * The bar under a total is the total said a second way - how it divides -

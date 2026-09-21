@@ -1,6 +1,8 @@
 import * as stylex from '@stylexjs/stylex'
 import type { ReactNode } from 'react'
 import { Skeleton } from '@qualy/ui/skeleton'
+import { Settling } from '@qualy/ui/reveal'
+import { useBandFoot } from '@qualy/ui/screen'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { libraryStyles } from './library-styles.ts'
 
@@ -111,15 +113,27 @@ export function LibraryMasthead({
   readonly titleRef?: (node: HTMLElement | null) => void
   readonly actions?: ReactNode
 }) {
+  // the sections of the open application, hung here by the shell: these
+  // pages draw their own masthead, so they draw them too
+  const under = useBandFoot()
   return (
     <div {...stylex.props(libraryStyles.masthead)}>
-      <div {...stylex.props(libraryStyles.heading)}>
-        <h1 ref={titleRef} {...stylex.props(libraryStyles.title)}>
-          {title}
-        </h1>
-        <p {...stylex.props(libraryStyles.hint)}>{hint}</p>
+      <div {...stylex.props(libraryStyles.mastheadRow)}>
+        <div {...stylex.props(libraryStyles.heading)}>
+          <div {...stylex.props(libraryStyles.titleRow)}>
+            <h1 ref={titleRef} {...stylex.props(libraryStyles.title)}>
+              {title}
+            </h1>
+          </div>
+          <p {...stylex.props(libraryStyles.hint)}>{hint}</p>
+        </div>
+        {actions}
       </div>
-      {actions}
+      {under !== null && (
+        <Settling name="band-foot" className={stylex.props(libraryStyles.under).className}>
+          {under}
+        </Settling>
+      )}
     </div>
   )
 }

@@ -17,14 +17,35 @@ export const libraryStyles = stylex.create({
     flexDirection: 'column',
     gap: { default: 20, [breakpoints.phone]: 16 },
   },
-  masthead: {
+  // The band each of these pages opens on. It has one height whatever the
+  // page puts in it, so the sections hanging under it land in the same place
+  // on all three and crossing between them does not read as the page moving.
+  masthead: { display: 'flex', flexDirection: 'column' },
+  mastheadRow: {
     display: 'flex',
-    flexWrap: 'wrap',
-    alignItems: 'flex-start',
+    // one row at every width: wrapping was what made one page's band taller
+    // than the next's
+    flexWrap: 'nowrap',
+    alignItems: 'flex-end',
     justifyContent: 'space-between',
     gap: 16,
   },
-  heading: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 4 },
+  heading: { display: 'flex', minWidth: 0, minHeight: 54, flexDirection: 'column', gap: 4 },
+  titleRow: {
+    display: 'flex',
+    minWidth: 0,
+    minHeight: { default: 36, [breakpoints.phone]: 30, [breakpoints.tablet]: 30 },
+    alignItems: 'center',
+  },
+  // the sections of the open application, under this page's own words
+  under: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'center',
+    marginTop: 10,
+    marginInline: { default: -24, [breakpoints.phone]: -16 },
+    paddingInline: { default: 24, [breakpoints.phone]: 16 },
+  },
   title: {
     margin: 0,
     fontSize: 20,

@@ -15,6 +15,7 @@ import { commonMessages } from '@qualy/web-i18n/messages'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Button } from '@qualy/ui/button'
+import { Screen } from '@qualy/ui/screen'
 import { Input } from '@qualy/ui/input'
 import { Textarea } from '@qualy/ui/textarea'
 import {
@@ -25,13 +26,11 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@qualy/ui/empty'
-import { PageContainer } from '@qualy/ui/page-container'
-import { Reveal } from '@qualy/ui/reveal'
 import { AsyncSection, Field, FormDialog } from '@qualy/ui/admin'
 import { ChevronRightIcon, PlusIcon, SigmaIcon } from 'lucide-react'
 import { formulaApi } from './api.ts'
 import { formulaMessages as m } from './i18n.ts'
-import { LibraryMasthead, LibrarySkeleton } from './library.tsx'
+import { LibrarySkeleton } from './library.tsx'
 import { libraryStyles as l, shortWhen } from './library-styles.ts'
 
 // Every formula this author has, and the way into one.
@@ -72,7 +71,14 @@ const styles = stylex.create({
   dotQuiet: {
     backgroundColor: `color-mix(in oklab, ${tokens.mutedForeground} 45%, transparent)`,
   },
-  newButton: { flexShrink: 0 },
+  newButton: {
+    flexShrink: 0,
+    // square around the mark where the word is not drawn, rather than a pill
+    // with air on both sides of it
+    paddingInline: { default: null, [breakpoints.phone]: 0 },
+    width: { default: null, [breakpoints.phone]: 36 },
+  },
+  newWord: { display: { default: 'inline', [breakpoints.phone]: 'none' } },
 })
 
 function NewFormulaDialog({
@@ -186,23 +192,29 @@ export default function FormulaListPage() {
   const openEditor = (functionId: string) =>
     navigate('assessment-formula/editor', { params: { functionId } })
 
+  // A mark under a thumb and the words beside a pointer: the band is one row
+  // at every width, so on a phone the act has to fit beside the page's own
+  // name - and the other two pages of this library have no act at all, so
+  // anything wider than the mark made this one band taller than theirs.
   const newButton = (
-    <Button onClick={() => setCreating(true)} className={stylex.props(styles.newButton).className}>
+    <Button
+      onClick={() => setCreating(true)}
+      aria-label={format(m.newFormula)}
+      className={stylex.props(styles.newButton).className}
+    >
       <PlusIcon />
-      {format(m.newFormula)}
+      <span {...stylex.props(styles.newWord)}>{format(m.newFormula)}</span>
     </Button>
   )
 
   return (
-    <PageContainer>
-      <Reveal className={stylex.props(l.page).className}>
-        <LibraryMasthead
-          title={format(m.listTitle)}
-          hint={format(m.listHint)}
-          titleRef={titleRef}
-          actions={newButton}
-        />
-
+    <Screen
+      title={format(m.listTitle)}
+      description={format(m.listHint)}
+      titleRef={titleRef}
+      actions={newButton}
+    >
+      <div {...stylex.props(l.page)}>
         <section {...stylex.props(l.section)}>
           <div {...stylex.props(l.sectionHead)}>
             <span {...stylex.props(l.sectionLabel)}>{format(m.listAll)}</span>
@@ -345,7 +357,7 @@ export default function FormulaListPage() {
             openEditor(functionId)
           }}
         />
-      </Reveal>
-    </PageContainer>
+      </div>
+    </Screen>
   )
 }
