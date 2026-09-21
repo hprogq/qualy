@@ -71,10 +71,14 @@ const styles = stylex.create({
     display: 'grid',
     gridTemplateColumns: {
       default: COLUMNS,
-      [breakpoints.phone]: 'minmax(0, 1fr) auto 3.6rem',
+      // Both facts take the width their own words need. A fixed column for
+      // the count spent sixty pixels on a single digit, and with a gap
+      // either side of it that is a fifth of a phone's row - taken from the
+      // name, which is what somebody is reading down the list for.
+      [breakpoints.phone]: 'minmax(0, 1fr) auto auto',
     },
     alignItems: 'center',
-    columnGap: 16,
+    columnGap: { default: 16, [breakpoints.phone]: 10 },
     minHeight: 40,
     paddingInline: 16,
     borderBottomWidth: { default: 1, ':last-child': 0 },

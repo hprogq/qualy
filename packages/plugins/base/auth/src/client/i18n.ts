@@ -576,6 +576,12 @@ const i18n = definePluginMessages({
     },
     transfer: { id: 'auth/action/transfer', defaultMessage: 'Transfer' },
     moreActions: { id: 'auth/action/more', defaultMessage: 'More' },
+    // Which set of people the roster is showing. Said as the answer rather
+    // than as a switch: a press that reads "show removed people" says what
+    // it will do, never what it has done, so nobody can tell from it which
+    // list they are looking at.
+    rosterScopeLiving: { id: 'auth/users/scope-living', defaultMessage: 'Removed hidden' },
+    rosterScopeAll: { id: 'auth/users/scope-all', defaultMessage: 'Removed shown' },
     saved: { id: 'auth/feedback/saved', defaultMessage: 'Saved.' },
     systemBadge: { id: 'auth/badge/system', defaultMessage: 'system' },
     disabledBadge: { id: 'auth/badge/disabled', defaultMessage: 'disabled' },

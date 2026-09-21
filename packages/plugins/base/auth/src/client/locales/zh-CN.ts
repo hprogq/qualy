@@ -231,6 +231,8 @@ export default {
   'auth/users/loaded-count': '已显示 {count} 人',
   'auth/action/transfer': '调动',
   'auth/action/more': '更多操作',
+  'auth/users/scope-living': '不含已删除',
+  'auth/users/scope-all': '含已删除',
   'auth/feedback/saved': '已保存。',
   'auth/badge/system': '系统',
   'auth/badge/disabled': '已停用',

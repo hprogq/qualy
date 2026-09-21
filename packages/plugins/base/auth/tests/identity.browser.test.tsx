@@ -781,6 +781,7 @@ describe('users workspace', () => {
     // different question starts again at its first page
     expect(asked().every((query) => query.status === undefined)).toBe(true)
     await page.getByTestId('show-removed').click()
+    await page.getByRole('option', { name: '含已删除' }).click()
     await vi.waitFor(() =>
       expect(asked().some((query) => query.status === 'any' && query.page === '1')).toBe(true),
     )
@@ -866,3 +867,4 @@ describe('users workspace', () => {
     expect(addressNow()).toContain(`/people/${SECOND_USER_ID}`)
   })
 })
+

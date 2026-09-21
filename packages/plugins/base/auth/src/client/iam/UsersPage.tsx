@@ -42,7 +42,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Spinner } from '@qualy/ui/spinner'
 import { useLingering } from '@qualy/ui/use-lingering'
 import { useIsBelow } from '@qualy/ui/use-mobile'
-import { ChevronRightIcon, EyeIcon, EyeOffIcon } from 'lucide-react'
+import { ChevronRightIcon } from 'lucide-react'
 import { DetailSheet } from '@qualy/ui/screen'
 import { iamMessages as m } from '../i18n.ts'
 import { NewUserForm } from './NewUserForm.tsx'
@@ -81,7 +81,9 @@ const styles = stylex.create({
   // field anybody could read what they had typed in
   go: {
     display: 'inline-flex',
-    gridColumn: 3,
+    justifySelf: 'end',
+    // the last two columns are its own now that the standing has moved up
+    gridColumn: '2 / -1',
     gridRow: '1 / 3',
     alignItems: 'center',
     color: tokens.mutedForeground,
@@ -101,14 +103,13 @@ const styles = stylex.create({
     flexBasis: { default: null, [breakpoints.phone]: '0%' },
   },
   away: { width: 14, height: 14, flexShrink: 0, color: tokens.mutedForeground },
-  // A tick beside two fields is a form control standing in a row of filters,
-  // and it read as a stray. It is the third filter, so it is drawn as one -
-  // pressed or not - and takes its share of the line at a phone's width.
+  // the third filter, drawn as one, taking its share of the line at a
+  // phone's width
   removed: {
+    width: { default: '9rem', [breakpoints.phone]: 'auto' },
     flexGrow: { default: 0, [breakpoints.phone]: 1 },
     flexShrink: 0,
     flexBasis: { default: null, [breakpoints.phone]: '0%' },
-    fontWeight: 400,
   },
   unitLink: {
     display: 'inline-flex',
@@ -417,23 +418,25 @@ export default function UsersPage() {
                   ))}
                 </SelectContent>
               </Select>
-              <Button
-                type="button"
-                variant={removed === '1' ? 'secondary' : 'outline'}
-                aria-pressed={removed === '1'}
-                data-testid="show-removed"
-                className={stylex.props(styles.removed).className}
-                onClick={() => asking('removed')(removed === '1' ? '' : '1')}
+              {/* A filter beside a filter, saying which set is on show
+                  rather than what a press would do - "show removed people"
+                  reads the same whichever list you are looking at. */}
+              <Select
+                value={removed === '1' ? 'all' : 'living'}
+                onValueChange={(next) => asking('removed')(next === 'all' ? '1' : '')}
               >
-                {/* the eye says which way the press goes, so the word does
-                    not have to be read to know the state */}
-                {removed === '1' ? (
-                  <EyeIcon aria-hidden />
-                ) : (
-                  <EyeOffIcon aria-hidden />
-                )}
-                {format(m.showRemoved)}
-              </Button>
+                <SelectTrigger
+                  aria-label={format(m.showRemoved)}
+                  data-testid="show-removed"
+                  xstyle={styles.removed}
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="living">{format(m.rosterScopeLiving)}</SelectItem>
+                  <SelectItem value="all">{format(m.rosterScopeAll)}</SelectItem>
+                </SelectContent>
+              </Select>
             </CardHead>
 
             <AsyncSection
@@ -471,8 +474,19 @@ export default function UsersPage() {
                           its facts under it */}
                       {stacked ? (
                         <>
+                          {/* Most people are in good standing, so saying so
+                              on every row says nothing - and it cost the row
+                              a column. Only what is NOT ordinary is marked,
+                              beside the name it is true of. */}
                           <Cell lead strong={user.id === openUserId}>
                             {user.displayName}
+                            {user.status !== 'active' && (
+                              <Status tone="bad">
+                                {format(
+                                  user.status === 'deleted' ? m.deletedBadge : m.disabledBadge,
+                                )}
+                              </Status>
+                            )}
                           </Cell>
                           <Cell
                             numeric
@@ -521,18 +535,23 @@ export default function UsersPage() {
                           plain={stacked}
                         />
                       )}
-                      {/* what the list is scanned by, so it keeps the end of
-                          the row on a phone as it keeps the last column here */}
+                      {/* Across a table the standing is a column like any
+                          other; stacked it has moved up beside the name, and
+                          the cell stays as the empty one it is - it is what
+                          tells the row where its facts end and what it is
+                          scanned by begins. */}
                       <Cell narrow="end" unlabelled>
-                        <Status tone={user.status === 'active' ? 'plain' : 'bad'}>
-                          {format(
-                            user.status === 'deleted'
-                              ? m.deletedBadge
-                              : user.status === 'disabled'
-                                ? m.disabledBadge
-                                : m.statusActive,
-                          )}
-                        </Status>
+                        {!stacked && (
+                          <Status tone={user.status === 'active' ? 'plain' : 'bad'}>
+                            {format(
+                              user.status === 'deleted'
+                                ? m.deletedBadge
+                                : user.status === 'disabled'
+                                  ? m.disabledBadge
+                                  : m.statusActive,
+                            )}
+                          </Status>
+                        )}
                       </Cell>
                       {/* A glance at somebody without leaving the list is
                           worth a press beside the row only where the list

@@ -213,13 +213,13 @@ const styles = stylex.create({
   },
   cell: {
     minWidth: 0,
-    // Across, a cell is a column and says one line's worth; stacked on a
-    // phone it is a fact beside its name, and a fact that cannot fit takes
-    // a second line rather than losing its end to an ellipsis - there is no
-    // column head up there to guess the rest from.
-    overflow: { default: 'hidden', [breakpoints.phone]: 'visible' },
-    textOverflow: { default: 'ellipsis', [breakpoints.phone]: 'clip' },
-    whiteSpace: { default: 'nowrap', [breakpoints.phone]: 'normal' },
+    // One line at every width. Stacked, the facts share a line and are ruled
+    // apart, so a fact that wrapped pushed the rule under itself and the row
+    // grew a line for half a unit's name - which said no more than the first
+    // few words of it would have.
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
     fontSize: 12.5,
     color: tokens.mutedForeground,
   },
@@ -257,10 +257,12 @@ const styles = stylex.create({
     gridColumn: { default: null, [breakpoints.phone]: 1 },
     gridRow: { default: null, [breakpoints.phone]: 2 },
     minWidth: 0,
-    flexWrap: 'wrap',
+    // one line, and the fact that runs out of room loses its end rather than
+    // the row gaining a line
+    flexWrap: 'nowrap',
+    overflow: 'hidden',
     alignItems: 'baseline',
     columnGap: 8,
-    rowGap: 3,
   },
   // one fact from the next: a hairline rather than a gap, because a run of
   // grey words with air between them reads as one phrase
