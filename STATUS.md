@@ -19358,9 +19358,18 @@ HEAD 的 run 是绿的;红的是中间提交 `ceb8ccb6`(那次的 `entry-workflo
 
 - `pnpm typecheck`:`exit 0`。
 - `pnpm test`:`Test Files 276 passed | 3 skipped (279)`,`Tests 2030 passed | 17 skipped (2047)`。
-- `pnpm test:browser`:`Test Files 65 passed (65)`,`Tests 494 passed (494)`。
-  收尾又跑一次是 `1 failed | 493 passed`,那一条是 `shell` 的空闲预取用例(`requestIdleCallback` 在满负载下没跑到),单独重跑 `Tests 17 passed (17)`,判为负载超时。
+- `pnpm test:browser`:`Test Files 65 passed (65)`,`Tests 495 passed (495)`(含新增的申诉用例)。
+  中途有一次是 `1 failed | 493 passed`,那一条是 `shell` 的空闲预取用例(`requestIdleCallback` 在满负载下没跑到),单独重跑 `Tests 17 passed (17)`,判为负载超时。
   过程中真抓到一条:第一版把列名写成隐藏 span,`participant-results` 的 `getByText('郭航旗')` 直接红(单独重跑复现,改回生成内容后 7 passed)。
+
+### 顺带钉住的一条
+
+申诉中的申报被报过两次「仍显示已认定、申诉按钮仍可点」。读路径上一轮已经改对(单条、我的申报列表、参评详情三处都按 `currentReviewInstanceId` 取在跑的轮次,不看 `status`),但没有任何测试守着它——
+标签与按键都来自「有没有在跑的轮次」这个**独立于状态**的事实,而卡片以前读的正是状态。现在 `entry-workflow` 有一条用例:`data-entry-standing="contested"` + `data-open-round="appeal"`,并且申诉键仍在(带原因)但按不动,数量也钉了 1,防止哪天按键被整个删掉让断言落空。
+
+**「申诉期间是否还显示普通轮次的认定内容」的答复**:仍然显示,不改。理由是那份认定**此刻仍然有效**——§32.21 规定申诉不移动申报的站位,状态仍是 approved,分数仍按它算。
+藏起来会让申诉人看不到自己正在争的是什么,也和「撤回/重开导致认定作废」混成一件事(那种情况下 `recognitionOf` 已经因为 `status !== 'approved'` 不返回认定了)。
+现在标签写「申诉复核中」,两者并存不含糊:这是当前结论,你已经提出异议。
 
 ### 还没做的
 
