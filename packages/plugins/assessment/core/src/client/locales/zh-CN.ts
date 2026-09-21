@@ -1332,6 +1332,7 @@ export default {
   'assessment/batch/current-stage': '当前阶段',
   'assessment/batch/not-started': '尚未开始',
   'assessment/flow/view': '查看全部阶段',
+  'assessment/flow/full': '完整流程',
   'assessment/flow/title': '阶段进度',
   'assessment/flow/from': '{when} 开始',
   'assessment/flow/until': '至 {when}',

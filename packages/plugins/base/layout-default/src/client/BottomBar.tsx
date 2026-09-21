@@ -1,37 +1,39 @@
+import type { ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { NavLink } from 'react-router'
+import { MenuIcon } from 'lucide-react'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
+import type { ResolvedNavigationItem } from '@qualy/ui-contract'
 import { shell } from './shell.stylex.ts'
 import { LocalizedText, useI18n } from '@qualy/web-i18n'
 import { NavIcon } from './icons.tsx'
 import { layoutMessages as m } from './i18n.ts'
 import type { AppEntry } from './TopBar.tsx'
 
-// The applications, at the foot of a narrow window.
+// The bar at the foot of a narrow window, and the one question it answers:
+// from where I am, where can I go.
 //
-// The top bar carries a row of words because a wide window has room for
-// them beside the brand; a phone does not, and the row that has to go
-// somewhere goes where a thumb already is. So the same applications, the
-// same order, drawn as icon over word.
+// What "where I am" means changes with the shell. On an application's own
+// pages the answer is the other applications - the row of words a wide
+// window carries beside the brand, moved to where a thumb already is. Inside
+// a workspace it is that workspace's own sections: for the next ten minutes
+// every move the reader makes is inside this one batch, and a bar still
+// offering the modules would be spending the easiest place on screen on two
+// destinations nobody is going to.
+//
+// So the bar takes entries rather than knowing what they are. More than fit
+// across become one cell at the end that opens the rest.
 //
 // It is glass at rest rather than on a threshold, unlike the bar at the
-// top: this one always has the page running under it, so there is no
-// moment at which it sits on nothing and a plain fill would be honest.
-//
-// Which one is open is said in ink and in weight, and not with the ink
-// line the top bar draws: that line belongs to a word, drawn as wide as
-// the word, and under an icon it would be a rule under a picture.
-//
-// One application is not a choice, so the bar does not appear for it. The
-// shell then gives the page back the room, down to the safe area.
+// top: this one always has the page running under it, so there is no moment
+// at which it sits on nothing and a plain fill would be honest.
 
 /** under the shell's head (50) and under everything a screen floats (40) is wrong here: the bar outranks a page's own foot */
 const BAR_LAYER = 45
 
 const styles = stylex.create({
   bar: {
-    display: { default: 'none', [breakpoints.phone]: 'block' },
     // Fixed to the window, not to the shell. Against the shell it would be
     // as wide as the page and would scroll sideways with it, which is
     // tidier at widths no device has - and wrong on the one that matters:
@@ -59,6 +61,10 @@ const styles = stylex.create({
     // the device's own gesture area, kept clear under the row
     paddingBottom: 'env(safe-area-inset-bottom)',
   },
+  // the applications: drawn where the top bar has stopped drawing them
+  barPhone: { display: { default: 'none', [breakpoints.phone]: 'block' } },
+  // a workspace's sections: drawn wherever the rail beside the page is gone
+  barNarrow: { display: { default: 'none', '@media (max-width: 1023.98px)': 'block' } },
   row: {
     display: 'grid',
     height: shell.bottomBarHeight,
@@ -66,12 +72,17 @@ const styles = stylex.create({
     gridAutoColumns: 'minmax(0, 1fr)',
   },
   item: {
+    position: 'relative',
     display: 'flex',
     minWidth: 0,
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 3,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+    padding: 0,
+    fontFamily: 'inherit',
     fontSize: 11,
     lineHeight: 1.2,
     textDecoration: 'none',
@@ -90,32 +101,110 @@ const styles = stylex.create({
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   },
+  // a count belongs to the mark, not to the line of text under it, so it
+  // rides the mark's top corner rather than taking a place in the column
+  count: {
+    position: 'absolute',
+    top: 4,
+    insetInlineStart: '50%',
+    marginInlineStart: 6,
+    display: 'flex',
+    pointerEvents: 'none',
+  },
 })
 
-export function BottomBar({ apps, activeApp }: { apps: readonly AppEntry[]; activeApp?: string }) {
-  const { format } = useI18n()
-  // one application is where the reader already is; a bar to switch to it
-  // is a row of one that never changes anything
-  if (apps.length < 2) return null
+export interface BottomItem {
+  id: string
+  label: ResolvedNavigationItem['label']
+  icon?: string
+  to: string
+  /** only this exact path counts as being here */
+  exact?: boolean
+  /** the bar's own notion of which is open, where the address alone cannot say */
+  active?: boolean
+  badge?: ReactNode
+}
+
+export function BottomBar({
+  label,
+  items,
+  more,
+  reach = 'phone',
+}: {
+  /** what a reader hears this bar called */
+  label: string
+  items: readonly BottomItem[]
+  /** the cell at the end that opens everything this bar had no room for */
+  more?: { label: string; active: boolean; onPress: () => void }
+  /** how wide a window still draws it: to the phone breakpoint, or wherever the rail is folded */
+  reach?: 'phone' | 'narrow'
+}) {
+  if (items.length < 2 && more === undefined) return null
   return (
-    <nav data-testid="bottom-bar" data-shell-bottom="" aria-label={format(m.appsNav)} {...stylex.props(styles.bar)}>
+    <nav
+      data-testid="bottom-bar"
+      data-shell-bottom=""
+      aria-label={label}
+      {...stylex.props(styles.bar, reach === 'narrow' ? styles.barNarrow : styles.barPhone)}
+    >
       <div {...stylex.props(styles.row)}>
-        {apps.map((app) => (
+        {items.map((item) => (
           <NavLink
-            key={app.id}
-            to={app.path}
-            className={
-              stylex.props(styles.item, app.id === activeApp ? styles.itemActive : styles.itemIdle)
-                .className
+            key={item.id}
+            to={item.to}
+            end={item.exact}
+            {...(item.active === undefined
+              ? {}
+              : { 'aria-current': item.active ? 'page' : undefined })}
+            className={({ isActive }) =>
+              stylex.props(
+                styles.item,
+                (item.active ?? isActive) ? styles.itemActive : styles.itemIdle,
+              ).className ?? ''
             }
           >
-            <NavIcon name={app.icon} className={stylex.props(styles.glyph).className} />
+            <NavIcon name={item.icon} className={stylex.props(styles.glyph).className} />
             <span {...stylex.props(styles.word)}>
-              <LocalizedText value={app.label} />
+              <LocalizedText value={item.label} />
             </span>
+            {item.badge !== undefined && <span {...stylex.props(styles.count)}>{item.badge}</span>}
           </NavLink>
         ))}
+        {more !== undefined && (
+          <button
+            type="button"
+            data-testid="bottom-more"
+            aria-haspopup="dialog"
+            {...stylex.props(styles.item, more.active ? styles.itemActive : styles.itemIdle)}
+            onClick={more.onPress}
+          >
+            <MenuIcon aria-hidden {...stylex.props(styles.glyph)} />
+            <span {...stylex.props(styles.word)}>{more.label}</span>
+          </button>
+        )}
       </div>
     </nav>
+  )
+}
+
+/**
+ * The applications, at the foot of a phone.
+ *
+ * One application is not a choice, so the bar does not appear for it. The
+ * shell then gives the page back the room, down to the safe area.
+ */
+export function AppsBar({ apps, activeApp }: { apps: readonly AppEntry[]; activeApp?: string }) {
+  const { format } = useI18n()
+  return (
+    <BottomBar
+      label={format(m.appsNav)}
+      items={apps.map((app) => ({
+        id: app.id,
+        label: app.label,
+        icon: app.icon,
+        to: app.path,
+        active: app.id === activeApp,
+      }))}
+    />
   )
 }

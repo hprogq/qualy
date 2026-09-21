@@ -18,6 +18,15 @@ const i18n = definePluginMessages({
       id: 'layout/shell/nav',
       defaultMessage: 'Navigation',
     },
+    /** the cell at the end of the foot bar, holding whatever had no room across it */
+    allSections: {
+      id: 'layout/shell/all-sections',
+      defaultMessage: 'All',
+    },
+    workspaceSections: {
+      id: 'layout/workspace/sections',
+      defaultMessage: 'Sections of this workspace',
+    },
     otherPages: {
       id: 'layout/shell/other-modules',
       defaultMessage: 'Other modules',

@@ -6,6 +6,8 @@ export default {
   'layout/person/account': '账户',
   'layout/shell/toggle-sidebar': '收起或展开侧边栏',
   'layout/shell/nav': '导航',
+  'layout/shell/all-sections': '全部',
+  'layout/workspace/sections': '批次分区',
   'layout/shell/other-modules': '其他模块',
   'layout/shell/apps': '应用',
   'layout/footer/tagline': '让每一份成长都有回响。',

@@ -10,7 +10,7 @@ import {
   useScreenFillClaimed,
 } from '@qualy/web-runtime'
 import { SectionBar, TopBar } from './TopBar.tsx'
-import { BottomBar } from './BottomBar.tsx'
+import { AppsBar } from './BottomBar.tsx'
 import { AppFooter } from './AppFooter.tsx'
 import { useIsBelow } from '@qualy/ui/use-mobile'
 import { useI18n } from '@qualy/web-i18n'
@@ -301,7 +301,7 @@ function Shell() {
           </div>
         </div>
       </main>
-      <BottomBar apps={apps} activeApp={activeApp} />
+      <AppsBar apps={apps} activeApp={activeApp} />
     </div>
   )
 }

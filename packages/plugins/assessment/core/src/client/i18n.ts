@@ -752,6 +752,8 @@ const i18n = definePluginMessages({
     flowFrom,
     flowUntil,
     viewFullFlow: { id: 'assessment/flow/view', defaultMessage: 'View all stages' },
+    /** the same door, named for a strip with no room for a sentence */
+    fullFlow: { id: 'assessment/flow/full', defaultMessage: 'Full flow' },
     flowBackToCurrent: {
       id: 'assessment/flow/back-to-current',
       defaultMessage: 'Back to current stage',

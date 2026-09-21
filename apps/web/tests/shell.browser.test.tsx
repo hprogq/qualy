@@ -359,7 +359,7 @@ describe('the workspace shell', () => {
     )
   })
 
-  it('carries the open thing\u2019s sections as a row on a phone, under the product\u2019s own mark', async () => {
+  it('hands the bar at the foot of a phone to the open workspace\u2019s own sections', async () => {
     await page.viewport(390, 844)
     shell(
       <WorkspaceShell />,
@@ -367,30 +367,98 @@ describe('the workspace shell', () => {
       `/assessment/batches/${BATCH_ID}/phases`,
     )
 
-    // The mark stays whatever the width: a workspace opened from somewhere
-    // else with nothing above it reads as a different site.
-    await expect.element(page.getByRole('link', { name: 'Qualy' })).toBeVisible()
+    // for as long as the reader is inside a batch, every move is a move
+    // between its sections - so that is what the easiest place on the
+    // screen holds, and the modules are not there at all
+    const foot = page.getByTestId('bottom-bar')
+    await expect.element(foot).toBeVisible()
+    await expect.element(foot.getByRole('link', { name: '阶段安排' })).toBeVisible()
+    expect(foot.getByRole('link', { name: '测评' }).elements()).toHaveLength(0)
 
-    // the sections are on screen rather than behind a press, and the one
-    // being read says so
-    const chips = page.getByTestId('person-chips')
-    await expect.element(chips).toBeVisible()
-    await expect.element(chips.getByRole('link', { name: '阶段安排' })).toBeVisible()
-
-    // the applications are the bar at the foot, which is where every other
-    // shell puts them on a phone
-    await expect.element(page.getByTestId('bottom-bar')).toBeVisible()
-    await expect.element(page.getByTestId('bottom-bar').getByRole('link', { name: '测评' })).toBeVisible()
+    // the bar at the top is gone with them: a phone inside a batch spends
+    // its head on the batch, not on the product's own mark
+    expect(page.getByRole('link', { name: 'Qualy' }).elements()).toHaveLength(0)
 
     // and the rail beside the page is folded away, because there is no
     // room beside a page this narrow: the same entry is reachable once,
-    // in the row, not twice
+    // at the foot, not twice
     expect(
       page
         .getByRole('link', { name: '阶段安排' })
         .elements()
         .filter((el) => el.checkVisibility()),
     ).toHaveLength(1)
+  })
+
+  it('keeps as many sections as fit across the foot and opens the rest behind one cell', async () => {
+    // A batch has more sections than a phone has cells. The bar keeps the
+    // first few in the rail's own order and hands the remainder to the last
+    // cell, which is lit while what is open is one of them - or the bar
+    // would read as though the reader were nowhere.
+    await page.viewport(390, 844)
+    const many = () => {
+      const full = manifest()
+      const rail = full.collections['workspace-shell/navigation']!
+      return {
+        ...full,
+        collections: {
+          ...full.collections,
+          'workspace-shell/navigation': [
+            ...rail,
+            ...['settings', 'staff', 'items', 'results'].map((name, index) => ({
+              id: `rail/${name}`,
+              label: text(name),
+              target: {
+                kind: 'page' as const,
+                pageId: `assessment/batch-${name}`,
+                path: `/assessment/batches/:batchId/${name}`,
+              },
+              group: 'batch/admin',
+              order: 30 + index,
+            })),
+          ],
+        },
+      }
+    }
+    renderScreen({
+      client: fakeClient({ app: { getManifest: () => Effect.succeed(many()) } }),
+      routes: [{ path: '/assessment/batches/:batchId/results', element: <WorkspaceShell /> }],
+      route: `/assessment/batches/${BATCH_ID}/results`,
+    })
+
+    const foot = page.getByTestId('bottom-bar')
+    await expect.element(foot).toBeVisible()
+    // four of the six, then the way to the rest
+    expect(foot.getByRole('link').elements()).toHaveLength(4)
+    const more = page.getByTestId('bottom-more')
+    await expect.element(more).toBeVisible()
+    // what is open is behind it, so it carries the ink
+    expect(getComputedStyle(await more.element()).fontWeight).toBe('500')
+
+    // and it opens the drawer holding every section plus the way out
+    await more.click()
+    const sheet = page.getByRole('dialog')
+    await expect.element(sheet).toBeVisible()
+    await expect.element(sheet.getByRole('link', { name: 'results' })).toBeVisible()
+    await expect.element(sheet.getByTestId('drawer-modules')).toBeVisible()
+  })
+
+  it('leaves a person\u2019s sections a row under the banner, and the modules at the foot', async () => {
+    await page.viewport(390, 844)
+    renderScreen({
+      client: fakeClient({ app: { getManifest: () => Effect.succeed(manifest()) } }),
+      routes: [{ path: '/organization/users/:userId/identities', element: <UserDetailShell /> }],
+      route: `/organization/users/${USER_ID}/identities`,
+    })
+
+    // a record is parts of one thing read across, not a place to live in
+    const chips = page.getByTestId('person-chips')
+    await expect.element(chips).toBeVisible()
+    await expect.element(chips.getByRole('link', { name: '基本资料' })).toBeVisible()
+    // so reading somebody's file is not somewhere the product disappears from
+    await expect
+      .element(page.getByTestId('bottom-bar').getByRole('link', { name: '测评' }))
+      .toBeVisible()
   })
 
   it('keeps the control that closes the rail inside the rail, and offers it back', async () => {

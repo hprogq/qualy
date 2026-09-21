@@ -7,11 +7,14 @@ import { Loader } from '@qualy/brand/loader'
 import { a11yStyles } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
+import { shell } from './shell.stylex.ts'
 import {
   drawerAccount,
   drawerIdentity,
   drawerSignOut,
+  headerActions,
   navigationGroups,
+  sidebarUser,
   type NamespacedId,
   type NavigationItem,
   type ResolvedNavigationItem,
@@ -34,10 +37,10 @@ import { Skeleton } from '@qualy/ui/skeleton'
 import { Sheet, SheetContent, SheetTitle } from '@qualy/ui/sheet'
 import { useIsBelow } from '@qualy/ui/use-mobile'
 import { TopBar } from './TopBar.tsx'
-import { BottomBar } from './BottomBar.tsx'
+import { AppsBar, BottomBar } from './BottomBar.tsx'
 import { NavIcon } from './icons.tsx'
 import { useAppNavigation } from './useAppNavigation.ts'
-import { byOrder, fill, hasEntriesBelow, useNavDrawer } from './rail.ts'
+import { byOrder, fill, hasEntriesBelow, isHere, useCellsAcross, useNavDrawer } from './rail.ts'
 import { layoutMessages as m } from './i18n.ts'
 
 // The shape two contracts share: the same applications across the top, then
@@ -53,15 +56,34 @@ import { layoutMessages as m } from './i18n.ts'
 // above the rail is a slot, filled by whoever does know.
 //
 // Below the width where two columns fit, the shell changes shape rather than
-// stacking: the application bar folds away (switching applications is too
-// rare to hold 56px of a phone), the rail folds to nothing, and one capsule
-// floats at the foot of the screen. It opens a bottom drawer carrying the
-// same entries the rail carries plus the applications the folded bar carried.
-// The context bar stays exactly where it was - it already knows how to be
-// narrow.
+// stacking, and the two things it is mounted around want different shapes.
+//
+// Around a workspace the rail becomes the bar at the foot: for as long as
+// the reader is inside one batch, every move they make is a move between its
+// sections, so that is what the easiest place on the screen should hold -
+// not the modules, which the bar at the top still carries. What does not fit
+// across becomes one cell at the end that opens the rest, together with the
+// account and the way back out.
+//
+// Around one person the sections stay a row of chips under the banner. There
+// are few of them, they are parts of one record rather than places to live
+// in, and the foot goes on carrying the modules: reading somebody's file is
+// not somewhere the product disappears from.
 
-/** where the shell stops being two columns and becomes the capsule shape */
+/** where the shell stops being two columns */
 const SHELL_BREAKPOINT = 1024
+
+/**
+ * Where the shell's own head gives way to the open workspace's.
+ *
+ * On a phone inside a batch the top of the screen is worth more to the batch
+ * than to the product: the mark, the modules and the account cost a whole bar
+ * to say what the bar at the foot and one avatar already say. So the head
+ * becomes the workspace's own - the way back, what is open, the account - and
+ * the product's bar is not drawn at all. The same boundary the bars at the top
+ * use to stop drawing their row of words.
+ */
+const HEAD_BREAKPOINT = 768
 
 // The scroll model, stated once: the body never scrolls (the root is the
 // viewport), the main column owns the page scroll, the rail and the drawer's
@@ -99,6 +121,26 @@ const styles = stylex.create({
   contextLine: {
     height: 52,
   },
+  /**
+   * The band as the window's own head.
+   *
+   * It keeps no inset: what fills it draws two rows of its own, and a rule
+   * between them has to reach both edges of the screen or it reads as an
+   * underline belonging to the words above it. So the inset is the filler's,
+   * per row, and the shell only holds the corner open for the account.
+   */
+  contextHead: {
+    alignItems: 'stretch',
+    paddingInline: 0,
+  },
+  headAccount: {
+    position: 'absolute',
+    insetInlineEnd: 16,
+    top: 6,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+  },
   // a floor rather than a height: the person arrives a moment after the
   // shell, and the floor is what keeps the page from moving when they do
   contextBanner: {
@@ -116,12 +158,18 @@ const styles = stylex.create({
     pointerEvents: 'none',
     opacity: 0.06,
     color: tokens.foreground,
-    backgroundImage:
-      'repeating-linear-gradient(-45deg, currentColor 0 1px, transparent 1px 24px)',
+    backgroundImage: 'repeating-linear-gradient(-45deg, currentColor 0 1px, transparent 1px 24px)',
     maskImage: 'radial-gradient(130% 115% at 100% 0%, black, transparent 62%)',
   },
   // the banner keeps the measure the pages under it are read at
-  contextSeatBanner: { position: 'relative', maxWidth: '72rem', marginInline: 'auto' },
+  contextSeatBanner: {
+    position: 'relative',
+    display: 'flex',
+    width: '100%',
+    maxWidth: '72rem',
+    marginInline: 'auto',
+    flexDirection: 'column',
+  },
   contextSeat: {
     minWidth: 0,
     flexGrow: 1,
@@ -271,13 +319,24 @@ const styles = stylex.create({
     flexDirection: 'column',
     overflowY: 'auto',
   },
+  // exactly the bar's own height, so the last row of a page ends above it
+  // rather than behind it
+  mainFoot: {
+    paddingBottom: `calc(${shell.bottomBarHeight} + env(safe-area-inset-bottom))`,
+  },
   // Around one person the rail is part of the page rather than of the
   // window: the banner above is held to a measure, and a rail out at the
   // window's edge left the sections two hand-widths from what they open. So
   // the sections stand inside the same measure, beside their content.
   bannerBones: { display: 'flex', alignItems: 'center', gap: 16, paddingTop: 34 },
   bannerBoneWords: { display: 'flex', flexDirection: 'column', gap: 10 },
-  railBones: { display: 'flex', flexDirection: 'column', gap: 18, paddingInline: 12, paddingBlock: 14 },
+  railBones: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 18,
+    paddingInline: 12,
+    paddingBlock: 14,
+  },
   personMain: {
     minHeight: 0,
     flexGrow: 1,
@@ -316,11 +375,15 @@ const styles = stylex.create({
     flexShrink: 0,
     alignItems: 'center',
     gap: 6,
-    width: '100%',
+    marginTop: 14,
+    // bled back out to the window's edges: the banner holds its words to a
+    // measure, but a row that scrolls has to start and end at the screen or
+    // the last chip looks like the last section
+    marginInline: { default: -24, [breakpoints.phone]: -16 },
+    paddingInline: { default: 24, [breakpoints.phone]: 16 },
+    paddingBottom: 2,
     overflowX: 'auto',
     scrollbarWidth: 'none',
-    paddingInline: { default: 24, [breakpoints.phone]: 16 },
-    paddingBottom: 12,
   },
   chip: {
     display: 'inline-flex',
@@ -350,7 +413,14 @@ const styles = stylex.create({
     letterSpacing: '0.06em',
     color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
   },
-  personList: { display: 'flex', flexDirection: 'column', gap: 2, margin: 0, padding: 0, listStyle: 'none' },
+  personList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+    margin: 0,
+    padding: 0,
+    listStyle: 'none',
+  },
   personEntry: {
     display: 'flex',
     height: 34,
@@ -392,58 +462,6 @@ const styles = stylex.create({
     borderStartStartRadius: 20,
     borderStartEndRadius: 20,
     padding: 0,
-  },
-  capsuleSeat: {
-    pointerEvents: 'none',
-    position: 'fixed',
-    insetInline: 0,
-    bottom: 'max(1.125rem, env(safe-area-inset-bottom))',
-    zIndex: 40,
-    display: 'flex',
-    justifyContent: 'center',
-  },
-  capsuleFade: {
-    transitionProperty: 'opacity, translate',
-    transitionDuration: '200ms',
-    transitionTimingFunction: 'ease-out',
-    opacity: 1,
-    translate: '0 0',
-  },
-  capsuleHidden: {
-    opacity: 0,
-    translate: '0 0.5rem',
-  },
-  capsuleButton: {
-    pointerEvents: 'auto',
-    display: 'flex',
-    height: 44,
-    cursor: 'pointer',
-    alignItems: 'center',
-    gap: 10,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: tokens.border,
-    backgroundColor: `color-mix(in oklab, ${tokens.background} 90%, transparent)`,
-    paddingInline: 16,
-    boxShadow: '0 10px 28px -10px rgba(0, 0, 0, 0.3)',
-    backdropFilter: 'blur(4px)',
-  },
-  burger: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: 3,
-  },
-  burgerLine: {
-    height: 1.5,
-    width: 14,
-    borderRadius: '9999px',
-    backgroundColor: tokens.foreground,
-  },
-  capsuleWord: {
-    fontSize: 13,
-    fontWeight: 500,
   },
   drawerHead: {
     display: 'flex',
@@ -671,8 +689,8 @@ function RailEntry({
  * Narrow, a record has no room for a column beside it, and the sections are
  * not a menu to be opened - they are the parts of one thing, read across.
  * A row of chips says how many there are and which one is open without
- * anybody pressing anything, which a capsule at the foot of the screen
- * could only do after it had been pressed.
+ * anybody pressing anything, which a bar of five cells could only do for
+ * the five, and a record has more parts than that.
  */
 function PersonChip({
   label,
@@ -700,10 +718,8 @@ function PersonChip({
       onFocus={warm}
       aria-busy={navigation.pending || undefined}
       className={({ isActive }) =>
-        stylex.props(
-          styles.chip,
-          (isActive || navigation.pending) && styles.chipOpen,
-        ).className ?? ''
+        stylex.props(styles.chip, (isActive || navigation.pending) && styles.chipOpen).className ??
+        ''
       }
     >
       <LocalizedText value={label} />
@@ -831,6 +847,9 @@ function CapableRailShell({ navigation, context, badge, banner = false }: RailSh
   const { pathname } = useLocation()
   const { format } = useI18n()
   const narrow = useIsBelow(SHELL_BREAKPOINT)
+  // on a phone inside a workspace the head belongs to the workspace, and the
+  // product's own bar is not drawn at all
+  const owned = useIsBelow(HEAD_BREAKPOINT) && !banner
   const drawer = useNavDrawer()
   // a screen whose own bar ends at the bottom edge has asked for that corner
   const footTaken = useScreenFootClaimed()
@@ -872,6 +891,22 @@ function CapableRailShell({ navigation, context, badge, banner = false }: RailSh
       items: addressable.filter((item) => item.group === group.id).sort(byOrder),
     }))
     .filter((group) => group.items.length > 0)
+
+  // the rail's entries as one run, in the order the rail draws them: what
+  // the chips carry across, and what the bar at the foot keeps the first few
+  // of. The headings are the rail's and the drawer's; neither of the narrow
+  // shapes has room for them.
+  const run = [...loose, ...sections.flatMap((section) => section.items)]
+  // A workspace keeps its own sections at the foot; a record keeps the
+  // modules there, because reading somebody's file is not somewhere the
+  // product disappears from. A screen that has claimed the foot for its own
+  // decision bar gets it: two bars stacked there is one too many, and that
+  // screen is a task with a way back of its own.
+  const sectionsAtFoot = narrow && !banner && !footTaken
+  const cells = useCellsAcross(5)
+  const across = run.length <= cells ? run : run.slice(0, cells - 1)
+  const spilled = run.length > across.length
+  const exactly = (to: string) => hasEntriesBelow(to, paths)
 
   const toggle = (label: string) => (
     <button
@@ -924,7 +959,12 @@ function CapableRailShell({ navigation, context, badge, banner = false }: RailSh
         {awaited > 0 && (
           <div {...stylex.props(styles.railBones)} aria-hidden data-testid="rail-bones">
             {Array.from({ length: Math.min(awaited, 8) }, (_, index) => (
-              <Skeleton key={index} height={14} width={`${String([62, 48, 70, 54][index % 4])}%`} radius={4} />
+              <Skeleton
+                key={index}
+                height={14}
+                width={`${String([62, 48, 70, 54][index % 4])}%`}
+                radius={4}
+              />
             ))}
           </div>
         )}
@@ -955,23 +995,31 @@ function CapableRailShell({ navigation, context, badge, banner = false }: RailSh
 
   return (
     <div {...stylex.props(styles.root)}>
-      {/* The bar stays whatever the width: it carries the product's own
-          mark, and a record opened from somewhere else with no mark above
-          it reads as a different site. What folds narrow is the row of
-          application words inside it - those are the bottom bar's job,
-          where a thumb already is. */}
-      <div {...stylex.props(styles.topFold)}>
-        {/* Ruled, because here the bar can never earn its line. The one it
-            draws at rest is earned by the page passing underneath, and in
-            this shell nothing passes underneath: the bar below is in the
-            flow and never moves. Two bars of the same ground with no rule
-            between them read as one crowded band. */}
-        <TopBar apps={apps} activeApp={activeApp} stacked />
-      </div>
+      {/* Above a record the bar stays whatever the width: it carries the
+          product's own mark, and a record opened from somewhere else with
+          no mark above it reads as a different site. Inside a workspace on
+          a phone it goes: the band below already names what is open and
+          carries the account, and two bars would leave the page a third of
+          the screen. */}
+      {!owned && (
+        <div {...stylex.props(styles.topFold)}>
+          {/* Ruled, because here the bar can never earn its line. The one it
+              draws at rest is earned by the page passing underneath, and in
+              this shell nothing passes underneath: the bar below is in the
+              flow and never moves. Two bars of the same ground with no rule
+              between them read as one crowded band. */}
+          <TopBar apps={apps} activeApp={activeApp} stacked />
+        </div>
+      )}
       {/* its height is fixed rather than found: the slot arrives a moment after
           the shell does, and a bar that grows from empty to filled moves every
           page below it just as the reader starts reading */}
-      <div {...stylex.props(styles.contextBar, banner ? styles.contextBanner : styles.contextLine)}>
+      <div
+        {...stylex.props(
+          styles.contextBar,
+          banner ? styles.contextBanner : owned ? styles.contextHead : styles.contextLine,
+        )}
+      >
         {banner && <span aria-hidden {...stylex.props(styles.hairlines)} />}
         <div {...stylex.props(styles.contextSeat, banner && styles.contextSeatBanner)}>
           {/* the strip is filled by another plugin's chunk, which arrives a
@@ -993,30 +1041,40 @@ function CapableRailShell({ navigation, context, badge, banner = false }: RailSh
               )
             }
           />
+          {/* the record's own sections, across, at the foot of the banner
+              that says whose record it is */}
+          {banner && narrow && (
+            <nav
+              aria-label={format(m.personSections)}
+              data-testid="person-chips"
+              {...stylex.props(styles.chipRow)}
+            >
+              {run.map((item) => (
+                <PersonChip
+                  key={item.id}
+                  label={item.label}
+                  to={item.to}
+                  page={item.target.kind === 'page' ? item.target.pageId : undefined}
+                  exact={exactly(item.to)}
+                  badge={
+                    badge !== undefined ? (
+                      <UiSlot token={badge} context={{ navigationId: item.id }} />
+                    ) : undefined
+                  }
+                />
+              ))}
+            </nav>
+          )}
         </div>
+        {/* the corner the head holds open: whoever owns sessions fills it,
+            the same seat the product's own bar gives it higher up */}
+        {owned && (
+          <div {...stylex.props(styles.headAccount)}>
+            <UiSlot token={headerActions} />
+            <UiSlot token={sidebarUser} />
+          </div>
+        )}
       </div>
-      {narrow && (
-        // the open thing's own sections, across, under the bar that says
-        // which thing it is
-        <nav
-          aria-label={format(m.personSections)}
-          data-testid="person-chips"
-          {...stylex.props(styles.chipRow)}
-        >
-          {[...loose, ...sections.flatMap((section) => section.items)].map((item) => (
-            <PersonChip
-              key={item.id}
-              label={item.label}
-              to={item.to}
-              page={item.target.kind === 'page' ? item.target.pageId : undefined}
-              exact={hasEntriesBelow(item.to, paths)}
-              badge={
-                badge !== undefined ? <UiSlot token={badge} context={{ navigationId: item.id }} /> : undefined
-              }
-            />
-          ))}
-        </nav>
-      )}
       {banner ? (
         <main {...stylex.props(styles.personMain)}>
           <div {...stylex.props(styles.personSeat)}>
@@ -1028,9 +1086,7 @@ function CapableRailShell({ navigation, context, badge, banner = false }: RailSh
               >
                 {[
                   // what nobody filed under a heading is the record itself
-                  ...(loose.length > 0
-                    ? [{ id: 'account', label: undefined, items: loose }]
-                    : []),
+                  ...(loose.length > 0 ? [{ id: 'account', label: undefined, items: loose }] : []),
                   ...sections.map((section) => ({
                     id: section.id,
                     label: section.label,
@@ -1067,35 +1123,175 @@ function CapableRailShell({ navigation, context, badge, banner = false }: RailSh
           </div>
         </main>
       ) : (
-      <div {...stylex.props(styles.body)}>
-        {/* Collapsed to a strip rather than to nothing, so the control that
+        <div {...stylex.props(styles.body)}>
+          {/* Collapsed to a strip rather than to nothing, so the control that
             brings it back stays where it was taken from; on a narrow screen
             collapsed all the way, because the drawer has taken over. */}
-        <aside
-          data-testid="workspace-rail"
-          // fully out of reach while folded: clipped is not gone, and the
-          // keyboard would still walk into the toggle behind the fold
-          {...(narrow ? { inert: true, 'aria-hidden': true } : {})}
-          {...stylex.props(
-            styles.aside,
-            narrow ? styles.asideGone : railOpen ? styles.asideOpen : styles.asideClosed,
-          )}
-        >
-          {rail}
-        </aside>
-        {/* auto, not scroll: the screens that fill the viewport - the review
+          <aside
+            data-testid="workspace-rail"
+            // fully out of reach while folded: clipped is not gone, and the
+            // keyboard would still walk into the toggle behind the fold
+            {...(narrow ? { inert: true, 'aria-hidden': true } : {})}
+            {...stylex.props(
+              styles.aside,
+              narrow ? styles.asideGone : railOpen ? styles.asideOpen : styles.asideClosed,
+            )}
+          >
+            {rail}
+          </aside>
+          {/* auto, not scroll: the screens that fill the viewport - the review
             workbench, my filings - then carry a scrollbar that can never
             move, which reads as a page with somewhere to go. */}
-        <main {...stylex.props(styles.main)}>
-          <Outlet />
-        </main>
-      </div>
+          <main {...stylex.props(styles.main, sectionsAtFoot && styles.mainFoot)}>
+            <Outlet />
+          </main>
+        </div>
       )}
 
-      {/* The applications, where a thumb already is - the same bar every
-          other shell puts there. */}
-      <BottomBar apps={apps} activeApp={activeApp} />
+      {/* One bar at the foot, and which one it is depends on what the shell
+          is around: a workspace's own sections, or the modules. */}
+      {banner ? (
+        <AppsBar apps={apps} activeApp={activeApp} />
+      ) : (
+        sectionsAtFoot && (
+          <BottomBar
+            reach="narrow"
+            label={format(m.workspaceSections)}
+            items={across.map((item) => ({
+              id: item.id,
+              label: item.label,
+              icon: item.icon,
+              to: item.to,
+              exact: exactly(item.to),
+              badge:
+                badge !== undefined ? (
+                  <UiSlot token={badge} context={{ navigationId: item.id }} />
+                ) : undefined,
+            }))}
+            more={
+              spilled
+                ? {
+                    label: format(m.allSections),
+                    // lit while what is open is one of the ones it holds, so
+                    // the bar never reads as though the reader is nowhere
+                    active:
+                      drawer.open ||
+                      !across.some((item) => isHere(pathname, item.to, exactly(item.to))),
+                    onPress: drawer.show,
+                  }
+                : undefined
+            }
+          />
+        )
+      )}
 
+      {/* The drawer's seats are separate chunks, and fetched only when the
+          drawer first opened they arrived one by one - the drawer visibly
+          assembled itself. Mounted here out of sight as soon as the shell
+          is narrow, the chunks and the session behind the identity are
+          already warm when the last cell is first pressed. */}
+      {sectionsAtFoot && (
+        <div hidden aria-hidden>
+          <UiSlot token={drawerIdentity} />
+          <UiSlot token={drawerAccount} />
+          <UiSlot token={drawerSignOut} />
+        </div>
+      )}
+
+      <Sheet
+        open={!banner && narrow && drawer.open}
+        onOpenChange={(next) => {
+          if (!next) drawer.hide()
+        }}
+      >
+        {/* the drawer's own shape, merged into the sheet's rather than
+            racing it: same properties, one compiled rule */}
+        <SheetContent side="bottom" showCloseButton={false} xstyle={styles.drawerPanel}>
+          <SheetTitle {...stylex.props(a11yStyles.visuallyHidden)}>
+            {format(m.navCapsule)}
+          </SheetTitle>
+          {/* the person at the head, the pages in the middle, the account at
+              the foot - and the shell owns none of the head or the foot's
+              controls: whoever owns sessions fills those seats */}
+          <div data-sheet-grab="" {...stylex.props(styles.drawerHead)}>
+            <span aria-hidden data-sheet-grab="" {...stylex.props(styles.grabber)} />
+            <UiSlot
+              token={drawerIdentity}
+              loading={<Skeleton className={stylex.props(styles.headSkeleton).className} />}
+            />
+          </div>
+          {/* the same entries the rail carries, two to a row because a
+              phone-wide column of 46px bars wastes the little height a
+              drawer has */}
+          <nav {...stylex.props(styles.drawerNav)}>
+            {loose.length > 0 && (
+              <div {...stylex.props(styles.drawerGrid)}>
+                {loose.map((item) => (
+                  <DrawerEntry
+                    key={item.id}
+                    id={item.id}
+                    label={item.label}
+                    to={item.to}
+                    page={item.target.kind === 'page' ? item.target.pageId : undefined}
+                    exact={exactly(item.to)}
+                    badge={badge}
+                  />
+                ))}
+              </div>
+            )}
+            {sections.map((section) => (
+              <section key={section.id} {...stylex.props(styles.drawerSection)}>
+                <p {...stylex.props(styles.drawerSectionLabel)}>
+                  <LocalizedText value={section.label} />
+                </p>
+                <div {...stylex.props(styles.drawerGrid)}>
+                  {section.items.map((item) => (
+                    <DrawerEntry
+                      key={item.id}
+                      id={item.id}
+                      label={item.label}
+                      to={item.to}
+                      page={item.target.kind === 'page' ? item.target.pageId : undefined}
+                      exact={exactly(item.to)}
+                      badge={badge}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))}
+          </nav>
+          <div {...stylex.props(styles.drawerFoot)}>
+            <UiSlot
+              token={drawerAccount}
+              loading={<Skeleton className={stylex.props(styles.footSkeleton).className} />}
+            />
+            {/* the modules the bar at the foot gave up its cells for -
+                destinations, not tabs - with the way out at the row's end */}
+            <div data-testid="drawer-modules" {...stylex.props(styles.modulesRow)}>
+              <span {...stylex.props(styles.modulesLabel)}>{format(m.otherPages)}</span>
+              <div {...stylex.props(styles.modulesWrap)}>
+                {apps.map((app) => (
+                  <NavLink
+                    key={app.id}
+                    to={app.path}
+                    className={stylex.props(styles.moduleLink).className}
+                  >
+                    <NavIcon
+                      name={app.icon}
+                      className={stylex.props(styles.moduleIcon).className}
+                    />
+                    <span {...stylex.props(styles.moduleWord)}>
+                      <LocalizedText value={app.label} />
+                    </span>
+                  </NavLink>
+                ))}
+              </div>
+              <span {...stylex.props(styles.spacer)} />
+              <UiSlot token={drawerSignOut} />
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }

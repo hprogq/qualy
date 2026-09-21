@@ -48,10 +48,7 @@ const styles = stylex.create({
     },
   },
   stageSeat: {
-    display: {
-      default: 'inline-flex',
-      [breakpoints.phone]: 'none',
-    },
+    display: 'inline-flex',
     minWidth: 0,
     alignItems: 'baseline',
     gap: 6,
@@ -64,6 +61,18 @@ const styles = stylex.create({
     flexShrink: 0,
     fontSize: 12,
     color: tokens.mutedForeground,
+  },
+  // the stage as a line of text rather than as chrome: where the strip has
+  // a ground of its own, a badge inside it is a second ground and the name
+  // stops reading as the first thing on the line
+  stagePlain: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: '0.8125rem',
+    fontWeight: 500,
+    color: tokens.foreground,
   },
   stageBadge: {
     position: 'relative',
@@ -98,10 +107,7 @@ const styles = stylex.create({
     whiteSpace: 'nowrap',
   },
   rule: {
-    display: {
-      default: 'block',
-      [breakpoints.phone]: 'none',
-    },
+    display: 'block',
     height: 14,
     width: 1,
     flexShrink: 0,
@@ -184,6 +190,7 @@ export function BatchProgress({
   showStage = false,
   dense = false,
   single = false,
+  flat = false,
   xstyle,
 }: {
   timeline: readonly TimelineLike[]
@@ -193,6 +200,14 @@ export function BatchProgress({
   dense?: boolean
   /** the larger unit alone, in a sentence: "12 days left", never the hours */
   single?: boolean
+  /**
+   * Drawn as a line of text: the stage plain rather than badged, and no ring.
+   *
+   * For a strip that already has a ground and a rule of its own, where the
+   * badge is a second ground and the ring a second mark - the line reads as
+   * "stage, then how long", which is what it says.
+   */
+  flat?: boolean
   xstyle?: stylex.StyleXStyles
 }) {
   const { format, locale } = useI18n()
@@ -251,10 +266,16 @@ export function BatchProgress({
         // the first thing dropped when the bar runs out of room.
         <span data-slot="stage" {...stylex.props(styles.stageSeat)}>
           <span {...stylex.props(styles.stageLabel)}>{format(m.currentStage)}</span>
-          <Badge variant="secondary" className={stylex.props(styles.stageBadge).className}>
-            {toneOf(progress) === 'urgent' && <span aria-hidden {...stylex.props(styles.breath)} />}
-            <span {...stylex.props(styles.stageName)}>{stage}</span>
-          </Badge>
+          {flat ? (
+            <span {...stylex.props(styles.stagePlain)}>{stage}</span>
+          ) : (
+            <Badge variant="secondary" className={stylex.props(styles.stageBadge).className}>
+              {toneOf(progress) === 'urgent' && (
+                <span aria-hidden {...stylex.props(styles.breath)} />
+              )}
+              <span {...stylex.props(styles.stageName)}>{stage}</span>
+            </Badge>
+          )}
         </span>
       )}
       {stage !== null && said !== null && (
@@ -279,7 +300,7 @@ export function BatchProgress({
             : {})}
           {...stylex.props(styles.clock, tone)}
         >
-          {filled !== null && <Ring fraction={filled} />}
+          {filled !== null && !flat && <Ring fraction={filled} />}
           {progress.kind === 'starts' && (
             <span {...stylex.props(styles.plannedLabel)}>{format(m.plannedStart)}</span>
           )}

@@ -472,7 +472,7 @@ describe('the countdown', () => {
     await expect.element(clock).toHaveAttribute('data-rest', '0')
   })
 
-  it('names the stage in the clock once the bar is too narrow to show it', async () => {
+  it('says one unit beside the stage it belongs to, once the band is a head', async () => {
     await page.viewport(390, 844)
     screen(
       {
@@ -481,12 +481,16 @@ describe('the countdown', () => {
       },
       `/assessment/batches/${BATCH_ID}/phases`,
     )
-    // one unit, and whose clock it is: the stage's name has gone from the
-    // bar, so the clock switches to the form that carries it
+    // On a phone the band is the window's own head: the name and the way
+    // back take the first row, and the stage takes a strip of its own with
+    // the clock beside it. The stage is named there, so the clock says the
+    // span alone rather than carrying the stage's name into it - and one
+    // unit of it, because the strip also holds the way to the whole flow.
     const clock = page.getByTestId('stage-clock')
-    await expect.element(clock).toHaveAttribute('data-form', 'bare')
+    await expect.element(clock).toHaveAttribute('data-form', 'single')
     await expect.element(clock).toHaveAttribute('data-unit', 'minutes')
     await expect.element(clock).toHaveAttribute('data-count', '39')
+    await expect.element(page.getByText('正式填报', { exact: false }).first()).toBeVisible()
     await page.viewport(1280, 800)
   })
 })

@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
 // What the rail shells share below the components: how an entry is ordered,
@@ -10,6 +11,17 @@ export const byOrder = (a: { order?: number }, b: { order?: number }) =>
 /** whether some other entry of the rail lives under this one's path */
 export const hasEntriesBelow = (path: string, all: readonly string[]) =>
   all.some((other) => other !== path && other.startsWith(`${path}/`))
+
+/**
+ * Whether an entry's path is the one being read - the same rule NavLink
+ * applies, stated here for the bar that has to know before it draws.
+ *
+ * A bar that keeps only some of its entries has to decide whether what is
+ * open is among them, and there is nothing to ask: the entries it dropped
+ * were never rendered.
+ */
+export const isHere = (pathname: string, path: string, exact: boolean) =>
+  exact ? pathname === path : pathname === path || pathname.startsWith(`${path}/`)
 
 /** the entry's path with this route's parameters in it, or nothing if one is missing */
 export const fill = (path: string, params: Readonly<Record<string, string | undefined>>) => {
@@ -57,4 +69,33 @@ export function useNavDrawer() {
     if (open) void navigate(-1)
   }
   return { open, show, hide }
+}
+
+/**
+ * The width one cell of the bar at the foot needs: a mark over a word of two
+ * or three characters, with air either side. Below it the words start to be
+ * cut, which costs more than the cell was worth.
+ */
+const CELL = 76
+
+const cellsAcross = (width: number, most: number) =>
+  Math.max(3, Math.min(most, Math.floor(width / CELL)))
+
+/**
+ * How many cells this window has room for, watched rather than read once: a
+ * rotation turns four into six and back.
+ *
+ * Before the window has been asked - a render with no window, a harness -
+ * it answers with the most, which is what a wide window would have answered
+ * anyway.
+ */
+export function useCellsAcross(most: number): number {
+  const [width, setWidth] = useState(() => (typeof window === 'undefined' ? 0 : window.innerWidth))
+  useEffect(() => {
+    const measure = () => setWidth(window.innerWidth)
+    measure()
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [])
+  return width === 0 ? most : cellsAcross(width, most)
 }
