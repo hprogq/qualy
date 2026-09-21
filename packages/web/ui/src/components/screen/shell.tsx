@@ -1,4 +1,14 @@
-import { createContext, useContext, type ComponentType, type ReactNode } from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ComponentType,
+  type ReactNode,
+} from 'react'
 import { ArrowLeftIcon, EllipsisIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
 import type { StyleXStyles } from '@stylexjs/stylex'
@@ -260,11 +270,38 @@ export function BandActions({
   moreLabel: string
 }) {
   const folded = rest !== undefined && rest !== null && rest !== false
+  // The actions are rendered ONCE, in the band, and the menu is a list of
+  // ways to reach them - not a second copy of them.
+  //
+  // A copy is what the menu held before, and an action is not a command: it
+  // is a control that owns a dialog. Choosing a row closed the menu, the row
+  // went with it, and the dialog's own state went with the row - which
+  // showed as the dialog flashing open and vanishing. The band's seat is
+  // hidden narrow rather than unmounted, so what an action owns stays put
+  // and only the way in moves.
+  const [ids, setIds] = useState<readonly string[]>([])
+  const entries = useRef(new Map<string, () => FoldedRow>())
+  const register = useCallback((id: string, read: () => FoldedRow) => {
+    entries.current.set(id, read)
+    setIds((now) => (now.includes(id) ? now : [...now, id]))
+    return () => {
+      entries.current.delete(id)
+      setIds((now) => now.filter((other) => other !== id))
+    }
+  }, [])
+  const rows = ids.flatMap((id) => {
+    const read = entries.current.get(id)
+    return read === undefined ? [] : [{ id, ...read() }]
+  })
   return (
     <>
-      {folded && <span {...stylex.props(styles.bandWide)}>{rest}</span>}
-      {primary}
       {folded && (
+        <span {...stylex.props(styles.bandWide)}>
+          <Register value={register}>{rest}</Register>
+        </span>
+      )}
+      {primary}
+      {folded && rows.length > 0 && (
         <span {...stylex.props(styles.bandNarrow)}>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -272,11 +309,14 @@ export function BandActions({
                 <EllipsisIcon aria-hidden />
               </Button>
             </DropdownMenuTrigger>
-            {/* the same actions, told they are in a menu: a row of buttons
-                poured into a panel reads as a toolbar that fell over, and
-                the shell cannot rewrite what a plugin contributed */}
+            {/* one row each, in the order the band lays them out */}
             <DropdownMenuContent align="end">
-              <Folded.Provider value>{rest}</Folded.Provider>
+              {rows.map((row) => (
+                <DropdownMenuItem key={row.id} data-testid={row.testId} onSelect={row.onSelect}>
+                  {row.icon}
+                  {row.label}
+                </DropdownMenuItem>
+              ))}
             </DropdownMenuContent>
           </DropdownMenu>
         </span>
@@ -285,8 +325,15 @@ export function BandActions({
   )
 }
 
-/** whether what is being drawn is inside the band's folded menu */
-const Folded = createContext(false)
+interface FoldedRow {
+  icon?: ReactNode
+  label: ReactNode
+  onSelect: () => void
+  testId?: string
+}
+
+/** how an action tells the band it is there, so the band can offer it narrow */
+const Register = createContext<((id: string, read: () => FoldedRow) => () => void) | null>(null)
 
 /**
  * One action of a band: a button where the band has room for it, a row of
@@ -294,8 +341,10 @@ const Folded = createContext(false)
  *
  * Which of the two it is is not the caller's to know - the band folds at a
  * width, and a contribution from another plugin cannot be told about it any
- * other way. So the action says what it is and what it does, and takes its
- * shape from where it finds itself.
+ * other way. So the action says what it is and what it does, and the band
+ * decides where the way in goes. It is drawn here either way, because
+ * whatever this action owns - a dialog, a sheet - is drawn here too, and a
+ * menu row that carried it would take it away on being chosen.
  */
 export function BandAction({
   icon,
@@ -311,14 +360,16 @@ export function BandAction({
   testId?: string
   children: ReactNode
 }) {
-  if (useContext(Folded)) {
-    return (
-      <DropdownMenuItem data-testid={testId} onSelect={onSelect}>
-        {icon}
-        {children}
-      </DropdownMenuItem>
-    )
-  }
+  const register = useContext(Register)
+  const id = useId()
+  // read at the menu's render rather than captured at this one, so a label
+  // or a handler that changes is not frozen into the row
+  const latest = useRef<FoldedRow>({ icon, label: children, onSelect, testId })
+  latest.current = { icon, label: children, onSelect, testId }
+  useEffect(() => {
+    if (register === null) return
+    return register(id, () => latest.current)
+  }, [register, id])
   return (
     <Button size="sm" variant={variant} data-testid={testId} onClick={onSelect}>
       {icon}

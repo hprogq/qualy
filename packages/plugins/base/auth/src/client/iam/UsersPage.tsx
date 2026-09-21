@@ -42,7 +42,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Spinner } from '@qualy/ui/spinner'
 import { useLingering } from '@qualy/ui/use-lingering'
 import { useIsBelow } from '@qualy/ui/use-mobile'
-import { ChevronRightIcon } from 'lucide-react'
+import { ChevronRightIcon, EyeIcon, EyeOffIcon } from 'lucide-react'
 import { DetailSheet } from '@qualy/ui/screen'
 import { iamMessages as m } from '../i18n.ts'
 import { NewUserForm } from './NewUserForm.tsx'
@@ -425,6 +425,13 @@ export default function UsersPage() {
                 className={stylex.props(styles.removed).className}
                 onClick={() => asking('removed')(removed === '1' ? '' : '1')}
               >
+                {/* the eye says which way the press goes, so the word does
+                    not have to be read to know the state */}
+                {removed === '1' ? (
+                  <EyeIcon aria-hidden />
+                ) : (
+                  <EyeOffIcon aria-hidden />
+                )}
                 {format(m.showRemoved)}
               </Button>
             </CardHead>
@@ -511,6 +518,7 @@ export default function UsersPage() {
                           pickLabel={format(m.pickUnit)}
                           onPick={asking('anchor')}
                           divided={stacked}
+                          plain={stacked}
                         />
                       )}
                       {/* what the list is scanned by, so it keeps the end of

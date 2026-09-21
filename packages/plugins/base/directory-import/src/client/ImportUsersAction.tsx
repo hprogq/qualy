@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import * as stylex from '@stylexjs/stylex'
 import { HistoryIcon, UploadIcon } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
 import { FormDialog } from '@qualy/ui/admin'
@@ -17,10 +16,6 @@ import { ImportRecords, ImportWizard } from './ImportWizard.tsx'
 // also a dialog; one record opens as a sheet beside it, and the list is still
 // there when the record is put away.
 
-const styles = stylex.create({
-  actions: { display: 'inline-flex', alignItems: 'center', gap: 8 },
-})
-
 export default function ImportUsersAction({ context }: { context: UsersPageActionsContext }) {
   const { format } = useI18n()
   const [importing, setImporting] = useState(false)
@@ -33,7 +28,10 @@ export default function ImportUsersAction({ context }: { context: UsersPageActio
   const [round, setRound] = useState(0)
 
   return (
-    <span {...stylex.props(styles.actions)}>
+    // No seat of its own: in the band these are two of its actions and it
+    // spaces them; in the menu they are two of its rows, and a seat between
+    // them put both on one row.
+    <>
       <BandAction
         testId="import-records-open"
         icon={<HistoryIcon aria-hidden />}
@@ -86,6 +84,6 @@ export default function ImportUsersAction({ context }: { context: UsersPageActio
           onClose={() => setRecordId(null)}
         />
       )}
-    </span>
+    </>
   )
 }

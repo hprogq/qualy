@@ -56,22 +56,52 @@ const styles = stylex.create({
     backgroundColor: { default: 'transparent', ':hover': tokens.surfaceMuted },
   },
   backGlyph: { width: 15, height: 15, flexShrink: 0 },
+  // Across, a portrait with the person beside it. On a phone the same four
+  // things in three rows, placed rather than wrapped: left to wrap, the
+  // block of name and facts asked for more than the line had left, went to
+  // a line of its own, and left the portrait sitting alone on the first one.
   who: {
-    display: 'flex',
+    display: { default: 'flex', [breakpoints.phone]: 'grid' },
+    gridTemplateColumns: { default: null, [breakpoints.phone]: 'auto minmax(0, 1fr)' },
     minWidth: 0,
     alignItems: 'center',
-    gap: 16,
-    flexWrap: { default: null, [breakpoints.phone]: 'wrap' },
+    columnGap: { default: 16, [breakpoints.phone]: 12 },
+    rowGap: { default: null, [breakpoints.phone]: 10 },
   },
-  portrait: { width: 52, height: 52, flexShrink: 0 },
+  portrait: {
+    width: { default: 52, [breakpoints.phone]: 44 },
+    height: { default: 52, [breakpoints.phone]: 44 },
+    flexShrink: 0,
+    gridColumn: { default: null, [breakpoints.phone]: 1 },
+    gridRow: { default: null, [breakpoints.phone]: 1 },
+  },
   portraitFace: {
     backgroundColor: tokens.surfaceMuted,
     color: tokens.surfaceMutedForeground,
     fontSize: 19,
     fontWeight: 600,
   },
-  text: { display: 'flex', minWidth: 0, flexGrow: 1, flexDirection: 'column', gap: 6 },
-  nameRow: { display: 'flex', minWidth: 0, alignItems: 'center', gap: 10, flexWrap: 'wrap' },
+  // on a phone the name and the facts are placed by the band above rather
+  // than stacked inside a box of their own, so the facts can have the width
+  // the portrait is not using
+  text: {
+    display: { default: 'flex', [breakpoints.phone]: 'contents' },
+    minWidth: 0,
+    flexGrow: 1,
+    flexDirection: 'column',
+    gap: 6,
+  },
+  /** the same box while it is still an outline, where there is nothing to place */
+  textBones: { display: 'flex', minWidth: 0, flexGrow: 1, flexDirection: 'column', gap: 6 },
+  nameRow: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 10,
+    flexWrap: 'wrap',
+    gridColumn: { default: null, [breakpoints.phone]: 2 },
+    gridRow: { default: null, [breakpoints.phone]: 1 },
+  },
   name: {
     margin: 0,
     minWidth: 0,
@@ -84,7 +114,15 @@ const styles = stylex.create({
     letterSpacing: '-0.025em',
   },
   // what is true of them at a glance, each under its own small word
-  facts: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 14, rowGap: 6 },
+  facts: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    columnGap: 14,
+    rowGap: 6,
+    gridColumn: { default: null, [breakpoints.phone]: '1 / -1' },
+    gridRow: { default: null, [breakpoints.phone]: 2 },
+  },
   fact: { display: 'inline-flex', minWidth: 0, alignItems: 'baseline', gap: 6, fontSize: 12.5 },
   factLabel: { flexShrink: 0, color: QUIET },
   factValue: {
@@ -102,13 +140,25 @@ const styles = stylex.create({
     flexShrink: 0,
     backgroundColor: `color-mix(in oklab, ${tokens.foreground} 12%, transparent)`,
   },
-  actions: { display: 'flex', flexShrink: 0, alignItems: 'center', gap: 10 },
+  actions: {
+    display: 'flex',
+    flexShrink: 0,
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 10,
+    gridColumn: { default: null, [breakpoints.phone]: '1 / -1' },
+    gridRow: { default: null, [breakpoints.phone]: 3 },
+  },
   moreMenu: { width: 168 },
   danger: { color: tokens.danger },
-  pinned: { flexShrink: 0 },
+  pinned: {
+    flexShrink: 0,
+    gridColumn: { default: null, [breakpoints.phone]: '1 / -1' },
+    gridRow: { default: null, [breakpoints.phone]: 3 },
+  },
   feedbackSeat: { display: 'flex', flexDirection: 'column', gap: 8 },
   boneName: { width: 160, height: 24, borderRadius: 6 },
-  boneMeta: { width: 320, height: 14, borderRadius: 4 },
+  boneMeta: { width: '100%', maxWidth: 320, height: 14, borderRadius: 4 },
   form: { display: 'flex', flexDirection: 'column', gap: 16 },
   fullField: { width: '100%' },
 })
@@ -241,7 +291,7 @@ export default function UserDetailHeader() {
       ) : !record ? (
         <div {...stylex.props(styles.who)}>
           <Skeleton className={stylex.props(styles.portrait).className} />
-          <div {...stylex.props(styles.text)}>
+          <div {...stylex.props(styles.textBones)}>
             <Skeleton className={stylex.props(styles.boneName).className} />
             <Skeleton className={stylex.props(styles.boneMeta).className} />
           </div>

@@ -33,6 +33,14 @@ const styles = stylex.create({
     },
   },
   more: { flexShrink: 0, fontSize: 12.5, color: tokens.mutedForeground },
+  // said, not offered: no hand, no hover, and the quiet of the facts beside it
+  told: {
+    cursor: 'default',
+    fontWeight: 400,
+    color: tokens.mutedForeground,
+    backgroundColor: 'transparent',
+    textDecorationLine: 'none',
+  },
   steps: {
     display: 'flex',
     minWidth: 0,
@@ -82,6 +90,7 @@ export function UnitPath({
   onPick,
   pickLabel,
   divided = false,
+  plain = false,
 }: {
   /** root first, the unit itself last */
   steps: readonly PathStep[]
@@ -90,6 +99,15 @@ export function UnitPath({
   pickLabel: string
   /** a hairline before it, where it shares a line with the facts before it */
   divided?: boolean
+  /**
+   * The address as words rather than as doors.
+   *
+   * On a roster narrow enough that the whole row opens somebody's page, a
+   * unit drawn as a control is a second thing to press inside a row that is
+   * already one press - and it is the only dark word in a line of grey
+   * facts, which reads as the thing to press.
+   */
+  plain?: boolean
 }) {
   const seat = useRef<HTMLSpanElement>(null)
   const [clipped, setClipped] = useState(false)
@@ -127,15 +145,24 @@ export function UnitPath({
                 /
               </span>
             )}
-            <button
-              type="button"
-              aria-label={`${pickLabel} ${step.name}`}
-              data-path-step={step.id}
-              {...stylex.props(styles.name, fromEnd === 0 && styles.last)}
-              onClick={() => onPick(step.id)}
-            >
-              {step.name}
-            </button>
+            {plain ? (
+              <span
+                data-path-step={step.id}
+                {...stylex.props(styles.name, styles.told)}
+              >
+                {step.name}
+              </span>
+            ) : (
+              <button
+                type="button"
+                aria-label={`${pickLabel} ${step.name}`}
+                data-path-step={step.id}
+                {...stylex.props(styles.name, fromEnd === 0 && styles.last)}
+                onClick={() => onPick(step.id)}
+              >
+                {step.name}
+              </button>
+            )}
           </span>
         ))}
       </span>

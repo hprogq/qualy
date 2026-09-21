@@ -786,6 +786,30 @@ describe('users workspace', () => {
     )
   })
 
+  it('keeps what a folded action opens, after the menu that offered it has shut', async () => {
+    // Narrow, the band's spare actions fold into a menu. Choosing one closes
+    // the menu - and the row IS the control that owns the dialog, so an
+    // unmounted row took the dialog's own state with it: what it opened
+    // flashed and was gone.
+    await page.viewport(390, 844)
+    renderScreen({
+      client: fakeClient(rosterStubs()),
+      route: '/admin/users',
+      children: <UsersPage />,
+    })
+
+    await expect.element(page.getByText('张明远')).toBeVisible()
+    await page.getByRole('button', { name: '更多操作' }).click()
+    const item = page.getByRole('menuitem', { name: '查找用户' })
+    await expect.element(item).toBeVisible()
+    await item.click()
+    // still there a beat later, rather than gone with the menu
+    await expect.element(page.getByTestId('user-jump')).toBeVisible()
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    await expect.element(page.getByTestId('user-jump')).toBeVisible()
+    await page.viewport(1280, 800)
+  })
+
   // Somebody who knows who they want types and goes: no tree, no filters, no
   // pages, and no mouse.
   it('finds a person by name or number and goes to them from the keyboard', async () => {
