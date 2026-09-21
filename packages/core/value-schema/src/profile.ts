@@ -19,7 +19,7 @@ import { canonicalDecimal, compareDecimal, fractionalDigits, parseDecimal } from
  * The profile's own version: the number a frozen contract records so a later
  * change to what this language admits cannot silently reinterpret it.
  */
-export const VALUE_SCHEMA_PROFILE_VERSION = 2
+export const VALUE_SCHEMA_PROFILE_VERSION = 3
 
 /**
  * The language's hard ceilings - a definition, not a UI nicety. Everything a
@@ -48,6 +48,20 @@ export const DECIMAL_FORMAT = 'qualy-decimal'
 export const MAX_SCALE = 'x-qualy-maxScale'
 export const DECIMAL_MINIMUM = 'x-qualy-minimum'
 export const DECIMAL_MAXIMUM = 'x-qualy-maximum'
+/**
+ * A date's own window, and whether the round's material period binds it too.
+ *
+ * Both are the date kind's answer to what every other kind already had: a
+ * text has lengths, a number has bounds, and a date had nothing - so a
+ * determination that must fall in a certain year could only be checked by
+ * somebody noticing. `IN_MATERIAL_RANGE` is not a date: it says the window
+ * the batch already carries applies here, because plenty of dates a question
+ * asks for are true outside it (when somebody enrolled, when a certificate
+ * was issued).
+ */
+export const DATE_MINIMUM = 'x-qualy-dateMinimum'
+export const DATE_MAXIMUM = 'x-qualy-dateMaximum'
+export const IN_MATERIAL_RANGE = 'x-qualy-inMaterialRange'
 
 /** one locale's worth of people-facing words for a schema */
 export interface SchemaI18nEntry {
@@ -101,6 +115,12 @@ export interface BooleanSchema extends SchemaAnnotations {
 export interface DateSchema extends SchemaAnnotations {
   readonly type: 'string'
   readonly format: 'date'
+  /** inclusive, `YYYY-MM-DD` */
+  readonly [DATE_MINIMUM]?: string
+  /** inclusive, `YYYY-MM-DD` */
+  readonly [DATE_MAXIMUM]?: string
+  /** the round's material window binds this date as well */
+  readonly [IN_MATERIAL_RANGE]?: boolean
 }
 
 export type AtomicSchema =
@@ -339,8 +359,29 @@ const atomicIssues = (value: unknown, path: string): readonly ProfileIssue[] => 
   }
 
   const format = value['format']
-  if (format === 'date')
-    return [...onlyKeys(value, ['type', 'format'], path), ...annotationIssues(value, path, null)]
+  if (format === 'date') {
+    const found = [
+      ...onlyKeys(value, ['type', 'format', DATE_MINIMUM, DATE_MAXIMUM, IN_MATERIAL_RANGE], path),
+      ...annotationIssues(value, path, null),
+    ]
+    for (const key of [DATE_MINIMUM, DATE_MAXIMUM] as const) {
+      const bound = value[key]
+      if (bound === undefined) continue
+      if (typeof bound !== 'string' || !isDateString(bound)) {
+        found.push(issue(`${path}.${key}`, 'date-bound-invalid'))
+      }
+    }
+    const low = value[DATE_MINIMUM]
+    const high = value[DATE_MAXIMUM]
+    if (typeof low === 'string' && typeof high === 'string' && low > high) {
+      found.push(issue(`${path}.${DATE_MAXIMUM}`, 'date-window-empty'))
+    }
+    const bound = value[IN_MATERIAL_RANGE]
+    if (bound !== undefined && typeof bound !== 'boolean') {
+      found.push(issue(`${path}.${IN_MATERIAL_RANGE}`, 'in-material-range-invalid'))
+    }
+    return found
+  }
   if (format === DECIMAL_FORMAT) {
     const found = [
       ...onlyKeys(value, ['type', 'format', MAX_SCALE, DECIMAL_MINIMUM, DECIMAL_MAXIMUM], path),

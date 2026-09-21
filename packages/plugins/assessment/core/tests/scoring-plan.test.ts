@@ -4,6 +4,7 @@ import {
   normalizeAtomicSchema,
   normalizeInputSchema,
   INTEGER_TO_DECIMAL,
+  VALUE_SCHEMA_PROFILE_VERSION,
 } from '@qualy/value-schema'
 import { builtinAggregators, fixed1 } from '../src/scoring/builtins.ts'
 import {
@@ -759,7 +760,9 @@ describe('a stored-program calculator freezes its runtime identity', () => {
       expect(a.plan.version).toBe(2)
       if (a.plan.version === 2) {
         expect(a.plan.calculator.runtimeRef).toEqual(storedRuntimeRefOf('prog-alpha'))
-        expect(a.plan.valueSchemaProfileVersion).toBe(2)
+        // whatever this build mints under: the number is pinned in one
+        // place, and a plan that disagreed with it would be unreadable
+        expect(a.plan.valueSchemaProfileVersion).toBe(VALUE_SCHEMA_PROFILE_VERSION)
         expect(a.plan.regexProfileVersion).toBe(1)
       }
       expect(a.plan.planHash).toBe(b.plan.planHash)

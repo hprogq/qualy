@@ -993,6 +993,19 @@ export class ScoringPlanUnreadable extends Data.TaggedError('ASSESSMENT_SCORING_
 }
 
 /**
+ * The profiles a frozen plan may have been minted under and still be read
+ * value-for-value by this build.
+ *
+ * Same evidence the formula plugin's own set carries: v3 only added the
+ * date kind's optional window, so a v2 plan's schemas validate here and
+ * accept exactly the values they always did.
+ */
+const READABLE_VALUE_SCHEMA_PROFILES: ReadonlySet<number> = new Set([
+  2,
+  VALUE_SCHEMA_PROFILE_VERSION,
+])
+
+/**
  * The one way a stored plan becomes an executable one.
  *
  * A plan is a frozen promise, and reading it back with a cast is trusting
@@ -1119,7 +1132,7 @@ const readPlanV2 = (
     const plan = decoded.value
     // acceptance semantics first, 7.1's lesson: schema bytes mean nothing
     // until the profile that interprets them is one this build certifies
-    if (plan.valueSchemaProfileVersion !== VALUE_SCHEMA_PROFILE_VERSION) {
+    if (!READABLE_VALUE_SCHEMA_PROFILES.has(plan.valueSchemaProfileVersion)) {
       return yield* refuse(
         `value-schema profile ${String(plan.valueSchemaProfileVersion)} is not certified by this build`,
       )

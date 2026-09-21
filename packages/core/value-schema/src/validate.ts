@@ -29,6 +29,8 @@ import {
   DECIMAL_MINIMUM,
   MAX_SCALE,
   isDateString,
+  DATE_MINIMUM,
+  DATE_MAXIMUM,
   type AtomicSchema,
   type NormalizedAtomicSchema,
   type NormalizedInputSchema,
@@ -107,6 +109,13 @@ const atomicIssues = (schema: AtomicSchema, value: unknown, path: string): Value
       if ('format' in schema) {
         if (schema.format === 'date') {
           if (!isDateString(value)) failed('format')
+          // the window the question drew; the round's own material period is
+          // the host's to apply, because only the host knows the round
+          else if (schema[DATE_MINIMUM] !== undefined && value < schema[DATE_MINIMUM]) {
+            failed(DATE_MINIMUM)
+          } else if (schema[DATE_MAXIMUM] !== undefined && value > schema[DATE_MAXIMUM]) {
+            failed(DATE_MAXIMUM)
+          }
           return issues
         }
         // a decimal: the format speaks first, the bounds only on what parses

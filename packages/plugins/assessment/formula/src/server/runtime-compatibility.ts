@@ -48,7 +48,23 @@ export interface RuntimeCompatibilityIssue {
 
 export const SUPPORTED_FORMULA_ABI: ReadonlySet<number> = new Set([FORMULA_ABI_VERSION])
 export const SUPPORTED_SANDBOX_ABI: ReadonlySet<number> = new Set([SANDBOX_ABI_VERSION])
+/**
+ * Profile 2 is supported under the v3 reader, and here is the evidence.
+ *
+ * v3 adds exactly three optional keys, all on the date kind: its own
+ * inclusive window and a flag saying the round's material period binds it.
+ * Nothing was removed, no ceiling moved, no dialect swapped. So (a) every
+ * schema a v2 author could write still validates - the v3 key list is a
+ * superset - and (b) for any such schema the set of ACCEPTED VALUES is
+ * unchanged, because the new keys are absent and their absence is defined
+ * as "no bound". A v2 row therefore replays value-for-value under this
+ * reader; that is acceptance semantics, not byte stability.
+ *
+ * Profile 1 remains out for the reason written above: it called itself v1
+ * while its regex dialect, its date validation and its ceilings all moved.
+ */
 export const SUPPORTED_VALUE_SCHEMA_PROFILES: ReadonlySet<number> = new Set([
+  2,
   VALUE_SCHEMA_PROFILE_VERSION,
 ])
 export const SUPPORTED_REGEX_PROFILES: ReadonlySet<number> = new Set([REGEX_PROFILE_VERSION])

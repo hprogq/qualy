@@ -14,12 +14,15 @@
 import { compareDecimal, parseDecimal, type DecimalParts } from './decimal.ts'
 import { INTEGER_TO_DECIMAL, type ConverterRef } from './convert.ts'
 import {
+  DATE_MAXIMUM,
+  DATE_MINIMUM,
   DECIMAL_MAXIMUM,
   DECIMAL_MINIMUM,
   MAX_SCALE,
   kindOf,
   type AtomicSchema,
   type ChoiceSchema,
+  type DateSchema,
   type DecimalSchema,
   type IntegerSchema,
   type TextSchema,
@@ -114,7 +117,30 @@ export const assignmentPlan = (source: AtomicSchema, target: AtomicSchema): Assi
     case 'choice':
       return choicePlan(source as ChoiceSchema, target as ChoiceSchema)
     case 'boolean':
-    case 'date':
       return direct
+    case 'date':
+      return datePlan(source as DateSchema, target as DateSchema)
   }
+}
+
+/**
+ * A date into a date: direct while the target admits everything the source
+ * does. A narrower window is a value the target may refuse, which is what
+ * `convert` means everywhere else in this file - so it is refused here, the
+ * way a tighter number bound is.
+ */
+const datePlan = (source: DateSchema, target: DateSchema): AssignmentPlan => {
+  const low = target[DATE_MINIMUM]
+  const high = target[DATE_MAXIMUM]
+  const from = source[DATE_MINIMUM]
+  const until = source[DATE_MAXIMUM]
+  if (low !== undefined && (from === undefined || from < low)) {
+    return refused('date-range-narrows', { bound: 'minimum' })
+  }
+  if (high !== undefined && (until === undefined || until > high)) {
+    return refused('date-range-narrows', { bound: 'maximum' })
+  }
+  // the round's window is the host's to apply and says nothing about whether
+  // one schema's values fit another's
+  return direct
 }
