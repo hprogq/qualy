@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
-import { XIcon } from 'lucide-react'
+import { ChevronsUpDownIcon, XIcon } from 'lucide-react'
 import type { PeoplePickerViewContext } from '@qualy/ui-contract'
 import { useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import { AsyncSection } from '@qualy/ui/admin'
+import { AsyncSection, FormDialog } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
@@ -17,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { PersonCell } from '@qualy/ui/person'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { ToggleGroup, ToggleGroupItem } from '@qualy/ui/toggle-group'
+import { useIsBelow } from '@qualy/ui/use-mobile'
 import { authMessages as m } from '../i18n.ts'
 import { OrgTree } from './OrgTree.tsx'
 
@@ -51,10 +52,20 @@ const styles = stylex.create({
     display: 'grid',
     minHeight: 0,
     gap: 16,
+    // A height at every width. On a phone it had none: the unit tree grew to
+    // whatever it held, the list grew under it, and "next page" ended up
+    // several scrolls below the people it turns - and the panel changed
+    // height under the hand with every filter.
     height: {
-      default: null,
+      default: 'min(72vh, 30rem)',
       [breakpoints.tablet]: 'min(62vh, 30rem)',
       [breakpoints.desktop]: 'min(62vh, 30rem)',
+    },
+    // stacked, the unit takes the line it needs and the people take the rest
+    gridTemplateRows: {
+      default: 'auto minmax(0, 1fr)',
+      [breakpoints.tablet]: null,
+      [breakpoints.desktop]: null,
     },
     gridTemplateColumns: {
       default: null,
@@ -62,6 +73,12 @@ const styles = stylex.create({
       [breakpoints.desktop]: 'minmax(0, 17rem) minmax(0, 1fr)',
     },
   },
+  // the unit as a field that opens the tree, where a tree of its own would
+  // take half the panel to show four rows of it
+  unitField: { width: '100%', justifyContent: 'space-between', fontWeight: 400 },
+  unitWord: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  chevron: { flexShrink: 0, opacity: 0.5 },
+  treeSeat: { display: 'flex', minHeight: 0, height: '22rem', flexDirection: 'column' },
   side: { display: 'flex', minHeight: 0, minWidth: 0, flexDirection: 'column', gap: 8 },
   sideWide: { display: 'flex', minHeight: 0, minWidth: 0, flexDirection: 'column', gap: 12 },
   heading: { fontSize: 14, lineHeight: '1.25rem', fontWeight: 500 },
@@ -80,7 +97,7 @@ const styles = stylex.create({
     padding: 4,
   },
   aside: { fontSize: 12, lineHeight: '1rem', color: tokens.mutedForeground },
-  controls: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+  controls: { display: 'flex', flexShrink: 0, flexWrap: 'wrap', alignItems: 'center', gap: 8 },
   search: { height: 32, minWidth: 160, flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
   typeField: { width: 'auto' },
   results: {
@@ -150,9 +167,24 @@ const styles = stylex.create({
     borderTopColor: tokens.border,
   },
   rowName: { minWidth: 0, flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
-  foot: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  // the list is what scrolls; how many are chosen and the way to the next
+  // page stay where they were put
+  foot: {
+    display: 'flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
   pager: { display: 'flex', alignItems: 'center', gap: 4 },
-  chips: { display: 'flex', flexWrap: 'wrap', gap: 6 },
+  chips: {
+    display: 'flex',
+    maxHeight: '4.5rem',
+    flexShrink: 0,
+    flexWrap: 'wrap',
+    gap: 6,
+    overflowY: 'auto',
+  },
   chip: { gap: 4, fontWeight: 400 },
   chipDrop: { width: 12, height: 12 },
   quiet: { fontWeight: 400 },
@@ -162,6 +194,10 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
   const { format } = useI18n()
   const businessNo = useTerm(authTerms.businessNumber)
   const [typed, setTyped] = useState(context.search)
+  // where a tree beside the list would take half the panel to show four rows
+  const phone = useIsBelow(768)
+  const [pickingUnit, setPickingUnit] = useState(false)
+  const unitName = context.nodes.find((node) => node.id === context.nodeId)?.name
 
   // the caller hears about the search once it has stopped moving; it is the
   // one that has to go and fetch on the strength of it
@@ -176,23 +212,45 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
   const blocked = new Set(context.disabled ?? [])
   const named = context.rows.filter((row) => chosen.has(row.id))
 
+  const tree = (
+    <OrgTree
+      nodes={context.nodes}
+      emptyLabel={format(m.pickerNoUnits)}
+      expandLabel={format(m.pickerExpand)}
+      selected={context.nodeId}
+      onSelect={(picked) => {
+        context.onNodeChange(picked.id)
+        setPickingUnit(false)
+      }}
+    />
+  )
+
   return (
     <div {...stylex.props(styles.frame)} data-testid="people-picker">
-      <div {...stylex.props(styles.side)}>
-        <p {...stylex.props(styles.heading)}>{format(m.pickerUnits)}</p>
-        <div {...stylex.props(styles.tree)}>
-          <OrgTree
-            nodes={context.nodes}
-            emptyLabel={format(m.pickerNoUnits)}
-            expandLabel={format(m.pickerExpand)}
-            selected={context.nodeId}
-            onSelect={(picked) => context.onNodeChange(picked.id)}
+      {phone ? (
+        <Button
+          type="button"
+          variant="outline"
+          justify="space-between"
+          data-testid="people-picker-unit"
+          className={stylex.props(styles.unitField).className}
+          onClick={() => setPickingUnit(true)}
+        >
+          <span {...stylex.props(styles.unitWord)}>{unitName ?? format(m.pickerUnits)}</span>
+          <ChevronsUpDownIcon
+            className={stylex.props(styles.chevron).className}
+            data-icon="inline-end"
           />
+        </Button>
+      ) : (
+        <div {...stylex.props(styles.side)}>
+          <p {...stylex.props(styles.heading)}>{format(m.pickerUnits)}</p>
+          <div {...stylex.props(styles.tree)}>{tree}</div>
+          {context.nodesTruncated === true && (
+            <p {...stylex.props(styles.aside)}>{format(commonMessages.moreResults)}</p>
+          )}
         </div>
-        {context.nodesTruncated === true && (
-          <p {...stylex.props(styles.aside)}>{format(commonMessages.moreResults)}</p>
-        )}
-      </div>
+      )}
 
       <div {...stylex.props(styles.sideWide)}>
         <div {...stylex.props(styles.controls)}>
@@ -320,6 +378,25 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
           </div>
         )}
       </div>
+
+      {/* one at a time: the tree takes the panel's place rather than standing
+          over it, because two stacked sheets on a phone leave nothing of the
+          first to come back to */}
+      <FormDialog
+        open={pickingUnit}
+        size="medium"
+        title={format(m.pickerUnits)}
+        onClose={() => setPickingUnit(false)}
+        footer={
+          <Button variant="outline" size="sm" onClick={() => setPickingUnit(false)}>
+            {format(commonMessages.cancel)}
+          </Button>
+        }
+      >
+        <div data-testid="people-picker-tree" {...stylex.props(styles.treeSeat)}>
+          {tree}
+        </div>
+      </FormDialog>
     </div>
   )
 }

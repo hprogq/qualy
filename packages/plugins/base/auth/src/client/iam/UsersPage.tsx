@@ -37,7 +37,6 @@ import {
   TableRow,
 } from '@qualy/ui/screen'
 import { Button } from '@qualy/ui/button'
-import { Checkbox } from '@qualy/ui/checkbox'
 import { Pager } from '@qualy/ui/pager'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { Spinner } from '@qualy/ui/spinner'
@@ -92,16 +91,24 @@ const styles = stylex.create({
     width: { default: '13rem', [breakpoints.phone]: '100%' },
     flexShrink: { default: 0, [breakpoints.phone]: 1 },
   },
-  typeFilter: { width: '8.5rem', flexShrink: 0 },
-  away: { width: 14, height: 14, flexShrink: 0, color: tokens.mutedForeground },
-  removed: {
-    display: 'inline-flex',
+  // On a phone the two filters share the line the search box left them, and
+  // they take the whole of it: a pair of controls ending two thirds of the
+  // way across reads as a row that failed to load the rest of itself.
+  typeFilter: {
+    width: { default: '8.5rem', [breakpoints.phone]: 'auto' },
+    flexGrow: { default: 0, [breakpoints.phone]: 1 },
     flexShrink: 0,
-    alignItems: 'center',
-    gap: 6,
-    fontSize: 12.5,
-    color: tokens.surfaceMutedForeground,
-    cursor: 'pointer',
+    flexBasis: { default: null, [breakpoints.phone]: '0%' },
+  },
+  away: { width: 14, height: 14, flexShrink: 0, color: tokens.mutedForeground },
+  // A tick beside two fields is a form control standing in a row of filters,
+  // and it read as a stray. It is the third filter, so it is drawn as one -
+  // pressed or not - and takes its share of the line at a phone's width.
+  removed: {
+    flexGrow: { default: 0, [breakpoints.phone]: 1 },
+    flexShrink: 0,
+    flexBasis: { default: null, [breakpoints.phone]: '0%' },
+    fontWeight: 400,
   },
   unitLink: {
     display: 'inline-flex',
@@ -410,13 +417,16 @@ export default function UsersPage() {
                   ))}
                 </SelectContent>
               </Select>
-              <label {...stylex.props(styles.removed)} data-testid="show-removed">
-                <Checkbox
-                  checked={removed === '1'}
-                  onCheckedChange={(next) => asking('removed')(next ? '1' : '')}
-                />
+              <Button
+                type="button"
+                variant={removed === '1' ? 'secondary' : 'outline'}
+                aria-pressed={removed === '1'}
+                data-testid="show-removed"
+                className={stylex.props(styles.removed).className}
+                onClick={() => asking('removed')(removed === '1' ? '' : '1')}
+              >
                 {format(m.showRemoved)}
-              </label>
+              </Button>
             </CardHead>
 
             <AsyncSection

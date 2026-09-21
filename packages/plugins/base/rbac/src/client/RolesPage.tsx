@@ -152,12 +152,16 @@ export default function RolesPage() {
                         {/* the number the list is scanned by: stacked, it
                             keeps the end of the row */}
                         <Cell numeric narrow="end">{figure.format(role.grantCount)}</Cell>
-                        <Cell tone={who.unset ? 'warn' : 'muted'} title={who.words}>
+                        {/* a list of kinds, not a fact: whole it is a
+                            paragraph, and three lines of it on a phone push
+                            the count it shares a row with off the line */}
+                        <Cell clip tone={who.unset ? 'warn' : 'muted'} title={who.words}>
                           {who.words}
                         </Cell>
                         {/* where it may be anchored matters when granting
                             one, which is not what this list is read for */}
                         <Cell
+                          clip
                           narrow="drop"
                           tone={where.unset ? 'warn' : where.quiet ? 'quiet' : 'muted'}
                           title={where.words}

@@ -264,6 +264,18 @@ const styles = stylex.create({
   },
   // one fact from the next: a hairline rather than a gap, because a run of
   // grey words with air between them reads as one phrase
+  // A fact that keeps one line whatever the width.
+  //
+  // Stacked, a fact that will not fit takes a second line rather than losing
+  // its end - there is no column head above to guess the rest from. That is
+  // right for a fact somebody reads; it is wrong for a list of names that
+  // runs to twenty, where three lines of it push everything else down the
+  // row and say no more than one line would.
+  cellClipped: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
   cellDivided: {
     '::before': {
       // drawn only where the facts share a line; the colour is stated flat
@@ -720,6 +732,7 @@ export function Cell({
   narrow = 'keep',
   unlabelled = false,
   divided = false,
+  clip = false,
   column,
   children,
 }: {
@@ -757,6 +770,14 @@ export function Cell({
    * where the columns already say where one fact ends.
    */
   divided?: boolean
+  /**
+   * One line at every width, ending in an ellipsis rather than wrapping.
+   *
+   * For a value that is a list rather than a fact - the names a role may be
+   * held by, the units it may be anchored at - where the whole of it is a
+   * paragraph and the first few words are the answer.
+   */
+  clip?: boolean
   /**
    * Which column this is, filled in by the row.
    *
@@ -800,6 +821,7 @@ export function Cell({
     narrow === 'drop' && styles.cellDropNarrow,
     narrow === 'end' && styles.cellEndNarrow,
     divided && styles.cellDivided,
+    clip && styles.cellClipped,
     label !== '' && styles.cellLabel,
   )
   return (
