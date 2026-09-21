@@ -88,12 +88,15 @@ const styles = stylex.create({
     justifyContent: 'space-between',
     gap: 12,
   },
+  // the size every other page's name is set at: this one was a size larger
+  // on a phone, which made the list's own name the loudest thing on a screen
+  // whose subject is the rounds under it
   title: {
     margin: 0,
-    fontSize: { default: 20, [breakpoints.phone]: 22 },
+    fontSize: 20,
     fontWeight: 600,
-    letterSpacing: { default: '-0.025em', [breakpoints.phone]: '-0.03em' },
-    lineHeight: { default: null, [breakpoints.phone]: 1.2 },
+    letterSpacing: '-0.025em',
+    lineHeight: 1.3,
   },
   // On a phone the search is a place to go rather than a field standing
   // open: the row already has the page's name in it, and a box wide enough
@@ -101,8 +104,8 @@ const styles = stylex.create({
   // opens in the row it sits in, and closes back to its glyph.
   iconButton: {
     display: 'inline-flex',
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
     flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'center',

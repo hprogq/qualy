@@ -25,7 +25,11 @@ const styles = stylex.create({
     // a little more room than its sides, since the bars above it are
     // tighter there.
     paddingInline: { default: 24, [breakpoints.phone]: layout.pageGutter },
-    paddingBlock: 24,
+    // A phone gives back the air above and below too. The bars are tight
+    // against the page there and the screen is short, so a desk's band of
+    // nothing over the page's own name costs a sixth of what a reader can
+    // see before they scroll.
+    paddingBlock: { default: 24, [breakpoints.phone]: 16 },
     paddingTop: { default: null, [breakpoints.tablet]: 32 },
   },
   /** reading and filling in: a form, a summary, a table of a few columns */

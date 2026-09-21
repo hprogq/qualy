@@ -65,9 +65,12 @@ const styles = stylex.create({
     // the corner the shell keeps for the account, which stands over this row
     // rather than in it so the rule below can reach both edges of the screen
     paddingInlineEnd: { default: null, [breakpoints.phone]: 56 },
+    // the same height the product's own bar keeps at this width: on a phone
+    // this band takes that bar's place, and a head one size short of the one
+    // it replaced reads as a page that has lost its top
     minHeight: {
       default: null,
-      [breakpoints.phone]: 44,
+      [breakpoints.phone]: 48,
     },
     minWidth: 0,
     alignItems: 'center',
@@ -83,7 +86,14 @@ const styles = stylex.create({
     alignItems: 'center',
   },
   backButton: {
-    marginLeft: -4,
+    // the glyph's own edge, not the control's: a ghost button's inset would
+    // start the arrow a third of an inch inside the margin every other line
+    // of the head keeps. Less is pulled back where the button carries words,
+    // since there the word is what should line up.
+    marginInlineStart: {
+      default: -4,
+      [breakpoints.phone]: -12,
+    },
     flexShrink: 0,
     color: tokens.mutedForeground,
   },
@@ -172,15 +182,15 @@ const styles = stylex.create({
     fontWeight: 400,
     color: tokens.mutedForeground,
   },
-  flowPanel: {
-    maxWidth: { default: null, [breakpoints.tablet]: '24rem', [breakpoints.desktop]: '24rem' },
-  },
+  // the same margin the sheet's own head keeps, so the plan starts under the
+  // title rather than inset from it; the foot clears the device's gesture bar
+  // the way every other sheet's does
   flowBody: {
     minHeight: 0,
     flexGrow: 1,
     overflowY: 'auto',
-    paddingInline: 16,
-    paddingBottom: 16,
+    paddingInline: 24,
+    paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))',
   },
 })
 
@@ -286,7 +296,7 @@ export default function BatchContextBar() {
       </div>
 
       <Sheet open={flowOpen} onOpenChange={setFlowOpen}>
-        <SheetContent side="bottom" xstyle={styles.flowPanel}>
+        <SheetContent side="bottom">
           <SheetHeader>
             <SheetTitle>{format(m.flowTitle)}</SheetTitle>
           </SheetHeader>
