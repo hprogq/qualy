@@ -186,7 +186,11 @@ const styles = stylex.create({
     alignItems: 'center',
     width: '100%',
     minWidth: 0,
-    minHeight: 44,
+    // Taller under a thumb than under a pointer. A pointer lands where it
+    // is aimed; a thumb covers about nine millimetres of glass, and a row
+    // it has to hit between two others is a row it will sometimes miss -
+    // which on a roster means opening the wrong person.
+    minHeight: { default: 44, [breakpoints.phone]: 56 },
     paddingInline: 16,
     paddingBlock: { default: 0, [breakpoints.phone]: 10 },
     margin: 0,
@@ -199,8 +203,8 @@ const styles = stylex.create({
     textAlign: 'start',
     color: 'inherit',
   },
-  rowCompact: { minHeight: 42 },
-  rowTight: { minHeight: 40 },
+  rowCompact: { minHeight: { default: 42, [breakpoints.phone]: 54 } },
+  rowTight: { minHeight: { default: 40, [breakpoints.phone]: 52 } },
   rowLive: {
     cursor: 'pointer',
     backgroundColor: {
