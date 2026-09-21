@@ -1,7 +1,7 @@
 import { Link, type LinkProps } from 'react-router'
 import type { NamespacedId } from '@qualy/ui-contract'
 import type { ReactNode } from 'react'
-import { usePageHref } from './index.tsx'
+import { usePageHref } from './runtime-context.tsx'
 import type { PageHrefOptions } from './pages.ts'
 
 // An internal link that names a page instead of repeating its path. The id

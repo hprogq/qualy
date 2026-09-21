@@ -7,7 +7,7 @@ import {
 } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import type { NamespacedId } from '@qualy/ui-contract'
-import { useRuntime } from './index.tsx'
+import { useRuntime } from './runtime-context.tsx'
 
 // What a link in the shell knows about the navigation it started.
 //

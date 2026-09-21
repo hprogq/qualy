@@ -3,7 +3,6 @@ import * as stylex from '@stylexjs/stylex'
 import {
   lazy,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useState,
@@ -11,7 +10,16 @@ import {
   type LazyExoticComponent,
   type ReactNode,
 } from 'react'
-import { sharedContext } from './shared-context.ts'
+import {
+  appApi,
+  RuntimeContext,
+  useManifest,
+  useManifestPage,
+  useRuntime,
+  type ClientProvider,
+  type Manifest,
+  type Runtime,
+} from './runtime-context.tsx'
 import { Effect } from 'effect'
 import type { ClientUnsupportedReason } from '@qualy/release-contract'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
@@ -43,8 +51,6 @@ import {
   runMutation,
   type QueryUtils,
 } from './api-query.ts'
-import { Api } from '@qualy/api-kit/local'
-import { appApiGroup } from '@qualy/app-contract'
 import type { HttpApi } from 'effect/unstable/httpapi'
 import type { NamespacedId } from '@qualy/ui-contract'
 import {
@@ -90,12 +96,6 @@ export {
 } from './navigation.tsx'
 export { ThemeProvider, useTheme, type ThemeChoice } from './theme.tsx'
 
-// The shell's own api: the manifest endpoint, imported as the contract leaf
-// it is. The runtime holds no global client - each plugin derives one from
-// the definitions it calls - and this is simply the runtime doing the same
-// for the one endpoint the runtime itself calls.
-const appApi = Api.local(appApiGroup)
-export type Manifest = Effect.Success<ReturnType<ClientOf<typeof appApi>['app']['getManifest']>>
 /**
  * A lazy component whose module can be fetched ahead of time, and which
  * then renders without suspending.
@@ -130,16 +130,6 @@ export function preloadable<T extends ComponentType<any>>(
   return Object.assign(component, { preload: () => fetch().then(() => undefined) })
 }
 
-/**
- * Builds the typed client for an api definition.
- *
- * The seam tests replace: production derives a real client per definition
- * (memoised by the definition's identity - plugins declare theirs as module
- * constants); a harness answers with a stub tree instead, at the same place
- * a transport would differ.
- */
-export type ClientProvider = (api: HttpApi.Constraint) => unknown
-
 /** real clients, one per definition, over one transport carrying the page's identity */
 const clientProviderFor = (transport: TransportOptions): ClientProvider => {
   const cache = new WeakMap<object, unknown>()
@@ -154,14 +144,17 @@ const clientProviderFor = (transport: TransportOptions): ClientProvider => {
   }
 }
 
-export interface Runtime {
-  clientFor: ClientProvider
-  utilsFor: (api: HttpApi.Constraint) => unknown
-  manifest: Manifest
-  registry: ComponentRegistry
-}
-
-const RuntimeContext = sharedContext<Runtime | null>('runtime', null)
+export {
+  RuntimeContext,
+  useManifest,
+  useManifestPage,
+  usePageAvailable,
+  usePageHref,
+  useRuntime,
+  type ClientProvider,
+  type Manifest,
+  type Runtime,
+} from './runtime-context.tsx'
 
 export interface RuntimeProviderProps {
   /** replaced by harnesses; production derives real clients per definition */
@@ -333,12 +326,6 @@ export function useSessionTransition() {
   )
 }
 
-export function useRuntime(): Runtime {
-  const runtime = useContext(RuntimeContext)
-  if (!runtime) throw new Error('useRuntime must be used inside a RuntimeProvider')
-  return runtime
-}
-
 /** the typed client for an api definition a plugin declares as a constant */
 export function useApi<Api extends HttpApi.Constraint>(api: Api): ClientOf<Api> {
   return useRuntime().clientFor(api) as ClientOf<Api>
@@ -371,8 +358,6 @@ export function PluginSurface(props: Omit<PluginComponentProps, 'registry'>) {
 export function useApiQuery<Api extends HttpApi.Constraint>(api: Api): QueryUtils<ClientOf<Api>> {
   return useRuntime().utilsFor(api) as QueryUtils<ClientOf<Api>>
 }
-export const useManifest = () => useRuntime().manifest
-
 // the manifest entry for a page reference, or undefined when the viewer
 // cannot see it in this deployment. In development a path that disagrees
 // with the shared reference is a loud failure: it means the server and the
@@ -382,21 +367,9 @@ export const useManifest = () => useRuntime().manifest
 declare const process: { env?: Record<string, string | undefined> } | undefined
 const isDev = () => typeof process === 'undefined' || process.env?.['NODE_ENV'] !== 'production'
 
-export function useManifestPage(page: NamespacedId) {
-  const manifest = useManifest()
-  return manifest.pages.find((candidate) => candidate.id === page)
-}
-
-export const usePageAvailable = (page: NamespacedId) => useManifestPage(page) !== undefined
-
 // The url of a page, or undefined when it is not part of this manifest.
 // Client code names a page by id; the path is the manifest's alone, so a
 // browser bundle can never disagree with the server about where a page is.
-export function usePageHref(page: NamespacedId, options?: PageHrefOptions): string | undefined {
-  const entry = useManifestPage(page)
-  return entry ? buildPageHref(entry, options) : undefined
-}
-
 // navigate by naming a page instead of repeating its path; navigating to a
 // page the viewer cannot see is a bug, so it fails loudly in development
 // and does nothing in production rather than landing on a dead route

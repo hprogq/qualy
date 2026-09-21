@@ -3,7 +3,7 @@ import { matchPath, Navigate, useLocation, useRoutes, type RouteObject } from 'r
 import type { BrowserSurface } from '@qualy/ui-contract'
 import { useI18n } from '@qualy/web-i18n'
 import { setObservedPage } from '@qualy/browser-observability'
-import type { Manifest } from './index.tsx'
+import type { Manifest } from './runtime-context.tsx'
 import type { ComponentRegistry } from './registry.ts'
 import { PluginComponent } from './component-boundary.tsx'
 
