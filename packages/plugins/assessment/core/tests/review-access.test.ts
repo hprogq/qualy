@@ -234,7 +234,7 @@ describe.runIf(postgresAvailable)('the review read boundary', () => {
           yield* assessment.interveneOnEntry(
             f.t,
             entry.id,
-            { kind: 'return', reason: '需要补充材料' },
+            { kind: 'return-for-revision', reason: '需要补充材料' },
             f.principal(f.admin),
           )
           const revisited = yield* assessment.getEntry(f.t, entry.id, s1)
