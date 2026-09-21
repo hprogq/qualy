@@ -684,7 +684,11 @@ describe('the user-detail shell', () => {
                 identityCount: 1,
                 manageable: false,
               },
-              orgPath: [{ id: 'n-0', name: '示例大学' }, { id: 'n-1', name: '软件学院' }],
+              orgPath: [
+                { id: 'n-0', name: '示例大学', orgTypeName: '学校' },
+                { id: 'n-1', name: '软件学院', orgTypeName: '学院' },
+              ],
+              placement: { mode: 'unrestricted' },
               roles: [],
               identities: [],
             }),

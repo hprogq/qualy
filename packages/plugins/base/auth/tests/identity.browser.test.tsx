@@ -626,9 +626,10 @@ describe('users workspace', () => {
   const personAnswer = (over: Partial<UserDto> = {}) => ({
     user: user({ manageable: true, identityCount: 1, ...over }),
     orgPath: [
-      { id: ROOT_NODE_ID, name: '本部' },
-      { id: BRANCH_NODE_ID, name: '分部' },
+      { id: ROOT_NODE_ID, name: '本部', orgTypeName: '学院' },
+      { id: BRANCH_NODE_ID, name: '分部', orgTypeName: '系' },
     ],
+    placement: { mode: 'unrestricted' },
     roles: [{ grantId: 'g-1', roleId: 'r-1', roleName: '审核员', orgNodeName: '分部' }],
     identities: [],
   })

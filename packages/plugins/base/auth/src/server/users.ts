@@ -347,7 +347,10 @@ const oneUser = (
  * Where somebody stands, said the way an address is: school, college, class.
  *
  * The node's own name answers "which class" but never "whose", and a reader
- * meeting an unfamiliar name needs the second more than the first.
+ * meeting an unfamiliar name needs the second more than the first. Each
+ * level carries its kind for the same reason: "软件2301班" is a class to
+ * whoever already knows the naming, and a row of bare names to whoever does
+ * not - so the page that draws the chain can say what each rung is.
  */
 const ancestryOf = (tenantId: string, orgNodeId: string, read: AuthorizationScope) =>
   db.query((k) =>
@@ -356,7 +359,10 @@ const ancestryOf = (tenantId: string, orgNodeId: string, read: AuthorizationScop
       .innerJoin('OrgNode as n', (join) =>
         join.onRef('n.tenantId', '=', 'a.tenantId').on('n.id', '=', orgNodeId),
       )
-      .select(['a.id', 'a.name', 'a.depth'])
+      .innerJoin('OrgType as t', (join) =>
+        join.onRef('t.tenantId', '=', 'a.tenantId').onRef('t.id', '=', 'a.orgTypeId'),
+      )
+      .select(['a.id', 'a.name', 'a.depth', 't.name as orgTypeName'])
       .where('a.tenantId', '=', tenantId)
       .where(sql<boolean>`a.path @> n.path`)
       // trimmed to the reader's own reach: being allowed to read a person is
@@ -555,6 +561,33 @@ const orgTypesOf = (tenantId: string) =>
       .where('tenantId', '=', tenantId)
       .orderBy('name')
       .execute(),
+  )
+
+/**
+ * Where one kind of person may stand, as the rule that refuses a placement
+ * states it.
+ *
+ * The same three branches `placementLegal` decides by, read out rather than
+ * decided here: a system identity stands at the root and nowhere else, a
+ * type says `unrestricted` or names the kinds of unit it admits. A screen
+ * that paired a person with a place from the type's policy alone had no
+ * branch for the first one.
+ */
+const placementPolicyOf = (tenantId: string, userTypeId: string) =>
+  db.query((k) =>
+    k
+      .selectFrom('UserType as t')
+      .select((eb) => [
+        't.isSystem',
+        sql<'unrestricted' | 'allow-list'>`t.placement_mode`.as('placementMode'),
+        sql<string[]>`coalesce(
+          (select array_agg(a.org_type_id::text) from user_type_allowed_org_types a
+           where a.tenant_id = ${eb.ref('t.tenantId')} and a.user_type_id = ${eb.ref('t.id')}),
+          '{}')`.as('allowedOrgTypeIds'),
+      ])
+      .where('t.tenantId', '=', tenantId)
+      .where('t.id', '=', userTypeId)
+      .executeTakeFirst(),
   )
 
 const assignableUserTypes = (tenantId: string) =>
@@ -1049,14 +1082,27 @@ export const make = Effect.fn('Iam.users.make')(function* () {
         const held = yield* scopes(principal)
         const row = yield* oneUser(principal.tenantId, userId, held).pipe(Effect.orDie)
         if (!row) return yield* new UserNotFound()
-        const [orgPath, roles, identities] = yield* Effect.all([
+        const [orgPath, roles, identities, rule] = yield* Effect.all([
           row.primaryOrgNodeId === null
             ? Effect.succeed([])
             : ancestryOf(principal.tenantId, row.primaryOrgNodeId, held.read).pipe(Effect.orDie),
           rbac.listUserRoles(principal.tenantId, userId, held.read),
           identitiesOf(principal.tenantId, userId).pipe(Effect.orDie),
+          row.userTypeId === null
+            ? Effect.succeed(undefined)
+            : placementPolicyOf(principal.tenantId, row.userTypeId).pipe(Effect.orDie),
         ])
-        return { user: row, orgPath, roles, identities }
+        // a row whose type was removed is only ever a deleted one; it may
+        // stand nowhere new, which an empty allow-list says exactly
+        const placement =
+          rule === undefined
+            ? ({ mode: 'allow-list', orgTypeIds: [] } as const)
+            : rule.isSystem
+              ? ({ mode: 'tenant-root' } as const)
+              : rule.placementMode === 'allow-list'
+                ? ({ mode: 'allow-list', orgTypeIds: rule.allowedOrgTypeIds } as const)
+                : ({ mode: 'unrestricted' } as const)
+        return { user: row, orgPath, placement, roles, identities }
       }),
     ),
 

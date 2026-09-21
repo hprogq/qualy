@@ -75,6 +75,11 @@ const methodMoveDownMessage = defineMessage<{ name: string }>()({
   id: 'auth/login-methods/move-down',
   defaultMessage: 'Move {name} down',
 })
+const moveConfirmMessage = defineMessage<{ name: string; from: string; to: string }>()({
+  id: 'auth/users/move-confirm-body',
+  defaultMessage:
+    'Move {name} from {from} to {to}. Every authority that follows the unit follows them.',
+})
 const lookAtMessage = defineMessage<{ name: string }>()({
   id: 'auth/users/look-at',
   defaultMessage: 'Look at {name}',
@@ -429,8 +434,21 @@ const i18n = definePluginMessages({
       defaultMessage: '{count, plural, =0 {no grants} one {# grant} other {# grants}}',
     },
     moveLabel: { id: 'auth/users/move', defaultMessage: 'Move' },
-    movePick: { id: 'auth/users/move-pick', defaultMessage: 'Pick a unit' },
+    movePick: { id: 'auth/users/move-pick', defaultMessage: 'Pick where they should stand' },
     moveAction: { id: 'auth/users/move-action', defaultMessage: 'Move here' },
+    moveTarget: { id: 'auth/users/move-target', defaultMessage: 'Moving to' },
+    moveNotManageable: { id: 'auth/users/move-not-manageable', defaultMessage: 'Not yours' },
+    moveTypeRefused: {
+      id: 'auth/users/move-type-refused',
+      defaultMessage: 'Wrong kind of unit',
+    },
+    moveConfirmTitle: { id: 'auth/users/move-confirm', defaultMessage: 'Move them?' },
+    moveConfirmBody: moveConfirmMessage,
+    moveAlreadyHere: { id: 'auth/users/move-already-here', defaultMessage: 'Already here' },
+    movePickerUnavailable: {
+      id: 'auth/users/move-picker-unavailable',
+      defaultMessage: 'No unit picker is installed, so nobody can be moved from here.',
+    },
     editProfile: { id: 'auth/person/edit-profile', defaultMessage: 'Edit profile' },
     profileTabIdentities: { id: 'auth/person/tab-identities', defaultMessage: 'Ways in' },
     placementEmpty: {

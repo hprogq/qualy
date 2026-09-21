@@ -137,7 +137,31 @@ const user = Schema.Struct({
  */
 const userDetail = Schema.Struct({
   user,
-  orgPath: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
+  /** the way down to where they stand, each rung with the kind of unit it is */
+  orgPath: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      name: Schema.String,
+      orgTypeName: Schema.String,
+    }),
+  ),
+  /**
+   * Where this person's kind may stand at all.
+   *
+   * Sent with the person rather than inferred on the screen: the rule has a
+   * branch for a system identity that the type's own policy does not carry,
+   * and a screen offering a unit the write will refuse turns a rule into an
+   * error message after the press. The write still decides - this only says
+   * which units are worth offering.
+   */
+  placement: Schema.Union([
+    Schema.Struct({ mode: Schema.Literal('unrestricted') }),
+    Schema.Struct({ mode: Schema.Literal('tenant-root') }),
+    Schema.Struct({
+      mode: Schema.Literal('allow-list'),
+      orgTypeIds: Schema.Array(Schema.String),
+    }),
+  ]),
   roles: Schema.Array(
     Schema.Struct({
       grantId: Schema.String,
