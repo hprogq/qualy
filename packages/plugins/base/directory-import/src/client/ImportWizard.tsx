@@ -2,12 +2,7 @@ import { useMemo, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FileSpreadsheetIcon, PlusIcon, XIcon } from 'lucide-react'
-import {
-  UiSlot,
-  useApi,
-  useApiQuery,
-  useRunApi,
-} from '@qualy/web-runtime'
+import { UiSlot, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
@@ -51,9 +46,23 @@ const styles = stylex.create({
     display: 'grid',
     gap: 24,
     alignItems: 'start',
-    gridTemplateColumns: { default: 'minmax(0, 1fr)', '@media (min-width: 1024px)': 'minmax(0, 1fr) 20rem' },
+    gridTemplateColumns: {
+      default: 'minmax(0, 1fr)',
+      '@media (min-width: 1024px)': 'minmax(0, 1fr) 20rem',
+    },
   },
   wizard: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 20 },
+  // A floor, not a height: the five steps ask for very different amounts of
+  // room - a drop area, a list of sheets, a column of column-pairings, a
+  // table of rows - and a dialog that resized under each of them moved its
+  // own buttons out from under the hand on every press. Only where there is
+  // a window to hold it; a phone's sheet already has a height of its own.
+  body: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    minHeight: { default: null, [breakpoints.tablet]: '26rem', [breakpoints.desktop]: '26rem' },
+  },
   stack: { display: 'flex', flexDirection: 'column', gap: 16 },
   row: { display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' },
   spacer: { flexGrow: 1 },
@@ -62,7 +71,10 @@ const styles = stylex.create({
   grid2: {
     display: 'grid',
     gap: 16,
-    gridTemplateColumns: { default: 'minmax(0, 1fr)', '@media (min-width: 720px)': 'repeat(2, minmax(0, 1fr))' },
+    gridTemplateColumns: {
+      default: 'minmax(0, 1fr)',
+      '@media (min-width: 720px)': 'repeat(2, minmax(0, 1fr))',
+    },
   },
   sample: { overflowX: 'auto', borderRadius: 10, boxShadow: `0 0 0 1px ${tokens.border}` },
   table: { width: '100%', borderCollapse: 'collapse', fontSize: 12 },
@@ -76,13 +88,22 @@ const styles = stylex.create({
     borderBottomStyle: 'solid',
     borderBottomColor: tokens.divider,
   },
-  td: { padding: 8, whiteSpace: 'nowrap', borderBottomWidth: 1, borderBottomStyle: 'solid', borderBottomColor: tokens.divider },
+  td: {
+    padding: 8,
+    whiteSpace: 'nowrap',
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
+  },
   sectionTitle: { margin: 0, fontSize: 13, fontWeight: 600 },
   prep: {
     display: 'grid',
     alignItems: 'start',
     gap: 16,
-    gridTemplateColumns: { default: 'minmax(0, 1fr)', '@media (min-width: 820px)': 'minmax(0, 1fr) minmax(0, 1.1fr)' },
+    gridTemplateColumns: {
+      default: 'minmax(0, 1fr)',
+      '@media (min-width: 820px)': 'minmax(0, 1fr) minmax(0, 1.1fr)',
+    },
     // Stacked, four rules and a sample table stand between the reader and
     // the one thing this step asks for. The file goes first and the rules
     // read under it; nothing is committed until the preview step anyway.
@@ -101,14 +122,26 @@ const styles = stylex.create({
   },
   prepSample: { backgroundColor: tokens.surface },
   issuePager: { paddingTop: 4 },
-  level: { display: 'grid', gap: 12, gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) auto', alignItems: 'end' },
+  level: {
+    display: 'grid',
+    gap: 12,
+    gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) auto',
+    alignItems: 'end',
+  },
   // A seat with a height, because the picker grows into whatever it is
   // given: handed a box with only a ceiling, its list took the height it
   // computed from the window instead and drew straight over the field
   // below it.
   picker: { display: 'flex', minHeight: 0, height: '25rem', flexDirection: 'column' },
   recordsSeat: { minHeight: { default: '26rem', [breakpoints.phone]: '20rem' } },
-  summary: { display: 'grid', gap: 12, gridTemplateColumns: { default: 'minmax(0, 1fr)', '@media (min-width: 720px)': 'repeat(3, minmax(0, 1fr))' } },
+  summary: {
+    display: 'grid',
+    gap: 12,
+    gridTemplateColumns: {
+      default: 'minmax(0, 1fr)',
+      '@media (min-width: 720px)': 'repeat(3, minmax(0, 1fr))',
+    },
+  },
   summaryCell: {
     display: 'flex',
     flexDirection: 'column',
@@ -205,7 +238,10 @@ export function ImportWizard({
   const inspect = useQuery({
     ...query.directory.inspectUserImportUpload.queryOptions({
       params: { attachmentId: uploaded?.attachmentId ?? '' },
-      query: { ...(sheet === '' ? {} : { sheet }), headerRow: headerRow.trim() === '' ? '1' : headerRow.trim() },
+      query: {
+        ...(sheet === '' ? {} : { sheet }),
+        headerRow: headerRow.trim() === '' ? '1' : headerRow.trim(),
+      },
     }),
     enabled: uploaded !== null && /^[1-9]\d{0,3}$/.test(headerRow.trim()),
     retry: false,
@@ -309,395 +345,437 @@ export function ImportWizard({
   )
 
   return (
-          <div {...stylex.props(styles.wizard)} data-testid="import-wizard" data-step={at}>
-            <Steps steps={steps} current={at} onSelect={(index) => index < at && done === null && setAt(index)} />
+    <div {...stylex.props(styles.wizard)} data-testid="import-wizard" data-step={at}>
+      <Steps
+        steps={steps}
+        current={at}
+        onSelect={(index) => index < at && done === null && setAt(index)}
+      />
 
-            {at === 0 && (
-              <div {...stylex.props(styles.stack)}>
-                {/* what to bring, before it is asked for: a reader handed a
+      <div {...stylex.props(styles.body)}>
+        {at === 0 && (
+          <div {...stylex.props(styles.stack)}>
+            {/* what to bring, before it is asked for: a reader handed a
                     drop target and nothing else finds out what the file should
                     have looked like from the errors of the one they guessed at */}
-                <div {...stylex.props(styles.prep)} data-testid="import-prep">
-                  <div {...stylex.props(styles.prepWords)}>
-                    <p {...stylex.props(styles.sectionTitle)}>{format(m.prepTitle)}</p>
-                    <ul {...stylex.props(styles.prepList)}>
-                      <li>{format(m.prepPeople, { businessNo })}</li>
-                      <li>{format(m.prepUnits)}</li>
-                      <li>{format(m.prepHeader)}</li>
-                      <li>{format(m.prepExisting, { businessNo })}</li>
-                    </ul>
-                  </div>
-                  <div {...stylex.props(styles.sample, styles.prepSample)} aria-hidden>
-                    <table {...stylex.props(styles.table)}>
-                      <thead>
-                        <tr>
-                          {[businessNo, format(m.displayNameLabel), ...format(m.prepSampleUnits).split('|')].map(
-                            (head) => (
-                              <th key={head} {...stylex.props(styles.th)}>
-                                {head}
-                              </th>
-                            ),
-                          )}
+            <div {...stylex.props(styles.prep)} data-testid="import-prep">
+              <div {...stylex.props(styles.prepWords)}>
+                <p {...stylex.props(styles.sectionTitle)}>{format(m.prepTitle)}</p>
+                <ul {...stylex.props(styles.prepList)}>
+                  <li>{format(m.prepPeople, { businessNo })}</li>
+                  <li>{format(m.prepUnits)}</li>
+                  <li>{format(m.prepHeader)}</li>
+                  <li>{format(m.prepExisting, { businessNo })}</li>
+                </ul>
+              </div>
+              <div {...stylex.props(styles.sample, styles.prepSample)} aria-hidden>
+                <table {...stylex.props(styles.table)}>
+                  <thead>
+                    <tr>
+                      {[
+                        businessNo,
+                        format(m.displayNameLabel),
+                        ...format(m.prepSampleUnits).split('|'),
+                      ].map((head) => (
+                        <th key={head} {...stylex.props(styles.th)}>
+                          {head}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {format(m.prepSampleRows)
+                      .split(';')
+                      .map((line) => (
+                        <tr key={line}>
+                          {line.split('|').map((cell, index) => (
+                            <td key={index} {...stylex.props(styles.td)}>
+                              {cell}
+                            </td>
+                          ))}
                         </tr>
-                      </thead>
-                      <tbody>
-                        {format(m.prepSampleRows)
-                          .split(';')
-                          .map((line) => (
-                            <tr key={line}>
-                              {line.split('|').map((cell, index) => (
-                                <td key={index} {...stylex.props(styles.td)}>
-                                  {cell}
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <Dropzone
+              accept={XLSX}
+              multiple={false}
+              maxFiles={1}
+              disabled={uploading.isPending}
+              onFiles={(files) => {
+                const file = files[0]
+                if (file !== undefined) uploading.mutate(file)
+              }}
+            >
+              <span {...stylex.props(styles.dropWords)}>
+                {uploading.isPending ? <Spinner /> : <FileSpreadsheetIcon aria-hidden />}
+                {format(uploading.isPending ? m.uploading : m.chooseFile)}
+              </span>
+              <span {...stylex.props(styles.quiet)}>{format(m.uploadRule)}</span>
+            </Dropzone>
+          </div>
+        )}
+
+        {at === 1 && uploaded !== null && (
+          <div {...stylex.props(styles.stack)}>
+            <div {...stylex.props(styles.row)}>
+              <FileTile name={uploaded.filename} />
+              <span {...stylex.props(styles.spacer)} />
+              <Button variant="ghost" size="sm" onClick={restart}>
+                {format(m.replaceFile)}
+              </Button>
+            </div>
+            <div {...stylex.props(styles.grid2)}>
+              <Field label={format(m.sheetLabel)}>
+                {(id) => (
+                  <Select value={table?.sheet ?? sheet} onValueChange={setSheet}>
+                    <SelectTrigger id={id}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(inspect.data?.sheets ?? []).map((one) => (
+                        <SelectItem key={one.name} value={one.name}>
+                          {one.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </Field>
+              <Field label={format(m.headerRowLabel)} hint={format(m.headerRowHint)}>
+                {(id) => (
+                  <Input
+                    id={id}
+                    inputMode="numeric"
+                    value={headerRow}
+                    onChange={(event) => setHeaderRow(event.target.value)}
+                  />
+                )}
+              </Field>
+            </div>
+            <AsyncSection
+              pending={inspect.isPending}
+              error={inspect.isError ? formatError(inspect.error) : null}
+              loadingLabel={format(m.checking)}
+              retryLabel={format(m.retry)}
+              onRetry={() => void inspect.refetch()}
+            >
+              {table !== undefined && (
+                <div {...stylex.props(styles.stack)}>
+                  <div {...stylex.props(styles.row)}>
+                    <p {...stylex.props(styles.sectionTitle)}>{format(m.sampleTitle)}</p>
+                    <Badge variant="secondary">
+                      {format(m.rowCount, { count: table.rowCount })}
+                    </Badge>
+                  </div>
+                  {headers.length === 0 ? (
+                    <Feedback message={format(m.noHeaders)} />
+                  ) : (
+                    <div {...stylex.props(styles.sample)}>
+                      <table {...stylex.props(styles.table)}>
+                        <thead>
+                          <tr>
+                            {headers.map((header) => (
+                              <th key={header.column} {...stylex.props(styles.th)}>
+                                {header.text}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {table.sample.map((row) => (
+                            <tr key={row.rowNo}>
+                              {headers.map((header) => (
+                                <td key={header.column} {...stylex.props(styles.td)}>
+                                  {row.cells[header.column] ?? ''}
                                 </td>
                               ))}
                             </tr>
                           ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-                <Dropzone
-                  accept={XLSX}
-                  multiple={false}
-                  maxFiles={1}
-                  disabled={uploading.isPending}
-                  onFiles={(files) => {
-                    const file = files[0]
-                    if (file !== undefined) uploading.mutate(file)
-                  }}
-                >
-                  <span {...stylex.props(styles.dropWords)}>
-                    {uploading.isPending ? <Spinner /> : <FileSpreadsheetIcon aria-hidden />}
-                    {format(uploading.isPending ? m.uploading : m.chooseFile)}
-                  </span>
-                  <span {...stylex.props(styles.quiet)}>{format(m.uploadRule)}</span>
-                </Dropzone>
-              </div>
-            )}
-
-            {at === 1 && uploaded !== null && (
-              <div {...stylex.props(styles.stack)}>
-                <div {...stylex.props(styles.row)}>
-                  <FileTile name={uploaded.filename} />
-                  <span {...stylex.props(styles.spacer)} />
-                  <Button variant="ghost" size="sm" onClick={restart}>
-                    {format(m.replaceFile)}
-                  </Button>
-                </div>
-                <div {...stylex.props(styles.grid2)}>
-                  <Field label={format(m.sheetLabel)}>
-                    {(id) => (
-                      <Select value={table?.sheet ?? sheet} onValueChange={setSheet}>
-                        <SelectTrigger id={id}>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {(inspect.data?.sheets ?? []).map((one) => (
-                            <SelectItem key={one.name} value={one.name}>
-                              {one.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                  </Field>
-                  <Field label={format(m.headerRowLabel)} hint={format(m.headerRowHint)}>
-                    {(id) => (
-                      <Input
-                        id={id}
-                        inputMode="numeric"
-                        value={headerRow}
-                        onChange={(event) => setHeaderRow(event.target.value)}
-                      />
-                    )}
-                  </Field>
-                </div>
-                <AsyncSection
-                  pending={inspect.isPending}
-                  error={inspect.isError ? formatError(inspect.error) : null}
-                  loadingLabel={format(m.checking)}
-                  retryLabel={format(m.retry)}
-                  onRetry={() => void inspect.refetch()}
-                >
-                  {table !== undefined && (
-                    <div {...stylex.props(styles.stack)}>
-                      <div {...stylex.props(styles.row)}>
-                        <p {...stylex.props(styles.sectionTitle)}>{format(m.sampleTitle)}</p>
-                        <Badge variant="secondary">{format(m.rowCount, { count: table.rowCount })}</Badge>
-                      </div>
-                      {headers.length === 0 ? (
-                        <Feedback message={format(m.noHeaders)} />
-                      ) : (
-                        <div {...stylex.props(styles.sample)}>
-                          <table {...stylex.props(styles.table)}>
-                            <thead>
-                              <tr>
-                                {headers.map((header) => (
-                                  <th key={header.column} {...stylex.props(styles.th)}>
-                                    {header.text}
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {table.sample.map((row) => (
-                                <tr key={row.rowNo}>
-                                  {headers.map((header) => (
-                                    <td key={header.column} {...stylex.props(styles.td)}>
-                                      {row.cells[header.column] ?? ''}
-                                    </td>
-                                  ))}
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
+                        </tbody>
+                      </table>
                     </div>
                   )}
-                </AsyncSection>
-                <div {...stylex.props(styles.row)}>
-                  <span {...stylex.props(styles.spacer)} />
-                  <Button disabled={table === undefined || headers.length === 0} onClick={() => setAt(2)}>
-                    {format(m.stepMapping)}
-                  </Button>
                 </div>
-              </div>
-            )}
+              )}
+            </AsyncSection>
+            <div {...stylex.props(styles.row)}>
+              <span {...stylex.props(styles.spacer)} />
+              <Button
+                disabled={table === undefined || headers.length === 0}
+                onClick={() => setAt(2)}
+              >
+                {format(m.stepMapping)}
+              </Button>
+            </div>
+          </div>
+        )}
 
-            {at === 2 && (
-              <div {...stylex.props(styles.stack)}>
-                <div {...stylex.props(styles.grid2)}>
-                  <ColumnChoice
-                    label={format(m.displayNameLabel)}
-                    value={displayNameColumn}
-                    headers={headers}
-                    onChange={setDisplayNameColumn}
+        {at === 2 && (
+          <div {...stylex.props(styles.stack)}>
+            <div {...stylex.props(styles.grid2)}>
+              <ColumnChoice
+                label={format(m.displayNameLabel)}
+                value={displayNameColumn}
+                headers={headers}
+                onChange={setDisplayNameColumn}
+              />
+              <ColumnChoice
+                label={businessNo}
+                value={businessNoColumn}
+                headers={headers}
+                onChange={setBusinessNoColumn}
+              />
+              <Field label={format(m.userTypeLabel)} hint={format(m.userTypeHint)}>
+                {(id) => (
+                  <Select
+                    value={userTypeId === '' ? undefined : userTypeId}
+                    onValueChange={setUserTypeId}
+                  >
+                    <SelectTrigger id={id}>
+                      <SelectValue placeholder={format(m.userTypeUnset)} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(options.data?.userTypes ?? []).map((type) => (
+                        <SelectItem key={type.id} value={type.id}>
+                          {type.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </Field>
+            </div>
+
+            <p {...stylex.props(styles.sectionTitle)}>{format(m.organizationTitle)}</p>
+            <Field label={format(m.anchorLabel)} hint={format(m.anchorHint)}>
+              {() => (
+                <div {...stylex.props(styles.picker)}>
+                  <UiSlot
+                    token={orgNodePicker}
+                    context={
+                      {
+                        value: anchor === null ? [] : [anchor],
+                        onChange: (ids) => setAnchor(ids[0] ?? null),
+                        single: true,
+                      } satisfies OrgNodePickerContext
+                    }
+                    fallback={<Feedback message={format(m.anchorRoot)} />}
                   />
-                  <ColumnChoice
-                    label={businessNo}
-                    value={businessNoColumn}
-                    headers={headers}
-                    onChange={setBusinessNoColumn}
-                  />
-                  <Field label={format(m.userTypeLabel)} hint={format(m.userTypeHint)}>
-                    {(id) => (
-                      <Select value={userTypeId === '' ? undefined : userTypeId} onValueChange={setUserTypeId}>
-                        <SelectTrigger id={id}>
-                          <SelectValue placeholder={format(m.userTypeUnset)} />
+                </div>
+              )}
+            </Field>
+            <Field label={format(m.levelsLabel)} hint={format(m.levelsHint)}>
+              {() => (
+                <div {...stylex.props(styles.stack)}>
+                  {levels.map((level) => (
+                    <div key={level.key} {...stylex.props(styles.level)}>
+                      <Select
+                        value={level.orgTypeId === '' ? undefined : level.orgTypeId}
+                        onValueChange={(next) =>
+                          setLevels((current) =>
+                            current.map((one) =>
+                              one.key === level.key ? { ...one, orgTypeId: next } : one,
+                            ),
+                          )
+                        }
+                      >
+                        <SelectTrigger aria-label={format(m.levelType)}>
+                          <SelectValue placeholder={format(m.levelTypeUnset)} />
                         </SelectTrigger>
                         <SelectContent>
-                          {(options.data?.userTypes ?? []).map((type) => (
+                          {nonRootTypes.map((type) => (
                             <SelectItem key={type.id} value={type.id}>
                               {type.name}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
-                    )}
-                  </Field>
-                </div>
-
-                <p {...stylex.props(styles.sectionTitle)}>{format(m.organizationTitle)}</p>
-                <Field label={format(m.anchorLabel)} hint={format(m.anchorHint)}>
-                  {() => (
-                    <div {...stylex.props(styles.picker)}>
-                      <UiSlot
-                        token={orgNodePicker}
-                        context={
-                          {
-                            value: anchor === null ? [] : [anchor],
-                            onChange: (ids) => setAnchor(ids[0] ?? null),
-                            single: true,
-                          } satisfies OrgNodePickerContext
+                      <Select
+                        value={level.column === '' ? undefined : level.column}
+                        onValueChange={(next) =>
+                          setLevels((current) =>
+                            current.map((one) =>
+                              one.key === level.key ? { ...one, column: next } : one,
+                            ),
+                          )
                         }
-                        fallback={<Feedback message={format(m.anchorRoot)} />}
-                      />
+                      >
+                        <SelectTrigger aria-label={format(m.columnUnset)}>
+                          <SelectValue placeholder={format(m.columnUnset)} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {headers.map((header) => (
+                            <SelectItem key={header.column} value={header.column}>
+                              {header.text}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={format(m.removeLevel)}
+                        onClick={() =>
+                          setLevels((current) => current.filter((one) => one.key !== level.key))
+                        }
+                      >
+                        <XIcon aria-hidden />
+                      </Button>
                     </div>
-                  )}
-                </Field>
-                <Field label={format(m.levelsLabel)} hint={format(m.levelsHint)}>
-                  {() => (
-                    <div {...stylex.props(styles.stack)}>
-                      {levels.map((level) => (
-                        <div key={level.key} {...stylex.props(styles.level)}>
-                          <Select
-                            value={level.orgTypeId === '' ? undefined : level.orgTypeId}
-                            onValueChange={(next) =>
-                              setLevels((current) =>
-                                current.map((one) => (one.key === level.key ? { ...one, orgTypeId: next } : one)),
-                              )
-                            }
-                          >
-                            <SelectTrigger aria-label={format(m.levelType)}>
-                              <SelectValue placeholder={format(m.levelTypeUnset)} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {nonRootTypes.map((type) => (
-                                <SelectItem key={type.id} value={type.id}>
-                                  {type.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <Select
-                            value={level.column === '' ? undefined : level.column}
-                            onValueChange={(next) =>
-                              setLevels((current) =>
-                                current.map((one) => (one.key === level.key ? { ...one, column: next } : one)),
-                              )
-                            }
-                          >
-                            <SelectTrigger aria-label={format(m.columnUnset)}>
-                              <SelectValue placeholder={format(m.columnUnset)} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {headers.map((header) => (
-                                <SelectItem key={header.column} value={header.column}>
-                                  {header.text}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            aria-label={format(m.removeLevel)}
-                            onClick={() => setLevels((current) => current.filter((one) => one.key !== level.key))}
-                          >
-                            <XIcon aria-hidden />
-                          </Button>
-                        </div>
-                      ))}
-                      <div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() =>
-                            setLevels((current) => [...current, { key: Date.now(), orgTypeId: '', column: '' }])
-                          }
-                        >
-                          <PlusIcon aria-hidden />
-                          {format(m.addLevel)}
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </Field>
-                <div {...stylex.props(styles.row)}>
-                  <Button variant="ghost" onClick={() => setAt(1)}>
-                    {format(m.stepSheet)}
-                  </Button>
-                  <span {...stylex.props(styles.spacer)} />
-                  <Button disabled={!mappingReady || checking.isPending} onClick={() => checking.mutate()}>
-                    {checking.isPending && <Spinner />}
-                    {format(checking.isPending ? m.checking : m.check)}
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {at === 3 && preview !== null && (
-              <div {...stylex.props(styles.stack)} data-testid="import-preview" data-errors={preview.users.errors}>
-                <p {...stylex.props(styles.sectionTitle)}>{format(m.previewTitle)}</p>
-                <div {...stylex.props(styles.summary)}>
-                  <div {...stylex.props(styles.summaryCell)}>
-                    <span {...stylex.props(styles.summaryLabel)}>{format(m.previewChain)}</span>
-                    <span {...stylex.props(styles.summaryValue)}>
-                      {preview.chain
-                        .map((level) =>
-                          level.source === 'column'
-                            ? format(m.chainLevelColumn, { type: level.orgTypeName, column: level.detail })
-                            : level.detail,
-                        )
-                        .join(' / ')}
-                    </span>
-                  </div>
-                  <div {...stylex.props(styles.summaryCell)}>
-                    <span {...stylex.props(styles.summaryLabel)}>{format(m.previewNodesLabel)}</span>
-                    <span {...stylex.props(styles.summaryValue)}>
-                      {format(m.previewNodes, { reused: preview.nodes.reused, created: preview.nodes.created })}
-                    </span>
-                  </div>
-                  <div {...stylex.props(styles.summaryCell)}>
-                    <span {...stylex.props(styles.summaryLabel)}>{format(m.previewUsersLabel)}</span>
-                    <span {...stylex.props(styles.summaryValue)}>
-                      {format(m.previewUsers, { create: preview.users.create, existing: preview.users.existing })}
-                    </span>
+                  ))}
+                  <div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setLevels((current) => [
+                          ...current,
+                          { key: Date.now(), orgTypeId: '', column: '' },
+                        ])
+                      }
+                    >
+                      <PlusIcon aria-hidden />
+                      {format(m.addLevel)}
+                    </Button>
                   </div>
                 </div>
-                {preview.users.errors === 0 ? (
-                  <p {...stylex.props(styles.quiet, styles.ok)}>{format(m.previewClean)}</p>
-                ) : (
-                  <div {...stylex.props(styles.stack)}>
-                    <p {...stylex.props(styles.sectionTitle, styles.bad)}>
-                      {format(m.previewErrors, { count: preview.users.errors })}
-                    </p>
-                    <p {...stylex.props(styles.quiet)}>{format(m.previewIssuesHint)}</p>
-                    <ul {...stylex.props(styles.list)} data-testid="import-issues">
-                      {preview.issues
-                        .slice((issuePage - 1) * ISSUES_PER_PAGE, issuePage * ISSUES_PER_PAGE)
-                        .map((issue, index) => (
-                        <li key={index}>
-                          {issue.rowNo === null ? format(m.issueFile) : format(m.issueRow, { row: issue.rowNo })}
-                          {' '}
-                          {issueText(format, issue, businessNo)}
-                        </li>
-                      ))}
-                    </ul>
-                    <div {...stylex.props(styles.issuePager)}>
-                      <Pager
-                        testId="import-issues-pager"
-                        label={format(m.pagerLabel)}
-                        page={issuePage}
-                        pageSize={ISSUES_PER_PAGE}
-                        total={preview.issues.length}
-                        onPage={setIssuePage}
-                      />
-                    </div>
-                  </div>
-                )}
-                {preview.createdNodes.length > 0 && (
-                  <div {...stylex.props(styles.stack)}>
-                    <p {...stylex.props(styles.sectionTitle)}>{format(m.previewCreatedNodes)}</p>
-                    <ul {...stylex.props(styles.list)}>
-                      {preview.createdNodes.map((path) => (
-                        <li key={path}>{path}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                <div {...stylex.props(styles.row)}>
-                  <Button variant="ghost" onClick={() => setAt(2)}>
-                    {format(m.stepMapping)}
-                  </Button>
-                  <span {...stylex.props(styles.spacer)} />
-                  <Button
-                    disabled={preview.users.errors > 0 || committing.isPending}
-                    onClick={() => committing.mutate()}
-                  >
-                    {committing.isPending && <Spinner />}
-                    {format(committing.isPending ? m.committing : m.commit)}
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {at === 4 && done !== null && (
-              <div {...stylex.props(styles.stack)} data-testid="import-done">
-                <p {...stylex.props(styles.sectionTitle)}>{format(m.doneTitle)}</p>
-                <p {...stylex.props(styles.quiet)}>
-                  {format(m.done, { users: done.createdUsers, nodes: done.createdNodes })}
-                </p>
-                <div {...stylex.props(styles.row)}>
-                  <Button onClick={() => onOpenRecord(done.importId)}>{format(m.openRecord)}</Button>
-                  <Button variant="outline" onClick={restart}>
-                    {format(m.importAnother)}
-                  </Button>
-                </div>
-              </div>
-            )}
+              )}
+            </Field>
+            <div {...stylex.props(styles.row)}>
+              <Button variant="ghost" onClick={() => setAt(1)}>
+                {format(m.stepSheet)}
+              </Button>
+              <span {...stylex.props(styles.spacer)} />
+              <Button
+                disabled={!mappingReady || checking.isPending}
+                onClick={() => checking.mutate()}
+              >
+                {checking.isPending && <Spinner />}
+                {format(checking.isPending ? m.checking : m.check)}
+              </Button>
+            </div>
           </div>
+        )}
+
+        {at === 3 && preview !== null && (
+          <div
+            {...stylex.props(styles.stack)}
+            data-testid="import-preview"
+            data-errors={preview.users.errors}
+          >
+            <p {...stylex.props(styles.sectionTitle)}>{format(m.previewTitle)}</p>
+            <div {...stylex.props(styles.summary)}>
+              <div {...stylex.props(styles.summaryCell)}>
+                <span {...stylex.props(styles.summaryLabel)}>{format(m.previewChain)}</span>
+                <span {...stylex.props(styles.summaryValue)}>
+                  {preview.chain
+                    .map((level) =>
+                      level.source === 'column'
+                        ? format(m.chainLevelColumn, {
+                            type: level.orgTypeName,
+                            column: level.detail,
+                          })
+                        : level.detail,
+                    )
+                    .join(' / ')}
+                </span>
+              </div>
+              <div {...stylex.props(styles.summaryCell)}>
+                <span {...stylex.props(styles.summaryLabel)}>{format(m.previewNodesLabel)}</span>
+                <span {...stylex.props(styles.summaryValue)}>
+                  {format(m.previewNodes, {
+                    reused: preview.nodes.reused,
+                    created: preview.nodes.created,
+                  })}
+                </span>
+              </div>
+              <div {...stylex.props(styles.summaryCell)}>
+                <span {...stylex.props(styles.summaryLabel)}>{format(m.previewUsersLabel)}</span>
+                <span {...stylex.props(styles.summaryValue)}>
+                  {format(m.previewUsers, {
+                    create: preview.users.create,
+                    existing: preview.users.existing,
+                  })}
+                </span>
+              </div>
+            </div>
+            {preview.users.errors === 0 ? (
+              <p {...stylex.props(styles.quiet, styles.ok)}>{format(m.previewClean)}</p>
+            ) : (
+              <div {...stylex.props(styles.stack)}>
+                <p {...stylex.props(styles.sectionTitle, styles.bad)}>
+                  {format(m.previewErrors, { count: preview.users.errors })}
+                </p>
+                <p {...stylex.props(styles.quiet)}>{format(m.previewIssuesHint)}</p>
+                <ul {...stylex.props(styles.list)} data-testid="import-issues">
+                  {preview.issues
+                    .slice((issuePage - 1) * ISSUES_PER_PAGE, issuePage * ISSUES_PER_PAGE)
+                    .map((issue, index) => (
+                      <li key={index}>
+                        {issue.rowNo === null
+                          ? format(m.issueFile)
+                          : format(m.issueRow, { row: issue.rowNo })}{' '}
+                        {issueText(format, issue, businessNo)}
+                      </li>
+                    ))}
+                </ul>
+                <div {...stylex.props(styles.issuePager)}>
+                  <Pager
+                    testId="import-issues-pager"
+                    label={format(m.pagerLabel)}
+                    page={issuePage}
+                    pageSize={ISSUES_PER_PAGE}
+                    total={preview.issues.length}
+                    onPage={setIssuePage}
+                  />
+                </div>
+              </div>
+            )}
+            {preview.createdNodes.length > 0 && (
+              <div {...stylex.props(styles.stack)}>
+                <p {...stylex.props(styles.sectionTitle)}>{format(m.previewCreatedNodes)}</p>
+                <ul {...stylex.props(styles.list)}>
+                  {preview.createdNodes.map((path) => (
+                    <li key={path}>{path}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div {...stylex.props(styles.row)}>
+              <Button variant="ghost" onClick={() => setAt(2)}>
+                {format(m.stepMapping)}
+              </Button>
+              <span {...stylex.props(styles.spacer)} />
+              <Button
+                disabled={preview.users.errors > 0 || committing.isPending}
+                onClick={() => committing.mutate()}
+              >
+                {committing.isPending && <Spinner />}
+                {format(committing.isPending ? m.committing : m.commit)}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {at === 4 && done !== null && (
+          <div {...stylex.props(styles.stack)} data-testid="import-done">
+            <p {...stylex.props(styles.sectionTitle)}>{format(m.doneTitle)}</p>
+            <p {...stylex.props(styles.quiet)}>
+              {format(m.done, { users: done.createdUsers, nodes: done.createdNodes })}
+            </p>
+            <div {...stylex.props(styles.row)}>
+              <Button onClick={() => onOpenRecord(done.importId)}>{format(m.openRecord)}</Button>
+              <Button variant="outline" onClick={restart}>
+                {format(m.importAnother)}
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
 
