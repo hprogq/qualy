@@ -24,14 +24,6 @@ const LINE = 20
 
 const styles = stylex.create({
   seat: { display: 'flex', minWidth: 0, alignItems: 'center', gap: 4 },
-  // the same hairline a divided cell draws, for a fact that is not one
-  divided: {
-    '::before': {
-      content: { default: 'none', [breakpoints.phone]: '"|"' },
-      marginInlineEnd: 8,
-      color: `color-mix(in oklab, ${tokens.mutedForeground} 45%, transparent)`,
-    },
-  },
   more: { flexShrink: 0, fontSize: 12.5, color: tokens.mutedForeground },
   // said, not offered: no hand, no hover, and the quiet of the facts beside it
   told: {
@@ -61,7 +53,10 @@ const styles = stylex.create({
     gap: 4,
     fontSize: 12.5,
   },
-  slash: { flexShrink: 0, color: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)` },
+  slash: {
+    flexShrink: 0,
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)`,
+  },
   name: {
     minWidth: 0,
     overflow: 'hidden',
@@ -89,7 +84,6 @@ export function UnitPath({
   steps,
   onPick,
   pickLabel,
-  divided = false,
   plain = false,
 }: {
   /** root first, the unit itself last */
@@ -97,8 +91,6 @@ export function UnitPath({
   onPick: (unitId: string) => void
   /** spoken before a step's name: what pressing it does */
   pickLabel: string
-  /** a hairline before it, where it shares a line with the facts before it */
-  divided?: boolean
   /**
    * The address as words rather than as doors.
    *
@@ -125,7 +117,7 @@ export function UnitPath({
 
   return (
     <span
-      {...stylex.props(styles.seat, divided && styles.divided)}
+      {...stylex.props(styles.seat)}
       title={whole}
       data-testid="unit-path"
       data-clipped={clipped}
@@ -146,10 +138,7 @@ export function UnitPath({
               </span>
             )}
             {plain ? (
-              <span
-                data-path-step={step.id}
-                {...stylex.props(styles.name, styles.told)}
-              >
+              <span data-path-step={step.id} {...stylex.props(styles.name, styles.told)}>
                 {step.name}
               </span>
             ) : (

@@ -1,10 +1,22 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { ChevronDownIcon, ChevronUpIcon, GripVerticalIcon, PlusIcon } from 'lucide-react'
+import {
+  ChevronDownIcon,
+  ChevronsUpDownIcon,
+  ChevronUpIcon,
+  GripVerticalIcon,
+  PlusIcon,
+} from 'lucide-react'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Button } from '@qualy/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@qualy/ui/dropdown-menu'
 import { toast } from '@qualy/ui/toast'
 import { useApi, useApiQuery, usePageQueryState, useRunApi } from '@qualy/web-runtime'
 import { useI18n, useList } from '@qualy/web-i18n'
@@ -53,8 +65,8 @@ const styles = stylex.create({
   },
   step: {
     display: { default: 'none', [breakpoints.phone]: 'inline-flex' },
-    width: 26,
-    height: 26,
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 0,
@@ -169,7 +181,10 @@ export default function LoginMethodsPage() {
                   <TableRow
                     key={provider.id}
                     nested
-                    xstyle={[over === provider.id && styles.over, lifted === provider.id && styles.lifted]}
+                    xstyle={[
+                      over === provider.id && styles.over,
+                      lifted === provider.id && styles.lifted,
+                    ]}
                     onDragOver={(event) => {
                       if (lifted === null || lifted === provider.id) return
                       event.preventDefault()
@@ -221,26 +236,41 @@ export default function LoginMethodsPage() {
                         >
                           <GripVerticalIcon aria-hidden {...stylex.props(styles.gripGlyph)} />
                         </button>
-                        <button
-                          type="button"
-                          aria-label={format(m.methodMoveUp, { name: provider.name })}
-                          data-testid="method-up"
-                          disabled={index === 0}
-                          {...stylex.props(styles.step)}
-                          onClick={() => step(provider.id, -1)}
-                        >
-                          <ChevronUpIcon aria-hidden {...stylex.props(styles.stepGlyph)} />
-                        </button>
-                        <button
-                          type="button"
-                          aria-label={format(m.methodMoveDown, { name: provider.name })}
-                          data-testid="method-down"
-                          disabled={index === rows.length - 1}
-                          {...stylex.props(styles.step)}
-                          onClick={() => step(provider.id, 1)}
-                        >
-                          <ChevronDownIcon aria-hidden {...stylex.props(styles.stepGlyph)} />
-                        </button>
+                        {/* One press, not two. Two arrows of six-and-twenty
+                            pixels inside a row that itself opens the method
+                            were a pair of targets a thumb could not tell
+                            apart - and a mis-hit silently reordered the
+                            sign-in page. Now a mis-hit opens a menu. */}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              aria-label={format(m.methodMove, { name: provider.name })}
+                              data-testid="method-order"
+                              {...stylex.props(styles.step)}
+                            >
+                              <ChevronsUpDownIcon aria-hidden {...stylex.props(styles.stepGlyph)} />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              disabled={index === 0}
+                              data-testid="method-up"
+                              onSelect={() => step(provider.id, -1)}
+                            >
+                              <ChevronUpIcon aria-hidden />
+                              {format(m.methodMoveUp, { name: provider.name })}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={index === rows.length - 1}
+                              data-testid="method-down"
+                              onSelect={() => step(provider.id, 1)}
+                            >
+                              <ChevronDownIcon aria-hidden />
+                              {format(m.methodMoveDown, { name: provider.name })}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </span>
                     ) : (
                       <span />

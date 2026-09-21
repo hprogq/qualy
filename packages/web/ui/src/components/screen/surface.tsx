@@ -186,11 +186,15 @@ const styles = stylex.create({
     alignItems: 'center',
     width: '100%',
     minWidth: 0,
-    // Taller under a thumb than under a pointer. A pointer lands where it
-    // is aimed; a thumb covers about nine millimetres of glass, and a row
-    // it has to hit between two others is a row it will sometimes miss -
-    // which on a roster means opening the wrong person.
-    minHeight: { default: 44, [breakpoints.phone]: 56 },
+    // A little taller under a thumb than under a pointer - a thumb covers
+    // about nine millimetres of glass - but a floor, not a height: most
+    // stacked rows are two lines already and are taller than this anyway.
+    minHeight: { default: 44, [breakpoints.phone]: 48 },
+    // The tracks are centred, not only the items in them. A grid centres
+    // each item inside its own row; where the box is taller than the rows
+    // put together - which a floor makes it - the stack of rows still sat
+    // at the top, and a two-line row read as pressed up against its rule.
+    alignContent: 'center',
     paddingInline: 16,
     paddingBlock: { default: 0, [breakpoints.phone]: 10 },
     margin: 0,
@@ -203,8 +207,8 @@ const styles = stylex.create({
     textAlign: 'start',
     color: 'inherit',
   },
-  rowCompact: { minHeight: { default: 42, [breakpoints.phone]: 54 } },
-  rowTight: { minHeight: { default: 40, [breakpoints.phone]: 52 } },
+  rowCompact: { minHeight: { default: 42, [breakpoints.phone]: 46 } },
+  rowTight: { minHeight: { default: 40, [breakpoints.phone]: 44 } },
   rowLive: {
     cursor: 'pointer',
     backgroundColor: {
@@ -217,13 +221,13 @@ const styles = stylex.create({
   },
   cell: {
     minWidth: 0,
-    // One line at every width. Stacked, the facts share a line and are ruled
-    // apart, so a fact that wrapped pushed the rule under itself and the row
-    // grew a line for half a unit's name - which said no more than the first
-    // few words of it would have.
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
+    // Across, a cell is a column and says one line's worth; stacked on a
+    // phone it is a fact beside its name, and a fact that cannot fit takes
+    // a second line rather than losing its end to an ellipsis - there is no
+    // column head up there to guess the rest from.
+    overflow: { default: 'hidden', [breakpoints.phone]: 'visible' },
+    textOverflow: { default: 'ellipsis', [breakpoints.phone]: 'clip' },
+    whiteSpace: { default: 'nowrap', [breakpoints.phone]: 'normal' },
     fontSize: 12.5,
     color: tokens.mutedForeground,
   },
@@ -261,12 +265,38 @@ const styles = stylex.create({
     gridColumn: { default: null, [breakpoints.phone]: 1 },
     gridRow: { default: null, [breakpoints.phone]: 2 },
     minWidth: 0,
-    // one line, and the fact that runs out of room loses its end rather than
-    // the row gaining a line
-    flexWrap: 'nowrap',
-    overflow: 'hidden',
+    flexWrap: 'wrap',
     alignItems: 'baseline',
     columnGap: 8,
+    rowGap: 3,
+  },
+  /** the same run held to one line, for a table that asked for it */
+  factsOneLine: { flexWrap: 'nowrap', overflow: 'hidden' },
+  /**
+   * A fact on a one-line run: its own width, and it does not give any of it
+   * up.
+   *
+   * Shrinking them all cut every one of them to three characters and an
+   * ellipsis - a row of stubs saying nothing. The line runs on instead, and
+   * the LAST fact is the one that loses its end, because it is the one the
+   * eye is still reading when the room runs out.
+   */
+  cellHeld: { flexShrink: 0, whiteSpace: 'nowrap' },
+  /**
+   * The rule between two facts, drawn by the row.
+   *
+   * By the row and not by the facts: a fact draws itself, and two of them
+   * drawing their own dividers drew two different dividers - a glyph at
+   * whatever size and colour each happened to be set in. One rule, one
+   * height, one grey, put between them by whoever knows there are two.
+   */
+  factRule: {
+    display: { default: 'none', [breakpoints.phone]: 'block' },
+    alignSelf: 'center',
+    width: 1,
+    height: 11,
+    flexShrink: 0,
+    backgroundColor: `color-mix(in oklab, ${QUIET} 40%, transparent)`,
   },
   // one fact from the next: a hairline rather than a gap, because a run of
   // grey words with air between them reads as one phrase
@@ -507,7 +537,10 @@ export function FactStrip({
 }) {
   return (
     <Card>
-      <dl {...stylex.props(styles.factStrip, columns === 4 && styles.factStripFour)} data-testid={testId}>
+      <dl
+        {...stylex.props(styles.factStrip, columns === 4 && styles.factStripFour)}
+        data-testid={testId}
+      >
         {items.map((item) => (
           <div key={item.label} {...stylex.props(styles.fact)}>
             <dt {...stylex.props(styles.factLabel)}>{item.label}</dt>
@@ -541,10 +574,12 @@ const TableColumns = createContext<{
   template: string
   openable: boolean
   labels: readonly string[]
+  oneLine: boolean
 }>({
   template: 'minmax(0, 1fr)',
   openable: false,
   labels: [],
+  oneLine: false,
 })
 
 /** the words of a head cell, for a row that has to carry them on a phone */
@@ -571,10 +606,21 @@ const wordsOf = (node: ReactNode): string => {
 export function Table({
   columns,
   openable = false,
+  facts = 'wrap',
   children,
 }: {
   columns: string
   openable?: boolean
+  /**
+   * What a stacked row does with the facts under its name.
+   *
+   * `wrap` is the rule: a fact that will not fit takes a second line, since
+   * there is no column head above it to guess the rest from. `line` is for a
+   * table whose facts are short and read as one - a number, a kind, a unit -
+   * where a wrapped one pushes the rule under itself and wins a line for
+   * half a word.
+   */
+  facts?: 'wrap' | 'line'
   children: ReactNode
 }) {
   const template = openable ? `${columns} 1.25rem` : columns
@@ -585,7 +631,11 @@ export function Table({
     if (!isValidElement<{ children?: ReactNode }>(head)) return []
     return Children.toArray(head.props.children).map(wordsOf)
   }, [children])
-  return <TableColumns value={{ template, openable, labels }}>{children}</TableColumns>
+  return (
+    <TableColumns value={{ template, openable, labels, oneLine: facts === 'line' }}>
+      {children}
+    </TableColumns>
+  )
 }
 
 export function TableHead({ children }: { children: ReactNode }) {
@@ -620,7 +670,7 @@ export function TableRow({
   children: ReactNode
   xstyle?: StyleXStyles
 } & Omit<ComponentProps<'button'>, 'className' | 'style' | 'onClick' | 'type' | 'children'>) {
-  const { template, openable, labels } = useContext(TableColumns)
+  const { template, openable, labels, oneLine } = useContext(TableColumns)
   const look = stylex.props(
     styles.row,
     styles.columns(template),
@@ -667,7 +717,14 @@ export function TableRow({
     until > from ? (
       <>
         {kids.slice(0, from)}
-        <span {...stylex.props(styles.facts)}>{kids.slice(from, until)}</span>
+        <span {...stylex.props(styles.facts, oneLine && styles.factsOneLine)}>
+          {kids.slice(from, until).map((child, index) => (
+            <Fragment key={index}>
+              {index > 0 && <span aria-hidden {...stylex.props(styles.factRule)} />}
+              {child}
+            </Fragment>
+          ))}
+        </span>
         {kids.slice(until)}
       </>
     ) : (
@@ -716,7 +773,14 @@ export function TableRow({
     )
   }
   return (
-    <button type="button" {...rest} {...look} aria-current={selected || undefined} data-selected={selected} onClick={onOpen}>
+    <button
+      type="button"
+      {...rest}
+      {...look}
+      aria-current={selected || undefined}
+      data-selected={selected}
+      onClick={onOpen}
+    >
       {body}
     </button>
   )
@@ -737,7 +801,6 @@ export function Cell({
   title,
   narrow = 'keep',
   unlabelled = false,
-  divided = false,
   clip = false,
   column,
   children,
@@ -769,14 +832,6 @@ export function Cell({
    */
   unlabelled?: boolean
   /**
-   * A hairline before it where the facts share one line.
-   *
-   * For the second and later facts of a stacked row: a run of grey words
-   * with only air between them reads as one phrase. Nothing across a table,
-   * where the columns already say where one fact ends.
-   */
-  divided?: boolean
-  /**
    * One line at every width, ending in an ellipsis rather than wrapping.
    *
    * For a value that is a list rather than a fact - the names a role may be
@@ -794,7 +849,7 @@ export function Cell({
   column?: number
   children?: ReactNode
 }) {
-  const { labels } = useContext(TableColumns)
+  const { labels, oneLine } = useContext(TableColumns)
   // A cell with nothing in it is a fact this row does not have, and a bare
   // column name standing on its own says the opposite.
   const said = children !== undefined && children !== null && children !== false && children !== ''
@@ -826,8 +881,8 @@ export function Cell({
     end && styles.cellEnd,
     narrow === 'drop' && styles.cellDropNarrow,
     narrow === 'end' && styles.cellEndNarrow,
-    divided && styles.cellDivided,
     clip && styles.cellClipped,
+    oneLine && styles.cellHeld,
     label !== '' && styles.cellLabel,
   )
   return (
@@ -876,7 +931,11 @@ export function Status({
     <span
       {...rest}
       data-tone={tone}
-      {...stylex.props(styles.status, tone === 'warn' && styles.statusWarn, tone === 'bad' && styles.statusBad)}
+      {...stylex.props(
+        styles.status,
+        tone === 'warn' && styles.statusWarn,
+        tone === 'bad' && styles.statusBad,
+      )}
     >
       {tone !== 'plain' && (
         <span
@@ -981,7 +1040,11 @@ export function Tick({
       )}
     >
       <span {...stylex.props(styles.tickBoxSeat, tall && styles.tickBoxLowered)}>
-        <Checkbox checked={checked} disabled={disabled} onCheckedChange={(next) => onChange(next === true)} />
+        <Checkbox
+          checked={checked}
+          disabled={disabled}
+          onCheckedChange={(next) => onChange(next === true)}
+        />
       </span>
       <span {...stylex.props(styles.tickWords)}>
         <span {...stylex.props(styles.tickName)}>{label}</span>

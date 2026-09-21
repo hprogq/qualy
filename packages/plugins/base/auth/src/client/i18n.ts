@@ -580,8 +580,14 @@ const i18n = definePluginMessages({
     // than as a switch: a press that reads "show removed people" says what
     // it will do, never what it has done, so nobody can tell from it which
     // list they are looking at.
-    rosterScopeLiving: { id: 'auth/users/scope-living', defaultMessage: 'Removed hidden' },
-    rosterScopeAll: { id: 'auth/users/scope-all', defaultMessage: 'Removed shown' },
+    // Which people the roster is showing, by the standing they are in. The
+    // filter used to say what a press would do to the list, which reads the
+    // same whichever list you are looking at.
+    rosterStandingLabel: { id: 'auth/users/standing-filter', defaultMessage: 'Standing' },
+    rosterStandingActive: { id: 'auth/users/standing-active', defaultMessage: 'In good standing' },
+    rosterStandingDisabled: { id: 'auth/users/standing-disabled', defaultMessage: 'Suspended' },
+    rosterStandingDeleted: { id: 'auth/users/standing-deleted', defaultMessage: 'Removed' },
+    rosterStandingAny: { id: 'auth/users/standing-any', defaultMessage: 'Any standing' },
     saved: { id: 'auth/feedback/saved', defaultMessage: 'Saved.' },
     systemBadge: { id: 'auth/badge/system', defaultMessage: 'system' },
     disabledBadge: { id: 'auth/badge/disabled', defaultMessage: 'disabled' },

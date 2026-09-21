@@ -777,11 +777,11 @@ describe('users workspace', () => {
     await page.getByRole('button', { name: '3', exact: true }).click()
     await vi.waitFor(() => expect(addressNow()).toContain('page=3'))
     await vi.waitFor(() => expect(asked().some((query) => query.page === '3')).toBe(true))
-    // the living by default; the removed join them only on request, and a
-    // different question starts again at its first page
-    expect(asked().every((query) => query.status === undefined)).toBe(true)
+    // those in good standing by default; any other standing is asked for,
+    // and a different question starts again at its first page
+    expect(asked().every((query) => query.status === 'active')).toBe(true)
     await page.getByTestId('show-removed').click()
-    await page.getByRole('option', { name: '含已删除' }).click()
+    await page.getByRole('option', { name: '所有状态' }).click()
     await vi.waitFor(() =>
       expect(asked().some((query) => query.status === 'any' && query.page === '1')).toBe(true),
     )
@@ -867,4 +867,6 @@ describe('users workspace', () => {
     expect(addressNow()).toContain(`/people/${SECOND_USER_ID}`)
   })
 })
+
+
 

@@ -59,6 +59,8 @@ const styles = stylex.create({
     paddingTop: { default: 22, [breakpoints.tablet]: 22, [breakpoints.desktop]: 22 },
     paddingBottom: 22,
   },
+  /** where a row follows it, the words give up some of their own foot */
+  bandInsetAbove: { paddingBottom: 14 },
   // a page reached from a list opens on the way back to it, so the band
   // starts a little higher and ends a little sooner
   bandInsetBack: {
@@ -71,22 +73,34 @@ const styles = stylex.create({
   //
   // Bled back out to the window's edges, because a row that scrolls has to
   // start and end at the screen or the last chip reads as the last section.
+  // A ROW OF THE BAND, not a third thing inside the row the words and the
+  // actions share: put in there it was a full-width item in a run that does
+  // not wrap, and every page's title and actions were crushed to nothing.
   underBand: {
     display: 'flex',
-    width: '100%',
-    flexShrink: 0,
     alignItems: 'center',
     gap: 6,
-    marginTop: 14,
-    marginBottom: -8,
-    marginInline: { default: -24, [breakpoints.phone]: -16 },
-    paddingInline: { default: 24, [breakpoints.phone]: 16 },
-    paddingBottom: 2,
+    paddingTop: 0,
+    paddingBottom: 14,
     overflowX: 'auto',
     scrollbarWidth: 'none',
   },
-  words: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 5 },
-  wordsBack: { gap: 8 },
+  // A floor under the words, so every page's band is the same height.
+  //
+  // One page has a description and the next has none, and the row of
+  // sections hanging under the band therefore landed at a different height
+  // on each - which made switching between them look like the page jumping.
+  // The floor is a title and a line of description; a page with only a title
+  // keeps the room rather than closing up.
+  words: {
+    display: 'flex',
+    minWidth: 0,
+    minHeight: 54,
+    flexDirection: 'column',
+    gap: 5,
+  },
+  /** a page reached from a list opens on the way back, which is its own floor */
+  wordsBack: { minHeight: 0, gap: 8 },
   titleRow: { display: 'flex', minWidth: 0, alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   title: {
     margin: 0,
@@ -242,7 +256,14 @@ export function Screen({
           pretending to be a header */}
       <div {...stylex.props(styles.band)}>
         <span aria-hidden {...stylex.props(styles.hairlines)} />
-        <PageContainer size={size} xstyle={[styles.bandInset, sub && styles.bandInsetBack]}>
+        <PageContainer
+          size={size}
+          xstyle={[
+            styles.bandInset,
+            sub && styles.bandInsetBack,
+            under !== null && styles.bandInsetAbove,
+          ]}
+        >
           <div {...stylex.props(styles.words, sub && styles.wordsBack)}>
             {back}
             <div {...stylex.props(styles.titleRow)}>
@@ -256,8 +277,12 @@ export function Screen({
             )}
           </div>
           {actions !== undefined && <div {...stylex.props(styles.actions)}>{actions}</div>}
-          {under !== null && <div {...stylex.props(styles.underBand)}>{under}</div>}
         </PageContainer>
+        {under !== null && (
+          <PageContainer size={size} xstyle={styles.underBand}>
+            {under}
+          </PageContainer>
+        )}
       </div>
       <PageContainer size={size} xstyle={styles.stack}>
         <Reveal delay={0.05} className={stylex.props(styles.arrival).className}>

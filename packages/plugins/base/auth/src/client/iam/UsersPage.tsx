@@ -147,7 +147,10 @@ const styles = stylex.create({
 
 /** how wide a name reads: a han character is one em, anything else a little over half */
 const emsOf = (text: string) =>
-  [...text].reduce((sum, char) => sum + (/[\u2e80-\u9fff\uf900-\ufaff\uff00-\uffef]/.test(char) ? 1 : 0.58), 0)
+  [...text].reduce(
+    (sum, char) => sum + (/[\u2e80-\u9fff\uf900-\ufaff\uff00-\uffef]/.test(char) ? 1 : 0.58),
+    0,
+  )
 
 export default function UsersPage() {
   const api = useApi(authApi)
@@ -160,8 +163,10 @@ export default function UsersPage() {
   const [typeFilter] = usePageQueryState('type')
   const [search] = usePageQueryState('q')
   const [openUserId, setOpenUserId] = usePageQueryState('user')
-  // whether the removed are listed among the living
+  // which standing the roster is showing; in good standing unless asked
   const [removed] = usePageQueryState('removed')
+  const standing: 'active' | 'disabled' | 'deleted' | 'any' =
+    removed === 'any' || removed === 'disabled' || removed === 'deleted' ? removed : 'active'
   const [pageParam, setPageParam] = usePageQueryState('page')
   const page = Math.max(1, Number.parseInt(pageParam, 10) || 1)
   const navigate = usePageNavigate()
@@ -208,7 +213,7 @@ export default function UsersPage() {
   const filter = {
     orgNodeId: active?.orgNodeId ?? '',
     scope: within,
-    ...(removed === '1' ? { status: 'any' as const } : {}),
+    status: standing,
     ...(search ? { search } : {}),
     ...(typeFilter ? { userTypeId: typeFilter } : {}),
     page: String(page),
@@ -229,7 +234,10 @@ export default function UsersPage() {
     write({ [key]: key === 'scope' && value === 'subtree' ? '' : value, page: '' })
 
   // where this roster is, for the way back from somebody's own page
-  useEffect(() => rememberRoster(window.location.search), [anchor, scope, typeFilter, search, removed, pageParam])
+  useEffect(
+    () => rememberRoster(window.location.search),
+    [anchor, scope, typeFilter, search, removed, pageParam],
+  )
 
   // each unit with what kind it is and how many it holds, alone and with
   // everything under it: the tree shows whichever reading the scope asks for
@@ -357,7 +365,6 @@ export default function UsersPage() {
             )
           }
         >
-
           <Card data-testid="roster">
             <CardHead
               title={
@@ -421,23 +428,27 @@ export default function UsersPage() {
                   ))}
                 </SelectContent>
               </Select>
-              {/* A filter beside a filter, saying which set is on show
-                  rather than what a press would do - "show removed people"
-                  reads the same whichever list you are looking at. */}
+              {/* The standing being shown, said as the standing rather than
+                  as what a press would do to the list: "show removed people"
+                  reads the same whichever list you are looking at. In good
+                  standing unless asked, because that is who a roster is
+                  about. */}
               <Select
-                value={removed === '1' ? 'all' : 'living'}
-                onValueChange={(next) => asking('removed')(next === 'all' ? '1' : '')}
+                value={standing}
+                onValueChange={(next) => asking('removed')(next === 'active' ? '' : next)}
               >
                 <SelectTrigger
-                  aria-label={format(m.showRemoved)}
+                  aria-label={format(m.rosterStandingLabel)}
                   data-testid="show-removed"
                   xstyle={styles.removed}
                 >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="living">{format(m.rosterScopeLiving)}</SelectItem>
-                  <SelectItem value="all">{format(m.rosterScopeAll)}</SelectItem>
+                  <SelectItem value="active">{format(m.rosterStandingActive)}</SelectItem>
+                  <SelectItem value="disabled">{format(m.rosterStandingDisabled)}</SelectItem>
+                  <SelectItem value="deleted">{format(m.rosterStandingDeleted)}</SelectItem>
+                  <SelectItem value="any">{format(m.rosterStandingAny)}</SelectItem>
                 </SelectContent>
               </Select>
             </CardHead>
@@ -449,7 +460,13 @@ export default function UsersPage() {
               retryLabel={format(commonMessages.retry)}
               onRetry={() => void users.refetch()}
             >
-              <Table columns={`8.5rem ${nameWidth} 5.5rem minmax(0, 1fr) 4.5rem 1.75rem`}>
+              {/* a number, a kind and a unit read as one line; a fact that
+                  runs out of room loses its end rather than the row gaining
+                  a line for half a unit's name */}
+              <Table
+                columns={`8.5rem ${nameWidth} 5.5rem minmax(0, 1fr) 4.5rem 1.75rem`}
+                facts="line"
+              >
                 <TableHead>
                   <span>{businessNo}</span>
                   <span>{format(m.columnName)}</span>
@@ -513,11 +530,9 @@ export default function UsersPage() {
                           as themselves wherever they appear; stacked, they
                           need no column word in front of them, only a
                           hairline saying where one ends */}
-                      <Cell unlabelled divided={stacked}>
-                        {user.userType?.name ?? '—'}
-                      </Cell>
+                      <Cell unlabelled>{user.userType?.name ?? '—'}</Cell>
                       {user.primaryOrgNode === null ? (
-                        <Cell divided={stacked}>—</Cell>
+                        <Cell>—</Cell>
                       ) : (
                         // Stacked, the chain is most of the line and the
                         // last rung is the only part that tells two people
@@ -534,7 +549,6 @@ export default function UsersPage() {
                           }
                           pickLabel={format(m.pickUnit)}
                           onPick={asking('anchor')}
-                          divided={stacked}
                           plain={stacked}
                         />
                       )}

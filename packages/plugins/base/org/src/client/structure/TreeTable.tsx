@@ -78,9 +78,9 @@ const styles = stylex.create({
     },
     alignItems: 'center',
     columnGap: { default: 16, [breakpoints.phone]: 10 },
-    // a thumb covers more glass than a pointer does, and a row it has to
-    // hit between two others is a row it will sometimes miss
-    minHeight: { default: 40, [breakpoints.phone]: 52 },
+    // A tree's row is one line and a name: it needs a thumb's width, not a
+    // thumb's height twice over.
+    minHeight: { default: 40, [breakpoints.phone]: 44 },
     paddingInline: 16,
     borderBottomWidth: { default: 1, ':last-child': 0 },
     borderBottomStyle: 'solid',
