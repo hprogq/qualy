@@ -69,6 +69,7 @@ export function StageSheet({
   fresh,
   options,
   panelable,
+  panelLast,
   place,
   removable,
   onApply,
@@ -90,6 +91,15 @@ export function StageSheet({
    * escalation route's last step must speak with one final voice.
    */
   panelable: boolean
+  /**
+   * The last step of the escalation route, where a panel is refused.
+   *
+   * Shown rather than hidden: a control that is simply absent reads as a
+   * feature the product does not have, and the rule behind it - the final
+   * voice cannot split, because a split has nowhere left to go (§32.66) -
+   * is worth one sentence where somebody is looking for it.
+   */
+  panelLast?: boolean
   /** where the step stands in its chain, for a step that is in one */
   place?: { index: number; total: number } | undefined
   /** whether the chain may lose this step: the ordinary route keeps one */
@@ -346,17 +356,22 @@ export function StageSheet({
         </Field>
       )}
 
-      {panelable && (
+      {(panelable || panelLast === true) && (
         <Field
           label={format(m.itemsStageParticipation)}
           hint={format(
-            local.participation === 'all' ? m.itemsStageEveryoneHint : m.itemsStageAnyoneHint,
+            panelLast === true
+              ? m.itemsStageEveryoneLast
+              : local.participation === 'all'
+                ? m.itemsStageEveryoneHint
+                : m.itemsStageAnyoneHint,
           )}
         >
           {(id) => (
             <Choice
               id={id}
-              value={local.participation}
+              value={panelLast === true ? 'any' : local.participation}
+              disabled={panelLast === true}
               options={[
                 { value: 'any', label: format(m.itemsStageAnyone) },
                 { value: 'all', label: format(m.itemsStageEveryone) },

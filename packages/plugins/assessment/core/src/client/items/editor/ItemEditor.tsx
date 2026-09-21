@@ -1559,6 +1559,9 @@ export function ItemEditor({
               fresh={composing !== undefined}
               options={options}
               panelable={stage.chain === 'escalation' && at >= 0 && at < chain.length - 1}
+              // an escalation step that could hold a panel if it were not the
+              // last one: the control appears, and says why it cannot be used
+              panelLast={stage.chain === 'escalation' && at >= 0 && at === chain.length - 1}
               place={at < 0 ? undefined : { index: at, total: chain.length }}
               removable={stage.chain === 'escalation' || chain.length > 1}
               onApply={(next) => {

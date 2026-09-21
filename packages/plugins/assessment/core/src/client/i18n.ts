@@ -2544,6 +2544,11 @@ const i18n = definePluginMessages({
       id: 'assessment/items/stage-everyone',
       defaultMessage: 'Everyone together',
     },
+    itemsStageEveryoneLast: {
+      id: 'assessment/items/stage-everyone-last',
+      defaultMessage:
+        'The last review step speaks with one voice: a split there has nowhere left to go. Add a step after this one to make this a panel.',
+    },
     itemsStageEveryoneHint: {
       id: 'assessment/items/stage-everyone-hint',
       defaultMessage:

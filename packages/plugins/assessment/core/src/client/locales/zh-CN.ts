@@ -640,6 +640,7 @@ export default {
   'assessment/items/stage-anyone': '任一审核人处理',
   'assessment/items/stage-anyone-hint': '一人处理即代表该步骤作出判断',
   'assessment/items/stage-everyone': '全员共同审核',
+  'assessment/items/stage-everyone-last': '复核的最后一个环节须给出最终结论，无法合议；在其后再加一个环节，本环节即可设为合议',
   'assessment/items/stage-everyone-hint':
     '该环节全部审核人各自表态：一致同意即通过，否则转交下一复核环节。',
   'assessment/items/stage-role-at': '按指定组织层级',
