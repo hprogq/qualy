@@ -544,6 +544,7 @@ export default function UsersPage() {
           title={format(m.unitsTitle)}
           closeLabel={format(commonMessages.close)}
           testId="unit-sheet"
+          fill
         >
           <UnitTree
             bare

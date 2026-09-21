@@ -43,6 +43,10 @@ const styles = stylex.create({
     padding: 0,
     backgroundColor: tokens.background,
   },
+  // A height rather than a ceiling, for a sheet whose content is a list the
+  // reader filters: as they type, the list shortens, and a panel that took
+  // its height from what it held collapsed under the hand still typing.
+  belowFilled: { height: '88dvh' },
   head: {
     display: 'flex',
     flexShrink: 0,
@@ -108,6 +112,7 @@ export function DetailSheet({
   actions,
   footer,
   width = 'regular',
+  fill = false,
   closeLabel,
   testId,
   children,
@@ -126,6 +131,8 @@ export function DetailSheet({
   actions?: ReactNode
   footer?: ReactNode
   width?: 'regular' | 'narrow' | 'wide'
+  /** the panel keeps its height whatever it holds: for a list being filtered */
+  fill?: boolean
   closeLabel: string
   testId?: string
   children: ReactNode
@@ -138,7 +145,7 @@ export function DetailSheet({
         showCloseButton={false}
         xstyle={
           phone
-            ? styles.below
+            ? [styles.below, fill && styles.belowFilled]
             : [
                 styles.beside,
                 width === 'narrow' && styles.besideNarrow,

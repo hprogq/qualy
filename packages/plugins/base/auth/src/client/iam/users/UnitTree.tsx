@@ -29,7 +29,14 @@ import { iamMessages as m } from '../../i18n.ts'
 
 const styles = stylex.create({
   bare: { display: 'flex', minHeight: 0, flexDirection: 'column', flexGrow: 1 },
-  toolsBare: { paddingInline: 0, paddingTop: 0 },
+  // in a sheet the search and the menu share one line: a control on a row of
+  // its own reads as a second band, and the sheet's height is the list's
+  toolsBare: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingInline: 0,
+    paddingTop: 0,
+  },
   tools: {
     display: 'flex',
     flexShrink: 0,
@@ -42,7 +49,7 @@ const styles = stylex.create({
     borderBottomStyle: 'solid',
     borderBottomColor: tokens.divider,
   },
-  searchBox: { width: '100%' },
+  searchBox: { minWidth: 0, width: '100%', flexGrow: 1, flexShrink: 1 },
   card: { minHeight: 0, flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
   // fills whatever the card is given on a wide window; stacked above the
   // roster on a narrow one, it keeps to part of the screen
@@ -55,6 +62,9 @@ const styles = stylex.create({
     overflowY: 'auto',
     padding: 6,
   },
+  // in a sheet the panel already says how tall it is; a ceiling of its own
+  // would leave a band of nothing under a short tree
+  scrollBare: { maxHeight: 'none', paddingInline: 0 },
 })
 
 export interface UnitNode {
@@ -196,7 +206,7 @@ export function UnitTree({
     </div>
   )
   const list = (
-    <div {...stylex.props(styles.scroll)}>
+    <div {...stylex.props(styles.scroll, bare && styles.scrollBare)}>
       {matches !== null ? (
         matches.length === 0 ? (
           <CardEmpty>{format(m.treeSearchEmpty)}</CardEmpty>

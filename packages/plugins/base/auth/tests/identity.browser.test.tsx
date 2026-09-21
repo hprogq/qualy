@@ -724,6 +724,35 @@ describe('users workspace', () => {
     )
   })
 
+  it('keeps the unit sheet its own height while it is filtered, with its menu beside the search', async () => {
+    // On a phone the tree is a sheet the reader filters. Two things go wrong
+    // if the panel takes its height from what it holds: it collapses under
+    // the hand that is still typing, and the control beside the search is
+    // pushed on to a row of its own, which reads as a second band.
+    await page.viewport(390, 844)
+    renderScreen({
+      client: fakeClient(rosterStubs()),
+      route: '/admin/users',
+      children: <UsersPage />,
+    })
+
+    await page.getByTestId('unit-switch').click()
+    const sheet = page.getByTestId('unit-sheet')
+    await expect.element(sheet).toBeVisible()
+    await expect.element(sheet.getByRole('button', { name: '组织栏选项' })).toBeVisible()
+    const search = await sheet.getByRole('searchbox', { name: '搜索组织' }).element()
+    const menu = await sheet.getByRole('button', { name: '组织栏选项' }).element()
+    expect(
+      Math.abs(search.getBoundingClientRect().top - menu.getBoundingClientRect().top),
+    ).toBeLessThan(8)
+
+    const tall = (await sheet.element()).getBoundingClientRect().height
+    await userEvent.fill(sheet.getByRole('searchbox', { name: '搜索组织' }), '没有这个组织')
+    await expect.element(sheet.getByText('未找到匹配的组织', { exact: false })).toBeVisible()
+    expect((await sheet.element()).getBoundingClientRect().height).toBeCloseTo(tall, 0)
+    await page.viewport(1280, 800)
+  })
+
   it('walks the roster by page number, and lists the removed only when asked', async () => {
     const list = vi.fn(() =>
       Effect.succeed({
