@@ -77,7 +77,13 @@ const PAGE_SIZE = 50
 
 const styles = stylex.create({
   emptyNote: { margin: 0, fontSize: 14, color: tokens.mutedForeground },
-  searchBox: { width: { default: '13rem', [breakpoints.phone]: '100%' } },
+  // never squeezed to a square: the band it sits in holds a name, a count
+  // and a filter or two, and a field that gave way to them stopped being a
+  // field anybody could read what they had typed in
+  searchBox: {
+    width: { default: '13rem', [breakpoints.phone]: '100%' },
+    flexShrink: { default: 0, [breakpoints.phone]: 1 },
+  },
   typeFilter: { width: '8.5rem', flexShrink: 0 },
   away: { width: 14, height: 14, flexShrink: 0, color: tokens.mutedForeground },
   removed: {
@@ -145,14 +151,20 @@ export default function UsersPage() {
   const navigate = usePageNavigate()
   const write = usePageQueryUpdate()
   const structureHref = usePageHref('org/page')
-  // On a phone the tree would push the roster a screen down, so it folds to
-  // one line saying which unit is on show, and opens from the bottom to change it.
   // Below the width where the tree and the roster sit side by side, the
   // tree is not a column - it is a line saying which unit the roster is of,
-  // and a sheet to change it. At 900px the two-column split gave the tree a
-  // third of the screen to draw three rows in.
-  const phone = useIsBelow(1024)
-  /** where a row becomes a name with its facts under it */
+  // and a sheet to change it.
+  //
+  // The width is the ROSTER's, not the tree's. Measured from what the roster
+  // holds: a name, a number, a unit path, a standing and a count, plus the
+  // page's own gutters, want about a thousand pixels; the tree wants nearly
+  // three hundred more. Between those two figures the split handed the tree
+  // its column and squeezed everything else - "including everyone below,
+  // 1004 people" set one character to a line, the standing column narrower
+  // than its own word, and the mark at the end of each row pushed off the
+  // table altogether.
+  const phone = useIsBelow(1280)
+  /** where a row becomes a name with its facts under it, as the table itself folds */
   const stacked = useIsBelow(768)
   const [pickingUnit, setPickingUnit] = useState(false)
   const [draft, setDraft] = useState(search)

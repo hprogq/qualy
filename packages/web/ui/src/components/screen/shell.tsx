@@ -1,4 +1,4 @@
-import type { ComponentType, ReactNode } from 'react'
+import { createContext, useContext, type ComponentType, type ReactNode } from 'react'
 import { ArrowLeftIcon, EllipsisIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
 import type { StyleXStyles } from '@stylexjs/stylex'
@@ -11,6 +11,7 @@ import { Button } from '../button.tsx'
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuTrigger,
 } from '../dropdown-menu.tsx'
 
@@ -271,10 +272,57 @@ export function BandActions({
                 <EllipsisIcon aria-hidden />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">{rest}</DropdownMenuContent>
+            {/* the same actions, told they are in a menu: a row of buttons
+                poured into a panel reads as a toolbar that fell over, and
+                the shell cannot rewrite what a plugin contributed */}
+            <DropdownMenuContent align="end">
+              <Folded.Provider value>{rest}</Folded.Provider>
+            </DropdownMenuContent>
           </DropdownMenu>
         </span>
       )}
     </>
+  )
+}
+
+/** whether what is being drawn is inside the band's folded menu */
+const Folded = createContext(false)
+
+/**
+ * One action of a band: a button where the band has room for it, a row of
+ * the menu where it does not.
+ *
+ * Which of the two it is is not the caller's to know - the band folds at a
+ * width, and a contribution from another plugin cannot be told about it any
+ * other way. So the action says what it is and what it does, and takes its
+ * shape from where it finds itself.
+ */
+export function BandAction({
+  icon,
+  onSelect,
+  variant = 'ghost',
+  testId,
+  children,
+}: {
+  icon?: ReactNode
+  onSelect: () => void
+  /** how it is drawn where the band has room; ignored in the menu */
+  variant?: 'ghost' | 'outline'
+  testId?: string
+  children: ReactNode
+}) {
+  if (useContext(Folded)) {
+    return (
+      <DropdownMenuItem data-testid={testId} onSelect={onSelect}>
+        {icon}
+        {children}
+      </DropdownMenuItem>
+    )
+  }
+  return (
+    <Button size="sm" variant={variant} data-testid={testId} onClick={onSelect}>
+      {icon}
+      {children}
+    </Button>
   )
 }

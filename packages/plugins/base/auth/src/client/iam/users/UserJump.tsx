@@ -6,6 +6,7 @@ import { useApiQuery, usePageNavigate } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { FormDialog } from '@qualy/ui/admin'
+import { BandAction } from '@qualy/ui/screen'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { Skeleton } from '@qualy/ui/skeleton'
@@ -139,15 +140,13 @@ export function UserJump({
 
   return (
     <>
-      <Button
-        size="sm"
-        variant="ghost"
-        data-testid="user-jump-open"
-        onClick={() => setOpen(true)}
+      <BandAction
+        testId="user-jump-open"
+        icon={<SearchIcon aria-hidden />}
+        onSelect={() => setOpen(true)}
       >
-        <SearchIcon aria-hidden />
         {format(m.jumpOpen)}
-      </Button>
+      </BandAction>
       <FormDialog
         open={open}
         size="medium"

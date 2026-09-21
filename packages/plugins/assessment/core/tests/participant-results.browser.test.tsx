@@ -322,3 +322,4 @@ describe('the participant results screen', () => {
     await expect.element(page.getByTestId('result-unavailable')).toBeVisible()
   })
 })
+

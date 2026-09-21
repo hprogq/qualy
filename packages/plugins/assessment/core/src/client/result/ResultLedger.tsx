@@ -108,13 +108,52 @@ const inTreeOrder = <Group extends { groupId: string; parentGroupId: string | nu
 }
 
 const styles = stylex.create({
-  // the ledger's four columns: what it is, and three figures that line up
+  // The ledger's four columns: what it is, and three figures that line up.
+  //
+  // A phone has room for two of them. Twenty-one rem of figures and their
+  // gaps is more than the whole screen, so the name's column was squeezed to
+  // nothing - the heading set one character to a line, the groups lost their
+  // names, and the last figure ran off the side. So there the row is what it
+  // is and what it came to, with the two figures it is made of on a quiet
+  // line under them.
   cols: {
     display: 'grid',
-    gridTemplateColumns: 'minmax(0, 1fr) 7rem 7rem 7rem',
+    gridTemplateColumns: {
+      default: 'minmax(0, 1fr) 7rem 7rem 7rem',
+      [breakpoints.phone]: 'minmax(0, 1fr) auto',
+    },
     alignItems: 'center',
-    gap: 16,
-    paddingInline: 16,
+    columnGap: { default: 16, [breakpoints.phone]: 10 },
+    rowGap: { default: 16, [breakpoints.phone]: 1 },
+    paddingInline: { default: 16, [breakpoints.phone]: 12 },
+  },
+  /** the first cell of a row, on the first line whatever the width */
+  atStart: {
+    gridColumn: { default: null, [breakpoints.phone]: 1 },
+    gridRow: { default: null, [breakpoints.phone]: 1 },
+  },
+  /** what the row came to, beside the name rather than three columns away */
+  atEnd: {
+    gridColumn: { default: null, [breakpoints.phone]: 2 },
+    gridRow: { default: null, [breakpoints.phone]: 1 },
+  },
+  /** the two figures the total is made of, as one quiet line under it */
+  mid: {
+    display: { default: 'contents', [breakpoints.phone]: 'flex' },
+    gridColumn: { default: null, [breakpoints.phone]: '1 / -1' },
+    gridRow: { default: null, [breakpoints.phone]: 2 },
+    alignItems: 'baseline',
+    columnGap: 10,
+    fontSize: { default: null, [breakpoints.phone]: 12 },
+    lineHeight: { default: null, [breakpoints.phone]: '1rem' },
+    color: { default: null, [breakpoints.phone]: tokens.mutedForeground },
+  },
+  /** the same two cells where they hold nothing: no line of their own */
+  midBlank: { display: { default: 'contents', [breakpoints.phone]: 'none' } },
+  /** which figure this is, said only where the column heading cannot */
+  midWord: {
+    display: { default: 'none', [breakpoints.phone]: 'inline' },
+    marginInlineEnd: 4,
   },
   standing: {
     display: 'flex',
@@ -268,9 +307,10 @@ const styles = stylex.create({
     fontWeight: 500,
     color: tokens.mutedForeground,
   },
-  figure: { textAlign: 'right' },
+  figure: { textAlign: { default: 'right', [breakpoints.phone]: 'start' } },
   ledgerFoot: {
     height: 44,
+    minHeight: 44,
     backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
   },
   footLabel: { fontSize: 14, lineHeight: '1.25rem', fontWeight: 600 },
@@ -318,7 +358,7 @@ const styles = stylex.create({
     fontVariantNumeric: 'tabular-nums',
   },
   groupFigure: {
-    textAlign: 'right',
+    textAlign: { default: 'right', [breakpoints.phone]: 'start' },
     fontSize: 14,
     lineHeight: '1.25rem',
     color: tokens.mutedForeground,
@@ -331,7 +371,7 @@ const styles = stylex.create({
     fontWeight: 600,
     fontVariantNumeric: 'tabular-nums',
   },
-  line: { height: 38 },
+  line: { height: { default: 38, [breakpoints.phone]: 'auto' }, minHeight: 38 },
   // a line that leads somewhere says so on approach rather than by looking
   // like a link: the ledger is a table of figures, and an underline in a
   // column of numbers reads as a rule
@@ -581,10 +621,16 @@ export function ResultLedger({
       ) : (
         <div {...stylex.props(styles.ledger)}>
           <div {...stylex.props(styles.cols, styles.ledgerHead)}>
-            <span>{format(m.resultTableHead)}</span>
-            <span {...stylex.props(styles.figure)}>{format(m.resultGroupItems)}</span>
-            <span {...stylex.props(styles.figure)}>{format(m.resultGroupChildren)}</span>
-            <span {...stylex.props(styles.figure)}>{format(m.resultGroupFinal)}</span>
+            <span {...stylex.props(styles.atStart)}>{format(m.resultTableHead)}</span>
+            {/* stacked, each row says which figure is which itself, so these
+                two headings have nothing left to head */}
+            <span {...stylex.props(styles.midBlank)}>
+              <span {...stylex.props(styles.figure)}>{format(m.resultGroupItems)}</span>
+              <span {...stylex.props(styles.figure)}>{format(m.resultGroupChildren)}</span>
+            </span>
+            <span {...stylex.props(styles.figure, styles.atEnd)}>
+              {format(m.resultGroupFinal)}
+            </span>
           </div>
           {groups.map((group) => {
             const lines = result.lines.filter(
@@ -612,10 +658,14 @@ export function ResultLedger({
             )
           })}
           <div {...stylex.props(styles.cols, styles.ledgerFoot)}>
-            <span {...stylex.props(styles.footLabel)}>{format(m.resultTotal)}</span>
-            <span />
-            <span />
-            <span {...stylex.props(styles.footValue)}>{two(result.total)}</span>
+            <span {...stylex.props(styles.footLabel, styles.atStart)}>
+              {format(m.resultTotal)}
+            </span>
+            <span {...stylex.props(styles.midBlank)}>
+              <span />
+              <span />
+            </span>
+            <span {...stylex.props(styles.footValue, styles.atEnd)}>{two(result.total)}</span>
           </div>
         </div>
       )}
@@ -666,7 +716,7 @@ function GroupRows({
           group.depth === 0 ? styles.groupRowTop : styles.groupRowNested,
         )}
       >
-        <span {...stylex.props(styles.rowName)} style={pad}>
+        <span {...stylex.props(styles.rowName, styles.atStart)} style={pad}>
           <span {...stylex.props(styles.groupName)}>{group.name}</span>
           <Badge variant="outline" className={stylex.props(styles.capChip).className}>
             {group.cap === null
@@ -674,11 +724,17 @@ function GroupRows({
               : format(m.resultCapChip, { value: two(group.cap) })}
           </Badge>
         </span>
-        <span {...stylex.props(styles.groupFigure)}>{two(group.itemsTotal)}</span>
-        <span {...stylex.props(styles.groupFigure)}>
-          {hasChildren ? two(group.childrenTotal) : '–'}
+        <span {...stylex.props(styles.mid)}>
+          <span {...stylex.props(styles.groupFigure)}>
+            <span {...stylex.props(styles.midWord)}>{format(m.resultItemsShort)}</span>
+            {two(group.itemsTotal)}
+          </span>
+          <span {...stylex.props(styles.groupFigure)}>
+            <span {...stylex.props(styles.midWord)}>{format(m.resultChildrenShort)}</span>
+            {hasChildren ? two(group.childrenTotal) : '–'}
+          </span>
         </span>
-        <span {...stylex.props(styles.groupTotal)}>{two(group.final)}</span>
+        <span {...stylex.props(styles.groupTotal, styles.atEnd)}>{two(group.final)}</span>
       </div>
       {lines.map((line) => {
         const spent = line.kind !== 'entry' && line.kind !== 'derived'
@@ -716,15 +772,17 @@ function GroupRows({
                 }
               : {})}
           >
-            <span {...stylex.props(styles.rowName)} style={linePad}>
+            <span {...stylex.props(styles.rowName, styles.atStart)} style={linePad}>
               <span aria-hidden {...stylex.props(styles.lineRule)} />
               <span {...stylex.props(styles.lineLabel, spent && styles.spent)}>{line.label}</span>
               {note !== null && <span {...stylex.props(styles.lineNote)}>{format(note)}</span>}
               {followable && <ChevronRightIcon aria-hidden {...stylex.props(styles.followMark)} />}
             </span>
-            <span />
-            <span />
-            <span {...stylex.props(styles.lineValue, spent && styles.spent)}>
+            <span {...stylex.props(styles.midBlank)}>
+              <span />
+              <span />
+            </span>
+            <span {...stylex.props(styles.lineValue, spent && styles.spent, styles.atEnd)}>
               {two(line.value)}
             </span>
           </div>
@@ -732,7 +790,7 @@ function GroupRows({
       })}
       {silent.map((item) => (
         <div key={item.id} {...stylex.props(styles.cols, styles.line)}>
-          <span {...stylex.props(styles.rowName)} style={linePad}>
+          <span {...stylex.props(styles.rowName, styles.atStart)} style={linePad}>
             <span aria-hidden {...stylex.props(styles.lineRule)} />
             <span
               {...stylex.props(
@@ -754,14 +812,16 @@ function GroupRows({
               )}
             </span>
           </span>
-          <span />
-          <span />
-          <span {...stylex.props(styles.lineValue, styles.spent)}>{two(0)}</span>
+          <span {...stylex.props(styles.midBlank)}>
+            <span />
+            <span />
+          </span>
+          <span {...stylex.props(styles.lineValue, styles.spent, styles.atEnd)}>{two(0)}</span>
         </div>
       ))}
       {(capped || floored) && (
         <div data-testid="group-adjustment" {...stylex.props(styles.cols, styles.line)}>
-          <span {...stylex.props(styles.rowName)} style={linePad}>
+          <span {...stylex.props(styles.rowName, styles.atStart)} style={linePad}>
             <span aria-hidden {...stylex.props(styles.lineRule)} />
             <span {...stylex.props(styles.adjustment)}>
               {format(m.resultLineAdjustment)}　
@@ -770,9 +830,11 @@ function GroupRows({
                 : format(m.resultGroupFloored, { raw: two(group.raw), floor: two(group.floor!) })}
             </span>
           </span>
-          <span />
-          <span />
-          <span {...stylex.props(styles.lineValue, styles.spent)}>
+          <span {...stylex.props(styles.midBlank)}>
+            <span />
+            <span />
+          </span>
+          <span {...stylex.props(styles.lineValue, styles.spent, styles.atEnd)}>
             {capped ? `-${two(raw - final)}` : `+${two(final - raw)}`}
           </span>
         </div>

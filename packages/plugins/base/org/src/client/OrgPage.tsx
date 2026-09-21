@@ -14,6 +14,7 @@ import * as stylex from '@stylexjs/stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { AsyncSection, Feedback } from '@qualy/ui/admin'
 import {
+  BandAction,
   BandActions,
   DetailSheet,
   EditorSkeleton,
@@ -159,10 +160,13 @@ export default function OrgPage() {
                 // where things go when they are deleted is not an act
                 // somebody came to this page to perform, and a lone
                 // dustbin standing in a heading looks like one
-                <Button variant="ghost" data-testid="org-bin-open" onClick={() => setBinOpen(true)}>
-                  <Trash2Icon aria-hidden />
+                <BandAction
+                  testId="org-bin-open"
+                  icon={<Trash2Icon aria-hidden />}
+                  onSelect={() => setBinOpen(true)}
+                >
                   {format(m.binTitle)}
-                </Button>
+                </BandAction>
               )
             }
           />

@@ -1492,6 +1492,9 @@ const i18n = definePluginMessages({
     },
     resultRecalculate: { id: 'assessment/result/recalculate', defaultMessage: 'Recalculate' },
     resultGroupItems: { id: 'assessment/result/group-items', defaultMessage: 'Item subtotal' },
+    /** the same two figures where they share one line and carry their own names */
+    resultItemsShort: { id: 'assessment/result/items-short', defaultMessage: 'Items' },
+    resultChildrenShort: { id: 'assessment/result/children-short', defaultMessage: 'Subgroups' },
     resultGroupChildren: {
       id: 'assessment/result/group-children',
       defaultMessage: 'Subgroup subtotal',

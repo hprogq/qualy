@@ -3,7 +3,7 @@ import * as stylex from '@stylexjs/stylex'
 import { HistoryIcon, UploadIcon } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
 import { FormDialog } from '@qualy/ui/admin'
-import { Button } from '@qualy/ui/button'
+import { BandAction } from '@qualy/ui/screen'
 import { useLingering } from '@qualy/ui/use-lingering'
 import type { UsersPageActionsContext } from '@qualy/ui-contract'
 import { directoryImportMessages as m } from './i18n.ts'
@@ -34,26 +34,23 @@ export default function ImportUsersAction({ context }: { context: UsersPageActio
 
   return (
     <span {...stylex.props(styles.actions)}>
-      <Button
-        size="sm"
-        variant="ghost"
-        onClick={() => setListing(true)}
-        data-testid="import-records-open"
+      <BandAction
+        testId="import-records-open"
+        icon={<HistoryIcon aria-hidden />}
+        onSelect={() => setListing(true)}
       >
-        <HistoryIcon aria-hidden />
         {format(m.recordsTitle)}
-      </Button>
-      <Button
-        size="sm"
+      </BandAction>
+      <BandAction
         variant="outline"
-        onClick={() => {
+        icon={<UploadIcon aria-hidden />}
+        onSelect={() => {
           setRound((now) => now + 1)
           setImporting(true)
         }}
       >
-        <UploadIcon aria-hidden />
         {format(m.action)}
-      </Button>
+      </BandAction>
 
       <FormDialog
         open={importing}

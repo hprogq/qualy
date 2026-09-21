@@ -304,6 +304,8 @@ export default {
   'assessment/result/go-entries': '查看我的申报',
   'assessment/result/empty-counts': '审核中 {pending} 条，草稿 {drafts} 条',
   'assessment/result/group-items': '项目分值相加',
+  'assessment/result/items-short': '项目',
+  'assessment/result/children-short': '子分组',
   'assessment/result/group-children': '子分组分值相加',
   'assessment/result/group-final': '实际计入',
   'assessment/result/group-capped': '合计 {raw}，按分组上限 {cap} 计入',
