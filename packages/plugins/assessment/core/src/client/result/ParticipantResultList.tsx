@@ -80,7 +80,32 @@ const styles = stylex.create({
   // one person per ruled line: a card per row would make finding somebody a
   // matter of scrolling past twenty-five boxes
   pagerRow: { display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 },
-  listSkeleton: { height: 320, width: '100%', borderRadius: 12 },
+  // the table's own shape, greyed: a head and rows of the widths a roster
+  // actually has. One slab says only "something is coming".
+  skFrame: {
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+  },
+  skRow: {
+    display: 'grid',
+    alignItems: 'center',
+    gap: 12,
+    gridTemplateColumns: '8.5rem minmax(0, 1fr) 6rem 2rem',
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
+    paddingInline: 14,
+    paddingBlock: 12,
+    ':last-child': { borderBottomWidth: 0 },
+  },
+  skHead: { backgroundColor: tokens.surfaceInset },
+  skBone: { height: 13, borderRadius: 4 },
+  skChip: { height: 20, width: '4rem', borderRadius: 9999 },
 })
 
 export function ParticipantResultList({
@@ -294,7 +319,18 @@ export function ParticipantResultList({
             loadingLabel={format(commonMessages.loading)}
             retryLabel={format(commonMessages.retry)}
             onRetry={() => void participants.refetch()}
-            skeleton={<Skeleton className={stylex.props(styles.listSkeleton).className} />}
+            skeleton={
+              <div {...stylex.props(styles.skFrame)}>
+                {['60%', '45%', '70%', '52%', '64%', '48%'].map((width, index) => (
+                  <div key={index} {...stylex.props(styles.skRow, index === 0 && styles.skHead)}>
+                    <Skeleton className={stylex.props(styles.skBone).className} width="70%" />
+                    <Skeleton className={stylex.props(styles.skBone).className} width={width} />
+                    <Skeleton className={stylex.props(styles.skChip).className} />
+                    <span />
+                  </div>
+                ))}
+              </div>
+            }
           >
             <Card>
               <Table columns="8.5rem minmax(0, 1fr) 6rem 2rem">

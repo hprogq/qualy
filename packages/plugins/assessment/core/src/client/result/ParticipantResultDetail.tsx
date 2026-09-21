@@ -73,7 +73,29 @@ const styles = stylex.create({
   // words arrive
   nameBone: { height: 22, width: 128 },
   numberBone: { height: 14, width: 88 },
-  waiting: { height: 220, width: '100%' },
+  // the account's own shape: the total band with its bar, then a line per
+  // score group - which is what lands a moment later
+  skBand: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 20,
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    paddingInline: 20,
+    paddingBlock: 18,
+  },
+  skTotal: { display: 'flex', flexShrink: 0, flexDirection: 'column', gap: 8 },
+  skBars: { display: 'flex', minWidth: 0, flexGrow: 1, flexDirection: 'column', gap: 10 },
+  skGroups: { display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 16 },
+  skGroupRow: {
+    display: 'grid',
+    alignItems: 'center',
+    gap: 12,
+    gridTemplateColumns: 'minmax(0, 1fr) 4rem',
+  },
+  skBone: { height: 13, borderRadius: 4 },
   unavailable: {
     display: 'flex',
     flexDirection: 'column',
@@ -318,7 +340,28 @@ export function ParticipantResultDetail({
               void items.refetch()
               void entries.refetch()
             }}
-            skeleton={<Skeleton className={stylex.props(styles.waiting).className} />}
+            skeleton={
+              <div>
+                <div {...stylex.props(styles.skBand)}>
+                  <span {...stylex.props(styles.skTotal)}>
+                    <Skeleton className={stylex.props(styles.skBone).className} width={64} />
+                    <Skeleton height={34} width={96} radius={6} />
+                  </span>
+                  <span {...stylex.props(styles.skBars)}>
+                    <Skeleton height={12} radius={9999} />
+                    <Skeleton className={stylex.props(styles.skBone).className} width="60%" />
+                  </span>
+                </div>
+                <div {...stylex.props(styles.skGroups)}>
+                  {['52%', '38%', '61%', '44%'].map((width, index) => (
+                    <div key={index} {...stylex.props(styles.skGroupRow)}>
+                      <Skeleton className={stylex.props(styles.skBone).className} width={width} />
+                      <Skeleton className={stylex.props(styles.skBone).className} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            }
           >
             {result.data !== undefined && (
               <ResultLedger

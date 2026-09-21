@@ -51,7 +51,11 @@ const styles = stylex.create({
     display: 'grid',
     minHeight: 0,
     gap: 16,
-    height: { default: null, [breakpoints.tablet]: 'min(62vh, 30rem)', [breakpoints.desktop]: 'min(62vh, 30rem)' },
+    height: {
+      default: null,
+      [breakpoints.tablet]: 'min(62vh, 30rem)',
+      [breakpoints.desktop]: 'min(62vh, 30rem)',
+    },
     gridTemplateColumns: {
       default: null,
       [breakpoints.tablet]: 'minmax(0, 15rem) minmax(0, 1fr)',
@@ -87,7 +91,27 @@ const styles = stylex.create({
     flexBasis: '0%',
     flexDirection: 'column',
   },
-  waiting: { minHeight: '10rem', width: '100%', flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+  // the rows it becomes, not a rectangle the size of them: a person is a
+  // box, a name and a number, and that is what a reader is waiting for
+  waiting: {
+    display: 'flex',
+    minHeight: '10rem',
+    width: '100%',
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+    gap: 2,
+  },
+  waitingRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    paddingInline: 10,
+    paddingBlock: 9,
+  },
+  waitingBox: { height: 16, width: 16, borderRadius: 4, flexShrink: 0 },
+  waitingBone: { height: 13, borderRadius: 4 },
   nobody: {
     display: 'flex',
     minHeight: '10rem',
@@ -214,7 +238,16 @@ export default function PeoplePickerView({ context }: { context: PeoplePickerVie
           loadingLabel={format(commonMessages.loading)}
           retryLabel={format(commonMessages.retry)}
           onRetry={context.onRetry}
-          skeleton={<Skeleton className={stylex.props(styles.waiting).className} />}
+          skeleton={
+            <div {...stylex.props(styles.waiting)}>
+              {['46%', '62%', '38%', '55%', '43%', '59%'].map((width, index) => (
+                <div key={index} {...stylex.props(styles.waitingRow)}>
+                  <Skeleton className={stylex.props(styles.waitingBox).className} />
+                  <Skeleton className={stylex.props(styles.waitingBone).className} width={width} />
+                </div>
+              ))}
+            </div>
+          }
         >
           {context.rows.length === 0 ? (
             <p {...stylex.props(styles.nobody)}>{format(m.pickerNobody)}</p>

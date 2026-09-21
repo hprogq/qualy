@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { ChevronRightIcon } from 'lucide-react'
@@ -102,7 +102,17 @@ const styles = stylex.create({
     height: 16,
     color: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)`,
   },
-  waiting: { height: 200, width: '100%' },
+  // what an act's page is: a few facts in a list, then the people it
+  // reached - drawn as that rather than as a rectangle of its height
+  waiting: { display: 'flex', flexDirection: 'column', gap: 14 },
+  waitingFacts: {
+    display: 'grid',
+    gap: 10,
+    gridTemplateColumns: 'auto minmax(0, 1fr)',
+    alignItems: 'center',
+  },
+  waitingRows: { display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 6 },
+  waitingBone: { height: 13, borderRadius: 4 },
 })
 
 export function AdministrativeActDetail({
@@ -176,7 +186,27 @@ export function AdministrativeActDetail({
       loadingLabel={format(commonMessages.loading)}
       retryLabel={format(commonMessages.retry)}
       onRetry={() => void detail.refetch()}
-      skeleton={<Skeleton className={stylex.props(styles.waiting).className} />}
+      skeleton={
+        <div {...stylex.props(styles.waiting)}>
+          <div {...stylex.props(styles.waitingFacts)}>
+            {['52%', '38%', '61%', '44%'].map((width, index) => (
+              <Fragment key={index}>
+                <Skeleton className={stylex.props(styles.waitingBone).className} width={72} />
+                <Skeleton className={stylex.props(styles.waitingBone).className} width={width} />
+              </Fragment>
+            ))}
+          </div>
+          <div {...stylex.props(styles.waitingRows)}>
+            {['48%', '57%', '41%'].map((width, index) => (
+              <Skeleton
+                key={index}
+                className={stylex.props(styles.waitingBone).className}
+                width={width}
+              />
+            ))}
+          </div>
+        </div>
+      }
     >
       {found !== undefined && (
         <div {...stylex.props(styles.column)} data-testid="administrative-act-detail">

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronRightIcon, DownloadIcon } from 'lucide-react'
@@ -135,7 +135,16 @@ const styles = stylex.create({
     height: 16,
     color: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)`,
   },
-  waiting: { height: 220, width: '100%' },
+  // what an import's page is: a band of facts, then the lines it carried
+  waiting: { display: 'flex', flexDirection: 'column', gap: 14 },
+  waitingFacts: {
+    display: 'grid',
+    gap: 10,
+    gridTemplateColumns: 'auto minmax(0, 1fr)',
+    alignItems: 'center',
+  },
+  waitingRows: { display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 6 },
+  waitingBone: { height: 13, borderRadius: 4 },
   moreRow: { display: 'flex', justifyContent: 'center', paddingBlock: 8 },
 })
 
@@ -278,7 +287,27 @@ export function AdministrativeImportDetail({
       loadingLabel={format(commonMessages.loading)}
       retryLabel={format(commonMessages.retry)}
       onRetry={() => void detail.refetch()}
-      skeleton={<Skeleton className={stylex.props(styles.waiting).className} />}
+      skeleton={
+        <div {...stylex.props(styles.waiting)}>
+          <div {...stylex.props(styles.waitingFacts)}>
+            {['46%', '58%', '39%'].map((width, index) => (
+              <Fragment key={index}>
+                <Skeleton className={stylex.props(styles.waitingBone).className} width={72} />
+                <Skeleton className={stylex.props(styles.waitingBone).className} width={width} />
+              </Fragment>
+            ))}
+          </div>
+          <div {...stylex.props(styles.waitingRows)}>
+            {['62%', '48%', '55%', '40%'].map((width, index) => (
+              <Skeleton
+                key={index}
+                className={stylex.props(styles.waitingBone).className}
+                width={width}
+              />
+            ))}
+          </div>
+        </div>
+      }
     >
       {found !== undefined && (
         <div {...stylex.props(styles.column)} data-testid="administrative-import-detail">
@@ -400,7 +429,30 @@ export function AdministrativeImportDetail({
             loadingLabel={format(commonMessages.loading)}
             retryLabel={format(commonMessages.retry)}
             onRetry={() => void rows.refetch()}
-            skeleton={<Skeleton className={stylex.props(styles.waiting).className} />}
+            skeleton={
+              <div {...stylex.props(styles.waiting)}>
+                <div {...stylex.props(styles.waitingFacts)}>
+                  {['46%', '58%', '39%'].map((width, index) => (
+                    <Fragment key={index}>
+                      <Skeleton className={stylex.props(styles.waitingBone).className} width={72} />
+                      <Skeleton
+                        className={stylex.props(styles.waitingBone).className}
+                        width={width}
+                      />
+                    </Fragment>
+                  ))}
+                </div>
+                <div {...stylex.props(styles.waitingRows)}>
+                  {['62%', '48%', '55%', '40%'].map((width, index) => (
+                    <Skeleton
+                      key={index}
+                      className={stylex.props(styles.waitingBone).className}
+                      width={width}
+                    />
+                  ))}
+                </div>
+              </div>
+            }
           >
             <div {...stylex.props(styles.card)} role="table" data-testid="import-rows">
               <div role="row" {...stylex.props(styles.row, styles.headRow)}>

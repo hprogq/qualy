@@ -61,7 +61,41 @@ const styles = stylex.create({
     fontSize: 13,
     color: tokens.mutedForeground,
   },
-  waiting: { height: 260, width: '100%' },
+  // the grouped tables it becomes: a card head, a column head, and rows
+  skStack: { display: 'flex', flexDirection: 'column', gap: 14 },
+  skCard: {
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+  },
+  skCardHead: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    paddingInline: 16,
+    paddingBlock: 12,
+  },
+  skRow: {
+    display: 'grid',
+    alignItems: 'center',
+    gap: 12,
+    gridTemplateColumns: 'minmax(0, 1fr) 6rem 7.5rem 5rem',
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
+    paddingInline: 16,
+    paddingBlock: 11,
+    ':last-child': { borderBottomWidth: 0 },
+  },
+  skBone: { height: 13, borderRadius: 4 },
+  skChip: { height: 20, width: '4.5rem', borderRadius: 9999 },
   // the way on, as the card's last row rather than a control adrift under it
   moreRow: {
     display: 'flex',
@@ -194,7 +228,32 @@ export function ParticipantEntries({
           void entries.refetch()
           void items.refetch()
         }}
-        skeleton={<Skeleton className={stylex.props(styles.waiting).className} />}
+        skeleton={
+          <div {...stylex.props(styles.skStack)}>
+            {[
+              ['34%', ['58%', '42%', '66%']],
+              ['26%', ['48%', '61%']],
+            ].map(([head, rows], group) => (
+              <div key={group} {...stylex.props(styles.skCard)}>
+                <div {...stylex.props(styles.skCardHead)}>
+                  <Skeleton
+                    className={stylex.props(styles.skBone).className}
+                    width={head as string}
+                  />
+                  <Skeleton className={stylex.props(styles.skBone).className} width={48} />
+                </div>
+                {(rows as string[]).map((width, index) => (
+                  <div key={index} {...stylex.props(styles.skRow)}>
+                    <Skeleton className={stylex.props(styles.skBone).className} width={width} />
+                    <Skeleton className={stylex.props(styles.skBone).className} width="70%" />
+                    <Skeleton className={stylex.props(styles.skChip).className} />
+                    <Skeleton className={stylex.props(styles.skBone).className} width={32} />
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        }
       >
         {rows.length === 0 ? (
           <p {...stylex.props(styles.empty)}>{format(m.participantResultsEntriesEmpty)}</p>
