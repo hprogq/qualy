@@ -93,6 +93,8 @@ const styles = stylex.create({
   lock: { width: 12, height: 12, flexShrink: 0, color: tokens.mutedForeground },
   spacer: { flexGrow: 1, flexShrink: 1, flexBasis: '0%', minWidth: 4 },
   kind: { flexShrink: 0, whiteSpace: 'nowrap', fontSize: 11, color: QUIET },
+  /** what was typed, inside what was found */
+  hit: { fontWeight: 600, color: tokens.foreground },
   tally: {
     flexShrink: 0,
     minWidth: '2.25rem',
@@ -103,8 +105,30 @@ const styles = stylex.create({
   },
 })
 
+/** the typed letters wherever they occur in a name, and the rest as it was */
+function marked(name: string, term: string): ReactNode {
+  const parts: ReactNode[] = []
+  const lower = name.toLowerCase()
+  let at = 0
+  for (;;) {
+    const hit = lower.indexOf(term, at)
+    if (hit === -1) break
+    if (hit > at) parts.push(name.slice(at, hit))
+    parts.push(
+      <span key={hit} {...stylex.props(styles.hit)}>
+        {name.slice(hit, hit + term.length)}
+      </span>,
+    )
+    at = hit + term.length
+  }
+  if (parts.length === 0) return name
+  if (at < name.length) parts.push(name.slice(at))
+  return parts
+}
+
 export function TreeRow({
   name,
+  found,
   depth,
   open,
   kind,
@@ -117,6 +141,14 @@ export function TreeRow({
   onOpen,
 }: {
   name: string
+  /**
+   * The letters that were searched for, to be given weight inside the name.
+   *
+   * A search result is a name in a list of names that look alike, and the
+   * reader is looking for the part they typed. The name itself stays the
+   * name - it is what the row is addressed and titled by.
+   */
+  found?: string
   depth: number
   /** this is the unit on show */
   open: boolean
@@ -167,7 +199,9 @@ export function TreeRow({
         }}
         {...stylex.props(styles.name)}
       >
-        <span {...stylex.props(styles.word, open && styles.wordOpen)}>{name}</span>
+        <span {...stylex.props(styles.word, open && styles.wordOpen)}>
+          {found === undefined || found === '' ? name : marked(name, found)}
+        </span>
         {locked && <LockIcon aria-hidden {...stylex.props(styles.lock)} />}
         <span {...stylex.props(styles.spacer)} />
         {kind !== undefined && kind !== '' && <span {...stylex.props(styles.kind)}>{kind}</span>}

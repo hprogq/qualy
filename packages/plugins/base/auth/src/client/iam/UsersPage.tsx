@@ -79,6 +79,18 @@ const styles = stylex.create({
   // never squeezed to a square: the band it sits in holds a name, a count
   // and a filter or two, and a field that gave way to them stopped being a
   // field anybody could read what they had typed in
+  // A card is a sheet saying "this much is one thing". On a phone each of
+  // these IS the whole of its part of the page, so the sheet says nothing
+  // and costs a margin and a rule on each side of every row.
+  bare: {
+    borderRadius: { default: 14, [breakpoints.phone]: 0 },
+    backgroundColor: { default: tokens.surface, [breakpoints.phone]: 'transparent' },
+    boxShadow: {
+      default: `0 0 0 1px ${tokens.border}, 0 1px 2px rgb(0 0 0 / 0.04)`,
+      [breakpoints.phone]: 'none',
+    },
+    marginInline: { default: null, [breakpoints.phone]: -16 },
+  },
   go: {
     display: 'inline-flex',
     justifySelf: 'end',
@@ -122,18 +134,24 @@ const styles = stylex.create({
   },
   unitLinkIcon: { width: 13, height: 13, flexShrink: 0, color: tokens.mutedForeground },
   look: { display: 'flex', justifyContent: 'flex-end' },
+  // A line, not a sheet: it says which unit the roster below is of, and a
+  // card around one line on a phone is two margins and a rule spent on
+  // saying that one line is one line.
   unitSwitch: {
     display: 'flex',
     width: '100%',
     minHeight: 48,
     alignItems: 'center',
     gap: 10,
-    paddingInline: 14,
+    paddingInline: { default: 14, [breakpoints.phone]: 0 },
     paddingBlock: 8,
     borderWidth: 0,
-    borderRadius: 12,
-    backgroundColor: tokens.surface,
-    boxShadow: `0 0 0 1px ${tokens.border}, 0 1px 2px rgb(0 0 0 / 0.04)`,
+    borderRadius: { default: 12, [breakpoints.phone]: 0 },
+    backgroundColor: { default: tokens.surface, [breakpoints.phone]: 'transparent' },
+    boxShadow: {
+      default: `0 0 0 1px ${tokens.border}, 0 1px 2px rgb(0 0 0 / 0.04)`,
+      [breakpoints.phone]: 'none',
+    },
     fontFamily: 'inherit',
     textAlign: 'start',
     color: 'inherit',
@@ -365,7 +383,7 @@ export default function UsersPage() {
             )
           }
         >
-          <Card data-testid="roster">
+          <Card data-testid="roster" xstyle={styles.bare}>
             <CardHead
               title={
                 phone ? (

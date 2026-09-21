@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import {
   ChevronDownIcon,
@@ -51,6 +51,20 @@ const styles = stylex.create({
     gap: 6,
   },
   tools: { width: { default: '16rem', [breakpoints.phone]: '100%' } },
+  // A card is a sheet laid on the page to say "this much is one thing". On a
+  // phone the tree is the whole of the page, so the sheet says nothing and
+  // costs two margins and a rule on each side of every name.
+  bare: {
+    borderRadius: { default: 14, [breakpoints.phone]: 0 },
+    backgroundColor: { default: tokens.surface, [breakpoints.phone]: 'transparent' },
+    boxShadow: {
+      default: `0 0 0 1px ${tokens.border}, 0 1px 2px rgb(0 0 0 / 0.04)`,
+      [breakpoints.phone]: 'none',
+    },
+    marginInline: { default: null, [breakpoints.phone]: -16 },
+  },
+  // its own name, where the band above it has not already said it
+  cardWord: { display: { default: 'inline', [breakpoints.phone]: 'none' } },
   head: {
     display: { default: 'grid', [breakpoints.phone]: 'none' },
     gridTemplateColumns: COLUMNS,
@@ -117,6 +131,8 @@ const styles = stylex.create({
     fontSize: 13.5,
   },
   nameTop: { fontWeight: 600 },
+  /** the letters that were typed, inside the name they were found in */
+  hit: { fontWeight: 600, color: tokens.foreground },
   lock: { width: 12, height: 12, flexShrink: 0, color: tokens.mutedForeground },
   cell: {
     display: { default: 'block', [breakpoints.phone]: 'none' },
@@ -227,6 +243,27 @@ export function TreeTable({
   // CJK glyphs are square at their own size; digits are about six tenths
   const narrowColumns = `minmax(0, 1fr) ${String(kindGlyphs * 12 + 2)}px ${String(Math.ceil(countGlyphs * 7.6) + 2)}px`
 
+  // the typed letters wherever they occur in a name, and the rest as it was
+  const found = (name: string) => {
+    if (term === '') return name
+    const parts: ReactNode[] = []
+    let at = 0
+    for (;;) {
+      const hit = name.toLowerCase().indexOf(term, at)
+      if (hit === -1) break
+      if (hit > at) parts.push(name.slice(at, hit))
+      parts.push(
+        <span key={hit} {...stylex.props(styles.hit)}>
+          {name.slice(hit, hit + term.length)}
+        </span>,
+      )
+      at = hit + term.length
+    }
+    if (parts.length === 0) return name
+    if (at < name.length) parts.push(name.slice(at))
+    return parts
+  }
+
   const row = (node: OrgTreeNodeDto, depth: number, folding: boolean) => {
     const under = (shape.childrenOf.get(node.id) ?? []).length
     const folds = folding && under > 0
@@ -258,35 +295,46 @@ export function TreeTable({
             aria-hidden
             style={{ width: depth * (narrow ? INDENT_NARROW : INDENT), flexShrink: 0 }}
           />
-          {folds ? (
-            <button
-              type="button"
-              aria-expanded={!collapsed.has(node.id)}
-              aria-label={`${format(m.foldBranch)} ${node.name}`}
-              {...stylex.props(styles.twistie)}
-              onClick={(event) => {
-                const next = new Set(collapsed)
-                if (!next.delete(node.id)) next.add(node.id)
-                setCollapsed(next)
-                // A pressed button keeps the focus, and a row holding the
-                // focus keeps its actions on show - so every branch folded by
-                // mouse left its buttons standing for good. A press made with
-                // a pointer gives the focus back; one made from the keyboard
-                // keeps it, and that row's actions with it.
-                if (event.detail > 0) event.currentTarget.blur()
-              }}
-            >
-              {collapsed.has(node.id) ? (
-                <ChevronRightIcon aria-hidden {...stylex.props(styles.glyph)} />
-              ) : (
-                <ChevronDownIcon aria-hidden {...stylex.props(styles.glyph)} />
-              )}
-            </button>
-          ) : (
-            <span aria-hidden {...stylex.props(styles.twistieSeat)} />
-          )}
-          <span {...stylex.props(styles.name, depth === 0 && styles.nameTop)} title={node.name}>
-            {node.name}
+          {/* The seat under a fold control is there so names down a tree line
+              up. A search result is not in a tree - there is nothing above
+              or below it to line up with - so it starts where the row does. */}
+          {folding &&
+            (folds ? (
+              <button
+                type="button"
+                aria-expanded={!collapsed.has(node.id)}
+                aria-label={`${format(m.foldBranch)} ${node.name}`}
+                {...stylex.props(styles.twistie)}
+                onClick={(event) => {
+                  const next = new Set(collapsed)
+                  if (!next.delete(node.id)) next.add(node.id)
+                  setCollapsed(next)
+                  // A pressed button keeps the focus, and a row holding the
+                  // focus keeps its actions on show - so every branch folded by
+                  // mouse left its buttons standing for good. A press made with
+                  // a pointer gives the focus back; one made from the keyboard
+                  // keeps it, and that row's actions with it.
+                  if (event.detail > 0) event.currentTarget.blur()
+                }}
+              >
+                {collapsed.has(node.id) ? (
+                  <ChevronRightIcon aria-hidden {...stylex.props(styles.glyph)} />
+                ) : (
+                  <ChevronDownIcon aria-hidden {...stylex.props(styles.glyph)} />
+                )}
+              </button>
+            ) : (
+              <span aria-hidden {...stylex.props(styles.twistieSeat)} />
+            ))}
+          {/* A top-level unit is named in the weight its place deserves. A
+              search result has no place in a tree, so the weight goes to the
+              letters that were typed instead - which is what the reader is
+              looking for in a list of names that all look alike. */}
+          <span
+            {...stylex.props(styles.name, folding && depth === 0 && styles.nameTop)}
+            title={node.name}
+          >
+            {folding ? node.name : found(node.name)}
           </span>
           {!node.manageable && <LockIcon aria-hidden {...stylex.props(styles.lock)} />}
         </span>
@@ -363,9 +411,9 @@ export function TreeTable({
   }
 
   return (
-    <Card data-testid="org-tree">
+    <Card data-testid="org-tree" xstyle={styles.bare}>
       <CardHead
-        title={format(m.unitsTitle)}
+        title={<span {...stylex.props(styles.cardWord)}>{format(m.unitsTitle)}</span>}
         note={format(m.treeCounts, { total: shape.nodes.length, manageable })}
       >
         <SearchField

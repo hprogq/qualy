@@ -134,6 +134,7 @@ export function UnitTree({
       <TreeRow
         key={unit.id}
         name={unit.name}
+        found={folding ? undefined : term}
         depth={depth}
         open={openId === unit.id}
         kind={unit.kind}
