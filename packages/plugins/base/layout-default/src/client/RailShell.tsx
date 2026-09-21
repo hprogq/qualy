@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { NavLink, Outlet, useLocation, useParams } from 'react-router'
 import { Reveal } from '@qualy/ui/reveal'
 import { PanelLeftIcon } from 'lucide-react'
@@ -34,6 +34,7 @@ import { Skeleton } from '@qualy/ui/skeleton'
 import { Sheet, SheetContent, SheetTitle } from '@qualy/ui/sheet'
 import { useIsBelow } from '@qualy/ui/use-mobile'
 import { TopBar } from './TopBar.tsx'
+import { BottomBar } from './BottomBar.tsx'
 import { NavIcon } from './icons.tsx'
 import { useAppNavigation } from './useAppNavigation.ts'
 import { byOrder, fill, hasEntriesBelow, useNavDrawer } from './rail.ts'
@@ -80,9 +81,6 @@ const styles = stylex.create({
     transitionProperty: 'height',
     transitionDuration: '200ms',
     transitionTimingFunction: 'linear',
-  },
-  topFolded: {
-    height: 0,
   },
   contextBar: {
     position: 'relative',
@@ -297,8 +295,8 @@ const styles = stylex.create({
     gap: 28,
     paddingInline: { default: 24, [breakpoints.phone]: 16 },
     paddingTop: 20,
-    // clear of the capsule a narrow window floats at its foot
-    paddingBottom: { default: 24, '@media (max-width: 1023.98px)': 96 },
+    // clear of the bar a narrow window carries at its foot
+    paddingBottom: { default: 24, [breakpoints.phone]: 84 },
   },
   personNav: {
     position: 'sticky',
@@ -311,6 +309,38 @@ const styles = stylex.create({
     paddingTop: 2,
   },
   personGroup: { display: 'flex', flexDirection: 'column', gap: 2 },
+  // the sections as one line, scrolled sideways: the whole record's shape
+  // at a glance, where a phone has the width for a row and not a column
+  chipRow: {
+    display: { default: 'none', '@media (max-width: 1023.98px)': 'flex' },
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 6,
+    width: '100%',
+    overflowX: 'auto',
+    scrollbarWidth: 'none',
+    paddingInline: { default: 24, [breakpoints.phone]: 16 },
+    paddingBottom: 12,
+  },
+  chip: {
+    display: 'inline-flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 6,
+    height: 32,
+    paddingInline: 12,
+    borderRadius: 9999,
+    backgroundColor: tokens.surfaceMuted,
+    fontSize: 13,
+    whiteSpace: 'nowrap',
+    textDecoration: 'none',
+    color: tokens.mutedForeground,
+  },
+  chipOpen: {
+    backgroundColor: tokens.primary,
+    fontWeight: 500,
+    color: tokens.primaryForeground,
+  },
   personHeading: {
     margin: 0,
     paddingInline: 12,
@@ -635,6 +665,53 @@ function RailEntry({
 }
 
 /** one section of a person's record, in the list beside it */
+/**
+ * One section of a person's record, as a chip in a row.
+ *
+ * Narrow, a record has no room for a column beside it, and the sections are
+ * not a menu to be opened - they are the parts of one thing, read across.
+ * A row of chips says how many there are and which one is open without
+ * anybody pressing anything, which a capsule at the foot of the screen
+ * could only do after it had been pressed.
+ */
+function PersonChip({
+  label,
+  to,
+  page,
+  exact,
+  badge,
+}: {
+  label: ResolvedNavigationItem['label']
+  to: string
+  page?: NamespacedId
+  exact: boolean
+  badge?: ReactNode
+}) {
+  const navigation = usePendingNavigation(to)
+  const prefetch = usePagePrefetch()
+  const warm = page === undefined ? undefined : () => prefetch(page)
+  return (
+    <NavLink
+      end={exact}
+      to={to}
+      data-testid="person-chip"
+      onClick={navigation.onClick}
+      onPointerEnter={warm}
+      onFocus={warm}
+      aria-busy={navigation.pending || undefined}
+      className={({ isActive }) =>
+        stylex.props(
+          styles.chip,
+          (isActive || navigation.pending) && styles.chipOpen,
+        ).className ?? ''
+      }
+    >
+      <LocalizedText value={label} />
+      {badge}
+    </NavLink>
+  )
+}
+
 function PersonEntry({
   label,
   to,
@@ -878,13 +955,12 @@ function CapableRailShell({ navigation, context, badge, banner = false }: RailSh
 
   return (
     <div {...stylex.props(styles.root)}>
-      {/* Folded rather than removed below the breakpoint, so crossing it is
-          the bar sliding away, not the page jumping. Switching applications
-          is too rare on a phone to hold this row; the drawer carries them. */}
-      <div
-        {...(narrow ? { inert: true, 'aria-hidden': true } : {})}
-        {...stylex.props(styles.topFold, narrow && styles.topFolded)}
-      >
+      {/* The bar stays whatever the width: it carries the product's own
+          mark, and a record opened from somewhere else with no mark above
+          it reads as a different site. What folds narrow is the row of
+          application words inside it - those are the bottom bar's job,
+          where a thumb already is. */}
+      <div {...stylex.props(styles.topFold)}>
         {/* Ruled, because here the bar can never earn its line. The one it
             draws at rest is earned by the page passing underneath, and in
             this shell nothing passes underneath: the bar below is in the
@@ -919,6 +995,28 @@ function CapableRailShell({ navigation, context, badge, banner = false }: RailSh
           />
         </div>
       </div>
+      {narrow && (
+        // the open thing's own sections, across, under the bar that says
+        // which thing it is
+        <nav
+          aria-label={format(m.personSections)}
+          data-testid="person-chips"
+          {...stylex.props(styles.chipRow)}
+        >
+          {[...loose, ...sections.flatMap((section) => section.items)].map((item) => (
+            <PersonChip
+              key={item.id}
+              label={item.label}
+              to={item.to}
+              page={item.target.kind === 'page' ? item.target.pageId : undefined}
+              exact={hasEntriesBelow(item.to, paths)}
+              badge={
+                badge !== undefined ? <UiSlot token={badge} context={{ navigationId: item.id }} /> : undefined
+              }
+            />
+          ))}
+        </nav>
+      )}
       {banner ? (
         <main {...stylex.props(styles.personMain)}>
           <div {...stylex.props(styles.personSeat)}>
@@ -974,6 +1072,7 @@ function CapableRailShell({ navigation, context, badge, banner = false }: RailSh
             brings it back stays where it was taken from; on a narrow screen
             collapsed all the way, because the drawer has taken over. */}
         <aside
+          data-testid="workspace-rail"
           // fully out of reach while folded: clipped is not gone, and the
           // keyboard would still walk into the toggle behind the fold
           {...(narrow ? { inert: true, 'aria-hidden': true } : {})}
@@ -993,157 +1092,10 @@ function CapableRailShell({ navigation, context, badge, banner = false }: RailSh
       </div>
       )}
 
-      {/* The one capsule the narrow shell owns. It does navigation and
-          nothing else - no badge, no page actions, no slots for either - and
-          any tap on it opens the drawer. Gone while the drawer is up: it is
-          the drawer's handle, not a peer. */}
-      <div
-        data-testid="nav-foot"
-        data-narrow={String(narrow)}
-        data-nav-open={String(drawer.open)}
-        data-foot-taken={String(footTaken)}
-        {...stylex.props(styles.capsuleSeat)}
-      >
-        {/* Always mounted, shown by CSS: presence-animating this button
-            meant AnimatePresence unmounted it on exit, and under CI load
-            the exit could still be in the books when the same child
-            re-entered - which sometimes dropped the re-entry, leaving the
-            narrow shell with no way back into its own navigation. A
-            transition has no bookkeeping to lose; `inert` keeps the hidden
-            state out of reach. */}
-        {(() => {
-          const shown = narrow && !drawer.open && !footTaken
-          return (
-            <div
-              data-shown={String(shown)}
-              {...(!shown ? { inert: true, 'aria-hidden': true } : {})}
-              {...stylex.props(styles.capsuleFade, !shown && styles.capsuleHidden)}
-            >
-              <button
-                type="button"
-                data-testid="nav-capsule"
-                aria-haspopup="dialog"
-                onClick={drawer.show}
-                {...stylex.props(styles.capsuleButton)}
-              >
-                <span aria-hidden {...stylex.props(styles.burger)}>
-                  <span {...stylex.props(styles.burgerLine)} />
-                  <span {...stylex.props(styles.burgerLine)} />
-                </span>
-                <span {...stylex.props(styles.capsuleWord)}>{format(m.navCapsule)}</span>
-              </button>
-            </div>
-          )
-        })()}
-      </div>
+      {/* The applications, where a thumb already is - the same bar every
+          other shell puts there. */}
+      <BottomBar apps={apps} activeApp={activeApp} />
 
-      {/* The drawer's seats are separate chunks, and fetched only when the
-          drawer first opened they arrived one by one - the drawer visibly
-          assembled itself. Mounted here out of sight as soon as the shell
-          is narrow, the chunks and the session behind the identity are
-          already warm when the capsule is first pressed. */}
-      {narrow && (
-        <div hidden aria-hidden>
-          <UiSlot token={drawerIdentity} />
-          <UiSlot token={drawerAccount} />
-          <UiSlot token={drawerSignOut} />
-        </div>
-      )}
-
-      <Sheet
-        open={narrow && drawer.open}
-        onOpenChange={(next) => {
-          if (!next) drawer.hide()
-        }}
-      >
-        {/* the drawer's own shape, merged into the sheet's rather than
-            racing it: same properties, one compiled rule */}
-        <SheetContent side="bottom" showCloseButton={false} xstyle={styles.drawerPanel}>
-          <SheetTitle {...stylex.props(a11yStyles.visuallyHidden)}>
-            {format(m.navCapsule)}
-          </SheetTitle>
-          {/* the person at the head, the pages in the middle, the account at
-              the foot - and the shell owns none of the head or the foot's
-              controls: whoever owns sessions fills those seats */}
-          <div data-sheet-grab="" {...stylex.props(styles.drawerHead)}>
-            <span aria-hidden data-sheet-grab="" {...stylex.props(styles.grabber)} />
-            <UiSlot
-              token={drawerIdentity}
-              loading={<Skeleton className={stylex.props(styles.headSkeleton).className} />}
-            />
-          </div>
-          {/* the same entries the rail carries, two to a row because a
-              phone-wide column of 46px bars wastes the little height a
-              drawer has */}
-          <nav {...stylex.props(styles.drawerNav)}>
-            {loose.length > 0 && (
-              <div {...stylex.props(styles.drawerGrid)}>
-                {loose.map((item) => (
-                  <DrawerEntry
-                    key={item.id}
-                    id={item.id}
-                    label={item.label}
-                    to={item.to}
-                    page={item.target.kind === 'page' ? item.target.pageId : undefined}
-                    exact={hasEntriesBelow(item.to, paths)}
-                    badge={badge}
-                  />
-                ))}
-              </div>
-            )}
-            {sections.map((section) => (
-              <section key={section.id} {...stylex.props(styles.drawerSection)}>
-                <p {...stylex.props(styles.drawerSectionLabel)}>
-                  <LocalizedText value={section.label} />
-                </p>
-                <div {...stylex.props(styles.drawerGrid)}>
-                  {section.items.map((item) => (
-                    <DrawerEntry
-                      key={item.id}
-                      id={item.id}
-                      label={item.label}
-                      to={item.to}
-                      page={item.target.kind === 'page' ? item.target.pageId : undefined}
-                      exact={hasEntriesBelow(item.to, paths)}
-                      badge={badge}
-                    />
-                  ))}
-                </div>
-              </section>
-            ))}
-          </nav>
-          <div {...stylex.props(styles.drawerFoot)}>
-            <UiSlot
-              token={drawerAccount}
-              loading={<Skeleton className={stylex.props(styles.footSkeleton).className} />}
-            />
-            {/* the applications the folded top bar carried - destinations,
-                not tabs - with the way out at the row's end */}
-            <div data-testid="drawer-modules" {...stylex.props(styles.modulesRow)}>
-              <span {...stylex.props(styles.modulesLabel)}>{format(m.otherPages)}</span>
-              <div {...stylex.props(styles.modulesWrap)}>
-                {apps.map((app) => (
-                  <NavLink
-                    key={app.id}
-                    to={app.path}
-                    className={stylex.props(styles.moduleLink).className}
-                  >
-                    <NavIcon
-                      name={app.icon}
-                      className={stylex.props(styles.moduleIcon).className}
-                    />
-                    <span {...stylex.props(styles.moduleWord)}>
-                      <LocalizedText value={app.label} />
-                    </span>
-                  </NavLink>
-                ))}
-              </div>
-              <span {...stylex.props(styles.spacer)} />
-              <UiSlot token={drawerSignOut} />
-            </div>
-          </div>
-        </SheetContent>
-      </Sheet>
     </div>
   )
 }

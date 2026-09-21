@@ -98,7 +98,7 @@ export function BottomBar({ apps, activeApp }: { apps: readonly AppEntry[]; acti
   // is a row of one that never changes anything
   if (apps.length < 2) return null
   return (
-    <nav data-shell-bottom="" aria-label={format(m.appsNav)} {...stylex.props(styles.bar)}>
+    <nav data-testid="bottom-bar" data-shell-bottom="" aria-label={format(m.appsNav)} {...stylex.props(styles.bar)}>
       <div {...stylex.props(styles.row)}>
         {apps.map((app) => (
           <NavLink

@@ -359,7 +359,7 @@ describe('the workspace shell', () => {
     )
   })
 
-  it('folds the top bar away on a phone and hands navigation to the capsule', async () => {
+  it('carries the open thing\u2019s sections as a row on a phone, under the product\u2019s own mark', async () => {
     await page.viewport(390, 844)
     shell(
       <WorkspaceShell />,
@@ -367,255 +367,30 @@ describe('the workspace shell', () => {
       `/assessment/batches/${BATCH_ID}/phases`,
     )
 
-    // the application bar is folded, not merely shrunk: its links are out of
-    // reach, and the rail beside the page is folded with it
-    await expect.element(page.getByRole('button', { name: '导航' })).toBeVisible()
-    expect(
-      page
-        .getByRole('link', { name: '组织与权限' })
-        .elements()
-        .filter((el) => el.checkVisibility()),
-    ).toHaveLength(0)
+    // The mark stays whatever the width: a workspace opened from somewhere
+    // else with nothing above it reads as a different site.
+    await expect.element(page.getByRole('link', { name: 'Qualy' })).toBeVisible()
+
+    // the sections are on screen rather than behind a press, and the one
+    // being read says so
+    const chips = page.getByTestId('person-chips')
+    await expect.element(chips).toBeVisible()
+    await expect.element(chips.getByRole('link', { name: '阶段安排' })).toBeVisible()
+
+    // the applications are the bar at the foot, which is where every other
+    // shell puts them on a phone
+    await expect.element(page.getByTestId('bottom-bar')).toBeVisible()
+    await expect.element(page.getByTestId('bottom-bar').getByRole('link', { name: '测评' })).toBeVisible()
+
+    // and the rail beside the page is folded away, because there is no
+    // room beside a page this narrow: the same entry is reachable once,
+    // in the row, not twice
     expect(
       page
         .getByRole('link', { name: '阶段安排' })
         .elements()
         .filter((el) => el.checkVisibility()),
-    ).toHaveLength(0)
-
-    // the capsule opens the drawer: the workspace's own pages first, the
-    // applications the folded bar carried at the foot
-    await page.getByRole('button', { name: '导航' }).click()
-    await expect.element(page.getByRole('link', { name: '阶段安排' })).toBeVisible()
-    await expect.element(page.getByTestId('drawer-modules')).toBeVisible()
-    await expect.element(page.getByRole('link', { name: '测评' })).toBeVisible()
-
-    // closing consumes the history entry the drawer stands on: the escape
-    // key here is the phone's back gesture in this harness. A real key
-    // press, because the layer manager under the drawer is entitled to
-    // ignore a synthetic event dispatched at an arbitrary node.
-    await userEvent.keyboard('{Escape}')
-    await expect.element(page.getByRole('button', { name: '导航' })).toBeVisible()
-    // polled: how long the drawer's exit takes is the layer manager's
-    // business - what must hold is that it ends closed
-    await expect
-      .poll(
-        () =>
-          page
-            .getByRole('link', { name: '阶段安排' })
-            .elements()
-            .filter((el) => el.checkVisibility()).length,
-        { timeout: 5000 },
-      )
-      .toBe(0)
-  })
-
-  it('seats the person at the drawer head and the account at its foot', async () => {
-    await page.viewport(390, 844)
-    let sessionCalls = 0
-    renderScreen({
-      client: fakeClient({
-        app: {
-          getManifest: () =>
-            Effect.succeed({
-              ...manifest(),
-              slots: {
-                'app-shell/drawer-identity': [{ id: 'auth/drawer-identity', order: 0 }],
-                'app-shell/drawer-account': [{ id: 'auth/drawer-account', order: 0 }],
-                'app-shell/drawer-sign-out': [{ id: 'auth/drawer-sign-out', order: 0 }],
-              },
-            }),
-        },
-        auth: {
-          getSession: () => {
-            sessionCalls += 1
-            return Effect.succeed({
-              user: {
-                id: '99999999-9999-4999-8999-999999999999',
-                displayName: '林知远',
-                businessNo: '2023214015',
-                userType: { id: 't-1', code: 'student', name: '本科生' },
-                primaryOrgNode: {
-                  id: 'n-5',
-                  code: null,
-                  name: '软件工程 2302 班',
-                  orgType: { id: 'ot-4', code: 'class', name: '班级' },
-                  lineage: [
-                    { id: 'n-1', name: 'YY 大学', typeName: '学校' },
-                    { id: 'n-2', name: '软件学院', typeName: '学院' },
-                    { id: 'n-3', name: '软件工程', typeName: '专业' },
-                    { id: 'n-4', name: '2023 级', typeName: '年级' },
-                    { id: 'n-5', name: '软件工程 2302 班', typeName: '班级' },
-                  ],
-                },
-                tenant: { id: 'tn-1', slug: 'main', name: '本部' },
-              },
-            })
-          },
-        },
-      } as never),
-      registry: {
-        slots: {
-          'app-shell/drawer-identity': {
-            'auth/drawer-identity': lazy(
-              () =>
-                slotComponents['app-shell/drawer-identity']![
-                  'auth/drawer-identity'
-                ]!() as Promise<never>,
-            ),
-          },
-          'app-shell/drawer-account': {
-            'auth/drawer-account': lazy(
-              () =>
-                slotComponents['app-shell/drawer-account']![
-                  'auth/drawer-account'
-                ]!() as Promise<never>,
-            ),
-          },
-          'app-shell/drawer-sign-out': {
-            'auth/drawer-sign-out': lazy(
-              () =>
-                slotComponents['app-shell/drawer-sign-out']![
-                  'auth/drawer-sign-out'
-                ]!() as Promise<never>,
-            ),
-          },
-        },
-      },
-      routes: [
-        {
-          path: '/assessment/batches/:batchId/phases',
-          element: <WorkspaceShell />,
-        },
-      ] as never,
-      route: `/assessment/batches/${BATCH_ID}/phases`,
-    })
-
-    // the seats are warmed before the first tap: the identity is already
-    // mounted out of sight, so opening the drawer assembles nothing
-    await expect.poll(() => page.getByText('林知远').elements().length).toBeGreaterThan(0)
-
-    await page.getByRole('button', { name: '导航' }).click()
-
-    // the head says who, and where they stand - the node's own name, not
-    // the whole ancestry (queries scoped to the drawer: the warm copy is
-    // still standing out of sight)
-    const drawer = page.getByRole('dialog')
-    await expect.element(drawer.getByText('林知远')).toBeVisible()
-    await expect.element(drawer.getByText('软件工程 2302 班')).toBeVisible()
-    expect(page.getByText('2023 级', { exact: false }).elements()).toHaveLength(0)
-
-    // the ancestry waits behind a tap and arrives as one written line
-    await page.getByRole('button', { name: /软件工程 2302 班/ }).click()
-    await expect.element(drawer.getByText(/软件学院 \/ 软件工程 \/ 2023 级/)).toBeVisible()
-    // and folds back to the plain name
-    await page.getByRole('button', { name: /软件学院/ }).click()
-    expect(page.getByText('2023 级', { exact: false }).elements()).toHaveLength(0)
-
-    // the foot carries the preferences and the way out, and the module row
-    // wears each module's own mark
-    await expect.element(page.getByRole('button', { name: '退出登录' })).toBeVisible()
-    await expect.element(drawer.getByTestId('drawer-account')).toBeVisible()
-    const moduleLink = page.getByRole('link', { name: '测评' }).element()
-    expect(moduleLink.querySelector('svg')).not.toBeNull()
-
-    // one identity, told once: the folded top bar's account corner asked at
-    // page entry, and the drawer reads that answer instead of asking again -
-    // however many times it opens. A real Escape, not a synthetic event: the
-    // drawer closes through the same path a person's key takes, and the
-    // reopen waits for the dialog to actually be gone - an exit animation
-    // interrupted mid-flight leaves the page aria-hidden, where no role
-    // query can see the bar it is asking for.
-    await userEvent.keyboard('{Escape}')
-    await expect.poll(() => page.getByRole('dialog').elements().length, { timeout: 10_000 }).toBe(0)
-    // Two CI-only ghosts hunted here, in order: radix sometimes lost the
-    // aria-hidden lift after the exit animation (so role+name queries went
-    // blind), and then the diagnostics run proved worse - with all three
-    // render conditions true the capsule was not in the DOM at all, because
-    // AnimatePresence had dropped a child that re-entered while its
-    // starved exit was still in the books. The capsule is now always
-    // mounted and shown by CSS, its wrapper stating visibility as
-    // data-shown; the reopen locates by the stable hook, and the first
-    // open above keeps the role+name path covered. Asserted as one object
-    // so a CI-only failure names the lying variable.
-    const reopen = page.getByTestId('nav-capsule')
-    const foot = () => document.querySelector('[data-testid="nav-foot"]')
-    await expect
-      .poll(
-        () => ({
-          shown: foot()?.querySelector('[data-shown]')?.getAttribute('data-shown'),
-          narrow: foot()?.getAttribute('data-narrow'),
-          navOpen: foot()?.getAttribute('data-nav-open'),
-          footTaken: foot()?.getAttribute('data-foot-taken'),
-        }),
-        { timeout: 10_000 },
-      )
-      .toEqual({ shown: 'true', narrow: 'true', navOpen: 'false', footTaken: 'false' })
-    await reopen.click()
-    await expect.element(page.getByRole('dialog').getByText('林知远')).toBeVisible()
-    expect(sessionCalls).toBe(1)
-  })
-
-  // Leaving the drawer consumes the history entry it stands on and nothing
-  // else: the page underneath never changes. In this harness the router's
-  // history is a memory history, so the system back gesture is represented
-  // by the same one-entry pop the escape key drives.
-  it('closing the drawer pops its history entry and stays on the page', async () => {
-    await page.viewport(390, 844)
-    shell(
-      <WorkspaceShell />,
-      '/assessment/batches/:batchId/phases',
-      `/assessment/batches/${BATCH_ID}/phases`,
-    )
-
-    await expect.element(page.getByRole('button', { name: '导航' })).toBeVisible()
-    const before = addressNow()
-    expect(before).not.toBe('')
-    await page.getByRole('button', { name: '导航' }).click()
-    await expect.element(page.getByRole('link', { name: '阶段安排' })).toBeVisible()
-    // opening navigates in place: same address, one entry deeper
-    expect(addressNow()).toBe(before)
-
-    await userEvent.keyboard('{Escape}')
-    await expect
-      .poll(
-        () =>
-          page
-            .getByRole('link', { name: '阶段安排' })
-            .elements()
-            .filter((el) => el.checkVisibility()).length,
-        { timeout: 5000 },
-      )
-      .toBe(0)
-    // the pop landed on the page the drawer was opened from
-    expect(addressNow()).toBe(before)
-    await expect.element(page.getByRole('button', { name: '导航' })).toBeVisible()
-  })
-
-  it('navigating from the drawer lands with the drawer closed', async () => {
-    await page.viewport(390, 844)
-    shell(
-      <WorkspaceShell />,
-      '/assessment/batches/:batchId/phases',
-      `/assessment/batches/${BATCH_ID}/phases`,
-    )
-
-    await page.getByRole('button', { name: '导航' }).click()
-    await page.getByRole('link', { name: '阶段安排' }).click()
-    // the destination stands clear; the drawer went with the navigation.
-    // Polled, because how long the drawer's exit takes is the layer
-    // manager's business - what must hold is that it ends closed.
-    await expect.element(page.getByRole('button', { name: '导航' })).toBeVisible()
-    await expect
-      .poll(
-        () =>
-          page
-            .getByRole('link', { name: '阶段安排' })
-            .elements()
-            .filter((el) => el.checkVisibility()).length,
-        { timeout: 5000 },
-      )
-      .toBe(0)
+    ).toHaveLength(1)
   })
 
   it('keeps the control that closes the rail inside the rail, and offers it back', async () => {

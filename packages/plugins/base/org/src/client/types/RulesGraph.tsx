@@ -29,14 +29,19 @@ const LINE = `color-mix(in oklab, ${tokens.mutedForeground} 50%, transparent)`
 const QUIET = `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`
 
 const styles = stylex.create({
-  // the picture is for a screen wide enough to hold four columns of boxes;
-  // on a phone the table under it carries the same rules as words
-  card: { display: { default: 'flex', [breakpoints.phone]: 'none' } },
+  // The picture opens fitted to whatever width it is given, so a phone
+  // gets the whole grammar at once rather than nothing: four levels across
+  // 358px is a small box, but it is the shape of the rules, and the reader
+  // can zoom or drag into any part of it. The table under it still says the
+  // same rules in words for anybody who would rather read them.
+  card: { display: 'flex' },
   seat: {
-    maxHeight: '30rem',
-    paddingInline: 16,
+    maxHeight: { default: '30rem', [breakpoints.phone]: '18rem' },
+    paddingInline: { default: 16, [breakpoints.phone]: 8 },
     paddingTop: 12,
     paddingBottom: 6,
+    // a phone drags the picture; the page must not go with it
+    touchAction: 'none',
     overflow: 'auto',
     overscrollBehavior: 'contain',
     // No bar: a track across the middle of the card cut the picture in two.
