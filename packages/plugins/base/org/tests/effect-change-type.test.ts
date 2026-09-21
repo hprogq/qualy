@@ -28,6 +28,7 @@ import { orgActions } from '../src/actions.ts'
 import { serviceLayer as authLayer } from '@qualy/plugin-auth/server'
 import { AuthConfig } from '@qualy/plugin-auth/server/sign-in'
 import { loginDriversLayer } from '@qualy/auth-contract/login'
+import { peopleAtNode } from '../../auth/src/server/node-usage.ts'
 import { Org } from '../src/server/index.ts'
 import { serviceLayer as orgLayer } from '../src/server/index.ts'
 
@@ -462,6 +463,63 @@ describe.runIf(postgresAvailable).concurrent('changing a node type across three 
       // the repeat added nothing
       expect(answer.ruleCount).toBe(1)
       expect(answer.missing).toBe('ORG_RULE_NOT_FOUND')
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  // The delete path end to end, across the plugins that own what stands on a
+  // unit: org cannot see those tables, so the reporters answer and the answer
+  // is what the delete obeys. Without this the two halves were only tested
+  // apart - the reporter against its own query, the refusal against a boolean
+  // somebody passed in.
+  it('asks the plugins above it what stands on a unit, and bins it once nothing does', async () => {
+    const db = await createTestContext('effect-org-usage-e2e')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const org = yield* Org
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const leaf = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
+              values (${f.tenant}, ${f.node}, ${f.collegeType}, 'Leaf', 'r.leaf', 1) returning id`),
+          ).id
+          // somebody stands there, through auth's own table
+          yield* runSql(sql`
+            update users set primary_org_node_id = ${leaf} where tenant_id = ${f.tenant}`)
+
+          const reporter = yield* peopleAtNode.bind
+          const held = () =>
+            Effect.map(reporter(f.tenant, leaf), (usage) =>
+              usage.some((one) => one.clearable && one.count > 0),
+            )
+          const standing = yield* reporter(f.tenant, leaf)
+          const blocked = yield* Effect.result(
+            org.deleteNode(f.tenant, leaf, f.principal, held()),
+          )
+          // move them off, and the same question answers the other way
+          yield* runSql(sql`
+            update users set primary_org_node_id = ${f.node} where tenant_id = ${f.tenant}`)
+          yield* org.deleteNode(f.tenant, leaf, f.principal, held())
+          const binned = yield* org.listDeletedNodes(f.tenant, f.principal)
+          const gone = yield* Effect.result(org.readNode(f.tenant, leaf, f.principal))
+          return {
+            reported: standing.map((one) => [one.kind, one.count, one.clearable]),
+            blocked: tagOf(blocked),
+            binned: binned.map((node) => node.name),
+            gone: tagOf(gone),
+          }
+        }),
+      )
+      expect(ok(exit)).toEqual({
+        reported: [['people', 1, true]],
+        blocked: 'ORG_NODE_IN_USE',
+        binned: ['Leaf'],
+        gone: 'ORG_NODE_NOT_FOUND',
+      })
     } finally {
       await db.dispose()
     }

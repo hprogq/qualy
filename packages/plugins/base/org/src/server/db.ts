@@ -92,6 +92,29 @@ export const updateType = (
       .execute(),
   )
 
+/**
+ * Whether any unit STILL STANDING is of this kind.
+ *
+ * Kept apart from the binned ones on purpose: a unit in the bin is of this
+ * kind too - putting it back needs the kind to exist - so the kind cannot be
+ * dropped either way, but the two say different things to whoever is being
+ * refused. "Somewhere in the structure" is a place to go and look; "in the
+ * bin" is a different action entirely.
+ */
+export const typeHasLiveNodes = (tenantId: string, typeId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('OrgNode')
+        .select('id')
+        .where('tenantId', '=', tenantId)
+        .where('orgTypeId', '=', typeId)
+        .where('deletedAt', 'is', null)
+        .limit(1)
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => row !== undefined))
+
 export const typeHasNodes = (tenantId: string, typeId: string) =>
   db
     .query((k) =>

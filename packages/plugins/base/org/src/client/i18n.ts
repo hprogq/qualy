@@ -15,6 +15,11 @@ import type * as orgErrors from '../server/errors.ts'
 // the one message that interpolates declares its placeholders: both a
 // format() call and this translation's projection must produce exactly
 // assignmentCount, checked at compile time
+const typeInUse = defineMessage<{ where: string }>()({
+  id: 'org/error/type-in-use',
+  defaultMessage:
+    '{where, select, bin {Units in the recycle bin are still of this type. Delete them for good or restore and retype them first.} other {Units are still of this type, so it cannot be removed.}}',
+})
 const placementIncompatible = defineMessage<{ userCount: number }>()({
   id: 'org/error/placement-incompatible',
   defaultMessage:
@@ -375,8 +380,8 @@ const i18n = definePluginMessages({
       defaultMessage: 'A sibling node with that name or code already exists.',
     },
     ORG_TYPE_IN_USE: {
-      id: 'org/error/type-in-use',
-      defaultMessage: 'This organization type is still referenced and cannot be removed.',
+      message: typeInUse,
+      values: (data) => ({ where: data.reason === 'deleted-nodes' ? 'bin' : 'tree' }),
     },
     ORG_RULE_IN_USE: {
       id: 'org/error/rule-in-use',

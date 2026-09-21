@@ -115,7 +115,8 @@ export default {
   'org/error/node-not-found': '未找到该组织。',
   'org/error/type-conflict': '已存在同名或相同 code 的组织类型。',
   'org/error/node-conflict': '同一上级下已存在同名或相同 code 的组织。',
-  'org/error/type-in-use': '该组织类型仍被使用，无法删除。',
+  'org/error/type-in-use':
+    '{where, select, bin {回收站中仍有该类型的组织，请先恢复并改类型，或彻底删除} other {仍有组织属于该类型，无法删除}}',
   'org/error/rule-in-use': '已有组织依赖该层级规则，无法删除。',
   'org/error/node-in-use': '仍有用户或角色授权关联该组织。',
   'org/error/node-is-root': '根组织无法移动或删除。',

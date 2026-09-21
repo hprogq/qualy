@@ -933,6 +933,78 @@ describe('filing a claim', () => {
     expect(words).not.toContain('所在部队')
   })
 
+  // A judge whose name the phase withholds is still a judge: the trail keeps
+  // every step it walked, and says a reviewer took each one (§32.85). Reading
+  // a nameless approval as a sitting's unanimous verdict invented a procedure
+  // that never ran.
+  it('keeps every step of a trail whose reviewers are not named', async () => {
+    const round = (kind: string, at: string, byRound: boolean) => ({
+      kind,
+      actorId: null,
+      actorName: null,
+      byRound,
+      reason: null,
+      comment: null,
+      suggestedPayload: null,
+      at,
+    })
+    screen(
+      {
+        listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
+        listMyEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: [entry({ status: 'approved' })],
+            nextCursor: null,
+            attention: { unreadItemIds: [] },
+          }),
+        getEntryHistory: () =>
+          Effect.succeed({
+            reviewersShown: false,
+            entry: entry({ status: 'approved' }),
+            events: [],
+            revisions: [],
+            rounds: [
+              {
+                id: 'r1',
+                roundNo: 1,
+                state: 'completed',
+                outcome: 'approved',
+                revisionId: REVISION_ID,
+                origin: 'initial',
+                supersedesInstanceId: null,
+                appealedInstanceId: null,
+                appealedRecognitionId: null,
+                submittedAt: '2026-03-02T00:00:00.000Z',
+                completedAt: '2026-03-04T00:00:00.000Z',
+                supplements: [],
+                events: [
+                  round('approved', '2026-03-02T01:00:00.000Z', false),
+                  round('approved', '2026-03-03T01:00:00.000Z', false),
+                  round('approved', '2026-03-04T01:00:00.000Z', false),
+                ],
+              },
+            ],
+          }),
+      },
+      `/assessment/batches/${BATCH_ID}/my-entries`,
+      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+    )
+    await page.getByTestId('claim-row').first().click()
+    const sheet = page.getByRole('dialog')
+    await expect.element(sheet).toBeVisible()
+    await page.getByRole('button', { name: /审核记录/ }).click()
+    await vi.waitFor(() => {
+      const words = (sheet.element() as HTMLElement).textContent ?? ''
+      if (!words.includes('审核人员')) throw new Error('the trail has not landed yet')
+    })
+    const words = (sheet.element() as HTMLElement).textContent ?? ''
+    // all three steps are there, and none of them is called a sitting
+    expect(words.split('审核人员').length - 1).toBeGreaterThanOrEqual(3)
+    expect(words).not.toContain('一致同意')
+    expect(words).not.toContain('复核环节')
+  })
+
   // What the claim was finally recognised as, which is what the score is
   // worked out from. Whose determination it was is the phase's to open
   // (§32.85), and the server sends no name when it is shut.

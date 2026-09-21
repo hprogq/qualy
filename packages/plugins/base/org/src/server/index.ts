@@ -39,6 +39,7 @@ import {
   ruleExists,
   ruleInUse,
   ruleWouldCycle,
+  typeHasLiveNodes,
   typeHasNodes,
   typeHasRules,
   updateType,
@@ -1090,8 +1091,13 @@ export const make = Effect.fn('Org.make')(function* () {
         Effect.gen(function* () {
           const type = yield* typeOf(tenantId, typeId)
           if (!type) return yield* new TypeNotFound()
+          // a unit in the bin holds the kind as surely as one in the tree,
+          // and sends the reader somewhere else entirely
+          if (yield* typeHasLiveNodes(tenantId, typeId)) {
+            return yield* new TypeInUse({ reason: 'nodes' })
+          }
           if (yield* typeHasNodes(tenantId, typeId)) {
-            return yield* new TypeInUse({ reason: 'nodes still use this org type' })
+            return yield* new TypeInUse({ reason: 'deleted-nodes' })
           }
           if (yield* typeHasRules(tenantId, typeId)) {
             return yield* new TypeInUse({ reason: 'rules still reference this org type' })
