@@ -321,6 +321,9 @@ export default function UsersPage() {
       ) : (
         <ResizableSplit
           storageKey="qualy.users.tree-width"
+          // the same width at which the tree folds to one line: below it the
+          // two stack, or the line would sit in a column the roster needed
+          from={1280}
           handleLabel={format(m.resizeTree)}
           side={
             phone ? (

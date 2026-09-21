@@ -84,6 +84,7 @@ export function ResizableSplit({
   initial = 300,
   min = 240,
   max = 520,
+  from = 1024,
   handleLabel,
   side,
   children,
@@ -92,11 +93,21 @@ export function ResizableSplit({
   initial?: number
   min?: number
   max?: number
+  /**
+   * The width from which the two stand side by side.
+   *
+   * The default is where two columns first fit at all. A page whose main
+   * side needs more than that says so: below it the two stack, which is the
+   * only way a side that has folded to one line stops taking a column the
+   * other side needed.
+   */
+  from?: number
   /** spoken name of the boundary */
   handleLabel: string
   side: ReactNode
   children: ReactNode
 }) {
+  const beside = `(min-width: ${String(from)}px)`
   const clamp = useCallback((width: number) => Math.min(max, Math.max(min, width)), [min, max])
   const [width, setWidth] = useState(() => {
     try {
@@ -106,17 +117,18 @@ export function ResizableSplit({
       return initial
     }
   })
-  const [wide, setWide] = useState(() => window.matchMedia(DESKTOP).matches)
+  const [wide, setWide] = useState(() => window.matchMedia(beside).matches)
   const [dragging, setDragging] = useState(false)
   const [hover, setHover] = useState(false)
   const origin = useRef<{ x: number; width: number } | null>(null)
 
   useEffect(() => {
-    const media = window.matchMedia(DESKTOP)
+    const media = window.matchMedia(beside)
     const listen = () => setWide(media.matches)
+    listen()
     media.addEventListener('change', listen)
     return () => media.removeEventListener('change', listen)
-  }, [])
+  }, [beside])
 
   const keep = (next: number) => {
     try {

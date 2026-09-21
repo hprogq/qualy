@@ -71,10 +71,9 @@ const styles = stylex.create({
     display: 'grid',
     gridTemplateColumns: {
       default: COLUMNS,
-      // Both facts take the width their own words need. A fixed column for
-      // the count spent sixty pixels on a single digit, and with a gap
-      // either side of it that is a fifth of a phone's row - taken from the
-      // name, which is what somebody is reading down the list for.
+      // A floor, widened once for the whole list by the measurement below:
+      // each row is its own grid, so `auto` sized every row to its own
+      // content and a column of kinds and counts came out ragged.
       [breakpoints.phone]: 'minmax(0, 1fr) auto auto',
     },
     alignItems: 'center',
@@ -133,7 +132,7 @@ const styles = stylex.create({
   // repeat - every college has a 2301 班 - and the kind is what tells two
   // of them apart at a glance. It shrinks away rather than pushing the
   // name, because the name is what somebody is looking for.
-  kindPhone: { display: 'block', flexShrink: 0, fontSize: 12 },
+  kindPhone: { display: 'block', minWidth: 0, fontSize: 12 },
   none: { color: QUIET },
   // What can be done to a unit, at the end of its own row. Quiet until the
   // row is pointed at or holds the focus, so forty rows are not forty sets of
@@ -201,6 +200,31 @@ export function TreeTable({
   }
   for (const root of shape.roots) walk(root, 0)
 
+  const shown = matches ?? rows.map((entry) => entry.node)
+  // What the two narrow columns are worth, measured once over the rows on
+  // screen rather than per row.
+  //
+  // Each row is a grid of its own - that is what keeps a row one hoverable,
+  // pressable thing - so nothing lines their columns up for them, and `auto`
+  // sized every row to its own content. The widest kind and the widest count
+  // ON SHOW decide the width, in the size those cells are actually set at.
+  // Both are capped: one unit named at length should lose its own end rather
+  // than take a third of every other row's name.
+  const widest = (lengths: readonly number[], most: number) =>
+    Math.min(most, Math.max(1, ...lengths))
+  const kindGlyphs = widest(
+    shown.map((node) => typeName(node.orgTypeId).length),
+    4,
+  )
+  const countGlyphs = headcountKnown
+    ? widest(
+        shown.map((node) => headcountOf(node.id).toLocaleString().length),
+        5,
+      )
+    : 1
+  // CJK glyphs are square at their own size; digits are about six tenths
+  const narrowColumns = `minmax(0, 1fr) ${String(kindGlyphs * 12 + 2)}px ${String(Math.ceil(countGlyphs * 7.6) + 2)}px`
+
   const row = (node: OrgTreeNodeDto, depth: number, folding: boolean) => {
     const under = (shape.childrenOf.get(node.id) ?? []).length
     const folds = folding && under > 0
@@ -217,6 +241,7 @@ export function TreeTable({
         data-people={headcountKnown ? people : 'unknown'}
         data-children={under}
         {...stylex.props(styles.row, openId === node.id && styles.rowOpen, stylex.defaultMarker())}
+        style={narrow ? { gridTemplateColumns: narrowColumns } : undefined}
         onClick={(event) => {
           // a control on the row, or a menu it opened, answered for itself
           if ((event.target as HTMLElement).closest('button, [role="menu"]') !== null) return

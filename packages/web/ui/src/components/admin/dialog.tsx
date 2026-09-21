@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { breakpoints } from '../../theme/breakpoints.stylex.ts'
+import { useIsBelow } from '../../hooks/use-mobile.ts'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,6 +38,14 @@ const styles = stylex.create({
   panel: {
     width: { default: null, [breakpoints.phone]: '100%' },
     maxWidth: { default: null, [breakpoints.tablet]: '36rem', [breakpoints.desktop]: '36rem' },
+  },
+  // From the foot on a phone, which is where a panel comes from there: a
+  // sheet sliding in from the right is a desk's gesture, and on a handset it
+  // arrives from the side the thumb is not on and covers the page edge-on.
+  panelBelow: {
+    maxHeight: '88dvh',
+    borderStartStartRadius: 20,
+    borderStartEndRadius: 20,
   },
   panelFooter: {
     flexDirection: 'row',
@@ -142,11 +151,15 @@ export function SidePanel({
   children: ReactNode
   footer?: ReactNode
 }) {
+  const phone = useIsBelow(768)
   return (
     <Sheet open={open} onOpenChange={(next) => !next && onClose()}>
-      {/* the whole width on a phone: three quarters of a 390px screen is a
-          panel with a dead strip beside it and nothing readable inside */}
-      <SheetContent side="right" xstyle={styles.panel}>
+      {/* from the side where there is room, and from the foot where the thumb
+          is: the same panel, reached the way each screen expects */}
+      <SheetContent
+        side={phone ? 'bottom' : 'right'}
+        xstyle={phone ? [styles.panel, styles.panelBelow] : styles.panel}
+      >
         <SheetHeader>
           <SheetTitle>{title}</SheetTitle>
           {description && <SheetDescription>{description}</SheetDescription>}

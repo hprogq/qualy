@@ -25,7 +25,7 @@ const pathOf = (item: ResolvedNavigationItem): string | undefined =>
 /** one heading of the open application's side navigation, and what is filed under it */
 export interface SectionGroup {
   id: string
-  /** absent when the application has only one group: a lone heading repeats the tab above it */
+  /** absent when a lone heading would only repeat the tab drawn above it */
   label: NavigationGroup['label'] | undefined
   items: readonly ResolvedNavigationItem[]
 }
@@ -115,9 +115,14 @@ export function useAppNavigation(): AppNavigation {
           items: filedUnder(group.id),
         }))
   ).filter((cluster) => cluster.items.length > 0)
+  // A lone heading is dropped because it repeats the tab above it - but only
+  // where that tab is drawn. A reader with one application has no row of
+  // tabs and no bar at the foot either, so dropping the heading left the
+  // page with nothing anywhere saying which part of the product it is.
+  const named = clusters.length > 1 || all.length < 2
   const sectionGroups: SectionGroup[] = clusters.map((cluster) => ({
     ...cluster,
-    label: clusters.length > 1 ? cluster.label : undefined,
+    label: named ? cluster.label : undefined,
   }))
 
   return {
