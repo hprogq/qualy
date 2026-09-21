@@ -84,7 +84,7 @@ describe('the record of an import', () => {
     const reverse = vi.fn(() => Effect.succeed({ retired: 2, skipped: 0 }))
     open({ reverseUserImport: reverse })
     await page.getByRole('button', { name: '撤销本次导入' }).click()
-    const confirm = page.getByRole('dialog').getByRole('button', { name: '删除' })
+    const confirm = page.getByRole('dialog').getByRole('button', { name: '撤销导入' })
     await expect.element(confirm).toBeDisabled()
     await page.getByRole('dialog').getByRole('textbox').fill('名单用错了')
     await expect.element(confirm).not.toBeDisabled()

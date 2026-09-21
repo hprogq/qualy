@@ -640,7 +640,8 @@ export default {
   'assessment/items/stage-anyone': '任一审核人处理',
   'assessment/items/stage-anyone-hint': '一人处理即代表该步骤作出判断',
   'assessment/items/stage-everyone': '全员共同审核',
-  'assessment/items/stage-everyone-last': '复核的最后一个环节须给出最终结论，无法合议；在其后再加一个环节，本环节即可设为合议',
+  'assessment/items/stage-everyone-last':
+    '复核的最后一个环节须给出最终结论，无法合议；在其后再加一个环节，本环节即可设为合议',
   'assessment/items/stage-everyone-hint':
     '该环节全部审核人各自表态：一致同意即通过，否则转交下一复核环节。',
   'assessment/items/stage-role-at': '按指定组织层级',
@@ -724,7 +725,7 @@ export default {
   'assessment/review/blocked-unavailable': '当前不可用',
   'assessment/review/approve-title': '通过 {name} 的申报',
   'assessment/review/approve-sheet-hint': '审核意见可选，参评人员可见。',
-  'assessment/review/approve-hint': '写给参评人员的话，非必填，通过后对方可见',
+  'assessment/review/approve-hint': '给参评人员的说明，选填；通过后对方可见',
   'assessment/review/slide-approve': '滑动通过',
   'assessment/review/slide-reject': '滑动退回',
   'assessment/review/slide-escalate': '滑动提请复核',
@@ -796,7 +797,7 @@ export default {
   'assessment/review/opinion-approve': '同意通过',
   'assessment/review/opinion-reject': '不同意通过',
   'assessment/review/appeal-banner-title': '申诉复核',
-  'assessment/review/appeal-banner-body': '参评人员对已作出的认定提出申诉，本轮决定该认定是否维持',
+  'assessment/review/appeal-banner-body': '处理参评人员对既有认定提出的申诉，并决定是否维持原认定',
   'assessment/review/about-group-cap-named': '{group} 上限',
   'assessment/review/siblings-keys': '⌥ 1 至 {count}',
   'assessment/review/insight-caveat': '结果可能存在误差，请人工核实',

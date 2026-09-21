@@ -98,7 +98,7 @@ export default {
   'org/node/hold-line': '{label}：{count}',
   'org/node/hold-examples-more': '{names}等',
   'org/bin/title': '回收站',
-  'org/bin/hint': '已删除的组织保留在此，恢复后回到原来的位置',
+  'org/bin/hint': '已删除的组织会保留在这里，恢复后回到原位置',
   'org/bin/empty': '没有已删除的组织',
   'org/bin/where': '原属 {parent}，{when} 删除',
   'org/bin/parent-first': '请先恢复其上级组织',
