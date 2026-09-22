@@ -111,6 +111,9 @@ catalog:
   # handed in as its customFetch. Only the OIDC driver uses it; GitHub's
   # flow is a few requests of its own.
   openid-client: 6.8.8
+  # handing mail to an SMTP relay: the smtp mail backend's transport, with
+  # its own TLS modes and timeouts. Ships its own types.
+  nodemailer: 10.0.10
   clsx: 2.1.1
   '@vitest/browser-playwright': 5.0.1
   'vitest-browser-react': 2.3.0

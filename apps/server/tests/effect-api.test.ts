@@ -24,6 +24,8 @@ import { TEST_MASTER_KEY } from '@qualy/plugin-secrets/testkit'
 import { DEFAULT_LIMITS, StorageConfig } from '@qualy/plugin-storage/server'
 import { LocalStorageConfig } from '@qualy/plugin-storage-local/config'
 import { FormulaSettings } from '@qualy/plugin-assessment-formula/config'
+import { MailConfig } from '@qualy/plugin-mail/server'
+import { SmtpConfig } from '@qualy/plugin-mail-smtp/config'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { Api } from '@qualy/api-kit/plugin'
 import { Plugin } from '@qualy/plugin-kit'
@@ -236,6 +238,16 @@ const shell = (url: string) => {
         Layer.succeed(
           LocalStorageConfig,
           LocalStorageConfig.of({ root: path.join(tmpdir(), 'qualy-effect-api-storage') }),
+        ),
+        // mail is assembled too and nothing here sends any; the relay is one
+        // nobody listens on
+        Layer.succeed(
+          MailConfig,
+          MailConfig.of({ defaultBackend: 'smtp', from: 'no-reply@qualy.invalid', timeoutMs: 1_000 }),
+        ),
+        Layer.succeed(
+          SmtpConfig,
+          SmtpConfig.of({ host: '127.0.0.1', port: 1, tls: 'none', auth: undefined }),
         ),
         // the formula writer is pinned closed here on purpose: this suite's
         // subject is the api aggregate, not the rollout

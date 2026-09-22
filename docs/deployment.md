@@ -131,6 +131,12 @@ database。出现第二种有持久部署副作用的能力时,先设计启动�
 在 `QUALY_AUTH_PRIVATE_PROVIDER_ALLOWLIST` 里写它的主机名或网段(逗号分隔,缺省为空)。本机地址、link-local、云厂商 metadata
 地址无论是否写进去都连不到;格式不对的条目直接拒启。这份名单归部署,租户管理员改不了它。
 
+**邮件**:`QUALY_MAIL_FROM`(发件人,`Name <address>` 或裸地址)与 `QUALY_MAIL_SMTP_HOST`(中继)是生产必填,缺任一即拒启。
+`QUALY_MAIL_SMTP_TLS` 三态:`implicit`(465,一开始就是 TLS)、`starttls`(587,缺省,升级失败即不发)、`none`(明文,生产必须另设
+`QUALY_MAIL_SMTP_ALLOW_PLAINTEXT=1` 才接受);端口随之缺省,可用 `QUALY_MAIL_SMTP_PORT` 覆盖;账号与密码(`QUALY_MAIL_SMTP_USER` /
+`QUALY_MAIL_SMTP_PASSWORD`)要么都给要么都不给。这些是部署的,不进 qualy.yml,也不进租户的密钥表——单一产品只有一个中继。
+启动时不连中继:中继宕着不影响启动,第一封信会失败并记日志与指标 `qualy.mail.sent{outcome}`。
+
 **恢复账号与 seed**:租户与其系统账户(租户自救用、以邮箱 + 密码登录)由 seed 供给;镜像不含 seed,从同一 release 的源码检出对部署库执行
 `DATABASE_URL=… QUALY_ADMIN_EMAIL=… QUALY_ADMIN_PASSWORD=… pnpm seed`。生产 server 在 Assembled 屏障检查每个存活租户的恢复通道,
 系统账户缺邮箱或缺密码即拒启并点名租户——顺序固定为 migrate → seed → boot。把本地入口改为邮箱登录的那次升级(迁移

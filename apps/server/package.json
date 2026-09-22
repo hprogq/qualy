@@ -21,6 +21,8 @@
     "@qualy/plugin-assessment-formula": "workspace:*",
     "@qualy/plugin-auth": "workspace:*",
     "@qualy/plugin-database": "workspace:*",
+    "@qualy/plugin-mail": "workspace:*",
+    "@qualy/plugin-mail-smtp": "workspace:*",
     "@qualy/plugin-ping": "workspace:*",
     "@qualy/plugin-secrets": "workspace:*",
     "@qualy/plugin-storage": "workspace:*",

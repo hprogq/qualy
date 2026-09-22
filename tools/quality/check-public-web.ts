@@ -193,6 +193,7 @@ const shellBody = fs.existsSync(shell) ? fs.readFileSync(shell, 'utf8') : ''
     'QUALY_SERVER_PRIVATE_SENTINEL',
     'DATABASE_URL',
     'QUALY_SECRETS_MASTER_KEY',
+    'QUALY_MAIL_SMTP_PASSWORD',
     'TENCENTCLOUD_SECRET_ID',
     'TENCENTCLOUD_SECRET_KEY',
     'QUALY_TENCENT_RUM_PROJECT_ID',

@@ -56,6 +56,12 @@ fs.writeFileSync(
     'POSTGRES_DB=qualy',
     'DATABASE_URL=postgres://qualy:smoke@postgres:5432/qualy',
     `QUALY_SECRETS_MASTER_KEY=${randomBytes(32).toString('base64')}`,
+    // a sender and a relay; nothing is sent while the smoke runs
+    'QUALY_MAIL_FROM=Qualy <no-reply@qualy.invalid>',
+    'QUALY_MAIL_SMTP_HOST=127.0.0.1',
+    'QUALY_MAIL_SMTP_PORT=1025',
+    'QUALY_MAIL_SMTP_TLS=none',
+    'QUALY_MAIL_SMTP_ALLOW_PLAINTEXT=1',
     `QUALY_PORT=${String(port)}`,
     'QUALY_LOG_FORMAT=json',
     'QUALY_LOG_LEVEL=info',

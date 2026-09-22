@@ -117,6 +117,9 @@ catalogs:
     lightningcss:
       specifier: 1.33.0
       version: 1.33.0
+    nodemailer:
+      specifier: 10.0.10
+      version: 10.0.10
     openid-client:
       specifier: 6.8.8
       version: 6.8.8
@@ -224,6 +227,12 @@ importers:
       '@qualy/plugin-layout-default':
         specifier: workspace:*
         version: link:packages/plugins/base/layout-default
+      '@qualy/plugin-mail':
+        specifier: workspace:*
+        version: link:packages/plugins/infra/mail
+      '@qualy/plugin-mail-smtp':
+        specifier: workspace:*
+        version: link:packages/plugins/infra/mail-smtp
       '@qualy/plugin-org':
         specifier: workspace:*
         version: link:packages/plugins/base/org
@@ -463,6 +472,12 @@ importers:
       '@qualy/plugin-database':
         specifier: workspace:*
         version: link:../../packages/plugins/infra/database
+      '@qualy/plugin-mail':
+        specifier: workspace:*
+        version: link:../../packages/plugins/infra/mail
+      '@qualy/plugin-mail-smtp':
+        specifier: workspace:*
+        version: link:../../packages/plugins/infra/mail-smtp
       '@qualy/plugin-ping':
         specifier: workspace:*
         version: link:../../packages/plugins/demo/ping
@@ -1912,6 +1927,44 @@ importers:
       '@types/pg':
         specifier: 'catalog:'
         version: 8.23.1
+
+  packages/plugins/infra/mail:
+    dependencies:
+      '@qualy/api-kit':
+        specifier: workspace:*
+        version: link:../../../core/api-kit
+      '@qualy/plugin-kit':
+        specifier: workspace:*
+        version: link:../../../core/plugin-kit
+      '@qualy/telemetry':
+        specifier: workspace:*
+        version: link:../../../core/telemetry
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-rc.115
+    devDependencies:
+      '@qualy/tsconfig':
+        specifier: workspace:*
+        version: link:../../../build/tsconfig
+
+  packages/plugins/infra/mail-smtp:
+    dependencies:
+      '@qualy/plugin-kit':
+        specifier: workspace:*
+        version: link:../../../core/plugin-kit
+      '@qualy/plugin-mail':
+        specifier: workspace:*
+        version: link:../mail
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-rc.115
+      nodemailer:
+        specifier: 'catalog:'
+        version: 10.0.10
+    devDependencies:
+      '@qualy/tsconfig':
+        specifier: workspace:*
+        version: link:../../../build/tsconfig
 
   packages/plugins/infra/rum:
     dependencies:
@@ -4197,6 +4250,10 @@ packages:
   node-releases@2.0.53:
     resolution: {integrity: sha512-D9UOmYG3UH1V+ENW56t5QXBwJw1YEY18ruVeus89Rw+SyIgjPkCO84bRzO3uNIYosJbNwiabWVn48o3uJLjxFQ==}
     engines: {node: '>=18'}
+
+  nodemailer@10.0.10:
+    resolution: {integrity: sha512-He9XskOFms62SyAKkLu8CcGcYHAo+BSHSsORI8s4PJH8qZgZY4L4lDfvyN0twvmbpyG+eGrxpyBlskj9d9rJ8A==}
+    engines: {node: '>=20.0.0'}
 
   normalize-path@3.0.0:
     resolution: {integrity: sha512-6eZs5Ls3WtCisHWp9S2GUy8dqkpGi4BVSz3GaqiE6ezub0512ESztXUwUB6C6IKbQkY2Pnb/mD4WYojCRwcwLA==}
@@ -6626,6 +6683,8 @@ snapshots:
   node-gyp-build@4.8.4: {}
 
   node-releases@2.0.53: {}
+
+  nodemailer@10.0.10: {}
 
   normalize-path@3.0.0: {}
 

@@ -19818,3 +19818,39 @@ UserInfo 失败不阻断登录;时钟容差 0–300 秒放高级设置。
   未绑定不建号、本人绑定、按 sub 登录并刷新展示名、别的 aud / iss / nonce / 早已过期 / 别的私钥签名一律拒绝、
   时钟容差内的过期被接受、UserInfo 补名字且其失败不挡登录、手动端点 + Basic 认证跑通、metadata 地址的 issuer 连不到且 OP 未被请求、
   token 端点 503、伪造 state);`auth-oidc/tests/settings.test.ts` 4 条;`outbound.test.ts` 增 `asFetch` 1 条。
+
+## 认证 F–J 之六:邮件能力与 SMTP 后端(2026-09-23)
+
+规划时的裁决:SMTP 优先;照 storage 的能力形状;模板与 i18n 归调用方;日志与 span 不出现正文或 token;密钥走部署 env 不进 Secrets;
+TLS 三态 `implicit | starttls | none`,生产的 `none` 需显式允许;开发 / CI 用 Mailpit,契约测试放 testkit,smtp 后端跑同一套。
+
+### 做了什么
+
+- **`@qualy/plugin-mail`**(能力,active):`Mail.backend({ code })` 声明(prepare 相,同码两家即拒)→ 后端在自己的 layer 里注册进
+  `MailBackends` → Assembled 屏障检查「声明的都注册了、默认后端已安装」。调用方只拿 `Mailer.send({ to, subject, text, html?, replyTo? })`,
+  核心补发件人、15 秒超时、统一失败 `MailUnavailable { rejected | unavailable }` 与指标 `qualy.mail.sent{outcome}`;日志只有后端名与结果。
+  配置:qualy.yml `{ defaultBackend, from }`,环境变量 `QUALY_MAIL_DEFAULT_BACKEND` / `QUALY_MAIL_FROM` 优先;生产没有发件人即拒启,
+  发件人含换行即拒。testkit:内存后端、`mailerLayerWith`、`mailBackendContract`(纯函数检查,不把测试框架带进包)。
+- **`@qualy/plugin-mail-smtp`**(后端,active,nodemailer 10.0.10 进 catalog):中继全部来自部署环境;TLS 三态,生产缺省 starttls、
+  `none` 须 `QUALY_MAIL_SMTP_ALLOW_PLAINTEXT=1`;账号密码成对;启动不连中继;5xx / 拒收件人为 rejected,其余为 unavailable。
+  开发缺省交给 compose 里的 Mailpit(127.0.0.1:1025)。
+- **开发与 CI**:`docker-compose.yml` 加 `mailpit`(axllent/mailpit:v1.31.2,SMTP 1025,界面 8025);CI 加同一服务并设
+  `QUALY_REQUIRE_MAILPIT_TESTS=1`(不可达即失败而非跳过)。
+- **发布工具链**:`startQualyServer`、release-smoke、check-release-image 在未指定时补发件人与一个不会被连接的中继;
+  check-public-web 的服务端专属变量加 `QUALY_MAIL_SMTP_PASSWORD`。`deploy/.env.example`、`.env.example`、docs/deployment.md 说明新变量;
+  plugin-isolation 把 `@qualy/plugin-mail/server` 登记为能力的服务表面。
+- 本提交没有调用方;邮箱验证、找回与改邮箱在下一提交。
+- `apps/server/tests/effect-api.test.ts` 手工装配各插件配置,补了 `MailConfig` 与 `SmtpConfig`(第一轮全量因此 5 条红:
+  `Service not found: @qualy/plugin-mail/MailConfig`);mail-smtp 为此导出 `./config`,apps/server 的 devDependencies 加两个邮件插件。
+
+### 验收(实际执行)
+
+- `pnpm typecheck`:exit 0,零 `error TS`。
+- `pnpm test`:`Test Files  292 passed | 3 skipped (295)`、`Tests  2161 passed | 17 skipped (2178)`(本机已 `docker compose up -d mailpit`,
+  smtp 契约 4 条真实跑过)。
+- `pnpm test:browser`:`Test Files  69 passed (69)`、`Tests  520 passed (520)`。
+- `pnpm qualy resolve --frozen-lockfile`:`qualy.lock.json is up to date`。本提交无迁移。
+- 新测试:`mail/tests/mail.test.ts` 5 条(开发占位发件人 / 生产无发件人拒启 / 环境变量优先、发件人格式与换行注入、经后端以部署发件人发出、
+  rejected 与 unavailable 两种失败、内存后端过同一套契约);`mail-smtp/tests/smtp.test.ts` 8 条(开发缺省交给 Mailpit、生产要中继且缺省
+  starttls / implicit 465 / none 需显式允许、非法 TLS 与半套账号拒绝、失败分类、对着 Mailpit 的纯文本 / 非 ASCII / html + reply-to 契约、
+  没人监听的中继为 unavailable)。

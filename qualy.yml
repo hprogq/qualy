@@ -70,3 +70,5 @@ plugins:
   '@qualy/plugin-auth-cas': {}
   '@qualy/plugin-auth-github': {}
   '@qualy/plugin-auth-oidc': {}
+  '@qualy/plugin-mail': {}
+  '@qualy/plugin-mail-smtp': {}

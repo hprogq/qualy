@@ -189,6 +189,15 @@ expectOut('no .env baked in', 'test -e /app/.env && echo present || echo absent'
       // a production process refuses to start without one, and the refusal
       // this probe is about is the database's
       `QUALY_SECRETS_MASTER_KEY=${randomBytes(32).toString('base64')}`,
+      // and without a mail sender and relay; nothing is sent at boot
+      '-e',
+      'QUALY_MAIL_FROM=Qualy <no-reply@qualy.invalid>',
+      '-e',
+      'QUALY_MAIL_SMTP_HOST=127.0.0.1',
+      '-e',
+      'QUALY_MAIL_SMTP_TLS=none',
+      '-e',
+      'QUALY_MAIL_SMTP_ALLOW_PLAINTEXT=1',
       '-e',
       'QUALY_LOG_FORMAT=json',
       image,

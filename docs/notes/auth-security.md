@@ -316,6 +316,20 @@ JWKS、UserInfo 一个都不走默认 fetch;出站端口为此多了一个 Fetch
   登录 / 绑定 / 未绑定的处理与 GitHub 同一套(`bindSubject`、`AUTH_EXTERNAL_ACCOUNT_UNBOUND`,不按 email 匹配、不建号)。
 - 不做:OIDC 登出 / 前后通道登出、refresh token、`offline_access`。
 
+## 邮件(2026-09-23 定案)
+
+`@qualy/plugin-mail` 是能力(照 storage 的形状):后端插件用 `Mail.backend({ code })` 声明、在自己的 layer 里注册进 `MailBackends`,
+屏障检查「声明的都注册了、默认后端已安装」;其余插件只拿 `Mailer.send({ to, subject, text, html?, replyTo? })`——
+**模板与语言归调用方**,能力里没有「发重置邮件」这种方法。核心负责选后端、统一发件人、15 秒超时、统一失败
+(`MailUnavailable { reason: rejected | unavailable }`)与指标 `qualy.mail.sent{outcome}`;**日志与 span 只有后端名与结果,
+不出现主题、正文、链接或 token**。发件人 `QUALY_MAIL_FROM`(或 qualy.yml 的 `from`)生产必填,拒绝含换行的值。
+
+`@qualy/plugin-mail-smtp`(nodemailer 10)是第一个后端:中继地址、端口、账号密码全部来自部署环境,不进 qualy.yml、
+不进租户的 Secrets(那是租户托管入口专用;单一产品只有一个中继,差异是有意的)。TLS 三态 `implicit | starttls | none`,
+生产缺省 starttls,`none` 须显式 `QUALY_MAIL_SMTP_ALLOW_PLAINTEXT=1`。启动不连中继。开发与 CI 用 Mailpit
+(compose 的 `mailpit` 服务,SMTP 1025,收件箱 http://localhost:8025);契约检查在 `@qualy/plugin-mail/testkit`,
+smtp 后端对着 Mailpit 跑同一套,CI 设 `QUALY_REQUIRE_MAILPIT_TESTS=1`,不可达即失败而不是跳过。
+
 ## 「我的」自助接口(2026-09-23 定案)
 
 - `/iam/self/*` 只要登录,**不带任何用户 id**:问的永远是 session 的主人,与 `/iam/users/{userId}/*` 的管理接口分权,

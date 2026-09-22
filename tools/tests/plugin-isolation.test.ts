@@ -370,6 +370,7 @@ const CROSS_PLUGIN_SURFACES: Readonly<Record<string, string>> = {
   '@qualy/plugin-storage/backend': 'what a storage provider implements',
   '@qualy/plugin-storage/errors': 'the failures that capability defines',
   '@qualy/plugin-storage/upload': 'the ticket a screen spends',
+  '@qualy/plugin-mail/server': 'the mail capability: the registry a backend registers into',
   '@qualy/plugin-rum/server': 'the reporting capability',
   '@qualy/plugin-rum/client': 'the provider registry a reporting provider registers into',
   '@qualy/plugin-settings/client/terms': 'the hook every screen reads a tenant word through',

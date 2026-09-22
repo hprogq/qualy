@@ -35,6 +35,23 @@ services:
   # unstartable rather than merely behind, so this is a database of its own:
   # it holds only scratch databases the tests build and drop, keeps no volume,
   # and the development data next door stays durable.
+  # Where development mail goes: an SMTP catcher that keeps every message
+  # and shows it at http://localhost:8025. The mail backend's development
+  # default points at its port, and the smtp backend's contract suite reads
+  # what arrived through its api.
+  mailpit:
+    image: axllent/mailpit:v1.31.2
+    container_name: qualy-mailpit
+    restart: unless-stopped
+    ports:
+      - '${MAILPIT_SMTP_PORT:-1025}:1025'
+      - '${MAILPIT_UI_PORT:-8025}:8025'
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '2'
+
   postgres-test:
     image: pgvector/pgvector:pg18-bookworm@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a
     container_name: qualy-postgres-test

@@ -12,6 +12,7 @@ jobs:
       # this job provisions a postgres service: integration tests must not
       # silently skip when it is unreachable
       QUALY_REQUIRE_POSTGRES_TESTS: '1'
+      QUALY_REQUIRE_MAILPIT_TESTS: '1'
       # One on-disk V8 compile cache for every node process in this job.
       # This tree runs as type-stripped sources with no bundler, so each
       # process - the vitest host, every forked backend and vite child, the
@@ -38,6 +39,13 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      # the smtp mail backend's contract suite delivers here and reads the
+      # messages back through its api
+      mailpit:
+        image: axllent/mailpit:v1.31.2
+        ports:
+          - 1025:1025
+          - 8025:8025
     steps:
       - uses: actions/checkout@v7
         with:

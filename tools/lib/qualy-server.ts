@@ -79,6 +79,19 @@ export const startQualyServer = (options: QualyServerOptions): QualyServer => {
     process.env['QUALY_SECRETS_MASTER_KEY'] !== undefined
       ? {}
       : { QUALY_SECRETS_MASTER_KEY: randomBytes(32).toString('base64') }
+  // Likewise a sender and a relay for mail. Nothing is sent at boot, so a
+  // relay nobody listens on is enough for every tool that only starts the
+  // process; a tool about mail passes its own.
+  const mail =
+    'QUALY_MAIL_SMTP_HOST' in (options.env ?? {}) || process.env['QUALY_MAIL_SMTP_HOST'] !== undefined
+      ? {}
+      : {
+          QUALY_MAIL_FROM: 'Qualy <no-reply@qualy.invalid>',
+          QUALY_MAIL_SMTP_HOST: '127.0.0.1',
+          QUALY_MAIL_SMTP_PORT: '1025',
+          QUALY_MAIL_SMTP_TLS: 'none',
+          QUALY_MAIL_SMTP_ALLOW_PLAINTEXT: '1',
+        }
   const child: ChildProcess = spawn(
     process.execPath,
     [
@@ -89,7 +102,7 @@ export const startQualyServer = (options: QualyServerOptions): QualyServer => {
     ],
     {
       cwd: repoRoot,
-      env: { ...process.env, PORT: port, ...secretsKey, ...options.env },
+      env: { ...process.env, PORT: port, ...secretsKey, ...mail, ...options.env },
       stdio: ['ignore', 'pipe', 'pipe'],
     },
   )

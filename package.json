@@ -20,6 +20,8 @@
     "@qualy/plugin-database": "workspace:*",
     "@qualy/plugin-directory-import": "workspace:*",
     "@qualy/plugin-layout-default": "workspace:*",
+    "@qualy/plugin-mail": "workspace:*",
+    "@qualy/plugin-mail-smtp": "workspace:*",
     "@qualy/plugin-org": "workspace:*",
     "@qualy/plugin-ping": "workspace:*",
     "@qualy/plugin-rbac": "workspace:*",
