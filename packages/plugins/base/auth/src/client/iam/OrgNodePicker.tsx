@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { XIcon } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
-import type { OrgNodePickerContext } from '@qualy/ui-contract'
+import type { OrgNodePickerContext, PickedOrgNode } from '@qualy/ui-contract'
 import { useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
@@ -232,11 +232,34 @@ export default function OrgNodePicker({ context }: { context: OrgNodePickerConte
     return kind === undefined ? null : <span {...stylex.props(styles.kindWord)}>{kind}</span>
   }
 
+  // Who a chosen unit is, from the top down. Only this picker holds the
+  // names and the parent of each, so it says them rather than handing back
+  // an id nobody outside the organization can read.
+  const byId = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes])
+  const pathOf = (nodeId: string): string => {
+    const parts: string[] = []
+    let at: string | null = nodeId
+    // a malformed tree must not hang the picker: at worst it walks its depth
+    for (let step = 0; at !== null && step < 64; step += 1) {
+      const node = byId.get(at)
+      if (node === undefined) break
+      parts.unshift(node.name)
+      at = node.parentId
+    }
+    return parts.join(' / ')
+  }
+  const picked = (ids: readonly string[]): readonly PickedOrgNode[] =>
+    ids.flatMap((id) => {
+      const node = byId.get(id)
+      return node === undefined ? [] : [{ id, name: node.name, path: pathOf(id) }]
+    })
+  const announce = (ids: string[]) => context.onChange(ids, picked(ids))
+
   const toggle = (nodeId: string) => {
     const next = new Set(chosen)
     if (next.has(nodeId)) next.delete(nodeId)
     else next.add(nodeId)
-    context.onChange([...next])
+    announce([...next])
   }
 
   return (
@@ -320,7 +343,7 @@ export default function OrgNodePicker({ context }: { context: OrgNodePickerConte
             meta={badge}
             onSelect={(node) => {
               if (context.disabled?.[node.id] !== undefined) return
-              context.onChange(context.value[0] === node.id ? [] : [node.id])
+              announce(context.value[0] === node.id ? [] : [node.id])
             }}
           />
         ) : filtering ? (
@@ -346,7 +369,7 @@ export default function OrgNodePicker({ context }: { context: OrgNodePickerConte
         ) : (
           <TreeSelect
             value={context.value}
-            onChange={context.onChange}
+            onChange={announce}
             nodes={nodes}
             emptyLabel={format(m.pickerNoUnits)}
             meta={badge}

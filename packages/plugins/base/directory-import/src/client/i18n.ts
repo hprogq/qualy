@@ -110,6 +110,35 @@ const prepExistingMessage = defineMessage<{ businessNo: string }>()({
   id: 'directory-import/prep/existing',
   defaultMessage: 'Somebody whose {businessNo} already exists is left as they are, and nothing is written before you confirm the check',
 })
+const commitCount = defineMessage<{ count: number }>()({
+  id: 'directory-import/preview/commit-count',
+  defaultMessage: 'Import {count, plural, one {# person} other {# people}}',
+})
+const doneExisting = defineMessage<{ count: number }>()({
+  id: 'directory-import/done/existing',
+  defaultMessage:
+    '{count, plural, one {# person was already here} other {# people were already here}}, left as they are',
+})
+const scopeNote = defineMessage<{ path: string }>()({
+  id: 'directory-import/upload/scope',
+  defaultMessage: 'Everyone lands under {path}',
+})
+const anchorSaid = defineMessage<{ path: string }>()({
+  id: 'directory-import/mapping/anchor-said',
+  defaultMessage: 'Everyone stands under {path}; the levels below come from the file',
+})
+const levelFromColumn = defineMessage<{ column: string }>()({
+  id: 'directory-import/mapping/level-from',
+  defaultMessage: 'from the {column} column',
+})
+const tableShape = defineMessage<{ rows: number; columns: number }>()({
+  id: 'directory-import/sheet/shape',
+  defaultMessage: '{rows} rows, {columns} columns',
+})
+const sheetCount = defineMessage<{ count: number }>()({
+  id: 'directory-import/sheet/count',
+  defaultMessage: '{count, plural, one {# sheet} other {# sheets}}',
+})
 const countOfMessage = defineMessage<{ count: number }>()({
   id: 'directory-import/count-of',
   defaultMessage: '{count, plural, one {# in all} other {# in all}}',
@@ -149,6 +178,12 @@ const i18n = definePluginMessages({
       defaultMessage: 'The row holding the column titles; the rows under it are people',
     },
     rowCount,
+    tableShape,
+    sheetCount,
+    scopeNote,
+    next: { id: 'directory-import/step/next', defaultMessage: 'Next' },
+    back: { id: 'directory-import/step/back', defaultMessage: 'Back' },
+    finish: { id: 'directory-import/step/finish', defaultMessage: 'Done' },
     sampleTitle: { id: 'directory-import/sheet/sample', defaultMessage: 'First rows' },
     noHeaders: {
       id: 'directory-import/sheet/no-headers',
@@ -185,6 +220,24 @@ const i18n = definePluginMessages({
     removeLevel: { id: 'directory-import/mapping/remove-level', defaultMessage: 'Remove' },
     chainLevelColumn,
     mappingProblem,
+    anchorChosen: {
+      id: 'directory-import/mapping/anchor-chosen',
+      defaultMessage: 'The unit you chose',
+    },
+    anchorChange: { id: 'directory-import/mapping/anchor-change', defaultMessage: 'Change' },
+    anchorDone: { id: 'directory-import/mapping/anchor-done', defaultMessage: 'Use this unit' },
+    anchorSaid,
+    levelFromColumn,
+    peopleTitle: { id: 'directory-import/mapping/people', defaultMessage: 'Who they are' },
+    chainTitle: { id: 'directory-import/mapping/chain', defaultMessage: 'Where they will stand' },
+    exampleTitle: {
+      id: 'directory-import/mapping/example',
+      defaultMessage: 'The first row, as it will land',
+    },
+    exampleUnready: {
+      id: 'directory-import/mapping/example-unready',
+      defaultMessage: 'Choose the columns to see where the first row lands',
+    },
     check: { id: 'directory-import/mapping/check', defaultMessage: 'Check the file' },
     checking: { id: 'directory-import/mapping/checking', defaultMessage: 'Checking' },
     previewTitle: { id: 'directory-import/preview/title', defaultMessage: 'What this import will do' },
@@ -233,9 +286,28 @@ const i18n = definePluginMessages({
     fieldUserType: { id: 'directory-import/field/user-type', defaultMessage: 'user type' },
     fieldOrganization: { id: 'directory-import/field/organization', defaultMessage: 'unit' },
     commit: { id: 'directory-import/preview/commit', defaultMessage: 'Import' },
+    commitCount,
+    previewNoNewNodes: {
+      id: 'directory-import/preview/no-new-nodes',
+      defaultMessage: 'Nothing new to create',
+    },
+    issuesTakeAway: {
+      id: 'directory-import/preview/issues-take-away',
+      defaultMessage: 'Download the list',
+    },
+    issuesColumnWhat: {
+      id: 'directory-import/preview/issues-column',
+      defaultMessage: 'What is wrong',
+    },
     committing: { id: 'directory-import/preview/committing', defaultMessage: 'Importing' },
     doneTitle: { id: 'directory-import/done/title', defaultMessage: 'Imported' },
     done,
+    doneExisting,
+    doneKept: {
+      id: 'directory-import/done/kept',
+      defaultMessage:
+        'This import is kept as a record: what it did row by row, and the ways to take it back.',
+    },
     openRecord: { id: 'directory-import/done/open-record', defaultMessage: 'Open the record' },
     importAnother: { id: 'directory-import/done/another', defaultMessage: 'Import another file' },
     prepTitle: { id: 'directory-import/prep/title', defaultMessage: 'What the file should hold' },
@@ -261,11 +333,19 @@ const i18n = definePluginMessages({
       id: 'directory-import/record/undo-hint',
       defaultMessage: 'Reversing deletes the people it created; cleaning removes the units it created that stand empty',
     },
+    undoElsewhere: {
+      id: 'directory-import/record/undo-elsewhere',
+      defaultMessage: 'Reversing an import and cleaning its units are done on a computer',
+    },
     nodePresent: { id: 'directory-import/record/node-present', defaultMessage: 'Present' },
     pagerLabel: { id: 'directory-import/pager', defaultMessage: 'Pages' },
     countOf: countOfMessage,
     recordClose: { id: 'directory-import/record/close', defaultMessage: 'Close' },
     recordsTitle: { id: 'directory-import/records/title', defaultMessage: 'Past imports' },
+    recordsHint: {
+      id: 'directory-import/records/hint',
+      defaultMessage: 'Every import is kept, with what it did and what became of the people',
+    },
     recordsEmpty: { id: 'directory-import/records/empty', defaultMessage: 'Nothing has been imported yet' },
     recordsLoadMore: { id: 'directory-import/records/load-more', defaultMessage: 'Load more' },
     recordsLoading: { id: 'directory-import/records/loading', defaultMessage: 'Loading imports' },

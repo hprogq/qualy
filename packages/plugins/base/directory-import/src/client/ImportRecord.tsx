@@ -29,6 +29,7 @@ import {
   TableRow,
 } from '@qualy/ui/screen'
 import { Pager } from '@qualy/ui/pager'
+import { useIsBelow } from '@qualy/ui/use-mobile'
 import { Textarea } from '@qualy/ui/textarea'
 import { toast } from '@qualy/ui/toast'
 import { directoryApi } from './api.ts'
@@ -58,6 +59,61 @@ const styles = stylex.create({
     fontSize: 13,
   },
   quiet: { fontSize: 12, color: tokens.mutedForeground },
+  // Narrow, a row of six columns is not a row: the person and where they
+  // stand on the left, what the import did to them and what they are now on
+  // the right, one under the other.
+  person: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    paddingInline: 16,
+    paddingBlock: 10,
+    borderBottomWidth: { default: 1, ':last-child': 0 },
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
+  },
+  personWords: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 2 },
+  personLine: { display: 'flex', minWidth: 0, alignItems: 'baseline', gap: 8 },
+  personName: { fontSize: 13.5, fontWeight: 500 },
+  personNo: { fontSize: 12, fontVariantNumeric: 'tabular-nums', color: tokens.mutedForeground },
+  personWhere: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  personStanding: {
+    display: 'flex',
+    flexShrink: 0,
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: 2,
+    marginLeft: 'auto',
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  gone: { display: 'inline-flex', alignItems: 'center', gap: 5, color: tokens.danger },
+  goneDot: {
+    width: 6,
+    height: 6,
+    flexShrink: 0,
+    borderRadius: '9999px',
+    backgroundColor: tokens.danger,
+  },
+  elsewhere: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 10,
+    paddingInline: 14,
+    paddingBlock: 12,
+    borderRadius: 12,
+    backgroundColor: tokens.surfaceInset,
+    fontSize: 12.5,
+    lineHeight: 1.55,
+    color: tokens.surfaceMutedForeground,
+  },
   personLink: {
     color: 'inherit',
     textDecorationLine: { default: 'none', ':hover': 'underline' },
@@ -80,6 +136,7 @@ export function ImportRecordSheet({
 }) {
   const { format, formatError, locale } = useI18n()
   const businessNo = useTerm(authTerms.businessNumber)
+  const phone = useIsBelow(768)
   const api = useApi(directoryApi)
   const query = useApiQuery(directoryApi)
   const run = useRunApi()
@@ -188,26 +245,39 @@ export function ImportRecordSheet({
                   {format(m.recordStanding, found.import.standing)}
                 </span>
               </div>
-              <CardFoot inset>
-                <FootNote>{format(m.recordUndoHint)}</FootNote>
-                <Spacer />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={!found.nodes.some((node) => node.disposition === 'created' && node.present)}
-                  onClick={() => setCleaning(true)}
-                >
-                  {format(m.clean)}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={found.import.standing.living === 0}
-                  onClick={() => setReversing(true)}
-                >
-                  {format(m.reverse)}
-                </Button>
-              </CardFoot>
+              {/* Reversing an import means reading how many of the people
+                  it created can sign in and hold roles, and typing a reason
+                  for deleting them. That is not a judgement to make on a
+                  handset, so narrow the press is not offered at all - a line
+                  says where it is instead of a button that invites a mis-hit. */}
+              {phone ? (
+                <CardFoot inset>
+                  <FootNote>{format(m.undoElsewhere)}</FootNote>
+                </CardFoot>
+              ) : (
+                <CardFoot inset>
+                  <FootNote>{format(m.recordUndoHint)}</FootNote>
+                  <Spacer />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={
+                      !found.nodes.some((node) => node.disposition === 'created' && node.present)
+                    }
+                    onClick={() => setCleaning(true)}
+                  >
+                    {format(m.clean)}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={found.import.standing.living === 0}
+                    onClick={() => setReversing(true)}
+                  >
+                    {format(m.reverse)}
+                  </Button>
+                </CardFoot>
+              )}
             </Card>
 
             {found.events.length > 0 && (
@@ -235,7 +305,7 @@ export function ImportRecordSheet({
               </Card>
             )}
 
-            {found.nodes.length > 0 && (
+            {!phone && found.nodes.length > 0 && (
               <Card>
                 <CardHead
                   title={format(m.recordNodes)}
@@ -287,49 +357,110 @@ export function ImportRecordSheet({
                 title={format(m.recordRows)}
                 note={format(m.countOf, { count: rows.data?.total ?? found.import.sourceRowCount })}
               />
-              <Table columns="3.5rem 7.5rem 6rem minmax(0, 1fr) 4.5rem 4.5rem">
-                <TableHead>
-                  <span>{format(m.columnRow)}</span>
-                  <span>{businessNo}</span>
-                  <span>{format(m.columnName)}</span>
-                  <span>{format(m.columnUnit)}</span>
-                  <span>{format(m.columnOutcome)}</span>
-                  <span>{format(m.columnStanding)}</span>
-                </TableHead>
-                {items.map((row) => (
-                  <TableRow
-                    key={row.sourceRowNo}
-                    height="compact"
-                    data-testid="import-row"
-                    data-standing={row.standing}
-                  >
-                    <Cell numeric>{row.sourceRowNo}</Cell>
-                    <Cell numeric tone="plain">
-                      {row.businessNo}
-                    </Cell>
-                    <Cell tone="plain">
-                      {row.userId === null ? (
-                        row.displayName
-                      ) : (
-                        <PageLink
-                          page="auth/user-detail"
-                          params={{ userId: row.userId }}
-                          className={stylex.props(styles.personLink).className}
-                        >
-                          {row.displayName}
-                        </PageLink>
-                      )}
-                    </Cell>
-                    <Cell title={row.orgPath}>{row.orgPath}</Cell>
-                    <Cell>
-                      {format(row.disposition === 'created' ? m.dispositionCreated : m.dispositionExisting)}
-                    </Cell>
-                    <Status tone={row.standing === 'deleted' || row.standing === 'missing' ? 'bad' : 'plain'}>
-                      {format(standingWords[row.standing])}
-                    </Status>
-                  </TableRow>
-                ))}
-              </Table>
+              {phone ? (
+                items.map((row) => {
+                  const gone = row.standing === 'deleted' || row.standing === 'missing'
+                  return (
+                    <div
+                      key={row.sourceRowNo}
+                      {...stylex.props(styles.person)}
+                      data-testid="import-row"
+                      data-standing={row.standing}
+                    >
+                      <span {...stylex.props(styles.personWords)}>
+                        <span {...stylex.props(styles.personLine)}>
+                          <span {...stylex.props(styles.personName)}>
+                            {row.userId === null ? (
+                              row.displayName
+                            ) : (
+                              <PageLink
+                                page="auth/user-detail"
+                                params={{ userId: row.userId }}
+                                className={stylex.props(styles.personLink).className}
+                              >
+                                {row.displayName}
+                              </PageLink>
+                            )}
+                          </span>
+                          <span {...stylex.props(styles.personNo)}>{row.businessNo}</span>
+                        </span>
+                        <span {...stylex.props(styles.personWhere)}>{row.orgPath}</span>
+                      </span>
+                      <span {...stylex.props(styles.personStanding)}>
+                        <span>
+                          {format(
+                            row.disposition === 'created'
+                              ? m.dispositionCreated
+                              : m.dispositionExisting,
+                          )}
+                        </span>
+                        {/* only what is wrong is marked: a column of grey
+                            words with one red one in it is read at a glance */}
+                        {gone ? (
+                          <span {...stylex.props(styles.gone)}>
+                            <span aria-hidden {...stylex.props(styles.goneDot)} />
+                            {format(standingWords[row.standing])}
+                          </span>
+                        ) : (
+                          <span>{format(standingWords[row.standing])}</span>
+                        )}
+                      </span>
+                    </div>
+                  )
+                })
+              ) : (
+                <Table columns="3.5rem 7.5rem 6rem minmax(0, 1fr) 4.5rem 4.5rem">
+                  <TableHead>
+                    <span>{format(m.columnRow)}</span>
+                    <span>{businessNo}</span>
+                    <span>{format(m.columnName)}</span>
+                    <span>{format(m.columnUnit)}</span>
+                    <span>{format(m.columnOutcome)}</span>
+                    <span>{format(m.columnStanding)}</span>
+                  </TableHead>
+                  {items.map((row) => (
+                    <TableRow
+                      key={row.sourceRowNo}
+                      height="compact"
+                      data-testid="import-row"
+                      data-standing={row.standing}
+                    >
+                      <Cell numeric>{row.sourceRowNo}</Cell>
+                      <Cell numeric tone="plain">
+                        {row.businessNo}
+                      </Cell>
+                      <Cell tone="plain">
+                        {row.userId === null ? (
+                          row.displayName
+                        ) : (
+                          <PageLink
+                            page="auth/user-detail"
+                            params={{ userId: row.userId }}
+                            className={stylex.props(styles.personLink).className}
+                          >
+                            {row.displayName}
+                          </PageLink>
+                        )}
+                      </Cell>
+                      <Cell title={row.orgPath}>{row.orgPath}</Cell>
+                      <Cell>
+                        {format(
+                          row.disposition === 'created'
+                            ? m.dispositionCreated
+                            : m.dispositionExisting,
+                        )}
+                      </Cell>
+                      <Status
+                        tone={
+                          row.standing === 'deleted' || row.standing === 'missing' ? 'bad' : 'plain'
+                        }
+                      >
+                        {format(standingWords[row.standing])}
+                      </Status>
+                    </TableRow>
+                  ))}
+                </Table>
+              )}
               <CardFoot>
                 <Pager
                   testId="import-rows-pager"

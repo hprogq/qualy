@@ -522,10 +522,26 @@ export const orgNodePicker = defineUiSlot({
   cardinality: 'one',
 })
 
+/** a unit as the picker hands it back: what it is called, and where it sits */
+export interface PickedOrgNode {
+  readonly id: string
+  readonly name: string
+  /** the names from the top down, joined the way the product writes a path */
+  readonly path: string
+}
+
 export interface OrgNodePickerContext {
   /** a set, because picking one unit and picking four is the same errand */
   value: readonly string[]
-  onChange: (orgNodeIds: string[]) => void
+  /**
+   * The chosen units, by id and named.
+   *
+   * The names come with them because only the picker knows them: a caller
+   * outside the organization plugin holds an id and no way to read it back,
+   * and a screen that has to echo what was chosen - "everyone goes under
+   * 软件学院" - cannot do it from an id alone.
+   */
+  onChange: (orgNodeIds: string[], picked: readonly PickedOrgNode[]) => void
   /**
    * One unit at a time, drawn without checkboxes.
    *

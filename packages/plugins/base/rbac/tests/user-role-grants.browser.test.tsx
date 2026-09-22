@@ -174,7 +174,12 @@ describe('the grants of one person', () => {
     // stand-in that offers one unit
     function OneUnitPicker({ context }: { context: OrgNodePickerContext }) {
       return (
-        <button type="button" onClick={() => context.onChange([BRANCH_NODE_ID])}>
+        <button
+          type="button"
+          onClick={() =>
+            context.onChange([BRANCH_NODE_ID], [{ id: BRANCH_NODE_ID, name: '分部', path: '分部' }])
+          }
+        >
           分部
         </button>
       )
