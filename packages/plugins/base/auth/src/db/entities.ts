@@ -499,6 +499,55 @@ export const AuthFlow = defineEntity({
 })
 
 /**
+ * A link sent to somebody's email, waiting to be followed once.
+ *
+ * Three purposes, one table: proving an address is theirs (`verify`, the
+ * address it was sent to recorded so a link to an address since replaced
+ * proves nothing), setting a password without the old one (`reset`, which
+ * names no address - it goes to the one on file), and moving to a new
+ * address (`change`, the new address recorded; the person keeps the old one
+ * until the link is followed). Only a digest of the link's token is kept.
+ */
+export const UserEmailChallenge = defineEntity({
+  name: 'UserEmailChallenge',
+  tableName: 'user_email_challenges',
+  properties: {
+    id: p.uuid().primary().defaultRaw('uuidv7()'),
+    tenantId: tenantOf('user_email_challenges_tenant_id_tenants_id_fkey'),
+    userId: p.uuid(),
+    purpose: p.string().length(15),
+    targetEmail: p.string().length(320).nullable(),
+    /** sha256 of the token the link carries; never the token itself */
+    tokenHash: p.character().length(64).unique('uq_user_email_challenges_token'),
+    expiresAt: p.datetime(),
+    consumedAt: p.datetime().nullable(),
+    createdAt: p.datetime().defaultRaw('now()'),
+  },
+  checks: [
+    {
+      name: 'chk_user_email_challenges_purpose',
+      expression: `purpose IN ('verify', 'reset', 'change')`,
+    },
+    {
+      name: 'chk_user_email_challenges_target',
+      expression: `(purpose = 'reset') = (target_email IS NULL)`,
+    },
+  ],
+  indexes: [
+    // the open ones of a person: what a new link, or a changed address, retires
+    {
+      name: 'idx_user_email_challenges_open_user',
+      expression: `create index idx_user_email_challenges_open_user on user_email_challenges (tenant_id, user_id, purpose) where consumed_at is null`,
+    },
+    {
+      name: 'idx_user_email_challenges_expires',
+      expression:
+        'create index idx_user_email_challenges_expires on user_email_challenges (expires_at)',
+    },
+  ],
+})
+
+/**
  * One sign-in attempt, success or failure, as the auth domain's own record.
  *
  * Not an audit event: signing in is this domain's high-frequency security
@@ -618,6 +667,9 @@ export const compositeForeignKeys = [
      foreign key (tenant_id, session_id) references sessions (tenant_id, id) on delete cascade`,
   `alter table session_auth_grants add constraint fk_session_auth_grants_provider
      foreign key (tenant_id, auth_provider_id) references auth_providers (tenant_id, id) on delete restrict`,
+  // a person is only ever marked deleted, so this only guards the day one is erased
+  `alter table user_email_challenges add constraint fk_user_email_challenges_user
+     foreign key (tenant_id, user_id) references users (tenant_id, id) on delete restrict`,
 ]
 
 export const entities = [
@@ -632,4 +684,5 @@ export const entities = [
   AuthFlow,
   SessionAuthGrant,
   AuthRateLimitBucket,
+  UserEmailChallenge,
 ] as const

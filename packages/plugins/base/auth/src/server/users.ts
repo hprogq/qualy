@@ -12,6 +12,7 @@ import { Audit } from '@qualy/audit-contract/effect'
 import type { AuditActor } from '@qualy/audit-contract'
 import { LoginDrivers } from '@qualy/auth-contract/login'
 import { actorOf } from './audit-actor.ts'
+import { retireChallenges } from './email-flows.ts'
 import { normalizeEmail } from '@qualy/auth-contract/email'
 import {
   BindingRevoked,
@@ -1422,6 +1423,9 @@ export const make = Effect.fn('Iam.users.make')(function* () {
             if (yield* credentialAtDoorsOf(tenantId, user.id, types)) {
               yield* deleteUserSessions(tenantId, user.id)
             }
+            // a link already sent went to the old address, or proves it:
+            // either way it no longer speaks for this person
+            yield* retireChallenges(tenantId, user.id, ['verify', 'reset', 'change'])
           }
           yield* audit.record(UserUpdated, {
             tenantId,

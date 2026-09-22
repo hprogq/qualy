@@ -31,6 +31,14 @@ export const LIMITS = {
   signInByIdentifier: { scope: 'sign-in:identifier', limit: 10, windowSeconds: 900 },
   /** redirects started from one address at one entrance */
   flowStartByAddress: { scope: 'flow-start:address', limit: 30, windowSeconds: 300 },
+  /** forgotten-password requests from one address */
+  resetByAddress: { scope: 'reset:address', limit: 10, windowSeconds: 900 },
+  /** forgotten-password requests for one email, from anywhere */
+  resetByIdentifier: { scope: 'reset:identifier', limit: 3, windowSeconds: 3600 },
+  /** links one person asks to be sent to themselves */
+  mailBySelf: { scope: 'mail:user', limit: 5, windowSeconds: 3600 },
+  /** tries at one person's own current password */
+  passwordBySelf: { scope: 'password:user', limit: 10, windowSeconds: 900 },
 } as const satisfies Record<string, LimitRule>
 
 /** buckets nobody has touched for this long are swept */

@@ -1,7 +1,7 @@
 {
   "lockfileVersion": 2,
   "manifestHash": "sha256:b5faacd8bd304812d7406342c35ced4cd481d3c9938690e036df041c78d8c38d",
-  "resolutionHash": "sha256:d7bca8c90a23b6b3495e7acb6b410347c35bcc241b7ae7684460fe1079132a6c",
+  "resolutionHash": "sha256:af5cc958551a5139d40f94080359156fa0a2cb2ac593d5f73c3caf85581ae3a9",
   "plugins": {
     "@qualy/plugin-assessment": {
       "version": "0.0.0",
@@ -135,6 +135,7 @@
             "SignInEvent",
             "User",
             "UserAuthBinding",
+            "UserEmailChallenge",
             "UserType",
             "UserTypeAllowedOrgType"
           ],

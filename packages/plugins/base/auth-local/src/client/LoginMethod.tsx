@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { useApi, useRunApi } from '@qualy/web-runtime'
+import { PageLink, useApi, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
@@ -17,6 +17,12 @@ const styles = stylex.create({
   field: { display: 'flex', flexDirection: 'column', gap: 8 },
   refusal: { fontSize: 14, lineHeight: '1.25rem', color: tokens.danger },
   submit: { width: '100%' },
+  labelRow: { display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 },
+  forgot: {
+    fontSize: 12.5,
+    color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
+    textDecoration: 'none',
+  },
 })
 
 export default function LocalLoginMethod({ method, onAuthenticated }: LoginMethodRendererProps) {
@@ -61,7 +67,18 @@ export default function LocalLoginMethod({ method, onAuthenticated }: LoginMetho
         />
       </div>
       <div {...stylex.props(styles.field)}>
-        <Label htmlFor="password">{format(m.password)}</Label>
+        <span {...stylex.props(styles.labelRow)}>
+          <Label htmlFor="password">{format(m.password)}</Label>
+          {/* the page belongs to whoever owns people; a build without it
+              has no link here rather than a dead one */}
+          <PageLink
+            page="auth/reset-password"
+            unavailable={null}
+            className={stylex.props(styles.forgot).className}
+          >
+            {format(m.forgot)}
+          </PageLink>
+        </span>
         <Input
           id="password"
           type="password"

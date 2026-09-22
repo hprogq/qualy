@@ -25,6 +25,7 @@ const me = (over: Partial<Me> = {}): Me => ({
   emailVerified: true,
   userType: { id: 'ut', name: '学生' },
   unit: { id: 'n', name: '示例学院' },
+  passwordStatus: 'set',
   ...over,
 })
 

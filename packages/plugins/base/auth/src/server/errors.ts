@@ -256,6 +256,51 @@ export class AuthLastWayIn extends Schema.TaggedError<AuthLastWayIn>()(
   { httpApiStatus: 409, identifier: 'AuthLastWayIn' },
 ) {}
 
+/** the link was never issued, has been followed already, or has run out */
+export class ChallengeInvalid extends Schema.TaggedError<ChallengeInvalid>()(
+  'AUTH_CHALLENGE_INVALID',
+  {},
+  { httpApiStatus: 400, identifier: 'ChallengeInvalid' },
+) {}
+
+/** the password given as the current one is not it */
+export class PasswordIncorrect extends Schema.TaggedError<PasswordIncorrect>()(
+  'AUTH_PASSWORD_INCORRECT',
+  {},
+  { httpApiStatus: 403, identifier: 'PasswordIncorrect' },
+) {}
+
+/**
+ * A password can only be set without the old one by somebody whose email is
+ * proven theirs: the email is what a forgotten password is recovered by.
+ */
+export class EmailUnverified extends Schema.TaggedError<EmailUnverified>()(
+  'AUTH_EMAIL_UNVERIFIED',
+  {},
+  { httpApiStatus: 409, identifier: 'EmailUnverified' },
+) {}
+
+/** there is no email on file to verify */
+export class EmailMissing extends Schema.TaggedError<EmailMissing>()(
+  'AUTH_EMAIL_MISSING',
+  {},
+  { httpApiStatus: 409, identifier: 'EmailMissing' },
+) {}
+
+/** no password way in is open to this person, so there is no password to set */
+export class PasswordUnavailable extends Schema.TaggedError<PasswordUnavailable>()(
+  'AUTH_PASSWORD_UNAVAILABLE',
+  {},
+  { httpApiStatus: 409, identifier: 'PasswordUnavailable' },
+) {}
+
+/** the message could not be sent; nothing was changed */
+export class MailNotSent extends Schema.TaggedError<MailNotSent>()(
+  'AUTH_MAIL_NOT_SENT',
+  {},
+  { httpApiStatus: 503, identifier: 'MailNotSent' },
+) {}
+
 /** an address another entrance of this tenant already answers at */
 export class ProviderConflict extends Schema.TaggedError<ProviderConflict>()(
   'AUTH_PROVIDER_CONFLICT',

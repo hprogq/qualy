@@ -18,7 +18,7 @@ import {
 const MAILPIT = process.env['QUALY_TEST_MAILPIT_URL'] ?? 'http://127.0.0.1:8025'
 const SMTP_PORT = Number(process.env['QUALY_TEST_MAILPIT_SMTP_PORT'] ?? '1025')
 
-const mailpitAvailable = await fetch(`${MAILPIT}/api/v1/info`, { signal: AbortSignal.timeout(1500) })
+const mailpitAvailable = await fetch(`${MAILPIT}/api/v1/info`, { signal: AbortSignal.timeout(5_000) })
   .then((response) => response.ok)
   .catch(() => false)
 

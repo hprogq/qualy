@@ -6,6 +6,7 @@ export default {
   'auth-local/field/password': '密码',
   'auth-local/action/submit': '登录',
   'auth-local/action/submitting': '登录中…',
+  'auth-local/action/forgot': '忘记密码？',
   'auth-local/error/invalid-credentials': '邮箱或密码错误。',
   // exact key coverage per locale is enforced by scripts/tests/catalogs.test
 } satisfies MessageCatalog

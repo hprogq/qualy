@@ -5,6 +5,7 @@ import type { Principal } from '@qualy/rbac-contract'
 import { withDatabase, type Orm } from '@qualy/plugin-database/server'
 import type { Secrets } from '@qualy/plugin-secrets/plugin'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
+import { HttpServerRequest } from 'effect/unstable/http'
 import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
 import { Api } from '@qualy/api-kit/plugin'
 import { codeFrom, cursorUnusable, pageNumber, pageSize } from '@qualy/api-kit/schema'
@@ -26,6 +27,8 @@ import { publicOriginBootCheck, PublicOriginResolver, singleOriginLayer } from '
 import { AnonymousTenantResolver, singleTenantLayer } from './tenancy.ts'
 import { makeOutbound } from './outbound.ts'
 import { AuthOutbound } from '@qualy/auth-contract/outbound'
+import { EmailFlows, emailFlowsLayer } from './email-flows.ts'
+import { mailLocaleOf } from './mail-copy.ts'
 
 // auth as an Effect layer.
 //
@@ -165,7 +168,14 @@ export const serviceLayer: Layer.Layer<
  * Kept apart from `serviceLayer` so a stack that composes auth's services
  * for a test does not also have to stand up the boot barrier.
  */
-export const pluginLayer = Layer.mergeAll(recoveryBootCheck, publicOriginBootCheck).pipe(
+export const pluginLayer = Layer.mergeAll(
+  recoveryBootCheck,
+  publicOriginBootCheck,
+  // the flows that go through somebody's inbox, which is where the plugin
+  // meets the mail capability; a stack composing auth's services for a test
+  // does not have to stand up mail
+  emailFlowsLayer,
+).pipe(
   // the checks stand on the services, which is also where the two resolvers
   // come from: merged beside them they would be built in parallel with what
   // they depend on
@@ -250,6 +260,42 @@ export const sessionApiHandlers = HttpApiBuilder.group(local, 'auth', (handlers)
         yield* signIn.endSession()
         return { ok: true as const }
       }),
+    )
+    .handle(
+      'createPasswordReset',
+      Effect.fn('auth.createPasswordReset.handler')(function* ({ payload }) {
+        const flows = yield* EmailFlows
+        const request = yield* HttpServerRequest.HttpServerRequest
+        yield* flows.requestReset({
+          email: payload.email,
+          locale: mailLocaleOf(request.headers['accept-language']),
+        })
+        return { ok: true as const }
+      }),
+    )
+    .handle(
+      'createPasswordResetRedemption',
+      Effect.fn('auth.createPasswordResetRedemption.handler')(function* ({ payload }) {
+        const flows = yield* EmailFlows
+        yield* flows.redeemReset(payload)
+        return { ok: true as const }
+      }),
+    )
+    .handle(
+      'createEmailVerificationRedemption',
+      Effect.fn('auth.createEmailVerificationRedemption.handler')(function* ({ payload }) {
+        const flows = yield* EmailFlows
+        yield* flows.redeemVerification(payload.token)
+        return { ok: true as const }
+      }),
+    )
+    .handle(
+      'createEmailChangeRedemption',
+      Effect.fn('auth.createEmailChangeRedemption.handler')(function* ({ payload }) {
+        const flows = yield* EmailFlows
+        yield* flows.redeemChange(payload.token)
+        return { ok: true as const }
+      }),
     ),
 )
 
@@ -297,6 +343,42 @@ export const selfApiHandlers = HttpApiBuilder.group(local, 'self', (handlers) =>
         // has ended, and the cookie that named it goes too
         if (answer.signedOut) yield* signIn.endSession()
         return answer
+      }),
+    )
+    .handle(
+      'createSelfEmailVerification',
+      Effect.fn('iam.createSelfEmailVerification.handler')(function* () {
+        const flows = yield* EmailFlows
+        const request = yield* HttpServerRequest.HttpServerRequest
+        return yield* flows.requestVerification(
+          yield* CurrentUser,
+          mailLocaleOf(request.headers['accept-language']),
+        )
+      }),
+    )
+    .handle(
+      'createSelfEmailChange',
+      Effect.fn('iam.createSelfEmailChange.handler')(function* ({ payload }) {
+        const flows = yield* EmailFlows
+        const request = yield* HttpServerRequest.HttpServerRequest
+        yield* flows.requestChange(yield* CurrentUser, {
+          newEmail: payload.newEmail,
+          locale: mailLocaleOf(request.headers['accept-language']),
+        })
+        return { ok: true as const }
+      }),
+    )
+    .handle(
+      'putSelfPassword',
+      Effect.fn('iam.putSelfPassword.handler')(function* ({ payload }) {
+        const flows = yield* EmailFlows
+        yield* flows.setPassword(yield* CurrentUser, {
+          newPassword: payload.newPassword,
+          ...(payload.currentPassword === undefined
+            ? {}
+            : { currentPassword: payload.currentPassword }),
+        })
+        return { ok: true as const }
       }),
     ),
 )

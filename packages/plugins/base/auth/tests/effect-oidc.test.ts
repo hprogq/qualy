@@ -35,6 +35,7 @@ import { singleTenantLayer } from '../src/server/tenancy.ts'
 import { singleOriginLayer } from '../src/server/public-origin.ts'
 import { authClosure } from './support/closure.ts'
 import { authAuditLayer } from './support/audit.ts'
+import { unusedEmailFlows } from './support/email-flows.ts'
 
 // An OpenID Connect sign-in, all the way through, against a provider that
 // lives in this file.
@@ -262,6 +263,7 @@ beforeAll(async () => {
     middleware: requestContext(),
   }).pipe(
     Layer.provide(signIn),
+    Layer.provide(unusedEmailFlows),
     Layer.provide(outbound),
     Layer.provide(NodeHttpServer.layer(createServer, { port })),
     Layer.provide(infra),

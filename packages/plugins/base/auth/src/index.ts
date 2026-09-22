@@ -12,6 +12,7 @@ import { Audit } from '@qualy/audit-contract/plugin'
 import { Settings } from '@qualy/settings-contract/plugin'
 import { authTermCategories, authTerms } from '@qualy/auth-contract/terms'
 import { SIGN_IN_PAGE_PATH } from '@qualy/auth-contract/sign-in-failure'
+import { CONFIRM_EMAIL_PATH, RESET_PASSWORD_PATH } from './constants.ts'
 import { userActions } from './actions.ts'
 import {
   APP_SHELL,
@@ -56,6 +57,7 @@ const plugin = Plugin.define(
     dependsOn: [
       '@qualy/plugin-audit',
       '@qualy/plugin-database',
+      '@qualy/plugin-mail',
       '@qualy/plugin-rbac',
       '@qualy/plugin-secrets',
       '@qualy/plugin-ui-registry',
@@ -189,6 +191,32 @@ const plugin = Plugin.define(
     title: message('auth/account/logins', 'Ways in'),
     visibility: AUTHENTICATED,
   }),
+  Ui.page({
+    id: 'auth/account-security',
+    path: '/account/security',
+    component: Ui.react('./client/account/AccountSecurityPage'),
+    layout: ACCOUNT_SHELL,
+    title: message('auth/account/security', 'Security'),
+    visibility: AUTHENTICATED,
+  }),
+  // where the links mail sends land: public, because the person following
+  // one may be signed out, or on another device
+  Ui.page({
+    id: 'auth/reset-password',
+    path: RESET_PASSWORD_PATH,
+    component: Ui.react('./client/recovery/ResetPasswordPage'),
+    layout: BLANK_SHELL,
+    title: message('auth/reset/title', 'Reset password'),
+    visibility: PUBLIC,
+  }),
+  Ui.page({
+    id: 'auth/email-confirmation',
+    path: CONFIRM_EMAIL_PATH,
+    component: Ui.react('./client/recovery/ConfirmEmailPage'),
+    layout: BLANK_SHELL,
+    title: message('auth/confirm/title', 'Confirm email'),
+    visibility: PUBLIC,
+  }),
   Ui.slot({
     key: accountHeader.key,
     id: 'auth/account-header',
@@ -219,6 +247,18 @@ const plugin = Plugin.define(
           target: { kind: 'page', pageId: 'auth/account-profile' },
           icon: 'id-card',
           order: 0,
+        },
+        visibility: AUTHENTICATED,
+      },
+      {
+        collection: accountNavigation,
+        id: 'auth/account/security',
+        value: {
+          id: 'auth/account/security',
+          label: message('auth/account/security', 'Security'),
+          target: { kind: 'page', pageId: 'auth/account-security' },
+          icon: 'shield-check',
+          order: 20,
         },
         visibility: AUTHENTICATED,
       },

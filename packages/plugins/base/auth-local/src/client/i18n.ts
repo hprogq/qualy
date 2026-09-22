@@ -13,6 +13,7 @@ const i18n = definePluginMessages({
     password: { id: 'auth-local/field/password', defaultMessage: 'Password' },
     submit: { id: 'auth-local/action/submit', defaultMessage: 'Sign in' },
     submitting: { id: 'auth-local/action/submitting', defaultMessage: 'Signing in…' },
+    forgot: { id: 'auth-local/action/forgot', defaultMessage: 'Forgot password?' },
   },
   errors: defineErrorTranslations<ErrorsByCode<typeof authLocalErrors>>()({
     INVALID_CREDENTIALS: {

@@ -10,3 +10,9 @@
 // assigned.
 export const SYSTEM_ACCOUNT_USER_TYPE = 'system-account'
 export const LOCAL_PROVIDER_CODE = 'local'
+
+/** where a link to set a new password lands, as the page declares it */
+export const RESET_PASSWORD_PATH = '/reset-password'
+
+/** where a link that proves or moves an email address lands */
+export const CONFIRM_EMAIL_PATH = '/confirm-email'

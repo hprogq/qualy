@@ -330,6 +330,28 @@ JWKS、UserInfo 一个都不走默认 fetch;出站端口为此多了一个 Fetch
 (compose 的 `mailpit` 服务,SMTP 1025,收件箱 http://localhost:8025);契约检查在 `@qualy/plugin-mail/testkit`,
 smtp 后端对着 Mailpit 跑同一套,CI 设 `QUALY_REQUIRE_MAILPIT_TESTS=1`,不可达即失败而不是跳过。
 
+## 邮箱验证、密码找回、改邮箱与自助改密码(2026-09-23 定案)
+
+- **一张表** `user_email_challenges(purpose verify | reset | change)`:token 32 字节随机,库里只存 sha256;`target_email` 的语义——
+  verify = 签发时的当前邮箱(兑换时 `users.email` 必须仍等于它,否则「发链接后管理员改了邮箱」会把新邮箱误标为已验证)、
+  change = 新邮箱、reset = null(库上 `chk_user_email_challenges_target` 约束)。有效期 verify / change 24 小时、reset 1 小时;
+  兑换是一条条件 UPDATE(未消费、未过期、同 purpose)即原子消费;同一人同一 purpose 签发新链接时旧的一律作废;
+  管理员改邮箱、兑换改邮箱时作废该人全部未用链接。
+- **发信不与建链接同事务**:锁内建链接 → 提交 → 发信;发不出去就把该链接标为已用并记日志与指标,绝不 `BEGIN / INSERT / SMTP / COMMIT`。
+  链接用 fragment(`/reset-password#token=…`、`/confirm-email#purpose=…&token=…`),token 不进任何服务端访问日志。
+  邮件文案在服务端 `mail-copy.ts`(中英两份,按请求的 Accept-Language 首选语言选),由 `@qualy/plugin-mail` 发出。
+- **找回密码** `POST /auth/password-resets`(匿名):先按来源地址(10 / 15 分钟)与邮箱(3 / 小时)计数,**无论邮箱存在与否同一句回答、同样的耗时**
+  ——只对「邮箱已验证、在用、密码入口接纳」的人发信,且信在回答之后另起 fiber 发出。兑换 `POST /auth/password-resets/redemptions`
+  用驱动的 `binding.prepare` 生成摘要(规则仍是 12–128),写入后**结束该人全部会话**,审计 `auth.identity.bind`(actor 为本人)。
+- **自助改密码** `PUT /iam/self/password`:已有密码 → 必须给当前密码(驱动的 `binding.verify` 核对,按人 10 / 15 分钟计数)→
+  写新摘要 → **结束其他会话、保留当前**;没有密码 → 邮箱必须已验证才能直接设置(`AUTH_EMAIL_UNVERIFIED`);没有接纳本人的密码入口 →
+  `AUTH_PASSWORD_UNAVAILABLE`。托管凭据的驱动因此多声明一个 `verify`。
+- **验证邮箱** `POST /iam/self/email-verifications`(已验证则 `sent: false` 不发);**改邮箱** `POST /iam/self/email-changes` 发到**新**邮箱,
+  **验证通过才替换** `users.email`(同时标为已验证、审计 `auth.user.update`);新邮箱被人占用 `USER_EMAIL_CONFLICT`;系统账户的邮箱只由 seed
+  设定 `SYSTEM_ACCOUNT_PROTECTED`。两者按人每小时至多 5 封。发信失败对自助接口如实说 `AUTH_MAIL_NOT_SENT`。
+- 界面:`/reset-password`(无 token 时问邮箱,有 token 时设新密码)、`/confirm-email`(打开即兑换,按 token 去重只请求一次)两个 PUBLIC 页;
+  本地登录表单的「忘记密码？」;「我的 → 账号安全」(改 / 设密码、验证邮箱、改邮箱)。
+
 ## 「我的」自助接口(2026-09-23 定案)
 
 - `/iam/self/*` 只要登录,**不带任何用户 id**:问的永远是 session 的主人,与 `/iam/users/{userId}/*` 的管理接口分权,

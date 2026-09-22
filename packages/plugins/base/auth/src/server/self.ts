@@ -60,7 +60,7 @@ const selfRow = (tenantId: string, userId: string) =>
  * with their live binding at it when there is one. The credential is never
  * selected, only whether there is one.
  */
-const doorsOf = (tenantId: string, userId: string, userTypeId: string | null) =>
+export const doorsOf = (tenantId: string, userId: string, userTypeId: string | null) =>
   db.query((k) =>
     k
       .selectFrom('AuthProvider as p')
@@ -158,10 +158,29 @@ export const make = Effect.fn('Iam.self.make')(function* () {
   return {
     /** who the reader is, as the product has them on file */
     profile: Effect.fn('Iam.self.profile')(function* (principal: Principal) {
-      const row = yield* withDb(requireSelf(principal)).pipe(
-        Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
+      const { row, found } = yield* withDb(
+        Effect.gen(function* () {
+          const row = yield* requireSelf(principal)
+          return {
+            row,
+            found: yield* serving(principal.tenantId, principal.userId, row.userTypeId),
+          }
+        }),
+      ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
+      // the password way in open to them, if any, and whether they hold one there
+      const passwordDoor = found.find(
+        ({ driver }) =>
+          driver.binding?.mode === 'managed' &&
+          driver.resolution.mode === 'user-field' &&
+          driver.resolution.field === 'email',
       )
       return {
+        passwordStatus:
+          passwordDoor === undefined
+            ? ('unavailable' as const)
+            : passwordDoor.door.hasCredential === true
+              ? ('set' as const)
+              : ('unset' as const),
         id: row.id,
         displayName: row.displayName,
         businessNo: row.businessNo,

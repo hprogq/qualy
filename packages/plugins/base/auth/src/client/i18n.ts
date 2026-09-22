@@ -510,6 +510,65 @@ const i18n = definePluginMessages({
     accountNotBound: { id: 'auth/account/not-bound', defaultMessage: 'Not bound yet' },
     accountUnbind: { id: 'auth/account/unbind', defaultMessage: 'Unbind' },
     accountBind: { id: 'auth/account/bind', defaultMessage: 'Bind' },
+    accountSecurity: { id: 'auth/account/security', defaultMessage: 'Security' },
+    passwordSection: { id: 'auth/account/password', defaultMessage: 'Password' },
+    currentPassword: { id: 'auth/account/current-password', defaultMessage: 'Current password' },
+    passwordChange: { id: 'auth/account/password-change', defaultMessage: 'Change password' },
+    passwordSetFirst: { id: 'auth/account/password-set', defaultMessage: 'Set password' },
+    passwordChanged: {
+      id: 'auth/account/password-changed',
+      defaultMessage: 'Password saved. Every other device was signed out.',
+    },
+    passwordNotOpen: {
+      id: 'auth/account/password-not-open',
+      defaultMessage: 'Signing in with a password is not open to you',
+    },
+    passwordNeedsEmail: {
+      id: 'auth/account/password-needs-email',
+      defaultMessage: 'Verify your email below, then set a password here',
+    },
+    sendVerification: { id: 'auth/account/send-verification', defaultMessage: 'Send verification email' },
+    verificationSent: {
+      id: 'auth/account/verification-sent',
+      defaultMessage: 'Sent. Open the link in the email.',
+    },
+    newEmail: { id: 'auth/account/new-email', defaultMessage: 'New email' },
+    sendChange: { id: 'auth/account/send-change', defaultMessage: 'Send confirmation' },
+    changeHint: {
+      id: 'auth/account/change-hint',
+      defaultMessage: 'The new address takes over once you open the link sent to it',
+    },
+    changeSent: {
+      id: 'auth/account/change-sent',
+      defaultMessage: 'Sent to the new address. Open the link in it to finish.',
+    },
+    resetTitle: { id: 'auth/reset/title', defaultMessage: 'Reset password' },
+    resetAskHint: {
+      id: 'auth/reset/ask-hint',
+      defaultMessage: 'Enter your account’s email. If it is verified, a link to set a new password is sent to it',
+    },
+    resetAskSubmit: { id: 'auth/reset/ask-submit', defaultMessage: 'Send link' },
+    resetAskSent: {
+      id: 'auth/reset/ask-sent',
+      defaultMessage: 'If that address is verified on an account, a link is on its way. It works for an hour',
+    },
+    resetNewPassword: { id: 'auth/reset/new-password', defaultMessage: 'New password' },
+    resetConfirmPassword: { id: 'auth/reset/confirm-password', defaultMessage: 'Repeat the new password' },
+    resetSubmit: { id: 'auth/reset/submit', defaultMessage: 'Set password' },
+    resetDone: {
+      id: 'auth/reset/done',
+      defaultMessage: 'Your new password is set. Sign in with it',
+    },
+    passwordMismatch: { id: 'auth/reset/mismatch', defaultMessage: 'The two passwords differ.' },
+    toSignIn: { id: 'auth/reset/to-sign-in', defaultMessage: 'Go to sign in' },
+    confirmTitle: { id: 'auth/confirm/title', defaultMessage: 'Confirm email' },
+    confirmVerified: { id: 'auth/confirm/verified', defaultMessage: 'Your email is verified' },
+    confirmChanged: { id: 'auth/confirm/changed', defaultMessage: 'Your account now uses this email' },
+    confirmMissing: {
+      id: 'auth/confirm/missing',
+      defaultMessage: 'This link is incomplete. Open it from the email again',
+    },
+    toAccount: { id: 'auth/confirm/to-account', defaultMessage: 'Go to my account' },
     accountUnbindTitle: methodNamed('auth/account/unbind-title', 'Unbind {name}?'),
     accountUnbindBody: {
       id: 'auth/account/unbind-body',
@@ -913,6 +972,30 @@ const i18n = definePluginMessages({
       id: 'auth/error/binding-user-field-missing',
       defaultMessage:
         '{field, select, email {Add their email in the profile first.} other {Add their person identifier in the profile first.}}',
+    },
+    AUTH_CHALLENGE_INVALID: {
+      id: 'auth/error/challenge-invalid',
+      defaultMessage: 'That link has expired or was already used. Ask for a new one.',
+    },
+    AUTH_PASSWORD_INCORRECT: {
+      id: 'auth/error/password-incorrect',
+      defaultMessage: 'The current password is not right.',
+    },
+    AUTH_EMAIL_UNVERIFIED: {
+      id: 'auth/error/email-unverified',
+      defaultMessage: 'Verify your email first; then you can set a password.',
+    },
+    AUTH_EMAIL_MISSING: {
+      id: 'auth/error/email-missing',
+      defaultMessage: 'There is no email on your account to verify.',
+    },
+    AUTH_PASSWORD_UNAVAILABLE: {
+      id: 'auth/error/password-unavailable',
+      defaultMessage: 'Signing in with a password is not open to you.',
+    },
+    AUTH_MAIL_NOT_SENT: {
+      id: 'auth/error/mail-not-sent',
+      defaultMessage: 'The email could not be sent. Try again later.',
     },
     AUTH_LAST_WAY_IN: {
       id: 'auth/error/last-way-in',

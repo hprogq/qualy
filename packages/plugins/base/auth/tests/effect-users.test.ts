@@ -58,6 +58,7 @@ const fakeLocalDriver = registerLoginDriver({
           ? { ok: false as const }
           : { ok: true as const, credentialHash: `digest:${secret}` },
       ),
+    verify: ({ secret, credentialHash }) => Effect.succeed(credentialHash === `digest:${secret}`),
   },
 })
 

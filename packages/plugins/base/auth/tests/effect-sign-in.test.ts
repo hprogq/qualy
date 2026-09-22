@@ -30,6 +30,7 @@ import { layer as sessionLayer } from '../src/server/session.ts'
 import { authClosure } from './support/closure.ts'
 import { secretsLayer } from '@qualy/plugin-secrets/testkit'
 import { authAuditLayer } from './support/audit.ts'
+import { unusedEmailFlows } from './support/email-flows.ts'
 import { singleTenantLayer } from '../src/server/tenancy.ts'
 import { singleOriginLayer } from '../src/server/public-origin.ts'
 
@@ -99,6 +100,7 @@ beforeAll(async () => {
     middleware: requestContext(),
   }).pipe(
     Layer.provide(signIn),
+    Layer.provide(unusedEmailFlows),
     Layer.provide(NodeHttpServer.layer(createServer, { port })),
     Layer.provide(infra),
   )

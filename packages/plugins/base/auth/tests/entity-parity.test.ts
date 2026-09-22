@@ -15,6 +15,7 @@ const TABLES = [
   'sessions',
   'session_auth_grants',
   'auth_rate_limit_buckets',
+  'user_email_challenges',
   'sign_in_events',
   'user_auth_bindings',
   'users',

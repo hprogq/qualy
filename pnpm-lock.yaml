@@ -1201,6 +1201,9 @@ importers:
       '@qualy/plugin-kit':
         specifier: workspace:*
         version: link:../../../core/plugin-kit
+      '@qualy/plugin-mail':
+        specifier: workspace:*
+        version: link:../../infra/mail
       '@qualy/plugin-org':
         specifier: workspace:*
         version: link:../org
@@ -1277,6 +1280,9 @@ importers:
       '@qualy/plugin-auth-oidc':
         specifier: workspace:*
         version: link:../auth-oidc
+      '@qualy/plugin-mail-smtp':
+        specifier: workspace:*
+        version: link:../../infra/mail-smtp
       '@qualy/plugin-rbac':
         specifier: workspace:*
         version: link:../rbac

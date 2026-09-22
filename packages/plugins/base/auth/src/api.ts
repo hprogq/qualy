@@ -16,7 +16,7 @@ import {
 
 import { UiTextSchema } from '@qualy/i18n-contract'
 import { EMAIL_MAX_LENGTH, normalizeEmail } from '@qualy/auth-contract/email'
-import { Authenticated, AuthRequired } from '@qualy/auth-contract/session'
+import { Authenticated, AuthRequired, TooManyAttemptsResponse } from '@qualy/auth-contract/session'
 import {
   GrantIncompatible,
   PlacementNotAllowed,
@@ -44,6 +44,12 @@ import {
   AuthBindingUnsupported,
   AuthBindingUserFieldMissing,
   AuthLastWayIn,
+  ChallengeInvalid,
+  EmailMissing,
+  EmailUnverified,
+  MailNotSent,
+  PasswordIncorrect,
+  PasswordUnavailable,
   ProviderConfigIncomplete,
   ProviderConfigInvalid,
   ProviderConflict,
@@ -871,6 +877,48 @@ export const sessionApiGroup = HttpApiGroup.make('auth')
       success: Schema.Struct({ ok: Schema.Literal(true) }),
     }),
   )
+  .add(
+    // the same answer whether or not anybody has that address
+    HttpApiEndpoint.post('createPasswordReset', '/auth/password-resets', {
+      payload: Schema.Struct({
+        email: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(EMAIL_MAX_LENGTH)),
+      }),
+      success: Schema.Struct({ ok: Schema.Literal(true) }),
+      error: [TooManyAttemptsResponse],
+    }),
+  )
+  .add(
+    HttpApiEndpoint.post('createPasswordResetRedemption', '/auth/password-resets/redemptions', {
+      payload: Schema.Struct({
+        token: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128)),
+        password: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(1024)),
+      }),
+      success: Schema.Struct({ ok: Schema.Literal(true) }),
+      error: [ChallengeInvalid, AuthBindingCredentialInvalid],
+    }),
+  )
+  .add(
+    HttpApiEndpoint.post(
+      'createEmailVerificationRedemption',
+      '/auth/email-verifications/redemptions',
+      {
+        payload: Schema.Struct({
+          token: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128)),
+        }),
+        success: Schema.Struct({ ok: Schema.Literal(true) }),
+        error: [ChallengeInvalid],
+      },
+    ),
+  )
+  .add(
+    HttpApiEndpoint.post('createEmailChangeRedemption', '/auth/email-changes/redemptions', {
+      payload: Schema.Struct({
+        token: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128)),
+      }),
+      success: Schema.Struct({ ok: Schema.Literal(true) }),
+      error: [ChallengeInvalid, UserEmailConflict],
+    }),
+  )
 
 /**
  * The signed-in person's own account.
@@ -904,6 +952,8 @@ export const selfApiGroup = HttpApiGroup.make('self')
         emailVerified: Schema.Boolean,
         userType: Schema.Struct({ id: Schema.String, name: Schema.String }),
         unit: Schema.NullOr(Schema.Struct({ id: Schema.String, name: Schema.String })),
+        /** a password they hold, one they could set, or no password way in for them */
+        passwordStatus: Schema.Literals(['set', 'unset', 'unavailable']),
       }),
       error: [UserNotFound],
     }).middleware(Authenticated),
@@ -927,6 +977,49 @@ export const selfApiGroup = HttpApiGroup.make('self')
         AuthBindingNotFound,
         AuthBindingUnsupported,
         AuthLastWayIn,
+      ],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // a link to the address on file, which following proves it theirs
+    HttpApiEndpoint.post('createSelfEmailVerification', '/iam/self/email-verifications', {
+      // false when the address is proven already and nothing was sent
+      success: Schema.Struct({ sent: Schema.Boolean }),
+      error: [UserNotFound, EmailMissing, MailNotSent, TooManyAttemptsResponse],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // a link to the new address; the old one stays until it is followed
+    HttpApiEndpoint.post('createSelfEmailChange', '/iam/self/email-changes', {
+      payload: Schema.Struct({
+        newEmail: Schema.String.check(Schema.isMinLength(3), Schema.isMaxLength(EMAIL_MAX_LENGTH)),
+      }),
+      success: Schema.Struct({ ok: Schema.Literal(true) }),
+      error: [
+        UserNotFound,
+        UserEmailConflict,
+        SystemAccountProtected,
+        MailNotSent,
+        TooManyAttemptsResponse,
+      ],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // the current password is asked for whenever there is one; somebody
+    // without one sets it only on a proven address
+    HttpApiEndpoint.put('putSelfPassword', '/iam/self/password', {
+      payload: Schema.Struct({
+        currentPassword: Schema.optional(Schema.String.check(Schema.isMaxLength(1024))),
+        newPassword: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(1024)),
+      }),
+      success: Schema.Struct({ ok: Schema.Literal(true) }),
+      error: [
+        UserNotFound,
+        PasswordIncorrect,
+        EmailUnverified,
+        PasswordUnavailable,
+        AuthBindingCredentialInvalid,
+        TooManyAttemptsResponse,
       ],
     }).middleware(Authenticated),
   )

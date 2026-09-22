@@ -19854,3 +19854,54 @@ TLS 三态 `implicit | starttls | none`,生产的 `none` 需显式允许;开发 
   rejected 与 unavailable 两种失败、内存后端过同一套契约);`mail-smtp/tests/smtp.test.ts` 8 条(开发缺省交给 Mailpit、生产要中继且缺省
   starttls / implicit 465 / none 需显式允许、非法 TLS 与半套账号拒绝、失败分类、对着 Mailpit 的纯文本 / 非 ASCII / html + reply-to 契约、
   没人监听的中继为 unavailable)。
+
+## 认证 F–J 之七:邮箱验证、密码找回、改邮箱与自助改密码(2026-09-23)
+
+规划时的修正项⑧:凭证一张表 `user_email_challenges(purpose)`,`target_email` 的三种语义;`PUT /iam/self/password` 的规则;
+「创建 challenge → commit → 发信」;验证通过才替换邮箱;找回只对已验证邮箱开放、匿名同一句回答、IP + identifier 双桶。
+
+### 做了什么
+
+- **表** `user_email_challenges`(迁移 `20260922222522_auth-email-challenges.sql`,纯新表):只存 token 的 sha256;
+  `chk_user_email_challenges_target` 约束「只有 reset 没有目标邮箱」;开放行部分索引;复合外键到 users。
+- **`EmailFlows` 服务**(`server/email-flows.ts`,挂在 auth 的 pluginLayer 上,依赖 `@qualy/plugin-mail` 的 `Mailer`;只组装 auth 服务的测试栈不必起邮件):
+  找回(匿名、双桶计数、同一回答、信在回答后另起 fiber 发出)、兑换找回(驱动 `prepare`、结束全部会话)、验证邮箱、兑换验证
+  (邮箱仍须等于签发时的目标)、改邮箱(发到新邮箱)、兑换改邮箱(验证通过才替换、作废全部未用链接、审计)、自助改密码
+  (当前密码经驱动新声明的 `binding.verify` 核对、结束其他会话;无密码时须邮箱已验证)。发不出去的链接即作废。
+- **七条路由**(frozen-routes 已加):`POST /auth/password-resets`、`POST /auth/password-resets/redemptions`、
+  `POST /auth/email-verifications/redemptions`、`POST /auth/email-changes/redemptions`、`POST /iam/self/email-verifications`、
+  `POST /iam/self/email-changes`、`PUT /iam/self/password`;`GET /iam/self` 多一个 `passwordStatus: set | unset | unavailable`(不叫 `password`:secret-disclosure 门禁按字段名拒绝)。
+  新错误码 `AUTH_CHALLENGE_INVALID`、`AUTH_PASSWORD_INCORRECT`、`AUTH_EMAIL_UNVERIFIED`、`AUTH_EMAIL_MISSING`、
+  `AUTH_PASSWORD_UNAVAILABLE`、`AUTH_MAIL_NOT_SENT`,均有中英翻译。管理员改邮箱时也作废该人的未用链接。
+- **邮件文案**在服务端 `mail-copy.ts`(中英,按 Accept-Language 首选);链接走 fragment。
+- **界面**:`auth/reset-password`(`/reset-password`,问邮箱 / 设新密码两态)、`auth/email-confirmation`(`/confirm-email`,打开即兑换,
+  按 token 去重的一次性查询——`useEffect + useMutation` 在 StrictMode 双挂载下会丢结果,测试抓到后改掉)、「我的 → 账号安全」
+  (`auth/account-security`,改 / 设密码、验证邮箱、改邮箱);本地登录表单加「忘记密码？」(没有该页面的装配里不显示)。
+- `auth-local` 的驱动声明 `verify`;mail-smtp 导出 `./backend` 供 auth 测试接真实中继;两处 Mailpit 探测超时放宽到 5 秒
+  (负载下 1.5 秒会误判为不可达而跳过)。文档:auth-security 增一节。
+- 本提交把 `@qualy/plugin-mail` 加进 auth 的 `dependsOn`:`tools/tests/plugin-lifecycle.test.ts` 的最小装配因此要带上 mail
+  (第一轮全量 2 条红:`@qualy/plugin-auth declares a runtime dependency on @qualy/plugin-mail, which this assembly does not contain`);
+  只装 auth 服务的 HTTP 测试宿主用 `tests/support/email-flows.ts` 的桩(调用即 die)补上 `EmailFlows`。
+- 第一轮全量另有 1 条红是 secret-disclosure 门禁:`GET /api/iam/self answers with "password"`,字段改名 `passwordStatus` 后通过。
+
+### 验收(实际执行)
+
+- `pnpm typecheck`:exit 0,零 `error TS`。
+- `pnpm test`:`Test Files  293 passed | 3 skipped (296)`、`Tests  2168 passed | 17 skipped (2185)`(本机 Mailpit 在跑,
+  找回邮件的真实中继用例跑过)。中间一轮在外部负载下 37 条数据库用例超时(assessment 三个文件与 effect-flows,全是 30s / 120s
+  timeout,耗时 266s 对正常的 70s),单独重跑 4 个文件 68 条全过,再跑全量即上面的结果。
+- `pnpm test:browser`:`Test Files  70 passed (70)`、`Tests  526 passed (526)`。第一轮在负载下 item-editor 与 import-wizard 3 条点击超时,
+  单独重跑通过,全量重跑全绿。
+- `pnpm qualy database verify`:`79 committed migration(s) build the declared schema, zero drift`;`database check`:`lineage ok`;
+  drop-guard:`drop guard ok (79 file(s) scanned)`;`check-migrations-immutable`:通过(本提交只新增一条迁移)。
+- `pnpm qualy resolve --frozen-lockfile`:`qualy.lock.json is up to date`。
+- 新测试:`auth/tests/effect-email-flows.test.ts` 7 条(找回对陌生与未验证邮箱同一回答、只给已验证者发信、链接一次有效并结束全部会话;
+  找回拒绝驱动不收的密码、同一 identifier 第四次 429;验证链接只在邮箱仍是签发时那个时有效;改邮箱验证通过才替换、不改成他人邮箱;
+  发不出去的链接即作废并如实报错;自助改密码要当前密码、结束其他会话,无密码且邮箱未验证者被拒;经 Mailpit 真实收到找回邮件并用其链接设密码);
+  `auth/tests/recovery.browser.test.tsx` 6 条(问邮箱、两次新密码不一致不发请求、按 fragment 的 token 兑换、确认链接只兑换一次且按类型、缺 token 不请求、
+  账号安全页的改密码与验证 / 改邮箱)。
+
+### 认证 F–J 收尾
+
+七个提交全部完成。仍待人工:大外真实 CAS 按 docs/notes/cas-manual-check.md 联调一次;GitHub 与真实 OIDC 提供方未用真实应用验证过;
+生产 smoke 与 Web 重建由 CI 跑,本机未跑。

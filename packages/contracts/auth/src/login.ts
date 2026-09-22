@@ -109,6 +109,15 @@ export type AuthBindingDeclaration =
       }) => Effect.Effect<
         { readonly ok: true; readonly credentialHash: string } | { readonly ok: false }
       >
+      /**
+       * Whether what was typed is the credential a stored digest was made
+       * from. Asked when a person changes their own: the one who knows the
+       * old one is the one who may set a new one.
+       */
+      readonly verify: (input: {
+        secret: string
+        credentialHash: string
+      }) => Effect.Effect<boolean>
     }
   | {
       readonly mode: 'self'

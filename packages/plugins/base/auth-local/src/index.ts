@@ -49,6 +49,8 @@ export const driver: LoginDriver = {
       }
       return { ok: true as const, credentialHash: yield* Effect.promise(() => hashPassword(secret)) }
     }),
+    verify: ({ secret, credentialHash }) =>
+      Effect.promise(() => verifyPassword(credentialHash, secret)),
   },
 }
 

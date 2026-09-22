@@ -12,6 +12,10 @@
 
 export const FROZEN_ROUTES = [
   'DELETE /auth/session',
+  'POST /auth/password-resets',
+  'POST /auth/password-resets/redemptions',
+  'POST /auth/email-verifications/redemptions',
+  'POST /auth/email-changes/redemptions',
   'PUT /auth/providers/{providerId}/audience',
   'GET /auth/provider-kinds',
   'POST /auth/providers',
@@ -44,6 +48,9 @@ export const FROZEN_ROUTES = [
   'GET /iam/self',
   'GET /iam/self/entrances',
   'DELETE /iam/self/auth-bindings/{providerId}',
+  'POST /iam/self/email-verifications',
+  'POST /iam/self/email-changes',
+  'PUT /iam/self/password',
   'GET /iam/permissions',
   'POST /iam/access-evaluations',
   'GET /iam/role-options',

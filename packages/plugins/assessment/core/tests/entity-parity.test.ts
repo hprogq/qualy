@@ -38,6 +38,7 @@ const DEPENDENCY_TABLES = [
   'sessions',
   'session_auth_grants',
   'auth_rate_limit_buckets',
+  'user_email_challenges',
   'sign_in_events',
   'storage_attachments',
   'storage_upload_reservations',
