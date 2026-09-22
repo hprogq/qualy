@@ -146,8 +146,7 @@ export default function UserOrganizationPage() {
             <SectionHead
               title={format(m.personPlacement)}
               actions={
-                manageable &&
-                record.status !== 'deleted' && (
+                manageable && (
                   <Button
                     size="sm"
                     variant="outline"

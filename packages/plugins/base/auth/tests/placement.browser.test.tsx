@@ -30,12 +30,13 @@ const detail = {
   user: {
     id: USER_ID,
     businessNo: '20231001',
+    email: null,
+    emailVerifiedAt: null,
     displayName: '王五',
     status: 'active',
     version: 3,
     userType: { id: TYPE_ID, code: 'student', name: '学生' },
     primaryOrgNode: { id: KLASS, name: '软件2301班' },
-    identityCount: 1,
     manageable: true,
   },
   orgPath: [
@@ -47,7 +48,7 @@ const detail = {
   // write enforces and the picker has to draw
   placement: { mode: 'allow-list', orgTypeIds: [CLASS_TYPE] },
   roles: [],
-  identities: [],
+  lastSignInAt: null,
 }
 
 const unit = (over: {

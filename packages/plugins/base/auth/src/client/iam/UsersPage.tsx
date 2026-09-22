@@ -119,7 +119,7 @@ const styles = stylex.create({
   away: { width: 14, height: 14, flexShrink: 0, color: tokens.mutedForeground },
   // the third filter, drawn as one, taking its share of the line at a
   // phone's width
-  removed: {
+  standing: {
     width: { default: '9rem', [breakpoints.phone]: 'auto' },
     flexGrow: { default: 0, [breakpoints.phone]: 1 },
     flexShrink: 0,
@@ -189,9 +189,9 @@ export default function UsersPage() {
   const [search] = usePageQueryState('q')
   const [openUserId, setOpenUserId] = usePageQueryState('user')
   // which standing the roster is showing; in good standing unless asked
-  const [removed] = usePageQueryState('removed')
-  const standing: 'active' | 'disabled' | 'deleted' | 'any' =
-    removed === 'any' || removed === 'disabled' || removed === 'deleted' ? removed : 'active'
+  const [standingParam] = usePageQueryState('standing')
+  const standing: 'active' | 'disabled' | 'any' =
+    standingParam === 'any' || standingParam === 'disabled' ? standingParam : 'active'
   const [pageParam, setPageParam] = usePageQueryState('page')
   const page = Math.max(1, Number.parseInt(pageParam, 10) || 1)
   const navigate = usePageNavigate()
@@ -238,7 +238,8 @@ export default function UsersPage() {
   const filter = {
     orgNodeId: active?.orgNodeId ?? '',
     scope: within,
-    status: standing,
+    // either state: the list asks for neither
+    ...(standing === 'any' ? {} : { status: standing }),
     ...(search ? { search } : {}),
     ...(typeFilter ? { userTypeId: typeFilter } : {}),
     page: String(page),
@@ -255,13 +256,13 @@ export default function UsersPage() {
   const total = users.data?.total ?? 0
   // A different question starts at its first page. Both keys go in one write:
   // two address writes from one press race, and the second drops the first.
-  const asking = (key: 'anchor' | 'scope' | 'type' | 'removed') => (value: string) =>
+  const asking = (key: 'anchor' | 'scope' | 'type' | 'standing') => (value: string) =>
     write({ [key]: key === 'scope' && value === 'subtree' ? '' : value, page: '' })
 
   // where this roster is, for the way back from somebody's own page
   useEffect(
     () => rememberRoster(window.location.search),
-    [anchor, scope, typeFilter, search, removed, pageParam],
+    [anchor, scope, typeFilter, search, standingParam, pageParam],
   )
 
   // each unit with what kind it is and how many it holds, alone and with
@@ -457,25 +458,22 @@ export default function UsersPage() {
                 </SelectContent>
               </Select>
               {/* The standing being shown, said as the standing rather than
-                  as what a press would do to the list: "show removed people"
-                  reads the same whichever list you are looking at. In good
-                  standing unless asked, because that is who a roster is
-                  about. */}
+                  as what a press would do to the list. In good standing
+                  unless asked, because that is who a roster is about. */}
               <Select
                 value={standing}
-                onValueChange={(next) => asking('removed')(next === 'active' ? '' : next)}
+                onValueChange={(next) => asking('standing')(next === 'active' ? '' : next)}
               >
                 <SelectTrigger
                   aria-label={format(m.rosterStandingLabel)}
-                  data-testid="show-removed"
-                  xstyle={styles.removed}
+                  data-testid="roster-standing"
+                  xstyle={styles.standing}
                 >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="active">{format(m.rosterStandingActive)}</SelectItem>
                   <SelectItem value="disabled">{format(m.rosterStandingDisabled)}</SelectItem>
-                  <SelectItem value="deleted">{format(m.rosterStandingDeleted)}</SelectItem>
                   <SelectItem value="any">{format(m.rosterStandingAny)}</SelectItem>
                 </SelectContent>
               </Select>
@@ -516,7 +514,6 @@ export default function UsersPage() {
                       onOpen={() => navigate('auth/user-detail', { params: { userId: user.id } })}
                       data-testid="roster-row"
                       data-user-status={user.status}
-                      data-accounts={user.identityCount}
                     >
                       {/* across a table the number leads, because that is what the
                           list is sorted by; stacked, a row is a name with
@@ -530,11 +527,7 @@ export default function UsersPage() {
                           <Cell lead strong={user.id === openUserId}>
                             {user.displayName}
                             {user.status !== 'active' && (
-                              <Status tone="bad">
-                                {format(
-                                  user.status === 'deleted' ? m.deletedBadge : m.disabledBadge,
-                                )}
-                              </Status>
+                              <Status tone="bad">{format(m.disabledBadge)}</Status>
                             )}
                           </Cell>
                           <Cell
@@ -559,10 +552,8 @@ export default function UsersPage() {
                           as themselves wherever they appear; stacked, they
                           need no column word in front of them, only a
                           hairline saying where one ends */}
-                      <Cell unlabelled>{user.userType?.name ?? '—'}</Cell>
-                      {user.primaryOrgNode === null ? (
-                        <Cell>—</Cell>
-                      ) : (
+                      <Cell unlabelled>{user.userType.name}</Cell>
+                      {
                         // Stacked, the chain is most of the line and the
                         // last rung is the only part that tells two people
                         // apart - everything above it is the unit the
@@ -580,7 +571,7 @@ export default function UsersPage() {
                           onPick={asking('anchor')}
                           plain={stacked}
                         />
-                      )}
+                      }
                       {/* Across a table the standing is a column like any
                           other; stacked it has moved up beside the name, and
                           the cell stays as the empty one it is - it is what
@@ -589,13 +580,7 @@ export default function UsersPage() {
                       <Cell narrow="end" unlabelled>
                         {!stacked && (
                           <Status tone={user.status === 'active' ? 'plain' : 'bad'}>
-                            {format(
-                              user.status === 'deleted'
-                                ? m.deletedBadge
-                                : user.status === 'disabled'
-                                  ? m.disabledBadge
-                                  : m.statusActive,
-                            )}
+                            {format(user.status === 'disabled' ? m.disabledBadge : m.statusActive)}
                           </Status>
                         )}
                       </Cell>

@@ -15,6 +15,7 @@ import {
 } from '@qualy/api-kit/schema'
 
 import { UiTextSchema } from '@qualy/i18n-contract'
+import { EMAIL_MAX_LENGTH, normalizeEmail } from '@qualy/auth-contract/email'
 import { Authenticated, AuthRequired } from '@qualy/auth-contract/session'
 import {
   GrantIncompatible,
@@ -23,8 +24,7 @@ import {
   ProviderVersionConflict,
   RecoveryChannelRequired,
   SystemAccountProtected,
-  UserDeleted,
-  UserNotDisabled,
+  UserEmailConflict,
   UserNotFound,
   UserPlacementNotFound,
   UserVersionConflict,
@@ -107,22 +107,31 @@ const placementPolicy = Schema.Union([
   }),
 ])
 
+/**
+ * An email address as somebody typed it: trimmed here, lower-cased where it
+ * is stored. Anything the directory could not store is refused at the door.
+ */
+const emailInput = Schema.Trim.check(
+  Schema.isMaxLength(EMAIL_MAX_LENGTH),
+  Schema.makeFilter<string>(
+    (value) => normalizeEmail(value) !== null || 'must be an email address',
+  ),
+)
+
 const user = Schema.Struct({
   id: Schema.String,
   businessNo: Schema.NullOr(Schema.String),
+  /** the person's one address: notices go to it, the password door signs in by it */
+  email: Schema.NullOr(Schema.String),
+  /** when the person proved they read it; null for an address nobody proved */
+  emailVerifiedAt: Schema.NullOr(Schema.String),
   displayName: Schema.String,
-  status: Schema.Literals(['active', 'disabled', 'deleted']),
+  // deleted people are not read at all: deletion is final
+  status: resourceStatus,
   /** what every lifecycle write must be written against */
   version: Schema.Number,
-  // null only on a deleted row whose type or unit was later removed
-  userType: Schema.NullOr(
-    Schema.Struct({ id: Schema.String, code: Schema.String, name: Schema.String }),
-  ),
-  primaryOrgNode: Schema.NullOr(Schema.Struct({ id: Schema.String, name: Schema.String })),
-  // how many sign-in identities exist, not which: one identity out of possibly
-  // several, with no provider context, told a reader nothing and exposed a
-  // login name to anyone holding org-scope read
-  identityCount: Schema.Number,
+  userType: Schema.Struct({ id: Schema.String, code: Schema.String, name: Schema.String }),
+  primaryOrgNode: Schema.Struct({ id: Schema.String, name: Schema.String }),
   // whether this caller may change this particular user
   manageable: Schema.Boolean,
 })
@@ -174,24 +183,10 @@ const userDetail = Schema.Struct({
       scoped: Schema.Boolean,
     }),
   ),
-  // The ways in that are bound to them. An administrator reading a person
-  // needs to know whether they can actually sign in, and through which door;
-  // the identifier says which account a stale binding points at, and no
-  // credential is ever carried.
-  identities: Schema.Array(
-    Schema.Struct({
-      id: Schema.String,
-      identifier: Schema.String,
-      boundAt: Schema.String,
-      lastUsedAt: Schema.NullOr(Schema.String),
-      providerId: Schema.String,
-      providerName: Schema.String,
-      providerType: Schema.String,
-      providerStatus: resourceStatus,
-      /** carries a secret of its own, which is what a local account is */
-      hasCredential: Schema.Boolean,
-    }),
-  ),
+  // When they last came in, through whichever door. Whether they CAN come
+  // in is a question per entrance, answered on the ways-in page; a count of
+  // bindings cannot answer it, because some doors keep none.
+  lastSignInAt: Schema.NullOr(Schema.String),
 })
 
 /**
@@ -551,8 +546,8 @@ export const identityApiGroup = HttpApiGroup.make('identity')
         orgNodeId: uuidInput,
         // an enum says what it means; `subtree=false` never did
         scope: Schema.optional(Schema.Literals(['self', 'subtree'])),
-        /** absent = the living; 'deleted' = the removed; 'any' = both, for a roster that shows them together */
-        status: Schema.optional(Schema.Literals(['active', 'disabled', 'deleted', 'any'])),
+        /** absent = both states; the deleted are never listed */
+        status: Schema.optional(resourceStatus),
         search: Schema.optional(Schema.String.check(Schema.isMaxLength(100))),
         userTypeId: Schema.optional(uuidInput),
         ...pageQuery,
@@ -587,10 +582,12 @@ export const identityApiGroup = HttpApiGroup.make('identity')
         userTypeId: uuidInput,
         primaryOrgNodeId: uuidInput,
         businessNo: Schema.optional(trimmedName(64)),
+        email: Schema.optional(emailInput),
       }),
       success: Schema.Struct({ id: Schema.String }),
       error: [
         UserConflict,
+        UserEmailConflict,
         UserTypeNotFound,
         UserTypeDisabled,
         UserPlacementNotFound,
@@ -608,14 +605,16 @@ export const identityApiGroup = HttpApiGroup.make('identity')
           displayName: Schema.optional(trimmedName(100)),
           userTypeId: Schema.optional(uuidInput),
           businessNo: Schema.optional(trimmedName(64)),
+          // null takes the address away
+          email: Schema.optional(Schema.NullOr(emailInput)),
         },
-        ['displayName', 'userTypeId', 'businessNo'],
+        ['displayName', 'userTypeId', 'businessNo', 'email'],
       ),
       success: Schema.Struct({ ok: Schema.Literal(true) }),
       error: [
         UserConflict,
+        UserEmailConflict,
         UserNotFound,
-        UserDeleted,
         UserVersionConflict,
         UserTypeNotFound,
         UserTypeDisabled,
@@ -636,7 +635,6 @@ export const identityApiGroup = HttpApiGroup.make('identity')
       success: Schema.Struct({ ok: Schema.Literal(true) }),
       error: [
         UserNotFound,
-        UserDeleted,
         UserVersionConflict,
         UserTypeNotFound,
         SystemAccountProtected,
@@ -647,29 +645,32 @@ export const identityApiGroup = HttpApiGroup.make('identity')
     }).middleware(Authenticated),
   )
   .add(
-    // The whole lifecycle as one idempotent resource: active <-> disabled,
-    // disabled -> deleted, deleted -> disabled (a restore). Deletion and
-    // restore each answer to their own permission; the two optional fields
-    // are for restoring somebody whose old standing no longer exists.
+    // in service or out of it, replaced as a resource
     HttpApiEndpoint.put('setUserStatus', '/iam/users/:userId/status', {
       params: Schema.Struct({ userId: uuidInput }),
-      payload: Schema.Struct({
-        status: Schema.Literals(['active', 'disabled', 'deleted']),
-        version: expectedVersion,
-        userTypeId: Schema.optional(uuidInput),
-        primaryOrgNodeId: Schema.optional(uuidInput),
-      }),
+      payload: Schema.Struct({ status: resourceStatus, version: expectedVersion }),
       success: Schema.Struct({ ok: Schema.Literal(true) }),
       error: [
         UserNotFound,
-        UserDeleted,
-        UserNotDisabled,
         UserVersionConflict,
         SystemAccountProtected,
-        UserTypeNotFound,
-        UserTypeDisabled,
-        UserPlacementNotFound,
-        PlacementNotAllowed,
+        LastAdministrator,
+        AccessDenied,
+      ],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // Deletion is final: the row stays as a tombstone history names by id,
+    // and the person is gone from every other read. Its own permission,
+    // apart from administering them.
+    HttpApiEndpoint.delete('deleteUser', '/iam/users/:userId', {
+      params: Schema.Struct({ userId: uuidInput }),
+      query: Schema.Struct({ version: Schema.String }),
+      success: Schema.Struct({ ok: Schema.Literal(true) }),
+      error: [
+        UserNotFound,
+        UserVersionConflict,
+        SystemAccountProtected,
         LastAdministrator,
         AccessDenied,
       ],
@@ -703,7 +704,6 @@ export const identityApiGroup = HttpApiGroup.make('identity')
       success: Schema.Struct({ id: Schema.String }),
       error: [
         UserNotFound,
-        UserDeleted,
         ProviderNotFound,
         SystemAccountProtected,
         IdentityBindingUnsupported,
@@ -718,7 +718,7 @@ export const identityApiGroup = HttpApiGroup.make('identity')
     HttpApiEndpoint.delete('deleteUserIdentity', '/iam/users/:userId/identities/:providerId', {
       params: Schema.Struct({ userId: uuidInput, providerId: uuidInput }),
       success: Schema.Struct({ ok: Schema.Literal(true) }),
-      error: [UserNotFound, UserDeleted, SystemAccountProtected, IdentityNotFound, AccessDenied],
+      error: [UserNotFound, SystemAccountProtected, IdentityNotFound, AccessDenied],
     }).middleware(Authenticated),
   )
 

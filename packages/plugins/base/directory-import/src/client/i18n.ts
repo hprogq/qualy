@@ -51,10 +51,6 @@ const issueUserConflict = defineMessage<{ businessNo: string; fields: string }>(
   id: 'directory-import/issue/user-conflict',
   defaultMessage: 'This {businessNo} belongs to somebody already, with a different {fields}',
 })
-const issueUserDeleted = defineMessage<{ businessNo: string }>()({
-  id: 'directory-import/issue/user-deleted',
-  defaultMessage: 'This {businessNo} belongs to a deleted person; restore them first',
-})
 const issueNodeConflict = defineMessage<{ path: string }>()({
   id: 'directory-import/issue/node-type-conflict',
   defaultMessage: '{path} exists as a unit of another type',
@@ -279,7 +275,6 @@ const i18n = definePluginMessages({
       defaultMessage: 'A unit name is too long',
     },
     issueUserConflict,
-    issueUserDeleted,
     issueNodeConflict,
     issueOther,
     fieldDisplayName: { id: 'directory-import/field/display-name', defaultMessage: 'name' },

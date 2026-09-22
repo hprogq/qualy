@@ -67,6 +67,7 @@ export const FROZEN_ROUTES = [
   'POST /iam/users',
   'GET /iam/users/{userId}',
   'PATCH /iam/users/{userId}',
+  'DELETE /iam/users/{userId}',
   'PUT /iam/users/{userId}/placement',
   'PUT /iam/users/{userId}/status',
   'GET /iam/users/{userId}/entrances',

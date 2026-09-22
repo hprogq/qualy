@@ -110,10 +110,18 @@ export const User = defineEntity({
     id: p.uuid().primary().defaultRaw('uuidv7()'),
     tenantId: tenantOf('users_tenant_id_tenants_id_fkey'),
     // Tenant business number (student/staff id); once bound, ordinary
-    // updates must not clear it. Its unique index deliberately keeps
-    // covering deleted rows: the same person coming back is a Restore, and
-    // two user ids sharing one number would split their history.
+    // updates must not clear it. Unique among the living only: deletion is
+    // final, so a number a deleted person held is free for whoever is
+    // given it next, and history keeps pointing at the old row by id.
     businessNo: p.string().length(64).nullable(),
+    // The person's one email address: what notifications are sent to, and
+    // the name a password sign-in goes by. Stored normalized (trimmed,
+    // lower case) and, like the business number, unique among the living.
+    email: p.string().length(254).nullable(),
+    // When the person proved they read this address; cleared whenever the
+    // address changes. An address nobody proved may still receive notices,
+    // it just cannot be trusted to recover an account.
+    emailVerifiedAt: p.datetime().nullable(),
     displayName: p.string().length(100),
     // Nullable for DELETED rows only (the check below): a soft-deleted user
     // must not pin a user type or an org unit forever, so those deletions
@@ -122,9 +130,11 @@ export const User = defineEntity({
     userTypeId: p.uuid().nullable(),
     primaryOrgNodeId: p.uuid().nullable(),
     enabled: p.boolean().default(true),
-    // Deleted is a state, not an absence: the row stays, because grants,
-    // sessions and audit events name it. deleted implies disabled, which is
-    // what lets every "can they act" predicate keep asking only `enabled`.
+    // A tombstone, not a recycle bin: deleting a person is final and nothing
+    // brings the row back. It stays because grants, records and audit events
+    // name it by id; every other read treats it as absent. deleted implies
+    // disabled, which is what lets every "can they act" predicate keep asking
+    // only `enabled`.
     deletedAt: p.datetime().nullable(),
     // the whole row is versioned: every lifecycle write bumps it, so an
     // edit based on a stale read is refused rather than silently applied
@@ -139,6 +149,7 @@ export const User = defineEntity({
       name: 'chk_users_live_user_is_placed',
       expression: `deleted_at is not null or (user_type_id is not null and primary_org_node_id is not null)`,
     },
+    { name: 'chk_users_email_normalized', expression: `email = lower(btrim(email))` },
   ],
   indexes: [
     {
@@ -148,7 +159,12 @@ export const User = defineEntity({
     {
       name: 'uq_users_tenant_business_no',
       expression:
-        'create unique index uq_users_tenant_business_no on users (tenant_id, business_no) where business_no is not null',
+        'create unique index uq_users_tenant_business_no on users (tenant_id, business_no) where deleted_at is null and business_no is not null',
+    },
+    {
+      name: 'uq_users_tenant_email_live',
+      expression:
+        'create unique index uq_users_tenant_email_live on users (tenant_id, email) where deleted_at is null and email is not null',
     },
     {
       name: 'idx_users_tenant_user_type',
@@ -252,9 +268,7 @@ export const UserIdentity = defineEntity({
     boundAt: p.datetime().defaultRaw('now()'),
     lastUsedAt: p.datetime().nullable(),
     // A binding is withdrawn, never erased: who could sign in as whom, and
-    // until when, is history. Sign-in reads live rows only, and restoring a
-    // deleted user does NOT resurrect these - a door that stopped being
-    // theirs years ago must not open again on its own.
+    // until when, is history. Sign-in reads live rows only.
     revokedAt: p.datetime().nullable(),
     revokedBy: p.uuid().nullable(),
   },

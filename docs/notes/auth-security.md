@@ -190,3 +190,23 @@ default-src 'self'; script-src 'self' 'sha256-pKAg+of2SxxrkLJX27pRnCgcyN5Ud1dmuO
 `self` / `derived` 出一句话,未声明的什么都不出。不新增浏览器 surface 种类,`browserContractHash` 的两支 walk 未动。
 
 核心仍不断言「是否已绑定」:可登录管理员的不变量照旧只看入口受众,撤销最后一条绑定不被拦。
+
+## 用户删除是终态；邮箱归 User（2026-09-22）
+
+- **删除不可恢复**。`users.deleted_at` 只是墓碑：授予、批次记录、审计事件按 id 引用它，所以行保留；除此之外的一切读取
+  （名册、详情、选择器、写入守卫、`UserProvisioning.byBusinessNo`）都当它不存在，一律 `USER_NOT_FOUND`。恢复接口、
+  `auth.user.restore` 权限（迁移删除目录与角色勾选）、`USER_NOT_DISABLED` / `USER_DELETED` 均已移除；
+  `auth.user.restore` 审计动作保留声明、列入 `audit-actions` 门禁的 `RETIRED`，旧事件仍有名字。
+- **业务编号与邮箱只在存活用户中唯一**（`uq_users_tenant_business_no` 保名改谓词，`uq_users_tenant_email_live`），
+  删除即释放。同一个人被删除后重新导入就是新的 `user_id`：旧综测、旧授权、旧审计仍指向旧行，历史永远按 id 引用，
+  不经编号或邮箱反查人。
+- **删除入口** `DELETE /iam/users/{userId}?version=`：在该人节点同时持有 `auth.user.manage` 与 `auth.user.delete`，
+  正常或停用状态都可直接删（不再强制先停用）；一个锁定事务内撤销授予、撤销身份、结束会话、置 `deleted_at` 与
+  `enabled = false`、写 `auth.user.delete`，最后按提交后的状态复核「至少一个管理员」，不满足则整体回滚。系统账户不可删。
+  目录导入的撤销走同一套（`retireUsers`）。
+- **邮箱是 User 的属性**，不是某个登录方式的标识：通知收件、（邮箱密码登录上线后）登录名与找回渠道都引用
+  `users.email`，不存第二份。入库统一 trim + 小写（`@qualy/auth-contract/email` 的 `normalizeEmail`，契约层与服务层共用，
+  库上有 `chk_users_email_normalized`）。`email_verified_at` 表示「本人证明过能收到」，任何改动都清空它；原样重述不算改动。
+  系统账户的邮箱只由 seed 设定，API 修改一律 `SYSTEM_ACCOUNT_PROTECTED`。
+- 界面不再显示「账号数」：有的登录方式根本不保存绑定（按学工号对应），绑定数推不出「能不能登录」。详情改显示
+  「最近登录」（取 `sign_in_events` 最近一次成功，任何登录方式都会写）。

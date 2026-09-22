@@ -70,7 +70,6 @@ const styles = stylex.create({
   },
   roleWhere: { flexShrink: 0, fontSize: 12, color: QUIET },
   aside: { fontSize: 12, color: QUIET },
-  warn: { color: tokens.warningForeground },
   spacer: { flexGrow: 1 },
   lines: { display: 'flex', flexDirection: 'column', gap: 10, padding: 16 },
   line: { height: 14, borderRadius: 4 },
@@ -95,11 +94,6 @@ export function PersonSheet({
     enabled: userId !== '',
   })
   const person = detail.data
-  const lastUsed = person?.identities
-    .map((identity) => identity.lastUsedAt)
-    .filter((at): at is string => at !== null)
-    .sort()
-    .at(-1)
   const whenWords = (iso: string) =>
     new Intl.DateTimeFormat(locale, {
       month: 'long',
@@ -114,9 +108,7 @@ export function PersonSheet({
       onClose={onClose}
       width="narrow"
       title={person?.user.displayName ?? format(commonMessages.loading)}
-      titleAside={
-        person?.user.userType == null ? undefined : <Tag>{person.user.userType.name}</Tag>
-      }
+      titleAside={person === undefined ? undefined : <Tag>{person.user.userType.name}</Tag>}
       lead={
         <span aria-hidden {...stylex.props(styles.face)}>
           {person === undefined ? '' : initialsOf(person.user.displayName)}
@@ -162,37 +154,27 @@ export function PersonSheet({
                   data-testid="person-status"
                   data-status={person.user.status}
                 >
-                  {format(
-                    person.user.status === 'deleted'
-                      ? m.deletedBadge
-                      : person.user.status === 'disabled'
-                        ? m.disabledBadge
-                        : m.statusActive,
-                  )}
+                  {format(person.user.status === 'disabled' ? m.disabledBadge : m.statusActive)}
                 </Status>
               </DefLine>
-              <DefLine label={format(m.personUserType)}>
-                {person.user.userType?.name ?? '—'}
-              </DefLine>
+              <DefLine label={format(m.personUserType)}>{person.user.userType.name}</DefLine>
               <DefLine label={format(m.personPlacement)}>
                 <PlacementPath steps={person.orgPath} empty="—" />
               </DefLine>
-              <DefLine label={format(m.accountsLabel)}>
-                <span
-                  {...stylex.props(person.user.identityCount === 0 && styles.warn)}
-                  data-accounts={person.user.identityCount}
-                >
-                  {person.user.identityCount === 0
-                    ? format(m.accountNone)
-                    : format(m.accountCount, { count: person.user.identityCount })}
+              <DefLine label={format(m.emailLabel)}>
+                <span {...stylex.props(person.user.email === null && styles.aside)}>
+                  {person.user.email ?? format(m.emailNone)}
                 </span>
-                {person.user.identityCount > 0 && (
-                  <span {...stylex.props(styles.aside)}>
-                    {lastUsed === undefined
-                      ? format(m.neverUsed)
-                      : format(m.lastUsed, { when: whenWords(lastUsed) })}
-                  </span>
-                )}
+              </DefLine>
+              <DefLine label={format(m.lastSignInLabel)}>
+                <span
+                  {...stylex.props(person.lastSignInAt === null && styles.aside)}
+                  data-signed-in={person.lastSignInAt === null ? 'never' : 'yes'}
+                >
+                  {person.lastSignInAt === null
+                    ? format(m.neverUsed)
+                    : whenWords(person.lastSignInAt)}
+                </span>
               </DefLine>
             </DefList>
           </Card>

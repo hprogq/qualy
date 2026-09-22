@@ -5,7 +5,7 @@ import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { useQuery } from '@tanstack/react-query'
 import type { PersonCardContext } from '@qualy/ui-contract'
 import { useApiQuery } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+import { isApiErrorCode, useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
 import { commonMessages } from '@qualy/web-i18n/messages'
@@ -121,7 +121,14 @@ export default function PersonCard({ context }: { context: PersonCardContext }) 
         </HoverCardTrigger>
         <HoverCardContent xstyle={styles.card}>
           {detail.isError ? (
-            <p {...stylex.props(styles.quiet)}>{formatError(detail.error)}</p>
+            // A name on another screen can outlive the person: history keeps
+            // pointing at somebody who was since deleted. That is not a
+            // failure to report, only nothing more to show.
+            <p {...stylex.props(styles.quiet)} data-testid="person-card-gone">
+              {isApiErrorCode(detail.error, 'USER_NOT_FOUND')
+                ? format(m.personGone)
+                : formatError(detail.error)}
+            </p>
           ) : person === undefined ? (
             <div {...stylex.props(styles.waiting)}>
               <Skeleton className={stylex.props(styles.waitingLine).className} />
@@ -136,7 +143,7 @@ export default function PersonCard({ context }: { context: PersonCardContext }) 
                 </p>
               </div>
               <dl {...stylex.props(styles.facts)}>
-                <Row label={format(m.personUserType)} value={person.user.userType?.name ?? '—'} />
+                <Row label={format(m.personUserType)} value={person.user.userType.name} />
                 <Row
                   label={format(m.personPlacement)}
                   value={person.orgPath.map((node) => node.name).join(' / ')}
@@ -165,7 +172,11 @@ export default function PersonCard({ context }: { context: PersonCardContext }) 
           </DialogHeader>
           <DialogBody xstyle={styles.body}>
             {detail.isError ? (
-              <p {...stylex.props(styles.quiet)}>{formatError(detail.error)}</p>
+              <p {...stylex.props(styles.quiet)} data-testid="person-card-gone">
+                {isApiErrorCode(detail.error, 'USER_NOT_FOUND')
+                  ? format(m.personGone)
+                  : formatError(detail.error)}
+              </p>
             ) : person === undefined ? (
               <Skeleton className={stylex.props(styles.waitingBlock).className} />
             ) : (
@@ -175,7 +186,7 @@ export default function PersonCard({ context }: { context: PersonCardContext }) 
                     label={businessNo}
                     value={person.user.businessNo ?? format(m.personNoBusinessNo, { businessNo })}
                   />
-                  <Row label={format(m.personUserType)} value={person.user.userType?.name ?? '—'} />
+                  <Row label={format(m.personUserType)} value={person.user.userType.name} />
                   <Row
                     label={format(m.personStatus)}
                     value={format(

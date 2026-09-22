@@ -374,10 +374,6 @@ export const make = Effect.gen(function* () {
         people.push({ row, disposition: 'create', existingId: null, leafKey })
         continue
       }
-      if (found.deleted) {
-        issues.push({ rowNo: row.rowNo, field: 'businessNo', severity: 'error', reason: 'user-deleted' })
-        continue
-      }
       const differs: string[] = []
       if (found.displayName !== row.displayName) differs.push('displayName')
       if (found.userTypeId !== type.id) differs.push('userType')

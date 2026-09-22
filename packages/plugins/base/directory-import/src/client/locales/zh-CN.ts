@@ -81,7 +81,6 @@ export default {
   'directory-import/issue/org-level-required': '有一级组织为空',
   'directory-import/issue/org-name-too-long': '组织名称过长',
   'directory-import/issue/user-conflict': '该{businessNo}已存在，且{fields}与现有人员信息不一致',
-  'directory-import/issue/user-deleted': '该{businessNo}对应的人员已删除，请先恢复',
   'directory-import/issue/node-type-conflict': '{path} 已存在，但组织类型不一致',
   'directory-import/issue/other': '无法读取：{reason}',
   'directory-import/field/display-name': '姓名',

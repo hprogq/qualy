@@ -25,10 +25,10 @@ import { AuthConfig } from '../src/server/sign-in.ts'
 import { serviceLayer as authLayer } from '../src/server/index.ts'
 import { authClosure } from './support/closure.ts'
 
-// The user lifecycle: what falls with a deletion, what a restore hands back,
-// and the version fence every write now runs behind. The trail is asserted
-// through the audit table itself, because "these operations produce audit
-// events from day one" is this phase's contract, not a side effect.
+// The user lifecycle: what falls with a deletion, that deletion is final and
+// frees what the person held, and the version fence every write runs behind.
+// The trail is asserted through the audit table itself: the events are the
+// contract, not a side effect.
 
 const catalog = [
   ...compileCatalog([{ owner: 'auth', permissions: authPermissions }]),
@@ -81,9 +81,9 @@ const tagOf = (result: { _tag: string; failure?: unknown }) =>
   result._tag === 'Failure' ? (result.failure as { _tag?: string })._tag : undefined
 
 /**
- * A tenant with an administrator holding delete and restore everywhere, and
- * one ordinary person with an identity, a session and an org-role grant -
- * everything a deletion has to take away.
+ * A tenant with an administrator holding every permission everywhere, and
+ * one ordinary person with an address, an identity, a session and an
+ * org-role grant - everything a deletion has to take away.
  */
 const seed = Effect.fn('seed')(function* () {
   const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
@@ -129,8 +129,8 @@ const seed = Effect.fn('seed')(function* () {
   // the person the lifecycle acts on, with everything attached
   const person = one<{ id: string }>(
     yield* runSql(sql`
-      insert into users (tenant_id, display_name, user_type_id, primary_org_node_id, business_no)
-      values (${tenant}, 'Ada', ${staff}, ${root}, '20240001') returning id`),
+      insert into users (tenant_id, display_name, user_type_id, primary_org_node_id, business_no, email)
+      values (${tenant}, 'Ada', ${staff}, ${root}, '20240001', 'ada@school.edu') returning id`),
   ).id
   yield* runSql(sql`
     insert into user_identities (tenant_id, user_id, auth_provider_id, identifier, credential_hash)
@@ -161,7 +161,7 @@ const count = (table: string, where: ReturnType<typeof sql>) =>
   )
 
 describe.runIf(postgresAvailable)('the user lifecycle', () => {
-  it('takes everything with a deletion, atomically, and writes the event', async () => {
+  it('takes everything with a deletion, straight from active, and writes one event', async () => {
     const db = await createTestContext('lifecycle-delete')
     try {
       const exit = await run(
@@ -169,29 +169,7 @@ describe.runIf(postgresAvailable)('the user lifecycle', () => {
         Effect.gen(function* () {
           const f = yield* seed()
           const iam = yield* Iam
-
-          // an enabled person is not deletable
-          const early = yield* Effect.result(
-            iam.users.setStatus(
-              f.tenant,
-              f.person,
-              { status: 'deleted', expectedVersion: 1 },
-              f.as,
-            ),
-          )
-
-          yield* iam.users.setStatus(
-            f.tenant,
-            f.person,
-            { status: 'disabled', expectedVersion: 1 },
-            f.as,
-          )
-          yield* iam.users.setStatus(
-            f.tenant,
-            f.person,
-            { status: 'deleted', expectedVersion: 2 },
-            f.as,
-          )
+          yield* iam.users.remove(f.tenant, f.person, 1, f.as)
 
           const grants = yield* count(
             'role_grants',
@@ -215,116 +193,144 @@ describe.runIf(postgresAvailable)('the user lifecycle', () => {
                 where tenant_id = ${f.tenant} and target_id = ${f.person}
                 order by occurred_at, id`,
           )).rows
-          return { early: tagOf(early), grants, identities, sessions, row, events }
+          return { grants, identities, sessions, row, events }
         }),
       )
       const answer = ok(exit)
-      expect(answer.early).toBe('USER_NOT_DISABLED')
       expect(answer.grants).toBe(0)
       expect(answer.identities).toBe(0)
       expect(answer.sessions).toBe(0)
       expect(answer.row.deleted_at).not.toBeNull()
       expect(answer.row.enabled).toBe(false)
-      expect(answer.row.version).toBe(3)
-      // the number stays taken: the same person coming back is a restore
+      expect(answer.row.version).toBe(2)
+      // the tombstone keeps what it was, for whoever reads history by id
       expect(answer.row.business_no).toBe('20240001')
-      expect(answer.events.map((event) => event.action_code)).toEqual([
-        'auth.user.disable',
-        'auth.user.delete',
-      ])
-      expect(answer.events[1]!.details).toMatchObject({
+      // one act, one event: there is no separate stop at disabled any more
+      expect(answer.events.map((event) => event.action_code)).toEqual(['auth.user.delete'])
+      expect(answer.events[0]!.details).toMatchObject({
         revokedGrants: 1,
         revokedIdentities: 1,
-        // the disable one step earlier already swept the sessions; the
-        // deletion found none left, and the event says so honestly
-        endedSessions: 0,
+        endedSessions: 1,
       })
     } finally {
       await db.dispose()
     }
   })
 
-  it('will not restore somebody out of a unit the caller cannot reach', async () => {
-    const db = await createTestContext('lifecycle-restore-reach')
+  it('frees the number and the address, while history keeps the old row', async () => {
+    const db = await createTestContext('lifecycle-reuse')
     try {
       const exit = await run(
         db.url,
         Effect.gen(function* () {
-          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
           const f = yield* seed()
           const iam = yield* Iam
-          const node = (name: string, label: string) =>
-            Effect.map(
-              runSql(sql`
-                insert into org_nodes (tenant_id, org_type_id, parent_id, name, path, depth)
-                values (${f.tenant}, (select org_type_id from org_nodes where id = ${f.root}),
-                        ${f.root}, ${label}, ${sql.raw(`'r.${name}'`)}::ltree, 1)
-                returning id`),
-              (result) => one<{ id: string }>(result).id,
-            )
-          const theirs = yield* node('a', 'Theirs')
-          const mine = yield* node('b', 'Mine')
-          // the person stands somewhere the narrow restorer cannot reach
-          yield* runSql(
-            sql`update users set primary_org_node_id = ${theirs} where id = ${f.person}`,
+          const input = {
+            displayName: 'Ada again',
+            userTypeId: f.staff,
+            primaryOrgNodeId: f.root,
+            businessNo: '20240001',
+            email: 'Ada@School.edu ',
+          }
+          // while Ada is alive, both are taken
+          const takenNumber = yield* Effect.result(
+            iam.users.create(f.tenant, { ...input, email: 'other@school.edu' }, f.as),
           )
-          yield* iam.users.setStatus(
-            f.tenant,
-            f.person,
-            { status: 'disabled', expectedVersion: 1 },
-            f.as,
+          const takenAddress = yield* Effect.result(
+            iam.users.create(f.tenant, { ...input, businessNo: '20249999' }, f.as),
           )
-          yield* iam.users.setStatus(
-            f.tenant,
-            f.person,
-            { status: 'deleted', expectedVersion: 2 },
-            f.as,
-          )
-
-          // a restorer whose authority covers their own unit and nothing else
-          const restorer = one<{ id: string }>(
-            yield* runSql(sql`
-              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
-              values (${f.tenant}, 'Restorer', ${f.staff}, ${mine}) returning id`),
-          ).id
-          const role = one<{ id: string }>(
-            yield* runSql(sql`
-              insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
-              values (${f.tenant}, 'desk', 'Desk', 'org', 'active', 'explicit', 'unrestricted')
-              returning id`),
-          ).id
-          const permission = one<{ id: string }>(
-            yield* runSql(sql`
-              insert into permissions (code, plugin, name, target_kind)
-              values ('auth.user.restore', 'auth', 'restore', 'org-node')
-              on conflict (code) do update set code = excluded.code returning id`),
-          ).id
-          yield* runSql(sql`
-            insert into role_permissions (tenant_id, role_id, permission_id)
-            values (${f.tenant}, ${role}, ${permission})`)
-          yield* runSql(sql`
-            insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
-            values (${f.tenant}, ${restorer}, ${role}, ${mine}, 'subtree')`)
-
-          // naming their own unit as the destination is the whole trick: the
-          // check used to look only there
-          const pulled = yield* Effect.result(
-            iam.users.setStatus(
-              f.tenant,
-              f.person,
-              { status: 'disabled', expectedVersion: 3, primaryOrgNodeId: mine },
-              { tenantId: f.tenant, userId: restorer, sessionId: 's' },
-            ),
-          )
-          const still = (yield* runSql<{ deleted_at: string | null }>(
-            sql`select deleted_at from users where id = ${f.person}`,
-          )).rows[0]!
-          return { pulled: tagOf(pulled), deleted: still.deleted_at !== null }
+          yield* iam.users.remove(f.tenant, f.person, 1, f.as)
+          const successor = yield* iam.users.create(f.tenant, input, f.as)
+          const rows = (yield* runSql<{
+            id: string
+            email: string | null
+            deleted: boolean
+          }>(
+            sql`select id, email, deleted_at is not null as deleted from users
+                where tenant_id = ${f.tenant} and business_no = '20240001' order by created_at, id`,
+          )).rows
+          const trail = (yield* runSql<{ target_id: string }>(
+            sql`select target_id from audit_events
+                where tenant_id = ${f.tenant} and action_code = 'auth.user.delete'`,
+          )).rows
+          return {
+            takenNumber: tagOf(takenNumber),
+            takenAddress: tagOf(takenAddress),
+            successor,
+            rows,
+            trail,
+          }
         }),
       )
       const answer = ok(exit)
-      expect(answer.pulled).toBe('ACCESS_DENIED')
-      expect(answer.deleted).toBe(true)
+      expect(answer.takenNumber).toBe('USER_CONFLICT')
+      expect(answer.takenAddress).toBe('USER_EMAIL_CONFLICT')
+      expect(answer.rows).toHaveLength(2)
+      expect(answer.rows[1]).toMatchObject({
+        id: answer.successor,
+        // stored the way it is compared
+        email: 'ada@school.edu',
+        deleted: false,
+      })
+      expect(answer.rows[0]!.deleted).toBe(true)
+      expect(answer.rows[0]!.id).not.toBe(answer.successor)
+      // the deletion still names the person it removed, not their successor
+      expect(answer.trail.map((row) => row.target_id)).toEqual([answer.rows[0]!.id])
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('reads the deleted as nobody, on every path', async () => {
+    const db = await createTestContext('lifecycle-visibility')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const iam = yield* Iam
+          yield* iam.users.remove(f.tenant, f.person, 1, f.as)
+          const listed = yield* iam.users.list(f.as, {
+            orgNodeId: f.root,
+            scope: 'subtree',
+            limit: 10,
+          })
+          const paged = yield* iam.users.page(f.as, {
+            orgNodeId: f.root,
+            scope: 'subtree',
+            status: 'disabled',
+            page: 1,
+            limit: 10,
+          })
+          const options = yield* iam.users.options(f.as, undefined, 10)
+          const refusals = yield* Effect.all([
+            Effect.result(iam.users.get(f.as, f.person)),
+            Effect.result(iam.users.detail(f.as, f.person)),
+            Effect.result(iam.users.update(f.tenant, f.person, { displayName: 'X' }, 2, f.as)),
+            Effect.result(
+              iam.users.setStatus(f.tenant, f.person, { status: 'active', expectedVersion: 2 }, f.as),
+            ),
+            Effect.result(iam.users.remove(f.tenant, f.person, 2, f.as)),
+          ])
+          return {
+            listed: listed.map((row) => row.displayName),
+            pagedTotal: paged.total,
+            rootCount: options.nodes.find((node) => node.orgNodeId === f.root)?.userCount,
+            refusals: refusals.map(tagOf),
+          }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.listed).toEqual(['Admin'])
+      expect(answer.pagedTotal).toBe(0)
+      expect(answer.rootCount).toBe(1)
+      expect(answer.refusals).toEqual([
+        'USER_NOT_FOUND',
+        'USER_NOT_FOUND',
+        'USER_NOT_FOUND',
+        'USER_NOT_FOUND',
+        'USER_NOT_FOUND',
+      ])
     } finally {
       await db.dispose()
     }
@@ -356,9 +362,7 @@ describe.runIf(postgresAvailable)('the user lifecycle', () => {
               f.tenant,
               f.person,
               { status: 'active', expectedVersion: 1 },
-              {
-                ...asStranger,
-              },
+              asStranger,
             ),
           )
           // and the other way round, which used to be the refusal that told
@@ -368,37 +372,34 @@ describe.runIf(postgresAvailable)('the user lifecycle', () => {
               f.tenant,
               f.person,
               { status: 'disabled', expectedVersion: 1 },
-              {
-                ...asStranger,
-              },
+              asStranger,
             ),
           )
-          yield* iam.users.setStatus(
-            f.tenant,
-            f.person,
-            { status: 'disabled', expectedVersion: 1 },
-            f.as,
-          )
-          yield* iam.users.setStatus(
-            f.tenant,
-            f.person,
-            { status: 'deleted', expectedVersion: 2 },
-            f.as,
-          )
-          const agreeingDeleted = yield* Effect.result(
+          const deleting = yield* Effect.result(iam.users.remove(f.tenant, f.person, 1, asStranger))
+          // once gone, the person answers exactly like an id nobody ever had
+          yield* iam.users.remove(f.tenant, f.person, 1, f.as)
+          const gone = yield* Effect.result(
             iam.users.setStatus(
               f.tenant,
               f.person,
-              { status: 'deleted', expectedVersion: 3 },
-              {
-                ...asStranger,
-              },
+              { status: 'disabled', expectedVersion: 2 },
+              asStranger,
+            ),
+          )
+          const never = yield* Effect.result(
+            iam.users.setStatus(
+              f.tenant,
+              '00000000-0000-7000-8000-000000000000',
+              { status: 'disabled', expectedVersion: 1 },
+              asStranger,
             ),
           )
           return {
             agreeing: tagOf(agreeing),
             changing: tagOf(changing),
-            agreeingDeleted: tagOf(agreeingDeleted),
+            deleting: tagOf(deleting),
+            gone: tagOf(gone),
+            never: tagOf(never),
           }
         }),
       )
@@ -406,87 +407,9 @@ describe.runIf(postgresAvailable)('the user lifecycle', () => {
       // the two answers are the same answer, which is the whole point
       expect(answer.agreeing).toBe('ACCESS_DENIED')
       expect(answer.changing).toBe('ACCESS_DENIED')
-      expect(answer.agreeingDeleted).toBe('ACCESS_DENIED')
-    } finally {
-      await db.dispose()
-    }
-  })
-
-  it('restores to disabled, without the access that fell', async () => {
-    const db = await createTestContext('lifecycle-restore')
-    try {
-      const exit = await run(
-        db.url,
-        Effect.gen(function* () {
-          const f = yield* seed()
-          const iam = yield* Iam
-          yield* iam.users.setStatus(
-            f.tenant,
-            f.person,
-            { status: 'disabled', expectedVersion: 1 },
-            f.as,
-          )
-          yield* iam.users.setStatus(
-            f.tenant,
-            f.person,
-            { status: 'deleted', expectedVersion: 2 },
-            f.as,
-          )
-
-          // deleted people answer to restore only
-          const editRefused = yield* Effect.result(
-            iam.users.update(f.tenant, f.person, { displayName: 'X' }, 3, f.as),
-          )
-          const enableRefused = yield* Effect.result(
-            iam.users.setStatus(f.tenant, f.person, { status: 'active', expectedVersion: 3 }, f.as),
-          )
-
-          yield* iam.users.setStatus(
-            f.tenant,
-            f.person,
-            { status: 'disabled', expectedVersion: 3 },
-            f.as,
-          )
-          const row = (yield* runSql<{
-            deleted_at: string | null
-            enabled: boolean
-            user_type_id: string | null
-          }>(sql`select deleted_at, enabled, user_type_id from users where id = ${f.person}`))
-            .rows[0]!
-          const identities = yield* count(
-            'user_identities',
-            sql`user_id = ${f.person} and revoked_at is null`,
-          )
-          const grants = yield* count(
-            'role_grants',
-            sql`user_id = ${f.person} and revoked_at is null`,
-          )
-          const restored = (yield* runSql<{ action_code: string }>(
-            sql`select action_code from audit_events
-                where tenant_id = ${f.tenant} and target_id = ${f.person}
-                  and action_code = 'auth.user.restore'`,
-          )).rows
-          return {
-            editRefused: tagOf(editRefused),
-            enableRefused: tagOf(enableRefused),
-            row,
-            identities,
-            grants,
-            restored: restored.length,
-          }
-        }),
-      )
-      const answer = ok(exit)
-      expect(answer.editRefused).toBe('USER_DELETED')
-      expect(answer.enableRefused).toBe('USER_DELETED')
-      expect(answer.row.deleted_at).toBeNull()
-      // back as DISABLED: enabling is a second, explicit act
-      expect(answer.row.enabled).toBe(false)
-      expect(answer.row.user_type_id).toBe(answer.row.user_type_id)
-      // nothing that fell comes back on its own
-      expect(answer.identities).toBe(0)
-      expect(answer.grants).toBe(0)
-      expect(answer.restored).toBe(1)
+      expect(answer.deleting).toBe('ACCESS_DENIED')
+      expect(answer.gone).toBe('USER_NOT_FOUND')
+      expect(answer.never).toBe(answer.gone)
     } finally {
       await db.dispose()
     }
@@ -514,10 +437,12 @@ describe.runIf(postgresAvailable)('the user lifecycle', () => {
           const staleMove = yield* Effect.result(
             iam.users.setPlacement(f.tenant, f.person, f.root, 7, f.as),
           )
-          return [tagOf(stale), tagOf(staleEdit), tagOf(staleMove)]
+          const staleDelete = yield* Effect.result(iam.users.remove(f.tenant, f.person, 7, f.as))
+          return [tagOf(stale), tagOf(staleEdit), tagOf(staleMove), tagOf(staleDelete)]
         }),
       )
       expect(ok(exit)).toEqual([
+        'USER_VERSION_CONFLICT',
         'USER_VERSION_CONFLICT',
         'USER_VERSION_CONFLICT',
         'USER_VERSION_CONFLICT',
@@ -527,46 +452,30 @@ describe.runIf(postgresAvailable)('the user lifecycle', () => {
     }
   })
 
-  it('hides the deleted from the living, and shows them to the deleted view', async () => {
-    const db = await createTestContext('lifecycle-visibility')
+  it('will not delete the last administrator, and says so without deleting anything', async () => {
+    const db = await createTestContext('lifecycle-last-admin')
     try {
       const exit = await run(
         db.url,
         Effect.gen(function* () {
           const f = yield* seed()
           const iam = yield* Iam
-          yield* iam.users.setStatus(
-            f.tenant,
-            f.person,
-            { status: 'disabled', expectedVersion: 1 },
-            f.as,
+          const refused = yield* Effect.result(iam.users.remove(f.tenant, f.admin, 1, f.as))
+          const row = (yield* runSql<{ deleted_at: string | null; enabled: boolean }>(
+            sql`select deleted_at, enabled from users where id = ${f.admin}`,
+          )).rows[0]!
+          const grants = yield* count(
+            'role_grants',
+            sql`user_id = ${f.admin} and revoked_at is null`,
           )
-          yield* iam.users.setStatus(
-            f.tenant,
-            f.person,
-            { status: 'deleted', expectedVersion: 2 },
-            f.as,
-          )
-          const living = yield* iam.users.list(f.as, {
-            orgNodeId: f.root,
-            scope: 'subtree',
-            limit: 10,
-          })
-          const removed = yield* iam.users.list(f.as, {
-            orgNodeId: f.root,
-            scope: 'subtree',
-            status: 'deleted',
-            limit: 10,
-          })
-          return {
-            living: living.map((row) => row.displayName),
-            removed: removed.map((row) => row.displayName),
-          }
+          return { refused: tagOf(refused), row, grants }
         }),
       )
       const answer = ok(exit)
-      expect(answer.living).toEqual(['Admin'])
-      expect(answer.removed).toEqual(['Ada'])
+      expect(answer.refused).toBe('LAST_ADMINISTRATOR')
+      // the whole deletion rolled back with the refusal
+      expect(answer.row).toEqual({ deleted_at: null, enabled: true })
+      expect(answer.grants).toBe(1)
     } finally {
       await db.dispose()
     }

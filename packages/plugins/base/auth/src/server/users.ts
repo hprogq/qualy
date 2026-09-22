@@ -9,17 +9,18 @@ import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
 import { scopeCoverage, type AuthorizationScope, type Principal } from '@qualy/rbac-contract'
 import { placementAllowed, placementLegal } from './placement.ts'
 import { Audit } from '@qualy/audit-contract/effect'
+import type { AuditActor } from '@qualy/audit-contract'
 import { LoginDrivers } from '@qualy/auth-contract/login'
 import { actorOf } from './audit-actor.ts'
+import { normalizeEmail } from '@qualy/auth-contract/email'
 import {
   IdentityBound,
   IdentityRevoked,
   UserCreated,
-  UserDeleted as UserDeletedAction,
+  UserDeleted,
   UserDisabled,
   UserEnabled,
   UserMoved,
-  UserRestored,
   UserUpdated,
 } from '../actions.ts'
 import {
@@ -32,14 +33,15 @@ import {
   ProviderNotFound,
   PlacementNotAllowed,
   SystemAccountProtected,
-  UserDeleted,
-  UserNotDisabled,
   UserNotFound,
   UserPlacementNotFound,
+  UserConflict,
+  UserEmailConflict,
   UserTypeDisabled,
   UserTypeNotFound,
   UserVersionConflict,
   businessNoConstraints,
+  emailConstraints,
   userConstraints,
 } from './errors.ts'
 
@@ -54,30 +56,30 @@ const rows = <Row extends Record<string, unknown>>(result: unknown) =>
   (result as { rows: readonly Row[] }).rows
 
 /**
- * The user with the system flag their type carries, which every write guard
- * reads. Deleted rows come back too - the lifecycle transition decides what a
- * deleted person may become, so the guard cannot pre-decide they are gone.
- * The type join is outer because a deleted person's type may itself be gone.
+ * A living user with the system flag their type carries, which every write
+ * guard reads. A deleted person is not returned at all: deletion is final,
+ * and to every write path the tombstone is somebody who does not exist.
  */
 const userGuard = (tenantId: string, userId: string) =>
   db.query((k) =>
     k
       .selectFrom('User as u')
-      .leftJoin('UserType as t', (join) =>
+      .innerJoin('UserType as t', (join) =>
         join.onRef('t.tenantId', '=', 'u.tenantId').onRef('t.id', '=', 'u.userTypeId'),
       )
       .select([
         'u.id',
         'u.displayName',
+        'u.email',
         'u.userTypeId',
         'u.primaryOrgNodeId',
         'u.enabled',
-        'u.deletedAt',
         'u.version',
         't.isSystem',
       ])
       .where('u.tenantId', '=', tenantId)
       .where('u.id', '=', userId)
+      .where('u.deletedAt', 'is', null)
       .executeTakeFirst(),
   )
 
@@ -108,16 +110,17 @@ const placementAllowedAtType = (tenantId: string, userTypeId: string, orgTypeId:
       Effect.map((row) => row?.legal),
     )
 
-/** the people carrying any of these identifiers, deleted ones included */
+/** the living people carrying any of these identifiers */
 const usersByBusinessNo = (tenantId: string, businessNos: readonly string[]) =>
   db.query((k) =>
     businessNos.length === 0
       ? Promise.resolve([])
       : k
           .selectFrom('User')
-          .select(['id', 'businessNo', 'displayName', 'userTypeId', 'primaryOrgNodeId', 'enabled', 'deletedAt'])
+          .select(['id', 'businessNo', 'displayName', 'userTypeId', 'primaryOrgNodeId', 'enabled'])
           .where('tenantId', '=', tenantId)
           .where('businessNo', 'in', businessNos)
+          .where('deletedAt', 'is', null)
           .execute()
           .then((rows) =>
             rows.map((row) => ({
@@ -127,7 +130,6 @@ const usersByBusinessNo = (tenantId: string, businessNos: readonly string[]) =>
               userTypeId: row.userTypeId,
               primaryOrgNodeId: row.primaryOrgNodeId,
               enabled: row.enabled,
-              deleted: row.deletedAt !== null,
             })),
           ),
   )
@@ -153,30 +155,28 @@ const orgNodeExists = (tenantId: string, orgNodeId: string) =>
 const people = (k: Db, manage: AuthorizationScope) =>
   k
     .selectFrom('User as u')
-    // outer joins, because a DELETED person may have lost their type or unit
-    // to a later cleanup; a live person always has both (schema check)
-    .leftJoin('UserType as t', (join) =>
+    // inner joins: a living person always has both (schema check), and the
+    // dead are not read here at all
+    .innerJoin('UserType as t', (join) =>
       join.onRef('t.tenantId', '=', 'u.tenantId').onRef('t.id', '=', 'u.userTypeId'),
     )
-    .leftJoin('OrgNode as n', (join) =>
+    .innerJoin('OrgNode as n', (join) =>
       join.onRef('n.tenantId', '=', 'u.tenantId').onRef('n.id', '=', 'u.primaryOrgNodeId'),
     )
+    .where('u.deletedAt', 'is', null)
     .select((eb) => [
       'u.id',
       'u.businessNo',
+      'u.email',
+      'u.emailVerifiedAt',
       'u.displayName',
       'u.enabled',
-      'u.deletedAt',
       'u.version',
-      'u.userTypeId',
+      't.id as userTypeId',
       't.code as userTypeCode',
       't.name as userTypeName',
-      'u.primaryOrgNodeId',
+      'n.id as primaryOrgNodeId',
       'n.name as primaryOrgNodeName',
-      // the ways in that still work; a revoked binding is history, not a way in
-      sql<number>`(select count(*)::int from user_identities i
-        where i.tenant_id = ${eb.ref('u.tenantId')} and i.user_id = ${eb.ref('u.id')}
-          and i.revoked_at is null)`.as('identityCount'),
       sql<boolean>`coalesce(${scopeCoverage(manage, {
         id: eb.ref('n.id'),
         tenantId: eb.ref('n.tenantId'),
@@ -197,8 +197,8 @@ const listUsers = (
   input: {
     orgNodeId: string
     scope: 'self' | 'subtree'
-    /** absent = the living (active and disabled); 'deleted' = the removed; 'any' = both */
-    status?: 'active' | 'disabled' | 'deleted' | 'any'
+    /** absent = both living states */
+    status?: 'active' | 'disabled'
     search?: string
     /** narrows to one kind of person, which is what a picker filters by */
     userTypeId?: string
@@ -211,9 +211,6 @@ const listUsers = (
   },
 ) =>
   db.query(async (k) => {
-    // a removed person whose unit is gone anchors nowhere, so only a
-    // tenant-wide reader sees them; everybody else is read through their node
-    const removed = input.status === 'deleted' || input.status === 'any'
     let found = people(k, scopes.manage)
       .innerJoin('OrgNode as requested', (join) =>
         join
@@ -221,39 +218,21 @@ const listUsers = (
           .on('requested.id', '=', input.orgNodeId),
       )
       .where('u.tenantId', '=', tenantId)
-      .where((eb) => {
-        const within =
+      .where((eb) =>
+        eb.and([
           input.scope === 'subtree'
             ? sql<boolean>`${eb.ref('n.path')} <@ ${eb.ref('requested.path')}`
-            : eb('n.id', '=', eb.ref('requested.id'))
-        const readable = sql<boolean>`coalesce(${scopeCoverage(scopes.read, {
-          id: eb.ref('n.id'),
-          tenantId: eb.ref('n.tenantId'),
-          path: eb.ref('n.path'),
-        })}, false)`
-        const placed = eb.and([eb('n.id', 'is not', null), within, readable])
-        // A removed person whose unit was itself removed anchors nowhere, so
-        // only a tenant-wide reader sees them - a subtree reader's authority
-        // is defined by nodes, and there is no node to define it over.
-        const adrift = eb.and([
-          eb('u.deletedAt', 'is not', null),
-          eb('n.id', 'is', null),
-          sql<boolean>`${scopes.read.tenantWide ? sql`true` : sql`false`}`,
-        ])
-        return removed ? eb.or([placed, adrift]) : placed
-      })
-      .where((eb) =>
-        input.status === 'any'
-          ? eb.val(true)
-          : input.status === 'deleted'
-            ? eb('u.deletedAt', 'is not', null)
-            : input.status === undefined
-              ? eb('u.deletedAt', 'is', null)
-              : eb.and([
-                  eb('u.deletedAt', 'is', null),
-                  eb('u.enabled', '=', input.status === 'active'),
-                ]),
+            : eb('n.id', '=', eb.ref('requested.id')),
+          sql<boolean>`coalesce(${scopeCoverage(scopes.read, {
+            id: eb.ref('n.id'),
+            tenantId: eb.ref('n.tenantId'),
+            path: eb.ref('n.path'),
+          })}, false)`,
+        ]),
       )
+    if (input.status !== undefined) {
+      found = found.where('u.enabled', '=', input.status === 'active')
+    }
 
     if (input.userTypeId !== undefined) {
       found = found.where('u.userTypeId', '=', input.userTypeId)
@@ -324,21 +303,13 @@ const oneUser = (
     people(k, scopes.manage)
       .where('u.tenantId', '=', tenantId)
       .where('u.id', '=', userId)
-      // deleted rows stay readable here - a restore screen has to show who it
-      // is restoring - under the same authority: their surviving unit, or
-      // tenant-wide reach when the unit is gone
-      .where((eb) =>
-        eb.or([
+      .where(
+        (eb) =>
           sql<boolean>`coalesce(${scopeCoverage(scopes.read, {
             id: eb.ref('n.id'),
             tenantId: eb.ref('n.tenantId'),
             path: eb.ref('n.path'),
           })}, false)`,
-          eb.and([
-            eb('n.id', 'is', null),
-            sql<boolean>`${scopes.read.tenantWide ? sql`true` : sql`false`}`,
-          ]),
-        ]),
       )
       .executeTakeFirst(),
   )
@@ -379,41 +350,24 @@ const ancestryOf = (tenantId: string, orgNodeId: string, read: AuthorizationScop
   )
 
 /**
- * The ways one person can sign in, as somebody administering them reads it.
+ * When this person last signed in, through any door.
  *
- * The identifier is shown because an administrator looking at a stale
- * binding needs to know which account it points at; the credential itself is
- * never selected. `lastUsedAt` is the only evidence available that a binding
- * still works, and a null one is a binding nobody has ever come through.
+ * Read from the sign-in record rather than from bindings: a door that goes
+ * by a fact the person already has (a business number) keeps no binding at
+ * all, and the record is the one place every way in writes to.
  */
-const identitiesOf = (tenantId: string, userId: string) =>
-  db.query((k) =>
-    k
-      .selectFrom('UserIdentity as i')
-      .innerJoin('AuthProvider as p', (join) =>
-        join.onRef('p.tenantId', '=', 'i.tenantId').onRef('p.id', '=', 'i.authProviderId'),
-      )
-      .select((eb) => [
-        'i.id',
-        'i.identifier',
-        'i.boundAt',
-        'i.lastUsedAt',
-        'p.id as providerId',
-        'p.name as providerName',
-        'p.type as providerType',
-        'p.enabled as providerEnabled',
-        // whether the binding carries a secret of its own, which is what
-        // separates a local account from a federated one
-        eb('i.credentialHash', 'is not', null).as('hasCredential'),
-      ])
-      .where('i.tenantId', '=', tenantId)
-      .where('i.userId', '=', userId)
-      // the ways in that still work; withdrawn bindings are history
-      .where('i.revokedAt', 'is', null)
-      .orderBy('p.sortOrder')
-      .orderBy('p.name')
-      .execute(),
-  )
+const lastSignInOf = (tenantId: string, userId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('SignInEvent')
+        .select((eb) => eb.fn.max('occurredAt').as('at'))
+        .where('tenantId', '=', tenantId)
+        .where('userId', '=', userId)
+        .where('outcome', '=', 'success')
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => row?.at ?? null))
 
 /**
  * Every entrance of the tenant as it stands for one person: whether it lets
@@ -612,12 +566,28 @@ const assignableUserTypes = (tenantId: string) =>
       .execute(),
   )
 
+/**
+ * The stored spelling of an address the api already checked.
+ *
+ * The contract refuses anything `normalizeEmail` cannot read, so an address
+ * that fails here reached the service some other way; that is a defect in
+ * the caller, not an answer for the person typing.
+ */
+const storedEmail = (raw: string | null): Effect.Effect<string | null> => {
+  if (raw === null) return Effect.succeed(null)
+  const email = normalizeEmail(raw)
+  return email === null
+    ? Effect.die(new Error('an email address reached the directory without passing the contract'))
+    : Effect.succeed(email)
+}
+
 const insertUser = (input: {
   tenantId: string
   displayName: string
   userTypeId: string
   primaryOrgNodeId: string
   businessNo: string | null
+  email?: string | null
 }) => db.query((k) => k.insertInto('User').values(input).returning('id').executeTakeFirstOrThrow())
 
 // every lifecycle write bumps the version, so a stale-read edit is refused
@@ -626,7 +596,12 @@ const bump = { version: sql<number>`version + 1`, updatedAt: sql<Date>`now()` }
 const updateUser = (
   tenantId: string,
   userId: string,
-  fields: { displayName?: string; userTypeId?: string; businessNo?: string },
+  fields: {
+    displayName?: string
+    userTypeId?: string
+    businessNo?: string
+    email?: string | null
+  },
 ) =>
   db.query((k) =>
     k
@@ -635,6 +610,8 @@ const updateUser = (
         ...(fields.displayName === undefined ? {} : { displayName: fields.displayName }),
         ...(fields.userTypeId === undefined ? {} : { userTypeId: fields.userTypeId }),
         ...(fields.businessNo === undefined ? {} : { businessNo: fields.businessNo }),
+        // a new address is an unproved one, whoever typed it
+        ...(fields.email === undefined ? {} : { email: fields.email, emailVerifiedAt: null }),
         ...bump,
       })
       .where('tenantId', '=', tenantId)
@@ -662,43 +639,18 @@ const setUserEnabled = (tenantId: string, userId: string, enabled: boolean) =>
       .execute(),
   )
 
-/** the person leaves; the row stays, because history names it */
+/** the person leaves for good; the row stays, because history names it */
 const markUserDeleted = (tenantId: string, userId: string) =>
   db.query((k) =>
     k
       .updateTable('User')
-      .set({ deletedAt: sql<Date>`now()`, ...bump })
+      .set({ deletedAt: sql<Date>`now()`, enabled: false, ...bump })
       .where('tenantId', '=', tenantId)
       .where('id', '=', userId)
       .execute(),
   )
 
-/** back to DISABLED, on the stated standing; enabling is a second, explicit act */
-const markUserRestored = (
-  tenantId: string,
-  userId: string,
-  placement: { userTypeId: string; primaryOrgNodeId: string },
-) =>
-  db.query((k) =>
-    k
-      .updateTable('User')
-      .set({
-        deletedAt: null,
-        enabled: false,
-        userTypeId: placement.userTypeId,
-        primaryOrgNodeId: placement.primaryOrgNodeId,
-        ...bump,
-      })
-      .where('tenantId', '=', tenantId)
-      .where('id', '=', userId)
-      .execute(),
-  )
-
-/**
- * Withdraws every live way in, attributed to whoever deleted the person.
- * Restore does not undo this: a door that stopped being theirs must not
- * open again on its own.
- */
+/** withdraws every live way in, attributed to whoever deleted the person */
 const revokeUserIdentities = (tenantId: string, userId: string, actorId: string) =>
   db
     .query((k) =>
@@ -750,6 +702,21 @@ export const make = Effect.fn('Iam.users.make')(function* () {
     )
 
   /**
+   * The locked transaction for a lifecycle write: it changes a person's
+   * state, never where they stand, so the placement constraint is not
+   * reachable and not among what it may answer.
+   */
+  const writeState = <A, E, R>(tenantId: string, body: () => Effect.Effect<A, E, R>) =>
+    withDb(
+      transaction(
+        Effect.gen(function* () {
+          yield* lockTenant(tenantId)
+          return yield* body()
+        }),
+      ),
+    ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
+
+  /**
    * The same locked transaction for a write that touches no row of `users`:
    * the placement constraint cannot be reached from a binding, so it is not
    * translated here and does not appear among what these writes may answer.
@@ -771,6 +738,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
     }
   })
 
+  /** a living person; the deleted answer exactly like somebody who never existed */
   const requireUser = Effect.fn('Iam.users.require')(function* (tenantId: string, userId: string) {
     const row = yield* userGuard(tenantId, userId)
     if (!row) return yield* new UserNotFound()
@@ -779,14 +747,45 @@ export const make = Effect.fn('Iam.users.make')(function* () {
 
   type GuardRow = NonNullable<Effect.Success<ReturnType<typeof userGuard>>>
 
-  /** every path but the lifecycle transition refuses a deleted person */
-  const requireLiveUser = Effect.fn('Iam.users.requireLive')(function* (
+  /**
+   * Takes one person out of the living, with everything that fell with them.
+   *
+   * Authority falls first, then the ways in, then the sessions, then the
+   * person; all of it inside the caller's transaction, so no order is ever
+   * observable. The caller has already decided they may; whether the tenant
+   * still has an administrator is asked once, after every removal.
+   */
+  const retire = Effect.fn('Iam.users.retire')(function* (
     tenantId: string,
-    userId: string,
+    user: GuardRow,
+    as: Principal,
+    actor: AuditActor,
   ) {
-    const row = yield* requireUser(tenantId, userId)
-    if (row.deletedAt !== null) return yield* new UserDeleted()
-    return row
+    const revokedGrants = yield* rbac.revokeAllGrantsOfUser(tenantId, user.id, as.userId)
+    const revokedIdentities = yield* revokeUserIdentities(tenantId, user.id, as.userId)
+    const endedSessions = yield* deleteUserSessions(tenantId, user.id)
+    yield* markUserDeleted(tenantId, user.id)
+    yield* audit.record(UserDeleted, {
+      tenantId,
+      actor,
+      target: { id: user.id, label: user.displayName },
+      organizationId: user.primaryOrgNodeId!,
+      details: {
+        userTypeId: user.userTypeId,
+        orgNodeId: user.primaryOrgNodeId,
+        revokedGrants,
+        revokedIdentities,
+        endedSessions,
+      },
+    })
+  })
+
+  /** deleting somebody is administering them, and then some */
+  const mayDelete = Effect.fn('Iam.users.mayDelete')(function* (as: Principal, orgNodeId: string) {
+    yield* manages(as, orgNodeId)
+    if (!(yield* rbac.canAt(as, 'auth.user.delete', orgNodeId))) {
+      return yield* new AccessDenied({ reason: 'not allowed to delete users here' })
+    }
   })
 
   /**
@@ -951,44 +950,15 @@ export const make = Effect.fn('Iam.users.make')(function* () {
           for (const userId of userIds) {
             const user = yield* userGuard(tenantId, userId)
             // gone already, by somebody's hand or a previous act: nothing to do
-            if (!user || user.deletedAt !== null || user.isSystem || user.primaryOrgNodeId === null) {
+            if (!user || user.isSystem) {
               skipped += 1
               continue
             }
-            // the single-user path's two steps, with its two authorities
-            yield* manages(as, user.primaryOrgNodeId)
-            if (!(yield* rbac.canAt(as, 'auth.user.delete', user.primaryOrgNodeId))) {
-              return yield* new AccessDenied({ reason: 'not allowed to delete users here' })
-            }
-            if (user.enabled) {
-              yield* setUserEnabled(tenantId, user.id, false)
-              yield* audit.record(UserDisabled, {
-                tenantId,
-                actor,
-                target: { id: user.id, label: user.displayName },
-                details: {},
-              })
-            }
-            const revokedGrants = yield* rbac.revokeAllGrantsOfUser(tenantId, user.id, as.userId)
-            const revokedIdentities = yield* revokeUserIdentities(tenantId, user.id, as.userId)
-            const endedSessions = yield* deleteUserSessions(tenantId, user.id)
-            yield* markUserDeleted(tenantId, user.id)
-            yield* audit.record(UserDeletedAction, {
-              tenantId,
-              actor,
-              target: { id: user.id, label: user.displayName },
-              organizationId: user.primaryOrgNodeId,
-              details: {
-                userTypeId: user.userTypeId,
-                orgNodeId: user.primaryOrgNodeId,
-                revokedGrants,
-                revokedIdentities,
-                endedSessions,
-              },
-            })
+            yield* mayDelete(as, user.primaryOrgNodeId!)
+            yield* retire(tenantId, user, as, actor)
             retired += 1
           }
-          // read after the writes: the tenant must still be able to sign in
+          // read after the writes: the tenant must still have an administrator
           if (retired > 0) yield* rbac.assertTenantKeepsAdministrator(tenantId)
           return { retired, skipped }
         }),
@@ -1017,7 +987,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
         input: {
           orgNodeId: string
           scope: 'self' | 'subtree'
-          status?: 'active' | 'disabled' | 'deleted'
+          status?: 'active' | 'disabled'
           search?: string
           userTypeId?: string
           after?: readonly string[]
@@ -1037,7 +1007,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
         input: {
           orgNodeId: string
           scope: 'self' | 'subtree'
-          status?: 'active' | 'disabled' | 'deleted' | 'any'
+          status?: 'active' | 'disabled'
           search?: string
           userTypeId?: string
           page: number
@@ -1082,18 +1052,14 @@ export const make = Effect.fn('Iam.users.make')(function* () {
         const held = yield* scopes(principal)
         const row = yield* oneUser(principal.tenantId, userId, held).pipe(Effect.orDie)
         if (!row) return yield* new UserNotFound()
-        const [orgPath, roles, identities, rule] = yield* Effect.all([
-          row.primaryOrgNodeId === null
-            ? Effect.succeed([])
-            : ancestryOf(principal.tenantId, row.primaryOrgNodeId, held.read).pipe(Effect.orDie),
+        const [orgPath, roles, lastSignInAt, rule] = yield* Effect.all([
+          ancestryOf(principal.tenantId, row.primaryOrgNodeId, held.read).pipe(Effect.orDie),
           rbac.listUserRoles(principal.tenantId, userId, held.read),
-          identitiesOf(principal.tenantId, userId).pipe(Effect.orDie),
-          row.userTypeId === null
-            ? Effect.succeed(undefined)
-            : placementPolicyOf(principal.tenantId, row.userTypeId).pipe(Effect.orDie),
+          lastSignInOf(principal.tenantId, userId).pipe(Effect.orDie),
+          placementPolicyOf(principal.tenantId, row.userTypeId).pipe(Effect.orDie),
         ])
-        // a row whose type was removed is only ever a deleted one; it may
-        // stand nowhere new, which an empty allow-list says exactly
+        // the type is joined in the read above, so a missing rule is a row
+        // that vanished in between; it may stand nowhere new
         const placement =
           rule === undefined
             ? ({ mode: 'allow-list', orgTypeIds: [] } as const)
@@ -1102,7 +1068,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
               : rule.placementMode === 'allow-list'
                 ? ({ mode: 'allow-list', orgTypeIds: rule.allowedOrgTypeIds } as const)
                 : ({ mode: 'unrestricted' } as const)
-        return { user: row, orgPath, placement, roles, identities }
+        return { user: row, orgPath, placement, roles, lastSignInAt }
       }),
     ),
 
@@ -1127,7 +1093,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
             binding: registered?.driver.binding,
           })),
         )
-        return { entrances, manageable: row.manageable === true && row.deletedAt === null }
+        return { entrances, manageable: row.manageable === true }
       }),
     ),
 
@@ -1155,7 +1121,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
       if (binding?.mode !== 'managed') return yield* new IdentityBindingUnsupported()
       // authority first, so somebody without it learns nothing about what a
       // valid name looks like and costs the server no digest
-      const before = yield* withDb(requireLiveUser(tenantId, userId)).pipe(
+      const before = yield* withDb(requireUser(tenantId, userId)).pipe(
         Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
       )
       if (before.isSystem) return yield* new SystemAccountProtected()
@@ -1168,7 +1134,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
 
       return yield* writeBinding(tenantId, () =>
         Effect.gen(function* () {
-          const user = yield* requireLiveUser(tenantId, userId)
+          const user = yield* requireUser(tenantId, userId)
           if (user.isSystem) return yield* new SystemAccountProtected()
           yield* manages(as, user.primaryOrgNodeId!)
           const admitted = yield* entrancesOf(tenantId, userId, user.userTypeId)
@@ -1235,7 +1201,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
     ) {
       yield* writeBinding(tenantId, () =>
         Effect.gen(function* () {
-          const user = yield* requireLiveUser(tenantId, userId)
+          const user = yield* requireUser(tenantId, userId)
           if (user.isSystem) return yield* new SystemAccountProtected()
           yield* manages(as, user.primaryOrgNodeId!)
           const standing = yield* liveIdentity(tenantId, userId, providerId)
@@ -1318,9 +1284,11 @@ export const make = Effect.fn('Iam.users.make')(function* () {
         userTypeId: string
         primaryOrgNodeId: string
         businessNo?: string
+        email?: string
       },
       as: Principal,
     ) {
+      const email = yield* storedEmail(input.email ?? null)
       return yield* write(tenantId, () =>
         Effect.gen(function* () {
           // authority follows the node the user will stand on
@@ -1336,6 +1304,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
             userTypeId: type.id,
             primaryOrgNodeId: input.primaryOrgNodeId,
             businessNo: input.businessNo ?? null,
+            email,
           })
           yield* audit.record(UserCreated, {
             tenantId,
@@ -1344,9 +1313,13 @@ export const make = Effect.fn('Iam.users.make')(function* () {
             details: { userTypeId: type.id, orgNodeId: input.primaryOrgNodeId },
           })
           return created.id
-          // the business-number index is only reachable from the two
-          // statements that write it, so its translation lives with them
-        }).pipe(translateConstraints(businessNoConstraints)),
+          // the business-number and email indexes are only reachable from
+          // the two statements that write them, so their translation lives
+          // with them
+        }).pipe(translateConstraints<UserConflict | UserEmailConflict>({
+            ...businessNoConstraints,
+            ...emailConstraints,
+          })),
       )
     }),
 
@@ -1359,15 +1332,32 @@ export const make = Effect.fn('Iam.users.make')(function* () {
     update: Effect.fn('Iam.users.update')(function* (
       tenantId: string,
       userId: string,
-      fields: { displayName?: string; userTypeId?: string; businessNo?: string },
+      input: {
+        displayName?: string
+        userTypeId?: string
+        businessNo?: string
+        email?: string | null
+      },
       expectedVersion: number,
       as: Principal,
     ) {
+      const email = input.email === undefined ? undefined : yield* storedEmail(input.email)
       yield* write(tenantId, () =>
         Effect.gen(function* () {
-          const user = yield* requireLiveUser(tenantId, userId)
+          const user = yield* requireUser(tenantId, userId)
           yield* requireVersion(user, expectedVersion)
           yield* manages(as, user.primaryOrgNodeId!)
+          // an address restated unchanged is not a change: it must not
+          // throw away the proof the person already gave for it
+          const fields = {
+            ...input,
+            email: email === undefined || email === user.email ? undefined : email,
+          }
+          // The recovery account's address is how the tenant gets back in;
+          // it is provisioned with the account and not edited from a screen.
+          if (fields.email !== undefined && user.isSystem) {
+            return yield* new SystemAccountProtected()
+          }
           const changingType =
             fields.userTypeId !== undefined && fields.userTypeId !== user.userTypeId
           if (changingType) {
@@ -1389,7 +1379,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
             actor: yield* actorOf(tenantId, as),
             target: { id: user.id, label: user.displayName },
             details: {
-              fields: (['displayName', 'userTypeId', 'businessNo'] as const).filter(
+              fields: (['displayName', 'userTypeId', 'businessNo', 'email'] as const).filter(
                 (field) => fields[field] !== undefined,
               ),
             },
@@ -1397,7 +1387,10 @@ export const make = Effect.fn('Iam.users.make')(function* () {
           // a type change can move the last administrator onto a type that
           // cannot sign in at all
           if (changingType) yield* rbac.assertTenantKeepsAdministrator(tenantId)
-        }).pipe(translateConstraints(businessNoConstraints)),
+        }).pipe(translateConstraints<UserConflict | UserEmailConflict>({
+            ...businessNoConstraints,
+            ...emailConstraints,
+          })),
       )
     }),
 
@@ -1416,7 +1409,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
     ) {
       yield* write(tenantId, () =>
         Effect.gen(function* () {
-          const user = yield* requireLiveUser(tenantId, userId)
+          const user = yield* requireUser(tenantId, userId)
           yield* requireVersion(user, expectedVersion)
           if (user.isSystem) return yield* new SystemAccountProtected()
           yield* manages(as, user.primaryOrgNodeId!)
@@ -1437,116 +1430,20 @@ export const make = Effect.fn('Iam.users.make')(function* () {
     }),
 
     /**
-     * The whole lifecycle through one door: active <-> disabled, disabled ->
-     * deleted, deleted -> disabled. Deletion starts from disabled and restore
-     * lands on disabled, so "can they act right now" never changes by more
-     * than one step, and each step is its own permission.
+     * In service or out of it. Deletion is its own resource and its own
+     * permission; nothing comes back from it, so there is no transition out
+     * of it here either.
      */
     setStatus: Effect.fn('Iam.users.setStatus')(function* (
       tenantId: string,
       userId: string,
-      input: {
-        status: 'active' | 'disabled' | 'deleted'
-        expectedVersion: number
-        /** restore only: where the person comes back, when the old standing is gone */
-        userTypeId?: string
-        primaryOrgNodeId?: string
-      },
+      input: { status: 'active' | 'disabled'; expectedVersion: number },
       as: Principal,
     ) {
-      yield* write(tenantId, () =>
+      yield* writeState(tenantId, () =>
         Effect.gen(function* () {
           const user = yield* requireUser(tenantId, userId)
           yield* requireVersion(user, input.expectedVersion)
-
-          if (user.deletedAt !== null) {
-            // Asking for what is already true is agreement, not an error -
-            // but only for somebody who could have asked for it. Answered
-            // before the authority was consulted, it told anybody who could
-            // name an id that the person exists and has been deleted, and a
-            // few more calls told them the row's version.
-            if (input.status === 'deleted') {
-              if (
-                user.primaryOrgNodeId !== null &&
-                !(yield* rbac.canAt(as, 'auth.user.delete', user.primaryOrgNodeId))
-              ) {
-                return yield* new AccessDenied({ reason: 'not allowed to delete users here' })
-              }
-              return
-            }
-            // there is no shortcut past disabled: restore hands back the
-            // person, not their access
-            if (input.status === 'active') return yield* new UserDeleted()
-
-            const userTypeId = input.userTypeId ?? user.userTypeId
-            const orgNodeId = input.primaryOrgNodeId ?? user.primaryOrgNodeId
-            if (userTypeId === null) return yield* new UserTypeNotFound()
-            if (orgNodeId === null) return yield* new UserPlacementNotFound()
-            // Where they are, and where they are going. Every other door
-            // here asks about where the person already stands; restore asked
-            // only about the destination, and the destination is the
-            // caller's to choose - so anyone who could restore into their
-            // own unit could pull any deleted person in the tenant into it.
-            if (
-              user.primaryOrgNodeId !== null &&
-              !(yield* rbac.canAt(as, 'auth.user.restore', user.primaryOrgNodeId))
-            ) {
-              return yield* new AccessDenied({ reason: 'not allowed to restore users here' })
-            }
-            if (!(yield* rbac.canAt(as, 'auth.user.restore', orgNodeId))) {
-              return yield* new AccessDenied({ reason: 'not allowed to restore users here' })
-            }
-            const type = yield* requireType(tenantId, userTypeId)
-            if (!type.enabled) return yield* new UserTypeDisabled()
-            yield* mayAssignType(type)
-            yield* requireOrgNode(tenantId, orgNodeId)
-            yield* requirePlacement(tenantId, type.id, orgNodeId)
-            yield* markUserRestored(tenantId, user.id, {
-              userTypeId: type.id,
-              primaryOrgNodeId: orgNodeId,
-            })
-            // identities and grants stay withdrawn: what comes back is the
-            // person's continuity, not their access
-            yield* audit.record(UserRestored, {
-              tenantId,
-              actor: yield* actorOf(tenantId, as),
-              target: { id: user.id, label: user.displayName },
-              organizationId: orgNodeId,
-              details: { userTypeId: type.id, orgNodeId },
-            })
-            return
-          }
-
-          if (input.status === 'deleted') {
-            if (user.isSystem) return yield* new SystemAccountProtected()
-            if (user.enabled) return yield* new UserNotDisabled()
-            if (!(yield* rbac.canAt(as, 'auth.user.delete', user.primaryOrgNodeId!))) {
-              return yield* new AccessDenied({ reason: 'not allowed to delete users here' })
-            }
-            // authority falls first, then the ways in, then the person; all
-            // of it one transaction, so no order is ever observable
-            const revokedGrants = yield* rbac.revokeAllGrantsOfUser(tenantId, user.id, as.userId)
-            const revokedIdentities = yield* revokeUserIdentities(tenantId, user.id, as.userId)
-            const endedSessions = yield* deleteUserSessions(tenantId, user.id)
-            yield* markUserDeleted(tenantId, user.id)
-            yield* audit.record(UserDeletedAction, {
-              tenantId,
-              actor: yield* actorOf(tenantId, as),
-              target: { id: user.id, label: user.displayName },
-              ...(user.primaryOrgNodeId === null ? {} : { organizationId: user.primaryOrgNodeId }),
-              details: {
-                userTypeId: user.userTypeId,
-                orgNodeId: user.primaryOrgNodeId,
-                revokedGrants,
-                revokedIdentities,
-                endedSessions,
-              },
-            })
-            // no administrator check: deletion starts from disabled, and a
-            // disabled person was already no survivor
-            return
-          }
-
           const enabled = input.status === 'active'
           // authority first, then whether there is anything to do: answered
           // the other way round, a caller with no reach over this person
@@ -1568,6 +1465,32 @@ export const make = Effect.fn('Iam.users.make')(function* () {
             yield* deleteUserSessions(tenantId, user.id)
             yield* rbac.assertTenantKeepsAdministrator(tenantId)
           }
+        }),
+      )
+    }),
+
+    /**
+     * Deletes a person, for good.
+     *
+     * Allowed from active as well as disabled: the tombstone is final, so a
+     * mandatory stop at disabled only added a click. Everything that stood on
+     * the person falls in the same transaction, and the tenant must still
+     * have an administrator afterwards - read on the state being committed.
+     */
+    remove: Effect.fn('Iam.users.remove')(function* (
+      tenantId: string,
+      userId: string,
+      expectedVersion: number,
+      as: Principal,
+    ) {
+      yield* writeState(tenantId, () =>
+        Effect.gen(function* () {
+          const user = yield* requireUser(tenantId, userId)
+          yield* requireVersion(user, expectedVersion)
+          yield* mayDelete(as, user.primaryOrgNodeId!)
+          if (user.isSystem) return yield* new SystemAccountProtected()
+          yield* retire(tenantId, user, as, yield* actorOf(tenantId, as))
+          yield* rbac.assertTenantKeepsAdministrator(tenantId)
         }),
       )
     }),

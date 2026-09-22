@@ -140,20 +140,6 @@ export class UserVersionConflict extends Schema.TaggedError<UserVersionConflict>
   { httpApiStatus: 409, identifier: 'UserVersionConflict' },
 ) {}
 
-/** deletion starts from disabled: an account that can still sign in is not deletable */
-export class UserNotDisabled extends Schema.TaggedError<UserNotDisabled>()(
-  'USER_NOT_DISABLED',
-  {},
-  { httpApiStatus: 409, identifier: 'UserNotDisabled' },
-) {}
-
-/** the person is deleted; every path but restore refuses them */
-export class UserDeleted extends Schema.TaggedError<UserDeleted>()(
-  'USER_DELETED',
-  {},
-  { httpApiStatus: 409, identifier: 'UserDeleted' },
-) {}
-
 /** grants the person holds that their new type would not be eligible for */
 export class GrantIncompatible extends Schema.TaggedError<GrantIncompatible>()(
   'GRANT_INCOMPATIBLE',
@@ -187,6 +173,23 @@ export const userConstraints: Record<string, () => UserPlacementNotFound> = {
  */
 export const businessNoConstraints: Record<string, () => UserConflict> = {
   uq_users_tenant_business_no: () => new UserConflict(),
+}
+
+/**
+ * An email address another living person in this tenant already has.
+ *
+ * Its own code rather than `USER_CONFLICT`, because the screen has to say
+ * which field to change; whose address it is stays unsaid.
+ */
+export class UserEmailConflict extends Schema.TaggedError<UserEmailConflict>()(
+  'USER_EMAIL_CONFLICT',
+  {},
+  { httpApiStatus: 409, identifier: 'UserEmailConflict' },
+) {}
+
+/** the index only the statements that write an email can reach */
+export const emailConstraints: Record<string, () => UserEmailConflict> = {
+  uq_users_tenant_email_live: () => new UserEmailConflict(),
 }
 
 /**

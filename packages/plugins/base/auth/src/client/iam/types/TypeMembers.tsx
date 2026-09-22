@@ -93,7 +93,7 @@ export function TypeMembers({ userTypeId }: { userTypeId: string }) {
                   {user.businessNo ?? format(m.personNoBusinessNo, { businessNo })}
                 </Cell>
                 <Cell tone="plain">{user.displayName}</Cell>
-                <Cell>{user.primaryOrgNode?.name ?? '—'}</Cell>
+                <Cell>{user.primaryOrgNode.name}</Cell>
                 <Status tone={user.status === 'active' ? 'plain' : 'bad'}>
                   {format(user.status === 'disabled' ? m.disabledBadge : m.statusActive)}
                 </Status>

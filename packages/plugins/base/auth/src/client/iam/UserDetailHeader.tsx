@@ -2,7 +2,14 @@ import type { Effect } from 'effect'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Fragment, useEffect, useState } from 'react'
 import { ArrowLeftIcon, EllipsisIcon } from 'lucide-react'
-import { PageLink, useApi, useRunApi, useApiQuery, usePageRouteParams } from '@qualy/web-runtime'
+import {
+  PageLink,
+  useApi,
+  useApiQuery,
+  usePageNavigate,
+  usePageRouteParams,
+  useRunApi,
+} from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
@@ -32,8 +39,8 @@ import { authApi } from '../api.ts'
 // The user-detail shell renders this without knowing what a person is; this
 // reads the person from the route it is mounted at, the same way the pages
 // beside it do. It carries the acts that concern the person as a whole -
-// their name and kind, whether they may sign in at all, whether they are
-// still on the books - and nothing that belongs to one section.
+// their name, address and kind, whether they may sign in at all, whether
+// they stay on the books - and nothing that belongs to one section.
 
 const QUIET = `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`
 
@@ -178,7 +185,9 @@ export default function UserDetailHeader() {
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [displayName, setDisplayName] = useState('')
   const [businessNo, setBusinessNo] = useState('')
+  const [email, setEmail] = useState('')
   const [userTypeId, setUserTypeId] = useState('')
+  const navigate = usePageNavigate()
 
   const user = useQuery(query.identity.getUser.queryOptions({ params: { userId } }))
   const options = useQuery({
@@ -193,7 +202,8 @@ export default function UserDetailHeader() {
     if (!record) return
     setDisplayName(record.displayName)
     setBusinessNo(record.businessNo ?? '')
-    setUserTypeId(record.userType?.id ?? '')
+    setEmail(record.email ?? '')
+    setUserTypeId(record.userType.id)
     setFeedback(null)
     setSaved(false)
   }, [record])
@@ -219,6 +229,9 @@ export default function UserDetailHeader() {
           displayName,
           userTypeId,
           businessNo: businessNo.trim() === '' ? undefined : businessNo.trim(),
+          // emptied means taken away; the recovery account's is not the
+          // form's to send at all
+          ...(system ? {} : { email: email.trim() === '' ? null : email.trim() }),
         },
       }),
     ),
@@ -229,7 +242,7 @@ export default function UserDetailHeader() {
     },
   })
   const setStatus = useMutation({
-    ...run((status: 'active' | 'disabled' | 'deleted') =>
+    ...run((status: 'active' | 'disabled') =>
       api.identity.setUserStatus({
         params: { userId },
         payload: { status, version: record?.version ?? 1 },
@@ -237,13 +250,30 @@ export default function UserDetailHeader() {
     ),
     onSuccess: async () => {
       setConfirmingDisable(false)
-      setConfirmingDelete(false)
       setSaved(true)
       await refresh()
     },
   })
+  // Final: there is no record left to come back to, so the way out is the
+  // roster the person was reached from.
+  const remove = useMutation({
+    ...run(() =>
+      api.identity.deleteUser({
+        params: { userId },
+        query: { version: String(record?.version ?? 1) },
+      }),
+    ),
+    onSuccess: async () => {
+      setConfirmingDelete(false)
+      await refresh()
+      navigate('auth/users', { search: rosterSearch(), replace: true })
+    },
+  })
 
   const manageable = record?.manageable ?? false
+  // the platform's own account: where it stands and what it signs in with
+  // are provisioned, so the form does not offer them
+  const system = user.data?.placement.mode === 'tenant-root'
   const userTypes = options.data?.userTypes ?? []
 
   const facts: { label: string; value: string; warn?: boolean }[] =
@@ -256,17 +286,13 @@ export default function UserDetailHeader() {
               record.businessNo ?? format(m.personNoBusinessNo, { businessNo: businessNoWord }),
           },
           {
+            label: format(m.emailLabel),
+            value: record.email ?? format(m.emailNone),
+          },
+          {
             label: format(m.personPlacement),
             // the unit itself: the whole way down to it is on the profile below
             value: user.data?.orgPath.at(-1)?.name ?? '—',
-          },
-          {
-            label: format(m.accountsLabel),
-            value:
-              record.identityCount === 0
-                ? format(m.accountNone)
-                : format(m.accountCount, { count: record.identityCount }),
-            warn: record.identityCount === 0,
           },
           {
             label: format(m.rolesLabel),
@@ -307,19 +333,13 @@ export default function UserDetailHeader() {
             <div {...stylex.props(styles.text)}>
               <div {...stylex.props(styles.nameRow)}>
                 <h1 {...stylex.props(styles.name)}>{record.displayName}</h1>
-                {record.userType !== null && <Tag>{record.userType.name}</Tag>}
+                <Tag>{record.userType.name}</Tag>
                 <Status
                   tone={record.status === 'active' ? 'ok' : 'bad'}
                   data-testid="user-standing"
                   data-status={record.status}
                 >
-                  {format(
-                    record.status === 'deleted'
-                      ? m.deletedBadge
-                      : record.status === 'disabled'
-                        ? m.disabledBadge
-                        : m.statusActive,
-                  )}
+                  {format(record.status === 'disabled' ? m.disabledBadge : m.statusActive)}
                 </Status>
               </div>
               <div {...stylex.props(styles.facts)}>
@@ -338,20 +358,7 @@ export default function UserDetailHeader() {
                 ))}
               </div>
             </div>
-            {record.status === 'deleted' ? (
-              // what comes back is the person, disabled: access is a second,
-              // explicit act
-              <Button
-                variant="outline"
-                size="sm"
-                className={stylex.props(styles.pinned).className}
-                disabled={setStatus.isPending}
-                onClick={() => setStatus.mutate('disabled')}
-              >
-                {format(m.restoreAction)}
-              </Button>
-            ) : (
-              manageable && (
+            {manageable && (
                 <div {...stylex.props(styles.actions)}>
                   <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
                     {format(m.editProfile)}
@@ -383,20 +390,16 @@ export default function UserDetailHeader() {
                       >
                         {format(record.status === 'active' ? m.disable : m.enable)}
                       </DropdownMenuItem>
-                      {/* only somebody already shut out can be taken off the books */}
-                      {record.status === 'disabled' && (
-                        <DropdownMenuItem
-                          className={stylex.props(styles.danger).className}
-                          disabled={setStatus.isPending}
-                          onSelect={() => setConfirmingDelete(true)}
-                        >
-                          {format(m.deleteAction)}
-                        </DropdownMenuItem>
-                      )}
+                      <DropdownMenuItem
+                        className={stylex.props(styles.danger).className}
+                        disabled={remove.isPending}
+                        onSelect={() => setConfirmingDelete(true)}
+                      >
+                        {format(m.deleteAction)}
+                      </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
-              )
             )}
           </div>
           {(feedback !== null || saved) && (
@@ -451,6 +454,21 @@ export default function UserDetailHeader() {
                   />
                 )}
               </Field>
+              <Field
+                label={format(m.emailLabel)}
+                hint={format(system ? m.emailSystemHint : m.emailEditHint)}
+              >
+                {(id) => (
+                  <Input
+                    id={id}
+                    type="email"
+                    autoComplete="off"
+                    value={email}
+                    disabled={system}
+                    onChange={(event) => setEmail(event.target.value)}
+                  />
+                )}
+              </Field>
               <Field label={format(m.userTypeLabel)}>
                 {(id) => (
                   <Select value={userTypeId} onValueChange={setUserTypeId}>
@@ -487,8 +505,8 @@ export default function UserDetailHeader() {
             description={format(m.confirmUserDeleteBody)}
             confirmLabel={format(m.deleteAction)}
             cancelLabel={format(m.cancel)}
-            pending={setStatus.isPending}
-            onConfirm={() => setStatus.mutate('deleted')}
+            pending={remove.isPending}
+            onConfirm={() => remove.mutate(undefined as never)}
             onCancel={() => setConfirmingDelete(false)}
           />
         </>

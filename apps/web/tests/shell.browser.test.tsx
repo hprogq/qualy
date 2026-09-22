@@ -539,12 +539,13 @@ describe('the user-detail shell', () => {
               user: {
                 id: USER_ID,
                 businessNo: '2023123456',
+                email: null,
+                emailVerifiedAt: null,
                 displayName: '郭航旗',
                 status: 'active',
                 version: 1,
                 userType: { id: 'ut-1', code: 'student', name: '学生' },
                 primaryOrgNode: { id: 'n-1', name: '软件学院' },
-                identityCount: 1,
                 manageable: false,
               },
               orgPath: [
@@ -553,7 +554,7 @@ describe('the user-detail shell', () => {
               ],
               placement: { mode: 'unrestricted' },
               roles: [],
-              identities: [],
+              lastSignInAt: null,
             }),
           // the banner's edit form reads these once opened; the fake client
           // has to know the endpoint for the query to be composed at all

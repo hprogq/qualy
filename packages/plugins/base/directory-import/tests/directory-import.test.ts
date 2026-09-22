@@ -407,7 +407,7 @@ describe.runIf(postgresAvailable)('importing people from a spreadsheet', () => {
     expect(result.count).toBe(3)
   }, 120_000)
 
-  it('reverses the people through the ordinary lifecycle and cleans only the units nobody uses', async () => {
+  it('reverses the people through the ordinary lifecycle, cleans only the units nobody uses, and lets the list come in again', async () => {
     const result = ok(
       await run(
         db.url,
@@ -459,7 +459,26 @@ describe.runIf(postgresAvailable)('importing people from a spreadsheet', () => {
              order by business_no`)
           const nodes = yield* runSql<{ name: string }>(sql`
             select name from org_nodes where tenant_id = ${f.tenant} order by depth, name`)
-          return { before, reversed, cleaned, detail, gone: gone.rows, nodes: nodes.rows.map((row) => row.name) }
+          // deletion is final and frees the numbers: the same list is new people
+          const resent = yield* staged(f.tenant, f.admin.userId, [
+            HEADER,
+            ['230301', '张三', '2023级', '1班'],
+            ['230302', '李四', '2023级', '2班'],
+          ])
+          const again = yield* service.preview(
+            f.tenant,
+            { ...request, attachmentId: resent },
+            f.admin,
+          )
+          return {
+            before,
+            reversed,
+            cleaned,
+            detail,
+            gone: gone.rows,
+            nodes: nodes.rows.map((row) => row.name),
+            again,
+          }
         }),
       ),
     )
@@ -486,5 +505,6 @@ describe.runIf(postgresAvailable)('importing people from a spreadsheet', () => {
       ['1班', false],
       ['2班', true],
     ])
+    expect(result.again.users).toMatchObject({ create: 2, existing: 0, errors: 0 })
   }, 120_000)
 })

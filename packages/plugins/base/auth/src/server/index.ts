@@ -207,27 +207,20 @@ const requireUserRead = Effect.fn('iam.requireUserRead')(function* (principal: P
   }
 })
 
+/** a timestamp as the wire carries it; the driver hands back either shape */
+const instant = (value: Date | string | null): string | null =>
+  value === null ? null : value instanceof Date ? value.toISOString() : String(value)
+
 const toUserDto = (row: UserProjection) => ({
   id: row.id,
   businessNo: row.businessNo,
+  email: row.email,
+  emailVerifiedAt: instant(row.emailVerifiedAt),
   displayName: row.displayName,
-  status:
-    row.deletedAt !== null
-      ? ('deleted' as const)
-      : row.enabled
-        ? ('active' as const)
-        : ('disabled' as const),
+  status: row.enabled ? ('active' as const) : ('disabled' as const),
   version: row.version,
-  // null only on a deleted row whose type or unit was itself removed later
-  userType:
-    row.userTypeId === null
-      ? null
-      : { id: row.userTypeId, code: row.userTypeCode ?? '', name: row.userTypeName ?? '' },
-  primaryOrgNode:
-    row.primaryOrgNodeId === null
-      ? null
-      : { id: row.primaryOrgNodeId, name: row.primaryOrgNodeName ?? '' },
-  identityCount: row.identityCount,
+  userType: { id: row.userTypeId, code: row.userTypeCode, name: row.userTypeName },
+  primaryOrgNode: { id: row.primaryOrgNodeId, name: row.primaryOrgNodeName },
   manageable: row.manageable,
 })
 
@@ -301,9 +294,7 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
             pageSize: limit,
           }
         }
-        // read by cursor, 'any' has no meaning worth a second keyset: the
-        // pickers that read this way never ask for the removed
-        const status = query.status === 'any' ? undefined : query.status
+        const status = query.status
         // the cursor belongs to this anchor, scope and search and no other
         // every filter is in the fingerprint: a cursor from one question
         // applied to another silently skips or repeats people
@@ -343,19 +334,7 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
         return {
           ...detail,
           user: toUserDto(detail.user),
-          identities: detail.identities.map((identity) => ({
-            id: identity.id,
-            identifier: identity.identifier,
-            boundAt: String(identity.boundAt),
-            lastUsedAt: identity.lastUsedAt === null ? null : String(identity.lastUsedAt),
-            providerId: identity.providerId,
-            providerName: identity.providerName,
-            providerType: identity.providerType,
-            providerStatus: identity.providerEnabled ? ('active' as const) : ('disabled' as const),
-            // Kysely types a boolean expression as SqlBool, which is a
-            // number on some drivers; the wire says boolean
-            hasCredential: identity.hasCredential === true,
-          })),
+          lastSignInAt: instant(detail.lastSignInAt),
         }
       }),
     )
@@ -572,16 +551,18 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
         yield* iam.users.setStatus(
           principal.tenantId,
           params.userId,
-          {
-            status: payload.status,
-            expectedVersion: payload.version,
-            ...(payload.userTypeId === undefined ? {} : { userTypeId: payload.userTypeId }),
-            ...(payload.primaryOrgNodeId === undefined
-              ? {}
-              : { primaryOrgNodeId: payload.primaryOrgNodeId }),
-          },
+          { status: payload.status, expectedVersion: payload.version },
           principal,
         )
+        return { ok: true as const }
+      }),
+    )
+    .handle(
+      'deleteUser',
+      Effect.fn('iam.deleteUser.handler')(function* ({ params, query }) {
+        const iam = yield* Iam
+        const principal = yield* CurrentUser
+        yield* iam.users.remove(principal.tenantId, params.userId, Number(query.version), principal)
         return { ok: true as const }
       }),
     )

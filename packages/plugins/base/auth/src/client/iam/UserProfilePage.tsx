@@ -39,6 +39,15 @@ const styles = stylex.create({
     flexDirection: 'column',
     gap: 12,
   },
+  // the address and whether it was proved, on one line
+  emailLine: {
+    display: 'inline-flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+    minWidth: 0,
+    overflowWrap: 'anywhere',
+  },
   roleList: {
     display: 'flex',
     flexDirection: 'column',
@@ -82,12 +91,19 @@ const styles = stylex.create({
 export default function UserProfilePage() {
   const { userId } = usePageRouteParams('userId')
   const query = useApiQuery(authApi)
-  const { format, formatError } = useI18n()
+  const { format, formatError, locale } = useI18n()
   const businessNoWord = useTerm(authTerms.businessNumber)
   const user = useQuery(query.identity.getUser.queryOptions({ params: { userId } }))
   const record = user.data?.user
   const path = user.data?.orgPath ?? []
   const roles = user.data?.roles ?? []
+  const when = (iso: string) =>
+    new Intl.DateTimeFormat(locale, {
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(new Date(iso))
 
   return (
     <div {...stylex.props(styles.page)}>
@@ -109,27 +125,37 @@ export default function UserProfilePage() {
                   <DefLine label={businessNoWord}>
                     {record.businessNo ?? format(m.personNoBusinessNo, { businessNo: businessNoWord })}
                   </DefLine>
-                  <DefLine label={format(m.userTypeLabel)}>
-                    {record.userType?.name ?? format(m.rolesNone)}
+                  <DefLine label={format(m.emailLabel)}>
+                    {record.email === null ? (
+                      format(m.emailNone)
+                    ) : (
+                      <span {...stylex.props(styles.emailLine)}>
+                        {record.email}
+                        <Status
+                          tone={record.emailVerifiedAt === null ? 'plain' : 'ok'}
+                          data-testid="email-verified"
+                          data-verified={record.emailVerifiedAt === null ? 'no' : 'yes'}
+                        >
+                          {format(
+                            record.emailVerifiedAt === null ? m.emailUnverified : m.emailVerified,
+                          )}
+                        </Status>
+                      </span>
+                    )}
                   </DefLine>
+                  <DefLine label={format(m.userTypeLabel)}>{record.userType.name}</DefLine>
                   <DefLine label={format(m.columnStatus)}>
                     <Status tone={record.status === 'active' ? 'ok' : 'bad'}>
-                      {format(
-                        record.status === 'deleted'
-                          ? m.deletedBadge
-                          : record.status === 'disabled'
-                            ? m.disabledBadge
-                            : m.statusActive,
-                      )}
+                      {format(record.status === 'disabled' ? m.disabledBadge : m.statusActive)}
                     </Status>
                   </DefLine>
                   <DefLine label={format(m.personPlacement)}>
                     <PlacementPath steps={path} empty={format(m.rolesNone)} />
                   </DefLine>
-                  <DefLine label={format(m.accountsLabel)}>
-                    {record.identityCount === 0
-                      ? format(m.accountNone)
-                      : format(m.accountCount, { count: record.identityCount })}
+                  <DefLine label={format(m.lastSignInLabel)}>
+                    {user.data?.lastSignInAt == null
+                      ? format(m.neverUsed)
+                      : when(user.data.lastSignInAt)}
                   </DefLine>
                 </DefList>
               </Card>

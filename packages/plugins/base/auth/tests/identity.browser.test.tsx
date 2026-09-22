@@ -37,12 +37,13 @@ const BRANCH_NODE_ID = '88888888-8888-4888-8888-888888888888'
 const user = (over: Partial<UserDto> = {}): UserDto => ({
   id: USER_ID,
   businessNo: null,
+  email: null,
+  emailVerifiedAt: null,
   displayName: '张三',
   status: 'active',
   version: 1,
   userType: { id: USER_TYPE_ID, code: 'student', name: '学生' },
   primaryOrgNode: { id: ROOT_NODE_ID, name: '本部' },
-  identityCount: 1,
   manageable: true,
   ...over,
 })
@@ -624,14 +625,14 @@ describe('roles screen', () => {
 // reload because the address carries them.
 describe('users workspace', () => {
   const personAnswer = (over: Partial<UserDto> = {}) => ({
-    user: user({ manageable: true, identityCount: 1, ...over }),
+    user: user({ manageable: true, ...over }),
     orgPath: [
       { id: ROOT_NODE_ID, name: '本部', orgTypeName: '学院' },
       { id: BRANCH_NODE_ID, name: '分部', orgTypeName: '系' },
     ],
     placement: { mode: 'unrestricted' },
     roles: [{ grantId: 'g-1', roleId: 'r-1', roleName: '审核员', orgNodeName: '分部' }],
-    identities: [],
+    lastSignInAt: null,
   })
   const rosterStubs = (over: Stubs<'identity'> = {}) =>
     stubs({
@@ -753,7 +754,7 @@ describe('users workspace', () => {
     await page.viewport(1280, 800)
   })
 
-  it('walks the roster by page number, and lists the removed only when asked', async () => {
+  it('walks the roster by page number, and widens the standing only when asked', async () => {
     const list = vi.fn(() =>
       Effect.succeed({
         items: [user({ id: USER_ID, displayName: '张明远' })],
@@ -777,13 +778,14 @@ describe('users workspace', () => {
     await page.getByRole('button', { name: '3', exact: true }).click()
     await vi.waitFor(() => expect(addressNow()).toContain('page=3'))
     await vi.waitFor(() => expect(asked().some((query) => query.page === '3')).toBe(true))
-    // those in good standing by default; any other standing is asked for,
-    // and a different question starts again at its first page
+    // those in good standing by default; either standing is asked for by
+    // leaving the standing out, and a different question starts again at
+    // its first page
     expect(asked().every((query) => query.status === 'active')).toBe(true)
-    await page.getByTestId('show-removed').click()
+    await page.getByTestId('roster-standing').click()
     await page.getByRole('option', { name: '所有状态' }).click()
     await vi.waitFor(() =>
-      expect(asked().some((query) => query.status === 'any' && query.page === '1')).toBe(true),
+      expect(asked().some((query) => query.status === undefined && query.page === '1')).toBe(true),
     )
   })
 

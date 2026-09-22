@@ -84,6 +84,7 @@ export function NewUserForm({
   const [feedback, setFeedback] = useState<string | null>(null)
   const [displayName, setDisplayName] = useState('')
   const [businessNo, setBusinessNo] = useState('')
+  const [email, setEmail] = useState('')
   const [userTypeId, setUserTypeId] = useState('')
   const [unit, setUnit] = useState(orgNodeId)
   const [picking, setPicking] = useState(false)
@@ -110,6 +111,7 @@ export function NewUserForm({
             userTypeId,
             primaryOrgNodeId: unit,
             businessNo: businessNo.trim() === '' ? undefined : businessNo.trim(),
+            email: email.trim() === '' ? undefined : email.trim(),
           },
         }),
       ),
@@ -117,6 +119,7 @@ export function NewUserForm({
     onSuccess: async () => {
       setDisplayName('')
       setBusinessNo('')
+      setEmail('')
       onClose()
       await queryClient.invalidateQueries({ queryKey: query.identity.key() })
     },
@@ -187,6 +190,18 @@ export function NewUserForm({
                 name="new-user-business-no"
                 value={businessNo}
                 onChange={(event) => setBusinessNo(event.target.value)}
+              />
+            )}
+          </Field>
+          <Field label={format(m.emailLabel)}>
+            {(id) => (
+              <Input
+                id={id}
+                type="email"
+                autoComplete="off"
+                name="new-user-email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
               />
             )}
           </Field>

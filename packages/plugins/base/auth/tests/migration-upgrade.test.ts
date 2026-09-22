@@ -74,3 +74,113 @@ describe.runIf(postgresAvailable)('the provider-audience migration', () => {
     }
   })
 })
+
+// Deletion became final: the migration that says so frees what a deleted
+// person held and retires the permission to bring them back. Both are data
+// steps over rows an earlier release wrote, so they are proved against that
+// shape: a tombstone holding a number, and a role with the restore code
+// ticked.
+const TERMINAL = '20260922161147_user-terminal-delete.sql'
+
+describe.runIf(postgresAvailable)('the terminal-delete migration', () => {
+  it('frees a deleted person’s number and retires the restore permission', async () => {
+    const before = lineageBefore(TERMINAL, 'terminal-delete-upgrade')
+    const db = await createTestContext('terminal-delete-upgrade', {
+      migrations: 'apply',
+      migrationsFolder: before,
+    })
+    try {
+      const tenant = (
+        await db.row<{ id: string }>(
+          `insert into tenants (slug, name) values ('terminal', 'Terminal') returning id`,
+        )
+      ).id
+      const orgType = (
+        await db.row<{ id: string }>(
+          `insert into org_types (tenant_id, name) values ($1, 'U') returning id`,
+          [tenant],
+        )
+      ).id
+      const root = (
+        await db.row<{ id: string }>(
+          `insert into org_nodes (tenant_id, org_type_id, name, path, depth)
+           values ($1, $2, 'Root', 'r', 0) returning id`,
+          [tenant, orgType],
+        )
+      ).id
+      const staff = (
+        await db.row<{ id: string }>(
+          `insert into user_types (tenant_id, code, name, placement_mode)
+           values ($1, 'staff', 'Staff', 'unrestricted') returning id`,
+          [tenant],
+        )
+      ).id
+      await db.row(
+        `insert into users (tenant_id, display_name, user_type_id, primary_org_node_id,
+                            business_no, enabled, deleted_at)
+         values ($1, 'Gone', $2, $3, '20240001', false, now()) returning id`,
+        [tenant, staff, root],
+      )
+      // the old index: the tombstone still holds the number
+      await expect(
+        db.query(
+          `insert into users (tenant_id, display_name, user_type_id, primary_org_node_id, business_no)
+           values ($1, 'Next', $2, $3, '20240001')`,
+          [tenant, staff, root],
+        ),
+      ).rejects.toThrow()
+      const permission = (
+        await db.row<{ id: string }>(
+          `insert into permissions (code, plugin, name, target_kind)
+           values ('auth.user.restore', 'auth', 'restore', 'org-node')
+           on conflict (code) do update set code = excluded.code returning id`,
+        )
+      ).id
+      const role = (
+        await db.row<{ id: string }>(
+          `insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+           values ($1, 'desk', 'Desk', 'org', 'active', 'explicit', 'unrestricted') returning id`,
+          [tenant],
+        )
+      ).id
+      await db.row(
+        `insert into role_permissions (tenant_id, role_id, permission_id)
+         values ($1, $2, $3) returning role_id`,
+        [tenant, role, permission],
+      )
+
+      await runMigrations(db.url, { folder: MIGRATIONS_FOLDER, entities: [] })
+
+      const left = await db.query<{ code: string }>(
+        `select code from permissions where code = 'auth.user.restore'`,
+      )
+      expect(left.rows).toEqual([])
+      const ticked = await db.query(`select 1 from role_permissions where role_id = $1`, [role])
+      expect(ticked.rows).toEqual([])
+      // the living take the number again, and only one of them may
+      await db.row(
+        `insert into users (tenant_id, display_name, user_type_id, primary_org_node_id,
+                            business_no, email)
+         values ($1, 'Next', $2, $3, '20240001', 'next@school.edu') returning id`,
+        [tenant, staff, root],
+      )
+      await expect(
+        db.query(
+          `insert into users (tenant_id, display_name, user_type_id, primary_org_node_id, business_no)
+           values ($1, 'Third', $2, $3, '20240001')`,
+          [tenant, staff, root],
+        ),
+      ).rejects.toThrow(/uq_users_tenant_business_no/)
+      // an address is stored in one spelling or not at all
+      await expect(
+        db.query(
+          `insert into users (tenant_id, display_name, user_type_id, primary_org_node_id, email)
+           values ($1, 'Loud', $2, $3, 'Loud@School.edu')`,
+          [tenant, staff, root],
+        ),
+      ).rejects.toThrow(/chk_users_email_normalized/)
+    } finally {
+      await db.dispose()
+    }
+  })
+})

@@ -396,6 +396,111 @@ describe.runIf(postgresAvailable).concurrent('users', () => {
       await db.dispose()
     }
   })
+
+  it('keeps one spelling of an address, and forgets its proof only when it changes', async () => {
+    const db = await createTestContext('effect-users-email')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const iam = yield* Iam
+          const stamp = (id: string) =>
+            Effect.map(
+              runSql<{ email: string | null; verified: boolean; version: number }>(
+                sql`select email, email_verified_at is not null as verified, version
+                    from users where id = ${id}`,
+              ),
+              (result) => result.rows[0]!,
+            )
+          const userId = yield* iam.users.create(
+            f.tenant,
+            {
+              displayName: 'Ada',
+              userTypeId: f.staff,
+              primaryOrgNodeId: f.left,
+              email: '  Ada.Lovelace@School.EDU',
+            },
+            f.as,
+          )
+          const created = yield* stamp(userId)
+          // as if the person had proved it
+          yield* runSql(sql`update users set email_verified_at = now() where id = ${userId}`)
+          // the same address in another spelling is not a change
+          yield* iam.users.update(f.tenant, userId, { email: 'ada.lovelace@school.edu ' }, 1, f.as)
+          const restated = yield* stamp(userId)
+          yield* iam.users.update(f.tenant, userId, { email: 'ada@school.edu' }, 2, f.as)
+          const changed = yield* stamp(userId)
+          yield* iam.users.update(f.tenant, userId, { email: null }, 3, f.as)
+          const cleared = yield* stamp(userId)
+          return { created, restated, changed, cleared }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.created).toEqual({ email: 'ada.lovelace@school.edu', verified: false, version: 1 })
+      expect(answer.restated.email).toBe('ada.lovelace@school.edu')
+      expect(answer.restated.verified).toBe(true)
+      expect(answer.changed).toMatchObject({ email: 'ada@school.edu', verified: false })
+      expect(answer.cleared).toMatchObject({ email: null, verified: false })
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('leaves the recovery account’s address to whoever provisions it', async () => {
+    const db = await createTestContext('effect-users-system-email')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const systemType = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into user_types (tenant_id, code, name, placement_mode, is_system)
+              values (${f.tenant}, 'system-account', 'System', 'unrestricted', true) returning id`),
+          ).id
+          const system = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id, email)
+              values (${f.tenant}, 'System', ${systemType}, ${f.root}, 'root@school.edu')
+              returning id`),
+          ).id
+          // a manager of the whole tree, so authority is not what refuses
+          const adminRole = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into roles (tenant_id, code, name, kind, status, permission_mode, system_key)
+              values (${f.tenant},'admin','Admin','tenant','active','all-active','tenant-admin')
+              returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into role_grants (tenant_id, user_id, role_id)
+            values (${f.tenant}, ${f.manager}, ${adminRole})`)
+          const iam = yield* Iam
+          const moved = yield* Effect.result(
+            iam.users.update(f.tenant, system, { email: 'other@school.edu' }, 1, f.as),
+          )
+          // saying what it already is changes nothing, and is not refused
+          yield* iam.users.update(
+            f.tenant,
+            system,
+            { displayName: 'Platform', email: 'root@school.edu' },
+            1,
+            f.as,
+          )
+          const row = one<{ email: string; display_name: string }>(
+            yield* runSql(sql`select email, display_name from users where id = ${system}`),
+          )
+          return { moved: tagOf(moved), row }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.moved).toBe('SYSTEM_ACCOUNT_PROTECTED')
+      expect(answer.row).toEqual({ email: 'root@school.edu', display_name: 'Platform' })
+    } finally {
+      await db.dispose()
+    }
+  })
 })
 
 describe.runIf(postgresAvailable).concurrent('what a caller may read about people', () => {

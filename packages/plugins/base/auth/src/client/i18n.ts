@@ -92,10 +92,6 @@ const lastUsedMessage = defineMessage<{ when: string }>()({
   id: 'auth/person/last-used',
   defaultMessage: 'Last used {when}',
 })
-const accountCountMessage = defineMessage<{ count: number }>()({
-  id: 'auth/users/account-count',
-  defaultMessage: '{count, plural, one {# account} other {# accounts}}',
-})
 const audienceSummaryMessage = defineMessage<{ count: number }>()({
   id: 'auth/login-methods/audience-summary',
   defaultMessage:
@@ -206,10 +202,6 @@ const i18n = definePluginMessages({
     'permission.auth.user.delete': {
       id: 'auth/permission/user-delete',
       defaultMessage: 'Delete users',
-    },
-    'permission.auth.user.restore': {
-      id: 'auth/permission/user-restore',
-      defaultMessage: 'Restore deleted users',
     },
     // one label per audit action this plugin declares; the audit screen
     // renders whatever language its reader asked for
@@ -392,9 +384,20 @@ const i18n = definePluginMessages({
     disable: { id: 'auth/action/disable', defaultMessage: 'Disable' },
     loadMore: { id: 'auth/action/load-more', defaultMessage: 'Load more' },
     treeSearch: { id: 'auth/users/tree-search', defaultMessage: 'Search units' },
-    accountsLabel: { id: 'auth/users/accounts', defaultMessage: 'Sign-in accounts' },
-    accountNone: { id: 'auth/users/account-none', defaultMessage: 'None bound' },
-    accountCount: accountCountMessage,
+    emailLabel: { id: 'auth/users/email', defaultMessage: 'Email' },
+    emailNone: { id: 'auth/users/email-none', defaultMessage: 'Not set' },
+    emailVerified: { id: 'auth/users/email-verified', defaultMessage: 'Verified' },
+    emailUnverified: { id: 'auth/users/email-unverified', defaultMessage: 'Not verified' },
+    emailEditHint: { id: 'auth/users/email-edit-hint', defaultMessage: 'Notices are sent here' },
+    emailSystemHint: {
+      id: 'auth/users/email-system-hint',
+      defaultMessage: 'The system account’s address is set when it is provisioned',
+    },
+    lastSignInLabel: { id: 'auth/users/last-sign-in', defaultMessage: 'Last sign-in' },
+    personGone: {
+      id: 'auth/person/gone',
+      defaultMessage: 'Deleted, or outside what you can see',
+    },
     unitsTitle: {
       id: 'auth/users/units',
       defaultMessage: 'Units',
@@ -514,7 +517,6 @@ const i18n = definePluginMessages({
     pagerLabel: { id: 'auth/users/pager', defaultMessage: 'Pages' },
     resizeTree: { id: 'auth/users/resize-tree', defaultMessage: 'Resize the unit list' },
     openInStructure: { id: 'auth/users/open-in-structure', defaultMessage: 'Open in the organization tree' },
-    showRemoved: { id: 'auth/users/show-removed', defaultMessage: 'Show deleted users' },
     pickUnit: { id: 'auth/users/pick-unit', defaultMessage: 'Show the people of' },
     treeMenu: { id: 'auth/users/tree-menu', defaultMessage: 'Unit list options' },
     collapseAll: { id: 'auth/users/collapse-all', defaultMessage: 'Collapse all' },
@@ -586,14 +588,11 @@ const i18n = definePluginMessages({
     rosterStandingLabel: { id: 'auth/users/standing-filter', defaultMessage: 'Standing' },
     rosterStandingActive: { id: 'auth/users/standing-active', defaultMessage: 'In good standing' },
     rosterStandingDisabled: { id: 'auth/users/standing-disabled', defaultMessage: 'Suspended' },
-    rosterStandingDeleted: { id: 'auth/users/standing-deleted', defaultMessage: 'Removed' },
     rosterStandingAny: { id: 'auth/users/standing-any', defaultMessage: 'Any standing' },
     saved: { id: 'auth/feedback/saved', defaultMessage: 'Saved.' },
     systemBadge: { id: 'auth/badge/system', defaultMessage: 'system' },
     disabledBadge: { id: 'auth/badge/disabled', defaultMessage: 'disabled' },
-    deletedBadge: { id: 'auth/badge/deleted', defaultMessage: 'deleted' },
     deleteAction: { id: 'auth/action/delete-user', defaultMessage: 'Delete' },
-    restoreAction: { id: 'auth/action/restore-user', defaultMessage: 'Restore' },
     confirmUserDeleteTitle: {
       id: 'auth/confirm/user-delete-title',
       defaultMessage: 'Delete this user?',
@@ -601,7 +600,7 @@ const i18n = definePluginMessages({
     confirmUserDeleteBody: {
       id: 'auth/confirm/user-delete-body',
       defaultMessage:
-        'Their roles and sign-in accounts are withdrawn. The person can be restored later, their access cannot.',
+        'Their roles, sign-in accounts and sessions end with them, and they cannot be brought back. Past records keep their name.',
     },
     confirmDeleteTitle: { id: 'auth/confirm/delete-title', defaultMessage: 'Delete permanently?' },
     confirmDeleteBody: { id: 'auth/confirm/delete-body', defaultMessage: 'This cannot be undone.' },
@@ -781,13 +780,9 @@ const i18n = definePluginMessages({
       id: 'auth/error/user-version-conflict',
       defaultMessage: 'This person changed while the page was open. Reload and try again.',
     },
-    USER_NOT_DISABLED: {
-      id: 'auth/error/user-not-disabled',
-      defaultMessage: 'Disable the account first, then delete it.',
-    },
-    USER_DELETED: {
-      id: 'auth/error/user-deleted',
-      defaultMessage: 'This person is deleted. Restore them first.',
+    USER_EMAIL_CONFLICT: {
+      id: 'auth/error/user-email-conflict',
+      defaultMessage: 'Somebody else here already has this email address.',
     },
     AUTH_PROVIDER_CONFLICT: {
       id: 'auth/error/provider-conflict',

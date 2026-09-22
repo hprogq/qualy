@@ -20,7 +20,12 @@ export interface ProvisionedUserInput {
   readonly primaryOrgNodeId: string
 }
 
-/** a person already on the books, as an importer needs to know them */
+/**
+ * A living person already on the books, as an importer needs to know them.
+ *
+ * Deleted people are not on the books: deletion is final and frees the
+ * number, so a row naming it creates somebody new.
+ */
 export interface ExistingUserRef {
   readonly id: string
   readonly businessNo: string
@@ -28,7 +33,6 @@ export interface ExistingUserRef {
   readonly userTypeId: string | null
   readonly primaryOrgNodeId: string | null
   readonly enabled: boolean
-  readonly deleted: boolean
 }
 
 export interface UserTypeRef {
@@ -47,7 +51,7 @@ export class UserProvisioningRefused extends Data.TaggedError('UserProvisioningR
 export class UserProvisioning extends Context.Service<
   UserProvisioning,
   {
-    /** the people already carrying any of these identifiers, deleted ones included */
+    /** the living people already carrying any of these identifiers */
     readonly byBusinessNo: (
       tenantId: string,
       businessNos: readonly string[],
@@ -78,11 +82,11 @@ export class UserProvisioning extends Context.Service<
       AccessDenied | UserProvisioningRefused
     >
     /**
-     * Every living person among these ids taken through disabled to deleted,
-     * with the single-user path's own consequences: grants revoked, ways in
-     * withdrawn, sessions ended, each step audited. Somebody already deleted
-     * is skipped; a system account is skipped too. The tenant must still
-     * have an administrator afterwards.
+     * Every living person among these ids deleted, with the single-user
+     * path's own consequences: grants revoked, ways in withdrawn, sessions
+     * ended, the deletion audited. Somebody already gone is skipped; a
+     * system account is skipped too. The tenant must still have an
+     * administrator afterwards.
      */
     readonly retireUsers: (
       tenantId: string,

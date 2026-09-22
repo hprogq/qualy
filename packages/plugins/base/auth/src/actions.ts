@@ -22,7 +22,7 @@ export const UserUpdated = AuditAction.define({
   version: 1,
   name: message('auth/audit/user-update', 'Edit user'),
   details: Schema.Struct({
-    fields: Schema.Array(Schema.Literals(['displayName', 'userTypeId', 'businessNo'])),
+    fields: Schema.Array(Schema.Literals(['displayName', 'userTypeId', 'businessNo', 'email'])),
   }),
 })
 
@@ -66,6 +66,8 @@ export const UserDeleted = AuditAction.define({
   }),
 })
 
+// Retired: deletion is final and nothing restores a person, so nothing
+// records this. Declared so the events already in the trail keep a name.
 export const UserRestored = AuditAction.define({
   code: 'auth.user.restore',
   target: 'auth.user',

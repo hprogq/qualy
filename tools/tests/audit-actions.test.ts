@@ -44,6 +44,8 @@ import type { AuditAction } from '../../packages/contracts/audit/src/action.ts'
 const RETIRED: ReadonlyMap<string, string> = new Map([
   // a draft save is a draft revision row now, with the source and examples it saved
   ['assessment.formula.draft.update', 'assessment_formula_draft_revisions'],
+  // deletion is final: nothing restores a person, so there is nothing to record
+  ['auth.user.restore', 'nothing (a deleted person does not come back)'],
 ])
 
 const root = fileURLToPath(new URL('../..', import.meta.url))

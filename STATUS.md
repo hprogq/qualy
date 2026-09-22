@@ -19437,3 +19437,40 @@ HEAD 的 run 是绿的;红的是中间提交 `ceb8ccb6`(那次的 `entry-workflo
 
 - 设计稿 2f 把人员详情的分区导航做成**横向滚动的分区条**;我们是底部悬浮胶囊 + 抽屉(`RailShell` 的既定设计,抽屉里还带应用切换)。两者都能用,改成分区条会丢掉应用切换,没有动。
 - 2c 的层级规则纵向图、2m 的规则编辑 Sheet 没有逐屏复刻。
+
+## 认证重构 A:删除成为终态,User 获得邮箱(2026-09-22)
+
+设计来源:docs/auth.md(用户的设计对话,未入库)末尾的「多租户认证体系开发设计」§2–§3、§42 Phase A;施工计划的四个提交里这是第一个。
+裁决与细节已写入 docs/notes/auth-security.md「用户删除是终态;邮箱归 User」。
+
+### 做了什么
+
+- **迁移** `20260922161147_user-terminal-delete.sql`(`-- destructive: approved`,删权限码):`users` 加 `email`、`email_verified_at`
+  与 `chk_users_email_normalized`;`uq_users_tenant_business_no` **保名**(两处约束翻译器按名匹配)改为只约束存活行;新增
+  `uq_users_tenant_email_live`;从目录、角色勾选、批次访问表删除 `auth.user.restore`。升级测试建旧形态(墓碑占着编号、角色勾着恢复码)再迁移断言。
+- **删除是终态**:新增 `DELETE /iam/users/{userId}?version=`(需 manage + delete,正常或停用都可直接删),同一锁定事务撤销授予、身份、会话,
+  置墓碑,写 `auth.user.delete`,写后复核最后管理员;`PUT …/status` 只剩 active/disabled。恢复分支、`auth.user.restore`、
+  `USER_NOT_DISABLED` / `USER_DELETED` 删除;`auth.user.restore` 审计动作留作 retired。所有读取与写入守卫把已删除者当作不存在。
+- **邮箱**:`@qualy/auth-contract/email` 的 `normalizeEmail`(契约层 schema 与服务层共用);创建/编辑可带邮箱(编辑传 null 清空),
+  改动清空验证时间、原样重述不算改动;系统账户邮箱 API 不可改;冲突为新错误码 `USER_EMAIL_CONFLICT`。
+- **不再显示账号数**:`identityCount` 与详情里的 `identities` 从 API 删除,改为 `lastSignInAt`(最近一次成功登录,任何登录方式都会写)。
+- `UserProvisioning.byBusinessNo` 只返回存活者;`retireUsers` 直接删除。目录导入去掉「该编号属于已删除人员，请先恢复」,被撤销的名单可以原样再导入。
+- 界面:名册状态筛选为 正常/已停用/所有状态;详情横幅去掉恢复,删除对正常与停用都开放,删除后回到名册;新建与编辑加邮箱(系统账户灰掉并说明);
+  基本资料与速览显示邮箱(含验证状态)与最近登录;人员卡片对已删除者显示安静的一句话。
+
+### 验收(实际执行)
+
+- `pnpm typecheck`:`exit 0`,`error TS` 0 条。
+- `pnpm test`:`Test Files 277 passed | 3 skipped (280)`,`Tests 2035 passed | 17 skipped (2052)`。
+  新增/重写:`effect-lifecycle`(7 条:正常状态直接删、编号与邮箱释放且历史仍指旧行、删除后各路径皆 `USER_NOT_FOUND`、陌生人得不到信息、
+  版本栅栏含删除、最后管理员拒删且整体回滚、撤销授予不算幸存者)、`effect-users` 两条邮箱用例、`migration-upgrade` 终态删除迁移、
+  directory-import 撤销后同名单可再导入(`create: 2`)。
+- `pnpm qualy database verify`:`73 committed migration(s) build the declared schema, zero drift`;`database check`:`lineage ok`;
+  `database drop-guard`:`drop guard ok (73 file(s) scanned)`。
+- `pnpm qualy resolve`(锁文件只少了 `auth.user.restore`)后 `--frozen-lockfile`:`qualy.lock.json is up to date`。
+- 门禁同步:frozen-routes 加 `DELETE /iam/users/{userId}`;`audit-actions` 的 `RETIRED` 加 `auth.user.restore`;`seed` 权限数 32 → 31。
+- `pnpm test:browser`:`Test Files 68 passed (68)`,`Tests 506 passed (506)`(名册筛选用例改测「所有状态」即不带 status;夹具随 DTO 去掉 `identityCount` / `identities`)。
+
+### 未做与下一步
+
+- 同一施工计划的后三个提交:绑定表与邮箱登录(B+C)、Secrets 与 Provider 生命周期(D)、匿名租户/公开源解析器与 auth flows(E)。
