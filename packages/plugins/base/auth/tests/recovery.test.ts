@@ -30,6 +30,7 @@ import { Iam, serviceLayer as authLayer } from '../src/server/index.ts'
 import { recoveryBootCheck } from '../src/server/recovery.ts'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../src/constants.ts'
 import { authClosure } from './support/closure.ts'
+import { secretsLayer } from '@qualy/plugin-secrets/testkit'
 
 // How a tenant gets back in: its system account keeps a working password
 // door, provider administration cannot close it, and a process that finds a
@@ -59,6 +60,7 @@ const stack = (url: string, strictBoot: boolean) =>
           ),
         ),
       ),
+      Layer.provideMerge(secretsLayer),
       Layer.provideMerge(
         Layer.mergeAll(
           databaseFor(url, { entities: authClosure }),

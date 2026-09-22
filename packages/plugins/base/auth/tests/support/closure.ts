@@ -1,6 +1,7 @@
 import { entities as orgEntities } from '@qualy/plugin-org/db'
 import { entities as rbacEntities } from '@qualy/plugin-rbac/db'
 import { entities as auditEntities } from '@qualy/plugin-audit/db'
+import { entities as secretsEntities } from '@qualy/plugin-secrets/testkit'
 import { entities as authEntities } from '../../src/db/entities.ts'
 
 // What the orm must know for a query to name a table.
@@ -15,10 +16,12 @@ import { entities as authEntities } from '../../src/db/entities.ts'
 // stack, and when rbac's queries started naming tables through the orm, seven
 // copies of this line all had to learn about it at once.
 // audit rides along since the user lifecycle records events in the same
-// transaction: without its table in the orm, every create dies mid-commit
+// transaction: without its table in the orm, every create dies mid-commit;
+// secrets for the same reason, an entrance's secrets being written beside it
 export const authClosure = [
   ...orgEntities,
   ...authEntities,
   ...rbacEntities,
   ...auditEntities,
+  ...secretsEntities,
 ] as const

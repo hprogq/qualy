@@ -19521,3 +19521,43 @@ HEAD 的 run 是绿的;红的是中间提交 `ceb8ccb6`(那次的 `entry-workflo
 
 - 系统账户的租户管理员授予目前仍可被撤销(rbac 对它没有特别保护)。恢复通道只保证它能登录,不保证登录后还是管理员;是否把
   「系统账户保有 tenant-admin」也做成不变量,留给用户裁决。
+
+## 认证重构 D:加密的密钥保管,与登录入口的「空壳 → 配置 → 启用 → 删除」(2026-09-23)
+
+设计来源 docs/auth.md §19–§26、§42 Phase D,外加评审时用户的三条裁决:就绪判定只能有一份;PATCH 的缺省/清空语义钉死;身份命名空间只要有过绑定(含已撤销)即锁定。
+
+### 做了什么
+
+- **新插件 `@qualy/plugin-secrets`**(packages/plugins/infra/secrets,照 storage 的形状):表 `secrets(tenant_id, owner_kind, owner_id, key)` 存 AES-256-GCM 密文,
+  12 字节 nonce、16 字节 tag,AAD 绑定整条引用,所以一行被挪到别的所有者或别的键上就解不开。服务只经 `Redacted` 交换明文,内部自带 `withDb`,
+  因此写入自动加入调用方事务(`seal`/`open` 供 E 的一次性载荷用)。主密钥 `QUALY_SECRETS_MASTER_KEY` = 恰好 32 字节 base64:
+  生产缺失或格式错拒启(`QUALY_SECRETS_MASTER_KEY must be base64-encoded 32 bytes`),开发回退到源码里的 development key 并告警,
+  生产显式填那把 key 同样拒启。不接受口令再哈希。
+- **统一就绪判定** `providerReadiness`(auth/src/server/readiness.ts):驱动已装配 + required 非密钥字段有值 + required 密钥已存;
+  详情、启用、匿名 login-methods、resolveProvider、恢复通道全部读它。不变量 **enabled ⇒ ready**:任何会让在用入口变得未就绪的写被拒。
+- **入口生命周期**:`POST /auth/providers {type, code, name}` 建停用空壳 → `PATCH` 分次补齐(text/url 缺省保持、显式空串清除;secret 缺省或空串保持、非空替换;
+  url 字段由核心校验 http(s))→ `DELETE /auth/providers/{id}/secrets/{key}?version=` 显式清除 → 就绪后才能启用 →
+  `DELETE /auth/providers/{id}?version=`(系统入口 `AUTH_PROVIDER_IS_SYSTEM`;墓碑 + 撤销存活绑定 + 删该入口会话 + 销毁密钥 + 审计 `auth.provider.delete` + 复核恢复通道)。
+  新增 `GET /auth/providers/{id}`:行 + `setup` + `missing` + 非密钥配置 + 每个密钥「已存/未存」+ `usage { bindings, sessions }`,**永不回显密钥**。
+- **身份命名空间锁**:驱动用 `identityNamespaceKeys` 点名「说明这些账号属于谁」的键;该入口有过任何绑定(含已撤销)即不可改
+  (`AUTH_PROVIDER_IDENTITY_NAMESPACE_IN_USE`)。
+- **一处旧缺陷**:provider 的 config 过去以字符串交给 json 列,被再编码了一次,行里存的是 JSON 字符串。之前没人读回来,直到详情页开始读。
+  写入改为 `::jsonb` 绑定,并加迁移 `20260922174928_auth-provider-config-object.sql` 把历史行归正(带升级测试)。
+- **界面**:新增对话框只问类型 / 名称 / 地址;详情页读 `GET /auth/providers/{id}`——未完成设置时不提供启用开关并列出尚缺项,密钥框显示「已保存,输入新值即可替换」+「清除」,
+  在用时必填项不可清空、必填密钥不可清除,非系统入口给删除按钮并在确认框里给出会撤销多少绑定、结束多少会话。列表状态列区分「已停用」与「未完成设置」。
+- **门禁**:`tools/tests/secret-disclosure.test.ts` 走 OpenAPI 的全部 2xx 响应与全部审计动作的 details,拒绝出现
+  `clientSecret|refreshToken|accessToken|password` 这类字段名。`QUALY_SECRETS_MASTER_KEY` 进 check-public-web 的 SERVER_ONLY;
+  生产类工具(smoke-production、check-csp-enforce、brand、benchmarks 经 `startQualyServer`;release-smoke、check-release-image 各自)自带临时随机主密钥,
+  生产冒烟另加一条「缺主密钥即拒启并给出约定信息」的探针。
+
+### 验收(实际执行)
+
+- `pnpm typecheck`:exit 0,零 `error TS`。
+- `pnpm test`:`Test Files  281 passed | 3 skipped (284)`、`Tests  2060 passed | 17 skipped (2077)`。
+- `pnpm test:browser`:`Test Files  68 passed (68)`、`Tests  514 passed (514)`。
+  前两轮整体红是本地 Vite 的依赖预构建重载(`pnpm install` 后首跑,日志里 `optimized dependencies changed. reloading`),第三轮零重载全绿。
+- `pnpm qualy database verify`:`76 committed migration(s) build the declared schema, zero drift`;`database check`:`lineage ok`;
+  `drop-guard`:`drop guard ok (76 file(s) scanned)`;`check-migrations-immutable`:只在末尾生长。
+- `pnpm qualy resolve --frozen-lockfile`:`qualy.lock.json is up to date`。
+- 新测试:secrets 8 条(主密钥策略、密文不可读、AAD 绑定、随事务回滚、seal/open)、`effect-providers` 3 条(空壳 → 分次配置 → 启用 → 在用保护 → 停用清除、
+  命名空间锁、删除连带与系统入口拒绝)、`login-methods.browser` 5 条新用例、迁移升级 1 条、`secret-disclosure` 3 条。

@@ -17,6 +17,7 @@ import {
 } from '@qualy/auth-contract/login'
 import { AuthConfig } from '../src/server/auth-config.ts'
 import { SignIn, layer as signInLayer } from '../src/server/sign-in.ts'
+import { secretsLayer } from '@qualy/plugin-secrets/testkit'
 
 // What a sign-in screen is offered.
 //
@@ -53,6 +54,7 @@ const HREFS: Record<string, string> = {
 
 const stack = (url: string) =>
   signInLayer.pipe(
+    Layer.provideMerge(secretsLayer),
     Layer.provideMerge(
       Layer.mergeAll(
         databaseFor(url, { entities: authClosure }),

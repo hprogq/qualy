@@ -19,6 +19,8 @@ import { stillFinalizing, traceLayerLifecycle } from '@qualy/plugin-kit/shutdown
 import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
 import { DatabaseConfig } from '@qualy/plugin-database/server'
 import { AuthConfig } from '@qualy/plugin-auth/server/sign-in'
+import { masterKeyFrom, SecretsConfig } from '@qualy/plugin-secrets/server'
+import { TEST_MASTER_KEY } from '@qualy/plugin-secrets/testkit'
 import { DEFAULT_LIMITS, StorageConfig } from '@qualy/plugin-storage/server'
 import { LocalStorageConfig } from '@qualy/plugin-storage-local/config'
 import { FormulaSettings } from '@qualy/plugin-assessment-formula/config'
@@ -220,6 +222,10 @@ const shell = (url: string) => {
             secureCookies: false,
             sessionCookieName: 'qualy_session',
           }),
+        ),
+        Layer.succeed(
+          SecretsConfig,
+          SecretsConfig.of({ masterKey: Redacted.make(masterKeyFrom(TEST_MASTER_KEY)!) }),
         ),
         // storage is assembled like everything else here; nothing in this
         // suite uploads, so the disk it would write to is a scratch directory

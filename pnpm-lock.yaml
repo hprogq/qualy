@@ -224,6 +224,9 @@ importers:
       '@qualy/plugin-sandbox':
         specifier: workspace:*
         version: link:packages/plugins/infra/sandbox
+      '@qualy/plugin-secrets':
+        specifier: workspace:*
+        version: link:packages/plugins/infra/secrets
       '@qualy/plugin-settings':
         specifier: workspace:*
         version: link:packages/plugins/base/settings
@@ -445,6 +448,9 @@ importers:
       '@qualy/plugin-ping':
         specifier: workspace:*
         version: link:../../packages/plugins/demo/ping
+      '@qualy/plugin-secrets':
+        specifier: workspace:*
+        version: link:../../packages/plugins/infra/secrets
       '@qualy/plugin-storage':
         specifier: workspace:*
         version: link:../../packages/plugins/infra/storage
@@ -1165,6 +1171,9 @@ importers:
       '@qualy/plugin-org':
         specifier: workspace:*
         version: link:../org
+      '@qualy/plugin-secrets':
+        specifier: workspace:*
+        version: link:../../infra/secrets
       '@qualy/plugin-settings':
         specifier: workspace:*
         version: link:../settings
@@ -1378,6 +1387,9 @@ importers:
       '@qualy/plugin-audit':
         specifier: workspace:*
         version: link:../audit
+      '@qualy/plugin-secrets':
+        specifier: workspace:*
+        version: link:../../infra/secrets
       '@qualy/testkit':
         specifier: workspace:*
         version: link:../../../testkit/browser
@@ -1512,6 +1524,9 @@ importers:
       '@qualy/plugin-rbac':
         specifier: workspace:*
         version: link:../rbac
+      '@qualy/plugin-secrets':
+        specifier: workspace:*
+        version: link:../../infra/secrets
       '@qualy/testkit':
         specifier: workspace:*
         version: link:../../../testkit/browser
@@ -1876,6 +1891,24 @@ importers:
       '@qualy/sandbox-runtime':
         specifier: workspace:*
         version: link:../../../../apps/sandbox-runtime
+
+  packages/plugins/infra/secrets:
+    dependencies:
+      '@mikro-orm/core':
+        specifier: 'catalog:'
+        version: 7.2.0
+      '@qualy/plugin-database':
+        specifier: workspace:*
+        version: link:../database
+      '@qualy/plugin-kit':
+        specifier: workspace:*
+        version: link:../../../core/plugin-kit
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-rc.115
+      kysely:
+        specifier: 'catalog:'
+        version: 0.29.5
 
   packages/plugins/infra/storage:
     dependencies:

@@ -263,6 +263,46 @@ export class ProviderConfigInvalid extends Schema.TaggedError<ProviderConfigInva
   { httpApiStatus: 422, identifier: 'AuthProviderConfigInvalid' },
 ) {}
 
+/** what an entrance still lacks before it can be put in service */
+export const readinessGapSchema = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal('driver') }),
+  Schema.Struct({ kind: Schema.Literal('field'), key: Schema.String }),
+])
+
+/**
+ * The entrance cannot be in service as it would stand.
+ *
+ * Raised by putting an unfinished entrance in service, and by a save or a
+ * cleared secret that would leave one in service unfinished. `missing` names
+ * what is lacking so the screen can point at the boxes.
+ */
+export class ProviderConfigIncomplete extends Schema.TaggedError<ProviderConfigIncomplete>()(
+  'AUTH_PROVIDER_CONFIG_INCOMPLETE',
+  { missing: Schema.Array(readinessGapSchema) },
+  { httpApiStatus: 409, identifier: 'AuthProviderConfigIncomplete' },
+) {}
+
+/** the platform's own entrance is administered, never deleted */
+export class ProviderIsSystem extends Schema.TaggedError<ProviderIsSystem>()(
+  'AUTH_PROVIDER_IS_SYSTEM',
+  {},
+  { httpApiStatus: 409, identifier: 'AuthProviderIsSystem' },
+) {}
+
+/**
+ * The setting that says whose accounts the entrance speaks for, once accounts
+ * have been bound through it.
+ *
+ * Changing it would leave every stored subject naming an account at another
+ * provider. A binding since withdrawn counts: its subject is still in the
+ * history, and a sign-in record points at it.
+ */
+export class ProviderIdentityNamespaceInUse extends Schema.TaggedError<ProviderIdentityNamespaceInUse>()(
+  'AUTH_PROVIDER_IDENTITY_NAMESPACE_IN_USE',
+  { field: Schema.String },
+  { httpApiStatus: 409, identifier: 'AuthProviderIdentityNamespaceInUse' },
+) {}
+
 export const providerConstraints: Record<string, () => ProviderConflict> = {
   uq_auth_providers_tenant_code: () => new ProviderConflict(),
 }

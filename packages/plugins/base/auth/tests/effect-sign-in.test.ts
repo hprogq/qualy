@@ -28,6 +28,7 @@ import { AuthConfig, layer as signInLayer } from '../src/server/sign-in.ts'
 import { sessionCookieName } from '@qualy/auth-contract/session'
 import { layer as sessionLayer } from '../src/server/session.ts'
 import { authClosure } from './support/closure.ts'
+import { secretsLayer } from '@qualy/plugin-secrets/testkit'
 
 // The whole sign-in cycle, over a real server: no method, an email and a
 // password, the session it creates, and signing out again.
@@ -68,6 +69,7 @@ beforeAll(async () => {
   // only the local driver is in the catalog, so the cas provider row has
   // nothing to present it
   const signIn = signInLayer.pipe(
+    Layer.provide(secretsLayer),
     Layer.provide(
       Layer.mergeAll(
         infra,

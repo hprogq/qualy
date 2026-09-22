@@ -30,7 +30,7 @@ import { browserSurfacesOf } from '@qualy/web-build/browser-contract'
 // question with a different answer, and `check-public-web` asks it of a real
 // build.
 
-const INFRA = ['@qualy/plugin-database', '@qualy/plugin-ui-registry']
+const INFRA = ['@qualy/plugin-database', '@qualy/plugin-secrets', '@qualy/plugin-ui-registry']
 const KIT = ['@qualy/plugin-kit', '@qualy/ui-contract']
 // org's tables reference auth's, and rbac owns the permission catalog both
 // contribute to: any of them alone is an assembly resolution refuses

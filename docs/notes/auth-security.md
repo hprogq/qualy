@@ -172,6 +172,25 @@ default-src 'self'; script-src 'self' 'sha256-pKAg+of2SxxrkLJX27pRnCgcyN5Ud1dmuO
 - 读取:`GET /iam/users/{userId}/entrances` 每行带 `resolution`、`binding`、`bound`;页面据此渲染,不按类型名分支。
   **不从绑定数推导「能否登录」**:按学工号对应的入口根本不存绑定,用户列表与详情因此不再显示账号数。
 
+## 入口密钥与 Provider 生命周期(2026-09-23 定案)
+
+- **密钥归 `@qualy/plugin-secrets`**,不进 `auth_providers.config`:表 `secrets(tenant_id, owner_kind, owner_id, key)` 存 AES-256-GCM 密文
+  (12 字节 nonce、16 字节 tag、AAD = `qualy-secret\0v1\0<tenant>\0<ownerKind>\0<ownerId>\0<key>`,`key_version = 1`),
+  所以一行密文被挪到别的所有者或别的键上就解不开。接口只经 `Redacted` 交换明文;`seal`/`open` 给「交给别人保管的一次性载荷」用(Phase E 的 auth flow)。
+- **主密钥 `QUALY_SECRETS_MASTER_KEY`**:恰好 32 字节的 base64(`openssl rand -base64 32`)。**生产缺失或格式错即拒启**
+  (`QUALY_SECRETS_MASTER_KEY must be base64-encoded 32 bytes`),开发回退到源码里写死的 development key 并告警——它保护不了任何东西,
+  所以生产显式写这把 key 也拒启。不接受任意口令再哈希:那看起来配好了,强度却是口令的。
+- **就绪判定只有一份**(`providerReadiness`):驱动已装配 + 每个 `required` 的非密钥字段有值 + 每个 `required` 的密钥已存。
+  详情页、启用、匿名 `login-methods`、`resolveProvider`、恢复通道全部读它。不变量 **enabled ⇒ ready**:会让在用入口变得未就绪的写(清空必填框、清除必填密钥)一律拒绝,
+  要改先停用。
+- **生命周期**:`POST /auth/providers { type, code, name }` 建一个停用的空壳 → `PATCH` 分多次补齐(缺省保持、显式空串清除;密钥缺省或空串保持,
+  非空替换;`DELETE /auth/providers/{id}/secrets/{key}` 是唯一的清除动作)→ 就绪后才能 `PUT .../status` 启用 →
+  `DELETE /auth/providers/{id}?version=` 删除(系统入口 `AUTH_PROVIDER_IS_SYSTEM`;删除置墓碑、撤销存活绑定、删该入口的会话、销毁其密钥、审计 `auth.provider.delete`、复核恢复通道)。
+- **身份命名空间锁**:驱动用 `identityNamespaceKeys` 点名「说明这些账号属于谁」的配置键(CAS 的服务器地址、OIDC 的 issuer)。
+  只要该入口有过任何绑定(含已撤销),这些键不可再改(`AUTH_PROVIDER_IDENTITY_NAMESPACE_IN_USE`)——已存的 subject 会开始指向别家的账号。
+- **密钥永不回显**:`GET /auth/providers/{id}` 只说某个密钥「已存/未存」,成功响应与审计 details 里不得出现
+  `clientSecret|refreshToken|accessToken|password` 这类字段名,由 `tools/tests/secret-disclosure.test.ts` 守。
+
 ## 恢复通道(2026-09-22 定案)
 
 - 每个租户的系统账户(`system-account` 类型)永远保有平台 local 入口上的一条可用登录:有邮箱、有存活密码凭据,入口在用且受众接纳系统类型

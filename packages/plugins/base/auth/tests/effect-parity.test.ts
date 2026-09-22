@@ -29,6 +29,7 @@ import { AuthConfig } from '../src/server/auth-config.ts'
 import { placementLegal } from '../src/server/placement.ts'
 import { db } from '../src/server/db.ts'
 import { sql as ksql } from 'kysely'
+import { secretsLayer } from '@qualy/plugin-secrets/testkit'
 
 // The identity behaviours no other suite asserts, carried here from a suite
 // that has since been deleted. Each names the one it came from.
@@ -55,6 +56,7 @@ const stack = (url: string) =>
           ),
         ),
       ),
+      Layer.provideMerge(secretsLayer),
       Layer.provideMerge(
         Layer.mergeAll(
           databaseFor(url, { entities: authClosure }),

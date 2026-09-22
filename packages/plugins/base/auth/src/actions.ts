@@ -151,8 +151,24 @@ export const ProviderUpdated = AuditAction.define({
   target: 'auth.provider',
   version: 1,
   name: message('auth/audit/provider-update', 'Edit an entrance'),
-  // which settings moved, never what they moved to: a config carries secrets
+  // which settings moved (`name`, or a field key of the entrance's kind, a
+  // cleared secret included), never what they moved to
   details: Schema.Struct({ fields: Schema.Array(Schema.String) }),
+})
+
+// The entrance leaves for good: what it ended goes with it, because the
+// bindings and sessions it took down leave no trace of their own.
+export const ProviderDeleted = AuditAction.define({
+  code: 'auth.provider.delete',
+  target: 'auth.provider',
+  version: 1,
+  name: message('auth/audit/provider-delete', 'Delete an entrance'),
+  details: Schema.Struct({
+    type: Schema.String,
+    code: Schema.String,
+    revokedBindings: Schema.Number,
+    endedSessions: Schema.Number,
+  }),
 })
 
 export const ProviderStatusChanged = AuditAction.define({
@@ -217,6 +233,7 @@ export const userActions = [
   ProviderAudienceUpdated,
   ProviderCreated,
   ProviderUpdated,
+  ProviderDeleted,
   ProviderStatusChanged,
   ProvidersReordered,
 ] as const

@@ -29,6 +29,7 @@ import { serviceLayer as authLayer } from '@qualy/plugin-auth/server'
 import { AuthConfig } from '@qualy/plugin-auth/server/sign-in'
 import { loginDriversLayer } from '@qualy/auth-contract/login'
 import { Org, serviceLayer as orgLayer } from '../src/server/index.ts'
+import { entities as secretsEntities, secretsLayer } from '@qualy/plugin-secrets/testkit'
 
 // What a write answers.
 //
@@ -40,7 +41,7 @@ import { Org, serviceLayer as orgLayer } from '../src/server/index.ts'
 // a defect. Both are about the sentence a committed or refused write says,
 // which no other suite here looks at.
 
-const closure = [...orgEntities, ...authEntities, ...rbacEntities, ...auditEntities] as const
+const closure = [...orgEntities, ...authEntities, ...rbacEntities, ...auditEntities, ...secretsEntities] as const
 
 const catalog = compileCatalog([
   { owner: 'org', permissions: orgPermissions },
@@ -67,6 +68,7 @@ const stack = (url: string) =>
           ),
         ),
       ),
+      Layer.provideMerge(secretsLayer),
       Layer.provideMerge(
         Layer.mergeAll(
           databaseFor(url, { entities: closure }),

@@ -26,6 +26,7 @@ import { loginDriversLayer } from '@qualy/auth-contract/login'
 import { AuthConfig } from '../src/server/sign-in.ts'
 import { Iam } from '../src/server/index.ts'
 import { serviceLayer as authLayer } from '../src/server/index.ts'
+import { secretsLayer } from '@qualy/plugin-secrets/testkit'
 
 // The port org holds, and the only call org makes into auth.
 //
@@ -58,6 +59,7 @@ const stack = (url: string) =>
           ),
         ),
       ),
+      Layer.provideMerge(secretsLayer),
       Layer.provideMerge(
         Layer.mergeAll(
           databaseFor(url, { entities: authClosure }),

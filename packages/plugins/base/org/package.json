@@ -23,6 +23,7 @@
     "@qualy/plugin-audit": "workspace:*",
     "@qualy/plugin-auth": "workspace:*",
     "@qualy/plugin-rbac": "workspace:*",
+    "@qualy/plugin-secrets": "workspace:*",
     "@qualy/testkit": "workspace:*",
     "@qualy/tsconfig": "workspace:*",
     "@types/react": "catalog:"

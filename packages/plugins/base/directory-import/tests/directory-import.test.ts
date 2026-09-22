@@ -40,6 +40,7 @@ import type { Orm } from '@qualy/plugin-database/server'
 import { entities } from '../src/db/entities.ts'
 import { directoryImportActions } from '../src/actions.ts'
 import { DirectoryImport, serviceLayer } from '../src/server/index.ts'
+import { entities as secretsEntities, secretsLayer } from '@qualy/plugin-secrets/testkit'
 
 // A whole spreadsheet of people, written or not written.
 //
@@ -56,6 +57,7 @@ const closure = [
   ...auditEntities,
   ...storageEntities,
   ...entities,
+  ...secretsEntities,
 ] as const
 
 const catalog = compileCatalog([
@@ -94,6 +96,7 @@ const stack = (url: string) => {
           ),
         ),
       ),
+      Layer.provideMerge(secretsLayer),
       Layer.provideMerge(
         Layer.mergeAll(
           databaseFor(url, { entities: closure }),

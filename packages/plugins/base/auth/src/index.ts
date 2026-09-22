@@ -47,6 +47,7 @@ const plugin = Plugin.define(
       '@qualy/plugin-audit',
       '@qualy/plugin-database',
       '@qualy/plugin-rbac',
+      '@qualy/plugin-secrets',
       '@qualy/plugin-ui-registry',
     ],
     config,

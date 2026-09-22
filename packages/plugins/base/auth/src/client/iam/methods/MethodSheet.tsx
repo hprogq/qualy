@@ -1,10 +1,10 @@
 import type { ApiResult } from '@qualy/web-runtime/api'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useApi, useRunApi, useApiQuery } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+import { useI18n, useList } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { ConfirmDialog, Feedback, Field } from '@qualy/ui/admin'
 import {
@@ -33,10 +33,11 @@ import { MethodFields, type EntranceKind } from './MethodFields.tsx'
 // One entrance, opened beside the table.
 //
 // What an administrator owns about an entrance: what it is called, whether
-// it is in service, who it lets through, and whatever its kind needs to be
-// told. Where it answers is fixed when it is made - it is in every sign-in
-// link - and where it stands on the sign-in page is set by dragging it in
-// the list, not by typing a number here.
+// it is in service, who it lets through, whatever its kind needs to be told,
+// and whether it exists at all. An entrance goes into service only once it
+// has everything its kind needs, and while it is in service nothing it needs
+// can be taken away here. Where it answers is fixed when it is made, and
+// where it stands on the sign-in page is set by dragging it in the list.
 
 export type ProviderRow = ApiResult<
   typeof authApi,
@@ -93,12 +94,18 @@ export function MethodSheet({
   const runApi = useRunApi()
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
-  const { format, formatError, locale } = useI18n()
+  const { format, formatText, formatError, locale } = useI18n()
+  const listJoin = useList()
   const figure = new Intl.NumberFormat(locale)
+  const detail = useQuery(
+    query.identity.getAuthProvider.queryOptions({ params: { providerId: provider.id } }),
+  )
   const [feedback, setFeedback] = useState<string | null>(null)
   const [name, setName] = useState<string | null>(null)
   const [asking, setAsking] = useState<'active' | 'disabled' | null>(null)
-  const [values, setValues] = useState<Record<string, string> | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  // only the boxes somebody typed in: an untouched box is not sent
+  const [values, setValues] = useState<Record<string, string>>({})
   // the draft is kept only while it differs from what is stored, so a save
   // that brings back new server state needs no re-seeding
   const [draft, setDraft] = useState<{ mode: Mode; userTypeIds: string[] } | null>(null)
@@ -109,6 +116,40 @@ export function MethodSheet({
     mode !== provider.audience.mode ||
     [...userTypeIds].sort().join(',') !== [...stored].sort().join(',')
 
+  const config = detail.data?.config ?? {}
+  const secrets = detail.data?.secrets ?? []
+  const inService = provider.status === 'active'
+  const complete = provider.setup === 'complete'
+  const fields = kind?.fields ?? []
+  /** the boxes whose value differs from what is stored, as the save sends them */
+  const changedValues = Object.fromEntries(
+    Object.entries(values).filter(([key, typed]) => {
+      const field = fields.find((one) => one.key === key)
+      if (field === undefined) return false
+      return field.kind === 'secret' ? typed.trim() !== '' : typed.trim() !== (config[key] ?? '')
+    }),
+  )
+  const valuesDirty = Object.keys(changedValues).length > 0
+  // a door in service keeps what it needs: emptying a required box is not saved
+  const wouldEmpty =
+    inService &&
+    fields.some(
+      (field) =>
+        field.required &&
+        field.kind !== 'secret' &&
+        changedValues[field.key] !== undefined &&
+        changedValues[field.key]!.trim() === '',
+    )
+  const missingWords = (detail.data?.missing ?? []).map((gap) =>
+    gap.kind === 'driver'
+      ? format(m.methodDriverMissing)
+      : (() => {
+          const field = fields.find((one) => one.key === gap.key)
+          return field === undefined ? gap.key : formatText(field.label)
+        })(),
+  )
+
+  const refresh = () => queryClient.invalidateQueries({ queryKey: query.identity.key() })
   const save = useMutation({
     mutationFn: () =>
       runApi(
@@ -127,13 +168,12 @@ export function MethodSheet({
       ),
     onMutate: () => setFeedback(null),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: query.identity.key() })
+      await refresh()
       setDraft(null)
     },
     onError: (error: unknown) => setFeedback(formatError(error)),
   })
 
-  const refresh = () => queryClient.invalidateQueries({ queryKey: query.identity.key() })
   const saveDetails = useMutation({
     mutationFn: () =>
       runApi(
@@ -142,7 +182,7 @@ export function MethodSheet({
           payload: {
             version: provider.version,
             ...(name === null || name.trim() === provider.name ? {} : { name: name.trim() }),
-            ...(values === null ? {} : { values }),
+            ...(valuesDirty ? { values: changedValues } : {}),
           },
         }),
       ),
@@ -150,8 +190,20 @@ export function MethodSheet({
     onSuccess: async () => {
       await refresh()
       setName(null)
-      setValues(null)
+      setValues({})
     },
+    onError: (error: unknown) => setFeedback(formatError(error)),
+  })
+  const clearSecret = useMutation({
+    mutationFn: (key: string) =>
+      runApi(
+        api.identity.deleteAuthProviderSecret({
+          params: { providerId: provider.id, key },
+          query: { version: String(provider.version) },
+        }),
+      ),
+    onMutate: () => setFeedback(null),
+    onSuccess: refresh,
     onError: (error: unknown) => setFeedback(formatError(error)),
   })
   const setStatus = useMutation({
@@ -166,8 +218,30 @@ export function MethodSheet({
     onSuccess: refresh,
     onError: (error: unknown) => setFeedback(formatError(error)),
   })
-  const detailsDirty =
-    (name !== null && name.trim() !== '' && name.trim() !== provider.name) || values !== null
+  const remove = useMutation({
+    mutationFn: () =>
+      runApi(
+        api.identity.deleteAuthProvider({
+          params: { providerId: provider.id },
+          query: { version: String(provider.version) },
+        }),
+      ),
+    onMutate: () => setFeedback(null),
+    onSuccess: async () => {
+      setDeleting(false)
+      onClose()
+      await refresh()
+    },
+    onError: (error: unknown) => {
+      setDeleting(false)
+      setFeedback(formatError(error))
+    },
+  })
+  const nameDirty = name !== null && name.trim() !== '' && name.trim() !== provider.name
+  const detailsDirty = nameDirty || valuesDirty
+  const statusWord = format(
+    inService ? m.typeEnabled : complete ? m.statusDisabled : m.methodSetupShort,
+  )
 
   return (
     <DetailSheet
@@ -177,6 +251,19 @@ export function MethodSheet({
       titleAside={<Tag outline>{provider.type}</Tag>}
       meta={
         <MetaLine items={[format(m.loginMethodsTitle), format(m.providerPosition, { position })]} />
+      }
+      actions={
+        canManage && !provider.isSystem ? (
+          <Button
+            size="xs"
+            variant="ghost"
+            data-testid="method-delete"
+            disabled={remove.isPending || detail.data === undefined}
+            onClick={() => setDeleting(true)}
+          >
+            {format(m.methodDelete)}
+          </Button>
+        ) : undefined
       }
       closeLabel={format(commonMessages.close)}
       testId="method-sheet"
@@ -255,9 +342,15 @@ export function MethodSheet({
         )}
       </Card>
 
-      <Card data-testid="method-details" data-status={provider.status}>
+      <Card
+        data-testid="method-details"
+        data-status={provider.status}
+        data-setup={provider.setup}
+      >
         <CardHead title={format(m.methodDetails)}>
-          {canManage ? (
+          {/* only a finished entrance can be put in service; an unfinished
+              one that is out of service says so instead of offering it */}
+          {canManage && (inService || complete) ? (
             <Segmented
               label={format(m.columnStatus)}
               value={provider.status}
@@ -272,11 +365,23 @@ export function MethodSheet({
               ]}
             />
           ) : (
-            <span {...stylex.props(styles.modeWord)}>
-              {format(provider.status === 'active' ? m.typeEnabled : m.statusDisabled)}
-            </span>
+            <span {...stylex.props(styles.modeWord)}>{statusWord}</span>
           )}
         </CardHead>
+        {missingWords.length > 0 && (
+          <CardHint>
+            <span
+              data-testid="method-missing"
+              data-missing={(detail.data?.missing ?? [])
+                .map((gap) => (gap.kind === 'driver' ? 'driver' : gap.key))
+                .join(',')}
+              {...stylex.props(styles.warn)}
+            >
+              {format(m.methodMissing, { fields: listJoin(missingWords) })}
+            </span>{' '}
+            {!inService && format(m.methodEnableBlocked)}
+          </CardHint>
+        )}
         <div {...stylex.props(styles.fields)}>
           <Field label={format(m.nameLabel)}>
             {(id) => (
@@ -291,10 +396,17 @@ export function MethodSheet({
           {kind !== undefined && kind.fields.length > 0 && (
             <MethodFields
               kind={kind}
-              editing
-              disabled={!canManage}
-              values={values ?? {}}
+              config={config}
+              secrets={secrets}
+              draft={values}
               onChange={setValues}
+              disabled={!canManage || detail.data === undefined}
+              {...(canManage ? { onClear: (key: string) => clearSecret.mutate(key) } : {})}
+              // a door in service keeps the secrets it needs
+              clearable={(key) =>
+                !clearSecret.isPending &&
+                !(inService && fields.some((field) => field.key === key && field.required))
+              }
             />
           )}
         </div>
@@ -319,14 +431,14 @@ export function MethodSheet({
               disabled={!detailsDirty || saveDetails.isPending}
               onClick={() => {
                 setName(null)
-                setValues(null)
+                setValues({})
               }}
             >
               {format(m.discard)}
             </Button>
             <Button
               size="sm"
-              disabled={!detailsDirty || saveDetails.isPending}
+              disabled={!detailsDirty || wouldEmpty || saveDetails.isPending}
               onClick={() => saveDetails.mutate()}
             >
               {format(m.save)}
@@ -350,6 +462,20 @@ export function MethodSheet({
           setAsking(null)
           if (next !== null) setStatus.mutate(next)
         }}
+      />
+      <ConfirmDialog
+        open={deleting}
+        tone="destructive"
+        title={format(m.methodDeleteTitle, { name: provider.name })}
+        description={format(m.methodDeleteBody, {
+          bindings: detail.data?.usage.bindings ?? 0,
+          sessions: detail.data?.usage.sessions ?? 0,
+        })}
+        confirmLabel={format(m.methodDelete)}
+        cancelLabel={format(m.cancel)}
+        pending={remove.isPending}
+        onCancel={() => setDeleting(false)}
+        onConfirm={() => remove.mutate()}
       />
     </DetailSheet>
   )

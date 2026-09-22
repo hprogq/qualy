@@ -422,3 +422,34 @@ for (const field of ['resolutionHash', 'browserContractHash'] as const) {
   }
   console.log(`smoke: a release with the wrong ${field} is refused, and named (exit 1)`)
 }
+
+// And a production process without a key for its secrets does not start.
+//
+// Every value an entrance keeps is encrypted under it, so coming up without
+// one means coming up unable to read what is already stored - and, worse,
+// able to write more under a key nobody chose. The variable is passed empty
+// here, because an unset one would be filled in by the harness the way every
+// other probe above has it.
+{
+  const refused = startQualyServer({
+    port: refusalPort,
+    env: {
+      DATABASE_URL: process.env.DATABASE_URL ?? 'postgres://qualy:qualy@localhost:5432/qualy',
+      QUALY_SECRETS_MASTER_KEY: '',
+    },
+  })
+  const deadline = Date.now() + 60_000
+  while (refused.exited() === null && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 200))
+  }
+  const ended = refused.exited()
+  const said = refused.output()
+  refused.kill()
+  if (ended === null) fail('a production start without a master key stayed up')
+  else if (!said.includes('QUALY_SECRETS_MASTER_KEY must be base64-encoded 32 bytes')) {
+    console.error(said)
+    fail(`a production start without a master key exited ${ended} without saying why`)
+  } else {
+    console.log(`smoke: a production start without a master key is refused (exit ${ended})`)
+  }
+}

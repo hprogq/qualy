@@ -11,6 +11,9 @@ plugins:
   # The product's one lineage is db/migrations beside this file, and the
   # connection is DATABASE_URL; neither is configured here.
   '@qualy/plugin-database': {}
+  # Values kept encrypted, such as a login entrance's client secret. The master
+  # key is QUALY_SECRETS_MASTER_KEY and is never configured here.
+  '@qualy/plugin-secrets': {}
 
   '@qualy/plugin-ui-registry': {}
   '@qualy/plugin-web': {}

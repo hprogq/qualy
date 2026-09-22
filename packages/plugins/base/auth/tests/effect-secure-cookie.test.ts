@@ -26,6 +26,7 @@ import { sessionCookieName } from '@qualy/auth-contract/session'
 import { layer as sessionLayer } from '../src/server/session.ts'
 import { sessionCookieNameFor } from '../src/server/session-cookie.ts'
 import { authClosure } from './support/closure.ts'
+import { secretsLayer } from '@qualy/plugin-secrets/testkit'
 import { SEEDED_EMAILS, seedSignIn } from './support/sign-in-seed.ts'
 
 // The session cookie of a secure deployment: named with the `__Host-`
@@ -61,6 +62,7 @@ beforeAll(async () => {
     }),
   )
   const signIn = signInLayer.pipe(
+    Layer.provide(secretsLayer),
     Layer.provide(
       Layer.mergeAll(
         infra,

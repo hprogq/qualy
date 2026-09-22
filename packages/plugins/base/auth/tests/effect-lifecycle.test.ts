@@ -24,6 +24,7 @@ import { permissions as authPermissions } from '../src/permissions.ts'
 import { AuthConfig } from '../src/server/sign-in.ts'
 import { serviceLayer as authLayer } from '../src/server/index.ts'
 import { authClosure } from './support/closure.ts'
+import { secretsLayer } from '@qualy/plugin-secrets/testkit'
 
 // The user lifecycle: what falls with a deletion, that deletion is final and
 // frees what the person held, and the version fence every write runs behind.
@@ -49,6 +50,7 @@ const stack = (url: string) =>
           ),
         ),
       ),
+      Layer.provideMerge(secretsLayer),
       Layer.provideMerge(
         Layer.mergeAll(
           databaseFor(url, { entities: authClosure }),

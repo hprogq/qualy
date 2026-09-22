@@ -65,6 +65,19 @@ const jumpHintMessage = defineMessage<{ businessNo: string }>()({
 })
 const methodNamed = (id: string, defaultMessage: string) =>
   defineMessage<{ name: string }>()({ id, defaultMessage })
+const methodSecretClearLabelMessage = defineMessage<{ field: string }>()({
+  id: 'auth/login-methods/secret-clear-label',
+  defaultMessage: 'Clear {field}',
+})
+const methodMissingMessage = defineMessage<{ fields: string }>()({
+  id: 'auth/login-methods/missing',
+  defaultMessage: 'Still needed: {fields}',
+})
+const methodDeleteBodyMessage = defineMessage<{ bindings: number; sessions: number }>()({
+  id: 'auth/login-methods/delete-body',
+  defaultMessage:
+    '{bindings, plural, =0 {No bound account} one {# bound account} other {# bound accounts}} will be withdrawn and {sessions, plural, =0 {no session} one {# session} other {# sessions}} will end. This cannot be undone.',
+})
 const methodMoveMessage = defineMessage<{ name: string }>()({
   id: 'auth/login-methods/move',
   defaultMessage: 'Move {name}. Drag, or use the up and down arrows',
@@ -211,6 +224,7 @@ const i18n = definePluginMessages({
     'audit.auth.user.update': { id: 'auth/audit/user-update', defaultMessage: 'Edit user' },
     'audit.auth.provider.create': { id: 'auth/audit/provider-create', defaultMessage: 'Add an entrance' },
     'audit.auth.provider.update': { id: 'auth/audit/provider-update', defaultMessage: 'Edit an entrance' },
+    'audit.auth.provider.delete': { id: 'auth/audit/provider-delete', defaultMessage: 'Delete an entrance' },
     'audit.auth.provider.status': { id: 'auth/audit/provider-status', defaultMessage: 'Enable or disable an entrance' },
     'audit.auth.provider.reorder': { id: 'auth/audit/provider-reorder', defaultMessage: 'Reorder the sign-in page' },
     'audit.auth.identity.bind': {
@@ -480,10 +494,25 @@ const i18n = definePluginMessages({
       id: 'auth/login-methods/code-hint-new',
       defaultMessage: 'Lowercase letters, digits and hyphens. It is part of every sign-in link, so it cannot be changed later',
     },
-    methodSecretKept: {
-      id: 'auth/login-methods/secret-kept',
-      defaultMessage: 'Leave empty to keep the one in use',
+    methodSecretStored: {
+      id: 'auth/login-methods/secret-stored',
+      defaultMessage: 'Saved. Type a new value to replace it',
     },
+    methodSecretClear: { id: 'auth/login-methods/secret-clear', defaultMessage: 'Clear' },
+    methodSecretClearLabel: methodSecretClearLabelMessage,
+    methodMissing: methodMissingMessage,
+    methodDriverMissing: {
+      id: 'auth/login-methods/driver-missing',
+      defaultMessage: 'No installed plugin provides this kind',
+    },
+    methodEnableBlocked: {
+      id: 'auth/login-methods/enable-blocked',
+      defaultMessage: 'Fill in every required setting to put it in service',
+    },
+    methodSetupShort: { id: 'auth/login-methods/setup-short', defaultMessage: 'Not set up' },
+    methodDelete: { id: 'auth/login-methods/delete', defaultMessage: 'Delete' },
+    methodDeleteTitle: methodNamed('auth/login-methods/delete-title', 'Delete {name}?'),
+    methodDeleteBody: methodDeleteBodyMessage,
     methodDetails: { id: 'auth/login-methods/details', defaultMessage: 'Settings' },
     methodOrderHint: {
       id: 'auth/login-methods/order-hint',
@@ -733,7 +762,7 @@ const i18n = definePluginMessages({
     },
     RECOVERY_CHANNEL_REQUIRED: {
       id: 'auth/error/recovery-channel-required',
-      defaultMessage: 'The administrator user type must keep password sign-in.',
+      defaultMessage: 'The system account must keep a working password sign-in.',
     },
     USER_TYPE_PLACEMENT_NOT_ALLOWED: {
       id: 'auth/error/user-type-placement-not-allowed',
@@ -799,7 +828,20 @@ const i18n = definePluginMessages({
     },
     AUTH_PROVIDER_CONFIG_INVALID: {
       id: 'auth/error/provider-config-invalid',
-      defaultMessage: 'One of the settings for this kind of way in is missing or not valid.',
+      defaultMessage: 'One of the settings for this kind of way in is not valid.',
+    },
+    AUTH_PROVIDER_CONFIG_INCOMPLETE: {
+      id: 'auth/error/provider-config-incomplete',
+      defaultMessage: 'A way in cannot be in service while a required setting is missing.',
+    },
+    AUTH_PROVIDER_IS_SYSTEM: {
+      id: 'auth/error/provider-is-system',
+      defaultMessage: 'The built-in password sign-in cannot be deleted.',
+    },
+    AUTH_PROVIDER_IDENTITY_NAMESPACE_IN_USE: {
+      id: 'auth/error/provider-identity-namespace-in-use',
+      defaultMessage:
+        'Accounts have been bound through this way in, so that setting can no longer change.',
     },
     AUTH_BINDING_UNSUPPORTED: {
       id: 'auth/error/binding-unsupported',

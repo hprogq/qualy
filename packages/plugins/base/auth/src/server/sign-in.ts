@@ -15,7 +15,9 @@ import {
   type SignedInUser,
 } from '@qualy/auth-contract/login'
 import { createSessionToken, hashSessionToken } from '../session.ts'
+import type { Secrets } from '@qualy/plugin-secrets/plugin'
 import { AuthConfig } from './auth-config.ts'
+import { makeReadiness } from './readiness.ts'
 
 export { AuthConfig }
 import { sessionCookieName } from '@qualy/auth-contract/session'
@@ -49,7 +51,7 @@ const loginProviders = (tenantId: string) =>
   db.query((k) =>
     k
       .selectFrom('AuthProvider')
-      .select(['code', 'type', 'name'])
+      .select(['id', 'tenantId', 'code', 'type', 'name', 'config'])
       .where('tenantId', '=', tenantId)
       .where('enabled', '=', true)
       .orderBy('sortOrder')
@@ -67,7 +69,7 @@ const providerByCode = (tenantId: string, providerCode: string, expectedType: st
   db.query((k) =>
     k
       .selectFrom('AuthProvider')
-      .select('id')
+      .select(['id', 'tenantId', 'type', 'config'])
       .where('tenantId', '=', tenantId)
       .where('code', '=', providerCode)
       .where('type', '=', expectedType)
@@ -430,6 +432,9 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
   // the registry handle, not its contents: a driver registers while its own
   // layer is built, and this one is built before some of them
   const drivers = yield* LoginDrivers
+  // the one judgment of whether a door can let anybody in; a door in service
+  // always passes it, unless its driver changed what it needs under it
+  const readiness = yield* makeReadiness
 
   // The database is closed over rather than required, because what this builds
   // is a shape whose requirements the login contract fixes: a driver calls
@@ -520,7 +525,8 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
           input.providerCode,
           input.expectedType,
         ).pipe(Effect.orDie)
-        return provider ? { tenantId: tenant.id, providerId: provider.id } : undefined
+        if (!provider || !(yield* readiness(provider)).ready) return undefined
+        return { tenantId: tenant.id, providerId: provider.id }
       }),
     ),
 
@@ -661,7 +667,7 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         const methods: LoginMethod[] = []
         for (const provider of providers) {
           const found = yield* drivers.forType(provider.type)
-          if (!found) continue
+          if (!found || !(yield* readiness(provider)).ready) continue
           const declared = found.driver.presentation
           // the declaration names a module and the wire does not: a renderer
           // is found by the driver's type, which the method already carries
@@ -719,7 +725,11 @@ export class SignIn extends Context.Service<SignIn, Effect.Success<ReturnType<ty
   '@qualy/plugin-auth/SignIn',
 ) {}
 
-export const layer: Layer.Layer<SignIn | LoginSessions, never, Orm | AuthConfig | LoginDrivers> =
+export const layer: Layer.Layer<
+  SignIn | LoginSessions,
+  never,
+  Orm | AuthConfig | LoginDrivers | Secrets
+> =
   Layer.effectContext(
     Effect.gen(function* () {
       const signIn = yield* make()

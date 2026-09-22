@@ -43,9 +43,13 @@ import {
   AuthBindingNotFound,
   AuthBindingUnsupported,
   AuthBindingUserFieldMissing,
+  ProviderConfigIncomplete,
   ProviderConfigInvalid,
   ProviderConflict,
+  ProviderIdentityNamespaceInUse,
+  ProviderIsSystem,
   ProviderKindUnavailable,
+  readinessGapSchema,
 } from './server/errors.ts'
 
 // The identity api this plugin serves, as definitions only.
@@ -267,6 +271,8 @@ const authProvider = Schema.Struct({
   type: Schema.String,
   name: Schema.String,
   status: resourceStatus,
+  // whether it has everything its kind needs to be put in service
+  setup: Schema.Literals(['complete', 'incomplete']),
   isSystem: Schema.Boolean,
   sortOrder: Schema.Number,
   version: Schema.Number,
@@ -308,16 +314,66 @@ export const identityApiGroup = HttpApiGroup.make('identity')
     }).middleware(Authenticated),
   )
   .add(
+    // an empty entrance, out of service: what its kind needs is told to it
+    // afterwards, over as many saves as that takes
     HttpApiEndpoint.post('createAuthProvider', '/auth/providers', {
       payload: Schema.Struct({
         type: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(32)),
         // the address it answers at, which is in every sign-in url and never moves
         code: kebabCode,
         name: trimmedName(100),
-        values: Schema.optional(Schema.Record(Schema.String, Schema.String)),
       }),
       success: Schema.Struct({ id: Schema.String }),
-      error: [ProviderKindUnavailable, ProviderConfigInvalid, ProviderConflict, AccessDenied],
+      error: [ProviderKindUnavailable, ProviderConflict, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  // One entrance as its settings screen reads it. Secrets are reported as
+  // stored or not; what they are never leaves the server.
+  .add(
+    HttpApiEndpoint.get('getAuthProvider', '/auth/providers/:providerId', {
+      params: Schema.Struct({ providerId: uuidInput }),
+      success: Schema.Struct({
+        provider: authProvider,
+        missing: Schema.Array(readinessGapSchema),
+        config: Schema.Record(Schema.String, Schema.String),
+        secrets: Schema.Array(Schema.Struct({ key: Schema.String, stored: Schema.Boolean })),
+        // what deleting it would end
+        usage: Schema.Struct({ bindings: Schema.Number, sessions: Schema.Number }),
+      }),
+      error: [ProviderNotFound, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.delete('deleteAuthProvider', '/auth/providers/:providerId', {
+      params: Schema.Struct({ providerId: uuidInput }),
+      query: Schema.Struct({ version: Schema.String }),
+      success: Schema.Struct({ ok: Schema.Literal(true) }),
+      error: [
+        ProviderNotFound,
+        ProviderVersionConflict,
+        ProviderIsSystem,
+        RecoveryChannelRequired,
+        AccessDenied,
+      ],
+    }).middleware(Authenticated),
+  )
+  // a stored secret taken away, which leaving its box empty never does
+  .add(
+    HttpApiEndpoint.delete('deleteAuthProviderSecret', '/auth/providers/:providerId/secrets/:key', {
+      params: Schema.Struct({
+        providerId: uuidInput,
+        key: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(63)),
+      }),
+      query: Schema.Struct({ version: Schema.String }),
+      success: Schema.Struct({ version: Schema.Number }),
+      error: [
+        ProviderNotFound,
+        ProviderVersionConflict,
+        ProviderKindUnavailable,
+        ProviderConfigInvalid,
+        ProviderConfigIncomplete,
+        AccessDenied,
+      ],
     }).middleware(Authenticated),
   )
   .add(
@@ -337,6 +393,8 @@ export const identityApiGroup = HttpApiGroup.make('identity')
         ProviderVersionConflict,
         ProviderKindUnavailable,
         ProviderConfigInvalid,
+        ProviderConfigIncomplete,
+        ProviderIdentityNamespaceInUse,
         AccessDenied,
       ],
     }).middleware(Authenticated),
@@ -346,7 +404,13 @@ export const identityApiGroup = HttpApiGroup.make('identity')
       params: Schema.Struct({ providerId: uuidInput }),
       payload: Schema.Struct({ version: expectedVersion, status: resourceStatus }),
       success: Schema.Struct({ version: Schema.Number }),
-      error: [ProviderNotFound, ProviderVersionConflict, RecoveryChannelRequired, AccessDenied],
+      error: [
+        ProviderNotFound,
+        ProviderVersionConflict,
+        ProviderConfigIncomplete,
+        RecoveryChannelRequired,
+        AccessDenied,
+      ],
     }).middleware(Authenticated),
   )
   // the order of the sign-in page is one fact about all of them, replaced whole

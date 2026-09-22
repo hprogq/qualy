@@ -47,9 +47,9 @@ import { authApi } from '../api.ts'
 //
 // The audience lives on the door rather than on the user type, because that
 // is where the question is actually decided: "can a student sign in" has no
-// answer until you say through which entrance. Nothing here creates or
-// removes a door - a door is a driver the assembly provides, and the only
-// thing an administrator owns about it is its audience.
+// answer until you say through which entrance. The password door is the
+// platform's; doors of the other kinds the assembly offers are added here,
+// set up on their own sheet, and deleted there.
 
 const COLUMNS = '1.5rem minmax(0, 0.8fr) 6rem minmax(0, 1.4fr) 6.5rem 4.5rem'
 
@@ -259,6 +259,7 @@ export default function LoginMethodsPage() {
                     selected={provider.id === open?.id}
                     data-testid="method-row"
                     data-status={provider.status}
+                    data-setup={provider.setup}
                     data-audience={
                       provider.audience.mode === 'unrestricted'
                         ? 'everyone'
@@ -336,7 +337,13 @@ export default function LoginMethodsPage() {
                       <span {...stylex.props(styles.standing)}>
                         {canManage && phone && order(provider, index)}
                         <Status tone={provider.status === 'active' ? 'plain' : 'bad'}>
-                          {format(provider.status === 'active' ? m.typeEnabled : m.statusDisabled)}
+                          {format(
+                            provider.status === 'active'
+                              ? m.typeEnabled
+                              : provider.setup === 'complete'
+                                ? m.statusDisabled
+                                : m.methodSetupShort,
+                          )}
                         </Status>
                       </span>
                     </Cell>

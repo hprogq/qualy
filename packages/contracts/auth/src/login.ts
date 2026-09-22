@@ -119,9 +119,13 @@ export type AuthBindingDeclaration =
  * for - the form is built from these - and turns what was typed into the
  * `config` it will read back when somebody signs in.
  *
- * `secret` fields are write-only: they are asked for, handed to `prepare`,
- * and never sent back to a screen. Editing an entrance leaves a secret box
- * empty, and empty means "as it was".
+ * `secret` fields never enter the config. They are encrypted by the secrets
+ * capability under the entrance's id and the field's key, reported to a
+ * screen only as stored or not, and read by the driver at sign-in.
+ *
+ * `required` says what the entrance needs before it can be put in service,
+ * not what a save must contain: an entrance is set up over several saves,
+ * and one that is missing something stays out of service until it has it.
  */
 export interface EntranceField {
   readonly key: string
@@ -136,12 +140,21 @@ export interface EntranceKind {
   readonly label: UiText
   readonly fields: readonly EntranceField[]
   /**
-   * What was typed, turned into the stored config; `previous` is what is
-   * stored now, so a secret left empty can be carried over.
+   * The config keys that say whose accounts the entrance speaks for: a CAS
+   * server's address, an OAuth issuer. Once anybody has bound an account
+   * through the entrance, even a binding since withdrawn, these no longer
+   * change: every subject stored would start naming an account at another
+   * provider.
    */
-  readonly prepare?: (input: {
+  readonly identityNamespaceKeys?: readonly string[]
+  /**
+   * The text and url values, with what was stored merged in, turned into the
+   * stored config. Secrets are not among them. Absent means the values are
+   * stored as they are.
+   */
+  readonly prepareConfig?: (input: {
     readonly values: Readonly<Record<string, string>>
-    readonly previous: Readonly<Record<string, unknown>> | undefined
+    readonly previous: Readonly<Record<string, unknown>>
   }) => Effect.Effect<
     | { readonly ok: true; readonly config: Readonly<Record<string, unknown>> }
     | { readonly ok: false; readonly invalid: string }

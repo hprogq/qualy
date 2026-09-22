@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
 import fs from 'node:fs'
 import net from 'node:net'
 import os from 'node:os'
@@ -54,6 +55,7 @@ fs.writeFileSync(
     'POSTGRES_PASSWORD=smoke',
     'POSTGRES_DB=qualy',
     'DATABASE_URL=postgres://qualy:smoke@postgres:5432/qualy',
+    `QUALY_SECRETS_MASTER_KEY=${randomBytes(32).toString('base64')}`,
     `QUALY_PORT=${String(port)}`,
     'QUALY_LOG_FORMAT=json',
     'QUALY_LOG_LEVEL=info',

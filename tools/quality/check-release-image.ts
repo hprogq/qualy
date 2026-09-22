@@ -1,4 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { repoRoot } from '../lib/manifest.ts'
@@ -184,6 +185,10 @@ expectOut('no .env baked in', 'test -e /app/.env && echo present || echo absent'
       '--rm',
       '-e',
       'DATABASE_URL=postgres://nobody:nobody@127.0.0.1:1/none',
+      '-e',
+      // a production process refuses to start without one, and the refusal
+      // this probe is about is the database's
+      `QUALY_SECRETS_MASTER_KEY=${randomBytes(32).toString('base64')}`,
       '-e',
       'QUALY_LOG_FORMAT=json',
       image,

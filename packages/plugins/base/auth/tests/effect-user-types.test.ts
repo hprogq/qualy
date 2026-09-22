@@ -27,6 +27,7 @@ import { driver as localDriver } from '@qualy/plugin-auth-local'
 import { AuthConfig } from '../src/server/sign-in.ts'
 import { Iam } from '../src/server/index.ts'
 import { serviceLayer as authLayer } from '../src/server/index.ts'
+import { secretsLayer } from '@qualy/plugin-secrets/testkit'
 
 // User types under Effect.
 //
@@ -56,6 +57,7 @@ const stack = (url: string) =>
           ),
         ),
       ),
+      Layer.provideMerge(secretsLayer),
       Layer.provideMerge(
         Layer.mergeAll(
           databaseFor(url, { entities: authClosure }),

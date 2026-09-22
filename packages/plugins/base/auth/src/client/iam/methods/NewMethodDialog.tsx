@@ -9,11 +9,13 @@ import { Input } from '@qualy/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { iamMessages as m } from '../../i18n.ts'
 import { authApi } from '../../api.ts'
-import { MethodFields, type EntranceKind } from './MethodFields.tsx'
+import type { EntranceKind } from './MethodFields.tsx'
 
-// A new entrance: which kind, what it is called, where it answers, and
-// whatever that kind needs to be told. The address is asked for once and
-// said to be for good, because it is in every sign-in link from then on.
+// A new entrance: which kind, what it is called and where it answers. What
+// that kind needs to be told is filled in on the entrance itself, which opens
+// as soon as it exists; it stays out of service until it has everything. The
+// address is asked for once and said to be for good, because it is in every
+// sign-in link from then on.
 
 const ADDRESS = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
@@ -41,7 +43,6 @@ export function NewMethodDialog({
   const [type, setType] = useState('')
   const [name, setName] = useState('')
   const [code, setCode] = useState('')
-  const [values, setValues] = useState<Record<string, string>>({})
   const [feedback, setFeedback] = useState<string | null>(null)
   const kind = kinds.find((one) => one.type === type) ?? (kinds.length === 1 ? kinds[0] : undefined)
 
@@ -52,7 +53,6 @@ export function NewMethodDialog({
     setType('')
     setName('')
     setCode('')
-    setValues({})
     setFeedback(null)
   }, [open])
 
@@ -60,7 +60,7 @@ export function NewMethodDialog({
     mutationFn: () =>
       run(
         api.identity.createAuthProvider({
-          payload: { type: kind!.type, code: code.trim(), name: name.trim(), values },
+          payload: { type: kind!.type, code: code.trim(), name: name.trim() },
         }),
       ),
     onMutate: () => setFeedback(null),
@@ -71,11 +71,7 @@ export function NewMethodDialog({
     onError: (error: unknown) => setFeedback(formatError(error)),
   })
 
-  const ready =
-    kind !== undefined &&
-    name.trim() !== '' &&
-    ADDRESS.test(code.trim()) &&
-    kind.fields.every((field) => !field.required || (values[field.key] ?? '').trim() !== '')
+  const ready = kind !== undefined && name.trim() !== '' && ADDRESS.test(code.trim())
 
   return (
     <FormDialog
@@ -137,9 +133,6 @@ export function NewMethodDialog({
             />
           )}
         </Field>
-        {kind !== undefined && (
-          <MethodFields kind={kind} values={values} onChange={setValues} editing={false} />
-        )}
       </form>
     </FormDialog>
   )

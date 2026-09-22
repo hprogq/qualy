@@ -3,6 +3,7 @@ import { UserProvisioning } from '@qualy/auth-contract/provisioning'
 import { Placement, UserPlacement } from '@qualy/auth-contract'
 import type { Principal } from '@qualy/rbac-contract'
 import { withDatabase, type Orm } from '@qualy/plugin-database/server'
+import type { Secrets } from '@qualy/plugin-secrets/plugin'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
 import { Api } from '@qualy/api-kit/plugin'
@@ -87,7 +88,7 @@ export const make = Effect.fn('Auth.make')(function* () {
 const tags: Layer.Layer<
   Placement | UserPlacement | UserProvisioning | Iam,
   never,
-  Orm | Rbac | Audit | LoginDrivers
+  Orm | Rbac | Audit | LoginDrivers | Secrets
 > = Layer.effectContext(
   Effect.gen(function* () {
     const { placement, userPlacement, iam } = yield* make()
@@ -116,7 +117,7 @@ export { config } from './auth-config.ts'
 export const serviceLayer: Layer.Layer<
   Placement | UserPlacement | UserProvisioning | Iam | Authenticated | Viewer | SignIn | LoginSessions,
   never,
-  Orm | Rbac | Audit | AuthConfig | LoginDrivers
+  Orm | Rbac | Audit | AuthConfig | LoginDrivers | Secrets
 > = Layer.mergeAll(tags, sessionLayer, viewerLayer, signInLayer)
 
 /**
@@ -405,12 +406,51 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
         return {
           id: yield* iam.providers.create(
             principal.tenantId,
-            {
-              type: payload.type,
-              code: payload.code,
-              name: payload.name,
-              values: payload.values ?? {},
-            },
+            { type: payload.type, code: payload.code, name: payload.name },
+            principal,
+          ),
+        }
+      }),
+    )
+    .handle(
+      'getAuthProvider',
+      Effect.fn('iam.getAuthProvider.handler')(function* ({ params }) {
+        const iam = yield* Iam
+        const rbac = yield* Rbac
+        const principal = yield* CurrentUser
+        yield* rbac.require(principal, 'auth.provider.read')
+        return yield* iam.providers.detail(principal.tenantId, params.providerId)
+      }),
+    )
+    .handle(
+      'deleteAuthProvider',
+      Effect.fn('iam.deleteAuthProvider.handler')(function* ({ params, query }) {
+        const iam = yield* Iam
+        const rbac = yield* Rbac
+        const principal = yield* CurrentUser
+        yield* rbac.require(principal, 'auth.provider.manage')
+        yield* iam.providers.remove(
+          principal.tenantId,
+          params.providerId,
+          Number(query.version),
+          principal,
+        )
+        return { ok: true as const }
+      }),
+    )
+    .handle(
+      'deleteAuthProviderSecret',
+      Effect.fn('iam.deleteAuthProviderSecret.handler')(function* ({ params, query }) {
+        const iam = yield* Iam
+        const rbac = yield* Rbac
+        const principal = yield* CurrentUser
+        yield* rbac.require(principal, 'auth.provider.manage')
+        return {
+          version: yield* iam.providers.clearSecret(
+            principal.tenantId,
+            params.providerId,
+            params.key,
+            Number(query.version),
             principal,
           ),
         }

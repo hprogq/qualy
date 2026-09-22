@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
 import path from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { HEALTH_READY_PATH } from '@qualy/api-kit'
@@ -69,6 +70,15 @@ const STOP_TIMEOUT = 25_000
 
 export const startQualyServer = (options: QualyServerOptions): QualyServer => {
   const port = String(options.port)
+  // A production process refuses to start without a master key for its
+  // secrets, which is right and is not what any of these tools is about. One
+  // is minted per run unless the caller says otherwise - passing the variable
+  // explicitly, including as undefined, is how a tool tests that refusal.
+  const secretsKey =
+    'QUALY_SECRETS_MASTER_KEY' in (options.env ?? {}) ||
+    process.env['QUALY_SECRETS_MASTER_KEY'] !== undefined
+      ? {}
+      : { QUALY_SECRETS_MASTER_KEY: randomBytes(32).toString('base64') }
   const child: ChildProcess = spawn(
     process.execPath,
     [
@@ -79,7 +89,7 @@ export const startQualyServer = (options: QualyServerOptions): QualyServer => {
     ],
     {
       cwd: repoRoot,
-      env: { ...process.env, PORT: port, ...options.env },
+      env: { ...process.env, PORT: port, ...secretsKey, ...options.env },
       stdio: ['ignore', 'pipe', 'pipe'],
     },
   )

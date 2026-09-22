@@ -31,6 +31,7 @@ import { loginDriversLayer } from '@qualy/auth-contract/login'
 import { peopleAtNode } from '../../auth/src/server/node-usage.ts'
 import { Org } from '../src/server/index.ts'
 import { serviceLayer as orgLayer } from '../src/server/index.ts'
+import { entities as secretsEntities, secretsLayer } from '@qualy/plugin-secrets/testkit'
 
 // The slice the whole milestone rests on.
 //
@@ -47,7 +48,7 @@ import { serviceLayer as orgLayer } from '../src/server/index.ts'
 
 // what the orm must know for a query to name a table: this suite runs auth and
 // rbac alongside org, so their tables are part of what the assembly serves
-const closure = [...orgEntities, ...authEntities, ...rbacEntities, ...auditEntities] as const
+const closure = [...orgEntities, ...authEntities, ...rbacEntities, ...auditEntities, ...secretsEntities] as const
 
 // the same declarations production compiles, stamped the same way
 const catalog = compileCatalog([
@@ -77,6 +78,7 @@ const stack = (url: string) =>
           ),
         ),
       ),
+      Layer.provideMerge(secretsLayer),
       Layer.provideMerge(
         Layer.mergeAll(
           databaseFor(url, { entities: closure }),

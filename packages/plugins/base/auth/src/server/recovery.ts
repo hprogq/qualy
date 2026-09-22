@@ -3,9 +3,11 @@ import { sql } from 'kysely'
 import { Assembled } from '@qualy/api-kit/assembled'
 import { LoginDrivers, type LoginDriver } from '@qualy/auth-contract/login'
 import { withDatabase, type Orm } from '@qualy/plugin-database/server'
+import type { Secrets } from '@qualy/plugin-secrets/plugin'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../constants.ts'
 import { AuthConfig } from './auth-config.ts'
 import { db } from './db.ts'
+import { makeReadiness, type Readiness, type ReadinessSubject } from './readiness.ts'
 
 // How a tenant gets back in when every other way has failed.
 //
@@ -40,61 +42,62 @@ export const recoveryDoorTypes = (drivers: readonly { driver: LoginDriver }[]): 
  * Whether the tenant's system account can sign in through its own door right
  * now: an enabled account of the enabled system type, with an email, bound
  * by a live credential to a platform door of a kind this assembly serves,
- * which is in service and admits the system type.
+ * which is in service, admits the system type and is ready by the same
+ * judgment every other door is held to.
  */
-export const recoveryChannelIntact = (tenantId: string, doorTypes: readonly string[]) =>
-  db
-    .query((k) =>
-      doorTypes.length === 0
-        ? Promise.resolve(undefined)
-        : k
-            .selectFrom('User as u')
-            .innerJoin('UserType as t', (join) =>
-              join.onRef('t.tenantId', '=', 'u.tenantId').onRef('t.id', '=', 'u.userTypeId'),
-            )
-            .select('u.id')
-            .where('u.tenantId', '=', tenantId)
-            .where('t.code', '=', SYSTEM_ACCOUNT_USER_TYPE)
-            .where('t.isSystem', '=', true)
-            .where('t.enabled', '=', true)
-            .where('u.enabled', '=', true)
-            .where('u.deletedAt', 'is', null)
-            .where('u.email', 'is not', null)
-            .where((eb) =>
-              eb.exists(
-                eb
-                  .selectFrom('UserAuthBinding as b')
-                  .innerJoin('AuthProvider as p', (join) =>
-                    join
-                      .onRef('p.tenantId', '=', 'b.tenantId')
-                      .onRef('p.id', '=', 'b.authProviderId'),
-                  )
-                  .select('b.id')
-                  .whereRef('b.tenantId', '=', 'u.tenantId')
-                  .whereRef('b.userId', '=', 'u.id')
-                  .where('b.revokedAt', 'is', null)
-                  .where('b.credentialHash', 'is not', null)
-                  .where('p.isSystem', '=', true)
-                  .where('p.enabled', '=', true)
-                  .where('p.type', 'in', [...doorTypes])
-                  .where((inner) =>
-                    inner.or([
-                      inner('p.audienceMode', '=', 'unrestricted'),
-                      inner.exists(
-                        inner
-                          .selectFrom('AuthProviderUserType as a')
-                          .select('a.id')
-                          .whereRef('a.tenantId', '=', 'p.tenantId')
-                          .whereRef('a.authProviderId', '=', 'p.id')
-                          .whereRef('a.userTypeId', '=', 't.id'),
-                      ),
-                    ]),
-                  ),
-              ),
-            )
-            .executeTakeFirst(),
+export const recoveryChannelIntact = (
+  tenantId: string,
+  doorTypes: readonly string[],
+  readiness: (door: ReadinessSubject) => Effect.Effect<Readiness>,
+) =>
+  Effect.gen(function* () {
+    if (doorTypes.length === 0) return false
+    const doors = yield* db.query((k) =>
+      k
+        .selectFrom('User as u')
+        .innerJoin('UserType as t', (join) =>
+          join.onRef('t.tenantId', '=', 'u.tenantId').onRef('t.id', '=', 'u.userTypeId'),
+        )
+        .innerJoin('UserAuthBinding as b', (join) =>
+          join.onRef('b.tenantId', '=', 'u.tenantId').onRef('b.userId', '=', 'u.id'),
+        )
+        .innerJoin('AuthProvider as p', (join) =>
+          join.onRef('p.tenantId', '=', 'b.tenantId').onRef('p.id', '=', 'b.authProviderId'),
+        )
+        .select(['p.id', 'p.tenantId', 'p.type', 'p.config'])
+        .where('u.tenantId', '=', tenantId)
+        .where('t.code', '=', SYSTEM_ACCOUNT_USER_TYPE)
+        .where('t.isSystem', '=', true)
+        .where('t.enabled', '=', true)
+        .where('u.enabled', '=', true)
+        .where('u.deletedAt', 'is', null)
+        .where('u.email', 'is not', null)
+        .where('b.revokedAt', 'is', null)
+        .where('b.credentialHash', 'is not', null)
+        .where('p.isSystem', '=', true)
+        .where('p.enabled', '=', true)
+        .where('p.deletedAt', 'is', null)
+        .where('p.type', 'in', [...doorTypes])
+        .where((eb) =>
+          eb.or([
+            eb('p.audienceMode', '=', 'unrestricted'),
+            eb.exists(
+              eb
+                .selectFrom('AuthProviderUserType as a')
+                .select('a.id')
+                .whereRef('a.tenantId', '=', 'p.tenantId')
+                .whereRef('a.authProviderId', '=', 'p.id')
+                .whereRef('a.userTypeId', '=', 't.id'),
+            ),
+          ]),
+        )
+        .execute(),
     )
-    .pipe(Effect.map((row) => row !== undefined))
+    for (const door of doors) {
+      if ((yield* readiness(door)).ready) return true
+    }
+    return false
+  })
 
 /** a tenant whose recovery account cannot sign in, found before serving */
 export class TenantsUnrecoverable extends Data.TaggedError('TenantsUnrecoverable')<{
@@ -124,12 +127,13 @@ const liveTenants = db.query((k) =>
 export const recoveryBootCheck: Layer.Layer<
   never,
   never,
-  Orm | AuthConfig | LoginDrivers | Assembled
+  Orm | AuthConfig | LoginDrivers | Secrets | Assembled
 > = Layer.effectDiscard(
   Effect.gen(function* () {
     const assembled = yield* Assembled
     const config = yield* AuthConfig
     const drivers = yield* LoginDrivers
+    const readiness = yield* makeReadiness
     const withDb = yield* withDatabase
     yield* assembled.register({
       name: 'auth/recovery-channel',
@@ -138,7 +142,9 @@ export const recoveryBootCheck: Layer.Layer<
           const doorTypes = recoveryDoorTypes(yield* drivers.all)
           const stranded: string[] = []
           for (const tenant of yield* liveTenants.pipe(Effect.orDie)) {
-            const intact = yield* recoveryChannelIntact(tenant.id, doorTypes).pipe(Effect.orDie)
+            const intact = yield* recoveryChannelIntact(tenant.id, doorTypes, readiness).pipe(
+              Effect.orDie,
+            )
             if (!intact) stranded.push(tenant.slug)
           }
           if (stranded.length === 0) return

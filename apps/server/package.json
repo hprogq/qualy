@@ -22,6 +22,7 @@
     "@qualy/plugin-auth": "workspace:*",
     "@qualy/plugin-database": "workspace:*",
     "@qualy/plugin-ping": "workspace:*",
+    "@qualy/plugin-secrets": "workspace:*",
     "@qualy/plugin-storage": "workspace:*",
     "@qualy/plugin-storage-local": "workspace:*",
     "@qualy/web-runtime": "workspace:*",

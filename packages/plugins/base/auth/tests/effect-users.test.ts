@@ -25,6 +25,7 @@ import { loginDriversLayer, registerLoginDriver } from '@qualy/auth-contract/log
 import { AuthConfig } from '../src/server/sign-in.ts'
 import { Iam } from '../src/server/index.ts'
 import { serviceLayer as authLayer } from '../src/server/index.ts'
+import { secretsLayer } from '@qualy/plugin-secrets/testkit'
 
 // People, and who may administer them.
 //
@@ -75,6 +76,7 @@ const stack = (url: string) =>
           ),
         ),
       ),
+      Layer.provideMerge(secretsLayer),
       Layer.provideMerge(
         Layer.mergeAll(
           databaseFor(url, { entities: authClosure }),

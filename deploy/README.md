@@ -43,6 +43,7 @@ docker save qualy-server:<release> qualy-sandbox-runtime:<release> qualy-sandbox
 
 ```sh
 cp .env.example .env         # then fill it in: QUALY_RELEASE, the database password, DATABASE_URL
+openssl rand -base64 32      # QUALY_SECRETS_MASTER_KEY: required, and kept with the backups
 docker compose up -d postgres
 docker compose run --rm migrate          # applies the release's committed migrations, once
 docker compose up -d                     # server, sandbox-runtime, sandbox-authoring

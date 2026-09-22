@@ -1,0 +1,500 @@
+import { booted } from '@qualy/rbac-contract/testkit'
+import { compileCatalog } from '@qualy/rbac-contract/plugin'
+import { permissions as authPermissions } from '@qualy/plugin-auth/permissions'
+import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
+import { sql } from 'kysely'
+import { Cause, Effect, Exit, Layer } from 'effect'
+import { describe, expect, it } from 'vitest'
+import {
+  createTestContext,
+  databaseFor,
+  postgresAvailable,
+  runSql,
+} from '@qualy/plugin-database/testkit'
+import { secretsLayer } from '@qualy/plugin-secrets/testkit'
+import { type Orm } from '@qualy/plugin-database/server'
+import type { Principal } from '@qualy/rbac-contract'
+import { serviceLayer as rbacLayer } from '@qualy/plugin-rbac/server'
+import { serviceLayer as auditLayer } from '@qualy/plugin-audit/server'
+import { AuditActionCatalog } from '@qualy/audit-contract/effect'
+import { compileActionCatalog } from '@qualy/audit-contract/plugin'
+import { loginDriversLayer, registerLoginDriver, type LoginDriver } from '@qualy/auth-contract/login'
+import { driver as localDriver } from '@qualy/plugin-auth-local'
+import { userActions } from '../src/actions.ts'
+import { AuthConfig } from '../src/server/auth-config.ts'
+import { Iam, serviceLayer as authLayer } from '../src/server/index.ts'
+import { SignIn } from '../src/server/sign-in.ts'
+import { SYSTEM_ACCOUNT_USER_TYPE } from '../src/constants.ts'
+import { authClosure } from './support/closure.ts'
+
+// An entrance a tenant adds for itself, from empty shell to gone.
+//
+// Three rules carry the whole of it: a shell is saved in pieces and stays out
+// of service until it has everything its kind needs; an entrance in service
+// keeps what it needs, so nothing here may take it away; and what says whose
+// accounts it speaks for is fixed the moment somebody's account is bound
+// through it.
+
+const literal = (value: string) => ({ kind: 'literal' as const, value })
+
+const campus: LoginDriver = {
+  type: 'campus',
+  presentation: { mode: 'redirect', href: ({ code }) => `/auth/campus/${code}/start` },
+  provisioning: {
+    mode: 'tenant-managed',
+    entrance: {
+      label: literal('Campus'),
+      fields: [
+        { key: 'server', label: literal('Server'), kind: 'url', required: true },
+        { key: 'realm', label: literal('Realm'), kind: 'text', required: false },
+        { key: 'clientSecret', label: literal('Secret'), kind: 'secret', required: true },
+      ],
+      identityNamespaceKeys: ['server'],
+    },
+  },
+  resolution: { mode: 'binding-subject' },
+  binding: { mode: 'self' },
+}
+
+const stack = (url: string) =>
+  booted(
+    authLayer.pipe(
+      Layer.provideMerge(rbacLayer),
+      Layer.provideMerge(
+        auditLayer.pipe(
+          Layer.provide(
+            Layer.succeed(
+              AuditActionCatalog,
+              compileActionCatalog([{ owner: 'auth', actions: userActions }]),
+            ),
+          ),
+        ),
+      ),
+      Layer.provideMerge(secretsLayer),
+      Layer.provideMerge(
+        Layer.mergeAll(
+          databaseFor(url, { entities: authClosure }),
+          Layer.mergeAll(registerLoginDriver(localDriver), registerLoginDriver(campus)).pipe(
+            Layer.provideMerge(loginDriversLayer),
+          ),
+          uiLayer,
+          Layer.succeed(
+            AuthConfig,
+            AuthConfig.of({
+              defaultTenantSlug: 'default',
+              sessionTtlSeconds: 3600,
+              secureCookies: false,
+              sessionCookieName: 'qualy_session',
+            }),
+          ),
+        ),
+      ),
+    ),
+    { catalog: compileCatalog([{ owner: 'auth', permissions: authPermissions }]) },
+  )
+
+const run = <A, E>(url: string, effect: Effect.Effect<A, E, Iam | SignIn | Orm>) =>
+  Effect.runPromiseExit(Effect.provide(effect, stack(url)))
+
+const ok = <A, E>(exit: Exit.Exit<A, E>): A => {
+  if (Exit.isSuccess(exit)) return exit.value
+  throw new Error(`expected success, got ${Cause.pretty(exit.cause)}`)
+}
+
+const tagOf = (result: { _tag: string; failure?: unknown }) =>
+  result._tag === 'Failure' ? (result.failure as { _tag?: string })._tag : undefined
+
+const failureOf = (result: { _tag: string; failure?: unknown }) =>
+  result._tag === 'Failure' ? (result.failure as Record<string, unknown>) : undefined
+
+const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+
+/** a tenant that can recover itself, so provider writes are not refused for that */
+const seed = (url: string) =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const tenant = one<{ id: string }>(
+        yield* runSql(sql`insert into tenants (slug, name) values ('default','D') returning id`),
+      ).id
+      const orgType = one<{ id: string }>(
+        yield* runSql(
+          sql`insert into org_types (tenant_id, name) values (${tenant}, 'U') returning id`,
+        ),
+      ).id
+      const root = one<{ id: string }>(
+        yield* runSql(sql`
+          insert into org_nodes (tenant_id, org_type_id, name, path, depth)
+          values (${tenant}, ${orgType}, 'Root', 'r', 0) returning id`),
+      ).id
+      const system = one<{ id: string }>(
+        yield* runSql(sql`
+          insert into user_types (tenant_id, code, name, placement_mode, is_system)
+          values (${tenant}, ${SYSTEM_ACCOUNT_USER_TYPE}, 'System', 'unrestricted', true)
+          returning id`),
+      ).id
+      const staff = one<{ id: string }>(
+        yield* runSql(sql`
+          insert into user_types (tenant_id, code, name, placement_mode)
+          values (${tenant}, 'staff', 'Staff', 'unrestricted') returning id`),
+      ).id
+      const admin = one<{ id: string }>(
+        yield* runSql(sql`
+          insert into users (tenant_id, display_name, user_type_id, primary_org_node_id, email)
+          values (${tenant}, 'Admin', ${system}, ${root}, 'root@school.edu') returning id`),
+      ).id
+      const person = one<{ id: string }>(
+        yield* runSql(sql`
+          insert into users (tenant_id, display_name, user_type_id, primary_org_node_id, email)
+          values (${tenant}, 'Ada', ${staff}, ${root}, 'ada@school.edu') returning id`),
+      ).id
+      const role = one<{ id: string }>(
+        yield* runSql(sql`
+          insert into roles (tenant_id, code, name, kind, status, permission_mode, system_key)
+          values (${tenant}, 'admin', 'Admin', 'tenant', 'active', 'all-active', 'tenant-admin')
+          returning id`),
+      ).id
+      yield* runSql(sql`
+        insert into role_grants (tenant_id, user_id, role_id) values (${tenant}, ${admin}, ${role})`)
+      const local = one<{ id: string; version: number }>(
+        yield* runSql(sql`
+          insert into auth_providers (tenant_id, code, type, name, is_system, sort_order)
+          values (${tenant}, 'local', 'local', 'Local', true, 0) returning id, version`),
+      )
+      yield* runSql(sql`
+        insert into user_auth_bindings (tenant_id, user_id, auth_provider_id, subject, credential_hash)
+        values (${tenant}, ${admin}, ${local.id}, null, 'digest')`)
+      const as: Principal = { tenantId: tenant, userId: admin, sessionId: 's' }
+      return { tenant, admin, person, local, as }
+    }).pipe(Effect.provide(databaseFor(url, { migrations: 'off', entities: authClosure }))),
+  )
+
+describe.runIf(postgresAvailable)('an entrance a tenant adds', () => {
+  it('is set up in pieces, in service only once it has everything, and then keeps it', async () => {
+    const db = await createTestContext('providers-setup')
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const iam = yield* Iam
+            const signIn = yield* SignIn
+            const id = yield* iam.providers.create(
+              f.tenant,
+              { type: 'campus', code: 'campus', name: 'Campus' },
+              f.as,
+            )
+            const shell = yield* iam.providers.detail(f.tenant, id)
+            const tooEarly = yield* Effect.result(
+              iam.providers.setStatus(f.tenant, id, 'active', 1, f.as),
+            )
+            // one box at a time, and one that is not a web address at all
+            const partial = yield* iam.providers.update(
+              f.tenant,
+              id,
+              { expectedVersion: 1, values: { server: 'https://cas.example.edu/' } },
+              f.as,
+            )
+            const half = yield* iam.providers.detail(f.tenant, id)
+            const unchanged = yield* iam.providers.update(
+              f.tenant,
+              id,
+              { expectedVersion: partial, values: { realm: '' } },
+              f.as,
+            )
+            const nonsense = yield* Effect.result(
+              iam.providers.update(
+                f.tenant,
+                id,
+                { expectedVersion: partial, values: { server: 'not an address' } },
+                f.as,
+              ),
+            )
+            const stranger = yield* Effect.result(
+              iam.providers.update(
+                f.tenant,
+                id,
+                { expectedVersion: partial, values: { bogus: 'x' } },
+                f.as,
+              ),
+            )
+            const secreted = yield* iam.providers.update(
+              f.tenant,
+              id,
+              { expectedVersion: partial, values: { clientSecret: 's3cret-value' } },
+              f.as,
+            )
+            const kept = yield* iam.providers.update(
+              f.tenant,
+              id,
+              { expectedVersion: secreted, values: { clientSecret: '' } },
+              f.as,
+            )
+            const ready = yield* iam.providers.detail(f.tenant, id)
+            const stored = yield* runSql<{ config: unknown; ciphertext: Buffer }>(sql`
+              select p.config::text as config, s.ciphertext
+                from auth_providers p
+                join secrets s on s.owner_id = p.id and s.key = 'clientSecret'
+               where p.id = ${id}`)
+            const served = yield* iam.providers.setStatus(f.tenant, id, 'active', kept, f.as)
+            const offered = yield* signIn.loginMethods()
+            // in service, what it needs cannot be taken away
+            const emptied = yield* Effect.result(
+              iam.providers.update(
+                f.tenant,
+                id,
+                { expectedVersion: served, values: { server: '' } },
+                f.as,
+              ),
+            )
+            const cleared = yield* Effect.result(
+              iam.providers.clearSecret(f.tenant, id, 'clientSecret', served, f.as),
+            )
+            const intact = yield* iam.providers.detail(f.tenant, id)
+            const rested = yield* iam.providers.setStatus(f.tenant, id, 'disabled', served, f.as)
+            const gone = yield* iam.providers.clearSecret(
+              f.tenant,
+              id,
+              'clientSecret',
+              rested,
+              f.as,
+            )
+            const after = yield* iam.providers.detail(f.tenant, id)
+            return {
+              shell,
+              tooEarly,
+              partial,
+              half,
+              unchanged,
+              nonsense,
+              stranger,
+              secreted,
+              kept,
+              ready,
+              stored,
+              served,
+              offered,
+              emptied,
+              cleared,
+              intact,
+              gone,
+              after,
+            }
+          }),
+        ),
+      )
+      // an empty shell, out of service, saying what it still needs
+      expect(answer.shell.provider.status).toBe('disabled')
+      expect(answer.shell.provider.setup).toBe('incomplete')
+      expect(answer.shell.missing).toEqual([
+        { kind: 'field', key: 'server' },
+        { kind: 'field', key: 'clientSecret' },
+      ])
+      expect(answer.shell.config).toEqual({})
+      expect(answer.shell.secrets).toEqual([{ key: 'clientSecret', stored: false }])
+      expect(answer.shell.usage).toEqual({ bindings: 0, sessions: 0 })
+      expect(tagOf(answer.tooEarly)).toBe('AUTH_PROVIDER_CONFIG_INCOMPLETE')
+      expect(failureOf(answer.tooEarly)?.['missing']).toEqual([
+        { kind: 'field', key: 'server' },
+        { kind: 'field', key: 'clientSecret' },
+      ])
+
+      // saved in pieces: what is there is kept, what is missing is named
+      expect(answer.partial).toBe(2)
+      expect(answer.half.config).toEqual({ server: 'https://cas.example.edu/' })
+      expect(answer.half.missing).toEqual([{ kind: 'field', key: 'clientSecret' }])
+      // an optional box that was empty and stays empty is not a change
+      expect(answer.unchanged).toBe(2)
+      expect(tagOf(answer.nonsense)).toBe('AUTH_PROVIDER_CONFIG_INVALID')
+      expect(failureOf(answer.nonsense)?.['field']).toBe('server')
+      expect(tagOf(answer.stranger)).toBe('AUTH_PROVIDER_CONFIG_INVALID')
+
+      // a secret goes to the secrets capability, never into the config
+      expect(answer.secreted).toBe(3)
+      expect(answer.kept).toBe(3)
+      expect(answer.ready.provider.setup).toBe('complete')
+      expect(answer.ready.secrets).toEqual([{ key: 'clientSecret', stored: true }])
+      expect(answer.ready.config).toEqual({ server: 'https://cas.example.edu/' })
+      const row = answer.stored.rows[0]!
+      expect(String(row.config)).not.toContain('s3cret-value')
+      expect(Buffer.from(row.ciphertext).toString('utf8')).not.toContain('s3cret-value')
+
+      // in service, and offered on the sign-in page
+      expect(answer.served).toBe(4)
+      expect(answer.offered.map((method) => method.code)).toContain('campus')
+      expect(tagOf(answer.emptied)).toBe('AUTH_PROVIDER_CONFIG_INCOMPLETE')
+      expect(tagOf(answer.cleared)).toBe('AUTH_PROVIDER_CONFIG_INCOMPLETE')
+      expect(answer.intact.config).toEqual({ server: 'https://cas.example.edu/' })
+      expect(answer.intact.secrets).toEqual([{ key: 'clientSecret', stored: true }])
+
+      // out of service, the same secret may go
+      expect(answer.gone).toBe(6)
+      expect(answer.after.provider.setup).toBe('incomplete')
+      expect(answer.after.secrets).toEqual([{ key: 'clientSecret', stored: false }])
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('stops saying whose accounts it speaks for once one has been bound through it', async () => {
+    const db = await createTestContext('providers-namespace')
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const iam = yield* Iam
+            const id = yield* iam.providers.create(
+              f.tenant,
+              { type: 'campus', code: 'campus', name: 'Campus' },
+              f.as,
+            )
+            const set = yield* iam.providers.update(
+              f.tenant,
+              id,
+              {
+                expectedVersion: 1,
+                values: { server: 'https://cas.example.edu/', clientSecret: 's3cret' },
+              },
+              f.as,
+            )
+            // nobody has bound an account yet, so where it points may change
+            const moved = yield* iam.providers.update(
+              f.tenant,
+              id,
+              { expectedVersion: set, values: { server: 'https://other.example.edu/' } },
+              f.as,
+            )
+            // an account bound and then withdrawn is still an account it named
+            yield* runSql(sql`
+              insert into user_auth_bindings
+                (tenant_id, user_id, auth_provider_id, subject, revoked_at)
+              values (${f.tenant}, ${f.person}, ${id}, 'ada@campus', now())`)
+            const pinned = yield* Effect.result(
+              iam.providers.update(
+                f.tenant,
+                id,
+                { expectedVersion: moved, values: { server: 'https://third.example.edu/' } },
+                f.as,
+              ),
+            )
+            // what does not say whose accounts they are is still editable
+            const renamed = yield* iam.providers.update(
+              f.tenant,
+              id,
+              { expectedVersion: moved, values: { realm: 'staff' } },
+              f.as,
+            )
+            const now = yield* iam.providers.detail(f.tenant, id)
+            return { moved, pinned, renamed, now }
+          }),
+        ),
+      )
+      expect(answer.moved).toBe(3)
+      expect(tagOf(answer.pinned)).toBe('AUTH_PROVIDER_IDENTITY_NAMESPACE_IN_USE')
+      expect(failureOf(answer.pinned)?.['field']).toBe('server')
+      expect(answer.renamed).toBe(4)
+      expect(answer.now.config).toEqual({ server: 'https://other.example.edu/', realm: 'staff' })
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('is deleted with what it let people do, and the platform door is not the tenant to delete', async () => {
+    const db = await createTestContext('providers-delete')
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const iam = yield* Iam
+            const signIn = yield* SignIn
+            const id = yield* iam.providers.create(
+              f.tenant,
+              { type: 'campus', code: 'campus', name: 'Campus' },
+              f.as,
+            )
+            const set = yield* iam.providers.update(
+              f.tenant,
+              id,
+              {
+                expectedVersion: 1,
+                values: { server: 'https://cas.example.edu/', clientSecret: 's3cret' },
+              },
+              f.as,
+            )
+            const served = yield* iam.providers.setStatus(f.tenant, id, 'active', set, f.as)
+            yield* runSql(sql`
+              insert into user_auth_bindings (tenant_id, user_id, auth_provider_id, subject)
+              values (${f.tenant}, ${f.person}, ${id}, 'ada@campus')`)
+            yield* runSql(sql`
+              insert into sessions (tenant_id, user_id, auth_provider_id, token_hash, expires_at)
+              values (${f.tenant}, ${f.person}, ${id}, repeat('a', 64), now() + interval '1 day')`)
+            const busy = yield* iam.providers.detail(f.tenant, id)
+            const platform = yield* Effect.result(
+              iam.providers.remove(f.tenant, f.local.id, f.local.version, f.as),
+            )
+            const stale = yield* Effect.result(iam.providers.remove(f.tenant, id, 1, f.as))
+            yield* iam.providers.remove(f.tenant, id, served, f.as)
+            const listed = yield* iam.providers.list(f.tenant)
+            const offered = yield* signIn.loginMethods()
+            const missing = yield* Effect.result(iam.providers.detail(f.tenant, id))
+            const left = yield* runSql<{
+              bindings: number
+              sessions: number
+              secrets: number
+            }>(sql`
+              select
+                (select count(*)::int from user_auth_bindings
+                   where auth_provider_id = ${id} and revoked_at is null) as bindings,
+                (select count(*)::int from sessions where auth_provider_id = ${id}) as sessions,
+                (select count(*)::int from secrets where owner_id = ${id}) as secrets`)
+            const recorded = yield* runSql<{ details: Record<string, unknown> }>(sql`
+              select details from audit_events
+               where tenant_id = ${f.tenant} and action_code = 'auth.provider.delete'`)
+            // the address it answered at is free again
+            const again = yield* iam.providers.create(
+              f.tenant,
+              { type: 'campus', code: 'campus', name: 'Campus again' },
+              f.as,
+            )
+            const listedAgain = yield* iam.providers.list(f.tenant)
+            return {
+              busy,
+              platform,
+              stale,
+              listed,
+              listedAgain,
+              offered,
+              missing,
+              left: left.rows[0]!,
+              recorded: recorded.rows,
+              again,
+            }
+          }),
+        ),
+      )
+      expect(answer.busy.usage).toEqual({ bindings: 1, sessions: 1 })
+      expect(tagOf(answer.platform)).toBe('AUTH_PROVIDER_IS_SYSTEM')
+      expect(tagOf(answer.stale)).toBe('AUTH_PROVIDER_VERSION_CONFLICT')
+      expect(answer.listed.map((row) => row.code)).toEqual(['local'])
+      expect(answer.offered.map((method) => method.code)).toEqual(['local'])
+      // its address is free again, and the row at it is the new shell
+      expect(answer.listedAgain.map((row) => row.code)).toEqual(['local', 'campus'])
+      expect(answer.listedAgain.find((row) => row.code === 'campus')?.id).toBe(answer.again)
+      expect(tagOf(answer.missing)).toBe('AUTH_PROVIDER_NOT_FOUND')
+      expect(answer.left).toEqual({ bindings: 0, sessions: 0, secrets: 0 })
+      expect(answer.recorded).toHaveLength(1)
+      expect(answer.recorded[0]!.details).toMatchObject({
+        type: 'campus',
+        code: 'campus',
+        revokedBindings: 1,
+        endedSessions: 1,
+      })
+    } finally {
+      await db.dispose()
+    }
+  })
+})

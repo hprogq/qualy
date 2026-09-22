@@ -374,3 +374,57 @@ describe.runIf(postgresAvailable)('the user-auth-bindings migration', () => {
     }
   })
 })
+
+// An entrance's settings were written through the builder as a string for a
+// json column, so the column encoded them a second time and the row held a
+// json string. Nothing read them back until the settings screen did, which is
+// what this migration repairs - over rows an earlier release wrote.
+
+const CONFIG = '20260922174928_auth-provider-config-object.sql'
+
+describe.runIf(postgresAvailable)('the entrance-settings migration', () => {
+  it('turns settings a release stored as a json string back into an object', async () => {
+    expect(fs.existsSync(path.join(MIGRATIONS_FOLDER, CONFIG))).toBe(true)
+    const before = lineageBefore(CONFIG, 'config-upgrade')
+    const db = await createTestContext('config-upgrade', {
+      migrations: 'apply',
+      migrationsFolder: before,
+    })
+    try {
+      const tenant = (
+        await db.row<{ id: string }>(
+          `insert into tenants (slug, name) values ('config', 'Config') returning id`,
+        )
+      ).id
+      // what the old write path produced, and an entrance written correctly
+      const doubled = (
+        await db.row<{ id: string }>(
+          `insert into auth_providers (tenant_id, code, type, name, config)
+           values ($1, 'campus', 'campus', 'Campus', to_jsonb($2::text)) returning id`,
+          [tenant, JSON.stringify({ server: 'https://cas.example.edu/' })],
+        )
+      ).id
+      const plain = (
+        await db.row<{ id: string }>(
+          `insert into auth_providers (tenant_id, code, type, name, config)
+           values ($1, 'other', 'campus', 'Other', $2::jsonb) returning id`,
+          [tenant, JSON.stringify({ server: 'https://other.example.edu/' })],
+        )
+      ).id
+
+      await runMigrations(db.url, { folder: MIGRATIONS_FOLDER, entities: [] })
+
+      const { rows } = await db.query<{ id: string; kind: string; server: string | null }>(
+        `select id, jsonb_typeof(config) as kind, config ->> 'server' as server
+           from auth_providers where tenant_id = $1 order by code`,
+        [tenant],
+      )
+      expect(rows).toEqual([
+        { id: doubled, kind: 'object', server: 'https://cas.example.edu/' },
+        { id: plain, kind: 'object', server: 'https://other.example.edu/' },
+      ])
+    } finally {
+      await db.dispose()
+    }
+  })
+})
