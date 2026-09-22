@@ -19600,3 +19600,14 @@ HEAD 的 run 是绿的;红的是中间提交 `ceb8ccb6`(那次的 `entry-workflo
 - 回调查询参数的 span 脱敏(docs/auth.md §35)仍延后到第一个带 `ticket`/`code`/`state` 的路由(CAS)一起做:Effect 的 HTTP tracer 在中间件链之后写
   `url.full` / `url.query`,没有脱敏钩子,需要在 `@qualy/telemetry` 包一层 tracer。访问日志已剥离查询串。
 - `bindSelfIdentity`、CAS/GitHub/OIDC 驱动、Mail、邮箱验证与找回、导入邮箱列、按域名的多租户属 Phase F–J。
+
+### A–E 端到端(scratch 库 qualy_e2e,真实执行)
+
+1. `qualy deploy` → `database: applied 77 migration(s)`;
+2. `QUALY_ADMIN_EMAIL=root@e2e.example QUALY_ADMIN_PASSWORD=… pnpm seed` → `seed complete: … permissions +31, … admin created`;
+3. 无 `QUALY_SECRETS_MASTER_KEY` 的生产启动:`startup failed: QUALY_SECRETS_MASTER_KEY must be base64-encoded 32 bytes`;
+4. 旧 web release 的生产启动:`startup failed: web release … was built from assembly …, but this process runs …; run 'pnpm build'`
+   ——装配多了一个插件就必须重建 web,这条不变量在真实启动上得到印证;`pnpm build` 后重启 `/health/ready` 200;
+5. `GET /api/auth/login-methods` → `{"methods":[{"code":"local","type":"local","name":"本地账号","mode":"component"}]}`;
+6. `POST /api/auth/local/local/login`(邮箱 + 密码)→ 200,`set-cookie: __Host-qualy_session=…; HttpOnly; Secure; SameSite=Lax`,并清掉裸名 cookie;错密码 → 401;
+7. 把系统账户邮箱清空后再启动:`startup failed: boot hook auth/recovery-channel failed: tenant default cannot be recovered: … set QUALY_ADMIN_EMAIL and QUALY_ADMIN_PASSWORD and run \`pnpm seed\``。
