@@ -56,6 +56,73 @@ const campus: LoginDriver = {
   binding: { mode: 'self' },
 }
 
+// a kind whose boxes depend on each other: a choice that reveals a required
+// box, a number and a toggle folded under advanced, and settings the driver
+// works out from what was typed
+const shaped: LoginDriver = {
+  type: 'shaped',
+  presentation: { mode: 'redirect', href: ({ code }) => `/auth/shaped/${code}/start` },
+  provisioning: {
+    mode: 'tenant-managed',
+    entrance: {
+      label: literal('Shaped'),
+      fields: [
+        {
+          key: 'mode',
+          label: literal('Mode'),
+          kind: 'choice',
+          required: true,
+          options: [
+            { value: 'standard', label: literal('Standard') },
+            { value: 'custom', label: literal('Custom') },
+          ],
+          defaultValue: 'standard',
+        },
+        {
+          key: 'target',
+          label: literal('Target'),
+          kind: 'url',
+          required: true,
+          visibleWhen: { field: 'mode', equals: 'custom' },
+        },
+        {
+          key: 'retries',
+          label: literal('Retries'),
+          kind: 'number',
+          required: false,
+          section: 'advanced',
+          min: 0,
+          max: 5,
+          step: 1,
+          defaultValue: 2,
+        },
+        {
+          key: 'strict',
+          label: literal('Strict'),
+          kind: 'toggle',
+          required: false,
+          section: 'advanced',
+          defaultValue: false,
+        },
+      ],
+      prepareConfig: ({ values }) =>
+        Effect.succeed(
+          values['retries'] === 4
+            ? { ok: false as const, invalid: 'retries' }
+            : {
+                ok: true as const,
+                derived: {
+                  endpoint: values['mode'] === 'custom' ? values['target'] : 'https://fixed.example',
+                  strict: values['strict'],
+                },
+              },
+        ),
+    },
+  },
+  resolution: { mode: 'binding-subject' },
+  binding: { mode: 'self' },
+}
+
 const stack = (url: string) =>
   booted(
     authLayer.pipe(
@@ -74,7 +141,11 @@ const stack = (url: string) =>
       Layer.provideMerge(
         Layer.mergeAll(
           databaseFor(url, { entities: authClosure }),
-          Layer.mergeAll(registerLoginDriver(localDriver), registerLoginDriver(campus)).pipe(
+          Layer.mergeAll(
+            registerLoginDriver(localDriver),
+            registerLoginDriver(campus),
+            registerLoginDriver(shaped),
+          ).pipe(
             Layer.provideMerge(loginDriversLayer),
           ),
           uiLayer,
@@ -493,6 +564,127 @@ describe.runIf(postgresAvailable)('an entrance a tenant adds', () => {
         revokedBindings: 1,
         endedSessions: 1,
       })
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('asks only for the boxes it shows, and keeps what its driver works out', async () => {
+    const db = await createTestContext('providers-shaped')
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const iam = yield* Iam
+            const kinds = yield* iam.providers.kinds
+            const id = yield* iam.providers.create(
+              f.tenant,
+              { type: 'shaped', code: 'shaped', name: 'Shaped' },
+              f.as,
+            )
+            const shell = yield* iam.providers.detail(f.tenant, id)
+            const update = (expectedVersion: number, values: Record<string, string>) =>
+              iam.providers.update(f.tenant, id, { expectedVersion, values }, f.as)
+            const refused = []
+            for (const values of <Record<string, string>[]>[
+              { mode: 'elsewhere' },
+              { retries: '9' },
+              { retries: '2.5' },
+              { retries: 'many' },
+              { strict: 'yes' },
+              // the driver's own say, over values each box accepts
+              { retries: '4' },
+            ]) {
+              refused.push(failureOf(yield* Effect.result(update(1, values))))
+            }
+            const custom = yield* update(1, { mode: 'custom' })
+            const asking = yield* iam.providers.detail(f.tenant, id)
+            const targeted = yield* update(custom, {
+              target: 'https://cas.school.edu/login',
+              retries: '3',
+              strict: 'true',
+            })
+            const set = yield* iam.providers.detail(f.tenant, id)
+            const storedSet = yield* runSql<{ config: Record<string, unknown> }>(
+              sql`select config from auth_providers where id = ${id}`,
+            )
+            // back to the standard mode: the box it hid is no longer asked
+            // for, and emptying a number brings back its default
+            const standard = yield* update(targeted, { mode: 'standard', retries: '' })
+            const back = yield* iam.providers.detail(f.tenant, id)
+            const storedBack = yield* runSql<{ config: Record<string, unknown> }>(
+              sql`select config from auth_providers where id = ${id}`,
+            )
+            return {
+              kind: kinds.find((one) => one.type === 'shaped'),
+              shell,
+              refused,
+              asking,
+              set,
+              storedSet: storedSet.rows[0]!.config,
+              standard,
+              back,
+              storedBack: storedBack.rows[0]!.config,
+            }
+          }),
+        ),
+      )
+      // a screen reads every field the same way
+      expect(answer.kind?.fields.map((field) => [field.key, field.section, field.visibleWhen])).toEqual([
+        ['mode', 'basic', null],
+        ['target', 'basic', { field: 'mode', equals: 'custom' }],
+        ['retries', 'advanced', null],
+        ['strict', 'advanced', null],
+      ])
+      expect(answer.kind?.fields[0]).toMatchObject({
+        options: [
+          { value: 'standard', label: literal('Standard') },
+          { value: 'custom', label: literal('Custom') },
+        ],
+        defaultValue: 'standard',
+      })
+      expect(answer.kind?.fields[2]).toMatchObject({ min: 0, max: 5, step: 1, defaultValue: '2' })
+      expect(answer.kind?.fields[3]).toMatchObject({ defaultValue: 'false', options: [] })
+
+      // nothing typed, and nothing it shows is missing: its defaults stand
+      expect(answer.shell.missing).toEqual([])
+      expect(answer.shell.config).toEqual({ mode: 'standard', retries: '2', strict: 'false' })
+      expect(answer.refused.map((failure) => [failure?.['_tag'], failure?.['field']])).toEqual([
+        ['AUTH_PROVIDER_CONFIG_INVALID', 'mode'],
+        ['AUTH_PROVIDER_CONFIG_INVALID', 'retries'],
+        ['AUTH_PROVIDER_CONFIG_INVALID', 'retries'],
+        ['AUTH_PROVIDER_CONFIG_INVALID', 'retries'],
+        ['AUTH_PROVIDER_CONFIG_INVALID', 'strict'],
+        ['AUTH_PROVIDER_CONFIG_INVALID', 'retries'],
+      ])
+
+      // the box a choice reveals is asked for once it shows
+      expect(answer.asking.missing).toEqual([{ kind: 'field', key: 'target' }])
+      expect(answer.set.missing).toEqual([])
+      expect(answer.set.config).toEqual({
+        mode: 'custom',
+        target: 'https://cas.school.edu/login',
+        retries: '3',
+        strict: 'true',
+      })
+      // stored parsed to each kind, and what the driver worked out beside it
+      expect(answer.storedSet).toEqual({
+        mode: 'custom',
+        target: 'https://cas.school.edu/login',
+        retries: 3,
+        strict: true,
+        derived: { endpoint: 'https://cas.school.edu/login', strict: true },
+      })
+
+      expect(answer.back.missing).toEqual([])
+      expect(answer.back.config).toMatchObject({ mode: 'standard', retries: '2' })
+      expect(answer.storedBack).toMatchObject({
+        mode: 'standard',
+        derived: { endpoint: 'https://fixed.example', strict: true },
+      })
+      expect(answer.storedBack['retries']).toBeUndefined()
     } finally {
       await db.dispose()
     }

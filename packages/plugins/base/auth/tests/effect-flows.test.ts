@@ -12,6 +12,8 @@ import {
   runSql,
 } from '@qualy/plugin-database/testkit'
 import { secretsLayer } from '@qualy/plugin-secrets/testkit'
+import { Secrets } from '@qualy/plugin-secrets/plugin'
+import { HttpServerRequest } from 'effect/unstable/http'
 import { type Orm } from '@qualy/plugin-database/server'
 import type { Principal } from '@qualy/rbac-contract'
 import { serviceLayer as rbacLayer } from '@qualy/plugin-rbac/server'
@@ -105,7 +107,7 @@ const stack = (url: string, publicUrl: string | null) =>
 
 const run = <A, E>(
   url: string,
-  effect: Effect.Effect<A, E, Iam | LoginSessions | AnonymousTenantResolver | Orm>,
+  effect: Effect.Effect<A, E, Iam | LoginSessions | AnonymousTenantResolver | Orm | Secrets>,
   publicUrl: string | null = PUBLIC_URL,
 ) => Effect.runPromiseExit(Effect.provide(effect, stack(url, publicUrl)))
 
@@ -569,6 +571,283 @@ describe.runIf(postgresAvailable)('one redirect through somebody else’s server
         'SecretUnreadable',
       )
       void f
+    } finally {
+      await db.dispose()
+    }
+  })
+})
+
+describe.runIf(postgresAvailable)('what a driver keeps through a redirect', () => {
+  it('is made from the state it is issued under, and sealed before it is stored', async () => {
+    const db = await createTestContext('flows-factory')
+    try {
+      await seed(db.url)
+      const answer = ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const sessions = yield* LoginSessions
+            const door = (yield* resolve('campus'))!
+            let seen: string | undefined
+            const started = yield* sessions.startFlow({
+              provider: door,
+              purpose: 'login',
+              // the address a CAS server is told to come back to carries the
+              // state itself, so it can only be written once the state exists
+              payload: (state) => {
+                seen = Redacted.value(state)
+                return Redacted.make(`https://qualy.example.edu/cb?flow=${seen}`)
+              },
+            })
+            const stored = yield* runSql<{ payload_sealed: string }>(
+              sql`select payload_sealed from auth_flows where id = ${started.flowId}`,
+            )
+            const taken = yield* sessions.consumeFlow({
+              provider: door,
+              state: Redacted.value(started.state),
+            })
+            return { started, seen, stored: stored.rows[0]!, taken }
+          }),
+        ),
+      )
+      const state = Redacted.value(answer.started.state)
+      expect(answer.seen).toBe(state)
+      expect(answer.stored.payload_sealed).not.toContain(state)
+      expect(Redacted.value(answer.taken.payload!)).toBe(
+        `https://qualy.example.edu/cb?flow=${state}`,
+      )
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('is started only so often from one place', async () => {
+    const db = await createTestContext('flows-throttle')
+    try {
+      await seed(db.url)
+      const answer = ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const sessions = yield* LoginSessions
+            const door = (yield* resolve('campus'))!
+            const outcomes: (string | undefined)[] = []
+            for (let started = 0; started < 31; started += 1) {
+              outcomes.push(
+                tagOf(yield* Effect.result(sessions.startFlow({ provider: door, purpose: 'login' }))),
+              )
+            }
+            const rows = yield* runSql<{ count: number }>(
+              sql`select count(*)::int as count from auth_flows`,
+            )
+            return { outcomes, rows: rows.rows[0]!.count }
+          }),
+        ),
+      )
+      expect(answer.outcomes.slice(0, 30)).toEqual(Array.from({ length: 30 }, () => undefined))
+      expect(answer.outcomes[30]).toBe('TOO_MANY_ATTEMPTS')
+      // the one refused cost no row
+      expect(answer.rows).toBe(30)
+    } finally {
+      await db.dispose()
+    }
+  })
+})
+
+describe.runIf(postgresAvailable)('an account bound from the other side', () => {
+  const serving = (url: string, id: string) =>
+    Effect.runPromise(
+      runSql(sql`update auth_providers set enabled = true where id = ${id}`).pipe(
+        Effect.provide(databaseFor(url, { migrations: 'off', entities: authClosure })),
+      ),
+    )
+
+  /** a bind flow for the seeded person, taken up the way a callback takes it */
+  const bindFlow = (door: ResolvedProvider, userId: string, sessionId: string) =>
+    Effect.gen(function* () {
+      const sessions = yield* LoginSessions
+      const started = yield* sessions.startFlow({
+        provider: door,
+        purpose: 'bind',
+        binding: { userId, sessionId },
+      })
+      return yield* sessions.consumeFlow({ provider: door, state: Redacted.value(started.state) })
+    })
+
+  it('binds the person the flow began with, once, and never a subject somebody holds', async () => {
+    const db = await createTestContext('flows-bind-subject')
+    try {
+      const f = await seed(db.url)
+      await serving(db.url, f.door.id)
+      const answer = ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const sessions = yield* LoginSessions
+            const door = (yield* resolve('campus'))!
+            const login = yield* sessions.startFlow({ provider: door, purpose: 'login' })
+            const loginTaken = yield* sessions.consumeFlow({
+              provider: door,
+              state: Redacted.value(login.state),
+            })
+            // a sign-in is not a bind, whatever the callback carried
+            const notBind = yield* Effect.result(
+              sessions.bindSubject({ provider: door, flow: loginTaken, subject: '12345' }),
+            )
+            // a flow that was never taken up is not one either
+            const forged = yield* Effect.result(
+              sessions.bindSubject({
+                provider: door,
+                flow: {
+                  flowId: '99999999-9999-4999-8999-999999999999',
+                  purpose: 'bind',
+                  userId: f.person,
+                  sessionId: f.session,
+                },
+                subject: '12345',
+              }),
+            )
+            const bound = yield* sessions.bindSubject({
+              provider: door,
+              flow: yield* bindFlow(door, f.person, f.session),
+              subject: '12345',
+              displayLabel: 'ada-lovelace',
+            })
+            const again = yield* Effect.result(
+              sessions.bindSubject({
+                provider: door,
+                flow: yield* bindFlow(door, f.person, f.session),
+                subject: '67890',
+              }),
+            )
+            const found = yield* sessions.findBindingBySubject({
+              tenantId: f.tenant,
+              providerId: f.door.id,
+              subject: '12345',
+            })
+            const audited = yield* runSql<{ action: string }>(
+              sql`select action_code as action from audit_events where target_id = ${f.person}`,
+            )
+            return { notBind, forged, bound, again, found, audited: audited.rows }
+          }),
+        ),
+      )
+      expect(reasonOf(answer.notBind)).toBe('not-a-bind')
+      expect(reasonOf(answer.forged)).toBe('not-a-bind')
+      expect(answer.found).toMatchObject({ id: answer.bound.bindingId, userId: expect.any(String) })
+      expect(reasonOf(answer.again)).toBe('already-bound')
+      expect(answer.audited.map((row) => row.action)).toContain('auth.identity.bind')
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('refuses a subject held by somebody else, and a door that stopped serving', async () => {
+    const db = await createTestContext('flows-bind-refused')
+    try {
+      const f = await seed(db.url)
+      await serving(db.url, f.door.id)
+      await Effect.runPromise(
+        runSql(sql`
+          insert into user_auth_bindings (tenant_id, user_id, auth_provider_id, subject)
+          values (${f.tenant}, ${f.admin}, ${f.door.id}, 'taken')`).pipe(
+          Effect.provide(databaseFor(db.url, { migrations: 'off', entities: authClosure })),
+        ),
+      )
+      const answer = ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const sessions = yield* LoginSessions
+            const door = (yield* resolve('campus'))!
+            const taken = yield* Effect.result(
+              sessions.bindSubject({
+                provider: door,
+                flow: yield* bindFlow(door, f.person, f.session),
+                subject: 'taken',
+              }),
+            )
+            const flow = yield* bindFlow(door, f.person, f.session)
+            yield* runSql(sql`update auth_providers set enabled = false where id = ${f.door.id}`)
+            const closed = yield* Effect.result(
+              sessions.bindSubject({ provider: door, flow, subject: 'fresh' }),
+            )
+            return { taken, closed }
+          }),
+        ),
+      )
+      expect(reasonOf(answer.taken)).toBe('subject-taken')
+      expect(reasonOf(answer.closed)).toBe('provider-unavailable')
+    } finally {
+      await db.dispose()
+    }
+  })
+})
+
+describe.runIf(postgresAvailable)('what a session keeps from the other side', () => {
+  it('is written with the session, sealed under it, and goes with it', async () => {
+    const db = await createTestContext('flows-grants')
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const sessions = yield* LoginSessions
+            const secrets = yield* Secrets
+            yield* sessions.completeLogin({
+              tenantId: f.tenant,
+              providerId: f.door.id,
+              userId: f.person,
+              grants: [{ kind: 'upstream-session', state: Redacted.make('TGT-upstream-value') }],
+            })
+            const rows = yield* runSql<{
+              session_id: string
+              auth_provider_id: string
+              kind: string
+              state_sealed: string
+            }>(sql`select session_id, auth_provider_id, kind, state_sealed from session_auth_grants`)
+            const grant = rows.rows[0]!
+            const opened = yield* secrets.open(
+              {
+                tenantId: f.tenant,
+                ownerKind: 'session-grant',
+                ownerId: grant.session_id,
+                key: `${f.door.id}:upstream-session:v1`,
+              },
+              grant.state_sealed,
+            )
+            // lifted onto another session, it does not open
+            const lifted = yield* Effect.result(
+              secrets.open(
+                {
+                  tenantId: f.tenant,
+                  ownerKind: 'session-grant',
+                  ownerId: f.session,
+                  key: `${f.door.id}:upstream-session:v1`,
+                },
+                grant.state_sealed,
+              ),
+            )
+            yield* runSql(sql`delete from sessions where id = ${grant.session_id}`)
+            const left = yield* runSql<{ count: number }>(
+              sql`select count(*)::int as count from session_auth_grants`,
+            )
+            return { rows: rows.rows, opened, lifted, left: left.rows[0]!.count }
+          }).pipe(
+            Effect.provideService(
+              HttpServerRequest.HttpServerRequest,
+              HttpServerRequest.fromWeb(new Request('http://localhost/api/auth/campus/campus/callback')),
+            ),
+          ),
+        ),
+      )
+      expect(answer.rows).toHaveLength(1)
+      expect(answer.rows[0]).toMatchObject({ auth_provider_id: expect.any(String), kind: 'upstream-session' })
+      expect(answer.rows[0]!.state_sealed).not.toContain('TGT-upstream-value')
+      expect(Redacted.value(answer.opened)).toBe('TGT-upstream-value')
+      expect(tagOf(answer.lifted)).toBe('SecretUnreadable')
+      expect(answer.left).toBe(0)
     } finally {
       await db.dispose()
     }

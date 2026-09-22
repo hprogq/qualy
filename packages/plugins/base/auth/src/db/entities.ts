@@ -368,6 +368,80 @@ export const Session = defineEntity({
 })
 
 /**
+ * Something a session holds from the other side of the door it came through.
+ *
+ * An upstream session credential, tokens a later request spends on the
+ * person's behalf: the driver that wrote it knows what it is, and the core
+ * only seals it (under this row's session, entrance, kind and version, so a
+ * sealed value moved onto another row does not open) and ends it with the
+ * session. One per session, entrance and kind.
+ */
+export const SessionAuthGrant = defineEntity({
+  name: 'SessionAuthGrant',
+  tableName: 'session_auth_grants',
+  properties: {
+    id: p.uuid().primary().defaultRaw('uuidv7()'),
+    tenantId: tenantOf('session_auth_grants_tenant_id_tenants_id_fkey'),
+    sessionId: p.uuid(),
+    authProviderId: p.uuid(),
+    kind: p.string().length(63),
+    stateSealed: p.text(),
+    expiresAt: p.datetime().nullable(),
+    version: p.integer().default(1),
+    createdAt: p.datetime().defaultRaw('now()'),
+    updatedAt: p.datetime().defaultRaw('now()'),
+  },
+  indexes: [
+    {
+      name: 'uq_session_auth_grants_kind',
+      expression:
+        'create unique index uq_session_auth_grants_kind on session_auth_grants (tenant_id, session_id, auth_provider_id, kind)',
+    },
+    // what ending every session of an entrance, or deleting it, reaches
+    {
+      name: 'idx_session_auth_grants_provider',
+      expression:
+        'create index idx_session_auth_grants_provider on session_auth_grants (tenant_id, auth_provider_id)',
+    },
+  ],
+})
+
+/**
+ * How many attempts one key made in the current window.
+ *
+ * A fixed window, counted by one upsert: when the window has run out the
+ * count starts again at one. The key is a keyed digest - an address or an
+ * email - never the value itself, and nothing here says whether the account
+ * behind it exists.
+ */
+export const AuthRateLimitBucket = defineEntity({
+  name: 'AuthRateLimitBucket',
+  tableName: 'auth_rate_limit_buckets',
+  properties: {
+    id: p.uuid().primary().defaultRaw('uuidv7()'),
+    tenantId: tenantOf('auth_rate_limit_buckets_tenant_id_tenants_id_fkey'),
+    scope: p.string().length(63),
+    keyHash: p.character().length(64),
+    windowStartedAt: p.datetime(),
+    attempts: p.integer(),
+    updatedAt: p.datetime().defaultRaw('now()'),
+  },
+  indexes: [
+    {
+      name: 'uq_auth_rate_limit_buckets_key',
+      expression:
+        'create unique index uq_auth_rate_limit_buckets_key on auth_rate_limit_buckets (tenant_id, scope, key_hash)',
+    },
+    // the sweep of buckets nobody has touched in a long while
+    {
+      name: 'idx_auth_rate_limit_buckets_updated',
+      expression:
+        'create index idx_auth_rate_limit_buckets_updated on auth_rate_limit_buckets (updated_at)',
+    },
+  ],
+})
+
+/**
  * One redirect through somebody else's server, in flight.
  *
  * A CAS or OIDC sign-in leaves this application, and what comes back has to
@@ -539,6 +613,11 @@ export const compositeForeignKeys = [
      foreign key (tenant_id, session_id) references sessions (tenant_id, id) on delete cascade`,
   `alter table auth_flows add constraint fk_auth_flows_user
      foreign key (tenant_id, user_id) references users (tenant_id, id) on delete restrict`,
+  // a grant lives exactly as long as its session
+  `alter table session_auth_grants add constraint fk_session_auth_grants_session
+     foreign key (tenant_id, session_id) references sessions (tenant_id, id) on delete cascade`,
+  `alter table session_auth_grants add constraint fk_session_auth_grants_provider
+     foreign key (tenant_id, auth_provider_id) references auth_providers (tenant_id, id) on delete restrict`,
 ]
 
 export const entities = [
@@ -551,4 +630,6 @@ export const entities = [
   Session,
   SignInEvent,
   AuthFlow,
+  SessionAuthGrant,
+  AuthRateLimitBucket,
 ] as const

@@ -19611,3 +19611,57 @@ HEAD 的 run 是绿的;红的是中间提交 `ceb8ccb6`(那次的 `entry-workflo
 5. `GET /api/auth/login-methods` → `{"methods":[{"code":"local","type":"local","name":"本地账号","mode":"component"}]}`;
 6. `POST /api/auth/local/local/login`(邮箱 + 密码)→ 200,`set-cookie: __Host-qualy_session=…; HttpOnly; Secure; SameSite=Lax`,并清掉裸名 cookie;错密码 → 401;
 7. 把系统账户邮箱清空后再启动:`startup failed: boot hook auth/recovery-channel failed: tenant default cannot be recovered: … set QUALY_ADMIN_EMAIL and QUALY_ADMIN_PASSWORD and run \`pnpm seed\``。
+
+## 认证 F–J 之一:登录基础设施(出站策略、trace 去 query、限流、上游凭据、自助绑定、入口字段)(2026-09-23)
+
+设计来源 docs/cas-oidc.md 与 docs/auth.md §19–§35,以及规划时用户对第一版计划的九条修正(flow payload 工厂、core 的 `bindSubject`、
+出站钉地址与部署级内网名单、固定窗口 + keyed digest、入口字段的 visibleWhen / section / number 等)。本提交不带任何驱动,
+是 CAS / GitHub / OIDC 三个驱动与之后邮箱流程要站上去的地基;设计要点已并入 docs/notes/auth-security.md 新一节。
+
+### 做了什么
+
+- **出站只有一个口子** `AuthOutbound`(契约 `@qualy/auth-contract/outbound`,实现 auth/src/server/outbound.ts):生产只许 https、URL 带凭据或
+  fragment 即拒、不跟随重定向、超时与响应体上限。主机名只解析一次,**每个候选地址都过检查**,再经 undici `Agent({connect:{lookup}})`
+  把连接钉在检查过的地址上(SNI 与 Host 仍是原主机名)——杜绝「检查后第二次解析」的 DNS rebinding。回环、未指定、link-local、
+  云 metadata 永远拒绝;内网只放行部署在 `QUALY_AUTH_PRIVATE_PROVIDER_ALLOWLIST` 里点名的主机名 / 网段(格式错即拒启),开发放行回环。
+  undici 8.10.2 进 catalog(与 @effect/platform-node 已装的同版本)。
+- **trace 不再带 query**:平台 tracer 在所有 serve 中间件之外写 `url.full` / `url.query`,拦不住,所以 api-kit 以
+  `HttpMiddleware.TracerDisabledWhen` 关掉它(`platformTracerOff`,server runtime 提供),`serverSpans` 自建 server span
+  (method、route 名、不含 query 的 path、scheme、status、继承 traceparent),挂在 serve 中间件最外层。不需要任何插件路径清单。
+- **限流**:表 `auth_rate_limit_buckets`,固定窗口、单条原子 upsert;本地登录按「入口 + 来源地址」30/5min 与「入口 + 邮箱」10/15min,
+  在 Argon2 之前、邮箱存在与否同路径同桶;发起重定向按「入口 + 来源地址」30/5min。超限 429 `TOO_MANY_ATTEMPTS { retryAfterSeconds }`
+  + `Retry-After` 头(`TooManyAttemptsResponse`,`HttpApiSchema.encodeToWithHeaders`),只节流不锁号;闲置桶随计数懒清扫。
+  桶键是 `Secrets.fingerprint(scope, value)`:HKDF 从主密钥派生 `qualy/secrets/fingerprint/v1` 子密钥再 HMAC,scope 做域分离。
+  前端公共错误表新增 `TOO_MANY_ATTEMPTS`(按分钟向上取整告诉读者多久后再试)。
+- **上游凭据** `session_auth_grants`:`completeLogin({ grants })` 与 session、sign-in event、binding touch 同事务写入,明文经 `seal`
+  封在该 session 之下,会话删除即级联删除。本阶段没有驱动写 grant(CAS 的 `checkAliveTicket` 不保存)。
+- **自助绑定写口** `bindSubject({ provider, flow, subject, displayLabel })`:人只来自本入口刚消费的 bind flow(锁内复查),
+  同事务检查入口在用 / 人存活 / 受众接纳 / 尚无绑定 / subject 未被占用,写绑定并审计 `auth.identity.bind`;
+  `completeLogin` 的 `bindingDisplayLabel` 每次登录刷新展示名。
+- **flow payload 可以是工厂**:`startFlow({ payload: (state) => … })`,先生成 state 再调工厂、seal、一次 INSERT(删掉原先的先插后改)。
+- **入口字段**:`choice`(options / 默认值)、`toggle`、`number`(min / max / step)、`visibleWhen`(同表单标量相等)、`section`;
+  存储按类型解析、未设即默认值;不可见字段不参与 required;详情回显含默认值;驱动可声明 `prepareConfig` 在可见有效值上校验并派生设置
+  (存 `config.derived`)。管理端 `MethodFields` 画出选择框、复选框、数字框,按 visibleWhen 显隐,advanced 折叠;
+  `MethodSheet` 的脏检查与「在用入口不得留空」按有效值判断(含被新显出的必填框)。
+
+### 验收(实际执行)
+
+- `pnpm typecheck`:exit 0,零 `error TS`。
+- `pnpm qualy database verify`:`78 committed migration(s) build the declared schema, zero drift`;`check`:`lineage ok`;
+  `drop-guard`:`drop guard ok (78 file(s) scanned)`;`check-migrations-immutable`:只在末尾生长;
+  `resolve --frozen-lockfile`:`qualy.lock.json is up to date`(lock 的变化只是 auth 闭包多了两个实体,由 `qualy resolve` 生成)。
+- `pnpm test`:`Test Files  283 passed | 3 skipped (286)`、`Tests  2088 passed | 17 skipped (2105)`。
+  中途一轮有三个文件超时(supervisor、assessment 迁移升级、recognition,均为 30s/240s 超时),单独重跑 `Tests  48 passed (48)`;
+  另一轮 `fast-refresh` 门禁拒绝了组件文件里导出的两个非组件函数,已挪到 `methods/form-values.ts`。
+- `pnpm test:browser`:`Test Files  68 passed (68)`、`Tests  515 passed (515)`。
+- 新测试:`outbound.test.ts` 8 条(地址分类、名单格式、生产拒绝的 13 种地址、名单内网放行、连接钉在检查过的地址且只解析一次、
+  不跟随 302、表单 POST、体积上限与超时);`effect-sign-in` 3 条(邮箱桶第 11 次 429 + `Retry-After` 且与账号存在与否无关、
+  窗口过后恢复且不锁号、同一地址换邮箱第 31 次 429);`effect-flows` 5 条(payload 工厂拿到的就是 flow 的 state、
+  flow 发起第 31 次被拒且不落行、`bindSubject` 的 not-a-bind / 伪造 flow / already-bound / subject-taken / provider-unavailable
+  与成功审计、grant 随会话封存且挪到别的会话打不开并级联删除);`effect-providers` 1 条(choice/number/toggle 的解析与拒绝、
+  visibleWhen 决定 required、默认值回显、`prepareConfig` 派生与拒绝);secrets 1 条(fingerprint 同值同文、按 scope / 值 / 主密钥区分、
+  不等于裸哈希也不等于用加密密钥直接 HMAC);`login-methods.browser` 1 条(选择框显出属性名框、高级设置折叠、数字默认值、复选框)。
+
+### 遗留
+
+- 驱动(CAS、GitHub、OIDC)、「我的」、Mail 与邮箱流程是后续提交。`session_auth_grants` 目前没有写入方。

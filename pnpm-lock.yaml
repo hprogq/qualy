@@ -156,6 +156,9 @@ catalogs:
     typescript:
       specifier: 7.0.2
       version: 7.0.2
+    undici:
+      specifier: 8.10.2
+      version: 8.10.2
     vite:
       specifier: 8.2.0
       version: 8.2.0
@@ -1222,6 +1225,9 @@ importers:
       react-router:
         specifier: 'catalog:'
         version: 8.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      undici:
+        specifier: 'catalog:'
+        version: 8.10.2
     devDependencies:
       '@effect/platform-node':
         specifier: 'catalog:'

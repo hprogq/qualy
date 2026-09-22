@@ -1,5 +1,5 @@
 import { Context, Schema } from 'effect'
-import { HttpApiMiddleware } from 'effect/unstable/httpapi'
+import { HttpApiMiddleware, HttpApiSchema } from 'effect/unstable/httpapi'
 import type { Principal } from '@qualy/rbac-contract'
 
 // What an endpoint declares, with nothing behind it.
@@ -35,6 +35,44 @@ export class SessionExpired extends Schema.TaggedError<SessionExpired>()(
   {},
   { httpApiStatus: 401, identifier: 'SessionExpired' },
 ) {}
+
+/**
+ * Too many attempts from one place, or at one address, in a short while.
+ *
+ * Temporary, and said the same way whoever asks: a limit that answered
+ * differently for an address that exists would tell a stranger which ones
+ * do. Nothing is locked - the window runs out and the next attempt is
+ * weighed like any other.
+ */
+export class TooManyAttempts extends Schema.TaggedError<TooManyAttempts>()(
+  'TOO_MANY_ATTEMPTS',
+  { retryAfterSeconds: Schema.Number },
+  { httpApiStatus: 429, identifier: 'TooManyAttempts' },
+) {}
+
+/**
+ * The same refusal as an endpoint declares it: the body every api error
+ * has, and the wait again as a `Retry-After` header, which is what a client
+ * that is not ours reads.
+ */
+export const TooManyAttemptsResponse = TooManyAttempts.pipe(
+  HttpApiSchema.encodeToWithHeaders(
+    {
+      body: Schema.Struct({
+        _tag: Schema.Literal('TOO_MANY_ATTEMPTS'),
+        retryAfterSeconds: Schema.Number,
+      }).pipe(HttpApiSchema.status(429)),
+      headers: { 'retry-after': Schema.String },
+    },
+    {
+      decode: ({ body }) => new TooManyAttempts({ retryAfterSeconds: body.retryAfterSeconds }),
+      encode: (error) => ({
+        body: { _tag: 'TOO_MANY_ATTEMPTS' as const, retryAfterSeconds: error.retryAfterSeconds },
+        headers: { 'retry-after': String(error.retryAfterSeconds) },
+      }),
+    },
+  ),
+)
 
 /**
  * The bare name of the session cookie; the server prefixes it with

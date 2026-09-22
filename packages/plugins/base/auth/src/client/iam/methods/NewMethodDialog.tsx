@@ -9,7 +9,7 @@ import { Input } from '@qualy/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { iamMessages as m } from '../../i18n.ts'
 import { authApi } from '../../api.ts'
-import type { EntranceKind } from './MethodFields.tsx'
+import type { EntranceKind } from './form-values.ts'
 
 // A new entrance: which kind, what it is called and where it answers. What
 // that kind needs to be told is filled in on the entrance itself, which opens

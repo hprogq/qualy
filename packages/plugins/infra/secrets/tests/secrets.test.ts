@@ -282,4 +282,40 @@ describe.runIf(postgresAvailable)('a secret at rest', () => {
       await db.dispose()
     }
   })
+
+  it('fingerprints a value under a key of its own, apart for each scope', async () => {
+    const db = await createTestContext('secrets-fingerprint')
+    try {
+      const other = Buffer.alloc(32, 9).toString('base64')
+      const digest = (scope: string, value: string, layer = secretsLayer) =>
+        run(
+          db.url,
+          Effect.flatMap(Secrets, (secrets) => secrets.fingerprint(scope, value)),
+          layer,
+        ).then(ok)
+      const first = await digest('sign-in:identifier', 'ada@school.edu')
+      expect(first).toMatch(/^[0-9a-f]{64}$/)
+      // the same scope and value give the same text, every time
+      expect(await digest('sign-in:identifier', 'ada@school.edu')).toBe(first)
+      // another scope, another value, or another deployment's key: another text
+      expect(await digest('sign-in:address', 'ada@school.edu')).not.toBe(first)
+      expect(await digest('sign-in:identifier', 'grace@school.edu')).not.toBe(first)
+      expect(await digest('sign-in:identifier', 'ada@school.edu', secretsLayerWith(other))).not.toBe(
+        first,
+      )
+      // and nothing anybody could compute without the key: not a plain
+      // digest of the value, and not a MAC under the encryption key itself
+      const { createHash, createHmac } = await import('node:crypto')
+      expect(first).not.toBe(createHash('sha256').update('ada@school.edu').digest('hex'))
+      expect(first).not.toBe(
+        createHmac('sha256', Buffer.from(TEST_MASTER_KEY, 'base64'))
+          .update('sign-in:identifier')
+          .update('\0')
+          .update('ada@school.edu')
+          .digest('hex'),
+      )
+    } finally {
+      await db.dispose()
+    }
+  })
 })

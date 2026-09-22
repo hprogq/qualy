@@ -2,6 +2,7 @@ import { Context, Data, Effect, Layer, Redacted, Scope } from 'effect'
 import type { HttpServerRequest } from 'effect/unstable/http/HttpServerRequest'
 import type { UiText } from '@qualy/i18n-contract'
 import type { ClientComponentRef } from '@qualy/ui-contract'
+import type { TooManyAttempts } from './session.ts'
 
 // The login surface a driver plugin needs, and the registry of drivers itself.
 //
@@ -127,13 +128,50 @@ export type AuthBindingDeclaration =
  * not what a save must contain: an entrance is set up over several saves,
  * and one that is missing something stays out of service until it has it.
  */
-export interface EntranceField {
+interface EntranceFieldBase {
   readonly key: string
   readonly label: UiText
   readonly hint?: UiText
-  readonly kind: 'text' | 'url' | 'secret'
   readonly required: boolean
+  /**
+   * Shown, stored and asked of the entrance only while another field of the
+   * same form holds this value: the custom endpoints of a CAS entrance whose
+   * protocol is set to custom. A plain equality and nothing more - a form
+   * that needs more than that is asking the wrong question of its fields.
+   */
+  readonly visibleWhen?: { readonly field: string; readonly equals: string | boolean }
+  /** where the form puts it; advanced fields fold away until asked for */
+  readonly section?: 'basic' | 'advanced'
 }
+
+/** one of a fixed set, stored as the option's value */
+export interface EntranceChoice {
+  readonly value: string
+  readonly label: UiText
+}
+
+export type EntranceField = EntranceFieldBase &
+  (
+    | { readonly kind: 'text' | 'url' | 'secret' }
+    | {
+        readonly kind: 'choice'
+        readonly options: readonly EntranceChoice[]
+        /** what the field holds until somebody chooses; required fields want one */
+        readonly defaultValue?: string
+      }
+    | { readonly kind: 'toggle'; readonly defaultValue?: boolean }
+    | {
+        readonly kind: 'number'
+        readonly min?: number
+        readonly max?: number
+        /** 1 for whole numbers; absent for any finite number */
+        readonly step?: number
+        readonly defaultValue?: number
+      }
+  )
+
+/** what a non-secret field holds, once read: text and urls as strings */
+export type EntranceValue = string | boolean | number
 
 export interface EntranceKind {
   /** what this kind of entrance is called when one is being added */
@@ -148,18 +186,27 @@ export interface EntranceKind {
    */
   readonly identityNamespaceKeys?: readonly string[]
   /**
-   * The text and url values, with what was stored merged in, turned into the
-   * stored config. Secrets are not among them. Absent means the values are
-   * stored as they are.
+   * What the driver works out from the settings, checked and stored beside
+   * them.
+   *
+   * `values` is every visible non-secret field as it will stand, defaults
+   * applied, already parsed to its kind. The settings themselves are stored
+   * by the core under their own keys; what this answers goes under `derived`
+   * - a CAS entrance's endpoints, expanded once from its server and protocol,
+   * so a later release that derives them differently does not move an
+   * entrance nobody touched. Absent means nothing is derived. An answer of
+   * `ok: false` names the field that cannot stand as it is.
    */
   readonly prepareConfig?: (input: {
-    readonly values: Readonly<Record<string, string>>
-    readonly previous: Readonly<Record<string, unknown>>
+    readonly values: Readonly<Record<string, EntranceValue>>
   }) => Effect.Effect<
-    | { readonly ok: true; readonly config: Readonly<Record<string, unknown>> }
+    | { readonly ok: true; readonly derived?: Readonly<Record<string, unknown>> }
     | { readonly ok: false; readonly invalid: string }
   >
 }
+
+/** the config key the core stores what `prepareConfig` derived under */
+export const DERIVED_CONFIG_KEY = 'derived'
 
 /**
  * Who makes the doors of a driver's kind.
@@ -203,6 +250,25 @@ export interface LoginDriver {
  * in, and an assembly that contains one is broken rather than degraded.
  */
 export const driverContradiction = (driver: LoginDriver): string | undefined => {
+  if (driver.provisioning.mode === 'tenant-managed') {
+    const fields = driver.provisioning.entrance.fields
+    const keys = new Set(fields.map((field) => field.key))
+    for (const field of fields) {
+      if (field.key === DERIVED_CONFIG_KEY) {
+        return `login driver ${driver.type} declares a field named ${DERIVED_CONFIG_KEY}, which the core keeps for itself`
+      }
+      if (field.visibleWhen !== undefined && !keys.has(field.visibleWhen.field)) {
+        return `login driver ${driver.type} shows ${field.key} on a field it does not declare`
+      }
+      if (
+        field.kind === 'choice' &&
+        field.defaultValue !== undefined &&
+        !field.options.some((option) => option.value === field.defaultValue)
+      ) {
+        return `login driver ${driver.type} defaults ${field.key} to a value it does not offer`
+      }
+    }
+  }
   if (driver.binding?.mode === 'managed' && driver.resolution.mode !== 'user-field') {
     return `login driver ${driver.type} manages a credential but does not find people by a field of their own`
   }
@@ -319,6 +385,52 @@ export class AuthFlowRejected extends Data.TaggedError('AuthFlowRejected')<{
   readonly reason: FlowRejection
 }> {}
 
+/**
+ * What a driver puts aside when a flow starts: a value, or one built from the
+ * flow's own state.
+ *
+ * The second is for a protocol whose return address has to carry the state -
+ * CAS has no state parameter of its own, so the service it is asked to
+ * validate against is the callback with the state in it. The core makes the
+ * state first, hands it over, and seals what comes back, so the exact string
+ * sent away is the one kept, byte for byte, and never rebuilt on the way back.
+ */
+export type FlowPayload =
+  | Redacted.Redacted<string>
+  | ((state: Redacted.Redacted<string>) => Redacted.Redacted<string>)
+
+/** why an account could not be bound to a person, as the driver reports it */
+export type BindingRejection =
+  /** the flow was not a bind, or not this entrance's */
+  | 'not-a-bind'
+  /** the entrance went out of service or away since the flow began */
+  | 'provider-unavailable'
+  /** the entrance no longer admits this person's kind */
+  | 'audience-excluded'
+  /** the person was disabled or deleted since the flow began */
+  | 'user-unavailable'
+  /** this person already has an account bound at this entrance */
+  | 'already-bound'
+  /** somebody else has this account bound here */
+  | 'subject-taken'
+
+export class AuthBindingRejected extends Data.TaggedError('AuthBindingRejected')<{
+  readonly reason: BindingRejection
+}> {}
+
+/**
+ * Something the person's session holds from the other side, kept with the
+ * session and only there: an upstream session credential, tokens a later
+ * request spends on the person's behalf. The core seals it and never reads
+ * it; the driver that wrote it is the one that knows what it is.
+ */
+export interface SessionGrantInput {
+  /** the driver's own word for what it keeps, one per session and entrance */
+  readonly kind: string
+  readonly state: Redacted.Redacted<string>
+  readonly expiresAt?: Date
+}
+
 /** a flow that has just started; the state travels to the other server */
 export interface StartedFlow {
   readonly flowId: string
@@ -418,8 +530,8 @@ export interface LoginSessionsShape {
     /** for a bind: who is doing it, and from which session */
     binding?: { userId: string; sessionId: string }
     returnPath?: string
-    payload?: Redacted.Redacted<string>
-  }) => Effect.Effect<StartedFlow, AuthFlowRejected>
+    payload?: FlowPayload
+  }) => Effect.Effect<StartedFlow, AuthFlowRejected | TooManyAttempts>
   /**
    * Takes a flow up, once and only once.
    *
@@ -431,6 +543,37 @@ export interface LoginSessionsShape {
     provider: ResolvedProvider
     state: string
   }) => Effect.Effect<ConsumedFlow, AuthFlowRejected>
+  /**
+   * Binds an external account to the person a bind flow belongs to.
+   *
+   * Takes the consumed flow rather than a person: who is binding is whoever
+   * began the flow, in the session they began it in, and the core checks the
+   * flow was a bind this entrance just took up. A driver cannot name a
+   * person from anything that arrived on the way back. In one transaction:
+   * the entrance still serves and admits the person's kind, the person is
+   * still there and has no account bound here yet, and nobody else has this
+   * one.
+   */
+  readonly bindSubject: (input: {
+    provider: ResolvedProvider
+    flow: ConsumedFlow
+    subject: string
+    /** what the account is called over there, for the screens; never looked up by */
+    displayLabel?: string
+  }) => Effect.Effect<{ readonly bindingId: string }, AuthBindingRejected>
+  /**
+   * Whether one more sign-in attempt may be made from where this request
+   * came from, and - when the driver has one - at this identifier.
+   *
+   * Asked before anything expensive: before a password hash is checked,
+   * before an upstream is called. The identifier is weighed the same way
+   * whether or not anybody answers to it, so the refusal says nothing about
+   * which addresses exist.
+   */
+  readonly admitAttempt: (input: {
+    provider: ResolvedProvider
+    identifier?: string
+  }) => Effect.Effect<void, TooManyAttempts>
   /**
    * A public provider code resolved against the anonymous tenant.
    *
@@ -502,6 +645,10 @@ export interface LoginSessionsShape {
     providerId: string
     userId: string
     bindingId?: string
+    /** what the bound account is called over there now, when the driver learned it */
+    bindingDisplayLabel?: string
+    /** what the new session keeps from the other side, written with it */
+    grants?: readonly SessionGrantInput[]
   }) => Effect.Effect<SignedInUser | undefined, never, HttpServerRequest>
 }
 

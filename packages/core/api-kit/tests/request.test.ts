@@ -9,8 +9,10 @@ import {
   bindSessionId,
   clientAddressOf,
   httpMetrics,
+  platformTracerOff,
   requestContext,
   routeSpanNames,
+  serverSpans,
   trustedProxies,
 } from '../src/request.ts'
 
@@ -143,12 +145,16 @@ beforeAll(async () => {
     ),
   )
   const application = HttpRouter.serve(routes, {
-    // the loopback peer stands in for the deployment's proxy tier
+    // the loopback peer stands in for the deployment's proxy tier; the span
+    // is opened by the chain, as the host opens it
     middleware: (httpApp) =>
-      requestContext({ trustedProxies: ['127.0.0.1'] })(
-        httpMetrics({ trustedProxies: ['127.0.0.1'] })(routeSpanNames(httpApp)),
+      serverSpans({ trustedProxies: ['127.0.0.1'] })(
+        requestContext({ trustedProxies: ['127.0.0.1'] })(
+          httpMetrics({ trustedProxies: ['127.0.0.1'] })(routeSpanNames(httpApp)),
+        ),
       ),
   }).pipe(
+    Layer.provide(platformTracerOff),
     Layer.provide(NodeHttpServer.layer(createServer, { port })),
     // the exporting tracer, so the names this suite pins are the names a
     // telemetry backend would receive, not an in-process observation
@@ -213,9 +219,9 @@ describe('the request context on a live server', () => {
     expect(body.userAgent).toBe('qualy-test/1.0')
   })
 
-  it('runs under the server span the platform opened, inheriting traceparent', async () => {
+  it('runs under the server span the chain opened, inheriting traceparent', async () => {
     const fresh = (await (await fetch(`${base}/context`)).json()) as { traceId: string }
-    // the platform's tracer wraps every request, telemetry backend or not
+    // the chain opens a span for every request, telemetry backend or not
     expect(fresh.traceId).toMatch(/^[0-9a-f]{32}$/)
 
     const inherited = (await (
@@ -267,6 +273,27 @@ describe('the span a request exports', () => {
     expect(span.name).toBe('GET /things/:thingId')
     const route = span.attributes.find((attribute) => attribute.key === 'http.route')
     expect(route?.value.stringValue).toBe('/things/:thingId')
+  })
+
+  it('never carries the query a request came with', async () => {
+    // a CAS ticket, an OAuth code and a flow state all arrive in the query;
+    // none of them may reach a trace backend
+    const inbound = '9999888877776666555544443333aaaa'
+    await fetch(`${base}/things/42?ticket=ST-secret-ticket&code=c0de-secret&state=st4te-secret#frag`, {
+      headers: { traceparent: `00-${inbound}-00f067aa0ba902b7-01` },
+    })
+    const span = await exportedSpan((candidate) => candidate.traceId === inbound)
+    const keys = span.attributes.map((attribute) => attribute.key)
+    expect(keys).not.toContain('url.full')
+    expect(keys).not.toContain('url.query')
+    const everything = JSON.stringify(span)
+    for (const secret of ['ST-secret-ticket', 'c0de-secret', 'st4te-secret']) {
+      expect(everything).not.toContain(secret)
+    }
+    const path = span.attributes.find((attribute) => attribute.key === 'url.path')
+    expect(path?.value.stringValue).toBe('/things/42')
+    // still the one server span, still named by its route
+    expect(span.name).toBe('GET /things/:thingId')
   })
 
   it('keeps the method-only name when no route matched', async () => {

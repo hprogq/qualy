@@ -151,6 +151,18 @@ export const commonErrorMessages = {
       defaultMessage: 'Your session has expired. Please sign in again.',
     },
   },
+  // counted where the attempt came from and at what it was aimed; the reader
+  // is told how long, rounded up to whole minutes, and nothing about which
+  TOO_MANY_ATTEMPTS: {
+    message: {
+      id: 'common/error/too-many-attempts',
+      defaultMessage:
+        'Too many attempts. Try again in {minutes, plural, one {# minute} other {# minutes}}.',
+    },
+    values: (data: { readonly retryAfterSeconds: number }) => ({
+      minutes: Math.max(1, Math.ceil(data.retryAfterSeconds / 60)),
+    }),
+  },
   ACCESS_DENIED: {
     message: {
       id: 'common/error/access-denied',

@@ -9,6 +9,7 @@
     ".": "./src/index.ts",
     "./email": "./src/email.ts",
     "./login": "./src/login.ts",
+    "./outbound": "./src/outbound.ts",
     "./plugin": "./src/plugin.ts",
     "./provisioning": "./src/provisioning.ts",
     "./session": "./src/session.ts",

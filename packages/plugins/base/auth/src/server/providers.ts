@@ -3,7 +3,7 @@ import { sql } from 'kysely'
 import { transaction, withDatabase } from '@qualy/plugin-database/server'
 import type { Principal } from '@qualy/rbac-contract'
 import { Audit } from '@qualy/audit-contract/effect'
-import { LoginDrivers, type EntranceKind } from '@qualy/auth-contract/login'
+import { DERIVED_CONFIG_KEY, LoginDrivers } from '@qualy/auth-contract/login'
 import { Secrets } from '@qualy/plugin-secrets/plugin'
 import { translateConstraints } from '@qualy/plugin-database/server/constraints'
 import {
@@ -19,6 +19,13 @@ import { db, lockTenant } from './db.ts'
 import { endFlowsOfProvider } from './flows.ts'
 import { PublicOriginResolver } from './public-origin.ts'
 import { configOf, entranceSecrets, makeReadiness, type ReadinessGap } from './readiness.ts'
+import {
+  effectiveValues,
+  explicitValues,
+  parseTyped,
+  visibleIn,
+  wireOf,
+} from './entrance-values.ts'
 import { recoveryChannelIntact, recoveryDoorTypes } from './recovery.ts'
 import {
   ProviderConfigIncomplete,
@@ -196,25 +203,6 @@ const replaceAudience = (
  */
 const jsonb = (value: unknown) => sql`${JSON.stringify(value)}::jsonb`
 
-/** an absolute http(s) address, which is all a url field may hold */
-const isWebAddress = (value: string) => {
-  try {
-    const url = new URL(value)
-    return url.protocol === 'https:' || url.protocol === 'http:'
-  } catch {
-    return false
-  }
-}
-
-/** the text and url values a stored config holds for a kind's declared fields */
-const typedValuesOf = (kind: EntranceKind, config: Readonly<Record<string, unknown>>) =>
-  Object.fromEntries(
-    kind.fields.flatMap((field) => {
-      const value = config[field.key]
-      return field.kind !== 'secret' && typeof value === 'string' ? [[field.key, value]] : []
-    }),
-  ) as Record<string, string>
-
 export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
   const withDb = yield* withDatabase
   const audit = yield* Audit
@@ -299,12 +287,31 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
               {
                 type: driver.type,
                 label: driver.provisioning.entrance.label,
+                // flat rather than a union per kind: a screen reads every
+                // field the same way and ignores what its kind does not use
                 fields: driver.provisioning.entrance.fields.map((field) => ({
                   key: field.key,
                   label: field.label,
                   hint: field.hint ?? null,
                   kind: field.kind,
                   required: field.required,
+                  section: field.section ?? ('basic' as const),
+                  visibleWhen:
+                    field.visibleWhen === undefined
+                      ? null
+                      : { field: field.visibleWhen.field, equals: wireOf(field.visibleWhen.equals) },
+                  options:
+                    field.kind === 'choice'
+                      ? field.options.map((option) => ({ value: option.value, label: option.label }))
+                      : [],
+                  defaultValue:
+                    (field.kind === 'choice' || field.kind === 'toggle' || field.kind === 'number') &&
+                    field.defaultValue !== undefined
+                      ? wireOf(field.defaultValue)
+                      : null,
+                  min: field.kind === 'number' ? (field.min ?? null) : null,
+                  max: field.kind === 'number' ? (field.max ?? null) : null,
+                  step: field.kind === 'number' ? (field.step ?? null) : null,
                 })),
               },
             ],
@@ -390,37 +397,48 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
           if (input.values !== undefined) {
             const kind = yield* kindOf(provider.type)
             const fields = new Map(kind.fields.map((field) => [field.key, field]))
-            const next = typedValuesOf(kind, previous)
+            const next = explicitValues(kind, previous)
             let typedChanged = false
             for (const [key, raw] of Object.entries(input.values)) {
               const field = fields.get(key)
               if (field === undefined) return yield* new ProviderConfigInvalid({ field: key })
-              const typed = raw.trim()
               if (field.kind === 'secret') {
+                const typed = raw.trim()
                 if (typed === '') continue
                 replacedSecrets.push([key, typed])
                 changed.push(key)
                 continue
               }
-              if (field.kind === 'url' && typed !== '' && !isWebAddress(typed)) {
-                return yield* new ProviderConfigInvalid({ field: key })
-              }
-              if ((next[key] ?? '') === typed) continue
-              if (typed === '') delete next[key]
-              else next[key] = typed
+              const parsed = parseTyped(field, raw)
+              if (!parsed.ok) return yield* new ProviderConfigInvalid({ field: key })
+              if (next[key] === parsed.value) continue
+              if (parsed.value === undefined) delete next[key]
+              else next[key] = parsed.value
               typedChanged = true
               changed.push(key)
             }
             if (typedChanged) {
-              if (kind.prepareConfig === undefined) config = next
-              else {
-                const prepared = yield* kind.prepareConfig({ values: next, previous })
+              // what the driver derives is worked out from the values as the
+              // form will show them: defaults applied, hidden fields left out
+              const effective = effectiveValues(kind, next)
+              const shown = Object.fromEntries(
+                kind.fields
+                  .filter((field) => field.kind !== 'secret' && visibleIn(field, effective))
+                  .flatMap((field) =>
+                    effective[field.key] === undefined ? [] : [[field.key, effective[field.key]!]],
+                  ),
+              )
+              let derived: Readonly<Record<string, unknown>> | undefined
+              if (kind.prepareConfig !== undefined) {
+                const prepared = yield* kind.prepareConfig({ values: shown })
                 if (!prepared.ok) return yield* new ProviderConfigInvalid({ field: prepared.invalid })
-                config = prepared.config
+                derived = prepared.derived
               }
+              config = { ...next, ...(derived === undefined ? {} : { [DERIVED_CONFIG_KEY]: derived }) }
               // whose accounts the door speaks for is fixed once anybody's is bound
+              const before = effectiveValues(kind, previous)
               const moved = (kind.identityNamespaceKeys ?? []).find(
-                (key) => JSON.stringify(previous[key]) !== JSON.stringify(config[key]),
+                (key) => before[key] !== effective[key],
               )
               if (moved !== undefined && (yield* everBound(tenantId, providerId))) {
                 return yield* new ProviderIdentityNamespaceInUse({ field: moved })
@@ -712,14 +730,17 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
                   : ({ mode: 'allow-list', userTypeIds: provider.userTypeIds } as const),
             },
             missing: answer.missing as ReadinessGap[],
-            config: Object.fromEntries(
-              fields.flatMap((field) => {
-                const value = config[field.key]
-                return field.kind !== 'secret' && typeof value === 'string'
-                  ? [[field.key, value]]
-                  : []
-              }),
-            ) as Record<string, string>,
+            // every setting as its box shows it, defaults included, so the
+            // form and the fields it shows conditionally read the same values
+            config:
+              kind?.mode === 'tenant-managed'
+                ? Object.fromEntries(
+                    Object.entries(effectiveValues(kind.entrance, config)).map(([key, value]) => [
+                      key,
+                      wireOf(value),
+                    ]),
+                  )
+                : {},
             secrets: fields
               .filter((field) => field.kind === 'secret')
               .map((field) => ({ key: field.key, stored: stored.includes(field.key) })),

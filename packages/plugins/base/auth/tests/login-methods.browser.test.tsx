@@ -44,19 +44,81 @@ const detail = (row: ProviderDto, over: Partial<Omit<DetailDto, 'provider'>> = {
 
 const word = (value: string) => ({ kind: 'literal' as const, value })
 
+// every field a driver declares arrives flat: what a kind does not use is null
+const box = {
+  hint: null,
+  section: 'basic' as const,
+  visibleWhen: null,
+  options: [],
+  defaultValue: null,
+  min: null,
+  max: null,
+  step: null,
+}
+
 // a kind of entrance an installed driver lets a tenant add: an address, and a
 // secret the server keeps
 const casKind = {
   type: 'cas',
   label: word('统一身份认证'),
   fields: [
-    { key: 'server', label: word('服务地址'), hint: null, kind: 'url' as const, required: true },
+    { ...box, key: 'server', label: word('服务地址'), kind: 'url' as const, required: true },
     {
+      ...box,
       key: 'clientSecret',
       label: word('客户端密钥'),
-      hint: null,
       kind: 'secret' as const,
       required: true,
+    },
+  ],
+}
+
+// a kind whose boxes depend on each other: a choice that reveals a box, and
+// settings folded away until somebody asks
+const shapedKind = {
+  type: 'cas',
+  label: word('统一身份认证'),
+  fields: [
+    {
+      ...box,
+      key: 'source',
+      label: word('身份来源'),
+      kind: 'choice' as const,
+      required: true,
+      options: [
+        { value: 'principal', label: word('登录名') },
+        { value: 'attribute', label: word('属性') },
+      ],
+      defaultValue: 'principal',
+    },
+    {
+      ...box,
+      key: 'attribute',
+      label: word('属性名'),
+      kind: 'text' as const,
+      required: true,
+      visibleWhen: { field: 'source', equals: 'attribute' },
+    },
+    {
+      ...box,
+      key: 'renew',
+      label: word('每次都重新登录'),
+      kind: 'toggle' as const,
+      required: false,
+      section: 'advanced' as const,
+      defaultValue: 'false',
+    },
+    {
+      ...box,
+      key: 'skew',
+      label: word('时钟容差'),
+      kind: 'number' as const,
+      required: false,
+      section: 'advanced' as const,
+      defaultValue: '60',
+      min: 0,
+      max: 300,
+      step: 1,
     },
   ],
 }
@@ -366,6 +428,54 @@ describe('a way in, from added to gone', () => {
     expect(clear).toHaveBeenCalledWith({
       params: { providerId: CAS_ID, key: 'clientSecret' },
       query: { version: '4' },
+    })
+  })
+
+  it('shows a box only while another asks for it, and folds the rest away', async () => {
+    const update = vi.fn(() => Effect.succeed({ version: 5 }))
+    const row = cas({ status: 'disabled' })
+    renderScreen({
+      client: fakeClient(
+        stubs({
+          listAuthProviders: () => Effect.succeed({ providers: [provider(), row] }),
+          listAuthProviderKinds: () => Effect.succeed({ kinds: [shapedKind] }),
+          // the detail echoes what each box holds, defaults included
+          getAuthProvider: () =>
+            Effect.succeed(
+              detail(row, { config: { source: 'principal', renew: 'false', skew: '60' } }),
+            ),
+          updateAuthProvider: update,
+        }),
+      ),
+      route: `/admin/login-methods?provider=${CAS_ID}`,
+      children: <LoginMethodsPage />,
+    })
+    const source = page.getByRole('combobox', { name: '身份来源' })
+    await expect.element(source).toBeInTheDocument()
+    expect(document.querySelector('input[name="entrance-attribute"]')).toBeNull()
+
+    await source.click()
+    await page.getByRole('option', { name: '属性' }).click()
+    const attribute = page.getByRole('textbox', { name: '属性名' })
+    await expect.element(attribute).toBeInTheDocument()
+    await attribute.fill('employeeNumber')
+
+    // folded until opened; opened, they hold their defaults
+    await expect
+      .element(page.getByTestId('method-advanced'))
+      .toHaveAttribute('data-state', 'closed')
+    await page.getByTestId('method-advanced').getByRole('button').first().click()
+    await expect.element(page.getByRole('spinbutton', { name: '时钟容差' })).toHaveValue(60)
+    await page.getByRole('checkbox', { name: '每次都重新登录' }).click()
+
+    await page.getByTestId('method-details').getByRole('button', { name: '保存' }).click()
+    await vi.waitFor(() => expect(update).toHaveBeenCalledTimes(1))
+    expect(update).toHaveBeenCalledWith({
+      params: { providerId: CAS_ID },
+      payload: {
+        version: 4,
+        values: { source: 'attribute', attribute: 'employeeNumber', renew: 'true' },
+      },
     })
   })
 

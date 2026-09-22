@@ -1,5 +1,6 @@
 import { Config, Context, Effect, Layer, Option, Schema } from 'effect'
 import { sessionCookieNameFor } from './session-cookie.ts'
+import { allowlistEntryValid, type OutboundPolicy } from './outbound.ts'
 import { decodePluginConfig } from '@qualy/plugin-kit/config'
 
 // What this plugin knows about its own deployment, and how it works it out.
@@ -34,6 +35,13 @@ export class AuthConfig extends Context.Service<
      * legal until an entrance needs to be redirected back to.
      */
     readonly publicUrl?: string
+    /**
+     * What a login entrance's upstream may be. Absent means what the
+     * deployment's kind implies: https and public addresses only in
+     * production; plain http and the machine's own services too in
+     * development, where a local identity server is how an entrance is tried.
+     */
+    readonly outbound?: OutboundPolicy
   }
 >()('@qualy/plugin-auth/AuthConfig') {}
 
@@ -47,6 +55,9 @@ export class AuthConfig extends Context.Service<
  * plugin cannot read - silently ignoring one is how a setting comes to look
  * applied while nothing consumes it.
  */
+export const PRIVATE_ALLOWLIST_MALFORMED =
+  'QUALY_AUTH_PRIVATE_PROVIDER_ALLOWLIST must be a comma-separated list of hostnames, addresses or CIDR blocks'
+
 export const PUBLIC_URL_MALFORMED =
   'QUALY_PUBLIC_URL must be an absolute http(s) origin with no path, such as https://qualy.example.edu'
 
@@ -118,7 +129,23 @@ export const config = (
       if (secureCookies && publicUrl !== undefined && !publicUrl.startsWith('https:')) {
         return yield* Effect.die(new Error(PUBLIC_URL_INSECURE))
       }
+      // the private networks an entrance's upstream may live on, which is the
+      // deployment's decision and never a tenant's
+      const allowlisted = (yield* Config.String('QUALY_AUTH_PRIVATE_PROVIDER_ALLOWLIST').pipe(
+        Config.withDefault(''),
+      ))
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter((entry) => entry !== '')
+      if (!allowlisted.every(allowlistEntryValid)) {
+        return yield* Effect.die(new Error(PRIVATE_ALLOWLIST_MALFORMED))
+      }
       return AuthConfig.of({
+        outbound: {
+          requireHttps: secureCookies,
+          allowLoopback: !secureCookies,
+          privateAllowlist: allowlisted,
+        },
         defaultTenantSlug: yield* Config.String('QUALY_DEFAULT_TENANT').pipe(
           Config.withDefault('default'),
         ),

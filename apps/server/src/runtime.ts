@@ -20,6 +20,7 @@ import { ServerConfig, apiReferenceEnabled } from './config.ts'
 import { apiRouteFallback } from '@qualy/api-kit/route-fallback'
 import { schemaRefusals } from '@qualy/api-kit/schema-refusal'
 import { serveMiddleware } from './serve-middleware.ts'
+import { platformTracerOff } from '@qualy/api-kit/request'
 import type { LoggingSettings } from './logging.ts'
 import { healthApi, healthHandlers } from './health.ts'
 import { mark } from './boot-timing.ts'
@@ -194,6 +195,8 @@ export async function makeApplication(
           }),
         },
       ).pipe(
+        // the serve chain opens the server span itself, without the query
+        Layer.provide(platformTracerOff),
         Layer.provide(
           NodeHttpServer.layer(() => instance, {
             port: config.port,

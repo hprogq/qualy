@@ -1,7 +1,7 @@
 {
   "lockfileVersion": 2,
   "manifestHash": "sha256:5459591105936e796968815ae579ae178fd1cfa5504da007cb488a7f3489e6b1",
-  "resolutionHash": "sha256:039a7c9dca9cdcaba88dbf30d449b6b696337c1d9a232725aba8f9c21904d987",
+  "resolutionHash": "sha256:5464f02f09111b6a7007577dc54ab8e29e5664232ed7dd17be8ae5cf4add32ce",
   "plugins": {
     "@qualy/plugin-assessment": {
       "version": "0.0.0",
@@ -129,7 +129,9 @@
             "AuthFlow",
             "AuthProvider",
             "AuthProviderUserType",
+            "AuthRateLimitBucket",
             "Session",
+            "SessionAuthGrant",
             "SignInEvent",
             "User",
             "UserAuthBinding",

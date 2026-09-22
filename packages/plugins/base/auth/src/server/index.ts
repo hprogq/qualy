@@ -23,6 +23,8 @@ import { layer as sessionLayer, viewerLayer } from './session.ts'
 import { recoveryBootCheck } from './recovery.ts'
 import { publicOriginBootCheck, PublicOriginResolver, singleOriginLayer } from './public-origin.ts'
 import { AnonymousTenantResolver, singleTenantLayer } from './tenancy.ts'
+import { makeOutbound } from './outbound.ts'
+import { AuthOutbound } from '@qualy/auth-contract/outbound'
 
 // auth as an Effect layer.
 //
@@ -115,6 +117,20 @@ const tags: Layer.Layer<
  */
 export { config } from './auth-config.ts'
 
+/** the deployment's outbound policy, as its configuration states it */
+const outboundLayer: Layer.Layer<AuthOutbound, never, AuthConfig> = Layer.effect(
+  AuthOutbound,
+  Effect.map(AuthConfig, (config) =>
+    makeOutbound(
+      config.outbound ?? {
+        requireHttps: config.secureCookies,
+        allowLoopback: !config.secureCookies,
+        privateAllowlist: [],
+      },
+    ),
+  ),
+)
+
 /** the services alone; the entry composes them with what the plugin registers */
 export const serviceLayer: Layer.Layer<
   | Placement
@@ -126,15 +142,17 @@ export const serviceLayer: Layer.Layer<
   | SignIn
   | LoginSessions
   | AnonymousTenantResolver
-  | PublicOriginResolver,
+  | PublicOriginResolver
+  | AuthOutbound,
   never,
   Orm | Rbac | Audit | AuthConfig | LoginDrivers | Secrets
   // The two resolvers are part of what this plugin provides, not of what it
   // asks for: one deployment, one tenant and one public address. A host that
   // one day tells tenants apart by their name replaces these two layers and
-  // nothing else here changes.
+  // nothing else here changes. The outbound port rides with them: every
+  // driver reaches its upstream through the policy this deployment set.
 > = Layer.mergeAll(tags, sessionLayer, viewerLayer, signInLayer).pipe(
-  Layer.provideMerge(Layer.mergeAll(singleTenantLayer, singleOriginLayer)),
+  Layer.provideMerge(Layer.mergeAll(singleTenantLayer, singleOriginLayer, outboundLayer)),
 )
 
 /**

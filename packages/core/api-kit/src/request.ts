@@ -1,5 +1,10 @@
-import { Context, Effect, Metric, Option, Tracer } from 'effect'
-import { HttpServerError, HttpServerRequest } from 'effect/unstable/http'
+import { Context, Effect, Layer, Metric, Option, Tracer } from 'effect'
+import {
+  HttpMiddleware,
+  HttpServerError,
+  HttpServerRequest,
+  HttpTraceContext,
+} from 'effect/unstable/http'
 import { randomUUID } from 'node:crypto'
 import { BlockList, isIP } from 'node:net'
 
@@ -336,6 +341,72 @@ const schemeOf = (
   if (remote === undefined || !trusted(remote)) return 'http'
   return request.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http'
 }
+
+/**
+ * The server span of a request, opened here instead of by the platform.
+ *
+ * The platform's tracer writes the URL onto the span whole - `url.full` and
+ * `url.query` - and writes it from its own exit hook, outside every serve
+ * middleware (repos/effect/packages/effect/src/unstable/http/HttpMiddleware.ts,
+ * the tracer), where nothing here can reach it. A query can be a credential:
+ * a CAS ticket, an OAuth code and state, a flow's state all arrive in one.
+ * The access log has never written a query for that reason, and this is the
+ * same rule for traces, with no list of which routes carry secrets: no span
+ * carries any query at all.
+ *
+ * So the platform's tracer is switched off (`platformTracerOff`, provided
+ * where the server is built) and this opens the span it would have opened -
+ * a server span, named by the method until routeSpanNames names it by the
+ * route, continuing an inbound trace, with the method, the path without its
+ * query, the scheme and, on the way out, the status.
+ */
+export const serverSpans = (options?: {
+  readonly trustedProxies?: readonly string[] | undefined
+}) => {
+  const trusted = trustedProxies(options?.trustedProxies ?? [])
+  return <A extends { readonly status: number }, E, R>(
+    httpApp: Effect.Effect<A, E, R>,
+  ): Effect.Effect<A, E, Exclude<R, Tracer.ParentSpan> | HttpServerRequest.HttpServerRequest> =>
+    Effect.withFiber((fiber) => {
+      const request = Context.getUnsafe(fiber.context, HttpServerRequest.HttpServerRequest)
+      const parent = Option.getOrUndefined(HttpTraceContext.fromHeaders(request.headers))
+      return Effect.useSpan(
+        `http.server ${request.method}`,
+        {
+          kind: 'server',
+          ...(parent === undefined ? {} : { parent }),
+          attributes: {
+            'http.request.method': request.method,
+            'url.path': pathOf(request.url),
+            'url.scheme': schemeOf(request, trusted),
+          },
+        },
+        (span) =>
+          Effect.withParentSpan(httpApp, span).pipe(
+            Effect.tap((response) =>
+              Effect.sync(() => span.attribute('http.response.status_code', response.status)),
+            ),
+          ),
+      )
+    })
+}
+
+/** the path alone: no query, no fragment, whatever form the url came in */
+const pathOf = (url: string) => {
+  const cut = url.search(/[?#]/)
+  const path = cut === -1 ? url : url.slice(0, cut)
+  if (path.startsWith('/')) return path
+  try {
+    return new URL(path).pathname
+  } catch {
+    return '/'
+  }
+}
+
+/** the platform's own server span, which would write the query; see serverSpans */
+export const platformTracerOff: Layer.Layer<never> = Layer.succeed(
+  HttpMiddleware.TracerDisabledWhen,
+)(() => true)
 
 export const httpMetrics = (options?: {
   readonly trustedProxies?: readonly string[] | undefined

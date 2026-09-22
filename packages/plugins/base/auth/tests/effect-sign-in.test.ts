@@ -6,7 +6,7 @@ import { Effect, Exit, Layer, Scope } from 'effect'
 import { HttpRouter } from 'effect/unstable/http'
 import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
 import { createServer } from 'node:http'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import {
   createTestContext,
   databaseFor,
@@ -29,6 +29,7 @@ import { sessionCookieName } from '@qualy/auth-contract/session'
 import { layer as sessionLayer } from '../src/server/session.ts'
 import { authClosure } from './support/closure.ts'
 import { secretsLayer } from '@qualy/plugin-secrets/testkit'
+import { authAuditLayer } from './support/audit.ts'
 import { singleTenantLayer } from '../src/server/tenancy.ts'
 import { singleOriginLayer } from '../src/server/public-origin.ts'
 
@@ -75,6 +76,7 @@ beforeAll(async () => {
     // the deployment's one tenant and its one public address, as the host
     // provides them
     Layer.provide(Layer.mergeAll(singleTenantLayer, singleOriginLayer)),
+    Layer.provide(authAuditLayer),
     Layer.provide(
       Layer.mergeAll(
         infra,
@@ -118,6 +120,15 @@ afterAll(async () => {
 })
 
 const probeInfra = () => databaseFor(db.url, { migrations: 'off', entities: authClosure })
+
+// every case below starts with nothing counted: what one case tried does not
+// throttle the next, and the cases about throttling say so on their own
+beforeEach(async () => {
+  if (!postgresAvailable) return
+  await Effect.runPromise(
+    runSql(sql`delete from auth_rate_limit_buckets`).pipe(Effect.provide(probeInfra())),
+  )
+})
 
 const login = (body: { email: string; password: string }, code = 'password') =>
   fetch(`${base}/auth/local/${code}/login`, {
@@ -468,5 +479,68 @@ describe.runIf(postgresAvailable)('the sign-in record', () => {
         ),
       )
     }
+  })
+})
+
+describe.runIf(postgresAvailable)('how many attempts a door takes', () => {
+  const buckets = () =>
+    Effect.runPromise(
+      runSql<{ scope: string; key_hash: string; attempts: number }>(
+        sql`select scope, key_hash, attempts from auth_rate_limit_buckets order by scope`,
+      ).pipe(
+        Effect.map((result) => result.rows),
+        Effect.provide(probeInfra()),
+      ),
+    )
+
+  it('slows an address down past its limit, the same way whether anybody answers to it', async () => {
+    for (const email of [SEEDED_EMAILS.ada, 'nobody-at-all@school.edu']) {
+      for (let tried = 0; tried < 10; tried += 1) {
+        const refused = await login({ email, password: 'not the password' })
+        expect(refused.status, email).toBe(401)
+      }
+      // the eleventh is not weighed at all: the right password is not
+      // enough, and the answer does not say whether the address exists
+      const slowed = await login({ email, password })
+      expect(slowed.status, email).toBe(429)
+      const retryAfter = Number(slowed.headers.get('retry-after'))
+      expect(retryAfter, email).toBeGreaterThan(0)
+      expect(retryAfter, email).toBeLessThanOrEqual(900)
+      expect(await slowed.json()).toEqual({
+        _tag: 'TOO_MANY_ATTEMPTS',
+        retryAfterSeconds: retryAfter,
+      })
+    }
+    // what was counted is a keyed digest, never the address typed
+    const rows = await buckets()
+    expect(rows.length).toBeGreaterThan(0)
+    for (const row of rows) {
+      expect(row.key_hash).toMatch(/^[0-9a-f]{64}$/)
+      expect(row.key_hash).not.toContain('school')
+    }
+  })
+
+  it('starts counting again once the window has passed, and never locks anybody out', async () => {
+    for (let tried = 0; tried < 11; tried += 1) {
+      await login({ email: SEEDED_EMAILS.ada, password: 'not the password' })
+    }
+    expect((await login({ email: SEEDED_EMAILS.ada, password })).status).toBe(429)
+    await Effect.runPromise(
+      runSql(
+        sql`update auth_rate_limit_buckets set window_started_at = now() - interval '1 hour'`,
+      ).pipe(Effect.provide(probeInfra())),
+    )
+    const back = await login({ email: SEEDED_EMAILS.ada, password })
+    expect(back.status).toBe(200)
+  })
+
+  it('slows one address trying many accounts', async () => {
+    const answers: number[] = []
+    for (let tried = 0; tried < 31; tried += 1) {
+      const response = await login({ email: `guess-${tried}@school.edu`, password })
+      answers.push(response.status)
+    }
+    expect(answers.slice(0, 30).every((status) => status === 401)).toBe(true)
+    expect(answers[30]).toBe(429)
   })
 })

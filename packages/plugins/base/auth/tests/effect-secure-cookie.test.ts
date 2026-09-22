@@ -27,6 +27,7 @@ import { layer as sessionLayer } from '../src/server/session.ts'
 import { sessionCookieNameFor } from '../src/server/session-cookie.ts'
 import { authClosure } from './support/closure.ts'
 import { secretsLayer } from '@qualy/plugin-secrets/testkit'
+import { authAuditLayer } from './support/audit.ts'
 import { singleTenantLayer } from '../src/server/tenancy.ts'
 import { singleOriginLayer } from '../src/server/public-origin.ts'
 import { SEEDED_EMAILS, seedSignIn } from './support/sign-in-seed.ts'
@@ -68,6 +69,7 @@ beforeAll(async () => {
     // the deployment's one tenant and its one public address, as the host
     // provides them
     Layer.provide(Layer.mergeAll(singleTenantLayer, singleOriginLayer)),
+    Layer.provide(authAuditLayer),
     Layer.provide(
       Layer.mergeAll(
         infra,

@@ -303,8 +303,20 @@ export const identityApiGroup = HttpApiGroup.make('identity')
                 key: Schema.String,
                 label: UiTextSchema,
                 hint: Schema.NullOr(UiTextSchema),
-                kind: Schema.Literals(['text', 'url', 'secret']),
+                kind: Schema.Literals(['text', 'url', 'secret', 'choice', 'toggle', 'number']),
                 required: Schema.Boolean,
+                // advanced fields fold away until somebody asks for them
+                section: Schema.Literals(['basic', 'advanced']),
+                // shown only while another field holds this value, as its box carries it
+                visibleWhen: Schema.NullOr(
+                  Schema.Struct({ field: Schema.String, equals: Schema.String }),
+                ),
+                // a choice's options; empty for every other kind
+                options: Schema.Array(Schema.Struct({ value: Schema.String, label: UiTextSchema })),
+                defaultValue: Schema.NullOr(Schema.String),
+                min: Schema.NullOr(Schema.Number),
+                max: Schema.NullOr(Schema.Number),
+                step: Schema.NullOr(Schema.Number),
               }),
             ),
           }),

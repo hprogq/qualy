@@ -95,6 +95,11 @@ catalog:
   '@tanstack/react-query': 5.101.4
   sirv: 3.0.2
   argon2: 0.45.1
+  # the connection a login entrance's upstream is reached over: an Agent whose
+  # lookup answers with the address the outbound policy already checked, so a
+  # second resolution cannot move the request somewhere else. The same version
+  # @effect/platform-node already installs.
+  undici: 8.10.2
   clsx: 2.1.1
   '@vitest/browser-playwright': 5.0.1
   'vitest-browser-react': 2.3.0

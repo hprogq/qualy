@@ -112,6 +112,8 @@ export default {
     '仅支持小写字母、数字和连字符。作为登录链接的一部分，创建后不可更改。',
   'auth/login-methods/secret-stored': '已保存，输入新值即可替换',
   'auth/login-methods/secret-clear': '清除',
+  'auth/login-methods/choose': '请选择',
+  'auth/login-methods/advanced': '高级设置',
   'auth/login-methods/secret-clear-label': '清除{field}',
   'auth/login-methods/missing': '尚未填写：{fields}',
   'auth/login-methods/driver-missing': '未安装提供该类型的插件',

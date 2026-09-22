@@ -6,6 +6,7 @@ import { Secrets, type SecretRef } from '@qualy/plugin-secrets/plugin'
 import {
   AuthFlowRejected,
   type ConsumedFlow,
+  type FlowPayload,
   type FlowRejection,
   type ResolvedProvider,
   type StartedFlow,
@@ -83,6 +84,11 @@ const liveSession = (tenantId: string, userId: string, sessionId: string) =>
     )
     .pipe(Effect.map((row) => row !== undefined))
 
+/** a flow's id, minted where every other id is, before the row exists */
+const nextFlowId = db
+  .query((k) => sql<{ id: string }>`select uuidv7() as id`.execute(k))
+  .pipe(Effect.map(({ rows }) => rows[0]!.id))
+
 /** flows nobody came back for, long past any use */
 const sweep = db.query((k) =>
   sql`
@@ -103,7 +109,7 @@ export const makeFlows = Effect.fn('Auth.makeFlows')(function* () {
     purpose: 'login' | 'bind'
     binding?: { userId: string; sessionId: string }
     returnPath?: string
-    payload?: Redacted.Redacted<string>
+    payload?: FlowPayload
   }): Effect.Effect<StartedFlow, AuthFlowRejected> =>
     withDb(
       transaction(
@@ -121,47 +127,49 @@ export const makeFlows = Effect.fn('Auth.makeFlows')(function* () {
             }
           }
           yield* sweep
-          const state = randomBytes(STATE_BYTES).toString('base64url')
+          const state = Redacted.make(randomBytes(STATE_BYTES).toString('base64url'))
+          // the id first, because the payload is sealed under it: a payload
+          // lifted onto another flow does not open
+          const flowId = yield* nextFlowId
+          const payload =
+            input.payload === undefined
+              ? undefined
+              : typeof input.payload === 'function'
+                ? input.payload(state)
+                : input.payload
+          const sealed =
+            payload === undefined
+              ? null
+              : yield* secrets.seal(
+                  payloadRef({
+                    tenantId: input.provider.tenantId,
+                    flowId,
+                    providerId: input.provider.providerId,
+                    purpose: input.purpose,
+                  }),
+                  payload,
+                )
           const started = yield* db.query((k) =>
             k
               .insertInto('AuthFlow')
               .values({
+                id: flowId,
                 tenantId: input.provider.tenantId,
                 authProviderId: input.provider.providerId,
-                stateHash: digest(state),
+                stateHash: digest(Redacted.value(state)),
                 purpose: input.purpose,
                 userId: input.purpose === 'bind' ? input.binding!.userId : null,
                 sessionId: input.purpose === 'bind' ? input.binding!.sessionId : null,
                 returnPath: safeReturnPath(input.returnPath) ?? null,
+                payloadSealed: sealed,
                 expiresAt: sql<Date>`now() + ${sql.raw(`interval '${String(FLOW_TTL_MINUTES)} minutes'`)}`,
               })
-              .returning(['id', 'expiresAt'])
+              .returning(['expiresAt'])
               .executeTakeFirstOrThrow(),
           )
-          const flowId = String(started.id)
-          if (input.payload !== undefined) {
-            // sealed after the insert, because what it is sealed under is the
-            // row's own id: a payload lifted onto another flow does not open
-            const sealed = yield* secrets.seal(
-              payloadRef({
-                tenantId: input.provider.tenantId,
-                flowId,
-                providerId: input.provider.providerId,
-                purpose: input.purpose,
-              }),
-              input.payload,
-            )
-            yield* db.query((k) =>
-              k
-                .updateTable('AuthFlow')
-                .set({ payloadSealed: sealed })
-                .where('id', '=', flowId)
-                .execute(),
-            )
-          }
           return {
             flowId,
-            state: Redacted.make(state),
+            state,
             expiresAt: new Date(started.expiresAt as unknown as string),
           } satisfies StartedFlow
         }),

@@ -2,6 +2,7 @@ import { Effect } from 'effect'
 import { LoginDrivers, type LoginDriver } from '@qualy/auth-contract/login'
 import { Secrets, type SecretOwner } from '@qualy/plugin-secrets/plugin'
 import { PublicOriginResolver } from './public-origin.ts'
+import { effectiveValues, visibleIn } from './entrance-values.ts'
 
 // Whether an entrance can let anybody in, asked in one place.
 //
@@ -44,9 +45,6 @@ export const configOf = (value: unknown): Readonly<Record<string, unknown>> =>
     ? (value as Record<string, unknown>)
     : {}
 
-const filled = (value: unknown) =>
-  typeof value === 'string' ? value.trim() !== '' : value !== undefined && value !== null
-
 /** the judgment itself, on facts already read */
 export const readinessOf = (
   driver: LoginDriver | undefined,
@@ -58,11 +56,15 @@ export const readinessOf = (
   const missing: ReadinessGap[] =
     driver.callback !== undefined && !publicOrigin ? [{ kind: 'public-origin' }] : []
   if (driver.provisioning.mode === 'tenant-managed') {
+    const entrance = driver.provisioning.entrance
+    // judged on the values as they stand, defaults included; a field the
+    // form does not show is not asked for
+    const values = effectiveValues(entrance, config)
     missing.push(
-      ...driver.provisioning.entrance.fields
-        .filter((field) => field.required)
+      ...entrance.fields
+        .filter((field) => field.required && visibleIn(field, values))
         .filter((field) =>
-          field.kind === 'secret' ? !storedSecrets.includes(field.key) : !filled(config[field.key]),
+          field.kind === 'secret' ? !storedSecrets.includes(field.key) : values[field.key] === undefined,
         )
         .map((field): ReadinessGap => ({ kind: 'field', key: field.key })),
     )

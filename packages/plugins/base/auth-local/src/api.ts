@@ -1,3 +1,4 @@
+import { TooManyAttemptsResponse } from '@qualy/auth-contract/session'
 import { Schema } from 'effect'
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
 
@@ -42,6 +43,6 @@ export const authLocalApiGroup = HttpApiGroup.make('authLocal').add(
       password: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128)),
     }),
     success: Schema.Struct({ user: signedInUser }),
-    error: [InvalidCredentials],
+    error: [InvalidCredentials, TooManyAttemptsResponse],
   }),
 )

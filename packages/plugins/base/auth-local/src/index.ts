@@ -80,9 +80,18 @@ const handlers = HttpApiBuilder.group(local, 'authLocal', (handlers) =>
         expectedType: 'local',
       })
       // no resolved door, no record: a URL that names no provider is not an
-      // attempt on anybody's account
-      if (!resolved) return yield* fail()
+      // attempt on anybody's account. Nor a hash - which doors exist is on
+      // the sign-in page for anybody to read, so there is no timing to hide,
+      // and hashing for a door that is not there would be work anybody could
+      // ask for without limit.
+      if (!resolved) return yield* new InvalidCredentials()
       const email = normalizeEmail(payload.email)
+      // counted before anything is looked up or hashed, and counted the same
+      // for an address nobody has: what is typed is the key, whoever it is
+      yield* sessions.admitAttempt({
+        provider: resolved,
+        identifier: email ?? payload.email.trim().toLowerCase(),
+      })
       const person =
         email === null
           ? undefined

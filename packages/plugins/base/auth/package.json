@@ -65,7 +65,8 @@
     "effect": "catalog:",
     "kysely": "catalog:",
     "lucide-react": "^0.552.0",
-    "react-router": "catalog:"
+    "react-router": "catalog:",
+    "undici": "catalog:"
   },
   "devDependencies": {
     "@effect/platform-node": "catalog:",

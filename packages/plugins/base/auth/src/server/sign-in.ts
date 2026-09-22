@@ -3,7 +3,7 @@ import { HttpServerRequest } from 'effect/unstable/http'
 import { bindSessionId, currentRequestContext } from '@qualy/api-kit/request'
 import { boundedCounter } from '@qualy/telemetry/metrics'
 import { transaction, withDatabase, type Orm } from '@qualy/plugin-database/server'
-import { db } from './db.ts'
+import { db, lockTenant } from './db.ts'
 import { sql } from 'kysely'
 import {
   LoginDrivers,
@@ -11,6 +11,10 @@ import {
   type LoginPresentation,
   type LoginSessionsShape,
   ProviderSecretMissing,
+  AuthBindingRejected,
+  type BindingRejection,
+  type ConsumedFlow,
+  type SessionGrantInput,
   type ResolvedProvider,
   type SignInFailureReason,
   type SignedInUser,
@@ -20,11 +24,15 @@ import { Secrets } from '@qualy/plugin-secrets/plugin'
 import { AuthConfig } from './auth-config.ts'
 import { configOf, entranceSecrets, makeReadiness } from './readiness.ts'
 import { makeFlows } from './flows.ts'
+import { LIMITS, makeLimiter, type LimitRule } from './limiter.ts'
+import { actorOf } from './audit-actor.ts'
+import { BindingWritten } from '../actions.ts'
+import { Audit } from '@qualy/audit-contract/effect'
 import { AnonymousTenantResolver } from './tenancy.ts'
 import { PublicOriginResolver } from './public-origin.ts'
 
 export { AuthConfig }
-import { sessionCookieName } from '@qualy/auth-contract/session'
+import { sessionCookieName, TooManyAttempts } from '@qualy/auth-contract/session'
 import { clearSessionCookie, setSessionCookie } from './session-cookie.ts'
 
 // Signing in, and signing out.
@@ -180,14 +188,158 @@ const bindingBySubject = (tenantId: string, providerId: string, subject: string)
       .executeTakeFirst(),
   )
 
-const touchBinding = (bindingId: string) =>
+/**
+ * The binding was just used, and - when the driver learned it - what the
+ * account is called over there now: a renamed GitHub account shows its new
+ * name the next time its owner signs in, never a stale one forever.
+ */
+const touchBinding = (bindingId: string, displayLabel: string | undefined) =>
   db.query((k) =>
     k
       .updateTable('UserAuthBinding')
-      .set({ lastUsedAt: sql<Date>`now()` })
+      .set({
+        lastUsedAt: sql<Date>`now()`,
+        ...(displayLabel === undefined ? {} : { displayLabel: displayLabel.slice(0, 255) }),
+      })
       .where('id', '=', bindingId)
       .execute(),
   )
+
+/** the grant's sealed identity: its session, its entrance, its kind, its format */
+const grantRef = (tenantId: string, sessionId: string, providerId: string, kind: string) => ({
+  tenantId,
+  ownerKind: 'session-grant',
+  ownerId: sessionId,
+  key: `${providerId}:${kind}:v1`,
+})
+
+const insertGrant = (input: {
+  tenantId: string
+  sessionId: string
+  providerId: string
+  kind: string
+  sealed: string
+  expiresAt: Date | undefined
+}) =>
+  db.query((k) =>
+    k
+      .insertInto('SessionAuthGrant')
+      .values({
+        tenantId: input.tenantId,
+        sessionId: input.sessionId,
+        authProviderId: input.providerId,
+        kind: input.kind,
+        stateSealed: input.sealed,
+        expiresAt: input.expiresAt ?? null,
+      })
+      .execute(),
+  )
+
+/** the bind flow this entrance just took up, for exactly this person */
+const consumedBindFlow = (input: {
+  tenantId: string
+  flowId: string
+  providerId: string
+  userId: string
+  sessionId: string
+}) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('AuthFlow')
+        .select('id')
+        .where('tenantId', '=', input.tenantId)
+        .where('id', '=', input.flowId)
+        .where('authProviderId', '=', input.providerId)
+        .where('purpose', '=', 'bind')
+        .where('userId', '=', input.userId)
+        .where('sessionId', '=', input.sessionId)
+        .where('consumedAt', 'is not', null)
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => row !== undefined))
+
+/** the entrance, if it still serves */
+const servingDoor = (tenantId: string, providerId: string) =>
+  db.query((k) =>
+    k
+      .selectFrom('AuthProvider')
+      .select('id')
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', providerId)
+      .where('enabled', '=', true)
+      .where('deletedAt', 'is', null)
+      .executeTakeFirst(),
+  )
+
+/**
+ * The person a bind is for, whether they may still use this entrance, and
+ * whether they already have an account bound at it.
+ */
+const bindablePerson = (tenantId: string, userId: string, providerId: string) =>
+  db.query((k) =>
+    k
+      .selectFrom('User as u')
+      .innerJoin('UserType as t', (join) =>
+        join.onRef('t.tenantId', '=', 'u.tenantId').onRef('t.id', '=', 'u.userTypeId'),
+      )
+      .select((eb) => [
+        'u.id',
+        'u.displayName',
+        'u.primaryOrgNodeId',
+        eb.and([eb('u.enabled', '=', true), eb('t.enabled', '=', true)]).as('usable'),
+        eb
+          .or([
+            eb.exists(
+              eb
+                .selectFrom('AuthProvider as p')
+                .select('p.id')
+                .whereRef('p.tenantId', '=', 'u.tenantId')
+                .where('p.id', '=', providerId)
+                .where('p.audienceMode', '=', 'unrestricted'),
+            ),
+            eb.exists(
+              eb
+                .selectFrom('AuthProviderUserType as a')
+                .select('a.id')
+                .whereRef('a.tenantId', '=', 'u.tenantId')
+                .where('a.authProviderId', '=', providerId)
+                .whereRef('a.userTypeId', '=', 't.id'),
+            ),
+          ])
+          .as('admits'),
+        eb
+          .exists(
+            eb
+              .selectFrom('UserAuthBinding as b')
+              .select('b.id')
+              .whereRef('b.tenantId', '=', 'u.tenantId')
+              .whereRef('b.userId', '=', 'u.id')
+              .where('b.authProviderId', '=', providerId)
+              .where('b.revokedAt', 'is', null),
+          )
+          .as('bound'),
+      ])
+      .where('u.tenantId', '=', tenantId)
+      .where('u.id', '=', userId)
+      .where('u.deletedAt', 'is', null)
+      .executeTakeFirst(),
+  )
+
+/** whoever holds this account at this entrance now */
+const subjectHeld = (tenantId: string, providerId: string, subject: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('UserAuthBinding')
+        .select('id')
+        .where('tenantId', '=', tenantId)
+        .where('authProviderId', '=', providerId)
+        .where('subject', '=', subject)
+        .where('revokedAt', 'is', null)
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => row !== undefined))
 
 /**
  * The person behind a session, with everything a shell renders.
@@ -445,6 +597,24 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
   const publicOrigin = yield* PublicOriginResolver
   const secrets = yield* Secrets
   const flows = yield* makeFlows()
+  const limiter = yield* makeLimiter
+  const audit = yield* Audit
+
+  /** one more attempt from where this request came from, at this entrance */
+  const fromHere = Effect.fn('Auth.signIn.fromHere')(function* (
+    provider: ResolvedProvider,
+    rule: LimitRule,
+  ) {
+    const context = Option.getOrUndefined(yield* currentRequestContext)
+    const answer = yield* limiter.consume(
+      provider.tenantId,
+      rule,
+      `${provider.providerId}\0${context?.clientIp ?? 'unknown'}`,
+    )
+    if (!answer.allowed) {
+      return yield* new TooManyAttempts({ retryAfterSeconds: answer.retryAfterSeconds })
+    }
+  })
 
   // The database is closed over rather than required, because what this builds
   // is a shape whose requirements the login contract fixes: a driver calls
@@ -573,8 +743,108 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         return new URL(path, base)
       }),
 
-    startFlow: flows.startFlow,
+    // a redirect costs a row, so where it is started from is counted first
+    startFlow: (input) =>
+      withDb(fromHere(input.provider, LIMITS.flowStartByAddress)).pipe(
+        Effect.andThen(flows.startFlow(input)),
+      ),
     consumeFlow: flows.consumeFlow,
+
+    admitAttempt: bound(
+      Effect.fn('Auth.signIn.admitAttempt')(function* (input: {
+        provider: ResolvedProvider
+        identifier?: string
+      }) {
+        yield* fromHere(input.provider, LIMITS.signInByAddress)
+        if (input.identifier === undefined) return
+        // weighed whether or not anybody answers to it: the refusal must
+        // not be the thing that tells an address that exists from one that
+        // does not
+        const answer = yield* limiter.consume(
+          input.provider.tenantId,
+          LIMITS.signInByIdentifier,
+          `${input.provider.providerId}\0${input.identifier}`,
+        )
+        if (!answer.allowed) {
+          return yield* new TooManyAttempts({ retryAfterSeconds: answer.retryAfterSeconds })
+        }
+      }),
+    ),
+
+    bindSubject: bound(
+      Effect.fn('Auth.signIn.bindSubject')(function* (input: {
+        provider: ResolvedProvider
+        flow: ConsumedFlow
+        subject: string
+        displayLabel?: string
+      }) {
+        const { provider, flow } = input
+        const refuse = (reason: BindingRejection) => new AuthBindingRejected({ reason })
+        if (flow.purpose !== 'bind' || flow.userId === undefined || flow.sessionId === undefined) {
+          return yield* refuse('not-a-bind')
+        }
+        const userId = flow.userId
+        const sessionId = flow.sessionId
+        return yield* transaction(
+          Effect.gen(function* () {
+            yield* lockTenant(provider.tenantId)
+            // the person comes from a bind flow this entrance just took up,
+            // never from anything that arrived with the callback
+            const taken = yield* consumedBindFlow({
+              tenantId: provider.tenantId,
+              flowId: flow.flowId,
+              providerId: provider.providerId,
+              userId,
+              sessionId,
+            })
+            if (!taken) return yield* refuse('not-a-bind')
+            if (!(yield* servingDoor(provider.tenantId, provider.providerId))) {
+              return yield* refuse('provider-unavailable')
+            }
+            const person = yield* bindablePerson(provider.tenantId, userId, provider.providerId)
+            if (!person || !person.usable) return yield* refuse('user-unavailable')
+            if (!person.admits) return yield* refuse('audience-excluded')
+            if (person.bound) return yield* refuse('already-bound')
+            if (yield* subjectHeld(provider.tenantId, provider.providerId, input.subject)) {
+              return yield* refuse('subject-taken')
+            }
+            const binding = yield* db.query((k) =>
+              k
+                .insertInto('UserAuthBinding')
+                .values({
+                  tenantId: provider.tenantId,
+                  userId,
+                  authProviderId: provider.providerId,
+                  subject: input.subject,
+                  displayLabel: input.displayLabel?.slice(0, 255) ?? null,
+                  credentialHash: null,
+                })
+                .returning('id')
+                .executeTakeFirstOrThrow(),
+            )
+            yield* audit.record(BindingWritten, {
+              tenantId: provider.tenantId,
+              actor: yield* actorOf(provider.tenantId, {
+                tenantId: provider.tenantId,
+                userId,
+                sessionId,
+              }),
+              target: { id: userId, label: person.displayName },
+              ...(person.primaryOrgNodeId === null
+                ? {}
+                : { organizationId: person.primaryOrgNodeId }),
+              details: {
+                providerId: provider.providerId,
+                bindingId: binding.id,
+                replaced: false,
+                endedSessions: 0,
+              },
+            })
+            return { bindingId: binding.id }
+          }),
+        ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
+      }),
+    ),
 
     resolveProvider: bound(
       Effect.fn('Auth.signIn.resolveProvider')(function* (input: {
@@ -651,6 +921,8 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         providerId: string
         userId: string
         bindingId?: string
+        bindingDisplayLabel?: string
+        grants?: readonly SessionGrantInput[]
       }) {
         const provider = { tenantId: input.tenantId, providerId: input.providerId }
         // the account state is re-read here rather than trusted from the proof:
@@ -674,8 +946,9 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         // proxy itself on any proxied deployment
         const context = Option.getOrUndefined(yield* currentRequestContext)
         const { token, tokenHash } = createSessionToken()
-        // one transaction: the session, the binding's last-used stamp and
-        // the sign-in event exist together or not at all
+        // one transaction: the session, the binding's last-used stamp, what
+        // the session keeps from the other side and the sign-in event exist
+        // together or not at all
         const sessionId = yield* transaction(
           Effect.gen(function* () {
             const session = yield* insertSession({
@@ -689,7 +962,23 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
               userAgent: context?.userAgent,
             }).pipe(Effect.orDie)
             if (input.bindingId) {
-              yield* touchBinding(input.bindingId).pipe(Effect.orDie)
+              yield* touchBinding(input.bindingId, input.bindingDisplayLabel).pipe(Effect.orDie)
+            }
+            // what the session keeps from the other side, sealed under the
+            // session it belongs to so it cannot be lifted onto another
+            for (const grant of input.grants ?? []) {
+              const sealed = yield* secrets.seal(
+                grantRef(input.tenantId, session.id, input.providerId, grant.kind),
+                grant.state,
+              )
+              yield* insertGrant({
+                tenantId: input.tenantId,
+                sessionId: session.id,
+                providerId: input.providerId,
+                kind: grant.kind,
+                sealed,
+                expiresAt: grant.expiresAt,
+              }).pipe(Effect.orDie)
             }
             yield* record(provider, {
               outcome: 'success',
@@ -793,7 +1082,13 @@ export class SignIn extends Context.Service<SignIn, Effect.Success<ReturnType<ty
 export const layer: Layer.Layer<
   SignIn | LoginSessions,
   never,
-  Orm | AuthConfig | LoginDrivers | Secrets | AnonymousTenantResolver | PublicOriginResolver
+  | Orm
+  | AuthConfig
+  | LoginDrivers
+  | Secrets
+  | Audit
+  | AnonymousTenantResolver
+  | PublicOriginResolver
 > =
   Layer.effectContext(
     Effect.gen(function* () {

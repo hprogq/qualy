@@ -13,6 +13,8 @@ import { compositeForeignKeys, entities } from '../src/db/entities.ts'
 const TABLES = [
   'auth_flows',
   'sessions',
+  'session_auth_grants',
+  'auth_rate_limit_buckets',
   'sign_in_events',
   'user_auth_bindings',
   'users',

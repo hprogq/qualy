@@ -62,5 +62,15 @@ export class Secrets extends Context.Service<
       ref: SecretRef,
       sealed: string,
     ) => Effect.Effect<Redacted.Redacted<string>, SecretUnreadable>
+    /**
+     * A keyed digest of a value, as 64 hex characters.
+     *
+     * The same scope and value always give the same text, and nobody without
+     * the deployment's master key can compute one or test a guess against
+     * it: what to store when something has to be found again by a value that
+     * must not be stored - the address a sign-in attempt was counted against.
+     * The scope keeps two uses of one value apart.
+     */
+    readonly fingerprint: (scope: string, value: string) => Effect.Effect<string>
   }
 >()('@qualy/plugin-secrets/Secrets') {}

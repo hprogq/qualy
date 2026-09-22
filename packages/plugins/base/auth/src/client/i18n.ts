@@ -499,6 +499,8 @@ const i18n = definePluginMessages({
       defaultMessage: 'Saved. Type a new value to replace it',
     },
     methodSecretClear: { id: 'auth/login-methods/secret-clear', defaultMessage: 'Clear' },
+    methodChoose: { id: 'auth/login-methods/choose', defaultMessage: 'Choose' },
+    methodAdvanced: { id: 'auth/login-methods/advanced', defaultMessage: 'Advanced settings' },
     methodSecretClearLabel: methodSecretClearLabelMessage,
     methodMissing: methodMissingMessage,
     methodDriverMissing: {

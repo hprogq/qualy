@@ -210,6 +210,48 @@ default-src 'self'; script-src 'self' 'sha256-pKAg+of2SxxrkLJX27pRnCgcyN5Ud1dmuO
   入口删除把未消费的 flow 标记为已消费;人被删除时其会话消失,挂在会话上的 flow 随之级联删除。
   返回路径只接受本应用内的路径(`safeReturnPath`),绝对 URL、协议相对 URL 一律丢弃。
 
+## 出站、限流、上游凭据与入口字段(2026-09-23 定案)
+
+外部登录驱动(CAS / GitHub / OIDC)站上来之前先铺好的四块地基。驱动不自己做这些事,只调 core。
+
+- **出站只有一个口子**(`AuthOutbound`,契约在 `@qualy/auth-contract/outbound`,实现 `auth/src/server/outbound.ts`):
+  驱动不许自己 fetch。生产只许 https;URL 带凭据或 fragment 直接拒;**不跟随重定向**(3xx 原样作为答复返回,
+  上游把服务端引到别处就是引到没人检查过的地方);超时默认 10s、响应体上限默认 1 MiB。
+  **地址检查与连接是同一次解析**:主机名解析一次、每个候选地址都过检查,然后经 undici `Agent({connect:{lookup}})`
+  把连接钉在这些地址上,TLS SNI 与 Host 仍是原主机名——「先解析检查、再普通 fetch」会在第二次解析时被 DNS rebinding 换掉地址。
+  一个名字只要有一个地址落在内网,整个名字就算内网。
+- **内网是部署的决定,不是租户的**:`QUALY_AUTH_PRIVATE_PROVIDER_ALLOWLIST`(主机名 / 地址 / CIDR,逗号分隔,缺省空;
+  条目格式错即拒启)。回环、未指定地址、link-local、云 metadata(169.254.169.254、100.100.100.200、fd00:ec2::254)
+  **写进名单也永远连不到**;保留段(组播、文档段、基准测试段)同样拒绝。开发态放行回环(本机的假 CAS / 假 OP),生产永不。
+  拒绝原因(`OutboundRefused.reason`)只点名规则,不复述地址。
+- **trace 里没有 query**:平台 tracer 在请求入口抓住 request、结束时才写 `url.full`/`url.query`,插件层拦不住;
+  所以 api-kit 用 `HttpMiddleware.TracerDisabledWhen` 关掉平台 span,自建 server span(method、`http.route`、不含 query 的
+  path、status、继承 traceparent)。`?ticket=`、`?code=`、`?state=` 因此不进任何导出的 span——与访问日志「query 永不入日志」
+  同一条规则,不需要按插件维护路径清单。OTLP 钉住测试断言导出的 span 里找不到这些值。
+- **限流是 PostgreSQL 里的固定窗口**(`auth_rate_limit_buckets(tenant_id, scope, key_hash)`,一条原子 upsert 计数,
+  窗口过期即从 1 重新计):本地登录按「入口 + 来源地址」30 次 / 5 分钟、按「入口 + 邮箱」10 次 / 15 分钟,
+  发起重定向按「入口 + 来源地址」30 次 / 5 分钟。**在 Argon2 之前计数**,邮箱存在与否走同一条路径、进同一个桶,
+  超限答复不泄露账号是否存在。超限是 429 `TOO_MANY_ATTEMPTS { retryAfterSeconds }` + `Retry-After` 响应头;
+  **只节流,不锁号**——一把谁都能替别人触发的锁就是把别人关在门外的办法。不引 Redis:进程内计数重启就清零、多进程各数各的。
+  旧桶在计数时顺带清扫(每进程每 100 次一扫,每次至多 500 行,闲置超过 24 小时的桶)。
+- **桶键是 keyed digest**:`Secrets.fingerprint(scope, value)` = HMAC-SHA256,密钥由主密钥经 HKDF 派生
+  (info `qualy/secrets/fingerprint/v1`,加密密钥从不兼作 MAC 密钥),scope 参与计算做域分离。表里看不出试过哪些邮箱,
+  没有主密钥也无法离线比对猜测。
+- **上游凭据归 session**(`session_auth_grants`):`completeLogin({ grants })` 在同一事务里写 session、sign-in event、
+  binding touch 与 grant;明文经 `Secrets.seal` 封装,引用为 `(tenant, 'session-grant', sessionId, '<providerId>:<kind>:v1')`,
+  挪到别的会话就打不开;会话删除级联删除 grant。**当前没有任何驱动写 grant**:CAS 的 `checkAliveTicket` 这一轮不保存,
+  等 SLO / 会话存活检查真的要用时再接。
+- **自助绑定只有一个写口**(`bindSubject`):人来自驱动刚消费的 bind flow(core 在锁内复查该 flow 确实由本入口消费、
+  钉着同一人同一会话),绝不来自回调参数。同一事务内检查入口在用、人存活且受众接纳、本入口尚无存活绑定、subject 未被他人占用,
+  写绑定并审计 `auth.identity.bind`。`completeLogin` 的 `bindingDisplayLabel` 在每次登录时刷新绑定的展示名(GitHub 改名等)。
+- **flow payload 可以是工厂**:`startFlow({ payload: (state) => … })`,core 先生成 state 再调工厂、seal、一次 INSERT。
+  CAS 要把「签发时带 `?flow=<state>` 的 service 原字符串」存进 payload,回来时逐字校验。
+- **入口字段表达力**:`EntranceField` 除 text / url / secret 外有 `choice`(options + 默认值)、`toggle`、`number`
+  (min / max / step);`visibleWhen { field, equals }` 只支持同表单内的标量相等,`section: basic | advanced`。
+  存储按类型解析(choice 字符串、toggle 布尔、number 数值),未设置即默认值;**不可见字段不参与 required 判定**,
+  详情回显含默认值的有效值;驱动可声明 `prepareConfig`,在可见的有效值上校验并派生设置(例如 CAS 按协议档位展开端点),
+  core 存在 `config.derived` 下。
+
 ## 恢复通道(2026-09-22 定案)
 
 - 每个租户的系统账户(`system-account` 类型)永远保有平台 local 入口上的一条可用登录:有邮箱、有存活密码凭据,入口在用且受众接纳系统类型

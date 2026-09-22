@@ -28,7 +28,8 @@ import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { iamMessages as m } from '../../i18n.ts'
 import { authApi } from '../../api.ts'
-import { MethodFields, type EntranceKind } from './MethodFields.tsx'
+import { MethodFields } from './MethodFields.tsx'
+import { fieldShown, formValues, type EntranceKind } from './form-values.ts'
 
 // One entrance, opened beside the table.
 //
@@ -121,24 +122,30 @@ export function MethodSheet({
   const inService = provider.status === 'active'
   const complete = provider.setup === 'complete'
   const fields = kind?.fields ?? []
+  const holds = kind === undefined ? {} : formValues(kind, config, {})
+  const willHold = kind === undefined ? {} : formValues(kind, config, values)
   /** the boxes whose value differs from what is stored, as the save sends them */
   const changedValues = Object.fromEntries(
     Object.entries(values).filter(([key, typed]) => {
       const field = fields.find((one) => one.key === key)
       if (field === undefined) return false
-      return field.kind === 'secret' ? typed.trim() !== '' : typed.trim() !== (config[key] ?? '')
+      return field.kind === 'secret' ? typed.trim() !== '' : willHold[key] !== holds[key]
     }),
   )
   const valuesDirty = Object.keys(changedValues).length > 0
-  // a door in service keeps what it needs: emptying a required box is not saved
+  // a door in service keeps what it needs: a save that would leave a box it
+  // shows empty - emptied, or newly shown by another box - is not offered
   const wouldEmpty =
     inService &&
+    valuesDirty &&
     fields.some(
       (field) =>
         field.required &&
-        field.kind !== 'secret' &&
-        changedValues[field.key] !== undefined &&
-        changedValues[field.key]!.trim() === '',
+        fieldShown(field, willHold) &&
+        (field.kind === 'secret'
+          ? !(secrets.find((one) => one.key === field.key)?.stored ?? false) &&
+            (values[field.key] ?? '').trim() === ''
+          : willHold[field.key] === ''),
     )
   const missingWords = (detail.data?.missing ?? []).map((gap) => {
     if (gap.kind === 'driver') return format(m.methodDriverMissing)

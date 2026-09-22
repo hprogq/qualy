@@ -7,6 +7,7 @@ import {
   httpMetrics,
   requestContext,
   routeSpanNames,
+  serverSpans,
   type RequestContext,
 } from '@qualy/api-kit/request'
 import { accessLog } from './access-log.ts'
@@ -18,8 +19,11 @@ import { responseHeaders } from './response-headers.ts'
 // so a test can serve a router of its own behind exactly what production
 // serves behind.
 //
-// Outermost is the request context, which has to sit inside the platform's
-// tracer (every serve middleware does) and outside whatever reads it. Then
+// Outermost is the server span. It is ours rather than the platform's -
+// whose tracer writes the query onto the span, and a query can be a
+// credential - so the platform's is switched off where the server is built
+// (`platformTracerOff`) and this one opens the span every later link runs
+// under. Then the request context, outside whatever reads it. Then
 // the access log, so it can name the request id, and the RED histogram,
 // both of which read the route template that routeSpanNames writes onto
 // the span from innermost - which is why that one sits last but one. The
@@ -54,6 +58,7 @@ export const serveMiddleware = (options: {
   /** the generations of web client this api speaks; the contract's unless a test says otherwise */
   readonly clientProtocol?: ProtocolWindow
 }) => {
+  const withServerSpan = serverSpans({ trustedProxies: options.trustedProxies })
   const withRequestContext = requestContext({ trustedProxies: options.trustedProxies })
   const withMetrics = httpMetrics({ trustedProxies: options.trustedProxies })
   const withAccessLog = accessLog(options.access)
@@ -66,12 +71,14 @@ export const serveMiddleware = (options: {
     E,
     Exclude<R, RequestContext> | HttpServerRequest.HttpServerRequest
   > =>
-    withRequestContext(
-      withAccessLog(
-        withMetrics(
-          routeSpanNames(
-            responseHeaders(
-              guard(compatible(Eff.provideService(httpApp, Incoming.MaxBodySize, MAX_BODY))),
+    withServerSpan(
+      withRequestContext(
+        withAccessLog(
+          withMetrics(
+            routeSpanNames(
+              responseHeaders(
+                guard(compatible(Eff.provideService(httpApp, Incoming.MaxBodySize, MAX_BODY))),
+              ),
             ),
           ),
         ),

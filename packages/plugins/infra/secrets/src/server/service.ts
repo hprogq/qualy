@@ -1,3 +1,4 @@
+import { createHmac, hkdfSync } from 'node:crypto'
 import { Effect, Layer, Option, Redacted } from 'effect'
 import { sql } from 'kysely'
 import { Db } from '@qualy/plugin-database/plugin'
@@ -13,12 +14,20 @@ import { decodeSealed, decrypt, encodeSealed, encrypt, KEY_VERSION } from './cry
 
 const db = Db.scope([...entities] as const)
 
+/** what the fingerprint key is derived for; a new version is a new key */
+const FINGERPRINT_INFO = 'qualy/secrets/fingerprint/v1'
+
 export const serviceLayer: Layer.Layer<Secrets, never, Orm | SecretsConfig> = Layer.effect(
   Secrets,
   Effect.gen(function* () {
     const withDb = yield* withDatabase
     const { masterKey } = yield* SecretsConfig
     const key = () => Redacted.value(masterKey)
+    // Its own key, derived once: the encryption key never doubles as a MAC
+    // key, and a fingerprint cannot be turned into anything that decrypts.
+    const fingerprintKey = Buffer.from(
+      hkdfSync('sha256', key(), Buffer.alloc(0), FINGERPRINT_INFO, 32),
+    )
     const run = <A>(effect: Effect.Effect<A, QueryFailed, Orm>) =>
       withDb(effect).pipe(Effect.orDie)
 
@@ -131,6 +140,11 @@ export const serviceLayer: Layer.Layer<Secrets, never, Orm | SecretsConfig> = La
 
       seal: (ref: SecretRef, value: Redacted.Redacted<string>) =>
         Effect.sync(() => encodeSealed(encrypt(key(), ref, Redacted.value(value)))),
+
+      fingerprint: (scope: string, value: string) =>
+        Effect.sync(() =>
+          createHmac('sha256', fingerprintKey).update(scope).update('\0').update(value).digest('hex'),
+        ),
 
       open: (ref: SecretRef, sealed: string) => {
         const encrypted = decodeSealed(sealed)
