@@ -44,7 +44,7 @@ describe.runIf(postgresAvailable)('auth schema tenant boundary', () => {
       [ids.tenant, ids.memberType, ids.root],
     )
     await db.query(
-      `insert into user_identities (tenant_id, user_id, auth_provider_id, identifier)
+      `insert into user_auth_bindings (tenant_id, user_id, auth_provider_id, subject)
        values ($1, $2, $3, 'alice')`,
       [ids.tenant, ids.alice, ids.provider],
     )
@@ -67,11 +67,11 @@ describe.runIf(postgresAvailable)('auth schema tenant boundary', () => {
     ).toBe('23503')
   })
 
-  it('enforces identifier and business number uniqueness per tenant', async () => {
+  it('enforces subject and business number uniqueness per tenant', async () => {
     expect(
       await pgCode(
         db.query(
-          `insert into user_identities (tenant_id, user_id, auth_provider_id, identifier)
+          `insert into user_auth_bindings (tenant_id, user_id, auth_provider_id, subject)
            values ($1, $2, $3, 'alice')`,
           [ids.tenant, ids.alice, ids.provider],
         ),

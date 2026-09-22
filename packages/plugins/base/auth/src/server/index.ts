@@ -19,6 +19,7 @@ import { AuthRequired, Authenticated, CurrentUser, Viewer } from '@qualy/auth-co
 import { make as makeUserTypes, type UserTypeRow } from './user-types.ts'
 import { make as makeUsers, type UserProjection } from './users.ts'
 import { layer as sessionLayer, viewerLayer } from './session.ts'
+import { recoveryBootCheck } from './recovery.ts'
 
 // auth as an Effect layer.
 //
@@ -117,6 +118,14 @@ export const serviceLayer: Layer.Layer<
   never,
   Orm | Rbac | Audit | AuthConfig | LoginDrivers
 > = Layer.mergeAll(tags, sessionLayer, viewerLayer, signInLayer)
+
+/**
+ * The services and the checks the host runs before serving.
+ *
+ * Kept apart from `serviceLayer` so a stack that composes auth's services
+ * for a test does not also have to stand up the boot barrier.
+ */
+export const pluginLayer = Layer.mergeAll(serviceLayer, recoveryBootCheck)
 
 // --- api ---
 
@@ -583,6 +592,7 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
             // Kysely types a boolean expression as SqlBool, which is a
             // number on some drivers; the wire says boolean
             admits: entrance.admits === true,
+            resolution: entrance.resolution ?? null,
             // the declaration without its function: what to ask for, never how
             binding:
               entrance.binding === undefined
@@ -590,21 +600,23 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
                 : entrance.binding.mode === 'managed'
                   ? {
                       mode: 'managed' as const,
-                      identifierLabel: entrance.binding.identifierLabel,
-                      identifierHint: entrance.binding.identifierHint ?? null,
-                      secret: entrance.binding.secret ?? null,
+                      secret: {
+                        label: entrance.binding.secret.label,
+                        hint: entrance.binding.secret.hint ?? null,
+                        minLength: entrance.binding.secret.minLength,
+                        maxLength: entrance.binding.secret.maxLength,
+                      },
                     }
-                  : entrance.binding.mode === 'derived'
-                    ? { mode: 'derived' as const, by: entrance.binding.by }
-                    : { mode: 'self' as const },
-            identity:
-              entrance.identityId === null
+                  : { mode: 'self' as const },
+            bound:
+              entrance.bindingId === null
                 ? null
                 : {
-                    id: entrance.identityId,
-                    identifier: entrance.identifier ?? '',
-                    boundAt: String(entrance.boundAt),
-                    lastUsedAt: entrance.lastUsedAt === null ? null : String(entrance.lastUsedAt),
+                    id: entrance.bindingId,
+                    subject: entrance.subject,
+                    displayLabel: entrance.displayLabel,
+                    boundAt: instant(entrance.boundAt) ?? '',
+                    lastUsedAt: instant(entrance.lastUsedAt),
                     hasCredential: entrance.hasCredential === true,
                   },
           })),
@@ -612,26 +624,26 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
       }),
     )
     .handle(
-      'putUserIdentity',
-      Effect.fn('iam.putUserIdentity.handler')(function* ({ params, payload }) {
+      'putUserAuthBinding',
+      Effect.fn('iam.putUserAuthBinding.handler')(function* ({ params, payload }) {
         const iam = yield* Iam
         const principal = yield* CurrentUser
-        const id = yield* iam.users.putIdentity(
+        const id = yield* iam.users.putBinding(
           principal.tenantId,
           params.userId,
           params.providerId,
-          { identifier: payload.identifier, secret: payload.secret },
+          { secret: payload.secret },
           principal,
         )
         return { id }
       }),
     )
     .handle(
-      'deleteUserIdentity',
-      Effect.fn('iam.deleteUserIdentity.handler')(function* ({ params }) {
+      'deleteUserAuthBinding',
+      Effect.fn('iam.deleteUserAuthBinding.handler')(function* ({ params }) {
         const iam = yield* Iam
         const principal = yield* CurrentUser
-        yield* iam.users.revokeIdentity(
+        yield* iam.users.revokeBinding(
           principal.tenantId,
           params.userId,
           params.providerId,

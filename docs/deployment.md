@@ -119,7 +119,13 @@ database。出现第二种有持久部署副作用的能力时,先设计启动�
 
 ### 3.1 升级
 
-装入新 release 的三个镜像 → 改 `.env` 的 `QUALY_RELEASE` → `docker compose run --rm migrate` → `docker compose up -d` → `/health/ready`。
+装入新 release 的三个镜像 → 改 `.env` 的 `QUALY_RELEASE` → `docker compose run --rm migrate` →(需要时)`pnpm seed` → `docker compose up -d` → `/health/ready`。
+
+**恢复账号与 seed**:租户与其系统账户(租户自救用、以邮箱 + 密码登录)由 seed 供给;镜像不含 seed,从同一 release 的源码检出对部署库执行
+`DATABASE_URL=… QUALY_ADMIN_EMAIL=… QUALY_ADMIN_PASSWORD=… pnpm seed`。生产 server 在 Assembled 屏障检查每个存活租户的恢复通道,
+系统账户缺邮箱或缺密码即拒启并点名租户——顺序固定为 migrate → seed → boot。把本地入口改为邮箱登录的那次升级(迁移
+`20260922164042_user-auth-bindings.sql`)必须走这一步:迁移后旧系统账户没有邮箱,seed 以 `QUALY_ADMIN_EMAIL` 补上(已有不同邮箱视为漂移报错)。
+该迁移遇到「同一租户第二个仍在使用的密码入口」会直接失败并点名租户与入口 code,需人工清理后重跑,不做合并。
 server 与 web release 是同一 deployment unit(同一镜像),不存在「只更新 server、复用旧 web」的部署;旧 tab 在下一次请求拿到
 release 不匹配后自行 reload。
 

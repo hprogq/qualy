@@ -39,7 +39,7 @@ export const RECIPE = 'formula-provisional-scoring-v1'
 export const FORMULA = 'passthrough-decimal-v1'
 export const STUDENTS = 100
 export const CONTROL_ITEMS = 10
-export const ADMIN_USERNAME = 'admin'
+export const ADMIN_EMAIL = 'admin@benchmark.example'
 export const ADMIN_PASSWORD = 'benchmark-admin-password'
 const AMOUNT = '3'
 
@@ -130,7 +130,7 @@ export const login = async (base: string): Promise<SessionCookie> => {
   const response = await fetch(`${base}/api/auth/local/local/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ identifier: ADMIN_USERNAME, password: ADMIN_PASSWORD }),
+    body: JSON.stringify({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD }),
   })
   if (response.status !== 200) {
     throw new Error(`admin login failed: status ${response.status}\n${await response.text()}`)
@@ -160,11 +160,11 @@ const tenantOf = async (db: Db): Promise<Tenant> => {
   )
   if (!root) throw new Error('the seed left no root node')
   const [admin] = await db.query<{ user_id: string }>(
-    `select user_id from user_identities
-     where tenant_id = $1 and identifier = $2 and revoked_at is null`,
-    [tenant.id, ADMIN_USERNAME],
+    `select id as user_id from users
+     where tenant_id = $1 and email = $2 and deleted_at is null`,
+    [tenant.id, ADMIN_EMAIL],
   )
-  if (!admin) throw new Error('the seed left no administrator identity')
+  if (!admin) throw new Error('the seed left no administrator')
   await db.query(
     `insert into user_types (tenant_id, code, name, placement_mode)
      values ($1, 'benchmark-student', 'Benchmark student', 'unrestricted')
@@ -211,9 +211,13 @@ export const sessionsFor = async (db: Db, tenantId: string, userIds: readonly st
   const tokens: string[] = []
   for (const userId of userIds) {
     const token = randomBytes(24).toString('hex')
+    // a session names the door it came in through; these came in through
+    // the platform's password door, as far as anything reading them knows
     await db.query(
-      `insert into sessions (tenant_id, user_id, token_hash, expires_at)
-       values ($1, $2, $3, now() + interval '7 days')`,
+      `insert into sessions (tenant_id, user_id, auth_provider_id, token_hash, expires_at)
+       select $1, $2, p.id, $3, now() + interval '7 days'
+         from auth_providers p
+        where p.tenant_id = $1 and p.type = 'local' and p.is_system and p.deleted_at is null`,
       [tenantId, userId, sha256hex(token)],
     )
     tokens.push(token)

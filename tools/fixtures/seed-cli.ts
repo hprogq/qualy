@@ -15,7 +15,7 @@ try {
   await client.query('begin')
   const report = await seed(client, {
     demo: process.env.QUALY_SEED_DEMO === '1',
-    adminUsername: process.env.QUALY_ADMIN_USERNAME,
+    adminEmail: process.env.QUALY_ADMIN_EMAIL,
     adminPassword: process.env.QUALY_ADMIN_PASSWORD,
     resetAdminPassword: process.env.QUALY_RESET_ADMIN_PASSWORD === '1',
     demoPassword: process.env.QUALY_DEMO_PASSWORD,

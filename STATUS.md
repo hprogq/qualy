@@ -19474,3 +19474,50 @@ HEAD 的 run 是绿的;红的是中间提交 `ceb8ccb6`(那次的 `entry-workflo
 ### 未做与下一步
 
 - 同一施工计划的后三个提交:绑定表与邮箱登录(B+C)、Secrets 与 Provider 生命周期(D)、匿名租户/公开源解析器与 auth flows(E)。
+
+## 认证重构 B+C:绑定表、每租户唯一的邮箱密码入口、恢复通道(2026-09-22)
+
+设计来源同上(docs/auth.md §4–§6、§16–§18、§42 Phase B/C),外加施工计划评审时用户的四条裁决:迁移标 destructive;恢复通道做实、RBAC 只数持有人;
+多 local 只处理无歧义情况、在用即失败;不再从绑定数推导「能否登录」。B 与 C 合为一个提交:只去掉 local 用户名而没有邮箱登录的中间状态谁也登不进去。
+
+### 做了什么
+
+- **迁移** `20260922164042_user-auth-bindings.sql`(手写,`qualy generate` 看不出表改名;`-- destructive: approved`):
+  `user_identities` → `user_auth_bindings`(主键、租户外键、复合外键、索引逐个改名),`identifier` → `subject` 可空,加 `display_label`,local 行 `subject = null`
+  (用户名不搬成邮箱);`sign_in_events.identity_id` → `binding_id`;`sessions` 加 `auth_provider_id`(按同 session 的成功登录事件回填,回填不到的删除,再 `set not null`)
+  与 `auth_binding_id`;`auth_providers` 加 `deleted_at` + `chk_auth_providers_deleted_is_disabled`,地址唯一只约束存活行,新增每租户每类型唯一的系统入口索引;
+  每租户选一扇 canonical local 置 `is_system`,其余 local **没人用就退休**,**有人用(存活绑定或会话)就 `raise exception` 点名租户与入口**,没有 local 的租户补一扇。
+- **Driver 契约**:`provisioning`(system-singleton / tenant-managed)× `resolution`(user-field email|businessNo / binding-subject)× `binding`(managed / self / 无),
+  注册时拒绝矛盾组合;`derived` 删除。核心给驱动 `findUserByField` / `findBindingForUser` / `findBindingBySubject`,`completeLogin` 仍是唯一 Session 写入者并记下入口与绑定。
+- **local 驱动**:系统单例 `local`、按 email 找人、managed 密码;设置时 12–128 位,登录只校验形状(1–128)后一律走哈希;未知邮箱 / 没密码 / 错密码统一
+  `INVALID_CREDENTIALS`,每条未命中都跑 dummy 校验;表单改邮箱。登录名规范化函数删除。
+- **绑定 API**:`PUT|DELETE /iam/users/{userId}/auth-bindings/{providerId}`(原 identities),PUT 只收 `{ secret }`,缺邮箱 `AUTH_BINDING_USER_FIELD_MISSING`;
+  错误码 `IDENTITY_*` → `AUTH_BINDING_*`;入口行带 `resolution` / `binding` / `bound`。审计 code 不变、details 升 version 2。改邮箱时若此人在按 email 找人的入口上有存活凭据,结束其会话。
+- **恢复通道**:`recoveryChannelIntact`(系统账户启用、类型启用、有邮箱、在存活且启用的系统 local 入口上有存活凭据、受众接纳系统类型);Provider 停用 / 改受众写后复核
+  `RECOVERY_CHANNEL_REQUIRED`;rbac 的 `administratorSurvivors` 去掉入口推断,只数持有人,Provider 写路径不再调 `assertTenantKeepsAdministrator`;
+  auth 在 Assembled 屏障注册 `auth/recovery-channel` 启动检查(`AuthConfig.strictBoot` = 生产:拒启并点名租户与命令;开发告警),只挂在插件描述器的层上,测试栈不必提供屏障。
+  CLAUDE.md「跨域不变量单源」一条随之改写。
+- **seed / 工具 / CI**:`QUALY_ADMIN_EMAIL` + `QUALY_ADMIN_PASSWORD`(用户名变量删除);系统账户按类型查找,已存在且无邮箱时补上(`admin: 'email-set'`),已有不同邮箱报漂移;
+  演示账号改邮箱;CSP 检查、品牌录制、公式生产冒烟、基准工具与 CI 两步改用邮箱;直接插 session 的工具与测试补 `auth_provider_id`。
+  `.env.example` / `deploy/.env.example` / `deploy/README.md` / docs/deployment.md 写明 migrate → seed → boot。
+- **界面**:用户「登录方式」页按 `resolution` 渲染(邮箱来自用户资料,缺邮箱时提示先填;学工号入口「无需绑定」;外部账号显示展示名或未绑定),托管绑定只设/重置/撤销密码;
+  只有 local 时「新增登录方式」不出现;directory-import 撤销预览改为「设有登录凭据」人数。
+
+### 验收(实际执行)
+
+- `pnpm typecheck`:exit 0,零 `error TS`。
+- `pnpm test`:`Test Files  278 passed | 3 skipped (281)`、`Tests  2044 passed | 17 skipped (2061)`。
+  首轮曾红一条:`clean-room-parity > produces the same database as the committed lineage`——PostgreSQL 18 给 NOT NULL 也命名,表改名后
+  `user_identities_{id,tenant_id,user_id,auth_provider_id,bound_at}_not_null` 仍是旧名;迁移补五条 `rename constraint` 后转绿。
+- `pnpm test:browser`:`Test Files  1 failed | 67 passed (68)`、`Tests  1 failed | 507 passed (508)`;失败的是
+  `import-wizard.browser.test.tsx > refuses to write while a row is wrong…`(`locator.click: Timeout 2392ms exceeded`,满载下点下拉选项超时,
+  该文件未改动),单独重跑 `Test Files  1 passed (1)`、`Tests  3 passed (3)`。
+- `pnpm qualy database verify`:`database: 74 committed migration(s) build the declared schema, zero drift`;`database check`:`database: lineage ok`;
+  `database drop-guard`:`database: drop guard ok (74 file(s) scanned)`。
+- `pnpm qualy resolve --frozen-lockfile`:`qualy.lock.json is up to date`。
+- 迁移升级测试 4 条(含「第二扇在用的密码入口 → 迁移失败并点名」)、恢复通道 3 条、seed「旧恢复账户补邮箱只一次」均在上面的全量里。
+
+### 待裁决
+
+- 系统账户的租户管理员授予目前仍可被撤销(rbac 对它没有特别保护)。恢复通道只保证它能登录,不保证登录后还是管理员;是否把
+  「系统账户保有 tenant-admin」也做成不变量,留给用户裁决。

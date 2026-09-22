@@ -13,11 +13,10 @@ import {
 } from '@qualy/plugin-database/testkit'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { requestContext } from '@qualy/api-kit/request'
-import { reactComponent } from '@qualy/ui-contract'
 import { Api } from '@qualy/api-kit/plugin'
 import { loginDriversLayer, registerLoginDriver } from '@qualy/auth-contract/login'
 import { hashPassword } from '@qualy/plugin-auth-local/password'
-import { apiHandlers as authLocalApiHandlers } from '@qualy/plugin-auth-local'
+import { apiHandlers as authLocalApiHandlers, driver as localDriver } from '@qualy/plugin-auth-local'
 import { authLocalApiGroup } from '@qualy/plugin-auth-local/api'
 import { createSessionToken } from '../src/session.ts'
 import { sessionApiGroup } from '../src/api.ts'
@@ -27,7 +26,7 @@ import { sessionCookieName } from '@qualy/auth-contract/session'
 import { layer as sessionLayer } from '../src/server/session.ts'
 import { sessionCookieNameFor } from '../src/server/session-cookie.ts'
 import { authClosure } from './support/closure.ts'
-import { seedSignIn } from './support/sign-in-seed.ts'
+import { SEEDED_EMAILS, seedSignIn } from './support/sign-in-seed.ts'
 
 // The session cookie of a secure deployment: named with the `__Host-`
 // prefix, which no other host can plant for this one, and the ONLY name
@@ -66,16 +65,9 @@ beforeAll(async () => {
       Layer.mergeAll(
         infra,
         authConfig,
-        registerLoginDriver(
-          {
-            type: 'local',
-            presentation: {
-              mode: 'component',
-              component: reactComponent('./client/LoginMethod'),
-            },
-          },
-          '@qualy/plugin-auth-local',
-        ).pipe(Layer.provideMerge(loginDriversLayer)),
+        registerLoginDriver(localDriver, '@qualy/plugin-auth-local').pipe(
+          Layer.provideMerge(loginDriversLayer),
+        ),
       ),
     ),
   )
@@ -106,7 +98,7 @@ const login = () =>
   fetch(`${base}/auth/local/password/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ identifier: 'ada', password }),
+    body: JSON.stringify({ email: SEEDED_EMAILS.ada, password }),
   })
 
 /** each Set-Cookie line, split into its name, value and attributes */
@@ -122,8 +114,9 @@ const mintSessionFor = async (userId: string): Promise<string> => {
   const { token, tokenHash } = createSessionToken()
   await Effect.runPromise(
     runSql(sql`
-      insert into sessions (tenant_id, user_id, token_hash, expires_at)
-      values (${seeded.tenant}, ${userId}, ${tokenHash}, now() + interval '1 day')`).pipe(
+      insert into sessions (tenant_id, user_id, auth_provider_id, token_hash, expires_at)
+      select ${seeded.tenant}, ${userId}, p.id, ${tokenHash}, now() + interval '1 day'
+        from auth_providers p where p.tenant_id = ${seeded.tenant} and p.code = 'password'`).pipe(
       Effect.provide(databaseFor(db.url, { migrations: 'off', entities: authClosure })),
     ),
   )

@@ -6,13 +6,13 @@ import type { authApi } from '@qualy/plugin-auth/client/api'
 import { Effect } from 'effect'
 import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
-// What this screen has to get right is what it does NOT decide: which kinds
-// of entrance take an account written for somebody, and what such an account
-// is made of, are the entrance's own say and arrive from the server. A
-// screen that knew "local means a password" would be wrong the day a second
-// kind is installed.
+// What this screen has to get right is what it does NOT decide: how a door
+// finds the person, and whether anything may be written for them, are the
+// door's own say and arrive from the server. A screen that knew "local means
+// a password" would be wrong the day a second kind is installed.
 
 type Entrance = ApiResult<typeof authApi, 'identity', 'listUserEntrances'>['entrances'][number]
+type Person = ApiResult<typeof authApi, 'identity', 'getUser'>
 
 const USER_ID = '66666666-6666-4666-8666-666666666666'
 const LOCAL_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
@@ -21,19 +21,38 @@ const OAUTH_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
 
 const word = (value: string) => ({ kind: 'literal' as const, value })
 
+const person = (over: Partial<Person['user']> = {}): Person => ({
+  user: {
+    id: USER_ID,
+    businessNo: '20230001',
+    email: 'ada@school.edu',
+    emailVerifiedAt: null,
+    displayName: '张三',
+    status: 'active',
+    version: 1,
+    userType: { id: 'ut', code: 'student', name: '学生' },
+    primaryOrgNode: { id: 'n', name: '本部' },
+    manageable: true,
+    ...over,
+  },
+  orgPath: [],
+  placement: { mode: 'unrestricted' },
+  roles: [],
+  lastSignInAt: null,
+})
+
 const local = (over: Partial<Entrance> = {}): Entrance => ({
   providerId: LOCAL_ID,
-  name: '账号密码',
+  name: '邮箱密码',
   type: 'local',
   status: 'active',
   admits: true,
+  resolution: { mode: 'user-field', field: 'email' },
   binding: {
     mode: 'managed',
-    identifierLabel: word('登录名'),
-    identifierHint: null,
-    secret: { label: word('口令'), minLength: 8 },
+    secret: { label: word('口令'), hint: null, minLength: 8, maxLength: 64 },
   },
-  identity: null,
+  bound: null,
   ...over,
 })
 
@@ -43,8 +62,9 @@ const cas: Entrance = {
   type: 'cas',
   status: 'active',
   admits: true,
-  binding: { mode: 'derived', by: word('学工号') },
-  identity: null,
+  resolution: { mode: 'user-field', field: 'businessNo' },
+  binding: null,
+  bound: null,
 }
 
 const oauth: Entrance = {
@@ -53,22 +73,30 @@ const oauth: Entrance = {
   type: 'wecom',
   status: 'active',
   admits: true,
+  resolution: { mode: 'binding-subject' },
   binding: { mode: 'self' },
-  identity: {
+  bound: {
     id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
-    identifier: 'wx-ada',
+    subject: '10086',
+    displayLabel: 'ada-wx',
     boundAt: '2026-09-01T00:00:00.000Z',
     lastUsedAt: null,
     hasCredential: false,
   },
 }
 
-const open = (entrances: Entrance[], manageable: boolean, stubs: Record<string, unknown> = {}) =>
+const open = (
+  entrances: Entrance[],
+  manageable: boolean,
+  stubs: Record<string, unknown> = {},
+  who: Person = person(),
+) =>
   renderScreen({
     client: fakeClient({
       app: { getManifest: () => Effect.succeed(emptyManifest()) },
       identity: {
         listUserEntrances: () => Effect.succeed({ entrances, manageable }),
+        getUser: () => Effect.succeed(who),
         ...stubs,
       },
     }),
@@ -81,29 +109,43 @@ const rowOf = (type: string) =>
   document.querySelector(`[data-testid="entrance-row"][data-entrance-type="${type}"]`)!
 
 describe('the ways in of one person', () => {
-  it('offers a form only where the entrance takes an account written for somebody', async () => {
+  it('offers a control only where one can work', async () => {
     open([local(), cas, oauth], true)
-    await expect.element(page.getByTestId('entrances')).toHaveAttribute('data-bound', '1')
-    // a kind an administrator may write: one way to add it
+    await expect.element(page.getByTestId('entrances')).toBeInTheDocument()
+    await vi.waitFor(() => expect(rowOf('local')).toBeTruthy())
+    // a credential an administrator may set: one way to set it
+    expect(rowOf('local').getAttribute('data-resolution')).toBe('user-field:email')
     expect(rowOf('local').getAttribute('data-binding')).toBe('managed')
+    expect(rowOf('local').getAttribute('data-credential')).toBe('unset')
     expect(rowOf('local').querySelectorAll('button')).toHaveLength(1)
-    // a kind that goes by a fact the person already has: nothing to press
-    expect(rowOf('cas').getAttribute('data-binding')).toBe('derived')
+    // a door that goes by a fact the person already has: nothing to press
+    expect(rowOf('cas').getAttribute('data-resolution')).toBe('user-field:businessNo')
     expect(rowOf('cas').querySelectorAll('button')).toHaveLength(0)
-    // a kind only the person can bind: it can be withdrawn, and not written
+    // an account only the person can bind: it can be withdrawn, and not written
     expect(rowOf('wecom').getAttribute('data-bound')).toBe('true')
     expect(rowOf('wecom').querySelectorAll('button')).toHaveLength(1)
   })
 
-  it('builds the form from what the entrance asked for, and sends what was typed', async () => {
+  it('reads the address a password door finds them by off the person', async () => {
+    open([local(), cas], true)
+    await vi.waitFor(() => expect(rowOf('local')?.textContent).toContain('ada@school.edu'))
+    // the business number is the person's too, and nothing is bound for it
+    expect(rowOf('cas').textContent).toContain('20230001')
+  })
+
+  it('offers no password to somebody the door could not find', async () => {
+    open([local()], true, {}, person({ email: null }))
+    await vi.waitFor(() => expect(rowOf('local')).toBeTruthy())
+    await vi.waitFor(() => expect(rowOf('local').querySelectorAll('button')).toHaveLength(0))
+  })
+
+  it('asks only for the password, and sends what was typed', async () => {
     const put = vi.fn(() => Effect.succeed({ id: 'created' }))
-    open([local()], true, { putUserIdentity: put })
-    await page.getByRole('button', { name: '添加账号' }).click()
-    // the labels are the entrance's own words, not this screen's
-    const name = page.getByRole('textbox', { name: '登录名' })
-    await name.fill('ada')
+    open([local()], true, { putUserAuthBinding: put })
+    await page.getByRole('button', { name: '设置密码' }).click()
     const save = page.getByRole('dialog').getByRole('button', { name: '保存', exact: true })
-    // a secret shorter than the entrance said it takes is not sent at all
+    // the label is the door's own word, and a secret shorter than the door
+    // said it takes is not sent at all
     await page.getByLabelText('口令').fill('short')
     await expect.element(save).toBeDisabled()
     await page.getByLabelText('口令').fill('long-enough')
@@ -111,13 +153,13 @@ describe('the ways in of one person', () => {
     await vi.waitFor(() => expect(put).toHaveBeenCalledTimes(1))
     expect(put).toHaveBeenCalledWith({
       params: { userId: USER_ID, providerId: LOCAL_ID },
-      payload: { identifier: 'ada', secret: 'long-enough' },
+      payload: { secret: 'long-enough' },
     })
   })
 
   it('withdraws only after asking', async () => {
     const remove = vi.fn(() => Effect.succeed({ ok: true as const }))
-    open([oauth], true, { deleteUserIdentity: remove })
+    open([oauth], true, { deleteUserAuthBinding: remove })
     await page.getByRole('button', { name: '撤销' }).click()
     await expect.element(page.getByRole('alertdialog')).toBeInTheDocument()
     expect(remove).not.toHaveBeenCalled()
@@ -129,6 +171,7 @@ describe('the ways in of one person', () => {
   it('offers nothing to a reader who may only look', async () => {
     open([local(), oauth], false)
     await expect.element(page.getByTestId('entrances')).toBeInTheDocument()
+    await vi.waitFor(() => expect(rowOf('local')).toBeTruthy())
     expect(document.querySelectorAll('[data-testid="entrance-row"] button')).toHaveLength(0)
   })
 })

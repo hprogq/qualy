@@ -58,7 +58,7 @@ const open = (stubs: Record<string, unknown> = {}) =>
             pageSize: 20,
           }),
         previewUserImportReversal: () =>
-          Effect.succeed({ toRetire: 2, alreadyGone: 0, withIdentities: 1, withGrants: 0 }),
+          Effect.succeed({ toRetire: 2, alreadyGone: 0, withBindings: 1, withGrants: 0 }),
         ...stubs,
       },
     } as never),

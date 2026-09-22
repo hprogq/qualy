@@ -53,6 +53,19 @@ Then put the edge in front of the published port: `ops/reverse-proxy/` has
 the Caddy and nginx shapes (TLS, HSTS, forwarded headers), and
 `QUALY_TRUSTED_PROXIES` in `.env` names the peer the container sees.
 
+The tenant and its system account - the account the tenant recovers itself
+with, which signs in by email and password - are provisioned by the seed,
+run from a source checkout of the same release against the deployment's
+database (the image carries no seed):
+
+```sh
+DATABASE_URL=postgres://… QUALY_ADMIN_EMAIL=… QUALY_ADMIN_PASSWORD=… pnpm seed
+```
+
+A production server refuses to start while any tenant's system account has
+no email or no password at its door, and says which tenant; the order is
+always migrate, then seed when it is needed, then start.
+
 The first `migrate` builds the whole schema on the empty database. The
 server never migrates on its own: its production command keeps
 `QUALY_MIGRATIONS` off, and a start against a database that is behind its
@@ -67,6 +80,10 @@ docker compose run --rm migrate
 docker compose up -d
 curl -sf http://127.0.0.1:3000/health/ready
 ```
+
+When the release notes say an upgrade needs the seed (the one that moved the
+password door to email sign-in does: the existing system account has no email
+until the seed gives it one), run it between `migrate` and `up -d`.
 
 `migrate` runs first and alone. It takes the database's migration lock, so
 a second copy waits and then finds nothing to do; a migration that fails is

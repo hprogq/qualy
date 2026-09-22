@@ -23,7 +23,7 @@ export default function LocalLoginMethod({ method, onAuthenticated }: LoginMetho
   const api = useApi(authLocalApi)
   const run = useRunApi()
   const { format, formatError } = useI18n()
-  const [identifier, setIdentifier] = useState('')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -37,7 +37,7 @@ export default function LocalLoginMethod({ method, onAuthenticated }: LoginMetho
       await run(
         api.authLocal.login({
           params: { providerCode: method.code },
-          payload: { identifier, password },
+          payload: { email, password },
         }),
       )
       onAuthenticated()
@@ -50,12 +50,14 @@ export default function LocalLoginMethod({ method, onAuthenticated }: LoginMetho
   return (
     <form onSubmit={submit} {...stylex.props(styles.form)}>
       <div {...stylex.props(styles.field)}>
-        <Label htmlFor="identifier">{format(m.identifier)}</Label>
+        <Label htmlFor="email">{format(m.email)}</Label>
         <Input
-          id="identifier"
+          id="email"
+          type="email"
+          // the address is the account name, and a password manager files it so
           autoComplete="username"
-          value={identifier}
-          onChange={(event) => setIdentifier(event.target.value)}
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
         />
       </div>
       <div {...stylex.props(styles.field)}>
@@ -72,7 +74,7 @@ export default function LocalLoginMethod({ method, onAuthenticated }: LoginMetho
       <Button
         type="submit"
         className={stylex.props(styles.submit).className}
-        disabled={busy || !identifier || !password}
+        disabled={busy || !email || !password}
       >
         {busy ? format(m.submitting) : format(m.submit)}
       </Button>

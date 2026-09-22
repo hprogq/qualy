@@ -444,10 +444,11 @@ describe
       }
     })
 
-    it('counts an administrator who could still sign in, not merely a holder', async () => {
-      // from rbac.test.ts of the same name. A holder whose account, type or
-      // login channels are gone is not a way back into the tenant, so the
-      // invariant has to look past the grant.
+    it('counts a holder in good standing, and leaves the doors to auth', async () => {
+      // A holder whose account or type is disabled is no administrator, so
+      // the invariant looks past the grant. Whether some door lets them in is
+      // not rbac's to say: that depends on each door's driver, and auth keeps
+      // the tenant's way back in on its own (the recovery account's door).
       const db = await createTestContext('effect-parity-survivors')
       try {
         const exit = await run(
@@ -473,8 +474,8 @@ describe
                 sql`update user_types set enabled = true where id = ${f.a.staff}`,
               ],
               [
-                // every enabled door shuts its audience on this type: the same
-                // fact the two flags used to state, said by the providers now
+                // every door shuts its audience on this type: still a holder
+                // in good standing as far as rbac can tell
                 'no login channel',
                 sql`update auth_providers set audience_mode = 'allow-list'
                   where tenant_id = ${f.a.tenantId}`,
@@ -494,8 +495,7 @@ describe
         expect(answer.cases).toEqual({
           'user disabled': 'LAST_ADMINISTRATOR',
           'type disabled': 'LAST_ADMINISTRATOR',
-          // a type nobody can sign in with is a holder who cannot come back
-          'no login channel': 'LAST_ADMINISTRATOR',
+          'no login channel': 'ok',
         })
         expect(answer.end).toBe('ok')
       } finally {

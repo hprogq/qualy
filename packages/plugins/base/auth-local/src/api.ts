@@ -2,7 +2,7 @@ import { Schema } from 'effect'
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
 
 // url shape is /auth/<provider-type>/<provider-code>/<operation>: the code
-// selects one configured provider instance of the tenant.
+// selects one provider of the tenant; for this driver there is exactly one.
 
 /**
  * One uniform refusal.
@@ -34,9 +34,12 @@ export const authLocalApiGroup = HttpApiGroup.make('authLocal').add(
     params: Schema.Struct({
       providerCode: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(63)),
     }),
+    // Only the shape is checked here. The rules a new password must meet are
+    // asked when one is set, never at the door: a stranger learns nothing
+    // about them, and a password set before a rule changed still opens it.
     payload: Schema.Struct({
-      identifier: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(255)),
-      password: Schema.String.check(Schema.isMinLength(1)),
+      email: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(320)),
+      password: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128)),
     }),
     success: Schema.Struct({ user: signedInUser }),
     error: [InvalidCredentials],

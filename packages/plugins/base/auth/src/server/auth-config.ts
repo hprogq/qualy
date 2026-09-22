@@ -22,6 +22,12 @@ export class AuthConfig extends Context.Service<
     readonly secureCookies: boolean
     /** the one cookie name this process reads and writes; `__Host-` prefixed when secure */
     readonly sessionCookieName: string
+    /**
+     * A failed boot check refuses to start instead of warning. On in
+     * production; absent means a warning, which is what development and a
+     * test stack want.
+     */
+    readonly strictBoot?: boolean
   }
 >()('@qualy/plugin-auth/AuthConfig') {}
 
@@ -54,8 +60,9 @@ export const config = (
     AuthConfig,
     Effect.gen(function* () {
       yield* decodePluginConfig(AuthManifestConfig, manifest)
-      // secure whenever the process is not a development one, which is the
-      // rule the cordis config expressed as an 'auto' setting
+      // secure whenever the process is a production one, which is the rule
+      // the cordis config expressed as an 'auto' setting; the same fact
+      // makes a failed boot check fatal
       const secureCookies =
         (yield* Config.String('NODE_ENV').pipe(Config.withDefault('development'))) === 'production'
       return AuthConfig.of({
@@ -67,6 +74,7 @@ export const config = (
         ),
         secureCookies,
         sessionCookieName: sessionCookieNameFor(secureCookies),
+        strictBoot: secureCookies,
       })
     }),
   )

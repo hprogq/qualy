@@ -1,7 +1,8 @@
-import { Effect, Layer } from 'effect'
+import { Effect } from 'effect'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import type { LoginDriver } from '@qualy/auth-contract/login'
 import { Login } from '@qualy/auth-contract/plugin'
+import { normalizeEmail } from '@qualy/auth-contract/email'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Api } from '@qualy/api-kit/plugin'
 import { Plugin } from '@qualy/plugin-kit'
@@ -10,60 +11,43 @@ import { authLocalApiGroup, InvalidCredentials } from './api.ts'
 import { message } from '@qualy/i18n-contract'
 import {
   hashPassword,
-  normalizeLocalIdentifier,
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
   timingEqualizerHash,
   verifyPassword,
 } from './password.ts'
 
-// Password authentication: prove the user against a local provider instance,
-// then hand the proof to the core for session creation.
+// Email and password: find the person by their own email, prove them against
+// the credential bound to this door, then hand the proof to the core for
+// session creation.
 //
-// Every failure between resolving the provider and verifying the password
-// answers the same INVALID_CREDENTIALS, and an unknown identifier still burns
-// one argon2 verification, so timing does not reveal account existence either.
-/**
- * How this driver asks to be presented on the sign-in screen.
- *
- * The proof itself is the api handler below; this is only what the login shell
- * has to render to collect it.
- */
-/** shorter than this and the argon2 cost protects very little */
-const PASSWORD_MIN_LENGTH = 8
-/** argon2 hashes any length; a bound keeps one request from hashing a megabyte */
-const PASSWORD_MAX_LENGTH = 128
+// Every failure between resolving the door and verifying the password
+// answers the same INVALID_CREDENTIALS, and every miss still burns one argon2
+// verification, so neither the answer nor its timing reveals whether an
+// account exists.
 
-const driver: LoginDriver = {
+/** the password door: one per tenant, provisioned by the platform */
+export const driver: LoginDriver = {
   type: 'local',
   presentation: { mode: 'component', component: Ui.react('./client/LoginMethod') },
-  // An entrance of this kind needs nothing beyond its name: there is no
-  // server to point at and no client to register.
-  entrance: { label: message('auth-local/entrance/label', 'Name and password'), fields: [] },
-  // A local account is a name and a password, and whoever administers the
-  // person may set both. What a password is and how it is kept stays here:
-  // the core is handed a digest and stores it.
+  provisioning: { mode: 'system-singleton', code: 'local' },
+  // the address a person signs in with is theirs, kept on the person: the
+  // door stores no second copy of it
+  resolution: { mode: 'user-field', field: 'email' },
+  // whoever administers the person may set their password; what a password
+  // is and how it is kept stays here, and the core is handed a digest
   binding: {
     mode: 'managed',
-    identifierLabel: message('auth-local/binding/identifier', 'Sign-in name'),
-    identifierHint: message(
-      'auth-local/binding/identifier-hint',
-      '2 to 64 characters: lowercase letters, digits, dot, underscore or hyphen, starting with a letter or digit',
-    ),
     secret: {
       label: message('auth-local/binding/password', 'Password'),
       minLength: PASSWORD_MIN_LENGTH,
+      maxLength: PASSWORD_MAX_LENGTH,
     },
-    prepare: Effect.fn('authLocal.binding.prepare')(function* ({ identifier, secret }) {
-      const name = normalizeLocalIdentifier(identifier)
-      if (name === null) return { ok: false as const, invalid: 'identifier' as const }
-      if (
-        secret === undefined ||
-        secret.length < PASSWORD_MIN_LENGTH ||
-        secret.length > PASSWORD_MAX_LENGTH
-      ) {
-        return { ok: false as const, invalid: 'secret' as const }
+    prepare: Effect.fn('authLocal.binding.prepare')(function* ({ secret }) {
+      if (secret.length < PASSWORD_MIN_LENGTH || secret.length > PASSWORD_MAX_LENGTH) {
+        return { ok: false as const }
       }
-      const credentialHash = yield* Effect.promise(() => hashPassword(secret))
-      return { ok: true as const, identifier: name, credentialHash }
+      return { ok: true as const, credentialHash: yield* Effect.promise(() => hashPassword(secret)) }
     }),
   },
 }
@@ -98,38 +82,46 @@ const handlers = HttpApiBuilder.group(local, 'authLocal', (handlers) =>
       // no resolved door, no record: a URL that names no provider is not an
       // attempt on anybody's account
       if (!resolved) return yield* fail()
-      const identifier = normalizeLocalIdentifier(payload.identifier)
-      if (!identifier) {
-        yield* sessions.failAttempt(resolved, { reason: 'identity-not-found' })
+      const email = normalizeEmail(payload.email)
+      const person =
+        email === null
+          ? undefined
+          : yield* sessions.findUserByField({
+              tenantId: resolved.tenantId,
+              providerId: resolved.providerId,
+              field: 'email',
+              value: email,
+            })
+      if (!person) {
+        yield* sessions.failAttempt(resolved, { reason: 'user-not-found' })
         return yield* fail()
       }
-      const identity = yield* sessions.findIdentity({
+      const binding = yield* sessions.findBindingForUser({
         tenantId: resolved.tenantId,
         providerId: resolved.providerId,
-        identifier,
+        userId: person.userId,
       })
-      if (!identity?.credentialHash) {
-        yield* sessions.failAttempt(resolved, { reason: 'identity-not-found' })
+      if (!binding?.credentialHash) {
+        // resolved as far as the person: the record may say whom it was about
+        yield* sessions.failAttempt(resolved, { reason: 'binding-not-found', userId: person.userId })
         return yield* fail()
       }
       const verified = yield* Effect.promise(() =>
-        verifyPassword(identity.credentialHash!, payload.password),
+        verifyPassword(binding.credentialHash!, payload.password),
       )
       if (!verified) {
-        // resolved this far, so the record can say who it was about; the
-        // caller still hears the same refusal as every other path
         yield* sessions.failAttempt(resolved, {
           reason: 'invalid-credentials',
-          userId: identity.userId,
-          identityId: identity.id,
+          userId: person.userId,
+          bindingId: binding.id,
         })
         return yield* new InvalidCredentials()
       }
       const user = yield* sessions.completeLogin({
         tenantId: resolved.tenantId,
         providerId: resolved.providerId,
-        userId: identity.userId,
-        identityId: identity.id,
+        userId: person.userId,
+        bindingId: binding.id,
       })
       // an unusable account was recorded by the core, with the precise reason
       if (!user) return yield* new InvalidCredentials()

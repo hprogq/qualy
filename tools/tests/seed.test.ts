@@ -26,7 +26,12 @@ if (!available && process.env.QUALY_REQUIRE_POSTGRES_TESTS === '1') {
 }
 if (!available) console.warn('postgres unreachable, seed tests skipped')
 
-const ADMIN = { adminPassword: 'seed-test-password-123' }
+const ADMIN = { adminEmail: 'Admin@Example.edu', adminPassword: 'seed-test-password-123' }
+
+/** the recovery account's password digest, found by its address */
+const ADMIN_CREDENTIAL = `select b.credential_hash from user_auth_bindings b
+  join users u on u.tenant_id = b.tenant_id and u.id = b.user_id
+  where u.email = 'admin@example.edu' and b.revoked_at is null`
 
 // drop database ... with (force) races graceful client teardown: a killed
 // backend's fatal 57P01 lands on a closing socket and would surface as an
@@ -126,27 +131,37 @@ describe.runIf(available)('tenant bootstrap seed', () => {
   })
 
   it('never resets the admin password without the explicit flag', async () => {
-    const before = await pool.query(
-      `select credential_hash from user_identities where identifier = 'admin'`,
-    )
+    const before = await pool.query(ADMIN_CREDENTIAL)
     await inTransaction((client) => seed(client, { adminPassword: 'a-different-password-1' }))
-    const unchanged = await pool.query(
-      `select credential_hash from user_identities where identifier = 'admin'`,
-    )
+    const unchanged = await pool.query(ADMIN_CREDENTIAL)
     expect(unchanged.rows[0].credential_hash).toBe(before.rows[0].credential_hash)
 
     const reset = await inTransaction((client) =>
       seed(client, { adminPassword: 'a-brand-new-password-1', resetAdminPassword: true }),
     )
     expect(reset.admin).toBe('reset')
-    const after = await pool.query(
-      `select credential_hash from user_identities where identifier = 'admin'`,
-    )
+    const after = await pool.query(ADMIN_CREDENTIAL)
     expect(after.rows[0].credential_hash).not.toBe(before.rows[0].credential_hash)
     const { verifyPassword } = (await import(
       resolvePluginModuleUrl('@qualy/plugin-auth-local/password', manifestPath())
     )) as typeof import('../../packages/plugins/base/auth-local/src/password.ts')
     expect(await verifyPassword(after.rows[0].credential_hash, 'a-brand-new-password-1')).toBe(true)
+  })
+
+  it('gives a recovery account from before email sign-in its address, once', async () => {
+    // an upgraded database: the account exists and has no address yet
+    await pool.query(`update users set email = null where display_name = '系统管理员'`)
+    await expect(inTransaction((client) => seed(client, {}))).rejects.toThrow(/QUALY_ADMIN_EMAIL/)
+    const set = await inTransaction((client) => seed(client, ADMIN))
+    expect(set.admin).toBe('email-set')
+    const stored = await pool.query(`select email from users where display_name = '系统管理员'`)
+    // stored the way sign-in compares it
+    expect(stored.rows[0].email).toBe('admin@example.edu')
+    // once it has one, a different configured address is drift, not an edit
+    await expect(
+      inTransaction((client) => seed(client, { ...ADMIN, adminEmail: 'other@example.edu' })),
+    ).rejects.toThrow(/seed drift: system account has unexpected email/)
+    expect((await inTransaction((client) => seed(client, ADMIN))).admin).toBe('unchanged')
   })
 
   it('creates demo data only when asked and idempotently', async () => {
@@ -233,7 +248,9 @@ describe.runIf(available)('tenant bootstrap seed', () => {
     // grant rows go first because the user fk is restrict now - a hard
     // delete is a fixture reset, which is exactly what that fk exists to
     // stop production code from doing
-    await pool.query(`delete from user_identities where identifier = 'admin'`)
+    await pool.query(
+      `delete from user_auth_bindings where user_id in (select id from users where display_name = '系统管理员')`,
+    )
     await pool.query(
       `delete from role_grants where user_id in (select id from users where display_name = '系统管理员')`,
     )

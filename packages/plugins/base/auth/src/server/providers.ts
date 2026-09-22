@@ -1,10 +1,8 @@
 import { Effect, Schema } from 'effect'
 import { sql } from 'kysely'
 import { transaction, withDatabase } from '@qualy/plugin-database/server'
-import { Rbac } from '@qualy/rbac-contract/effect'
 import type { Principal } from '@qualy/rbac-contract'
 import { Audit } from '@qualy/audit-contract/effect'
-import { SYSTEM_ACCOUNT_USER_TYPE } from '../constants.ts'
 import { LoginDrivers } from '@qualy/auth-contract/login'
 import { translateConstraints } from '@qualy/plugin-database/server/constraints'
 import {
@@ -16,6 +14,7 @@ import {
 } from '../actions.ts'
 import { actorOf } from './audit-actor.ts'
 import { db, lockTenant } from './db.ts'
+import { recoveryChannelIntact, recoveryDoorTypes } from './recovery.ts'
 import {
   ProviderConfigInvalid,
   providerConstraints,
@@ -28,11 +27,13 @@ import {
 
 // The ways into a tenant, administered.
 //
-// A provider row is created by the platform (local today, cas and friends
-// later); what a tenant administers about it is who may use it. The audience
-// lives here and not on the user type, because "may use the school CAS" and
-// "may use a password" are facts about the doors: two booleans on the type
-// could never say which of three doors a kind of person is welcome at.
+// The password door is provisioned by the platform, one per tenant; doors of
+// the other kinds are added by the tenant. What a tenant administers about
+// any of them is its name, whether it is in service, its place on the
+// sign-in page and who may use it. The audience lives here and not on the
+// user type, because "may use the school CAS" and "may use a password" are
+// facts about the doors: two booleans on the type could never say which of
+// three doors a kind of person is welcome at.
 
 export type AudiencePolicy =
   | { readonly mode: 'unrestricted' }
@@ -57,6 +58,8 @@ const providerRows = (tenantId: string) =>
           from auth_provider_user_types a
           where a.tenant_id = p.tenant_id and a.auth_provider_id = p.id), '{}')`.as('userTypeIds'),
       ])
+      // a door taken out of service for good is history, not a door
+      .where('p.deletedAt', 'is', null)
       .orderBy('p.sortOrder')
       .orderBy('p.code')
       .execute(),
@@ -66,9 +69,10 @@ const oneProvider = (tenantId: string, providerId: string) =>
   db.query((k) =>
     k
       .selectFrom('AuthProvider')
-      .select(['id', 'name', 'version', 'type', 'config', 'enabled'])
+      .select(['id', 'name', 'version', 'type', 'config', 'enabled', 'isSystem'])
       .where('tenantId', '=', tenantId)
       .where('id', '=', providerId)
+      .where('deletedAt', 'is', null)
       .executeTakeFirst(),
   )
 
@@ -122,46 +126,23 @@ const replaceAudience = (
     )
   })
 
-/** whether any enabled door still admits the recovery account's type */
-const recoveryTypeAdmitted = (tenantId: string) =>
-  db
-    .query((k) =>
-      k
-        .selectFrom('UserType as t')
-        .where('t.tenantId', '=', tenantId)
-        .where('t.code', '=', SYSTEM_ACCOUNT_USER_TYPE)
-        .where((eb) =>
-          eb.exists(
-            eb
-              .selectFrom('AuthProvider as p')
-              .select('p.id')
-              .whereRef('p.tenantId', '=', 't.tenantId')
-              .where('p.enabled', '=', true)
-              .where((inner) =>
-                inner.or([
-                  inner('p.audienceMode', '=', 'unrestricted'),
-                  inner.exists(
-                    inner
-                      .selectFrom('AuthProviderUserType as a')
-                      .select('a.id')
-                      .whereRef('a.tenantId', '=', 'p.tenantId')
-                      .whereRef('a.authProviderId', '=', 'p.id')
-                      .whereRef('a.userTypeId', '=', 't.id'),
-                  ),
-                ]),
-              ),
-          ),
-        )
-        .select('t.id')
-        .executeTakeFirst(),
-    )
-    .pipe(Effect.map((row) => row !== undefined))
-
 export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
   const withDb = yield* withDatabase
-  const rbac = yield* Rbac
   const audit = yield* Audit
   const drivers = yield* LoginDrivers
+
+  /**
+   * Whether the tenant can still recover itself on the state being
+   * committed: asked after every write that could close its door.
+   */
+  const recoveryRemains = Effect.fn('Iam.providers.recoveryRemains')(function* (
+    tenantId: string,
+  ) {
+    const doorTypes = recoveryDoorTypes(yield* drivers.all)
+    if (!(yield* recoveryChannelIntact(tenantId, doorTypes))) {
+      return yield* new RecoveryChannelRequired()
+    }
+  })
 
   /** one write under the tenant's lock, with a taken address said as one */
   const write = <A, E, R>(tenantId: string, body: () => Effect.Effect<A, E, R>) =>
@@ -174,11 +155,15 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
       ),
     ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
 
-  /** the driver's own say on what an entrance of its kind is made of */
+  /**
+   * The driver's own say on what an entrance of its kind is made of; only a
+   * kind a tenant adds for itself has one. The platform's own door is
+   * provisioned, never added.
+   */
   const kindOf = Effect.fn('Iam.providers.kindOf')(function* (type: string) {
-    const entrance = (yield* drivers.forType(type))?.driver.entrance
-    if (entrance === undefined) return yield* new ProviderKindUnavailable()
-    return entrance
+    const provisioning = (yield* drivers.forType(type))?.driver.provisioning
+    if (provisioning?.mode !== 'tenant-managed') return yield* new ProviderKindUnavailable()
+    return provisioning.entrance
   })
 
   /** what was typed, turned by the driver into what it will read at sign-in */
@@ -210,13 +195,13 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
      */
     kinds: Effect.gen(function* () {
       return (yield* drivers.all).flatMap(({ driver }) =>
-        driver.entrance === undefined
+        driver.provisioning.mode !== 'tenant-managed'
           ? []
           : [
               {
                 type: driver.type,
-                label: driver.entrance.label,
-                fields: driver.entrance.fields.map((field) => ({
+                label: driver.provisioning.entrance.label,
+                fields: driver.provisioning.entrance.fields.map((field) => ({
                   key: field.key,
                   label: field.label,
                   hint: field.hint ?? null,
@@ -334,9 +319,9 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
     }),
 
     /**
-     * In service or out of it. Closing a door can lock a tenant out exactly
-     * as narrowing one can, so the same two facts are re-read on the state
-     * being committed.
+     * In service or out of it. Closing the platform's door can strand the
+     * tenant's recovery account exactly as narrowing it can, so that is
+     * re-read on the state being committed.
      */
     setStatus: Effect.fn('Iam.providers.setStatus')(function* (
       tenantId: string,
@@ -360,8 +345,7 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
               .where('id', '=', providerId)
               .execute(),
           )
-          if (!(yield* recoveryTypeAdmitted(tenantId))) return yield* new RecoveryChannelRequired()
-          yield* rbac.assertTenantKeepsAdministrator(tenantId)
+          yield* recoveryRemains(tenantId)
           yield* audit.record(ProviderStatusChanged, {
             tenantId,
             actor: yield* actorOf(tenantId, as),
@@ -434,10 +418,9 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
     /**
      * The audience, replaced whole.
      *
-     * Checked after the write, on the state being committed: narrowing a
-     * door can lock a tenant out exactly as disabling its users would, so
-     * the recovery account's own way in and the survival of a signable
-     * administrator are both re-read inside the transaction.
+     * Checked after the write, on the state being committed: narrowing the
+     * platform's door can shut out the recovery account, so its own way in
+     * is re-read inside the transaction.
      */
     setAudience: Effect.fn('Iam.providers.setAudience')(function* (
       tenantId: string,
@@ -461,10 +444,7 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
               if (found !== userTypeIds.length) return yield* new UserTypeNotFound()
             }
             yield* replaceAudience(tenantId, providerId, policy.mode, userTypeIds)
-            if (!(yield* recoveryTypeAdmitted(tenantId))) {
-              return yield* new RecoveryChannelRequired()
-            }
-            yield* rbac.assertTenantKeepsAdministrator(tenantId)
+            yield* recoveryRemains(tenantId)
             yield* audit.record(ProviderAudienceUpdated, {
               tenantId,
               actor: yield* actorOf(tenantId, as),

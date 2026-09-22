@@ -10,7 +10,10 @@ const ARGON2_OPTIONS = {
   parallelism: 4,
 } as const
 
+/** what a new or reset password must be at least; never asked at the door */
 export const PASSWORD_MIN_LENGTH = 12
+/** argon2 hashes any length; a bound keeps one request from hashing a megabyte */
+export const PASSWORD_MAX_LENGTH = 128
 
 /**
  * How many password hashes may be computed at once.
@@ -68,13 +71,3 @@ export function verifyPassword(hash: string, password: string): Promise<boolean>
 // whether an account exists; not a credential for anything
 export const timingEqualizerHash =
   '$argon2id$v=19$m=65536,p=4,t=3$lXA8UXjMAcQhodLiqlhItg$C8P52o5+kx8/f7dhVFfZiShWvbTGyRvBANgjasbigv4'
-
-// login names are case-insensitive ascii: trimmed, lowercased and restricted
-// to a conservative charset; returns null when the input cannot be a valid
-// identifier (callers treat that as invalid credentials)
-export function normalizeLocalIdentifier(raw: string): string | null {
-  const value = raw.trim().toLowerCase()
-  if (value.length < 2 || value.length > 64) return null
-  if (!/^[a-z0-9][a-z0-9._-]*$/.test(value)) return null
-  return value
-}

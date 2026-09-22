@@ -19,7 +19,7 @@ import { startQualyServer } from '../lib/qualy-server.ts'
 // ran past the threshold, the rest, the flight into the top bar.
 //
 // A design tool, run by hand: `pnpm brand:record`. It needs `pnpm build`,
-// the compose database with the seed applied, and QUALY_ADMIN_USERNAME /
+// the compose database with the seed applied, and QUALY_ADMIN_EMAIL /
 // QUALY_ADMIN_PASSWORD in .env - the same things `pnpm start` needs.
 
 // A port nobody holds, asked of the system rather than fixed: a run that
@@ -87,13 +87,13 @@ const ready = async () => {
  * variables the seed reads, so the recording shows what an administrator sees.
  */
 const signIn = async (context: BrowserContext): Promise<void> => {
-  const identifier = env('QUALY_ADMIN_USERNAME')
+  const email = env('QUALY_ADMIN_EMAIL')
   const password = env('QUALY_ADMIN_PASSWORD')
   const page = await context.newPage()
   try {
     await page.goto(`${BASE}/health/live`)
     const status = await page.evaluate(
-      `fetch('/api/auth/local/local/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: ${JSON.stringify(JSON.stringify({ identifier, password }))} }).then((r) => r.status)`,
+      `fetch('/api/auth/local/local/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: ${JSON.stringify(JSON.stringify({ email, password }))} }).then((r) => r.status)`,
     )
     if (status !== 200) throw new Error(`sign-in failed: ${String(status)}`)
     // read without a url: playwright's url filter drops Secure cookies for

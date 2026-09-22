@@ -71,8 +71,8 @@ export const FROZEN_ROUTES = [
   'PUT /iam/users/{userId}/placement',
   'PUT /iam/users/{userId}/status',
   'GET /iam/users/{userId}/entrances',
-  'PUT /iam/users/{userId}/identities/{providerId}',
-  'DELETE /iam/users/{userId}/identities/{providerId}',
+  'PUT /iam/users/{userId}/auth-bindings/{providerId}',
+  'DELETE /iam/users/{userId}/auth-bindings/{providerId}',
   'GET /iam/users/{userId}/effective-permissions',
   'GET /iam/users/{userId}/role-grants',
 

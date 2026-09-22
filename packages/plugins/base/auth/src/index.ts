@@ -35,7 +35,7 @@ import { config } from './server/auth-config.ts'
 import { identityApiGroup, sessionApiGroup } from './api.ts'
 import { compositeForeignKeys, entities } from './db/entities.ts'
 import { permissions } from './permissions.ts'
-import { identityApiHandlers, serviceLayer, sessionApiHandlers } from './server/index.ts'
+import { identityApiHandlers, pluginLayer, sessionApiHandlers } from './server/index.ts'
 
 // The plugin, as one description: identity itself, its tables, four screens,
 // a header slot, its permission codes, and its two api groups.
@@ -269,7 +269,7 @@ const plugin = Plugin.define(
   Login.provider,
   Api.group(identityApiGroup, identityApiHandlers),
   Api.group(sessionApiGroup, sessionApiHandlers),
-  Plugin.layer(serviceLayer),
+  Plugin.layer(pluginLayer),
 )
 
 export default plugin

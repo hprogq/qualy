@@ -222,11 +222,15 @@ export interface RbacShape {
 
   /**
    * After the caller's own writes, the tenant must still have an administrator
-   * who can sign in.
+   * in good standing: an enabled holder of the administrator role, of an
+   * enabled user type.
+   *
+   * Whether that holder can also sign in is not asked: it depends on each
+   * door's driver, which auth alone knows, and auth guarantees the tenant's
+   * way back in separately (its recovery account's password door).
    *
    * Reads the final state rather than a prediction, so it belongs inside the
-   * caller's transaction. That used to be expressed by a required handle; it
-   * is now a property of where the call is made.
+   * caller's transaction.
    */
   readonly assertTenantKeepsAdministrator: (
     tenantId: string,

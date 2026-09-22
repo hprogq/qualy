@@ -35,15 +35,17 @@ const userTypeLastForRoleMessage = defineMessage<{ roleCount: number }>()({
   defaultMessage:
     '{roleCount, plural, one {# role allows} other {# roles allow}} this user type and no other.',
 })
-const boundCountMessage = defineMessage<{ count: number }>()({
-  id: 'auth/person/bound-count',
-  defaultMessage: '{count, plural, one {# entrance} other {# entrances}}',
+const passwordDialogTitleMessage = defineMessage<{ name: string }>()({
+  id: 'auth/person/password-title',
+  defaultMessage: 'Set the {name} password',
 })
-const identityDialogTitle = (id: string, defaultMessage: string) =>
-  defineMessage<{ name: string }>()({ id, defaultMessage })
-const entranceDerivedMessage = defineMessage<{ by: string }>()({
-  id: 'auth/person/entrance-derived',
-  defaultMessage: 'Matched by {by}, nothing to add',
+const byBusinessNoMessage = defineMessage<{ businessNo: string }>()({
+  id: 'auth/person/by-business-no',
+  defaultMessage: 'Signs in by {businessNo}, nothing to bind',
+})
+const businessNoMissingMessage = defineMessage<{ businessNo: string }>()({
+  id: 'auth/person/business-no-missing',
+  defaultMessage: 'No {businessNo} yet',
 })
 const identitySecretHintMessage = defineMessage<{ count: number }>()({
   id: 'auth/person/identity-secret-hint',
@@ -213,11 +215,11 @@ const i18n = definePluginMessages({
     'audit.auth.provider.reorder': { id: 'auth/audit/provider-reorder', defaultMessage: 'Reorder the sign-in page' },
     'audit.auth.identity.bind': {
       id: 'auth/audit/identity-bind',
-      defaultMessage: 'Set a sign-in account for a user',
+      defaultMessage: 'Set a sign-in credential for a user',
     },
     'audit.auth.identity.revoke': {
       id: 'auth/audit/identity-revoke',
-      defaultMessage: 'Withdraw a sign-in account from a user',
+      defaultMessage: 'Withdraw a sign-in binding from a user',
     },
     'audit.auth.user.move': { id: 'auth/audit/user-move', defaultMessage: 'Move user' },
     'audit.auth.user.enable': { id: 'auth/audit/user-enable', defaultMessage: 'Enable user' },
@@ -464,11 +466,6 @@ const i18n = definePluginMessages({
       id: 'auth/user-detail/placement-empty',
       defaultMessage: 'Not placed in any unit yet',
     },
-    boundEmptyBody: {
-      id: 'auth/person/bound-empty-body',
-      defaultMessage: 'Until an entrance is bound, nobody can sign in as them.',
-    },
-    boundCount: boundCountMessage,
     lastUsed: lastUsedMessage,
     neverUsed: { id: 'auth/person/never-used', defaultMessage: 'Never used' },
     entranceDisabled: { id: 'auth/person/entrance-disabled', defaultMessage: 'Entrance disabled' },
@@ -524,7 +521,7 @@ const i18n = definePluginMessages({
     identitiesSection: { id: 'auth/person/identities-section', defaultMessage: 'Ways in' },
     columnAccount: { id: 'auth/person/column-account', defaultMessage: 'Account' },
     columnLastUsed: { id: 'auth/person/column-last-used', defaultMessage: 'Last sign-in' },
-    entranceUnbound: { id: 'auth/person/entrance-unbound', defaultMessage: 'No account yet' },
+    entranceUnbound: { id: 'auth/person/entrance-unbound', defaultMessage: 'Not bound' },
     entranceNotAdmitted: {
       id: 'auth/person/entrance-not-admitted',
       defaultMessage: 'Not open to their user type',
@@ -533,22 +530,30 @@ const i18n = definePluginMessages({
       id: 'auth/person/entrance-self',
       defaultMessage: 'Bound by the person themselves',
     },
-    entranceDerived: entranceDerivedMessage,
-    identityAdd: { id: 'auth/person/identity-add', defaultMessage: 'Add account' },
-    identityReset: { id: 'auth/person/identity-reset', defaultMessage: 'Reset' },
+    byBusinessNo: byBusinessNoMessage,
+    businessNoMissing: businessNoMissingMessage,
+    emailMissing: {
+      id: 'auth/person/email-missing',
+      defaultMessage: 'No email yet; add one in the profile first',
+    },
+    fromEmail: { id: 'auth/person/from-email', defaultMessage: 'the person’s email' },
+    credentialSet: { id: 'auth/person/credential-set', defaultMessage: 'Password set' },
+    credentialUnset: { id: 'auth/person/credential-unset', defaultMessage: 'No password yet' },
+    driverMissing: {
+      id: 'auth/person/driver-missing',
+      defaultMessage: 'Not available in this deployment',
+    },
+    passwordSet: { id: 'auth/person/password-set', defaultMessage: 'Set password' },
+    passwordReset: { id: 'auth/person/password-reset', defaultMessage: 'Reset password' },
     identityRevoke: { id: 'auth/person/identity-revoke', defaultMessage: 'Withdraw' },
-    identityAddTitle: identityDialogTitle('auth/person/identity-add-title', 'Add a {name} account'),
-    identityResetTitle: identityDialogTitle(
-      'auth/person/identity-reset-title',
-      'Reset the {name} account',
-    ),
+    passwordDialogTitle: passwordDialogTitleMessage,
     identityResetBody: {
       id: 'auth/person/identity-reset-body',
       defaultMessage: 'Saving signs them out everywhere.',
     },
     identityRevokeTitle: {
       id: 'auth/person/identity-revoke-title',
-      defaultMessage: 'Withdraw this account?',
+      defaultMessage: 'Withdraw this way in?',
     },
     identityRevokeBody: {
       id: 'auth/person/identity-revoke-body',
@@ -796,26 +801,26 @@ const i18n = definePluginMessages({
       id: 'auth/error/provider-config-invalid',
       defaultMessage: 'One of the settings for this kind of way in is missing or not valid.',
     },
-    IDENTITY_BINDING_UNSUPPORTED: {
-      id: 'auth/error/identity-binding-unsupported',
-      defaultMessage: 'An account of this kind cannot be added on somebody else\'s behalf.',
+    AUTH_BINDING_UNSUPPORTED: {
+      id: 'auth/error/binding-unsupported',
+      defaultMessage: 'Nothing of this kind can be set on somebody else\'s behalf.',
     },
-    IDENTITY_AUDIENCE_EXCLUDED: {
-      id: 'auth/error/identity-audience-excluded',
-      defaultMessage: 'This way in does not admit their user type, so the account could not be used.',
+    AUTH_BINDING_AUDIENCE_EXCLUDED: {
+      id: 'auth/error/binding-audience-excluded',
+      defaultMessage: 'This way in does not admit their user type, so it could not be used.',
     },
-    IDENTITY_INPUT_INVALID: {
-      id: 'auth/error/identity-input-invalid',
+    AUTH_BINDING_CREDENTIAL_INVALID: {
+      id: 'auth/error/binding-credential-invalid',
+      defaultMessage: 'The password does not meet the requirements.',
+    },
+    AUTH_BINDING_USER_FIELD_MISSING: {
+      id: 'auth/error/binding-user-field-missing',
       defaultMessage:
-        '{field, select, secret {The password does not meet the requirements.} other {The sign-in name does not meet the requirements.}}',
+        '{field, select, email {Add their email in the profile first.} other {Add their person identifier in the profile first.}}',
     },
-    IDENTITY_IDENTIFIER_TAKEN: {
-      id: 'auth/error/identity-identifier-taken',
-      defaultMessage: 'Somebody else already signs in under that name.',
-    },
-    IDENTITY_NOT_FOUND: {
-      id: 'auth/error/identity-not-found',
-      defaultMessage: 'There is no account of this kind to withdraw.',
+    AUTH_BINDING_NOT_FOUND: {
+      id: 'auth/error/binding-not-found',
+      defaultMessage: 'There is nothing bound here to withdraw.',
     },
   }),
   locales: {

@@ -45,7 +45,7 @@ import {
 
 const PORT = Number(process.env.FORMULA_SMOKE_PORT ?? '3196')
 const DATABASE = 'qualy_formula_smoke'
-const ADMIN_USERNAME = 'admin'
+const ADMIN_EMAIL = 'admin@smoke.example'
 const ADMIN_PASSWORD = 'formula-smoke-admin-password'
 const FORMULA_PLUGIN = '@qualy/plugin-assessment-formula'
 const AMOUNT = '3'
@@ -96,13 +96,13 @@ const runOrThrow = (
 
 const loginAs = async (
   base: string,
-  identifier: string,
+  email: string,
   password: string,
 ): Promise<SessionCookie> => {
   const response = await fetch(`${base}/api/auth/local/local/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ identifier, password }),
+    body: JSON.stringify({ email, password }),
   })
   if (response.status !== 200) {
     throw new SmokeFailure('login', `status ${response.status}\n${await response.text()}`)
@@ -120,7 +120,7 @@ const authoringEnabled = (manifest: string): boolean => {
 
 const chain = async (base: string, databaseUrl: string): Promise<{ tenantId: string }> => {
   // --- who is acting, and where -------------------------------------------
-  const adminSession = await loginAs(base, ADMIN_USERNAME, ADMIN_PASSWORD)
+  const adminSession = await loginAs(base, ADMIN_EMAIL, ADMIN_PASSWORD)
   const admin: Api = clientFor(base, adminSession)
   const session = must(
     await admin.call<{ user: { id: string; tenant: { id: string } } }>('GET', '/auth/session'),
@@ -404,7 +404,7 @@ const main = async (): Promise<void> => {
   runOrThrow('seed', path.join(repoRoot, 'tools/fixtures/seed-cli.ts'), [], {
     ...process.env,
     DATABASE_URL: databaseUrl,
-    QUALY_ADMIN_USERNAME: ADMIN_USERNAME,
+    QUALY_ADMIN_EMAIL: ADMIN_EMAIL,
     QUALY_ADMIN_PASSWORD: ADMIN_PASSWORD,
   })
   say(`database ${DATABASE} deployed and seeded`)

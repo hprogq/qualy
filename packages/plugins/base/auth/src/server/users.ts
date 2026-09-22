@@ -14,8 +14,8 @@ import { LoginDrivers } from '@qualy/auth-contract/login'
 import { actorOf } from './audit-actor.ts'
 import { normalizeEmail } from '@qualy/auth-contract/email'
 import {
-  IdentityBound,
-  IdentityRevoked,
+  BindingRevoked,
+  BindingWritten,
   UserCreated,
   UserDeleted,
   UserDisabled,
@@ -25,11 +25,11 @@ import {
 } from '../actions.ts'
 import {
   GrantIncompatible,
-  IdentityAudienceExcluded,
-  IdentityBindingUnsupported,
-  identityConstraints,
-  IdentityInputInvalid,
-  IdentityNotFound,
+  AuthBindingAudienceExcluded,
+  AuthBindingCredentialInvalid,
+  AuthBindingNotFound,
+  AuthBindingUnsupported,
+  AuthBindingUserFieldMissing,
   ProviderNotFound,
   PlacementNotAllowed,
   SystemAccountProtected,
@@ -71,6 +71,7 @@ const userGuard = (tenantId: string, userId: string) =>
         'u.id',
         'u.displayName',
         'u.email',
+        'u.businessNo',
         'u.userTypeId',
         'u.primaryOrgNodeId',
         'u.enabled',
@@ -381,23 +382,24 @@ const entrancesOf = (tenantId: string, userId: string, userTypeId: string | null
   db.query((k) =>
     k
       .selectFrom('AuthProvider as p')
-      .leftJoin('UserIdentity as i', (join) =>
+      .leftJoin('UserAuthBinding as b', (join) =>
         join
-          .onRef('i.tenantId', '=', 'p.tenantId')
-          .onRef('i.authProviderId', '=', 'p.id')
-          .on('i.userId', '=', userId)
-          .on('i.revokedAt', 'is', null),
+          .onRef('b.tenantId', '=', 'p.tenantId')
+          .onRef('b.authProviderId', '=', 'p.id')
+          .on('b.userId', '=', userId)
+          .on('b.revokedAt', 'is', null),
       )
       .select((eb) => [
         'p.id as providerId',
         'p.name',
         'p.type',
         'p.enabled',
-        'i.id as identityId',
-        'i.identifier',
-        'i.boundAt',
-        'i.lastUsedAt',
-        eb('i.credentialHash', 'is not', null).as('hasCredential'),
+        'b.id as bindingId',
+        'b.subject',
+        'b.displayLabel',
+        'b.boundAt',
+        'b.lastUsedAt',
+        eb('b.credentialHash', 'is not', null).as('hasCredential'),
         eb
           .or([
             eb('p.audienceMode', '=', 'unrestricted'),
@@ -413,6 +415,8 @@ const entrancesOf = (tenantId: string, userId: string, userTypeId: string | null
           .as('admits'),
       ])
       .where('p.tenantId', '=', tenantId)
+      // a door taken out of service for good is history, not a way in
+      .where('p.deletedAt', 'is', null)
       .orderBy('p.sortOrder')
       .orderBy('p.name')
       .execute(),
@@ -421,7 +425,7 @@ const entrancesOf = (tenantId: string, userId: string, userTypeId: string | null
 /** a person with no type is admitted by no allow-list; this id names nobody */
 const NO_TYPE = '00000000-0000-0000-0000-000000000000'
 
-/** the entrance a binding is written against; its kind names the driver that knows how */
+/** the door a binding is written against; its kind names the driver that knows how */
 const providerGuard = (tenantId: string, providerId: string) =>
   db.query((k) =>
     k
@@ -429,13 +433,39 @@ const providerGuard = (tenantId: string, providerId: string) =>
       .select(['id', 'type', 'enabled'])
       .where('tenantId', '=', tenantId)
       .where('id', '=', providerId)
+      .where('deletedAt', 'is', null)
       .executeTakeFirst(),
   )
 
-const liveIdentity = (tenantId: string, userId: string, providerId: string) =>
+/**
+ * Whether the person proves themselves with a credential at a door of one
+ * of these kinds - the doors that find people by the field being changed.
+ */
+const credentialAtDoorsOf = (tenantId: string, userId: string, types: readonly string[]) =>
+  db
+    .query((k) =>
+      types.length === 0
+        ? Promise.resolve(undefined)
+        : k
+            .selectFrom('UserAuthBinding as b')
+            .innerJoin('AuthProvider as p', (join) =>
+              join.onRef('p.tenantId', '=', 'b.tenantId').onRef('p.id', '=', 'b.authProviderId'),
+            )
+            .select('b.id')
+            .where('b.tenantId', '=', tenantId)
+            .where('b.userId', '=', userId)
+            .where('b.revokedAt', 'is', null)
+            .where('b.credentialHash', 'is not', null)
+            .where('p.type', 'in', [...types])
+            .where('p.deletedAt', 'is', null)
+            .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => row !== undefined))
+
+const liveBinding = (tenantId: string, userId: string, providerId: string) =>
   db.query((k) =>
     k
-      .selectFrom('UserIdentity')
+      .selectFrom('UserAuthBinding')
       .select(['id'])
       .where('tenantId', '=', tenantId)
       .where('userId', '=', userId)
@@ -651,11 +681,11 @@ const markUserDeleted = (tenantId: string, userId: string) =>
   )
 
 /** withdraws every live way in, attributed to whoever deleted the person */
-const revokeUserIdentities = (tenantId: string, userId: string, actorId: string) =>
+const revokeUserBindings = (tenantId: string, userId: string, actorId: string) =>
   db
     .query((k) =>
       k
-        .updateTable('UserIdentity')
+        .updateTable('UserAuthBinding')
         .set({ revokedAt: sql<Date>`now()`, revokedBy: actorId })
         .where('tenantId', '=', tenantId)
         .where('userId', '=', userId)
@@ -762,7 +792,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
     actor: AuditActor,
   ) {
     const revokedGrants = yield* rbac.revokeAllGrantsOfUser(tenantId, user.id, as.userId)
-    const revokedIdentities = yield* revokeUserIdentities(tenantId, user.id, as.userId)
+    const revokedBindings = yield* revokeUserBindings(tenantId, user.id, as.userId)
     const endedSessions = yield* deleteUserSessions(tenantId, user.id)
     yield* markUserDeleted(tenantId, user.id)
     yield* audit.record(UserDeleted, {
@@ -774,7 +804,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
         userTypeId: user.userTypeId,
         orgNodeId: user.primaryOrgNodeId,
         revokedGrants,
-        revokedIdentities,
+        revokedBindings,
         endedSessions,
       },
     })
@@ -1073,11 +1103,12 @@ export const make = Effect.fn('Iam.users.make')(function* () {
     ),
 
     /**
-     * Every entrance as it stands for one person, with the driver's own
-     * answer to whether an account of its kind can be written for them.
+     * Every door as it stands for one person: how the door finds them, what
+     * may be written for them, and the live binding when there is one.
      *
      * Behind the person's read authority; `manageable` is asked separately,
-     * because reading somebody and administering them are two grants.
+     * because reading somebody and administering them are two grants. A
+     * door whose driver is not in this assembly says nothing about either.
      */
     entrances: bound(
       Effect.fn('Iam.users.entrances')(function* (principal: Principal, userId: string) {
@@ -1090,6 +1121,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
         const entrances = yield* Effect.forEach(found, (entrance) =>
           Effect.map(drivers.forType(entrance.type), (registered) => ({
             ...entrance,
+            resolution: registered?.driver.resolution,
             binding: registered?.driver.binding,
           })),
         )
@@ -1098,60 +1130,68 @@ export const make = Effect.fn('Iam.users.make')(function* () {
     ),
 
     /**
-     * Writes the binding of one person to one entrance, whole.
+     * Sets the credential one person proves at one door, whole.
      *
-     * The driver turns what was typed into what is stored before the
+     * Only for a door whose driver lets an administrator manage it, and only
+     * for somebody the door can find: a password door signs in by the
+     * person's email, so a password for somebody without one could never be
+     * used. The driver turns what was typed into what is stored before the
      * transaction opens - a digest costs most of a second, and holding the
      * tenant's row lock across it would queue every other write behind one
-     * password. Everything that decides whether the write may happen is
-     * asked again inside the lock. Replacing a binding ends the sessions it
-     * opened: a changed password that leaves the old session alive has not
-     * locked anybody out.
+     * password. Everything that decides whether the write may happen is asked
+     * again inside the lock. Replacing a credential ends the sessions: a
+     * changed password that leaves the old session alive has not locked
+     * anybody out.
      */
-    putIdentity: Effect.fn('Iam.users.putIdentity')(function* (
+    putBinding: Effect.fn('Iam.users.putBinding')(function* (
       tenantId: string,
       userId: string,
       providerId: string,
-      input: { identifier: string; secret: string | undefined },
+      input: { secret: string },
       as: Principal,
     ) {
       const provider = yield* withDb(providerGuard(tenantId, providerId)).pipe(Effect.orDie)
       if (!provider) return yield* new ProviderNotFound()
-      const binding = (yield* drivers.forType(provider.type))?.driver.binding
-      if (binding?.mode !== 'managed') return yield* new IdentityBindingUnsupported()
+      const driver = (yield* drivers.forType(provider.type))?.driver
+      const binding = driver?.binding
+      if (binding?.mode !== 'managed' || driver?.resolution.mode !== 'user-field') {
+        return yield* new AuthBindingUnsupported()
+      }
+      const field = driver.resolution.field
       // authority first, so somebody without it learns nothing about what a
-      // valid name looks like and costs the server no digest
+      // valid credential looks like and costs the server no digest
       const before = yield* withDb(requireUser(tenantId, userId)).pipe(
         Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
       )
       if (before.isSystem) return yield* new SystemAccountProtected()
       yield* manages(as, before.primaryOrgNodeId!)
-      const prepared = yield* binding.prepare({
-        identifier: input.identifier,
-        secret: binding.secret === undefined ? undefined : input.secret,
-      })
-      if (!prepared.ok) return yield* new IdentityInputInvalid({ field: prepared.invalid })
+      if (before[field] === null) return yield* new AuthBindingUserFieldMissing({ field })
+      const prepared = yield* binding.prepare({ secret: input.secret })
+      if (!prepared.ok) return yield* new AuthBindingCredentialInvalid()
 
       return yield* writeBinding(tenantId, () =>
         Effect.gen(function* () {
           const user = yield* requireUser(tenantId, userId)
           if (user.isSystem) return yield* new SystemAccountProtected()
           yield* manages(as, user.primaryOrgNodeId!)
+          if (user[field] === null) return yield* new AuthBindingUserFieldMissing({ field })
           const admitted = yield* entrancesOf(tenantId, userId, user.userTypeId)
           if (admitted.find((entrance) => entrance.providerId === providerId)?.admits !== true) {
-            return yield* new IdentityAudienceExcluded()
+            return yield* new AuthBindingAudienceExcluded()
           }
-          const standing = yield* liveIdentity(tenantId, userId, providerId)
-          const identityId =
+          const standing = yield* liveBinding(tenantId, userId, providerId)
+          const bindingId =
             standing === undefined
               ? (yield* db.query((k) =>
                   k
-                    .insertInto('UserIdentity')
+                    .insertInto('UserAuthBinding')
                     .values({
                       tenantId,
                       userId,
                       authProviderId: providerId,
-                      identifier: prepared.identifier,
+                      // the door finds the person by their own field; the
+                      // binding holds the credential and nothing else
+                      subject: null,
                       credentialHash: prepared.credentialHash,
                     })
                     .returning('id')
@@ -1159,41 +1199,35 @@ export const make = Effect.fn('Iam.users.make')(function* () {
                 )).id
               : (yield* db.query((k) =>
                   k
-                    .updateTable('UserIdentity')
-                    .set({
-                      identifier: prepared.identifier,
-                      credentialHash: prepared.credentialHash,
-                    })
+                    .updateTable('UserAuthBinding')
+                    .set({ credentialHash: prepared.credentialHash })
                     .where('tenantId', '=', tenantId)
                     .where('id', '=', standing.id)
                     .returning('id')
                     .executeTakeFirstOrThrow(),
                 )).id
           const endedSessions = standing === undefined ? 0 : yield* deleteUserSessions(tenantId, userId)
-          yield* audit.record(IdentityBound, {
+          yield* audit.record(BindingWritten, {
             tenantId,
             actor: yield* actorOf(tenantId, as),
             target: { id: user.id, label: user.displayName },
             organizationId: user.primaryOrgNodeId!,
-            details: { providerId, identityId, replaced: standing !== undefined, endedSessions },
+            details: { providerId, bindingId, replaced: standing !== undefined, endedSessions },
           })
-          return identityId
+          return bindingId
         }),
-      ).pipe(
-        // two people asking for one name race to the live-rows unique index
-        translateConstraints(identityConstraints),
-        Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
-      )
+      ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
     }),
 
     /**
-     * Withdraws one person's binding to one entrance.
+     * Withdraws one person's binding to one door.
      *
      * Withdrawn, never erased - who could come in as whom, and until when,
      * is history - and the sessions end with it for the reason a replaced
-     * password ends them.
+     * password ends them. Works for any binding, including one only the
+     * person could have made.
      */
-    revokeIdentity: Effect.fn('Iam.users.revokeIdentity')(function* (
+    revokeBinding: Effect.fn('Iam.users.revokeBinding')(function* (
       tenantId: string,
       userId: string,
       providerId: string,
@@ -1204,23 +1238,23 @@ export const make = Effect.fn('Iam.users.make')(function* () {
           const user = yield* requireUser(tenantId, userId)
           if (user.isSystem) return yield* new SystemAccountProtected()
           yield* manages(as, user.primaryOrgNodeId!)
-          const standing = yield* liveIdentity(tenantId, userId, providerId)
-          if (standing === undefined) return yield* new IdentityNotFound()
+          const standing = yield* liveBinding(tenantId, userId, providerId)
+          if (standing === undefined) return yield* new AuthBindingNotFound()
           yield* db.query((k) =>
             k
-              .updateTable('UserIdentity')
+              .updateTable('UserAuthBinding')
               .set({ revokedAt: sql<Date>`now()`, revokedBy: as.userId })
               .where('tenantId', '=', tenantId)
               .where('id', '=', standing.id)
               .execute(),
           )
           const endedSessions = yield* deleteUserSessions(tenantId, userId)
-          yield* audit.record(IdentityRevoked, {
+          yield* audit.record(BindingRevoked, {
             tenantId,
             actor: yield* actorOf(tenantId, as),
             target: { id: user.id, label: user.displayName },
             organizationId: user.primaryOrgNodeId!,
-            details: { providerId, identityId: standing.id, endedSessions },
+            details: { providerId, bindingId: standing.id, endedSessions },
           })
         }),
       ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
@@ -1374,6 +1408,20 @@ export const make = Effect.fn('Iam.users.make')(function* () {
             if (blocking > 0) return yield* new GrantIncompatible({ grantCount: blocking })
           }
           yield* updateUser(tenantId, user.id, fields)
+          // The address is the name a password door signs in by. Somebody
+          // who proved themselves under the old one keeps no session: if the
+          // address changed because it stopped being theirs, whoever holds
+          // it now must not ride in on what it opened.
+          if (fields.email !== undefined) {
+            const types = (yield* drivers.all).flatMap(({ driver }) =>
+              driver.resolution.mode === 'user-field' && driver.resolution.field === 'email'
+                ? [driver.type]
+                : [],
+            )
+            if (yield* credentialAtDoorsOf(tenantId, user.id, types)) {
+              yield* deleteUserSessions(tenantId, user.id)
+            }
+          }
           yield* audit.record(UserUpdated, {
             tenantId,
             actor: yield* actorOf(tenantId, as),

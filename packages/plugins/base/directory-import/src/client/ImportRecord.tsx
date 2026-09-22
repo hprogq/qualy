@@ -487,7 +487,7 @@ export function ImportRecordSheet({
               ? format(m.reverseNothing)
               : format(m.reversalHint, {
                   count: reversal.data.toRetire,
-                  identities: reversal.data.withIdentities,
+                  bindings: reversal.data.withBindings,
                   grants: reversal.data.withGrants,
                 })
         }

@@ -2,7 +2,7 @@ import { Context, Duration, Effect, Layer, Option } from 'effect'
 import { HttpServerRequest } from 'effect/unstable/http'
 import { bindSessionId, currentRequestContext } from '@qualy/api-kit/request'
 import { boundedCounter } from '@qualy/telemetry/metrics'
-import { kyselyOf, query, transaction, withDatabase, type Orm } from '@qualy/plugin-database/server'
+import { transaction, withDatabase, type Orm } from '@qualy/plugin-database/server'
 import { db } from './db.ts'
 import { sql } from 'kysely'
 import {
@@ -75,29 +75,34 @@ const providerByCode = (tenantId: string, providerCode: string, expectedType: st
       .executeTakeFirst(),
   )
 
-/** an identity with what the core needs to decide whether it may be used */
-const identityByIdentifier = (tenantId: string, providerId: string, identifier: string) =>
+/**
+ * The living person whose own field holds this value, when the door admits
+ * their kind.
+ *
+ * Deleted people are nobody. Disabled ones are returned: whether an account
+ * may still come in is decided by `completeLogin`, which records why not.
+ * Whether this kind of person may use this door is the door's own audience,
+ * decided here so every driver gets the same answer: a person outside it
+ * does not exist as far as the caller can tell.
+ */
+const userByField = (
+  tenantId: string,
+  providerId: string,
+  field: 'email' | 'businessNo',
+  value: string,
+) =>
   db.query((k) =>
     k
-      .selectFrom('UserIdentity as i')
-      .innerJoin('User as u', (join) =>
-        join.onRef('u.tenantId', '=', 'i.tenantId').onRef('u.id', '=', 'i.userId'),
-      )
+      .selectFrom('User as u')
       .innerJoin('UserType as t', (join) =>
         join.onRef('t.tenantId', '=', 'u.tenantId').onRef('t.id', '=', 'u.userTypeId'),
       )
       .innerJoin('AuthProvider as p', (join) =>
-        join.onRef('p.tenantId', '=', 'i.tenantId').onRef('p.id', '=', 'i.authProviderId'),
+        join.onRef('p.tenantId', '=', 'u.tenantId').on('p.id', '=', providerId),
       )
-      .where('i.tenantId', '=', tenantId)
-      .where('i.authProviderId', '=', providerId)
-      .where('i.identifier', '=', identifier)
-      // a withdrawn binding is history, not a way in: as far as a caller can
-      // tell it does not exist, exactly like an identity outside the audience
-      .where('i.revokedAt', 'is', null)
-      // whether this kind of person may use this door is the door's own
-      // audience, decided here so every driver gets the same refusal: an
-      // identity outside it does not exist as far as the caller can tell
+      .where('u.tenantId', '=', tenantId)
+      .where(field === 'email' ? 'u.email' : 'u.businessNo', '=', value)
+      .where('u.deletedAt', 'is', null)
       .where((eb) =>
         eb.or([
           eb('p.audienceMode', '=', 'unrestricted'),
@@ -111,16 +116,70 @@ const identityByIdentifier = (tenantId: string, providerId: string, identifier: 
           ),
         ]),
       )
-      .select(['i.id', 'i.userId', 'i.credentialHash'])
+      .select('u.id as userId')
       .executeTakeFirst(),
   )
 
-const touchIdentity = (identityId: string) =>
+/** one person's live binding to one door */
+const bindingForUser = (tenantId: string, providerId: string, userId: string) =>
   db.query((k) =>
     k
-      .updateTable('UserIdentity')
+      .selectFrom('UserAuthBinding')
+      .select(['id', 'userId', 'credentialHash'])
+      .where('tenantId', '=', tenantId)
+      .where('authProviderId', '=', providerId)
+      .where('userId', '=', userId)
+      // a withdrawn binding is history, not a way in
+      .where('revokedAt', 'is', null)
+      .executeTakeFirst(),
+  )
+
+/**
+ * The live binding holding an external subject, for a living person the
+ * door admits. The subject is the external account's durable id and nothing
+ * else: a name or an address the provider reports is never looked up here.
+ */
+const bindingBySubject = (tenantId: string, providerId: string, subject: string) =>
+  db.query((k) =>
+    k
+      .selectFrom('UserAuthBinding as b')
+      .innerJoin('User as u', (join) =>
+        join.onRef('u.tenantId', '=', 'b.tenantId').onRef('u.id', '=', 'b.userId'),
+      )
+      .innerJoin('UserType as t', (join) =>
+        join.onRef('t.tenantId', '=', 'u.tenantId').onRef('t.id', '=', 'u.userTypeId'),
+      )
+      .innerJoin('AuthProvider as p', (join) =>
+        join.onRef('p.tenantId', '=', 'b.tenantId').onRef('p.id', '=', 'b.authProviderId'),
+      )
+      .where('b.tenantId', '=', tenantId)
+      .where('b.authProviderId', '=', providerId)
+      .where('b.subject', '=', subject)
+      .where('b.revokedAt', 'is', null)
+      .where('u.deletedAt', 'is', null)
+      .where((eb) =>
+        eb.or([
+          eb('p.audienceMode', '=', 'unrestricted'),
+          eb.exists(
+            eb
+              .selectFrom('AuthProviderUserType as a')
+              .select('a.id')
+              .whereRef('a.tenantId', '=', 'p.tenantId')
+              .whereRef('a.authProviderId', '=', 'p.id')
+              .whereRef('a.userTypeId', '=', 't.id'),
+          ),
+        ]),
+      )
+      .select(['b.id', 'b.userId', 'b.credentialHash'])
+      .executeTakeFirst(),
+  )
+
+const touchBinding = (bindingId: string) =>
+  db.query((k) =>
+    k
+      .updateTable('UserAuthBinding')
       .set({ lastUsedAt: sql<Date>`now()` })
-      .where('id', '=', identityId)
+      .where('id', '=', bindingId)
       .execute(),
   )
 
@@ -175,6 +234,8 @@ const signedInUser = (tenantId: string, userId: string) =>
 const insertSession = (input: {
   tenantId: string
   userId: string
+  authProviderId: string
+  authBindingId: string | undefined
   tokenHash: string
   ttlSeconds: number
   loginIp?: string
@@ -186,6 +247,8 @@ const insertSession = (input: {
       .values({
         tenantId: input.tenantId,
         userId: input.userId,
+        authProviderId: input.authProviderId,
+        authBindingId: input.authBindingId ?? null,
         tokenHash: input.tokenHash,
         expiresAt: sql<Date>`now() + make_interval(secs => ${input.ttlSeconds})`,
         loginIp: input.loginIp ?? null,
@@ -260,7 +323,7 @@ const insertSignInEvent = (input: {
   providerType: string
   providerCode: string
   userId?: string
-  identityId?: string
+  bindingId?: string
   outcome: 'success' | 'failure'
   reasonCode?: string
   sessionId?: string
@@ -278,7 +341,7 @@ const insertSignInEvent = (input: {
         providerType: input.providerType,
         providerCode: input.providerCode,
         userId: input.userId ?? null,
-        identityId: input.identityId ?? null,
+        bindingId: input.bindingId ?? null,
         outcome: input.outcome,
         reasonCode: input.reasonCode ?? null,
         sessionId: input.sessionId ?? null,
@@ -411,7 +474,7 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
       outcome: 'success' | 'failure'
       reason?: SignInFailureReason
       userId?: string
-      identityId?: string
+      bindingId?: string
       sessionId?: string
     },
   ) {
@@ -431,7 +494,7 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
       providerType: snapshot?.type ?? 'unknown',
       providerCode: snapshot?.code ?? 'unknown',
       ...(input.userId === undefined ? {} : { userId: input.userId }),
-      ...(input.identityId === undefined ? {} : { identityId: input.identityId }),
+      ...(input.bindingId === undefined ? {} : { bindingId: input.bindingId }),
       outcome: input.outcome,
       ...(input.reason === undefined ? {} : { reasonCode: input.reason }),
       ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
@@ -461,31 +524,51 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
       }),
     ),
 
-    findIdentity: bound(
-      Effect.fn('Auth.signIn.findIdentity')(function* (input: {
+    findUserByField: bound(
+      Effect.fn('Auth.signIn.findUserByField')(function* (input: {
         tenantId: string
         providerId: string
-        identifier: string
+        field: 'email' | 'businessNo'
+        value: string
       }) {
-        const row = yield* identityByIdentifier(
+        const row = yield* userByField(
           input.tenantId,
           input.providerId,
-          input.identifier,
+          input.field,
+          input.value,
         ).pipe(Effect.orDie)
-        return row
-          ? {
-              id: row.id,
-              userId: row.userId,
-              credentialHash: row.credentialHash,
-            }
-          : undefined
+        return row === undefined ? undefined : { userId: row.userId }
+      }),
+    ),
+
+    findBindingForUser: bound(
+      Effect.fn('Auth.signIn.findBindingForUser')(function* (input: {
+        tenantId: string
+        providerId: string
+        userId: string
+      }) {
+        return yield* bindingForUser(input.tenantId, input.providerId, input.userId).pipe(
+          Effect.orDie,
+        )
+      }),
+    ),
+
+    findBindingBySubject: bound(
+      Effect.fn('Auth.signIn.findBindingBySubject')(function* (input: {
+        tenantId: string
+        providerId: string
+        subject: string
+      }) {
+        return yield* bindingBySubject(input.tenantId, input.providerId, input.subject).pipe(
+          Effect.orDie,
+        )
       }),
     ),
 
     failAttempt: bound(
       Effect.fn('Auth.signIn.failAttempt')(function* (
         provider: ResolvedProvider,
-        input: { reason: SignInFailureReason; userId?: string; identityId?: string },
+        input: { reason: SignInFailureReason; userId?: string; bindingId?: string },
       ) {
         yield* record(provider, { outcome: 'failure', ...input })
       }),
@@ -496,7 +579,7 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         tenantId: string
         providerId: string
         userId: string
-        identityId?: string
+        bindingId?: string
       }) {
         const provider = { tenantId: input.tenantId, providerId: input.providerId }
         // the account state is re-read here rather than trusted from the proof:
@@ -511,7 +594,7 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
             outcome: 'failure',
             reason,
             userId: input.userId,
-            ...(input.identityId === undefined ? {} : { identityId: input.identityId }),
+            ...(input.bindingId === undefined ? {} : { bindingId: input.bindingId }),
           })
           return undefined
         }
@@ -520,25 +603,27 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         // proxy itself on any proxied deployment
         const context = Option.getOrUndefined(yield* currentRequestContext)
         const { token, tokenHash } = createSessionToken()
-        // one transaction: the session, the identity's last-used stamp and
+        // one transaction: the session, the binding's last-used stamp and
         // the sign-in event exist together or not at all
         const sessionId = yield* transaction(
           Effect.gen(function* () {
             const session = yield* insertSession({
               tenantId: input.tenantId,
               userId: input.userId,
+              authProviderId: input.providerId,
+              authBindingId: input.bindingId,
               tokenHash,
               ttlSeconds: config.sessionTtlSeconds,
               loginIp: context?.clientIp,
               userAgent: context?.userAgent,
             }).pipe(Effect.orDie)
-            if (input.identityId) {
-              yield* touchIdentity(input.identityId).pipe(Effect.orDie)
+            if (input.bindingId) {
+              yield* touchBinding(input.bindingId).pipe(Effect.orDie)
             }
             yield* record(provider, {
               outcome: 'success',
               userId: input.userId,
-              ...(input.identityId === undefined ? {} : { identityId: input.identityId }),
+              ...(input.bindingId === undefined ? {} : { bindingId: input.bindingId }),
               sessionId: session.id,
             })
             return session.id

@@ -53,7 +53,9 @@ export const UserDisabled = AuditAction.define({
 export const UserDeleted = AuditAction.define({
   code: 'auth.user.delete',
   target: 'auth.user',
-  version: 1,
+  // version 1 rows count `revokedIdentities`; the same fact, before the
+  // table was named for bindings
+  version: 2,
   name: message('auth/audit/user-delete', 'Delete user'),
   // the counts say what fell with the person; the ids say where they stood,
   // which the row itself stops saying if the unit or type is later removed
@@ -61,7 +63,7 @@ export const UserDeleted = AuditAction.define({
     userTypeId: Schema.NullOr(id),
     orgNodeId: Schema.NullOr(id),
     revokedGrants: Schema.Number,
-    revokedIdentities: Schema.Number,
+    revokedBindings: Schema.Number,
     endedSessions: Schema.Number,
   }),
 })
@@ -169,34 +171,36 @@ export const ProvidersReordered = AuditAction.define({
   details: Schema.Struct({ order: Schema.Array(id) }),
 })
 
-// A way in, written for a person or withdrawn from them. The entrance is in
-// the details and the account name is not: who could come in as whom is what
-// an investigation asks, and the name they typed at the door is theirs.
-export const IdentityBound = AuditAction.define({
+// A way in, written for a person or withdrawn from them. The door and the
+// binding are in the details and nothing the person proves themselves with
+// is: who could come in as whom is what an investigation asks. The codes are
+// the ones the trail has always used; version 1 rows name the binding
+// `identityId`.
+export const BindingWritten = AuditAction.define({
   code: 'auth.identity.bind',
   target: 'auth.user',
-  version: 1,
-  name: message('auth/audit/identity-bind', 'Set a sign-in account for a user'),
+  version: 2,
+  name: message('auth/audit/identity-bind', 'Set a sign-in credential for a user'),
   details: Schema.Struct({
     providerId: id,
-    identityId: id,
+    bindingId: id,
     /** a first binding, or the replacement of the one that stood */
     replaced: Schema.Boolean,
     endedSessions: Schema.Number,
   }),
 })
 
-export const IdentityRevoked = AuditAction.define({
+export const BindingRevoked = AuditAction.define({
   code: 'auth.identity.revoke',
   target: 'auth.user',
-  version: 1,
-  name: message('auth/audit/identity-revoke', 'Withdraw a sign-in account from a user'),
-  details: Schema.Struct({ providerId: id, identityId: id, endedSessions: Schema.Number }),
+  version: 2,
+  name: message('auth/audit/identity-revoke', 'Withdraw a sign-in binding from a user'),
+  details: Schema.Struct({ providerId: id, bindingId: id, endedSessions: Schema.Number }),
 })
 
 export const userActions = [
-  IdentityBound,
-  IdentityRevoked,
+  BindingWritten,
+  BindingRevoked,
   UserCreated,
   UserUpdated,
   UserMoved,

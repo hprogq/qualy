@@ -4,6 +4,7 @@ import { resolvePluginModuleUrl } from '@qualy/assembly/host'
 import { manifestPath } from '../lib/manifest.ts'
 import { resolvePermissionCatalogs } from './permission-entries.ts'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '@qualy/plugin-auth/constants'
+import { normalizeEmail } from '../../packages/contracts/auth/src/email.ts'
 
 // tenant bootstrap in layers with different convergence semantics:
 //
@@ -14,8 +15,11 @@ import { SYSTEM_ACCOUNT_USER_TYPE } from '@qualy/plugin-auth/constants'
 //   added by admins) are never written back.
 // - demo data (sample descendants, student/faculty types, demo accounts):
 //   only under an explicit demo flag, pure create-if-absent.
-// - admin credential: operational input, never silently reset — an explicit
-//   reset flag is required once the identity exists.
+// - the system account: found by its user type. Its email is provisioned
+//   here (an account that has none yet takes QUALY_ADMIN_EMAIL, which is how
+//   an upgraded database's recovery account signs in again) and never
+//   silently changed; its password is operational input, never silently
+//   reset - an explicit reset flag is required once one exists.
 
 const passwordModule = async () =>
   (await import(
@@ -37,7 +41,7 @@ async function permissionCatalog(): Promise<{ plugin: string; rows: readonly Per
 const TENANT_ADMIN_ROLE = { code: 'tenant-admin', name: '租户管理员' }
 
 // The tenant the application will look for, which is QUALY_DEFAULT_TENANT to
-// the running process (apps/server/src/effect/config.ts). Hardcoding 'default'
+// the running process (the auth plugin's configuration). Hardcoding 'default'
 // here meant that setting it seeded one tenant and served another, and the only
 // symptom was every sign-in failing to resolve a provider.
 const TENANT = { slug: process.env.QUALY_DEFAULT_TENANT || 'default', name: 'Qualy' }
@@ -105,12 +109,12 @@ const DEMO_ORG_MANAGER = {
 
 const DEMO_USERS = [
   {
-    identifier: 'manager',
+    email: 'manager@example.edu',
     displayName: '示例辅导员',
     userType: 'faculty',
     org: '2023级',
   },
-  { identifier: 'student', displayName: '示例学生', userType: 'student', org: '软件2023级1班' },
+  { email: 'student@example.edu', displayName: '示例学生', userType: 'student', org: '软件2023级1班' },
 ]
 
 const label = (id: string) => id.replaceAll('-', '')
@@ -213,7 +217,7 @@ async function provisionRbac(
 
 export interface SeedOptions {
   demo?: boolean
-  adminUsername?: string
+  adminEmail?: string
   adminPassword?: string
   resetAdminPassword?: boolean
   demoPassword?: string
@@ -235,7 +239,7 @@ export interface SeedReport {
     demoNodes: number
     demoUsers: number
   }
-  admin: 'created' | 'unchanged' | 'reset'
+  admin: 'created' | 'unchanged' | 'reset' | 'email-set'
   demo: 'created' | 'skipped'
 }
 
@@ -332,16 +336,18 @@ async function ensureUserType(
 }
 
 async function ensureLocalProvider(ctx: Ctx, report: SeedReport): Promise<string> {
+  // the platform's own password door: one per tenant, at a fixed address
   const inserted = await ctx.client.query(
     `insert into auth_providers (tenant_id, code, type, name, is_system, enabled)
      values ($1, $2, 'local', $3, true, true)
-     on conflict (tenant_id, code) do nothing`,
+     on conflict (tenant_id, code) where deleted_at is null do nothing`,
     [ctx.tenantId, LOCAL_PROVIDER.code, LOCAL_PROVIDER.name],
   )
   report.created.provider += inserted.rowCount ?? 0
   const row = (
     await ctx.client.query(
-      `select id, type, is_system from auth_providers where tenant_id = $1 and code = $2`,
+      `select id, type, is_system from auth_providers
+        where tenant_id = $1 and code = $2 and deleted_at is null`,
       [ctx.tenantId, LOCAL_PROVIDER.code],
     )
   ).rows[0]
@@ -352,27 +358,37 @@ async function ensureLocalProvider(ctx: Ctx, report: SeedReport): Promise<string
   return row.id
 }
 
-async function createUserWithIdentity(
+/** a person, and the password they prove at the platform's door */
+async function createUserWithCredential(
   ctx: Ctx,
   input: {
     providerId: string
-    identifier: string
+    email: string
     displayName: string
     userTypeId: string
     orgNodeId: string
     credentialHash: string
   },
-): Promise<void> {
+): Promise<string> {
   const user = await ctx.client.query(
-    `insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
-     values ($1, $2, $3, $4) returning id`,
-    [ctx.tenantId, input.displayName, input.userTypeId, input.orgNodeId],
+    `insert into users (tenant_id, display_name, user_type_id, primary_org_node_id, email)
+     values ($1, $2, $3, $4, $5) returning id`,
+    [ctx.tenantId, input.displayName, input.userTypeId, input.orgNodeId, input.email],
   )
   await ctx.client.query(
-    `insert into user_identities (tenant_id, user_id, auth_provider_id, identifier, credential_hash)
-     values ($1, $2, $3, $4, $5)`,
-    [ctx.tenantId, user.rows[0].id, input.providerId, input.identifier, input.credentialHash],
+    `insert into user_auth_bindings (tenant_id, user_id, auth_provider_id, subject, credential_hash)
+     values ($1, $2, $3, null, $4)`,
+    [ctx.tenantId, user.rows[0].id, input.providerId, input.credentialHash],
   )
+  return user.rows[0].id
+}
+
+/** the configured address, in the spelling it is stored in */
+function adminEmailOf(options: SeedOptions): string | undefined {
+  if (options.adminEmail === undefined || options.adminEmail.trim() === '') return undefined
+  const email = normalizeEmail(options.adminEmail)
+  if (email === null) throw new Error('seed: QUALY_ADMIN_EMAIL is not an email address')
+  return email
 }
 
 async function provisionAdmin(
@@ -382,21 +398,23 @@ async function provisionAdmin(
   options: SeedOptions,
   report: SeedReport,
 ): Promise<string> {
-  const { hashPassword, normalizeLocalIdentifier } = await passwordModule()
-  const username = normalizeLocalIdentifier(options.adminUsername ?? 'admin')
-  if (!username) throw new Error('seed: QUALY_ADMIN_USERNAME is not a valid login name')
+  const { hashPassword } = await passwordModule()
+  const email = adminEmailOf(options)
 
-  const identity = (
+  // the recovery account is whoever holds the system type, not a sign-in name
+  const account = (
     await ctx.client.query(
-      `select id, user_id from user_identities where tenant_id = $1 and auth_provider_id = $2 and identifier = $3 and revoked_at is null`,
-      [ctx.tenantId, providerId, username],
+      `select id, email from users
+        where tenant_id = $1 and user_type_id = $2 and deleted_at is null
+        order by created_at, id limit 1`,
+      [ctx.tenantId, adminTypeId],
     )
-  ).rows[0]
+  ).rows[0] as { id: string; email: string | null } | undefined
 
-  if (!identity) {
-    if (!options.adminPassword) {
+  if (!account) {
+    if (email === undefined || !options.adminPassword) {
       throw new Error(
-        'seed: the administrator does not exist yet, set QUALY_ADMIN_PASSWORD to create it',
+        'seed: the system account does not exist yet, set QUALY_ADMIN_EMAIL and QUALY_ADMIN_PASSWORD to create it',
       )
     }
     const root = (
@@ -405,37 +423,68 @@ async function provisionAdmin(
         [ctx.tenantId],
       )
     ).rows[0]
-    await createUserWithIdentity(ctx, {
+    const created = await createUserWithCredential(ctx, {
       providerId,
-      identifier: username,
+      email,
       displayName: '系统管理员',
       userTypeId: adminTypeId,
       orgNodeId: root.id,
       credentialHash: await hashPassword(options.adminPassword),
     })
     report.admin = 'created'
-    const created = (
-      await ctx.client.query(
-        `select user_id from user_identities where tenant_id = $1 and auth_provider_id = $2 and identifier = $3`,
-        [ctx.tenantId, providerId, username],
-      )
-    ).rows[0]
-    return created.user_id
+    return created
   }
 
-  if (options.resetAdminPassword) {
-    if (!options.adminPassword) {
-      throw new Error('seed: QUALY_RESET_ADMIN_PASSWORD requires QUALY_ADMIN_PASSWORD')
+  // an account from before sign-in went by email has none yet: this is where
+  // it gets one. One that has an address keeps it; saying another is drift.
+  if (account.email === null) {
+    if (email === undefined) {
+      throw new Error(
+        'seed: the system account has no email yet, so nobody can sign in with it; set QUALY_ADMIN_EMAIL',
+      )
     }
-    await ctx.client.query(`update user_identities set credential_hash = $1 where id = $2`, [
-      await hashPassword(options.adminPassword),
-      identity.id,
-    ])
-    report.admin = 'reset'
-    return identity.user_id
+    await ctx.client.query(
+      `update users set email = $1, email_verified_at = null, version = version + 1, updated_at = now()
+        where id = $2`,
+      [email, account.id],
+    )
+    report.admin = 'email-set'
+  } else if (email !== undefined && email !== account.email) {
+    drift('system account', 'email', email, account.email)
   }
-  report.admin = 'unchanged'
-  return identity.user_id
+
+  const binding = (
+    await ctx.client.query(
+      `select id, credential_hash from user_auth_bindings
+        where tenant_id = $1 and auth_provider_id = $2 and user_id = $3 and revoked_at is null`,
+      [ctx.tenantId, providerId, account.id],
+    )
+  ).rows[0] as { id: string; credential_hash: string | null } | undefined
+
+  if (!binding || binding.credential_hash === null || options.resetAdminPassword) {
+    if (!options.adminPassword) {
+      throw new Error(
+        options.resetAdminPassword
+          ? 'seed: QUALY_RESET_ADMIN_PASSWORD requires QUALY_ADMIN_PASSWORD'
+          : 'seed: the system account has no password yet, set QUALY_ADMIN_PASSWORD',
+      )
+    }
+    const credentialHash = await hashPassword(options.adminPassword)
+    if (binding) {
+      await ctx.client.query(`update user_auth_bindings set credential_hash = $1 where id = $2`, [
+        credentialHash,
+        binding.id,
+      ])
+    } else {
+      await ctx.client.query(
+        `insert into user_auth_bindings (tenant_id, user_id, auth_provider_id, subject, credential_hash)
+         values ($1, $2, $3, null, $4)`,
+        [ctx.tenantId, account.id, providerId, credentialHash],
+      )
+    }
+    if (report.admin === 'unchanged') report.admin = 'reset'
+  }
+  return account.id
 }
 
 async function seedDemoData(ctx: Ctx, options: SeedOptions, report: SeedReport): Promise<void> {
@@ -536,25 +585,25 @@ async function seedDemoData(ctx: Ctx, options: SeedOptions, report: SeedReport):
   }
 
   const provider = (
-    await ctx.client.query(`select id from auth_providers where tenant_id = $1 and code = $2`, [
-      ctx.tenantId,
-      LOCAL_PROVIDER.code,
-    ])
+    await ctx.client.query(
+      `select id from auth_providers where tenant_id = $1 and code = $2 and deleted_at is null`,
+      [ctx.tenantId, LOCAL_PROVIDER.code],
+    )
   ).rows[0]
   for (const user of DEMO_USERS) {
     const existing = (
       await ctx.client.query(
-        `select id from user_identities where tenant_id = $1 and auth_provider_id = $2 and identifier = $3 and revoked_at is null`,
-        [ctx.tenantId, provider.id, user.identifier],
+        `select id from users where tenant_id = $1 and email = $2 and deleted_at is null`,
+        [ctx.tenantId, user.email],
       )
     ).rows[0]
     if (existing) continue
     if (!options.demoPassword) {
       throw new Error('seed: QUALY_SEED_DEMO requires QUALY_DEMO_PASSWORD for the demo accounts')
     }
-    await createUserWithIdentity(ctx, {
+    await createUserWithCredential(ctx, {
       providerId: provider.id,
-      identifier: user.identifier,
+      email: user.email,
       displayName: user.displayName,
       userTypeId: demoTypeIds.get(user.userType)!,
       orgNodeId: nodes.get(user.org)!.id,
@@ -605,10 +654,8 @@ async function seedDemoData(ctx: Ctx, options: SeedOptions, report: SeedReport):
 
   const manager = (
     await ctx.client.query(
-      `select u.id from users u
-       join user_identities i on i.tenant_id = u.tenant_id and i.user_id = u.id
-       where u.tenant_id = $1 and i.identifier = 'manager' and i.revoked_at is null and u.deleted_at is null`,
-      [ctx.tenantId],
+      `select id from users where tenant_id = $1 and email = $2 and deleted_at is null`,
+      [ctx.tenantId, DEMO_USERS[0]!.email],
     )
   ).rows[0]
   const college = nodes.get('软件学院')!

@@ -163,9 +163,17 @@ const seed = Effect.fn('seed')(function* () {
   yield* runSql(
     sql`insert into role_grants (tenant_id, user_id, role_id) values (${t}, ${admin}, ${role})`,
   )
+  // a session names the door it came in through
+  const door = (
+    (yield* runSql(sql`
+      insert into auth_providers (tenant_id, code, type, name, is_system)
+      values (${t}, 'local', 'local', 'Local', true) returning id`)) as unknown as {
+      rows: { id: string }[]
+    }
+  ).rows[0]!.id
   yield* runSql(sql`
-    insert into sessions (tenant_id, user_id, token_hash, expires_at)
-    values (${t}, ${admin}, ${hashSessionToken(token)}, now() + interval '1 day')`)
+    insert into sessions (tenant_id, user_id, auth_provider_id, token_hash, expires_at)
+    values (${t}, ${admin}, ${door}, ${hashSessionToken(token)}, now() + interval '1 day')`)
   return { root }
 })
 

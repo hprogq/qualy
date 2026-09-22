@@ -12,13 +12,14 @@ import {
 } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
+import { useTerm } from '@qualy/plugin-settings/client/terms'
+import { authTerms } from '@qualy/auth-contract/terms'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { AsyncSection, ConfirmDialog, Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import {
   Card,
   CardEmpty,
-  CardHint,
   Cell,
   EditorSkeleton,
   LeadWord,
@@ -36,13 +37,13 @@ import { authApi } from '../api.ts'
 
 // How one person gets in, as somebody administering them reads it.
 //
-// Every entrance of the tenant is a row, bound or not, because the question
-// is "how could they sign in" and an entrance with nothing bound is half of
-// the answer. What can be done about a row is the entrance's own say, carried
-// from the server: a kind of account an administrator may write gets a form
-// made of the fields its driver asked for; one only the person can make, or
-// one that goes by a fact they already have, gets a sentence instead of a
-// control. This screen knows none of the kinds by name.
+// Every door of the tenant is a row, because the question is "how could they
+// sign in" and a door with nothing bound is half of the answer. How a door
+// finds the person and what may be written for them is the door's own say,
+// carried from the server: a door that goes by a field of theirs shows that
+// field, read off the person; a credential an administrator manages gets a
+// password form; an account only the person can bind gets a sentence. This
+// screen knows none of the kinds by name.
 
 type Entrance = ApiResult<
   typeof authApi,
@@ -66,6 +67,8 @@ const styles = stylex.create({
   },
   form: { display: 'flex', flexDirection: 'column', gap: 14 },
   code: { fontFamily: "'SFMono-Regular', ui-monospace, Menlo, Consolas, monospace", fontSize: 12 },
+  account: { display: 'inline-flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, minWidth: 0 },
+  aside: { fontSize: 12, color: tokens.mutedForeground },
 })
 
 export default function UserIdentitiesPage() {
@@ -74,55 +77,85 @@ export default function UserIdentitiesPage() {
   const run = useRunApi()
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
-  const { format, formatText, formatError, locale } = useI18n()
+  const { format, formatError, locale } = useI18n()
+  const businessNoWord = useTerm(authTerms.businessNumber)
   const entrancesHref = usePageHref('auth/login-methods')
   const [editing, setEditing] = useState<Entrance | null>(null)
   const [revoking, setRevoking] = useState<Entrance | null>(null)
 
   const found = useQuery(query.identity.listUserEntrances.queryOptions({ params: { userId } }))
+  // the fields a door may find the person by are the person's own
+  const person = useQuery(query.identity.getUser.queryOptions({ params: { userId } }))
   const entrances = found.data?.entrances ?? []
   const manageable = found.data?.manageable ?? false
-  const bound = entrances.filter((entrance) => entrance.identity !== null).length
+  const record = person.data?.user
   const when = (iso: string) =>
     new Date(iso).toLocaleDateString(locale, { month: 'short', day: 'numeric' })
 
   const revoke = useMutation({
     mutationFn: (entrance: Entrance) =>
-      run(api.identity.deleteUserIdentity({ params: { userId, providerId: entrance.providerId } })),
+      run(api.identity.deleteUserAuthBinding({ params: { userId, providerId: entrance.providerId } })),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: query.identity.key() })
     },
     onError: (error: unknown) => toast.error(formatError(error)),
   })
 
-  /** what stands in the account column when nothing is bound */
-  const unbound = (entrance: Entrance) => {
+  /** the value of the person's own field a door finds them by, if they have it */
+  const fieldValue = (field: 'email' | 'businessNo') =>
+    field === 'email' ? (record?.email ?? null) : (record?.businessNo ?? null)
+
+  /** what stands in the account column */
+  const account = (entrance: Entrance) => {
     if (!entrance.admits) return <Cell tone="quiet">{format(m.entranceNotAdmitted)}</Cell>
-    if (entrance.binding?.mode === 'derived') {
-      return (
-        <Cell tone="quiet">
-          {format(m.entranceDerived, { by: formatText(entrance.binding.by) })}
+    const resolution = entrance.resolution
+    if (resolution === null) return <Cell tone="quiet">{format(m.driverMissing)}</Cell>
+    if (resolution.mode === 'binding-subject') {
+      const bound = entrance.bound
+      return bound === null ? (
+        <Cell tone="quiet">{format(m.entranceSelf)}</Cell>
+      ) : (
+        <Cell tone="plain" unlabelled title={bound.subject ?? undefined}>
+          <span {...stylex.props(styles.code)}>{bound.displayLabel ?? bound.subject}</span>
         </Cell>
       )
     }
-    if (entrance.binding?.mode === 'self') {
-      return <Cell tone="quiet">{format(m.entranceSelf)}</Cell>
-    }
-    if (entrance.binding?.mode === 'managed') {
+    const value = fieldValue(resolution.field)
+    if (value === null) {
       return (
         <Cell tone="warn">
-          <Status tone="warn">{format(m.entranceUnbound)}</Status>
+          {resolution.field === 'email'
+            ? format(m.emailMissing)
+            : format(m.businessNoMissing, { businessNo: businessNoWord })}
         </Cell>
       )
     }
-    return <Cell tone="quiet">{format(m.entranceUnbound)}</Cell>
+    return (
+      <Cell tone="plain" unlabelled title={value}>
+        <span {...stylex.props(styles.account)}>
+          <span {...stylex.props(styles.code)}>{value}</span>
+          {entrance.binding?.mode === 'managed' ? (
+            <Status tone={entrance.bound?.hasCredential === true ? 'ok' : 'warn'}>
+              {format(
+                entrance.bound?.hasCredential === true ? m.credentialSet : m.credentialUnset,
+              )}
+            </Status>
+          ) : (
+            <span {...stylex.props(styles.aside)}>
+              {resolution.field === 'email'
+                ? format(m.fromEmail)
+                : format(m.byBusinessNo, { businessNo: businessNoWord })}
+            </span>
+          )}
+        </span>
+      </Cell>
+    )
   }
 
   return (
     <div {...stylex.props(styles.page)}>
       <SectionHead
         title={format(m.identitiesSection)}
-        count={found.data === undefined ? undefined : format(m.boundCount, { count: bound })}
         actions={
           entrancesHref !== undefined && (
             <PageLink
@@ -135,18 +168,27 @@ export default function UserIdentitiesPage() {
         }
       />
       <AsyncSection
-        pending={found.isPending}
-        error={found.isError ? formatError(found.error) : null}
+        pending={found.isPending || person.isPending}
+        error={
+          found.isError
+            ? formatError(found.error)
+            : person.isError
+              ? formatError(person.error)
+              : null
+        }
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
-        onRetry={() => void found.refetch()}
+        onRetry={() => {
+          void found.refetch()
+          void person.refetch()
+        }}
         skeleton={<EditorSkeleton />}
       >
-        <Card data-testid="entrances" data-bound={bound}>
+        <Card data-testid="entrances">
           {entrances.length === 0 ? (
             <CardEmpty>{format(m.loginMethodsEmpty)}</CardEmpty>
           ) : (
-            <Table columns="minmax(0, 1fr) minmax(0, 1.2fr) 7rem 9rem">
+            <Table columns="minmax(0, 1fr) minmax(0, 1.4fr) 7rem 9rem">
               <TableHead>
                 <span>{format(m.loginMethodsTitle)}</span>
                 <span>{format(m.columnAccount)}</span>
@@ -154,48 +196,57 @@ export default function UserIdentitiesPage() {
                 <span />
               </TableHead>
               {entrances.map((entrance) => {
-                const identity = entrance.identity
-                const writable = manageable && entrance.binding?.mode === 'managed'
+                const bound = entrance.bound
+                const resolution = entrance.resolution
+                // a credential can only be set for somebody the door can find
+                const settable =
+                  manageable &&
+                  entrance.admits &&
+                  entrance.binding?.mode === 'managed' &&
+                  resolution?.mode === 'user-field' &&
+                  fieldValue(resolution.field) !== null
                 return (
                   <TableRow
                     key={entrance.providerId}
                     data-testid="entrance-row"
                     data-entrance-type={entrance.type}
                     data-entrance-status={entrance.status}
+                    data-resolution={
+                      resolution === null
+                        ? 'none'
+                        : resolution.mode === 'user-field'
+                          ? `user-field:${resolution.field}`
+                          : resolution.mode
+                    }
                     data-binding={entrance.binding?.mode ?? 'none'}
-                    data-bound={identity !== null}
+                    data-bound={bound !== null}
+                    data-credential={bound?.hasCredential === true ? 'set' : 'unset'}
                     data-admits={entrance.admits}
                   >
                     <Cell lead>
-                      {/* the name is the entrance; the driver's own code is
-                          ours, not the reader's, and stays on the row as
-                          data for whoever is debugging */}
+                      {/* the name is the door; the driver's own code is ours,
+                          not the reader's, and stays on the row as data for
+                          whoever is debugging */}
                       <LeadWord>{entrance.name}</LeadWord>
                       {entrance.status === 'disabled' && (
                         <Status tone="bad">{format(m.entranceDisabled)}</Status>
                       )}
                     </Cell>
-                    {identity === null ? (
-                      unbound(entrance)
-                    ) : (
-                      <Cell tone="plain" unlabelled title={identity.identifier}>
-                        <span {...stylex.props(styles.code)}>{identity.identifier}</span>
-                      </Cell>
-                    )}
-                    {identity === null ? (
+                    {account(entrance)}
+                    {bound === null ? (
                       <Cell />
-                    ) : identity.lastUsedAt === null ? (
-                      <Cell tone="warn">{format(m.neverUsed)}</Cell>
+                    ) : bound.lastUsedAt === null ? (
+                      <Cell tone="quiet">{format(m.neverUsed)}</Cell>
                     ) : (
-                      <Cell numeric>{when(identity.lastUsedAt)}</Cell>
+                      <Cell numeric>{when(bound.lastUsedAt)}</Cell>
                     )}
                     <span {...stylex.props(styles.end)}>
-                      {writable && entrance.admits && (
+                      {settable && (
                         <Button size="xs" variant="ghost" onClick={() => setEditing(entrance)}>
-                          {format(identity === null ? m.identityAdd : m.identityReset)}
+                          {format(bound?.hasCredential === true ? m.passwordReset : m.passwordSet)}
                         </Button>
                       )}
-                      {manageable && identity !== null && (
+                      {manageable && bound !== null && (
                         <Button
                           size="xs"
                           variant="ghost"
@@ -211,14 +262,11 @@ export default function UserIdentitiesPage() {
               })}
             </Table>
           )}
-          {entrances.length > 0 && bound === 0 && (
-            <CardHint top>{format(m.boundEmptyBody)}</CardHint>
-          )}
         </Card>
       </AsyncSection>
 
       {editing !== null && (
-        <IdentityDialog
+        <PasswordDialog
           key={editing.providerId}
           userId={userId}
           entrance={editing}
@@ -245,8 +293,8 @@ export default function UserIdentitiesPage() {
   )
 }
 
-/** the fields one kind of entrance asked for, and nothing this screen decided */
-function IdentityDialog({
+/** the one thing an administrator types for a credential they manage */
+function PasswordDialog({
   userId,
   entrance,
   onClose,
@@ -261,19 +309,15 @@ function IdentityDialog({
   const queryClient = useQueryClient()
   const { format, formatText, formatError } = useI18n()
   const binding = entrance.binding?.mode === 'managed' ? entrance.binding : null
-  const [identifier, setIdentifier] = useState(entrance.identity?.identifier ?? '')
   const [secret, setSecret] = useState('')
   const [feedback, setFeedback] = useState<string | null>(null)
 
   const save = useMutation({
     mutationFn: () =>
       run(
-        api.identity.putUserIdentity({
+        api.identity.putUserAuthBinding({
           params: { userId, providerId: entrance.providerId },
-          payload: {
-            identifier: identifier.trim(),
-            ...(binding?.secret == null ? {} : { secret }),
-          },
+          payload: { secret },
         }),
       ),
     onMutate: () => setFeedback(null),
@@ -286,14 +330,14 @@ function IdentityDialog({
   })
 
   if (binding === null) return null
-  const replacing = entrance.identity !== null
+  const replacing = entrance.bound?.hasCredential === true
   const ready =
-    identifier.trim() !== '' && (binding.secret === null || secret.length >= binding.secret.minLength)
+    secret.length >= binding.secret.minLength && secret.length <= binding.secret.maxLength
 
   return (
     <FormDialog
       open
-      title={format(replacing ? m.identityResetTitle : m.identityAddTitle, { name: entrance.name })}
+      title={format(m.passwordDialogTitle, { name: entrance.name })}
       {...(replacing ? { description: format(m.identityResetBody) } : {})}
       onClose={onClose}
       footer={
@@ -301,14 +345,14 @@ function IdentityDialog({
           <Button variant="outline" onClick={onClose}>
             {format(m.cancel)}
           </Button>
-          <Button type="submit" form="user-identity" disabled={!ready || save.isPending}>
+          <Button type="submit" form="user-auth-binding" disabled={!ready || save.isPending}>
             {format(m.save)}
           </Button>
         </>
       }
     >
       <form
-        id="user-identity"
+        id="user-auth-binding"
         {...stylex.props(styles.form)}
         onSubmit={(event) => {
           event.preventDefault()
@@ -317,37 +361,25 @@ function IdentityDialog({
       >
         <Feedback message={feedback} />
         <Field
-          label={formatText(binding.identifierLabel)}
-          {...(binding.identifierHint === null ? {} : { hint: formatText(binding.identifierHint) })}
+          label={formatText(binding.secret.label)}
+          hint={
+            binding.secret.hint === null
+              ? format(m.identitySecretHint, { count: binding.secret.minLength })
+              : formatText(binding.secret.hint)
+          }
         >
           {(id) => (
             <Input
               id={id}
-              name="identity-identifier"
-              autoComplete="off"
-              value={identifier}
-              onChange={(event) => setIdentifier(event.target.value)}
+              name="binding-secret"
+              type="password"
+              // never the browser's saved one: this is somebody else's account
+              autoComplete="new-password"
+              value={secret}
+              onChange={(event) => setSecret(event.target.value)}
             />
           )}
         </Field>
-        {binding.secret !== null && (
-          <Field
-            label={formatText(binding.secret.label)}
-            hint={format(m.identitySecretHint, { count: binding.secret.minLength })}
-          >
-            {(id) => (
-              <Input
-                id={id}
-                name="identity-secret"
-                type="password"
-                // never the browser's saved one: this is somebody else's account
-                autoComplete="new-password"
-                value={secret}
-                onChange={(event) => setSecret(event.target.value)}
-              />
-            )}
-          </Field>
-        )}
       </form>
     </FormDialog>
   )

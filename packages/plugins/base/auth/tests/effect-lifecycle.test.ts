@@ -133,11 +133,11 @@ const seed = Effect.fn('seed')(function* () {
       values (${tenant}, 'Ada', ${staff}, ${root}, '20240001', 'ada@school.edu') returning id`),
   ).id
   yield* runSql(sql`
-    insert into user_identities (tenant_id, user_id, auth_provider_id, identifier, credential_hash)
-    values (${tenant}, ${person}, ${provider}, 'ada', 'hash')`)
+    insert into user_auth_bindings (tenant_id, user_id, auth_provider_id, subject, credential_hash)
+    values (${tenant}, ${person}, ${provider}, null, 'hash')`)
   yield* runSql(sql`
-    insert into sessions (tenant_id, user_id, token_hash, expires_at)
-    values (${tenant}, ${person}, 'session-hash', now() + interval '1 day')`)
+    insert into sessions (tenant_id, user_id, auth_provider_id, token_hash, expires_at)
+    values (${tenant}, ${person}, ${provider}, 'session-hash', now() + interval '1 day')`)
   const staffRole = one<{ id: string }>(
     yield* runSql(sql`
       insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
@@ -176,7 +176,7 @@ describe.runIf(postgresAvailable)('the user lifecycle', () => {
             sql`user_id = ${f.person} and revoked_at is null`,
           )
           const identities = yield* count(
-            'user_identities',
+            'user_auth_bindings',
             sql`user_id = ${f.person} and revoked_at is null`,
           )
           const sessions = yield* count('sessions', sql`user_id = ${f.person}`)
@@ -209,7 +209,7 @@ describe.runIf(postgresAvailable)('the user lifecycle', () => {
       expect(answer.events.map((event) => event.action_code)).toEqual(['auth.user.delete'])
       expect(answer.events[0]!.details).toMatchObject({
         revokedGrants: 1,
-        revokedIdentities: 1,
+        revokedBindings: 1,
         endedSessions: 1,
       })
     } finally {

@@ -54,63 +54,70 @@ export type LoginMethod = {
 } & LoginPresentation
 
 /**
- * How an account of a driver's kind comes to belong to a person.
+ * How a driver finds the person a proof is about.
  *
- * Three answers, because "add a way in" is not a question every kind of
- * entrance can be asked:
+ * Two answers, and they are the whole of it:
  *
- * - `managed`: whoever administers the person may write the binding for
- *   them - a local name and password, an address a code is mailed to. The
- *   driver says what it needs typed and turns that into what is stored, so
- *   the core never learns what a password is or how one is kept.
- * - `self`: only the person can make it, by going through the driver's own
- *   flow (an OAuth consent). An administrator reads it and may withdraw it.
- * - `derived`: there is nothing to add. The driver finds the person by a
- *   fact they already have (a CAS account that IS the business number), so
- *   the entrance works, or does not, without any binding being written.
+ * - `user-field`: by a fact the person already has. The password door looks
+ *   people up by their email; a campus door whose accounts ARE business
+ *   numbers looks them up by that. Nothing about the door is stored on the
+ *   person to make this work.
+ * - `binding-subject`: by an account that lives elsewhere (an OAuth or OIDC
+ *   provider), whose durable id is kept in a binding the person made.
  *
- * A driver that declares none of these offers nothing and is described as
- * nothing: better absent than a control that cannot work.
+ * Which one is fixed by the driver, not by an administrator: it is what the
+ * protocol proves.
  */
-export type IdentityBinding =
+export type SubjectResolution =
+  | { readonly mode: 'user-field'; readonly field: 'email' | 'businessNo' }
+  | { readonly mode: 'binding-subject' }
+
+/**
+ * What an administrator, or only the person, may write about a person for
+ * this kind of door. Absent when there is nothing to write: a door that goes
+ * by the business number needs no binding at all.
+ *
+ * - `managed`: a credential whoever administers the person may set, reset
+ *   or withdraw - a password. The driver turns what was typed into what is
+ *   stored, so the core never learns what a password is or how it is kept.
+ *   Only a `user-field` door can be managed: the person is found by their
+ *   own field, and the binding holds nothing but the credential.
+ * - `self`: an external account only the person can bind, by going through
+ *   the driver's own flow. An administrator reads it and may withdraw it.
+ *   Only a `binding-subject` door can be bound this way.
+ */
+export type AuthBindingDeclaration =
   | {
       readonly mode: 'managed'
-      /** what the identifier is called on the form: a sign-in name, an address */
-      readonly identifierLabel: UiText
-      /** what makes one acceptable, said before it is refused */
-      readonly identifierHint?: UiText
-      /** the secret typed beside it, when this kind of account has one */
-      readonly secret?: { readonly label: UiText; readonly minLength: number }
+      /** the secret typed for the person, and what makes one acceptable */
+      readonly secret: {
+        readonly label: UiText
+        readonly hint?: UiText
+        readonly minLength: number
+        readonly maxLength: number
+      }
       /**
        * What was typed, turned into what is stored.
        *
-       * Answers `invalid` naming the field rather than failing: a name that
-       * cannot be a name is an answer to the person typing, not an error.
-       * The secret arrives only when `secret` is declared, and leaves only
-       * as a digest - the core stores what it is handed and never the input.
+       * Answers `ok: false` rather than failing: a secret that cannot be
+       * one is an answer to the person typing, not an error. The secret
+       * leaves only as a digest - the core stores what it is handed.
        */
       readonly prepare: (input: {
-        identifier: string
-        secret: string | undefined
+        secret: string
       }) => Effect.Effect<
-        | { readonly ok: true; readonly identifier: string; readonly credentialHash: string | null }
-        | { readonly ok: false; readonly invalid: 'identifier' | 'secret' }
+        { readonly ok: true; readonly credentialHash: string } | { readonly ok: false }
       >
     }
   | { readonly mode: 'self' }
-  | {
-      readonly mode: 'derived'
-      /** which fact about the person the entrance goes by, in words for a reader */
-      readonly by: UiText
-    }
 
 /**
  * What one entrance of a driver's kind needs to be told, beyond its name.
  *
- * A local entrance needs nothing. A CAS one needs the server's address; an
- * OAuth one a client id and a secret. The core cannot know any of that, so
- * the driver says what to ask for - the form is built from these - and turns
- * what was typed into the `config` it will read back when somebody signs in.
+ * A CAS entrance needs the server's address; an OAuth one a client id and a
+ * secret. The core cannot know any of that, so the driver says what to ask
+ * for - the form is built from these - and turns what was typed into the
+ * `config` it will read back when somebody signs in.
  *
  * `secret` fields are write-only: they are asked for, handed to `prepare`,
  * and never sent back to a screen. Editing an entrance leaves a secret box
@@ -141,12 +148,46 @@ export interface EntranceKind {
   >
 }
 
+/**
+ * Who makes the doors of a driver's kind.
+ *
+ * - `system-singleton`: the platform, exactly one per tenant at a fixed
+ *   address. A tenant administers it (name, audience, in service or not)
+ *   and can neither add a second one nor delete it. The password door.
+ * - `tenant-managed`: the tenant's administrators, as many as they need,
+ *   each told what the driver asks for.
+ */
+export type ProviderProvisioning =
+  | { readonly mode: 'system-singleton'; readonly code: string }
+  | { readonly mode: 'tenant-managed'; readonly entrance: EntranceKind }
+
 export interface LoginDriver {
   readonly type: string
   readonly presentation: LoginPresentationDeclaration
-  readonly binding?: IdentityBinding
-  /** absent = entrances of this kind are provisioned, never added by an administrator */
-  readonly entrance?: EntranceKind
+  readonly provisioning: ProviderProvisioning
+  readonly resolution: SubjectResolution
+  readonly binding?: AuthBindingDeclaration
+}
+
+/**
+ * Why a driver declaration cannot be served, or undefined when it can.
+ *
+ * A managed credential is written beside a person the door finds by their
+ * own field; a self binding holds the external subject the door finds them
+ * by. The other two pairings describe a door that could never let anybody
+ * in, and an assembly that contains one is broken rather than degraded.
+ */
+export const driverContradiction = (driver: LoginDriver): string | undefined => {
+  if (driver.binding?.mode === 'managed' && driver.resolution.mode !== 'user-field') {
+    return `login driver ${driver.type} manages a credential but does not find people by a field of their own`
+  }
+  if (driver.binding?.mode === 'self' && driver.resolution.mode !== 'binding-subject') {
+    return `login driver ${driver.type} lets people bind an account but does not find them by it`
+  }
+  if (driver.resolution.mode === 'binding-subject' && driver.binding?.mode !== 'self') {
+    return `login driver ${driver.type} finds people by a binding nobody can make`
+  }
+  return undefined
 }
 
 /** every login driver this assembly serves, as its drivers registered them */
@@ -191,6 +232,8 @@ export const loginDriversLayer: Layer.Layer<LoginDrivers> = Layer.sync(LoginDriv
           if (drivers.has(driver.type)) {
             throw new Error(`login driver type ${driver.type} is registered twice`)
           }
+          const contradiction = driverContradiction(driver)
+          if (contradiction !== undefined) throw new Error(contradiction)
           drivers.set(driver.type, { driver, owner: owner ?? 'an unnamed contributor' })
         }),
         () => Effect.sync(() => drivers.delete(driver.type)),
@@ -225,7 +268,7 @@ export interface ResolvedProvider {
  */
 export type SignInFailureReason =
   | 'invalid-credentials'
-  | 'identity-not-found'
+  | 'binding-not-found'
   | 'user-not-found'
   | 'user-disabled'
   | 'user-deleted'
@@ -255,7 +298,8 @@ export interface SignedInUser {
   readonly tenant: { readonly id: string; readonly slug: string; readonly name: string }
 }
 
-export interface FoundIdentity {
+/** a live binding, with what a driver needs to check the proof against it */
+export interface FoundBinding {
   readonly id: string
   readonly userId: string
   readonly credentialHash: string | null
@@ -279,11 +323,35 @@ export interface LoginSessionsShape {
     providerCode: string
     expectedType: string
   }) => Effect.Effect<ResolvedProvider | undefined>
-  readonly findIdentity: (input: {
+  /**
+   * The living person whose own field holds this value, when this door's
+   * audience admits their kind; undefined otherwise, indistinguishably.
+   *
+   * For a `user-field` driver. The value is compared as stored, so a driver
+   * normalizes what was typed first (an email with `normalizeEmail`).
+   * Whether the account may still come in is `completeLogin`'s question.
+   */
+  readonly findUserByField: (input: {
     tenantId: string
     providerId: string
-    identifier: string
-  }) => Effect.Effect<FoundIdentity | undefined>
+    field: 'email' | 'businessNo'
+    value: string
+  }) => Effect.Effect<{ readonly userId: string } | undefined>
+  /** the person's live binding to this door, for a door that keeps a credential */
+  readonly findBindingForUser: (input: {
+    tenantId: string
+    providerId: string
+    userId: string
+  }) => Effect.Effect<FoundBinding | undefined>
+  /**
+   * The live binding holding this external subject, for a living person
+   * this door's audience admits; for a `binding-subject` driver.
+   */
+  readonly findBindingBySubject: (input: {
+    tenantId: string
+    providerId: string
+    subject: string
+  }) => Effect.Effect<FoundBinding | undefined>
   /**
    * Records a refused attempt, then the driver answers its uniform refusal.
    *
@@ -298,7 +366,7 @@ export interface LoginSessionsShape {
     input: {
       reason: SignInFailureReason
       userId?: string
-      identityId?: string
+      bindingId?: string
     },
   ) => Effect.Effect<void>
   /**
@@ -307,14 +375,15 @@ export interface LoginSessionsShape {
    * Answers undefined when the account state forbids signing in after all -
    * recording the refusal with the precise reason itself - so a driver
    * reports one uniform refusal rather than describing the account to
-   * whoever asked. On success the session, the identity touch and the
-   * sign-in event commit as one transaction.
+   * whoever asked. On success the session (which remembers this door and
+   * this binding), the binding's last-used stamp and the sign-in event
+   * commit as one transaction. The only place a session is ever created.
    */
   readonly completeLogin: (input: {
     tenantId: string
     providerId: string
     userId: string
-    identityId?: string
+    bindingId?: string
   }) => Effect.Effect<SignedInUser | undefined, never, HttpServerRequest>
 }
 

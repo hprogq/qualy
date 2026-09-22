@@ -34,6 +34,13 @@ const drivers: readonly LoginDriver[] = [
       mode: 'redirect',
       href: (provider) => HREFS[provider.code] ?? '/fallback',
     },
+    // shaped like a campus door: added by the tenant, finding people by
+    // their business number, binding nothing
+    provisioning: {
+      mode: 'tenant-managed',
+      entrance: { label: { kind: 'literal', value: 'Redirecting' }, fields: [] },
+    },
+    resolution: { mode: 'user-field', field: 'businessNo' },
   },
 ]
 

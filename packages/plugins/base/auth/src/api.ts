@@ -38,11 +38,11 @@ import {
   UserTypePlacementInUse,
   UserTypeVersionConflict,
   UserConflict,
-  IdentityAudienceExcluded,
-  IdentityBindingUnsupported,
-  IdentityIdentifierTaken,
-  IdentityInputInvalid,
-  IdentityNotFound,
+  AuthBindingAudienceExcluded,
+  AuthBindingCredentialInvalid,
+  AuthBindingNotFound,
+  AuthBindingUnsupported,
+  AuthBindingUserFieldMissing,
   ProviderConfigInvalid,
   ProviderConflict,
   ProviderKindUnavailable,
@@ -190,12 +190,14 @@ const userDetail = Schema.Struct({
 })
 
 /**
- * One entrance, as it stands for one person.
+ * One door, as it stands for one person.
  *
- * `binding` is the driver's own answer to "can an account of this kind be
- * added for somebody", carried so the screen offers a control only where one
- * can work: a form for `managed`, a sentence for `self` and `derived`, and
- * nothing at all for a driver that declared nothing.
+ * `resolution` says how the door finds them - by a field of their own, which
+ * the screen reads off the person, or by an account they bound - and
+ * `binding` what may be written for them: a credential an administrator
+ * sets, an account only the person can bind, or nothing at all. Both are
+ * the driver's own words, null when this assembly has no driver for the
+ * door. The screen offers a control only where one can work.
  */
 const userEntrance = Schema.Struct({
   providerId: Schema.String,
@@ -204,23 +206,37 @@ const userEntrance = Schema.Struct({
   status: resourceStatus,
   /** whether this person's user type may come through it at all */
   admits: Schema.Boolean,
+  resolution: Schema.NullOr(
+    Schema.Union([
+      Schema.Struct({
+        mode: Schema.Literal('user-field'),
+        field: Schema.Literals(['email', 'businessNo']),
+      }),
+      Schema.Struct({ mode: Schema.Literal('binding-subject') }),
+    ]),
+  ),
   binding: Schema.NullOr(
     Schema.Union([
       Schema.Struct({
         mode: Schema.Literal('managed'),
-        identifierLabel: UiTextSchema,
-        identifierHint: Schema.NullOr(UiTextSchema),
-        secret: Schema.NullOr(Schema.Struct({ label: UiTextSchema, minLength: Schema.Number })),
+        secret: Schema.Struct({
+          label: UiTextSchema,
+          hint: Schema.NullOr(UiTextSchema),
+          minLength: Schema.Number,
+          maxLength: Schema.Number,
+        }),
       }),
       Schema.Struct({ mode: Schema.Literal('self') }),
-      Schema.Struct({ mode: Schema.Literal('derived'), by: UiTextSchema }),
     ]),
   ),
   /** the live binding, when there is one; never the credential */
-  identity: Schema.NullOr(
+  bound: Schema.NullOr(
     Schema.Struct({
       id: Schema.String,
-      identifier: Schema.String,
+      /** the external account's durable id; null where the door keeps none */
+      subject: Schema.NullOr(Schema.String),
+      /** how the external account is called, for a reader */
+      displayLabel: Schema.NullOr(Schema.String),
       boundAt: Schema.String,
       lastUsedAt: Schema.NullOr(Schema.String),
       hasCredential: Schema.Boolean,
@@ -330,13 +346,7 @@ export const identityApiGroup = HttpApiGroup.make('identity')
       params: Schema.Struct({ providerId: uuidInput }),
       payload: Schema.Struct({ version: expectedVersion, status: resourceStatus }),
       success: Schema.Struct({ version: Schema.Number }),
-      error: [
-        ProviderNotFound,
-        ProviderVersionConflict,
-        RecoveryChannelRequired,
-        LastAdministrator,
-        AccessDenied,
-      ],
+      error: [ProviderNotFound, ProviderVersionConflict, RecoveryChannelRequired, AccessDenied],
     }).middleware(Authenticated),
   )
   // the order of the sign-in page is one fact about all of them, replaced whole
@@ -359,7 +369,6 @@ export const identityApiGroup = HttpApiGroup.make('identity')
         ProviderVersionConflict,
         UserTypeNotFound,
         RecoveryChannelRequired,
-        LastAdministrator,
         AccessDenied,
       ],
     }).middleware(Authenticated),
@@ -690,35 +699,34 @@ export const identityApiGroup = HttpApiGroup.make('identity')
       error: [UserNotFound, AccessDenied],
     }).middleware(Authenticated),
   )
-  // The binding of one person to one entrance is a resource of its own:
-  // putting it creates or replaces it whole, deleting it withdraws it. What
-  // the secret is stays the driver's business - it arrives as typed and is
-  // handed straight to the driver that declared it wants one.
+  // The binding of one person to one door is a resource of its own: putting
+  // it sets or replaces the credential, deleting it withdraws the binding.
+  // What the secret is stays the driver's business - it arrives as typed and
+  // is handed straight to the driver that declared it manages one.
   .add(
-    HttpApiEndpoint.put('putUserIdentity', '/iam/users/:userId/identities/:providerId', {
+    HttpApiEndpoint.put('putUserAuthBinding', '/iam/users/:userId/auth-bindings/:providerId', {
       params: Schema.Struct({ userId: uuidInput, providerId: uuidInput }),
       payload: Schema.Struct({
-        identifier: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(255)),
-        secret: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(1024))),
+        secret: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(1024)),
       }),
       success: Schema.Struct({ id: Schema.String }),
       error: [
         UserNotFound,
         ProviderNotFound,
         SystemAccountProtected,
-        IdentityBindingUnsupported,
-        IdentityAudienceExcluded,
-        IdentityInputInvalid,
-        IdentityIdentifierTaken,
+        AuthBindingUnsupported,
+        AuthBindingUserFieldMissing,
+        AuthBindingAudienceExcluded,
+        AuthBindingCredentialInvalid,
         AccessDenied,
       ],
     }).middleware(Authenticated),
   )
   .add(
-    HttpApiEndpoint.delete('deleteUserIdentity', '/iam/users/:userId/identities/:providerId', {
+    HttpApiEndpoint.delete('deleteUserAuthBinding', '/iam/users/:userId/auth-bindings/:providerId', {
       params: Schema.Struct({ userId: uuidInput, providerId: uuidInput }),
       success: Schema.Struct({ ok: Schema.Literal(true) }),
-      error: [UserNotFound, SystemAccountProtected, IdentityNotFound, AccessDenied],
+      error: [UserNotFound, SystemAccountProtected, AuthBindingNotFound, AccessDenied],
     }).middleware(Authenticated),
   )
 

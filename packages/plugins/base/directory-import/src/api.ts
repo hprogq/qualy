@@ -312,7 +312,10 @@ export const directoryApiGroup = HttpApiGroup.make('directory')
         success: Schema.Struct({
           toRetire: Schema.Number,
           alreadyGone: Schema.Number,
-          withIdentities: Schema.Number,
+          // people with a sign-in credential or account bound; a door that
+          // goes by the business number binds nothing, so this is not
+          // "who can sign in"
+          withBindings: Schema.Number,
           withGrants: Schema.Number,
         }),
         error: [UserImportNotFound, AccessDenied],

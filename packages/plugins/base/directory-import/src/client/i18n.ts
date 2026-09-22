@@ -68,10 +68,10 @@ const recordStanding = defineMessage<{ living: number; deleted: number }>()({
   id: 'directory-import/record/standing',
   defaultMessage: '{living} still here, {deleted} deleted',
 })
-const reversalHint = defineMessage<{ count: number; identities: number; grants: number }>()({
+const reversalHint = defineMessage<{ count: number; bindings: number; grants: number }>()({
   id: 'directory-import/reverse/hint',
   defaultMessage:
-    '{count, plural, one {# person} other {# people}} created by this import will be deleted; {identities} can sign in and {grants} hold roles today. Records they took part in are kept.',
+    '{count, plural, one {# person} other {# people}} created by this import will be deleted; {bindings} have sign-in credentials and {grants} hold roles today. Records they took part in are kept.',
 })
 const reversed = defineMessage<{ retired: number }>()({
   id: 'directory-import/reverse/done',

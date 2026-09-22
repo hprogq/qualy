@@ -5,7 +5,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { repoRoot } from '../lib/manifest.ts'
 import {
   ADMIN_PASSWORD,
-  ADMIN_USERNAME,
+  ADMIN_EMAIL,
   CONTROL_ITEMS,
   cellName,
   ensureDataset,
@@ -227,7 +227,7 @@ const main = async () => {
   runOrThrow('seed', path.join(repoRoot, 'tools/fixtures/seed-cli.ts'), [], {
     ...inherited,
     DATABASE_URL: databaseUrl,
-    QUALY_ADMIN_USERNAME: ADMIN_USERNAME,
+    QUALY_ADMIN_EMAIL: ADMIN_EMAIL,
     QUALY_ADMIN_PASSWORD: ADMIN_PASSWORD,
   })
 

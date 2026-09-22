@@ -22,7 +22,8 @@ import { AuditActionCatalog } from '@qualy/audit-contract/effect'
 import { compileActionCatalog } from '@qualy/audit-contract/plugin'
 import { userActions } from '@qualy/plugin-auth/actions'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../src/constants.ts'
-import { loginDriversLayer } from '@qualy/auth-contract/login'
+import { loginDriversLayer, registerLoginDriver } from '@qualy/auth-contract/login'
+import { driver as localDriver } from '@qualy/plugin-auth-local'
 import { AuthConfig } from '../src/server/sign-in.ts'
 import { Iam } from '../src/server/index.ts'
 import { serviceLayer as authLayer } from '../src/server/index.ts'
@@ -58,7 +59,8 @@ const stack = (url: string) =>
       Layer.provideMerge(
         Layer.mergeAll(
           databaseFor(url, { entities: authClosure }),
-          loginDriversLayer,
+          // the password door, which is what a tenant recovers itself through
+          registerLoginDriver(localDriver).pipe(Layer.provideMerge(loginDriversLayer)),
           uiLayer,
           Layer.succeed(
             AuthConfig,
@@ -92,11 +94,12 @@ const seed = Effect.fn('seed')(function* () {
     yield* runSql(sql`insert into tenants (slug, name) values ('t','T') returning id`),
   ).id
 
-  // the door the sign-in predicate looks for: without one enabled
-  // provider admitting a type, nobody of that type can ever sign in
-  yield* runSql(sql`
-    insert into auth_providers (tenant_id, code, type, name)
-    values (${tenant}, 'local', 'local', 'Local')`)
+  // the platform's password door, which the recovery account signs in through
+  const door = one<{ id: string }>(
+    yield* runSql(sql`
+      insert into auth_providers (tenant_id, code, type, name, is_system)
+      values (${tenant}, 'local', 'local', 'Local', true) returning id`),
+  ).id
   const orgType = one<{ id: string }>(
     yield* runSql(
       sql`insert into org_types (tenant_id, name) values (${tenant}, 'U') returning id`,
@@ -107,21 +110,25 @@ const seed = Effect.fn('seed')(function* () {
       insert into org_nodes (tenant_id, org_type_id, name, path, depth)
       values (${tenant}, ${orgType}, 'Root', 'r', 0) returning id`),
   ).id
-  const makeType = (code: string) =>
+  const makeType = (code: string, isSystem = false) =>
     runSql(sql`
-      insert into user_types (tenant_id, code, name, placement_mode)
-      values (${tenant}, ${code}, ${code}, 'unrestricted') returning id`)
+      insert into user_types (tenant_id, code, name, placement_mode, is_system)
+      values (${tenant}, ${code}, ${code}, 'unrestricted', ${isSystem}) returning id`)
   const staff = one<{ id: string }>(yield* makeType('staff')).id
-  const system = one<{ id: string }>(yield* makeType(SYSTEM_ACCOUNT_USER_TYPE)).id
+  const system = one<{ id: string }>(yield* makeType(SYSTEM_ACCOUNT_USER_TYPE, true)).id
 
   // a tenant that can administer itself. Without this every channel-closing
   // edit is refused, which is correct but would make the test measure the
   // wrong thing.
   const admin = one<{ id: string }>(
     yield* runSql(sql`
-      insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
-      values (${tenant}, 'Ada', ${system}, ${node}) returning id`),
+      insert into users (tenant_id, display_name, user_type_id, primary_org_node_id, email)
+      values (${tenant}, 'Ada', ${system}, ${node}, 'root@t.example') returning id`),
   ).id
+  // and the recovery account can sign in through it
+  yield* runSql(sql`
+    insert into user_auth_bindings (tenant_id, user_id, auth_provider_id, subject, credential_hash)
+    values (${tenant}, ${admin}, ${door}, null, 'digest')`)
   const adminRole = one<{ id: string }>(
     yield* runSql(sql`
       insert into roles (tenant_id, code, name, kind, status, permission_mode, system_key)

@@ -1,8 +1,8 @@
 import { defineEntity } from '@mikro-orm/core'
 import { Tenant } from '@qualy/plugin-org/db'
 
-// auth's six tables: the identity categories, the people, where they may
-// stand, and what they log in with.
+// auth's tables: the identity categories, the people, where they may stand,
+// the doors into a tenant, and what binds a person to a door.
 //
 // Cross-plugin references are declared against org's own entities, the same
 // way auth's queries reach org's tables. That is what makes the
@@ -186,12 +186,18 @@ export const AuthProvider = defineEntity({
     id: p.uuid().primary().defaultRaw('uuidv7()'),
     tenantId: tenantOf('auth_providers_tenant_id_tenants_id_fkey'),
     code: p.string().length(63),
-    // provider family; only 'local' ships in this phase, cas may follow
+    // the driver that implements this door; the type never changes
     type: p.string().length(32),
     name: p.string().length(100),
     config: p.json<Record<string, unknown>>().defaultRaw(`'{}'`),
+    // Provisioned by the platform, one per tenant and driver type (the
+    // password door): administered, never created or deleted from a screen.
     isSystem: p.boolean().default(false),
     enabled: p.boolean().default(true),
+    // A door taken out of service for good. Sign-in events and bindings name
+    // it by id, so the row stays; its address is free for a new door, and
+    // anything that still points at the old id finds a deleted one.
+    deletedAt: p.datetime().nullable(),
     // Who may sign in through this door: everyone, or exactly the user types
     // listed in auth_provider_user_types. On the provider rather than on the
     // type, because "may use the school CAS" and "may use a password" are
@@ -215,6 +221,12 @@ export const AuthProvider = defineEntity({
       name: 'chk_auth_providers_audience_mode',
       expression: `audience_mode = 'unrestricted' or audience_mode = 'allow-list'`,
     },
+    // deleted implies disabled, so every "can this door be used" predicate
+    // keeps asking only `enabled`
+    {
+      name: 'chk_auth_providers_deleted_is_disabled',
+      expression: `deleted_at is null or enabled = false`,
+    },
   ],
   indexes: [
     {
@@ -222,10 +234,17 @@ export const AuthProvider = defineEntity({
       expression:
         'create unique index uq_auth_providers_tenant_id_id on auth_providers (tenant_id, id)',
     },
+    // live doors only: a deleted door's address can be given to a new one
     {
       name: 'uq_auth_providers_tenant_code',
       expression:
-        'create unique index uq_auth_providers_tenant_code on auth_providers (tenant_id, code)',
+        'create unique index uq_auth_providers_tenant_code on auth_providers (tenant_id, code) where deleted_at is null',
+    },
+    // one provisioned door per driver type and tenant
+    {
+      name: 'uq_auth_providers_tenant_system_type',
+      expression:
+        'create unique index uq_auth_providers_tenant_system_type on auth_providers (tenant_id, type) where is_system and deleted_at is null',
     },
   ],
 })
@@ -254,16 +273,31 @@ export const AuthProviderUserType = defineEntity({
   ],
 })
 
-export const UserIdentity = defineEntity({
-  name: 'UserIdentity',
-  tableName: 'user_identities',
+/**
+ * What binds one person to one door, when the door keeps anything at all.
+ *
+ * A door that finds people by a fact they already have (their email, their
+ * business number) keeps no subject: a password door stores only the
+ * credential here, and a door that goes by the business number stores
+ * nothing. A door whose accounts live elsewhere (an OAuth provider) stores
+ * the external account's durable id as the subject, and the account's
+ * current name only as a label to show.
+ */
+export const UserAuthBinding = defineEntity({
+  name: 'UserAuthBinding',
+  tableName: 'user_auth_bindings',
   properties: {
     id: p.uuid().primary().defaultRaw('uuidv7()'),
-    tenantId: tenantOf('user_identities_tenant_id_tenants_id_fkey'),
+    tenantId: tenantOf('user_auth_bindings_tenant_id_tenants_id_fkey'),
     userId: p.uuid(),
     authProviderId: p.uuid(),
-    identifier: p.string().length(255),
-    // argon2id digest for local identities; null for future sso bindings
+    // the external account's durable id; null for a door that finds the
+    // person by a field of their own
+    subject: p.string().length(255).nullable(),
+    // how the external account is called right now, for a reader; never
+    // decides who anybody is
+    displayLabel: p.string().length(255).nullable(),
+    // the driver's digest of a secret the person proves at the door
     credentialHash: p.text().nullable(),
     boundAt: p.datetime().defaultRaw('now()'),
     lastUsedAt: p.datetime().nullable(),
@@ -274,21 +308,21 @@ export const UserIdentity = defineEntity({
   },
   indexes: [
     {
-      name: 'uq_user_identities_tenant_id_id',
+      name: 'uq_user_auth_bindings_tenant_id_id',
       expression:
-        'create unique index uq_user_identities_tenant_id_id on user_identities (tenant_id, id)',
+        'create unique index uq_user_auth_bindings_tenant_id_id on user_auth_bindings (tenant_id, id)',
     },
     // live rows only: a revoked binding keeps its history without holding
-    // the identifier hostage, so the account can be deliberately re-bound
+    // the external account hostage, so it can be deliberately bound again
     {
-      name: 'uq_user_identities_login',
+      name: 'uq_user_auth_bindings_subject',
       expression:
-        'create unique index uq_user_identities_login on user_identities (tenant_id, auth_provider_id, identifier) where revoked_at is null',
+        'create unique index uq_user_auth_bindings_subject on user_auth_bindings (tenant_id, auth_provider_id, subject) where revoked_at is null and subject is not null',
     },
     {
-      name: 'uq_user_identities_user_provider',
+      name: 'uq_user_auth_bindings_user_provider',
       expression:
-        'create unique index uq_user_identities_user_provider on user_identities (tenant_id, user_id, auth_provider_id) where revoked_at is null',
+        'create unique index uq_user_auth_bindings_user_provider on user_auth_bindings (tenant_id, user_id, auth_provider_id) where revoked_at is null',
     },
   ],
 })
@@ -300,6 +334,10 @@ export const Session = defineEntity({
     id: p.uuid().primary().defaultRaw('uuidv7()'),
     tenantId: tenantOf('sessions_tenant_id_tenants_id_fkey'),
     userId: p.uuid(),
+    // the door this session came in through, and the binding when the door
+    // keeps one: what a door's deletion ends, and what a device list shows
+    authProviderId: p.uuid(),
+    authBindingId: p.uuid().nullable(),
     // sha256 of the raw cookie token; the raw value is never stored
     tokenHash: p.character().length(64).unique('sessions_token_hash_key'),
     expiresAt: p.datetime(),
@@ -314,6 +352,12 @@ export const Session = defineEntity({
       name: 'idx_sessions_tenant_user_expires',
       expression:
         'create index idx_sessions_tenant_user_expires on sessions (tenant_id, user_id, expires_at)',
+    },
+    // ending every session a door opened, and the referencing side of its fk
+    {
+      name: 'idx_sessions_tenant_provider',
+      expression:
+        'create index idx_sessions_tenant_provider on sessions (tenant_id, auth_provider_id)',
     },
   ],
 })
@@ -347,7 +391,7 @@ export const SignInEvent = defineEntity({
     providerCode: p.string().length(63),
 
     userId: p.uuid().nullable(),
-    identityId: p.uuid().nullable(),
+    bindingId: p.uuid().nullable(),
 
     outcome: p.string().length(16),
     reasonCode: p.string().length(63).nullable(),
@@ -410,14 +454,20 @@ export const compositeForeignKeys = [
      foreign key (tenant_id, auth_provider_id) references auth_providers (tenant_id, id) on delete cascade`,
   `alter table auth_provider_user_types add constraint fk_auth_provider_user_types_type
      foreign key (tenant_id, user_type_id) references user_types (tenant_id, id) on delete cascade`,
-  // restrict like role_grants: a binding is history now (revoked, never
-  // erased), and users are only soft-deleted anyway
-  `alter table user_identities add constraint fk_user_identities_user
+  // restrict like role_grants: a binding is history (revoked, never
+  // erased), and users and doors are only soft-deleted anyway
+  `alter table user_auth_bindings add constraint fk_user_auth_bindings_user
      foreign key (tenant_id, user_id) references users (tenant_id, id) on delete restrict`,
-  `alter table user_identities add constraint fk_user_identities_provider
+  `alter table user_auth_bindings add constraint fk_user_auth_bindings_provider
      foreign key (tenant_id, auth_provider_id) references auth_providers (tenant_id, id) on delete restrict`,
   `alter table sessions add constraint fk_sessions_user
      foreign key (tenant_id, user_id) references users (tenant_id, id) on delete cascade`,
+  `alter table sessions add constraint fk_sessions_provider
+     foreign key (tenant_id, auth_provider_id) references auth_providers (tenant_id, id) on delete restrict`,
+  // the column alone: a withdrawn binding is never erased, so this only
+  // fires if one ever is, and then the session outlives what named it
+  `alter table sessions add constraint fk_sessions_binding
+     foreign key (tenant_id, auth_binding_id) references user_auth_bindings (tenant_id, id) on delete set null (auth_binding_id)`,
 ]
 
 export const entities = [
@@ -426,7 +476,7 @@ export const entities = [
   User,
   AuthProvider,
   AuthProviderUserType,
-  UserIdentity,
+  UserAuthBinding,
   Session,
   SignInEvent,
 ] as const

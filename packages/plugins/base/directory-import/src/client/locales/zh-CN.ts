@@ -126,7 +126,7 @@ export default {
   'directory-import/reverse/action': '撤销本次导入',
   'directory-import/reverse/title': '撤销本次导入？',
   'directory-import/reverse/hint':
-    '本次导入创建且尚未删除的 {count} 人将被删除，其中 {identities} 人可登录、{grants} 人拥有角色授权。他们已有的参与记录会保留。',
+    '本次导入创建且尚未删除的 {count} 人将被删除，其中 {bindings} 人设有登录凭据、{grants} 人拥有角色授权。他们已有的参与记录会保留。',
   'directory-import/reverse/reason': '原因',
   'directory-import/reverse/confirm': '撤销导入',
   'directory-import/reverse/nothing': '本次导入创建的人员已全部删除',

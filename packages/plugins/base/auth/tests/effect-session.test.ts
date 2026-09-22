@@ -110,8 +110,9 @@ const seed = Effect.fn('seed')(function* (tokens: {
   ).id
   const put = (userId: string, token: string, expires: string) =>
     runSql(sql`
-      insert into sessions (tenant_id, user_id, token_hash, expires_at)
-      values (${tenant}, ${userId}, ${hashSessionToken(token)}, now() + ${sql.raw(expires)})`)
+      insert into sessions (tenant_id, user_id, auth_provider_id, token_hash, expires_at)
+      select ${tenant}, ${userId}, p.id, ${hashSessionToken(token)}, now() + ${sql.raw(expires)}
+        from auth_providers p where p.tenant_id = ${tenant} and p.code = 'local'`)
   yield* put(user, tokens.valid, `interval '1 day'`)
   yield* put(user, tokens.expired, `interval '-1 minute'`)
   yield* put(off, tokens.disabled, `interval '1 day'`)

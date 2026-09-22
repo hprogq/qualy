@@ -1121,20 +1121,20 @@ const reversalStanding = (tenantId: string, importId: string) =>
         ])
         .executeTakeFirstOrThrow(),
     )
-    const withIdentities = yield* db.query((k) =>
+    const withBindings = yield* db.query((k) =>
       k
         .selectFrom('DirectoryImportRow as r')
         .innerJoin('User as u', (join) =>
           join.onRef('u.tenantId', '=', 'r.tenantId').onRef('u.id', '=', 'r.userId'),
         )
-        .innerJoin('UserIdentity as i', (join) =>
-          join.onRef('i.tenantId', '=', 'r.tenantId').onRef('i.userId', '=', 'r.userId'),
+        .innerJoin('UserAuthBinding as b', (join) =>
+          join.onRef('b.tenantId', '=', 'r.tenantId').onRef('b.userId', '=', 'r.userId'),
         )
         .where('r.tenantId', '=', tenantId)
         .where('r.importId', '=', importId)
         .where('r.disposition', '=', 'created')
         .where('u.deletedAt', 'is', null)
-        .where('i.revokedAt', 'is', null)
+        .where('b.revokedAt', 'is', null)
         .select((eb) => eb.fn.count<number>('r.id').distinct().as('n'))
         .executeTakeFirstOrThrow(),
     )
@@ -1158,7 +1158,7 @@ const reversalStanding = (tenantId: string, importId: string) =>
     return {
       toRetire: Number(counted.toRetire),
       alreadyGone: Number(counted.alreadyGone),
-      withIdentities: Number(withIdentities.n),
+      withBindings: Number(withBindings.n),
       withGrants: Number(withGrants.n),
     }
   })

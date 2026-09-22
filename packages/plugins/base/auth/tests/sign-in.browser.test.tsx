@@ -37,7 +37,7 @@ describe('the sign-in screen', () => {
     screen({ local: lazy(() => import('@qualy/plugin-auth-local/client/LoginMethod')) })
     // the local driver's own form, which is the only thing that proves the
     // renderer was resolved rather than the shell drawing an empty card
-    await expect.element(page.getByLabelText('用户名')).toBeVisible()
+    await expect.element(page.getByLabelText('邮箱')).toBeVisible()
     await expect.element(page.getByLabelText('密码')).toBeVisible()
     // exact, because the way back out of the driver is "← 其他登录方式"
     await expect.element(page.getByRole('button', { name: '登录', exact: true })).toBeVisible()

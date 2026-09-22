@@ -40,27 +40,22 @@ const catalog = compileCatalog([
   { owner: 'rbac', permissions: rbacPermissions },
 ])
 
-// A driver that takes a name and a secret, standing in for the local one:
-// the core's half of a binding is what these cases are about, and the real
+// A driver shaped like the password door, standing in for the real one: the
+// core's half of a binding is what these cases are about, and the real
 // driver's half is an argon2 digest that would cost most of a second each.
 const fakeLocalDriver = registerLoginDriver({
   type: 'local',
   presentation: { mode: 'redirect', href: () => '/nowhere' },
+  provisioning: { mode: 'system-singleton', code: 'local' },
+  resolution: { mode: 'user-field', field: 'email' },
   binding: {
     mode: 'managed',
-    identifierLabel: { kind: 'literal', value: 'Name' },
-    secret: { label: { kind: 'literal', value: 'Password' }, minLength: 8 },
-    prepare: ({ identifier, secret }) =>
+    secret: { label: { kind: 'literal', value: 'Password' }, minLength: 8, maxLength: 64 },
+    prepare: ({ secret }) =>
       Effect.succeed(
-        /\s/.test(identifier)
-          ? { ok: false as const, invalid: 'identifier' as const }
-          : secret === undefined || secret.length < 8
-            ? { ok: false as const, invalid: 'secret' as const }
-            : {
-                ok: true as const,
-                identifier: identifier.toLowerCase(),
-                credentialHash: `digest:${secret}`,
-              },
+        secret.length < 8 || secret.length > 64
+          ? { ok: false as const }
+          : { ok: true as const, credentialHash: `digest:${secret}` },
       ),
   },
 })
@@ -376,8 +371,9 @@ describe.runIf(postgresAvailable).concurrent('users', () => {
             f.as,
           )
           yield* runSql(sql`
-            insert into sessions (tenant_id, user_id, token_hash, expires_at)
-            values (${f.tenant}, ${userId}, 'hash', now() + interval '1 day')`)
+            insert into sessions (tenant_id, user_id, auth_provider_id, token_hash, expires_at)
+            select ${f.tenant}, ${userId}, p.id, 'hash', now() + interval '1 day'
+              from auth_providers p where p.tenant_id = ${f.tenant} and p.code = 'local'`)
           yield* iam.users.setStatus(
             f.tenant,
             userId,
@@ -665,19 +661,21 @@ describe.runIf(postgresAvailable).concurrent('the way in written for a person', 
       runSql(sql`select id from auth_providers where tenant_id = ${tenant} and code = 'local'`),
       (found) => one_<{ id: string }>(found).id,
     )
-  const identitiesOf = (userId: string) =>
+  const bindingsOf = (userId: string) =>
     Effect.map(
       runSql(sql`
-        select id, identifier, credential_hash, revoked_at is not null as revoked
-        from user_identities where user_id = ${userId} order by bound_at, id`),
+        select id, subject, credential_hash, revoked_at is not null as revoked
+        from user_auth_bindings where user_id = ${userId} order by bound_at, id`),
       (found) =>
         (found as unknown as {
-          rows: { id: string; identifier: string; credential_hash: string; revoked: boolean }[]
+          rows: { id: string; subject: string | null; credential_hash: string; revoked: boolean }[]
         }).rows,
     )
+  const addressed = (userId: string, email: string) =>
+    runSql(sql`update users set email = ${email} where id = ${userId}`)
 
-  it('binds, replaces in place and ends the sessions the old secret opened', async () => {
-    const db = await createTestContext('effect-identity-put')
+  it('sets, replaces in place and ends the sessions the old password opened', async () => {
+    const db = await createTestContext('effect-binding-put')
     try {
       const exit = await run(
         db.url,
@@ -685,21 +683,22 @@ describe.runIf(postgresAvailable).concurrent('the way in written for a person', 
           const f = yield* seed()
           const iam = yield* Iam
           const provider = yield* providerOf(f.tenant)
-          const first = yield* iam.users.putIdentity(
+          yield* addressed(f.onLeft, 'ada@school.edu')
+          const first = yield* iam.users.putBinding(
             f.tenant,
             f.onLeft,
             provider,
-            { identifier: 'Ada', secret: 'first-secret' },
+            { secret: 'first-secret' },
             f.as,
           )
           yield* runSql(sql`
-            insert into sessions (tenant_id, user_id, token_hash, expires_at)
-            values (${f.tenant}, ${f.onLeft}, 'ada-session', now() + interval '1 day')`)
-          const second = yield* iam.users.putIdentity(
+            insert into sessions (tenant_id, user_id, auth_provider_id, token_hash, expires_at)
+            values (${f.tenant}, ${f.onLeft}, ${provider}, 'ada-session', now() + interval '1 day')`)
+          const second = yield* iam.users.putBinding(
             f.tenant,
             f.onLeft,
             provider,
-            { identifier: 'ada.l', secret: 'second-secret' },
+            { secret: 'second-secret' },
             f.as,
           )
           const sessions = one_<{ count: number }>(
@@ -708,34 +707,36 @@ describe.runIf(postgresAvailable).concurrent('the way in written for a person', 
             ),
           ).count
           const events = (yield* runSql(sql`
-            select action_code from audit_events where target_id = ${f.onLeft} order by occurred_at, id`)) as unknown as {
-            rows: { action_code: string }[]
+            select action_code, action_version from audit_events
+             where target_id = ${f.onLeft} order by occurred_at, id`)) as unknown as {
+            rows: { action_code: string; action_version: number }[]
           }
           return {
             first,
             second,
             sessions,
-            rows: yield* identitiesOf(f.onLeft),
-            events: events.rows.map((row) => row.action_code),
+            rows: yield* bindingsOf(f.onLeft),
+            events: events.rows.map((row) => `${row.action_code}@${row.action_version}`),
           }
         }),
       )
       const answer = ok(exit)
-      // one binding per person per entrance: the second put is the first one, rewritten
+      // one binding per person per door: the second put is the first one, rewritten
       expect(answer.second).toBe(answer.first)
       expect(answer.rows).toHaveLength(1)
-      // what the driver prepared is what is stored: its name, its digest, never the input
-      expect(answer.rows[0]).toMatchObject({ identifier: 'ada.l', credential_hash: 'digest:second-secret' })
+      // the door finds the person by their own address: the binding holds the
+      // driver's digest and no second copy of who they are
+      expect(answer.rows[0]).toMatchObject({ subject: null, credential_hash: 'digest:second-secret' })
       // a changed secret that left the old session alive would have locked nobody out
       expect(answer.sessions).toBe(0)
-      expect(answer.events).toEqual(['auth.identity.bind', 'auth.identity.bind'])
+      expect(answer.events).toEqual(['auth.identity.bind@2', 'auth.identity.bind@2'])
     } finally {
       await db.dispose()
     }
   })
 
-  it('refuses whoever may not administer the person, a name that cannot be one, a name already taken, and an entrance that does not admit them', async () => {
-    const db = await createTestContext('effect-identity-refusals')
+  it('refuses whoever may not administer the person, somebody the door cannot find, a password that cannot be one, and a door that does not admit them', async () => {
+    const db = await createTestContext('effect-binding-refusals')
     try {
       const exit = await run(
         db.url,
@@ -743,48 +744,45 @@ describe.runIf(postgresAvailable).concurrent('the way in written for a person', 
           const f = yield* seed()
           const iam = yield* Iam
           const provider = yield* providerOf(f.tenant)
-          const put = (userId: string, identifier: string, secret: string | undefined) =>
-            Effect.result(iam.users.putIdentity(f.tenant, userId, provider, { identifier, secret }, f.as))
+          const put = (userId: string, secret: string) =>
+            Effect.result(iam.users.putBinding(f.tenant, userId, provider, { secret }, f.as))
           // Grace stands on the right branch, which the manager may read and not change
-          const outside = yield* put(f.onRight, 'grace', 'long-enough')
-          const badName = yield* put(f.onLeft, 'a d a', 'long-enough')
-          const badSecret = yield* put(f.onLeft, 'ada', 'short')
-          const other = yield* iam.users.create(
-            f.tenant,
-            { displayName: 'Bea', userTypeId: f.staff, primaryOrgNodeId: f.left },
-            f.as,
-          )
-          yield* iam.users.putIdentity(f.tenant, other, provider, { identifier: 'shared', secret: 'long-enough' }, f.as)
-          const taken = yield* put(f.onLeft, 'shared', 'long-enough')
-          // the entrance now admits nobody
+          yield* addressed(f.onRight, 'grace@school.edu')
+          const outside = yield* put(f.onRight, 'long-enough')
+          // Ada has no address yet: a password the door could never find her by
+          const unaddressed = yield* put(f.onLeft, 'long-enough')
+          yield* addressed(f.onLeft, 'ada@school.edu')
+          const badSecret = yield* put(f.onLeft, 'short')
+          // the door now admits nobody
           yield* runSql(sql`update auth_providers set audience_mode = 'allow-list' where id = ${provider}`)
-          const excluded = yield* put(f.onLeft, 'ada', 'long-enough')
+          const excluded = yield* put(f.onLeft, 'long-enough')
           const unknown = yield* Effect.result(
-            iam.users.putIdentity(
+            iam.users.putBinding(
               f.tenant,
               f.onLeft,
               '00000000-0000-4000-8000-000000000000',
-              { identifier: 'ada', secret: 'long-enough' },
+              { secret: 'long-enough' },
               f.as,
             ),
           )
           return {
             outside: tagOf(outside),
-            badName: badName._tag === 'Failure' ? badName.failure : null,
-            badSecret: badSecret._tag === 'Failure' ? badSecret.failure : null,
-            taken: tagOf(taken),
+            unaddressed: unaddressed._tag === 'Failure' ? unaddressed.failure : null,
+            badSecret: tagOf(badSecret),
             excluded: tagOf(excluded),
             unknown: tagOf(unknown),
-            rows: yield* identitiesOf(f.onLeft),
+            rows: yield* bindingsOf(f.onLeft),
           }
         }),
       )
       const answer = ok(exit)
       expect(answer.outside).toBe('ACCESS_DENIED')
-      expect(answer.badName).toMatchObject({ _tag: 'IDENTITY_INPUT_INVALID', field: 'identifier' })
-      expect(answer.badSecret).toMatchObject({ _tag: 'IDENTITY_INPUT_INVALID', field: 'secret' })
-      expect(answer.taken).toBe('IDENTITY_IDENTIFIER_TAKEN')
-      expect(answer.excluded).toBe('IDENTITY_AUDIENCE_EXCLUDED')
+      expect(answer.unaddressed).toMatchObject({
+        _tag: 'AUTH_BINDING_USER_FIELD_MISSING',
+        field: 'email',
+      })
+      expect(answer.badSecret).toBe('AUTH_BINDING_CREDENTIAL_INVALID')
+      expect(answer.excluded).toBe('AUTH_BINDING_AUDIENCE_EXCLUDED')
       expect(answer.unknown).toBe('AUTH_PROVIDER_NOT_FOUND')
       // and none of the refusals wrote anything
       expect(answer.rows).toEqual([])
@@ -793,8 +791,8 @@ describe.runIf(postgresAvailable).concurrent('the way in written for a person', 
     }
   })
 
-  it('withdraws a binding without erasing it, and says what each entrance can do for a person', async () => {
-    const db = await createTestContext('effect-identity-revoke')
+  it('withdraws a binding without erasing it, and says how each door finds a person', async () => {
+    const db = await createTestContext('effect-binding-revoke')
     try {
       const exit = await run(
         db.url,
@@ -802,27 +800,65 @@ describe.runIf(postgresAvailable).concurrent('the way in written for a person', 
           const f = yield* seed()
           const iam = yield* Iam
           const provider = yield* providerOf(f.tenant)
-          yield* iam.users.putIdentity(f.tenant, f.onLeft, provider, { identifier: 'ada', secret: 'long-enough' }, f.as)
-          yield* iam.users.revokeIdentity(f.tenant, f.onLeft, provider, f.as)
-          const again = yield* Effect.result(iam.users.revokeIdentity(f.tenant, f.onLeft, provider, f.as))
-          // the name is free again the moment the binding is withdrawn
+          yield* addressed(f.onLeft, 'ada@school.edu')
+          yield* iam.users.putBinding(f.tenant, f.onLeft, provider, { secret: 'long-enough' }, f.as)
+          yield* iam.users.revokeBinding(f.tenant, f.onLeft, provider, f.as)
+          const again = yield* Effect.result(iam.users.revokeBinding(f.tenant, f.onLeft, provider, f.as))
           const rebound = yield* Effect.result(
-            iam.users.putIdentity(f.tenant, f.onLeft, provider, { identifier: 'ada', secret: 'long-enough' }, f.as),
+            iam.users.putBinding(f.tenant, f.onLeft, provider, { secret: 'long-enough' }, f.as),
           )
-          // Grace is readable and not manageable, so her entrances carry no controls
+          // Grace is readable and not manageable, so her doors carry no controls
           const entrances = yield* iam.users.entrances(f.as, f.onRight)
-          return { again: tagOf(again), rebound: rebound._tag, rows: yield* identitiesOf(f.onLeft), entrances }
+          return { again: tagOf(again), rebound: rebound._tag, rows: yield* bindingsOf(f.onLeft), entrances }
         }),
       )
       const answer = ok(exit)
-      expect(answer.again).toBe('IDENTITY_NOT_FOUND')
+      expect(answer.again).toBe('AUTH_BINDING_NOT_FOUND')
       expect(answer.rebound).toBe('Success')
       expect(answer.rows.map((row) => row.revoked)).toEqual([true, false])
       expect(answer.entrances.manageable).toBe(false)
       expect(answer.entrances.entrances).toHaveLength(1)
-      expect(answer.entrances.entrances[0]).toMatchObject({ type: 'local', identityId: null })
+      expect(answer.entrances.entrances[0]).toMatchObject({ type: 'local', bindingId: null })
+      expect(answer.entrances.entrances[0]!.resolution).toEqual({ mode: 'user-field', field: 'email' })
       expect(answer.entrances.entrances[0]!.binding?.mode).toBe('managed')
       expect(answer.entrances.entrances[0]!.admits === true).toBe(true)
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('ends the sessions of somebody whose sign-in address changes', async () => {
+    const db = await createTestContext('effect-binding-email-change')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const iam = yield* Iam
+          const provider = yield* providerOf(f.tenant)
+          const count = () =>
+            Effect.map(
+              runSql(sql`select count(*)::int as count, 'x' as id from sessions where user_id = ${f.onLeft}`),
+              (found) => one_<{ count: number }>(found).count,
+            )
+          const session = (hash: string) =>
+            runSql(sql`
+              insert into sessions (tenant_id, user_id, auth_provider_id, token_hash, expires_at)
+              values (${f.tenant}, ${f.onLeft}, ${provider}, ${hash}, now() + interval '1 day')`)
+          // no password at the door: the address is only where notices go
+          yield* session('before-password')
+          yield* iam.users.update(f.tenant, f.onLeft, { email: 'ada@school.edu' }, 1, f.as)
+          const withoutPassword = yield* count()
+          yield* iam.users.putBinding(f.tenant, f.onLeft, provider, { secret: 'long-enough' }, f.as)
+          yield* session('after-password')
+          yield* iam.users.update(f.tenant, f.onLeft, { email: 'ada.l@school.edu' }, 2, f.as)
+          const withPassword = yield* count()
+          return { withoutPassword, withPassword }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.withoutPassword).toBe(1)
+      expect(answer.withPassword).toBe(0)
     } finally {
       await db.dispose()
     }

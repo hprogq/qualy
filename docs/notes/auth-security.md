@@ -127,69 +127,60 @@ default-src 'self'; script-src 'self' 'sha256-pKAg+of2SxxrkLJX27pRnCgcyN5Ud1dmuO
 - 登录失败统一 INVALID_CREDENTIALS;未知用户走固定 dummy hash 校验拉平时序;
 - 密码、Cookie、raw token 禁止进入日志/错误详情/STATUS/迁移。
 
-## 登录名
+## 登录邮箱(2026-09-22 定案,取代「登录名」)
 
-- 不区分大小写 ASCII:trim + lowercase,`^[a-z0-9][a-z0-9._-]*$`,长度 2-64,存规范化值。
+- 本地入口按**用户自己的邮箱**找人(`users.email`,规范化为 trim + 小写,`normalizeEmail` 一份实现);绑定表里不存第二份。
+- 登录载荷 `{ email, password }`,只做形状校验(邮箱 1–320、密码 1–128);未知邮箱、没有密码、密码错误一律 `INVALID_CREDENTIALS`,
+  每条未命中都跑一次 dummy 校验。旧的「用户名」模型整体删除,不保留兼容回退。
 
 ## Argon2id 本机耗时
 
 见 STATUS 会话 3 验收摘录(目标机 = 开发机 Apple Silicon;部署机变更时重测)。
 
-## Provider 模型(2026-08-02 会话 3.5 定案)
+## Provider 模型(2026-08-02 定案,2026-09-22 修订)
 
-两层结构:**协议族 = 驱动插件,登录方式实例 = auth_providers 行**。
+两层结构:**协议族 = 驱动插件,登录方式实例 = auth_providers 行**。驱动证明「是谁」,基座负责「创建 Qualy Session」。
 
-- @qualy/plugin-auth = 基座 Service:session/cookie/principal enricher、me/logout/methods、
-  provider type registry、resolveProvider/findIdentity/completeLogin;驱动证明"用户是谁",
-  基座负责"创建 Qualy Session"。
-- @qualy/plugin-auth-local = local 协议驱动(Argon2id、identifier 规范化、时序拉平),
-  未来 auth-cas/auth-oidc 同型。
-- 同租户可配多个同类型实例(如三个 CAS 各自地址),identity 唯一域是
-  (tenant, provider, identifier),同一用户可绑多个 provider。
-- 公开 URL 用 code 不用数据库 ID:`/auth/<provider-type>/<provider-code>/<operation>`
-  (code/type 有路由安全 check 约束);不建 contract 路径自动前缀机制,路径在各契约显式声明。
-- GET /auth/methods 只返回「数据库 enabled 且驱动插件 active」的方式(驱动停用 fail closed,
-  行与绑定保留),输出仅 code/type/name/interaction,禁止泄 config/内部 ID。
-- 入口页 /login 按 methods 渲染:credentials → /login/<type>?provider=<code>,
-  redirect → /api/auth/<type>/<code>/start。
-- P1 边界:auth-local 是默认装配的 bootstrap provider(seed 依赖它建管理员),
-  不承诺 CAS-only 空库自举;registerProviderType 暂不带 configSchema(首个用 config 的
-  驱动 = CAS 落地时再加);「按 provider 实例限制用户类型」等出现真实需求再建关联表。
-- provider 禁用只拦新登录,已有 session 不受影响(session 撤销手段 = 禁用 user/type/tenant)。
+- 驱动三个正交声明(`@qualy/auth-contract/login`):
+  - `provisioning`:`system-singleton`(平台为每个租户供给一扇、固定地址,租户只能改名、启停、受众、排序,不能新增或删除——local)
+    或 `tenant-managed`(租户自行新增,带 `entrance` 字段声明——CAS/OIDC/GitHub 之后都是这种)。
+  - `resolution`:`user-field`(按用户自己的字段找人:local 按 email,CAS 按 businessNo)或 `binding-subject`(按用户自己绑定的外部账号的稳定 id)。
+  - `binding`:`managed`(管理员可代设的凭据,只存摘要,仅用于 `user-field`)、`self`(只能本人经驱动流程绑定,仅用于 `binding-subject`)或缺省(什么都不存)。
+  矛盾组合在注册时拒绝(`driverContradiction`)。旧的 `derived` 取消:它描述的是「怎么找人」而不是「怎么绑定」。
+- 驱动不直接查 `users` / `user_auth_bindings`:基座提供 `findUserByField` / `findBindingForUser` / `findBindingBySubject`(只看存活行,受众在基座判定),
+  `completeLogin` 是唯一的 Session 写入者,并把入口与绑定记在 `sessions.auth_provider_id / auth_binding_id` 上。
+- 同租户可配多个同类型的 tenant-managed 实例;每租户恰好一扇 `is_system` 的 local 入口(`uq_auth_providers_tenant_system_type`)。
+- 公开 URL 用 code 不用数据库 ID:`/auth/<type>/<code>/<operation>`;GET /auth/login-methods 只返回「enabled 且驱动已装配」的入口,
+  不泄 config/内部 ID。
+- `auth_providers.deleted_at` 是墓碑(`chk_auth_providers_deleted_is_disabled`),code 只在存活行中唯一,删除后可复用。
+- provider 禁用只拦新登录,已有 session 不受影响(撤销手段 = 禁用 user/type/tenant,或删除入口)。
 
-## 账号绑定:由驱动声明,由基座写入(2026-09-21)
+## 绑定(2026-09-21 定,2026-09-22 改为 user_auth_bindings)
 
-此前仓库里**没有任何一条应用路径写 `user_identities`**,只有 seed;管理员无法给一个人新增或重置登录账号。
-补这条能力时的约束是:以后还会有 GitHub、企业微信、CAS、邮箱验证码,基座不能认识其中任何一种。
+`user_identities` 更名 `user_auth_bindings`,`identifier` → `subject`(可空),新增 `display_label`:
 
-**驱动在 `Login.driver` 里声明 `binding`(prepare 相位,纯声明 + 一个无依赖的函数)**,三种回答,缺省即不提供:
+| 入口 | 找人方式 | 绑定里存什么 |
+| --- | --- | --- |
+| local(邮箱密码) | `users.email` | `subject = null`,`credential_hash` = argon2 摘要 |
+| CAS(之后) | `users.business_no` | 无绑定 |
+| GitHub / OIDC(之后) | 绑定的 `subject`(外部稳定 id) | `subject`,`display_label` 只供展示 |
 
-| mode | 含义 | 管理员能做什么 | 例 |
-| --- | --- | --- | --- |
-| `managed` | 可由管理该用户的人代为写入 | 添加、重置、撤销 | 本地账号密码、邮箱验证码 |
-| `self` | 只能由本人走一遍驱动自己的流程 | 只读,可撤销 | GitHub、企业微信 |
-| `derived` | 凭此人已有的事实对应,不存绑定 | 无动作,只说明凭什么(`by`) | 以学工号为账号的 CAS |
+- 写入只有一处:`PUT|DELETE /iam/users/{userId}/auth-bindings/{providerId}`。PUT 只收 `{ secret }`,只对 `managed` 驱动;该人缺驱动按其找人的字段时
+  `AUTH_BINDING_USER_FIELD_MISSING { field }`(没有邮箱就设不了密码)。授权、系统账户保护、受众检查、「摘要在事务外算、锁内复核」同前。
+- 改写与撤销都结束该用户全部会话;撤销置 `revoked_at`,不删行。改动某人的邮箱时,若其在「按 email 找人」的入口上有存活凭据,同样结束全部会话。
+- 审计:`auth.identity.bind` / `auth.identity.revoke` 保留原 code(历史),details 升 version 2(`bindingId`);`auth.user.delete` version 2(`revokedBindings`)。
+- 读取:`GET /iam/users/{userId}/entrances` 每行带 `resolution`、`binding`、`bound`;页面据此渲染,不按类型名分支。
+  **不从绑定数推导「能否登录」**:按学工号对应的入口根本不存绑定,用户列表与详情因此不再显示账号数。
 
-`managed` 另带 `identifierLabel` / `identifierHint` / `secret{label,minLength}` 与
-`prepare({identifier, secret}) → {ok, identifier, credentialHash} | {ok:false, invalid}`。
-**口令是什么、怎么存,只有驱动知道**:基座把输入原样交给 `prepare`,只存它交回来的规范化账号与摘要,永不落原文。
+## 恢复通道(2026-09-22 定案)
 
-**写入只有一处**(`Iam.users.putIdentity` / `revokeIdentity`,`/iam/users/{userId}/identities/{providerId}` 的 PUT / DELETE):
-
-- 授权:对该用户所在节点的 `auth.user.manage`;系统账号一律 `SYSTEM_ACCOUNT_PROTECTED`。
-  **摘要在事务外算**(argon2 近一秒,持租户行锁算会把全租户的写排在一个口令后面),因此事务外先判一次权限
-  (无权者既学不到账号规则也耗不了摘要),锁内用同一连接再判一次——决定写入的是锁内那次。
-- 入口受众不接纳该用户类型 → `IDENTITY_AUDIENCE_EXCLUDED`(绑了也用不了,不写)。
-- 一人一入口只有一条活绑定:再 PUT 是原地改写同一行;账号冲突走活行唯一索引翻译成 `IDENTITY_IDENTIFIER_TAKEN`,不说是谁的。
-- 改写与撤销都**结束该用户全部会话**:换了口令而旧会话还活着,等于没把任何人挡在外面。撤销是置 `revoked_at`,不删行。
-- 记录落 Audit Trail:`auth.identity.bind`(`replaced`、`endedSessions`)与 `auth.identity.revoke`;
-  详情里有入口与绑定 id,**没有账号名**。
-
-**读取**:`GET /iam/users/{userId}/entrances` 返回租户的每个入口对这个人的样子——是否接纳、活绑定、驱动声明的 `binding`
-(函数不出服务端)、以及 `manageable`。页面据此渲染,**不按类型名写分支**:`managed` 出表单(字段与标签来自驱动),
-`self` / `derived` 出一句话,未声明的什么都不出。不新增浏览器 surface 种类,`browserContractHash` 的两支 walk 未动。
-
-核心仍不断言「是否已绑定」:可登录管理员的不变量照旧只看入口受众,撤销最后一条绑定不被拦。
+- 每个租户的系统账户(`system-account` 类型)永远保有平台 local 入口上的一条可用登录:有邮箱、有存活密码凭据,入口在用且受众接纳系统类型
+  (`recoveryChannelIntact`,auth 内唯一实现)。
+- Provider 停用 / 改受众在写后同事务复核,不满足即 `RECOVERY_CHANNEL_REQUIRED`;系统账户的绑定撤销、邮箱修改、停用、删除本就 `SYSTEM_ACCOUNT_PROTECTED`。
+- rbac 的 `LAST_ADMINISTRATOR` 只数「有效授予 + 用户启用 + 类型启用」的持有人,不再推断能否登录(那取决于各驱动)。
+- **部署顺序 migrate → seed → boot**:绑定迁移后,旧的系统账户还没有邮箱;`pnpm seed` 以 `QUALY_ADMIN_EMAIL` 补上(已有不同邮箱视为漂移报错)。
+  auth 在 Assembled 屏障注册启动检查:任一存活租户恢复通道不完整,生产拒启并点名租户与要跑的命令,开发只告警。
+- 系统账户的管理员授予目前可被撤销(rbac 对它没有特殊保护);恢复通道只保证能登录,是否再保护其权限待裁决。
 
 ## 用户删除是终态；邮箱归 User（2026-09-22）
 
@@ -204,7 +195,7 @@ default-src 'self'; script-src 'self' 'sha256-pKAg+of2SxxrkLJX27pRnCgcyN5Ud1dmuO
   正常或停用状态都可直接删（不再强制先停用）；一个锁定事务内撤销授予、撤销身份、结束会话、置 `deleted_at` 与
   `enabled = false`、写 `auth.user.delete`，最后按提交后的状态复核「至少一个管理员」，不满足则整体回滚。系统账户不可删。
   目录导入的撤销走同一套（`retireUsers`）。
-- **邮箱是 User 的属性**，不是某个登录方式的标识：通知收件、（邮箱密码登录上线后）登录名与找回渠道都引用
+- **邮箱是 User 的属性**，不是某个登录方式的标识：通知收件、邮箱密码登录的登录名、(之后的)找回渠道都引用
   `users.email`，不存第二份。入库统一 trim + 小写（`@qualy/auth-contract/email` 的 `normalizeEmail`，契约层与服务层共用，
   库上有 `chk_users_email_normalized`）。`email_verified_at` 表示「本人证明过能收到」，任何改动都清空它；原样重述不算改动。
   系统账户的邮箱只由 seed 设定，API 修改一律 `SYSTEM_ACCOUNT_PROTECTED`。

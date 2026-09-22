@@ -74,19 +74,19 @@ try {
     )
   }
   await visit('/login')
-  const username = process.env.QUALY_ADMIN_USERNAME
+  const email = process.env.QUALY_ADMIN_EMAIL
   const password = process.env.QUALY_ADMIN_PASSWORD
-  if (username && password) {
+  if (email && password) {
     const status = await page.evaluate(
-      async ([identifier, secret]) =>
+      async ([address, secret]) =>
         (
           await fetch('/api/auth/local/local/login', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ identifier, password: secret }),
+            body: JSON.stringify({ email: address, password: secret }),
           })
         ).status,
-      [username, password] as const,
+      [email, password] as const,
     )
     if (status !== 200) fail(`sign-in answered ${String(status)}`)
     await visit('/assessment/batches')

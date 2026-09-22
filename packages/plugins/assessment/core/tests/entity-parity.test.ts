@@ -39,7 +39,7 @@ const DEPENDENCY_TABLES = [
   'storage_attachments',
   'storage_upload_reservations',
   'tenants',
-  'user_identities',
+  'user_auth_bindings',
   'user_type_allowed_org_types',
   'user_types',
   'users',

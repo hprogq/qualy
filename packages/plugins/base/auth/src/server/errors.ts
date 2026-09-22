@@ -40,11 +40,13 @@ export class UserTypeVersionConflict extends Schema.TaggedError<UserTypeVersionC
 ) {}
 
 /**
- * The administrator type keeps password sign-in.
+ * The tenant's recovery account keeps its own way in.
  *
- * It is how a tenant recovers itself, and the generic survivor invariant
- * cannot stand in for this one: that check passes on any open channel,
- * including an sso channel with no provider behind it.
+ * The system account always signs in through the platform's password door,
+ * with its email and a password; a change to that door (taking it out of
+ * service, narrowing who it admits) that would leave the account unable to
+ * come in is refused. rbac's "an administrator remains" cannot stand in for
+ * this: it counts holders, not whether any door lets them through.
  */
 export class RecoveryChannelRequired extends Schema.TaggedError<RecoveryChannelRequired>()(
   'RECOVERY_CHANNEL_REQUIRED',
@@ -193,48 +195,51 @@ export const emailConstraints: Record<string, () => UserEmailConflict> = {
 }
 
 /**
- * This kind of entrance takes no binding written on a person's behalf.
+ * This kind of door takes nothing written on a person's behalf.
  *
- * Either the person makes it themselves, or the entrance goes by a fact they
- * already have and keeps no binding at all. The screen offers the control
- * only where the server said it may, so this is what a stale screen hears.
+ * Either only the person can bind it (through the door's own flow), or it
+ * goes by a fact the person already has and keeps nothing. The screen offers
+ * the control only where the server said it may, so this is what a stale
+ * screen hears.
  */
-export class IdentityBindingUnsupported extends Schema.TaggedError<IdentityBindingUnsupported>()(
-  'IDENTITY_BINDING_UNSUPPORTED',
+export class AuthBindingUnsupported extends Schema.TaggedError<AuthBindingUnsupported>()(
+  'AUTH_BINDING_UNSUPPORTED',
   {},
-  { httpApiStatus: 409, identifier: 'IdentityBindingUnsupported' },
+  { httpApiStatus: 409, identifier: 'AuthBindingUnsupported' },
 ) {}
 
-/** the entrance does not admit this person's user type, so a binding could never be used */
-export class IdentityAudienceExcluded extends Schema.TaggedError<IdentityAudienceExcluded>()(
-  'IDENTITY_AUDIENCE_EXCLUDED',
+/** the door does not admit this person's user type, so a binding could never be used */
+export class AuthBindingAudienceExcluded extends Schema.TaggedError<AuthBindingAudienceExcluded>()(
+  'AUTH_BINDING_AUDIENCE_EXCLUDED',
   {},
-  { httpApiStatus: 409, identifier: 'IdentityAudienceExcluded' },
+  { httpApiStatus: 409, identifier: 'AuthBindingAudienceExcluded' },
 ) {}
 
-/** what was typed cannot be an account of this kind; `field` says which box */
-export class IdentityInputInvalid extends Schema.TaggedError<IdentityInputInvalid>()(
-  'IDENTITY_INPUT_INVALID',
-  { field: Schema.Literals(['identifier', 'secret']) },
-  { httpApiStatus: 422, identifier: 'IdentityInputInvalid' },
+/** what was typed cannot be a credential of this kind */
+export class AuthBindingCredentialInvalid extends Schema.TaggedError<AuthBindingCredentialInvalid>()(
+  'AUTH_BINDING_CREDENTIAL_INVALID',
+  {},
+  { httpApiStatus: 422, identifier: 'AuthBindingCredentialInvalid' },
 ) {}
 
 /**
- * Somebody else already signs in through this entrance under that name.
+ * The door finds people by a field this person has not got yet.
  *
- * Reached through the live-rows unique index; whose it is stays unsaid.
+ * A password door signs in by the person's email: a password set for
+ * somebody without one could never be used, so it is refused and the screen
+ * says which field to fill first.
  */
-export class IdentityIdentifierTaken extends Schema.TaggedError<IdentityIdentifierTaken>()(
-  'IDENTITY_IDENTIFIER_TAKEN',
-  {},
-  { httpApiStatus: 409, identifier: 'IdentityIdentifierTaken' },
+export class AuthBindingUserFieldMissing extends Schema.TaggedError<AuthBindingUserFieldMissing>()(
+  'AUTH_BINDING_USER_FIELD_MISSING',
+  { field: Schema.Literals(['email', 'businessNo']) },
+  { httpApiStatus: 409, identifier: 'AuthBindingUserFieldMissing' },
 ) {}
 
-/** there is no live binding of this person to that entrance to withdraw */
-export class IdentityNotFound extends Schema.TaggedError<IdentityNotFound>()(
-  'IDENTITY_NOT_FOUND',
+/** there is no live binding of this person to that door to withdraw */
+export class AuthBindingNotFound extends Schema.TaggedError<AuthBindingNotFound>()(
+  'AUTH_BINDING_NOT_FOUND',
   {},
-  { httpApiStatus: 404, identifier: 'IdentityNotFound' },
+  { httpApiStatus: 404, identifier: 'AuthBindingNotFound' },
 ) {}
 
 /** an address another entrance of this tenant already answers at */
@@ -260,8 +265,4 @@ export class ProviderConfigInvalid extends Schema.TaggedError<ProviderConfigInva
 
 export const providerConstraints: Record<string, () => ProviderConflict> = {
   uq_auth_providers_tenant_code: () => new ProviderConflict(),
-}
-
-export const identityConstraints: Record<string, () => IdentityIdentifierTaken> = {
-  uq_user_identities_login: () => new IdentityIdentifierTaken(),
 }

@@ -15,13 +15,12 @@ import {
 } from '@qualy/plugin-database/testkit'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { requestContext } from '@qualy/api-kit/request'
-import { reactComponent } from '@qualy/ui-contract'
 import { Api } from '@qualy/api-kit/plugin'
 import { loginDriversLayer, registerLoginDriver } from '@qualy/auth-contract/login'
 import { hashPassword } from '@qualy/plugin-auth-local/password'
 import { hashSessionToken } from '../src/session.ts'
-import { seedSignIn } from './support/sign-in-seed.ts'
-import { apiHandlers as authLocalApiHandlers } from '@qualy/plugin-auth-local'
+import { SEEDED_EMAILS, seedSignIn } from './support/sign-in-seed.ts'
+import { apiHandlers as authLocalApiHandlers, driver as localDriver } from '@qualy/plugin-auth-local'
 import { authLocalApiGroup } from '@qualy/plugin-auth-local/api'
 import { sessionApiGroup } from '../src/api.ts'
 import { sessionApiHandlers } from '../src/server/index.ts'
@@ -30,8 +29,8 @@ import { sessionCookieName } from '@qualy/auth-contract/session'
 import { layer as sessionLayer } from '../src/server/session.ts'
 import { authClosure } from './support/closure.ts'
 
-// The whole sign-in cycle, over a real server: no method, a password, the
-// session it creates, and signing out again.
+// The whole sign-in cycle, over a real server: no method, an email and a
+// password, the session it creates, and signing out again.
 //
 // The cases worth stating are the ones a screen would otherwise get wrong. A
 // provider whose driver is not loaded must not be offered, or it renders a
@@ -51,6 +50,7 @@ let scope: Scope.Scope
 let db: Awaited<ReturnType<typeof createTestContext>>
 
 let userId: string
+let providerId: string
 
 beforeAll(async () => {
   if (!postgresAvailable) return
@@ -72,16 +72,9 @@ beforeAll(async () => {
       Layer.mergeAll(
         infra,
         authConfig,
-        registerLoginDriver(
-          {
-            type: 'local',
-            presentation: {
-              mode: 'component',
-              component: reactComponent('./client/LoginMethod'),
-            },
-          },
-          '@qualy/plugin-auth-local',
-        ).pipe(Layer.provideMerge(loginDriversLayer)),
+        registerLoginDriver(localDriver, '@qualy/plugin-auth-local').pipe(
+          Layer.provideMerge(loginDriversLayer),
+        ),
       ),
     ),
   )
@@ -104,8 +97,11 @@ beforeAll(async () => {
   scope = await Effect.runPromise(Scope.make())
   await Effect.runPromise(Layer.buildWithScope(application, scope))
   const hash = await hashPassword(password)
-  const seeded = await Effect.runPromise(seedSignIn(hash).pipe(Effect.provide(infra)))
+  // a password set before the length rule, which the door must still accept
+  const shortHash = await hashPassword('short')
+  const seeded = await Effect.runPromise(seedSignIn(hash, shortHash).pipe(Effect.provide(infra)))
   userId = seeded.user
+  providerId = seeded.provider
 }, 120_000)
 
 afterAll(async () => {
@@ -116,7 +112,7 @@ afterAll(async () => {
 
 const probeInfra = () => databaseFor(db.url, { migrations: 'off', entities: authClosure })
 
-const login = (body: { identifier: string; password: string }, code = 'password') =>
+const login = (body: { email: string; password: string }, code = 'password') =>
   fetch(`${base}/auth/local/${code}/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -148,7 +144,7 @@ describe.runIf(postgresAvailable)('signing in', () => {
   })
 
   it('turns a proved password into a session, and reads it back', async () => {
-    const response = await login({ identifier: 'ada', password })
+    const response = await login({ email: SEEDED_EMAILS.ada, password })
     expect(response.status).toBe(200)
     expect(await response.json()).toMatchObject({
       user: { id: userId, displayName: 'Ada', tenant: { slug: 'default' } },
@@ -168,6 +164,24 @@ describe.runIf(postgresAvailable)('signing in', () => {
     expect(session.status).toBe(200)
     expect(await session.json()).toMatchObject({ user: { id: userId } })
 
+    // the session remembers the door it came in through, and the binding
+    const token = cookie.slice(sessionCookieName.length + 1)
+    const origin = await Effect.runPromise(
+      Effect.gen(function* () {
+        const result = (yield* runSql(
+          sql`select s.auth_provider_id, s.auth_binding_id, b.user_id as binding_user
+                from sessions s
+                left join user_auth_bindings b on b.id = s.auth_binding_id
+               where s.token_hash = ${hashSessionToken(token)}`,
+        )) as unknown as {
+          rows: { auth_provider_id: string; auth_binding_id: string | null; binding_user: string }[]
+        }
+        return result.rows[0]!
+      }).pipe(Effect.provide(probeInfra())),
+    )
+    expect(origin.auth_provider_id).toBe(providerId)
+    expect(origin.binding_user).toBe(userId)
+
     // signing out ends that session, and the same cookie stops working
     const out = await fetch(`${base}/auth/session`, { method: 'DELETE', headers: { cookie } })
     expect(out.status).toBe(200)
@@ -184,7 +198,7 @@ describe.runIf(postgresAvailable)('signing in', () => {
     // so the whole server slowed rather than just the login.
     const misses = 10
     const attempts = Array.from({ length: misses }, () =>
-      login({ identifier: 'ada', password: 'not the password' }),
+      login({ email: SEEDED_EMAILS.ada, password: 'not the password' }),
     )
     const answers = await Promise.all(attempts)
     // every one of them is still answered, and answered the same way
@@ -200,14 +214,16 @@ describe.runIf(postgresAvailable)('signing in', () => {
   })
 
   it('answers every credential failure the same way', async () => {
-    // an unknown person, a wrong password, an unknown provider and a provider
-    // of another driver's type are one answer, because telling them apart
-    // tells a stranger which accounts and which providers exist
+    // an unknown person, somebody without a password, a wrong password, an
+    // unknown provider and a provider of another driver's type are one
+    // answer, because telling them apart tells a stranger which accounts and
+    // which providers exist
     for (const attempt of [
-      login({ identifier: 'nobody', password }),
-      login({ identifier: 'ada', password: 'wrong password entirely' }),
-      login({ identifier: 'ada', password }, 'no-such-provider'),
-      login({ identifier: 'ada', password }, 'campus'),
+      login({ email: SEEDED_EMAILS.lin, password }),
+      login({ email: 'nobody@school.edu', password }),
+      login({ email: SEEDED_EMAILS.ada, password: 'wrong password entirely' }),
+      login({ email: SEEDED_EMAILS.ada, password }, 'no-such-provider'),
+      login({ email: SEEDED_EMAILS.ada, password }, 'campus'),
     ]) {
       const response = await attempt
       expect(response.status).toBe(401)
@@ -217,7 +233,7 @@ describe.runIf(postgresAvailable)('signing in', () => {
 
   it('refuses a password for a type outside the door\u2019s audience', async () => {
     // the credential is stored and correct; the audience is what says no
-    const response = await login({ identifier: 'grace', password })
+    const response = await login({ email: SEEDED_EMAILS.grace, password })
     expect(response.status).toBe(401)
     expect(await response.json()).toMatchObject({ _tag: 'INVALID_CREDENTIALS' })
   })
@@ -226,7 +242,7 @@ describe.runIf(postgresAvailable)('signing in', () => {
     // a plain-http process names its cookie without the prefix; a request
     // that carries the token under the prefixed name is a request with no
     // session, because the process reads exactly one name
-    const response = await login({ identifier: 'ada', password })
+    const response = await login({ email: SEEDED_EMAILS.ada, password })
     const token = cookieFrom(response).slice(sessionCookieName.length + 1)
     const prefixed = await fetch(`${base}/auth/session`, {
       headers: { cookie: `__Host-${sessionCookieName}=${token}` },
@@ -238,7 +254,7 @@ describe.runIf(postgresAvailable)('signing in', () => {
   it('drops the cookie when the session it presented is dead', async () => {
     // Without this the browser keeps re-presenting a token the server has
     // already refused until the cookie's own lifetime lapses.
-    const response = await login({ identifier: 'ada', password })
+    const response = await login({ email: SEEDED_EMAILS.ada, password })
     const cookie = cookieFrom(response)
     const token = cookie.slice(sessionCookieName.length + 1)
     await Effect.runPromise(
@@ -256,7 +272,7 @@ describe.runIf(postgresAvailable)('signing in', () => {
   it('drops the cookie when the account behind a live session is disabled', async () => {
     // this branch does not delete the row either, so a user disabled and later
     // re-enabled would otherwise resume on the same cookie
-    const response = await login({ identifier: 'ada', password })
+    const response = await login({ email: SEEDED_EMAILS.ada, password })
     const cookie = cookieFrom(response)
     await Effect.runPromise(
       runSql(sql`update users set enabled = false where display_name = 'Ada'`).pipe(
@@ -274,7 +290,7 @@ describe.runIf(postgresAvailable)('signing in', () => {
   })
 
   it('records the address the session was created from', async () => {
-    const response = await login({ identifier: 'ada', password })
+    const response = await login({ email: SEEDED_EMAILS.ada, password })
     const token = cookieFrom(response).slice(sessionCookieName.length + 1)
     const ip = await Effect.runPromise(
       Effect.gen(function* () {
@@ -291,24 +307,32 @@ describe.runIf(postgresAvailable)('signing in', () => {
     expect(ip).toMatch(/127\.0\.0\.1/)
   })
 
-  it('normalizes the identifier before it looks anything up', async () => {
-    // from local-login.test.ts 'logs in with normalized identifier'. The stored
-    // identifier is the normalized form, so a login that skipped normalizing
-    // would refuse the same person depending on how they typed their name.
-    for (const typed of ['  ADA  ', 'Ada', 'ada']) {
-      const response = await login({ identifier: typed, password })
+  it('normalizes the address before it looks anybody up', async () => {
+    // The stored address is the normalized form, so a sign-in that skipped
+    // normalizing would refuse the same person depending on how they typed it.
+    for (const typed of ['  ADA@School.EDU  ', 'Ada@school.edu', SEEDED_EMAILS.ada]) {
+      const response = await login({ email: typed, password })
       expect(response.status, `${typed} should be the same person`).toBe(200)
     }
-    // and a shape the normalizer rejects is refused like any other miss,
-    // without reaching the database
-    const bad = await login({ identifier: 'a', password })
+    // and something that cannot be an address is refused like any other
+    // miss, without reaching the database
+    const bad = await login({ email: 'not-an-address', password })
     expect(bad.status).toBe(401)
+    expect(await bad.json()).toMatchObject({ _tag: 'INVALID_CREDENTIALS' })
+  })
+
+  it('opens for a password set before the length rule', async () => {
+    // the rules a new password must meet are asked when one is set, never at
+    // the door: a stranger learns nothing about them, and an older password
+    // still works until it is changed
+    const response = await login({ email: SEEDED_EMAILS.mei, password: 'short' })
+    expect(response.status).toBe(200)
   })
 
   it('stores only the hash of a session token', async () => {
     // from local-login.test.ts of the same name. A readable token column is a
     // password file: anyone with a database dump could present one.
-    const response = await login({ identifier: 'ada', password })
+    const response = await login({ email: SEEDED_EMAILS.ada, password })
     const token = cookieFrom(response).slice(sessionCookieName.length + 1)
     const stored = await Effect.runPromise(
       Effect.gen(function* () {
@@ -335,7 +359,7 @@ describe.runIf(postgresAvailable)('the sign-in record', () => {
     outcome: string
     reason_code: string | null
     user_id: string | null
-    identity_id: string | null
+    binding_id: string | null
     session_id: string | null
     provider_type: string
     provider_code: string
@@ -349,7 +373,7 @@ describe.runIf(postgresAvailable)('the sign-in record', () => {
     Effect.runPromise(
       Effect.gen(function* () {
         const result = (yield* runSql(
-          sql`select outcome, reason_code, user_id, identity_id, session_id,
+          sql`select outcome, reason_code, user_id, binding_id, session_id,
                      provider_type, provider_code, request_id, client_ip::text as client_ip,
                      user_agent
               from sign_in_events order by occurred_at desc, id desc limit 1`,
@@ -359,13 +383,13 @@ describe.runIf(postgresAvailable)('the sign-in record', () => {
     )
 
   it('records a success with its session and its request', async () => {
-    const response = await login({ identifier: 'ada', password })
+    const response = await login({ email: SEEDED_EMAILS.ada, password })
     expect(response.status).toBe(200)
     const event = await latestEvent()
     expect(event.outcome).toBe('success')
     expect(event.reason_code).toBeNull()
     expect(event.user_id).toBe(userId)
-    expect(event.identity_id).not.toBeNull()
+    expect(event.binding_id).not.toBeNull()
     expect(event.provider_type).toBe('local')
     expect(event.provider_code).toBe('password')
     // the same transaction wrote the session this event names
@@ -385,25 +409,34 @@ describe.runIf(postgresAvailable)('the sign-in record', () => {
   })
 
   it('records a wrong password against the account it was about', async () => {
-    const refused = await login({ identifier: 'ada', password: 'wrong-password-1' })
+    const refused = await login({ email: SEEDED_EMAILS.ada, password: 'wrong-password-1' })
     expect(refused.status).toBe(401)
     const event = await latestEvent()
     expect(event.outcome).toBe('failure')
     expect(event.reason_code).toBe('invalid-credentials')
     expect(event.user_id).toBe(userId)
-    expect(event.identity_id).not.toBeNull()
+    expect(event.binding_id).not.toBeNull()
     expect(event.session_id).toBeNull()
   })
 
-  it('records an unknown name without storing it', async () => {
-    const refused = await login({ identifier: 'nobody-here', password })
+  it('records an unknown address without storing it', async () => {
+    const refused = await login({ email: 'nobody-here@school.edu', password })
     expect(refused.status).toBe(401)
     const event = await latestEvent()
     expect(event.outcome).toBe('failure')
-    expect(event.reason_code).toBe('identity-not-found')
+    expect(event.reason_code).toBe('user-not-found')
     // nothing resolved, so nothing is named - and what was typed is nowhere
     expect(event.user_id).toBeNull()
-    expect(event.identity_id).toBeNull()
+    expect(event.binding_id).toBeNull()
+  })
+
+  it('records somebody the door found but who has no password yet', async () => {
+    const refused = await login({ email: SEEDED_EMAILS.lin, password })
+    expect(refused.status).toBe(401)
+    const event = await latestEvent()
+    expect(event.reason_code).toBe('binding-not-found')
+    expect(event.user_id).not.toBeNull()
+    expect(event.binding_id).toBeNull()
   })
 
   it('records the precise reason a proven but disabled account was refused', async () => {
@@ -413,7 +446,7 @@ describe.runIf(postgresAvailable)('the sign-in record', () => {
       ),
     )
     try {
-      const refused = await login({ identifier: 'ada', password })
+      const refused = await login({ email: SEEDED_EMAILS.ada, password })
       // the wire still says only INVALID_CREDENTIALS; the precision is the record's
       expect(refused.status).toBe(401)
       expect(await refused.json()).toMatchObject({ _tag: 'INVALID_CREDENTIALS' })
