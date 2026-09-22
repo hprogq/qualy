@@ -17,6 +17,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@qualy/ui/empt
 import { PersonCell } from '@qualy/ui/person'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Card, Cell, Table, TableHead, TableRow } from '@qualy/ui/screen'
+import { useIsBelow } from '@qualy/ui/use-mobile'
 import { personCard } from '@qualy/ui-contract'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
@@ -79,6 +80,30 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
     textDecorationLine: 'line-through',
   },
+  // one person as a card of their own, where a row of four columns is not
+  // a shape a phone has
+  card: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+    paddingInline: 16,
+    paddingBlock: 14,
+    borderBottomWidth: { default: 1, ':last-child': 0 },
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
+  },
+  cardHead: { display: 'flex', minWidth: 0, alignItems: 'center', gap: 10 },
+  cardWho: { display: 'flex', minWidth: 0, flexGrow: 1 },
+  cardBlock: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 5 },
+  cardLabel: {
+    fontSize: 11.5,
+    fontWeight: 500,
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
+  },
+  // A row here carries two lists, not two words, so it stands taller than a
+  // table's own floor - and a floor gives no air at all once the content is
+  // past it.
+  roomy: { paddingBlock: 12 },
   endCell: {
     display: 'flex',
     justifyContent: 'flex-end',
@@ -363,118 +388,139 @@ function SubjectRow({
 }) {
   const { format } = useI18n()
   const businessNo = useTerm(authTerms.businessNumber)
+  const phone = useIsBelow(768)
   const denied = inCatalogOrder(subject.denied)
 
-  return (
-    <TableRow>
-      <Cell lead>
-        {/* whoever owns people decides what a reader may learn about one; this
-            screen only knows the name it was going to print anyway */}
-        <UiSlot
-          token={personCard}
-          context={{
-            userId: subject.userId,
-            displayName: subject.displayName,
-            businessNo: subject.businessNo,
-          }}
-          fallback={
-            <PersonCell
-              name={subject.displayName}
-              secondary={subject.businessNo ?? format(m.noBusinessNoShort, { businessNo })}
-            />
-          }
+  // whoever owns people decides what a reader may learn about one; this
+  // screen only knows the name it was going to print anyway
+  const who = (
+    <UiSlot
+      token={personCard}
+      context={{
+        userId: subject.userId,
+        displayName: subject.displayName,
+        businessNo: subject.businessNo,
+      }}
+      fallback={
+        <PersonCell
+          name={subject.displayName}
+          secondary={subject.businessNo ?? format(m.noBusinessNoShort, { businessNo })}
         />
-      </Cell>
-      <Cell>
-        <ul {...stylex.props(styles.sources)}>
-          {subject.sources.map((source) => (
-            <li key={source.sourceId} {...stylex.props(styles.source)}>
-              <span {...stylex.props(styles.roleName)}>{source.roleName}</span>
-              <Badge
-                data-testid="access-origin"
-                data-origin={source.origin}
-                variant={source.origin === 'explicit' ? 'outline' : 'secondary'}
-              >
-                {format(
-                  source.origin === 'explicit' ? m.accessOriginExplicit : m.accessOriginInherited,
-                )}
-              </Badge>
-              {/* the assignment behind it is gone, so it grants nothing; the
-                  row stays because the round's own record of it stays */}
-              {!source.active && (
-                <span {...stylex.props(styles.aside)}>{format(m.accessSourceLapsed)}</span>
-              )}
-              {/* only what this round handed out itself: an inherited
-                  assignment belongs to the organization, and refusing what it
-                  offers is what withholding is for */}
-              {source.origin === 'explicit' && subject.manageable && (
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className={stylex.props(styles.drop).className}
-                  aria-label={format(m.accessRemove)}
-                  title={format(m.accessRemove)}
-                  onClick={() => onRemove(source)}
-                >
-                  <XIcon {...stylex.props(styles.dropIcon)} />
-                </Button>
-              )}
-            </li>
+      }
+    />
+  )
+
+  const sourceList = (
+    <ul {...stylex.props(styles.sources)}>
+      {subject.sources.map((source) => (
+        <li key={source.sourceId} {...stylex.props(styles.source)}>
+          <span {...stylex.props(styles.roleName)}>{source.roleName}</span>
+          <Badge
+            data-testid="access-origin"
+            data-origin={source.origin}
+            variant={source.origin === 'explicit' ? 'outline' : 'secondary'}
+          >
+            {format(source.origin === 'explicit' ? m.accessOriginExplicit : m.accessOriginInherited)}
+          </Badge>
+          {/* the assignment behind it is gone, so it grants nothing; the
+              row stays because the round's own record of it stays */}
+          {!source.active && (
+            <span {...stylex.props(styles.aside)}>{format(m.accessSourceLapsed)}</span>
+          )}
+          {/* only what this round handed out itself: an inherited
+              assignment belongs to the organization, and refusing what it
+              offers is what withholding is for */}
+          {source.origin === 'explicit' && subject.manageable && (
+            <Button
+              size="icon"
+              variant="ghost"
+              className={stylex.props(styles.drop).className}
+              aria-label={format(m.accessRemove)}
+              title={format(m.accessRemove)}
+              onClick={() => onRemove(source)}
+            >
+              <XIcon {...stylex.props(styles.dropIcon)} />
+            </Button>
+          )}
+        </li>
+      ))}
+    </ul>
+  )
+
+  const permissionList =
+    subject.effective.length === 0 && denied.length === 0 ? (
+      <span {...stylex.props(styles.quiet)}>{format(m.accessNothing)}</span>
+    ) : (
+      <div {...stylex.props(styles.permissions)}>
+        <div {...stylex.props(styles.chips)}>
+          {inCatalogOrder(subject.effective).map((code) => (
+            <Badge key={code} variant="secondary" className={stylex.props(styles.chip).className}>
+              {format(permissionLabel(code))}
+            </Badge>
           ))}
-        </ul>
-      </Cell>
-      {/* a row of permission chips is a table's fact, not a phone's: what
-          somebody holds is read - and changed - in the panel the row's own
-          press opens */}
-      <Cell narrow="drop">
-        {subject.effective.length === 0 && denied.length === 0 ? (
-          <span {...stylex.props(styles.quiet)}>{format(m.accessNothing)}</span>
-        ) : (
-          <div {...stylex.props(styles.permissions)}>
-            <div {...stylex.props(styles.chips)}>
-              {inCatalogOrder(subject.effective).map((code) => (
-                <Badge
-                  key={code}
-                  variant="secondary"
-                  className={stylex.props(styles.chip).className}
-                >
-                  {format(permissionLabel(code))}
-                </Badge>
-              ))}
-              {subject.effective.length === 0 && (
-                <span {...stylex.props(styles.quiet)}>{format(m.accessNothing)}</span>
-              )}
-            </div>
-            {/* what was taken away is said here rather than left as an
-                absence: a shorter list of chips looks like nothing happened */}
-            {denied.length > 0 && (
-              <div {...stylex.props(styles.withheld)}>
-                <span {...stylex.props(styles.aside)}>
-                  {format(m.accessDeniedCount, { count: denied.length })}
-                </span>
-                {denied.map((code) => (
-                  <Badge
-                    key={code}
-                    variant="outline"
-                    className={stylex.props(styles.chipStruck).className}
-                  >
-                    {format(permissionLabel(code))}
-                  </Badge>
-                ))}
-              </div>
-            )}
+          {subject.effective.length === 0 && (
+            <span {...stylex.props(styles.quiet)}>{format(m.accessNothing)}</span>
+          )}
+        </div>
+        {/* what was taken away is said here rather than left as an
+            absence: a shorter list of chips looks like nothing happened */}
+        {denied.length > 0 && (
+          <div {...stylex.props(styles.withheld)}>
+            <span {...stylex.props(styles.aside)}>
+              {format(m.accessDeniedCount, { count: denied.length })}
+            </span>
+            {denied.map((code) => (
+              <Badge
+                key={code}
+                variant="outline"
+                className={stylex.props(styles.chipStruck).className}
+              >
+                {format(permissionLabel(code))}
+              </Badge>
+            ))}
           </div>
         )}
-      </Cell>
-      <span {...stylex.props(styles.endCell)}>
-        {/* their own row: the server refuses it too, this is so nobody is
-            offered a button that answers with a refusal */}
-        {subject.manageable && (
-          <Button size="sm" variant="ghost" onClick={onAdjust}>
-            {format(m.accessAdjust)}
-          </Button>
-        )}
-      </span>
+      </div>
+    )
+
+  // their own row: the server refuses it too, this is so nobody is offered a
+  // button that answers with a refusal
+  const adjust = subject.manageable && (
+    <Button size="sm" variant={phone ? 'outline' : 'ghost'} onClick={onAdjust}>
+      {format(m.accessAdjust)}
+    </Button>
+  )
+
+  // Narrow, what somebody holds is not a row of a table. It is three blocks
+  // of their own - who they are, where the duty comes from, what it grants -
+  // and the last two are lists, not values. Put through a stacked row they
+  // were two lists ruled off from each other on one line, with the press
+  // that changes them standing among the facts.
+  if (phone) {
+    return (
+      <div {...stylex.props(styles.card)} data-testid="access-card">
+        <div {...stylex.props(styles.cardHead)}>
+          <span {...stylex.props(styles.cardWho)}>{who}</span>
+          {adjust}
+        </div>
+        <div {...stylex.props(styles.cardBlock)}>
+          <span {...stylex.props(styles.cardLabel)}>{format(m.accessColumnSources)}</span>
+          {sourceList}
+        </div>
+        <div {...stylex.props(styles.cardBlock)}>
+          <span {...stylex.props(styles.cardLabel)}>{format(m.accessColumnPermissions)}</span>
+          {permissionList}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <TableRow xstyle={styles.roomy}>
+      <Cell lead>{who}</Cell>
+      <Cell>{sourceList}</Cell>
+      <Cell>{permissionList}</Cell>
+      <span {...stylex.props(styles.endCell)}>{adjust}</span>
     </TableRow>
   )
 }

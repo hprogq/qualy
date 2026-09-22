@@ -124,7 +124,7 @@ const styles = stylex.create({
     },
     alignItems: 'center',
     columnGap: { default: 16, [breakpoints.phone]: 10 },
-    rowGap: { default: 16, [breakpoints.phone]: 1 },
+    rowGap: { default: 16, [breakpoints.phone]: 0 },
     paddingInline: { default: 16, [breakpoints.phone]: 12 },
   },
   /** the first cell of a row, on the first line whatever the width */
@@ -137,26 +137,20 @@ const styles = stylex.create({
     gridColumn: { default: null, [breakpoints.phone]: 2 },
     gridRow: { default: null, [breakpoints.phone]: 1 },
   },
-  /** the two figures the total is made of, as one quiet line under it */
+  /**
+   * The two figures the total is made of.
+   *
+   * Three columns across a desk; on a phone they are not drawn at all. They
+   * are the working, not the answer - a reader on a phone is looking down
+   * the column of what each group came to, and a second line of working
+   * under every one of them doubled the ledger's height to say what the
+   * figure beside the name already says.
+   */
   mid: {
-    display: { default: 'contents', [breakpoints.phone]: 'flex' },
-    // under the name, not under the whole row: it belongs to the group the
-    // name belongs to, and run full width it read as a line of its own
-    gridColumn: { default: null, [breakpoints.phone]: 1 },
-    gridRow: { default: null, [breakpoints.phone]: 2 },
-    alignItems: 'baseline',
-    columnGap: 10,
-    fontSize: { default: null, [breakpoints.phone]: 12 },
-    lineHeight: { default: null, [breakpoints.phone]: '1rem' },
-    color: { default: null, [breakpoints.phone]: tokens.mutedForeground },
+    display: { default: 'contents', [breakpoints.phone]: 'none' },
   },
-  /** the same two cells where they hold nothing: no line of their own */
+  /** the same two cells where they hold nothing */
   midBlank: { display: { default: 'contents', [breakpoints.phone]: 'none' } },
-  /** which figure this is, said only where the column heading cannot */
-  midWord: {
-    display: { default: 'none', [breakpoints.phone]: 'inline' },
-    marginInlineEnd: 4,
-  },
   standing: {
     display: 'flex',
     flexGrow: 1,
@@ -174,12 +168,15 @@ const styles = stylex.create({
       [breakpoints.tablet]: 'stretch',
       [breakpoints.desktop]: 'stretch',
     },
-    gap: 20,
+    // Tighter under a thumb. Three stacked bands of air - the figure, the
+    // bar, the three summary lines - took the whole first screen, and what
+    // a reader came for is the ledger under them.
+    gap: { default: 20, [breakpoints.phone]: 14 },
     borderRadius: `calc(${tokens.radiusLg} * 1.8)`,
     borderWidth: 1,
     borderStyle: 'solid',
     borderColor: tokens.border,
-    padding: 20,
+    padding: { default: 20, [breakpoints.phone]: 16 },
   },
   totalSide: { display: 'flex', flexShrink: 0, flexDirection: 'column', gap: 6 },
   totalHead: { display: 'flex', alignItems: 'center', gap: 8 },
@@ -192,7 +189,7 @@ const styles = stylex.create({
   },
   mode: { fontWeight: 400, color: tokens.mutedForeground },
   total: {
-    fontSize: 34,
+    fontSize: { default: 34, [breakpoints.phone]: 30 },
     lineHeight: 1,
     fontWeight: 600,
     letterSpacing: '-0.025em',
@@ -338,7 +335,10 @@ const styles = stylex.create({
     borderBottomStyle: 'solid',
     borderBottomColor: tokens.border,
   },
-  groupRow: { height: 40 },
+  groupRow: {
+    height: { default: 40, [breakpoints.phone]: 'auto' },
+    paddingBlock: { default: 0, [breakpoints.phone]: 8 },
+  },
   groupRowTop: { backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 75%, transparent)` },
   groupRowNested: {
     backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 40%, transparent)`,
@@ -373,7 +373,10 @@ const styles = stylex.create({
     fontWeight: 600,
     fontVariantNumeric: 'tabular-nums',
   },
-  line: { height: { default: 38, [breakpoints.phone]: 'auto' }, minHeight: 38 },
+  line: {
+    height: { default: 38, [breakpoints.phone]: 'auto' },
+    minHeight: { default: 38, [breakpoints.phone]: 40 },
+  },
   // a line that leads somewhere says so on approach rather than by looking
   // like a link: the ledger is a table of figures, and an underline in a
   // column of numbers reads as a rule
@@ -726,15 +729,9 @@ function GroupRows({
               : format(m.resultCapChip, { value: two(group.cap) })}
           </Badge>
         </span>
-        {/* the same indent the name takes: a nested group's figures under
-            a parent's margin belong to the wrong group at a glance */}
-        <span {...stylex.props(styles.mid)} style={pad}>
+        <span {...stylex.props(styles.mid)}>
+          <span {...stylex.props(styles.groupFigure)}>{two(group.itemsTotal)}</span>
           <span {...stylex.props(styles.groupFigure)}>
-            <span {...stylex.props(styles.midWord)}>{format(m.resultItemsShort)}</span>
-            {two(group.itemsTotal)}
-          </span>
-          <span {...stylex.props(styles.groupFigure)}>
-            <span {...stylex.props(styles.midWord)}>{format(m.resultChildrenShort)}</span>
             {hasChildren ? two(group.childrenTotal) : '–'}
           </span>
         </span>

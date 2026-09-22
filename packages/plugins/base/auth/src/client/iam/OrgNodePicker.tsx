@@ -35,8 +35,12 @@ import { authMessages as m } from '../i18n.ts'
 const ANY = 'any'
 
 const styles = stylex.create({
+  // it fits whatever it is given and scrolls inside itself; a tree five
+  // levels deep is not a reason for the panel around it to scroll sideways
   stack: {
     display: 'flex',
+    minWidth: 0,
+    maxWidth: '100%',
     flexDirection: 'column',
     gap: 8,
   },
@@ -79,9 +83,14 @@ const styles = stylex.create({
     borderColor: tokens.border,
     padding: 4,
   },
+  // It takes the room its container hands out, with a floor for containers
+  // that hand out none. A height counted off the WINDOW was right only for
+  // the one panel it was measured in: inside a sheet that is 88dvh with a
+  // head of its own, the same sum left a band of nothing under the tree.
   listBoxTall: {
-    height: 'calc(100dvh - 24rem)',
     minHeight: '14rem',
+    flexGrow: 1,
+    flexBasis: 0,
   },
   // Takes the height its container hands out, down to a floor.
   //

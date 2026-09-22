@@ -146,10 +146,9 @@ export default function LoginMethodsPage() {
    * method were a pair of targets a thumb could not tell apart, and a
    * mis-hit silently reordered the sign-in page. A mis-hit opens a menu now.
    *
-   * Drawn in two places and therefore written once: beside the drag handle
-   * where a pointer can reach both, and at the row's end beside the standing
-   * where a thumb finds it centred against the whole row rather than sitting
-   * among the facts on the second line.
+   * A phone's only way to move a method, and its only one: a pointer drags
+   * the handle and a keyboard walks it with the arrow keys, so a second
+   * control beside that handle said nothing the handle did not.
    */
   const order = (provider: { id: string; name: string }, index: number) => (
     <DropdownMenu>
@@ -296,7 +295,6 @@ export default function LoginMethodsPage() {
                         >
                           <GripVerticalIcon aria-hidden {...stylex.props(styles.gripGlyph)} />
                         </button>
-                        {order(provider, index)}
                       </span>
                     ) : (
                       <span />

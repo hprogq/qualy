@@ -44,6 +44,11 @@ const styles = stylex.create({
   // arrives from the side the thumb is not on and covers the page edge-on.
   panelBelow: {
     maxHeight: '88dvh',
+    // The panel itself never scrolls: its head names the task and its foot
+    // holds the way out of it, and both went up the screen with the body.
+    // Nor does it scroll sideways - something inside it too wide for it is
+    // that thing's own business to scroll, not the panel's.
+    overflow: 'hidden',
     borderStartStartRadius: 20,
     borderStartEndRadius: 20,
   },
@@ -57,14 +62,20 @@ const styles = stylex.create({
     gridTemplateRows: 'auto minmax(0, 1fr) auto',
   },
   panelBody: {
+    // a flex child is floored at its content unless it is told otherwise,
+    // and a body that cannot shrink hands its overflow to the panel
+    minHeight: 0,
+    minWidth: 0,
     flexGrow: 1,
     flexShrink: 1,
     flexBasis: '0%',
     overflowY: 'auto',
+    overflowX: 'hidden',
     paddingInline: 16,
   },
   panelStack: {
     display: 'flex',
+    minWidth: 0,
     flexDirection: 'column',
     gap: 20,
     paddingBottom: 16,

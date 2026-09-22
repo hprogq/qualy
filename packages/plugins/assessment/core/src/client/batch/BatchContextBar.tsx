@@ -249,6 +249,12 @@ export default function BatchContextBar() {
     staleTime: 30_000,
   })
   const stages = plan.data?.timeline ?? []
+  // Whether the strip has a stage and a clock to show at all. A round whose
+  // stages are all behind it has neither - and the strip was left holding
+  // one door and nothing to say beside it.
+  const running = stages.some(
+    (stage) => stage.status === 'current' || stage.entry.kind === 'planned',
+  )
 
   return (
     <div {...stylex.props(styles.bar)}>
@@ -294,13 +300,15 @@ export default function BatchContextBar() {
               <Skeleton className={stylex.props(styles.stripBoneEnd).className} />
             </>
           )
-        ) : stages.length === 0 ? (
+        ) : stages.length === 0 || !running ? (
           // A round with no stages has no clock and no flow to open, and the
           // strip was left holding one door to an empty room. It says the
           // fact instead - the strip keeps its place, so the head does not
           // change height from one round to the next, and whoever arranges
           // the stages learns here that nobody has.
-          <span {...stylex.props(styles.emptyStrip)}>{format(m.noPhasesYet)}</span>
+          <span {...stylex.props(styles.emptyStrip)}>
+            {format(stages.length === 0 ? m.noPhasesYet : m.phasesOver)}
+          </span>
         ) : (
           <>
             <BatchProgress

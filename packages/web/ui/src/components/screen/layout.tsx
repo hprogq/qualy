@@ -144,49 +144,60 @@ export function ResizableSplit({
       style={wide ? { gridTemplateColumns: `${String(width)}px minmax(0, 1fr)` } : undefined}
       data-split-width={width}
     >
-      <div {...stylex.props(styles.side)}>
-        {side}
-        <button
-          type="button"
-          role="separator"
-          aria-orientation="vertical"
-          aria-label={handleLabel}
-          aria-valuemin={min}
-          aria-valuemax={max}
-          aria-valuenow={width}
-          data-testid="split-handle"
-          {...stylex.props(styles.handle)}
-          onPointerEnter={() => setHover(true)}
-          onPointerLeave={() => setHover(false)}
-          onPointerDown={(event) => {
-            origin.current = { x: event.clientX, width }
-            setDragging(true)
-            event.currentTarget.setPointerCapture(event.pointerId)
-          }}
-          onPointerMove={(event) => {
-            if (origin.current === null) return
-            setWidth(clamp(origin.current.width + event.clientX - origin.current.x))
-          }}
-          onPointerUp={(event) => {
-            if (origin.current === null) return
-            origin.current = null
-            setDragging(false)
-            event.currentTarget.releasePointerCapture(event.pointerId)
-            keep(width)
-          }}
-          onKeyDown={(event) => {
-            const step = event.key === 'ArrowLeft' ? -16 : event.key === 'ArrowRight' ? 16 : 0
-            if (step === 0) return
-            event.preventDefault()
-            const next = clamp(width + step)
-            setWidth(next)
-            keep(next)
-          }}
-        >
-          <span aria-hidden {...stylex.props(styles.rule, (hover || dragging) && styles.ruleLit)} />
-          <span aria-hidden {...stylex.props(styles.grip, (hover || dragging) && styles.gripLit)} />
-        </button>
-      </div>
+      {/* A side that is not there keeps no row: the grid's own row gap then
+          stood above the first thing in the other column, which reads as the
+          page starting an inch down. */}
+      {side !== null && side !== false && side !== undefined && (
+        <div {...stylex.props(styles.side)}>
+          {side}
+          <button
+            type="button"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label={handleLabel}
+            aria-valuemin={min}
+            aria-valuemax={max}
+            aria-valuenow={width}
+            data-testid="split-handle"
+            {...stylex.props(styles.handle)}
+            onPointerEnter={() => setHover(true)}
+            onPointerLeave={() => setHover(false)}
+            onPointerDown={(event) => {
+              origin.current = { x: event.clientX, width }
+              setDragging(true)
+              event.currentTarget.setPointerCapture(event.pointerId)
+            }}
+            onPointerMove={(event) => {
+              if (origin.current === null) return
+              setWidth(clamp(origin.current.width + event.clientX - origin.current.x))
+            }}
+            onPointerUp={(event) => {
+              if (origin.current === null) return
+              origin.current = null
+              setDragging(false)
+              event.currentTarget.releasePointerCapture(event.pointerId)
+              keep(width)
+            }}
+            onKeyDown={(event) => {
+              const step = event.key === 'ArrowLeft' ? -16 : event.key === 'ArrowRight' ? 16 : 0
+              if (step === 0) return
+              event.preventDefault()
+              const next = clamp(width + step)
+              setWidth(next)
+              keep(next)
+            }}
+          >
+            <span
+              aria-hidden
+              {...stylex.props(styles.rule, (hover || dragging) && styles.ruleLit)}
+            />
+            <span
+              aria-hidden
+              {...stylex.props(styles.grip, (hover || dragging) && styles.gripLit)}
+            />
+          </button>
+        </div>
+      )}
       <div {...stylex.props(styles.main)}>{children}</div>
     </div>
   )
@@ -203,7 +214,13 @@ export function ResizableSplit({
  * depends on where the box currently is - so it is measured, once per frame
  * at most, from the scroll of whatever scrolls the page.
  */
-export function StickyFill({ children, minHeight = 320 }: { children: ReactNode; minHeight?: number }) {
+export function StickyFill({
+  children,
+  minHeight = 320,
+}: {
+  children: ReactNode
+  minHeight?: number
+}) {
   const mark = useRef<HTMLDivElement>(null)
   const [box, setBox] = useState<{ top: number; height: number } | null>(null)
   // stacked under one another there is no side column to fill: the box is

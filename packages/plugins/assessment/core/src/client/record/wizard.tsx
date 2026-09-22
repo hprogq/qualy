@@ -34,6 +34,8 @@ const wide = '@media (min-width: 640px)'
 // the same line, and puts a sideways scrollbar under a dialog that has
 // nothing to scroll to.
 const PANEL_PAD = 24
+/** where the hint and the two keys stop sharing a line */
+const phone = '@media (max-width: 767.98px)'
 
 const styles = stylex.create({
   wizard: {
@@ -140,10 +142,22 @@ const styles = stylex.create({
     borderTopWidth: 1,
     borderTopStyle: 'solid',
     borderTopColor: tokens.divider,
-    paddingInline: PANEL_PAD,
+    paddingInline: { default: PANEL_PAD, [phone]: 16 },
     paddingTop: 16,
+    // its own foot: the panel around it pads for a dialog whose body is a
+    // form, and this body ends in its own two keys
+    paddingBottom: 16,
   },
-  footState: { display: 'flex', minWidth: 0, flexGrow: 1, alignItems: 'center', gap: 8 },
+  // Narrow, the hint takes the line above rather than squeezing the keys on
+  // to it: wrapped, it pushed them down against the panel's own edge.
+  footState: {
+    display: 'flex',
+    minWidth: 0,
+    flexGrow: 1,
+    flexBasis: { default: null, [phone]: '100%' },
+    alignItems: 'center',
+    gap: 8,
+  },
   footDot: {
     flexShrink: 0,
     width: 6,

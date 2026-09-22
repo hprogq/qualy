@@ -193,7 +193,7 @@ const styles = stylex.create({
     justifyContent: { default: null, [breakpoints.phone]: 'flex-start' },
   },
   actorWord: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  pickerSeat: { minHeight: '20rem' },
+  pickerSeat: { display: 'flex', minHeight: 0, flexDirection: 'column' },
   inlineAction: {
     padding: 0,
     borderWidth: 0,
@@ -505,9 +505,12 @@ export default function AuditEventsPage() {
           </CardFoot>
         </Card>
       </AsyncSection>
+      {/* a tree beside a roster, which is the shape the picker has wherever
+          it is opened; at a form's width the two columns had a few
+          characters each */}
       <FormDialog
         open={pickingActor}
-        size="medium"
+        size="wide"
         title={format(m.pickActor)}
         onClose={() => setPickingActor(false)}
       >

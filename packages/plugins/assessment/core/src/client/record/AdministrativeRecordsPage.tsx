@@ -142,11 +142,26 @@ const styles = stylex.create({
   // be. The floor sits under every step's natural height, so nothing
   // rattles around in it once there is something to show.
   errandPanel: {
-    minHeight: 'min(70vh, 26rem)',
-    maxHeight: 'min(86vh, 52rem)',
+    // A floor is a desk's luxury. On a phone twenty-six rem is taller than
+    // the room a modal has, so the panel outgrew its own window and the
+    // thing that scrolled was the WHOLE panel - its title and the way out
+    // went up the screen with the form.
+    minHeight: { default: 'min(70vh, 26rem)', [phone]: 0 },
+    maxHeight: { default: 'min(86vh, 52rem)', [phone]: 'calc(100dvh - 2rem)' },
+    // Head, body, close: the middle row is the one that gives, and it is
+    // sized by what it holds rather than by a share of the panel - given a
+    // share, a short errand left a field of nothing between its last words
+    // and its own two keys.
+    gridTemplateRows: 'auto minmax(0, auto)',
+    // The panel's own gap and foot belong to a dialog whose body is a form;
+    // this one's body is an errand that draws its own bands, ends in its own
+    // two keys, and pads itself - so the panel's 24 below them was a field
+    // of nothing, and the 24 between head and body was said twice.
+    gap: 0,
     paddingInline: 0,
+    paddingBottom: 0,
   },
-  errandHead: { paddingInline: 24 },
+  errandHead: { paddingInline: 24, paddingBottom: 16 },
   // The errand inside runs its own three moves and scrolls only the middle
   // one, so this slot hands its height over rather than scrolling: two
   // scrollbars for one panel would put the step rail and the pair of keys

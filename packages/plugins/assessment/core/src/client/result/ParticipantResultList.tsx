@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { ChevronDownIcon, EllipsisIcon } from 'lucide-react'
+import { ChevronDownIcon, ChevronRightIcon, EllipsisIcon } from 'lucide-react'
 import { UiSlot, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
@@ -9,14 +9,22 @@ import { authTerms } from '@qualy/auth-contract/terms'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { orgNodePicker } from '@qualy/ui-contract'
 import { AsyncSection, Feedback } from '@qualy/ui/admin'
-import { Card, CardEmpty, Cell, Status, Table, TableHead, TableRow } from '@qualy/ui/screen'
+import {
+  Card,
+  CardEmpty,
+  Cell,
+  DetailSheet,
+  Status,
+  Table,
+  TableHead,
+  TableRow,
+} from '@qualy/ui/screen'
 import { toast } from '@qualy/ui/toast'
 import { ResizableSplit } from '@qualy/ui/screen'
 import { AddPeopleDialog } from '../roster/AddPeopleDialog.tsx'
 import { ImportDialog } from '../roster/ImportDialog.tsx'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@qualy/ui/collapsible'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -44,6 +52,8 @@ const PAGE_SIZE = 25
 const TWO_COLUMNS = 1024
 
 const wide = '@media (min-width: 1024px)'
+/** where a row is stacked, and what stands against it has to say so */
+const phone = '@media (max-width: 767.98px)'
 
 const styles = stylex.create({
   panel: { display: 'flex', flexDirection: 'column', gap: 20 },
@@ -53,21 +63,40 @@ const styles = stylex.create({
     gridTemplateColumns: { default: null, [wide]: 'minmax(0, 18rem) minmax(0, 1fr)' },
   },
   unitsAside: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 8 },
-  unitsTrigger: {
+  // stacked, it stands against the whole row beside what the row is scanned
+  // by, rather than auto-placing itself on the first line
+  rowAct: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifySelf: 'end',
+    gridColumn: { default: null, [phone]: 3 },
+    gridRow: { default: null, [phone]: '1 / 3' },
+  },
+  unitsSeat: { display: 'flex', minHeight: 0, minWidth: 0, flexGrow: 1, flexDirection: 'column' },
+  // The same line the roster of people keeps, and a card like it: which
+  // units the list is of, and the way to change them.
+  unitSwitch: {
+    display: 'flex',
     width: '100%',
-    paddingInline: 8,
-    pointerEvents: { default: null, [wide]: 'none' },
+    minHeight: 48,
+    alignItems: 'center',
+    gap: 10,
+    paddingInline: 14,
+    paddingBlock: 8,
+    borderWidth: 0,
+    borderRadius: 12,
+    backgroundColor: tokens.surface,
+    boxShadow: `0 0 0 1px ${tokens.border}, 0 1px 2px rgb(0 0 0 / 0.04)`,
+    fontFamily: 'inherit',
+    textAlign: 'start',
+    color: 'inherit',
+    cursor: 'pointer',
   },
-  unitsWord: { fontSize: 13, fontWeight: 500 },
-  unitsChevron: {
-    width: 16,
-    height: 16,
-    transitionProperty: 'transform',
-    transitionDuration: '150ms',
-    display: { default: null, [wide]: 'none' },
-  },
-  unitsChevronOpen: { transform: 'rotate(180deg)' },
-  unitsSeat: { minWidth: 0 },
+  unitSwitchWords: { display: 'flex', minWidth: 0, flexGrow: 1, flexDirection: 'column', gap: 1 },
+  unitSwitchName: { fontSize: 14, fontWeight: 600 },
+  unitSwitchNote: { fontSize: 11.5, color: tokens.mutedForeground },
+  unitSwitchGo: { flexShrink: 0, fontSize: 13, color: tokens.surfaceMutedForeground },
+  unitSwitchIcon: { width: 14, height: 14, flexShrink: 0, color: tokens.mutedForeground },
   treeWaiting: { display: 'flex', flexDirection: 'column', gap: 10, paddingBlock: 8 },
   bone: { height: 14, borderRadius: 4 },
   listColumn: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 10 },
@@ -268,33 +297,12 @@ export function ParticipantResultList({
                 heading over a tree that is already open is a word doing no
                 work, and a control that cannot be pressed is worse than one
                 that is absent, and how wide it should be is the reader's. */}
-            <aside {...stylex.props(styles.unitsAside)}>
-              {narrow ? (
-                <Collapsible open={unitsOpen} onOpenChange={setUnitsOpen}>
-                  <CollapsibleTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      justify="space-between"
-                      className={stylex.props(styles.unitsTrigger).className}
-                    >
-                      <span {...stylex.props(styles.unitsWord)}>{format(m.rosterUnits)}</span>
-                      <ChevronDownIcon
-                        aria-hidden
-                        className={
-                          stylex.props(styles.unitsChevron, unitsOpen && styles.unitsChevronOpen)
-                            .className
-                        }
-                      />
-                    </Button>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent className={stylex.props(styles.unitsSeat).className}>
-                    {tree}
-                  </CollapsibleContent>
-                </Collapsible>
-              ) : (
-                tree
-              )}
-            </aside>
+            {/* Narrow, the tree is not a column beside the list and not a
+                disclosure above it either: unfolded in place it is a second
+                screenful in front of what somebody came for. It is one line
+                saying which units the list is of, and a sheet to change it -
+                the same shape the roster of people uses. */}
+            {!narrow && <aside {...stylex.props(styles.unitsAside)}>{tree}</aside>}
           </>
         }
       >
@@ -316,6 +324,25 @@ export function ParticipantResultList({
               </span>
             )}
           </div>
+          {narrow && (
+            <button
+              type="button"
+              data-testid="roster-unit-switch"
+              {...stylex.props(styles.unitSwitch)}
+              onClick={() => setUnitsOpen(true)}
+            >
+              <span {...stylex.props(styles.unitSwitchWords)}>
+                <span {...stylex.props(styles.unitSwitchName)}>
+                  {units.length === 0
+                    ? format(m.rosterUnitsAll)
+                    : format(m.rosterUnitsSome, { count: units.length })}
+                </span>
+                <span {...stylex.props(styles.unitSwitchNote)}>{format(m.rosterUnits)}</span>
+              </span>
+              <span {...stylex.props(styles.unitSwitchGo)}>{format(m.rosterUnitsChange)}</span>
+              <ChevronRightIcon aria-hidden {...stylex.props(styles.unitSwitchIcon)} />
+            </button>
+          )}
           <AsyncSection
             pending={participants.isPending}
             error={participants.isError ? formatError(participants.error) : null}
@@ -394,34 +421,36 @@ export function ParticipantResultList({
                           detour through a page that answers a different
                           question */}
                       {manageable ? (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              size="icon-xs"
-                              variant="ghost"
-                              data-testid="participant-actions"
-                              aria-label={format(m.rosterRowActions, { name: row.displayName })}
-                              onClick={(event) => event.stopPropagation()}
-                            >
-                              <EllipsisIcon aria-hidden />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onSelect={() => onOpen(row.id)}>
-                              {format(m.participantResultsOpen)}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              data-testid="participant-standing"
-                              onSelect={() =>
-                                row.status === 'excluded'
-                                  ? setStatus.mutate({ participantId: row.id, status: 'active' })
-                                  : setExcluding({ id: row.id, name: row.displayName })
-                              }
-                            >
-                              {format(row.status === 'excluded' ? m.restore : m.exclude)}
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        <span {...stylex.props(styles.rowAct)}>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                size="icon-xs"
+                                variant="ghost"
+                                data-testid="participant-actions"
+                                aria-label={format(m.rosterRowActions, { name: row.displayName })}
+                                onClick={(event) => event.stopPropagation()}
+                              >
+                                <EllipsisIcon aria-hidden />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onSelect={() => onOpen(row.id)}>
+                                {format(m.participantResultsOpen)}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                data-testid="participant-standing"
+                                onSelect={() =>
+                                  row.status === 'excluded'
+                                    ? setStatus.mutate({ participantId: row.id, status: 'active' })
+                                    : setExcluding({ id: row.id, name: row.displayName })
+                                }
+                              >
+                                {format(row.status === 'excluded' ? m.restore : m.exclude)}
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </span>
                       ) : (
                         <span />
                       )}
@@ -454,6 +483,19 @@ export function ParticipantResultList({
           )}
         </section>
       </ResizableSplit>
+
+      {narrow && (
+        <DetailSheet
+          open={unitsOpen}
+          onClose={() => setUnitsOpen(false)}
+          title={format(m.rosterUnits)}
+          closeLabel={format(commonMessages.close)}
+          testId="roster-unit-sheet"
+          fill
+        >
+          <div {...stylex.props(styles.unitsSeat)}>{tree}</div>
+        </DetailSheet>
+      )}
 
       <ConfirmDialog
         open={excluding !== null}

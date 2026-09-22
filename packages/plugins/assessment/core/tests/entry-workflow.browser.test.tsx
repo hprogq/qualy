@@ -1955,6 +1955,10 @@ describe('reading one’s standing', () => {
       [{ path: '/assessment/batches/:batchId/my-result', element: <MyResultPage /> }],
     )
 
+    // At a desk, where the ledger draws all three of its figures: on a phone
+    // the two a group is made OF are not drawn at all, since the figure
+    // beside the name already says what the group came to.
+    await page.viewport(1280, 800)
     // the ledger speaks with two decimals throughout
     await expect.element(page.getByText('2.00', { exact: true }).first()).toBeVisible()
     await expect

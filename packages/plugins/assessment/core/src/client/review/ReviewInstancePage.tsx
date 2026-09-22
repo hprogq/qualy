@@ -119,12 +119,9 @@ const styles = stylex.create({
     flexShrink: 1,
     flexBasis: '0%',
     flexDirection: 'column',
-    borderTopWidth: {
-      default: 1,
-      [lg]: 0,
-    },
-    borderTopStyle: 'solid',
-    borderTopColor: tokens.border,
+    // No rule of its own along the top: the shell's context bar already ends
+    // in one, and the two drew a two-pixel band across the head of the
+    // workbench.
     borderLeftWidth: {
       default: 0,
       [lg]: 1,

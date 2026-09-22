@@ -76,10 +76,18 @@ const styles = stylex.create({
   // file moves reads as three different screens - and that height is the
   // one the finished state needs, not a roomier one it rattles around in.
   seat: { display: 'flex', flexDirection: 'column' },
-  // gap as well as padding: the area centres a column whose first item is
-  // the file input, and the space it leaves after it pushes the words below
-  // the middle of a box with a height of its own
-  seatBox: { height: 58, paddingBlock: 0, gap: 0 },
+  // Its own height, but not its own crowding. The padding goes because the
+  // area centres a column whose first item is the file input, and the space
+  // it leaves after that pushes the words below the middle of a box with a
+  // height of its own. The GAP is not that space - it is what stands between
+  // the mark and the file's name, and zeroing it put them together.
+  seatBox: { height: 58, paddingBlock: 0 },
+  // The empty area centres a column whose first item is the file input, and
+  // the gap it would leave after it pushes the words below the middle of a
+  // box with a height of its own. The TILE's gap is a different thing - it
+  // is what stands between the mark and the file's name - so only the area
+  // gives its up.
+  seatEmpty: { gap: 0 },
   uploading: { display: 'flex', alignItems: 'center', gap: 8 },
   refused: {
     display: 'flex',
@@ -418,7 +426,7 @@ export function AdministrativeImportView({
                             maxFiles={1}
                             multiple={false}
                             disabled={upload.isPending}
-                            xstyle={styles.seatBox}
+                            xstyle={[styles.seatBox, styles.seatEmpty]}
                             onFiles={(files) => {
                               const file = files[0]
                               if (file !== undefined) upload.mutate(file)

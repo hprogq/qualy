@@ -25,7 +25,10 @@ import { StatusBadge } from './StatusBadge.tsx'
 const NEARBY = 10
 
 const styles = stylex.create({
-  dropdown: { overflow: 'hidden', padding: 0 },
+  // Three bands that meet at their own edges: the panel's own padding and
+  // the air a popover puts between stacked things are both wrong here, and
+  // the air read as a gap in the list.
+  dropdown: { overflow: 'hidden', padding: 0, gap: 0 },
   // No ceiling of its own: whoever mounts this measures what the row can
   // spare and hands it down, so the name takes every pixel that is going and
   // is cut only when there are none left.

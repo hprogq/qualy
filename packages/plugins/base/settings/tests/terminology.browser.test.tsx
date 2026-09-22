@@ -100,3 +100,35 @@ describe('the terminology screen', () => {
     })
   })
 })
+
+describe('the terminology screen on a phone', () => {
+  it('lists the words and opens one to change it', async () => {
+    // A dozen terms is a dozen forms, and a dozen forms opened at once is a
+    // screen apiece. The list says what each word is today; the boxes are
+    // behind the press that changes one.
+    await page.viewport(390, 844)
+    const put = vi.fn(() =>
+      Effect.succeed({ id: term.id, override: { 'zh-CN': '统一编号' }, version: 3 }),
+    )
+    renderScreen({
+      client: fakeClient({
+        app: { getManifest: () => Effect.succeed(emptyManifest()) },
+        settings: { getTerminology: () => Effect.succeed(terminology({}, 2)), putTerm: put },
+      } as never),
+      children: <TerminologyPage />,
+    })
+    await expect.element(page.getByText('人员编号')).toBeVisible()
+    // no form is open until one is asked for
+    expect(await page.getByLabelText('简体中文').elements()).toHaveLength(0)
+
+    await page.getByText('人员编号').click()
+    const box = page.getByLabelText('简体中文')
+    await expect.element(box).toBeVisible()
+    await box.fill('统一编号')
+    await page.getByRole('button', { name: '保存' }).click()
+    await vi.waitFor(() => expect(put).toHaveBeenCalledOnce())
+    const request = (put.mock.calls[0] as unknown as [{ payload: unknown }])[0]
+    expect(request.payload).toEqual({ version: 2, override: { 'zh-CN': '统一编号', 'en-US': '' } })
+    await page.viewport(1280, 800)
+  })
+})

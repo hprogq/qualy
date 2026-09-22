@@ -100,7 +100,12 @@ const styles = stylex.create({
     opacity: 0.7,
   },
   statusChoice: {
-    width: 128,
+    // Narrow, the search has taken the line above and this shares the last
+    // one with the press that makes something. A fixed width left the rest
+    // of that line empty, so the filter takes it.
+    width: { default: 128, [breakpoints.phone]: 'auto' },
+    minWidth: 0,
+    flexGrow: { default: null, [breakpoints.phone]: 1 },
   },
   tableFrame: {
     borderRadius: tokens.radiusLg,

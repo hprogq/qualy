@@ -750,6 +750,8 @@ const i18n = definePluginMessages({
     notStartedYet: { id: 'assessment/batch/not-started', defaultMessage: 'Not started' },
     /** the head's strip where the round has no stages to be in yet */
     noPhasesYet: { id: 'assessment/batch/no-phases', defaultMessage: 'No stages arranged yet' },
+    /** the same strip once there is no stage left to be in */
+    phasesOver: { id: 'assessment/batch/phases-over', defaultMessage: 'All stages have ended' },
     flowTitle: { id: 'assessment/flow/title', defaultMessage: 'Stage progress' },
     flowFrom,
     flowUntil,
@@ -1494,9 +1496,6 @@ const i18n = definePluginMessages({
     },
     resultRecalculate: { id: 'assessment/result/recalculate', defaultMessage: 'Recalculate' },
     resultGroupItems: { id: 'assessment/result/group-items', defaultMessage: 'Item subtotal' },
-    /** the same two figures where they share one line and carry their own names */
-    resultItemsShort: { id: 'assessment/result/items-short', defaultMessage: 'Items' },
-    resultChildrenShort: { id: 'assessment/result/children-short', defaultMessage: 'Subgroups' },
     resultGroupChildren: {
       id: 'assessment/result/group-children',
       defaultMessage: 'Subgroup subtotal',
@@ -4972,6 +4971,13 @@ const i18n = definePluginMessages({
       id: 'assessment/roster/units-resize',
       defaultMessage: 'Resize the unit column',
     },
+    /** the one line a phone gives the unit filter, and what it opens */
+    rosterUnitsAll: { id: 'assessment/roster/units-all', defaultMessage: 'Every unit' },
+    rosterUnitsSome: {
+      id: 'assessment/roster/units-some',
+      defaultMessage: '{count, plural, other {# units}} chosen',
+    },
+    rosterUnitsChange: { id: 'assessment/roster/units-change', defaultMessage: 'Change' },
     rosterUnits: { id: 'assessment/roster/units', defaultMessage: 'Organization unit' },
     rosterEmpty: {
       id: 'assessment/roster/empty',
