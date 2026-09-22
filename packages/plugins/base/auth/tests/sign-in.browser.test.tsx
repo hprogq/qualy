@@ -69,4 +69,35 @@ describe('the sign-in screen', () => {
     await expect.element(page.getByLabelText('用户名')).not.toBeInTheDocument()
     await expect.element(page.getByRole('button', { name: '← 其他登录方式' })).toBeVisible()
   })
+
+  it('says why a sign-in that went elsewhere came back, and reads only codes', async () => {
+    const back = (route: string) =>
+      renderScreen({
+        client: fakeClient({
+          app: { getManifest: emptyManifest() },
+          auth: { listLoginMethods: { methods: [password] } },
+        }),
+        route,
+        children: <LoginPage />,
+      })
+    back('/login?error=AUTH_PERSON_NOT_FOUND')
+    await expect
+      .element(page.getByTestId('sign-in-failure'))
+      .toHaveAttribute('data-code', 'AUTH_PERSON_NOT_FOUND')
+    // the way on is still offered beside it
+    await expect.element(page.getByRole('button', { name: '账号密码' })).toBeVisible()
+  })
+
+  it('shows nothing for an error that is not a code', async () => {
+    renderScreen({
+      client: fakeClient({
+        app: { getManifest: emptyManifest() },
+        auth: { listLoginMethods: { methods: [password] } },
+      }),
+      route: `/login?error=${encodeURIComponent('<b>hello</b>')}`,
+      children: <LoginPage />,
+    })
+    await expect.element(page.getByRole('button', { name: '账号密码' })).toBeVisible()
+    expect(document.querySelector('[data-testid="sign-in-failure"]')).toBeNull()
+  })
 })

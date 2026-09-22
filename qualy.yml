@@ -67,3 +67,4 @@ plugins:
       authoring: true
   '@qualy/plugin-settings': {}
   '@qualy/plugin-directory-import': {}
+  '@qualy/plugin-auth-cas': {}

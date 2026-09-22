@@ -467,6 +467,12 @@ export type SignInFailureReason =
   | 'user-deleted'
   | 'user-type-disabled'
   | 'tenant-disabled'
+  /** the other side refused the proof it was shown */
+  | 'external-rejected'
+  /** the other side could not be asked */
+  | 'external-unavailable'
+  /** the other side answered in a form the driver cannot read */
+  | 'external-invalid'
 
 export interface SignedInUser {
   readonly id: string

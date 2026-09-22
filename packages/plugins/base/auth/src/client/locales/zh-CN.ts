@@ -298,6 +298,9 @@ export default {
   'auth/error/binding-user-field-missing':
     '{field, select, email {请先在基本资料中填写该用户的邮箱。} other {请先在基本资料中填写该用户的编号。}}',
   'auth/error/binding-not-found': '暂无可撤销的绑定。',
+  'auth/error/method-unavailable': '该登录方式暂不可用，请换一种方式登录。',
+  'auth/error/flow-rejected': '本次登录已过期或已完成，请重新登录。',
+  'auth/error/person-not-found': '身份已确认，但系统中没有与你对应的账号，请联系管理员。',
   'auth/permission/user-type-read': '查看用户类型',
   'auth/permission/user-type-manage': '管理用户类型',
   'auth/permission/provider-read': '查看登录方式',

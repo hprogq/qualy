@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sso:serviceResponse xmlns:sso="http://www.yale.edu/tp/cas">
+  <sso:authenticationSuccess>
+    <sso:user>demo.person</sso:user>
+    <sso:attributes>
+      <sso:attribute name="id_number" value="20990002"/>
+      <sso:attribute name="user_name" value="示例 &amp; 同学"/>
+      <sso:attribute name="memberOf" value="group-a"/>
+      <sso:attribute name="memberOf" value="group-b"/>
+      <sso:ID_NUMBER>should-not-fold</sso:ID_NUMBER>
+    </sso:attributes>
+  </sso:authenticationSuccess>
+</sso:serviceResponse>

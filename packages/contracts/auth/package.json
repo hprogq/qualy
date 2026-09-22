@@ -13,6 +13,7 @@
     "./plugin": "./src/plugin.ts",
     "./provisioning": "./src/provisioning.ts",
     "./session": "./src/session.ts",
+    "./sign-in-failure": "./src/sign-in-failure.ts",
     "./terms": "./src/terms.ts"
   },
   "peerDependencies": {

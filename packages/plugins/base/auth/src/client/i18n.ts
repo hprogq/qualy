@@ -5,6 +5,7 @@ import {
   type ErrorsByCode,
 } from '@qualy/i18n-contract'
 import type * as authErrors from '../server/errors.ts'
+import type * as signInFailures from '@qualy/auth-contract/sign-in-failure'
 
 // the interpolating messages declare their placeholders
 // sentences that carry the tenant's own word for a person's identifier:
@@ -750,7 +751,21 @@ const i18n = definePluginMessages({
       defaultMessage: 'Only people of the ticked types may sign in through it.',
     },
   },
-  errors: defineErrorTranslations<ErrorsByCode<typeof authErrors>>()({
+  errors: defineErrorTranslations<ErrorsByCode<typeof authErrors & typeof signInFailures>>()({
+    // what the sign-in page says when a redirect sign-in comes back without one
+    AUTH_METHOD_UNAVAILABLE: {
+      id: 'auth/error/method-unavailable',
+      defaultMessage: 'This sign-in method is not available right now. Choose another one.',
+    },
+    AUTH_FLOW_REJECTED: {
+      id: 'auth/error/flow-rejected',
+      defaultMessage: 'That sign-in expired or was already used. Start again.',
+    },
+    AUTH_PERSON_NOT_FOUND: {
+      id: 'auth/error/person-not-found',
+      defaultMessage:
+        'Your identity was confirmed, but no account here matches it. Contact an administrator.',
+    },
     USER_TYPE_NOT_FOUND: {
       id: 'auth/error/user-type-not-found',
       defaultMessage: 'User type not found.',

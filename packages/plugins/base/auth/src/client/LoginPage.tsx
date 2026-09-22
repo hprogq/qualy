@@ -48,6 +48,9 @@ const styles = stylex.create({
     gap: 12,
     marginTop: 8,
   },
+  failure: {
+    marginBottom: 16,
+  },
   quiet: {
     fontSize: 14,
     color: tokens.mutedForeground,
@@ -69,9 +72,20 @@ const styles = stylex.create({
 
 export default function LoginPage() {
   const query = useApiQuery(authApi)
-  const { format } = useI18n()
+  const { format, formatError } = useI18n()
   const startSession = useSessionTransition()
   const [searchParams, setSearchParams] = useSearchParams()
+  // a sign-in that went elsewhere and came back without one says why in the
+  // address; only something shaped like a code is read from it
+  const failure = searchParams.get('error')
+  const retryAfter = Number(searchParams.get('retryAfter'))
+  const failed =
+    failure !== null && /^[A-Z][A-Z0-9_]{2,63}$/.test(failure)
+      ? {
+          _tag: failure,
+          retryAfterSeconds: Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : 60,
+        }
+      : undefined
 
   // a new identity must not inherit the previous one's cache; the runtime
   // drops it and refetches the manifest, which decides where home now is
@@ -144,6 +158,16 @@ export default function LoginPage() {
     <div {...stylex.props(styles.ground)}>
       <Card xstyle={styles.door}>
         <h1 {...stylex.props(styles.title)}>{format(m.title)}</h1>
+        {failed !== undefined && (
+          <Alert
+            variant="destructive"
+            data-testid="sign-in-failure"
+            data-code={failed._tag}
+            xstyle={styles.failure}
+          >
+            <AlertTitle>{formatError(failed)}</AlertTitle>
+          </Alert>
+        )}
         {body()}
       </Card>
     </div>

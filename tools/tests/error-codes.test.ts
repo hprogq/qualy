@@ -13,12 +13,15 @@ import * as auth from '../../packages/plugins/base/auth/src/server/errors.ts'
 import * as org from '../../packages/plugins/base/org/src/server/errors.ts'
 import * as rbac from '../../packages/plugins/base/rbac/src/server/errors.ts'
 import * as authLocal from '../../packages/plugins/base/auth-local/src/api.ts'
+import * as authCas from '../../packages/plugins/base/auth-cas/src/api.ts'
+import * as signInFailure from '../../packages/contracts/auth/src/sign-in-failure.ts'
 import * as assessment from '../../packages/plugins/assessment/core/src/errors.ts'
 import * as assessmentFormula from '../../packages/plugins/assessment/formula/src/server/errors.ts'
 import * as settings from '../../packages/plugins/base/settings/src/server/errors.ts'
 import * as directoryImport from '../../packages/plugins/base/directory-import/src/server/errors.ts'
 import { errorMessages as authMessages } from '../../packages/plugins/base/auth/src/client/i18n.ts'
 import { errorMessages as authLocalMessages } from '../../packages/plugins/base/auth-local/src/client/i18n.ts'
+import { errorMessages as authCasMessages } from '../../packages/plugins/base/auth-cas/src/client/i18n.ts'
 import { errorMessages as orgMessages } from '../../packages/plugins/base/org/src/client/i18n.ts'
 import { errorMessages as rbacMessages } from '../../packages/plugins/base/rbac/src/client/i18n.ts'
 import { errorMessages as assessmentMessages } from '../../packages/plugins/assessment/core/src/client/i18n.ts'
@@ -79,6 +82,19 @@ const SOURCES = [
     module: authLocal,
     owner: '@qualy/plugin-auth-local',
     file: 'packages/plugins/base/auth-local/src/api.ts',
+  },
+  {
+    module: authCas,
+    owner: '@qualy/plugin-auth-cas',
+    file: 'packages/plugins/base/auth-cas/src/api.ts',
+  },
+  // what every redirect driver sends a failed sign-in back with: declared
+  // where the drivers can reach it, translated by the plugin whose sign-in
+  // page reads it
+  {
+    module: signInFailure,
+    owner: '@qualy/plugin-auth',
+    file: 'packages/contracts/auth/src/sign-in-failure.ts',
   },
   {
     module: settings,
@@ -151,6 +167,7 @@ const translations: Record<string, readonly string[]> = {
   '@qualy/plugin-org': Object.keys(orgMessages),
   '@qualy/plugin-rbac': Object.keys(rbacMessages),
   '@qualy/plugin-auth-local': Object.keys(authLocalMessages),
+  '@qualy/plugin-auth-cas': Object.keys(authCasMessages),
   '@qualy/plugin-assessment': Object.keys(assessmentMessages),
   '@qualy/plugin-assessment-formula': Object.keys(assessmentFormulaMessages),
   '@qualy/plugin-settings': Object.keys(settingsMessages),

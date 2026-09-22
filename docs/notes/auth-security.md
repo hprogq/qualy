@@ -252,6 +252,34 @@ default-src 'self'; script-src 'self' 'sha256-pKAg+of2SxxrkLJX27pRnCgcyN5Ud1dmuO
   详情回显含默认值的有效值;驱动可声明 `prepareConfig`,在可见的有效值上校验并派生设置(例如 CAS 按协议档位展开端点),
   core 存在 `config.derived` 下。
 
+## CAS 驱动(2026-09-23 定案)
+
+`@qualy/plugin-auth-cas`:tenant-managed 入口,按 `User.businessNo` 找人,不建绑定、不建号、不改人。
+
+- **配置按协议档位展开**:管理员填服务地址 + 协议(CAS 3.0 缺省 / 2.0 / 1.0 / 自定义)+ 人员编号来源(登录名缺省 / 指定属性,
+  可选「没有该属性时改用登录名」)+ 高级里的「每次都要求重新输入密码」(`renew`)。`prepareConfig` 把档位展开成明确端点
+  (`loginUrl`、`validateUrl`、请求方式、返回格式、身份规则)存进 `config.derived`,运行时只读展开结果——之后改了档位的默认路径,
+  在用的入口不会被悄悄挪走。回调只收 GET(不向服务器要 `method=POST` 的登录)。标准档一律 GET、XML(CAS 1 为文本);「自定义」档可逐个覆盖登录与校验地址、改用 POST 表单、
+  指定返回格式(自动 / XML / JSON)。没有 logout 地址:本产品不做 CAS 登出与 SLO,存一个没人读的设置只会误导管理员。
+- **service 只写一次**:发起时用 flow 的 payload 工厂把「回调地址 + `?flow=<state>`」写成字符串存进 flow,跳转与校验都用这同一个
+  字符串,绝不回调时重新拼。flow 防串线与 CSRF,CAS 自己防 ticket 重放,两件事不重复。
+- **只收 ST**:回调里的 ticket 必须是 `ST-` 开头的可打印 ASCII(≤256),PT/TGT 或没有 ticket 一律拒绝且不去问服务器。
+  校验地址即使是 `/proxyValidate` 也只是兼容服务器,**不支持 Proxy Ticket 登录,不申请也不保存 PGT**。
+- **解析**:响应体 ≤256 KiB、必须是合法 UTF-8;XML 先拒 `<!DOCTYPE` / `<!ENTITY`、预扫描嵌套 ≤32 层、`XMLValidator` 判定良构,
+  再交给 fast-xml-parser(`processEntities:false`、不推断类型、`preserveOrder` 保留前缀与重复、`maxNestedTags`);实体只手工解
+  五个预定义与数字引用,其余即不可读。解码**认结构不认前缀**:根的 local name 必须是 `serviceResponse`,它唯一的子元素是
+  `authenticationSuccess` / `authenticationFailure`,success 下恰好一个非空 `user`、至多一个 `attributes`;属性两种写法都收
+  (`<id_number>…</id_number>` 与 `<attribute name value/>`),**名字原样、不折叠大小写,重复值全留**。`auto` 只读这一次答复,
+  不拿同一张 ST 换格式重试;JSON 只在管理员明确选择时才请求。这些安全用例在 `auth-cas/tests/protocol.test.ts` 永久保留,
+  fast-xml-parser 升级时它们就是 parser contract。
+- **失败回到登录页**:`/login?error=<CODE>`(限流再带 `retryAfter`),码只有:`AUTH_METHOD_UNAVAILABLE` / `AUTH_FLOW_REJECTED` /
+  `AUTH_PERSON_NOT_FOUND`(契约 `@qualy/auth-contract/sign-in-failure`,各重定向驱动共用,auth 翻译)与 `AUTH_CAS_TICKET_REJECTED` /
+  `AUTH_CAS_UPSTREAM_UNAVAILABLE` / `AUTH_CAS_RESPONSE_INVALID`(CAS 自有)。账号停用、不存在与属性缺失对外同一个码,精确原因只进
+  sign-in 记录(新增 `external-rejected` / `external-unavailable` / `external-invalid`)。
+- **什么都不留**:ticket、服务器答复原文、属性都只活在这次请求的内存里,不写日志、不进 span(query 本来就不进)、不持久化;
+  服务器拒绝时日志只记它的错误码。`checkAliveTicket` 之类上游会话凭据本阶段不保存。
+- 仓库里的 CAS fixture 全部是合成数据;真实学校的联调按 docs/notes/cas-manual-check.md 人工做,不进 CI。
+
 ## 恢复通道(2026-09-22 定案)
 
 - 每个租户的系统账户(`system-account` 类型)永远保有平台 local 入口上的一条可用登录:有邮箱、有存活密码凭据,入口在用且受众接纳系统类型

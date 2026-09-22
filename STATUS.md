@@ -19665,3 +19665,47 @@ HEAD 的 run 是绿的;红的是中间提交 `ceb8ccb6`(那次的 `entry-workflo
 ### 遗留
 
 - 驱动(CAS、GitHub、OIDC)、「我的」、Mail 与邮箱流程是后续提交。`session_auth_grants` 目前没有写入方。
+
+## 认证 F–J 之二:CAS 驱动(2026-09-23)
+
+设计来源 docs/cas-oidc.md「CAS」诸节、规划时的用户裁决(自动化只靠本地假 CAS、fast-xml-parser 加外层守卫、fixture 全合成、
+不保存 `checkAliveTicket`)与修正项①(flow payload 工厂保存签发时的 service 原字符串)。
+
+### 做了什么
+
+- **新插件 `@qualy/plugin-auth-cas`**(`pnpm plugin:add` 装配,active):tenant-managed 驱动,`resolution: user-field businessNo`,
+  不建绑定。路由 `GET /auth/cas/{providerCode}/start`(302 去 CAS 登录页)与 `GET /auth/cas/{providerCode}/callback`(303 回
+  `returnTo` 或首页,失败 303 回登录页),都在 HttpApi 契约里(`HttpApiSchema.Empty(302/303)` + handler 直接返回
+  `HttpServerResponse.redirect`);href 与 callback 由 `HttpApiClient.urlBuilder` 现算,不写路径字面量。
+- **入口字段**:服务地址、协议(CAS 3.0 缺省 / 2.0 / 1.0 / 自定义)、人员编号来源(登录名 / 属性,属性名在选属性时才出现且必填,
+  可选回落登录名);高级:自定义档的登录 / 校验地址、请求方式、返回格式,以及 `renew`。`prepareConfig` 展开成明确端点存
+  `config.derived`;没有 logout 地址(不做 CAS 登出,不留没人读的设置)。
+- **协议层** `src/protocol/`:`settings.ts`(档位展开、存量回落)、`response.ts`(XML / JSON / CAS1 文本三种读法与全部安全守卫)、
+  `validate.ts`(service 字符串、登录跳转、只收 ST、按 GET/POST 与格式发校验请求经 `AuthOutbound`、按规则取人员编号)。
+- **契约** `@qualy/auth-contract/sign-in-failure`:登录页地址 `SIGN_IN_PAGE_PATH`(auth 的页面声明也改读它)、三个重定向驱动共用的
+  失败码与 `signInFailureLocation`;`SignInFailureReason` 增 `external-rejected / -unavailable / -invalid`。
+  登录页读 `?error=`(只认码的形状)显示横幅,文案走 catalog;限流时带 `retryAfter`。
+- **门禁**:frozen-routes 两条新路由;error-codes 登记 auth-cas 与 sign-in-failure 两个来源及翻译归属;`catalogs.test` 现在也遍历
+  登录驱动声明里的 UiText(入口名、字段标签 / 提示、选项),缺译即红(实测删一条 zh-CN 译文立刻报出)。
+- 文档:docs/notes/auth-security.md 增「CAS 驱动」一节;docs/notes/cas-manual-check.md 是真实学校 CAS 的人工联调清单(不含任何真实值)。
+
+### 验收(实际执行)
+
+- `pnpm typecheck`:exit 0,零 `error TS`。
+- `pnpm test`:`Test Files  285 passed | 3 skipped (288)`、`Tests  2118 passed | 17 skipped (2135)`。
+  前一轮 `ports` 门禁拒绝了新套件与 serve-middleware 共用的 3217 端口,改用 3220。
+- `pnpm test:browser`:`Test Files  68 passed (68)`、`Tests  517 passed (517)`。
+- `pnpm qualy database verify`:`78 committed migration(s) build the declared schema, zero drift`(本提交无迁移);`check`:`lineage ok`;
+  `drop-guard`:`drop guard ok (78 file(s) scanned)`;`resolve --frozen-lockfile`:`qualy.lock.json is up to date`。
+- 新测试:`auth-cas/tests/protocol.test.ts` 18 条(合成的 p3 标准答复 9 属性、`sso:` + name/value 属性 + 重复值 + 大小写不折叠、
+  规范里的多值示例、失败码、结构而非搜索、DOCTYPE / ENTITY / 未知实体 / 非法数字引用 / 裸 `&`、CDATA、超深、超大、截断、非 UTF-8、
+  JSON 与 CAS1 文本、`auto` 只读一次、档位展开与自定义覆盖、存量回落、service 与登录跳转、GET/POST 校验请求、只收 ST、人员编号规则);
+  `auth/tests/effect-cas.test.ts` 10 条(对着本文件里的假 CAS 服务器走真实 HTTP:登录页列出重定向入口、start → CAS → callback → 会话与
+  `returnTo`、同一 flow 只回来一次、伪造或缺 flow、ticket 发给别的 service 即被拒且被服务器烧掉、PT/TGT/无 ticket 不去问服务器、
+  找不到人不建号、服务器 503 与乱码、metadata 地址永不连接、自定义 POST `/proxyValidate` + 属性取号 + `renew`、不存在的入口、
+  发起 31 次被限流带 `retryAfter`);`sign-in.browser` 2 条(横幅按码显示、非码不显示)。
+
+### 遗留
+
+- 真实学校 CAS 的一次人工联调(docs/notes/cas-manual-check.md)。
+- 回调只收 GET;CAS 登出、SLO、PGT/PT、`checkAliveTicket` 均未做(见 auth-security「CAS 驱动」)。

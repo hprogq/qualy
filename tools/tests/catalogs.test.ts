@@ -9,6 +9,7 @@ import { pathToFileURL } from 'node:url'
 import { isPluginDescriptor, Plugin } from '@qualy/plugin-kit'
 import { I18nCatalogs, UiSurfaceDeclarations } from '@qualy/plugin-ui-registry/plugin'
 import { PermissionDeclarations } from '@qualy/rbac-contract/plugin'
+import { LoginDriverDeclarations } from '@qualy/auth-contract/plugin'
 import { readEntries } from '@qualy/assembly/host'
 import { resolvePackageDir, resolvePluginModuleUrl } from '@qualy/assembly/host'
 
@@ -136,6 +137,12 @@ describe('plugin message catalogs', () => {
         // Chinese with no gate able to see it.
         for (const declaration of Plugin.contributionsOf(descriptor, PermissionDeclarations)) {
           collectMessageIds(declaration, declared)
+        }
+        // and what a login driver asks an administrator: the entrance's kind,
+        // each field's label and hint, each choice's options. The form draws
+        // them off the wire the same way.
+        for (const driver of Plugin.contributionsOf(descriptor, LoginDriverDeclarations)) {
+          collectMessageIds(driver, declared)
         }
       }
       const namespace = module.catalogs.namespace

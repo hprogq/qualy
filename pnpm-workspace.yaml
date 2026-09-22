@@ -100,6 +100,11 @@ catalog:
   # second resolution cannot move the request somewhere else. The same version
   # @effect/platform-node already installs.
   undici: 8.10.2
+  # the parser a CAS validation answer is split with, and nothing more: the
+  # driver refuses any document type or entity declaration before it runs,
+  # turns its entity processing off and decodes the five predefined entities
+  # itself. 5.10.1 is the floor its recent entity-expansion advisories set.
+  fast-xml-parser: 5.11.1
   clsx: 2.1.1
   '@vitest/browser-playwright': 5.0.1
   'vitest-browser-react': 2.3.0

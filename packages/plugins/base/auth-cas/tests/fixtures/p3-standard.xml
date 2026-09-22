@@ -1,0 +1,16 @@
+<cas:serviceResponse xmlns:cas="http://www.yale.edu/tp/cas">
+    <cas:authenticationSuccess>
+        <cas:user>20990001</cas:user>
+        <cas:attributes>
+            <cas:isFromNewLogin>true</cas:isFromNewLogin>
+            <cas:authenticationDate>2099-01-01T08:00:00.000+08:00[Asia/Shanghai]</cas:authenticationDate>
+            <cas:successfulAuthenticationHandlers>ExampleAuthenticationHandler</cas:successfulAuthenticationHandlers>
+            <cas:id_number>20990001</cas:id_number>
+            <cas:user_name>测试同学</cas:user_name>
+            <cas:unit_name>示例学院</cas:unit_name>
+            <cas:id_type>1</cas:id_type>
+            <cas:credentialType>UsernamePasswordCredential</cas:credentialType>
+            <cas:longTermAuthenticationRequestTokenUsed>false</cas:longTermAuthenticationRequestTokenUsed>
+        </cas:attributes>
+    </cas:authenticationSuccess>
+</cas:serviceResponse>

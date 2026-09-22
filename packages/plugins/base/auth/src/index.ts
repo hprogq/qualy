@@ -11,6 +11,7 @@ import { Access } from '@qualy/rbac-contract/plugin'
 import { Audit } from '@qualy/audit-contract/plugin'
 import { Settings } from '@qualy/settings-contract/plugin'
 import { authTermCategories, authTerms } from '@qualy/auth-contract/terms'
+import { SIGN_IN_PAGE_PATH } from '@qualy/auth-contract/sign-in-failure'
 import { userActions } from './actions.ts'
 import {
   APP_SHELL,
@@ -62,7 +63,8 @@ const plugin = Plugin.define(
   Ui.i18n('./client/i18n'),
   Ui.page({
     id: 'auth/login',
-    path: '/login',
+    // the address redirect drivers send a failed sign-in back to
+    path: SIGN_IN_PAGE_PATH,
     component: Ui.react('./client/LoginPage'),
     layout: BLANK_SHELL,
     visibility: PUBLIC,

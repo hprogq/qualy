@@ -1,0 +1,27 @@
+{
+  "name": "@qualy/plugin-auth-cas",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./api": "./src/api.ts",
+    "./client/i18n": "./src/client/i18n.ts",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@qualy/api-kit": "workspace:*",
+    "@qualy/auth-contract": "workspace:*",
+    "@qualy/i18n-contract": "workspace:*",
+    "@qualy/plugin-auth": "workspace:*",
+    "@qualy/plugin-kit": "workspace:*",
+    "@qualy/plugin-ui-registry": "workspace:*",
+    "effect": "catalog:",
+    "fast-xml-parser": "catalog:"
+  },
+  "devDependencies": {
+    "@qualy/tsconfig": "workspace:*"
+  }
+}
