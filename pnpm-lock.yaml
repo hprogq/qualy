@@ -117,6 +117,9 @@ catalogs:
     lightningcss:
       specifier: 1.33.0
       version: 1.33.0
+    openid-client:
+      specifier: 6.8.8
+      version: 6.8.8
     pg:
       specifier: 8.23.0
       version: 8.23.0
@@ -209,6 +212,9 @@ importers:
       '@qualy/plugin-auth-local':
         specifier: workspace:*
         version: link:packages/plugins/base/auth-local
+      '@qualy/plugin-auth-oidc':
+        specifier: workspace:*
+        version: link:packages/plugins/base/auth-oidc
       '@qualy/plugin-database':
         specifier: workspace:*
         version: link:packages/plugins/infra/database
@@ -1253,6 +1259,9 @@ importers:
       '@qualy/plugin-auth-local':
         specifier: workspace:*
         version: link:../auth-local
+      '@qualy/plugin-auth-oidc':
+        specifier: workspace:*
+        version: link:../auth-oidc
       '@qualy/plugin-rbac':
         specifier: workspace:*
         version: link:../rbac
@@ -1379,6 +1388,37 @@ importers:
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.18
+
+  packages/plugins/base/auth-oidc:
+    dependencies:
+      '@qualy/api-kit':
+        specifier: workspace:*
+        version: link:../../../core/api-kit
+      '@qualy/auth-contract':
+        specifier: workspace:*
+        version: link:../../../contracts/auth
+      '@qualy/i18n-contract':
+        specifier: workspace:*
+        version: link:../../../contracts/i18n
+      '@qualy/plugin-auth':
+        specifier: workspace:*
+        version: link:../auth
+      '@qualy/plugin-kit':
+        specifier: workspace:*
+        version: link:../../../core/plugin-kit
+      '@qualy/plugin-ui-registry':
+        specifier: workspace:*
+        version: link:../../infra/ui-registry
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-rc.115
+      openid-client:
+        specifier: 'catalog:'
+        version: 6.8.8
+    devDependencies:
+      '@qualy/tsconfig':
+        specifier: workspace:*
+        version: link:../../../build/tsconfig
 
   packages/plugins/base/directory-import:
     dependencies:
@@ -3858,6 +3898,9 @@ packages:
     resolution: {integrity: sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==}
     hasBin: true
 
+  jose@6.2.12:
+    resolution: {integrity: sha512-9NiFmJEex0sy2Dk58j2UGBSHgUs2ypF9eZSu4L6vjOX3Dp96Sw1F3uL+H+D1sx02jZZdzUT0HgvCy59CuvXcWw==}
+
   js-sha256@0.10.1:
     resolution: {integrity: sha512-5obBtsz9301ULlsgggLg542s/jqtddfOpV5KJc4hajc9JV8GeY2gZHSVpYBn4nWqAUTJ9v+xwtbJ1mIBgIH5Vw==}
 
@@ -4162,6 +4205,9 @@ packages:
   oauth-sign@0.9.0:
     resolution: {integrity: sha512-fexhUFFPTGV8ybAtSIGbV6gOkSv8UtRbDBnAyLQw4QPKkgNlsH2ByPGtMUqdWkos6YCRmAqViwgZrJc/mRDzZQ==}
 
+  oauth4webapi@3.8.8:
+    resolution: {integrity: sha512-8N28E+a/oxfXWBgOMt+ZP/JUf/XR+IFbvkAEPP3gznXOMv9BpAAwiIj0TFNz3tGTPc0ZQ8zmWBNgN1nAys0gng==}
+
   object-inspect@1.13.4:
     resolution: {integrity: sha512-W67iLl4J2EXEGTbfeHCffrjDfitvLANg0UlX3wFUUSTx92KXRFegMHUVgSqE+wvhAbi4WqjGg9czysTV2Epbew==}
     engines: {node: '>= 0.4'}
@@ -4178,6 +4224,9 @@ packages:
 
   oniguruma-to-es@4.3.6:
     resolution: {integrity: sha512-csuQ9x3Yr0cEIs/Zgx/OEt9iBw9vqIunAPQkx19R/fiMq2oGVTgcMqO/V3Ybqefr1TBvosI6jU539ksaBULJyA==}
+
+  openid-client@6.8.8:
+    resolution: {integrity: sha512-ZsucJA5Ad04Uv7YN4ql+s4GXNmb9uAYQwyJTsJx7CH/MX3JZioLE2pVKi1SC+YrbSLA4Px3Gi30dMjgOZtb6pA==}
 
   pako@1.0.11:
     resolution: {integrity: sha512-4hLB8Py4zZce5s4yd9XzopqwVv/yGNhV1Bl8NTmCq1763HeK2+EwVTv+leGeL13Dnh2wfbqowVPXCIO0z4taYw==}
@@ -6345,6 +6394,8 @@ snapshots:
 
   jiti@2.7.0: {}
 
+  jose@6.2.12: {}
+
   js-sha256@0.10.1: {}
 
   js-tokens@4.0.0: {}
@@ -6580,6 +6631,8 @@ snapshots:
 
   oauth-sign@0.9.0: {}
 
+  oauth4webapi@3.8.8: {}
+
   object-inspect@1.13.4: {}
 
   obug@2.1.4: {}
@@ -6595,6 +6648,11 @@ snapshots:
       oniguruma-parser: 0.12.2
       regex: 6.1.0
       regex-recursion: 6.0.2
+
+  openid-client@6.8.8:
+    dependencies:
+      jose: 6.2.12
+      oauth4webapi: 3.8.8
 
   pako@1.0.11: {}
 

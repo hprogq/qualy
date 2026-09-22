@@ -1,0 +1,25 @@
+import type { MessageCatalog } from '@qualy/i18n-contract'
+
+export default {
+  'auth-oidc/entrance/kind': 'OpenID Connect',
+  'auth-oidc/field/issuer': 'Issuer',
+  'auth-oidc/field/issuer-hint': '身份提供方的地址，与其令牌中的 iss 完全一致',
+  'auth-oidc/field/discovery': '端点',
+  'auth-oidc/field/discovery-auto': '从 Issuer 自动发现',
+  'auth-oidc/field/discovery-manual': '手动填写',
+  'auth-oidc/field/authorization-endpoint': '授权端点',
+  'auth-oidc/field/token-endpoint': '令牌端点',
+  'auth-oidc/field/jwks-uri': '公钥集(JWKS)地址',
+  'auth-oidc/field/userinfo-endpoint': 'UserInfo 端点',
+  'auth-oidc/field/client-id': 'Client ID',
+  'auth-oidc/field/client-secret': 'Client Secret',
+  'auth-oidc/field/scopes': 'Scopes',
+  'auth-oidc/field/scopes-hint': '以空格分隔，始终包含 openid；留空即 openid profile email',
+  'auth-oidc/field/token-auth': '客户端认证方式',
+  'auth-oidc/field/token-auth-auto': '自动',
+  'auth-oidc/field/token-auth-basic': 'HTTP Basic',
+  'auth-oidc/field/token-auth-post': '放在请求体中',
+  'auth-oidc/field/clock-skew': '时钟容差(秒)',
+  'auth-oidc/error/rejected': '身份提供方未能确认你的身份，请重试。',
+  'auth-oidc/error/unavailable': '暂时无法连接身份提供方，请稍后再试。',
+} satisfies MessageCatalog

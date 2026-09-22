@@ -105,6 +105,12 @@ catalog:
   # turns its entity processing off and decodes the five predefined entities
   # itself. 5.10.1 is the floor its recent entity-expansion advisories set.
   fast-xml-parser: 5.11.1
+  # the OpenID Connect relying party: discovery, the code grant with PKCE,
+  # ID Token validation (signature, issuer, audience, nonce, time) and
+  # UserInfo. Every request it makes goes through the auth outbound port,
+  # handed in as its customFetch. Only the OIDC driver uses it; GitHub's
+  # flow is a few requests of its own.
+  openid-client: 6.8.8
   clsx: 2.1.1
   '@vitest/browser-playwright': 5.0.1
   'vitest-browser-react': 2.3.0

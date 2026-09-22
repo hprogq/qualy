@@ -237,3 +237,30 @@ describe('the connection an entrance makes', () => {
     expect(failureOf(silent)).toEqual({ tag: 'OutboundFailed', reason: 'timeout' })
   })
 })
+
+describe('the port as a Fetch API function', () => {
+  it('answers a standards client the way the Effect side does, and refuses what it refuses', async () => {
+    const outbound = makeOutbound({ ...development, resolve: scripted(loopback).resolve })
+    const response = await outbound.asFetch(`http://idp.test:${port}/token`, {
+      method: 'POST',
+      headers: { accept: 'application/json' },
+      body: new URLSearchParams({ grant_type: 'authorization_code' }),
+    })
+    expect(response.status).toBe(200)
+    expect(await response.text()).toBe('ok application/x-www-form-urlencoded')
+
+    const moved = await outbound.asFetch(`http://idp.test:${port}/moved`)
+    expect(moved.status).toBe(302)
+
+    const production = makeOutbound({
+      requireHttps: true,
+      allowLoopback: false,
+      privateAllowlist: [],
+      resolve: () => Promise.resolve([{ address: '10.0.0.8', family: 4 }]),
+    })
+    await expect(production.asFetch('https://idp.internal/.well-known/openid-configuration')).rejects.toMatchObject({
+      _tag: 'OutboundRefused',
+      reason: 'private',
+    })
+  })
+})

@@ -1,7 +1,7 @@
 {
   "lockfileVersion": 2,
-  "manifestHash": "sha256:c2f98d1bb78df7a45e1f9392ba44e720bb7c593da459a06033d6d1be3faccb10",
-  "resolutionHash": "sha256:fe685da2f10c76e3906f59a37394fcd4afdcadde8cf577207122c27f9f735eeb",
+  "manifestHash": "sha256:78ca2c58b96109b669c64fd692094ef0a67d3d542d9213aaada1fead8c49fb6d",
+  "resolutionHash": "sha256:d2cf8e8e1f1dadb528f60347828a9d0efc9098737f8a6079c9e57424ad350d0b",
   "plugins": {
     "@qualy/plugin-assessment": {
       "version": "0.0.0",
@@ -165,6 +165,10 @@
       "state": "active"
     },
     "@qualy/plugin-auth-local": {
+      "version": "0.0.0",
+      "state": "active"
+    },
+    "@qualy/plugin-auth-oidc": {
       "version": "0.0.0",
       "state": "active"
     },
@@ -386,6 +390,7 @@
       "@qualy/plugin-auth-cas",
       "@qualy/plugin-auth-github",
       "@qualy/plugin-auth-local",
+      "@qualy/plugin-auth-oidc",
       "@qualy/plugin-database",
       "@qualy/plugin-directory-import",
       "@qualy/plugin-layout-default",

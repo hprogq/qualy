@@ -15,6 +15,7 @@ import * as rbac from '../../packages/plugins/base/rbac/src/server/errors.ts'
 import * as authLocal from '../../packages/plugins/base/auth-local/src/api.ts'
 import * as authCas from '../../packages/plugins/base/auth-cas/src/api.ts'
 import * as authGithub from '../../packages/plugins/base/auth-github/src/api.ts'
+import * as authOidc from '../../packages/plugins/base/auth-oidc/src/api.ts'
 import * as signInFailure from '../../packages/contracts/auth/src/sign-in-failure.ts'
 import * as assessment from '../../packages/plugins/assessment/core/src/errors.ts'
 import * as assessmentFormula from '../../packages/plugins/assessment/formula/src/server/errors.ts'
@@ -24,6 +25,7 @@ import { errorMessages as authMessages } from '../../packages/plugins/base/auth/
 import { errorMessages as authLocalMessages } from '../../packages/plugins/base/auth-local/src/client/i18n.ts'
 import { errorMessages as authCasMessages } from '../../packages/plugins/base/auth-cas/src/client/i18n.ts'
 import { errorMessages as authGithubMessages } from '../../packages/plugins/base/auth-github/src/client/i18n.ts'
+import { errorMessages as authOidcMessages } from '../../packages/plugins/base/auth-oidc/src/client/i18n.ts'
 import { errorMessages as orgMessages } from '../../packages/plugins/base/org/src/client/i18n.ts'
 import { errorMessages as rbacMessages } from '../../packages/plugins/base/rbac/src/client/i18n.ts'
 import { errorMessages as assessmentMessages } from '../../packages/plugins/assessment/core/src/client/i18n.ts'
@@ -94,6 +96,11 @@ const SOURCES = [
     module: authGithub,
     owner: '@qualy/plugin-auth-github',
     file: 'packages/plugins/base/auth-github/src/api.ts',
+  },
+  {
+    module: authOidc,
+    owner: '@qualy/plugin-auth-oidc',
+    file: 'packages/plugins/base/auth-oidc/src/api.ts',
   },
   // what every redirect driver sends a failed sign-in back with: declared
   // where the drivers can reach it, translated by the plugin whose sign-in
@@ -176,6 +183,7 @@ const translations: Record<string, readonly string[]> = {
   '@qualy/plugin-auth-local': Object.keys(authLocalMessages),
   '@qualy/plugin-auth-cas': Object.keys(authCasMessages),
   '@qualy/plugin-auth-github': Object.keys(authGithubMessages),
+  '@qualy/plugin-auth-oidc': Object.keys(authOidcMessages),
   '@qualy/plugin-assessment': Object.keys(assessmentMessages),
   '@qualy/plugin-assessment-formula': Object.keys(assessmentFormulaMessages),
   '@qualy/plugin-settings': Object.keys(settingsMessages),

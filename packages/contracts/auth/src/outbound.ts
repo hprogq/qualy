@@ -66,5 +66,12 @@ export class AuthOutbound extends Context.Service<
     readonly fetch: (
       request: OutboundRequest,
     ) => Effect.Effect<OutboundResponse, OutboundRefused | OutboundFailed>
+    /**
+     * The same, as a Fetch API function: for a standards client that makes
+     * its own requests and takes a fetch to make them with. Checked, pinned
+     * and bounded exactly as `fetch` is; a refusal or failure rejects with
+     * the port's own error. GET and POST only.
+     */
+    readonly asFetch: (resource: string | URL | Request, init?: RequestInit) => Promise<Response>
   }
 >()('@qualy/auth-contract/AuthOutbound') {}

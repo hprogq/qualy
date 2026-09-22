@@ -77,6 +77,7 @@
     "@qualy/plugin-auth-cas": "workspace:*",
     "@qualy/plugin-auth-github": "workspace:*",
     "@qualy/plugin-auth-local": "workspace:*",
+    "@qualy/plugin-auth-oidc": "workspace:*",
     "@qualy/plugin-rbac": "workspace:*",
     "@qualy/testkit": "workspace:*",
     "@qualy/tsconfig": "workspace:*",

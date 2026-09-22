@@ -162,132 +162,185 @@ class TooLarge extends Error {}
  * Built per policy rather than per request so the allowlist is parsed once;
  * each request gets its own connection pool, pinned to what that request
  * resolved, and closes it when the answer has been read.
+ *
+ * One request path serves both shapes the port offers: the Effect a driver
+ * yields, and the Fetch API function a standards client is handed. Both
+ * check, resolve and pin the same way; the second only translates.
  */
 export const makeOutbound = (policy: OutboundPolicy) => {
   const allowed = allowlist(policy.privateAllowlist)
   const resolve = policy.resolve ?? systemResolve
 
-  const fetch = (input: OutboundRequest): Effect.Effect<OutboundResponse, OutboundRefused | OutboundFailed> =>
-    Effect.gen(function* () {
-      let url: URL
+  /** the addresses a request may be made to, or the rule that refuses it */
+  const admitted = async (url: URL, raw: string): Promise<readonly ResolvedAddress[]> => {
+    const secure = url.protocol === 'https:'
+    if (!secure && !(url.protocol === 'http:' && !policy.requireHttps)) {
+      throw new OutboundRefused({ reason: 'scheme' })
+    }
+    if (url.username !== '' || url.password !== '') {
+      throw new OutboundRefused({ reason: 'credentials' })
+    }
+    if (url.hash !== '' || raw.includes('#')) throw new OutboundRefused({ reason: 'fragment' })
+    const hostname = url.hostname.replace(/^\[|\]$/g, '')
+    const literal = isIP(hostname)
+    let addresses: readonly ResolvedAddress[]
+    if (literal !== 0) {
+      addresses = [{ address: hostname, family: literal === 6 ? 6 : 4 }]
+    } else {
       try {
-        url = new URL(input.url)
+        addresses = await resolve(hostname)
       } catch {
-        return yield* new OutboundRefused({ reason: 'scheme' })
+        throw new OutboundRefused({ reason: 'unresolvable' })
       }
-      const secure = url.protocol === 'https:'
-      if (!secure && !(url.protocol === 'http:' && !policy.requireHttps)) {
-        return yield* new OutboundRefused({ reason: 'scheme' })
-      }
-      if (url.username !== '' || url.password !== '') {
-        return yield* new OutboundRefused({ reason: 'credentials' })
-      }
-      if (url.hash !== '' || input.url.includes('#')) {
-        return yield* new OutboundRefused({ reason: 'fragment' })
-      }
-      const hostname = url.hostname.replace(/^\[|\]$/g, '')
-      const literal = isIP(hostname)
-      const addresses: readonly ResolvedAddress[] =
-        literal !== 0
-          ? [{ address: hostname, family: literal === 6 ? 6 : 4 }]
-          : yield* Effect.tryPromise({
-              try: () => resolve(hostname),
-              catch: () => new OutboundRefused({ reason: 'unresolvable' }),
-            })
-      if (addresses.length === 0) return yield* new OutboundRefused({ reason: 'unresolvable' })
-      // every address a name answers with has to pass: a name that resolves
-      // to one public and one internal address is not a public name
-      for (const { address } of addresses) {
-        const judged = classifyAddress(address)
-        if (judged === 'public') continue
-        if (judged === 'loopback' && policy.allowLoopback) continue
-        if (judged === 'private' && allowed(hostname, address)) continue
-        return yield* new OutboundRefused({ reason: judged })
-      }
+    }
+    if (addresses.length === 0) throw new OutboundRefused({ reason: 'unresolvable' })
+    // every address a name answers with has to pass: a name that resolves
+    // to one public and one internal address is not a public name
+    for (const { address } of addresses) {
+      const judged = classifyAddress(address)
+      if (judged === 'public') continue
+      if (judged === 'loopback' && policy.allowLoopback) continue
+      if (judged === 'private' && allowed(hostname, address)) continue
+      throw new OutboundRefused({ reason: judged })
+    }
+    return addresses
+  }
 
-      const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS
-      const maxBytes = input.maxBytes ?? DEFAULT_MAX_BYTES
-      const body =
-        input.body instanceof URLSearchParams ? input.body.toString() : (input.body ?? undefined)
-      const headers: Record<string, string> = {
-        ...(input.body instanceof URLSearchParams
-          ? { 'content-type': 'application/x-www-form-urlencoded' }
-          : {}),
-        ...input.headers,
-      }
-
-      return yield* Effect.tryPromise({
-        try: async (interrupted) => {
-          // the lookup the connection makes answers with what was checked,
-          // and only that; the name still goes to TLS as the server name
-          const agent = new Agent({
-            connect: {
-              timeout: timeoutMs,
-              lookup: (_hostname, options, callback) => {
-                const all = (options as { all?: boolean }).all === true
-                if (all) {
-                  callback(
-                    null,
-                    addresses.map((entry) => ({ address: entry.address, family: entry.family })),
-                  )
-                } else {
-                  const first = addresses[0]!
-                  ;(callback as (error: null, address: string, family: number) => void)(
-                    null,
-                    first.address,
-                    first.family,
-                  )
-                }
-              },
-            },
-          })
-          try {
-            const signal = AbortSignal.any([interrupted, AbortSignal.timeout(timeoutMs)])
-            const response = await request(url, {
-              method: input.method ?? 'GET',
-              headers,
-              ...(body === undefined ? {} : { body }),
-              dispatcher: agent,
-              signal,
-            })
-            const chunks: Buffer[] = []
-            let size = 0
-            for await (const chunk of response.body) {
-              size += (chunk as Buffer).length
-              if (size > maxBytes) {
-                response.body.destroy()
-                throw new TooLarge()
-              }
-              chunks.push(chunk as Buffer)
-            }
-            const flat: Record<string, string> = {}
-            for (const [name, value] of Object.entries(response.headers)) {
-              if (value === undefined) continue
-              flat[name.toLowerCase()] = Array.isArray(value) ? value[value.length - 1]! : value
-            }
-            return {
-              status: response.statusCode,
-              headers: flat,
-              body: new Uint8Array(Buffer.concat(chunks)),
-            } satisfies OutboundResponse
-          } finally {
-            await agent.close().catch(() => undefined)
+  /** one request, made or refused; throws OutboundRefused or OutboundFailed */
+  const send = async (input: OutboundRequest, interrupted?: AbortSignal): Promise<OutboundResponse> => {
+    let url: URL
+    try {
+      url = new URL(input.url)
+    } catch {
+      throw new OutboundRefused({ reason: 'scheme' })
+    }
+    const addresses = await admitted(url, input.url)
+    const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS
+    const maxBytes = input.maxBytes ?? DEFAULT_MAX_BYTES
+    const body =
+      input.body instanceof URLSearchParams ? input.body.toString() : (input.body ?? undefined)
+    const headers: Record<string, string> = {
+      ...(input.body instanceof URLSearchParams
+        ? { 'content-type': 'application/x-www-form-urlencoded' }
+        : {}),
+      ...input.headers,
+    }
+    // the lookup the connection makes answers with what was checked, and
+    // only that; the name still goes to TLS as the server name
+    const agent = new Agent({
+      connect: {
+        timeout: timeoutMs,
+        lookup: (_hostname, options, callback) => {
+          const all = (options as { all?: boolean }).all === true
+          if (all) {
+            callback(
+              null,
+              addresses.map((entry) => ({ address: entry.address, family: entry.family })),
+            )
+          } else {
+            const first = addresses[0]!
+            ;(callback as (error: null, address: string, family: number) => void)(
+              null,
+              first.address,
+              first.family,
+            )
           }
         },
-        catch: (error) => {
-          if (error instanceof TooLarge) return new OutboundFailed({ reason: 'too-large' })
-          const name = (error as { name?: string } | undefined)?.name
-          if (name === 'TimeoutError' || name === 'AbortError') {
-            return new OutboundFailed({ reason: 'timeout' })
-          }
-          const code = (error as { code?: string } | undefined)?.code
-          if (code === 'UND_ERR_CONNECT_TIMEOUT' || code === 'UND_ERR_HEADERS_TIMEOUT') {
-            return new OutboundFailed({ reason: 'timeout' })
-          }
-          return new OutboundFailed({ reason: 'network' })
-        },
+      },
+    })
+    try {
+      const signal = AbortSignal.any([
+        ...(interrupted === undefined ? [] : [interrupted]),
+        AbortSignal.timeout(timeoutMs),
+      ])
+      const response = await request(url, {
+        method: input.method ?? 'GET',
+        headers,
+        ...(body === undefined ? {} : { body }),
+        dispatcher: agent,
+        signal,
       })
+      const chunks: Buffer[] = []
+      let size = 0
+      for await (const chunk of response.body) {
+        size += (chunk as Buffer).length
+        if (size > maxBytes) {
+          response.body.destroy()
+          throw new TooLarge()
+        }
+        chunks.push(chunk as Buffer)
+      }
+      const flat: Record<string, string> = {}
+      for (const [name, value] of Object.entries(response.headers)) {
+        if (value === undefined) continue
+        flat[name.toLowerCase()] = Array.isArray(value) ? value[value.length - 1]! : value
+      }
+      return {
+        status: response.statusCode,
+        headers: flat,
+        body: new Uint8Array(Buffer.concat(chunks)),
+      }
+    } catch (error) {
+      if (error instanceof TooLarge) throw new OutboundFailed({ reason: 'too-large' })
+      const name = (error as { name?: string } | undefined)?.name
+      if (name === 'TimeoutError' || name === 'AbortError') {
+        throw new OutboundFailed({ reason: 'timeout' })
+      }
+      const code = (error as { code?: string } | undefined)?.code
+      if (code === 'UND_ERR_CONNECT_TIMEOUT' || code === 'UND_ERR_HEADERS_TIMEOUT') {
+        throw new OutboundFailed({ reason: 'timeout' })
+      }
+      throw new OutboundFailed({ reason: 'network' })
+    } finally {
+      await agent.close().catch(() => undefined)
+    }
+  }
+
+  const fetch = (input: OutboundRequest): Effect.Effect<OutboundResponse, OutboundRefused | OutboundFailed> =>
+    Effect.tryPromise({
+      try: (interrupted) => send(input, interrupted),
+      catch: (error) =>
+        error instanceof OutboundRefused || error instanceof OutboundFailed
+          ? error
+          : new OutboundFailed({ reason: 'network' }),
     }).pipe(Effect.withSpan('auth.outbound', { kind: 'client' }))
 
-  return AuthOutbound.of({ fetch })
+  /**
+   * The same request path in the shape the Fetch API has, for a standards
+   * client that makes its own requests. A refusal or a failure rejects the
+   * promise with the port's own error, which the client passes on.
+   */
+  const asFetch = async (resource: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const target = resource instanceof Request ? resource.url : resource.toString()
+    const method = (init?.method ?? (resource instanceof Request ? resource.method : 'GET')).toUpperCase()
+    if (method !== 'GET' && method !== 'POST') throw new OutboundRefused({ reason: 'scheme' })
+    const headers: Record<string, string> = {}
+    new Headers(init?.headers).forEach((value, name) => {
+      headers[name] = value
+    })
+    const raw = init?.body
+    const body =
+      raw === undefined || raw === null
+        ? undefined
+        : raw instanceof URLSearchParams || typeof raw === 'string'
+          ? raw
+          : new TextDecoder().decode(raw as ArrayBuffer | Uint8Array)
+    const answered = await send(
+      {
+        url: target,
+        method,
+        headers,
+        ...(body === undefined ? {} : { body }),
+      },
+      init?.signal ?? undefined,
+    )
+    // a status that may not carry a body is answered without one
+    const empty = answered.status === 204 || answered.status === 205 || answered.status === 304
+    return new Response(empty ? null : answered.body, {
+      status: answered.status,
+      headers: answered.headers,
+    })
+  }
+
+  return AuthOutbound.of({ fetch, asFetch })
 }

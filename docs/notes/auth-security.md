@@ -298,6 +298,24 @@ redirect_uri)→ `GET /user` → `subject = String(user.id)`、展示名 = `user
 - 其他失败:GitHub 拒绝或用户在授权页取消 → `AUTH_GITHUB_REJECTED`;换 token 或取用户失败 → `AUTH_GITHUB_UNAVAILABLE`;
   state 不认得 → `AUTH_FLOW_REJECTED`。
 
+## OIDC 驱动(2026-09-23 定案)
+
+`@qualy/plugin-auth-oidc`:协议交给 openid-client 6.8.8(discovery、授权码 + PKCE S256、nonce、state、ID Token 的
+issuer / audience / 时间校验、UserInfo),**它的每一个请求都经 `customFetch` → `AuthOutbound.asFetch`**(discovery、token、
+JWKS、UserInfo 一个都不走默认 fetch;出站端口为此多了一个 Fetch API 形状的入口,与 `fetch` 同一条检查与钉地址路径)。
+
+- **ID Token 验签**:token 端点直接返回的 ID Token 按协议可以只靠 TLS 担保,这里仍用 `enableNonRepudiationChecks`
+  对着 JWKS 验签——开发机允许明文 http 时连接担保不了什么,签名不看来路。
+- 配置:`issuer`、端点来源(自动发现缺省 / 手动填授权、令牌、JWKS、可选 UserInfo)、`clientId`、`clientSecret`;
+  高级:scopes(缺省 `openid profile email`,`openid` 永远在)、客户端认证方式(自动 / Basic / 请求体)、时钟容差(0–300 秒,
+  缺省 60)。`identityNamespaceKeys: ['issuer', 'clientId']`(pairwise sub);端点不算身份。
+- 配置对象按「入口 id + version」缓存(至多 64 个,失败不缓存),保存设置即换 key 自然失效。
+- **subject 只认 `sub`**,绝不用 email / preferred_username;展示名依次取 ID Token 的 preferred_username / name / email,
+  都没有才问 UserInfo(`sub` 必须一致,否则不用),UserInfo 失败只丢名字不挡登录;每次登录刷新展示名。
+- 失败:校验不过或用户取消 → `AUTH_OIDC_REJECTED`;出站拒绝、网络失败或对方 5xx → `AUTH_OIDC_UNAVAILABLE`。
+  登录 / 绑定 / 未绑定的处理与 GitHub 同一套(`bindSubject`、`AUTH_EXTERNAL_ACCOUNT_UNBOUND`,不按 email 匹配、不建号)。
+- 不做:OIDC 登出 / 前后通道登出、refresh token、`offline_access`。
+
 ## 「我的」自助接口(2026-09-23 定案)
 
 - `/iam/self/*` 只要登录,**不带任何用户 id**:问的永远是 session 的主人,与 `/iam/users/{userId}/*` 的管理接口分权,

@@ -19786,3 +19786,35 @@ HEAD 的 run 是绿的;红的是中间提交 `ceb8ccb6`(那次的 `entry-workflo
 ### 遗留
 
 - 真实 GitHub OAuth App 的联调未做(需要在 GitHub 注册应用,回调填详情页给出的地址)。
+
+## 认证 F–J 之五:OpenID Connect 驱动(2026-09-23)
+
+规划时的裁决与修正项③⑦:OIDC 用 openid-client,且**所有出站**(Discovery / Token / JWKS / UserInfo)挂 `customFetch` →
+`AuthOutbound`;`discoveryMode` 自动 / 手动两档都要求 issuer;`identityNamespaceKeys: ['issuer', 'clientId']`;subject 只认 `sub`;
+UserInfo 失败不阻断登录;时钟容差 0–300 秒放高级设置。
+
+### 做了什么
+
+- **出站端口多一个 Fetch 形状的入口** `asFetch`(契约 `@qualy/auth-contract/outbound`):与 `fetch` 共用同一条检查、解析、
+  钉地址、超时与体积上限的路径(`outbound.ts` 重构为一个 `send` + 两个外形),拒绝与失败以端口自己的错误 reject。
+  驱动因此不需要自己 `Effect.run*` 就能把端口交给 openid-client。
+- **新插件 `@qualy/plugin-auth-oidc`**(`pnpm plugin:add` 装配,active):`type: 'oidc'`,`binding-subject` + `self` 绑定;
+  字段 issuer、端点来源、手动档的授权 / 令牌 / JWKS / UserInfo 端点、clientId、clientSecret,高级里 scopes(`openid` 必在)、
+  客户端认证方式、时钟容差。openid-client 6.8.8 进 catalog。
+- `src/oidc.ts`:配置对象(discovery 或手写 `Configuration`)按「入口 + version」缓存;**开启 ID Token 验签**
+  (`enableNonRepudiationChecks`,token 端点直返的 ID Token 默认只靠 TLS);`identify` 用 verifier / state / nonce 做授权码换取,
+  取 `sub`,展示名依次 preferred_username / name / email,缺则问 UserInfo(`sub` 须一致,失败只丢名字);失败按
+  「出站拒绝 / 网络 / 对方 5xx」与「其余」分成 `AUTH_OIDC_UNAVAILABLE` 与 `AUTH_OIDC_REJECTED`。
+- 路由 `GET /auth/oidc/{providerCode}/start`(`Viewer`,`?intent=bind`)与 `.../callback`;登录 / 绑定 / 未绑定与 GitHub 同一套。
+- 门禁:frozen-routes 两条;error-codes 登记 auth-oidc。文档:auth-security「OIDC 驱动」一节。
+
+### 验收(实际执行)
+
+- `pnpm typecheck`:exit 0,零 `error TS`。
+- `pnpm test`:`Test Files  290 passed | 3 skipped (293)`、`Tests  2146 passed | 17 skipped (2163)`。
+- `pnpm test:browser`:`Test Files  69 passed (69)`、`Tests  520 passed (520)`。
+- `pnpm qualy resolve --frozen-lockfile`:`qualy.lock.json is up to date`。本提交无迁移。
+- 新测试:`auth/tests/effect-oidc.test.ts` 6 条(对着本文件里的假 OP:discovery、JWKS 与 token 都经出站端口、PKCE + nonce、
+  未绑定不建号、本人绑定、按 sub 登录并刷新展示名、别的 aud / iss / nonce / 早已过期 / 别的私钥签名一律拒绝、
+  时钟容差内的过期被接受、UserInfo 补名字且其失败不挡登录、手动端点 + Basic 认证跑通、metadata 地址的 issuer 连不到且 OP 未被请求、
+  token 端点 503、伪造 state);`auth-oidc/tests/settings.test.ts` 4 条;`outbound.test.ts` 增 `asFetch` 1 条。
