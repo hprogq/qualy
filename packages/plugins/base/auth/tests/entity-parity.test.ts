@@ -11,6 +11,7 @@ import { compositeForeignKeys, entities } from '../src/db/entities.ts'
 // a reference into them resolves rather than becoming a table auth invents.
 
 const TABLES = [
+  'auth_flows',
   'sessions',
   'sign_in_events',
   'user_auth_bindings',

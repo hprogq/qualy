@@ -10,14 +10,18 @@ import {
   LoginSessions,
   type LoginPresentation,
   type LoginSessionsShape,
+  ProviderSecretMissing,
   type ResolvedProvider,
   type SignInFailureReason,
   type SignedInUser,
 } from '@qualy/auth-contract/login'
 import { createSessionToken, hashSessionToken } from '../session.ts'
-import type { Secrets } from '@qualy/plugin-secrets/plugin'
+import { Secrets } from '@qualy/plugin-secrets/plugin'
 import { AuthConfig } from './auth-config.ts'
-import { makeReadiness } from './readiness.ts'
+import { configOf, entranceSecrets, makeReadiness } from './readiness.ts'
+import { makeFlows } from './flows.ts'
+import { AnonymousTenantResolver } from './tenancy.ts'
+import { PublicOriginResolver } from './public-origin.ts'
 
 export { AuthConfig }
 import { sessionCookieName } from '@qualy/auth-contract/session'
@@ -69,7 +73,7 @@ const providerByCode = (tenantId: string, providerCode: string, expectedType: st
   db.query((k) =>
     k
       .selectFrom('AuthProvider')
-      .select(['id', 'tenantId', 'type', 'config'])
+      .select(['id', 'tenantId', 'type', 'code', 'version', 'config'])
       .where('tenantId', '=', tenantId)
       .where('code', '=', providerCode)
       .where('type', '=', expectedType)
@@ -435,6 +439,12 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
   // the one judgment of whether a door can let anybody in; a door in service
   // always passes it, unless its driver changed what it needs under it
   const readiness = yield* makeReadiness
+  // who an anonymous caller is, and where the outside world reaches us: both
+  // are resolvers, so the day a host decides either, only they change
+  const tenants = yield* AnonymousTenantResolver
+  const publicOrigin = yield* PublicOriginResolver
+  const secrets = yield* Secrets
+  const flows = yield* makeFlows()
 
   // The database is closed over rather than required, because what this builds
   // is a shape whose requirements the login contract fixes: a driver calls
@@ -447,9 +457,12 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
     (...args: Args): Effect.Effect<A, E, Exclude<R, Orm>> =>
       withDb(fn(...args))
 
+  /** the tenant an anonymous caller belongs to, or nothing to sign in to */
   const defaultTenant = Effect.fn('Auth.signIn.tenant')(function* () {
-    return yield* activeTenantBySlug(config.defaultTenantSlug)
-  }, Effect.orDie)
+    return yield* tenants.resolve.pipe(
+      Effect.catchTag('TenantUnavailable', () => Effect.succeed(undefined)),
+    )
+  })
 
   const loadUser = Effect.fn('Auth.signIn.loadUser')(function* (tenantId: string, userId: string) {
     const row = yield* signedInUser(tenantId, userId)
@@ -474,7 +487,8 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
    * The correlation comes from the request context, never from the caller.
    */
   const record = Effect.fn('Auth.signIn.record')(function* (
-    provider: ResolvedProvider,
+    // the attempt's context, which is all a record needs of an entrance
+    provider: { readonly tenantId: string; readonly providerId: string },
     input: {
       outcome: 'success' | 'failure'
       reason?: SignInFailureReason
@@ -510,7 +524,58 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
     }).pipe(Effect.orDie)
   })
 
+  /** a provider row as a driver receives it, secrets included by reference */
+  const resolved = (
+    tenant: { id: string; slug: string },
+    provider: { id: string; type: string; code: string; version: number; config: unknown },
+  ): ResolvedProvider => ({
+    tenantId: tenant.id,
+    tenantSlug: tenant.slug,
+    providerId: provider.id,
+    type: provider.type,
+    code: provider.code,
+    version: provider.version,
+    config: configOf(provider.config),
+    secret: (key) =>
+      secrets.get({ ...entranceSecrets(tenant.id, provider.id), key }).pipe(
+        // a stored value that does not open is not something a sign-in can
+        // answer: the master key changed, or the row was edited
+        Effect.orDie,
+        Effect.flatMap((found) =>
+          Option.isNone(found)
+            ? Effect.fail(new ProviderSecretMissing({ key }))
+            : Effect.succeed(found.value),
+        ),
+      ),
+  })
+
   const sessions: LoginSessionsShape = {
+    /**
+     * Where this entrance expects to be called back: the deployment's public
+     * address, and the path its driver declares for its own route.
+     */
+    callbackUrl: (provider: ResolvedProvider) =>
+      Effect.gen(function* () {
+        const base = yield* publicOrigin.resolve({ id: provider.tenantId, slug: provider.tenantSlug })
+        const found = yield* drivers.forType(provider.type)
+        const declared = found?.driver.callback
+        if (declared === undefined) {
+          return yield* Effect.die(
+            new Error(`login driver ${provider.type} declares no callback path`),
+          )
+        }
+        const path = sameOriginPath(declared({ code: provider.code }))
+        if (path === undefined) {
+          return yield* Effect.die(
+            new Error(`login driver ${provider.type} returned a non-relative callback path`),
+          )
+        }
+        return new URL(path, base)
+      }),
+
+    startFlow: flows.startFlow,
+    consumeFlow: flows.consumeFlow,
+
     resolveProvider: bound(
       Effect.fn('Auth.signIn.resolveProvider')(function* (input: {
         providerCode: string
@@ -526,7 +591,7 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
           input.expectedType,
         ).pipe(Effect.orDie)
         if (!provider || !(yield* readiness(provider)).ready) return undefined
-        return { tenantId: tenant.id, providerId: provider.id }
+        return resolved(tenant, provider)
       }),
     ),
 
@@ -728,7 +793,7 @@ export class SignIn extends Context.Service<SignIn, Effect.Success<ReturnType<ty
 export const layer: Layer.Layer<
   SignIn | LoginSessions,
   never,
-  Orm | AuthConfig | LoginDrivers | Secrets
+  Orm | AuthConfig | LoginDrivers | Secrets | AnonymousTenantResolver | PublicOriginResolver
 > =
   Layer.effectContext(
     Effect.gen(function* () {

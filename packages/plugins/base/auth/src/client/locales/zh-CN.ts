@@ -117,6 +117,9 @@ export default {
   'auth/login-methods/driver-missing': '未安装提供该类型的插件',
   'auth/login-methods/enable-blocked': '补全必填设置后才能启用',
   'auth/login-methods/setup-short': '未完成设置',
+  'auth/login-methods/origin-missing': '本部署对外的访问地址',
+  'auth/login-methods/callback': '回调地址',
+  'auth/login-methods/callback-hint': '需要填写到对方系统里，供其将用户送回',
   'auth/login-methods/delete': '删除',
   'auth/login-methods/delete-title': '删除{name}？',
   'auth/login-methods/delete-body':

@@ -335,6 +335,8 @@ export const identityApiGroup = HttpApiGroup.make('identity')
       success: Schema.Struct({
         provider: authProvider,
         missing: Schema.Array(readinessGapSchema),
+        /** where its kind expects to be called back, for whoever configures the other end */
+        callbackUrl: Schema.NullOr(Schema.String),
         config: Schema.Record(Schema.String, Schema.String),
         secrets: Schema.Array(Schema.Struct({ key: Schema.String, stored: Schema.Boolean })),
         // what deleting it would end

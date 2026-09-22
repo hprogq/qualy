@@ -267,6 +267,7 @@ export class ProviderConfigInvalid extends Schema.TaggedError<ProviderConfigInva
 export const readinessGapSchema = Schema.Union([
   Schema.Struct({ kind: Schema.Literal('driver') }),
   Schema.Struct({ kind: Schema.Literal('field'), key: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal('public-origin') }),
 ])
 
 /**

@@ -27,6 +27,8 @@ import { layer as sessionLayer } from '../src/server/session.ts'
 import { sessionCookieNameFor } from '../src/server/session-cookie.ts'
 import { authClosure } from './support/closure.ts'
 import { secretsLayer } from '@qualy/plugin-secrets/testkit'
+import { singleTenantLayer } from '../src/server/tenancy.ts'
+import { singleOriginLayer } from '../src/server/public-origin.ts'
 import { SEEDED_EMAILS, seedSignIn } from './support/sign-in-seed.ts'
 
 // The session cookie of a secure deployment: named with the `__Host-`
@@ -63,6 +65,9 @@ beforeAll(async () => {
   )
   const signIn = signInLayer.pipe(
     Layer.provide(secretsLayer),
+    // the deployment's one tenant and its one public address, as the host
+    // provides them
+    Layer.provide(Layer.mergeAll(singleTenantLayer, singleOriginLayer)),
     Layer.provide(
       Layer.mergeAll(
         infra,

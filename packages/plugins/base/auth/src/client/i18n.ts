@@ -510,6 +510,15 @@ const i18n = definePluginMessages({
       defaultMessage: 'Fill in every required setting to put it in service',
     },
     methodSetupShort: { id: 'auth/login-methods/setup-short', defaultMessage: 'Not set up' },
+    methodOriginMissing: {
+      id: 'auth/login-methods/origin-missing',
+      defaultMessage: 'The address this deployment is reached at',
+    },
+    methodCallback: { id: 'auth/login-methods/callback', defaultMessage: 'Callback address' },
+    methodCallbackHint: {
+      id: 'auth/login-methods/callback-hint',
+      defaultMessage: 'What the other system has to be told to send people back to',
+    },
     methodDelete: { id: 'auth/login-methods/delete', defaultMessage: 'Delete' },
     methodDeleteTitle: methodNamed('auth/login-methods/delete-title', 'Delete {name}?'),
     methodDeleteBody: methodDeleteBodyMessage,

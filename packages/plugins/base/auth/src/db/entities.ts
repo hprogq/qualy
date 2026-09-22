@@ -359,6 +359,68 @@ export const Session = defineEntity({
       expression:
         'create index idx_sessions_tenant_provider on sessions (tenant_id, auth_provider_id)',
     },
+    // what a composite foreign key to a session references
+    {
+      name: 'uq_sessions_tenant_id_id',
+      expression: 'create unique index uq_sessions_tenant_id_id on sessions (tenant_id, id)',
+    },
+  ],
+})
+
+/**
+ * One redirect through somebody else's server, in flight.
+ *
+ * A CAS or OIDC sign-in leaves this application, and what comes back has to
+ * be tied to what left: the row is that tie. Only the state's digest is kept,
+ * so a row read out of the database is not a state anybody can present; the
+ * payload a driver puts aside is encrypted by the secrets capability under
+ * this row's own identity, so it cannot be moved onto another flow. A row is
+ * taken up exactly once - `consumed_at` is set by the same statement that
+ * reads it - and every rule after that leaves it burned.
+ */
+export const AuthFlow = defineEntity({
+  name: 'AuthFlow',
+  tableName: 'auth_flows',
+  properties: {
+    id: p.uuid().primary().defaultRaw('uuidv7()'),
+    tenantId: tenantOf('auth_flows_tenant_id_tenants_id_fkey'),
+    authProviderId: p.uuid(),
+    /** sha256 of the state the other server carries; never the state itself */
+    stateHash: p.character().length(64).unique('uq_auth_flows_state'),
+    purpose: p.string().length(15),
+    /** a bind belongs to the person who began it, in the session they began it in */
+    userId: p.uuid().nullable(),
+    sessionId: p.uuid().nullable(),
+    /** where in the application they asked to be returned to, if anywhere safe */
+    returnPath: p.string().length(255).nullable(),
+    /** what the driver has to remember, sealed under this flow */
+    payloadSealed: p.text().nullable(),
+    expiresAt: p.datetime(),
+    consumedAt: p.datetime().nullable(),
+    createdAt: p.datetime().defaultRaw('now()'),
+  },
+  checks: [
+    { name: 'chk_auth_flows_purpose', expression: `purpose IN ('login', 'bind')` },
+    {
+      name: 'chk_auth_flows_bind',
+      expression: `(purpose = 'bind') = (user_id IS NOT NULL AND session_id IS NOT NULL)`,
+    },
+  ],
+  indexes: [
+    // the sweep of flows nobody came back for
+    {
+      name: 'idx_auth_flows_expires',
+      expression: 'create index idx_auth_flows_expires on auth_flows (expires_at)',
+    },
+    // the open ones of a door, and of a person: what a deletion has to end
+    {
+      name: 'idx_auth_flows_open_provider',
+      expression: `create index idx_auth_flows_open_provider on auth_flows (tenant_id, auth_provider_id) where consumed_at is null`,
+    },
+    {
+      name: 'idx_auth_flows_open_user',
+      expression: `create index idx_auth_flows_open_user on auth_flows (tenant_id, user_id) where consumed_at is null`,
+    },
   ],
 })
 
@@ -468,6 +530,15 @@ export const compositeForeignKeys = [
   // fires if one ever is, and then the session outlives what named it
   `alter table sessions add constraint fk_sessions_binding
      foreign key (tenant_id, auth_binding_id) references user_auth_bindings (tenant_id, id) on delete set null (auth_binding_id)`,
+  // a flow in flight names a live door and, for a bind, the session it began
+  // in: the door is only ever soft-deleted, and a session that ends takes the
+  // flow that belongs to it with it
+  `alter table auth_flows add constraint fk_auth_flows_provider
+     foreign key (tenant_id, auth_provider_id) references auth_providers (tenant_id, id) on delete restrict`,
+  `alter table auth_flows add constraint fk_auth_flows_session
+     foreign key (tenant_id, session_id) references sessions (tenant_id, id) on delete cascade`,
+  `alter table auth_flows add constraint fk_auth_flows_user
+     foreign key (tenant_id, user_id) references users (tenant_id, id) on delete restrict`,
 ]
 
 export const entities = [
@@ -479,4 +550,5 @@ export const entities = [
   UserAuthBinding,
   Session,
   SignInEvent,
+  AuthFlow,
 ] as const

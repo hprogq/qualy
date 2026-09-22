@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Scope } from 'effect'
+import { Context, Data, Effect, Layer, Redacted, Scope } from 'effect'
 import type { HttpServerRequest } from 'effect/unstable/http/HttpServerRequest'
 import type { UiText } from '@qualy/i18n-contract'
 import type { ClientComponentRef } from '@qualy/ui-contract'
@@ -180,6 +180,18 @@ export interface LoginDriver {
   readonly provisioning: ProviderProvisioning
   readonly resolution: SubjectResolution
   readonly binding?: AuthBindingDeclaration
+  /**
+   * Where this driver's kind of entrance expects somebody to be sent back to,
+   * as a same-origin path of one of its own routes.
+   *
+   * Declaring it says the entrance sends people away and takes them back,
+   * which is what makes this deployment's public address something it needs:
+   * an entrance of this kind cannot be put in service until there is one, and
+   * a production process that finds one in service without it refuses to
+   * start. The absolute address handed to the other server is built by the
+   * core, from the address the deployment is configured with.
+   */
+  readonly callback?: (provider: { readonly code: string }) => string
 }
 
 /**
@@ -266,9 +278,65 @@ export const registerLoginDriver = (
 ): Layer.Layer<never, never, LoginDrivers> =>
   Layer.effectDiscard(Effect.flatMap(LoginDrivers, (drivers) => drivers.register(driver, owner)))
 
+/** this deployment has no public address, so nothing can be sent back to it */
+export class PublicOriginUnavailable extends Data.TaggedError('PublicOriginUnavailable')<{
+  readonly tenantSlug: string
+}> {}
+
+/** a stored secret of an entrance that is not there */
+export class ProviderSecretMissing extends Data.TaggedError('ProviderSecretMissing')<{
+  readonly key: string
+}> {}
+
+/**
+ * One entrance, resolved: who it belongs to, what it was told, and a way to
+ * ask for what it was told in confidence.
+ *
+ * The settings are the plain ones; a secret is fetched one key at a time and
+ * arrives redacted, so a driver that logs the whole thing logs nothing.
+ */
 export interface ResolvedProvider {
   readonly tenantId: string
+  readonly tenantSlug: string
   readonly providerId: string
+  /** the driver's kind, which is also the route it was reached through */
+  readonly type: string
+  readonly code: string
+  readonly version: number
+  readonly config: Readonly<Record<string, unknown>>
+  readonly secret: (key: string) => Effect.Effect<Redacted.Redacted<string>, ProviderSecretMissing>
+}
+
+/** why a flow could not be taken up; the caller decides what to say */
+export type FlowRejection =
+  | 'unknown'
+  | 'expired'
+  | 'consumed'
+  | 'provider-mismatch'
+  | 'session-mismatch'
+
+export class AuthFlowRejected extends Data.TaggedError('AuthFlowRejected')<{
+  readonly reason: FlowRejection
+}> {}
+
+/** a flow that has just started; the state travels to the other server */
+export interface StartedFlow {
+  readonly flowId: string
+  readonly state: Redacted.Redacted<string>
+  readonly expiresAt: Date
+}
+
+/** a flow taken up exactly once */
+export interface ConsumedFlow {
+  readonly flowId: string
+  readonly purpose: 'login' | 'bind'
+  /** whose flow it was, for a bind */
+  readonly userId?: string
+  readonly sessionId?: string
+  /** where the person asked to be returned to, if anywhere safe */
+  readonly returnPath?: string
+  /** what the driver put aside when it started, opened again */
+  readonly payload?: Redacted.Redacted<string>
 }
 
 /**
@@ -326,6 +394,43 @@ export interface FoundBinding {
  * lets the core stay unaware of which drivers exist.
  */
 export interface LoginSessionsShape {
+  /**
+   * Where this entrance's kind expects to be called back, absolute.
+   *
+   * Built from the deployment's public address and the path the driver
+   * declares, so a driver never has to know how it is reached.
+   */
+  readonly callbackUrl: (
+    provider: ResolvedProvider,
+  ) => Effect.Effect<URL, PublicOriginUnavailable>
+  /**
+   * Starts one redirect through somebody else's server.
+   *
+   * The state is a secret the other server carries and hands back; only its
+   * digest is stored. A payload - a verifier, a nonce - is sealed under the
+   * flow's own identity and cannot be opened as any other flow's. A bind
+   * pins the session it began in, so an account bound on the way back is
+   * bound for the person who asked, in the session they asked from.
+   */
+  readonly startFlow: (input: {
+    provider: ResolvedProvider
+    purpose: 'login' | 'bind'
+    /** for a bind: who is doing it, and from which session */
+    binding?: { userId: string; sessionId: string }
+    returnPath?: string
+    payload?: Redacted.Redacted<string>
+  }) => Effect.Effect<StartedFlow, AuthFlowRejected>
+  /**
+   * Takes a flow up, once and only once.
+   *
+   * A flow that is unknown, expired, already taken up, or belongs to another
+   * entrance is refused - and burned in the same breath, so a state that
+   * reaches the wrong route is spent rather than left for a second attempt.
+   */
+  readonly consumeFlow: (input: {
+    provider: ResolvedProvider
+    state: string
+  }) => Effect.Effect<ConsumedFlow, AuthFlowRejected>
   /**
    * A public provider code resolved against the anonymous tenant.
    *

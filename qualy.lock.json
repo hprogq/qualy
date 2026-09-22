@@ -1,7 +1,7 @@
 {
   "lockfileVersion": 2,
   "manifestHash": "sha256:5459591105936e796968815ae579ae178fd1cfa5504da007cb488a7f3489e6b1",
-  "resolutionHash": "sha256:c0a97f47ea6c26221ba84e44c49c711e4709c766798233171809eebda914f08f",
+  "resolutionHash": "sha256:039a7c9dca9cdcaba88dbf30d449b6b696337c1d9a232725aba8f9c21904d987",
   "plugins": {
     "@qualy/plugin-assessment": {
       "version": "0.0.0",
@@ -126,6 +126,7 @@
       "contributions": {
         "database": {
           "entities": [
+            "AuthFlow",
             "AuthProvider",
             "AuthProviderUserType",
             "Session",

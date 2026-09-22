@@ -34,6 +34,7 @@ const DEPENDENCY_TABLES = [
   'role_grants',
   'role_permissions',
   'roles',
+  'auth_flows',
   'sessions',
   'sign_in_events',
   'storage_attachments',

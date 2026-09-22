@@ -19561,3 +19561,42 @@ HEAD 的 run 是绿的;红的是中间提交 `ceb8ccb6`(那次的 `entry-workflo
 - `pnpm qualy resolve --frozen-lockfile`:`qualy.lock.json is up to date`。
 - 新测试:secrets 8 条(主密钥策略、密文不可读、AAD 绑定、随事务回滚、seal/open)、`effect-providers` 3 条(空壳 → 分次配置 → 启用 → 在用保护 → 停用清除、
   命名空间锁、删除连带与系统入口拒绝)、`login-methods.browser` 5 条新用例、迁移升级 1 条、`secret-disclosure` 3 条。
+
+## 认证重构 E:租户与公开地址两个解析器,以及一次性 auth flow(2026-09-23)
+
+设计来源 docs/auth.md §27–§35、§42 Phase E,外加规划时用户的两条裁决:第一版公开 Auth URL 不放租户段(将来按域名决定租户);
+`consumeFlow` 必须在一个事务里完成条件消费与全部规则校验。
+
+### 做了什么
+
+- **匿名租户是解析器**(`AnonymousTenantResolver`,auth/src/server/tenancy.ts):登录页列表、provider code 解析都问它;单租户实现读 `QUALY_DEFAULT_TENANT`,
+  租户停用或过期即 `TenantUnavailable`。sign-in 与驱动都不再自己碰租户。
+- **公开地址是解析器**(`PublicOriginResolver`,`QUALY_PUBLIC_URL`):只接受纯 origin(绝对 http(s)、无路径/查询/片段/凭据,生产必须 https),
+  格式错即拒启;开发缺省 `http://localhost:5173`。**回调地址绝不从请求推导**。
+- **驱动新增 `callback`** 声明:声明了就意味着「送走再送回」——没有公开地址时 readiness 多一项 `{kind:'public-origin'}`,因而不能启用;
+  生产启动若发现这类入口在用而地址缺失,拒启并点名(开发告警)。详情接口多一个 `callbackUrl`,界面把它显示出来给管理员填到对方系统。
+- **`ResolvedProvider` 变成驱动真正够用的值**:租户 id/slug、入口 id/type/code/version、非密钥配置,以及 `secret(key)`——按键取回 `Redacted`,
+  取不到是 `ProviderSecretMissing`,读不开(换过主密钥、行被改过)直接 defect。
+- **一次性 flow**(`auth_flows` + auth/src/server/flows.ts):32 字节随机 state 只存 sha256,10 分钟;`login` / `bind`,bind 必须钉住发起时的用户与会话;
+  payload 经 secrets `seal/open` 用该 flow 自己的身份封装,挪到另一条 flow 上打不开。`consumeFlow` 在一个事务里条件消费 → 校验同一入口 → bind 校验会话仍在 →
+  解开 payload;**规则内的拒绝提交「已烧毁」**并返回 `AuthFlowRejected { reason }`,只有缺陷整体回滚。入口删除把未消费的 flow 标记为已消费;
+  人被删除时其会话消失,挂在会话上的 flow 随外键级联删除(因此没有第二个「按用户结束」的调用,那会是不可达代码)。
+  返回路径只接受本应用内的路径。
+- 本阶段不加路由与页面:CAS / OIDC 驱动是后面的事,这里交付的是它们要站上去的地基。
+
+### 验收(实际执行)
+
+- `pnpm typecheck`:exit 0,零 `error TS`(Effect 语言服务的 `layerMergeAllWithDependencies` 告警也已清零:启动检查改为 `provideMerge` 在服务之上)。
+- `pnpm test`:`Test Files  282 passed | 3 skipped (285)`、`Tests  2069 passed | 17 skipped (2086)`。
+- `pnpm test:browser`:`Test Files  68 passed (68)`、`Tests  514 passed (514)`。
+- `pnpm qualy database verify`:`77 committed migration(s) build the declared schema, zero drift`;`check`:`lineage ok`;
+  `drop-guard`:`drop guard ok (77 file(s) scanned)`;`resolve --frozen-lockfile`:`qualy.lock.json is up to date`。
+- 新测试 `effect-flows.test.ts` 9 条:公开地址的取值规则与配置层(开发缺省 / 生产必须显式且 https / 格式错拒启)、返回路径过滤、
+  匿名租户解析(含租户停用)、回调驱动在缺地址时不就绪且不能启用、`callbackUrl` 拼装、flow 的消费一次 / 重放 / 过期 / 走错入口即烧毁 /
+  bind 钉住会话 / 会话消失即级联 / payload 静态加密且不可挪用。
+
+### 遗留
+
+- 回调查询参数的 span 脱敏(docs/auth.md §35)仍延后到第一个带 `ticket`/`code`/`state` 的路由(CAS)一起做:Effect 的 HTTP tracer 在中间件链之后写
+  `url.full` / `url.query`,没有脱敏钩子,需要在 `@qualy/telemetry` 包一层 tracer。访问日志已剥离查询串。
+- `bindSelfIdentity`、CAS/GitHub/OIDC 驱动、Mail、邮箱验证与找回、导入邮箱列、按域名的多租户属 Phase F–J。

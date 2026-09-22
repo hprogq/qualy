@@ -26,6 +26,7 @@ const UPSTREAM_TABLES = [
   'org_type_rules',
   'org_types',
   'tenants',
+  'auth_flows',
   'sessions',
   'sign_in_events',
   'user_auth_bindings',

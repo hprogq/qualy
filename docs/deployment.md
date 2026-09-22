@@ -124,6 +124,9 @@ database。出现第二种有持久部署副作用的能力时,先设计启动�
 **入口密钥的主密钥**:`QUALY_SECRETS_MASTER_KEY`(32 字节 base64)是 `.env` 里的必填项,登录入口的 client secret 之类都用它加密。
 生产进程缺它或格式不对直接拒启;换了这把 key,已存的密文就读不回来(不会自动重加密),所以它要和数据库备份一起保管。
 
+**公开地址**:`QUALY_PUBLIC_URL`(纯 origin,生产必须 https)只在启用了「会把人送走再送回来」的登录入口时才需要;没有它这类入口不能启用,
+已启用又缺它的生产进程拒绝启动。只用邮箱密码登录的部署不必设置。
+
 **恢复账号与 seed**:租户与其系统账户(租户自救用、以邮箱 + 密码登录)由 seed 供给;镜像不含 seed,从同一 release 的源码检出对部署库执行
 `DATABASE_URL=… QUALY_ADMIN_EMAIL=… QUALY_ADMIN_PASSWORD=… pnpm seed`。生产 server 在 Assembled 屏障检查每个存活租户的恢复通道,
 系统账户缺邮箱或缺密码即拒启并点名租户——顺序固定为 migrate → seed → boot。把本地入口改为邮箱登录的那次升级(迁移

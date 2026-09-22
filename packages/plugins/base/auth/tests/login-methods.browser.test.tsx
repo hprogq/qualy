@@ -35,6 +35,7 @@ const provider = (over: Partial<ProviderDto> = {}): ProviderDto => ({
 const detail = (row: ProviderDto, over: Partial<Omit<DetailDto, 'provider'>> = {}): DetailDto => ({
   provider: row,
   missing: [],
+  callbackUrl: null,
   config: {},
   secrets: [],
   usage: { bindings: 0, sessions: 0 },

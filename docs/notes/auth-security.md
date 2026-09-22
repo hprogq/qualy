@@ -191,6 +191,25 @@ default-src 'self'; script-src 'self' 'sha256-pKAg+of2SxxrkLJX27pRnCgcyN5Ud1dmuO
 - **密钥永不回显**:`GET /auth/providers/{id}` 只说某个密钥「已存/未存」,成功响应与审计 details 里不得出现
   `clientSecret|refreshToken|accessToken|password` 这类字段名,由 `tools/tests/secret-disclosure.test.ts` 守。
 
+## 租户寻址、公开地址与一次性 flow(2026-09-23 定案)
+
+- **匿名租户是解析器**(`AnonymousTenantResolver`):登录页列哪些入口、一个 provider code 指向哪一行、一次证明说的是谁,都问它。
+  当前实现是单租户(`QUALY_DEFAULT_TENANT`,停用或过期即 `TenantUnavailable`);将来按域名区分租户时只换这一层,驱动与 sign-in 都不碰租户概念。
+  按域名的实现读请求上下文里**已解析**的 host,不读原始 Host 头——代理层没算进去之前,Host 不是证据。
+- **公开地址也是解析器**(`PublicOriginResolver`,`QUALY_PUBLIC_URL`):**必须是纯 origin**(绝对 http(s),无路径/查询/片段/凭据;生产必须 https),
+  格式错即拒启。开发缺省 `http://localhost:5173`(浏览器就是从那儿来的),生产不设就是「没有」。**回调地址绝不从请求推导**:
+  代理后面请求说什么都行,据此拼出的 callback 是攻击者能指向别处的 callback。
+- **Cookie 仍是 host-only**(`__Host-` 前缀),永不设父域 Domain;公开 Auth URL 第一版保持不带租户段。
+- **驱动声明 `callback`** 即表示「会把人送走、还要送回来」:该类型的入口未配置公开地址时 readiness 不通过(`{kind:'public-origin'}`),
+  因而不能启用;生产启动时若发现这样的入口在用,拒启并点名(开发告警)。`GET /auth/providers/{id}` 的 `callbackUrl` 就是拼好的绝对地址,给管理员填到对方系统里。
+- **一次性 flow**(`auth_flows`):32 字节随机 state 只存 sha256;10 分钟有效;purpose = `login | bind`,bind 必须钉住发起时的用户与会话
+  (`chk_auth_flows_bind`,会话被删即级联删 flow)。`consumeFlow` 在**一个事务内**条件消费(`consumed_at is null and expires_at > now()`),
+  然后校验同一入口、bind 校验会话仍存活;**规则内的拒绝提交「已烧毁」**并返回 `AuthFlowRejected { reason }`
+  (`unknown | expired | consumed | provider-mismatch | session-mismatch`),只有缺陷整体回滚。
+  payload(verifier、nonce)经 secrets 的 `seal/open` 封装,AAD 固定为该 flow 自己的身份,挪到另一条 flow 上就打不开。
+  入口删除把未消费的 flow 标记为已消费;人被删除时其会话消失,挂在会话上的 flow 随之级联删除。
+  返回路径只接受本应用内的路径(`safeReturnPath`),绝对 URL、协议相对 URL 一律丢弃。
+
 ## 恢复通道(2026-09-22 定案)
 
 - 每个租户的系统账户(`system-account` 类型)永远保有平台 local 入口上的一条可用登录:有邮箱、有存活密码凭据,入口在用且受众接纳系统类型

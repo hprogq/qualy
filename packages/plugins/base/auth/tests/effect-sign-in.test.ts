@@ -29,6 +29,8 @@ import { sessionCookieName } from '@qualy/auth-contract/session'
 import { layer as sessionLayer } from '../src/server/session.ts'
 import { authClosure } from './support/closure.ts'
 import { secretsLayer } from '@qualy/plugin-secrets/testkit'
+import { singleTenantLayer } from '../src/server/tenancy.ts'
+import { singleOriginLayer } from '../src/server/public-origin.ts'
 
 // The whole sign-in cycle, over a real server: no method, an email and a
 // password, the session it creates, and signing out again.
@@ -70,6 +72,9 @@ beforeAll(async () => {
   // nothing to present it
   const signIn = signInLayer.pipe(
     Layer.provide(secretsLayer),
+    // the deployment's one tenant and its one public address, as the host
+    // provides them
+    Layer.provide(Layer.mergeAll(singleTenantLayer, singleOriginLayer)),
     Layer.provide(
       Layer.mergeAll(
         infra,

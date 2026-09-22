@@ -140,14 +140,12 @@ export function MethodSheet({
         changedValues[field.key] !== undefined &&
         changedValues[field.key]!.trim() === '',
     )
-  const missingWords = (detail.data?.missing ?? []).map((gap) =>
-    gap.kind === 'driver'
-      ? format(m.methodDriverMissing)
-      : (() => {
-          const field = fields.find((one) => one.key === gap.key)
-          return field === undefined ? gap.key : formatText(field.label)
-        })(),
-  )
+  const missingWords = (detail.data?.missing ?? []).map((gap) => {
+    if (gap.kind === 'driver') return format(m.methodDriverMissing)
+    if (gap.kind === 'public-origin') return format(m.methodOriginMissing)
+    const field = fields.find((one) => one.key === gap.key)
+    return field === undefined ? gap.key : formatText(field.label)
+  })
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: query.identity.key() })
   const save = useMutation({
@@ -373,7 +371,7 @@ export function MethodSheet({
             <span
               data-testid="method-missing"
               data-missing={(detail.data?.missing ?? [])
-                .map((gap) => (gap.kind === 'driver' ? 'driver' : gap.key))
+                .map((gap) => (gap.kind === 'field' ? gap.key : gap.kind))
                 .join(',')}
               {...stylex.props(styles.warn)}
             >
@@ -416,6 +414,14 @@ export function MethodSheet({
             <span {...stylex.props(styles.code)}>{provider.code}</span>
             <span {...stylex.props(styles.aside)}>{format(m.providerCodeHint)}</span>
           </DefLine>
+          {detail.data?.callbackUrl != null && (
+            <DefLine label={format(m.methodCallback)}>
+              <span data-testid="method-callback" {...stylex.props(styles.code)}>
+                {detail.data.callbackUrl}
+              </span>
+              <span {...stylex.props(styles.aside)}>{format(m.methodCallbackHint)}</span>
+            </DefLine>
+          )}
           <DefLine label={format(m.providerOrderLabel)}>
             <span {...stylex.props(styles.figure)}>{position}</span>
             <span {...stylex.props(styles.aside)}>{format(m.methodOrderHint)}</span>

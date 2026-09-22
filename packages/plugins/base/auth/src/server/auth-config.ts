@@ -1,4 +1,4 @@
-import { Config, Context, Effect, Layer, Schema } from 'effect'
+import { Config, Context, Effect, Layer, Option, Schema } from 'effect'
 import { sessionCookieNameFor } from './session-cookie.ts'
 import { decodePluginConfig } from '@qualy/plugin-kit/config'
 
@@ -28,6 +28,12 @@ export class AuthConfig extends Context.Service<
      * test stack want.
      */
     readonly strictBoot?: boolean
+    /**
+     * The address the outside world reaches this deployment at, as an origin
+     * with nothing after it. Undefined where none is configured, which is
+     * legal until an entrance needs to be redirected back to.
+     */
+    readonly publicUrl?: string
   }
 >()('@qualy/plugin-auth/AuthConfig') {}
 
@@ -41,6 +47,36 @@ export class AuthConfig extends Context.Service<
  * plugin cannot read - silently ignoring one is how a setting comes to look
  * applied while nothing consumes it.
  */
+export const PUBLIC_URL_MALFORMED =
+  'QUALY_PUBLIC_URL must be an absolute http(s) origin with no path, such as https://qualy.example.edu'
+
+export const PUBLIC_URL_INSECURE =
+  'QUALY_PUBLIC_URL must be https in production: a sign-in redirected back over http is one anybody on the path can take'
+
+/** where a development machine is reached, which is where the browser is served */
+export const DEVELOPMENT_PUBLIC_URL = 'http://localhost:5173'
+
+/**
+ * An origin and nothing else: no path, no query, no fragment, no credentials.
+ *
+ * Everything built from it is built by appending, so a trailing path would
+ * quietly move every callback; a query or a credential in it would be carried
+ * into addresses handed to somebody else's server.
+ */
+export const publicOriginFrom = (raw: string): string | undefined => {
+  let url: URL
+  try {
+    url = new URL(raw.trim())
+  } catch {
+    return undefined
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return undefined
+  if (url.username !== '' || url.password !== '') return undefined
+  if (url.search !== '' || url.hash !== '') return undefined
+  if (url.pathname !== '/' && url.pathname !== '') return undefined
+  return url.origin
+}
+
 export const AuthManifestConfig = Schema.Struct({})
 export type AuthManifestConfig = typeof AuthManifestConfig.Type
 
@@ -65,10 +101,28 @@ export const config = (
       // makes a failed boot check fatal
       const secureCookies =
         (yield* Config.String('NODE_ENV').pipe(Config.withDefault('development'))) === 'production'
+      const declaredUrl = yield* Config.option(Config.String('QUALY_PUBLIC_URL'))
+      const askedFor = Option.map(declaredUrl, (value) => value.trim()).pipe(
+        Option.filter((value) => value !== ''),
+      )
+      // a development machine is reached at the vite server, which is where
+      // the browser is served from; production says so or goes without
+      const publicUrl = Option.isNone(askedFor)
+        ? secureCookies
+          ? undefined
+          : DEVELOPMENT_PUBLIC_URL
+        : publicOriginFrom(askedFor.value)
+      if (Option.isSome(askedFor) && publicUrl === undefined) {
+        return yield* Effect.die(new Error(PUBLIC_URL_MALFORMED))
+      }
+      if (secureCookies && publicUrl !== undefined && !publicUrl.startsWith('https:')) {
+        return yield* Effect.die(new Error(PUBLIC_URL_INSECURE))
+      }
       return AuthConfig.of({
         defaultTenantSlug: yield* Config.String('QUALY_DEFAULT_TENANT').pipe(
           Config.withDefault('default'),
         ),
+        ...(publicUrl === undefined ? {} : { publicUrl }),
         sessionTtlSeconds: yield* Config.Number('QUALY_SESSION_TTL_SECONDS').pipe(
           Config.withDefault(604_800),
         ),

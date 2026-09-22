@@ -16,6 +16,8 @@ import {
 } from '../actions.ts'
 import { actorOf } from './audit-actor.ts'
 import { db, lockTenant } from './db.ts'
+import { endFlowsOfProvider } from './flows.ts'
+import { PublicOriginResolver } from './public-origin.ts'
 import { configOf, entranceSecrets, makeReadiness, type ReadinessGap } from './readiness.ts'
 import { recoveryChannelIntact, recoveryDoorTypes } from './recovery.ts'
 import {
@@ -97,6 +99,14 @@ const countUserTypes = (tenantId: string, ids: readonly string[]) =>
         .executeTakeFirst(),
     )
     .pipe(Effect.map((row) => row?.count ?? 0))
+
+/** the tenant's name for itself, which a public address is resolved for */
+const tenantSlug = (tenantId: string) =>
+  db
+    .query((k) =>
+      k.selectFrom('Tenant').select('slug').where('id', '=', tenantId).executeTakeFirstOrThrow(),
+    )
+    .pipe(Effect.map((row) => row.slug))
 
 /** whether anybody has ever bound an account through the door, withdrawn or not */
 const everBound = (tenantId: string, providerId: string) =>
@@ -211,6 +221,7 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
   const drivers = yield* LoginDrivers
   const secrets = yield* Secrets
   const readiness = yield* makeReadiness
+  const origin = yield* PublicOriginResolver
 
   /**
    * Whether the tenant can still recover itself on the state being
@@ -572,6 +583,8 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
               .returning('id')
               .execute(),
           )
+          // a redirect somebody left on has nothing to come back to
+          yield* endFlowsOfProvider(tenantId, providerId)
           yield* secrets.deleteOwner(entranceSecrets(tenantId, providerId))
           yield* recoveryRemains(tenantId)
           yield* audit.record(ProviderDeleted, {
@@ -670,7 +683,19 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
             ? yield* secrets.keysOf(entranceSecrets(tenantId, providerId))
             : []
           const config = configOf(provider.config)
+          // where its kind expects to be called back, when it has one and
+          // this deployment has an address to be called back at
+          const driver = (yield* drivers.forType(provider.type))?.driver
+          const callbackPath = driver?.callback?.({ code: provider.code })
+          const callbackUrl =
+            callbackPath === undefined
+              ? null
+              : yield* origin.resolve({ id: tenantId, slug: yield* tenantSlug(tenantId) }).pipe(
+                  Effect.map((base) => new URL(callbackPath, base).toString()),
+                  Effect.catchTag('PublicOriginUnavailable', () => Effect.succeed(null)),
+                )
           return {
+            callbackUrl,
             provider: {
               id: provider.id,
               code: provider.code,

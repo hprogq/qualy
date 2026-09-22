@@ -48,7 +48,9 @@ const campus: LoginDriver = {
 
 const stack = (url: string, strictBoot: boolean) =>
   booted(
-    Layer.mergeAll(authLayer, recoveryBootCheck).pipe(
+    recoveryBootCheck.pipe(
+      // the check stands on the services, which provide the resolver it reads
+      Layer.provideMerge(authLayer),
       Layer.provideMerge(rbacLayer),
       Layer.provideMerge(
         auditLayer.pipe(

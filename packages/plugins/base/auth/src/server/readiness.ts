@@ -1,6 +1,7 @@
 import { Effect } from 'effect'
 import { LoginDrivers, type LoginDriver } from '@qualy/auth-contract/login'
 import { Secrets, type SecretOwner } from '@qualy/plugin-secrets/plugin'
+import { PublicOriginResolver } from './public-origin.ts'
 
 // Whether an entrance can let anybody in, asked in one place.
 //
@@ -19,6 +20,11 @@ export type ReadinessGap =
   | { readonly kind: 'driver' }
   /** a required setting, named by the driver's field key */
   | { readonly kind: 'field'; readonly key: string }
+  /**
+   * Its kind sends people away and expects them back, and this deployment
+   * has no address to be sent back to (QUALY_PUBLIC_URL).
+   */
+  | { readonly kind: 'public-origin' }
 
 export interface Readiness {
   readonly ready: boolean
@@ -46,15 +52,21 @@ export const readinessOf = (
   driver: LoginDriver | undefined,
   config: Readonly<Record<string, unknown>>,
   storedSecrets: readonly string[],
+  publicOrigin: boolean,
 ): Readiness => {
   if (driver === undefined) return { ready: false, missing: [{ kind: 'driver' }] }
-  if (driver.provisioning.mode !== 'tenant-managed') return { ready: true, missing: [] }
-  const missing: ReadinessGap[] = driver.provisioning.entrance.fields
-    .filter((field) => field.required)
-    .filter((field) =>
-      field.kind === 'secret' ? !storedSecrets.includes(field.key) : !filled(config[field.key]),
+  const missing: ReadinessGap[] =
+    driver.callback !== undefined && !publicOrigin ? [{ kind: 'public-origin' }] : []
+  if (driver.provisioning.mode === 'tenant-managed') {
+    missing.push(
+      ...driver.provisioning.entrance.fields
+        .filter((field) => field.required)
+        .filter((field) =>
+          field.kind === 'secret' ? !storedSecrets.includes(field.key) : !filled(config[field.key]),
+        )
+        .map((field): ReadinessGap => ({ kind: 'field', key: field.key })),
     )
-    .map((field) => ({ kind: 'field', key: field.key }))
+  }
   return { ready: missing.length === 0, missing }
 }
 
@@ -74,6 +86,7 @@ export interface ReadinessSubject {
 export const makeReadiness = Effect.gen(function* () {
   const drivers = yield* LoginDrivers
   const secrets = yield* Secrets
+  const origin = yield* PublicOriginResolver
   return Effect.fn('Auth.providerReadiness')(function* (provider: ReadinessSubject) {
     const driver = (yield* drivers.forType(provider.type))?.driver
     const asksSecrets =
@@ -82,6 +95,6 @@ export const makeReadiness = Effect.gen(function* () {
     const stored = asksSecrets
       ? yield* secrets.keysOf(entranceSecrets(provider.tenantId, provider.id))
       : []
-    return readinessOf(driver, configOf(provider.config), stored)
+    return readinessOf(driver, configOf(provider.config), stored, origin.configured)
   })
 })

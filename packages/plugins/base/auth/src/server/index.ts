@@ -21,6 +21,8 @@ import { make as makeUserTypes, type UserTypeRow } from './user-types.ts'
 import { make as makeUsers, type UserProjection } from './users.ts'
 import { layer as sessionLayer, viewerLayer } from './session.ts'
 import { recoveryBootCheck } from './recovery.ts'
+import { publicOriginBootCheck, PublicOriginResolver, singleOriginLayer } from './public-origin.ts'
+import { AnonymousTenantResolver, singleTenantLayer } from './tenancy.ts'
 
 // auth as an Effect layer.
 //
@@ -88,7 +90,7 @@ export const make = Effect.fn('Auth.make')(function* () {
 const tags: Layer.Layer<
   Placement | UserPlacement | UserProvisioning | Iam,
   never,
-  Orm | Rbac | Audit | LoginDrivers | Secrets
+  Orm | Rbac | Audit | LoginDrivers | Secrets | PublicOriginResolver
 > = Layer.effectContext(
   Effect.gen(function* () {
     const { placement, userPlacement, iam } = yield* make()
@@ -115,10 +117,25 @@ export { config } from './auth-config.ts'
 
 /** the services alone; the entry composes them with what the plugin registers */
 export const serviceLayer: Layer.Layer<
-  Placement | UserPlacement | UserProvisioning | Iam | Authenticated | Viewer | SignIn | LoginSessions,
+  | Placement
+  | UserPlacement
+  | UserProvisioning
+  | Iam
+  | Authenticated
+  | Viewer
+  | SignIn
+  | LoginSessions
+  | AnonymousTenantResolver
+  | PublicOriginResolver,
   never,
   Orm | Rbac | Audit | AuthConfig | LoginDrivers | Secrets
-> = Layer.mergeAll(tags, sessionLayer, viewerLayer, signInLayer)
+  // The two resolvers are part of what this plugin provides, not of what it
+  // asks for: one deployment, one tenant and one public address. A host that
+  // one day tells tenants apart by their name replaces these two layers and
+  // nothing else here changes.
+> = Layer.mergeAll(tags, sessionLayer, viewerLayer, signInLayer).pipe(
+  Layer.provideMerge(Layer.mergeAll(singleTenantLayer, singleOriginLayer)),
+)
 
 /**
  * The services and the checks the host runs before serving.
@@ -126,7 +143,12 @@ export const serviceLayer: Layer.Layer<
  * Kept apart from `serviceLayer` so a stack that composes auth's services
  * for a test does not also have to stand up the boot barrier.
  */
-export const pluginLayer = Layer.mergeAll(serviceLayer, recoveryBootCheck)
+export const pluginLayer = Layer.mergeAll(recoveryBootCheck, publicOriginBootCheck).pipe(
+  // the checks stand on the services, which is also where the two resolvers
+  // come from: merged beside them they would be built in parallel with what
+  // they depend on
+  Layer.provideMerge(serviceLayer),
+)
 
 // --- api ---
 

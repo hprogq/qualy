@@ -793,6 +793,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
   ) {
     const revokedGrants = yield* rbac.revokeAllGrantsOfUser(tenantId, user.id, as.userId)
     const revokedBindings = yield* revokeUserBindings(tenantId, user.id, as.userId)
+    // their sessions go, and every redirect pinned to one goes with them
     const endedSessions = yield* deleteUserSessions(tenantId, user.id)
     yield* markUserDeleted(tenantId, user.id)
     yield* audit.record(UserDeleted, {

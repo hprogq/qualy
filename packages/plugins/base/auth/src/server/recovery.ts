@@ -8,6 +8,7 @@ import { SYSTEM_ACCOUNT_USER_TYPE } from '../constants.ts'
 import { AuthConfig } from './auth-config.ts'
 import { db } from './db.ts'
 import { makeReadiness, type Readiness, type ReadinessSubject } from './readiness.ts'
+import type { PublicOriginResolver } from './public-origin.ts'
 
 // How a tenant gets back in when every other way has failed.
 //
@@ -127,7 +128,7 @@ const liveTenants = db.query((k) =>
 export const recoveryBootCheck: Layer.Layer<
   never,
   never,
-  Orm | AuthConfig | LoginDrivers | Secrets | Assembled
+  Orm | AuthConfig | LoginDrivers | Secrets | PublicOriginResolver | Assembled
 > = Layer.effectDiscard(
   Effect.gen(function* () {
     const assembled = yield* Assembled
