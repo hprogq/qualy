@@ -1,6 +1,12 @@
 import { Plugin } from '@qualy/plugin-kit'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
-import { APP_SHELL, BLANK_SHELL, USER_DETAIL_SHELL, WORKSPACE_SHELL } from '@qualy/ui-contract'
+import {
+  ACCOUNT_SHELL,
+  APP_SHELL,
+  BLANK_SHELL,
+  USER_DETAIL_SHELL,
+  WORKSPACE_SHELL,
+} from '@qualy/ui-contract'
 
 // A layout plugin ships one thing: implementations behind layout contracts.
 // It depends on no business plugin, no business plugin depends on it, and
@@ -21,6 +27,10 @@ const plugin = Plugin.define(
   Ui.layout({
     contract: USER_DETAIL_SHELL,
     component: Ui.react('./client/UserDetailShell'),
+  }),
+  Ui.layout({
+    contract: ACCOUNT_SHELL,
+    component: Ui.react('./client/AccountShell'),
   }),
   Ui.layout({
     contract: BLANK_SHELL,

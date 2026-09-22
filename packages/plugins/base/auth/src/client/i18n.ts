@@ -501,6 +501,20 @@ const i18n = definePluginMessages({
     },
     methodSecretClear: { id: 'auth/login-methods/secret-clear', defaultMessage: 'Clear' },
     methodChoose: { id: 'auth/login-methods/choose', defaultMessage: 'Choose' },
+    accountProfile: { id: 'auth/account/profile', defaultMessage: 'Profile' },
+    accountLogins: { id: 'auth/account/logins', defaultMessage: 'Ways in' },
+    accountLoginsEmpty: {
+      id: 'auth/account/logins-empty',
+      defaultMessage: 'No way in is open to you right now.',
+    },
+    accountNotBound: { id: 'auth/account/not-bound', defaultMessage: 'Not bound yet' },
+    accountUnbind: { id: 'auth/account/unbind', defaultMessage: 'Unbind' },
+    accountUnbindTitle: methodNamed('auth/account/unbind-title', 'Unbind {name}?'),
+    accountUnbindBody: {
+      id: 'auth/account/unbind-body',
+      defaultMessage:
+        'You will no longer sign in this way, and every session signed in through it ends, this one included.',
+    },
     methodAdvanced: { id: 'auth/login-methods/advanced', defaultMessage: 'Advanced settings' },
     methodSecretClearLabel: methodSecretClearLabelMessage,
     methodMissing: methodMissingMessage,
@@ -885,6 +899,10 @@ const i18n = definePluginMessages({
       id: 'auth/error/binding-user-field-missing',
       defaultMessage:
         '{field, select, email {Add their email in the profile first.} other {Add their person identifier in the profile first.}}',
+    },
+    AUTH_LAST_WAY_IN: {
+      id: 'auth/error/last-way-in',
+      defaultMessage: 'Without it you could not sign in at all. Bind another way in first.',
     },
     AUTH_BINDING_NOT_FOUND: {
       id: 'auth/error/binding-not-found',

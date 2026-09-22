@@ -10,6 +10,7 @@
     "./client/AppShell": "./src/client/AppShell.tsx",
     "./client/BlankShell": "./src/client/BlankShell.tsx",
     "./client/UserDetailShell": "./src/client/UserDetailShell.tsx",
+    "./client/AccountShell": "./src/client/AccountShell.tsx",
     "./client/WorkspaceShell": "./src/client/WorkspaceShell.tsx",
     "./client/i18n": "./src/client/i18n.ts",
     "./package.json": "./package.json"

@@ -37,6 +37,9 @@ export const FROZEN_ROUTES = [
   'GET /tenant/terminology',
   'PUT /tenant/terminology/{namespace}/{name}',
 
+  'GET /iam/self',
+  'GET /iam/self/entrances',
+  'DELETE /iam/self/auth-bindings/{providerId}',
   'GET /iam/permissions',
   'POST /iam/access-evaluations',
   'GET /iam/role-options',

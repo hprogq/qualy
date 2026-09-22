@@ -23,6 +23,7 @@ import {
 import { iamMessages as m } from '../i18n.ts'
 import { authApi } from '../api.ts'
 import { PlacementPath } from './users/PlacementPath.tsx'
+import { EmailWithStanding } from './person-facts.tsx'
 
 // The person, stated: what the directory holds about them, and where each
 // of the other sections picks up. Editing is the banner's, because it edits
@@ -40,14 +41,6 @@ const styles = stylex.create({
     gap: 12,
   },
   // the address and whether it was proved, on one line
-  emailLine: {
-    display: 'inline-flex',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: 8,
-    minWidth: 0,
-    overflowWrap: 'anywhere',
-  },
   roleList: {
     display: 'flex',
     flexDirection: 'column',
@@ -126,22 +119,10 @@ export default function UserProfilePage() {
                     {record.businessNo ?? format(m.personNoBusinessNo, { businessNo: businessNoWord })}
                   </DefLine>
                   <DefLine label={format(m.emailLabel)}>
-                    {record.email === null ? (
-                      format(m.emailNone)
-                    ) : (
-                      <span {...stylex.props(styles.emailLine)}>
-                        {record.email}
-                        <Status
-                          tone={record.emailVerifiedAt === null ? 'plain' : 'ok'}
-                          data-testid="email-verified"
-                          data-verified={record.emailVerifiedAt === null ? 'no' : 'yes'}
-                        >
-                          {format(
-                            record.emailVerifiedAt === null ? m.emailUnverified : m.emailVerified,
-                          )}
-                        </Status>
-                      </span>
-                    )}
+                    <EmailWithStanding
+                      email={record.email}
+                      verified={record.emailVerifiedAt !== null}
+                    />
                   </DefLine>
                   <DefLine label={format(m.userTypeLabel)}>{record.userType.name}</DefLine>
                   <DefLine label={format(m.columnStatus)}>

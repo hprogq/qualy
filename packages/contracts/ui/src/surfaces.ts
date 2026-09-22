@@ -39,6 +39,20 @@ export const WORKSPACE_SHELL: LayoutContractId = 'workspace-shell/v1'
 export const USER_DETAIL_SHELL: LayoutContractId = 'user-detail-shell/v1'
 export const BLANK_SHELL: LayoutContractId = 'blank-shell/v1'
 
+/**
+ * The shell for the signed-in person's own things: the same applications
+ * across the top, then who they are and a rail of what the product keeps
+ * about them, one page each.
+ *
+ * The user-detail shell's twin, and deliberately not the same contract: that
+ * one opens somebody's record for whoever may administer them, this one is
+ * only ever about the reader. A page filed here shows the current user's own
+ * data or lets them act on their own account, and nothing else - never
+ * another person, never an administrative control - so it asks for no
+ * permission beyond being signed in.
+ */
+export const ACCOUNT_SHELL: LayoutContractId = 'account-shell/v1'
+
 // collection surfaces carry structured data rendered by the layout itself
 // (navigation, breadcrumbs, ...); slot surfaces carry contributed renderers
 // a collection surface distinguishes what a plugin contributes from what
@@ -204,6 +218,19 @@ export const userDetailNavigation = defineUiCollection<NavigationItem, ResolvedN
   schema: navigationItemSchema,
 })
 
+/**
+ * The sections of the reader's own account.
+ *
+ * Whoever owns sessions files the profile and the ways in; a plugin that
+ * keeps something of the reader's own (their entries in a round, their
+ * uploaded material) files a page of its own here. Only pages about the
+ * signed-in person belong in it.
+ */
+export const accountNavigation = defineUiCollection<NavigationItem, ResolvedNavigationItem>({
+  key: 'account-shell/navigation',
+  schema: navigationItemSchema,
+})
+
 /** the sections every navigation files its entries under */
 export const navigationGroups = defineUiCollection<NavigationGroup>({
   key: 'app-shell/navigation-groups',
@@ -221,6 +248,7 @@ export const navigationCollections: readonly NamespacedId[] = [
   primaryNavigation.key,
   workspaceNavigation.key,
   userDetailNavigation.key,
+  accountNavigation.key,
 ]
 
 export const headerActions = defineUiSlot({
@@ -312,6 +340,12 @@ export interface NavigationBadgeContext {
  */
 export const userDetailHeader = defineUiSlot({
   key: 'iam/user-detail-header',
+  cardinality: 'one',
+})
+
+/** who the reader is, above the account rail, said by whoever owns sessions */
+export const accountHeader = defineUiSlot({
+  key: 'account-shell/header',
   cardinality: 'one',
 })
 

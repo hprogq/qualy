@@ -43,6 +43,7 @@ import {
   AuthBindingNotFound,
   AuthBindingUnsupported,
   AuthBindingUserFieldMissing,
+  AuthLastWayIn,
   ProviderConfigIncomplete,
   ProviderConfigInvalid,
   ProviderConflict,
@@ -869,4 +870,61 @@ export const sessionApiGroup = HttpApiGroup.make('auth')
     HttpApiEndpoint.delete('endSession', '/auth/session', {
       success: Schema.Struct({ ok: Schema.Literal(true) }),
     }),
+  )
+
+/**
+ * The signed-in person's own account.
+ *
+ * Its own group because it answers a different question from the directory
+ * beside it: not "who is this person", asked with authority over them, but
+ * "who am I", which being signed in is the whole of the authority for. There
+ * is no user id anywhere in it - the session says who.
+ */
+const selfEntrance = Schema.Struct({
+  providerId: Schema.String,
+  name: Schema.String,
+  type: Schema.String,
+  resolution: userEntrance.fields.resolution,
+  binding: userEntrance.fields.binding,
+  bound: userEntrance.fields.bound,
+  /** an account they bound themselves, and not the last way they have in */
+  unbindable: Schema.Boolean,
+})
+
+export const selfApiGroup = HttpApiGroup.make('self')
+  .add(
+    HttpApiEndpoint.get('getSelf', '/iam/self', {
+      success: Schema.Struct({
+        id: Schema.String,
+        displayName: Schema.String,
+        businessNo: Schema.NullOr(Schema.String),
+        email: Schema.NullOr(Schema.String),
+        emailVerified: Schema.Boolean,
+        userType: Schema.Struct({ id: Schema.String, name: Schema.String }),
+        unit: Schema.NullOr(Schema.Struct({ id: Schema.String, name: Schema.String })),
+      }),
+      error: [UserNotFound],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // the doors in service that let them through; a door that would not is
+    // not a way in and is not listed
+    HttpApiEndpoint.get('listSelfEntrances', '/iam/self/entrances', {
+      success: Schema.Struct({ entrances: Schema.Array(selfEntrance) }),
+      error: [UserNotFound],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.delete('deleteSelfAuthBinding', '/iam/self/auth-bindings/:providerId', {
+      params: Schema.Struct({ providerId: uuidInput }),
+      // whether the session this came from was one of those ended with it
+      success: Schema.Struct({ signedOut: Schema.Boolean }),
+      error: [
+        UserNotFound,
+        SystemAccountProtected,
+        AuthBindingNotFound,
+        AuthBindingUnsupported,
+        AuthLastWayIn,
+      ],
+    }).middleware(Authenticated),
   )

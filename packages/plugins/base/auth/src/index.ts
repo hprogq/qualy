@@ -31,12 +31,21 @@ import {
   sidebarUser,
   userDetailHeader,
   userDetailNavigation,
+  ACCOUNT_SHELL,
+  accountHeader,
+  accountNavigation,
+  primaryNavigation,
 } from '@qualy/ui-contract'
 import { config } from './server/auth-config.ts'
-import { identityApiGroup, sessionApiGroup } from './api.ts'
+import { identityApiGroup, selfApiGroup, sessionApiGroup } from './api.ts'
 import { compositeForeignKeys, entities } from './db/entities.ts'
 import { permissions } from './permissions.ts'
-import { identityApiHandlers, pluginLayer, sessionApiHandlers } from './server/index.ts'
+import {
+  identityApiHandlers,
+  pluginLayer,
+  selfApiHandlers,
+  sessionApiHandlers,
+} from './server/index.ts'
 
 // The plugin, as one description: identity itself, its tables, four screens,
 // a header slot, its permission codes, and its two api groups.
@@ -161,6 +170,72 @@ const plugin = Plugin.define(
       },
     ],
   }),
+  // The reader's own account: who they are, and how they sign in. An entry
+  // of its own at the end of the top bar for anybody signed in; the pages
+  // are about the reader and nobody else, so a session is all they ask for.
+  Ui.page({
+    id: 'auth/account-profile',
+    path: '/account',
+    component: Ui.react('./client/account/AccountProfilePage'),
+    layout: ACCOUNT_SHELL,
+    title: message('auth/account/profile', 'Profile'),
+    visibility: AUTHENTICATED,
+  }),
+  Ui.page({
+    id: 'auth/account-logins',
+    path: '/account/logins',
+    component: Ui.react('./client/account/AccountLoginsPage'),
+    layout: ACCOUNT_SHELL,
+    title: message('auth/account/logins', 'Ways in'),
+    visibility: AUTHENTICATED,
+  }),
+  Ui.slot({
+    key: accountHeader.key,
+    id: 'auth/account-header',
+    component: Ui.react('./client/account/AccountHeader'),
+    visibility: AUTHENTICATED,
+  }),
+  Ui.surfaces({
+    collections: [
+      {
+        collection: primaryNavigation,
+        id: 'auth/account',
+        value: {
+          id: 'auth/account',
+          label: message('auth/navigation/account', 'Me'),
+          target: { kind: 'page', pageId: 'auth/account-profile' },
+          icon: 'user-round',
+          // after every application, whatever they are numbered
+          order: 10_000,
+        },
+        visibility: AUTHENTICATED,
+      },
+      {
+        collection: accountNavigation,
+        id: 'auth/account/profile',
+        value: {
+          id: 'auth/account/profile',
+          label: message('auth/account/profile', 'Profile'),
+          target: { kind: 'page', pageId: 'auth/account-profile' },
+          icon: 'id-card',
+          order: 0,
+        },
+        visibility: AUTHENTICATED,
+      },
+      {
+        collection: accountNavigation,
+        id: 'auth/account/logins',
+        value: {
+          id: 'auth/account/logins',
+          label: message('auth/account/logins', 'Ways in'),
+          target: { kind: 'page', pageId: 'auth/account-logins' },
+          icon: 'key-round',
+          order: 10,
+        },
+        visibility: AUTHENTICATED,
+      },
+    ],
+  }),
   Ui.page({
     id: 'auth/user-types',
     path: '/organization/user-types',
@@ -272,6 +347,7 @@ const plugin = Plugin.define(
   Login.provider,
   Api.group(identityApiGroup, identityApiHandlers),
   Api.group(sessionApiGroup, sessionApiHandlers),
+  Api.group(selfApiGroup, selfApiHandlers),
   Plugin.layer(pluginLayer),
 )
 
@@ -279,4 +355,4 @@ export default plugin
 
 // the handler layers stay named exports beside the descriptor: tests build
 // single groups from them, and a value export costs nothing
-export const apiHandlers = Layer.mergeAll(identityApiHandlers, sessionApiHandlers)
+export const apiHandlers = Layer.mergeAll(identityApiHandlers, sessionApiHandlers, selfApiHandlers)

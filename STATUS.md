@@ -19709,3 +19709,45 @@ HEAD 的 run 是绿的;红的是中间提交 `ceb8ccb6`(那次的 `entry-workflo
 
 - 真实学校 CAS 的一次人工联调(docs/notes/cas-manual-check.md)。
 - 回调只收 GET;CAS 登出、SLO、PGT/PT、`checkAliveTicket` 均未做(见 auth-security「CAS 驱动」)。
+
+## 认证 F–J 之三:「我的」(2026-09-23)
+
+规划时用户对「我的」的裁决与修正项④:正式一级入口 + `ACCOUNT_SHELL` + `accountNavigation`,插件只能注册本人视角页面;
+「我的」导航项与页面都归 auth,layout-default 只实现契约;`accountNavigation.key` 进 `navigationCollections`;
+自助 API 与管理 API 分权,共享展示组件不共享路由与权限;自助解绑写后复核「仍有一条可用登录方式」并结束经它登录的会话。
+
+### 做了什么
+
+- **ui-contract**:布局契约 `account-shell/v1`(`ACCOUNT_SHELL`)、集合 `account-shell/navigation`(`accountNavigation`,已加入
+  `navigationCollections`)、槽位 `account-shell/header`(`accountHeader`),契约注释写明只接受本人数据或自助操作。
+- **layout-default**:只加 `AccountShell`(同一个 RailShell,Banner + 左侧导航,窄屏为芯片行)。
+- **auth**:顶栏「我的」是 `app-shell/navigation-primary` 里的无分组条目(order 10000,排在所有应用之后,可见性 AUTHENTICATED);
+  页面 `auth/account-profile`(`/account`)与 `auth/account-logins`(`/account/logins`),头部槽位 `auth/account-header`。
+- **自助 API**(新 group `self`,只要登录):`GET /iam/self`(姓名、人员编号、邮箱与验证状态、身份类型、单位)、
+  `GET /iam/self/entrances`(在用且受众接纳本人的入口:怎么找到你、你绑了什么、能否解除)、
+  `DELETE /iam/self/auth-bindings/{providerId}`(只针对本人自绑的账号;密码归管理员管 `AUTH_BINDING_UNSUPPORTED`,系统账户
+  `SYSTEM_ACCOUNT_PROTECTED`)。解绑在租户锁内:撤销绑定 → 按撤销后的状态复核仍有一条可用登录方式(密码入口要有凭据、按字段找人
+  的入口要本人有该字段、自绑入口要有绑定;只数在用、就绪、受众接纳的入口),否则 `AUTH_LAST_WAY_IN` 整体回滚 →
+  删除 `auth_binding_id` 为该绑定的会话(当前会话若在其中,响应 `signedOut: true` 并清 cookie,前端转去登录页)→ 审计
+  `auth.identity.revoke`(actor 为本人)。
+- **共享展示组件** `client/iam/person-facts.tsx`:`EmailWithStanding`(邮箱 + 验证状态)与 `EntranceAccount`(入口的「账号」列),
+  用户详情的资料页、登录方式页与「我的」两页共用。
+- 文档:docs/notes/ui-composition.md 增「第四个壳」一节。
+- docs/notes/auth-security.md 增「『我的』自助接口」一节。
+
+### 验收(实际执行)
+
+- `pnpm typecheck`:exit 0,零 `error TS`。
+- `pnpm test`:`Test Files  286 passed | 3 skipped (289)`、`Tests  2122 passed | 17 skipped (2135)`。
+- `pnpm test:browser`:三轮全量各有 1 条 assessment 屏幕用例等待超时(`record-recognition` 两轮、`review-recognition` 一轮,
+  `vi.waitFor` 默认 1 秒;失败截图里数据随后已到位),`Tests  1 failed | 518 passed (519)`;当时本机负载平均约 8(另有会话在跑)。
+  两个文件单独合跑 `Test Files  2 passed (2)`、`Tests  20 passed (20)`;本提交新增的 `account.browser` 2 条在全量里均通过。
+- `pnpm qualy resolve --frozen-lockfile`:`qualy.lock.json is up to date`(页面与布局契约不进 resolutionHash;
+  `browserContractHash` 变了,部署须重建 web release)。本提交无迁移。
+- 新测试:`effect-self.test.ts` 4 条(资料与入口列表、凭据不外泄、解绑结束经它登录的会话而保留其他、审计 actor 为本人、
+  再解与解密码入口的拒绝、当前会话经它登录则 `signedOut`、最后一条登录方式被拒且整体回滚、有按人员编号找人的入口即可解绑、
+  系统账户被拒);`account.browser` 2 条(资料按 fixture 显示、只对服务端允许的行给出解绑且确认后才调用)。
+
+### 遗留
+
+- 「绑定」按钮与外部账号驱动在下一提交(GitHub)。

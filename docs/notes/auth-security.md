@@ -280,6 +280,17 @@ default-src 'self'; script-src 'self' 'sha256-pKAg+of2SxxrkLJX27pRnCgcyN5Ud1dmuO
   服务器拒绝时日志只记它的错误码。`checkAliveTicket` 之类上游会话凭据本阶段不保存。
 - 仓库里的 CAS fixture 全部是合成数据;真实学校的联调按 docs/notes/cas-manual-check.md 人工做,不进 CI。
 
+## 「我的」自助接口(2026-09-23 定案)
+
+- `/iam/self/*` 只要登录,**不带任何用户 id**:问的永远是 session 的主人,与 `/iam/users/{userId}/*` 的管理接口分权,
+  不共享路由也不共享授权(只共享展示组件)。
+- `GET /iam/self/entrances` 只列**在用、就绪、受众接纳本人**的入口;凭据永不出现,只说有没有。
+- **自助解绑**只针对本人自绑(`binding.mode = 'self'`)的外部账号;密码由管理员管理(`AUTH_BINDING_UNSUPPORTED`),
+  系统账户一律 `SYSTEM_ACCOUNT_PROTECTED`。租户锁内先撤销、再按撤销后的状态复核「仍有一条可用登录方式」
+  (密码入口要有凭据、按字段找人的入口要本人有该字段、自绑入口要有绑定),没有就 `AUTH_LAST_WAY_IN` 整体回滚——
+  想换一种方式的人先绑新的再解旧的。通过被解绑账号登录的会话全部结束;当前会话若在其中,响应 `signedOut` 并清 cookie。
+  审计 `auth.identity.revoke`,actor 为本人。
+
 ## 恢复通道(2026-09-22 定案)
 
 - 每个租户的系统账户(`system-account` 类型)永远保有平台 local 入口上的一条可用登录:有邮箱、有存活密码凭据,入口在用且受众接纳系统类型

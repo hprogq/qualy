@@ -12,8 +12,6 @@ import {
 } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import { useTerm } from '@qualy/plugin-settings/client/terms'
-import { authTerms } from '@qualy/auth-contract/terms'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { AsyncSection, ConfirmDialog, Feedback, Field, FormDialog } from '@qualy/ui/admin'
@@ -34,6 +32,7 @@ import { Input } from '@qualy/ui/input'
 import { toast } from '@qualy/ui/toast'
 import { iamMessages as m } from '../i18n.ts'
 import { authApi } from '../api.ts'
+import { EntranceAccount } from './person-facts.tsx'
 
 // How one person gets in, as somebody administering them reads it.
 //
@@ -66,9 +65,6 @@ const styles = stylex.create({
     marginInlineStart: { default: null, [breakpoints.phone]: 'auto' },
   },
   form: { display: 'flex', flexDirection: 'column', gap: 14 },
-  code: { fontFamily: "'SFMono-Regular', ui-monospace, Menlo, Consolas, monospace", fontSize: 12 },
-  account: { display: 'inline-flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, minWidth: 0 },
-  aside: { fontSize: 12, color: tokens.mutedForeground },
 })
 
 export default function UserIdentitiesPage() {
@@ -78,7 +74,6 @@ export default function UserIdentitiesPage() {
   const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
   const { format, formatError, locale } = useI18n()
-  const businessNoWord = useTerm(authTerms.businessNumber)
   const entrancesHref = usePageHref('auth/login-methods')
   const [editing, setEditing] = useState<Entrance | null>(null)
   const [revoking, setRevoking] = useState<Entrance | null>(null)
@@ -104,53 +99,6 @@ export default function UserIdentitiesPage() {
   /** the value of the person's own field a door finds them by, if they have it */
   const fieldValue = (field: 'email' | 'businessNo') =>
     field === 'email' ? (record?.email ?? null) : (record?.businessNo ?? null)
-
-  /** what stands in the account column */
-  const account = (entrance: Entrance) => {
-    if (!entrance.admits) return <Cell tone="quiet">{format(m.entranceNotAdmitted)}</Cell>
-    const resolution = entrance.resolution
-    if (resolution === null) return <Cell tone="quiet">{format(m.driverMissing)}</Cell>
-    if (resolution.mode === 'binding-subject') {
-      const bound = entrance.bound
-      return bound === null ? (
-        <Cell tone="quiet">{format(m.entranceSelf)}</Cell>
-      ) : (
-        <Cell tone="plain" unlabelled title={bound.subject ?? undefined}>
-          <span {...stylex.props(styles.code)}>{bound.displayLabel ?? bound.subject}</span>
-        </Cell>
-      )
-    }
-    const value = fieldValue(resolution.field)
-    if (value === null) {
-      return (
-        <Cell tone="warn">
-          {resolution.field === 'email'
-            ? format(m.emailMissing)
-            : format(m.businessNoMissing, { businessNo: businessNoWord })}
-        </Cell>
-      )
-    }
-    return (
-      <Cell tone="plain" unlabelled title={value}>
-        <span {...stylex.props(styles.account)}>
-          <span {...stylex.props(styles.code)}>{value}</span>
-          {entrance.binding?.mode === 'managed' ? (
-            <Status tone={entrance.bound?.hasCredential === true ? 'ok' : 'warn'}>
-              {format(
-                entrance.bound?.hasCredential === true ? m.credentialSet : m.credentialUnset,
-              )}
-            </Status>
-          ) : (
-            <span {...stylex.props(styles.aside)}>
-              {resolution.field === 'email'
-                ? format(m.fromEmail)
-                : format(m.byBusinessNo, { businessNo: businessNoWord })}
-            </span>
-          )}
-        </span>
-      </Cell>
-    )
-  }
 
   return (
     <div {...stylex.props(styles.page)}>
@@ -232,7 +180,13 @@ export default function UserIdentitiesPage() {
                         <Status tone="bad">{format(m.entranceDisabled)}</Status>
                       )}
                     </Cell>
-                    {account(entrance)}
+                    <EntranceAccount
+                      entrance={entrance}
+                      person={{
+                        email: record?.email ?? null,
+                        businessNo: record?.businessNo ?? null,
+                      }}
+                    />
                     {bound === null ? (
                       <Cell />
                     ) : bound.lastUsedAt === null ? (

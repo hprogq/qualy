@@ -242,6 +242,20 @@ export class AuthBindingNotFound extends Schema.TaggedError<AuthBindingNotFound>
   { httpApiStatus: 404, identifier: 'AuthBindingNotFound' },
 ) {}
 
+/**
+ * Letting go of this binding would leave the person no way to sign in.
+ *
+ * Asked of the state the removal would leave, among the entrances in service
+ * that admit them: a password they hold, an identifier a door finds them by,
+ * another account they bound. Somebody who wants to switch binds the new way
+ * first.
+ */
+export class AuthLastWayIn extends Schema.TaggedError<AuthLastWayIn>()(
+  'AUTH_LAST_WAY_IN',
+  {},
+  { httpApiStatus: 409, identifier: 'AuthLastWayIn' },
+) {}
+
 /** an address another entrance of this tenant already answers at */
 export class ProviderConflict extends Schema.TaggedError<ProviderConflict>()(
   'AUTH_PROVIDER_CONFLICT',

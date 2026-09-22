@@ -13,12 +13,13 @@ import { Audit } from '@qualy/audit-contract/effect'
 
 import { placementViolations, primaryNode, usersBlockingOrgType } from './placement.ts'
 import { makeProviders } from './providers.ts'
-import { identityApiGroup, sessionApiGroup } from '../api.ts'
-import { LoginDrivers, LoginSessions } from '@qualy/auth-contract/login'
+import { identityApiGroup, selfApiGroup, sessionApiGroup } from '../api.ts'
+import { LoginDrivers, LoginSessions, type AuthBindingDeclaration } from '@qualy/auth-contract/login'
 import { AuthConfig, SignIn, layer as signInLayer } from './sign-in.ts'
 import { AuthRequired, Authenticated, CurrentUser, Viewer } from '@qualy/auth-contract/session'
 import { make as makeUserTypes, type UserTypeRow } from './user-types.ts'
 import { make as makeUsers, type UserProjection } from './users.ts'
+import { make as makeSelf } from './self.ts'
 import { layer as sessionLayer, viewerLayer } from './session.ts'
 import { recoveryBootCheck } from './recovery.ts'
 import { publicOriginBootCheck, PublicOriginResolver, singleOriginLayer } from './public-origin.ts'
@@ -47,6 +48,7 @@ export class Iam extends Context.Service<
     readonly userTypes: Effect.Success<ReturnType<typeof makeUserTypes>>
     readonly users: Effect.Success<ReturnType<typeof makeUsers>>
     readonly providers: Effect.Success<ReturnType<typeof makeProviders>>
+    readonly self: Effect.Success<ReturnType<typeof makeSelf>>
   }
 >()('@qualy/plugin-auth/Iam') {}
 
@@ -55,6 +57,7 @@ export const make = Effect.fn('Auth.make')(function* () {
   const userTypes = yield* makeUserTypes()
   const users = yield* makeUsers()
   const providers = yield* makeProviders()
+  const self = yield* makeSelf()
 
   return {
     placement: {
@@ -79,6 +82,7 @@ export const make = Effect.fn('Auth.make')(function* () {
       userTypes,
       providers,
       users,
+      self,
     },
   }
 })
@@ -198,7 +202,23 @@ const toUserTypeDto = (row: UserTypeRow) => ({
       : { mode: placementModeOf(row) as 'unrestricted' | 'tenant-root' },
 })
 
-const local = Api.local(identityApiGroup, sessionApiGroup)
+/** a binding declaration without its function: what to ask for, never how */
+const bindingView = (binding: AuthBindingDeclaration | null | undefined) =>
+  binding === undefined || binding === null
+    ? null
+    : binding.mode === 'managed'
+      ? {
+          mode: 'managed' as const,
+          secret: {
+            label: binding.secret.label,
+            hint: binding.secret.hint ?? null,
+            minLength: binding.secret.minLength,
+            maxLength: binding.secret.maxLength,
+          },
+        }
+      : { mode: 'self' as const }
+
+const local = Api.local(identityApiGroup, sessionApiGroup, selfApiGroup)
 
 export const sessionApiHandlers = HttpApiBuilder.group(local, 'auth', (handlers) =>
   handlers
@@ -229,6 +249,54 @@ export const sessionApiHandlers = HttpApiBuilder.group(local, 'auth', (handlers)
         // without one, which is what they asked for
         yield* signIn.endSession()
         return { ok: true as const }
+      }),
+    ),
+)
+
+/**
+ * The reader's own account. No permission is asked beyond the session: every
+ * answer is about the principal, and nothing here can name anybody else.
+ */
+export const selfApiHandlers = HttpApiBuilder.group(local, 'self', (handlers) =>
+  handlers
+    .handle(
+      'getSelf',
+      Effect.fn('iam.getSelf.handler')(function* () {
+        const iam = yield* Iam
+        return yield* iam.self.profile(yield* CurrentUser)
+      }),
+    )
+    .handle(
+      'listSelfEntrances',
+      Effect.fn('iam.listSelfEntrances.handler')(function* () {
+        const iam = yield* Iam
+        const found = yield* iam.self.entrances(yield* CurrentUser)
+        return {
+          entrances: found.map((entrance) => ({
+            ...entrance,
+            binding: bindingView(entrance.binding),
+            bound:
+              entrance.bound === null
+                ? null
+                : {
+                    ...entrance.bound,
+                    boundAt: instant(entrance.bound.boundAt) ?? '',
+                    lastUsedAt: instant(entrance.bound.lastUsedAt),
+                  },
+          })),
+        }
+      }),
+    )
+    .handle(
+      'deleteSelfAuthBinding',
+      Effect.fn('iam.deleteSelfAuthBinding.handler')(function* ({ params }) {
+        const iam = yield* Iam
+        const signIn = yield* SignIn
+        const answer = yield* iam.self.unbind(yield* CurrentUser, params.providerId)
+        // the session this came from signed in through what was let go: it
+        // has ended, and the cookie that named it goes too
+        if (answer.signedOut) yield* signIn.endSession()
+        return answer
       }),
     ),
 )
@@ -673,21 +741,7 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
             // number on some drivers; the wire says boolean
             admits: entrance.admits === true,
             resolution: entrance.resolution ?? null,
-            // the declaration without its function: what to ask for, never how
-            binding:
-              entrance.binding === undefined
-                ? null
-                : entrance.binding.mode === 'managed'
-                  ? {
-                      mode: 'managed' as const,
-                      secret: {
-                        label: entrance.binding.secret.label,
-                        hint: entrance.binding.secret.hint ?? null,
-                        minLength: entrance.binding.secret.minLength,
-                        maxLength: entrance.binding.secret.maxLength,
-                      },
-                    }
-                  : { mode: 'self' as const },
+            binding: bindingView(entrance.binding),
             bound:
               entrance.bindingId === null
                 ? null

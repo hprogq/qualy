@@ -9,10 +9,10 @@
 | --------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | Component       | 构建内可懒加载的 React renderer,key 为 `<plugin>/<Name>`                      | plugins.gen 聚合,生成期命名空间校验                                                                                 |
 | Page            | 一个可路由主内容单元 = 恰好一个主 Component;`{ id, path, component, layout }` | id 必填(`org/tree` 式),layout 引用契约而非实现                                                                      |
-| Layout Contract | 语义布局协议(含版本):`app-shell/v1`、`workspace-shell/v1`、`user-detail-shell/v1`、`blank-shell/v1` | 定义于 @qualy/ui-contract                                                                                    |
+| Layout Contract | 语义布局协议(含版本):`app-shell/v1`、`workspace-shell/v1`、`user-detail-shell/v1`、`account-shell/v1`、`blank-shell/v1` | 定义于 @qualy/ui-contract                                                                                    |
 | Layout Provider | 契约的具体实现,由布局插件 registerLayout 注册                                 | @qualy/plugin-layout-default 提供两个默认实现                                                                       |
-| Collection      | 结构化数据表面,布局统一渲染(导航/未来面包屑)                                  | `app-shell/navigation-primary`、`workspace-shell/navigation`、`iam/user-detail-navigation`(pageId 引用,manifest 期解析 path,页面消失项自动脱落);`iam/resource-grant-presenters`(键控 renderer 映射) |
-| Slot            | 松耦合 renderer 表面,cardinality one/many                                     | `app-shell/header-actions`、`app-shell/user-menu`、`workspace-shell/context`、`iam/user-detail-header`、`iam/resource-grant-renderer` |
+| Collection      | 结构化数据表面,布局统一渲染(导航/未来面包屑)                                  | `app-shell/navigation-primary`、`workspace-shell/navigation`、`iam/user-detail-navigation`、`account-shell/navigation`(pageId 引用,manifest 期解析 path,页面消失项自动脱落);`iam/resource-grant-presenters`(键控 renderer 映射) |
+| Slot            | 松耦合 renderer 表面,cardinality one/many                                     | `app-shell/header-actions`、`app-shell/user-menu`、`workspace-shell/context`、`iam/user-detail-header`、`account-shell/header`、`iam/resource-grant-renderer` |
 | Theme           | 视觉 token,与结构布局分离                                                     | CSS variables 已就绪(@qualy/ui/theme.css),Provider 注册缓建                                                         |
 
 ## 两个壳,一条边界(2026-08-12 扩展)
@@ -60,6 +60,18 @@ pageId 上网。
 两次别人的对象),没登记的类型显示平实的缺省文字。链接一律 `PageLink page=...`,renderer 查名称仍走自己的 API,
 无权读取就退化为「来自一个测评批次」。**通用 `DELETE /iam/role-grants/{id}` 拒绝资源限定的授权**
 (`GRANT_RESOURCE_BOUND`):它经资源拥有者的业务流程(如 assessment 的 removeStaff)撤销,拥有者保留着指向它的记录。
+
+## 第四个壳:「我的」(2026-09-23 扩展)
+
+「我的」是**当前登录用户自己的**一级入口,不是用户详情页换个路由:布局契约 `account-shell/v1`(layout-default 实现,
+与用户详情同一个 RailShell:上方 Banner 槽位 `account-shell/header`,左侧导航面 `account-shell/navigation`)。
+
+- **只接受本人数据或自助操作**:挂进来的页面只读写当前登录用户自己的东西(资料、登录方式、自己的参评 / 材料),
+  不出现任何管理控件,可见性一律 `AUTHENTICATED`,不要求任何权限;背后是 `/iam/self/*` 这类不带用户 id 的自助接口,
+  与 `/iam/users/{userId}/*` 管理接口分权。与用户详情**共享展示组件**(邮箱与验证状态、入口的「账号」列),不共享路由与授权。
+- 顶栏入口是 auth 往 `app-shell/navigation-primary` 放的一个**无分组**条目(无分组即「一页一个应用」,order 很大所以排在最后);
+  没有 auth 的装配就没有「我的」。`accountNavigation.key` 在 `navigationCollections` 里,pageId → path 照常解析。
+- 其他插件要加「我的 → …」:声明 `layout: ACCOUNT_SHELL` 的页面并往 `account-shell/navigation` 放条目,不改 layout-default 或 auth。
 
 ## 规则
 
