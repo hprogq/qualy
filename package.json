@@ -14,6 +14,7 @@
     "@qualy/plugin-audit": "workspace:*",
     "@qualy/plugin-auth": "workspace:*",
     "@qualy/plugin-auth-cas": "workspace:*",
+    "@qualy/plugin-auth-github": "workspace:*",
     "@qualy/plugin-auth-local": "workspace:*",
     "@qualy/plugin-database": "workspace:*",
     "@qualy/plugin-directory-import": "workspace:*",

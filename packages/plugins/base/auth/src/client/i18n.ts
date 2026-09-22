@@ -509,6 +509,7 @@ const i18n = definePluginMessages({
     },
     accountNotBound: { id: 'auth/account/not-bound', defaultMessage: 'Not bound yet' },
     accountUnbind: { id: 'auth/account/unbind', defaultMessage: 'Unbind' },
+    accountBind: { id: 'auth/account/bind', defaultMessage: 'Bind' },
     accountUnbindTitle: methodNamed('auth/account/unbind-title', 'Unbind {name}?'),
     accountUnbindBody: {
       id: 'auth/account/unbind-body',
@@ -774,6 +775,19 @@ const i18n = definePluginMessages({
     AUTH_FLOW_REJECTED: {
       id: 'auth/error/flow-rejected',
       defaultMessage: 'That sign-in expired or was already used. Start again.',
+    },
+    AUTH_EXTERNAL_ACCOUNT_UNBOUND: {
+      id: 'auth/error/external-account-unbound',
+      defaultMessage:
+        'No one here has bound that account. Sign in another way, then bind it under Me → Ways in.',
+    },
+    AUTH_BINDING_SUBJECT_TAKEN: {
+      id: 'auth/error/binding-subject-taken',
+      defaultMessage: 'That account is already bound to somebody else.',
+    },
+    AUTH_BINDING_ALREADY_BOUND: {
+      id: 'auth/error/binding-already-bound',
+      defaultMessage: 'You already have an account bound here. Unbind it first to bind another.',
     },
     AUTH_PERSON_NOT_FOUND: {
       id: 'auth/error/person-not-found',

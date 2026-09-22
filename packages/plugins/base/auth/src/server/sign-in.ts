@@ -34,6 +34,7 @@ import { PublicOriginResolver } from './public-origin.ts'
 export { AuthConfig }
 import { sessionCookieName, TooManyAttempts } from '@qualy/auth-contract/session'
 import { clearSessionCookie, setSessionCookie } from './session-cookie.ts'
+import { sameOriginPath } from './same-origin.ts'
 
 // Signing in, and signing out.
 //
@@ -521,26 +522,6 @@ const insertSignInEvent = (input: {
  */
 const revokeSessionByToken = (tokenHash: string) =>
   db.query((k) => k.deleteFrom('Session').where('tokenHash', '=', tokenHash).execute())
-
-/**
- * A driver's redirect target, kept same-origin.
- *
- * An absolute url is dropped rather than followed: the sign-in screen sends a
- * visitor there, and a driver that names another origin would be redirecting
- * them off the application under the application's own name.
- */
-const sameOriginPath = (href: string): string | undefined => {
-  if (!href.startsWith('/')) return undefined
-  const sentinel = 'https://qualy.invalid'
-  let target: URL
-  try {
-    target = new URL(href, sentinel)
-  } catch {
-    return undefined
-  }
-  if (target.origin !== sentinel) return undefined
-  return `${target.pathname}${target.search}${target.hash}`
-}
 
 /** a provider row paired with how its driver asks to be presented */
 export type LoginMethod = {

@@ -203,6 +203,9 @@ importers:
       '@qualy/plugin-auth-cas':
         specifier: workspace:*
         version: link:packages/plugins/base/auth-cas
+      '@qualy/plugin-auth-github':
+        specifier: workspace:*
+        version: link:packages/plugins/base/auth-github
       '@qualy/plugin-auth-local':
         specifier: workspace:*
         version: link:packages/plugins/base/auth-local
@@ -1244,6 +1247,9 @@ importers:
       '@qualy/plugin-auth-cas':
         specifier: workspace:*
         version: link:../auth-cas
+      '@qualy/plugin-auth-github':
+        specifier: workspace:*
+        version: link:../auth-github
       '@qualy/plugin-auth-local':
         specifier: workspace:*
         version: link:../auth-local
@@ -1286,6 +1292,34 @@ importers:
       fast-xml-parser:
         specifier: 'catalog:'
         version: 5.11.1
+    devDependencies:
+      '@qualy/tsconfig':
+        specifier: workspace:*
+        version: link:../../../build/tsconfig
+
+  packages/plugins/base/auth-github:
+    dependencies:
+      '@qualy/api-kit':
+        specifier: workspace:*
+        version: link:../../../core/api-kit
+      '@qualy/auth-contract':
+        specifier: workspace:*
+        version: link:../../../contracts/auth
+      '@qualy/i18n-contract':
+        specifier: workspace:*
+        version: link:../../../contracts/i18n
+      '@qualy/plugin-auth':
+        specifier: workspace:*
+        version: link:../auth
+      '@qualy/plugin-kit':
+        specifier: workspace:*
+        version: link:../../../core/plugin-kit
+      '@qualy/plugin-ui-registry':
+        specifier: workspace:*
+        version: link:../../infra/ui-registry
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-rc.115
     devDependencies:
       '@qualy/tsconfig':
         specifier: workspace:*

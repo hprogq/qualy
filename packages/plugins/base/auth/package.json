@@ -75,6 +75,7 @@
     "@effect/platform-node": "catalog:",
     "@qualy/plugin-audit": "workspace:*",
     "@qualy/plugin-auth-cas": "workspace:*",
+    "@qualy/plugin-auth-github": "workspace:*",
     "@qualy/plugin-auth-local": "workspace:*",
     "@qualy/plugin-rbac": "workspace:*",
     "@qualy/testkit": "workspace:*",

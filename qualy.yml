@@ -68,3 +68,4 @@ plugins:
   '@qualy/plugin-settings': {}
   '@qualy/plugin-directory-import': {}
   '@qualy/plugin-auth-cas': {}
+  '@qualy/plugin-auth-github': {}

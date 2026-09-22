@@ -27,6 +27,8 @@ export const FROZEN_ROUTES = [
   'POST /auth/local/{providerCode}/login',
   'GET /auth/cas/{providerCode}/start',
   'GET /auth/cas/{providerCode}/callback',
+  'GET /auth/github/{providerCode}/start',
+  'GET /auth/github/{providerCode}/callback',
 
   'GET /app/manifest',
   'GET /app/observability',

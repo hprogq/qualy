@@ -110,7 +110,15 @@ export type AuthBindingDeclaration =
         { readonly ok: true; readonly credentialHash: string } | { readonly ok: false }
       >
     }
-  | { readonly mode: 'self' }
+  | {
+      readonly mode: 'self'
+      /**
+       * Where a signed-in person begins binding an account of this kind to
+       * themselves: a same-origin path of one of the driver's own routes.
+       * Absent when the driver offers no way to bind from the account page.
+       */
+      readonly start?: (provider: { readonly code: string }) => string
+    }
 
 /**
  * What one entrance of a driver's kind needs to be told, beyond its name.

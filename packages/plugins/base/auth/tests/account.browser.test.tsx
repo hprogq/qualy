@@ -45,6 +45,7 @@ const password: Entrance = {
     lastUsedAt: null,
     hasCredential: true,
   },
+  bindHref: null,
   unbindable: false,
 }
 
@@ -62,6 +63,7 @@ const hub = (over: Partial<Entrance> = {}): Entrance => ({
     lastUsedAt: '2099-01-02T00:00:00.000Z',
     hasCredential: false,
   },
+  bindHref: null,
   unbindable: true,
   ...over,
 })
@@ -118,5 +120,28 @@ describe('the reader’s ways in', () => {
     await asked.getByRole('button', { name: '解除绑定' }).click()
     await vi.waitFor(() => expect(release).toHaveBeenCalledTimes(1))
     expect(release).toHaveBeenCalledWith({ params: { providerId: HUB_ID } })
+  })
+})
+
+describe('binding an account of your own', () => {
+  it('offers to bind where a way in takes one, and says why a bind came back', async () => {
+    renderScreen({
+      client: fakeClient(
+        stubs([
+          password,
+          hub({ bound: null, unbindable: false, bindHref: '/api/auth/github/hub/start?intent=bind' }),
+        ]),
+      ),
+      route: '/account/logins?error=AUTH_BINDING_SUBJECT_TAKEN',
+      children: <AccountLoginsPage />,
+    })
+    await expect
+      .element(page.getByTestId('account-failure'))
+      .toHaveAttribute('data-code', 'AUTH_BINDING_SUBJECT_TAKEN')
+    const rows = page.getByTestId('account-entrance')
+    await expect.element(rows.first()).toBeInTheDocument()
+    const bindable = (await rows.elements()).map((row) => row.getAttribute('data-bindable'))
+    expect(bindable).toEqual(['false', 'true'])
+    expect(await page.getByRole('button', { name: '绑定', exact: true }).elements()).toHaveLength(1)
   })
 })

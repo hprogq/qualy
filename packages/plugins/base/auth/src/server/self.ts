@@ -15,6 +15,7 @@ import {
   UserNotFound,
 } from './errors.ts'
 import { makeReadiness } from './readiness.ts'
+import { sameOriginPath } from './same-origin.ts'
 
 // The signed-in person's own account, as they read it.
 //
@@ -73,6 +74,7 @@ const doorsOf = (tenantId: string, userId: string, userTypeId: string | null) =>
       .select((eb) => [
         'p.id',
         'p.tenantId',
+        'p.code',
         'p.name',
         'p.type',
         'p.config',
@@ -198,6 +200,13 @@ export const make = Effect.fn('Iam.self.make')(function* () {
                     lastUsedAt: door.lastUsedAt,
                     hasCredential: door.hasCredential === true,
                   },
+            // where to begin binding one, for a door that binds and has none
+            bindHref:
+              driver.binding?.mode === 'self' &&
+              driver.binding.start !== undefined &&
+              door.bindingId === null
+                ? (sameOriginPath(driver.binding.start({ code: door.code })) ?? null)
+                : null,
             // only an account the person bound is theirs to let go, and not
             // while it is the one way they have left
             unbindable:

@@ -41,7 +41,7 @@ const hub: LoginDriver = {
   presentation: { mode: 'redirect', href: ({ code }) => `/auth/hub/${code}/start` },
   provisioning: { mode: 'tenant-managed', entrance: { label: literal('Hub'), fields: [] } },
   resolution: { mode: 'binding-subject' },
-  binding: { mode: 'self' },
+  binding: { mode: 'self', start: ({ code }) => `/auth/hub/${code}/start?intent=bind` },
 }
 
 /** a door that finds people by their person identifier and keeps nothing */
@@ -326,10 +326,19 @@ describe.runIf(postgresAvailable)('the reader’s own account', () => {
               values (${f.tenant}, 'campus', 'campus', 'Campus', true, 1)`)
             const relisted = yield* iam.self.entrances(lin)
             const released = yield* iam.self.unbind(lin, f.hubDoor)
+            const afterwards = yield* iam.self.entrances(lin)
             const system = yield* Effect.result(
               iam.self.unbind(f.as(f.admin, f.adaByPassword), f.hubDoor),
             )
-            return { listed, refused, standing: standing.rows[0]!.live, relisted, released, system }
+            return {
+              listed,
+              refused,
+              standing: standing.rows[0]!.live,
+              relisted,
+              released,
+              afterwards,
+              system,
+            }
           }),
         ),
       )
@@ -339,6 +348,11 @@ describe.runIf(postgresAvailable)('the reader’s own account', () => {
       expect(answer.standing).toBe(1)
       expect(answer.relisted.find((entrance) => entrance.type === 'hub')?.unbindable).toBe(true)
       expect(answer.released).toEqual({ signedOut: true })
+      // bound, nothing to begin; let go, the way to bind again is offered
+      expect(answer.relisted.find((entrance) => entrance.type === 'hub')?.bindHref).toBeNull()
+      expect(answer.afterwards.find((entrance) => entrance.type === 'hub')?.bindHref).toBe(
+        '/auth/hub/hub/start?intent=bind',
+      )
       expect(tagOf(answer.system)).toBe('SYSTEM_ACCOUNT_PROTECTED')
     } finally {
       await db.dispose()

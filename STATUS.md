@@ -19751,3 +19751,38 @@ HEAD 的 run 是绿的;红的是中间提交 `ceb8ccb6`(那次的 `entry-workflo
 ### 遗留
 
 - 「绑定」按钮与外部账号驱动在下一提交(GitHub)。
+
+## 认证 F–J 之四:GitHub 登录与自助绑定(2026-09-23)
+
+规划时的裁决与修正项⑥:GitHub 用自写的薄 OAuth Web Flow,不用 openid-client;强制 PKCE S256;`intent=bind` 钉住当前人与会话,
+绑定走 core 的 `bindSubject`;access token 立即丢弃;未绑定即 `AUTH_EXTERNAL_ACCOUNT_UNBOUND`,绝不按 email/login 自动匹配或建号。
+
+### 做了什么
+
+- **新插件 `@qualy/plugin-auth-github`**(`pnpm plugin:add` 装配,active):`type: 'github'`,`binding-subject` + `self` 绑定;
+  入口字段 `clientId`、`clientSecret`(密钥)与高级里的 GitHub Enterprise Server 地址(身份命名空间键)。
+  路由 `GET /auth/github/{providerCode}/start`(`Viewer` 中间件;`?intent=bind` 需已登录)与 `.../callback`。
+  `src/oauth.ts` 三个动作:构造 authorize(无 scope、`allow_signup=false`、S256)、换 token(带 verifier 与 redirect_uri)、
+  `GET /user`(`subject = String(id)`、展示名 = login),全部经 `AuthOutbound`;token 只活在这一次调用里。
+- **契约**:`binding: { mode: 'self', start }` 声明从「我的」发起绑定的同源路径;`sign-in-failure` 增
+  `AUTH_EXTERNAL_ACCOUNT_UNBOUND` / `AUTH_BINDING_SUBJECT_TAKEN` / `AUTH_BINDING_ALREADY_BOUND` 与 `failureLocation`
+  (失败回到发起页并带码,非本应用路径一律回登录页)。
+- **auth**:自助入口接口多一个 `bindHref`(可绑且未绑时);「我的 → 登录方式」出现「绑定」按钮(带 `returnTo` 回到本页),
+  并按地址里的 `?error=` 显示原因;`sameOriginPath` 移到 `server/same-origin.ts` 共用。
+- 门禁:frozen-routes 两条;error-codes 登记 auth-github 来源与翻译。文档:auth-security「GitHub 驱动」一节。
+
+### 验收(实际执行)
+
+- `pnpm typecheck`:exit 0,零 `error TS`。
+- `pnpm test`:`Test Files  288 passed | 3 skipped (291)`、`Tests  2133 passed | 17 skipped (2150)`。
+- `pnpm test:browser`:负载平均约 9 时一轮 `Tests  2 failed | 518 passed (520)`(assessment 的 record / review 两屏超时,
+  与上一提交所记同一现象);负载降到约 5 后再跑 `Test Files  69 passed (69)`、`Tests  520 passed (520)`。
+- `pnpm qualy resolve --frozen-lockfile`:`qualy.lock.json is up to date`。本提交无迁移。
+- 新测试:`auth/tests/effect-github.test.ts` 6 条(对着本文件里的假 GitHub 走真实 HTTP:authorize 带 S256 且无 scope、
+  未绑定账号登录被拒且不建号、本人发起绑定写在本人名下并回到发起页、再登录用新 login 刷新展示名、同一账号绑给他人被拒、
+  已绑再绑被拒、未登录不能发起绑定且不碰 GitHub、verifier 不符 / 伪造 state / 用户取消、换 token 与取用户失败、
+  不留任何 token);`auth-github/tests/oauth.test.ts` 3 条;`effect-self` 增 `bindHref` 断言;`account.browser` 1 条(绑定按钮与原因横幅)。
+
+### 遗留
+
+- 真实 GitHub OAuth App 的联调未做(需要在 GitHub 注册应用,回调填详情页给出的地址)。

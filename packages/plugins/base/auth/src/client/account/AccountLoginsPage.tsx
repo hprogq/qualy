@@ -1,12 +1,20 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import type { ApiResult } from '@qualy/web-runtime/api'
-import { useApi, useApiQuery, useRunApi, useSessionTransition } from '@qualy/web-runtime'
+import {
+  useApi,
+  useApiQuery,
+  usePageHref,
+  useRunApi,
+  useSessionTransition,
+} from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { AsyncSection, ConfirmDialog } from '@qualy/ui/admin'
+import { Alert, AlertTitle } from '@qualy/ui/alert'
 import {
   Card,
   CardEmpty,
@@ -26,7 +34,9 @@ import { EntranceAccount } from '../iam/person-facts.tsx'
 
 // How the reader can sign in: every way in that is open to them, what it
 // knows them by, and the accounts they bound themselves - which are theirs
-// to let go, as long as another way in remains.
+// to let go, as long as another way in remains, and theirs to bind where a
+// way in takes one. Binding leaves for the other side and comes back here,
+// with the reason in the address when it did not work.
 
 type Entrance = ApiResult<typeof authApi, 'self', 'listSelfEntrances'>['entrances'][number]
 
@@ -48,11 +58,25 @@ export default function AccountLoginsPage() {
   const endSession = useSessionTransition()
   const { format, formatError, locale } = useI18n()
   const [releasing, setReleasing] = useState<Entrance | null>(null)
+  const [searchParams] = useSearchParams()
+  const here = usePageHref('auth/account-logins')
+  // only something shaped like a code is read from the address
+  const failure = searchParams.get('error')
+  const failed = failure !== null && /^[A-Z][A-Z0-9_]{2,63}$/.test(failure) ? failure : undefined
   const found = useQuery(query.self.listSelfEntrances.queryOptions())
   const self = useQuery(query.self.getSelf.queryOptions())
   const entrances = found.data?.entrances ?? []
   const when = (iso: string) =>
     new Date(iso).toLocaleDateString(locale, { month: 'short', day: 'numeric' })
+
+  /** off to the other side, to come back to this page */
+  const bind = (entrance: Entrance) => {
+    const target = new URL(entrance.bindHref!, window.location.origin)
+    if (here !== undefined) target.searchParams.set('returnTo', here)
+    // a document navigation by design: the start route answers with a
+    // redirect to the other side
+    window.location.assign(`${target.pathname}${target.search}`)
+  }
 
   const release = useMutation({
     mutationFn: (entrance: Entrance) =>
@@ -71,6 +95,11 @@ export default function AccountLoginsPage() {
   return (
     <div {...stylex.props(styles.page)}>
       <SectionHead title={format(m.accountLogins)} />
+      {failed !== undefined && (
+        <Alert variant="destructive" data-testid="account-failure" data-code={failed}>
+          <AlertTitle>{formatError({ _tag: failed })}</AlertTitle>
+        </Alert>
+      )}
       <AsyncSection
         pending={found.isPending || self.isPending}
         error={
@@ -108,6 +137,7 @@ export default function AccountLoginsPage() {
                     data-entrance-type={entrance.type}
                     data-bound={bound !== null}
                     data-unbindable={entrance.unbindable}
+                    data-bindable={entrance.bindHref !== null}
                   >
                     <Cell lead>
                       <LeadWord>{entrance.name}</LeadWord>
@@ -128,6 +158,11 @@ export default function AccountLoginsPage() {
                       <Cell numeric>{when(bound.lastUsedAt)}</Cell>
                     )}
                     <span {...stylex.props(styles.end)}>
+                      {entrance.bindHref !== null && (
+                        <Button size="xs" variant="ghost" onClick={() => bind(entrance)}>
+                          {format(m.accountBind)}
+                        </Button>
+                      )}
                       {entrance.unbindable && (
                         <Button
                           size="xs"

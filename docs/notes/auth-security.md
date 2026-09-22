@@ -280,6 +280,24 @@ default-src 'self'; script-src 'self' 'sha256-pKAg+of2SxxrkLJX27pRnCgcyN5Ud1dmuO
   服务器拒绝时日志只记它的错误码。`checkAliveTicket` 之类上游会话凭据本阶段不保存。
 - 仓库里的 CAS fixture 全部是合成数据;真实学校的联调按 docs/notes/cas-manual-check.md 人工做,不进 CI。
 
+## GitHub 驱动(2026-09-23 定案)
+
+`@qualy/plugin-auth-github`:**自写的薄 OAuth Web Flow**(不用 openid-client,那只服务 OIDC):授权码 + **强制 PKCE S256** + state
+(state 就是 flow 的 state,verifier 封在 flow 的加密 payload 里)→ `POST /login/oauth/access_token`(带 verifier 与签发时的
+redirect_uri)→ `GET /user` → `subject = String(user.id)`、展示名 = `user.login`。三个请求全部经 `AuthOutbound`。
+
+- **不要任何 scope**(公开资料就够),`allow_signup=false`;**access token 只用于那一次 `/user`,随即丢弃**,不存 refresh token,
+  不进 `session_auth_grants`,不写日志。GitHub Enterprise Server 在高级设置里填地址(`/api/v3/user`),它是身份命名空间
+  (`identityNamespaceKeys: ['enterpriseUrl']`),有过绑定后不可再改。
+- **登录**:按 subject 找绑定,找到就 `completeLogin`(同时用当前 login 刷新绑定的展示名——GitHub 改名常有);找不到是
+  `AUTH_EXTERNAL_ACCOUNT_UNBOUND`,提示先用别的方式登录再到「我的 → 登录方式」绑定。**绝不按 email 或 login 自动匹配或建号。**
+- **绑定**:只能从「我的 → 登录方式」发起(`start?intent=bind`,经 `Viewer` 中间件取当前会话,未登录即回登录页
+  `AUTH_REQUIRED`);flow 钉住发起人与会话,回来后由 core 的 `bindSubject` 写入(人来自已消费的 flow,不来自回调参数)。
+  失败回到发起页并带码:`AUTH_BINDING_SUBJECT_TAKEN` / `AUTH_BINDING_ALREADY_BOUND` 等。自助入口接口给出 `bindHref`
+  (驱动的 `binding.start`,同源路径才收)。
+- 其他失败:GitHub 拒绝或用户在授权页取消 → `AUTH_GITHUB_REJECTED`;换 token 或取用户失败 → `AUTH_GITHUB_UNAVAILABLE`;
+  state 不认得 → `AUTH_FLOW_REJECTED`。
+
 ## 「我的」自助接口(2026-09-23 定案)
 
 - `/iam/self/*` 只要登录,**不带任何用户 id**:问的永远是 session 的主人,与 `/iam/users/{userId}/*` 的管理接口分权,
