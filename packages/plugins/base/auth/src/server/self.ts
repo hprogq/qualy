@@ -218,6 +218,15 @@ export const make = Effect.fn('Iam.self.make')(function* () {
           const row = yield* requireSelf(principal)
           const found = yield* serving(principal.tenantId, principal.userId, row.userTypeId)
           const usable = found.filter(({ door, driver }) => opens(driver, door, row))
+          // the account the session in hand signed in through, if it was one
+          const inHand = yield* db.query((k) =>
+            k
+              .selectFrom('Session')
+              .select('authBindingId')
+              .where('tenantId', '=', principal.tenantId)
+              .where('id', '=', principal.sessionId)
+              .executeTakeFirst(),
+          )
           return found.map(({ door, driver }) => ({
             providerId: door.id,
             name: door.name,
@@ -236,6 +245,9 @@ export const make = Effect.fn('Iam.self.make')(function* () {
                     lastUsedAt: door.lastUsedAt,
                     hasCredential: door.hasCredential === true,
                   },
+            // letting it go ends the session this is asked from
+            thisSession:
+              door.bindingId !== null && inHand?.authBindingId === door.bindingId,
             // where to begin binding one, for a door that binds and has none
             bindHref:
               driver.binding?.mode === 'self' &&

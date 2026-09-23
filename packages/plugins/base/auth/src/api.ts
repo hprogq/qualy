@@ -947,6 +947,8 @@ const selfEntrance = Schema.Struct({
   binding: userEntrance.fields.binding,
   lastSignInAt: userEntrance.fields.lastSignInAt,
   bound: userEntrance.fields.bound,
+  /** the session this was asked from signed in through the account bound here */
+  thisSession: Schema.Boolean,
   /** where to begin binding an account here; null where nothing is to be bound */
   bindHref: Schema.NullOr(Schema.String),
   /** an account they bound themselves, and not the last way they have in */

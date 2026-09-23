@@ -208,6 +208,7 @@ describe.runIf(postgresAvailable)('the reader’s own account', () => {
             return {
               profile: yield* iam.self.profile(me),
               entrances: yield* iam.self.entrances(me),
+              byHub: yield* iam.self.entrances(f.as(f.ada, f.adaByHub)),
             }
           }),
         ),
@@ -226,12 +227,20 @@ describe.runIf(postgresAvailable)('the reader’s own account', () => {
           type: entrance.type,
           bound: entrance.bound?.displayLabel ?? entrance.bound !== null,
           unbindable: entrance.unbindable,
+          thisSession: entrance.thisSession,
         })),
       ).toEqual([
         // in the sign-in page's order, which for two doors at one position is by name
-        { type: 'hub', bound: '@hub-ada', unbindable: true },
+        { type: 'hub', bound: '@hub-ada', unbindable: true, thisSession: false },
         // a password is the administrator's to manage, never the reader's to drop
-        { type: 'local', bound: true, unbindable: false },
+        { type: 'local', bound: true, unbindable: false, thisSession: true },
+      ])
+      // asked from the session that came in through the hub account, that one is marked
+      expect(
+        answer.byHub.map((entrance) => [entrance.type, entrance.thisSession]),
+      ).toEqual([
+        ['hub', true],
+        ['local', false],
       ])
       // the credential itself never leaves
       expect(JSON.stringify(answer.entrances)).not.toContain('digest')

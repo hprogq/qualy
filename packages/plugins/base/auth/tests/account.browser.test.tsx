@@ -51,6 +51,7 @@ const password: Entrance = {
     lastUsedAt: null,
     hasCredential: true,
   },
+  thisSession: false,
   bindHref: null,
   unbindable: false,
 }
@@ -70,6 +71,7 @@ const hub = (over: Partial<Entrance> = {}): Entrance => ({
     lastUsedAt: '2099-01-02T00:00:00.000Z',
     hasCredential: false,
   },
+  thisSession: false,
   bindHref: null,
   unbindable: true,
   ...over,
@@ -144,6 +146,7 @@ describe('the ways in on a phone', () => {
       binding: null,
       lastSignInAt: '2026-09-23T00:46:00.000Z',
       bound: null,
+      thisSession: false,
       bindHref: null,
       unbindable: false,
     }

@@ -188,7 +188,7 @@ export default {
   'auth/sign-ins/this-session': '本次登录',
   'auth/account/unbind-title': '解除与{name}的绑定？',
   'auth/account/unbind-body':
-    '解除后将无法再通过该方式登录，通过该方式建立的会话也会一并退出，包括当前会话',
+    '解除后将无法再通过该方式登录，通过该方式建立的会话也会一并退出{current, select, yes {。你当前正是通过该方式登录的，确认后将立即退出登录} other {}}',
   'auth/login-methods/advanced': '高级设置',
   'auth/login-methods/secret-clear-label': '清除{field}',
   'auth/login-methods/missing': '尚未填写：{fields}',

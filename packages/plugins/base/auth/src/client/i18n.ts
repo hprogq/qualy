@@ -666,7 +666,7 @@ const i18n = definePluginMessages({
     accountUnbindBody: {
       id: 'auth/account/unbind-body',
       defaultMessage:
-        'You will no longer sign in this way, and every session signed in through it ends, this one included.',
+        'You will no longer sign in this way, and every session signed in through it ends.{current, select, yes { You signed in this way, so you will be signed out now.} other {}}',
     },
     methodAdvanced: { id: 'auth/login-methods/advanced', defaultMessage: 'Advanced settings' },
     methodSecretClearLabel: methodSecretClearLabelMessage,

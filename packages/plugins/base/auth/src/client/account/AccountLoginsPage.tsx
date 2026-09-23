@@ -194,7 +194,9 @@ export default function AccountLoginsPage() {
         open={releasing !== null}
         tone="destructive"
         title={format(m.accountUnbindTitle, { name: releasing?.name ?? '' })}
-        description={format(m.accountUnbindBody)}
+        description={format(m.accountUnbindBody, {
+          current: releasing?.thisSession === true ? 'yes' : 'no',
+        })}
         confirmLabel={format(m.accountUnbind)}
         cancelLabel={format(m.cancel)}
         pending={release.isPending}
