@@ -13,7 +13,9 @@ import {
   runSql,
 } from '@qualy/plugin-database/testkit'
 import { secretsLayer } from '@qualy/plugin-secrets/testkit'
-import { captchaLayer } from '@qualy/plugin-captcha/testkit'
+import { captchaLayer, captchaLayerWith } from '@qualy/plugin-captcha/testkit'
+import type { CaptchaProvider } from '@qualy/plugin-captcha/server'
+import { RequestContext } from '@qualy/api-kit/request'
 import { mailerLayerWith, memoryMailBackend } from '@qualy/plugin-mail/testkit'
 import { smtpBackend } from '@qualy/plugin-mail-smtp/backend'
 import { type Orm } from '@qualy/plugin-database/server'
@@ -55,7 +57,11 @@ const passwordDoor = registerLoginDriver({
 
 const PUBLIC_URL = 'https://qualy.example.edu'
 
-const stack = (url: string, backend: ReturnType<typeof memoryMailBackend>['backend']) => {
+const stack = (
+  url: string,
+  backend: ReturnType<typeof memoryMailBackend>['backend'],
+  captcha: typeof captchaLayer = captchaLayer,
+) => {
   const services = booted(
     authLayer.pipe(
       Layer.provideMerge(rbacLayer),
@@ -69,7 +75,7 @@ const stack = (url: string, backend: ReturnType<typeof memoryMailBackend>['backe
           ),
         ),
       ),
-      Layer.provideMerge(captchaLayer),
+      Layer.provideMerge(captcha),
       Layer.provideMerge(secretsLayer),
       Layer.provideMerge(
         Layer.mergeAll(
@@ -278,7 +284,8 @@ describe.runIf(postgresAvailable)('a forgotten password', () => {
         ),
       )
       expect(tagOf(answer.short)).toBe('AUTH_BINDING_CREDENTIAL_INVALID')
-      // the fourth within the hour is refused and sends nothing
+      // no provider here, so nothing is challenged; the fourth within the
+      // hour is refused and sends nothing
       expect(tagOf(answer.fourth)).toBe('TOO_MANY_ATTEMPTS')
       expect(mail.outbox.filter((message) => message.to === 'ada@school.edu')).toHaveLength(3)
       // a newer link does not retire the older: all three still work
@@ -332,6 +339,96 @@ describe.runIf(postgresAvailable)('reset links', () => {
       expect(answer.openBefore).toBe(3)
       expect(tagOf(answer.second)).toBe('AUTH_CHALLENGE_INVALID')
       expect(tagOf(answer.third)).toBe('AUTH_CHALLENGE_INVALID')
+    } finally {
+      await db.dispose()
+    }
+  })
+})
+
+describe.runIf(postgresAvailable)('asking for a reset where a challenge can be asked for', () => {
+  // a stand-in provider whose proof is the binding it was issued for
+  const fake: CaptchaProvider = {
+    code: 'fake',
+    issue: (context) => Effect.succeed({ binding: context.bindingHash }),
+    verify: (context, response) =>
+      Effect.succeed(response === `solved:${context.bindingHash}` ? 'verified' : 'rejected'),
+  }
+  /** from one address, as the request pipeline would have read it */
+  const fromAddress =
+    (clientIp: string) =>
+    <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+      effect.pipe(
+        Effect.provideService(RequestContext, {
+          requestId: 'test',
+          clientIp,
+          userAgent: undefined,
+          traceId: undefined,
+          sessionId: undefined,
+          bindSession: () => Effect.void,
+          publicHost: undefined,
+          endpoint: undefined,
+          bindEndpoint: () => Effect.void,
+        }),
+      )
+
+  it('asks from the second request on, takes a proof, and mails an address three times an hour', async () => {
+    const db = await createTestContext('email-reset-captcha')
+    const mail = memoryMailBackend()
+    try {
+      await seed(db.url)
+      /** one address's run of requests, from its own network address */
+      const run = (email: string, clientIp: string) =>
+        fromAddress(clientIp)(
+          Effect.gen(function* () {
+            const flows = yield* EmailFlows
+            const ask = (captcha?: { provider: string; response: string }) =>
+              Effect.result(
+                flows.requestReset({ email, locale: 'en', ...(captcha === undefined ? {} : { captcha }) }),
+              )
+            const outcome = (result: { _tag: string; failure?: unknown }) => tagOf(result) ?? 'ok'
+            const proofFor = (result: { _tag: string; failure?: unknown }) => ({
+              provider: 'fake',
+              response: `solved:${(result as { failure?: { challenge?: { binding?: string } } }).failure?.challenge?.binding ?? ''}`,
+            })
+            const outcomes: string[] = []
+            // the first in the hour goes unchallenged
+            outcomes.push(outcome(yield* ask()))
+            // the second is asked for a challenge
+            const challenged = yield* ask()
+            outcomes.push(outcome(challenged))
+            // a wrong proof is asked again, afresh
+            outcomes.push(outcome(yield* ask({ provider: 'fake', response: 'solved:nothing' })))
+            // the right proof is taken: the second mail
+            outcomes.push(outcome(yield* ask(proofFor(challenged))))
+            // challenged and met again: the third mail
+            outcomes.push(outcome(yield* ask(proofFor(yield* ask()))))
+            // and once more - past the challenge, the fourth is refused
+            outcomes.push(outcome(yield* ask(proofFor(yield* ask()))))
+            return outcomes
+          }),
+        )
+      const answer = ok(
+        await Effect.runPromiseExit(
+          Effect.all({
+            ada: run('ada@school.edu', '203.0.113.8'),
+            nobody: run('nobody@school.edu', '203.0.113.9'),
+          }).pipe(Effect.provide(stack(db.url, mail.backend, captchaLayerWith(fake)))),
+        ),
+      )
+      // somebody and nobody meet the same answers, in the same order
+      expect(answer.ada).toEqual(answer.nobody)
+      expect(answer.ada).toEqual([
+        'ok',
+        'CAPTCHA_REQUIRED',
+        'CAPTCHA_REQUIRED',
+        'ok',
+        'ok',
+        'TOO_MANY_ATTEMPTS',
+      ])
+      await vi.waitFor(() => {
+        expect(mail.outbox.filter((message) => message.to === 'ada@school.edu')).toHaveLength(3)
+      })
+      expect(mail.outbox.filter((message) => message.to === 'nobody@school.edu')).toHaveLength(0)
     } finally {
       await db.dispose()
     }

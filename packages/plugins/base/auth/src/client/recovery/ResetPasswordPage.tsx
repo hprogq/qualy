@@ -23,6 +23,12 @@ import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { normalizeEmail } from '@qualy/auth-contract/email'
 import { retryAfterOf } from '@qualy/auth-contract/session'
+import {
+  CaptchaRequired,
+  type CaptchaPrompt,
+  type CaptchaProof,
+} from '@qualy/plugin-captcha/contract'
+import { CaptchaChallenge, useCaptchaGate } from '@qualy/plugin-captcha/client'
 import { authMessages as m } from '../i18n.ts'
 import { authApi } from '../api.ts'
 import { AuthShell } from '../sign-in/AuthShell.tsx'
@@ -302,11 +308,25 @@ function Ask() {
   // a second press before the first has rendered is still a second press
   const sending = useRef(false)
   const { held, secondsLeft, hold } = useHold()
+  // the challenge the request was answered with, while it is being met
+  const [prompt, setPrompt] = useState<CaptchaPrompt | null>(null)
   const ask = useMutation({
-    mutationFn: (address: string) =>
-      run(api.auth.createPasswordReset({ payload: { email: address } })),
-    onSuccess: (_answer, address) => setSentTo(address),
+    mutationFn: (input: { address: string; proof?: CaptchaProof }) =>
+      run(
+        api.auth.createPasswordReset({
+          payload: {
+            email: input.address,
+            ...(input.proof === undefined ? {} : { captcha: input.proof }),
+          },
+        }),
+      ),
+    onSuccess: (_answer, input) => setSentTo(input.address),
     onError: (failure) => {
+      // not a refusal: the same request goes again by itself once it is met
+      if (failure instanceof CaptchaRequired) {
+        setPrompt({ provider: failure.provider, challenge: failure.challenge })
+        return
+      }
       const wait = retryAfterOf(failure)
       hold(wait === undefined ? PAUSE_MS : wait * 1000)
     },
@@ -314,6 +334,27 @@ function Ask() {
       sending.current = false
     },
   })
+  const send = (proof?: CaptchaProof) => {
+    if (address === null || sending.current || held) return
+    sending.current = true
+    ask.mutate({ address, ...(proof === undefined ? {} : { proof }) })
+  }
+  const gate = useCaptchaGate({
+    prompt,
+    placement: 'inline',
+    // the proof is spent once sent: the challenge goes first
+    onSolved: (proof) => {
+      setPrompt(null)
+      send(proof)
+    },
+    onRefresh: () => {
+      setPrompt(null)
+      send()
+    },
+  })
+  const challenging = prompt !== null && gate.state !== 'failed'
+  const refused =
+    ask.isError && !(ask.error instanceof CaptchaRequired) ? formatError(ask.error) : null
   const limited = held && ask.isError && retryAfterOf(ask.error) !== undefined
   if (sentTo !== null) {
     return (
@@ -359,9 +400,8 @@ function Ask() {
           onSubmit={(event: FormEvent) => {
             event.preventDefault()
             setChecked(true)
-            if (address === null || sending.current || held) return
-            sending.current = true
-            ask.mutate(address)
+            if (challenging) return
+            send()
           }}
         >
           <div {...stylex.props(styles.field)}>
@@ -374,22 +414,33 @@ function Ask() {
               autoComplete="username"
               value={email}
               aria-invalid={emailSaid !== null}
-              onChange={(event) => setEmail(event.target.value)}
+              onChange={(event) => {
+                setEmail(event.target.value)
+                // a challenge is bound to the address it was issued for
+                setPrompt(null)
+              }}
               onBlur={() => email !== '' && setChecked(true)}
               {...stylex.props(styles.input, emailSaid !== null && styles.inputRefused)}
             />
-            <Said>{emailSaid ?? (ask.isError ? formatError(ask.error) : null)}</Said>
+            <Said>{emailSaid ?? refused}</Said>
           </div>
+          <CaptchaChallenge gate={gate} />
           <button
             type="submit"
-            disabled={ask.isPending || held}
+            disabled={ask.isPending || held || challenging}
+            data-testid="reset-ask-submit"
+            data-captcha={gate.state}
             {...stylex.props(styles.primary)}
           >
-            {ask.isPending
-              ? format(m.resetSending)
-              : limited
-                ? format(m.resetWait, { time: clock(secondsLeft) })
-                : format(m.resetAskSubmit)}
+            {gate.state === 'loading-provider'
+              ? format(m.resetPreparingCheck)
+              : gate.state === 'working' || gate.state === 'interaction'
+                ? format(m.resetChecking)
+                : ask.isPending
+                  ? format(m.resetSending)
+                  : limited
+                    ? format(m.resetWait, { time: clock(secondsLeft) })
+                    : format(m.resetAskSubmit)}
           </button>
         </form>
         <p {...stylex.props(styles.footnote)}>{format(m.signInElsewhere)}</p>

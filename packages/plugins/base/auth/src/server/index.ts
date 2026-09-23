@@ -282,6 +282,7 @@ export const sessionApiHandlers = HttpApiBuilder.group(local, 'auth', (handlers)
         yield* flows.requestReset({
           email: payload.email,
           locale: mailLocaleOf(request.headers['accept-language']),
+          ...(payload.captcha === undefined ? {} : { captcha: payload.captcha }),
         })
         return { ok: true as const }
       }),

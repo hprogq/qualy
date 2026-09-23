@@ -68,10 +68,21 @@ export const HARD_LIMITS = {
   },
   /** redirects started from one address at one entrance: rows, far cheaper than hashing */
   flowStartByAddress: { scope: 'flow-start:address', limit: 300, windowSeconds: 300 },
-  /** forgotten-password requests from one address */
-  resetByAddress: { scope: 'reset:address', limit: 10, windowSeconds: 900 },
-  /** forgotten-password requests for one email, from anywhere */
-  resetByIdentifier: { scope: 'reset:identifier', limit: 3, windowSeconds: 3600 },
+  /** forgotten-password requests from one address: a resource fuse, wide for the same campus reasons */
+  resetByAddressHard: { scope: 'reset:address-hard', limit: 100, windowSeconds: 900 },
+  /**
+   * Reset mails for one email, from anywhere, counted only once a request
+   * has passed its challenge.
+   *
+   * A limit on an identifier, which sign-in never has - and not the same
+   * thing: this one limits mail somebody else receives, not whether they
+   * can get in. The links already sent stay good (a new request does not
+   * retire them), so the fourth refused within the hour leaves the owner
+   * three working links and spares their inbox and the sending reputation.
+   * Counted after the challenge, or four plain requests would use up
+   * somebody's quota without paying anything.
+   */
+  resetMailByIdentifierHard: { scope: 'reset:identifier-mail', limit: 3, windowSeconds: 3600 },
   /** links one person asks to be sent to themselves */
   mailBySelf: { scope: 'mail:user', limit: 5, windowSeconds: 3600 },
   /** tries at one person's own current password */
@@ -98,6 +109,15 @@ export const RISK_RULES = {
    * can make it refuse.
    */
   signInByIdentifierRisk: { scope: 'sign-in:identifier-risk', challengeAfter: 5, windowSeconds: 900 },
+  /** forgotten-password requests from one address, past which each is challenged */
+  resetByAddressRisk: { scope: 'reset:address-risk', challengeAfter: 5, windowSeconds: 900 },
+  /**
+   * Forgotten-password requests for one email: the first in an hour goes
+   * unchallenged, every one after it is challenged. Read before the
+   * challenge and counted after it, so requests that arrive together can
+   * all find it unraised - which the mail quota after the challenge bounds.
+   */
+  resetByIdentifierRisk: { scope: 'reset:identifier-risk', challengeAfter: 1, windowSeconds: 3600 },
 } as const satisfies Record<string, RiskRule>
 
 /** buckets nobody has touched for this long are swept */

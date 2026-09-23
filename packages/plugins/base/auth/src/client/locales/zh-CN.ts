@@ -78,6 +78,8 @@ export default {
   'auth/reset/back': '返回登录',
   'auth/reset/sending': '发送中…',
   'auth/reset/wait': '{time} 后可重试',
+  'auth/reset/preparing-check': '正在准备安全验证…',
+  'auth/reset/checking': '正在进行安全验证…',
   'auth/reset/email-invalid': '请输入有效的邮箱地址',
   'auth/reset/sent-title': '查看邮箱',
   'auth/reset/sent-body':

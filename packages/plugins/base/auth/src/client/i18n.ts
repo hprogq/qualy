@@ -394,6 +394,11 @@ const i18n = definePluginMessages({
     backToSignIn: { id: 'auth/reset/back', defaultMessage: 'Back to sign in' },
     resetSending: { id: 'auth/reset/sending', defaultMessage: 'Sending…' },
     resetWait: { id: 'auth/reset/wait', defaultMessage: 'Try again in {time}' },
+    resetPreparingCheck: {
+      id: 'auth/reset/preparing-check',
+      defaultMessage: 'Preparing a security check…',
+    },
+    resetChecking: { id: 'auth/reset/checking', defaultMessage: 'Running a security check…' },
     resetEmailInvalid: { id: 'auth/reset/email-invalid', defaultMessage: 'Enter a valid email address' },
     resetSentTitle: { id: 'auth/reset/sent-title', defaultMessage: 'Check your email' },
     resetSentBody: {

@@ -8,6 +8,8 @@ import type { ApiResult } from '@qualy/web-runtime/api'
 import type { authApi } from '@qualy/plugin-auth/client/api'
 import { Effect } from 'effect'
 import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { CaptchaRequired } from '@qualy/plugin-captcha/contract'
+import { registerCaptchaProvider, type CaptchaClientState } from '@qualy/plugin-captcha/client'
 
 // The screens mail links lead to, and the reader's own security page. What
 // they must get right is what they send: the token from the fragment, the
@@ -53,6 +55,51 @@ describe('a forgotten password', () => {
     await page.getByRole('button', { name: '发送链接' }).click()
     await expect.element(page.getByTestId('reset-asked')).toBeInTheDocument()
     expect(ask).toHaveBeenCalledWith({ payload: { email: 'zhang@school.edu' } })
+  })
+
+  it('meets a challenge before the link is sent, and sends the proof once', async () => {
+    const reports: ((state: CaptchaClientState) => void)[] = []
+    const unregister = registerCaptchaProvider({
+      code: 'fake',
+      start: ({ onStateChange }) => {
+        reports.push(onStateChange)
+        onStateChange({ kind: 'working' })
+        return Promise.resolve({ dispose: () => undefined })
+      },
+    })
+    const sent: { email: string; captcha?: { provider: string; response: string } }[] = []
+    try {
+      renderScreen({
+        client: client({
+          auth: {
+            createPasswordReset: ({ payload }: { payload: (typeof sent)[number] }) =>
+              Effect.suspend(() => {
+                sent.push(payload)
+                return payload.captcha === undefined
+                  ? Effect.fail(new CaptchaRequired({ provider: 'fake', challenge: {} }))
+                  : Effect.succeed({ ok: true as const })
+              }),
+          },
+        }),
+        route: '/reset-password',
+        children: <ResetPasswordPage />,
+      })
+      const submit = page.getByTestId('reset-ask-submit')
+      await page.getByLabelText('邮箱').fill('zhang@school.edu')
+      await submit.click()
+      await expect.element(submit).toHaveAttribute('data-captcha', 'working')
+      await expect.element(submit).toBeDisabled()
+      // no refusal is said: this is a check, not an error
+      expect(page.getByRole('alert').elements()).toHaveLength(0)
+      reports.at(-1)!({ kind: 'solved', response: 'proof' })
+      await expect.element(page.getByTestId('reset-asked')).toBeInTheDocument()
+      expect(sent).toEqual([
+        { email: 'zhang@school.edu' },
+        { email: 'zhang@school.edu', captcha: { provider: 'fake', response: 'proof' } },
+      ])
+    } finally {
+      unregister()
+    }
   })
 
   it('sets the new one with the token the link carried, and never two that differ', async () => {

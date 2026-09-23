@@ -26,7 +26,9 @@ import {
   UserEmailConflict,
   UserNotFound,
 } from './errors.ts'
-import { HARD_LIMITS, makeLimiter, type HardLimitRule } from './limiter.ts'
+import { captchaPurpose, CaptchaRequired, type CaptchaProof } from '@qualy/plugin-captcha/contract'
+import { Captcha } from '@qualy/plugin-captcha/server'
+import { HARD_LIMITS, makeLimiter, RISK_RULES, type HardLimitRule } from './limiter.ts'
 import { mailFor, type MailLocale, type MailPurpose } from './mail-copy.ts'
 import { PublicOriginResolver } from './public-origin.ts'
 import { AnonymousTenantResolver } from './tenancy.ts'
@@ -129,6 +131,9 @@ export const retireChallenges = (
       .execute(),
   )
 
+/** what a reset challenge protects; a proof for it is worth nothing anywhere else */
+export const PASSWORD_RESET_CAPTCHA = captchaPurpose('auth/password-reset')
+
 const issueChallenge = (
   tenantId: string,
   userId: string,
@@ -214,7 +219,9 @@ export class EmailFlows extends Context.Service<
     readonly requestReset: (input: {
       readonly email: string
       readonly locale: MailLocale
-    }) => Effect.Effect<void, TooManyAttempts>
+      /** what the browser sent back after meeting a challenge */
+      readonly captcha?: CaptchaProof
+    }) => Effect.Effect<void, TooManyAttempts | CaptchaRequired>
     readonly redeemReset: (input: {
       readonly token: string
       readonly password: string
@@ -257,6 +264,7 @@ export const emailFlowsLayer: Layer.Layer<
   | Secrets
   | PublicOriginResolver
   | AnonymousTenantResolver
+  | Captcha
 > = Layer.effect(
   EmailFlows,
   Effect.gen(function* () {
@@ -267,6 +275,7 @@ export const emailFlowsLayer: Layer.Layer<
     const origins = yield* PublicOriginResolver
     const tenants = yield* AnonymousTenantResolver
     const limiter = yield* makeLimiter
+    const captcha = yield* Captcha
     // mail leaves on its own fiber, which lives as long as this layer does
     const scope = yield* Effect.scope
 
@@ -406,22 +415,55 @@ export const emailFlowsLayer: Layer.Layer<
       ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
 
     return EmailFlows.of({
-      requestReset: Effect.fn('Auth.email.requestReset')(function* ({ email, locale }) {
+      requestReset: Effect.fn('Auth.email.requestReset')(function* ({ email, locale, captcha: proof }) {
         const tenant = yield* tenants.resolve.pipe(Effect.option)
         if (Option.isNone(tenant)) return
+        const tenantId = tenant.value.id
         const context = Option.getOrUndefined(yield* currentRequestContext)
         const normalized = normalizeEmail(email) ?? email.trim().toLowerCase()
-        // counted before anything is looked up, and the same for an address
-        // nobody has: the refusal must not tell the two apart
-        const answer = yield* withDb(
-          limiter.consumeAllHard(tenant.value.id, [
-            [HARD_LIMITS.resetByAddress, context?.clientIp ?? 'unknown'],
-            [HARD_LIMITS.resetByIdentifier, normalized],
-          ]),
+        const place = context?.clientIp ?? 'unknown'
+        // Everything up to the lookup is the same for an address nobody has,
+        // one that is not verified and one without a password: the answers
+        // must not tell them apart.
+        yield* withDb(
+          Effect.gen(function* () {
+            const fuse = yield* limiter.consumeHard(tenantId, HARD_LIMITS.resetByAddressHard, place)
+            if (!fuse.allowed) {
+              return yield* new TooManyAttempts({ retryAfterSeconds: fuse.retryAfterSeconds })
+            }
+            const here = yield* limiter.observeRisk(tenantId, RISK_RULES.resetByAddressRisk, place)
+            const again = yield* limiter.riskRequired(
+              tenantId,
+              RISK_RULES.resetByIdentifierRisk,
+              normalized,
+            )
+            if (here.challengeRequired || again || context?.clientIp === undefined) {
+              const guarded = yield* captcha.guard({
+                tenantId,
+                purpose: PASSWORD_RESET_CAPTCHA,
+                bindingKey: normalized,
+                ...(proof === undefined ? {} : { proof }),
+              })
+              if (guarded.kind === 'required') {
+                return yield* new CaptchaRequired({
+                  provider: guarded.prompt.provider,
+                  challenge: { ...guarded.prompt.challenge },
+                })
+              }
+            }
+            // only now, past the challenge, does the request count against
+            // the mail this address may be sent
+            const quota = yield* limiter.consumeHard(
+              tenantId,
+              HARD_LIMITS.resetMailByIdentifierHard,
+              normalized,
+            )
+            if (!quota.allowed) {
+              return yield* new TooManyAttempts({ retryAfterSeconds: quota.retryAfterSeconds })
+            }
+            yield* limiter.observeRisk(tenantId, RISK_RULES.resetByIdentifierRisk, normalized)
+          }),
         )
-        if (!answer.allowed) {
-          return yield* new TooManyAttempts({ retryAfterSeconds: answer.retryAfterSeconds })
-        }
         const issued = yield* inLock(
           tenant.value.id,
           Effect.gen(function* () {

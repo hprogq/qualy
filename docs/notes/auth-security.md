@@ -246,10 +246,16 @@ default-src 'self'; script-src 'self' 'sha256-pKAg+of2SxxrkLJX27pRnCgcyN5Ud1dmuO
     代理或转发链配置有问题。
   - 发起重定向(CAS/OIDC/GitHub)按「入口 + 来源地址」hard 300 次 / 5 分钟,不需要 CAPTCHA:Qualy 不校验它们的凭据,这只是防无限写 flow 行。
   - 以上阈值是起点,待 Argon2 benchmark、校园出口峰值估计与遥测后再冻结。
-  - **部署约束**:在出现可用 CAPTCHA provider 与能处理 428 的登录页之前,风险触发一律放行(bypass)——修掉了账号 DoS,
-    却暂时削弱了对分布式撞库的防护。因此这套模型不得单独发布到生产,须与 provider 与登录页一起上线。
-- **其余 hard 限额暂不变**:找回密码按来源地址 10 次 / 15 分钟、按邮箱 3 次 / 小时;本人发送验证 / 换邮箱邮件 5 次 / 小时;
-  本人改密码试当前密码 10 次 / 15 分钟。
+  - **CAPTCHA**:默认 provider 为 ALTCHA(本地 PoW,`@qualy/plugin-captcha-altcha`,2026-09-24 与能处理 428 的登录页同笔启用);
+    没有 provider 的部署风险触发一律放行(启动时 WARN 一次),那样的部署对分布式撞库的防护弱于有 provider 时。
+- **找回密码(2026-09-24 起,docs/captcha.md §25–30)**与登录是不同模型:它限制的是发给别人的邮件,不是能否登录,所以可以对邮箱设 hard 配额。
+  顺序:规范化邮箱 → 「来源地址」hard 100 次 / 15 分钟 → 地址 risk(前 5 次不要求)+ 邮箱 risk(一小时内第 2 次起要求,只读)→
+  需要时过 CAPTCHA(purpose `auth/password-reset`,binding 为规范化邮箱)→ **过了 CAPTCHA 才**计「邮箱」hard 3 封 / 小时(第 4 次 429 且不发信)
+  → 计邮箱 risk → 才查账号。账号存在、不存在、邮箱未验证、没有本地密码走完全相同的前段。邮箱 risk 先读后计,并发首批可同时免 challenge,
+  由其后的 3 封 / 小时硬配额兜住。
+- **reset 链接不再互相作废**:新请求不 retire 旧链接(否则陌生人每隔几分钟请求一次就能让受害者手里的链接永远失效);任一链接真正改密后,
+  在同一租户锁内作废其余全部 reset 链接;改邮箱照旧作废发往旧地址的链接。验证邮箱 / 换邮箱的链接仍是新替换旧。
+- **其余 hard 限额不变**:本人发送验证 / 换邮箱邮件 5 次 / 小时;本人改密码试当前密码 10 次 / 15 分钟。
 - **桶键是 keyed digest**:`Secrets.fingerprint(scope, value)` = HMAC-SHA256,密钥由主密钥经 HKDF 派生
   (info `qualy/secrets/fingerprint/v1`,加密密钥从不兼作 MAC 密钥),scope 参与计算做域分离。表里看不出试过哪些邮箱,
   没有主密钥也无法离线比对猜测。

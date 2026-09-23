@@ -20,6 +20,7 @@ import {
 import { UiTextSchema } from '@qualy/i18n-contract'
 import { EMAIL_MAX_LENGTH, normalizeEmail } from '@qualy/auth-contract/email'
 import { Authenticated, AuthRequired, TooManyAttemptsResponse } from '@qualy/auth-contract/session'
+import { CaptchaProof, CaptchaRequired } from '@qualy/plugin-captcha/contract'
 import {
   GrantIncompatible,
   PlacementNotAllowed,
@@ -944,9 +945,11 @@ export const sessionApiGroup = HttpApiGroup.make('auth')
     HttpApiEndpoint.post('createPasswordReset', '/auth/password-resets', {
       payload: Schema.Struct({
         email: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(EMAIL_MAX_LENGTH)),
+        // sent again with the same request once a challenge it was answered with is met
+        captcha: Schema.optional(CaptchaProof),
       }),
       success: Schema.Struct({ ok: Schema.Literal(true) }),
-      error: [TooManyAttemptsResponse],
+      error: [TooManyAttemptsResponse, CaptchaRequired],
     }),
   )
   .add(
