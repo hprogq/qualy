@@ -59,6 +59,14 @@ const bootResolved = (): 'light' | 'dark' | null => {
   return mode === 'light' || mode === 'dark' ? mode : null
 }
 
+/** the three things on the root that say which scheme the page is in */
+const applyMode = (mode: 'light' | 'dark') => {
+  const root = document.documentElement
+  root.dataset['mode'] = mode
+  root.classList.toggle('dark', mode === 'dark')
+  root.style.colorScheme = mode
+}
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [choice, setChoiceState] = useState<ThemeChoice>(storedChoice)
   const [systemDark, setSystemDark] = useState(() => {
@@ -82,9 +90,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // dark one way and light another paints a light page under a dark chrome
   useLayoutEffect(() => {
     const root = document.documentElement
-    root.dataset['mode'] = resolved
-    root.classList.toggle('dark', resolved === 'dark')
-    root.style.colorScheme = resolved
+    applyMode(resolved)
     // the browser's own chrome - Safari's tab bar, iOS's status bar - takes
     // the page's colour from here; it follows the ground token, whichever
     // scheme is on, so a switch made in the page reaches the chrome too
@@ -96,14 +102,31 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     }
   }, [resolved])
 
+  // A change of theme as one crossfade of the whole page rather than every
+  // colour snapping at once: the browser pictures the page before, the new
+  // scheme goes on the root inside the update - synchronously, because the
+  // page does not render while the browser waits, so a frame awaited there
+  // never comes and the transition times out with the page frozen - and the
+  // browser fades between the two. Where it cannot, or where motion is not
+  // wanted, the colours simply change.
   const setChoice = useCallback((next: ThemeChoice) => {
     try {
       window.localStorage.setItem(STORAGE_KEY, next)
     } catch {
       // the choice still applies to this page; it will not be remembered
     }
-    setChoiceState(next)
-  }, [])
+    const start = (
+      document as Document & { startViewTransition?: (update: () => void) => unknown }
+    ).startViewTransition
+    if (start === undefined || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setChoiceState(next)
+      return
+    }
+    start.call(document, () => {
+      applyMode(next === 'system' ? (systemDark ? 'dark' : 'light') : next)
+      setChoiceState(next)
+    })
+  }, [systemDark])
 
   const value = useMemo<ThemeState>(
     () => ({ choice, resolved, setChoice }),
