@@ -271,8 +271,15 @@ describe('the organization screen', () => {
       children: <OrgPage />,
     })
     await expect.element(page.getByRole('button', { name: '删除组织' })).toBeDisabled()
-    const hold = document.querySelector('[data-testid="node-delete"] [data-hold="people"]')
-    expect(hold?.getAttribute('data-count')).toBe('12')
+    // the button is barred while the usage is still on its way, so the hold
+    // is waited for rather than read the moment the button says no
+    await expect
+      .poll(() =>
+        document
+          .querySelector('[data-testid="node-delete"] [data-hold="people"]')
+          ?.getAttribute('data-count'),
+      )
+      .toBe('12')
     // by name, because a count alone is still a search
     await expect.element(page.getByText('张明远', { exact: false })).toBeVisible()
   })
