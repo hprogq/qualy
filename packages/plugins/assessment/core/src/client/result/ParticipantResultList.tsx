@@ -20,7 +20,7 @@ import {
   TableRow,
 } from '@qualy/ui/screen'
 import { toast } from '@qualy/ui/toast'
-import { ResizableSplit } from '@qualy/ui/screen'
+import { ResizableSplit, StickyFill } from '@qualy/ui/screen'
 import { AddPeopleDialog } from '../roster/AddPeopleDialog.tsx'
 import { ImportDialog } from '../roster/ImportDialog.tsx'
 import { Badge } from '@qualy/ui/badge'
@@ -302,7 +302,13 @@ export function ParticipantResultList({
                 screenful in front of what somebody came for. It is one line
                 saying which units the list is of, and a sheet to change it -
                 the same shape the roster of people uses. */}
-            {!narrow && <aside {...stylex.props(styles.unitsAside)}>{tree}</aside>}
+            {/* the tree fills the room it stands in, so the room is the window's
+                height from here down rather than whatever its rows came to */}
+            {!narrow && (
+              <aside {...stylex.props(styles.unitsAside)}>
+                <StickyFill>{tree}</StickyFill>
+              </aside>
+            )}
           </>
         }
       >

@@ -227,6 +227,22 @@ const screen = (
   })
 
 describe('the participant results screen', () => {
+  it('gives the unit tree the window from where it stands to the bottom', async () => {
+    await page.viewport(1280, 800)
+    try {
+      screen()
+      await expect.element(page.getByText('郭航旗')).toBeVisible()
+      const seat = page.getByTestId('sticky-fill')
+      await expect.element(seat).toHaveAttribute('data-filling', 'true')
+      // the tree beside a list reaches the foot of the window, not the end of its rows
+      await expect
+        .poll(() => window.innerHeight - seat.element().getBoundingClientRect().bottom)
+        .toBeLessThan(40)
+    } finally {
+      await page.viewport(1280, 800)
+    }
+  })
+
   it('opens a person into the same page, and the address says who', async () => {
     screen()
     await expect.element(page.getByText('郭航旗')).toBeVisible()
