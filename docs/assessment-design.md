@@ -573,7 +573,7 @@ sandbox/llm ✓，formula ✗（有综测语义）、grades ✗（有自有业�
 | GET/POST `/assessment/batches`；GET/PATCH `/assessment/batches/{id}`                                          | 批次                                                                             |
 | GET/PUT `…/{id}/phases`；PUT `…/{id}/phase`                                                                   | 阶段计划编辑；推进（manual/force 带 reason）                                     |
 | GET `…/{id}/timeline`                                                                                         | 学生视角派生时间线                                                               |
-| GET `…/{id}/participants`；GET `…/{id}/roster-diff`；PUT `…/participants/{pid}/status`                        | 花名册                                                                           |
+| GET `…/{id}/participants`；GET/PATCH `…/{id}/participant-placements`（§32.86）；PUT `…/participants/{pid}/status`                        | 花名册                                                                           |
 | GET/POST `…/{id}/items`；GET/PATCH `/assessment/items/{id}`；GET/PUT `…/{id}/score-groups`                    | 题目与组树                                                                       |
 | POST `/assessment/entries`；GET `…/{id}`；POST `…/{id}/revisions`；PUT `…/{id}/status`                        | 条目：新建/详情/追加修订(**仅本人**——代录是原子创建无后续修订权)/submit·withdraw |
 | GET `/assessment/review/inbox`；POST `/assessment/review/instances/{id}/decisions`；POST `…/votes`            | 收件箱与审核                                                                     |
@@ -1616,3 +1616,17 @@ Entry。批量撤销沿这些已物化的记录进行，**绝不按 target 说�
 ②**两个码，沿用 §11 的阶段开关，不新建配置体系**：`assessment.review.view-reviewers`（参评人操作码，同 §32.46 不进 RBAC 目录）与 `assessment.review.view-chain`（审核动作码，同 `review.escalate` 不进目录），都进 `PHASE_GATED_CODES`，在阶段编辑器的「审核」组里勾选，因此天然可随阶段配置（审核期关、公示后开，或始终关）。
 ③**默认关闭，fail closed，遮蔽在服务端**：码不在阶段的开放集里即隐藏，既有批次立刻不再显示（用户明确接受，不写补码迁移）。关闭时服务端把审核人的 `actorId` / `actorName`、退回意见的 `actorName`、补材料请求的发起人置空，事件退回无主语的句式；只对**申报人本人**遮蔽，工作人员与审核人读同一接口不受影响，申报人自己的动作保留署名。审核侧关闭时，当前步骤之后的步骤（以及尚未走上的复核路线）只回 `veiled: true` 与序号——路线有几步仍然可见，因为侧栏要画它。**不在前端打码**：收到姓名再画星号，等于把姓名发给任何打开网络面板的人。
 
+
+**32.86 名单与组织的显式对账：冻结，但可以显式重冻结**（2026-09-23，用户提出转班无处同步并附方案，采纳）。
+冻结锚点至今只有一个刷新入口——移出再重新加入（§32.47 的重新接纳）；普通转班因此要么不处理，要么借「移出 → 加入」绕一圈。删除 `anchor_auto_sync` 那条迁移与 §32.7 早已写明「组织变化作为差异列出、由管理员显式应用」，缺的正是中间这条显式路径（§32.54 ⑤ 随 scope 一并删掉的只是依赖 `batch_scope_nodes` 的新迁入检测，不是这条原则）。裁决：
+①**不自动同步，也不允许拖到任意节点**。`BatchParticipant` 的锚点在没有明确管理动作之前保持冻结；管理员对某个差异只有两个选择——**同步**（采用组织侧此刻的权威站位，产生新的冻结快照）或**保留本批次归属**（快照一字不改，只记下「这个组织状态已看过」）。不提供「移动至……」：那会产生组织树与批次之外的第三份事实。批次若真需要自己的分组，另立「测评分组」概念，不借锚点。
+②**已对账状态只存一个 hash**：`batch_participants.reconciled_org_state_hash`（可空）。比较的是语义快照 `nodeId | path | lineage(nodeId:nodeTypeId…) | userTypeId`，**不含名称**（班级改名不算漂移），**含 path 与 lineage**（班级整体挪到另一个学院时 `primary_org_node_id` 不变，但归属已变，审核的 `RoleAt(nodeType)` 正依赖冻结 lineage）。差异 = 当前站位 ≠ 冻结快照 且 ≠ 已对账 hash；旧数据为 null 时基线就是冻结快照本身，不需要回填迁移。组织再变（例如 2302 → 2303）是新的状态，重新提示；人回到冻结位置则无差异。两侧文本都在 SQL 里按同一规则拼出再 `sha256`，列表、行内标记与写入条件同源。
+③**on-read 派生，不建差异表、不监听组织事件、不跑巡检**。只检查本批次 `status='active'` 的在册者；**不检测新迁入**——`RosterImport` 是历史不是 scope（§32.45），拿它找新人等于偷偷复活第二份人群定义。已停用 / 已删除 / 无所属单位的人列为「组织中已无有效归属」的完整性提示，无可同步，出路是移出名单。
+④**接口**：`GET /assessment/batches/{batchId}/participant-placements`（只列有差异者，按页，首页带 `changedTotal` / `unavailableTotal`）与 `PATCH` 同路径（`decisions[{participantId, observedFingerprint, decision: sync|keep}]` + 可选 reason）。客户端**只回传看到的 fingerprint，不回传目标节点**；服务端重读站位，fingerprint 不一致即整批拒绝 `ASSESSMENT_PARTICIPANT_PLACEMENT_CHANGED`（409），且写入语句本身以 fingerprint 为条件，关掉检查与写入之间的窗口。整个 selection 一个事务，全部成功或全部不写。
+⑤**权限两端都要**：列出需要 roster 管理权；**同步**另需 `canAt(MANAGE, 新站位)`——管得了旧批次不等于管得了学生转去的学院。超出调用人范围的新站位只告知「已调至你管理范围之外的单位」，不泄露对方层级；保留不移动任何东西，只要 roster 管理权。
+⑥**不动 `batch_management_anchors`**：批次归谁管与某个人按哪个组织语境参评是两件事，同步一个学生不改批次边界。
+⑦**同步影响此后，不改历史**：此后新提交的审核链、申诉上下文、按组织选人、行政认定的 reach、排名分区都按新锚点；已有 Entry / Revision / Recognition / 在途 ReviewInstance 的冻结链 / 行政认定的 provenance 一律不动。「今天谁能撤回旧的行政认定」按今天的锚点判断（既有行为，保留）。
+⑧**移出 → 重新加入照旧刷新锚点**：重新接纳就是接纳；普通转班走同步，退出后回来走重新加入，两个动作语义分开。
+⑨**同一个 roster 写守卫**：同步与保留都走 `rosterWriteGuards`（锁批次、roster 管理权、归档只读），公示预告冻结落地后随之生效；外部漂移本身不是公示 blocker，显式应用才是 roster 变更。
+⑩**领域历史**：`batch_participant_events` 增 `placement-synced` / `placement-kept` 两种事件与 `details jsonb`（同步记 previous / observed / result，保留记 round / observed），reason 为管理员填写的备注；这是领域历史，不再写 Audit Trail。
+界面：参评名单顶部一行「{n} 人的组织信息有变化」+「查看差异」，弹窗「检查组织变更」逐人显示本批次归属与当前组织、可全选本页后「同步所选 / 保留所选」，**不提供不经查看的全部同步**；名单行内只加一个轻标记「组织信息已变化」，不在主表铺开变化详情。迁移 `20260923052834_participant-placement-reconciliation.sql`。

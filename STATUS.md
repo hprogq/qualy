@@ -19981,3 +19981,21 @@ CLAUDE.md 增加一条：scope 只能是一个主要模块，不许用逗号列�
 - `pnpm test`：`Test Files  295 passed | 3 skipped`，`Tests  2179 passed | 17 skipped`，全过。
 - `pnpm test:browser`：全量 73 个文件中 72 个通过，唯一失败是 import-wizard 的点击超时，单独重跑通过。之后改动的外壳文件（胶囊出血、平滑滚动、「我的」胶囊行）和 import-wizard 单独重跑，27 条全过。
 - 新测试：角色与权限页、安全活动的两张卡片与弹层、组织链、胶囊尺寸统一、出血后首个胶囊与标题对齐、常驻胶囊行在按下被截断的胶囊后会滚动（去掉修复时这条测试会失败）。
+
+## 参评名单与组织的显式对账；参评人员页组织树高度（2026-09-23）
+
+- **组织树高度**（`fix(assessment)`）：参评人员页左侧组织树是「按容器高度撑满」的，但所在列没有高度，只停在最小高度。改为与用户管理页同一个 `StickyFill`，树一直延伸到窗口底部；桌面宽度的测试断言其底边贴近窗口底部，改前该测试失败。
+- **显式对账**（裁决 §32.86）：名单不随组织自动变化，差异按需派生、逐人决定「同步」或「保留本批次归属」。
+  - 比较语义快照 `节点 | path | lineage | 人员类型`，不含名称；冻结侧与当前侧都在 SQL 里拼出再 `sha256`，列表、名单行内标记与写入条件同源。
+  - `batch_participants.reconciled_org_state_hash` 记最后一次对账看过的组织状态：保留后不再重复提示，组织再变又会提示，人回到冻结位置则无差异；旧数据为 null 时以冻结快照为基线，无需回填。
+  - 接口 `GET/PATCH /assessment/batches/{batchId}/participant-placements`；决定只回传看到的 fingerprint，服务端重读站位，不一致整批拒绝 `ASSESSMENT_PARTICIPANT_PLACEMENT_CHANGED`（409），写入语句本身以 fingerprint 为条件。同步另需新站位上的管理权；超出范围只显示「你管理范围之外的单位」。不改 `batch_management_anchors`，不检测新迁入。
+  - 领域历史：`batch_participant_events` 增 `placement-synced` / `placement-kept` 与 `details`。迁移 `20260923052834_participant-placement-reconciliation.sql`。
+  - 界面：名单顶部提示 +「查看差异」弹窗（本批次 / 当前组织、全选本页、同步所选 / 保留所选、可选备注），名单行内轻标记「组织信息已变化」。
+
+### 验收（实际执行）
+
+- `pnpm typecheck`：exit 0。
+- `pnpm qualy database verify`：`80 committed migration(s) build the declared schema, zero drift`；`database check`：`lineage ok`；`drop-guard`：`drop guard ok (80 file(s) scanned)`；`qualy resolve --frozen-lockfile`：exit 0。
+- `pnpm test`：`Test Files  295 passed | 3 skipped (298)`，`Tests  2183 passed | 18 skipped (2201)`，全过。
+- `pnpm test:browser`：`Test Files  74 passed (74)`，`Tests  551 passed (551)`，全过。
+- 新测试：新冻结的名单无差异（两侧 fingerprint 一致）、保留与同步及其后再次调动 / 回到原处、整班挪动算变化而改名不算、选择中有一人期间再次变动则整批拒绝、年级管理员看得到学生调出但看不到去向且不能同步只能保留；浏览器侧名单标记、提示、弹窗与只回传 fingerprint 的同步。
