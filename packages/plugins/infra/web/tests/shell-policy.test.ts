@@ -63,7 +63,6 @@ describe('composing the shell policy', () => {
 
   it('leaves the fixed lines to the shell', () => {
     for (const directive of [
-      'script-src',
       'style-src',
       'base-uri',
       'object-src',
@@ -104,6 +103,53 @@ describe('composing the shell policy', () => {
     ]) {
       expect(() => composeShellPolicy([{ owner: 'x', 'font-src': [source] }])).not.toThrow()
     }
+  })
+
+  it('lets a plugin name a remote script origin, and nothing else about scripts', () => {
+    const composed = composeShellPolicy([
+      {
+        owner: '@qualy/plugin-captcha-turnstile',
+        'script-src': ['https://challenges.cloudflare.com'],
+        'frame-src': ['https://challenges.cloudflare.com'],
+      },
+      { owner: 'other', 'script-src': ['https://example.com:8443'] },
+    ])
+    expect(composed).toContain(
+      `script-src 'self' '${INLINE_BOOT_SCRIPT_HASH}' https://challenges.cloudflare.com https://example.com:8443;`,
+    )
+    expect(composed).toContain("frame-src 'self' blob: https://challenges.cloudflare.com;")
+    for (const source of [
+      "'unsafe-inline'",
+      "'unsafe-eval'",
+      "'strict-dynamic'",
+      "'self'",
+      "'none'",
+      'data:',
+      'blob:',
+      'http://example.com',
+      'ws://example.com',
+      'wss://example.com',
+      'https://example.com/script.js',
+      'https://*.example.com',
+      "'nonce-abc'",
+      "'sha256-abc'",
+      'https:',
+      '',
+    ]) {
+      expect(
+        () => composeShellPolicy([{ owner: 'x', 'script-src': [source] }]),
+        source,
+      ).toThrow(ShellPolicyRefused)
+    }
+  })
+
+  it('keeps how scripts run the shell\u2019s, whatever is contributed', () => {
+    const composed = composeShellPolicy([
+      { owner: 'x', 'script-src': ['https://a.example', 'https://b.example'] },
+    ])
+    const script = /script-src ([^;]+)/.exec(composed)?.[1] ?? ''
+    expect(script.startsWith(`'self' '${INLINE_BOOT_SCRIPT_HASH}'`)).toBe(true)
+    expect(script).not.toMatch(/unsafe-|strict-dynamic|nonce-|data:|blob:/)
   })
 
   it('names the plugin that made a bad contribution', () => {

@@ -13,7 +13,10 @@ import {
 // Why each line is what it is lives in docs/notes/auth-security.md; the
 // short form:
 //
-// - script-src carries no 'unsafe-inline'. The one inline script the shell
+// - script-src carries no 'unsafe-inline', and never will from a plugin: a
+//   selected plugin may add only a named https origin its code must load
+//   from (a CAPTCHA vendor that serves its widget from its own host), never
+//   a keyword, nonce, hash or scheme. The one inline script the shell
 //   has - the boot script in index.html: the theme resolver that must run
 //   before the first paint, and the watchdog that offers a reload when the
 //   application never takes over - is allowed by the hash of its exact
@@ -77,13 +80,25 @@ const FIXED: readonly Line[] = [
 const contributable: ReadonlySet<string> = new Set(SHELL_POLICY_DIRECTIVES)
 
 /**
- * A source a plugin may state: a keyword, a scheme, or one https or
+ * A fetch source a plugin may state: a keyword, a scheme, or one https or
  * websocket host with an optional port. No wildcards, no paths, no plain
  * http - a policy that named those would be looser than the fixed part it
  * joins.
  */
-const SOURCE =
+const FETCH_SOURCE =
   /^(?:'self'|data:|blob:|(?:https|wss?):\/\/[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::\d{1,5})?)$/
+
+/**
+ * A script source a plugin may state: one https host with an optional port,
+ * and nothing else. Kept apart from the fetch grammar on purpose - widening
+ * that one must never widen what may run. Every keyword ('self',
+ * 'unsafe-inline', 'unsafe-eval', 'strict-dynamic'), every nonce and hash,
+ * data: and blob: stay the shell's to write or not.
+ */
+const SCRIPT_SOURCE = /^https:\/\/[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::\d{1,5})?$/
+
+const fetchSourceAccepted = (source: string) => FETCH_SOURCE.test(source)
+const scriptSourceAccepted = (source: string) => SCRIPT_SOURCE.test(source)
 
 export class ShellPolicyRefused extends Error {
   readonly _tag = 'ShellPolicyRefused'
@@ -111,10 +126,16 @@ export const composeShellPolicy = (entries: readonly ShellPolicyEntry[]): string
       if (!Array.isArray(sources)) {
         throw new ShellPolicyRefused(`${entry.owner} contributes a non-list to ${directive}`)
       }
+      const script = directive === 'script-src'
       for (const source of sources as readonly unknown[]) {
-        if (typeof source !== 'string' || !SOURCE.test(source)) {
+        const accepted =
+          typeof source === 'string' &&
+          (script ? scriptSourceAccepted(source) : fetchSourceAccepted(source))
+        if (!accepted) {
           throw new ShellPolicyRefused(
-            `${entry.owner} contributes ${JSON.stringify(source)} to ${directive}, which is not 'self', data:, blob:, an https://host[:port] or a ws(s)://host[:port]`,
+            script
+              ? `${entry.owner} contributes ${JSON.stringify(source)} to script-src, which takes an https://host[:port] and nothing else; how scripts run is the shell's alone`
+              : `${entry.owner} contributes ${JSON.stringify(source)} to ${directive}, which is not 'self', data:, blob:, an https://host[:port] or a ws(s)://host[:port]`,
           )
         }
         const list = added.get(directive as ShellPolicyDirective) ?? []

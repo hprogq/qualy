@@ -23,9 +23,17 @@ import { Context, Effect, Layer } from 'effect'
 /**
  * The directives a plugin may contribute sources to.
  *
- * Only the ones that name where the browser may fetch from. The
- * script-src, style-src, base-uri, object-src and form-action lines decide
- * what runs and where a page may send itself, and are the shell's alone.
+ * The ones that name where the browser may fetch from - and script-src, in
+ * one narrow way. The shell owns how scripts run: 'self', the hash of its
+ * boot script, and every keyword, nonce and hash there is. What an enabled
+ * plugin may add is the one thing its runtime cannot do without: a remote
+ * https origin its code must execute from, because the vendor serves that
+ * code only from there (a challenge widget that refuses to be proxied). It
+ * cannot add 'unsafe-inline', 'unsafe-eval', 'strict-dynamic', a nonce, a
+ * hash, data:, blob: or 'self' - nothing that changes how the page runs
+ * code, only which named origin it may load code from, and only while that
+ * plugin is selected. The style-src, base-uri, object-src and form-action
+ * lines stay the shell's alone.
  */
 export const SHELL_POLICY_DIRECTIVES = [
   'connect-src',
@@ -34,6 +42,7 @@ export const SHELL_POLICY_DIRECTIVES = [
   'worker-src',
   'font-src',
   'media-src',
+  'script-src',
 ] as const
 
 export type ShellPolicyDirective = (typeof SHELL_POLICY_DIRECTIVES)[number]
@@ -41,9 +50,10 @@ export type ShellPolicyDirective = (typeof SHELL_POLICY_DIRECTIVES)[number]
 /**
  * Sources per directive, as a plugin states them.
  *
- * A source is one of `'self'`, `data:`, `blob:`, `https://host[:port]`,
- * `ws://host[:port]` or `wss://host[:port]`; anything else is refused when
- * the shell freezes its policy, before the port binds.
+ * A fetch source is one of `'self'`, `data:`, `blob:`, `https://host[:port]`,
+ * `ws://host[:port]` or `wss://host[:port]`. A script source is
+ * `https://host[:port]` and nothing else. Anything outside those is refused
+ * when the shell freezes its policy, before the port binds.
  */
 export type ShellPolicyContribution = {
   readonly [Directive in ShellPolicyDirective]?: readonly string[]
