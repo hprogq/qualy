@@ -56,6 +56,14 @@ export default defineConfig({
     // one react instance for the host and every plugin component
     dedupe: ['react', 'react-dom'],
   },
+  optimizeDeps: {
+    // Named because the scan cannot find it: the scan's one entry is the
+    // generated plugin aggregate, and react-dom/client is imported by the
+    // harness that mounts each test, never by a plugin module. Found late,
+    // it made Vite re-bundle and reload mid-run, and on a cold cache - every
+    // CI run - the files in flight at that moment failed to import.
+    include: ['react-dom/client'],
+  },
   test: {
     // The host's own tests, and every plugin's - one runner, wherever the
     // file lives. A test belongs to whatever it is about, and the runner
