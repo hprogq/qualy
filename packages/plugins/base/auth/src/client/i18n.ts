@@ -112,6 +112,10 @@ const sessionActiveMessage = defineMessage<{ when: string }>()({
   id: 'auth/sessions/active',
   defaultMessage: 'Active {when}',
 })
+const recordsSummaryMessage = defineMessage<{ from: number; to: number; total: number }>()({
+  id: 'auth/activity/summary',
+  defaultMessage: '{from}-{to} of {total}',
+})
 const sessionsEndedMessage = defineMessage<{ count: number }>()({
   id: 'auth/sessions/ended',
   defaultMessage:
@@ -645,6 +649,8 @@ const i18n = definePluginMessages({
     activitySignIns: { id: 'auth/activity/sign-ins', defaultMessage: 'Sign-ins' },
     activityChanges: { id: 'auth/activity/changes', defaultMessage: 'Account changes' },
     activityPeriod: { id: 'auth/activity/period', defaultMessage: 'Any date' },
+    recordsAll: { id: 'auth/activity/all', defaultMessage: 'View all' },
+    recordsSummary: recordsSummaryMessage,
     changesEmpty: { id: 'auth/activity/changes-empty', defaultMessage: 'No changes yet' },
     changeBySelf: { id: 'auth/activity/by-self', defaultMessage: 'By you' },
     changeByOther: { id: 'auth/activity/by-other', defaultMessage: 'By an administrator' },

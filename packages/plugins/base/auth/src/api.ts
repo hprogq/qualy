@@ -1007,6 +1007,8 @@ export const selfApiGroup = HttpApiGroup.make('self')
         emailVerified: Schema.Boolean,
         userType: Schema.Struct({ id: Schema.String, name: Schema.String }),
         unit: Schema.NullOr(Schema.Struct({ id: Schema.String, name: Schema.String })),
+        /** the units above theirs and theirs, root first */
+        unitLineage: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
         /** a password they hold, one they could set, or no password way in for them */
         passwordStatus: Schema.Literals(['set', 'unset', 'unavailable']),
       }),

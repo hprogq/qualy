@@ -25,6 +25,10 @@ const me = (over: Partial<Me> = {}): Me => ({
   emailVerified: true,
   userType: { id: 'ut', name: '学生' },
   unit: { id: 'n', name: '示例学院' },
+  unitLineage: [
+    { id: 'r', name: '示例大学' },
+    { id: 'n', name: '示例学院' },
+  ],
   passwordStatus: 'set',
   ...over,
 })
@@ -91,7 +95,10 @@ describe('the reader’s profile', () => {
     await expect.element(card).toBeInTheDocument()
     // fixture data, not copy
     await expect.element(card.getByText('20990001')).toBeInTheDocument()
-    await expect.element(card.getByText('示例学院')).toBeInTheDocument()
+    // where they stand, from the top down, their own unit the one set apart
+    const lineage = page.getByTestId('unit-lineage')
+    await expect.element(lineage).toHaveTextContent('示例大学/示例学院')
+    expect(lineage.element().querySelector('[data-here]')?.textContent).toBe('示例学院')
     await expect.element(page.getByTestId('email-verified')).toHaveAttribute('data-verified', 'yes')
   })
 })

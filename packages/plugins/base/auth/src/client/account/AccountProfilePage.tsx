@@ -10,6 +10,7 @@ import { Card, DefLine, DefList, DefListSkeleton, SectionHead } from '@qualy/ui/
 import { iamMessages as m } from '../i18n.ts'
 import { authApi } from '../api.ts'
 import { EmailWithStanding } from '../iam/person-facts.tsx'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 
 // The reader, as the product has them on file: the same facts an
 // administrator reads on their record, and nothing to change here - the
@@ -17,6 +18,11 @@ import { EmailWithStanding } from '../iam/person-facts.tsx'
 
 const styles = stylex.create({
   page: { display: 'flex', flexDirection: 'column', gap: 12 },
+  // where they stand, from the top down: the units above in grey, their own in ink
+  lineage: { display: 'inline', lineHeight: 1.6 },
+  step: { color: tokens.mutedForeground },
+  here: { color: tokens.foreground },
+  slash: { paddingInline: 6, color: tokens.mutedForeground },
 })
 
 export default function AccountProfilePage() {
@@ -53,7 +59,30 @@ export default function AccountProfilePage() {
               </DefLine>
               <DefLine label={format(m.userTypeLabel)}>{me.userType.name}</DefLine>
               <DefLine label={format(m.anchorLabel)}>
-                {me.unit?.name ?? format(m.rolesNone)}
+                {me.unitLineage.length === 0 ? (
+                  (me.unit?.name ?? format(m.rolesNone))
+                ) : (
+                  <span data-testid="unit-lineage" {...stylex.props(styles.lineage)}>
+                    {me.unitLineage.map((step, index) => {
+                      const last = index === me.unitLineage.length - 1
+                      return (
+                        <span key={step.id}>
+                          {index > 0 && (
+                            <span aria-hidden {...stylex.props(styles.slash)}>
+                              /
+                            </span>
+                          )}
+                          <span
+                            data-here={last || undefined}
+                            {...stylex.props(last ? styles.here : styles.step)}
+                          >
+                            {step.name}
+                          </span>
+                        </span>
+                      )
+                    })}
+                  </span>
+                )}
               </DefLine>
             </DefList>
           </Card>

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Fragment, useState, type ReactNode } from 'react'
 import {
   keepPreviousData,
   useInfiniteQuery,
@@ -17,10 +17,12 @@ import {
   CardEmpty,
   CardFoot,
   CardHead,
+  DetailSheet,
   Spacer,
   Status,
   TableSkeleton,
 } from '@qualy/ui/screen'
+import type { ApiResult } from '@qualy/web-runtime/api'
 import { toast } from '@qualy/ui/toast'
 import { ToggleGroup, ToggleGroupItem } from '@qualy/ui/toggle-group'
 import { DateRangePicker, type DateRange } from '@qualy/ui/date-range-picker'
@@ -64,6 +66,7 @@ const styles = stylex.create({
   },
   end: { flexShrink: 0 },
   when: { fontVariantNumeric: 'tabular-nums' },
+  whole: { display: 'flex', flexDirection: 'column', gap: 12 },
   // the record's own controls: which ones, and which days
   tools: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 },
   period: { width: { default: 260, '@media (max-width: 767.98px)': '100%' } },
@@ -230,8 +233,10 @@ export function SessionsCard() {
   )
 }
 
-/** a page of the reader's own records */
+/** a page of the reader's own records, in the sheet that holds all of them */
 const PAGE_SIZE = 20
+/** how many of each record the page shows before the way to the rest */
+const RECENT = 5
 
 /**
  * The days a reader picked, as the instants the server reads: from the first
@@ -249,7 +254,10 @@ const periodOf = (range: DateRange) => ({
       }),
 })
 
-/** the days to read within, shared by both records */
+type SignIn = ApiResult<typeof authApi, 'self', 'listSelfSignIns'>['items'][number]
+type Change = ApiResult<typeof authApi, 'self', 'listSelfAccountChanges'>['items'][number]
+
+/** the days to read within */
 function Period({ range, onChange }: { range: DateRange; onChange: (next: DateRange) => void }) {
   const { format, locale } = useI18n()
   return (
@@ -265,7 +273,7 @@ function Period({ range, onChange }: { range: DateRange; onChange: (next: DateRa
   )
 }
 
-/** the strip a record ends on: how many, and the pages */
+/** the strip a full record ends on: which of how many, and the pages */
 function Pages({
   page,
   total,
@@ -282,34 +290,192 @@ function Pages({
   const { format } = useI18n()
   if (total <= PAGE_SIZE) return null
   return (
-    <CardFoot inset>
-      <Pager
-        testId="records-pager"
-        label={format(m.pagerLabel)}
-        page={page}
-        pageSize={PAGE_SIZE}
-        total={total}
-        disabled={busy}
-        summary={format(m.pageSummary, {
-          from: (page - 1) * PAGE_SIZE + 1,
-          to: (page - 1) * PAGE_SIZE + shown,
-          total,
-        })}
-        onPage={onPage}
-      />
-    </CardFoot>
+    <Pager
+      testId="records-pager"
+      label={format(m.pagerLabel)}
+      page={page}
+      pageSize={PAGE_SIZE}
+      total={total}
+      disabled={busy}
+      summary={format(m.recordsSummary, {
+        from: (page - 1) * PAGE_SIZE + 1,
+        to: (page - 1) * PAGE_SIZE + shown,
+        total,
+      })}
+      onPage={onPage}
+    />
+  )
+}
+
+/** one attempt: when first - a record is read by time - then from what, through which door */
+function SignInRow({ attempt }: { attempt: SignIn }) {
+  const { format, locale } = useI18n()
+  return (
+    <div
+      data-testid="sign-in-row"
+      data-outcome={attempt.outcome}
+      data-current={attempt.current}
+      {...stylex.props(styles.row)}
+    >
+      <span {...stylex.props(styles.words)}>
+        <span {...stylex.props(styles.line)}>
+          <span {...stylex.props(styles.device, styles.when)}>
+            {instantWords(locale, attempt.occurredAt)}
+          </span>
+          {attempt.current && <Status tone="plain">{format(m.signInThisSession)}</Status>}
+        </span>
+        <Meta
+          parts={[
+            deviceWords(attempt.userAgent) ?? format(m.unknownDevice),
+            attempt.entrance?.name ?? format(m.entranceGone),
+            attempt.clientIp,
+          ]}
+        />
+      </span>
+      <Status tone={attempt.outcome === 'success' ? 'ok' : 'bad'}>
+        {format(attempt.outcome === 'success' ? m.signInSucceeded : m.signInRefused)}
+      </Status>
+    </div>
+  )
+}
+
+/** one change: when, what, and whether the reader did it */
+function ChangeRow({ change }: { change: Change }) {
+  const { format, formatText, locale } = useI18n()
+  return (
+    <div data-testid="account-change" data-actor={change.actor} {...stylex.props(styles.row)}>
+      <span {...stylex.props(styles.words)}>
+        <span {...stylex.props(styles.line, styles.when)}>
+          {instantWords(locale, change.occurredAt)}
+        </span>
+        <span {...stylex.props(styles.meta)}>
+          <span>{formatText(change.name)}</span>
+          <span>{format(change.actor === 'self' ? m.changeBySelf : m.changeByOther)}</span>
+        </span>
+      </span>
+    </div>
   )
 }
 
 /**
- * Every attempt to come in as the reader, newest first, a numbered page at
- * a time: all of them, or only those that went one way, within the days
- * asked for. Each is when first - the record is read by time - then what it
- * came from and through which door.
+ * One record on the page: its latest few, and the way to all of it - which
+ * opens beside the page, or from the foot on a phone, with its own filters
+ * and pages, so the page itself stays short.
  */
+function RecordCard<Item extends { readonly id: string }>({
+  testId,
+  title,
+  empty,
+  recent,
+  row,
+  whole,
+}: {
+  testId: string
+  title: string
+  empty: string
+  recent: {
+    readonly isPending: boolean
+    readonly isError: boolean
+    readonly error: unknown
+    readonly data?: { readonly items: readonly Item[]; readonly total: number } | undefined
+    readonly refetch: () => unknown
+  }
+  row: (item: Item) => ReactNode
+  /** the whole record, for the sheet */
+  whole: ReactNode
+}) {
+  const { format, formatError } = useI18n()
+  const [open, setOpen] = useState(false)
+  const items = recent.data?.items ?? []
+  const more = (recent.data?.total ?? 0) > items.length
+  return (
+    <Card data-testid={testId}>
+      <CardHead title={title}>
+        {more && (
+          <Button
+            size="xs"
+            variant="ghost"
+            data-testid={`${testId}-all`}
+            onClick={() => setOpen(true)}
+          >
+            {format(m.recordsAll)}
+          </Button>
+        )}
+      </CardHead>
+      <AsyncSection
+        pending={recent.isPending}
+        error={recent.isError ? formatError(recent.error) : null}
+        loadingLabel={format(commonMessages.loading)}
+        retryLabel={format(commonMessages.retry)}
+        onRetry={() => void recent.refetch()}
+        skeleton={<TableSkeleton rows={3} />}
+      >
+        {items.length === 0 ? (
+          <CardEmpty>{empty}</CardEmpty>
+        ) : (
+          items.map((item) => <Fragment key={item.id}>{row(item)}</Fragment>)
+        )}
+      </AsyncSection>
+      <DetailSheet
+        open={open}
+        onClose={() => setOpen(false)}
+        title={title}
+        width="wide"
+        closeLabel={format(commonMessages.close)}
+        testId={`${testId}-sheet`}
+      >
+        {open && whole}
+      </DetailSheet>
+    </Card>
+  )
+}
+
+/** the reader's sign-ins: the latest few here, all of them in the sheet */
 export function SignInRecords() {
   const query = useApiQuery(authApi)
-  const { format, formatError, locale } = useI18n()
+  const { format } = useI18n()
+  const recent = useQuery(
+    query.self.listSelfSignIns.queryOptions({
+      query: { page: '1', limit: String(RECENT) },
+    }),
+  )
+  return (
+    <RecordCard
+      testId="sign-ins-card"
+      title={format(m.activitySignIns)}
+      empty={format(m.signInsEmpty)}
+      recent={recent}
+      row={(attempt: SignIn) => <SignInRow attempt={attempt} />}
+      whole={<AllSignIns />}
+    />
+  )
+}
+
+/** what was done to the reader's account: the latest few here, all of it in the sheet */
+export function AccountChanges() {
+  const query = useApiQuery(authApi)
+  const { format } = useI18n()
+  const recent = useQuery(
+    query.self.listSelfAccountChanges.queryOptions({
+      query: { page: '1', limit: String(RECENT) },
+    }),
+  )
+  return (
+    <RecordCard
+      testId="account-changes"
+      title={format(m.activityChanges)}
+      empty={format(m.changesEmpty)}
+      recent={recent}
+      row={(change: Change) => <ChangeRow change={change} />}
+      whole={<AllChanges />}
+    />
+  )
+}
+
+/** every sign-in, a numbered page at a time, within the days and outcome asked for */
+function AllSignIns() {
+  const query = useApiQuery(authApi)
+  const { format, formatError } = useI18n()
   const [outcome, setOutcome] = useState<'all' | 'success' | 'failure'>('all')
   const [range, setRange] = useState<DateRange>({ start: '', end: '' })
   const [page, setPage] = useState(1)
@@ -325,9 +491,8 @@ export function SignInRecords() {
     placeholderData: keepPreviousData,
   })
   const items = signIns.data?.items ?? []
-
   return (
-    <>
+    <div {...stylex.props(styles.whole)}>
       <div {...stylex.props(styles.tools)}>
         <ToggleGroup
           value={outcome}
@@ -350,7 +515,7 @@ export function SignInRecords() {
           }}
         />
       </div>
-      <Card data-testid="sign-ins-card">
+      <Card data-testid="sign-ins-all">
         <AsyncSection
           pending={signIns.isPending}
           error={signIns.isError ? formatError(signIns.error) : null}
@@ -362,56 +527,25 @@ export function SignInRecords() {
           {items.length === 0 ? (
             <CardEmpty>{format(m.signInsEmpty)}</CardEmpty>
           ) : (
-            items.map((attempt) => (
-              <div
-                key={attempt.id}
-                data-testid="sign-in-row"
-                data-outcome={attempt.outcome}
-                data-current={attempt.current}
-                {...stylex.props(styles.row)}
-              >
-                <span {...stylex.props(styles.words)}>
-                  <span {...stylex.props(styles.line)}>
-                    <span {...stylex.props(styles.device, styles.when)}>
-                      {instantWords(locale, attempt.occurredAt)}
-                    </span>
-                    {attempt.current && <Status tone="plain">{format(m.signInThisSession)}</Status>}
-                  </span>
-                  <Meta
-                    parts={[
-                      deviceWords(attempt.userAgent) ?? format(m.unknownDevice),
-                      attempt.entrance?.name ?? format(m.entranceGone),
-                      attempt.clientIp,
-                    ]}
-                  />
-                </span>
-                <Status tone={attempt.outcome === 'success' ? 'ok' : 'bad'}>
-                  {format(attempt.outcome === 'success' ? m.signInSucceeded : m.signInRefused)}
-                </Status>
-              </div>
-            ))
+            items.map((attempt) => <SignInRow key={attempt.id} attempt={attempt} />)
           )}
-          <Pages
-            page={signIns.data?.page ?? page}
-            total={signIns.data?.total ?? 0}
-            shown={items.length}
-            busy={signIns.isFetching}
-            onPage={setPage}
-          />
         </AsyncSection>
       </Card>
-    </>
+      <Pages
+        page={signIns.data?.page ?? page}
+        total={signIns.data?.total ?? 0}
+        shown={items.length}
+        busy={signIns.isFetching}
+        onPage={setPage}
+      />
+    </div>
   )
 }
 
-/**
- * What was done to the reader's account - their password, their address,
- * their ways in, their sessions - newest first, in the words given for them,
- * and whether they did it or somebody else did.
- */
-export function AccountChanges() {
+/** every change, a numbered page at a time, within the days asked for */
+function AllChanges() {
   const query = useApiQuery(authApi)
-  const { format, formatError, formatText, locale } = useI18n()
+  const { format, formatError } = useI18n()
   const [range, setRange] = useState<DateRange>({ start: '', end: '' })
   const [page, setPage] = useState(1)
   const changes = useQuery({
@@ -421,9 +555,8 @@ export function AccountChanges() {
     placeholderData: keepPreviousData,
   })
   const items = changes.data?.items ?? []
-
   return (
-    <>
+    <div {...stylex.props(styles.whole)}>
       <div {...stylex.props(styles.tools)}>
         <Period
           range={range}
@@ -433,7 +566,7 @@ export function AccountChanges() {
           }}
         />
       </div>
-      <Card data-testid="account-changes">
+      <Card data-testid="account-changes-all">
         <AsyncSection
           pending={changes.isPending}
           error={changes.isError ? formatError(changes.error) : null}
@@ -445,36 +578,17 @@ export function AccountChanges() {
           {items.length === 0 ? (
             <CardEmpty>{format(m.changesEmpty)}</CardEmpty>
           ) : (
-            items.map((change) => (
-              <div
-                key={change.id}
-                data-testid="account-change"
-                data-actor={change.actor}
-                {...stylex.props(styles.row)}
-              >
-                <span {...stylex.props(styles.words)}>
-                  <span {...stylex.props(styles.line, styles.when)}>
-                    {instantWords(locale, change.occurredAt)}
-                  </span>
-                  <span {...stylex.props(styles.meta)}>
-                    <span>{formatText(change.name)}</span>
-                    <span>
-                      {format(change.actor === 'self' ? m.changeBySelf : m.changeByOther)}
-                    </span>
-                  </span>
-                </span>
-              </div>
-            ))
+            items.map((change) => <ChangeRow key={change.id} change={change} />)
           )}
-          <Pages
-            page={changes.data?.page ?? page}
-            total={changes.data?.total ?? 0}
-            shown={items.length}
-            busy={changes.isFetching}
-            onPage={setPage}
-          />
         </AsyncSection>
       </Card>
-    </>
+      <Pages
+        page={changes.data?.page ?? page}
+        total={changes.data?.total ?? 0}
+        shown={items.length}
+        busy={changes.isFetching}
+        onPage={setPage}
+      />
+    </div>
   )
 }

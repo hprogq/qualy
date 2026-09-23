@@ -24,6 +24,10 @@ const me = (over: Partial<Me> = {}): Me => ({
   emailVerified: true,
   userType: { id: 'ut', name: '学生' },
   unit: { id: 'n', name: '示例学院' },
+  unitLineage: [
+    { id: 'r', name: '示例大学' },
+    { id: 'n', name: '示例学院' },
+  ],
   passwordStatus: 'set',
   ...over,
 })
@@ -252,92 +256,74 @@ describe('the reader’s devices and sign-ins', () => {
     expect(Number.parseFloat(getComputedStyle(way.element()).fontSize)).toBeLessThan(15)
     expect(document.querySelector('[data-testid="sign-ins-card"]')).toBeNull()
   })
-
-  it('lists every sign-in with how it went, and only those that went one way when asked', async () => {
-    const attempt = (id: string, outcome: 'success' | 'failure', current = false) => ({
-      id,
-      occurredAt: '2026-09-23T08:00:00.000Z',
-      outcome,
-      entrance: { name: '邮箱密码', type: 'local' },
-      current,
-      clientIp: '203.0.113.7',
-      userAgent: CHROME_MAC,
-    })
-    const list = vi.fn((request: { query: { outcome?: string } }) => {
-      const items =
-        request.query.outcome === 'failure'
-          ? [attempt('b', 'failure')]
-          : [attempt('a', 'success', true), attempt('b', 'failure')]
-      return Effect.succeed({ items, total: items.length, page: 1, pageSize: 20 })
-    })
-    renderScreen({
-      client: client({ self: { listSelfSignIns: list } }),
-      route: '/account/activity',
-      children: <AccountActivityPage />,
-    })
-    const rows = page.getByTestId('sign-in-row')
-    await expect.element(rows.first()).toBeInTheDocument()
-    expect((await rows.elements()).map((row) => row.getAttribute('data-outcome'))).toEqual([
-      'success',
-      'failure',
-    ])
-    expect(rows.first().element().getAttribute('data-current')).toBe('true')
-    await page.getByRole('radio', { name: '失败' }).click()
-    await vi.waitFor(() =>
-      expect(list).toHaveBeenCalledWith({
-        query: expect.objectContaining({ outcome: 'failure', page: '1' }),
-      }),
-    )
-    await vi.waitFor(async () =>
-      expect((await rows.elements()).map((row) => row.getAttribute('data-outcome'))).toEqual([
-        'failure',
-      ]),
-    )
-  })
 })
 
 describe('the reader’s security activity', () => {
-  it('shows what was changed and by whom on its own tab, and reads within the days asked', async () => {
-    const changes = vi.fn((_request: { query: Record<string, string | undefined> }) =>
-      Effect.succeed({
-        items: [
-          {
-            id: 'c1',
-            occurredAt: '2026-09-23T08:00:00.000Z',
-            name: { kind: 'literal' as const, value: '登录凭据已设置或更新' },
-            actor: 'self' as const,
-          },
-          {
-            id: 'c2',
-            occurredAt: '2026-09-20T08:00:00.000Z',
-            name: { kind: 'literal' as const, value: '账号资料被修改' },
-            actor: 'other' as const,
-          },
-        ],
-        total: 2,
-        page: 1,
-        pageSize: 20,
-      }),
+  const attempt = (id: string, outcome: 'success' | 'failure', current = false) => ({
+    id,
+    occurredAt: '2026-09-23T08:00:00.000Z',
+    outcome,
+    entrance: { name: '邮箱密码', type: 'local' },
+    current,
+    clientIp: '203.0.113.7',
+    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/140.0 Safari/537.36',
+  })
+  const change = (id: string, actor: 'self' | 'other') => ({
+    id,
+    occurredAt: '2026-09-20T08:00:00.000Z',
+    name: { kind: 'literal' as const, value: `变更 ${id}` },
+    actor,
+  })
+
+  it('shows the latest of each record, and the whole of it with filters and pages in a sheet', async () => {
+    const signIns = vi.fn((request: { query: Record<string, string | undefined> }) => {
+      const whole = Array.from({ length: 30 }, (_, n) =>
+        attempt(`a${String(n)}`, n % 3 === 0 ? 'failure' : 'success', n === 0),
+      )
+      const kept =
+        request.query['outcome'] === undefined
+          ? whole
+          : whole.filter((one) => one.outcome === request.query['outcome'])
+      const size = Number(request.query['limit'] ?? '20')
+      const page = Number(request.query['page'] ?? '1')
+      return Effect.succeed({
+        items: kept.slice((page - 1) * size, page * size),
+        total: kept.length,
+        page,
+        pageSize: size,
+      })
+    })
+    const changes = vi.fn(() =>
+      Effect.succeed({ items: [change('c1', 'self'), change('c2', 'other')], total: 2, page: 1, pageSize: 5 }),
     )
     renderScreen({
-      client: client({
-        self: {
-          listSelfSignIns: () => Effect.succeed({ items: [], total: 0, page: 1, pageSize: 20 }),
-          listSelfAccountChanges: changes,
-        },
-      }),
-      route: '/account/activity?view=changes',
+      client: client({ self: { listSelfSignIns: signIns, listSelfAccountChanges: changes } }),
+      route: '/account/activity',
       children: <AccountActivityPage />,
     })
-    const rows = page.getByTestId('account-change')
-    await expect.element(rows.first()).toBeInTheDocument()
-    expect((await rows.elements()).map((row) => row.getAttribute('data-actor'))).toEqual([
+    // on the page: the latest few of each, asked for as a few
+    const recent = page.getByTestId('sign-ins-card').getByTestId('sign-in-row')
+    await expect.element(recent.first()).toBeInTheDocument()
+    expect(await recent.elements()).toHaveLength(5)
+    expect(signIns).toHaveBeenCalledWith({ query: { page: '1', limit: '5' } })
+    const changed = page.getByTestId('account-changes').getByTestId('account-change')
+    await expect.element(changed.first()).toBeInTheDocument()
+    expect((await changed.elements()).map((row) => row.getAttribute('data-actor'))).toEqual([
       'self',
       'other',
     ])
-    expect(changes).toHaveBeenCalledWith({ query: { page: '1', limit: '20' } })
-    // back to the sign-ins, by the tab
-    await page.getByRole('tab', { name: '登录记录' }).click()
-    await expect.element(page.getByTestId('sign-ins-card')).toBeInTheDocument()
+    // everything there is fits the card, so there is no way to more of it
+    expect(document.querySelector('[data-testid="account-changes-all"]')).toBeNull()
+
+    // the whole record opens in a sheet, a page at a time, filtered there
+    await page.getByTestId('sign-ins-card-all').click()
+    const sheet = page.getByTestId('sign-ins-card-sheet')
+    await expect.element(sheet.getByTestId('records-pager')).toHaveAttribute('data-total', '30')
+    await sheet.getByRole('radio', { name: '失败' }).click()
+    await vi.waitFor(() =>
+      expect(signIns).toHaveBeenCalledWith({
+        query: expect.objectContaining({ outcome: 'failure', page: '1', limit: '20' }),
+      }),
+    )
   })
 })

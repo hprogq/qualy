@@ -531,7 +531,7 @@ export type LoginMethod = {
 } & LoginPresentation
 
 /** the standing itself: every ancestor of the node, root first, node last */
-const lineageOf = (tenantId: string, path: string) =>
+export const lineageOf = (tenantId: string, path: string) =>
   db.query((k) =>
     k
       .selectFrom('OrgNode as n')

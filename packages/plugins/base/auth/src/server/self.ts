@@ -16,6 +16,7 @@ import {
 } from './errors.ts'
 import { makeReadiness } from './readiness.ts'
 import { sameOriginPath } from './same-origin.ts'
+import { lineageOf } from './sign-in.ts'
 
 // The signed-in person's own account, as they read it.
 //
@@ -48,6 +49,7 @@ const selfRow = (tenantId: string, userId: string) =>
         't.isSystem',
         'n.id as unitId',
         'n.name as unitName',
+        'n.path as unitPath',
       ])
       .where('u.tenantId', '=', tenantId)
       .where('u.id', '=', userId)
@@ -197,6 +199,13 @@ export const make = Effect.fn('Iam.self.make')(function* () {
         // joined on, so it is there
         userType: { id: row.userTypeId!, name: row.userTypeName },
         unit: row.unitId === null ? null : { id: row.unitId, name: row.unitName! },
+        // where that unit stands, root first and the unit itself last
+        unitLineage:
+          row.unitPath === null
+            ? []
+            : (yield* withDb(lineageOf(principal.tenantId, row.unitPath)).pipe(Effect.orDie)).map(
+                (step) => ({ id: step.id, name: step.name }),
+              ),
       }
     }),
 

@@ -173,6 +173,8 @@ export default {
   'auth/activity/sign-ins': '登录记录',
   'auth/activity/changes': '账号变更',
   'auth/activity/period': '全部日期',
+  'auth/activity/all': '查看全部',
+  'auth/activity/summary': '第 {from}–{to} 条，共 {total} 条',
   'auth/activity/changes-empty': '暂无账号变更',
   'auth/activity/by-self': '本人操作',
   'auth/activity/by-other': '管理员操作',
