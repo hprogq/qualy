@@ -92,6 +92,10 @@ export const doorsOf = (tenantId: string, userId: string, userTypeId: string | n
           .whereRef('e.providerId', '=', 'p.id')
           .where('e.userId', '=', userId)
           .where('e.outcome', '=', 'success')
+          // through the account bound here now: a sign-in with an account
+          // since let go is not a sign-in this way any more. A door that
+          // binds nothing records none, and compares null to null
+          .whereRef('e.bindingId', 'is not distinct from', 'b.id')
           .as('lastSignInAt'),
       ])
       .where('p.tenantId', '=', tenantId)

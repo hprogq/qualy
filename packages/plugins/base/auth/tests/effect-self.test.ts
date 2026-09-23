@@ -186,6 +186,7 @@ const seed = (url: string) =>
         local,
         hubDoor,
         adaHub,
+        adaPassword,
         adaByPassword,
         adaByHub,
         linByHub,
@@ -292,7 +293,15 @@ describe.runIf(postgresAvailable)('the reader’s own account', () => {
           db.url,
           Effect.gen(function* () {
             const iam = yield* Iam
+            // one sign-in through each account Ada holds
+            const signedIn = (door: string, type: string, binding: string, at: string) =>
+              runSql(sql`
+                insert into sign_in_events (tenant_id, occurred_at, provider_id, provider_type, provider_code, user_id, binding_id, outcome)
+                values (${f.tenant}, ${at}::timestamptz, ${door}, ${type}, ${type}, ${f.ada}, ${binding}, 'success')`)
+            yield* signedIn(f.hubDoor, 'hub', f.adaHub, '2026-09-01T08:00:00Z')
+            yield* signedIn(f.local, 'local', f.adaPassword, '2026-09-02T08:00:00Z')
             const released = yield* iam.self.unbind(f.as(f.ada, f.adaByPassword), f.hubDoor)
+            const listed = yield* iam.self.entrances(f.as(f.ada, f.adaByPassword))
             const sessions = yield* runSql<{ id: string }>(
               sql`select id from sessions where user_id = ${f.ada} order by id`,
             )
@@ -310,6 +319,7 @@ describe.runIf(postgresAvailable)('the reader’s own account', () => {
             )
             return {
               released,
+              listed,
               sessions: sessions.rows.map((row) => row.id),
               binding: binding.rows[0]!,
               audited: audited.rows,
@@ -326,6 +336,11 @@ describe.runIf(postgresAvailable)('the reader’s own account', () => {
       expect(answer.audited).toEqual([{ action_code: 'auth.identity.revoke', actor_user_id: f.ada }])
       expect(tagOf(answer.again)).toBe('AUTH_BINDING_NOT_FOUND')
       expect(tagOf(answer.password)).toBe('AUTH_BINDING_UNSUPPORTED')
+      // the let-go account's sign-ins are not this way's any more; the password's are
+      const last = (type: string) =>
+        answer.listed.find((entrance) => entrance.type === type)?.lastSignInAt
+      expect(last('hub')).toBeNull()
+      expect(new Date(String(last('local'))).toISOString()).toBe('2026-09-02T08:00:00.000Z')
     } finally {
       await db.dispose()
     }
