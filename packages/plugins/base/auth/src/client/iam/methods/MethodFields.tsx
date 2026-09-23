@@ -63,6 +63,9 @@ const styles = stylex.create({
   toggleHint: { margin: 0, paddingInlineStart: 26, fontSize: 12.5, color: tokens.mutedForeground },
 })
 
+/** what a stored secret's empty box shows in place of the value it keeps */
+const STORED_MARKS = '\u25cf'.repeat(10)
+
 export function MethodFields({
   kind,
   config,
@@ -172,6 +175,9 @@ export function MethodFields({
                 : {})}
               autoComplete={field.kind === 'secret' ? 'new-password' : 'off'}
               data-stored={field.kind === 'secret' ? String(stored) : undefined}
+              // a stored secret is never sent back, so its box is empty; a
+              // row of marks says something is there rather than nothing
+              {...(field.kind === 'secret' && stored ? { placeholder: STORED_MARKS } : {})}
               disabled={disabled}
               value={
                 field.kind === 'secret'

@@ -348,6 +348,22 @@ describe('a way in, from added to gone', () => {
       route: `/admin/login-methods?provider=${CAS_ID}`,
       children: <LoginMethodsPage />,
     })
+    // the list says it is not set up, in full: the column holds the word
+    await page.viewport(1280, 800)
+    const status = await vi.waitFor(() => {
+      const found = document
+        .querySelectorAll('[data-testid="method-row"]')[1]
+        ?.querySelector<HTMLElement>('[data-tone="bad"]')
+      if (found == null) throw new Error('no status yet')
+      return found
+    })
+    // the whole mark and word inside its column, not cut at the column's edge
+    const listed = status.closest('[data-testid="method-row"]')!
+    let seat: HTMLElement = status
+    while (seat.parentElement !== null && seat.parentElement !== listed) seat = seat.parentElement
+    expect(status.getBoundingClientRect().right).toBeLessThanOrEqual(
+      seat.getBoundingClientRect().right + 0.5,
+    )
     await expect.element(page.getByTestId('method-details')).toHaveAttribute('data-setup', 'incomplete')
     await expect
       .element(page.getByTestId('method-missing'))
@@ -398,6 +414,11 @@ describe('a way in, from added to gone', () => {
     expect(
       (document.querySelector('input[name="entrance-clientSecret"]') as HTMLInputElement).value,
     ).toBe('')
+    // empty, but not blank: marks stand where the value would be
+    expect(
+      (document.querySelector('input[name="entrance-clientSecret"]') as HTMLInputElement)
+        .placeholder,
+    ).not.toBe('')
     await expect.element(page.getByTestId('secret-clear')).toBeDisabled()
     // emptying a required box of a door in service is not saved
     const address = page.getByRole('textbox', { name: '服务地址' })

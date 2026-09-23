@@ -51,7 +51,8 @@ import { authApi } from '../api.ts'
 // platform's; doors of the other kinds the assembly offers are added here,
 // set up on their own sheet, and deleted there.
 
-const COLUMNS = '1.5rem minmax(0, 0.8fr) 6rem minmax(0, 1.4fr) 6.5rem 4.5rem'
+// the status column holds its longest word, "setup incomplete" with its mark, uncut
+const COLUMNS = '1.5rem minmax(0, 0.8fr) 6rem minmax(0, 1.4fr) 6.5rem 7.5rem'
 
 const styles = stylex.create({
   // The order of this list IS the order of the sign-in page, so it is set by
