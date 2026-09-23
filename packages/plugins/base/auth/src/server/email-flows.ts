@@ -265,6 +265,17 @@ export const emailFlowsLayer: Layer.Layer<
     // mail leaves on its own fiber, which lives as long as this layer does
     const scope = yield* Effect.scope
 
+    /** the workspace a message comes from, by name, for its header */
+    const workspaceOf = (tenantId: string) =>
+      withDb(
+        db.query((k) =>
+          k.selectFrom('Tenant').select('name').where('id', '=', tenantId).executeTakeFirst(),
+        ),
+      ).pipe(
+        Effect.map((row) => row?.name ?? null),
+        Effect.orElseSucceed(() => null),
+      )
+
     const throttle = Effect.fn('Auth.email.throttle')(function* (
       tenantId: string,
       rule: LimitRule,
@@ -313,9 +324,16 @@ export const emailFlowsLayer: Layer.Layer<
       tenantId: string,
       challengeId: string,
       to: string,
-      message: { readonly subject: string; readonly text: string },
+      message: { readonly subject: string; readonly text: string; readonly html?: string },
     ) =>
-      mailer.send({ to, subject: message.subject, text: message.text }).pipe(
+      mailer
+        .send({
+          to,
+          subject: message.subject,
+          text: message.text,
+          ...(message.html === undefined ? {} : { html: message.html }),
+        })
+        .pipe(
         Effect.catchTag('MailUnavailable', (failed) =>
           withDb(spend(challengeId)).pipe(
             Effect.orDie,
@@ -416,7 +434,12 @@ export const emailFlowsLayer: Layer.Layer<
         // after the answer, on its own: its time is nobody's business, and a
         // failure is spent and logged rather than told to a stranger
         yield* Effect.forkIn(
-          deliver(tenant.value.id, issued.challenge.id, normalized, mailFor('reset', locale, link)).pipe(
+          deliver(
+            tenant.value.id,
+            issued.challenge.id,
+            normalized,
+            mailFor('reset', locale, link, { to: normalized, workspace: tenant.value.name }),
+          ).pipe(
             Effect.ignore,
           ),
           scope,
@@ -476,7 +499,15 @@ export const emailFlowsLayer: Layer.Layer<
             token: Redacted.value(issued.challenge.token),
           }),
         ).pipe(Effect.orDie)
-        yield* deliver(principal.tenantId, issued.challenge.id, issued.email, mailFor('verify', locale, link))
+        yield* deliver(
+          principal.tenantId,
+          issued.challenge.id,
+          issued.email,
+          mailFor('verify', locale, link, {
+            to: issued.email,
+            workspace: yield* workspaceOf(principal.tenantId),
+          }),
+        )
         return { sent: true }
       }),
 
@@ -531,7 +562,15 @@ export const emailFlowsLayer: Layer.Layer<
           }),
         ).pipe(Effect.orDie)
         // to the new address: following the link is what proves it theirs
-        yield* deliver(principal.tenantId, issued.id, normalized, mailFor('change', input.locale, link))
+        yield* deliver(
+          principal.tenantId,
+          issued.id,
+          normalized,
+          mailFor('change', input.locale, link, {
+            to: normalized,
+            workspace: yield* workspaceOf(principal.tenantId),
+          }),
+        )
       }),
 
       redeemChange: Effect.fn('Auth.email.redeemChange')(function* (token) {
