@@ -32,6 +32,7 @@
     "@qualy/web-build": "workspace:*",
     "@stylexjs/stylex": "catalog:",
     "@stylexjs/unplugin": "catalog:",
+    "@tanstack/react-query": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",

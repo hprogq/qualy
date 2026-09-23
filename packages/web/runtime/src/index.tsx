@@ -313,26 +313,43 @@ export function useSessionTransition() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const manifest = useManifest()
+  const runtime = useRuntime()
   return useCallback(
     async (options: { destination: SessionDestination; replace?: boolean }) => {
       void navigate(sessionDestinationHref(options.destination, manifest.pages), {
         replace: options.replace ?? true,
       })
-      // resetQueries, not clear: clear evicts the cache entries but leaves
-      // every mounted useQuery bound to the query it already resolved, so
-      // the manifest kept answering with the previous identity's pages and
-      // the following refetch had nothing left to refetch. Reset drops the
-      // data through the observers, which go pending rather than serving a
-      // stale row, and refetches the active ones under the new identity.
-      await queryClient.resetQueries()
-      // reset also clears each entry's collection timer and only re-arms it
-      // on the next fetch, so entries nobody is watching would outlive the
-      // tab. Removing them once the active ones have refetched restores what
-      // clear did without giving up the notification that reset provides.
+      // Every answer is dropped, and nothing is asked again on the spot.
+      //
+      // A reset that refetched what was being watched asked again for the
+      // page being left: a navigation is a transition, and the old page stays
+      // on screen until the new one has rendered - with a lazily loaded page,
+      // for as long as its code takes - so its queries were still watched,
+      // and were asked for with the session just ended and answered 401.
+      // Reset in place instead: the data goes through the observers, which
+      // show pending rather than serve the last identity's rows, and each
+      // query is asked for again by whatever mounts it next.
+      //
+      // The manifest is the exception: every page stands under it, and a
+      // manifest gone pending takes the routes down with it, so the page being
+      // left would mount again and ask again. It keeps its answer until the
+      // new one arrives, asked for now.
+      const manifestKey = (runtime.utilsFor(appApi) as QueryUtils<ClientOf<typeof appApi>>).app
+        .getManifest.queryOptions().queryKey
+      const manifestHash = queryClient.getQueryCache().find({ queryKey: manifestKey, exact: true })
+        ?.queryHash
+      await queryClient.cancelQueries()
+      notifyManager.batch(() => {
+        for (const query of queryClient.getQueryCache().getAll()) {
+          if (query.queryHash !== manifestHash) query.reset()
+        }
+      })
+      await queryClient.refetchQueries({ queryKey: manifestKey, exact: true })
+      // entries nobody is watching would otherwise outlive the tab
       queryClient.removeQueries({ type: 'inactive' })
     },
     // manifest identity ties the callback to the active session
-    [queryClient, navigate, manifest],
+    [queryClient, navigate, manifest, runtime],
   )
 }
 
