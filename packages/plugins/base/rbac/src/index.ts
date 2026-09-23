@@ -8,7 +8,15 @@ import { Access } from '@qualy/rbac-contract/plugin'
 import { Audit } from '@qualy/audit-contract/plugin'
 import { accessActions } from './actions.ts'
 import { message } from '@qualy/i18n-contract'
-import { APP_SHELL, USER_DETAIL_SHELL, permissionOf, userDetailNavigation } from '@qualy/ui-contract'
+import {
+  ACCOUNT_SHELL,
+  APP_SHELL,
+  AUTHENTICATED,
+  USER_DETAIL_SHELL,
+  accountNavigation,
+  permissionOf,
+  userDetailNavigation,
+} from '@qualy/ui-contract'
 import { accessApiGroup } from './api.ts'
 import { compositeForeignKeys, entities } from './db/entities.ts'
 import { permissions } from './permissions.ts'
@@ -72,6 +80,27 @@ const plugin = Plugin.define(
       order: 30,
     },
     visibility: permissionOf('iam.grant.read'),
+  }),
+  // the reader's own roles, under their own account: read-only, and asked of
+  // nobody but the one signed in, so being signed in is the whole authority
+  Ui.page({
+    id: 'rbac/account-roles',
+    path: '/account/roles',
+    component: Ui.react('./client/AccountRolesPage'),
+    layout: ACCOUNT_SHELL,
+    title: message('rbac/account/title', 'Roles and permissions'),
+    visibility: AUTHENTICATED,
+  }),
+  Ui.collection(accountNavigation, {
+    id: 'rbac/account/roles',
+    value: {
+      id: 'rbac/account/roles',
+      label: message('rbac/account/title', 'Roles and permissions'),
+      target: { kind: 'page', pageId: 'rbac/account-roles' },
+      icon: 'id-card',
+      order: 2,
+    },
+    visibility: AUTHENTICATED,
   }),
   OrgUsage.reporter(grantsAtNode),
   Access.permissions('rbac', permissions),

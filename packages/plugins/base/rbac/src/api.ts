@@ -512,6 +512,32 @@ export const accessApiGroup = HttpApiGroup.make('access')
     }).middleware(Authenticated),
   )
   .add(
+    // The reader's own roles, read-only and in the reader's terms: each role,
+    // where it holds, for how long, and what it lets them do by name. No
+    // permission beyond the session - there is no user id to name anybody
+    // else by - and nothing of the machinery: no codes to act on, no rules.
+    HttpApiEndpoint.get('listSelfRoles', '/iam/self/roles', {
+      success: Schema.Struct({
+        roles: Schema.Array(
+          Schema.Struct({
+            grantId: Schema.String,
+            roleName: Schema.String,
+            target: grantTargetShape,
+            /** confined to one object, as the owner of that object names it */
+            resource: Schema.NullOr(
+              Schema.Struct({ namespace: Schema.String, type: Schema.String, id: Schema.String }),
+            ),
+            validFrom: Schema.NullOr(Schema.String),
+            validUntil: Schema.NullOr(Schema.String),
+            /** carries everything this assembly can grant, which a list would only bury */
+            allPermissions: Schema.Boolean,
+            permissions: Schema.Array(Schema.Struct({ code: Schema.String, name: uiText })),
+          }),
+        ),
+      }),
+    }).middleware(Authenticated),
+  )
+  .add(
     // why someone holds what they hold. Answering "allowed?" is easy; the
     // reason is what makes a wrong answer fixable, and what an audit needs
     HttpApiEndpoint.get('getUserEffectivePermissions', '/iam/users/:userId/effective-permissions', {

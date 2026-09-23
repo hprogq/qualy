@@ -107,9 +107,19 @@ const roleNamed = (id: string, defaultMessage: string) =>
   defineMessage<{ name: string }>()({ id, defaultMessage })
 const standingBody = (id: string, defaultMessage: string) =>
   defineMessage<{ count: number }>()({ id, defaultMessage })
+const accountRolesMoreMessage = defineMessage<{ count: number }>()({
+  id: 'rbac/account/more',
+  defaultMessage: '{count} more',
+})
 const i18n = definePluginMessages({
   namespace: 'rbac',
   messages: {
+    // the reader's own roles
+    accountRolesTitle: { id: 'rbac/account/title', defaultMessage: 'Roles and permissions' },
+    accountRolesEmpty: { id: 'rbac/account/empty', defaultMessage: 'No roles yet' },
+    accountRolesAll: { id: 'rbac/account/all', defaultMessage: 'Everything this system can grant' },
+    accountRolesMore: accountRolesMoreMessage,
+    accountRolesFewer: { id: 'rbac/account/fewer', defaultMessage: 'Show fewer' },
     // one label per permission this plugin declares. The definition
     // carries a message reference, so the role editor renders whatever
     // language its reader asked for rather than the one it was authored in.

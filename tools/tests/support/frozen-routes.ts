@@ -99,6 +99,7 @@ export const FROZEN_ROUTES = [
   'DELETE /iam/users/{userId}/auth-bindings/{providerId}',
   'GET /iam/users/{userId}/effective-permissions',
   'GET /iam/users/{userId}/role-grants',
+  'GET /iam/self/roles',
 
   'GET /iam/user-import-options',
   'POST /iam/user-import-uploads',

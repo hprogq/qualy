@@ -203,4 +203,9 @@ export default {
   'rbac/permission/role-appointment-manage': '管理角色任命关系',
   'rbac/permission-hint/role-appointment-manage': '允许配置各角色可任命哪些角色',
   'rbac/permission/authorization-inspect': '查看授权来源',
+  'rbac/account/title': '角色与权限',
+  'rbac/account/empty': '暂无角色',
+  'rbac/account/all': '拥有系统中的全部权限',
+  'rbac/account/more': '另外 {count} 项',
+  'rbac/account/fewer': '收起',
 } satisfies MessageCatalog

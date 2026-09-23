@@ -614,6 +614,17 @@ const toRoleShape = (
         : { mode: 'allow-list' as const, orgTypeIds: role.allowedOrgTypes },
 })
 
+/**
+ * What a reader may see of their own grants: all of them, and nothing to
+ * change. Their own authority does not decide it - somebody with no read
+ * permission at all still holds roles, and is owed the sight of them.
+ */
+const SELF_GRANT_SCOPE: GrantScope = {
+  read: { tenantWide: true, anchors: [] },
+  manage: { tenantWide: false, anchors: [] },
+  tenantGrants: { read: true, manage: false },
+}
+
 const toGrantShape = (row: GrantRow) => ({
   id: row.id,
   userId: row.userId,
@@ -813,6 +824,53 @@ export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers
           yield* access.grantScopeFor(principal),
         )
         return { grants: found.map(toGrantShape) }
+      }),
+    )
+    .handle(
+      'listSelfRoles',
+      Effect.fn('access.listSelfRoles.handler')(function* () {
+        const access = yield* Access
+        const rbac = yield* Rbac
+        const principal = yield* CurrentUser
+        const found = yield* access.grants.list(
+          principal.tenantId,
+          { userId: principal.userId },
+          SELF_GRANT_SCOPE,
+        )
+        const catalog = yield* rbac.listPermissions()
+        const names = new Map(catalog.map((definition) => [definition.code, definition.name]))
+        const now = Date.now()
+        // a grant that has run out holds nothing; one not begun yet is shown
+        // with the day it begins
+        const standing = found.filter(
+          (row) => row.validUntil == null || new Date(row.validUntil).getTime() > now,
+        )
+        const carried = new Map<string, readonly string[]>()
+        for (const roleId of new Set(standing.map((row) => row.roleId))) {
+          const role = yield* access.roles
+            .getPermissions(principal.tenantId, roleId, principal)
+            .pipe(Effect.orElseSucceed(() => ({ active: [] as readonly string[] })))
+          carried.set(roleId, role.active)
+        }
+        return {
+          roles: standing.map((row) => {
+            const shaped = toGrantShape(row)
+            const codes = carried.get(row.roleId) ?? []
+            return {
+              grantId: shaped.id,
+              roleName: shaped.roleName,
+              target: shaped.target,
+              resource: shaped.resource,
+              validFrom: shaped.validFrom,
+              validUntil: shaped.validUntil,
+              allPermissions: catalog.length > 0 && codes.length >= catalog.length,
+              permissions: codes.flatMap((code) => {
+                const name = names.get(code)
+                return name === undefined ? [] : [{ code, name }]
+              }),
+            }
+          }),
+        }
       }),
     )
     .handle(
