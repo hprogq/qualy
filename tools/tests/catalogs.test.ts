@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { manifestPath } from '../lib/manifest.ts'
 import { describe, expect, it } from 'vitest'
-import { compileMessage } from '@lingui/message-utils/compileMessage'
+import { compileMessageOrThrow } from '@lingui/message-utils/compileMessage'
 import type { MessageCatalog, MessageDescriptor } from '@qualy/i18n-contract'
 import { fallbackLocale, supportedLocales } from '@qualy/i18n-contract'
 import { pathToFileURL } from 'node:url'
@@ -106,7 +106,15 @@ const argumentsOf = (icu: string): Set<string> => {
       }
     }
   }
-  stream(compileMessage(icu))
+  // the browser's compiler logs a string it cannot read and shows it raw;
+  // here it is a failure, with the string in the message
+  let compiled: ReturnType<typeof compileMessageOrThrow>
+  try {
+    compiled = compileMessageOrThrow(icu)
+  } catch (error) {
+    throw new Error(`not a valid ICU message: ${icu}`, { cause: error })
+  }
+  stream(compiled)
   return names
 }
 

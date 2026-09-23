@@ -1,6 +1,7 @@
 import {
   defineErrorTranslations,
   defineMessage,
+  selectKey,
   definePluginMessages,
   type ErrorsByCode,
 } from '@qualy/i18n-contract'
@@ -146,7 +147,7 @@ const inUseBlockerMessage = defineMessage<{ count: number }>()({
 const iconInvalidMessage = defineMessage<{ reason: string }>()({
   id: 'auth/error/provider-icon-invalid',
   defaultMessage:
-    '{reason, select, svg {That SVG carries scripts, outside references or elements an icon cannot use. Export it as plain shapes.} light-first {Upload the image for a light surface first.} other {Use a PNG, JPEG or WebP image up to 256 KB, or an SVG up to 64 KB.}}',
+    '{reason, select, svg {That SVG carries scripts, outside references or elements an icon cannot use. Export it as plain shapes.} lightFirst {Upload the image for a light surface first.} other {Use a PNG, JPEG or WebP image up to 256 KB, or an SVG up to 64 KB.}}',
 })
 const placementInUseMessage = defineMessage<{ userCount: number }>()({
   id: 'auth/error/user-type-placement-in-use',
@@ -1185,7 +1186,7 @@ const i18n = definePluginMessages({
     },
     AUTH_PROVIDER_ICON_INVALID: {
       message: iconInvalidMessage,
-      values: (data) => ({ reason: data.reason }),
+      values: (data) => ({ reason: selectKey(data.reason) }),
     },
     AUTH_LOGIN_METHOD_ICON_UNAVAILABLE: {
       id: 'auth/error/login-method-icon-unavailable',

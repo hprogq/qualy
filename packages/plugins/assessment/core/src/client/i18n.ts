@@ -3,7 +3,7 @@ import {
   definePluginMessages,
   type ErrorsByCode,
 } from '@qualy/i18n-contract'
-import { defineMessage } from '@qualy/i18n-contract'
+import { defineMessage, selectKey } from '@qualy/i18n-contract'
 import type * as assessmentErrors from '../errors.ts'
 
 // Everything the assessment plugin says to a human: the batch administration
@@ -24,7 +24,7 @@ import type * as assessmentErrors from '../errors.ts'
 const accessInvalid = defineMessage<{ reason: string }>()({
   id: 'assessment/error/access-invalid',
   defaultMessage:
-    '{reason, select, already-staffed {That person already holds this role in the selected unit.} too-many {Too many people and units at once. Add them in smaller groups.} other {The permission change could not be applied. Check the selected settings and try again.}}',
+    '{reason, select, alreadyStaffed {That person already holds this role in the selected unit.} tooMany {Too many people and units at once. Add them in smaller groups.} other {The permission change could not be applied. Check the selected settings and try again.}}',
 })
 
 const determinationRefused = defineMessage<{ reason: string }>()({
@@ -6558,7 +6558,7 @@ const i18n = definePluginMessages({
     },
     ASSESSMENT_ACCESS_INVALID: {
       message: accessInvalid,
-      values: (data) => ({ reason: data.reason }),
+      values: (data) => ({ reason: selectKey(data.reason) }),
     },
     ASSESSMENT_MATERIAL_RANGE_INVALID: {
       id: 'assessment/error/material-range-invalid',

@@ -181,7 +181,7 @@ export default {
   'rbac/error/grant-node-not-found': '该组织节点不在本租户内。',
   'rbac/error/grant-stranded': '会有 {assignmentCount} 个已有授权不再合规。',
   'rbac/error/grant-not-eligible':
-    '{reason, select, role-unassignable {该角色当前不可授予。} user-disabled {已停用的用户不能被授予角色。} user-type {该角色不对该用户类型开放。} org-type {该角色不能授予到该组织类型。} tenant-role-anchored {租户级角色在整个租户范围生效，无需指定组织。} org-role-unanchored {组织角色必须授予到某个组织。} other {该授权不被允许。}}',
+    '{reason, select, roleUnassignable {该角色当前不可授予。} userDisabled {已停用的用户不能被授予角色。} userType {该角色不对该用户类型开放。} orgType {该角色不能授予到该组织类型。} tenantRoleAnchored {租户级角色在整个租户范围生效，无需指定组织。} orgRoleUnanchored {组织角色必须授予到某个组织。} other {该授权不被允许。}}',
   'rbac/badge/draft': '草稿',
   'rbac/error/role-conflict': '同 code 或同名的角色已存在。',
   'rbac/error/role-is-system': '系统角色不支持该修改。',

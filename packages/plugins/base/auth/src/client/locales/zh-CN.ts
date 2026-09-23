@@ -113,14 +113,15 @@ export default {
   'auth/login-methods/shown-primary': '主要登录方式第 {position} 位',
   'auth/login-methods/shown-secondary': '其他登录方式第 {position} 位',
   'auth/login-methods/recommend': '设为推荐',
-  'auth/login-methods/recommend-hint': '推荐方式将以重点色显示，仅限主要登录方式',
+  'auth/login-methods/recommend-hint': '以重点色显示（仅限主要登录方式）',
   'auth/login-methods/icon': '图标',
   'auth/login-methods/icon-change': '更换',
   'auth/login-methods/icon-title': '选择图标',
   'auth/login-methods/icon-default': '使用该类型的默认图标',
   'auth/login-methods/icon-upload': '上传图片',
   'auth/login-methods/icon-uploading': '上传中…',
-  'auth/login-methods/icon-upload-hint': 'PNG、JPEG、WebP 不超过 256 KB，SVG 不超过 64 KB，正方形效果最佳',
+  'auth/login-methods/icon-upload-hint':
+    'PNG、JPEG、WebP 不超过 256 KB，SVG 不超过 64 KB，正方形效果最佳',
   'auth/login-methods/icon-own': '自定义图片',
   'auth/login-methods/icon-on-light': '浅色背景',
   'auth/login-methods/icon-on-dark': '深色背景',
@@ -399,7 +400,7 @@ export default {
   'auth/error/provider-arrangement-invalid':
     '主要登录方式最多 3 种，且只有主要登录方式可以设为推荐',
   'auth/error/provider-icon-invalid':
-    '{reason, select, svg {该 SVG 含有脚本、外部引用或图标不支持的元素，请导出为纯图形后再上传} light-first {请先上传浅色背景的图片} other {请使用不超过 256 KB 的 PNG、JPEG、WebP 图片，或不超过 64 KB 的 SVG}}',
+    '{reason, select, svg {该 SVG 含有脚本、外部引用或图标不支持的元素，请导出为纯图形后再上传} lightFirst {请先上传浅色背景的图片} other {请使用不超过 256 KB 的 PNG、JPEG、WebP 图片，或不超过 64 KB 的 SVG}}',
   'auth/error/login-method-icon-unavailable': '该图标已不可用',
   'auth/error/user-type-org-type-not-found': '未找到该组织类型',
   'auth/field/no-options': '暂无可选项',

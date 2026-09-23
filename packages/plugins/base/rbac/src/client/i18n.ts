@@ -1,6 +1,7 @@
 import {
   defineErrorTranslations,
   defineMessage,
+  selectKey,
   definePluginMessages,
   mergeErrorTranslations,
   type ErrorsByCode,
@@ -64,7 +65,7 @@ const strandedMessage = defineMessage<{ assignmentCount: number }>()({
 const notEligibleMessage = defineMessage<{ reason: string }>()({
   id: 'rbac/error/grant-not-eligible',
   defaultMessage:
-    '{reason, select, role-unassignable {That role cannot be granted right now.} user-disabled {A disabled user cannot be granted a role.} user-type {That role is not available to this user type.} org-type {That role cannot be anchored at this kind of node.} tenant-role-anchored {A tenant-wide role can only be granted across the whole organization.} org-role-unanchored {An organization role must be granted at a node.} other {That grant is not allowed.}}',
+    '{reason, select, roleUnassignable {That role cannot be granted right now.} userDisabled {A disabled user cannot be granted a role.} userType {That role is not available to this user type.} orgType {That role cannot be anchored at this kind of node.} tenantRoleAnchored {A tenant-wide role can only be granted across the whole organization.} orgRoleUnanchored {An organization role must be granted at a node.} other {That grant is not allowed.}}',
 })
 
 const confinedPlainMessage = defineMessage<{ namespace: string; type: string }>()({
@@ -545,7 +546,7 @@ const i18n = definePluginMessages({
       },
       GRANT_NOT_ELIGIBLE: {
         message: notEligibleMessage,
-        values: (data) => ({ reason: data.reason }),
+        values: (data) => ({ reason: selectKey(data.reason) }),
       },
       GRANT_NOT_FOUND: { id: 'rbac/error/grant-not-found', defaultMessage: 'Grant not found.' },
       TENANT_ADMIN_REQUIRED: {

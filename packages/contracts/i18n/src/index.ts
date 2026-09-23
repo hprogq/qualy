@@ -49,6 +49,17 @@ export type ValuesOf<Descriptor> = Descriptor extends { __values: infer Values }
     : Record<never, never>
   : Record<never, never>
 
+/**
+ * A value as an ICU `select` branch can name it.
+ *
+ * A branch is a bare word, and a hyphen is not part of one: a message with a
+ * `light-first` branch does not parse, and the browser then shows the whole
+ * ICU source. Codes that travel kebab-cased are handed over camel-cased, and
+ * the message names its branches the same way.
+ */
+export const selectKey = (value: string): string =>
+  value.replace(/-([a-z0-9])/g, (_, next: string) => next.toUpperCase())
+
 // declares a message and the values it expects:
 // defineMessage<{ count: number }>()({ id, defaultMessage }). Typescript
 // cannot parse the icu source, so the declaration is the contract and a
