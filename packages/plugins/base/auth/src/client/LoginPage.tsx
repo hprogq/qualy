@@ -556,7 +556,7 @@ export default function LoginPage() {
               context.data?.tenant != null && styles.eyebrowTitle,
             )}
           >
-            {chosen.name}
+            {format(m.signInWith, { name: gapped(chosen.name, locale) })}
           </h1>
           <MethodRenderer method={chosen} onAuthenticated={onAuthenticated} />
         </div>
