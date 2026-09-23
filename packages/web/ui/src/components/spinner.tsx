@@ -17,6 +17,8 @@ import { Wordmark } from '@qualy/brand/wordmark'
 import { VisuallyHidden } from '../lib/visually-hidden.tsx'
 import { seatOf } from '../lib/xstyle.ts'
 import { tokens } from '../theme/tokens.stylex.ts'
+import { flightDeparted, flightLanded } from '../lib/flight.ts'
+import { useBandFootHold } from './screen/band-foot.tsx'
 
 // Work in progress, wherever a screen has to wait.
 //
@@ -99,6 +101,25 @@ function Spinner({ className, style, xstyle, ...rest }: SpinnerProps) {
 
 /** fills the content area of a page without claiming the whole viewport */
 function PageLoading() {
+  // the page decides where the application's sections go; until it is here,
+  // nobody draws them
+  useBandFootHold()
+  // Under the cold start, the page on its way is part of the wait: the
+  // wordmark stays until the page itself has arrived. Released before it,
+  // the wordmark flew while the page's code was still being compiled and
+  // its first render committed - both land on the main thread, and a
+  // flight made of layout stops there mid-air. Read once, at mount: a page
+  // loading later, under no screen, holds nothing up.
+  const [underColdStart] = useState(useContext(HandoffContext))
+  useLayoutEffect(() => {
+    if (!underColdStart) return
+    claims += 1
+    notify()
+    return () => {
+      claims -= 1
+      notify()
+    }
+  }, [underColdStart])
   return (
     <div {...stylex.props(styles.page)} role="status">
       <Loader size={24} xstyle={styles.lateArrival} />
@@ -358,6 +379,7 @@ const fly = ({ from, to, ink }: Flight, leave: () => void) => {
   // and the top bar's wordmark is hidden before either
   document.documentElement.setAttribute(FLIGHT, '')
   document.body.append(layer)
+  flightDeparted()
   leave()
   const animation = layer.animate(
     [
@@ -382,6 +404,7 @@ const fly = ({ from, to, ink }: Flight, leave: () => void) => {
       requestAnimationFrame(() => {
         layer.remove()
         document.documentElement.removeAttribute(FLIGHT)
+        flightLanded()
       })
     })
   animation.finished.then(land, land)

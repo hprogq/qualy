@@ -4,7 +4,7 @@ import { commands, page } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
 import { BOOT_COPY_ID, bootFrame } from '@qualy/brand/boot'
 import { Wordmark } from '@qualy/brand/wordmark'
-import { ColdStart, LoadingScreen } from '@qualy/ui/spinner'
+import { ColdStart, LoadingScreen, PageLoading } from '@qualy/ui/spinner'
 import { resolveInitialLocale, resolveLocale } from '@qualy/web-i18n'
 import { bootstrapMessages } from '@qualy/web-i18n/bootstrap'
 import '../src/app.css'
@@ -397,5 +397,34 @@ describe('the cold start', () => {
     await expect.element(page.getByRole('status')).toBeInTheDocument()
     expect(overlay()).toBeNull()
     expect(document.querySelector('[role="status"] svg [data-seg="1-7"]')).not.toBeNull()
+  })
+
+  it('waits for the page under it as well, and only for a page that was loading under it', async () => {
+    function Arriving({ stage }: { stage: 'app' | 'page' | 'done' }) {
+      return (
+        <ColdStart copy={copy}>
+          {stage === 'app' ? (
+            <LoadingScreen />
+          ) : (
+            <main data-testid="app">{stage === 'page' ? <PageLoading /> : <p>page</p>}</main>
+          )}
+        </ColdStart>
+      )
+    }
+    const screen = await render(<Arriving stage="app" />)
+    await expect.element(page.getByTestId('app')).not.toBeInTheDocument()
+    expect(overlay()).not.toBeNull()
+    // the application has arrived and its page is still on its way: the
+    // screen stays, rather than flying off over a page that is not there
+    await screen.rerender(<Arriving stage="page" />)
+    await expect.element(page.getByTestId('app')).toBeInTheDocument()
+    await new Promise((done) => setTimeout(done, 400))
+    expect(overlay()).not.toBeNull()
+    await screen.rerender(<Arriving stage="done" />)
+    await vi.waitFor(() => expect(overlay()).toBeNull())
+    // a page loading later, under no screen, holds nothing up
+    await screen.rerender(<Arriving stage="page" />)
+    await new Promise((done) => setTimeout(done, 100))
+    expect(overlay()).toBeNull()
   })
 })

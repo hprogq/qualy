@@ -18,6 +18,7 @@
     "@qualy/web-i18n": "workspace:*",
     "@qualy/web-runtime": "workspace:*",
     "@qualy/web-value-form": "workspace:*",
+    "lucide-react": "^0.552.0",
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-router": "catalog:"

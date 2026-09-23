@@ -1,4 +1,4 @@
-import { Children, useEffect, useState, type ReactNode } from 'react'
+import { Children, useEffect, useLayoutEffect, useState, type ReactNode } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 
 import * as stylex from '@stylexjs/stylex'
@@ -60,30 +60,49 @@ export function Settling({
   children: ReactNode
 }) {
   const reduced = useReducedMotion() === true
-  // The first drawing is not a move. Arriving from a page that had no band
-  // at all, the animator had nowhere to move it FROM and slid it down from
-  // the top of the page - which is a transition between two states only one
-  // of which existed. It settles from the second drawing onwards.
-  const [seen] = useState(() => {
-    const before = drawn.has(name)
-    drawn.add(name)
-    return before
-  })
-  if (reduced || !seen) return <div className={className}>{children}</div>
+  // A move only from a drawing that is on screen as this one arrives: the
+  // page being left, replaced in the same commit. Arriving from a page that
+  // had no band, or after a loading screen stood between the two, there is
+  // nothing on screen to move FROM - and the animator, remembering where
+  // some earlier drawing had been, slid the band in from there: from the
+  // top of the page, or from below the fold as the page settled.
+  //
+  // And only that move. Once the band is where it belongs, anything else
+  // that shifts it - the band's words arriving and taking another line -
+  // puts it there at once rather than springing it down the page.
+  const [moving, setMoving] = useState(() => (onScreen.get(name) ?? 0) > 0)
+  useLayoutEffect(() => {
+    onScreen.set(name, (onScreen.get(name) ?? 0) + 1)
+    return () => {
+      onScreen.set(name, (onScreen.get(name) ?? 1) - 1)
+    }
+  }, [name])
+  useEffect(() => {
+    if (!moving) return
+    const done = setTimeout(() => setMoving(false), SETTLE_MS)
+    return () => clearTimeout(done)
+  }, [moving])
+  if (reduced) return <div className={className}>{children}</div>
   return (
     <motion.div
       layoutId={name}
       layout="position"
       className={className}
-      transition={{ type: 'spring', stiffness: 520, damping: 44, mass: 0.7 }}
+      transition={moving ? SLIDE : STILL}
+      onLayoutAnimationComplete={() => setMoving(false)}
     >
       {children}
     </motion.div>
   )
 }
 
-/** the bands this page has drawn before, so a first drawing does not travel */
-const drawn = new Set<string>()
+const SLIDE = { type: 'spring', stiffness: 520, damping: 44, mass: 0.7 } as const
+const STILL = { duration: 0 } as const
+/** longer than the slide takes, for a move the animator never started */
+const SETTLE_MS = 600
+
+/** how many drawings of each band are on screen right now */
+const onScreen = new Map<string, number>()
 
 /**
  * One share of a bar, drawn by growing to the width it stands for.
@@ -547,6 +566,65 @@ export function Appear({
             ...(collapse ? { height: 0 } : { y: still ? 0 : 8, scale: still ? 1 : 0.98 }),
           }}
           transition={{ duration: still ? 0 : 0.18, ease: [0.4, 0, 0.2, 1] }}
+        >
+          {children}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
+
+/**
+ * Something that opens out of the control that asked for it, and folds back
+ * into it.
+ *
+ * A search behind a glyph at the end of a row: pressed, the field grows
+ * leftwards out of where the glyph stood rather than appearing whole in the
+ * row, and closed it shrinks back there rather than vanishing. `from` is the
+ * width the glyph took, which is where the opening starts and the closing
+ * ends; `onClosed` says the fold has finished.
+ *
+ * Closing, it is taken out of the row's flow at once and folds on top of
+ * it, so whatever the row held before - a title, the glyph - is back the
+ * moment the close is pressed rather than after a gap. The row it sits in
+ * must be positioned, which is what the fold is placed against.
+ *
+ * The clip ends past the box on every side: ending at its edge, it stayed
+ * and cut the field's own border and focus ring there.
+ */
+export function Unfold({
+  show,
+  onClosed,
+  from = 36,
+  className,
+  children,
+}: {
+  show: boolean
+  onClosed?: () => void
+  from?: number
+  className?: string
+  children: ReactNode
+}) {
+  const reduced = useReducedMotion() === true
+  const folded = reduced
+    ? { opacity: 0 }
+    : {
+        opacity: 0,
+        clipPath: `inset(-8px -8px -8px calc(100% - ${String(from)}px) round 18px)`,
+      }
+  return (
+    <AnimatePresence
+      mode="popLayout"
+      {...(onClosed === undefined ? {} : { onExitComplete: onClosed })}
+    >
+      {show && (
+        <motion.div
+          key="unfold"
+          className={className}
+          initial={folded}
+          animate={{ opacity: 1, clipPath: 'inset(-8px -8px -8px -8px round 18px)' }}
+          exit={{ ...folded, transition: { duration: reduced ? 0.08 : 0.14, ease: 'easeIn' } }}
+          transition={{ duration: reduced ? 0.12 : 0.22, ease: [0.22, 0.61, 0.36, 1] }}
         >
           {children}
         </motion.div>

@@ -6,5 +6,7 @@ import { RailShell } from './RailShell.tsx'
 // every part of the product that keeps something of theirs, one page each.
 
 export default function AccountShell() {
-  return <RailShell navigation={accountNavigation} context={accountHeader} banner />
+  return (
+    <RailShell navigation={accountNavigation} context={accountHeader} banner bannerShape="self" />
+  )
 }

@@ -8,6 +8,7 @@ import { a11yStyles } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { shell } from './shell.stylex.ts'
+import { pending } from './pending.ts'
 import {
   drawerAccount,
   drawerIdentity,
@@ -175,6 +176,9 @@ const styles = stylex.create({
   contextBanner: {
     minHeight: 120,
     overflow: 'hidden',
+    // the same room held as the column under it holds for its scrollbar, so
+    // the banner's measure and the page's are centred on the same line
+    scrollbarGutter: 'stable',
     paddingTop: 14,
     paddingBottom: 20,
     paddingInline: { default: 24, [breakpoints.phone]: 16 },
@@ -347,6 +351,11 @@ const styles = stylex.create({
     flexBasis: '0%',
     flexDirection: 'column',
     overflowY: 'auto',
+    // The scrollbar's room is held whether or not the page needs it: a page
+    // long enough to scroll lost a scrollbar's width, and the centred
+    // measure moved left by that much from one page to the next. Where the
+    // scrollbar floats over the page - every phone - it holds nothing.
+    scrollbarGutter: 'stable',
   },
   // exactly the bar's own height, so the last row of a page ends above it
   // rather than behind it
@@ -359,6 +368,31 @@ const styles = stylex.create({
   // the sections stand inside the same measure, beside their content.
   bannerBones: { display: 'flex', alignItems: 'center', gap: 16, paddingTop: 34 },
   bannerBoneWords: { display: 'flex', flexDirection: 'column', gap: 10 },
+  // the reader's own banner has no way back above the name, and a smaller
+  // portrait on a phone: its outline is drawn to that, or the page opened
+  // with a gap over the name and dropped when the name arrived
+  selfBones: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: { default: 16, [breakpoints.phone]: 12 },
+  },
+  selfBoneFace: {
+    width: { default: 52, [breakpoints.phone]: 44 },
+    height: { default: 52, [breakpoints.phone]: 44 },
+    flexShrink: 0,
+    borderRadius: 9999,
+  },
+  // the height of the name's line, a gap and the unit's line, which is what
+  // the header stands at once it arrives
+  selfBoneWords: {
+    display: 'flex',
+    minWidth: 0,
+    minHeight: 56,
+    flexGrow: 1,
+    flexDirection: 'column',
+    justifyContent: 'center',
+    gap: 6,
+  },
   railBones: {
     display: 'flex',
     flexDirection: 'column',
@@ -366,27 +400,41 @@ const styles = stylex.create({
     paddingInline: 12,
     paddingBlock: 14,
   },
+  // The inset is the column's and the measure is the seat's, the way the
+  // banner above holds them: with the inset inside a seat of the same
+  // measure, a wide window drew the page one inset in from the banner.
+  // A column the section fills: a section that failed to load says so in
+  // the middle of the room it would have had, not against the banner.
   personMain: {
+    display: 'flex',
+    flexDirection: 'column',
     minHeight: 0,
     flexGrow: 1,
     flexShrink: 1,
     flexBasis: '0%',
     overflowY: 'auto',
+    // The scrollbar's room is held whether or not the page needs it: a page
+    // long enough to scroll lost a scrollbar's width, and the centred
+    // measure moved left by that much from one page to the next. Where the
+    // scrollbar floats over the page - every phone - it holds nothing.
+    scrollbarGutter: 'stable',
     backgroundColor: tokens.background,
+    paddingInline: { default: 24, [breakpoints.phone]: 16 },
   },
   personSeat: {
     display: 'flex',
+    flexGrow: 1,
     width: '100%',
     maxWidth: '72rem',
     marginInline: 'auto',
-    alignItems: 'flex-start',
+    alignItems: 'stretch',
     gap: 28,
-    paddingInline: { default: 24, [breakpoints.phone]: 16 },
     paddingTop: 20,
     // clear of the bar a narrow window carries at its foot
     paddingBottom: { default: 24, [breakpoints.phone]: 84 },
   },
   personNav: {
+    alignSelf: 'flex-start',
     position: 'sticky',
     top: 20,
     display: 'flex',
@@ -746,9 +794,10 @@ function PersonChip({
       onPointerEnter={warm}
       onFocus={warm}
       aria-busy={navigation.pending || undefined}
+      data-pending={navigation.pending ? '' : undefined}
       className={({ isActive }) =>
-        stylex.props(styles.chip, (isActive || navigation.pending) && styles.chipOpen).className ??
-        ''
+        stylex.props(styles.chip, isActive ? styles.chipOpen : navigation.pending && pending.chip)
+          .className ?? ''
       }
     >
       <LocalizedText value={label} />
@@ -855,6 +904,12 @@ export interface RailShellProps {
    * that a bar filled a moment after the shell does not move the page.
    */
   banner?: boolean
+  /**
+   * What the banner's outline is drawn as while its filler is on its way:
+   * a record opened from a list, with a way back above the name, or the
+   * reader's own account, with none.
+   */
+  bannerShape?: 'record' | 'self'
 }
 
 export function RailShell(props: RailShellProps) {
@@ -867,7 +922,13 @@ export function RailShell(props: RailShellProps) {
   )
 }
 
-function CapableRailShell({ navigation, context, badge, banner = false }: RailShellProps) {
+function CapableRailShell({
+  navigation,
+  context,
+  badge,
+  banner = false,
+  bannerShape = 'record',
+}: RailShellProps) {
   const { apps, activeApp } = useAppNavigation()
   const entries = useUiCollection(navigation)
   const groups = useUiCollection(navigationGroups)
@@ -1057,7 +1118,15 @@ function CapableRailShell({ navigation, context, badge, banner = false }: RailSh
           <UiSlot
             token={context}
             loading={
-              banner ? (
+              banner && bannerShape === 'self' ? (
+                <div {...stylex.props(styles.selfBones)} aria-hidden data-testid="self-bones">
+                  <Skeleton className={stylex.props(styles.selfBoneFace).className} />
+                  <div {...stylex.props(styles.selfBoneWords)}>
+                    <Skeleton height={24} width={160} radius={6} />
+                    <Skeleton height={14} width="min(15rem, 100%)" radius={4} />
+                  </div>
+                </div>
+              ) : banner ? (
                 <div {...stylex.props(styles.bannerBones)} aria-hidden>
                   <Skeleton height={52} width={52} radius={9999} />
                   <div {...stylex.props(styles.bannerBoneWords)}>

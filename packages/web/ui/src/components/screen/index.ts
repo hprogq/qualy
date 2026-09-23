@@ -14,15 +14,8 @@
 //
 // One public module (`@qualy/ui/screen`), split by migration unit: the page
 // shell, section furniture, tick lists, the rail, and the blank state.
-export {
-  BandAction,
-  BandActions,
-  BandBack,
-  BandFootScope,
-  Screen,
-  Segmented,
-  useBandFoot,
-} from './shell.tsx'
+export { BandAction, BandActions, BandBack, Screen, Segmented } from './shell.tsx'
+export { BandFootScope, useBandFoot } from './band-foot.tsx'
 export { SectionHead, Facts, DefRow, Barred, EditorHead, ModeChoice, SaveBar } from './sections.tsx'
 export { PickGrid, PickList } from './pick.tsx'
 export { Rail, RailRow, RailSkeleton, EditorSkeleton } from './rail.tsx'
@@ -45,6 +38,7 @@ export {
   TableHead,
   TableRow,
   TableSkeleton,
+  DefListSkeleton,
   Tag,
   Tick,
   TickGrid,

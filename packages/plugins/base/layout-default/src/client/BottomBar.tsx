@@ -8,6 +8,8 @@ import type { ResolvedNavigationItem } from '@qualy/ui-contract'
 import { shell } from './shell.stylex.ts'
 import { LocalizedText, useI18n } from '@qualy/web-i18n'
 import { Skeleton } from '@qualy/ui/skeleton'
+import { Loader } from '@qualy/brand/loader'
+import { usePendingNavigation } from '@qualy/web-runtime'
 import { NavIcon } from './icons.tsx'
 import { layoutMessages as m } from './i18n.ts'
 import type { AppEntry } from './TopBar.tsx'
@@ -189,26 +191,7 @@ export function BottomBar({
     >
       <div {...stylex.props(styles.row)}>
         {items.map((item) => (
-          <NavLink
-            key={item.id}
-            to={item.to}
-            end={item.exact}
-            {...(item.active === undefined
-              ? {}
-              : { 'aria-current': item.active ? 'page' : undefined })}
-            className={({ isActive }) =>
-              stylex.props(
-                styles.item,
-                (item.active ?? isActive) ? styles.itemActive : styles.itemIdle,
-              ).className ?? ''
-            }
-          >
-            <NavIcon name={item.icon} className={stylex.props(styles.glyph).className} />
-            <span {...stylex.props(styles.word)}>
-              <LocalizedText value={item.label} />
-            </span>
-            {item.badge !== undefined && <span {...stylex.props(styles.count)}>{item.badge}</span>}
-          </NavLink>
+          <BottomLink key={item.id} item={item} />
         ))}
         {more !== undefined && (
           <button
@@ -224,6 +207,46 @@ export function BottomBar({
         )}
       </div>
     </nav>
+  )
+}
+
+/**
+ * One cell of the bar.
+ *
+ * The press answers at once, as the rail's entries do: the cell lights
+ * before the address has moved, and after a beat its mark gives way to the
+ * loader for as long as the page's code is on its way. Without it a press
+ * on a page not fetched yet did nothing visible until the page appeared,
+ * which reads as a press that missed.
+ */
+function BottomLink({ item }: { item: BottomItem }) {
+  const navigation = usePendingNavigation(item.to)
+  return (
+    <NavLink
+      to={item.to}
+      end={item.exact}
+      onClick={navigation.onClick}
+      aria-busy={navigation.pending || undefined}
+      data-pending={navigation.pending ? '' : undefined}
+      data-indicating={navigation.indicating ? '' : undefined}
+      {...(item.active === undefined ? {} : { 'aria-current': item.active ? 'page' : undefined })}
+      className={({ isActive }) =>
+        stylex.props(
+          styles.item,
+          (item.active ?? isActive) || navigation.pending ? styles.itemActive : styles.itemIdle,
+        ).className ?? ''
+      }
+    >
+      {navigation.indicating ? (
+        <Loader size={22} xstyle={styles.glyph} />
+      ) : (
+        <NavIcon name={item.icon} className={stylex.props(styles.glyph).className} />
+      )}
+      <span {...stylex.props(styles.word)}>
+        <LocalizedText value={item.label} />
+      </span>
+      {item.badge !== undefined && <span {...stylex.props(styles.count)}>{item.badge}</span>}
+    </NavLink>
   )
 }
 

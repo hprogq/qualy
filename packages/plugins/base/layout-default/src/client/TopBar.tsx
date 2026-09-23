@@ -5,6 +5,7 @@ import { Wordmark } from '@qualy/brand/wordmark'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { shell } from './shell.stylex.ts'
+import { pending } from './pending.ts'
 import {
   headerActions,
   sidebarUser,
@@ -36,6 +37,12 @@ import { LocalizedText } from '@qualy/web-i18n'
 
 const INK_EASE = 'cubic-bezier(0.2, 0.8, 0.2, 1)'
 const REDUCE = '@media (prefers-reduced-motion: reduce)'
+
+/** the light that runs along a pressed entry's line; the chips' twin is in pending.ts */
+const sweep = stylex.keyframes({
+  from: { backgroundPosition: '150% 0' },
+  to: { backgroundPosition: '-50% 0' },
+})
 
 const styles = stylex.create({
   bar: {
@@ -182,6 +189,25 @@ const styles = stylex.create({
       transform: 'scaleX(1)',
     },
   },
+  // pressed, the page not here yet: the word in ink, and a light running
+  // along the line the ink will stand on
+  wordPending: {
+    '::after': {
+      transform: 'scaleX(1)',
+      backgroundColor: `color-mix(in oklch, ${tokens.foreground} 16%, transparent)`,
+      backgroundImage: {
+        default: `linear-gradient(90deg, transparent 15%, ${tokens.foreground} 50%, transparent 85%)`,
+        [REDUCE]: 'none',
+      },
+      backgroundSize: '220% 100%',
+      backgroundRepeat: 'no-repeat',
+      animationName: { default: sweep, [REDUCE]: 'none' },
+      animationDuration: '1s',
+      animationTimingFunction: 'ease-in-out',
+      animationIterationCount: 'infinite',
+    },
+  },
+  linkPending: { color: tokens.foreground },
   wordIdle: {
     '::after': {
       backgroundColor: `color-mix(in oklch, ${tokens.foreground} 26%, transparent)`,
@@ -352,7 +378,8 @@ function BarLink({
   const navigation = usePendingNavigation(to)
   const prefetch = usePagePrefetch()
   const warm = page === undefined ? undefined : () => prefetch(page)
-  const open = (isActive: boolean) => (active ?? isActive) || navigation.pending
+  const open = (isActive: boolean) => active ?? isActive
+  const going = (isActive: boolean) => navigation.pending && !open(isActive)
   return (
     <NavLink
       to={to}
@@ -364,12 +391,25 @@ function BarLink({
       data-pending={navigation.pending ? '' : undefined}
       {...(active === undefined ? {} : { 'aria-current': active ? 'page' : undefined })}
       className={({ isActive }) =>
-        stylex.props(base, open(isActive) ? lit : idle, stylex.defaultMarker()).className ?? ''
+        stylex.props(
+          base,
+          open(isActive) ? lit : idle,
+          going(isActive) && styles.linkPending,
+          stylex.defaultMarker(),
+        ).className ?? ''
       }
     >
       {({ isActive }) => (
         <span
-          {...stylex.props(styles.word, open(isActive) ? styles.wordActive : styles.wordIdle, word)}
+          {...stylex.props(
+            styles.word,
+            open(isActive)
+              ? styles.wordActive
+              : going(isActive)
+                ? styles.wordPending
+                : styles.wordIdle,
+            word,
+          )}
         >
           {children}
         </span>
@@ -425,7 +465,7 @@ export function TopBar({
           {title}
         </span>
       )}
-      <nav {...stylex.props(styles.tabsNav, styles.tabsPhone)}>
+      <nav data-testid="top-bar-apps" {...stylex.props(styles.tabsNav, styles.tabsPhone)}>
         <ul {...stylex.props(styles.tabsList)}>
           {apps.map((app) => (
             <li key={app.id}>
@@ -560,9 +600,10 @@ function SectionChip({
       onPointerEnter={() => prefetch(page)}
       onFocus={() => prefetch(page)}
       aria-busy={navigation.pending || undefined}
+      data-pending={navigation.pending ? '' : undefined}
       className={({ isActive }) =>
-        stylex.props(styles.chip, (isActive || navigation.pending) && styles.chipOpen).className ??
-        ''
+        stylex.props(styles.chip, isActive ? styles.chipOpen : navigation.pending && pending.chip)
+          .className ?? ''
       }
     >
       <LocalizedText value={label} />

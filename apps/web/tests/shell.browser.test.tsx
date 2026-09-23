@@ -1,10 +1,12 @@
 import { lazy, Suspense, type ReactNode } from 'react'
-import { Route, Routes } from 'react-router'
+import { Outlet, Route, Routes } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
 import { layoutComponents, slotComponents } from 'virtual:qualy/plugins'
 import { usePageTitle } from '@qualy/web-runtime'
+import { Screen } from '@qualy/ui/screen'
+import { PageLoading } from '@qualy/ui/spinner'
 import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 
 // The two shells, against a manifest rather than against props: what the top
@@ -17,6 +19,7 @@ import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/h
 const AppShell = (await layoutComponents['app-shell/v1']!()).default
 const WorkspaceShell = (await layoutComponents['workspace-shell/v1']!()).default
 const UserDetailShell = (await layoutComponents['user-detail-shell/v1']!()).default
+const AccountShell = (await layoutComponents['account-shell/v1']!()).default
 
 const BATCH_ID = '11111111-1111-4111-8111-111111111111'
 const USER_ID = '66666666-6666-4666-8666-666666666666'
@@ -272,6 +275,64 @@ describe('the application shell', () => {
     expect(head.getBoundingClientRect().top).toBeCloseTo(main.getBoundingClientRect().top, 0)
     main.scrollTo({ top: 0 })
     await vi.waitFor(() => expect(head.hasAttribute('data-scrolled')).toBe(false))
+  })
+
+  it('draws the sections under the band a page arrives with, and nowhere while it is on its way', async () => {
+    await page.viewport(390, 844)
+    let release!: () => void
+    const Banded = lazy(
+      () =>
+        new Promise<{ default: () => ReactNode }>((resolve) => {
+          release = () =>
+            resolve({
+              default: () => (
+                <Screen title="用户管理">
+                  <div data-testid="banded-page" />
+                </Screen>
+              ),
+            })
+        }),
+    )
+    renderScreen({
+      client: fakeClient({ app: { getManifest: () => Effect.succeed(manifest()) } }),
+      route: '/organization/users',
+      children: (
+        <Routes>
+          <Route element={<AppShell />}>
+            <Route
+              path="/organization/users"
+              element={
+                <Suspense fallback={<PageLoading />}>
+                  <Banded />
+                </Suspense>
+              }
+            />
+          </Route>
+        </Routes>
+      ),
+    })
+    await expect.element(page.getByRole('link', { name: 'Qualy' })).toBeVisible()
+    // on its way: nobody knows yet where the sections go, so nobody draws them
+    await expect.element(page.getByRole('status')).toBeInTheDocument()
+    expect(document.querySelectorAll('[data-testid="section-chips"]')).toHaveLength(0)
+    release()
+    await expect.element(page.getByTestId('banded-page')).toBeInTheDocument()
+    // arrived: one row, under the band's own words
+    await vi.waitFor(() =>
+      expect(document.querySelectorAll('[data-testid="section-chips"]')).toHaveLength(1),
+    )
+    const heading = page.getByRole('heading', { name: '用户管理' }).element()
+    const chips = document.querySelector('[data-testid="section-chips"]')!
+    expect(chips.getBoundingClientRect().top).toBeGreaterThan(
+      heading.getBoundingClientRect().bottom,
+    )
+    await page.viewport(1280, 800)
+  })
+
+  it('holds its scrollbar\u2019s room whether or not the page is long, so pages do not shift', async () => {
+    shell(<AppShell />, '/organization/users', '/organization/users')
+    await expect.element(page.getByRole('link', { name: 'Qualy' })).toBeVisible()
+    expect(getComputedStyle(document.querySelector('main')!).scrollbarGutter).toBe('stable')
   })
 
   it('carries the applications at the foot as well, and only where there are two', async () => {
@@ -592,6 +653,95 @@ describe('the user-detail shell', () => {
     await expect.element(page.getByText('郭航旗', { exact: false })).toBeVisible()
     // the applications stay above it: a person is somewhere inside the product
     await expect.element(page.getByRole('link', { name: '组织与权限' })).toBeVisible()
+    // the banner and the page under it start at one edge, on a window wider
+    // than the measure as well as on one that is not
+    const edgeOf = async (testId: string) =>
+      (await page.getByTestId(testId).element()).getBoundingClientRect().left
+    for (const width of [1440, 1100]) {
+      await page.viewport(width, 800)
+      await vi.waitFor(async () =>
+        expect(await edgeOf('person-sections')).toBeCloseTo(await edgeOf('user-detail-header'), 0),
+      )
+    }
+  })
+})
+
+describe('the account shell', () => {
+  it('holds the banner at the height it will have, while who is signed in is on the way', async () => {
+    await page.viewport(390, 844)
+    const me = {
+      id: USER_ID,
+      displayName: '张三',
+      businessNo: '20990001',
+      email: null,
+      emailVerified: false,
+      userType: { id: 'ut', name: '学生' },
+      unit: { id: 'n', name: '示例学院' },
+      passwordStatus: 'unset',
+    }
+    let arrive!: () => void
+    const header = lazy(
+      () =>
+        new Promise<{ default: () => ReactNode }>((resolve) => {
+          arrive = () =>
+            void (
+              slotComponents['account-shell/header']!['auth/account-header']!() as Promise<{
+                default: () => ReactNode
+              }>
+            ).then(resolve)
+        }),
+    )
+    renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.succeed({
+              ...manifest(),
+              slots: { 'account-shell/header': [{ id: 'auth/account-header', order: 0 }] },
+            }),
+        },
+        self: { getSelf: () => Effect.succeed(me) },
+      } as never),
+      registry: { slots: { 'account-shell/header': { 'auth/account-header': header } } },
+      routes: [{ path: '/account', element: <AccountShell /> }],
+      route: '/account',
+    })
+    const outline = page.getByTestId('self-bones')
+    await expect.element(outline).toBeInTheDocument()
+    const held = outline.element().getBoundingClientRect()
+    arrive()
+    await expect.element(page.getByRole('heading', { name: '张三' })).toBeVisible()
+    const shown = page.getByTestId('account-header').element().getBoundingClientRect()
+    // the outline stood where the header now stands, at its height: nothing
+    // under the banner moves when the person arrives
+    expect(shown.top).toBeCloseTo(held.top, 0)
+    expect(Math.abs(shown.height - held.height)).toBeLessThanOrEqual(2)
+    await page.viewport(1280, 800)
+  })
+})
+
+describe('a record\u2019s section', () => {
+  it('has the room under the banner to fill, so a failure stands in its middle', async () => {
+    await page.viewport(1280, 800)
+    renderScreen({
+      client: fakeClient({ app: { getManifest: () => Effect.succeed(manifest()) } }),
+      route: '/account',
+      children: (
+        <Routes>
+          <Route element={<AccountShell />}>
+            <Route
+              path="/account"
+              element={<div data-testid="section" style={{ flexGrow: 1 }} />}
+            />
+          </Route>
+        </Routes>
+      ),
+    })
+    const section = page.getByTestId('section')
+    await expect.element(section).toBeInTheDocument()
+    await vi.waitFor(() =>
+      expect(section.element().getBoundingClientRect().height).toBeGreaterThan(300),
+    )
   })
 })
 
@@ -641,6 +791,86 @@ describe('a press on the rail', () => {
     // cleared by the effect that observes `pending` falling, not by the render
     // that dropped it. So this waits, as its siblings do.
     await expect.poll(() => entry.element().querySelector('[data-seg]')).toBeNull()
+  })
+
+  /** the application shell over the users page, with one more page whose code is slow */
+  const shellWithSlow = (slowPath: string) => {
+    const slow = slowPage()
+    renderScreen({
+      client: fakeClient({ app: { getManifest: () => Effect.succeed(manifest()) } }),
+      route: '/organization/users',
+      children: (
+        <Routes>
+          <Route element={<AppShell />}>
+            <Route
+              element={
+                <Suspense fallback={<div data-testid="page-fallback" />}>
+                  <Outlet />
+                </Suspense>
+              }
+            >
+              <Route path="/organization/users" element={<main data-testid="page-users" />} />
+              <Route path={slowPath} element={<slow.Page />} />
+            </Route>
+          </Route>
+        </Routes>
+      ),
+    })
+    return slow
+  }
+
+  it('keeps the open section lit and runs a light over the pressed one until it arrives', async () => {
+    await page.viewport(390, 844)
+    const slow = shellWithSlow('/organization/roles')
+    await expect.element(page.getByTestId('page-users')).toBeInTheDocument()
+    const open = page.getByTestId('section-chip').filter({ hasText: '用户管理' })
+    const pressed = page.getByTestId('section-chip').filter({ hasText: '角色管理' })
+    await pressed.click()
+    await expect.element(pressed).toHaveAttribute('data-pending', '')
+    // one page is open, and the row says so: the pressed chip is not filled in
+    await expect.element(open).toHaveAttribute('aria-current', 'page')
+    await expect.element(pressed).not.toHaveAttribute('aria-current')
+    const ground = (chip: typeof open) => getComputedStyle(chip.element()).backgroundColor
+    expect(ground(pressed)).not.toBe(ground(open))
+    slow.release()
+    await expect.element(page.getByTestId('page-entries')).toBeInTheDocument()
+    await expect.element(pressed).toHaveAttribute('aria-current', 'page')
+    await expect.element(pressed).not.toHaveAttribute('data-pending')
+    await page.viewport(1280, 800)
+  })
+
+  it('answers a press at the foot at once, and puts the loader in its mark after a beat', async () => {
+    await page.viewport(390, 844)
+    const slow = shellWithSlow('/assessment/batches')
+    await expect.element(page.getByTestId('page-users')).toBeInTheDocument()
+    const cell = page.getByTestId('bottom-bar').getByRole('link', { name: '测评' })
+    await cell.click()
+    await expect.element(cell).toHaveAttribute('data-pending', '')
+    await expect.element(page.getByTestId('page-users')).toBeInTheDocument()
+    await expect.element(cell).toHaveAttribute('data-indicating', '')
+    expect(cell.element().querySelector('[data-seg]')).not.toBeNull()
+    slow.release()
+    await expect.element(page.getByTestId('page-entries')).toBeInTheDocument()
+    await expect.element(cell).toHaveAttribute('aria-current', 'page')
+    await expect.poll(() => cell.element().querySelector('[data-seg]')).toBeNull()
+    await page.viewport(1280, 800)
+  })
+
+  it('keeps the open application lit at the top while the pressed one is on its way', async () => {
+    await page.viewport(1280, 800)
+    const slow = shellWithSlow('/assessment/batches')
+    await expect.element(page.getByTestId('page-users')).toBeInTheDocument()
+    const bar = page.getByTestId('top-bar-apps')
+    const pressed = bar.getByRole('link', { name: '测评' })
+    await pressed.click()
+    await expect.element(pressed).toHaveAttribute('data-pending', '')
+    await expect
+      .element(bar.getByRole('link', { name: '组织与权限' }))
+      .toHaveAttribute('aria-current', 'page')
+    await expect.element(pressed).not.toHaveAttribute('aria-current')
+    slow.release()
+    await expect.element(page.getByTestId('page-entries')).toBeInTheDocument()
+    await expect.element(pressed).toHaveAttribute('aria-current', 'page')
   })
 
   it('fetches the rail pages while idle, and a bar link on hover', async () => {

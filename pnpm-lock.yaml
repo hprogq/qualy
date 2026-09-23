@@ -526,6 +526,9 @@ importers:
       '@qualy/web-value-form':
         specifier: workspace:*
         version: link:../../packages/web/value-form
+      lucide-react:
+        specifier: ^0.552.0
+        version: 0.552.0(react@19.2.8)
       react:
         specifier: 'catalog:'
         version: 19.2.8

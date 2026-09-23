@@ -1,4 +1,11 @@
-import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  defaultScheduler,
+  notifyManager,
+  QueryClient,
+  QueryClientProvider,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import {
   lazy,
@@ -36,6 +43,7 @@ import { Toaster } from '@qualy/ui/toast'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { LoadingScreen } from '@qualy/ui/spinner'
+import { afterFlight } from '@qualy/ui/flight'
 import { clientFor, type ClientIdentity, type ClientOf, type TransportOptions } from './api.ts'
 import {
   emptyComponentRegistry,
@@ -198,20 +206,22 @@ export function RuntimeProvider({
   registry,
   children,
 }: RuntimeProviderProps) {
-  const [queryClient] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: {
-          queries: { retry: retryQuery, retryDelay },
-          // Never, and stated rather than inherited. A write whose response
-          // was lost is indistinguishable here from one that never arrived,
-          // so retrying it is a second write nobody asked for - and the
-          // window this repeats in is exactly the one where the backend is
-          // being replaced mid-request.
-          mutations: { retry: false },
-        },
-      }),
-  )
+  const [queryClient] = useState(() => {
+    // The page's first answers wait for the wordmark to land: a render in
+    // the middle of its flight froze it mid-air (see @qualy/ui/flight).
+    notifyManager.setScheduler((callback) => defaultScheduler(() => afterFlight(callback)))
+    return new QueryClient({
+      defaultOptions: {
+        queries: { retry: retryQuery, retryDelay },
+        // Never, and stated rather than inherited. A write whose response
+        // was lost is indistinguishable here from one that never arrived,
+        // so retrying it is a second write nobody asked for - and the
+        // window this repeats in is exactly the one where the backend is
+        // being replaced mid-request.
+        mutations: { retry: false },
+      },
+    })
+  })
   const [runtime] = useState(() => {
     const provider =
       provided ??

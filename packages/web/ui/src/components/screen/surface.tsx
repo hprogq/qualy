@@ -168,6 +168,20 @@ const styles = stylex.create({
     borderBottomColor: tokens.divider,
   },
   bonesLead: { height: 13, borderRadius: 3 },
+  // a fact list's line: the grid, the inset and the height a DefLine takes
+  defBonesLine: {
+    display: 'grid',
+    gridTemplateColumns: '6rem minmax(0, 1fr)',
+    columnGap: 12,
+    alignItems: 'center',
+    minHeight: 38,
+    paddingInline: 16,
+    borderBottomWidth: { default: 1, ':last-child': 0 },
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
+  },
+  defBonesLabel: { height: 11, width: '3rem', borderRadius: 3 },
+  defBonesValue: { height: 13, borderRadius: 3 },
   bonesFact: { height: 11, width: '3.5rem', borderRadius: 3, flexShrink: 0 },
   tableHead: {
     display: { default: 'grid', [breakpoints.phone]: 'none' },
@@ -628,6 +642,26 @@ export function TableSkeleton({ rows = 6 }: { rows?: number }) {
   )
 }
 
+/**
+ * A list of facts on its way, line for line: the label and the value where
+ * a DefList will put them, so the card is the size it will be.
+ */
+export function DefListSkeleton({ rows = 5 }: { rows?: number }) {
+  return (
+    <div {...stylex.props(styles.bones)} aria-hidden data-testid="def-bones">
+      {Array.from({ length: rows }, (_, index) => (
+        <div key={index} {...stylex.props(styles.defBonesLine)}>
+          <Skeleton className={stylex.props(styles.defBonesLabel).className} />
+          <Skeleton
+            className={stylex.props(styles.defBonesValue).className}
+            width={['34%', '22%', '46%', '18%', '40%'][index % 5]}
+          />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 /** the words of a head cell, for a row that has to carry them on a phone */
 const wordsOf = (node: ReactNode): string => {
   if (typeof node === 'string') return node
@@ -757,8 +791,14 @@ export function TableRow({
   // it that is not a fact at all: a tick, a drag handle, a seat held open
   // for one. Left in, such a thing took the name into the run with it, and
   // every fact after that was ruled off from the one before.
+  //
+  // Only in front of it: a component of somebody else's after the name is a
+  // fact drawn by another hand, and skipped as well it stood beside the name
+  // on a phone, took the row's middle column, and left the facts under the
+  // name the width of whatever was left.
   let from = 0
-  while (from < kids.length && (!isCell(kids[from]) || propsOf(kids[from]).lead === true)) {
+  while (from < kids.length && !isCell(kids[from])) from += 1
+  while (from < kids.length && isCell(kids[from]) && propsOf(kids[from]).lead === true) {
     from += 1
   }
   let until = from

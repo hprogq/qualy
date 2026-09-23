@@ -16,7 +16,22 @@ import { CheckIcon, ChevronRightIcon } from 'lucide-react'
 // listener a modal underneath uses - the dropdown stops its propagation
 // after the menu has handled it, so each press peels exactly one layer.
 
-const OpenedCtx = React.createContext(false)
+// A menu costs nothing until somebody reaches for it. The widget's menu is
+// a popover with its own floating layer, listeners and timers, and a list
+// that gives every row a menu paid for all of them on every render - on the
+// structure page, most of the time a render of the tree took. Until its
+// first press the trigger is the bare button; the press mounts the widget
+// already open, and from then on the widget owns it as before.
+
+interface MenuState {
+  /** whether the widget is mounted: once pressed, it stays */
+  readonly armed: boolean
+  readonly opened: boolean
+  /** the first press: mount the widget, open */
+  readonly arm: () => void
+}
+
+const MenuCtx = React.createContext<MenuState>({ armed: true, opened: false, arm: () => {} })
 
 function DropdownMenu({
   open,
@@ -31,6 +46,22 @@ function DropdownMenu({
 }) {
   const [inner, setInner] = React.useState(defaultOpen ?? false)
   const opened = open ?? inner
+  const [armed, setArmed] = React.useState(opened)
+  // opened from outside before anybody pressed it
+  if (opened && !armed) setArmed(true)
+  const change = (next: boolean) => {
+    setInner(next)
+    onOpenChange?.(next)
+  }
+  const state: MenuState = {
+    armed,
+    opened,
+    arm: () => {
+      setArmed(true)
+      change(true)
+    },
+  }
+  if (!armed) return <MenuCtx value={state}>{children}</MenuCtx>
   return (
     <MMenu
       withinPortal
@@ -39,19 +70,12 @@ function DropdownMenu({
       // if the trigger leaves the viewport (hideDetached would blank it)
       hideDetached={false}
       transitionProps={{ transition: 'pop', duration: 130 }}
-      {...(open === undefined ? {} : { opened: open })}
-      {...(defaultOpen === undefined ? {} : { defaultOpened: defaultOpen })}
-      onOpen={() => {
-        setInner(true)
-        onOpenChange?.(true)
-      }}
-      onClose={() => {
-        setInner(false)
-        onOpenChange?.(false)
-      }}
+      opened={opened}
+      onOpen={() => change(true)}
+      onClose={() => change(false)}
       position="bottom-start"
     >
-      <OpenedCtx value={opened}>{children}</OpenedCtx>
+      <MenuCtx value={state}>{children}</MenuCtx>
     </MMenu>
   )
 }
@@ -61,7 +85,7 @@ function DropdownMenuTrigger({
   children,
   ...props
 }: React.ComponentProps<'button'> & { asChild?: boolean }) {
-  const opened = React.use(OpenedCtx)
+  const { armed, opened, arm } = React.use(MenuCtx)
   const child = asChild ? (
     (React.Children.only(children) as React.ReactElement<Record<string, unknown>>)
   ) : (
@@ -69,6 +93,18 @@ function DropdownMenuTrigger({
       {children}
     </button>
   )
+  if (!armed) {
+    const own = child.props['onClick'] as ((event: React.MouseEvent) => void) | undefined
+    return React.cloneElement(child, {
+      'data-state': 'closed',
+      'aria-haspopup': 'menu',
+      'aria-expanded': false,
+      onClick: (event: React.MouseEvent) => {
+        own?.(event)
+        if (!event.defaultPrevented) arm()
+      },
+    } as Record<string, unknown>)
+  }
   // the previous substrate said open on the trigger with data-state; kept,
   // because trigger styling keys on it
   return (
@@ -89,8 +125,9 @@ function DropdownMenuContent({
   side?: 'top' | 'right' | 'bottom' | 'left'
   sideOffset?: number
 }) {
-  const opened = React.use(OpenedCtx)
+  const { armed, opened } = React.use(MenuCtx)
   const { align: _align, side: _side, sideOffset: _sideOffset, ...rest } = props
+  if (!armed) return null
   return (
     <MMenu.Dropdown
       data-slot="dropdown-menu-content"

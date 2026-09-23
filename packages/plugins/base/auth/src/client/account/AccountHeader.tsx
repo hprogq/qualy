@@ -34,7 +34,17 @@ const styles = stylex.create({
     fontSize: 19,
     fontWeight: 600,
   },
-  text: { display: 'flex', minWidth: 0, flexGrow: 1, flexDirection: 'column', gap: 6 },
+  // held at the height of a name and a unit, so the outline, the header and
+  // a header with no unit all stand the same
+  text: {
+    display: 'flex',
+    minWidth: 0,
+    minHeight: 56,
+    flexGrow: 1,
+    flexDirection: 'column',
+    justifyContent: 'center',
+    gap: 6,
+  },
   nameRow: { display: 'flex', minWidth: 0, alignItems: 'center', gap: 10, flexWrap: 'wrap' },
   name: {
     margin: 0,

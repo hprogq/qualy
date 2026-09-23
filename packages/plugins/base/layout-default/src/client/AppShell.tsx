@@ -66,6 +66,11 @@ const styles = stylex.create({
     flexShrink: 1,
     flexBasis: '0%',
     overflowY: 'auto',
+    // The scrollbar's room is held whether or not the page needs it: a page
+    // long enough to scroll lost a scrollbar's width, and the centred
+    // measure moved left by that much from one page to the next. Where the
+    // scrollbar floats over the page - every phone - it holds nothing.
+    scrollbarGutter: 'stable',
     // The page bounces at its ends and the bars do not, which is what a
     // phone has always done and what the bars being an overlay is for.
     // `contain` keeps the bounce and stops only the chaining - a flick at

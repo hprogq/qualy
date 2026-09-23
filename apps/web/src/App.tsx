@@ -19,6 +19,7 @@ import { bootstrapMessages } from '@qualy/web-i18n/bootstrap'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Button } from '@qualy/ui/button'
 import { ColdStart, LoadingScreen, PageLoading } from '@qualy/ui/spinner'
+import { Failure } from './Failure.tsx'
 import {
   catalogs,
   errorMessages,
@@ -32,7 +33,8 @@ import { releases, webRelease } from './release.ts'
 // There is no global client to build: each plugin derives its own from the
 // api definitions it calls, through the runtime's per-definition cache.
 // what the host draws when there is no page to draw: a route that leads
-// nowhere, and a plugin component that failed to load
+// nowhere; a plugin component that failed to load is ./Failure.tsx
+
 const styles = stylex.create({
   // the whole of the content area, not a band of it: in a shell the page
   // seat is a growing flex column and this grows with it; standing alone
@@ -65,32 +67,6 @@ const styles = stylex.create({
   },
   noticeAction: {
     marginTop: 8,
-  },
-  failureFull: {
-    display: 'flex',
-    minHeight: '100dvh',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 16,
-  },
-  // the page's own failure sits where the page would have been - centred in
-  // the shell's content, not stacked in its corner like a caption of nothing
-  failureInline: {
-    display: 'flex',
-    flexGrow: 1,
-    minHeight: 0,
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    paddingInline: 24,
-    textAlign: 'center',
-  },
-  quiet: {
-    fontSize: 14,
-    lineHeight: '1.25rem',
-    color: 'var(--q-muted-foreground)',
   },
 })
 
@@ -252,28 +228,4 @@ function MissingComponent({ surface, message }: { surface: BrowserSurface; messa
     console.error(`[qualy] missing from this build: ${label} (release ${webRelease.releaseId})`)
   }, [label])
   return <Failure message={message} />
-}
-
-// a plugin component failed: the user gets a localized message and a retry,
-// never a stack trace
-function Failure({
-  message,
-  onRetry,
-  fullscreen,
-}: {
-  message: string
-  onRetry?: () => void
-  fullscreen?: boolean
-}) {
-  const { format } = useI18n()
-  return (
-    <div {...stylex.props(fullscreen ? styles.failureFull : styles.failureInline)} role="alert">
-      <p {...stylex.props(styles.quiet)}>{message}</p>
-      {onRetry && (
-        <Button variant="outline" size="sm" onClick={onRetry}>
-          {format(commonMessages.retry)}
-        </Button>
-      )}
-    </div>
-  )
 }
