@@ -50,6 +50,10 @@ export class TooManyAttempts extends Schema.TaggedError<TooManyAttempts>()(
   { httpApiStatus: 429, identifier: 'TooManyAttempts' },
 ) {}
 
+/** how long a refusal for too many attempts asks to wait, or nothing when it is another failure */
+export const retryAfterOf = (failure: unknown): number | undefined =>
+  failure instanceof TooManyAttempts ? failure.retryAfterSeconds : undefined
+
 /**
  * The same refusal as an endpoint declares it: the body every api error
  * has, and the wait again as a `Retry-After` header, which is what a client

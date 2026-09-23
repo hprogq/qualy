@@ -563,6 +563,9 @@ importers:
       '@stylexjs/unplugin':
         specifier: 'catalog:'
         version: 0.19.1(patch_hash=f25208b4a013d827f6b128fa4945ec4a557fa6d7527f502e29a5ba139b73cd43)(supports-color@7.2.0)(unplugin@2.3.11)
+      '@tanstack/react-query':
+        specifier: 'catalog:'
+        version: 5.101.4(react@19.2.8)
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.18
@@ -1405,9 +1408,18 @@ importers:
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.115
+      lucide-react:
+        specifier: ^0.552.0
+        version: 0.552.0(react@19.2.8)
+      motion:
+        specifier: ^12.29.2
+        version: 12.43.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react:
         specifier: 'catalog:'
         version: 19.2.8
+      react-router:
+        specifier: 'catalog:'
+        version: 8.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
     devDependencies:
       '@qualy/plugin-database':
         specifier: workspace:*

@@ -10,10 +10,7 @@ const ARGON2_OPTIONS = {
   parallelism: 4,
 } as const
 
-/** what a new or reset password must be at least; never asked at the door */
-export const PASSWORD_MIN_LENGTH = 12
-/** argon2 hashes any length; a bound keeps one request from hashing a megabyte */
-export const PASSWORD_MAX_LENGTH = 128
+export { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from './rules.ts'
 
 /**
  * How many password hashes may be computed at once.

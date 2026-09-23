@@ -14,7 +14,20 @@ const i18n = definePluginMessages({
     password: { id: 'auth-local/field/password', defaultMessage: 'Password' },
     submit: { id: 'auth-local/action/submit', defaultMessage: 'Sign in' },
     submitting: { id: 'auth-local/action/submitting', defaultMessage: 'Signing in…' },
+    wait: { id: 'auth-local/action/wait', defaultMessage: 'Try again in {time}' },
     forgot: { id: 'auth-local/action/forgot', defaultMessage: 'Forgot password?' },
+    showPassword: { id: 'auth-local/action/show-password', defaultMessage: 'Show password' },
+    hidePassword: { id: 'auth-local/action/hide-password', defaultMessage: 'Hide password' },
+    remember: { id: 'auth-local/field/remember', defaultMessage: 'Remember my email on this device' },
+    emailInvalid: { id: 'auth-local/check/email', defaultMessage: 'Enter a valid email address' },
+    passwordShort: {
+      id: 'auth-local/check/password-short',
+      defaultMessage: 'A password here has at least {min, plural, other {# characters}}',
+    },
+    passwordLong: {
+      id: 'auth-local/check/password-long',
+      defaultMessage: 'A password here has at most {max, plural, other {# characters}}',
+    },
   },
   errors: defineErrorTranslations<ErrorsByCode<typeof authLocalErrors>>()({
     INVALID_CREDENTIALS: {

@@ -398,7 +398,18 @@ async function provisionAdmin(
   options: SeedOptions,
   report: SeedReport,
 ): Promise<string> {
-  const { hashPassword } = await passwordModule()
+  const { hashPassword: hashAny, PASSWORD_MIN_LENGTH, PASSWORD_MAX_LENGTH } =
+    await passwordModule()
+  // the rule the sign-in page holds a password to: a seeded one outside it
+  // could never be typed at the door
+  const hashPassword = (password: string) => {
+    if (password.length < PASSWORD_MIN_LENGTH || password.length > PASSWORD_MAX_LENGTH) {
+      throw new Error(
+        `seed: a password must be ${PASSWORD_MIN_LENGTH}-${PASSWORD_MAX_LENGTH} characters, the rule the sign-in page holds it to`,
+      )
+    }
+    return hashAny(password)
+  }
   const email = adminEmailOf(options)
 
   // the recovery account is whoever holds the system type, not a sign-in name
@@ -488,7 +499,18 @@ async function provisionAdmin(
 }
 
 async function seedDemoData(ctx: Ctx, options: SeedOptions, report: SeedReport): Promise<void> {
-  const { hashPassword } = await passwordModule()
+  const { hashPassword: hashAny, PASSWORD_MIN_LENGTH, PASSWORD_MAX_LENGTH } =
+    await passwordModule()
+  // the rule the sign-in page holds a password to: a seeded one outside it
+  // could never be typed at the door
+  const hashPassword = (password: string) => {
+    if (password.length < PASSWORD_MIN_LENGTH || password.length > PASSWORD_MAX_LENGTH) {
+      throw new Error(
+        `seed: a password must be ${PASSWORD_MIN_LENGTH}-${PASSWORD_MAX_LENGTH} characters, the rule the sign-in page holds it to`,
+      )
+    }
+    return hashAny(password)
+  }
 
   const root = (
     await ctx.client.query(
