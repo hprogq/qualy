@@ -19999,3 +19999,20 @@ CLAUDE.md 增加一条：scope 只能是一个主要模块，不许用逗号列�
 - `pnpm test`：`Test Files  295 passed | 3 skipped (298)`，`Tests  2183 passed | 18 skipped (2201)`，全过。
 - `pnpm test:browser`：`Test Files  74 passed (74)`，`Tests  551 passed (551)`，全过。
 - 新测试：新冻结的名单无差异（两侧 fingerprint 一致）、保留与同步及其后再次调动 / 回到原处、整班挪动算变化而改名不算、选择中有一人期间再次变动则整批拒绝、年级管理员看得到学生调出但看不到去向且不能同步只能保留；浏览器侧名单标记、提示、弹窗与只回传 fingerprint 的同步。
+
+## 登录页改版：公开登录上下文、主要 / 其他两组、推荐与图标（2026-09-23）
+
+- **公开登录上下文**：`GET /auth/login-methods` 改为 `{ tenant: { name }, methods, passwordRule }`。租户只给名称，来自 AnonymousTenantResolver，日后按 Host 解析时前端不变；`passwordRule` 取自管理密码的入口，供重置页边输入边提示位数。
+- **展示级别**：`auth_providers` 增 `prominence`（primary | secondary，主要最多 3 种，服务端拒第 4 种）、`recommended`（显式设置，至多一个且只能是主要方式，check + 部分唯一索引兜底）、`icon`（内置 key 或上传图片）。迁移 `20260923063919_login-method-prominence.sql` 的数据步骤把每个租户按原顺序的前三个存活入口设为主要，登录页观感不变，配升级测试。`PUT /auth/provider-order` 载荷改为 `{ primary, secondary }`；新增 `PUT /auth/provider-recommendation`。
+- **图标**：16 个内置图标（无合适标志的品牌用品牌色字母），驱动声明默认图标；管理员可上传 PNG / JPEG / WebP（≤256 KB，拒绝 SVG），经 storage 能力保存，按存储里的真实类型与大小校验，替换时旧图 retire，`GET /auth/login-methods/:code/icon?v=` 匿名读取。图标接口单独成组、单独 service，只有装配需要 Storage，既有测试栈不受影响。选择与更换都进审计。
+- **管理端**：登录方式页分「主要登录方式 x / 3」「其他登录方式」两组，组间拖动改级别、组内拖动改顺序，主要满 3 种不再接收；手机上是上移 / 下移 / 移到另一组的菜单。详情里新增「登录页展示」卡片：位置、设为推荐、图标（内置网格 + 上传 + 恢复默认）。
+- **登录页**（按设计稿）：共用 AuthShell（左 40% 只放产品，1024 以下收起；右侧 400 宽一列），租户名在标题上方一行小字；主要方式同级描边，只有被推荐的一项深色；其他方式一行最多 6 格，第 6 格「…」进入同列内的全部方式（两列，超过 8 种可搜索）；`?error=` 的提示在标题下方，过期或已完成用灰色、其余红色，可关闭；跳转型方式显示「正在前往…」并可取消。重置密码、确认邮箱用同一外框，密码位数实时提示，勾满足时弹出；邮箱密码错误时整块轻晃并描红。视图之间按方向滑动、高度随内容过渡，偏好减少动效时全部关闭。
+- 未做：设计稿中找回密码邮件的 HTML 版本（2k）。
+
+### 验收（实际执行）
+
+- `pnpm typecheck`：exit 0。
+- `pnpm qualy database verify`：`81 committed migration(s) build the declared schema, zero drift`；`database check`：`lineage ok`；`drop-guard`：`drop guard ok (81 file(s) scanned)`；`qualy resolve --frozen-lockfile`：exit 0。
+- `pnpm test`：`Tests  3 failed | 2184 passed | 17 skipped (2204)`。plugin-lifecycle 两条是本次改动所致（auth 现依赖 storage，测试的最小装配补上 storage 后通过）；effect-email-flows 一条是 Mailpit 投递等待超时，单独重跑通过；修正后三者合跑 `Tests  9 passed (9)`。
+- `pnpm test:browser`：`Tests  2 failed | 558 passed (560)`，失败的 review-recognition 与 formula-code-editor 均为整套负载下的超时，单独重跑 `Tests  19 passed (19)`。
+- 新测试：迁移数据步骤的升级测试；分组排列（主要满 3 拒绝、组内顺序、推荐唯一且移出主要即取消推荐、审计）；图标全流程（上传、选择、匿名读取字节一致、换内置后旧图 retired、恢复默认、SVG 与超大被拒、审计）；登录上下文的 HTTP 形状；浏览器侧登录页的租户名、主要与格子、推荐、「…」与搜索、灰色提示可关闭、无方式时的空状态、重置页位数规则，以及管理端的分组、手机上跨组移动与满员禁用、推荐与图标选择。
