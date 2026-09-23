@@ -312,13 +312,20 @@ describe('the reader’s security activity', () => {
       'self',
       'other',
     ])
-    // everything there is fits the card, so there is no way to more of it
-    expect(document.querySelector('[data-testid="account-changes-all"]')).toBeNull()
+    // each record opens on its own, whether or not the card holds all of it
+    await page.getByTestId('account-changes-all').click()
+    await expect.element(page.getByTestId('account-changes-sheet')).toBeVisible()
+    await page.getByTestId('account-changes-sheet').getByRole('button', { name: '关闭' }).click()
 
     // the whole record opens in a sheet, a page at a time, filtered there
     await page.getByTestId('sign-ins-card-all').click()
     const sheet = page.getByTestId('sign-ins-card-sheet')
     await expect.element(sheet.getByTestId('records-pager')).toHaveAttribute('data-total', '30')
+    // what narrows the rows at the start, the days at the end, on one line
+    const toggles = sheet.getByRole('radiogroup').element().getBoundingClientRect()
+    const days = sheet.getByRole('button', { name: /全部日期/ }).element().getBoundingClientRect()
+    expect(Math.abs(days.top + days.height / 2 - (toggles.top + toggles.height / 2))).toBeLessThan(4)
+    expect(days.left).toBeGreaterThan(toggles.right)
     await sheet.getByRole('radio', { name: '失败' }).click()
     await vi.waitFor(() =>
       expect(signIns).toHaveBeenCalledWith({

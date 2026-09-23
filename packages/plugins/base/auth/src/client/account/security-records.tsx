@@ -69,7 +69,17 @@ const styles = stylex.create({
   whole: { display: 'flex', flexDirection: 'column', gap: 12 },
   // the record's own controls: which ones, and which days
   tools: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 },
-  period: { width: { default: 260, '@media (max-width: 767.98px)': '100%' } },
+  // the days at the row's far end, apart from what narrows the rows; the
+  // whole row on a phone
+  // it gives way to share the line, down to what a date range needs
+  period: {
+    width: { default: 'auto', '@media (max-width: 767.98px)': '100%' },
+    flexGrow: 1,
+    flexBasis: 170,
+    minWidth: 170,
+    maxWidth: { default: 240, '@media (max-width: 767.98px)': 'none' },
+    marginInlineStart: { default: 'auto', '@media (max-width: 767.98px)': 0 },
+  },
   // a way on beside the card's title, in the size of what stands there
   all: {
     fontSize: 13,
@@ -387,11 +397,12 @@ function RecordCard<Item extends { readonly id: string }>({
   const { format, formatError } = useI18n()
   const [open, setOpen] = useState(false)
   const items = recent.data?.items ?? []
-  const more = (recent.data?.total ?? 0) > items.length
   return (
     <Card data-testid={testId}>
+      {/* always there: the sheet is where the record is searched by day and
+          outcome, not only where the rest of it is */}
       <CardHead title={title}>
-        {more && (
+        {recent.data !== undefined && (
           <Button
             size="xs"
             variant="ghost"
@@ -420,7 +431,12 @@ function RecordCard<Item extends { readonly id: string }>({
         open={open}
         onClose={() => setOpen(false)}
         title={title}
-        width="wide"
+        // a record's rows are a line or two of short words; a wide panel
+        // left half of it empty
+        width="regular"
+        // a height of its own: filled from a request, and filtered after, it
+        // would otherwise grow under the reader as the rows arrive
+        fill
         closeLabel={format(commonMessages.close)}
         testId={`${testId}-sheet`}
       >
