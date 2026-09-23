@@ -19,6 +19,9 @@ import { PluginSurface, useApiQuery, useSessionTransition } from '@qualy/web-run
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Spinner } from '@qualy/ui/spinner'
+import { Skeleton } from '@qualy/ui/skeleton'
+import { Portal } from '@qualy/ui/portal'
+import { Loader } from '@qualy/brand/loader'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import type { LoginMethod } from '@qualy/auth-contract/login'
 import { authMessages as m } from './i18n.ts'
@@ -304,6 +307,12 @@ const styles = stylex.create({
     cursor: 'pointer',
   },
   waiting: { display: 'flex', justifyContent: 'center', paddingBlock: 40 },
+  // the page's own shape while its ways in are on their way
+  boneLine: { height: 14, width: 88, borderRadius: 4 },
+  boneSub: { height: 14, width: 150, marginTop: 14, borderRadius: 4 },
+  boneKey: { height: 50, borderRadius: 12 },
+  boneTiles: { display: 'flex', justifyContent: 'center', gap: 10, marginTop: 50 },
+  boneTile: { width: 50, height: 50, borderRadius: 12 },
   renderer: { display: 'flex', flexDirection: 'column', gap: 16, marginTop: 24 },
   going: {
     position: 'fixed',
@@ -317,7 +326,7 @@ const styles = stylex.create({
     backgroundColor: `color-mix(in oklab, ${tokens.background} 88%, transparent)`,
     backdropFilter: 'blur(4px)',
   },
-  goingWords: { fontSize: 15, fontWeight: 500 },
+  goingWords: { fontSize: 15, fontWeight: 500, marginTop: 4 },
   stay: {
     paddingBlock: 4,
     paddingInline: 8,
@@ -415,10 +424,19 @@ export default function LoginPage() {
   const panel = (() => {
     if (context.isPending) {
       return (
-        <div {...stylex.props(styles.panel)}>
-          {header}
-          <div {...stylex.props(styles.waiting)}>
-            <Spinner />
+        <div data-testid="sign-in-waiting" aria-busy {...stylex.props(styles.panel)}>
+          <Skeleton className={stylex.props(styles.boneLine).className} />
+          <h1 {...stylex.props(styles.title)}>{format(m.title)}</h1>
+          <Skeleton className={stylex.props(styles.boneSub).className} />
+          <div {...stylex.props(styles.primaries)}>
+            {[0, 1, 2].map((key) => (
+              <Skeleton key={key} className={stylex.props(styles.boneKey).className} />
+            ))}
+          </div>
+          <div {...stylex.props(styles.boneTiles)}>
+            {[0, 1, 2, 3, 4].map((key) => (
+              <Skeleton key={key} className={stylex.props(styles.boneTile).className} />
+            ))}
           </div>
         </div>
       )
@@ -500,26 +518,38 @@ export default function LoginPage() {
 
   return (
     <AuthShell>
-      <motion.div layout={!still} transition={{ duration: 0.36, ease: EASE }}>
-        <AnimatePresence initial={false} mode="popLayout" custom={direction}>
-          <motion.div
-            key={context.isSuccess && methods.length > 0 ? `${view}:${chosen?.code ?? ''}` : 'state'}
-            custom={direction}
-            variants={{
-              enter: (dir: number) => ({ opacity: 0, x: still ? 0 : dir * 28 }),
-              center: { opacity: 1, x: 0 },
-              leave: (dir: number) => ({ opacity: 0, x: still ? 0 : dir * -28 }),
-            }}
-            initial="enter"
-            animate="center"
-            exit="leave"
-            transition={{ x: { duration: 0.36, ease: EASE }, opacity: { duration: 0.22 } }}
-          >
-            {panel}
-          </motion.div>
-        </AnimatePresence>
-      </motion.div>
-      <AnimatePresence>
+      {/* One view at a time: the one leaving fades out quickly, then the
+          next comes in from the side it is reached from. Nothing is scaled
+          or stretched on the way - a height that changes simply changes. */}
+      <AnimatePresence initial={false} mode="wait" custom={direction}>
+        <motion.div
+          key={
+            context.isPending
+              ? 'waiting'
+              : context.isSuccess && methods.length > 0
+                ? `${view}:${chosen?.code ?? ''}`
+                : 'state'
+          }
+          custom={direction}
+          variants={{
+            enter: (dir: number) => ({ opacity: 0, x: still ? 0 : dir * 8 }),
+            center: { opacity: 1, x: 0, transition: { duration: 0.22, ease: EASE } },
+            leave: (dir: number) => ({
+              opacity: 0,
+              x: still ? 0 : dir * -4,
+              transition: { duration: 0.14, ease: 'easeIn' },
+            }),
+          }}
+          initial="enter"
+          animate="center"
+          exit="leave"
+        >
+          {panel}
+        </motion.div>
+      </AnimatePresence>
+      {/* over the whole window, not inside the column it was pressed in */}
+      <Portal into={document.body}>
+        <AnimatePresence>
         {leaving !== null && (
           <motion.div
             key="leaving"
@@ -531,7 +561,7 @@ export default function LoginPage() {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.24 }}
           >
-            <Spinner />
+            <Loader size={36} />
             <span {...stylex.props(styles.goingWords)}>
               {format(m.goingTo, { name: leaving.name })}
             </span>
@@ -547,7 +577,8 @@ export default function LoginPage() {
             </button>
           </motion.div>
         )}
-      </AnimatePresence>
+        </AnimatePresence>
+      </Portal>
     </AuthShell>
   )
 }
@@ -671,7 +702,7 @@ function Home({
             initial={{ opacity: 0, y: -6 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.28, ease: EASE, delay: still ? 0 : 0.12 }}
+            transition={{ duration: 0.22, ease: EASE }}
           >
             {notice.tone === 'info' ? (
               <Clock3Icon size={18} aria-hidden {...stylex.props(styles.noticeIcon)} />
@@ -702,16 +733,13 @@ function Home({
 
       {primary.length > 0 && (
         <div {...stylex.props(styles.primaries)}>
-          {primary.map((method, index) => (
-            <motion.button
+          {primary.map((method) => (
+            <button
               key={method.code}
               type="button"
               data-testid="sign-in-primary"
               data-recommended={method.recommended}
               {...stylex.props(styles.primary, method.recommended && styles.recommended)}
-              initial={still ? false : { opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, ease: EASE, delay: 0.04 * index }}
               onClick={() => onChoose(method)}
             >
               <span {...stylex.props(styles.primaryGlyph)}>
@@ -723,7 +751,7 @@ function Home({
               ) : (
                 <ArrowRightIcon size={16} aria-hidden {...stylex.props(styles.away)} />
               )}
-            </motion.button>
+            </button>
           ))}
         </div>
       )}
@@ -736,39 +764,33 @@ function Home({
             <span {...stylex.props(styles.rule)} />
           </div>
           <div {...stylex.props(styles.tiles)}>
-            {tiles.map((method, index) => {
+            {tiles.map((method) => {
               const said = format(m.signInWith, { name: method.name })
               return (
-                <motion.button
+                <button
                   key={method.code}
                   type="button"
                   aria-label={said}
                   data-testid="sign-in-tile"
                   {...stylex.props(styles.tile)}
                   {...tipOf(said)}
-                  initial={still ? false : { opacity: 0, scale: 0.92 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ duration: 0.26, ease: EASE, delay: 0.1 + 0.03 * index }}
                   onClick={() => onChoose(method)}
                 >
                   <LoginMethodGlyph code={method.code} name={method.name} icon={method.icon} size={20} />
-                </motion.button>
+                </button>
               )
             })}
             {overflow && (
-              <motion.button
+              <button
                 type="button"
                 aria-label={format(m.allOtherMethods, { count: others.length })}
                 data-testid="sign-in-more"
                 {...stylex.props(styles.tile, styles.moreTile)}
                 {...tipOf(format(m.allOtherMethods, { count: others.length }))}
-                initial={still ? false : { opacity: 0, scale: 0.92 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.26, ease: EASE, delay: 0.1 + 0.03 * tiles.length }}
                 onClick={onMore}
               >
                 <EllipsisIcon size={20} aria-hidden />
-              </motion.button>
+              </button>
             )}
           </div>
           {/* the name of the tile under the pointer or the focus, in a line

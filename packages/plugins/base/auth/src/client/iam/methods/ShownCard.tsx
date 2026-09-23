@@ -59,16 +59,16 @@ const styles = stylex.create({
     backgroundColor: tokens.background,
     boxShadow: `inset 0 0 0 1px ${tokens.border}`,
   },
-  recommend: { display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' },
+  recommend: { display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' },
   recommendWords: { display: 'flex', flexDirection: 'column', gap: 2 },
   recommendName: { fontSize: 14 },
-  picker: { display: 'flex', width: 296, flexDirection: 'column', gap: 12, padding: 4 },
+  picker: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 12 },
   pickerTitle: { fontSize: 13.5, fontWeight: 600 },
-  grid: { display: 'grid', gridTemplateColumns: 'repeat(6, 40px)', gap: 6 },
+  grid: { display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', gap: 6 },
   choice: {
     display: 'inline-flex',
-    width: 40,
-    height: 40,
+    width: '100%',
+    aspectRatio: '1',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 0,
@@ -182,7 +182,7 @@ export function ShownCard({
                     {format(choose.isPending ? m.methodIconUploading : m.methodIconChange)}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent align="start">
+                <PopoverContent align="start" width={316}>
                   <div data-testid="icon-picker" {...stylex.props(styles.picker)}>
                     <span {...stylex.props(styles.pickerTitle)}>{format(m.methodIconTitle)}</span>
                     <div {...stylex.props(styles.grid)}>

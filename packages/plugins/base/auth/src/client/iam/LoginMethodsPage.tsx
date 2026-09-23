@@ -103,6 +103,7 @@ const styles = stylex.create({
   over: { boxShadow: `inset 0 2px 0 ${tokens.foreground}` },
   lifted: { opacity: 0.45 },
   groups: { display: 'flex', flexDirection: 'column', gap: 16 },
+  fill: { fontSize: 13, color: tokens.mutedForeground, fontVariantNumeric: 'tabular-nums' },
   // an empty group is still somewhere to put a door
   drop: {
     marginInline: 16,
@@ -269,16 +270,18 @@ export default function LoginMethodsPage() {
       >
         <CardHead
           title={format(into === 'primary' ? m.methodsPrimaryTitle : m.methodsSecondaryTitle)}
-          note={
-            into === 'primary'
-              ? format(m.methodsPrimaryNote, {
-                  count: members.length,
-                  most: MAX_PRIMARY_LOGIN_METHODS,
-                })
-              : undefined
-          }
           sub={format(into === 'primary' ? m.methodsPrimaryHint : m.methodsSecondaryHint)}
-        />
+        >
+          {/* how full the group is, at the far end where a count is read */}
+          {into === 'primary' && (
+            <span data-testid="method-primary-count" {...stylex.props(styles.fill)}>
+              {format(m.methodsPrimaryNote, {
+                count: members.length,
+                most: MAX_PRIMARY_LOGIN_METHODS,
+              })}
+            </span>
+          )}
+        </CardHead>
         {members.length === 0 ? (
           <div
             data-testid={`method-drop-${into}`}

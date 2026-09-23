@@ -61,9 +61,9 @@ function Badge({ tone, children }: { tone?: 'danger'; children: ReactNode }) {
     <motion.span
       aria-hidden
       {...stylex.props(styles.badge, tone === 'danger' && styles.badgeDanger)}
-      initial={still ? false : { scale: 0.6, opacity: 0 }}
+      initial={still ? false : { scale: 0.88, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
-      transition={{ type: 'spring', stiffness: 420, damping: 18, delay: 0.1 }}
+      transition={{ duration: 0.28, ease: [0.2, 0.8, 0.2, 1], delay: 0.08 }}
     >
       {children}
     </motion.span>

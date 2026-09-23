@@ -153,9 +153,9 @@ export function AuthShell({ children }: { children: ReactNode }) {
               only what changed. */}
           <motion.div
             {...stylex.props(styles.content)}
-            initial={still ? false : { opacity: 0, y: 10 }}
+            initial={still ? false : { opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.42, ease: [0.2, 0.8, 0.2, 1] }}
+            transition={{ duration: 0.3, ease: [0.2, 0.8, 0.2, 1] }}
           >
             {children}
           </motion.div>

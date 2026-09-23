@@ -180,23 +180,24 @@ const styles = stylex.create({
   },
 })
 
-/** one state of the column, sliding in from the side it is ahead on */
+/**
+ * One state of the column: the last one fades out quickly and this one comes
+ * in from ahead. Nothing is scaled on the way; a height that changes simply
+ * changes.
+ */
 function Slide({ id, children }: { id: string; children: ReactNode }) {
   const still = useReducedMotion() === true
   return (
-    <motion.div layout={!still} transition={{ duration: 0.36, ease: EASE }}>
-      <AnimatePresence initial={false} mode="popLayout">
-        <motion.div
-          key={id}
-          initial={{ opacity: 0, x: still ? 0 : 28 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: still ? 0 : -28 }}
-          transition={{ x: { duration: 0.36, ease: EASE }, opacity: { duration: 0.22 } }}
-        >
-          {children}
-        </motion.div>
-      </AnimatePresence>
-    </motion.div>
+    <AnimatePresence initial={false} mode="wait">
+      <motion.div
+        key={id}
+        initial={{ opacity: 0, x: still ? 0 : 8 }}
+        animate={{ opacity: 1, x: 0, transition: { duration: 0.22, ease: EASE } }}
+        exit={{ opacity: 0, x: still ? 0 : -4, transition: { duration: 0.14, ease: 'easeIn' } }}
+      >
+        {children}
+      </motion.div>
+    </AnimatePresence>
   )
 }
 
@@ -207,9 +208,9 @@ function Badge({ tone, children }: { tone?: 'danger'; children: ReactNode }) {
     <motion.span
       aria-hidden
       {...stylex.props(styles.badge, tone === 'danger' && styles.badgeDanger)}
-      initial={still ? false : { scale: 0.6, opacity: 0 }}
+      initial={still ? false : { scale: 0.88, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
-      transition={{ type: 'spring', stiffness: 420, damping: 18, delay: 0.1 }}
+      transition={{ duration: 0.28, ease: [0.2, 0.8, 0.2, 1], delay: 0.08 }}
     >
       {children}
     </motion.span>
