@@ -25,6 +25,9 @@ const styles = stylex.create({
     alignItems: 'center',
     gap: 12,
   },
+  // The last step has no connector after it, so an equal share of the row
+  // left it empty space at the end; it takes only what it shows.
+  itemLast: { flexGrow: 0, flexBasis: 'auto' },
   connector: {
     minWidth: 8,
     height: 1,
@@ -111,7 +114,10 @@ export function Steps({
         const done = index < current
         const active = index === current
         return (
-          <li key={label} {...stylex.props(styles.item)}>
+          <li
+            key={label}
+            {...stylex.props(styles.item, index === steps.length - 1 && styles.itemLast)}
+          >
             <StepLabel
               index={index}
               label={label}
