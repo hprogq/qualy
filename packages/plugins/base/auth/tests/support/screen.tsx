@@ -5,6 +5,10 @@ import {
   errorMessages as authLocalErrors,
 } from '@qualy/plugin-auth-local/client/i18n'
 import {
+  catalogs as captchaCatalogs,
+  errorMessages as captchaErrors,
+} from '@qualy/plugin-captcha/client/i18n'
+import {
   catalogs as rbacCatalogs,
   errorMessages as rbacErrors,
 } from '@qualy/plugin-rbac/client/i18n'
@@ -22,10 +26,11 @@ import '../../../../../../apps/web/src/app.css'
 // whole-composition test, and a plugin outside this repository could not
 // write one at all.
 
-export const catalogs = [authCatalogs, authLocalCatalogs, rbacCatalogs]
+export const catalogs = [authCatalogs, authLocalCatalogs, captchaCatalogs, rbacCatalogs]
 export const errorMessages = {
   ...authErrors,
   ...authLocalErrors,
+  ...captchaErrors,
   ...rbacErrors,
 }
 

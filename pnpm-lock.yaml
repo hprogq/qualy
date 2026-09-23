@@ -1313,6 +1313,9 @@ importers:
       '@qualy/plugin-auth-oidc':
         specifier: workspace:*
         version: link:../auth-oidc
+      '@qualy/plugin-captcha-altcha':
+        specifier: workspace:*
+        version: link:../../infra/captcha-altcha
       '@qualy/plugin-mail-smtp':
         specifier: workspace:*
         version: link:../../infra/mail-smtp
@@ -1328,6 +1331,9 @@ importers:
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.18
+      altcha-lib:
+        specifier: 'catalog:'
+        version: 2.5.0
 
   packages/plugins/base/auth-cas:
     dependencies:

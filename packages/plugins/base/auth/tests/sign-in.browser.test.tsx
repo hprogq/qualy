@@ -4,6 +4,9 @@ import { describe, expect, it } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
 import { TooManyAttempts } from '@qualy/auth-contract/session'
+import { CaptchaRequired } from '@qualy/plugin-captcha/contract'
+import { InvalidCredentials } from '@qualy/plugin-auth-local/api'
+import { registerCaptchaProvider, type CaptchaClientState } from '@qualy/plugin-captcha/client'
 import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The sign-in screen finds a driver's renderer by the driver's TYPE.
@@ -130,6 +133,113 @@ describe('the sign-in screen', () => {
     // a press while it waits is no request
     await submit.click({ force: true })
     expect(tried).toBe(1)
+  })
+
+  it('meets a challenge without being asked twice, and never sends a proof again', async () => {
+    // a provider the suite drives: it reports working, and solves when told
+    const reports: ((state: CaptchaClientState) => void)[] = []
+    const unregister = registerCaptchaProvider({
+      code: 'fake',
+      start: ({ onStateChange }) => {
+        reports.push(onStateChange)
+        onStateChange({ kind: 'working' })
+        return Promise.resolve({ dispose: () => undefined })
+      },
+    })
+    const sent: { email: string; captcha?: { provider: string; response: string } }[] = []
+    try {
+      renderScreen({
+        client: fakeClient({
+          app: { getManifest: emptyManifest() },
+          auth: { listLoginMethods: context([password]) },
+          authLocal: {
+            login: ({ payload }: { payload: (typeof sent)[number] }) =>
+              Effect.suspend((): Effect.Effect<never, CaptchaRequired | InvalidCredentials> => {
+                sent.push(payload)
+                // the door asks for a challenge whenever no proof came with the attempt
+                return payload.captcha === undefined
+                  ? Effect.fail(new CaptchaRequired({ provider: 'fake', challenge: { n: sent.length } }))
+                  : Effect.fail(new InvalidCredentials())
+              }),
+          },
+        }),
+        registry: {
+          login: { local: lazy(() => import('@qualy/plugin-auth-local/client/LoginMethod')) },
+        },
+        route: '/login?method=password',
+        children: <LoginPage />,
+      })
+      const submit = page.getByTestId('local-submit')
+      await page.getByLabelText('邮箱').fill('ada@school.edu')
+      await page.getByLabelText('密码').fill('a long enough password')
+      await submit.click()
+      // asked for a challenge: checking, not refused - no pause, no shake
+      await expect.element(submit).toHaveAttribute('data-captcha', 'working')
+      await expect.element(submit).toBeDisabled()
+      expect(submit.element().getAttribute('data-wait')).toBeNull()
+      // met: the same attempt goes again by itself, with the proof
+      reports.at(-1)!({ kind: 'solved', response: 'proof-1' })
+      await expect.poll(() => sent.length).toBe(2)
+      expect(sent[1]).toMatchObject({
+        email: 'ada@school.edu',
+        captcha: { provider: 'fake', response: 'proof-1' },
+      })
+      // the password was wrong after all: the proof is gone with it, so the
+      // next press is a plain attempt the door answers afresh
+      await expect.element(submit).toHaveAttribute('data-captcha', 'idle')
+      await expect.poll(() => submit.element().hasAttribute('disabled')).toBe(false)
+      await submit.click()
+      await expect.poll(() => sent.length).toBe(3)
+      expect(sent[2]?.captcha).toBeUndefined()
+    } finally {
+      unregister()
+    }
+  })
+
+  it('sets a challenge aside when the address changes, and a late proof sends nothing', async () => {
+    const reports: ((state: CaptchaClientState) => void)[] = []
+    const unregister = registerCaptchaProvider({
+      code: 'fake',
+      start: ({ onStateChange }) => {
+        reports.push(onStateChange)
+        onStateChange({ kind: 'working' })
+        return Promise.resolve({ dispose: () => undefined })
+      },
+    })
+    let asked = 0
+    try {
+      renderScreen({
+        client: fakeClient({
+          app: { getManifest: emptyManifest() },
+          auth: { listLoginMethods: context([password]) },
+          authLocal: {
+            login: () =>
+              Effect.suspend(() => {
+                asked += 1
+                return Effect.fail(new CaptchaRequired({ provider: 'fake', challenge: {} }))
+              }),
+          },
+        }),
+        registry: {
+          login: { local: lazy(() => import('@qualy/plugin-auth-local/client/LoginMethod')) },
+        },
+        route: '/login?method=password',
+        children: <LoginPage />,
+      })
+      const submit = page.getByTestId('local-submit')
+      await page.getByLabelText('邮箱').fill('ada@school.edu')
+      await page.getByLabelText('密码').fill('a long enough password')
+      await submit.click()
+      await expect.element(submit).toHaveAttribute('data-captcha', 'working')
+      const late = reports.at(-1)!
+      await page.getByLabelText('邮箱').fill('grace@school.edu')
+      await expect.element(submit).toHaveAttribute('data-captcha', 'idle')
+      late({ kind: 'solved', response: 'for the old address' })
+      await new Promise((settle) => setTimeout(settle, 300))
+      expect(asked).toBe(1)
+    } finally {
+      unregister()
+    }
   })
 
   it('fills in the address this browser was asked to keep', async () => {

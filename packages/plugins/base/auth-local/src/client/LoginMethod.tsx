@@ -13,6 +13,12 @@ import { Label } from '@qualy/ui/label'
 import { normalizeEmail } from '@qualy/auth-contract/email'
 import type { LoginMethodRendererProps } from '@qualy/auth-contract/login'
 import { retryAfterOf } from '@qualy/auth-contract/session'
+import {
+  CaptchaRequired,
+  type CaptchaPrompt,
+  type CaptchaProof,
+} from '@qualy/plugin-captcha/contract'
+import { CaptchaChallenge, useCaptchaGate } from '@qualy/plugin-captcha/client'
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '../rules.ts'
 import { clock, PAUSE_MS, useHold } from './hold.ts'
 import { localMessages as m } from './i18n.ts'
@@ -165,6 +171,9 @@ export default function LocalLoginMethod({ method, onAuthenticated }: LoginMetho
   const [refusal, setRefusal] = useState<string | null>(null)
   // set by a refusal and put down when the shake ends, so the next one shakes again
   const [shaking, setShaking] = useState(false)
+  // the challenge the door answered with, while it is being met; bound to the
+  // address it was issued for, so a changed address sets it aside
+  const [prompt, setPrompt] = useState<CaptchaPrompt | null>(null)
 
   const address = normalizeEmail(email)
   const emailSaid = left.email && address === null ? format(m.emailInvalid) : null
@@ -180,14 +189,9 @@ export default function LocalLoginMethod({ method, onAuthenticated }: LoginMetho
     password.length >= PASSWORD_MIN_LENGTH &&
     password.length <= PASSWORD_MAX_LENGTH
 
-  const submit = async (event: FormEvent) => {
-    event.preventDefault()
-    if (sending.current || held) return
-    setLeft({ email: true, password: true })
-    if (!ready) {
-      setShaking(true)
-      return
-    }
+  /** one attempt at the door, with the proof a met challenge produced when there is one */
+  const attempt = async (proof?: CaptchaProof) => {
+    if (sending.current || held || address === null) return
     sending.current = true
     setBusy(true)
     setRefusal(null)
@@ -195,20 +199,57 @@ export default function LocalLoginMethod({ method, onAuthenticated }: LoginMetho
       await run(
         api.authLocal.login({
           params: { providerCode: method.code },
-          payload: { email: address, password },
+          payload: { email: address, password, ...(proof === undefined ? {} : { captcha: proof }) },
         }),
       )
       remember(keep ? address : null)
       onAuthenticated()
     } catch (failure: unknown) {
+      setBusy(false)
+      sending.current = false
+      if (failure instanceof CaptchaRequired) {
+        // not a refusal: nothing was judged yet. No pause, no shake, no
+        // words - the button says it is checking, and the same attempt goes
+        // again by itself once the challenge is met
+        setPrompt({ provider: failure.provider, challenge: failure.challenge })
+        return
+      }
       const wait = retryAfterOf(failure)
       setLimited(wait !== undefined)
       hold(wait === undefined ? PAUSE_MS : wait * 1000)
       setRefusal(formatError(failure))
       setShaking(true)
-      setBusy(false)
-      sending.current = false
     }
+  }
+
+  const gate = useCaptchaGate({
+    prompt,
+    placement: 'inline',
+    // the proof is spent the moment it is sent, whatever the door answers:
+    // the challenge goes first, so a wrong password next leaves nothing
+    // behind to send twice, and the next attempt is asked afresh
+    onSolved: (proof) => {
+      setPrompt(null)
+      void attempt(proof)
+    },
+    // the challenge itself is spent: the same attempt, without a proof,
+    // brings a new one
+    onRefresh: () => {
+      setPrompt(null)
+      void attempt()
+    },
+  })
+  const challenging = prompt !== null && gate.state !== 'failed'
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    if (sending.current || held || challenging) return
+    setLeft({ email: true, password: true })
+    if (!ready) {
+      setShaking(true)
+      return
+    }
+    void attempt()
   }
 
   return (
@@ -233,6 +274,8 @@ export default function LocalLoginMethod({ method, onAuthenticated }: LoginMetho
           onChange={(event) => {
             setEmail(event.target.value)
             setRefusal(null)
+            // a challenge is bound to the address it was issued for
+            setPrompt(null)
           }}
           onBlur={() => email !== '' && setLeft((was) => ({ ...was, email: true }))}
         />
@@ -299,20 +342,26 @@ export default function LocalLoginMethod({ method, onAuthenticated }: LoginMetho
         />
         {format(m.remember)}
       </label>
+      <CaptchaChallenge gate={gate} />
       <Button
         type="submit"
         size="lg"
         className={stylex.props(styles.submit).className}
-        disabled={busy || held}
+        disabled={busy || held || challenging}
         data-testid="local-submit"
         // the seconds the door asked to wait, while it is waited out
         data-wait={held && limited ? secondsLeft : undefined}
+        data-captcha={gate.state}
       >
-        {busy
-          ? format(m.submitting)
-          : held && limited
-            ? format(m.wait, { time: clock(secondsLeft) })
-            : format(m.submit)}
+        {gate.state === 'loading-provider'
+          ? format(m.preparingCheck)
+          : gate.state === 'working' || gate.state === 'interaction'
+            ? format(m.checking)
+            : busy
+              ? format(m.submitting)
+              : held && limited
+                ? format(m.wait, { time: clock(secondsLeft) })
+                : format(m.submit)}
       </Button>
     </form>
   )

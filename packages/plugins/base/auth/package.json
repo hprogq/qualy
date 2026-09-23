@@ -88,10 +88,12 @@
     "@qualy/plugin-auth-github": "workspace:*",
     "@qualy/plugin-auth-local": "workspace:*",
     "@qualy/plugin-auth-oidc": "workspace:*",
+    "@qualy/plugin-captcha-altcha": "workspace:*",
     "@qualy/plugin-mail-smtp": "workspace:*",
     "@qualy/plugin-rbac": "workspace:*",
     "@qualy/testkit": "workspace:*",
     "@qualy/tsconfig": "workspace:*",
-    "@types/react": "catalog:"
+    "@types/react": "catalog:",
+    "altcha-lib": "catalog:"
   }
 }

@@ -1,7 +1,7 @@
 {
   "lockfileVersion": 2,
-  "manifestHash": "sha256:e707c96a918b53932c05f93240d7c94345c28a855af2661f3d5b4b5472515d6f",
-  "resolutionHash": "sha256:983b489f1376ea50fcbd4620a3ff4015eb8591d818dbf30d0542714d969b2957",
+  "manifestHash": "sha256:2995a47b55aa6e4743c130821e9bd9816891ed7c6244ed76fec72c60c584022d",
+  "resolutionHash": "sha256:e3b5effbb13a58e56035146a69d221a5352bd60ea9d49c5c4b5a0c5f9d786141",
   "plugins": {
     "@qualy/plugin-assessment": {
       "version": "0.0.0",
@@ -179,7 +179,7 @@
     },
     "@qualy/plugin-captcha-altcha": {
       "version": "0.0.0",
-      "state": "disabled",
+      "state": "active",
       "contributions": {
         "database": {
           "entities": [
@@ -418,6 +418,7 @@
       "@qualy/plugin-auth-local",
       "@qualy/plugin-auth-oidc",
       "@qualy/plugin-captcha",
+      "@qualy/plugin-captcha-altcha",
       "@qualy/plugin-database",
       "@qualy/plugin-directory-import",
       "@qualy/plugin-layout-default",

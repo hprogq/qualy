@@ -73,5 +73,4 @@ plugins:
   '@qualy/plugin-mail': {}
   '@qualy/plugin-mail-smtp': {}
   '@qualy/plugin-captcha': {}
-  '@qualy/plugin-captcha-altcha':
-    enabled: false
+  '@qualy/plugin-captcha-altcha': {}

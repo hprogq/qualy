@@ -1,43 +1,17 @@
-import { NodeHttpServer } from '@effect/platform-node'
 import { sql } from 'kysely'
-import { Effect, Exit, Layer, Scope } from 'effect'
-import { HttpRouter } from 'effect/unstable/http'
-import { HttpApiBuilder } from 'effect/unstable/httpapi'
-import { createServer } from 'node:http'
+import { Effect } from 'effect'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import {
-  createTestContext,
-  databaseFor,
-  postgresAvailable,
-  runSql,
-} from '@qualy/plugin-database/testkit'
-import { QUALY_API_PREFIX } from '@qualy/api-kit'
-import { RequestContext, requestContext } from '@qualy/api-kit/request'
-import { Api } from '@qualy/api-kit/plugin'
+import { postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
+import { RequestContext } from '@qualy/api-kit/request'
 import {
   LoginSessions,
-  loginDriversLayer,
-  registerLoginDriver,
   type LoginSessionsShape,
   type ResolvedProvider,
 } from '@qualy/auth-contract/login'
-import { sessionCookieName } from '@qualy/auth-contract/session'
-import { hashPassword } from '@qualy/plugin-auth-local/password'
-import { apiHandlers as authLocalApiHandlers, driver as localDriver } from '@qualy/plugin-auth-local'
-import { authLocalApiGroup } from '@qualy/plugin-auth-local/api'
-import { secretsLayer } from '@qualy/plugin-secrets/testkit'
 import { captchaLayerWith } from '@qualy/plugin-captcha/testkit'
 import type { CaptchaProvider } from '@qualy/plugin-captcha/server'
-import { sessionApiGroup } from '../src/api.ts'
-import { sessionApiHandlers } from '../src/server/index.ts'
-import { AuthConfig, layer as signInLayer } from '../src/server/sign-in.ts'
-import { layer as sessionLayer } from '../src/server/session.ts'
-import { singleTenantLayer } from '../src/server/tenancy.ts'
-import { singleOriginLayer } from '../src/server/public-origin.ts'
-import { SEEDED_EMAILS, seedSignIn } from './support/sign-in-seed.ts'
-import { authClosure } from './support/closure.ts'
-import { authAuditLayer } from './support/audit.ts'
-import { unusedEmailFlows } from './support/email-flows.ts'
+import { SEEDED_EMAILS } from './support/sign-in-seed.ts'
+import { SIGN_IN_PASSWORD as password, startSignInServer, type SignInServer } from './support/sign-in-server.ts'
 
 // Signing in where a challenge can be asked for.
 //
@@ -46,11 +20,6 @@ import { unusedEmailFlows } from './support/email-flows.ts'
 // address is visibly worth nothing for another. It counts what it was asked,
 // which is how a proof that was never needed is shown not to have been
 // checked.
-
-const port = 3223
-const base = `http://127.0.0.1:${port}${QUALY_API_PREFIX}`
-const api = Api.local(sessionApiGroup, authLocalApiGroup)
-const password = 'correct horse battery staple'
 
 const asked = { issue: 0, verify: 0 }
 const fake: CaptchaProvider = {
@@ -67,64 +36,23 @@ const fake: CaptchaProvider = {
     }),
 }
 
-let scope: Scope.Scope
-let db: Awaited<ReturnType<typeof createTestContext>>
-/** the sign-in service as the server was given it, for asking it directly */
-let signInService: Layer.Layer<LoginSessions, unknown>
+let server: SignInServer
 
 beforeAll(async () => {
   if (!postgresAvailable) return
-  db = await createTestContext('effect-sign-in-captcha')
-  const infra = databaseFor(db.url, { entities: authClosure })
-  const authConfig = Layer.succeed(
-    AuthConfig,
-    AuthConfig.of({
-      defaultTenantSlug: 'default',
-      sessionTtlSeconds: 3600,
-      secureCookies: false,
-      sessionCookieName,
-    }),
-  )
-  const signIn = signInLayer.pipe(
-    Layer.provide(captchaLayerWith(fake)),
-    Layer.provide(secretsLayer),
-    Layer.provide(Layer.mergeAll(singleTenantLayer, singleOriginLayer)),
-    Layer.provide(authAuditLayer),
-    Layer.provide(
-      Layer.mergeAll(
-        infra,
-        authConfig,
-        registerLoginDriver(localDriver, '@qualy/plugin-auth-local').pipe(
-          Layer.provideMerge(loginDriversLayer),
-        ),
-      ),
-    ),
-  )
-  signInService = signIn
-  const handlers = Layer.mergeAll(sessionApiHandlers, authLocalApiHandlers).pipe(
-    Layer.provide(sessionLayer.pipe(Layer.provide(Layer.mergeAll(infra, authConfig)))),
-  )
-  const application = HttpRouter.serve(HttpApiBuilder.layer(api).pipe(Layer.provide(handlers)), {
-    middleware: requestContext(),
-  }).pipe(
-    Layer.provide(signIn),
-    Layer.provide(unusedEmailFlows),
-    Layer.provide(NodeHttpServer.layer(createServer, { port })),
-    Layer.provide(infra),
-  )
-  scope = await Effect.runPromise(Scope.make())
-  await Effect.runPromise(Layer.buildWithScope(application, scope))
-  const hash = await hashPassword(password)
-  await Effect.runPromise(seedSignIn(hash).pipe(Effect.provide(infra)))
+  server = await startSignInServer({
+    name: 'effect-sign-in-captcha',
+    port: 3223,
+    captcha: captchaLayerWith(fake),
+  })
 }, 120_000)
 
 afterAll(async () => {
   if (!postgresAvailable) return
-  await Effect.runPromise(Scope.close(scope, Exit.void))
-  await db.dispose()
+  await server.close()
 })
 
-const probeInfra = () => databaseFor(db.url, { migrations: 'off', entities: authClosure })
+const probeInfra = () => server.probeInfra()
 
 beforeEach(async () => {
   if (!postgresAvailable) return
@@ -146,7 +74,7 @@ const login = async (body: {
   password: string
   captcha?: { provider: string; response: string }
 }): Promise<Answer> => {
-  const response = await fetch(`${base}/auth/local/password/login`, {
+  const response = await fetch(`${server.base}/auth/local/password/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
@@ -268,7 +196,7 @@ describe.runIf(postgresAvailable)('admitting an attempt', () => {
               bindEndpoint: () => Effect.void,
             }),
           )
-    return Effect.runPromise(addressed.pipe(Effect.provide(signInService)))
+    return Effect.runPromise(addressed.pipe(Effect.provide(server.signInService)))
   }
 
   const buckets = (scope: string) =>

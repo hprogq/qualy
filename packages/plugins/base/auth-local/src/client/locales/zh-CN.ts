@@ -8,6 +8,8 @@ export default {
   'auth-local/action/submit': '登录',
   'auth-local/action/submitting': '登录中…',
   'auth-local/action/wait': '{time} 后可重试',
+  'auth-local/action/preparing-check': '正在准备安全验证…',
+  'auth-local/action/checking': '正在进行安全验证…',
   'auth-local/action/forgot': '忘记密码？',
   'auth-local/error/invalid-credentials': '邮箱或密码错误。',
   'auth-local/action/show-password': '显示密码',

@@ -15,6 +15,11 @@ const i18n = definePluginMessages({
     submit: { id: 'auth-local/action/submit', defaultMessage: 'Sign in' },
     submitting: { id: 'auth-local/action/submitting', defaultMessage: 'Signing in…' },
     wait: { id: 'auth-local/action/wait', defaultMessage: 'Try again in {time}' },
+    preparingCheck: {
+      id: 'auth-local/action/preparing-check',
+      defaultMessage: 'Preparing a security check…',
+    },
+    checking: { id: 'auth-local/action/checking', defaultMessage: 'Running a security check…' },
     forgot: { id: 'auth-local/action/forgot', defaultMessage: 'Forgot password?' },
     showPassword: { id: 'auth-local/action/show-password', defaultMessage: 'Show password' },
     hidePassword: { id: 'auth-local/action/hide-password', defaultMessage: 'Hide password' },
