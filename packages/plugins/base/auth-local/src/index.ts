@@ -93,12 +93,12 @@ const handlers = HttpApiBuilder.group(local, 'authLocal', (handlers) =>
       // ask for without limit.
       if (!resolved) return yield* new InvalidCredentials()
       const email = normalizeEmail(payload.email)
-      // counted before anything is looked up or hashed, and counted the same
-      // for an address nobody has: what is typed is the key, whoever it is
-      yield* sessions.admitAttempt({
-        provider: resolved,
-        identifier: email ?? payload.email.trim().toLowerCase(),
-      })
+      // what was typed is the key, whoever it belongs to: an address that is
+      // not one is weighed exactly like one nobody has
+      const identifier = email ?? payload.email.trim().toLowerCase()
+      // counted before anything is looked up or hashed; the answer's
+      // challenge has nothing to ask with yet and the attempt goes on
+      yield* sessions.admitAttempt({ provider: resolved, identifier })
       const person =
         email === null
           ? undefined
@@ -133,6 +133,10 @@ const handlers = HttpApiBuilder.group(local, 'authLocal', (handlers) =>
         })
         return yield* new InvalidCredentials()
       }
+      // proven: the risk weighed at this address is forgotten now, before the
+      // account's own state is asked about - a disabled account refused next
+      // was still opened by the right password, not attacked
+      yield* sessions.clearIdentifierRisk({ provider: resolved, identifier })
       const user = yield* sessions.completeLogin({
         tenantId: resolved.tenantId,
         providerId: resolved.providerId,

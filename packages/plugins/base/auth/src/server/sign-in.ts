@@ -27,7 +27,7 @@ import { Secrets } from '@qualy/plugin-secrets/plugin'
 import { AuthConfig } from './auth-config.ts'
 import { configOf, entranceSecrets, makeReadiness } from './readiness.ts'
 import { makeFlows } from './flows.ts'
-import { HARD_LIMITS, makeLimiter, type HardLimitRule } from './limiter.ts'
+import { HARD_LIMITS, makeLimiter, RISK_RULES, type HardLimitRule } from './limiter.ts'
 import { actorOf } from './audit-actor.ts'
 import { BindingWritten } from '../actions.ts'
 import { Audit } from '@qualy/audit-contract/effect'
@@ -437,6 +437,12 @@ const insertSession = (input: {
   )
 
 /** sign-in attempts by outcome and door type; unknown types clamp to 'other' */
+/**
+ * Password attempts whose address could not be read. A deployment where this
+ * is ever more than a trickle has a proxy or forwarding chain to look at.
+ */
+const unknownAddressCount = boundedCounter('qualy.auth.sign_in.unknown_address', {})
+
 const signInCount = boundedCounter('qualy.auth.sign_in', {
   outcome: ['success', 'failure'],
   provider_type: ['local', 'oauth', 'cas'],
@@ -635,6 +641,8 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
   const secrets = yield* Secrets
   const flows = yield* makeFlows()
   const limiter = yield* makeLimiter
+  // said once per process: after that the metric counts it
+  let unknownAddressWarned = false
   const audit = yield* Audit
 
   /** one more attempt from where this request came from, at this entrance */
@@ -793,19 +801,67 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         identifier?: string
       }) {
         const context = Option.getOrUndefined(yield* currentRequestContext)
+        const tenantId = input.provider.tenantId
         const provider = input.provider.providerId
-        // weighed whether or not anybody answers to the identifier: the
-        // refusal must not be the thing that tells an address that exists
-        // from one that does not
-        const answer = yield* limiter.consumeAllHard(input.provider.tenantId, [
-          [HARD_LIMITS.signInByAddress, `${provider}\0${context?.clientIp ?? 'unknown'}`],
-          ...(input.identifier === undefined
-            ? []
-            : [[HARD_LIMITS.signInByIdentifier, `${provider}\0${input.identifier}`] as const]),
-        ])
-        if (!answer.allowed) {
-          return yield* new TooManyAttempts({ retryAfterSeconds: answer.retryAfterSeconds })
+        let challengeRequired = false
+        if (context?.clientIp === undefined) {
+          // Nowhere to count this against but the entrance as a whole: the
+          // fuse is shared, so it is wide, and everything behind it is
+          // treated as raised risk from the first attempt.
+          yield* unknownAddressCount({})
+          if (!unknownAddressWarned) {
+            unknownAddressWarned = true
+            yield* Effect.logWarning(
+              'a password attempt arrived from an address this deployment cannot read; check QUALY_TRUSTED_PROXIES and the forwarding chain',
+            )
+          }
+          const fuse = yield* limiter.consumeHard(
+            tenantId,
+            HARD_LIMITS.signInUnknownAddressGlobalHard,
+            provider,
+          )
+          if (!fuse.allowed) {
+            return yield* new TooManyAttempts({ retryAfterSeconds: fuse.retryAfterSeconds })
+          }
+          challengeRequired = true
+        } else {
+          const here = `${provider}\0${context.clientIp}`
+          const fuse = yield* limiter.consumeHard(tenantId, HARD_LIMITS.signInByAddressHard, here)
+          if (!fuse.allowed) {
+            return yield* new TooManyAttempts({ retryAfterSeconds: fuse.retryAfterSeconds })
+          }
+          const address = yield* limiter.observeRisk(tenantId, RISK_RULES.signInByAddressRisk, here)
+          challengeRequired = address.challengeRequired
         }
+        if (input.identifier !== undefined) {
+          // counted now, whether or not anybody answers to it, and whatever
+          // the password will turn out to be
+          const identifier = yield* limiter.observeRisk(
+            tenantId,
+            RISK_RULES.signInByIdentifierRisk,
+            `${provider}\0${input.identifier}`,
+          )
+          challengeRequired = challengeRequired || identifier.challengeRequired
+        }
+        if (challengeRequired) {
+          // no challenge can be asked for yet, so the attempt goes on; what
+          // would have been asked is at least visible
+          yield* Effect.logDebug('a sign-in attempt would have been challenged')
+        }
+        return { challengeRequired }
+      }),
+    ),
+
+    clearIdentifierRisk: bound(
+      Effect.fn('Auth.signIn.clearIdentifierRisk')(function* (input: {
+        provider: ResolvedProvider
+        identifier: string
+      }) {
+        yield* limiter.clearRisk(
+          input.provider.tenantId,
+          RISK_RULES.signInByIdentifierRisk,
+          `${input.provider.providerId}\0${input.identifier}`,
+        )
       }),
     ),
 

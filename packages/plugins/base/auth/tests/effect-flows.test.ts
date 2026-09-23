@@ -40,6 +40,7 @@ import {
 import { Iam, serviceLayer as authLayer } from '../src/server/index.ts'
 import { AnonymousTenantResolver } from '../src/server/tenancy.ts'
 import { safeReturnPath } from '../src/server/flows.ts'
+import { HARD_LIMITS } from '../src/server/limiter.ts'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../src/constants.ts'
 import { authClosure } from './support/closure.ts'
 
@@ -622,6 +623,7 @@ describe.runIf(postgresAvailable)('what a driver keeps through a redirect', () =
   })
 
   it('is started only so often from one place', async () => {
+    const { limit } = HARD_LIMITS.flowStartByAddress
     const db = await createTestContext('flows-throttle')
     try {
       await seed(db.url)
@@ -632,7 +634,7 @@ describe.runIf(postgresAvailable)('what a driver keeps through a redirect', () =
             const sessions = yield* LoginSessions
             const door = (yield* resolve('campus'))!
             const outcomes: (string | undefined)[] = []
-            for (let started = 0; started < 31; started += 1) {
+            for (let started = 0; started <= limit; started += 1) {
               outcomes.push(
                 tagOf(yield* Effect.result(sessions.startFlow({ provider: door, purpose: 'login' }))),
               )
@@ -644,10 +646,10 @@ describe.runIf(postgresAvailable)('what a driver keeps through a redirect', () =
           }),
         ),
       )
-      expect(answer.outcomes.slice(0, 30)).toEqual(Array.from({ length: 30 }, () => undefined))
-      expect(answer.outcomes[30]).toBe('TOO_MANY_ATTEMPTS')
+      expect(answer.outcomes.slice(0, limit)).toEqual(Array.from({ length: limit }, () => undefined))
+      expect(answer.outcomes[limit]).toBe('TOO_MANY_ATTEMPTS')
       // the one refused cost no row
-      expect(answer.rows).toBe(30)
+      expect(answer.rows).toBe(limit)
     } finally {
       await db.dispose()
     }

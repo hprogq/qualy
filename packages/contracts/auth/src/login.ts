@@ -645,18 +645,30 @@ export interface LoginSessionsShape {
     displayLabel?: string
   }) => Effect.Effect<{ readonly bindingId: string }, AuthBindingRejected>
   /**
-   * Whether one more sign-in attempt may be made from where this request
-   * came from, and - when the driver has one - at this identifier.
+   * Admits one sign-in attempt, and says whether it must first be challenged.
    *
    * Asked before anything expensive: before a password hash is checked,
-   * before an upstream is called. The identifier is weighed the same way
-   * whether or not anybody answers to it, so the refusal says nothing about
-   * which addresses exist.
+   * before an upstream is called, and before anything is looked up. The only
+   * refusal is the resource fuse on where the request came from; the
+   * identifier - when the driver has one - is weighed as risk alone, the same
+   * way whether or not anybody answers to it, and never refuses: a limit
+   * anybody could fill by typing somebody else's address would keep that
+   * person out.
    */
   readonly admitAttempt: (input: {
     provider: ResolvedProvider
     identifier?: string
-  }) => Effect.Effect<void, TooManyAttempts>
+  }) => Effect.Effect<{ readonly challengeRequired: boolean }, TooManyAttempts>
+  /**
+   * Forgets the risk weighed at an identifier, once the credential offered
+   * for it has been proven - before the account's own state is asked about,
+   * so an account that may not come in for another reason does not keep the
+   * person who knows its password challenged.
+   */
+  readonly clearIdentifierRisk: (input: {
+    provider: ResolvedProvider
+    identifier: string
+  }) => Effect.Effect<void>
   /**
    * A public provider code resolved against the anonymous tenant.
    *

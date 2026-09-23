@@ -229,11 +229,27 @@ default-src 'self'; script-src 'self' 'sha256-pKAg+of2SxxrkLJX27pRnCgcyN5Ud1dmuO
   path、status、继承 traceparent)。`?ticket=`、`?code=`、`?state=` 因此不进任何导出的 span——与访问日志「query 永不入日志」
   同一条规则,不需要按插件维护路径清单。OTLP 钉住测试断言导出的 span 里找不到这些值。
 - **限流是 PostgreSQL 里的固定窗口**(`auth_rate_limit_buckets(tenant_id, scope, key_hash)`,一条原子 upsert 计数,
-  窗口过期即从 1 重新计):本地登录按「入口 + 来源地址」30 次 / 5 分钟、按「入口 + 邮箱」10 次 / 15 分钟,
-  发起重定向按「入口 + 来源地址」30 次 / 5 分钟。**在 Argon2 之前计数**,邮箱存在与否走同一条路径、进同一个桶,
-  超限答复不泄露账号是否存在。超限是 429 `TOO_MANY_ATTEMPTS { retryAfterSeconds }` + `Retry-After` 响应头;
-  **只节流,不锁号**——一把谁都能替别人触发的锁就是把别人关在门外的办法。不引 Redis:进程内计数重启就清零、多进程各数各的。
-  旧桶在计数时顺带清扫(每进程每 100 次一扫,每次至多 500 行,闲置超过 24 小时的桶)。
+  窗口过期即从 1 重新计)。不引 Redis:进程内计数重启就清零、多进程各数各的。旧桶在计数时顺带清扫(每进程每 100 次一扫,
+  每次至多 500 行,闲置超过 24 小时的桶)。计数分两种语义,类型上分开(`HardLimitRule` / `RiskRule`):
+  hard 超限答 429 `TOO_MANY_ATTEMPTS { retryAfterSeconds }` + `Retry-After`,多桶同时超限答最长的等待;
+  risk 只回答「这一次是否要先过 CAPTCHA」,**永远不产生拒绝**。
+- **本地登录的风险模型(2026-09-24 起,docs/captcha.md §12–24)**,全部在任何账号查询与 Argon2 之前、admission 时原子计数:
+  - 「入口 + 来源地址」hard 300 次 / 5 分钟——资源熔断,不是安全参数;校园 NAT 下一个地址背后是成百上千人,IP 不等于一个人。
+  - 「入口 + 来源地址」risk:前 20 次不要求,之后要求 CAPTCHA。
+  - 「入口 + 邮箱」risk:前 5 次不要求,之后要求 CAPTCHA;**邮箱永远没有 hard limit**——匿名攻击者只能给某个账号增加
+    摩擦,不能让它凭正确密码登不进去。在 admission 时计数(不是等密码错了再记),所以边界上的并发 burst 只有前 5 个
+    免于 challenge;邮箱存在与否、有无密码都在同一时刻、同一个桶计数,不泄露账号是否存在。
+  - 密码正确 → **先**清掉该邮箱的 risk,**再** `completeLogin`;账号被停用等状态拒绝时 risk 也已清掉,那不是攻击。
+    通过 CAPTCHA 不清 risk,一次 proof 只保护一次密码尝试。
+  - 读不出来源地址:所有这类请求共用「入口」一个 hard 桶(3000 次 / 5 分钟,整个入口的最后 CPU 熔断,明显宽于单地址),
+    risk 从第一次起视为升高;每进程 warn 一次,此后计 metric `qualy.auth.sign_in.unknown_address`——生产里它不是涓流就说明
+    代理或转发链配置有问题。
+  - 发起重定向(CAS/OIDC/GitHub)按「入口 + 来源地址」hard 300 次 / 5 分钟,不需要 CAPTCHA:Qualy 不校验它们的凭据,这只是防无限写 flow 行。
+  - 以上阈值是起点,待 Argon2 benchmark、校园出口峰值估计与遥测后再冻结。
+  - **部署约束**:在出现可用 CAPTCHA provider 与能处理 428 的登录页之前,风险触发一律放行(bypass)——修掉了账号 DoS,
+    却暂时削弱了对分布式撞库的防护。因此这套模型不得单独发布到生产,须与 provider 与登录页一起上线。
+- **其余 hard 限额暂不变**:找回密码按来源地址 10 次 / 15 分钟、按邮箱 3 次 / 小时;本人发送验证 / 换邮箱邮件 5 次 / 小时;
+  本人改密码试当前密码 10 次 / 15 分钟。
 - **桶键是 keyed digest**:`Secrets.fingerprint(scope, value)` = HMAC-SHA256,密钥由主密钥经 HKDF 派生
   (info `qualy/secrets/fingerprint/v1`,加密密钥从不兼作 MAC 密钥),scope 参与计算做域分离。表里看不出试过哪些邮箱,
   没有主密钥也无法离线比对猜测。

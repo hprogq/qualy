@@ -29,6 +29,7 @@ import { AuthConfig, layer as signInLayer } from '../src/server/sign-in.ts'
 import { layer as sessionLayer } from '../src/server/session.ts'
 import { singleTenantLayer } from '../src/server/tenancy.ts'
 import { singleOriginLayer } from '../src/server/public-origin.ts'
+import { HARD_LIMITS } from '../src/server/limiter.ts'
 import { authClosure } from './support/closure.ts'
 import { authAuditLayer } from './support/audit.ts'
 import { unusedEmailFlows } from './support/email-flows.ts'
@@ -410,9 +411,14 @@ describe.runIf(postgresAvailable)('signing in through a CAS server', () => {
     expect(nowhere.status).toBe(303)
     expect(failureOf(nowhere)).toEqual({ path: '/login', code: 'AUTH_METHOD_UNAVAILABLE' })
 
-    for (let started = 0; started < 30; started += 1) {
-      expect((await visit(`${base}/auth/cas/campus/start`)).status).toBe(302)
-    }
+    expect((await visit(`${base}/auth/cas/campus/start`)).status).toBe(302)
+    // the rest of the fuse, spent the way the ones before would have spent it
+    await Effect.runPromise(
+      runSql(
+        sql`update auth_rate_limit_buckets set attempts = ${HARD_LIMITS.flowStartByAddress.limit}
+             where scope = ${HARD_LIMITS.flowStartByAddress.scope}`,
+      ).pipe(Effect.provide(probeInfra())),
+    )
     const slowed = await visit(`${base}/auth/cas/campus/start`)
     const location = new URL(slowed.headers.get('location')!, origin)
     expect(location.searchParams.get('error')).toBe('TOO_MANY_ATTEMPTS')

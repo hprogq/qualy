@@ -39,14 +39,35 @@ export interface RiskRule {
   readonly windowSeconds: number
 }
 
-/** the limits that refuse */
+/**
+ * The limits that refuse.
+ *
+ * The sign-in and redirect numbers are resource fuses, not security
+ * parameters: how much hashing, and how many flow rows, one network exit may
+ * ask for. They are starting points to be settled against an argon2 benchmark,
+ * an estimate of a campus exit's peak and what telemetry shows - never a
+ * constant anything else is derived from.
+ */
 export const HARD_LIMITS = {
-  /** attempts from one address at one entrance */
-  signInByAddress: { scope: 'sign-in:address', limit: 30, windowSeconds: 300 },
-  /** attempts at one identifier - an email - at one entrance, from anywhere */
-  signInByIdentifier: { scope: 'sign-in:identifier', limit: 10, windowSeconds: 900 },
-  /** redirects started from one address at one entrance */
-  flowStartByAddress: { scope: 'flow-start:address', limit: 30, windowSeconds: 300 },
+  /** password attempts from one address at one entrance: one exit's share of the hashing */
+  signInByAddressHard: { scope: 'sign-in:address-hard', limit: 300, windowSeconds: 300 },
+  /**
+   * Password attempts at one entrance from nowhere this deployment can name.
+   *
+   * Every request whose address could not be read shares this one bucket, so
+   * it is a fuse for the whole entrance: the last guard on the hashing when a
+   * proxy is misconfigured and every visitor arrives as nobody. It is sized
+   * for the instance, well above one address's share - argon2 already runs two
+   * at a time, so what this bounds is the queue - and it waits on the same
+   * benchmark.
+   */
+  signInUnknownAddressGlobalHard: {
+    scope: 'sign-in:unknown-address',
+    limit: 3000,
+    windowSeconds: 300,
+  },
+  /** redirects started from one address at one entrance: rows, far cheaper than hashing */
+  flowStartByAddress: { scope: 'flow-start:address', limit: 300, windowSeconds: 300 },
   /** forgotten-password requests from one address */
   resetByAddress: { scope: 'reset:address', limit: 10, windowSeconds: 900 },
   /** forgotten-password requests for one email, from anywhere */
@@ -58,7 +79,26 @@ export const HARD_LIMITS = {
 } as const satisfies Record<string, HardLimitRule>
 
 /** the rules that ask for a challenge */
-export const RISK_RULES = {} as const satisfies Record<string, RiskRule>
+export const RISK_RULES = {
+  /**
+   * Password attempts from one address at one entrance. Below the fuse, and
+   * what makes the fuse's width affordable: an exit trying many addresses in
+   * turn pays for each attempt past the twentieth, while the people behind a
+   * busy campus exit pay once, silently.
+   */
+  signInByAddressRisk: { scope: 'sign-in:address-risk', challengeAfter: 20, windowSeconds: 300 },
+  /**
+   * Password attempts at one identifier at one entrance, from anywhere.
+   *
+   * Counted when the attempt is admitted, before anything is looked up - not
+   * when a password turns out wrong - so a burst at the boundary cannot all
+   * slip in before the first of them has failed, and an address nobody has is
+   * counted exactly like one somebody has. A correct password clears it.
+   * Anybody can make somebody else's next sign-in ask for a challenge; nobody
+   * can make it refuse.
+   */
+  signInByIdentifierRisk: { scope: 'sign-in:identifier-risk', challengeAfter: 5, windowSeconds: 900 },
+} as const satisfies Record<string, RiskRule>
 
 /** buckets nobody has touched for this long are swept */
 const SWEEP_AFTER_HOURS = 24

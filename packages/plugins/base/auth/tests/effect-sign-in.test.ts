@@ -14,9 +14,15 @@ import {
   runSql,
 } from '@qualy/plugin-database/testkit'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
-import { requestContext } from '@qualy/api-kit/request'
+import { RequestContext, requestContext } from '@qualy/api-kit/request'
 import { Api } from '@qualy/api-kit/plugin'
-import { loginDriversLayer, registerLoginDriver } from '@qualy/auth-contract/login'
+import {
+  LoginSessions,
+  loginDriversLayer,
+  registerLoginDriver,
+  type LoginSessionsShape,
+  type ResolvedProvider,
+} from '@qualy/auth-contract/login'
 import { hashPassword } from '@qualy/plugin-auth-local/password'
 import { hashSessionToken } from '../src/session.ts'
 import { SEEDED_EMAILS, seedSignIn } from './support/sign-in-seed.ts'
@@ -56,6 +62,8 @@ let db: Awaited<ReturnType<typeof createTestContext>>
 
 let userId: string
 let providerId: string
+/** the sign-in service as the server was given it, for asking it directly */
+let signInService: Layer.Layer<LoginSessions, unknown>
 
 beforeAll(async () => {
   if (!postgresAvailable) return
@@ -88,6 +96,7 @@ beforeAll(async () => {
       ),
     ),
   )
+  signInService = signIn
   const handlers = Layer.mergeAll(sessionApiHandlers, authLocalApiHandlers).pipe(
     Layer.provide(sessionLayer.pipe(Layer.provide(Layer.mergeAll(infra, authConfig)))),
   )
@@ -498,76 +507,155 @@ describe.runIf(postgresAvailable)('the sign-in record', () => {
 })
 
 describe.runIf(postgresAvailable)('how many attempts a door takes', () => {
-  const buckets = () =>
+  const buckets = (scope: string) =>
     Effect.runPromise(
-      runSql<{ scope: string; key_hash: string; attempts: number }>(
-        sql`select scope, key_hash, attempts from auth_rate_limit_buckets order by scope`,
+      runSql<{ key_hash: string; attempts: number }>(
+        sql`select key_hash, attempts from auth_rate_limit_buckets where scope = ${scope}
+             order by attempts`,
       ).pipe(
         Effect.map((result) => result.rows),
         Effect.provide(probeInfra()),
       ),
     )
 
-  it('slows an address down past its limit, the same way whether anybody answers to it', async () => {
-    for (const email of [SEEDED_EMAILS.ada, 'nobody-at-all@school.edu']) {
-      for (let tried = 0; tried < 10; tried += 1) {
-        const refused = await login({ email, password: 'not the password' })
-        expect(refused.status, email).toBe(401)
-      }
-      // the eleventh is not weighed at all: the right password is not
-      // enough, and the answer does not say whether the address exists
-      const slowed = await login({ email, password })
-      expect(slowed.status, email).toBe(429)
-      const retryAfter = Number(slowed.headers.get('retry-after'))
-      expect(retryAfter, email).toBeGreaterThan(0)
-      expect(retryAfter, email).toBeLessThanOrEqual(900)
-      expect(await slowed.json()).toEqual({
-        _tag: 'TOO_MANY_ATTEMPTS',
-        retryAfterSeconds: retryAfter,
+  /**
+   * The door's own service, asked directly: from one address when one is
+   * given - standing in for the request the host would have read it from -
+   * and from no readable address otherwise.
+   */
+  const admission = <A, E>(
+    clientIp: string | undefined,
+    body: (
+      sessions: LoginSessionsShape,
+      provider: ResolvedProvider,
+    ) => Effect.Effect<A, E, never>,
+  ) => {
+    const program = Effect.gen(function* () {
+      const sessions = yield* LoginSessions
+      const provider = yield* sessions.resolveProvider({
+        providerCode: 'password',
+        expectedType: 'local',
       })
+      return yield* body(sessions, provider!)
+    })
+    const addressed =
+      clientIp === undefined
+        ? program
+        : program.pipe(
+            Effect.provideService(RequestContext, {
+              requestId: 'test',
+              clientIp,
+              userAgent: undefined,
+              traceId: undefined,
+              sessionId: undefined,
+              bindSession: () => Effect.void,
+              publicHost: undefined,
+              endpoint: undefined,
+              bindEndpoint: () => Effect.void,
+            }),
+          )
+    return Effect.runPromise(addressed.pipe(Effect.provide(signInService)))
+  }
+
+  it('never locks an address: thirty misses, and the right password still opens it', async () => {
+    for (let tried = 0; tried < 30; tried += 1) {
+      const refused = await login({ email: SEEDED_EMAILS.ada, password: 'not the password' })
+      expect(refused.status).toBe(401)
     }
+    const opened = await login({ email: SEEDED_EMAILS.ada, password })
+    expect(opened.status).toBe(200)
     // what was counted is a keyed digest, never the address typed
-    const rows = await buckets()
-    expect(rows.length).toBeGreaterThan(0)
-    for (const row of rows) {
+    for (const row of await buckets('sign-in:identifier-risk')) {
       expect(row.key_hash).toMatch(/^[0-9a-f]{64}$/)
       expect(row.key_hash).not.toContain('school')
     }
   })
 
-  it('starts counting again once the window has passed, and never locks anybody out', async () => {
-    for (let tried = 0; tried < 11; tried += 1) {
-      await login({ email: SEEDED_EMAILS.ada, password: 'not the password' })
+  it('counts an address nobody has, or one without a password, exactly like one somebody has', async () => {
+    // weighed when the attempt is admitted, before anything is looked up, so
+    // what is behind the address cannot change how it is counted
+    for (const email of [SEEDED_EMAILS.ada, SEEDED_EMAILS.lin, 'nobody-at-all@school.edu']) {
+      for (let tried = 0; tried < 3; tried += 1) {
+        await login({ email, password: 'not the password' })
+      }
     }
-    expect((await login({ email: SEEDED_EMAILS.ada, password })).status).toBe(429)
+    expect((await buckets('sign-in:identifier-risk')).map((row) => row.attempts)).toEqual([3, 3, 3])
+  })
+
+  it('refuses one address past its fuse, with a wait', async () => {
+    await login({ email: SEEDED_EMAILS.ada, password: 'not the password' })
     await Effect.runPromise(
       runSql(
-        sql`update auth_rate_limit_buckets set window_started_at = now() - interval '1 hour'`,
+        sql`update auth_rate_limit_buckets set attempts = 300 where scope = 'sign-in:address-hard'`,
       ).pipe(Effect.provide(probeInfra())),
     )
-    const back = await login({ email: SEEDED_EMAILS.ada, password })
-    expect(back.status).toBe(200)
+    const slowed = await login({ email: SEEDED_EMAILS.ada, password })
+    expect(slowed.status).toBe(429)
+    const retryAfter = Number(slowed.headers.get('retry-after'))
+    expect(retryAfter).toBeGreaterThan(0)
+    expect(retryAfter).toBeLessThanOrEqual(300)
+    expect(await slowed.json()).toEqual({ _tag: 'TOO_MANY_ATTEMPTS', retryAfterSeconds: retryAfter })
   })
 
-  it('names the longest wait when more than one limit is full', async () => {
-    // the address's limit fills after the identifier's, and has the
-    // shorter window: the answer is still the wait until both let go
-    const waits: number[] = []
-    for (let tried = 0; tried < 32; tried += 1) {
-      const response = await login({ email: SEEDED_EMAILS.ada, password: 'not the password' })
-      if (response.status === 429) waits.push(Number(response.headers.get('retry-after')))
+  it('forgets an address once its password is proven, even for an account that may not come in', async () => {
+    for (let tried = 0; tried < 3; tried += 1) {
+      await login({ email: SEEDED_EMAILS.ada, password: 'not the password' })
     }
-    expect(waits).toHaveLength(22)
-    expect(Math.min(...waits)).toBeGreaterThan(300)
+    expect(await buckets('sign-in:identifier-risk')).toHaveLength(1)
+    await Effect.runPromise(
+      runSql(sql`update users set enabled = false where id = ${userId}`).pipe(
+        Effect.provide(probeInfra()),
+      ),
+    )
+    try {
+      // the right password for a disabled account: refused, and still not an attack
+      const refused = await login({ email: SEEDED_EMAILS.ada, password })
+      expect(refused.status).toBe(401)
+      expect(await buckets('sign-in:identifier-risk')).toEqual([])
+    } finally {
+      await Effect.runPromise(
+        runSql(sql`update users set enabled = true where id = ${userId}`).pipe(
+          Effect.provide(probeInfra()),
+        ),
+      )
+    }
   })
 
-  it('slows one address trying many accounts', async () => {
-    const answers: number[] = []
-    for (let tried = 0; tried < 31; tried += 1) {
-      const response = await login({ email: `guess-${tried}@school.edu`, password })
-      answers.push(response.status)
-    }
-    expect(answers.slice(0, 30).every((status) => status === 401)).toBe(true)
-    expect(answers[30]).toBe(429)
+  it('admits exactly the first five of a burst at one address, and challenges the rest', async () => {
+    // all of them arrive before any has been looked up: counted as they are
+    // admitted, so none can read "not yet" after the fifth
+    const answers = await admission('203.0.113.8', (sessions, provider) =>
+      Effect.forEach(
+        Array.from({ length: 30 }, (_, index) => index),
+        () => sessions.admitAttempt({ provider, identifier: 'burst@school.edu' }),
+        { concurrency: 'unbounded' },
+      ),
+    )
+    expect(answers.filter((answer) => !answer.challengeRequired)).toHaveLength(5)
+    expect(answers.filter((answer) => answer.challengeRequired)).toHaveLength(25)
+  })
+
+  it('challenges one address past its twentieth attempt, whoever it is trying', async () => {
+    // a campus exit: many people, one address, each at their own account
+    const answers = await admission('203.0.113.9', (sessions, provider) =>
+      Effect.forEach(
+        Array.from({ length: 22 }, (_, index) => index),
+        (index) => sessions.admitAttempt({ provider, identifier: `student-${index}@school.edu` }),
+      ),
+    )
+    expect(answers.map((answer) => answer.challengeRequired)).toEqual([
+      ...Array.from({ length: 20 }, () => false),
+      true,
+      true,
+    ])
+  })
+
+  it('treats an attempt from no readable address as raised risk, under a fuse of its own', async () => {
+    const answer = await admission(undefined, (sessions, provider) =>
+      sessions.admitAttempt({ provider, identifier: 'someone@school.edu' }),
+    )
+    expect(answer).toEqual({ challengeRequired: true })
+    expect(await buckets('sign-in:unknown-address')).toHaveLength(1)
+    expect(await buckets('sign-in:address-hard')).toEqual([])
   })
 })
