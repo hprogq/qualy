@@ -15,6 +15,7 @@
 ## 提交规范
 
 Conventional Commits,永远用英文编写,scope 用对外的模块名(如 web/server/db/repo),例:`feat(web): manifest-driven routing`。
+**scope 只能是一个**主要的对外模块名，不得用逗号枚举多个模块（`feat(auth,auth-local)` 这类一律禁止）：跨模块但属于同一能力的改动选主要模块；无法合理归属时省略 scope；包含多个彼此独立的改动时拆分提交。
 禁止在 message 中出现内部阶段或里程碑编号(p0、s1、M4 等);不要添加 Co-Authored-By 等署名信息。
 
 ## 目录布局(2026-08-07 物理重组后)
