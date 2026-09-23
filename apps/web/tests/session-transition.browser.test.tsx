@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { useEffect } from 'react'
+import { Navigate } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { Effect } from 'effect'
-import { useSessionTransition } from '@qualy/web-runtime'
+import { useManifest, useSessionTransition } from '@qualy/web-runtime'
 import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 
 // A change of identity drops what the last one could read, and does not ask
@@ -69,4 +70,54 @@ describe('a change of identity', () => {
     await new Promise((settle) => setTimeout(settle, 600))
     expect({ asked, mounts }).toEqual({ asked: 1, mounts: mounted })
   })
+
+  it('signs in to the home the new identity sees, not the one it had', async () => {
+    let signedIn = false
+    const Door = () => {
+      const transition = useSessionTransition()
+      return (
+        <button
+          type="button"
+          onClick={() => {
+            // the session exists from here on, as after a sign-in answered
+            signedIn = true
+            void transition({ destination: { kind: 'home' } })
+          }}
+        >
+          in
+        </button>
+      )
+    }
+    // the origin goes to the home page the manifest names, as the route
+    // builder does: before signing in, that is the sign-in page
+    const Origin = () => {
+      const manifest = useManifest()
+      const home = manifest.pages.some((entry) => entry.id === 'app/home') ? '/home' : '/login'
+      return <Navigate to={home} replace />
+    }
+    renderScreen({
+      client: fakeClient({
+        app: {
+          // the new identity's manifest takes a moment, as over a network
+          getManifest: () =>
+            Effect.sync(() => ({
+              ...emptyManifest(),
+              pages: [
+                { id: 'auth/login', path: '/login', layout: 'blank' },
+                ...(signedIn ? [{ id: 'app/home', path: '/home', layout: 'blank' }] : []),
+              ],
+            })).pipe(Effect.delay(signedIn ? '200 millis' : '0 millis')),
+        },
+      }),
+      routes: [
+        { path: '/', element: <Origin /> },
+        { path: '/login', element: <Door /> },
+        { path: '/home', element: <main data-testid="home" /> },
+      ],
+      route: '/login',
+    })
+    await page.getByRole('button', { name: 'in' }).click()
+    await expect.element(page.getByTestId('home')).toBeInTheDocument()
+  })
 })
+

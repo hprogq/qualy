@@ -316,9 +316,36 @@ export function useSessionTransition() {
   const runtime = useRuntime()
   return useCallback(
     async (options: { destination: SessionDestination; replace?: boolean }) => {
-      void navigate(sessionDestinationHref(options.destination, manifest.pages), {
-        replace: options.replace ?? true,
-      })
+      const manifestKey = (runtime.utilsFor(appApi) as QueryUtils<ClientOf<typeof appApi>>).app
+        .getManifest.queryOptions().queryKey
+      const go = (pages: typeof manifest.pages) =>
+        void navigate(sessionDestinationHref(options.destination, pages), {
+          replace: options.replace ?? true,
+        })
+      // Where the change of identity leads decides the order.
+      //
+      // Leaving - signing out, to a page this manifest already has - the
+      // page goes at once, before anything is dropped: the manifest about to
+      // arrive no longer has the page being left.
+      //
+      // Arriving - signing in, to a home that only the new identity can see
+      // - the page stays until the new manifest is in. Routed under the one
+      // it had, home is the sign-in page, and the reader was sent straight
+      // back to it.
+      const destination = options.destination
+      const known =
+        destination.kind === 'page' && manifest.pages.some((page) => page.id === destination.page)
+      if (!known) {
+        await queryClient.cancelQueries()
+        // what nobody watches is dropped; what the page in hand watches is
+        // asked again with the new session, the manifest among it
+        queryClient.removeQueries({ type: 'inactive' })
+        await queryClient.refetchQueries({ type: 'active' })
+        const next = queryClient.getQueryData<Manifest>(manifestKey)
+        go(next?.pages ?? manifest.pages)
+        return
+      }
+      go(manifest.pages)
       // Every answer is dropped, and nothing is asked again on the spot.
       //
       // A reset that refetched what was being watched asked again for the
@@ -334,8 +361,6 @@ export function useSessionTransition() {
       // manifest gone pending takes the routes down with it, so the page being
       // left would mount again and ask again. It keeps its answer until the
       // new one arrives, asked for now.
-      const manifestKey = (runtime.utilsFor(appApi) as QueryUtils<ClientOf<typeof appApi>>).app
-        .getManifest.queryOptions().queryKey
       const manifestHash = queryClient.getQueryCache().find({ queryKey: manifestKey, exact: true })
         ?.queryHash
       await queryClient.cancelQueries()
