@@ -483,7 +483,7 @@ export default {
   'auth/error/flow-rejected': '本次登录已过期或已完成，请重新登录',
   'auth/error/person-not-found': '身份已确认，但系统中没有对应账号，请联系管理员',
   'auth/error/external-account-unbound':
-    '该账号尚未绑定，请先使用其他方式登录，再前往「我的 → 登录方式」完成绑定',
+    '该账号尚未绑定，请先使用其他方式登录，再前往「我的 - 登录方式」完成绑定',
   'auth/error/binding-subject-taken': '该账号已绑定至其他用户',
   'auth/error/binding-already-bound': '你已绑定该登录方式的账号，请先解除绑定后再更换',
   'auth/permission/user-type-read': '查看用户类型',
