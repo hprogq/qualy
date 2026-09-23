@@ -6,6 +6,7 @@ export {
   registerCaptchaProvider,
   type BrowserCaptchaProvider,
   type CaptchaClientState,
+  type CaptchaRecovery,
 } from './registry.ts'
 export {
   useCaptchaGate,

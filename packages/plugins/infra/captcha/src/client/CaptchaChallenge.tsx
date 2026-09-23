@@ -108,6 +108,7 @@ export function CaptchaChallenge({ gate }: { gate: CaptchaGate }) {
       data-testid="captcha-challenge"
       data-state={gate.state}
       data-placement={gate.placement}
+      data-recovery={gate.recovery}
       {...stylex.props(styles.host)}
     >
       {/* the caller's button shows the work; this says it to a screen reader */}
@@ -140,7 +141,7 @@ export function CaptchaChallenge({ gate }: { gate: CaptchaGate }) {
       {gate.state === 'failed' && (
         <p role="alert" {...stylex.props(styles.failed)}>
           {format(m.failed)}
-          <button type="button" {...stylex.props(styles.retry)} onClick={gate.retry}>
+          <button type="button" {...stylex.props(styles.retry)} onClick={gate.recover}>
             {format(m.retry)}
           </button>
         </p>

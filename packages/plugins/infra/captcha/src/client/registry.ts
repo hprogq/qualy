@@ -19,7 +19,18 @@ export type CaptchaClientState =
   | { readonly kind: 'interaction-required' }
   /** done: the provider's opaque payload, handed over untouched */
   | { readonly kind: 'solved'; readonly response: string }
-  | { readonly kind: 'failed' }
+  /**
+   * Could not finish, and what starting over takes.
+   *
+   * `restart`: the challenge the server issued is still good, and the
+   * provider can simply be brought up on it again. `refresh`: it is not -
+   * it expired, or carried a signature that is now worthless - and only a
+   * new request from the caller, without a proof, can bring a new one.
+   */
+  | { readonly kind: 'failed'; readonly recovery: CaptchaRecovery }
+
+/** what it takes to try again after a challenge failed */
+export type CaptchaRecovery = 'restart' | 'refresh'
 
 export interface BrowserCaptchaProvider {
   readonly code: string
