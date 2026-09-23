@@ -11,13 +11,13 @@ import { describe, expect, it } from 'vitest'
 // takes no scope; several unrelated changes are several commits. See the
 // commit rules in CLAUDE.md.
 //
-// Checked from `SINCE` onward: the commits before it were written before the
-// rule was, and a history is not rewritten to satisfy a test.
+// Checked from `SINCE` onward: the listed scopes after it were rewritten to
+// one when the rule came in; the history before it is left as it was.
 
 const root = fileURLToPath(new URL('../..', import.meta.url))
 
-/** the last commit written before the rule; everything after it is held to it */
-const SINCE = '233399d3ca20c520662d474dc467d7c5372e8777'
+/** the last commit before the rewritten ones; everything after it is held to it */
+const SINCE = '901d6a6624d20a2f0b132f2e9d5eb2639e75d084'
 
 /** a type, then a scope that names more than one thing */
 const LISTED_SCOPE = /^[a-z]+\([^)]*,[^)]*\)!?:/
