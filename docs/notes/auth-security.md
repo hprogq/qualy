@@ -392,3 +392,13 @@ smtp 后端对着 Mailpit 跑同一套,CI 设 `QUALY_REQUIRE_MAILPIT_TESTS=1`,�
   系统账户的邮箱只由 seed 设定，API 修改一律 `SYSTEM_ACCOUNT_PROTECTED`。
 - 界面不再显示「账号数」：有的登录方式根本不保存绑定（按学工号对应），绑定数推不出「能不能登录」。详情改显示
   「最近登录」（取 `sign_in_events` 最近一次成功，任何登录方式都会写）。
+
+## 本人的会话、登录记录与账号变更（2026-09-23 定案）
+
+「我的」下分两类页面：**账号安全**只放当前状态和能做的操作（密码、邮箱、当前登录的会话、退出其他会话）；**安全活动**只放历史，用两个 Tab 区分「登录记录」和「账号变更」。选 Tab 而不上下堆叠，是因为两部分各有筛选、日期范围和页码，堆叠会出现两套分页器。
+
+- **会话**：`GET /iam/self/sessions`（keyset，本人未过期会话）、`DELETE /iam/self/sessions/{sessionId}`（只能退出本人的其他会话；当前会话走 `DELETE /auth/session`，这里一律按 `AUTH_SESSION_NOT_FOUND` 处理）、`DELETE /iam/self/sessions`（退出除当前会话外的全部）。所有删除都同时限定 tenant、user、id。主动退出其他会话记审计 `auth.session.revoke`（`scope: one | others`）；退出当前会话属于日常操作，不记审计。界面上叫「会话」而不是「设备」：没有设备指纹，同一浏览器可能有两个会话。
+- **登录记录**：`GET /iam/self/sign-ins` 读 `sign_in_events`，支持按结果（成功/失败）和日期范围筛选。失败记录只包含已经确定是本人的那些，因为表里本来就不存输入的 identifier。
+- **账号变更**：审计仍然只归管理员。`AuditAction` 新增可选的 `subject`，是写给被操作的那个人看的措辞；只允许用在目标为人（`PERSON_TARGET = 'auth.user'`）的动作上，`compileActionCatalog` 会拒绝不符合的声明。`Audit` 服务契约新增只读方法 `subjectEvents`，只返回目标是本人、结果为成功、且声明了 subject 的事件，字段只有时间、措辞以及「本人 / 他人」，不带 details、姓名或 IP。auth 通过这个服务表面提供 `GET /iam/self/account-changes`，不直接读审计表。
+- **分页**：登录记录和账号变更按用户要求使用页码分页（`numberedPageQuery` / `numberedPageOf` + `pageWindow`），并支持日期范围。这偏离了 CLAUDE.md「向前读的流用 keyset」的默认约定，代价是每页多一次 count 和一次 offset；两个列表都按单个用户过滤，规模有限。排序键是 (时间, id)，是全序。
+- **最近登录**：两张入口表的「最近登录」按入口从 `sign_in_events` 取最近一次成功登录，不再读绑定的 `lastUsedAt`。这是因为按字段找人的入口（CAS）没有绑定行。

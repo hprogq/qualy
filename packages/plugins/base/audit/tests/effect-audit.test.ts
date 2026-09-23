@@ -32,6 +32,7 @@ const UserDisabled = AuditAction.define({
   target: 'auth.user',
   version: 1,
   name: literal('Disable user'),
+  subject: literal('Your account was disabled'),
   details: Schema.Struct({
     from: Schema.Literal('active'),
     to: Schema.Literal('disabled'),
@@ -430,5 +431,93 @@ describe('the action catalog', () => {
         },
       ]),
     ).toThrow(/version/)
+  })
+})
+
+describe('an action that speaks to its subject', () => {
+  it('is only one done to a person', () => {
+    const speaking = AuditAction.define({
+      code: 'audit.test.speaking',
+      target: 'org.node',
+      version: 1,
+      name: literal('Speaking'),
+      subject: literal('Something happened to you'),
+      details: Schema.Struct({}),
+    })
+    expect(() => compileActionCatalog([{ owner: 'audit', actions: [speaking] }])).toThrow(
+      /does not act on a person/,
+    )
+  })
+})
+
+describe.runIf(postgresAvailable)('a person\u2019s own account changes', () => {
+  it('holds what was done to them, that went through, in their own words, a page at a time', async () => {
+    const db = await createTestContext('audit-own')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const tenant = yield* seedTenant()
+          const audit = yield* Audit
+          const me = '11111111-1111-4111-8111-111111111111'
+          const other = '22222222-2222-4222-8222-222222222222'
+          const done = (target: string, actor: string, outcome: 'success' | 'denied') =>
+            audit.record(UserDisabled, {
+              tenantId: tenant,
+              actor: { kind: 'user', userId: actor },
+              target: { id: target },
+              outcome,
+              details: { from: 'active', to: 'disabled' },
+            })
+          yield* done(me, other, 'success')
+          yield* done(me, me, 'success')
+          yield* done(me, other, 'denied')
+          yield* done(other, other, 'success')
+          // an action with no words for its subject never reaches them
+          yield* audit.record(FreeForm, {
+            tenantId: tenant,
+            actor: { kind: 'system' },
+            details: {},
+          })
+          const all = yield* audit.subjectEvents({
+            tenantId: tenant,
+            userId: me,
+            page: 1,
+            pageSize: 10,
+          })
+          const second = yield* audit.subjectEvents({
+            tenantId: tenant,
+            userId: me,
+            page: 2,
+            pageSize: 1,
+          })
+          const past = yield* audit.subjectEvents({
+            tenantId: tenant,
+            userId: me,
+            page: 9,
+            pageSize: 1,
+          })
+          const later = yield* audit.subjectEvents({
+            tenantId: tenant,
+            userId: me,
+            from: '2999-01-01T00:00:00Z',
+            page: 1,
+            pageSize: 10,
+          })
+          return { all, second, past, later }
+        }),
+      )
+      const { all, second, past, later } = ok(exit)
+      expect(all.total).toBe(2)
+      expect(all.items.map((item) => item.actor).sort()).toEqual(['other', 'self'])
+      expect(all.items[0]!.name).toEqual(literal('Your account was disabled'))
+      expect(second).toMatchObject({ total: 2, page: 2 })
+      expect(second.items).toHaveLength(1)
+      // a page past the end is the last one, not an empty screen
+      expect(past.page).toBe(2)
+      expect(later).toMatchObject({ total: 0, items: [] })
+    } finally {
+      await db.dispose()
+    }
   })
 })

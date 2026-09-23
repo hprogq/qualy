@@ -22,6 +22,7 @@ const provider = (over: Partial<ProviderDto> = {}): ProviderDto => ({
   id: PASSWORD_ID,
   code: 'password',
   type: 'password',
+  kindLabel: { kind: 'literal', value: '邮箱密码' },
   name: '账号密码',
   status: 'active',
   setup: 'complete',
@@ -509,7 +510,30 @@ describe('a way in, from added to gone', () => {
     expect(remove).toHaveBeenCalledWith({ params: { providerId: CAS_ID }, query: { version: '4' } })
   })
 
-  it('never offers to delete the door the platform provides', async () => {
+  it('keeps a long callback address inside the sheet, and copies it whole', async () => {
+    const address =
+      'https://qualy.school.edu.cn/api/auth/cas/campus-unified-identity-authentication/callback'
+    const write = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined)
+    renderScreen({
+      client: fakeClient(
+        stubs({
+          listAuthProviders: () => Effect.succeed({ providers: [cas()] }),
+          getAuthProvider: () => Effect.succeed(detail(cas(), { callbackUrl: address })),
+        }),
+      ),
+      route: `/admin/login-methods?provider=${CAS_ID}`,
+      children: <LoginMethodsPage />,
+    })
+    const shown = page.getByTestId('method-callback')
+    await expect.element(shown).toHaveTextContent(address)
+    const sheet = page.getByTestId('method-sheet').element().getBoundingClientRect()
+    expect(shown.element().getBoundingClientRect().right).toBeLessThanOrEqual(sheet.right)
+    await page.getByTestId('copy-value').click()
+    await vi.waitFor(() => expect(write).toHaveBeenCalledWith(address))
+    write.mockRestore()
+  })
+
+  it('shows the platform\u2019s own door as not to be deleted, and says why', async () => {
     renderScreen({
       client: fakeClient(
         stubs({
@@ -521,6 +545,13 @@ describe('a way in, from added to gone', () => {
       children: <LoginMethodsPage />,
     })
     await expect.element(page.getByRole('heading', { name: '账号密码' })).toBeInTheDocument()
-    expect(document.querySelector('[data-testid="method-delete"]')).toBeNull()
+    // there, and not to be pressed, with the reason on hover
+    await expect.element(page.getByTestId('method-delete')).toBeDisabled()
+    await page.getByTestId('method-delete-refused').hover()
+    await expect.element(page.getByRole('tooltip')).toBeVisible()
+    // the kind in words, not its code
+    await expect
+      .element(page.getByTestId('method-sheet').getByText('邮箱密码').first())
+      .toBeVisible()
   })
 })

@@ -84,6 +84,14 @@ export const doorsOf = (tenantId: string, userId: string, userTypeId: string | n
         'b.boundAt',
         'b.lastUsedAt',
         eb('b.credentialHash', 'is not', null).as('hasCredential'),
+        eb
+          .selectFrom('SignInEvent as e')
+          .select((e) => e.fn.max('e.occurredAt').as('at'))
+          .whereRef('e.tenantId', '=', 'p.tenantId')
+          .whereRef('e.providerId', '=', 'p.id')
+          .where('e.userId', '=', userId)
+          .where('e.outcome', '=', 'success')
+          .as('lastSignInAt'),
       ])
       .where('p.tenantId', '=', tenantId)
       .where('p.enabled', '=', true)
@@ -208,6 +216,7 @@ export const make = Effect.fn('Iam.self.make')(function* () {
             type: door.type,
             resolution: driver.resolution,
             binding: driver.binding ?? null,
+            lastSignInAt: door.lastSignInAt,
             bound:
               door.bindingId === null
                 ? null

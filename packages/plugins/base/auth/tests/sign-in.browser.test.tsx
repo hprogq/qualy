@@ -1,7 +1,8 @@
 import LoginPage from '../src/client/LoginPage.tsx'
 import { lazy } from 'react'
 import { describe, expect, it } from 'vitest'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
+import { Effect } from 'effect'
 import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The sign-in screen finds a driver's renderer by the driver's TYPE.
@@ -41,6 +42,33 @@ describe('the sign-in screen', () => {
     await expect.element(page.getByLabelText('密码')).toBeVisible()
     // exact, because the way back out of the driver is "← 其他登录方式"
     await expect.element(page.getByRole('button', { name: '登录', exact: true })).toBeVisible()
+  })
+
+  it('goes from the address to the password on Tab, and only then to a forgotten password', async () => {
+    renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.succeed({
+              ...emptyManifest(),
+              pages: [{ id: 'auth/reset-password', path: '/reset-password', layout: 'blank' }],
+            }),
+        },
+        auth: { listLoginMethods: { methods: [password] } },
+      }),
+      registry: {
+        login: { local: lazy(() => import('@qualy/plugin-auth-local/client/LoginMethod')) },
+      },
+      route: '/login?method=password',
+      children: <LoginPage />,
+    })
+    const forgot = page.getByRole('link', { name: '忘记密码？' })
+    await expect.element(forgot).toBeVisible()
+    await page.getByLabelText('邮箱').click()
+    await userEvent.tab()
+    await expect.element(page.getByLabelText('密码')).toHaveFocus()
+    await userEvent.tab()
+    await expect.element(forgot).toHaveFocus()
   })
 
   it('catches a renderer that throws instead of taking the screen down', async () => {

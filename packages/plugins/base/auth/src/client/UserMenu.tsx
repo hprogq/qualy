@@ -119,8 +119,11 @@ const styles = stylex.create({
       [breakpoints.tablet]: 'none',
     },
   },
+  // The widget sizes a dropdown to its content inline, so the width alone
+  // lost to a long unit name; the cap is what holds the menu to its size.
   menu: {
     width: '16rem',
+    maxWidth: '16rem',
   },
   identityRow: {
     display: 'flex',
@@ -190,6 +193,7 @@ const styles = stylex.create({
     fontWeight: 400,
   },
   stepName: {
+    minWidth: 0,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
@@ -296,7 +300,9 @@ export default function UserMenu() {
                 <Badge variant="outline" className={stylex.props(styles.kindChip).className}>
                   {step.typeName}
                 </Badge>
-                <span {...stylex.props(styles.stepName)}>{step.name}</span>
+                <span {...stylex.props(styles.stepName)} title={step.name}>
+                  {step.name}
+                </span>
               </span>
             ))}
           </DropdownMenuLabel>

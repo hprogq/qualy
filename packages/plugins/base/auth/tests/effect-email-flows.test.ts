@@ -1,3 +1,4 @@
+import { literal } from '@qualy/i18n-contract'
 import { booted } from '@qualy/rbac-contract/testkit'
 import { compileCatalog } from '@qualy/rbac-contract/plugin'
 import { permissions as authPermissions } from '@qualy/plugin-auth/permissions'
@@ -36,7 +37,7 @@ import { authClosure } from './support/closure.ts'
 const passwordDoor = registerLoginDriver({
   type: 'local',
   presentation: { mode: 'redirect', href: () => '/nowhere' },
-  provisioning: { mode: 'system-singleton', code: 'local' },
+  provisioning: { mode: 'system-singleton', code: 'local', label: literal('Password') },
   resolution: { mode: 'user-field', field: 'email' },
   binding: {
     mode: 'managed',

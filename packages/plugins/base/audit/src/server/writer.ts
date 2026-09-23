@@ -10,6 +10,7 @@ import {
   type RegisteredAuditAction,
 } from '@qualy/audit-contract/effect'
 import { db } from './db.ts'
+import { subjectEvents } from './subject.ts'
 
 // The writer: one INSERT, on whatever connection the caller's transaction is
 // running on. Everything here fails as a defect, never as an error a caller
@@ -138,11 +139,21 @@ export const make = Effect.fn('Audit.make')(function* () {
       .pipe(Effect.orDie)
   })
 
+  // the words each action gives the person it happened to, where it gives any
+  const voices = new Map(
+    catalog.flatMap((entry) =>
+      entry.action.subject === undefined
+        ? []
+        : [[entry.action.code, entry.action.subject] as const],
+    ),
+  )
+
   return Audit.of({
     record: <Details extends AuditDetailsSchema>(
       action: AuditAction<Details>,
       input: AuditRecordInput<Details['Type']>,
     ) => withDb(write(action as AuditAction, input as AuditRecordInput<unknown>)),
+    subjectEvents: (query) => withDb(subjectEvents(query, voices)).pipe(Effect.orDie),
   })
 })
 

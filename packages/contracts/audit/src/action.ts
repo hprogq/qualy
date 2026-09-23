@@ -37,6 +37,14 @@ export interface AuditAction<Details extends AuditDetailsSchema = AuditDetailsSc
   /** what a reader of the audit screen sees; the language is chosen there */
   readonly name: UiText
   /**
+   * What the person it happened to reads about it, in their own account's
+   * activity, where the audit screen's name - an administrator's words for
+   * an operation - would be the wrong voice. Only for an action on a person
+   * (`target: PERSON_TARGET`); an action without one never reaches that
+   * person's activity, which is how the trail stays the administrators'.
+   */
+  readonly subject?: UiText
+  /**
    * What may be recorded about this operation - and therefore what may not:
    * a credential has no field to arrive in. Encoded on write, so a value
    * that does not conform is refused before it reaches a row.
@@ -50,6 +58,10 @@ export const AuditAction = {
     readonly target?: string
     readonly version: number
     readonly name: UiText
+    readonly subject?: UiText
     readonly details: Details
   }): AuditAction<Details> => ({ _tag: 'AuditAction', ...options }),
 }
+
+/** the target kind of an action on a person: the only kind a subject voice is for */
+export const PERSON_TARGET = 'auth.user'

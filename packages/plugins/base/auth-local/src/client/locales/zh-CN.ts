@@ -2,6 +2,7 @@ import type { MessageCatalog } from '@qualy/i18n-contract'
 
 export default {
   'auth-local/binding/password': '密码',
+  'auth-local/entrance/kind': '邮箱密码',
   'auth-local/field/email': '邮箱',
   'auth-local/field/password': '密码',
   'auth-local/action/submit': '登录',

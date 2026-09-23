@@ -6,7 +6,7 @@ import { commonMessages } from '@qualy/web-i18n/messages'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
 import { AsyncSection } from '@qualy/ui/admin'
-import { Card, DefLine, DefList, EditorSkeleton, SectionHead } from '@qualy/ui/screen'
+import { Card, DefLine, DefList, DefListSkeleton, SectionHead } from '@qualy/ui/screen'
 import { iamMessages as m } from '../i18n.ts'
 import { authApi } from '../api.ts'
 import { EmailWithStanding } from '../iam/person-facts.tsx'
@@ -35,7 +35,11 @@ export default function AccountProfilePage() {
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void self.refetch()}
-        skeleton={<EditorSkeleton />}
+        skeleton={
+          <Card>
+            <DefListSkeleton rows={5} />
+          </Card>
+        }
       >
         {me && (
           <Card data-testid="account-profile">

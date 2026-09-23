@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { ChevronDownIcon } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
@@ -25,14 +26,41 @@ const styles = stylex.create({
   secret: { display: 'flex', alignItems: 'center', gap: 8 },
   grow: { flexGrow: 1, minWidth: 0 },
   fold: { display: 'flex', flexDirection: 'column', gap: 14 },
+  // A plain line of words at the fields' own edge: a ghost button stood a
+  // button's padding in from every field above and below it.
   foldKey: {
     alignSelf: 'flex-start',
     display: 'inline-flex',
     alignItems: 'center',
     gap: 4,
-    color: tokens.mutedForeground,
+    padding: 0,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+    fontFamily: 'inherit',
+    fontSize: 13,
+    fontWeight: 500,
+    color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
+    cursor: 'pointer',
   },
-  foldGlyph: { width: 14, height: 14 },
+  foldGlyph: {
+    width: 14,
+    height: 14,
+    transitionProperty: 'transform',
+    transitionDuration: '150ms',
+  },
+  foldGlyphOpen: { transform: 'rotate(180deg)' },
+  // a yes or no is said on one line: the box, then what it means
+  toggle: { display: 'flex', flexDirection: 'column', gap: 4 },
+  toggleLine: {
+    display: 'inline-flex',
+    alignSelf: 'flex-start',
+    alignItems: 'center',
+    gap: 8,
+    fontSize: 14,
+    fontWeight: 500,
+    cursor: 'pointer',
+  },
+  toggleHint: { margin: 0, paddingInlineStart: 26, fontSize: 12.5, color: tokens.mutedForeground },
 })
 
 export function MethodFields({
@@ -60,6 +88,7 @@ export function MethodFields({
   disabled?: boolean
 }) {
   const { format, formatText } = useI18n()
+  const [folded, setFolded] = useState(false)
 
   const values = formValues(kind, config, draft)
   const shown = (field: EntranceField) => fieldShown(field, values)
@@ -73,6 +102,24 @@ export function MethodFields({
         : field.hint === null
           ? undefined
           : formatText(field.hint)
+    if (field.kind === 'toggle') {
+      const id = `entrance-${field.key}`
+      return (
+        <div key={field.key} {...stylex.props(styles.toggle)}>
+          <label htmlFor={id} {...stylex.props(styles.toggleLine)}>
+            <Checkbox
+              id={id}
+              data-field-key={field.key}
+              disabled={disabled}
+              checked={values[field.key] === 'true'}
+              onCheckedChange={(next) => set(field.key, String(next))}
+            />
+            {formatText(field.label)}
+          </label>
+          {hint !== undefined && <p {...stylex.props(styles.toggleHint)}>{hint}</p>}
+        </div>
+      )
+    }
     return (
       <Field
         key={field.key}
@@ -100,17 +147,6 @@ export function MethodFields({
                   ))}
                 </SelectContent>
               </Select>
-            )
-          }
-          if (field.kind === 'toggle') {
-            return (
-              <Checkbox
-                id={id}
-                data-field-key={field.key}
-                disabled={disabled}
-                checked={values[field.key] === 'true'}
-                onCheckedChange={(next) => set(field.key, String(next))}
-              />
             )
           }
           const input = (
@@ -172,13 +208,16 @@ export function MethodFields({
     <>
       {basic.map(box)}
       {advanced.length > 0 && (
-        <Collapsible data-testid="method-advanced">
+        <Collapsible data-testid="method-advanced" open={folded} onOpenChange={setFolded}>
           <div {...stylex.props(styles.fold)}>
             <CollapsibleTrigger asChild>
-              <Button size="sm" variant="ghost" {...stylex.props(styles.foldKey)}>
+              <button type="button" {...stylex.props(styles.foldKey)}>
                 {format(m.methodAdvanced)}
-                <ChevronDownIcon aria-hidden {...stylex.props(styles.foldGlyph)} />
-              </Button>
+                <ChevronDownIcon
+                  aria-hidden
+                  {...stylex.props(styles.foldGlyph, folded && styles.foldGlyphOpen)}
+                />
+              </button>
             </CollapsibleTrigger>
             <CollapsibleContent>
               <div {...stylex.props(styles.fold)}>{advanced.map(box)}</div>

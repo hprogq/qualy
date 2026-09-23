@@ -366,3 +366,13 @@ export class ProviderIdentityNamespaceInUse extends Schema.TaggedError<ProviderI
 export const providerConstraints: Record<string, () => ProviderConflict> = {
   uq_auth_providers_tenant_code: () => new ProviderConflict(),
 }
+
+/**
+ * No session of the reader's own by that id: ended already, run out, or the
+ * one in hand, which is ended by signing out rather than from the list
+ */
+export class SessionNotFound extends Schema.TaggedError<SessionNotFound>()(
+  'AUTH_SESSION_NOT_FOUND',
+  {},
+  { httpApiStatus: 404, identifier: 'SessionNotFound' },
+) {}

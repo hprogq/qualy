@@ -38,6 +38,7 @@ const password: Entrance = {
     mode: 'managed',
     secret: { label: { kind: 'literal', value: '密码' }, hint: null, minLength: 12, maxLength: 128 },
   },
+  lastSignInAt: null,
   bound: {
     id: 'b1',
     subject: null,
@@ -56,6 +57,7 @@ const hub = (over: Partial<Entrance> = {}): Entrance => ({
   type: 'github',
   resolution: { mode: 'binding-subject' },
   binding: { mode: 'self' },
+  lastSignInAt: null,
   bound: {
     id: 'b2',
     subject: '1024',
@@ -121,6 +123,37 @@ describe('the reader’s ways in', () => {
     await asked.getByRole('button', { name: '解除绑定' }).click()
     await vi.waitFor(() => expect(release).toHaveBeenCalledTimes(1))
     expect(release).toHaveBeenCalledWith({ params: { providerId: HUB_ID } })
+  })
+})
+
+describe('the ways in on a phone', () => {
+  it('lays the account and the last sign-in under the name, across the row', async () => {
+    await page.viewport(390, 844)
+    const campus: Entrance = {
+      providerId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+      name: '数字大外',
+      type: 'cas',
+      resolution: { mode: 'user-field', field: 'businessNo' },
+      binding: null,
+      lastSignInAt: '2026-09-23T00:46:00.000Z',
+      bound: null,
+      bindHref: null,
+      unbindable: false,
+    }
+    renderScreen({
+      client: fakeClient(stubs([campus])),
+      route: '/account/logins',
+      children: <AccountLoginsPage />,
+    })
+    const row = page.getByTestId('account-entrance')
+    await expect.element(row).toBeInTheDocument()
+    const time = [...row.element().querySelectorAll('span')].find(
+      (span) => span.children.length === 0 && /\d{2}:\d{2}/.test(span.textContent ?? ''),
+    )!
+    // one line: the facts have the row's width, not what the name left over
+    expect(time.getClientRects()).toHaveLength(1)
+    expect(time.getBoundingClientRect().height).toBeLessThan(24)
+    await page.viewport(1280, 800)
   })
 })
 

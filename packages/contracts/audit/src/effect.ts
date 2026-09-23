@@ -1,5 +1,6 @@
 import { Context, type Effect } from 'effect'
 import type { AuditAction, AuditDetailsSchema } from './action.ts'
+import type { UiText } from '@qualy/i18n-contract'
 import type { AuditActor, AuditOutcome, AuditSource, AuditTargetRef } from './index.ts'
 
 // The Effect side of this contract, behind its own subpath like rbac's: a
@@ -64,6 +65,40 @@ export interface AuditShape {
     action: AuditAction<Details>,
     input: AuditRecordInput<Details['Type']>,
   ) => Effect.Effect<void>
+  /**
+   * The part of the trail that is also the person's own: what was done to
+   * them, that went through, of the actions whose plugin gave the person
+   * words for it - in those words, and whether they did it themselves. No
+   * details, names or addresses: the trail stays the administrators'.
+   *
+   * For whoever serves a person their own account, who has already decided
+   * who that person is; nothing here checks it.
+   */
+  readonly subjectEvents: (query: SubjectEventsQuery) => Effect.Effect<SubjectEventsPage>
+}
+
+export interface SubjectEventsQuery {
+  readonly tenantId: string
+  readonly userId: string
+  /** inclusive lower and exclusive upper bounds, as instants postgres reads */
+  readonly from?: string
+  readonly to?: string
+  /** counted from one; past the last page is the last page */
+  readonly page: number
+  readonly pageSize: number
+}
+
+export interface SubjectEvent {
+  readonly id: string
+  readonly occurredAt: string
+  readonly name: UiText
+  readonly actor: 'self' | 'other'
+}
+
+export interface SubjectEventsPage {
+  readonly items: readonly SubjectEvent[]
+  readonly total: number
+  readonly page: number
 }
 
 export class Audit extends Context.Service<Audit, AuditShape>()('@qualy/audit-contract/Audit') {}

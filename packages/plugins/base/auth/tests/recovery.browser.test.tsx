@@ -1,6 +1,7 @@
 import ResetPasswordPage from '../src/client/recovery/ResetPasswordPage.tsx'
 import ConfirmEmailPage from '../src/client/recovery/ConfirmEmailPage.tsx'
 import AccountSecurityPage from '../src/client/account/AccountSecurityPage.tsx'
+import AccountActivityPage from '../src/client/account/AccountActivityPage.tsx'
 import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import type { ApiResult } from '@qualy/web-runtime/api'
@@ -26,6 +27,12 @@ const me = (over: Partial<Me> = {}): Me => ({
   passwordStatus: 'set',
   ...over,
 })
+
+/** the devices and sign-ins the security page also lists, none of them */
+const records = {
+  listSelfSessions: () => Effect.succeed({ items: [], nextCursor: null }),
+  listSelfSignIns: () => Effect.succeed({ items: [], nextCursor: null }),
+}
 
 const client = (stubs: Record<string, Record<string, unknown>>) =>
   fakeClient({ app: { getManifest: () => Effect.succeed(emptyManifest()) }, ...stubs })
@@ -101,15 +108,23 @@ describe('the reader’s security', () => {
   it('asks for the current password where there is one, and sends it with the new', async () => {
     const put = vi.fn(() => Effect.succeed({ ok: true as const }))
     renderScreen({
-      client: client({ self: { getSelf: () => Effect.succeed(me()), putSelfPassword: put } }),
+      client: client({
+        self: { ...records, getSelf: () => Effect.succeed(me()), putSelfPassword: put },
+      }),
       route: '/account/security',
       children: <AccountSecurityPage />,
     })
     await expect.element(page.getByTestId('password-card')).toHaveAttribute('data-standing', 'set')
+    // the form is not there until asked for
+    expect(document.querySelector('[data-testid="password-card"] form')).toBeNull()
+    await page.getByRole('button', { name: '修改密码' }).click()
+    // in a dialog over the page, not unfolded into it
+    await expect.element(page.getByRole('dialog')).toBeInTheDocument()
+    expect(document.querySelector('[data-testid="password-card"] form')).toBeNull()
     await page.getByLabelText('当前密码').fill('old password here')
     await page.getByLabelText('新密码', { exact: true }).fill('new password here')
     await page.getByLabelText('再次输入新密码').fill('new password here')
-    await page.getByRole('button', { name: '修改密码' }).click()
+    await page.getByRole('button', { name: '保存' }).click()
     await vi.waitFor(() => expect(put).toHaveBeenCalledTimes(1))
     expect(put).toHaveBeenCalledWith({
       payload: { newPassword: 'new password here', currentPassword: 'old password here' },
@@ -122,6 +137,7 @@ describe('the reader’s security', () => {
     renderScreen({
       client: client({
         self: {
+          ...records,
           getSelf: () => Effect.succeed(me({ passwordStatus: 'unset', emailVerified: false })),
           createSelfEmailVerification: verify,
           createSelfEmailChange: change,
@@ -136,9 +152,192 @@ describe('the reader’s security', () => {
     await page.getByRole('button', { name: '发送验证邮件' }).click()
     await vi.waitFor(() => expect(verify).toHaveBeenCalledTimes(1))
 
+    await page.getByRole('button', { name: '更改' }).click()
     await page.getByLabelText('新邮箱').fill('zhang.new@school.edu')
     await page.getByRole('button', { name: '发送确认邮件' }).click()
     await vi.waitFor(() => expect(change).toHaveBeenCalledTimes(1))
     expect(change).toHaveBeenCalledWith({ payload: { newEmail: 'zhang.new@school.edu' } })
+  })
+})
+
+describe('the reader’s devices and sign-ins', () => {
+  const CHROME_MAC =
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/140.0 Safari/537.36'
+  const SAFARI_PHONE =
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1'
+  const session = (id: string, current: boolean, userAgent: string) => ({
+    id,
+    current,
+    entrance: { name: '邮箱密码', type: 'local' },
+    createdAt: '2026-09-20T08:00:00.000Z',
+    lastUsedAt: '2026-09-23T08:00:00.000Z',
+    expiresAt: '2026-10-20T08:00:00.000Z',
+    clientIp: '203.0.113.7',
+    userAgent,
+  })
+
+  it('ends one other device, or every other at once, and never offers the one in hand', async () => {
+    const endOne = vi.fn(() => Effect.succeed({ ok: true as const }))
+    const endAll = vi.fn(() => Effect.succeed({ ended: 1 }))
+    renderScreen({
+      client: client({
+        self: {
+          getSelf: () => Effect.succeed(me()),
+          listSelfSessions: () =>
+            Effect.succeed({
+              items: [session('s-here', true, CHROME_MAC), session('s-phone', false, SAFARI_PHONE)],
+              nextCursor: null,
+            }),
+          listSelfSignIns: () => Effect.succeed({ items: [], nextCursor: null }),
+          deleteSelfSession: endOne,
+          deleteSelfSessions: endAll,
+        },
+      }),
+      route: '/account/security',
+      children: <AccountSecurityPage />,
+    })
+    const rows = page.getByTestId('session-row')
+    await expect.element(rows.first()).toBeInTheDocument()
+    expect(await rows.elements()).toHaveLength(2)
+    // the device in the words a person knows it by
+    await expect.element(page.getByText('Chrome - macOS')).toBeVisible()
+    await expect.element(page.getByText('Safari - iOS')).toBeVisible()
+    // one way out per other device, none for the one in hand
+    const here = page.getByTestId('session-row').filter({ hasText: 'Chrome - macOS' })
+    expect(here.element().querySelector('button')).toBeNull()
+    await page
+      .getByTestId('session-row')
+      .filter({ hasText: 'Safari - iOS' })
+      .getByRole('button')
+      .click()
+    await vi.waitFor(() =>
+      expect(endOne).toHaveBeenCalledWith({ params: { sessionId: 's-phone' } }),
+    )
+
+    await page.getByRole('button', { name: '退出其他所有会话' }).click()
+    const asked = page.getByRole('alertdialog')
+    await expect.element(asked).toBeInTheDocument()
+    expect(endAll).not.toHaveBeenCalled()
+    await asked.getByRole('button', { name: '退出其他所有会话' }).click()
+    await vi.waitFor(() => expect(endAll).toHaveBeenCalledTimes(1))
+  })
+
+  it('keeps the history on a page of its own, reached from what is signed in now', async () => {
+    renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.succeed({
+              ...emptyManifest(),
+              pages: [
+                {
+                  id: 'auth/account-activity',
+                  path: '/account/activity',
+                  layout: 'account-shell/v1',
+                },
+              ],
+            }),
+        },
+        self: {
+          getSelf: () => Effect.succeed(me()),
+          listSelfSessions: () => Effect.succeed({ items: [], nextCursor: null }),
+        },
+      }),
+      route: '/account/security',
+      children: <AccountSecurityPage />,
+    })
+    const way = page.getByTestId('sessions-card').getByRole('link', { name: '查看登录记录' })
+    await expect.element(way).toHaveAttribute('href', '/account/activity')
+    // said in the size of the card's head, not the page's body
+    expect(Number.parseFloat(getComputedStyle(way.element()).fontSize)).toBeLessThan(15)
+    expect(document.querySelector('[data-testid="sign-ins-card"]')).toBeNull()
+  })
+
+  it('lists every sign-in with how it went, and only those that went one way when asked', async () => {
+    const attempt = (id: string, outcome: 'success' | 'failure', current = false) => ({
+      id,
+      occurredAt: '2026-09-23T08:00:00.000Z',
+      outcome,
+      entrance: { name: '邮箱密码', type: 'local' },
+      current,
+      clientIp: '203.0.113.7',
+      userAgent: CHROME_MAC,
+    })
+    const list = vi.fn((request: { query: { outcome?: string } }) => {
+      const items =
+        request.query.outcome === 'failure'
+          ? [attempt('b', 'failure')]
+          : [attempt('a', 'success', true), attempt('b', 'failure')]
+      return Effect.succeed({ items, total: items.length, page: 1, pageSize: 20 })
+    })
+    renderScreen({
+      client: client({ self: { listSelfSignIns: list } }),
+      route: '/account/activity',
+      children: <AccountActivityPage />,
+    })
+    const rows = page.getByTestId('sign-in-row')
+    await expect.element(rows.first()).toBeInTheDocument()
+    expect((await rows.elements()).map((row) => row.getAttribute('data-outcome'))).toEqual([
+      'success',
+      'failure',
+    ])
+    expect(rows.first().element().getAttribute('data-current')).toBe('true')
+    await page.getByRole('radio', { name: '失败' }).click()
+    await vi.waitFor(() =>
+      expect(list).toHaveBeenCalledWith({
+        query: expect.objectContaining({ outcome: 'failure', page: '1' }),
+      }),
+    )
+    await vi.waitFor(async () =>
+      expect((await rows.elements()).map((row) => row.getAttribute('data-outcome'))).toEqual([
+        'failure',
+      ]),
+    )
+  })
+})
+
+describe('the reader’s security activity', () => {
+  it('shows what was changed and by whom on its own tab, and reads within the days asked', async () => {
+    const changes = vi.fn((_request: { query: Record<string, string | undefined> }) =>
+      Effect.succeed({
+        items: [
+          {
+            id: 'c1',
+            occurredAt: '2026-09-23T08:00:00.000Z',
+            name: { kind: 'literal' as const, value: '登录凭据已设置或更新' },
+            actor: 'self' as const,
+          },
+          {
+            id: 'c2',
+            occurredAt: '2026-09-20T08:00:00.000Z',
+            name: { kind: 'literal' as const, value: '账号资料被修改' },
+            actor: 'other' as const,
+          },
+        ],
+        total: 2,
+        page: 1,
+        pageSize: 20,
+      }),
+    )
+    renderScreen({
+      client: client({
+        self: {
+          listSelfSignIns: () => Effect.succeed({ items: [], total: 0, page: 1, pageSize: 20 }),
+          listSelfAccountChanges: changes,
+        },
+      }),
+      route: '/account/activity?view=changes',
+      children: <AccountActivityPage />,
+    })
+    const rows = page.getByTestId('account-change')
+    await expect.element(rows.first()).toBeInTheDocument()
+    expect((await rows.elements()).map((row) => row.getAttribute('data-actor'))).toEqual([
+      'self',
+      'other',
+    ])
+    expect(changes).toHaveBeenCalledWith({ query: { page: '1', limit: '20' } })
+    // back to the sign-ins, by the tab
+    await page.getByRole('tab', { name: '登录记录' }).click()
+    await expect.element(page.getByTestId('sign-ins-card')).toBeInTheDocument()
   })
 })

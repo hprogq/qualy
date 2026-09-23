@@ -33,6 +33,7 @@ import { toast } from '@qualy/ui/toast'
 import { iamMessages as m } from '../i18n.ts'
 import { authApi } from '../api.ts'
 import { EntranceAccount } from './person-facts.tsx'
+import { instantWords } from '../when.ts'
 
 // How one person gets in, as somebody administering them reads it.
 //
@@ -84,8 +85,7 @@ export default function UserIdentitiesPage() {
   const entrances = found.data?.entrances ?? []
   const manageable = found.data?.manageable ?? false
   const record = person.data?.user
-  const when = (iso: string) =>
-    new Date(iso).toLocaleDateString(locale, { month: 'short', day: 'numeric' })
+  const when = (iso: string) => instantWords(locale, iso)
 
   const revoke = useMutation({
     mutationFn: (entrance: Entrance) =>
@@ -136,7 +136,7 @@ export default function UserIdentitiesPage() {
           {entrances.length === 0 ? (
             <CardEmpty>{format(m.loginMethodsEmpty)}</CardEmpty>
           ) : (
-            <Table columns="minmax(0, 1fr) minmax(0, 1.4fr) 7rem 9rem">
+            <Table columns="minmax(0, 1fr) minmax(0, 1.4fr) 9.5rem 9rem">
               <TableHead>
                 <span>{format(m.loginMethodsTitle)}</span>
                 <span>{format(m.columnAccount)}</span>
@@ -187,30 +187,36 @@ export default function UserIdentitiesPage() {
                         businessNo: record?.businessNo ?? null,
                       }}
                     />
-                    {bound === null ? (
-                      <Cell />
-                    ) : bound.lastUsedAt === null ? (
+                    {entrance.lastSignInAt !== null ? (
+                      <Cell numeric>{when(entrance.lastSignInAt)}</Cell>
+                    ) : bound !== null || entrance.resolution?.mode === 'user-field' ? (
                       <Cell tone="quiet">{format(m.neverUsed)}</Cell>
                     ) : (
-                      <Cell numeric>{when(bound.lastUsedAt)}</Cell>
+                      <Cell />
                     )}
-                    <span {...stylex.props(styles.end)}>
-                      {settable && (
-                        <Button size="xs" variant="ghost" onClick={() => setEditing(entrance)}>
-                          {format(bound?.hasCredential === true ? m.passwordReset : m.passwordSet)}
-                        </Button>
-                      )}
-                      {manageable && bound !== null && (
-                        <Button
-                          size="xs"
-                          variant="ghost"
-                          disabled={revoke.isPending && revoke.variables === entrance}
-                          onClick={() => setRevoking(entrance)}
-                        >
-                          {format(m.identityRevoke)}
-                        </Button>
-                      )}
-                    </span>
+                    {/* the way to act on it: at the end of the row, and on a phone
+                        opposite the name rather than among the facts */}
+                    <Cell narrow="end">
+                      <span {...stylex.props(styles.end)}>
+                        {settable && (
+                          <Button size="xs" variant="ghost" onClick={() => setEditing(entrance)}>
+                            {format(
+                              bound?.hasCredential === true ? m.passwordReset : m.passwordSet,
+                            )}
+                          </Button>
+                        )}
+                        {manageable && bound !== null && (
+                          <Button
+                            size="xs"
+                            variant="ghost"
+                            disabled={revoke.isPending && revoke.variables === entrance}
+                            onClick={() => setRevoking(entrance)}
+                          >
+                            {format(m.identityRevoke)}
+                          </Button>
+                        )}
+                      </span>
+                    </Cell>
                   </TableRow>
                 )
               })}

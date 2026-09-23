@@ -8,6 +8,8 @@ import {
   boundedText,
   expectedVersion,
   kebabCode,
+  numberedPageOf,
+  numberedPageQuery,
   pageOf,
   pageQuery,
   trimmedName,
@@ -23,6 +25,7 @@ import {
   ProviderNotFound,
   ProviderVersionConflict,
   RecoveryChannelRequired,
+  SessionNotFound,
   SystemAccountProtected,
   UserEmailConflict,
   UserNotFound,
@@ -240,6 +243,12 @@ const userEntrance = Schema.Struct({
       Schema.Struct({ mode: Schema.Literal('self') }),
     ]),
   ),
+  /**
+   * When the person last came in through this door. Read from the sign-in
+   * record rather than a binding, because a door that finds people by a
+   * field of theirs keeps no binding to touch.
+   */
+  lastSignInAt: Schema.NullOr(Schema.String),
   /** the live binding, when there is one; never the credential */
   bound: Schema.NullOr(
     Schema.Struct({
@@ -276,6 +285,8 @@ const authProvider = Schema.Struct({
   id: Schema.String,
   code: Schema.String,
   type: Schema.String,
+  /** what its driver calls the kind, in the reader's language; null for a kind no driver claims */
+  kindLabel: Schema.NullOr(UiTextSchema),
   name: Schema.String,
   status: resourceStatus,
   // whether it has everything its kind needs to be put in service
@@ -934,11 +945,55 @@ const selfEntrance = Schema.Struct({
   type: Schema.String,
   resolution: userEntrance.fields.resolution,
   binding: userEntrance.fields.binding,
+  lastSignInAt: userEntrance.fields.lastSignInAt,
   bound: userEntrance.fields.bound,
   /** where to begin binding an account here; null where nothing is to be bound */
   bindHref: Schema.NullOr(Schema.String),
   /** an account they bound themselves, and not the last way they have in */
   unbindable: Schema.Boolean,
+})
+
+/** where an attempt or a session came in, as the door is named now; null for one since deleted */
+const selfDoor = Schema.NullOr(Schema.Struct({ name: Schema.String, type: Schema.String }))
+
+/** one attempt to sign in as the reader */
+const selfSignIn = Schema.Struct({
+  id: Schema.String,
+  occurredAt: Schema.String,
+  outcome: Schema.Literals(['success', 'failure']),
+  entrance: selfDoor,
+  /** the attempt that opened the session in hand */
+  current: Schema.Boolean,
+  clientIp: Schema.NullOr(Schema.String),
+  userAgent: Schema.NullOr(Schema.String),
+})
+
+/** a stretch of time to read within: inclusive lower and exclusive upper instants */
+const selfPeriod = {
+  from: Schema.optional(Schema.String.check(Schema.isMaxLength(40))),
+  to: Schema.optional(Schema.String.check(Schema.isMaxLength(40))),
+}
+
+/** one thing done to the reader's account, in the words given for them */
+const selfAccountChange = Schema.Struct({
+  id: Schema.String,
+  occurredAt: Schema.String,
+  name: UiTextSchema,
+  /** the reader themselves, or somebody else */
+  actor: Schema.Literals(['self', 'other']),
+})
+
+/** one of the reader's open sessions */
+const selfSession = Schema.Struct({
+  id: Schema.String,
+  /** the one this request came in on */
+  current: Schema.Boolean,
+  entrance: selfDoor,
+  createdAt: Schema.String,
+  lastUsedAt: Schema.NullOr(Schema.String),
+  expiresAt: Schema.String,
+  clientIp: Schema.NullOr(Schema.String),
+  userAgent: Schema.NullOr(Schema.String),
 })
 
 export const selfApiGroup = HttpApiGroup.make('self')
@@ -1021,5 +1076,52 @@ export const selfApiGroup = HttpApiGroup.make('self')
         AuthBindingCredentialInvalid,
         TooManyAttemptsResponse,
       ],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // every attempt to come in as the reader, newest first: the ones that
+    // succeeded and the ones refused once the person was known. What was
+    // typed at a door that found nobody is not recorded, so not here either
+    HttpApiEndpoint.get('listSelfSignIns', '/iam/self/sign-ins', {
+      query: Schema.Struct({
+        outcome: Schema.optional(Schema.Literals(['success', 'failure'])),
+        ...selfPeriod,
+        ...numberedPageQuery,
+      }),
+      success: numberedPageOf(selfSignIn),
+      error: [BadRequest],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // what was done to the reader's account - their password, their address,
+    // their ways in, their sessions - as the trail tells it to them
+    HttpApiEndpoint.get('listSelfAccountChanges', '/iam/self/account-changes', {
+      query: Schema.Struct({ ...selfPeriod, ...numberedPageQuery }),
+      success: numberedPageOf(selfAccountChange),
+      error: [BadRequest],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // the reader's sessions still open, the one in hand among them
+    HttpApiEndpoint.get('listSelfSessions', '/iam/self/sessions', {
+      query: Schema.Struct({ ...pageQuery }),
+      success: pageOf(selfSession),
+      error: [BadRequest],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // one of the others; the session in hand is ended by signing out
+    HttpApiEndpoint.delete('deleteSelfSession', '/iam/self/sessions/:sessionId', {
+      params: Schema.Struct({ sessionId: uuidInput }),
+      success: Schema.Struct({ ok: Schema.Literal(true) }),
+      error: [UserNotFound, SessionNotFound],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // every session but the one in hand: the collection, less the reader's
+    // own seat in it
+    HttpApiEndpoint.delete('deleteSelfSessions', '/iam/self/sessions', {
+      success: Schema.Struct({ ended: Schema.Number }),
+      error: [UserNotFound],
     }).middleware(Authenticated),
   )

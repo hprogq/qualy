@@ -2,7 +2,7 @@ import type { ApiResult } from '@qualy/web-runtime/api'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useApi, useRunApi, useApiQuery } from '@qualy/web-runtime'
 import { useI18n, useList } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
@@ -30,6 +30,10 @@ import { iamMessages as m } from '../../i18n.ts'
 import { authApi } from '../../api.ts'
 import { MethodFields } from './MethodFields.tsx'
 import { fieldShown, formValues, type EntranceKind } from './form-values.ts'
+import { CheckIcon, CopyIcon, TriangleAlertIcon } from 'lucide-react'
+import { toast } from '@qualy/ui/toast'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
+import { Alert, AlertDescription, AlertTitle } from '@qualy/ui/alert'
 
 // One entrance, opened beside the table.
 //
@@ -55,8 +59,24 @@ const styles = stylex.create({
     fontSize: 12,
   },
   aside: { fontSize: 11.5, color: tokens.mutedForeground },
+  callback: { display: 'flex', width: '100%', minWidth: 0, alignItems: 'flex-start', gap: 6 },
+  callbackUrl: {
+    minWidth: 0,
+    flexGrow: 1,
+    overflowWrap: 'anywhere',
+    wordBreak: 'break-all',
+    lineHeight: 1.5,
+    paddingTop: 3,
+  },
+  copyGlyph: { width: 14, height: 14 },
   figure: { fontVariantNumeric: 'tabular-nums' },
   warn: { color: tokens.warningForeground },
+  missingSeat: { paddingInline: 16, paddingTop: 14 },
+  missing: {
+    borderColor: `color-mix(in oklab, ${tokens.warning} 35%, transparent)`,
+    backgroundColor: `color-mix(in oklab, ${tokens.warning} 8%, ${tokens.surface})`,
+    color: tokens.warningForeground,
+  },
   fields: {
     display: 'flex',
     flexDirection: 'column',
@@ -98,6 +118,8 @@ export function MethodSheet({
   const { format, formatText, formatError, locale } = useI18n()
   const listJoin = useList()
   const figure = new Intl.NumberFormat(locale)
+  // the kind as its driver names it; its code only where no driver claims it
+  const kindWord = provider.kindLabel === null ? provider.type : formatText(provider.kindLabel)
   const detail = useQuery(
     query.identity.getAuthProvider.queryOptions({ params: { providerId: provider.id } }),
   )
@@ -253,21 +275,20 @@ export function MethodSheet({
       open={open}
       onClose={onClose}
       title={provider.name}
-      titleAside={<Tag outline>{provider.type}</Tag>}
+      titleAside={<Tag outline>{kindWord}</Tag>}
       meta={
         <MetaLine items={[format(m.loginMethodsTitle), format(m.providerPosition, { position })]} />
       }
       actions={
-        canManage && !provider.isSystem ? (
-          <Button
-            size="xs"
-            variant="ghost"
-            data-testid="method-delete"
-            disabled={remove.isPending || detail.data === undefined}
-            onClick={() => setDeleting(true)}
-          >
-            {format(m.methodDelete)}
-          </Button>
+        canManage ? (
+          // always there for whoever manages the ways in, so a door that may
+          // not go says why rather than simply having no way to try
+          <DeleteAction
+            refusal={provider.isSystem ? format(m.methodDeleteSystem) : null}
+            busy={remove.isPending || detail.data === undefined}
+            label={format(m.methodDelete)}
+            onPress={() => setDeleting(true)}
+          />
         ) : undefined
       }
       closeLabel={format(commonMessages.close)}
@@ -374,18 +395,22 @@ export function MethodSheet({
           )}
         </CardHead>
         {missingWords.length > 0 && (
-          <CardHint>
-            <span
-              data-testid="method-missing"
-              data-missing={(detail.data?.missing ?? [])
-                .map((gap) => (gap.kind === 'field' ? gap.key : gap.kind))
-                .join(',')}
-              {...stylex.props(styles.warn)}
-            >
-              {format(m.methodMissing, { fields: listJoin(missingWords) })}
-            </span>{' '}
-            {!inService && format(m.methodEnableBlocked)}
-          </CardHint>
+          // what is missing, set apart from the fields it names rather than
+          // pressed against the head above them
+          <div {...stylex.props(styles.missingSeat)}>
+            <Alert xstyle={styles.missing}>
+              <TriangleAlertIcon aria-hidden />
+              <AlertTitle
+                data-testid="method-missing"
+                data-missing={(detail.data?.missing ?? [])
+                  .map((gap) => (gap.kind === 'field' ? gap.key : gap.kind))
+                  .join(',')}
+              >
+                {format(m.methodMissing, { fields: listJoin(missingWords) })}
+              </AlertTitle>
+              {!inService && <AlertDescription>{format(m.methodEnableBlocked)}</AlertDescription>}
+            </Alert>
+          </div>
         )}
         <div {...stylex.props(styles.fields)}>
           <Field label={format(m.nameLabel)}>
@@ -416,15 +441,23 @@ export function MethodSheet({
           )}
         </div>
         <DefList>
-          <DefLine label={format(m.providerKindLabel)}>{provider.type}</DefLine>
+          <DefLine label={format(m.providerKindLabel)}>{kindWord}</DefLine>
           <DefLine label={format(m.providerCodeLabel)}>
             <span {...stylex.props(styles.code)}>{provider.code}</span>
             <span {...stylex.props(styles.aside)}>{format(m.providerCodeHint)}</span>
           </DefLine>
           {detail.data?.callbackUrl != null && (
             <DefLine label={format(m.methodCallback)}>
-              <span data-testid="method-callback" {...stylex.props(styles.code)}>
-                {detail.data.callbackUrl}
+              {/* an address is one long word: it breaks wherever it has to
+                  rather than running out of the sheet, and is copied whole */}
+              <span {...stylex.props(styles.callback)}>
+                <span
+                  data-testid="method-callback"
+                  {...stylex.props(styles.code, styles.callbackUrl)}
+                >
+                  {detail.data.callbackUrl}
+                </span>
+                <CopyButton value={detail.data.callbackUrl} label={format(m.methodCallbackCopy)} />
               </span>
               <span {...stylex.props(styles.aside)}>{format(m.methodCallbackHint)}</span>
             </DefLine>
@@ -491,5 +524,80 @@ export function MethodSheet({
         onConfirm={() => remove.mutate()}
       />
     </DetailSheet>
+  )
+}
+
+/** the way to delete a door, or the reason there is none, said on hover and focus */
+function DeleteAction({
+  refusal,
+  busy,
+  label,
+  onPress,
+}: {
+  refusal: string | null
+  busy: boolean
+  label: string
+  onPress: () => void
+}) {
+  const button = (
+    <Button
+      size="xs"
+      variant="ghost"
+      data-testid="method-delete"
+      disabled={refusal !== null || busy}
+      onClick={onPress}
+    >
+      {label}
+    </Button>
+  )
+  if (refusal === null) return button
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          {/* a disabled button hears no pointer, so the seat around it does */}
+          <span tabIndex={0} data-testid="method-delete-refused">
+            {button}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>{refusal}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
+/** a value copied whole with one press, and saying so */
+function CopyButton({ value, label }: { value: string; label: string }) {
+  const { format } = useI18n()
+  const [copied, setCopied] = useState(false)
+  useEffect(() => {
+    if (!copied) return
+    const back = setTimeout(() => setCopied(false), 1600)
+    return () => clearTimeout(back)
+  }, [copied])
+  return (
+    <Button
+      size="icon-xs"
+      variant="ghost"
+      aria-label={label}
+      title={label}
+      data-testid="copy-value"
+      data-copied={copied}
+      onClick={() => {
+        void navigator.clipboard.writeText(value).then(
+          () => {
+            setCopied(true)
+            toast.success(format(m.copied))
+          },
+          () => toast.error(format(m.copyFailed)),
+        )
+      }}
+    >
+      {copied ? (
+        <CheckIcon aria-hidden {...stylex.props(styles.copyGlyph)} />
+      ) : (
+        <CopyIcon aria-hidden {...stylex.props(styles.copyGlyph)} />
+      )}
+    </Button>
   )
 }

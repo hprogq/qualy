@@ -240,6 +240,40 @@ describe.runIf(postgresAvailable)('the reader’s own account', () => {
     }
   })
 
+  it('says when they last came in at each door, a door that keeps no binding included', async () => {
+    const db = await createTestContext('self-last-sign-in')
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const campus = one<{ id: string }>(
+              yield* runSql(sql`
+                insert into auth_providers (tenant_id, code, type, name, enabled, sort_order)
+                values (${f.tenant}, 'campus', 'campus', 'campus', true, 1) returning id`),
+            ).id
+            const attempt = (at: string, outcome: string) =>
+              runSql(sql`
+                insert into sign_in_events (tenant_id, occurred_at, provider_id, provider_type, provider_code, user_id, outcome)
+                values (${f.tenant}, ${at}::timestamptz, ${campus}, 'campus', 'campus', ${f.lin}, ${outcome})`)
+            yield* attempt('2026-09-01T08:00:00Z', 'success')
+            yield* attempt('2026-09-02T09:30:00Z', 'success')
+            // a refusal afterwards is not a sign-in
+            yield* attempt('2026-09-03T10:00:00Z', 'failure')
+            const iam = yield* Iam
+            return yield* iam.self.entrances(f.as(f.lin, f.linByHub))
+          }),
+        ),
+      )
+      const at = (type: string) => answer.find((entrance) => entrance.type === type)?.lastSignInAt
+      expect(new Date(String(at('campus'))).toISOString()).toBe('2026-09-02T09:30:00.000Z')
+      expect(at('hub')).toBeNull()
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('lets go of a bound account, and ends the sessions that came in through it', async () => {
     const db = await createTestContext('self-unbind')
     try {
@@ -354,6 +388,131 @@ describe.runIf(postgresAvailable)('the reader’s own account', () => {
         '/auth/hub/hub/start?intent=bind',
       )
       expect(tagOf(answer.system)).toBe('SYSTEM_ACCOUNT_PROTECTED')
+    } finally {
+      await db.dispose()
+    }
+  })
+})
+
+describe.runIf(postgresAvailable)('the reader’s own devices and sign-ins', () => {
+  it('lists their own sign-ins newest first, a page at a time, and marks the one in hand', async () => {
+    const db = await createTestContext('self-sign-ins')
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const attempt = (
+              userId: string,
+              at: string,
+              outcome: string,
+              sessionId: string | null,
+            ) =>
+              runSql(sql`
+                insert into sign_in_events (tenant_id, occurred_at, provider_id, provider_type, provider_code, user_id, outcome, session_id, client_ip, user_agent)
+                values (${f.tenant}, ${at}::timestamptz, ${f.local}, 'local', 'local', ${userId}, ${outcome}, ${sessionId}, '203.0.113.7', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/140.0 Safari/537.36')`)
+            yield* attempt(f.ada, '2026-09-01T08:00:00Z', 'success', f.adaByPassword)
+            yield* attempt(f.ada, '2026-09-02T08:00:00Z', 'failure', null)
+            yield* attempt(f.ada, '2026-09-03T08:00:00Z', 'success', f.adaByHub)
+            // somebody else's is never the reader's
+            yield* attempt(f.lin, '2026-09-04T08:00:00Z', 'success', f.linByHub)
+            const iam = yield* Iam
+            const me = f.as(f.ada, f.adaByPassword)
+            const first = yield* iam.selfSecurity.signIns(me, {}, { page: 1, pageSize: 2 })
+            const rest = yield* iam.selfSecurity.signIns(me, {}, { page: 2, pageSize: 2 })
+            const refused = yield* iam.selfSecurity.signIns(
+              me,
+              { outcome: 'failure' },
+              { page: 1, pageSize: 10 },
+            )
+            const early = yield* iam.selfSecurity.signIns(
+              me,
+              { from: '2026-09-01T00:00:00Z', to: '2026-09-03T00:00:00Z' },
+              { page: 1, pageSize: 10 },
+            )
+            return { first, rest, refused, early }
+          }),
+        ),
+      )
+      const at = (rows: readonly { occurredAt: Date | string }[]) =>
+        rows.map((row) => new Date(String(row.occurredAt)).toISOString().slice(0, 10))
+      // numbered: how many in all, and the page each one is on
+      expect(answer.first.total).toBe(3)
+      expect(at(answer.first.rows)).toEqual(['2026-09-03', '2026-09-02'])
+      expect(at(answer.rest.rows)).toEqual(['2026-09-01'])
+      expect(answer.first.rows.map((row) => row.outcome)).toEqual(['success', 'failure'])
+      expect(answer.rest.rows[0]!.sessionId).toBe(f.adaByPassword)
+      expect(answer.first.rows[0]!.providerName).toBe('local')
+      // asked for only the refused ones, only those come back
+      expect(answer.refused.rows.map((row) => row.outcome)).toEqual(['failure'])
+      // within a stretch of days: from its first instant, up to its last
+      expect(at(answer.early.rows)).toEqual(['2026-09-02', '2026-09-01'])
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('ends one other device, never the one in hand nor anybody else’s, and records it', async () => {
+    const db = await createTestContext('self-sessions')
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const iam = yield* Iam
+            const me = f.as(f.ada, f.adaByPassword)
+            const before = yield* iam.selfSecurity.sessions(me, { limit: 20 })
+            const inHand = yield* Effect.result(iam.selfSecurity.endSession(me, f.adaByPassword))
+            const elsewhere = yield* Effect.result(iam.selfSecurity.endSession(me, f.linByHub))
+            yield* iam.selfSecurity.endSession(me, f.adaByHub)
+            const after = yield* iam.selfSecurity.sessions(me, { limit: 20 })
+            const lin = yield* iam.selfSecurity.sessions(f.as(f.lin, f.linByHub), { limit: 20 })
+            const recorded = yield* runSql<{ details: { scope: string; ended: number } }>(sql`
+              select details from audit_events
+               where action_code = 'auth.session.revoke' and target_id = ${f.ada}`)
+            return { before, inHand, elsewhere, after, lin, recorded: recorded.rows }
+          }),
+        ),
+      )
+      expect(answer.before.map((row) => row.id).sort()).toEqual(
+        [f.adaByHub, f.adaByPassword].sort(),
+      )
+      expect(tagOf(answer.inHand)).toBe('AUTH_SESSION_NOT_FOUND')
+      expect(tagOf(answer.elsewhere)).toBe('AUTH_SESSION_NOT_FOUND')
+      expect(answer.after.map((row) => row.id)).toEqual([f.adaByPassword])
+      expect(answer.lin.map((row) => row.id)).toEqual([f.linByHub])
+      expect(answer.recorded.map((row) => row.details)).toEqual([{ scope: 'one', ended: 1 }])
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('ends every device but the one in hand at once, and says how many', async () => {
+    const db = await createTestContext('self-sessions-all')
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const iam = yield* Iam
+            const me = f.as(f.ada, f.adaByPassword)
+            const ended = yield* iam.selfSecurity.endOtherSessions(me)
+            const again = yield* iam.selfSecurity.endOtherSessions(me)
+            const left = yield* iam.selfSecurity.sessions(me, { limit: 20 })
+            const recorded = yield* runSql<{ n: string }>(sql`
+              select count(*)::text as n from audit_events where action_code = 'auth.session.revoke'`)
+            return { ended, again, left, recorded: recorded.rows[0]!.n }
+          }),
+        ),
+      )
+      expect(answer.ended).toBe(1)
+      // nothing left to end is not a failure, and not an event
+      expect(answer.again).toBe(0)
+      expect(answer.left.map((row) => row.id)).toEqual([f.adaByPassword])
+      expect(answer.recorded).toBe('1')
     } finally {
       await db.dispose()
     }

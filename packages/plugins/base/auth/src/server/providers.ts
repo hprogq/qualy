@@ -665,10 +665,18 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
       const rows = []
       for (const row of found) {
         const answer = yield* readiness(row)
+        const provisioning = (yield* drivers.forType(row.type))?.driver.provisioning
         rows.push({
           id: row.id,
           code: row.code,
           type: row.type,
+          // what its driver calls the kind; none where no installed driver claims it
+          kindLabel:
+            provisioning === undefined
+              ? null
+              : provisioning.mode === 'tenant-managed'
+                ? provisioning.entrance.label
+                : provisioning.label,
           name: row.name,
           status: row.enabled ? ('active' as const) : ('disabled' as const),
           setup: answer.ready ? ('complete' as const) : ('incomplete' as const),
@@ -718,6 +726,12 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
               id: provider.id,
               code: provider.code,
               type: provider.type,
+              kindLabel:
+                kind === undefined
+                  ? null
+                  : kind.mode === 'tenant-managed'
+                    ? kind.entrance.label
+                    : kind.label,
               name: provider.name,
               status: provider.enabled ? ('active' as const) : ('disabled' as const),
               setup: answer.ready ? ('complete' as const) : ('incomplete' as const),

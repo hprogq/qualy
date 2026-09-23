@@ -235,7 +235,12 @@ export const DERIVED_CONFIG_KEY = 'derived'
  *   each told what the driver asks for.
  */
 export type ProviderProvisioning =
-  | { readonly mode: 'system-singleton'; readonly code: string }
+  | {
+      readonly mode: 'system-singleton'
+      readonly code: string
+      /** what the kind is called on the screens that list the tenant's ways in */
+      readonly label: UiText
+    }
   | { readonly mode: 'tenant-managed'; readonly entrance: EntranceKind }
 
 export interface LoginDriver {

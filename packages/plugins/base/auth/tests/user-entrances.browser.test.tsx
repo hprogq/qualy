@@ -52,6 +52,7 @@ const local = (over: Partial<Entrance> = {}): Entrance => ({
     mode: 'managed',
     secret: { label: word('口令'), hint: null, minLength: 8, maxLength: 64 },
   },
+  lastSignInAt: null,
   bound: null,
   ...over,
 })
@@ -64,6 +65,7 @@ const cas: Entrance = {
   admits: true,
   resolution: { mode: 'user-field', field: 'businessNo' },
   binding: null,
+  lastSignInAt: null,
   bound: null,
 }
 
@@ -75,6 +77,7 @@ const oauth: Entrance = {
   admits: true,
   resolution: { mode: 'binding-subject' },
   binding: { mode: 'self' },
+  lastSignInAt: null,
   bound: {
     id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
     subject: '10086',

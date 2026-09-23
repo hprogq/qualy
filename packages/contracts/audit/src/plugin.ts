@@ -1,6 +1,6 @@
 import { Layer } from 'effect'
 import { ExtensionPoint, Plugin, type PluginFeature } from '@qualy/plugin-kit'
-import type { AuditAction } from './action.ts'
+import { PERSON_TARGET, type AuditAction } from './action.ts'
 import { AuditActionCatalog, type RegisteredAuditAction } from './effect.ts'
 
 // The audit capability's face in the descriptor model. An action catalog is
@@ -49,6 +49,11 @@ export const compileActionCatalog = (
       }
       if (!Number.isInteger(action.version) || action.version < 1) {
         throw new Error(`audit action ${action.code} of ${declaration.owner} needs a version >= 1`)
+      }
+      if (action.subject !== undefined && action.target !== PERSON_TARGET) {
+        throw new Error(
+          `audit action ${action.code} of ${declaration.owner} speaks to its subject but does not act on a person`,
+        )
       }
       const previous = owners.get(action.code)
       if (previous) {

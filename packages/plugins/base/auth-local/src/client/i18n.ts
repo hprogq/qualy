@@ -9,6 +9,7 @@ const i18n = definePluginMessages({
   namespace: 'auth-local',
   messages: {
     bindingPassword: { id: 'auth-local/binding/password', defaultMessage: 'Password' },
+    entranceKind: { id: 'auth-local/entrance/kind', defaultMessage: 'Email and password' },
     email: { id: 'auth-local/field/email', defaultMessage: 'Email' },
     password: { id: 'auth-local/field/password', defaultMessage: 'Password' },
     submit: { id: 'auth-local/action/submit', defaultMessage: 'Sign in' },

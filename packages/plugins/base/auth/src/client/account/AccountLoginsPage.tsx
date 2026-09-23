@@ -19,7 +19,7 @@ import {
   Card,
   CardEmpty,
   Cell,
-  EditorSkeleton,
+  TableSkeleton,
   LeadWord,
   SectionHead,
   Table,
@@ -31,6 +31,7 @@ import { toast } from '@qualy/ui/toast'
 import { iamMessages as m } from '../i18n.ts'
 import { authApi } from '../api.ts'
 import { EntranceAccount } from '../iam/person-facts.tsx'
+import { instantWords } from '../when.ts'
 
 // How the reader can sign in: every way in that is open to them, what it
 // knows them by, and the accounts they bound themselves - which are theirs
@@ -66,8 +67,7 @@ export default function AccountLoginsPage() {
   const found = useQuery(query.self.listSelfEntrances.queryOptions())
   const self = useQuery(query.self.getSelf.queryOptions())
   const entrances = found.data?.entrances ?? []
-  const when = (iso: string) =>
-    new Date(iso).toLocaleDateString(locale, { month: 'short', day: 'numeric' })
+  const when = (iso: string) => instantWords(locale, iso)
 
   /** off to the other side, to come back to this page */
   const bind = (entrance: Entrance) => {
@@ -115,13 +115,17 @@ export default function AccountLoginsPage() {
           void found.refetch()
           void self.refetch()
         }}
-        skeleton={<EditorSkeleton />}
+        skeleton={
+          <Card>
+            <TableSkeleton rows={3} />
+          </Card>
+        }
       >
         <Card data-testid="account-entrances">
           {entrances.length === 0 ? (
             <CardEmpty>{format(m.accountLoginsEmpty)}</CardEmpty>
           ) : (
-            <Table columns="minmax(0, 1fr) minmax(0, 1.4fr) 7rem 7rem">
+            <Table columns="minmax(0, 1fr) minmax(0, 1.4fr) 9.5rem 7rem">
               <TableHead>
                 <span>{format(m.loginMethodsTitle)}</span>
                 <span>{format(m.columnAccount)}</span>
@@ -150,30 +154,34 @@ export default function AccountLoginsPage() {
                       }}
                       unbound={format(m.accountNotBound)}
                     />
-                    {bound === null ? (
-                      <Cell />
-                    ) : bound.lastUsedAt === null ? (
+                    {entrance.lastSignInAt !== null ? (
+                      <Cell numeric>{when(entrance.lastSignInAt)}</Cell>
+                    ) : bound !== null || entrance.resolution?.mode === 'user-field' ? (
                       <Cell tone="quiet">{format(m.neverUsed)}</Cell>
                     ) : (
-                      <Cell numeric>{when(bound.lastUsedAt)}</Cell>
+                      <Cell />
                     )}
-                    <span {...stylex.props(styles.end)}>
-                      {entrance.bindHref !== null && (
-                        <Button size="xs" variant="ghost" onClick={() => bind(entrance)}>
-                          {format(m.accountBind)}
-                        </Button>
-                      )}
-                      {entrance.unbindable && (
-                        <Button
-                          size="xs"
-                          variant="ghost"
-                          disabled={release.isPending}
-                          onClick={() => setReleasing(entrance)}
-                        >
-                          {format(m.accountUnbind)}
-                        </Button>
-                      )}
-                    </span>
+                    {/* the way to act on it: at the end of the row, and on a phone
+                        opposite the name rather than among the facts */}
+                    <Cell narrow="end">
+                      <span {...stylex.props(styles.end)}>
+                        {entrance.bindHref !== null && (
+                          <Button size="xs" variant="ghost" onClick={() => bind(entrance)}>
+                            {format(m.accountBind)}
+                          </Button>
+                        )}
+                        {entrance.unbindable && (
+                          <Button
+                            size="xs"
+                            variant="ghost"
+                            disabled={release.isPending}
+                            onClick={() => setReleasing(entrance)}
+                          >
+                            {format(m.accountUnbind)}
+                          </Button>
+                        )}
+                      </span>
+                    </Cell>
                   </TableRow>
                 )
               })}

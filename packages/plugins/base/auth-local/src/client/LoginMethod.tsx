@@ -17,8 +17,20 @@ const styles = stylex.create({
   field: { display: 'flex', flexDirection: 'column', gap: 8 },
   refusal: { fontSize: 14, lineHeight: '1.25rem', color: tokens.danger },
   submit: { width: '100%' },
-  labelRow: { display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 },
+  // The link sits beside the label but follows the input in the document,
+  // so Tab goes from the address straight to the password.
+  passwordField: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) auto',
+    gridTemplateAreas: '"label forgot" "input input"',
+    alignItems: 'baseline',
+    rowGap: 8,
+    columnGap: 8,
+  },
+  passwordLabel: { gridArea: 'label' },
+  passwordInput: { gridArea: 'input' },
   forgot: {
+    gridArea: 'forgot',
     fontSize: 12.5,
     color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
     textDecoration: 'none',
@@ -66,26 +78,27 @@ export default function LocalLoginMethod({ method, onAuthenticated }: LoginMetho
           onChange={(event) => setEmail(event.target.value)}
         />
       </div>
-      <div {...stylex.props(styles.field)}>
-        <span {...stylex.props(styles.labelRow)}>
-          <Label htmlFor="password">{format(m.password)}</Label>
-          {/* the page belongs to whoever owns people; a build without it
-              has no link here rather than a dead one */}
-          <PageLink
-            page="auth/reset-password"
-            unavailable={null}
-            className={stylex.props(styles.forgot).className}
-          >
-            {format(m.forgot)}
-          </PageLink>
-        </span>
+      <div {...stylex.props(styles.passwordField)}>
+        <Label htmlFor="password" xstyle={styles.passwordLabel}>
+          {format(m.password)}
+        </Label>
         <Input
           id="password"
           type="password"
           autoComplete="current-password"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
+          wrapperXstyle={styles.passwordInput}
         />
+        {/* the page belongs to whoever owns people; a build without it
+            has no link here rather than a dead one */}
+        <PageLink
+          page="auth/reset-password"
+          unavailable={null}
+          className={stylex.props(styles.forgot).className}
+        >
+          {format(m.forgot)}
+        </PageLink>
       </div>
       {error && <p {...stylex.props(styles.refusal)}>{error}</p>}
       <Button

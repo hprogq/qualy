@@ -402,6 +402,14 @@ const entrancesOf = (tenantId: string, userId: string, userTypeId: string | null
         'b.lastUsedAt',
         eb('b.credentialHash', 'is not', null).as('hasCredential'),
         eb
+          .selectFrom('SignInEvent as e')
+          .select((e) => e.fn.max('e.occurredAt').as('at'))
+          .whereRef('e.tenantId', '=', 'p.tenantId')
+          .whereRef('e.providerId', '=', 'p.id')
+          .where('e.userId', '=', userId)
+          .where('e.outcome', '=', 'success')
+          .as('lastSignInAt'),
+        eb
           .or([
             eb('p.audienceMode', '=', 'unrestricted'),
             eb.exists(

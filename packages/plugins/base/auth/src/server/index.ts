@@ -6,9 +6,14 @@ import { withDatabase, type Orm } from '@qualy/plugin-database/server'
 import type { Secrets } from '@qualy/plugin-secrets/plugin'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { HttpServerRequest } from 'effect/unstable/http'
-import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
+import {
+  DEFAULT_PAGE_SIZE,
+  encodeQueryCursor,
+  isReadableTimestamp,
+  readQueryCursor,
+} from '@qualy/api-kit'
 import { Api } from '@qualy/api-kit/plugin'
-import { codeFrom, cursorUnusable, pageNumber, pageSize } from '@qualy/api-kit/schema'
+import { BadRequest, codeFrom, cursorUnusable, pageNumber, pageSize } from '@qualy/api-kit/schema'
 import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
 import { Audit } from '@qualy/audit-contract/effect'
 
@@ -21,6 +26,7 @@ import { AuthRequired, Authenticated, CurrentUser, Viewer } from '@qualy/auth-co
 import { make as makeUserTypes, type UserTypeRow } from './user-types.ts'
 import { make as makeUsers, type UserProjection } from './users.ts'
 import { make as makeSelf } from './self.ts'
+import { make as makeSelfSecurity } from './self-security.ts'
 import { layer as sessionLayer, viewerLayer } from './session.ts'
 import { recoveryBootCheck } from './recovery.ts'
 import { publicOriginBootCheck, PublicOriginResolver, singleOriginLayer } from './public-origin.ts'
@@ -52,6 +58,7 @@ export class Iam extends Context.Service<
     readonly users: Effect.Success<ReturnType<typeof makeUsers>>
     readonly providers: Effect.Success<ReturnType<typeof makeProviders>>
     readonly self: Effect.Success<ReturnType<typeof makeSelf>>
+    readonly selfSecurity: Effect.Success<ReturnType<typeof makeSelfSecurity>>
   }
 >()('@qualy/plugin-auth/Iam') {}
 
@@ -61,6 +68,7 @@ export const make = Effect.fn('Auth.make')(function* () {
   const users = yield* makeUsers()
   const providers = yield* makeProviders()
   const self = yield* makeSelf()
+  const selfSecurity = yield* makeSelfSecurity()
 
   return {
     placement: {
@@ -86,6 +94,7 @@ export const make = Effect.fn('Auth.make')(function* () {
       providers,
       users,
       self,
+      selfSecurity,
     },
   }
 })
@@ -321,6 +330,7 @@ export const selfApiHandlers = HttpApiBuilder.group(local, 'self', (handlers) =>
           entrances: found.map((entrance) => ({
             ...entrance,
             binding: bindingView(entrance.binding),
+            lastSignInAt: instant(entrance.lastSignInAt),
             bound:
               entrance.bound === null
                 ? null
@@ -380,8 +390,126 @@ export const selfApiHandlers = HttpApiBuilder.group(local, 'self', (handlers) =>
         })
         return { ok: true as const }
       }),
+    )
+    .handle(
+      'listSelfSignIns',
+      Effect.fn('iam.listSelfSignIns.handler')(function* ({ query }) {
+        const iam = yield* Iam
+        const principal = yield* CurrentUser
+        const period = yield* periodOf(query)
+        const pageSize = numberedPageSize(query.limit)
+        const found = yield* iam.selfSecurity.signIns(
+          principal,
+          { ...period, ...(query.outcome === undefined ? {} : { outcome: query.outcome }) },
+          { page: pageNumber(query.page), pageSize },
+        )
+        return {
+          items: found.rows.map((row) => ({
+            id: row.id,
+            occurredAt: instant(row.occurredAt) ?? '',
+            outcome: row.outcome === 'success' ? ('success' as const) : ('failure' as const),
+            entrance:
+              row.providerName === null ? null : { name: row.providerName, type: row.providerType },
+            current: row.sessionId !== null && row.sessionId === principal.sessionId,
+            clientIp: row.clientIp,
+            userAgent: row.userAgent,
+          })),
+          total: found.total,
+          page: found.page,
+          pageSize,
+        }
+      }),
+    )
+    .handle(
+      'listSelfAccountChanges',
+      Effect.fn('iam.listSelfAccountChanges.handler')(function* ({ query }) {
+        const iam = yield* Iam
+        const principal = yield* CurrentUser
+        const period = yield* periodOf(query)
+        const pageSize = numberedPageSize(query.limit)
+        const found = yield* iam.selfSecurity.accountChanges(principal, period, {
+          page: pageNumber(query.page),
+          pageSize,
+        })
+        return { items: [...found.items], total: found.total, page: found.page, pageSize }
+      }),
+    )
+    .handle(
+      'listSelfSessions',
+      Effect.fn('iam.listSelfSessions.handler')(function* ({ query }) {
+        const iam = yield* Iam
+        const principal = yield* CurrentUser
+        const limit = pageSize(query.limit, SELF_PAGE_SIZE)
+        const key = readQueryCursor(query.cursor, 'self-sessions', ['timestamp', 'uuid'])
+        if (key === null) return yield* cursorUnusable()
+        const found = yield* iam.selfSecurity.sessions(principal, {
+          ...(key === undefined ? {} : { after: [key[0]!, key[1]!] as const }),
+          limit: limit + 1,
+        })
+        const items = found.slice(0, limit)
+        const last = items.at(-1)
+        return {
+          items: items.map((row) => ({
+            id: row.id,
+            current: row.id === principal.sessionId,
+            entrance:
+              row.providerName === null || row.providerType === null
+                ? null
+                : { name: row.providerName, type: row.providerType },
+            createdAt: instant(row.createdAt) ?? '',
+            lastUsedAt: instant(row.lastUsedAt),
+            expiresAt: instant(row.expiresAt) ?? '',
+            clientIp: row.loginIp,
+            userAgent: row.userAgent,
+          })),
+          nextCursor:
+            found.length > limit && last !== undefined
+              ? encodeQueryCursor('self-sessions', [last.cursorAt, last.id])
+              : null,
+        }
+      }),
+    )
+    .handle(
+      'deleteSelfSession',
+      Effect.fn('iam.deleteSelfSession.handler')(function* ({ params }) {
+        const iam = yield* Iam
+        yield* iam.selfSecurity.endSession(yield* CurrentUser, params.sessionId)
+        return { ok: true as const }
+      }),
+    )
+    .handle(
+      'deleteSelfSessions',
+      Effect.fn('iam.deleteSelfSessions.handler')(function* () {
+        const iam = yield* Iam
+        return { ended: yield* iam.selfSecurity.endOtherSessions(yield* CurrentUser) }
+      }),
     ),
 )
+
+/** a page of the reader's own sign-ins or sessions */
+const SELF_PAGE_SIZE = 20
+
+/** a page of the reader's own records, as asked for, within bounds */
+const numberedPageSize = (limit: string | undefined) => pageSize(limit, SELF_PAGE_SIZE)
+
+/**
+ * The stretch of time a reader asked for, refused when postgres could not
+ * read it rather than failing when it tries.
+ */
+const periodOf = Effect.fnUntraced(function* (query: {
+  readonly from?: string | undefined
+  readonly to?: string | undefined
+}) {
+  for (const bound of [query.from, query.to]) {
+    if (bound !== undefined && !isReadableTimestamp(bound)) {
+      return yield* new BadRequest({ message: `not a timestamp: ${bound}` })
+    }
+  }
+  return {
+    ...(query.from === undefined ? {} : { from: query.from }),
+    ...(query.to === undefined ? {} : { to: query.to }),
+  }
+})
 
 /**
  * How much of a tree a picker will render before it says it stopped.
@@ -824,6 +952,7 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
             admits: entrance.admits === true,
             resolution: entrance.resolution ?? null,
             binding: bindingView(entrance.binding),
+            lastSignInAt: instant(entrance.lastSignInAt),
             bound:
               entrance.bindingId === null
                 ? null

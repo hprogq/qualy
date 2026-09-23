@@ -306,10 +306,7 @@ export default function LoginMethodsPage() {
                     {/* the kind as the driver names itself; its code only
                         where no installed driver claims it */}
                     <Cell tone="muted" unlabelled>
-                      {(() => {
-                        const kind = kinds.data?.kinds.find((one) => one.type === provider.type)
-                        return kind === undefined ? provider.type : formatText(kind.label)
-                      })()}
+                      {provider.kindLabel === null ? provider.type : formatText(provider.kindLabel)}
                     </Cell>
                     <Cell tone={nobody ? 'warn' : 'muted'}>
                       {provider.audience.mode === 'unrestricted' ? (

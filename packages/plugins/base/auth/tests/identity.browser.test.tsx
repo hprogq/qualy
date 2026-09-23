@@ -783,7 +783,7 @@ describe('users workspace', () => {
     // its first page
     expect(asked().every((query) => query.status === 'active')).toBe(true)
     await page.getByTestId('roster-standing').click()
-    await page.getByRole('option', { name: '所有状态' }).click()
+    await page.getByRole('option', { name: '全部状态' }).click()
     await vi.waitFor(() =>
       expect(asked().some((query) => query.status === undefined && query.page === '1')).toBe(true),
     )

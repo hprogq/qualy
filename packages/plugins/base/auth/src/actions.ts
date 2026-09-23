@@ -21,6 +21,7 @@ export const UserUpdated = AuditAction.define({
   target: 'auth.user',
   version: 1,
   name: message('auth/audit/user-update', 'Edit user'),
+  subject: message('auth/audit-subject/user-update', 'Your account details were changed'),
   details: Schema.Struct({
     fields: Schema.Array(Schema.Literals(['displayName', 'userTypeId', 'businessNo', 'email'])),
   }),
@@ -31,6 +32,7 @@ export const UserMoved = AuditAction.define({
   target: 'auth.user',
   version: 1,
   name: message('auth/audit/user-move', 'Move user'),
+  subject: message('auth/audit-subject/user-move', 'Your unit was changed'),
   details: Schema.Struct({ fromOrgNodeId: id, toOrgNodeId: id }),
 })
 
@@ -39,6 +41,7 @@ export const UserEnabled = AuditAction.define({
   target: 'auth.user',
   version: 1,
   name: message('auth/audit/user-enable', 'Enable user'),
+  subject: message('auth/audit-subject/user-enable', 'Your account was enabled'),
   details: Schema.Struct({}),
 })
 
@@ -47,6 +50,7 @@ export const UserDisabled = AuditAction.define({
   target: 'auth.user',
   version: 1,
   name: message('auth/audit/user-disable', 'Disable user'),
+  subject: message('auth/audit-subject/user-disable', 'Your account was disabled'),
   details: Schema.Struct({}),
 })
 
@@ -197,6 +201,7 @@ export const BindingWritten = AuditAction.define({
   target: 'auth.user',
   version: 2,
   name: message('auth/audit/identity-bind', 'Set a sign-in credential for a user'),
+  subject: message('auth/audit-subject/identity-bind', 'A way to sign in was set or changed'),
   details: Schema.Struct({
     providerId: id,
     bindingId: id,
@@ -211,10 +216,24 @@ export const BindingRevoked = AuditAction.define({
   target: 'auth.user',
   version: 2,
   name: message('auth/audit/identity-revoke', 'Withdraw a sign-in binding from a user'),
+  subject: message('auth/audit-subject/identity-revoke', 'A way to sign in was removed'),
   details: Schema.Struct({ providerId: id, bindingId: id, endedSessions: Schema.Number }),
 })
 
+// Sessions the person ended themselves, on devices other than the one they
+// were using: one, or all of them at once. Signing out of the session in
+// hand is not recorded - it is the everyday way out, not a security act.
+export const SessionsEnded = AuditAction.define({
+  code: 'auth.session.revoke',
+  target: 'auth.user',
+  version: 1,
+  name: message('auth/audit/session-revoke', 'End sign-in sessions'),
+  subject: message('auth/audit-subject/session-revoke', 'Signed out on other devices'),
+  details: Schema.Struct({ scope: Schema.Literals(['one', 'others']), ended: Schema.Number }),
+})
+
 export const userActions = [
+  SessionsEnded,
   BindingWritten,
   BindingRevoked,
   UserCreated,

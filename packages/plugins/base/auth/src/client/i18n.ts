@@ -108,6 +108,15 @@ const lastUsedMessage = defineMessage<{ when: string }>()({
   id: 'auth/person/last-used',
   defaultMessage: 'Last used {when}',
 })
+const sessionActiveMessage = defineMessage<{ when: string }>()({
+  id: 'auth/sessions/active',
+  defaultMessage: 'Active {when}',
+})
+const sessionsEndedMessage = defineMessage<{ count: number }>()({
+  id: 'auth/sessions/ended',
+  defaultMessage:
+    '{count, plural, =0 {No other session was signed in} one {Signed out of 1 session} other {Signed out of # sessions}}',
+})
 const audienceSummaryMessage = defineMessage<{ count: number }>()({
   id: 'auth/login-methods/audience-summary',
   defaultMessage:
@@ -237,6 +246,39 @@ const i18n = definePluginMessages({
       defaultMessage: 'Withdraw a sign-in binding from a user',
     },
     'audit.auth.user.move': { id: 'auth/audit/user-move', defaultMessage: 'Move user' },
+    'audit.auth.session.revoke': {
+      id: 'auth/audit/session-revoke',
+      defaultMessage: 'End sign-in sessions',
+    },
+    // what the person an action happened to reads in their own activity
+    'audit-subject.auth.user.update': {
+      id: 'auth/audit-subject/user-update',
+      defaultMessage: 'Your account details were changed',
+    },
+    'audit-subject.auth.user.move': {
+      id: 'auth/audit-subject/user-move',
+      defaultMessage: 'Your unit was changed',
+    },
+    'audit-subject.auth.user.enable': {
+      id: 'auth/audit-subject/user-enable',
+      defaultMessage: 'Your account was enabled',
+    },
+    'audit-subject.auth.user.disable': {
+      id: 'auth/audit-subject/user-disable',
+      defaultMessage: 'Your account was disabled',
+    },
+    'audit-subject.auth.identity.bind': {
+      id: 'auth/audit-subject/identity-bind',
+      defaultMessage: 'A way to sign in was set or changed',
+    },
+    'audit-subject.auth.identity.revoke': {
+      id: 'auth/audit-subject/identity-revoke',
+      defaultMessage: 'A way to sign in was removed',
+    },
+    'audit-subject.auth.session.revoke': {
+      id: 'auth/audit-subject/session-revoke',
+      defaultMessage: 'Signed out on other devices',
+    },
     'audit.auth.user.enable': { id: 'auth/audit/user-enable', defaultMessage: 'Enable user' },
     'audit.auth.user.disable': { id: 'auth/audit/user-disable', defaultMessage: 'Disable user' },
     'audit.auth.user.delete': { id: 'auth/audit/user-delete', defaultMessage: 'Delete user' },
@@ -515,17 +557,24 @@ const i18n = definePluginMessages({
     currentPassword: { id: 'auth/account/current-password', defaultMessage: 'Current password' },
     passwordChange: { id: 'auth/account/password-change', defaultMessage: 'Change password' },
     passwordSetFirst: { id: 'auth/account/password-set', defaultMessage: 'Set password' },
+    passwordIsSet: { id: 'auth/account/password-is-set', defaultMessage: 'Set' },
+    passwordIsUnset: { id: 'auth/account/password-is-unset', defaultMessage: 'Not set' },
+    passwordSave: { id: 'auth/account/password-save', defaultMessage: 'Save' },
+    emailSetAction: { id: 'auth/account/email-set', defaultMessage: 'Add' },
+    emailChangeAction: { id: 'auth/account/email-change', defaultMessage: 'Change' },
+    emailSetTitle: { id: 'auth/account/email-set-title', defaultMessage: 'Add an email' },
+    emailChangeTitle: { id: 'auth/account/email-change-title', defaultMessage: 'Change email' },
     passwordChanged: {
       id: 'auth/account/password-changed',
       defaultMessage: 'Password saved. Every other device was signed out.',
     },
     passwordNotOpen: {
       id: 'auth/account/password-not-open',
-      defaultMessage: 'Signing in with a password is not open to you',
+      defaultMessage: 'Signing in with a password is not available',
     },
     passwordNeedsEmail: {
       id: 'auth/account/password-needs-email',
-      defaultMessage: 'Verify your email below, then set a password here',
+      defaultMessage: 'Verify your email to set a password',
     },
     sendVerification: { id: 'auth/account/send-verification', defaultMessage: 'Send verification email' },
     verificationSent: {
@@ -569,6 +618,44 @@ const i18n = definePluginMessages({
       defaultMessage: 'This link is incomplete. Open it from the email again',
     },
     toAccount: { id: 'auth/confirm/to-account', defaultMessage: 'Go to my account' },
+    // the reader's sessions, and the record of their sign-ins
+    sessionsTitle: { id: 'auth/sessions/title', defaultMessage: 'Signed in now' },
+    sessionCurrent: { id: 'auth/sessions/current', defaultMessage: 'This session' },
+    sessionActive: sessionActiveMessage,
+    sessionEnd: { id: 'auth/sessions/end', defaultMessage: 'Sign out' },
+    sessionEnded: { id: 'auth/sessions/end-done', defaultMessage: 'Signed out of that session' },
+    sessionsEndOthers: {
+      id: 'auth/sessions/end-others',
+      defaultMessage: 'Sign out of every other session',
+    },
+    sessionsEndOthersTitle: {
+      id: 'auth/sessions/end-others-title',
+      defaultMessage: 'Sign out of every other session?',
+    },
+    sessionsEndOthersBody: {
+      id: 'auth/sessions/end-others-body',
+      defaultMessage: 'They will have to sign in again',
+    },
+    sessionsEnded: sessionsEndedMessage,
+    sessionsActivity: { id: 'auth/sessions/activity', defaultMessage: 'View sign-ins' },
+    unknownDevice: { id: 'auth/sessions/unknown-device', defaultMessage: 'Unknown browser' },
+    entranceGone: { id: 'auth/sessions/entrance-gone', defaultMessage: 'A way in since removed' },
+    showMore: { id: 'auth/sessions/more', defaultMessage: 'Show more' },
+    activityTitle: { id: 'auth/activity/title', defaultMessage: 'Security activity' },
+    activitySignIns: { id: 'auth/activity/sign-ins', defaultMessage: 'Sign-ins' },
+    activityChanges: { id: 'auth/activity/changes', defaultMessage: 'Account changes' },
+    activityPeriod: { id: 'auth/activity/period', defaultMessage: 'Any date' },
+    changesEmpty: { id: 'auth/activity/changes-empty', defaultMessage: 'No changes yet' },
+    changeBySelf: { id: 'auth/activity/by-self', defaultMessage: 'By you' },
+    changeByOther: { id: 'auth/activity/by-other', defaultMessage: 'By an administrator' },
+    signInsEmpty: { id: 'auth/sign-ins/empty', defaultMessage: 'No sign-ins yet' },
+    signInsFilter: { id: 'auth/sign-ins/filter', defaultMessage: 'Outcome' },
+    signInsFilterAll: { id: 'auth/sign-ins/filter-all', defaultMessage: 'All' },
+    signInsFilterSucceeded: { id: 'auth/sign-ins/filter-succeeded', defaultMessage: 'Succeeded' },
+    signInsFilterRefused: { id: 'auth/sign-ins/filter-refused', defaultMessage: 'Refused' },
+    signInSucceeded: { id: 'auth/sign-ins/succeeded', defaultMessage: 'Signed in' },
+    signInRefused: { id: 'auth/sign-ins/refused', defaultMessage: 'Refused' },
+    signInThisSession: { id: 'auth/sign-ins/this-session', defaultMessage: 'This session' },
     accountUnbindTitle: methodNamed('auth/account/unbind-title', 'Unbind {name}?'),
     accountUnbindBody: {
       id: 'auth/account/unbind-body',
@@ -597,6 +684,19 @@ const i18n = definePluginMessages({
       defaultMessage: 'What the other system has to be told to send people back to',
     },
     methodDelete: { id: 'auth/login-methods/delete', defaultMessage: 'Delete' },
+    methodCallbackCopy: {
+      id: 'auth/login-methods/callback-copy',
+      defaultMessage: 'Copy the callback address',
+    },
+    copied: { id: 'auth/common/copied', defaultMessage: 'Copied' },
+    copyFailed: {
+      id: 'auth/common/copy-failed',
+      defaultMessage: 'Could not copy; select it and copy by hand',
+    },
+    methodDeleteSystem: {
+      id: 'auth/login-methods/delete-system',
+      defaultMessage: 'Built into the platform; it can be taken out of service but not deleted',
+    },
     methodDeleteTitle: methodNamed('auth/login-methods/delete-title', 'Delete {name}?'),
     methodDeleteBody: methodDeleteBodyMessage,
     methodDetails: { id: 'auth/login-methods/details', defaultMessage: 'Settings' },
@@ -992,6 +1092,10 @@ const i18n = definePluginMessages({
     AUTH_PASSWORD_UNAVAILABLE: {
       id: 'auth/error/password-unavailable',
       defaultMessage: 'Signing in with a password is not open to you.',
+    },
+    AUTH_SESSION_NOT_FOUND: {
+      id: 'auth/error/session-not-found',
+      defaultMessage: 'That device is already signed out.',
     },
     AUTH_MAIL_NOT_SENT: {
       id: 'auth/error/mail-not-sent',

@@ -146,7 +146,7 @@ describe('where one person stands', () => {
     const ask = page.getByRole('alertdialog')
     await expect.element(ask).toBeVisible()
     expect(moved).not.toHaveBeenCalled()
-    await ask.getByRole('button', { name: '移动到该组织' }).click()
+    await ask.getByRole('button', { name: '移动至该组织' }).click()
 
     // the version read is carried back, so a stale page loses rather than wins
     await vi.waitFor(() =>

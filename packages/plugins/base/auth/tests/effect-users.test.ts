@@ -5,6 +5,7 @@ import { permissions as authPermissions } from '@qualy/plugin-auth/permissions'
 import { permissions as rbacPermissions } from '@qualy/plugin-rbac/permissions'
 import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
 import { sql } from 'kysely'
+import { literal } from '@qualy/i18n-contract'
 import { Effect, Exit, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { authClosure } from './support/closure.ts'
@@ -47,7 +48,7 @@ const catalog = compileCatalog([
 const fakeLocalDriver = registerLoginDriver({
   type: 'local',
   presentation: { mode: 'redirect', href: () => '/nowhere' },
-  provisioning: { mode: 'system-singleton', code: 'local' },
+  provisioning: { mode: 'system-singleton', code: 'local', label: literal('Password') },
   resolution: { mode: 'user-field', field: 'email' },
   binding: {
     mode: 'managed',

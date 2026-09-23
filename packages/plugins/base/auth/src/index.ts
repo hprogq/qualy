@@ -199,6 +199,16 @@ const plugin = Plugin.define(
     title: message('auth/account/security', 'Security'),
     visibility: AUTHENTICATED,
   }),
+  // what happened to the reader's account: sign-ins and changes, a page of
+  // its own, apart from the security page's state of things now
+  Ui.page({
+    id: 'auth/account-activity',
+    path: '/account/activity',
+    component: Ui.react('./client/account/AccountActivityPage'),
+    layout: ACCOUNT_SHELL,
+    title: message('auth/activity/title', 'Security activity'),
+    visibility: AUTHENTICATED,
+  }),
   // where the links mail sends land: public, because the person following
   // one may be signed out, or on another device
   Ui.page({
@@ -259,6 +269,18 @@ const plugin = Plugin.define(
           target: { kind: 'page', pageId: 'auth/account-security' },
           icon: 'shield-check',
           order: 20,
+        },
+        visibility: AUTHENTICATED,
+      },
+      {
+        collection: accountNavigation,
+        id: 'auth/account/activity',
+        value: {
+          id: 'auth/account/activity',
+          label: message('auth/activity/title', 'Security activity'),
+          target: { kind: 'page', pageId: 'auth/account-activity' },
+          icon: 'calendar-clock',
+          order: 25,
         },
         visibility: AUTHENTICATED,
       },

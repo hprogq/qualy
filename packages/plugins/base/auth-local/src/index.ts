@@ -30,7 +30,11 @@ import {
 export const driver: LoginDriver = {
   type: 'local',
   presentation: { mode: 'component', component: Ui.react('./client/LoginMethod') },
-  provisioning: { mode: 'system-singleton', code: 'local' },
+  provisioning: {
+    mode: 'system-singleton',
+    code: 'local',
+    label: message('auth-local/entrance/kind', 'Email and password'),
+  },
   // the address a person signs in with is theirs, kept on the person: the
   // door stores no second copy of it
   resolution: { mode: 'user-field', field: 'email' },

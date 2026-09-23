@@ -14,6 +14,7 @@
     "./client/DrawerSignOut": "./src/client/DrawerSignOut.tsx",
     "./client/LoginPage": "./src/client/LoginPage.tsx",
     "./client/UserMenu": "./src/client/UserMenu.tsx",
+    "./client/account/AccountActivityPage": "./src/client/account/AccountActivityPage.tsx",
     "./client/account/AccountHeader": "./src/client/account/AccountHeader.tsx",
     "./client/account/AccountLoginsPage": "./src/client/account/AccountLoginsPage.tsx",
     "./client/account/AccountProfilePage": "./src/client/account/AccountProfilePage.tsx",
