@@ -1,5 +1,5 @@
 {
-  "name": "@qualy/plugin-auth-local",
+  "name": "@qualy/plugin-captcha",
   "version": "0.0.0",
   "private": true,
   "license": "AGPL-3.0-only",
@@ -7,37 +7,35 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
-    "./api": "./src/api.ts",
-    "./client/LoginMethod": "./src/client/LoginMethod.tsx",
+    "./client": "./src/client/index.ts",
     "./client/i18n": "./src/client/i18n.ts",
+    "./contract": "./src/contract.ts",
     "./package.json": "./package.json",
-    "./password": "./src/password.ts"
+    "./plugin": "./src/plugin.ts",
+    "./server": "./src/server/index.ts",
+    "./testkit": "./src/testkit/index.ts"
   },
   "peerDependencies": {
     "react": "catalog:"
   },
   "dependencies": {
     "@qualy/api-kit": "workspace:*",
-    "@qualy/auth-contract": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
-    "@qualy/plugin-auth": "workspace:*",
-    "@qualy/plugin-captcha": "workspace:*",
     "@qualy/plugin-kit": "workspace:*",
+    "@qualy/plugin-secrets": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
+    "@qualy/telemetry": "workspace:*",
     "@qualy/ui": "workspace:*",
     "@qualy/web-i18n": "workspace:*",
-    "@qualy/web-runtime": "workspace:*",
     "@stylexjs/stylex": "catalog:",
-    "argon2": "catalog:",
     "effect": "catalog:",
-    "lucide-react": "^0.552.0",
-    "motion": "^12.29.2",
-    "react-router": "catalog:"
+    "motion": "^12.29.2"
   },
   "devDependencies": {
     "@qualy/plugin-database": "workspace:*",
-    "@qualy/plugin-rbac": "workspace:*",
+    "@qualy/testkit": "workspace:*",
     "@qualy/tsconfig": "workspace:*",
-    "@types/react": "catalog:"
+    "@types/react": "catalog:",
+    "react": "catalog:"
   }
 }

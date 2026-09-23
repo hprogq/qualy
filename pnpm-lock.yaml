@@ -218,6 +218,9 @@ importers:
       '@qualy/plugin-auth-oidc':
         specifier: workspace:*
         version: link:packages/plugins/base/auth-oidc
+      '@qualy/plugin-captcha':
+        specifier: workspace:*
+        version: link:packages/plugins/infra/captcha
       '@qualy/plugin-database':
         specifier: workspace:*
         version: link:packages/plugins/infra/database
@@ -1204,6 +1207,9 @@ importers:
       '@qualy/org-contract':
         specifier: workspace:*
         version: link:../../../contracts/org
+      '@qualy/plugin-captcha':
+        specifier: workspace:*
+        version: link:../../infra/captcha
       '@qualy/plugin-database':
         specifier: workspace:*
         version: link:../../infra/database
@@ -1387,6 +1393,9 @@ importers:
       '@qualy/plugin-auth':
         specifier: workspace:*
         version: link:../auth
+      '@qualy/plugin-captcha':
+        specifier: workspace:*
+        version: link:../../infra/captcha
       '@qualy/plugin-kit':
         specifier: workspace:*
         version: link:../../../core/plugin-kit
@@ -1555,6 +1564,9 @@ importers:
       '@qualy/plugin-audit':
         specifier: workspace:*
         version: link:../audit
+      '@qualy/plugin-captcha':
+        specifier: workspace:*
+        version: link:../../infra/captcha
       '@qualy/plugin-secrets':
         specifier: workspace:*
         version: link:../../infra/secrets
@@ -1689,6 +1701,9 @@ importers:
       '@qualy/plugin-audit':
         specifier: workspace:*
         version: link:../audit
+      '@qualy/plugin-captcha':
+        specifier: workspace:*
+        version: link:../../infra/captcha
       '@qualy/plugin-rbac':
         specifier: workspace:*
         version: link:../rbac
@@ -1923,6 +1938,58 @@ importers:
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.18
+
+  packages/plugins/infra/captcha:
+    dependencies:
+      '@qualy/api-kit':
+        specifier: workspace:*
+        version: link:../../../core/api-kit
+      '@qualy/i18n-contract':
+        specifier: workspace:*
+        version: link:../../../contracts/i18n
+      '@qualy/plugin-kit':
+        specifier: workspace:*
+        version: link:../../../core/plugin-kit
+      '@qualy/plugin-secrets':
+        specifier: workspace:*
+        version: link:../secrets
+      '@qualy/plugin-ui-registry':
+        specifier: workspace:*
+        version: link:../ui-registry
+      '@qualy/telemetry':
+        specifier: workspace:*
+        version: link:../../../core/telemetry
+      '@qualy/ui':
+        specifier: workspace:*
+        version: link:../../../web/ui
+      '@qualy/web-i18n':
+        specifier: workspace:*
+        version: link:../../../web/i18n
+      '@stylexjs/stylex':
+        specifier: 'catalog:'
+        version: 0.19.1
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-rc.115
+      motion:
+        specifier: ^12.29.2
+        version: 12.43.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+    devDependencies:
+      '@qualy/plugin-database':
+        specifier: workspace:*
+        version: link:../database
+      '@qualy/testkit':
+        specifier: workspace:*
+        version: link:../../../testkit/browser
+      '@qualy/tsconfig':
+        specifier: workspace:*
+        version: link:../../../build/tsconfig
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.18
+      react:
+        specifier: 'catalog:'
+        version: 19.2.8
 
   packages/plugins/infra/database:
     dependencies:

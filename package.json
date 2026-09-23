@@ -17,6 +17,7 @@
     "@qualy/plugin-auth-github": "workspace:*",
     "@qualy/plugin-auth-local": "workspace:*",
     "@qualy/plugin-auth-oidc": "workspace:*",
+    "@qualy/plugin-captcha": "workspace:*",
     "@qualy/plugin-database": "workspace:*",
     "@qualy/plugin-directory-import": "workspace:*",
     "@qualy/plugin-layout-default": "workspace:*",

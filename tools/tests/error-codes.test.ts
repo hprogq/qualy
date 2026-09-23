@@ -20,6 +20,7 @@ import * as signInFailure from '../../packages/contracts/auth/src/sign-in-failur
 import * as assessment from '../../packages/plugins/assessment/core/src/errors.ts'
 import * as assessmentFormula from '../../packages/plugins/assessment/formula/src/server/errors.ts'
 import * as settings from '../../packages/plugins/base/settings/src/server/errors.ts'
+import * as captcha from '../../packages/plugins/infra/captcha/src/contract.ts'
 import * as directoryImport from '../../packages/plugins/base/directory-import/src/server/errors.ts'
 import { errorMessages as authMessages } from '../../packages/plugins/base/auth/src/client/i18n.ts'
 import { errorMessages as authLocalMessages } from '../../packages/plugins/base/auth-local/src/client/i18n.ts'
@@ -31,6 +32,7 @@ import { errorMessages as rbacMessages } from '../../packages/plugins/base/rbac/
 import { errorMessages as assessmentMessages } from '../../packages/plugins/assessment/core/src/client/i18n.ts'
 import { errorMessages as assessmentFormulaMessages } from '../../packages/plugins/assessment/formula/src/client/i18n.ts'
 import { errorMessages as settingsMessages } from '../../packages/plugins/base/settings/src/client/i18n.ts'
+import { errorMessages as captchaMessages } from '../../packages/plugins/infra/captcha/src/client/i18n.ts'
 import { errorMessages as directoryImportMessages } from '../../packages/plugins/base/directory-import/src/client/i18n.ts'
 
 // The rules about error codes that no single package can enforce.
@@ -110,6 +112,13 @@ const SOURCES = [
     owner: '@qualy/plugin-auth',
     file: 'packages/contracts/auth/src/sign-in-failure.ts',
   },
+  // what any caller answers a request with when it must first meet a
+  // challenge: declared by the capability, translated by it
+  {
+    module: captcha,
+    owner: '@qualy/plugin-captcha',
+    file: 'packages/plugins/infra/captcha/src/contract.ts',
+  },
   {
     module: settings,
     owner: '@qualy/plugin-settings',
@@ -187,6 +196,7 @@ const translations: Record<string, readonly string[]> = {
   '@qualy/plugin-assessment': Object.keys(assessmentMessages),
   '@qualy/plugin-assessment-formula': Object.keys(assessmentFormulaMessages),
   '@qualy/plugin-settings': Object.keys(settingsMessages),
+  '@qualy/plugin-captcha': Object.keys(captchaMessages),
   '@qualy/plugin-directory-import': Object.keys(directoryImportMessages),
 }
 

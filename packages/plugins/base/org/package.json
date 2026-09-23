@@ -22,6 +22,7 @@
   "devDependencies": {
     "@qualy/plugin-audit": "workspace:*",
     "@qualy/plugin-auth": "workspace:*",
+    "@qualy/plugin-captcha": "workspace:*",
     "@qualy/plugin-rbac": "workspace:*",
     "@qualy/plugin-secrets": "workspace:*",
     "@qualy/testkit": "workspace:*",

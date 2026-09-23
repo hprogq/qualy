@@ -55,6 +55,7 @@
     "@qualy/brand": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
     "@qualy/org-contract": "workspace:*",
+    "@qualy/plugin-captcha": "workspace:*",
     "@qualy/plugin-database": "workspace:*",
     "@qualy/plugin-kit": "workspace:*",
     "@qualy/plugin-mail": "workspace:*",
