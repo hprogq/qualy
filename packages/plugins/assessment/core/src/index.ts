@@ -11,10 +11,12 @@ import { Audit } from '@qualy/audit-contract/plugin'
 import { assessmentActions } from './actions.ts'
 import { message } from '@qualy/i18n-contract'
 import {
+  ACCOUNT_SHELL,
   APP_SHELL,
   AUTHENTICATED,
   PUBLIC,
   USER_DETAIL_SHELL,
+  accountNavigation,
   WORKSPACE_SHELL,
   navigationGroups,
   permissionOf,
@@ -498,6 +500,16 @@ const plugin = Plugin.define(
     title: message('assessment/person/batches-tab', 'Rounds taken part in'),
     visibility: permissionOf('assessment.batch.manage'),
   }),
+  // the rounds the reader is in, under their own account: no permission
+  // beyond being signed in, since the api answers about nobody else
+  Ui.page({
+    id: 'assessment/account-batches',
+    path: '/account/batches',
+    component: Ui.react('./client/person/MyBatchesPage'),
+    layout: ACCOUNT_SHELL,
+    title: message('assessment/person/batches-tab', 'Rounds taken part in'),
+    visibility: AUTHENTICATED,
+  }),
   Ui.page({
     id: 'assessment/user-entries',
     path: '/organization/users/:userId/assessment/entries',
@@ -517,6 +529,18 @@ const plugin = Plugin.define(
           order: 20,
         },
         visibility: PUBLIC,
+      },
+      {
+        collection: accountNavigation,
+        id: 'assessment/account-batches',
+        value: {
+          id: 'assessment/account-batches',
+          label: message('assessment/person/batches-tab', 'Rounds taken part in'),
+          target: { kind: 'page', pageId: 'assessment/account-batches' },
+          icon: 'graduation-cap',
+          order: 5,
+        },
+        visibility: AUTHENTICATED,
       },
       {
         collection: userDetailNavigation,

@@ -2266,6 +2266,18 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   )
   .add(
     /**
+     * The rounds the reader is in, for their own account. The same rows as a
+     * person's record, asked about the one person who needs no authority to
+     * ask: there is no user id to name anybody else by.
+     */
+    HttpApiEndpoint.get('listMyBatches', '/assessment/me/batches', {
+      query: Schema.Struct(pageQuery),
+      success: pageOf(userBatchView),
+      error: [BadRequest],
+    }).middleware(Authenticated),
+  )
+  .add(
+    /**
      * What one person filed, across the rounds the reader administers or
      * works on. Fellow participants see nothing here: a claim is its owner's
      * and the round's staff's, never the room's.

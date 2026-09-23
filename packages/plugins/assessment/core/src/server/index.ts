@@ -5821,6 +5821,52 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
       }),
     )
     .handle(
+      'listMyBatches',
+      Effect.fn('assessment.listMyBatches.handler')(function* ({ query }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const limit = pageSize(query.limit, DEFAULT_PAGE_SIZE)
+        const fingerprint = 'assessment.my-batches'
+        const key = readQueryCursor(query.cursor, fingerprint, ['timestamp', 'uuid'])
+        if (key === null) return yield* cursorUnusable()
+        const found = yield* assessment.listUserBatches(
+          principal.tenantId,
+          principal.userId,
+          {
+            ...(key === undefined ? {} : { after: { includedAt: key[0]!, id: key[1]! } }),
+            limit: limit + 1,
+          },
+          principal,
+        )
+        const page = found.slice(0, limit)
+        const last = page[page.length - 1]
+        return {
+          items: page.map((row) => ({
+            batch: {
+              id: row.batchId,
+              name: row.name,
+              status: row.status as 'draft' | 'active' | 'archived',
+              materialRange: parseRange(row.materialRange),
+              timezone: row.timezone,
+              currentPhaseId: row.currentPhaseId,
+              currentPhaseName: row.currentPhaseName,
+              manageable: row.manageable === true,
+            },
+            membership: {
+              status: row.membershipStatus as 'active' | 'excluded',
+              includedAt: new Date(row.includedAt).toISOString(),
+              excludedAt: row.excludedAt == null ? null : new Date(row.excludedAt).toISOString(),
+              anchorNodeName: row.anchorNodeName ?? null,
+            },
+          })),
+          nextCursor:
+            found.length > limit && last
+              ? encodeQueryCursor(fingerprint, [last.cursorAt, last.membershipId])
+              : null,
+        }
+      }),
+    )
+    .handle(
       'listUserEntries',
       Effect.fn('assessment.listUserEntries.handler')(function* ({ params, query }) {
         const assessment = yield* Assessment
