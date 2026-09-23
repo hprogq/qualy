@@ -792,16 +792,17 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         provider: ResolvedProvider
         identifier?: string
       }) {
-        yield* fromHere(input.provider, LIMITS.signInByAddress)
-        if (input.identifier === undefined) return
-        // weighed whether or not anybody answers to it: the refusal must
-        // not be the thing that tells an address that exists from one that
-        // does not
-        const answer = yield* limiter.consume(
-          input.provider.tenantId,
-          LIMITS.signInByIdentifier,
-          `${input.provider.providerId}\0${input.identifier}`,
-        )
+        const context = Option.getOrUndefined(yield* currentRequestContext)
+        const provider = input.provider.providerId
+        // weighed whether or not anybody answers to the identifier: the
+        // refusal must not be the thing that tells an address that exists
+        // from one that does not
+        const answer = yield* limiter.consumeAll(input.provider.tenantId, [
+          [LIMITS.signInByAddress, `${provider}\0${context?.clientIp ?? 'unknown'}`],
+          ...(input.identifier === undefined
+            ? []
+            : [[LIMITS.signInByIdentifier, `${provider}\0${input.identifier}`] as const]),
+        ])
         if (!answer.allowed) {
           return yield* new TooManyAttempts({ retryAfterSeconds: answer.retryAfterSeconds })
         }

@@ -549,6 +549,18 @@ describe.runIf(postgresAvailable)('how many attempts a door takes', () => {
     expect(back.status).toBe(200)
   })
 
+  it('names the longest wait when more than one limit is full', async () => {
+    // the address's limit fills after the identifier's, and has the
+    // shorter window: the answer is still the wait until both let go
+    const waits: number[] = []
+    for (let tried = 0; tried < 32; tried += 1) {
+      const response = await login({ email: SEEDED_EMAILS.ada, password: 'not the password' })
+      if (response.status === 429) waits.push(Number(response.headers.get('retry-after')))
+    }
+    expect(waits).toHaveLength(22)
+    expect(Math.min(...waits)).toBeGreaterThan(300)
+  })
+
   it('slows one address trying many accounts', async () => {
     const answers: number[] = []
     for (let tried = 0; tried < 31; tried += 1) {

@@ -408,12 +408,15 @@ export const emailFlowsLayer: Layer.Layer<
         const normalized = normalizeEmail(email) ?? email.trim().toLowerCase()
         // counted before anything is looked up, and the same for an address
         // nobody has: the refusal must not tell the two apart
-        yield* withDb(
-          Effect.all([
-            throttle(tenant.value.id, LIMITS.resetByAddress, context?.clientIp ?? 'unknown'),
-            throttle(tenant.value.id, LIMITS.resetByIdentifier, normalized),
+        const answer = yield* withDb(
+          limiter.consumeAll(tenant.value.id, [
+            [LIMITS.resetByAddress, context?.clientIp ?? 'unknown'],
+            [LIMITS.resetByIdentifier, normalized],
           ]),
         )
+        if (!answer.allowed) {
+          return yield* new TooManyAttempts({ retryAfterSeconds: answer.retryAfterSeconds })
+        }
         const issued = yield* inLock(
           tenant.value.id,
           Effect.gen(function* () {

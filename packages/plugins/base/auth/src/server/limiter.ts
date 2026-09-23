@@ -121,5 +121,27 @@ export const makeLimiter = Effect.gen(function* () {
     ) satisfies LimitAnswer as LimitAnswer
   })
 
-  return { consume, sweep }
+  /**
+   * Counts one attempt against every key and answers with the longest wait.
+   *
+   * Every bucket is counted, and the refusal names the wait until all of them
+   * would let the attempt through: answering with whichever refused first
+   * told a caller held for fifteen minutes by one bucket to come back in five
+   * because another had filled too.
+   */
+  const consumeAll = Effect.fn('Auth.limiter.consumeAll')(function* (
+    tenantId: string,
+    weighed: ReadonlyArray<readonly [rule: LimitRule, key: string]>,
+  ) {
+    let wait = 0
+    for (const [rule, key] of weighed) {
+      const answer = yield* consume(tenantId, rule, key)
+      if (!answer.allowed) wait = Math.max(wait, answer.retryAfterSeconds)
+    }
+    return (
+      wait > 0 ? { allowed: false, retryAfterSeconds: wait } : { allowed: true }
+    ) satisfies LimitAnswer as LimitAnswer
+  })
+
+  return { consume, consumeAll, sweep }
 })
