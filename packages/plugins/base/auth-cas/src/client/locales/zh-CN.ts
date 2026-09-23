@@ -1,7 +1,7 @@
 import type { MessageCatalog } from '@qualy/i18n-contract'
 
 export default {
-  'auth-cas/entrance/kind': '统一身份认证(CAS)',
+  'auth-cas/entrance/kind': 'CAS',
   'auth-cas/field/server-url': 'CAS 服务地址',
   'auth-cas/field/server-url-hint': '统一身份认证页面所在的地址，如 https://cas.example.edu/cas',
   'auth-cas/field/protocol': '协议版本',
