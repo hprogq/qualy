@@ -326,6 +326,14 @@ describe('the reader’s security activity', () => {
     const days = sheet.getByRole('button', { name: /全部日期/ }).element().getBoundingClientRect()
     expect(Math.abs(days.top + days.height / 2 - (toggles.top + toggles.height / 2))).toBeLessThan(4)
     expect(days.left).toBeGreaterThan(toggles.right)
+    // on a phone the days take the whole row, and a range of two dates fits one line
+    await page.viewport(360, 740)
+    await vi.waitFor(() => {
+      const days = sheet.getByRole('button', { name: /全部日期/ }).element()
+      const row = days.closest('[data-testid="sign-ins-card-sheet"] div')!.getBoundingClientRect()
+      expect(days.getBoundingClientRect().width).toBeGreaterThan(row.width * 0.8)
+    })
+    await page.viewport(1280, 800)
     await sheet.getByRole('radio', { name: '失败' }).click()
     await vi.waitFor(() =>
       expect(signIns).toHaveBeenCalledWith({

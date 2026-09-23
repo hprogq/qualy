@@ -71,13 +71,15 @@ const styles = stylex.create({
   tools: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 },
   // the days at the row's far end, apart from what narrows the rows; the
   // whole row on a phone
-  // it gives way to share the line, down to what a date range needs
+  // As wide as the days it says, on one line: where that does not fit beside
+  // the toggles the whole field goes to the next line, rather than folding
+  // its dates in two. A phone gives it the whole row.
   period: {
-    width: { default: 'auto', '@media (max-width: 767.98px)': '100%' },
-    flexGrow: 1,
-    flexBasis: 170,
+    width: { default: 'max-content', '@media (max-width: 767.98px)': '100%' },
     minWidth: 170,
-    maxWidth: { default: 240, '@media (max-width: 767.98px)': 'none' },
+    flexShrink: 0,
+    flexBasis: { default: 'auto', '@media (max-width: 767.98px)': '100%' },
+    whiteSpace: 'nowrap',
     marginInlineStart: { default: 'auto', '@media (max-width: 767.98px)': 0 },
   },
   // a way on beside the card's title, in the size of what stands there
