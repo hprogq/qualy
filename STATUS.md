@@ -20033,3 +20033,18 @@ CLAUDE.md 增加一条：scope 只能是一个主要模块，不许用逗号列�
 - `pnpm test`：`Test Files  297 passed | 3 skipped (300)`，`Tests  2190 passed | 17 skipped (2207)`。
 - `pnpm test:browser`：`Tests  4 failed | 560 passed (564)`；失败的 shell rail 预取、item-editor、record-recognition、review-recognition 均为整套负载下超时，四个文件单独重跑 `Tests  74 passed (74)`。
 - 新测试：两个桶先后满时答最长等待（22 次拒绝均 > 300 秒）；退出登录只重取 manifest、旧页面不重挂不重取（旧实现重取 3 次）；本地表单不发送不合规输入、429 后按钮禁用且 `data-wait=125`、再点不发请求；记住的邮箱回填；上次使用的方式标记；设置新密码时位数不足点击只标红规则。
+
+## 登录方式图标：两种背景与 SVG（2026-09-24）
+
+- **两种背景**：上传的图标可有两张：`onLight`（必填）与 `onDark`（可选，缺省沿用 `onLight`）。按图标实际所在的背景选，不按主题选：`LoginMethodGlyph` 的 `tone: 'plain' | 'inverse'` 说明站在页面底色还是反色（推荐按钮）上，结合当前主题得出 `light | dark`。公开 `LoginMethodIcon` 的 image 增 `onDark`；`GET /auth/login-methods/:code/icon` 增 `surface=dark`。内置图标：线条类跟随文字色，品牌色字母块两种背景都清楚的不变，Apple 在深色背景上换成浅底深字。
+- **SVG**：不经对象存储（storage 有意把 SVG 当字节返回），原文随 `PUT /auth/providers/:id/icon` 的 `{kind:'svg', markup, surface}` 提交（≤64 KB），按白名单校验（元素白名单；拒 `on*`、外部 `href`、DOCTYPE/ENTITY、处理指令、数字实体、`javascript:`/`@import`/非 `#` 的 `url(`），通过后原样存进 `icon` 列，以 `image/svg+xml` 加 `CSP sandbox` 返回。
+- **管理端**：详情卡并排显示图标在浅色、深色背景上的样子；选择器下「自定义图片」分浅色 / 深色两个上传位，深色位在已有自定义图片后才可上传、可移除；「恢复默认」清空两张。新错误原因 `svg`、`light-first`，前端按原因给出不同提示。
+- **迁移** `20260923185234_login-icon-surfaces.sql`：已有的 `{kind:'upload'}` 改写为 `{kind:'image', onLight, onDark:null}`，配升级测试。审计动作明细只增字段（surface、version），版本不变，不记录图形本身。安全做法记入 docs/notes/auth-security.md。
+
+### 验收（实际执行）
+
+- `pnpm typecheck`：exit 0。
+- `pnpm qualy database verify`：`82 committed migration(s) build the declared schema, zero drift`；`database check`：`lineage ok`；`drop-guard`：`drop guard ok (82 file(s) scanned)`；`qualy resolve --frozen-lockfile`：exit 0。
+- `pnpm test`：`Tests  1 failed | 2193 passed | 17 skipped (2211)`，失败的是 fast-refresh 门禁（glyph.tsx 导出了 hook），hook 移到 `sign-in/surface.ts` 后该门禁 `Tests  1 passed (1)`。
+- `pnpm test:browser`：`Tests  1 failed | 566 passed (567)`，失败的 item-editor 为整套负载下超时，单独重跑通过；修正后 auth 两个浏览器文件 `Tests  33 passed (33)`。
+- 新测试：SVG 校验（5 种合法图形原样保留，18 种脚本 / 外部引用 / 非单一图形被拒）；两种背景的全流程（先传深色被拒 `light-first`、只有浅色时深色背景用浅色图、两张分别返回、换浅色图保留深色图、移除深色、脚本 SVG 被拒、恢复默认后旧图 retired、审计只记选择与背景）；迁移升级测试；浏览器侧 SVG 上传载荷、深色位禁用、移除深色、推荐按钮用深色版本。
