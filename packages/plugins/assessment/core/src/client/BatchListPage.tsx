@@ -127,7 +127,9 @@ const styles = stylex.create({
     },
     alignItems: 'center',
     justifyContent: 'flex-end',
-    gap: { default: 10, [breakpoints.phone]: 4 },
+    // two round glyphs side by side, apart enough that a thumb meant for
+    // one does not land on the other
+    gap: { default: 10, [breakpoints.phone]: 12 },
   },
   // at the end of the list's own row, whatever else the row holds
   searchSeat: {
