@@ -34,7 +34,7 @@ export default {
   'directory-import/upload/replace': '更换文件',
   'directory-import/sheet/label': '工作表',
   'directory-import/sheet/header-row': '表头所在行',
-  'directory-import/sheet/header-row-hint': '选择包含列标题的那一行，其后的每一行对应一人',
+  'directory-import/sheet/header-row-hint': '请在上方输入表头所在行号，表头行后一行一人',
   'directory-import/inspect/row-count': '{count} 行',
   'directory-import/sheet/sample': '表格预览',
   'directory-import/sheet/no-headers': '该行没有可用的列标题',

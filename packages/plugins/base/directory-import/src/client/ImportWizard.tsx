@@ -728,7 +728,7 @@ export function ImportWizard({
   const exampleLine =
     examplePath.length === 0
       ? format(m.exampleUnready)
-      : [examplePath.join(' / '), exampleName].filter((part) => part !== '').join('　·　')
+      : [examplePath.join(' / '), exampleName].filter((part) => part !== '').join(' - ')
 
   const addLevel = () =>
     setLevels((current) => [...current, { key: Date.now(), orgTypeId: '', column: '' }])
