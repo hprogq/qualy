@@ -89,8 +89,14 @@ jobs:
       # A committed migration is history: between the base of this change and
       # its head the lineage may only grow. Editing or removing one is a new
       # migration's job (docs/deployment.md, release verification 5).
+      # A force push leaves the pushed-over commit out of the clone; GitHub
+      # still serves it by id, so it is fetched rather than skipped.
       - name: committed migrations only grow
-        run: node tools/quality/check-migrations-immutable.ts ${{ github.event.pull_request.base.sha || github.event.before }}
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          git cat-file -e "$BASE^{commit}" 2>/dev/null || git fetch --no-tags --quiet origin "$BASE" || true
+          node tools/quality/check-migrations-immutable.ts "$BASE"
       - run: pnpm typecheck
       - name: capability artifacts must be conflict free
         run: pnpm qualy database check

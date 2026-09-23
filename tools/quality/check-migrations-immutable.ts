@@ -20,9 +20,16 @@ import { repoRoot } from '../lib/manifest.ts'
 //
 //   node tools/quality/check-migrations-immutable.ts <base-ref>
 //
-// CI passes the pull request's base or the pushed-over commit. A base that
-// is not in this clone (a brand-new branch's zero sha) is a pass, not a
-// guess: there is nothing to compare against.
+// CI passes the pull request's base or the pushed-over commit. A brand-new
+// branch's zero sha is a pass, not a guess: there is nothing to compare
+// against. A pushed-over commit that a force push left out of the clone is
+// fetched by id first (see the workflow); one that still is not here fails.
+//
+// What is added is what HEAD has and the base does not. The diff runs from
+// the merge base, so a branch behind its base is not charged with the base's
+// newer files; but after a rewritten history the merge base lies before
+// migrations the base already holds, and those are not new to the lineage.
+// A file the base holds under the same name is compared by content instead.
 
 const base = process.argv[2]
 if (!base) {
@@ -97,7 +104,21 @@ const migrationsAt = (ref: string) =>
     .filter((line) => line.endsWith('.sql'))
     .map((line) => path.posix.basename(line))
 
-const added = git([
+/** each migration file at a ref, by path, with the blob it holds */
+const blobsAt = (ref: string) =>
+  new Map(
+    git(['ls-tree', '-r', ref, '--', 'db/migrations'])
+      .split('\n')
+      .filter((line) => line !== '')
+      .map((line) => {
+        const [meta, file] = line.split('\t') as [string, string]
+        return [file, meta.split(' ')[2]!] as const
+      }),
+  )
+const atBase = blobsAt(base)
+const atHead = blobsAt('HEAD')
+
+const addedPaths = git([
   'diff',
   '--name-only',
   '--diff-filter=A',
@@ -107,7 +128,21 @@ const added = git([
 ])
   .split('\n')
   .filter((line) => line !== '')
-  .map((line) => path.posix.basename(line))
+
+// already on the base: the same file is not an addition, a different one is an edit
+const rewritten = addedPaths.filter(
+  (file) => atBase.has(file) && atBase.get(file) !== atHead.get(file),
+)
+if (rewritten.length > 0) {
+  console.error(
+    `check-migrations-immutable: ${String(rewritten.length)} committed migration(s) differ from ${base}; a migration is fixed forward with a new file, never edited:`,
+  )
+  for (const file of rewritten) console.error(`  ${file}`)
+  process.exit(1)
+}
+const added = addedPaths
+  .filter((file) => !atBase.has(file))
+  .map((file) => path.posix.basename(file))
 
 const misnamed = added.filter((name) => !MIGRATION_FILE.test(name))
 if (misnamed.length > 0) {
