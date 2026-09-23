@@ -302,8 +302,9 @@
     flex-shrink: 0;
   }
   [data-slot='empty-icon'][data-variant='icon'] svg {
-    width: 1.5rem;
-    height: 1.5rem;
+    width: 1.75rem;
+    height: 1.75rem;
+    stroke-width: 1.5;
   }
   /* A segmented option's own icon. It arrives inside a label the caller
      wrote, so no compiled style can reach it; lucide draws at 24px when

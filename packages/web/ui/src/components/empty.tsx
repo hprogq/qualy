@@ -19,46 +19,49 @@ const styles = stylex.create({
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 16,
+    gap: 12,
     borderRadius: tokens.radiusLg,
     // dashed but zero-width: a caller opts into the visible border, exactly
     // as the utility pair border + border-dashed composed before
     borderWidth: 0,
     borderStyle: 'dashed',
-    padding: 48,
+    // one value, not the two axes: a caller's own `padding` has to win over
+    // it, and longhands here would beat a shorthand there
+    padding: 40,
     textAlign: 'center',
     textWrap: 'balance',
   },
+  // An empty state says one quiet thing. It is set below the page's own
+  // title rather than above it: a state drawn larger than the name of the
+  // page it sits in becomes the loudest thing there, and all it has to say
+  // is that there is nothing.
   header: {
     display: 'flex',
     maxWidth: '24rem',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   media: {
-    marginBottom: 8,
+    marginBottom: 6,
     display: 'flex',
     flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // a line drawing in grey with no tile under it: the tile made the glyph a
+  // button-sized object, the heaviest thing on a screen with nothing on it
   mediaIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: tokens.radiusLg,
-    backgroundColor: tokens.surfaceMuted,
-    color: tokens.foreground,
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 75%, transparent)`,
   },
   title: {
-    fontSize: '1.125rem',
-    lineHeight: '1.75rem',
-    fontWeight: 500,
-    letterSpacing: '-0.025em',
+    fontSize: 15,
+    lineHeight: 1.4,
+    fontWeight: 600,
   },
   description: {
-    fontSize: '0.875rem',
-    lineHeight: 1.625,
+    fontSize: 13,
+    lineHeight: 1.5,
     color: tokens.mutedForeground,
   },
   content: {

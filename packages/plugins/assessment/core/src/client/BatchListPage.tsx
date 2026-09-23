@@ -10,16 +10,8 @@ import { layout } from '@qualy/ui/theme/layout.stylex'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Spinner } from '@qualy/ui/spinner'
 import { Button } from '@qualy/ui/button'
-import {
-  Empty,
-  EmptyContent,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from '@qualy/ui/empty'
-import { EmptyRow } from '@qualy/ui/empty-row'
-import { Reveal } from '@qualy/ui/reveal'
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@qualy/ui/empty'
+import { Reveal, Unfold } from '@qualy/ui/reveal'
 import { PageContainer } from '@qualy/ui/page-container'
 import { Input } from '@qualy/ui/input'
 import { useIsMobile } from '@qualy/ui/use-mobile'
@@ -81,7 +73,9 @@ const styles = stylex.create({
       [breakpoints.phone]: 16,
     },
   },
+  // positioned: a closing search folds on top of the row, placed against it
   masthead: {
+    position: 'relative',
     display: 'flex',
     flexWrap: 'wrap',
     alignItems: 'center',
@@ -121,6 +115,7 @@ const styles = stylex.create({
     color: tokens.primaryForeground,
   },
   searchOpenSeat: { minWidth: 0, flexGrow: 1 },
+  searchUnfold: { display: 'flex', minWidth: 0, flexGrow: 1, alignItems: 'center', gap: 4 },
   mastheadTools: {
     display: 'flex',
     // it grows only so the search box can have the rest of the row when it
@@ -134,15 +129,11 @@ const styles = stylex.create({
     justifyContent: 'flex-end',
     gap: { default: 10, [breakpoints.phone]: 4 },
   },
+  // at the end of the list's own row, whatever else the row holds
   searchSeat: {
-    width: '100%',
-    // narrower on a tablet, where the row it shares with the page's name
-    // and the button that starts a round has less to go round
-    maxWidth: {
-      default: null,
-      [breakpoints.tablet]: 200,
-      [breakpoints.desktop]: 320,
-    },
+    width: { default: 260, [breakpoints.tablet]: 200 },
+    flexShrink: 0,
+    marginInlineStart: 'auto',
   },
   searchGlyph: {
     width: 16,
@@ -177,7 +168,18 @@ const styles = stylex.create({
     display: 'flex',
     flexDirection: { default: 'row', [breakpoints.phone]: 'column' },
     alignItems: { default: 'center', [breakpoints.phone]: 'stretch' },
-    gap: { default: 16, [breakpoints.phone]: 10 },
+    gap: { default: 16, [breakpoints.phone]: 8 },
+  },
+  // Three lines of words: the room they need, not half a screen. On a phone
+  // with nothing on it there is no card at all - a large empty box is what
+  // made the emptiness read as something that failed to load - and the
+  // state stands in the page under the filters, with the page's own space
+  // below it.
+  empty: {
+    flexGrow: 0,
+    paddingBlock: { default: 72, [breakpoints.phone]: null },
+    paddingTop: { default: null, [breakpoints.phone]: 72 },
+    paddingBottom: { default: null, [breakpoints.phone]: 24 },
   },
   listHeadLine: {
     display: 'flex',
@@ -327,6 +329,7 @@ const styles = stylex.create({
     backgroundColor: tokens.surface,
     boxShadow: tokens.elevation1,
   },
+  sheetBare: { backgroundColor: 'transparent', boxShadow: 'none', overflow: 'visible' },
   sheetScroller: {
     overflowX: 'auto',
   },
@@ -467,8 +470,8 @@ const styles = stylex.create({
 
 type StatusFilter = 'all' | 'draft' | 'active' | 'archived'
 
-/** a chip's number, said only once the server has counted */
-const chipCount = (count: number | undefined) => <Count>{count}</Count>
+/** a chip's number, said only once the server has counted, and not when it is none */
+const chipCount = (count: number | undefined) => (count === 0 ? null : <Count>{count}</Count>)
 
 /** how long a refresh may take before the page says it is refreshing */
 const REFRESH_NOTICE_AFTER = 180
@@ -538,6 +541,7 @@ export default function BatchListPage() {
   // made here rather than in a media query
   const narrow = useIsMobile()
   const [searchOpen, setSearchOpen] = useState(false)
+  const searchInRow = narrow && searchOpen
   const { format, formatError } = useI18n()
   // the shell repeats this once the heading itself has scrolled away
   const titleRef = usePageTitle(format(m.batchesTitle))
@@ -692,19 +696,14 @@ export default function BatchListPage() {
     open(batchId)
   }
 
-  // what the empty table says: the search it matched nothing for, or the
-  // standing it found nothing in
-  const emptyLine = () => {
-    if (settledSearch !== '') return format(m.emptySearch, { q: settledSearch })
-    return format(
-      {
-        all: m.batchesEmpty,
-        active: m.emptyActive,
-        draft: m.emptyDraft,
-        archived: m.emptyArchived,
-      }[statusFilter],
-    )
-  }
+  // why the table is empty: a search that found nothing, a filter that
+  // left nothing, or nothing here for this reader at all
+  const emptyKind = settledSearch !== '' ? 'search' : filtered ? 'filtered' : 'none'
+  const emptyWords = {
+    none: { title: m.batchesEmpty, hint: m.batchesEmptyHint },
+    filtered: { title: m.emptyFilteredTitle, hint: m.emptyFilteredHint },
+    search: { title: m.emptySearchTitle, hint: m.emptySearchHint },
+  } as const
 
   const standingStyle = {
     draft: null,
@@ -727,19 +726,36 @@ export default function BatchListPage() {
   // room is kept meanwhile, so the answer does not push the list down
   const heroPending = runningQuery.isPending && !searching
 
+  const searchBox = (
+    <Input
+      name="batches-search"
+      value={search}
+      autoFocus={narrow}
+      placeholder={format(m.searchPlaceholder)}
+      aria-label={format(m.searchPlaceholder)}
+      onChange={(event) => setSearch(event.target.value)}
+      lead={<SearchIcon aria-hidden className={stylex.props(styles.searchGlyph).className} />}
+      wrapperXstyle={narrow ? styles.searchOpenSeat : styles.searchSeat}
+    />
+  )
+
   return (
     <PageContainer xstyle={styles.column}>
       <Reveal className={stylex.props(styles.page).className}>
+        {/* The title row is the page's: its name and the one thing the page
+            offers as a whole. The search belongs to the list and stands in
+            the list's own row, so a reader who may not create a batch does
+            not get a box stranded in the corner where the button would be.
+            A phone has no room for a box beside the list's pills, so there
+            the search is a glyph in this row that opens into the row. */}
         <div {...stylex.props(styles.masthead)}>
-          {/* on a phone the row holds either the page's name or the box to
-              search it, never both: there is room for one of them */}
-          {(!narrow || !searchOpen) && (
+          {!searchInRow && (
             <h1 ref={titleRef} {...stylex.props(styles.title)}>
               {format(m.batchesTitle)}
             </h1>
           )}
           <div {...stylex.props(styles.mastheadTools)}>
-            {narrow && !searchOpen ? (
+            {narrow && !searchInRow && (
               <button
                 type="button"
                 aria-label={format(m.searchPlaceholder)}
@@ -748,34 +764,25 @@ export default function BatchListPage() {
               >
                 <SearchIcon size={20} aria-hidden />
               </button>
-            ) : (
-              <Input
-                name="batches-search"
-                value={search}
-                autoFocus={narrow}
-                placeholder={format(m.searchPlaceholder)}
-                aria-label={format(m.searchPlaceholder)}
-                onChange={(event) => setSearch(event.target.value)}
-                lead={
-                  <SearchIcon aria-hidden className={stylex.props(styles.searchGlyph).className} />
-                }
-                wrapperXstyle={narrow ? styles.searchOpenSeat : styles.searchSeat}
-              />
             )}
-            {narrow && searchOpen && (
-              <button
-                type="button"
-                aria-label={format(commonMessages.close)}
-                onClick={() => {
-                  setSearchOpen(false)
-                  setSearch('')
-                }}
-                {...stylex.props(styles.iconButton)}
+            {narrow && (
+              <Unfold
+                show={searchOpen}
+                onClosed={() => setSearch('')}
+                className={stylex.props(styles.searchUnfold).className}
               >
-                <XIcon size={20} aria-hidden />
-              </button>
+                {searchBox}
+                <button
+                  type="button"
+                  aria-label={format(commonMessages.close)}
+                  onClick={() => setSearchOpen(false)}
+                  {...stylex.props(styles.iconButton)}
+                >
+                  <XIcon size={20} aria-hidden />
+                </button>
+              </Unfold>
             )}
-            {canCreate && !(narrow && searchOpen) && (
+            {canCreate && !searchInRow && (
               <>
                 {narrow ? (
                   <button
@@ -871,7 +878,12 @@ export default function BatchListPage() {
                   that name, since it is the table being asked again */}
               <div {...stylex.props(styles.listHead)}>
                 <div {...stylex.props(styles.listHeadLine)}>
-                  <span {...stylex.props(styles.listLabel)}>{format(m.batchesAll)}</span>
+                  {/* the list's name tells it apart from the cards above it;
+                      a phone with no card above has nothing to tell it from,
+                      and the page's own title already says what it lists */}
+                  {(!narrow || heroPending || running.length > 0) && (
+                    <span {...stylex.props(styles.listLabel)}>{format(m.batchesAll)}</span>
+                  )}
                   {refreshing && (
                     <Spinner
                       aria-label={format(commonMessages.loading)}
@@ -913,37 +925,32 @@ export default function BatchListPage() {
                     </ToggleGroupItem>
                   </ToggleGroup>
                 </div>
+                {!narrow && searchBox}
               </div>
 
-              <div {...stylex.props(styles.sheet)}>
+              <div
+                {...stylex.props(
+                  styles.sheet,
+                  narrow && shownRows.length === 0 && styles.sheetBare,
+                )}
+              >
                 {shownRows.length === 0 ? (
-                  // an empty list and an empty result set are different
-                  // situations: the first is answered by creating a batch,
-                  // the second by the search box and the pills already on
-                  // the page, so it is one line where the rows would be
-                  filtered ? (
-                    <EmptyRow data-testid="batch-list-empty" data-empty="filtered">
-                      {emptyLine()}
-                    </EmptyRow>
-                  ) : (
-                    <Empty data-testid="batch-list-empty" data-empty="none">
-                      <EmptyHeader>
-                        <EmptyMedia variant="icon">
-                          <LayersIcon />
-                        </EmptyMedia>
-                        <EmptyTitle>{format(m.batchesEmpty)}</EmptyTitle>
-                        <EmptyDescription>{format(m.batchesEmptyHint)}</EmptyDescription>
-                      </EmptyHeader>
-                      {canCreate && (
-                        <EmptyContent>
-                          <Button variant="outline" onClick={() => setCreating(true)}>
-                            <PlusIcon />
-                            {format(m.newBatch)}
-                          </Button>
-                        </EmptyContent>
-                      )}
-                    </Empty>
-                  )
+                  // says why there is nothing, and nothing more: the way on is
+                  // already on the page - the search, the pills, and for
+                  // whoever may, the button at the top
+                  <Empty
+                    data-testid="batch-list-empty"
+                    data-empty={emptyKind}
+                    xstyle={styles.empty}
+                  >
+                    <EmptyHeader>
+                      <EmptyMedia variant="icon">
+                        <LayersIcon />
+                      </EmptyMedia>
+                      <EmptyTitle>{format(emptyWords[emptyKind].title)}</EmptyTitle>
+                      <EmptyDescription>{format(emptyWords[emptyKind].hint)}</EmptyDescription>
+                    </EmptyHeader>
+                  </Empty>
                 ) : narrow ? (
                   <div {...stylex.props(styles.rows)}>
                     {shownRows.map((row) => {

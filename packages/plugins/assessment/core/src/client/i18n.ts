@@ -332,12 +332,6 @@ const startsOn = defineMessage<{ date: string }>()({
   defaultMessage: 'Starts {date}',
 })
 
-// the list with nothing in it, said for the question that was asked
-const emptySearch = defineMessage<{ q: string }>()({
-  id: 'assessment/batch/empty-search',
-  defaultMessage: 'No batches match \u201c{q}\u201d',
-})
-
 const enrolled = defineMessage<{ count: number }>()({
   id: 'assessment/batch/enrolled',
   defaultMessage: '{count, plural, one {# participant} other {# participants}}',
@@ -561,14 +555,29 @@ const i18n = definePluginMessages({
       id: 'assessment/batch/hint',
       defaultMessage: 'Manage assessment batches, stage plans, and participant rosters.',
     },
+    // the list with nothing in it, said for why: nothing for this reader,
+    // a filter that left nothing, a search that found nothing
     batchesEmpty: {
       id: 'assessment/batch/empty',
-      defaultMessage: 'No assessment batches yet.',
+      defaultMessage: 'No assessment batches to show',
     },
     newBatch: { id: 'assessment/batch/new', defaultMessage: 'New batch' },
     batchesEmptyHint: {
       id: 'assessment/batch/empty-hint',
-      defaultMessage: 'Create a batch to configure its stages, participants, and assessment items.',
+      defaultMessage: 'No assessment batch involves you yet',
+    },
+    emptyFilteredTitle: {
+      id: 'assessment/batch/empty-filtered',
+      defaultMessage: 'No batches match',
+    },
+    emptyFilteredHint: {
+      id: 'assessment/batch/empty-filtered-hint',
+      defaultMessage: 'Try other filters or another search',
+    },
+    emptySearchTitle: { id: 'assessment/batch/empty-search', defaultMessage: 'No batches found' },
+    emptySearchHint: {
+      id: 'assessment/batch/empty-search-hint',
+      defaultMessage: 'Try another word',
     },
     searchPlaceholder: {
       id: 'assessment/batch/search',
@@ -579,13 +588,6 @@ const i18n = definePluginMessages({
     filterStatus: { id: 'assessment/batch/filter-status', defaultMessage: 'Status' },
     filterAll: { id: 'assessment/batch/filter-all', defaultMessage: 'All' },
     noMatchTitle: { id: 'assessment/batch/no-match', defaultMessage: 'No matching batches' },
-    emptySearch,
-    emptyActive: {
-      id: 'assessment/batch/empty-active',
-      defaultMessage: 'No batches in progress yet',
-    },
-    emptyDraft: { id: 'assessment/batch/empty-draft', defaultMessage: 'No draft batches yet' },
-    emptyArchived: { id: 'assessment/batch/empty-ended', defaultMessage: 'No ended batches yet' },
     switcherOnlyThis: {
       id: 'assessment/batch/switcher-only-this',
       defaultMessage: 'This is the only batch you are in.',

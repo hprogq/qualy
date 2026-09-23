@@ -383,17 +383,97 @@ describe('the batch list', () => {
       },
       '/assessment/batches',
     )
-    // nothing has been created yet: the answer is to create one
+    // nothing here yet: the emptiness says so and offers nothing of its own -
+    // the way to make one is the page's own button, once
     const empty = page.getByTestId('batch-list-empty')
     await expect.element(empty).toHaveAttribute('data-empty', 'none')
-    await expect.element(page.getByRole('button', { name: '新建批次' }).nth(1)).toBeVisible()
+    expect(await page.getByRole('button', { name: '新建批次' }).elements()).toHaveLength(1)
+    expect(empty.element().querySelector('button')).toBeNull()
 
     await page.getByRole('textbox', { name: '搜索批次名称' }).fill('不存在的名字')
-    // now the same emptiness means the search matched nothing, and the way
-    // back is the search box itself - nothing else is offered
-    await expect.element(empty).toHaveAttribute('data-empty', 'filtered')
+    // now the same emptiness means the search matched nothing
+    await expect.element(empty).toHaveAttribute('data-empty', 'search')
     await page.getByRole('textbox', { name: '搜索批次名称' }).fill('')
     await expect.element(empty).toHaveAttribute('data-empty', 'none')
+    // and a filter that leaves nothing is a third answer
+    await page.getByRole('radio', { name: /已结束/ }).click()
+    await expect.element(empty).toHaveAttribute('data-empty', 'filtered')
+  })
+
+  it('keeps the search in the list\u2019s own row, beside its filters, whoever reads it', async () => {
+    await page.viewport(1280, 800)
+    screen(
+      {
+        listBatches: () =>
+          Effect.succeed({
+            items: [],
+            nextCursor: null,
+            total: 0,
+            capabilities: { create: false },
+          }),
+      },
+      '/assessment/batches',
+    )
+    const search = page.getByRole('textbox', { name: '搜索批次名称' })
+    await expect.element(search).toBeVisible()
+    const filters = page.getByRole('radiogroup', { name: '状态' })
+    const row = (element: Element) => element.getBoundingClientRect()
+    const middle = (box: DOMRect) => box.top + box.height / 2
+    expect(middle(row(search.element()))).toBeCloseTo(middle(row(filters.element())), 0)
+    // and the title row carries nothing but the title for a reader who may not create
+    const title = page.getByRole('heading', { name: '测评批次' }).element()
+    expect(row(search.element()).top).toBeGreaterThan(row(title).bottom)
+  })
+
+  it('on a phone, says an empty list in the page rather than in a box, under the title in size', async () => {
+    await page.viewport(390, 844)
+    screen(
+      {
+        listBatches: () =>
+          Effect.succeed({
+            items: [],
+            nextCursor: null,
+            total: 0,
+            capabilities: { create: false },
+          }),
+      },
+      '/assessment/batches',
+    )
+    const empty = page.getByTestId('batch-list-empty')
+    await expect.element(empty).toHaveAttribute('data-empty', 'none')
+    // no card around nothing
+    const sheet = empty.element().parentElement!
+    expect(getComputedStyle(sheet).boxShadow).toBe('none')
+    expect(getComputedStyle(sheet).backgroundColor).toBe('rgba(0, 0, 0, 0)')
+    // the state is quieter than the page it is in
+    const size = (element: Element) => Number.parseFloat(getComputedStyle(element).fontSize)
+    const title = page.getByRole('heading', { name: '测评批次' }).element()
+    const said = empty.element().querySelector('[data-slot="empty-title"]')!
+    expect(size(said)).toBeLessThan(size(title))
+    // no card above the list, so the list has no name of its own to tell it apart
+    expect(await page.getByText('全部批次', { exact: true }).elements()).toHaveLength(0)
+    // the search opens out of its glyph, in the title's row
+    await page.getByRole('button', { name: '搜索批次名称' }).click()
+    const box = page.getByRole('textbox', { name: '搜索批次名称' })
+    await expect.element(box).toBeVisible()
+    // and once open, whatever clip opened it lies outside the field, so its
+    // border and focus ring are whole
+    const reach = () => {
+      for (let at: Element | null = box.element(); at !== null; at = at.parentElement) {
+        const clip = getComputedStyle(at).clipPath
+        if (clip.startsWith('inset(')) return clip
+      }
+      return 'none'
+    }
+    await expect.poll(reach).toMatch(/^(none|inset\(-8px)/)
+    // closed, it folds back into the glyph and the title returns after it
+    await page.getByRole('button', { name: '关闭' }).click()
+    await expect.element(page.getByRole('button', { name: '搜索批次名称' })).toBeVisible()
+    await expect.element(page.getByRole('heading', { name: '测评批次' })).toBeVisible()
+    await vi.waitFor(() =>
+      expect(document.querySelectorAll('input[name="batches-search"]')).toHaveLength(0),
+    )
+    await page.viewport(1280, 800)
   })
 
   it('opens a batch from the table and comes back', async () => {
