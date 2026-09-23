@@ -20048,3 +20048,20 @@ CLAUDE.md 增加一条：scope 只能是一个主要模块，不许用逗号列�
 - `pnpm test`：`Tests  1 failed | 2193 passed | 17 skipped (2211)`，失败的是 fast-refresh 门禁（glyph.tsx 导出了 hook），hook 移到 `sign-in/surface.ts` 后该门禁 `Tests  1 passed (1)`。
 - `pnpm test:browser`：`Tests  1 failed | 566 passed (567)`，失败的 item-editor 为整套负载下超时，单独重跑通过；修正后 auth 两个浏览器文件 `Tests  33 passed (33)`。
 - 新测试：SVG 校验（5 种合法图形原样保留，18 种脚本 / 外部引用 / 非单一图形被拒）；两种背景的全流程（先传深色被拒 `light-first`、只有浅色时深色背景用浅色图、两张分别返回、换浅色图保留深色图、移除深色、脚本 SVG 被拒、恢复默认后旧图 retired、审计只记选择与背景）；迁移升级测试；浏览器侧 SVG 上传载荷、深色位禁用、移除深色、推荐按钮用深色版本。
+
+## CAPTCHA 与登录风险模型：Phase A–C（2026-09-24）
+
+依据 docs/captcha.md（顶部已加实施状态）。**部署约束：A–C 是施工里程碑，不是发布边界**——identifier hard limit 已去掉，而在出现可用 provider 与能处理 428 的登录页之前风险触发一律 bypass，账号 DoS 已修但对分布式撞库的防护暂时弱于旧版本；不得单独发布到生产。Phase D 完成 ALTCHA 后保持 disabled，Phase E 完成登录页后同一笔在默认 `qualy.yml` 启用。
+
+- **A**：`Secrets.deriveSecret(domain)`，HKDF 固定根域 `qualy/secrets/derived/v1`，与 fingerprint key、加密密钥三域独立，测试以测试侧自算向量钉住。limiter 拆为 `HardLimitRule`（`consumeHard` / `consumeAllHard`，拒绝并给等待）与 `RiskRule`（`observeRisk` 计入本次且答 `attempts > challengeAfter`；`riskRequired` 只读、问下一次 `>=`；`clearRisk`），仍用 `auth_rate_limit_buckets`，无迁移。
+- **B**：邮箱只作 attempt 风险（前 5 次不要求，之后要求 CAPTCHA，15 分钟窗口），在 admission 时、任何查询与 Argon2 之前原子计数——阈值边界上的并发 burst 只有前 5 个免于 challenge（review 指出的 TOCTOU）；永不 hard 拒绝。地址 hard 熔断 300 / 5 分钟，地址风险 20 次后要求 CAPTCHA；读不出来源地址时共用入口级熔断（3000 / 5 分钟，待 benchmark）且风险视为升高，每进程 warn 一次并计 `qualy.auth.sign_in.unknown_address`。重定向发起熔断提到 300 / 5 分钟。密码正确先清邮箱风险再 `completeLogin`。docs/notes/auth-security.md 的登录限流一节已重写，reset 部分未改。
+- **C**：新插件 `@qualy/plugin-captcha`（contract / plugin / server / client / testkit），照 RUM 形状：0 个 provider 合法、启动 WARN 一次；2 个在装配时点名拒绝；声明未注册 boot 失败。`Captcha.guard` 统一 issue / verify / fail-open（仅 provider 不可达时放行，错的 proof 永远答新 challenge），bindingHash = fingerprint(tenant + purpose + bindingKey)，clientIp / publicHost 自读请求上下文；metric `qualy.captcha.guard{outcome}`。浏览器侧 `registerCaptchaProvider`、`useCaptchaGate`（generation 丢弃过期回调、cancel / retry）、`CaptchaChallenge`（静默时不占位，需要交互才在原位展开或以浮层出现，容器从不移动）。登录接入：`admitAttempt` 风险升高时调用 guard，返回 `{kind:'admitted'|'challenge'}`（auth-contract 不依赖 captcha 包），auth-local payload 加可选 `captcha`、错误加 `CAPTCHA_REQUIRED`（428，不写 SignInEvent、不清风险，一个 proof 只保护一次尝试）；低风险时带来的 proof 不看、不调 provider。qualy.yml 启用 `@qualy/plugin-captcha`，暂无 provider。
+
+### 验收（实际执行）
+
+- `pnpm typecheck`：exit 0。
+- `pnpm qualy resolve --frozen-lockfile`：exit 0；`pnpm qualy database verify`：`82 committed migration(s) build the declared schema, zero drift`；`database check`：`lineage ok`；`drop-guard`：`drop guard ok (82 file(s) scanned)`。
+- `pnpm test`：`Test Files  302 passed | 3 skipped (305)`，`Tests  2226 passed | 17 skipped (2243)`。
+- `pnpm test:browser`：`Test Files  76 passed (76)`，`Tests  575 passed (575)`。首轮在新包加入后 Vite 依赖冷缓存重打包，27 / 76 个文件跑完即中断（`Failed to fetch dynamically imported module` 与双 React 的 `useContext` 报错），重跑全过。
+- 未做：在 dev 服务上实看启动 WARN——当时 :5173 不可达；WARN 由 barrier 测试断言。
+- 新测试：limiter 阈值逐次钉死（#1–#5 不要求、#6 要求；40 并发恰好 5 个放行）；登录 30 次错误后正确密码仍 200（无 provider，bypass）；三种邮箱计数一致；地址熔断 429；正确密码（含停用账号）清风险；有 provider 时 5×401 然后 428（三种邮箱同节奏）、proof 只买一次尝试、别的邮箱的 proof 换来新 challenge、低风险 proof 不触发 provider、校园出口 20 次后 428 而非 429、同一地址 30 并发恰好 5 个放行、无来源地址即 challenge；captcha 的 0/1/2 provider、barrier、guard 全分支、token 与 proof 大小；浏览器侧静默解题、原位展开、浮层只在需要交互时出现、放弃后迟到的 proof 被丢弃、失败可重试、未知 provider 直接失败。
