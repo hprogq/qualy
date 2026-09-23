@@ -117,6 +117,11 @@ database。出现第二种有持久部署副作用的能力时,先设计启动�
 
 没有 Redis:源码里没有任何使用,不为「将来也许」加一个空转的服务。
 
+**CAPTCHA provider**(docs/captcha.md):默认 `@qualy/plugin-captcha-altcha`(本地 PoW,不依赖第三方,无需任何配置——签名密钥由
+`QUALY_SECRETS_MASTER_KEY` 派生);`@qualy/plugin-captcha-turnstile` 默认停用,只用于 Cloudflare 可服务的地区,启用时要先停用 altcha
+(两个 provider 同时启用在装配时被拒),并在 `.env` 填 `QUALY_CAPTCHA_TURNSTILE_SITE_KEY` / `QUALY_CAPTCHA_TURNSTILE_SECRET_KEY`(缺失即拒绝启动)。
+启用 Turnstile 会让 shell 的 CSP 在 `script-src` 与 `frame-src` 加入 `https://challenges.cloudflare.com`;浏览器端加载 Cloudflare 失败时只能重试,不会放行。
+
 ### 3.1 升级
 
 装入新 release 的三个镜像 → 改 `.env` 的 `QUALY_RELEASE` → `docker compose run --rm migrate` →(需要时)`pnpm seed` → `docker compose up -d` → `/health/ready`。

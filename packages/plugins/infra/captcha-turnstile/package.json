@@ -1,0 +1,28 @@
+{
+  "name": "@qualy/plugin-captcha-turnstile",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./client/driver": "./src/client/driver.ts",
+    "./client/register": "./src/client/register.ts",
+    "./package.json": "./package.json",
+    "./server": "./src/server/index.ts"
+  },
+  "dependencies": {
+    "@qualy/api-kit": "workspace:*",
+    "@qualy/plugin-captcha": "workspace:*",
+    "@qualy/plugin-kit": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@qualy/plugin-captcha-altcha": "workspace:*",
+    "@qualy/plugin-database": "workspace:*",
+    "@qualy/plugin-secrets": "workspace:*",
+    "@qualy/testkit": "workspace:*",
+    "@qualy/tsconfig": "workspace:*"
+  }
+}

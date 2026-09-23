@@ -1,7 +1,7 @@
 {
   "lockfileVersion": 2,
-  "manifestHash": "sha256:2995a47b55aa6e4743c130821e9bd9816891ed7c6244ed76fec72c60c584022d",
-  "resolutionHash": "sha256:e3b5effbb13a58e56035146a69d221a5352bd60ea9d49c5c4b5a0c5f9d786141",
+  "manifestHash": "sha256:b45b117a694b27dcdb4741de2ca63df6a73f0ee00a70c531cd29532e1496bfaa",
+  "resolutionHash": "sha256:3ced9a49889892c25cf47cb0be2d3c24ae6b1e5c6c037e640852e93a24730e46",
   "plugins": {
     "@qualy/plugin-assessment": {
       "version": "0.0.0",
@@ -188,6 +188,10 @@
           "dependsOn": []
         }
       }
+    },
+    "@qualy/plugin-captcha-turnstile": {
+      "version": "0.0.0",
+      "state": "disabled"
     },
     "@qualy/plugin-database": {
       "version": "0.0.0",
