@@ -20065,3 +20065,21 @@ CLAUDE.md 增加一条：scope 只能是一个主要模块，不许用逗号列�
 - `pnpm test:browser`：`Test Files  76 passed (76)`，`Tests  575 passed (575)`。首轮在新包加入后 Vite 依赖冷缓存重打包，27 / 76 个文件跑完即中断（`Failed to fetch dynamically imported module` 与双 React 的 `useContext` 报错），重跑全过。
 - 未做：在 dev 服务上实看启动 WARN——当时 :5173 不可达；WARN 由 barrier 测试断言。
 - 新测试：limiter 阈值逐次钉死（#1–#5 不要求、#6 要求；40 并发恰好 5 个放行）；登录 30 次错误后正确密码仍 200（无 provider，bypass）；三种邮箱计数一致；地址熔断 429；正确密码（含停用账号）清风险；有 provider 时 5×401 然后 428（三种邮箱同节奏）、proof 只买一次尝试、别的邮箱的 proof 换来新 challenge、低风险 proof 不触发 provider、校园出口 20 次后 428 而非 429、同一地址 30 并发恰好 5 个放行、无来源地址即 challenge；captcha 的 0/1/2 provider、barrier、guard 全分支、token 与 proof 大小；浏览器侧静默解题、原位展开、浮层只在需要交互时出现、放弃后迟到的 proof 被丢弃、失败可重试、未知 provider 直接失败。
+
+## CAPTCHA：Phase D–G（2026-09-24）
+
+A–C 的部署约束至此解除：ALTCHA 与能处理 428 的登录页在同一笔（`68927a355`）上线，登录与找回密码的风险模型可以随同一 release 发布。
+
+- **D0**：通用 gate 的失败分两种恢复——`restart`（同一 challenge 重启 provider）与 `refresh`（challenge 已作废，由调用方不带 proof 重发原请求拿新 428）；gate 增 `onRefresh`，captcha 从不自己调用业务 API。
+- **D**：`@qualy/plugin-captcha-altcha`。两把 HMAC 密钥由 `deriveSecret` 派生；challenge 的签名 data 带 tenant / purpose / bindingHash / id；counter 从 5000–10000 随机抽（设计文档 §36 的固定 7500 会让 deterministic 模式失效，已偏离并记录）；验证 = 形状校验 → `verifySolution` → data 逐项比对 → 一条 `insert … on conflict do nothing` 记重放；表 `captcha_altcha_used_challenges`（迁移 `20260923224246_captcha-altcha-used-challenges.sql`），每 100 次验证顺带清扫。浏览器侧 register 只注册名字，external widget 与 PBKDF2 worker 只在出现 challenge 时加载；browser-graph 的开机探针新增「altcha 不得进入 eager 图」规则（实测加一行静态 import 即失败）；external 构建无 `blob:` worker 由测试守住，CSP `worker-src 'self'` 不变。实测解题时间见 docs/notes/altcha.md（M2 Max 上 Chromium 2.2–4.3 s，低端手机会慢数倍，参数是否下调待真机数据）。
+- **E**：本地登录表单处理 `CAPTCHA_REQUIRED`：不停顿、不抖动、不报错，按钮显示「正在准备 / 进行安全验证…」，解出后先丢弃 prompt 再带 proof 自动重提，改邮箱即作废在途 challenge；同笔启用 ALTCHA。
+- **F**：找回密码。reset 链接不再被新请求作废，任一链接改密成功后在租户锁内作废其余全部；顺序为地址熔断 100 / 15 分钟 → 地址 risk（5 次）+ 邮箱 risk（一小时第 2 次起，只读）→ CAPTCHA（purpose `auth/password-reset`）→ **过 CAPTCHA 后**计邮箱发信配额 3 封 / 小时（第 4 次 429 不发信）→ 计邮箱 risk → 查账号；重置页同 E 的 gate 用法。
+- **G**：ShellPolicy 允许插件贡献 `script-src`，但用独立的 validator，只接受 `https://host[:port]`（关键字、nonce、hash、data:、blob:、'self' 一律拒绝）。`@qualy/plugin-captcha-turnstile` 默认停用；challenge = siteKey + action（purpose 映射，超长取 hash）+ cData（bindingHash）；Siteverify 需 success 且 hostname / action / cdata 全部相符，host 不可解析即拒；错误码逐一分类（无效 / 过期 → rejected；Cloudflare 故障、本部署密钥错、未知码 → 放行并记错误）；浏览器 driver 关闭 widget 自身的重试、刷新与表单字段，加载失败只能重试不放行。`.env.example`、`deploy/.env.example`、docs/deployment.md 已补两个变量。
+
+### 验收（实际执行）
+
+- `pnpm typecheck`：exit 0；`qualy resolve --frozen-lockfile`：exit 0；`database verify`：`83 committed migration(s) build the declared schema, zero drift`；`database check`：`lineage ok`；`drop-guard`：`drop guard ok (83 file(s) scanned)`。
+- `pnpm test`：`Test Files  307 passed | 3 skipped (310)`，`Tests  2259 passed | 17 skipped (2276)`。
+- `pnpm test:browser`：每加入一个新包后的第一轮都被 Vite 依赖重打包中断（`optimized dependencies changed. reloading`，iframe 未就绪）；重跑 `Tests  3 failed | 582 passed (585)`，失败的 evidence-fields / paper-reading / record-recognition 为负载超时，单独重跑 `Tests  16 passed (16)`。
+- 未做：在 dev 服务上人工走一遍登录——当时本机没有运行 dev 服务（:5173 无监听）。改为服务端全链路测试：真实 ALTCHA provider（低难度）+ altcha-lib 解题，5×401 → 428 → 带 proof 200 → 旧 proof 再用 428 → 别的邮箱的 proof 无效；浏览器端真实 widget + worker 在 Chromium 中解题。
+- 新测试：gate 的 restart / refresh；ALTCHA provider（一次有效、8 并发同一 proof 恰好一个通过、跨 tenant / purpose / binding 拒绝、签名数据改动与过期拒绝、两把密钥互异且不等于主密钥、清扫）；driver 真解题与过期 → refresh；登录表单的 428 自动重提、proof 交出即作废、改邮箱丢弃迟到 proof；reset 的完整顺序（真实与不存在邮箱答案序列一致：ok、428、428、ok、ok、429，第 4 次不发信）、A/B/C 链接并存与改密后全部作废、改邮箱作废旧 reset 链接、重置页 428 流程；ShellPolicy script-src 接受 / 拒绝清单与执行策略不被改动；Turnstile 的 action 映射（31/32/33、超长、碰撞）、hostname（端口、IPv6、尾点）、错误码分类、Siteverify 八种回答、只向 Cloudflare 开放两条 directive、altcha 与 turnstile 同时启用被装配拒绝并点名、driver 的 render 选项与回调映射、加载失败不放行。
