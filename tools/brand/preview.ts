@@ -30,8 +30,8 @@ const OUT = path.join(import.meta.dirname, 'out')
 fs.rmSync(OUT, { recursive: true, force: true })
 fs.mkdirSync(OUT, { recursive: true })
 
-const LIGHT = { background: '#FAFAF8', foreground: '#18191D' }
-const DARK = { background: '#18191D', foreground: '#FAFAF8' }
+const LIGHT = { background: 'oklch(0.99 0.001 80)', foreground: 'oklch(0.21 0.006 80)' }
+const DARK = { background: 'oklch(0.21 0.006 80)', foreground: 'oklch(0.99 0.001 80)' }
 const SIZES = [16, 24, 32, 48, 96, 256]
 /** the frozen white and a step either side of it, in s */
 const WHITES = [0.85, 0.97, 1.09]
