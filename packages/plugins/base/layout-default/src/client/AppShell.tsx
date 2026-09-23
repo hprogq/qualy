@@ -269,8 +269,17 @@ function Shell() {
       setTitleShown(false)
       return
     }
+    // Gone means scrolled away, not taken out: a page that drops its heading
+    // (a search opening over it) reported a last "not intersecting" for the
+    // detached box in Safari, and the bar flashed the name for one frame.
     const observer = new IntersectionObserver(
-      ([entry]) => setTitleShown(entry !== undefined && !entry.isIntersecting),
+      ([entry]) =>
+        setTitleShown(
+          entry !== undefined &&
+            !entry.isIntersecting &&
+            entry.target.isConnected &&
+            entry.boundingClientRect.height > 0,
+        ),
       { root, rootMargin: `-${String(barHeight)}px 0px 0px 0px`, threshold: 0 },
     )
     observer.observe(heading)
