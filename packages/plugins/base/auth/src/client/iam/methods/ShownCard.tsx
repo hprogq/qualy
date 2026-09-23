@@ -81,9 +81,10 @@ const styles = stylex.create({
   slot: { display: 'flex', alignItems: 'center', gap: 10 },
   slotWords: { display: 'flex', minWidth: 0, flex: 1, flexDirection: 'column', gap: 2 },
   slotName: { fontSize: 13 },
-  recommend: { display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' },
-  recommendWords: { display: 'flex', flexDirection: 'column', gap: 2 },
-  recommendName: { fontSize: 14 },
+  // the line sits on the words' baseline, as the label beside it does; the
+  // box is centred on them rather than lending the line its bottom edge
+  recommend: { display: 'flex', alignItems: 'baseline', gap: 10, cursor: 'pointer' },
+  recommendBox: { display: 'inline-flex', alignSelf: 'center' },
   picker: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 12 },
   pickerTitle: { fontSize: 13.5, fontWeight: 600 },
   grid: { display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', gap: 6 },
@@ -363,15 +364,15 @@ export function ShownCard({
         </DefLine>
         <DefLine label={format(m.methodRecommend)}>
           <label {...stylex.props(styles.recommend)}>
-            <Checkbox
-              data-testid="method-recommend"
-              checked={provider.recommended}
-              disabled={!canManage || !primary || recommend.isPending}
-              onCheckedChange={(next) => recommend.mutate(next === true)}
-            />
-            <span {...stylex.props(styles.recommendWords)}>
-              <span {...stylex.props(styles.aside)}>{format(m.methodRecommendHint)}</span>
+            <span {...stylex.props(styles.recommendBox)}>
+              <Checkbox
+                data-testid="method-recommend"
+                checked={provider.recommended}
+                disabled={!canManage || !primary || recommend.isPending}
+                onCheckedChange={(next) => recommend.mutate(next === true)}
+              />
             </span>
+            <span {...stylex.props(styles.aside)}>{format(m.methodRecommendHint)}</span>
           </label>
         </DefLine>
       </DefList>
