@@ -255,7 +255,7 @@ describe.runIf(postgresAvailable)('a forgotten password', () => {
     }
   })
 
-  it('refuses a password the door would not take, and is asked only so often', async () => {
+  it('refuses a password the door would not take, and sends one address only so much mail', async () => {
     const db = await createTestContext('email-reset-limits')
     const mail = memoryMailBackend()
     try {
@@ -278,9 +278,60 @@ describe.runIf(postgresAvailable)('a forgotten password', () => {
         ),
       )
       expect(tagOf(answer.short)).toBe('AUTH_BINDING_CREDENTIAL_INVALID')
+      // the fourth within the hour is refused and sends nothing
       expect(tagOf(answer.fourth)).toBe('TOO_MANY_ATTEMPTS')
-      // a newer link retires the older: one works at a time
-      expect(answer.open).toBe(1)
+      expect(mail.outbox.filter((message) => message.to === 'ada@school.edu')).toHaveLength(3)
+      // a newer link does not retire the older: all three still work
+      expect(answer.open).toBe(3)
+    } finally {
+      await db.dispose()
+    }
+  })
+})
+
+describe.runIf(postgresAvailable)('reset links', () => {
+  it('stay good side by side until one of them sets the password', async () => {
+    const db = await createTestContext('email-reset-links')
+    const mail = memoryMailBackend()
+    try {
+      await seed(db.url)
+      const answer = ok(
+        await Effect.runPromiseExit(
+          Effect.gen(function* () {
+            const flows = yield* EmailFlows
+            const links: string[] = []
+            for (let asked = 0; asked < 3; asked += 1) {
+              yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en' })
+              yield* Effect.promise(() =>
+                vi.waitFor(
+                  () => {
+                    if (mail.outbox.length < asked + 1) throw new Error('not yet')
+                  },
+                  { timeout: 3_000 },
+                ),
+              )
+              links.push((yield* Effect.promise(() => tokenFrom(mail, 'ada@school.edu'))).token)
+            }
+            const openBefore = yield* runSql<{ count: number }>(
+              sql`select count(*)::int as count from user_email_challenges
+                   where purpose = 'reset' and consumed_at is null`,
+            )
+            // the first one sent, used last of all would have been the old
+            // behaviour's casualty; it works
+            yield* flows.redeemReset({ token: links[0]!, password: 'a new password' })
+            const second = yield* Effect.result(
+              flows.redeemReset({ token: links[1]!, password: 'another password' }),
+            )
+            const third = yield* Effect.result(
+              flows.redeemReset({ token: links[2]!, password: 'yet another one' }),
+            )
+            return { openBefore: openBefore.rows[0]!.count, second, third }
+          }).pipe(Effect.provide(stack(db.url, mail.backend))),
+        ),
+      )
+      expect(answer.openBefore).toBe(3)
+      expect(tagOf(answer.second)).toBe('AUTH_CHALLENGE_INVALID')
+      expect(tagOf(answer.third)).toBe('AUTH_CHALLENGE_INVALID')
     } finally {
       await db.dispose()
     }
@@ -348,10 +399,17 @@ describe.runIf(postgresAvailable)('an email address', () => {
             const system = yield* Effect.result(
               flows.requestChange(f.as(f.admin, f.adminHere), { newEmail: 'root2@school.edu', locale: 'en' }),
             )
+            // two reset links out to the old address, which is about to stop being hers
+            yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en' })
+            yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en' })
             yield* flows.requestChange(ada, { newEmail: 'Ada.New@school.edu', locale: 'en' })
             const link = yield* Effect.promise(() => tokenFrom(mail, 'ada.new@school.edu'))
             const before = yield* runSql<{ email: string }>(sql`select email from users where id = ${f.ada}`)
             yield* flows.redeemChange(link.token)
+            const resetsOpen = yield* runSql<{ count: number }>(
+              sql`select count(*)::int as count from user_email_challenges
+                   where user_id = ${f.ada} and purpose = 'reset' and consumed_at is null`,
+            )
             const after = yield* runSql<{ email: string; verified: boolean }>(
               sql`select email, email_verified_at is not null as verified from users where id = ${f.ada}`,
             )
@@ -364,6 +422,7 @@ describe.runIf(postgresAvailable)('an email address', () => {
               before: before.rows[0]!.email,
               after: after.rows[0]!,
               audited: audited.rows,
+              resetsOpen: resetsOpen.rows[0]!.count,
             }
           }).pipe(Effect.provide(stack(db.url, mail.backend))),
         ),
@@ -373,6 +432,8 @@ describe.runIf(postgresAvailable)('an email address', () => {
       // the old address stood until the link was followed
       expect(answer.before).toBe('ada@school.edu')
       expect(answer.after).toEqual({ email: 'ada.new@school.edu', verified: true })
+      // links to the old address are links to somebody else's inbox now
+      expect(answer.resetsOpen).toBe(0)
       expect(answer.audited).toEqual([{ action_code: 'auth.user.update', actor_user_id: f.ada }])
     } finally {
       await db.dispose()

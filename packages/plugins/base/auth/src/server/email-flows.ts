@@ -136,7 +136,12 @@ const issueChallenge = (
   targetEmail: string | null,
 ) =>
   Effect.gen(function* () {
-    yield* retireChallenges(tenantId, userId, [purpose])
+    // A newer confirmation link replaces the older one. A reset link does
+    // not: anybody may ask for one on somebody's behalf, and if each request
+    // spent the last, a stranger asking every few minutes would keep the
+    // owner's inbox full of links that no longer work. Every open reset link
+    // is spent together once one of them sets a password.
+    if (purpose !== 'reset') yield* retireChallenges(tenantId, userId, [purpose])
     const token = randomBytes(32).toString('base64url')
     const row = yield* db.query((k) =>
       k
@@ -474,6 +479,10 @@ export const emailFlowsLayer: Layer.Layer<
               userId: person.id,
               sessionId: '',
             })
+            // the password is set: every other reset link still open is
+            // spent with this one, in the same lock, so two used at once
+            // cannot both set it
+            yield* retireChallenges(tenantId, person.id, ['reset'])
           }),
         )
       }),
