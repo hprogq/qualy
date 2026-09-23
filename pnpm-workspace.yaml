@@ -105,6 +105,14 @@ catalog:
   # turns its entity processing off and decodes the five predefined entities
   # itself. 5.10.1 is the floor its recent entity-expansion advisories set.
   fast-xml-parser: 5.11.1
+  # ALTCHA, the default CAPTCHA provider: a proof of work computed in the
+  # visitor's browser and checked on the server, with no third party in the
+  # loop, which is what a deployment in mainland China needs. The server
+  # library's default entry is its v2 challenge format; v1 lives under /v1
+  # and is not to be used. The widget ships an /external build whose workers
+  # are imported separately, so the strict CSP's worker-src 'self' holds.
+  altcha-lib: 2.5.0
+  altcha: 3.2.3
   # the OpenID Connect relying party: discovery, the code grant with PKCE,
   # ID Token validation (signature, issuer, audience, nonce, time) and
   # UserInfo. Every request it makes goes through the auth outbound port,

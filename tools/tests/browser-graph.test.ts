@@ -74,6 +74,23 @@ const WEIGHT_CEILING = 600 * 1024
  */
 const BOOT_CEILING = 24 * 1024
 
+/**
+ * Packages that arrive only when they are used, never on the boot path.
+ *
+ * A challenge widget and its proof-of-work worker are fetched when a request
+ * has been answered with a challenge - most page loads never are. Named
+ * rather than left to the ceiling above, because the ceiling is a size and
+ * this is a rule: the widget is lazy however small a release of it gets.
+ */
+const LAZY_ONLY = ['altcha', 'altcha-lib']
+
+const packageOfModule = (id: string) => {
+  const at = id.lastIndexOf('/node_modules/')
+  if (at === -1) return undefined
+  const rest = id.slice(at + '/node_modules/'.length).split('/')
+  return rest[0]?.startsWith('@') ? `${rest[0]}/${rest[1]}` : rest[0]
+}
+
 // Every plugin that ships one, discovered rather than listed: the incident
 // was in a chain each plugin has its own copy of, and a probe naming one
 // plugin proves nothing about the next one somebody writes.
@@ -131,6 +148,16 @@ describe('what a plugin may run on every page load', () => {
         for (const next of chunk.imports) walk(byFile.get(next))
       }
       for (const chunk of chunks) if (chunk.isEntry) walk(chunk)
+
+      const eagerPackages = new Set(
+        [...eager].flatMap((file) =>
+          Object.keys(byFile.get(file)?.modules ?? {}).flatMap((id) => packageOfModule(id) ?? []),
+        ),
+      )
+      expect(
+        LAZY_ONLY.filter((name) => eagerPackages.has(name)),
+        `${module} puts a lazily used package on every page load; import it where the challenge starts`,
+      ).toEqual([])
 
       const bytes = [...eager].reduce((sum, file) => sum + (byFile.get(file)?.code.length ?? 0), 0)
       expect(

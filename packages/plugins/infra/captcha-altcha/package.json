@@ -1,0 +1,32 @@
+{
+  "name": "@qualy/plugin-captcha-altcha",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./client/register": "./src/client/register.ts",
+    "./db": "./src/db/entities.ts",
+    "./package.json": "./package.json",
+    "./server": "./src/server/index.ts",
+    "./testkit": "./src/testkit/index.ts"
+  },
+  "dependencies": {
+    "@mikro-orm/core": "catalog:",
+    "@qualy/plugin-captcha": "workspace:*",
+    "@qualy/plugin-database": "workspace:*",
+    "@qualy/plugin-kit": "workspace:*",
+    "@qualy/plugin-secrets": "workspace:*",
+    "altcha": "catalog:",
+    "altcha-lib": "catalog:",
+    "effect": "catalog:",
+    "kysely": "catalog:"
+  },
+  "devDependencies": {
+    "@qualy/testkit": "workspace:*",
+    "@qualy/tsconfig": "workspace:*",
+    "@qualy/plugin-database": "workspace:*"
+  }
+}
