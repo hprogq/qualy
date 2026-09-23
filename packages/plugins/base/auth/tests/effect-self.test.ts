@@ -361,8 +361,11 @@ describe.runIf(postgresAvailable)('the reader’s own account', () => {
             const relisted = yield* iam.self.entrances(lin)
             const released = yield* iam.self.unbind(lin, f.hubDoor)
             const afterwards = yield* iam.self.entrances(lin)
-            const system = yield* Effect.result(
-              iam.self.unbind(f.as(f.admin, f.adaByPassword), f.hubDoor),
+            const systemListed = yield* iam.self.entrances(f.as(f.admin, f.adaByPassword))
+            const system = yield* iam.self.unbind(f.as(f.admin, f.adaByPassword), f.hubDoor)
+            const systemLeft = yield* runSql<{ door: string }>(
+              sql`select auth_provider_id as door from user_auth_bindings
+                   where user_id = ${f.admin} and revoked_at is null`,
             )
             return {
               listed,
@@ -371,7 +374,9 @@ describe.runIf(postgresAvailable)('the reader’s own account', () => {
               relisted,
               released,
               afterwards,
+              systemListed,
               system,
+              systemLeft: systemLeft.rows.map((row) => row.door),
             }
           }),
         ),
@@ -387,7 +392,12 @@ describe.runIf(postgresAvailable)('the reader’s own account', () => {
       expect(answer.afterwards.find((entrance) => entrance.type === 'hub')?.bindHref).toBe(
         '/auth/hub/hub/start?intent=bind',
       )
-      expect(tagOf(answer.system)).toBe('SYSTEM_ACCOUNT_PROTECTED')
+      // the system account lets its hub account go like anyone; its password stays
+      expect(answer.systemListed.find((entrance) => entrance.type === 'hub')?.unbindable).toBe(
+        true,
+      )
+      expect(answer.system).toEqual({ signedOut: false })
+      expect(answer.systemLeft).toEqual([f.local])
     } finally {
       await db.dispose()
     }

@@ -11,7 +11,6 @@ import {
   AuthBindingNotFound,
   AuthBindingUnsupported,
   AuthLastWayIn,
-  SystemAccountProtected,
   UserNotFound,
 } from './errors.ts'
 import { makeReadiness } from './readiness.ts'
@@ -245,9 +244,9 @@ export const make = Effect.fn('Iam.self.make')(function* () {
                 ? (sameOriginPath(driver.binding.start({ code: door.code })) ?? null)
                 : null,
             // only an account the person bound is theirs to let go, and not
-            // while it is the one way they have left
+            // while it is the one way they have left; the system account too,
+            // since its way back is the password, which is never one of these
             unbindable:
-              !row.isSystem &&
               driver.binding?.mode === 'self' &&
               door.bindingId !== null &&
               usable.some((other) => other.door.id !== door.id),
@@ -270,7 +269,6 @@ export const make = Effect.fn('Iam.self.make')(function* () {
           Effect.gen(function* () {
             yield* lockTenant(principal.tenantId)
             const row = yield* requireSelf(principal)
-            if (row.isSystem) return yield* new SystemAccountProtected()
             const found = yield* serving(principal.tenantId, principal.userId, row.userTypeId)
             const target = (yield* doorsOf(principal.tenantId, principal.userId, row.userTypeId))
               .find((door) => door.id === providerId)

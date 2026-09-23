@@ -1030,7 +1030,6 @@ export const selfApiGroup = HttpApiGroup.make('self')
       success: Schema.Struct({ signedOut: Schema.Boolean }),
       error: [
         UserNotFound,
-        SystemAccountProtected,
         AuthBindingNotFound,
         AuthBindingUnsupported,
         AuthLastWayIn,
