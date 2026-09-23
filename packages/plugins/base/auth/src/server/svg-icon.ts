@@ -54,6 +54,9 @@ const ELEMENTS: ReadonlySet<string> = new Set([
 /** only the five entities XML predefines: a numeric one is how a word is hidden */
 const ENTITY = /&(?!(?:amp|lt|gt|quot|apos);)/
 
+/** the one document type a drawing may name: SVG's own, with nothing defined inside it */
+const PUBLIC_DOCTYPE = /^<!DOCTYPE\s+svg\s+PUBLIC\s+"[^"\[\]<>]*"\s+"[^"\[\]<>]*"\s*>$/i
+
 /** words that only ever reach outside the drawing, anywhere in it */
 const REACHING = [
   /javascript\s*:/i,
@@ -101,7 +104,14 @@ const drawingOnly = (nodes: readonly Ordered[]): boolean => {
 /** the markup as it may be served, or undefined when it cannot be an icon */
 export const checkedSvg = (markup: string): string | undefined => {
   if (Buffer.byteLength(markup, 'utf8') > LOGIN_ICON_SVG_MAX_BYTES) return undefined
-  if (/<!DOCTYPE/i.test(markup) || /<!ENTITY/i.test(markup)) return undefined
+  // Design tools write `<!DOCTYPE svg PUBLIC "..." "...">`, which a browser
+  // never fetches. A declaration with an internal subset - `[...]` - is where
+  // entities are defined, and it and any entity are refused.
+  if (/<!ENTITY/i.test(markup)) return undefined
+  const doctypes = markup.match(/<!DOCTYPE[^>]*>?/gi) ?? []
+  if (doctypes.length > 1 || doctypes.some((doctype) => !PUBLIC_DOCTYPE.test(doctype))) {
+    return undefined
+  }
   // the parser skips processing instructions, and a browser follows an
   // `xml-stylesheet` one: only the declaration at the very top may be there
   if (/<\?/.test(markup.replace(/^\uFEFF?\s*<\?xml\s[^?]*\?>/, ''))) return undefined

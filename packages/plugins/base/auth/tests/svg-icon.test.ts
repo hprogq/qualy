@@ -19,6 +19,11 @@ describe('an SVG offered as an icon', () => {
       ),
       svg('<style>.a{fill:#07c160}</style><title>Mark</title><path class="a" d="M1 1h2v2H1z"/>'),
       svg('<!-- exported --><g><path d="M0 0h1v1H0z"/></g>'),
+      // what design tools write at the top; a browser never fetches it
+      `<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n${svg(
+        '<g><path d="M0 0h1v1H0z" style="fill:#c00;fill-rule:nonzero;"/></g>',
+        ' xmlns:serif="http://www.serif.com/" xml:space="preserve"',
+      )}`,
     ]
     for (const drawing of drawings) expect(checkedSvg(drawing), drawing).toBe(drawing)
   })
@@ -37,6 +42,8 @@ describe('an SVG offered as an icon', () => {
       svg('<rect style="fill:url(https://example.com/a)" width="1" height="1"/>'),
       svg('<path d="M0 0" fill="&#106;avascript"/>'),
       `<!DOCTYPE svg [<!ENTITY x "y">]>${svg('')}`,
+      `<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "a.dtd" [<!ATTLIST svg x CDATA "y">]>${svg('')}`,
+      `<!DOCTYPE html>${svg('')}`,
       `<?xml-stylesheet href="https://example.com/a.css"?>${svg('')}`,
       '<svg viewBox="0 0 1 1"/>',
       `${svg('')}${svg('')}`,
