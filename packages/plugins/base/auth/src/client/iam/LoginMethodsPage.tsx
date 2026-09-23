@@ -48,6 +48,7 @@ import { MethodSheet } from './methods/MethodSheet.tsx'
 import { NewMethodDialog } from './methods/NewMethodDialog.tsx'
 import { authApi } from '../api.ts'
 import { LoginMethodGlyph } from '../sign-in/glyph.tsx'
+import { gapped } from '../sign-in/gapped.ts'
 
 // The tenant's doors, and who each one lets through.
 //
@@ -122,7 +123,7 @@ const styles = stylex.create({
 
 export default function LoginMethodsPage() {
   const query = useApiQuery(authApi)
-  const { format, formatText, formatError } = useI18n()
+  const { format, formatText, formatError, locale } = useI18n()
   const listJoin = useList()
   const [selected, setSelected] = usePageQueryState('provider')
 
@@ -201,7 +202,7 @@ export default function LoginMethodsPage() {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          aria-label={format(m.methodMove, { name: provider.name })}
+          aria-label={format(m.methodMove, { name: gapped(provider.name, locale) })}
           data-testid="method-order"
           {...stylex.props(styles.step)}
         >
@@ -215,7 +216,7 @@ export default function LoginMethodsPage() {
           onSelect={() => step(provider.id, -1)}
         >
           <ChevronUpIcon aria-hidden />
-          {format(m.methodMoveUp, { name: provider.name })}
+          {format(m.methodMoveUp, { name: gapped(provider.name, locale) })}
         </DropdownMenuItem>
         <DropdownMenuItem
           disabled={index === count - 1}
@@ -223,7 +224,7 @@ export default function LoginMethodsPage() {
           onSelect={() => step(provider.id, 1)}
         >
           <ChevronDownIcon aria-hidden />
-          {format(m.methodMoveDown, { name: provider.name })}
+          {format(m.methodMoveDown, { name: gapped(provider.name, locale) })}
         </DropdownMenuItem>
         {provider.prominence === 'secondary' ? (
           <DropdownMenuItem
@@ -232,7 +233,7 @@ export default function LoginMethodsPage() {
             onSelect={() => place(provider.id, 'primary', null)}
           >
             <ArrowUpToLineIcon aria-hidden />
-            {format(m.methodToPrimary, { name: provider.name })}
+            {format(m.methodToPrimary, { name: gapped(provider.name, locale) })}
           </DropdownMenuItem>
         ) : (
           <DropdownMenuItem
@@ -240,7 +241,7 @@ export default function LoginMethodsPage() {
             onSelect={() => place(provider.id, 'secondary', null)}
           >
             <ArrowDownToLineIcon aria-hidden />
-            {format(m.methodToSecondary, { name: provider.name })}
+            {format(m.methodToSecondary, { name: gapped(provider.name, locale) })}
           </DropdownMenuItem>
         )}
       </DropdownMenuContent>
@@ -352,7 +353,7 @@ export default function LoginMethodsPage() {
                       <button
                         type="button"
                         draggable
-                        aria-label={format(m.methodMove, { name: provider.name })}
+                        aria-label={format(m.methodMove, { name: gapped(provider.name, locale) })}
                         data-testid="method-grip"
                         {...stylex.props(styles.grip)}
                         onDragStart={(event) => {

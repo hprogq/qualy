@@ -338,6 +338,8 @@ const i18n = definePluginMessages({
     searchMethods: { id: 'auth/login/search', defaultMessage: 'Search ways to sign in' },
     noMethodMatch: { id: 'auth/login/no-match', defaultMessage: 'No way to sign in by that name' },
     back: { id: 'auth/login/back', defaultMessage: 'Back' },
+    lastWayIn: { id: 'auth/login/last-used', defaultMessage: 'Last used' },
+    lastUsedName: { id: 'auth/login/last-used-name', defaultMessage: '{name}, last used' },
     goingTo: { id: 'auth/login/going-to', defaultMessage: 'Going to {name}…' },
     stayHere: { id: 'auth/login/stay', defaultMessage: 'Cancel' },
     noMethodsTitle: { id: 'auth/login/no-methods-title', defaultMessage: 'Signing in is unavailable' },
@@ -385,6 +387,8 @@ const i18n = definePluginMessages({
     // recovery, in the same column as signing in
     backToSignIn: { id: 'auth/reset/back', defaultMessage: 'Back to sign in' },
     resetSending: { id: 'auth/reset/sending', defaultMessage: 'Sending…' },
+    resetWait: { id: 'auth/reset/wait', defaultMessage: 'Try again in {time}' },
+    resetEmailInvalid: { id: 'auth/reset/email-invalid', defaultMessage: 'Enter a valid email address' },
     resetSentTitle: { id: 'auth/reset/sent-title', defaultMessage: 'Check your email' },
     resetSentBody: {
       id: 'auth/reset/sent-body',
@@ -768,17 +772,9 @@ const i18n = definePluginMessages({
       defaultMessage: 'Enter your account’s email. If it is verified, a link to set a new password is sent to it',
     },
     resetAskSubmit: { id: 'auth/reset/ask-submit', defaultMessage: 'Send link' },
-    resetAskSent: {
-      id: 'auth/reset/ask-sent',
-      defaultMessage: 'If that address is verified on an account, a link is on its way. It works for an hour',
-    },
     resetNewPassword: { id: 'auth/reset/new-password', defaultMessage: 'New password' },
     resetConfirmPassword: { id: 'auth/reset/confirm-password', defaultMessage: 'Repeat the new password' },
     resetSubmit: { id: 'auth/reset/submit', defaultMessage: 'Set password' },
-    resetDone: {
-      id: 'auth/reset/done',
-      defaultMessage: 'Your new password is set. Sign in with it',
-    },
     passwordMismatch: { id: 'auth/reset/mismatch', defaultMessage: 'The two passwords differ.' },
     toSignIn: { id: 'auth/reset/to-sign-in', defaultMessage: 'Go to sign in' },
     confirmTitle: { id: 'auth/confirm/title', defaultMessage: 'Confirm email' },

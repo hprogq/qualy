@@ -72,10 +72,13 @@ describe('a forgotten password', () => {
       route: '/reset-password#token=link-token',
       children: <ResetPasswordPage />,
     })
-    // the rule is said while it is typed, and holds the button until it is met
+    // the rule is said while it is typed; a press before it is met is
+    // answered by the rule, and nothing is sent
     await page.getByLabelText('新密码', { exact: true }).fill('too short')
     await expect.element(page.getByTestId('password-rule')).toHaveAttribute('data-met', 'false')
-    await expect.element(page.getByRole('button', { name: '设置密码' })).toBeDisabled()
+    await page.getByRole('button', { name: '设置密码' }).click()
+    await expect.element(page.getByTestId('password-rule')).toHaveAttribute('data-refused', 'true')
+    expect(redeem).not.toHaveBeenCalled()
     await page.getByLabelText('新密码', { exact: true }).fill('a long new password')
     await expect.element(page.getByTestId('password-rule')).toHaveAttribute('data-met', 'true')
     await page.getByLabelText('再次输入新密码').fill('a different password')

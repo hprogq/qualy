@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
 import { motion, useReducedMotion } from 'motion/react'
 import * as stylex from '@stylexjs/stylex'
-import { CheckIcon, ChevronDownIcon, GlobeIcon } from 'lucide-react'
+import { CheckIcon, ChevronDownIcon, GlobeIcon, MonitorIcon, MoonIcon, SunIcon } from 'lucide-react'
+import { useTheme, type ThemeChoice } from '@qualy/web-runtime'
 import { Mark } from '@qualy/brand/mark'
 import { Wordmark } from '@qualy/brand/wordmark'
 import { localeNames, useI18n, useLocale } from '@qualy/web-i18n'
@@ -24,6 +25,8 @@ import { authMessages as m } from '../i18n.ts'
 
 const WIDE = '@media (min-width: 1024px)'
 const PHONE = '@media (max-width: 767.98px)'
+
+const spin = stylex.keyframes({ to: { transform: 'rotate(360deg)' } })
 
 const styles = stylex.create({
   frame: {
@@ -101,6 +104,34 @@ const styles = stylex.create({
   },
   content: { position: 'relative', width: '100%', maxWidth: 400 },
   itemCheck: { width: 14, height: 14, marginInlineStart: 'auto' },
+  itemIcon: { width: 15, height: 15 },
+  theme: {
+    display: 'inline-flex',
+    width: 34,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 0,
+    borderRadius: 9,
+    backgroundColor: { default: 'transparent', ':hover': tokens.surfaceMuted },
+    color: { default: tokens.mutedForeground, ':hover': tokens.foreground },
+    cursor: 'pointer',
+  },
+  // over the column and only the column: the product half stays as it was
+  overlay: { position: 'absolute', inset: 0, zIndex: 20, pointerEvents: 'none' },
+  ring: {
+    width: 22,
+    height: 22,
+    borderRadius: '50%',
+    borderWidth: 2,
+    borderStyle: 'solid',
+    borderColor: `color-mix(in oklab, ${tokens.foreground} 14%, transparent)`,
+    borderTopColor: tokens.foreground,
+    animationName: spin,
+    animationDuration: '700ms',
+    animationTimingFunction: 'linear',
+    animationIterationCount: 'infinite',
+  },
 })
 
 /** the language, chosen from the corner, each named in its own language */
@@ -130,7 +161,52 @@ function LanguageMenu() {
   )
 }
 
-export function AuthShell({ children }: { children: ReactNode }) {
+/** a plain turning ring, for a wait that is the page's own */
+export function Ring() {
+  return <span aria-hidden {...stylex.props(styles.ring)} />
+}
+
+/** the appearance, chosen from the corner beside the language */
+function ThemeMenu() {
+  const { choice, setChoice } = useTheme()
+  const { format } = useI18n()
+  const options: { value: ThemeChoice; label: string; icon: typeof SunIcon }[] = [
+    { value: 'light', label: format(m.themeLight), icon: SunIcon },
+    { value: 'dark', label: format(m.themeDark), icon: MoonIcon },
+    { value: 'system', label: format(m.themeSystem), icon: MonitorIcon },
+  ]
+  const Current = options.find((option) => option.value === choice)?.icon ?? MonitorIcon
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label={format(m.appearance)}
+          data-testid="sign-in-theme"
+          {...stylex.props(styles.theme)}
+        >
+          <Current size={16} strokeWidth={1.8} aria-hidden />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {options.map((option) => (
+          <DropdownMenuItem
+            key={option.value}
+            onSelect={() => setChoice(option.value)}
+          >
+            <option.icon aria-hidden {...stylex.props(styles.itemIcon)} />
+            {option.label}
+            {option.value === choice && (
+              <CheckIcon aria-hidden {...stylex.props(styles.itemCheck)} />
+            )}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+export function AuthShell({ children, overlay }: { children: ReactNode; overlay?: ReactNode }) {
   const still = useReducedMotion() === true
   return (
     <div data-testid="auth-shell" {...stylex.props(styles.frame)}>
@@ -145,6 +221,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
             <Wordmark height={16} title="Qualy" />
           </span>
           <span {...stylex.props(styles.spacer)} />
+          <ThemeMenu />
           <LanguageMenu />
         </div>
         <div {...stylex.props(styles.body)}>
@@ -160,6 +237,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
             {children}
           </motion.div>
         </div>
+        {overlay !== undefined && <div {...stylex.props(styles.overlay)}>{overlay}</div>}
       </main>
     </div>
   )

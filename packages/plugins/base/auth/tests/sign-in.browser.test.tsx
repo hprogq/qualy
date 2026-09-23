@@ -3,6 +3,7 @@ import { lazy } from 'react'
 import { describe, expect, it } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
+import { TooManyAttempts } from '@qualy/auth-contract/session'
 import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The sign-in screen finds a driver's renderer by the driver's TYPE.
@@ -93,6 +94,61 @@ describe('the sign-in screen', () => {
     await expect.element(forgot).toHaveFocus()
   })
 
+  it('sends nothing it can tell is wrong, and holds the button for the wait a refusal names', async () => {
+    let tried = 0
+    renderScreen({
+      client: fakeClient({
+        app: { getManifest: emptyManifest() },
+        auth: { listLoginMethods: context([password]) },
+        authLocal: {
+          login: () =>
+            Effect.suspend(() => {
+              tried += 1
+              return Effect.fail(new TooManyAttempts({ retryAfterSeconds: 125 }))
+            }),
+        },
+      }),
+      registry: {
+        login: { local: lazy(() => import('@qualy/plugin-auth-local/client/LoginMethod')) },
+      },
+      route: '/login?method=password',
+      children: <LoginPage />,
+    })
+    const submit = page.getByTestId('local-submit')
+    await page.getByLabelText('邮箱').fill('not an address')
+    await page.getByLabelText('密码').fill('short')
+    await submit.click()
+    await expect.element(page.getByLabelText('邮箱')).toHaveAttribute('aria-invalid', 'true')
+    await expect.element(page.getByLabelText('密码')).toHaveAttribute('aria-invalid', 'true')
+    expect(tried).toBe(0)
+
+    await page.getByLabelText('邮箱').fill('ada@school.edu')
+    await page.getByLabelText('密码').fill('a long enough password')
+    await submit.click()
+    await expect.element(submit).toBeDisabled()
+    await expect.element(submit).toHaveAttribute('data-wait', '125')
+    // a press while it waits is no request
+    await submit.click({ force: true })
+    expect(tried).toBe(1)
+  })
+
+  it('fills in the address this browser was asked to keep', async () => {
+    renderScreen({
+      client: fakeClient({
+        app: { getManifest: emptyManifest() },
+        auth: { listLoginMethods: context([password]) },
+      }),
+      registry: {
+        login: { local: lazy(() => import('@qualy/plugin-auth-local/client/LoginMethod')) },
+      },
+      route: '/login?method=password',
+      storage: { 'qualy:sign-in-email': 'kept@school.edu' },
+      children: <LoginPage />,
+    })
+    await expect.element(page.getByLabelText('邮箱')).toHaveValue('kept@school.edu')
+    await expect.element(page.getByTestId('remember-email')).toBeChecked()
+  })
+
   it('catches a renderer that throws instead of taking the screen down', async () => {
     // the sign-in screen used to render the driver itself, outside the
     // surface boundary: a driver that threw on its first render took the
@@ -178,9 +234,31 @@ describe('the ways in, as the page lays them out', () => {
     ).toEqual(['false', 'false'])
     expect(page.getByTestId('sign-in-tile').elements()).toHaveLength(1)
     await expect
-      .element(page.getByRole('button', { name: '使用GitHub登录' }))
+      .element(page.getByRole('button', { name: '使用 GitHub 登录' }))
       .toBeVisible()
     expect(page.getByTestId('sign-in-more').elements()).toHaveLength(0)
+  })
+
+  it('marks the way this browser last signed in by', async () => {
+    renderScreen({
+      client: fakeClient({
+        app: { getManifest: emptyManifest() },
+        auth: {
+          listLoginMethods: context([
+            password,
+            away('cas', '统一身份认证', { prominence: 'primary' }),
+            away('github', 'GitHub'),
+          ]),
+        },
+      }),
+      route: '/login',
+      storage: { 'qualy:sign-in-method': 'github' },
+      children: <LoginPage />,
+    })
+    await expect.element(page.getByTestId('sign-in-tile')).toHaveAttribute('data-last', 'true')
+    expect(
+      page.getByTestId('sign-in-primary').elements().map((key) => key.getAttribute('data-last')),
+    ).toEqual(['false', 'false'])
   })
 
   it('sets apart only the way the tenant recommends', async () => {

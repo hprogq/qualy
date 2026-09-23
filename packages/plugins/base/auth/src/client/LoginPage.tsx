@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type FocusEvent, type PointerEvent, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
@@ -6,7 +6,6 @@ import * as stylex from '@stylexjs/stylex'
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
-  ArrowUpRightIcon,
   CircleAlertIcon,
   Clock3Icon,
   EllipsisIcon,
@@ -18,15 +17,13 @@ import {
 import { PluginSurface, useApiQuery, useSessionTransition } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import { Spinner } from '@qualy/ui/spinner'
 import { Skeleton } from '@qualy/ui/skeleton'
-import { Portal } from '@qualy/ui/portal'
-import { Loader } from '@qualy/brand/loader'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import type { LoginMethod } from '@qualy/auth-contract/login'
 import { authMessages as m } from './i18n.ts'
 import { authApi } from './api.ts'
-import { AuthShell } from './sign-in/AuthShell.tsx'
+import { AuthShell, Ring } from './sign-in/AuthShell.tsx'
+import { gapped } from './sign-in/gapped.ts'
 import { LoginMethodGlyph } from './sign-in/glyph.tsx'
 
 // The sign-in page: which workspace this is, and the ways into it.
@@ -108,7 +105,44 @@ const styles = stylex.create({
   },
   primaryGlyph: { display: 'inline-flex', width: 22, justifyContent: 'center' },
   primaryName: { flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  away: { opacity: 0.45, flexShrink: 0 },
+  away: { display: 'inline-flex', flexShrink: 0, opacity: 0.45 },
+  // the way in this browser took last time, said quietly beside its name
+  last: {
+    flexShrink: 0,
+    paddingBlock: 2,
+    paddingInline: 7,
+    borderRadius: 999,
+    backgroundColor: `color-mix(in oklab, currentColor 8%, transparent)`,
+    fontSize: 11.5,
+    fontWeight: 500,
+    lineHeight: '16px',
+    opacity: 0.75,
+  },
+  tileSeat: { position: 'relative', display: 'inline-flex' },
+  lastDot: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    width: 10,
+    height: 10,
+    borderRadius: '50%',
+    backgroundColor: tokens.foreground,
+    boxShadow: `0 0 0 2px ${tokens.background}`,
+    pointerEvents: 'none',
+  },
+  eyebrow: { fontSize: 13.5, fontWeight: 500, color: tokens.mutedForeground },
+  eyebrowTitle: { marginTop: 6 },
+  // the form's own shape while its code is on its way, so nothing above it moves
+  boneLabel: { height: 14, width: 36, borderRadius: 4 },
+  boneAside: { height: 13, width: 60, borderRadius: 4 },
+  boneRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  boneRowStart: { justifyContent: 'flex-start' },
+  boneBox: { width: 16, height: 16, borderRadius: 4 },
+  boneWords: { height: 13, width: 128, borderRadius: 4 },
+  boneField: { height: 44, borderRadius: 11 },
+  boneButton: { height: 48, borderRadius: 12, marginTop: 6 },
+  boneForm: { display: 'flex', flexDirection: 'column', gap: 18 },
+  boneStack: { display: 'flex', flexDirection: 'column', gap: 8 },
   divider: {
     display: 'flex',
     alignItems: 'center',
@@ -123,13 +157,14 @@ const styles = stylex.create({
   tiles: {
     display: 'flex',
     justifyContent: 'center',
-    gap: 'min(10px, calc((100% - 300px) / 5))',
+    gap: 'min(10px, calc((100% - 264px) / 5))',
     marginTop: 18,
   },
+  // a size under the main ways in: the same kind of thing, a step quieter
   tile: {
     display: 'inline-flex',
-    width: 50,
-    height: 50,
+    width: 44,
+    height: 44,
     flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'center',
@@ -312,12 +347,12 @@ const styles = stylex.create({
   boneSub: { height: 14, width: 150, marginTop: 14, borderRadius: 4 },
   boneKey: { height: 50, borderRadius: 12 },
   boneTiles: { display: 'flex', justifyContent: 'center', gap: 10, marginTop: 50 },
-  boneTile: { width: 50, height: 50, borderRadius: 12 },
+  boneTile: { width: 44, height: 44, borderRadius: 12 },
   renderer: { display: 'flex', flexDirection: 'column', gap: 16, marginTop: 24 },
   going: {
-    position: 'fixed',
+    position: 'absolute',
     inset: 0,
-    zIndex: 50,
+    pointerEvents: 'auto',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
@@ -326,7 +361,7 @@ const styles = stylex.create({
     backgroundColor: `color-mix(in oklab, ${tokens.background} 88%, transparent)`,
     backdropFilter: 'blur(4px)',
   },
-  goingWords: { fontSize: 15, fontWeight: 500, marginTop: 4 },
+  goingWords: { fontSize: 14.5, fontWeight: 500 },
   stay: {
     paddingBlock: 4,
     paddingInline: 8,
@@ -339,6 +374,25 @@ const styles = stylex.create({
     cursor: 'pointer',
   },
 })
+
+/** where this browser keeps the way in it last took; a convenience, nothing more */
+const LAST = 'qualy:sign-in-method'
+
+const lastUsed = (): string | null => {
+  try {
+    return window.localStorage.getItem(LAST)
+  } catch {
+    return null
+  }
+}
+
+const markUsed = (code: string) => {
+  try {
+    window.localStorage.setItem(LAST, code)
+  } catch {
+    // a browser that keeps nothing simply marks nothing
+  }
+}
 
 type View = 'home' | 'more' | 'method'
 /** the order views stand in, so moving between two slides the right way */
@@ -357,13 +411,15 @@ const failureFrom = (params: URLSearchParams) => {
 
 export default function LoginPage() {
   const query = useApiQuery(authApi)
-  const { format } = useI18n()
+  const { format, locale } = useI18n()
   const startSession = useSessionTransition()
   const [params, setParams] = useSearchParams()
   const still = useReducedMotion() === true
   const context = useQuery(query.auth.listLoginMethods.queryOptions())
   const failed = failureFrom(params)
   const [leaving, setLeaving] = useState<LoginMethod | null>(null)
+  // read once: the mark says where this visit came in last time, not a moment ago
+  const [lastWay] = useState(lastUsed)
 
   // a page restored from the back-forward cache is not still leaving
   useEffect(() => {
@@ -393,6 +449,8 @@ export default function LoginPage() {
 
   const choose = (method: LoginMethod, from: View) => {
     if (method.mode === 'redirect') {
+      // taken, as far as this page can know: how it ends is decided elsewhere
+      markUsed(method.code)
       // a document navigation by design: the start route answers with a
       // redirect to the other side. The page says where it is going while
       // the browser gets there.
@@ -404,6 +462,7 @@ export default function LoginPage() {
   }
 
   const onAuthenticated = () => {
+    if (chosen !== undefined) markUsed(chosen.code)
     // a new identity must not inherit the previous one's cache
     void startSession({ destination: { kind: 'home' } })
   }
@@ -485,7 +544,20 @@ export default function LoginPage() {
             label={format(m.otherMethods)}
             onClick={() => go(params.get('from') === 'more' ? { view: 'more' } : {})}
           />
-          <h1 {...stylex.props(styles.subTitle)}>{chosen.name}</h1>
+          {/* the workspace small and the way in large, as on the first view */}
+          {context.data?.tenant != null && (
+            <span {...stylex.props(styles.eyebrow)} style={{ marginTop: 20 }}>
+              {context.data.tenant.name}
+            </span>
+          )}
+          <h1
+            {...stylex.props(
+              styles.subTitle,
+              context.data?.tenant != null && styles.eyebrowTitle,
+            )}
+          >
+            {chosen.name}
+          </h1>
           <MethodRenderer method={chosen} onAuthenticated={onAuthenticated} />
         </div>
       )
@@ -493,6 +565,7 @@ export default function LoginPage() {
     if (view === 'more') {
       return (
         <AllMethods
+          last={lastWay}
           methods={methods.filter((method) => method.prominence === 'secondary')}
           onBack={() => go({})}
           onChoose={(method) => choose(method, 'more')}
@@ -501,6 +574,7 @@ export default function LoginPage() {
     }
     return (
       <Home
+        last={lastWay}
         header={header}
         methods={methods}
         failed={failed}
@@ -517,7 +591,39 @@ export default function LoginPage() {
   })()
 
   return (
-    <AuthShell>
+    <AuthShell
+      overlay={
+        <AnimatePresence>
+          {leaving !== null && (
+            <motion.div
+              key="leaving"
+              data-testid="sign-in-leaving"
+              role="status"
+              {...stylex.props(styles.going)}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+            >
+              <Ring />
+              <span {...stylex.props(styles.goingWords)}>
+                {format(m.goingTo, { name: gapped(leaving.name, locale) })}
+              </span>
+              <button
+                type="button"
+                {...stylex.props(styles.stay)}
+                onClick={() => {
+                  window.stop()
+                  setLeaving(null)
+                }}
+              >
+                {format(m.stayHere)}
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      }
+    >
       {/* One view at a time: the one leaving fades out quickly, then the
           next comes in from the side it is reached from. Nothing is scaled
           or stretched on the way - a height that changes simply changes. */}
@@ -547,38 +653,6 @@ export default function LoginPage() {
           {panel}
         </motion.div>
       </AnimatePresence>
-      {/* over the whole window, not inside the column it was pressed in */}
-      <Portal into={document.body}>
-        <AnimatePresence>
-        {leaving !== null && (
-          <motion.div
-            key="leaving"
-            data-testid="sign-in-leaving"
-            role="status"
-            {...stylex.props(styles.going)}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.24 }}
-          >
-            <Loader size={36} />
-            <span {...stylex.props(styles.goingWords)}>
-              {format(m.goingTo, { name: leaving.name })}
-            </span>
-            <button
-              type="button"
-              {...stylex.props(styles.stay)}
-              onClick={() => {
-                window.stop()
-                setLeaving(null)
-              }}
-            >
-              {format(m.stayHere)}
-            </button>
-          </motion.div>
-        )}
-        </AnimatePresence>
-      </Portal>
     </AuthShell>
   )
 }
@@ -654,6 +728,7 @@ function useNotice(failed: { _tag: string; retryAfterSeconds: number } | undefin
 }
 
 function Home({
+  last,
   header,
   methods,
   failed,
@@ -661,6 +736,7 @@ function Home({
   onChoose,
   onMore,
 }: {
+  last: string | null
   header: ReactNode
   methods: readonly LoginMethod[]
   failed: { _tag: string; retryAfterSeconds: number } | undefined
@@ -668,7 +744,7 @@ function Home({
   onChoose: (method: LoginMethod) => void
   onMore: () => void
 }) {
-  const { format } = useI18n()
+  const { format, locale } = useI18n()
   const still = useReducedMotion() === true
   const notice = useNotice(failed)
   const [tip, setTip] = useState<string | null>(null)
@@ -676,10 +752,17 @@ function Home({
   const others = methods.filter((method) => method.prominence === 'secondary')
   const overflow = others.length > TILES
   const tiles = overflow ? others.slice(0, TILES - 1) : others
+  // Named under the row for a pointer resting on a tile or a keyboard on
+  // it - not for a finger, whose tap is a choice: the name flashed up and was
+  // covered at once by the page leaving.
   const tipOf = (text: string) => ({
-    onMouseEnter: () => setTip(text),
-    onMouseLeave: () => setTip(null),
-    onFocus: () => setTip(text),
+    onPointerEnter: (event: PointerEvent<HTMLElement>) => {
+      if (event.pointerType === 'mouse') setTip(text)
+    },
+    onPointerLeave: () => setTip(null),
+    onFocus: (event: FocusEvent<HTMLElement>) => {
+      if (event.currentTarget.matches(':focus-visible')) setTip(text)
+    },
     onBlur: () => setTip(null),
   })
 
@@ -734,24 +817,37 @@ function Home({
       {primary.length > 0 && (
         <div {...stylex.props(styles.primaries)}>
           {primary.map((method) => (
-            <button
+            <motion.button
               key={method.code}
               type="button"
               data-testid="sign-in-primary"
               data-recommended={method.recommended}
+              data-last={method.code === last}
               {...stylex.props(styles.primary, method.recommended && styles.recommended)}
+              initial="rest"
+              whileHover={still ? 'rest' : 'hover'}
+              whileFocus={still ? 'rest' : 'hover'}
               onClick={() => onChoose(method)}
             >
               <span {...stylex.props(styles.primaryGlyph)}>
                 <LoginMethodGlyph code={method.code} name={method.name} icon={method.icon} size={20} />
               </span>
               <span {...stylex.props(styles.primaryName)}>{method.name}</span>
-              {method.mode === 'redirect' ? (
-                <ArrowUpRightIcon size={16} aria-hidden {...stylex.props(styles.away)} />
-              ) : (
-                <ArrowRightIcon size={16} aria-hidden {...stylex.props(styles.away)} />
+              {method.code === last && (
+                <span data-testid="sign-in-last" {...stylex.props(styles.last)}>
+                  {format(m.lastWayIn)}
+                </span>
               )}
-            </button>
+              {/* on, whichever way it goes: the arrow leans that way under the pointer */}
+              <motion.span
+                aria-hidden
+                {...stylex.props(styles.away)}
+                variants={{ rest: { x: 0, opacity: 0.45 }, hover: { x: 3, opacity: 0.8 } }}
+                transition={{ duration: 0.18, ease: EASE }}
+              >
+                <ArrowRightIcon size={16} />
+              </motion.span>
+            </motion.button>
           ))}
         </div>
       )}
@@ -765,19 +861,29 @@ function Home({
           </div>
           <div {...stylex.props(styles.tiles)}>
             {tiles.map((method) => {
-              const said = format(m.signInWith, { name: method.name })
+              const signIn = format(m.signInWith, { name: gapped(method.name, locale) })
+              const said =
+                method.code === last ? format(m.lastUsedName, { name: signIn }) : signIn
               return (
-                <button
-                  key={method.code}
-                  type="button"
-                  aria-label={said}
-                  data-testid="sign-in-tile"
-                  {...stylex.props(styles.tile)}
-                  {...tipOf(said)}
-                  onClick={() => onChoose(method)}
-                >
-                  <LoginMethodGlyph code={method.code} name={method.name} icon={method.icon} size={20} />
-                </button>
+                <span key={method.code} {...stylex.props(styles.tileSeat)}>
+                  <button
+                    type="button"
+                    aria-label={said}
+                    data-testid="sign-in-tile"
+                    data-last={method.code === last}
+                    {...stylex.props(styles.tile)}
+                    {...tipOf(said)}
+                    onClick={() => onChoose(method)}
+                  >
+                    <LoginMethodGlyph
+                      code={method.code}
+                      name={method.name}
+                      icon={method.icon}
+                      size={20}
+                    />
+                  </button>
+                  {method.code === last && <span aria-hidden {...stylex.props(styles.lastDot)} />}
+                </span>
               )
             })}
             {overflow && (
@@ -819,10 +925,12 @@ function Home({
 
 /** every way in that is not listed in full, two to a row, searchable when there are many */
 function AllMethods({
+  last,
   methods,
   onBack,
   onChoose,
 }: {
+  last: string | null
   methods: readonly LoginMethod[]
   onBack: () => void
   onChoose: (method: LoginMethod) => void
@@ -872,6 +980,7 @@ function AllMethods({
               <LoginMethodGlyph code={method.code} name={method.name} icon={method.icon} size={16} />
             </span>
             <span {...stylex.props(styles.primaryName)}>{method.name}</span>
+            {method.code === last && <span {...stylex.props(styles.last)}>{format(m.lastWayIn)}</span>}
           </button>
         ))}
       </div>
@@ -915,8 +1024,23 @@ function MethodRenderer({
         surface={{ kind: 'login', id: method.type }}
         props={{ method, onAuthenticated }}
         loading={
-          <div {...stylex.props(styles.waiting)}>
-            <Spinner />
+          <div data-testid="login-renderer-waiting" aria-busy {...stylex.props(styles.boneForm)}>
+            <div {...stylex.props(styles.boneStack)}>
+              <Skeleton className={stylex.props(styles.boneLabel).className} />
+              <Skeleton className={stylex.props(styles.boneField).className} />
+            </div>
+            <div {...stylex.props(styles.boneStack)}>
+              <div {...stylex.props(styles.boneRow)}>
+                <Skeleton className={stylex.props(styles.boneLabel).className} />
+                <Skeleton className={stylex.props(styles.boneAside).className} />
+              </div>
+              <Skeleton className={stylex.props(styles.boneField).className} />
+            </div>
+            <div {...stylex.props(styles.boneRow, styles.boneRowStart)}>
+              <Skeleton className={stylex.props(styles.boneBox).className} />
+              <Skeleton className={stylex.props(styles.boneWords).className} />
+            </div>
+            <Skeleton className={stylex.props(styles.boneButton).className} />
           </div>
         }
         fallback={() => unavailable}

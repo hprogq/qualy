@@ -1,5 +1,5 @@
-import { useState, type FormEvent, type ReactNode } from 'react'
-import { useLocation } from 'react-router'
+import { useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { Link, useLocation } from 'react-router'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import * as stylex from '@stylexjs/stylex'
@@ -11,12 +11,22 @@ import {
   EyeIcon,
   MailCheckIcon,
 } from 'lucide-react'
-import { PageLink, useApi, useApiQuery, usePageNavigate, useRunApi } from '@qualy/web-runtime'
+import {
+  PageLink,
+  useApi,
+  useApiQuery,
+  usePageHref,
+  usePageNavigate,
+  useRunApi,
+} from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { normalizeEmail } from '@qualy/auth-contract/email'
+import { retryAfterOf } from '@qualy/auth-contract/session'
 import { authMessages as m } from '../i18n.ts'
 import { authApi } from '../api.ts'
 import { AuthShell } from '../sign-in/AuthShell.tsx'
+import { clock, PAUSE_MS, useHold } from '../sign-in/hold.ts'
 
 // A forgotten password, in two visits. Without a token the page asks for the
 // email and says the same thing whatever comes of it; the mail's link brings
@@ -105,6 +115,7 @@ const styles = stylex.create({
     transitionDuration: '200ms',
   },
   ruleMet: { color: tokens.foreground },
+  ruleBad: { color: tokens.danger },
   ruleMark: { position: 'relative', display: 'inline-flex', width: 14, height: 14 },
   ruleTick: { position: 'absolute', inset: 0 },
   said: { fontSize: 13 },
@@ -201,6 +212,29 @@ function Slide({ id, children }: { id: string; children: ReactNode }) {
   )
 }
 
+/** a line under a field that opens and closes rather than jumping in */
+function Said({ children }: { children: ReactNode }) {
+  const still = useReducedMotion() === true
+  return (
+    <AnimatePresence initial={false}>
+      {children !== null && (
+        <motion.div
+          key="said"
+          style={{ overflow: 'hidden' }}
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: 'auto', opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={{ duration: still ? 0 : 0.2, ease: EASE }}
+        >
+          <p role="alert" {...stylex.props(styles.refusal)}>
+            {children}
+          </p>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
+
 /** a state that has arrived somewhere: the badge settles in after the column */
 function Badge({ tone, children }: { tone?: 'danger'; children: ReactNode }) {
   const still = useReducedMotion() === true
@@ -222,13 +256,36 @@ export default function ResetPasswordPage() {
   return <AuthShell>{token === null ? <Ask /> : <SetNew token={token} />}</AuthShell>
 }
 
+/**
+ * Where "back to sign in" goes: the view of the sign-in page this was opened
+ * from - the password form, when that is where 忘记密码 was pressed - or the
+ * page itself. Only a place on the sign-in page is taken from the history.
+ */
+function useSignInReturn(): string | undefined {
+  const page = usePageHref('auth/login')
+  const from = (useLocation().state as { from?: unknown } | null)?.from
+  if (page === undefined) return undefined
+  return typeof from === 'string' && (from === page || from.startsWith(`${page}?`)) ? from : page
+}
+
+/** a way to the sign-in page, back to the view this was opened from */
+function ToSignIn({ className, children }: { className: string | undefined; children: ReactNode }) {
+  const href = useSignInReturn()
+  if (href === undefined) return null
+  return (
+    <Link to={href} className={className}>
+      {children}
+    </Link>
+  )
+}
+
 function BackToSignIn() {
   const { format } = useI18n()
   return (
-    <PageLink page="auth/login" className={stylex.props(styles.back).className}>
+    <ToSignIn className={stylex.props(styles.back).className}>
       <ArrowLeftIcon size={15} aria-hidden />
       {format(m.backToSignIn)}
-    </PageLink>
+    </ToSignIn>
   )
 }
 
@@ -237,12 +294,27 @@ function Ask() {
   const run = useRunApi()
   const { format, formatError } = useI18n()
   const [email, setEmail] = useState('')
+  // judged once it has been left or the form sent, never while it is typed
+  const [checked, setChecked] = useState(false)
+  const address = normalizeEmail(email)
+  const emailSaid = checked && address === null ? format(m.resetEmailInvalid) : null
   const [sentTo, setSentTo] = useState<string | null>(null)
+  // a second press before the first has rendered is still a second press
+  const sending = useRef(false)
+  const { held, secondsLeft, hold } = useHold()
   const ask = useMutation({
     mutationFn: (address: string) =>
       run(api.auth.createPasswordReset({ payload: { email: address } })),
     onSuccess: (_answer, address) => setSentTo(address),
+    onError: (failure) => {
+      const wait = retryAfterOf(failure)
+      hold(wait === undefined ? PAUSE_MS : wait * 1000)
+    },
+    onSettled: () => {
+      sending.current = false
+    },
   })
+  const limited = held && ask.isError && retryAfterOf(ask.error) !== undefined
   if (sentTo !== null) {
     return (
       <Slide id="sent">
@@ -267,9 +339,9 @@ function Ask() {
             >
               {format(m.resetOtherEmail)}
             </button>
-            <PageLink page="auth/login" className={stylex.props(styles.secondary).className}>
+            <ToSignIn className={stylex.props(styles.secondary).className}>
               {format(m.backToSignIn)}
-            </PageLink>
+            </ToSignIn>
           </div>
         </div>
       </Slide>
@@ -283,9 +355,13 @@ function Ask() {
         <p {...stylex.props(styles.hint)}>{format(m.resetAskHint)}</p>
         <form
           {...stylex.props(styles.form)}
+          noValidate
           onSubmit={(event: FormEvent) => {
             event.preventDefault()
-            if (!ask.isPending) ask.mutate(email.trim())
+            setChecked(true)
+            if (address === null || sending.current || held) return
+            sending.current = true
+            ask.mutate(address)
           }}
         >
           <div {...stylex.props(styles.field)}>
@@ -297,17 +373,23 @@ function Ask() {
               type="email"
               autoComplete="username"
               value={email}
+              aria-invalid={emailSaid !== null}
               onChange={(event) => setEmail(event.target.value)}
-              {...stylex.props(styles.input)}
+              onBlur={() => email !== '' && setChecked(true)}
+              {...stylex.props(styles.input, emailSaid !== null && styles.inputRefused)}
             />
+            <Said>{emailSaid ?? (ask.isError ? formatError(ask.error) : null)}</Said>
           </div>
-          {ask.isError && <p {...stylex.props(styles.refusal)}>{formatError(ask.error)}</p>}
           <button
             type="submit"
-            disabled={ask.isPending || email.trim() === ''}
+            disabled={ask.isPending || held}
             {...stylex.props(styles.primary)}
           >
-            {format(ask.isPending ? m.resetSending : m.resetAskSubmit)}
+            {ask.isPending
+              ? format(m.resetSending)
+              : limited
+                ? format(m.resetWait, { time: clock(secondsLeft) })
+                : format(m.resetAskSubmit)}
           </button>
         </form>
         <p {...stylex.props(styles.footnote)}>{format(m.signInElsewhere)}</p>
@@ -329,9 +411,17 @@ function SetNew({ token }: { token: string }) {
   const [again, setAgain] = useState('')
   const [shown, setShown] = useState(false)
   const [mismatch, setMismatch] = useState(false)
+  // said in red once a press found it short, until it is long enough
+  const [short, setShort] = useState(false)
+  const sending = useRef(false)
+  const { held, hold } = useHold()
   const set = useMutation({
     mutationFn: () =>
       run(api.auth.createPasswordResetRedemption({ payload: { token, password } })),
+    onError: () => hold(PAUSE_MS),
+    onSettled: () => {
+      sending.current = false
+    },
   })
   const expired =
     set.isError && (set.error as { _tag?: string } | null)?._tag === 'AUTH_CHALLENGE_INVALID'
@@ -387,7 +477,7 @@ function SetNew({ token }: { token: string }) {
   }
 
   const min = rule?.minLength ?? 0
-  const long = password.length >= min
+  const long = password.length >= min && password.length > 0
   const matches = again.length > 0 && again === password
   return (
     <Slide id="set">
@@ -396,14 +486,21 @@ function SetNew({ token }: { token: string }) {
         <p {...stylex.props(styles.hint)}>{format(m.resetSetHint)}</p>
         <form
           {...stylex.props(styles.form)}
+          noValidate
           onSubmit={(event: FormEvent) => {
             event.preventDefault()
+            if (!long) {
+              setShort(true)
+              return
+            }
             if (password !== again) {
               setMismatch(true)
               return
             }
             setMismatch(false)
-            if (!set.isPending) set.mutate()
+            if (sending.current || held) return
+            sending.current = true
+            set.mutate()
           }}
         >
           <div {...stylex.props(styles.field)}>
@@ -436,7 +533,8 @@ function SetNew({ token }: { token: string }) {
               <span
                 data-testid="password-rule"
                 data-met={long}
-                {...stylex.props(styles.rule, long && styles.ruleMet)}
+                data-refused={short && !long}
+                {...stylex.props(styles.rule, long && styles.ruleMet, short && !long && styles.ruleBad)}
               >
                 <span aria-hidden {...stylex.props(styles.ruleMark)}>
                   <CircleIcon size={14} strokeWidth={2} />
@@ -485,7 +583,7 @@ function SetNew({ token }: { token: string }) {
           {set.isError && <p {...stylex.props(styles.refusal)}>{formatError(set.error)}</p>}
           <button
             type="submit"
-            disabled={set.isPending || !long || password === '' || again === ''}
+            disabled={set.isPending || held}
             {...stylex.props(styles.primary)}
           >
             {format(set.isPending ? m.resetSetting : m.resetSubmit)}

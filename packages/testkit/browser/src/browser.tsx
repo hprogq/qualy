@@ -97,6 +97,7 @@ export function renderScreen({
   // headless chromium reports en-US, so a test that wants translated copy
   // says so through the same stored preference a user's toggle writes
   locale = 'zh-CN',
+  storage = {},
 }: {
   client: FakeClient
   /**
@@ -128,12 +129,15 @@ export function renderScreen({
   route?: string
   path?: string
   locale?: 'zh-CN' | 'en-US'
+  /** what this browser already keeps, as a visitor who has been here before */
+  storage?: Record<string, string>
 }) {
   // every screen starts from a fresh browser: view modes and toggles the
   // product persists must not leak from one test into the next (styled
   // layouts genuinely hide things in a remembered mode)
   localStorage.clear()
   localStorage.setItem('qualy.locale', locale)
+  for (const [key, value] of Object.entries(storage)) localStorage.setItem(key, value)
   // the shell's boot script marks the root with the locale it resolved and
   // the runtime takes the mark; here the harness stands in for the script
   document.documentElement.dataset['locale'] = locale
