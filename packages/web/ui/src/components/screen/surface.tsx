@@ -363,7 +363,6 @@ const styles = stylex.create({
   // line above to itself, so this sits at the end of the line under it,
   // where the eye running down a list finds every row's in the same place.
   cellEndNarrow: {
-    order: { default: 1, [breakpoints.phone]: null },
     gridColumn: { default: null, [breakpoints.phone]: 2 },
     gridRow: { default: null, [breakpoints.phone]: '1 / 3' },
     textAlign: { default: null, [breakpoints.phone]: 'end' },
@@ -373,6 +372,10 @@ const styles = stylex.create({
   // line of its own, and the state and the chevron, which span two, stood
   // above the middle of the row. Across, it keeps its column's place.
   cellTrailing: { order: { default: 2, [breakpoints.phone]: null } },
+  // the scanned cell and the chevron, put back around the trailing ones
+  // across; only in a row that has any, where the rest keep their own order
+  cellEndOrdered: { order: { default: 1, [breakpoints.phone]: null } },
+  chevronOrdered: { order: { default: 3, [breakpoints.phone]: null } },
   cellLead: {
     display: 'flex',
     alignItems: 'center',
@@ -391,7 +394,6 @@ const styles = stylex.create({
   cellMono: { fontFamily: MONO, fontSize: 12 },
   cellEnd: { textAlign: { default: 'right', [breakpoints.phone]: 'start' } },
   chevron: {
-    order: { default: 3, [breakpoints.phone]: null },
     display: 'inline-flex',
     justifySelf: 'end',
     gridColumn: { default: null, [breakpoints.phone]: 3 },
@@ -814,11 +816,22 @@ export function TableRow({
   }
   // cells after the scanned one belong to the run as well; the grid puts
   // them back after it across
-  const trailing = kids
-    .slice(until + 1)
-    .filter(isCell)
-    .map((child) => cloneElement(child as ReactElement<{ trailing?: boolean }>, { trailing: true }))
-  const after = kids.slice(until).filter((child, index) => index === 0 || !isCell(child))
+  //
+  // Only where everything after the scanned cell is a cell: something else
+  // there - a row's own menu - is placed by the order it is written in, and
+  // pulling cells from around it would put the scanned one after it.
+  const behind = kids.slice(until + 1)
+  const reorders = behind.length > 0 && behind.every(isCell)
+  const trailing = reorders
+    ? behind.map((child) =>
+        cloneElement(child as ReactElement<{ trailing?: boolean }>, { trailing: true }),
+      )
+    : []
+  const after = reorders
+    ? kids
+        .slice(until, until + 1)
+        .map((child) => cloneElement(child as ReactElement<{ ordered?: boolean }>, { ordered: true }))
+    : kids.slice(until)
   const labelled =
     until > from ? (
       <>
@@ -867,7 +880,7 @@ export function TableRow({
     <>
       {labelled}
       {openable && (
-        <span aria-hidden {...stylex.props(styles.chevron)}>
+        <span aria-hidden {...stylex.props(styles.chevron, reorders && styles.chevronOrdered)}>
           <ChevronRightIcon {...stylex.props(styles.chevronGlyph)} />
         </span>
       )}
@@ -937,6 +950,7 @@ export function Cell({
   clip = false,
   lastOfRun = false,
   trailing = false,
+  ordered = false,
   column,
   children,
 }: {
@@ -983,6 +997,8 @@ export function Cell({
   lastOfRun?: boolean
   /** after the scanned fact, filled in by the row; a caller never passes it */
   trailing?: boolean
+  /** the scanned cell of a row that has trailing ones; filled in by the row */
+  ordered?: boolean
   /**
    * Which column this is, filled in by the row.
    *
@@ -1028,6 +1044,7 @@ export function Cell({
     oneLine && styles.cellHeld,
     lastOfRun && styles.cellHeldLast,
     trailing && styles.cellTrailing,
+    ordered && styles.cellEndOrdered,
     clip && styles.cellClipped,
     label !== '' && styles.cellLabel,
   )

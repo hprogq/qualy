@@ -66,6 +66,30 @@ describe('a row with a column after the one it is scanned by', () => {
   })
 })
 
+describe('a row with its own menu after the one it is scanned by', () => {
+  it('across, keeps the scanned cell before the menu', async () => {
+    mount(
+      <Table columns="minmax(0, 1fr) 6rem 2rem">
+        <TableHead>
+          <span>name</span>
+          <span>state</span>
+          <span />
+        </TableHead>
+        <TableRow data-testid="row">
+          <Cell lead>Somebody</Cell>
+          <Cell narrow="end" unlabelled>
+            <span data-testid="state">in</span>
+          </Cell>
+          <span data-testid="menu">…</span>
+        </TableRow>
+      </Table>,
+    )
+    const state = box(await found(page.getByTestId('state')))
+    const menu = box(await found(page.getByTestId('menu')))
+    expect(state.left).toBeLessThan(menu.left)
+  })
+})
+
 describe('a strip of steps', () => {
   it('reaches the last dot to the end of the strip, leaving no room after it', async () => {
     await page.viewport(360, 740)
