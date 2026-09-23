@@ -30,6 +30,7 @@ import { placementLegal } from '../src/server/placement.ts'
 import { db } from '../src/server/db.ts'
 import { sql as ksql } from 'kysely'
 import { secretsLayer } from '@qualy/plugin-secrets/testkit'
+import { captchaLayer } from '@qualy/plugin-captcha/testkit'
 
 // The identity behaviours no other suite asserts, carried here from a suite
 // that has since been deleted. Each names the one it came from.
@@ -56,6 +57,7 @@ const stack = (url: string) =>
           ),
         ),
       ),
+      Layer.provideMerge(captchaLayer),
       Layer.provideMerge(secretsLayer),
       Layer.provideMerge(
         Layer.mergeAll(

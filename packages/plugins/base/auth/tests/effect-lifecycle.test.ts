@@ -25,6 +25,7 @@ import { AuthConfig } from '../src/server/sign-in.ts'
 import { serviceLayer as authLayer } from '../src/server/index.ts'
 import { authClosure } from './support/closure.ts'
 import { secretsLayer } from '@qualy/plugin-secrets/testkit'
+import { captchaLayer } from '@qualy/plugin-captcha/testkit'
 
 // The user lifecycle: what falls with a deletion, that deletion is final and
 // frees what the person held, and the version fence every write runs behind.
@@ -50,6 +51,7 @@ const stack = (url: string) =>
           ),
         ),
       ),
+      Layer.provideMerge(captchaLayer),
       Layer.provideMerge(secretsLayer),
       Layer.provideMerge(
         Layer.mergeAll(

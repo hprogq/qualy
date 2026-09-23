@@ -32,6 +32,7 @@ import { peopleAtNode } from '../../auth/src/server/node-usage.ts'
 import { Org } from '../src/server/index.ts'
 import { serviceLayer as orgLayer } from '../src/server/index.ts'
 import { entities as secretsEntities, secretsLayer } from '@qualy/plugin-secrets/testkit'
+import { captchaLayer } from '@qualy/plugin-captcha/testkit'
 
 // The slice the whole milestone rests on.
 //
@@ -78,6 +79,7 @@ const stack = (url: string) =>
           ),
         ),
       ),
+      Layer.provideMerge(captchaLayer),
       Layer.provideMerge(secretsLayer),
       Layer.provideMerge(
         Layer.mergeAll(

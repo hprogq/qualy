@@ -13,6 +13,7 @@ import {
   runSql,
 } from '@qualy/plugin-database/testkit'
 import { secretsLayer } from '@qualy/plugin-secrets/testkit'
+import { captchaLayer } from '@qualy/plugin-captcha/testkit'
 import { mailerLayerWith, memoryMailBackend } from '@qualy/plugin-mail/testkit'
 import { smtpBackend } from '@qualy/plugin-mail-smtp/backend'
 import { type Orm } from '@qualy/plugin-database/server'
@@ -68,6 +69,7 @@ const stack = (url: string, backend: ReturnType<typeof memoryMailBackend>['backe
           ),
         ),
       ),
+      Layer.provideMerge(captchaLayer),
       Layer.provideMerge(secretsLayer),
       Layer.provideMerge(
         Layer.mergeAll(

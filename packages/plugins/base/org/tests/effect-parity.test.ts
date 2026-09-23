@@ -31,6 +31,7 @@ import { loginDriversLayer } from '@qualy/auth-contract/login'
 import { Org } from '../src/server/index.ts'
 import { serviceLayer as orgLayer } from '../src/server/index.ts'
 import { entities as secretsEntities, secretsLayer } from '@qualy/plugin-secrets/testkit'
+import { captchaLayer } from '@qualy/plugin-captcha/testkit'
 
 // The tree behaviours no other suite asserts.
 //
@@ -68,6 +69,7 @@ const stack = (url: string) =>
           ),
         ),
       ),
+      Layer.provideMerge(captchaLayer),
       Layer.provideMerge(secretsLayer),
       Layer.provideMerge(
         Layer.mergeAll(

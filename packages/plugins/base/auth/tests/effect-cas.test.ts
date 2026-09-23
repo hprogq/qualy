@@ -22,6 +22,7 @@ import { sessionCookieName } from '@qualy/auth-contract/session'
 import { apiHandlers as casApiHandlers, driver as casDriver } from '@qualy/plugin-auth-cas'
 import { authCasApiGroup } from '@qualy/plugin-auth-cas/api'
 import { secretsLayer } from '@qualy/plugin-secrets/testkit'
+import { captchaLayer } from '@qualy/plugin-captcha/testkit'
 import { sessionApiGroup } from '../src/api.ts'
 import { sessionApiHandlers } from '../src/server/index.ts'
 import { makeOutbound } from '../src/server/outbound.ts'
@@ -131,6 +132,7 @@ beforeAll(async () => {
     }),
   )
   const signIn = signInLayer.pipe(
+    Layer.provide(captchaLayer),
     Layer.provide(secretsLayer),
     Layer.provide(Layer.mergeAll(singleTenantLayer, singleOriginLayer)),
     Layer.provide(authAuditLayer),

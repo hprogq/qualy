@@ -30,6 +30,7 @@ import { AuthConfig } from '@qualy/plugin-auth/server/sign-in'
 import { loginDriversLayer } from '@qualy/auth-contract/login'
 import { Org, serviceLayer as orgLayer } from '../src/server/index.ts'
 import { entities as secretsEntities, secretsLayer } from '@qualy/plugin-secrets/testkit'
+import { captchaLayer } from '@qualy/plugin-captcha/testkit'
 
 // What a write answers.
 //
@@ -68,6 +69,7 @@ const stack = (url: string) =>
           ),
         ),
       ),
+      Layer.provideMerge(captchaLayer),
       Layer.provideMerge(secretsLayer),
       Layer.provideMerge(
         Layer.mergeAll(

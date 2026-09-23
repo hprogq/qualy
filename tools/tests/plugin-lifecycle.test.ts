@@ -31,6 +31,7 @@ import { browserSurfacesOf } from '@qualy/web-build/browser-contract'
 // build.
 
 const INFRA = [
+  '@qualy/plugin-captcha',
   '@qualy/plugin-database',
   '@qualy/plugin-mail',
   '@qualy/plugin-secrets',

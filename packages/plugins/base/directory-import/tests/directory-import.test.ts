@@ -41,6 +41,7 @@ import { entities } from '../src/db/entities.ts'
 import { directoryImportActions } from '../src/actions.ts'
 import { DirectoryImport, serviceLayer } from '../src/server/index.ts'
 import { entities as secretsEntities, secretsLayer } from '@qualy/plugin-secrets/testkit'
+import { captchaLayer } from '@qualy/plugin-captcha/testkit'
 
 // A whole spreadsheet of people, written or not written.
 //
@@ -96,6 +97,7 @@ const stack = (url: string) => {
           ),
         ),
       ),
+      Layer.provideMerge(captchaLayer),
       Layer.provideMerge(secretsLayer),
       Layer.provideMerge(
         Layer.mergeAll(

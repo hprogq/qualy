@@ -27,6 +27,7 @@ import { layer as sessionLayer } from '../src/server/session.ts'
 import { sessionCookieNameFor } from '../src/server/session-cookie.ts'
 import { authClosure } from './support/closure.ts'
 import { secretsLayer } from '@qualy/plugin-secrets/testkit'
+import { captchaLayer } from '@qualy/plugin-captcha/testkit'
 import { authAuditLayer } from './support/audit.ts'
 import { unusedEmailFlows } from './support/email-flows.ts'
 import { singleTenantLayer } from '../src/server/tenancy.ts'
@@ -66,6 +67,7 @@ beforeAll(async () => {
     }),
   )
   const signIn = signInLayer.pipe(
+    Layer.provide(captchaLayer),
     Layer.provide(secretsLayer),
     // the deployment's one tenant and its one public address, as the host
     // provides them

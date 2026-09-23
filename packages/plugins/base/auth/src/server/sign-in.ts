@@ -13,6 +13,7 @@ import {
   type LoginProminence,
   type LoginPresentation,
   type LoginSessionsShape,
+  type AdmissionAnswer,
   ProviderSecretMissing,
   AuthBindingRejected,
   type BindingRejection,
@@ -27,6 +28,8 @@ import { Secrets } from '@qualy/plugin-secrets/plugin'
 import { AuthConfig } from './auth-config.ts'
 import { configOf, entranceSecrets, makeReadiness } from './readiness.ts'
 import { makeFlows } from './flows.ts'
+import { captchaPurpose } from '@qualy/plugin-captcha/contract'
+import { Captcha } from '@qualy/plugin-captcha/server'
 import { HARD_LIMITS, makeLimiter, RISK_RULES, type HardLimitRule } from './limiter.ts'
 import { actorOf } from './audit-actor.ts'
 import { BindingWritten } from '../actions.ts'
@@ -437,6 +440,9 @@ const insertSession = (input: {
   )
 
 /** sign-in attempts by outcome and door type; unknown types clamp to 'other' */
+/** what a sign-in challenge protects; a proof for it is worth nothing anywhere else */
+export const LOGIN_CAPTCHA = captchaPurpose('auth/login')
+
 /**
  * Password attempts whose address could not be read. A deployment where this
  * is ever more than a trickle has a proxy or forwarding chain to look at.
@@ -641,6 +647,7 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
   const secrets = yield* Secrets
   const flows = yield* makeFlows()
   const limiter = yield* makeLimiter
+  const captcha = yield* Captcha
   // said once per process: after that the metric counts it
   let unknownAddressWarned = false
   const audit = yield* Audit
@@ -799,6 +806,7 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
       Effect.fn('Auth.signIn.admitAttempt')(function* (input: {
         provider: ResolvedProvider
         identifier?: string
+        captcha?: { readonly provider: string; readonly response: string }
       }) {
         const context = Option.getOrUndefined(yield* currentRequestContext)
         const tenantId = input.provider.tenantId
@@ -843,12 +851,23 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
           )
           challengeRequired = challengeRequired || identifier.challengeRequired
         }
-        if (challengeRequired) {
-          // no challenge can be asked for yet, so the attempt goes on; what
-          // would have been asked is at least visible
-          yield* Effect.logDebug('a sign-in attempt would have been challenged')
-        }
-        return { challengeRequired }
+        // a proof carried while nothing is raised is not looked at: nothing
+        // asked for it, and asking a provider costs
+        if (!challengeRequired) return { kind: 'admitted' } satisfies AdmissionAnswer as AdmissionAnswer
+        const guarded = yield* captcha.guard({
+          tenantId,
+          purpose: LOGIN_CAPTCHA,
+          // bound to the entrance and the address typed: a proof earned for
+          // one address cannot be spent on another
+          bindingKey:
+            input.identifier === undefined ? provider : `${provider}\0${input.identifier}`,
+          ...(input.captcha === undefined ? {} : { proof: input.captcha }),
+        })
+        return (
+          guarded.kind === 'required'
+            ? { kind: 'challenge', prompt: guarded.prompt }
+            : { kind: 'admitted' }
+        ) satisfies AdmissionAnswer as AdmissionAnswer
       }),
     ),
 
@@ -1176,6 +1195,7 @@ export const layer: Layer.Layer<
   | Audit
   | AnonymousTenantResolver
   | PublicOriginResolver
+  | Captcha
 > =
   Layer.effectContext(
     Effect.gen(function* () {

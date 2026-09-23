@@ -18,6 +18,7 @@ import {
 import { AuthConfig } from '../src/server/auth-config.ts'
 import { SignIn, layer as signInLayer } from '../src/server/sign-in.ts'
 import { secretsLayer } from '@qualy/plugin-secrets/testkit'
+import { captchaLayer } from '@qualy/plugin-captcha/testkit'
 import { authAuditLayer } from './support/audit.ts'
 import { singleTenantLayer } from '../src/server/tenancy.ts'
 import { singleOriginLayer } from '../src/server/public-origin.ts'
@@ -57,6 +58,7 @@ const HREFS: Record<string, string> = {
 
 const stack = (url: string) =>
   signInLayer.pipe(
+    Layer.provideMerge(captchaLayer),
     Layer.provideMerge(secretsLayer),
     Layer.provideMerge(Layer.mergeAll(singleTenantLayer, singleOriginLayer)),
     Layer.provideMerge(authAuditLayer),

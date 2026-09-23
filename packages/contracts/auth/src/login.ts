@@ -574,6 +574,21 @@ export interface SignedInUser {
   readonly tenant: { readonly id: string; readonly slug: string; readonly name: string }
 }
 
+/**
+ * What admitting an attempt answered: go on, or first meet this challenge -
+ * a provider's name and its own challenge, for the driver to send back as a
+ * `CAPTCHA_REQUIRED` refusal without reading it.
+ */
+export type AdmissionAnswer =
+  | { readonly kind: 'admitted' }
+  | {
+      readonly kind: 'challenge'
+      readonly prompt: {
+        readonly provider: string
+        readonly challenge: Readonly<Record<string, unknown>>
+      }
+    }
+
 /** a live binding, with what a driver needs to check the proof against it */
 export interface FoundBinding {
   readonly id: string
@@ -645,7 +660,7 @@ export interface LoginSessionsShape {
     displayLabel?: string
   }) => Effect.Effect<{ readonly bindingId: string }, AuthBindingRejected>
   /**
-   * Admits one sign-in attempt, and says whether it must first be challenged.
+   * Admits one sign-in attempt, or answers with a challenge to meet first.
    *
    * Asked before anything expensive: before a password hash is checked,
    * before an upstream is called, and before anything is looked up. The only
@@ -654,11 +669,19 @@ export interface LoginSessionsShape {
    * way whether or not anybody answers to it, and never refuses: a limit
    * anybody could fill by typing somebody else's address would keep that
    * person out.
+   *
+   * When the risk is raised the attempt must carry a proof bound to this
+   * entrance and identifier; without one, or with one that does not prove
+   * it, the answer is a challenge, which the driver sends back as it is. A
+   * proof carried while the risk is not raised is not looked at. A proof
+   * admits this one attempt and clears nothing.
    */
   readonly admitAttempt: (input: {
     provider: ResolvedProvider
     identifier?: string
-  }) => Effect.Effect<{ readonly challengeRequired: boolean }, TooManyAttempts>
+    /** what the browser sent back after meeting a challenge, as it sent it */
+    captcha?: { readonly provider: string; readonly response: string }
+  }) => Effect.Effect<AdmissionAnswer, TooManyAttempts>
   /**
    * Forgets the risk weighed at an identifier, once the credential offered
    * for it has been proven - before the account's own state is asked about,

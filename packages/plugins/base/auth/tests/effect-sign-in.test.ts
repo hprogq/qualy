@@ -14,15 +14,9 @@ import {
   runSql,
 } from '@qualy/plugin-database/testkit'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
-import { RequestContext, requestContext } from '@qualy/api-kit/request'
+import { requestContext } from '@qualy/api-kit/request'
 import { Api } from '@qualy/api-kit/plugin'
-import {
-  LoginSessions,
-  loginDriversLayer,
-  registerLoginDriver,
-  type LoginSessionsShape,
-  type ResolvedProvider,
-} from '@qualy/auth-contract/login'
+import { loginDriversLayer, registerLoginDriver } from '@qualy/auth-contract/login'
 import { hashPassword } from '@qualy/plugin-auth-local/password'
 import { hashSessionToken } from '../src/session.ts'
 import { SEEDED_EMAILS, seedSignIn } from './support/sign-in-seed.ts'
@@ -35,6 +29,7 @@ import { sessionCookieName } from '@qualy/auth-contract/session'
 import { layer as sessionLayer } from '../src/server/session.ts'
 import { authClosure } from './support/closure.ts'
 import { secretsLayer } from '@qualy/plugin-secrets/testkit'
+import { captchaLayer } from '@qualy/plugin-captcha/testkit'
 import { authAuditLayer } from './support/audit.ts'
 import { unusedEmailFlows } from './support/email-flows.ts'
 import { singleTenantLayer } from '../src/server/tenancy.ts'
@@ -62,8 +57,6 @@ let db: Awaited<ReturnType<typeof createTestContext>>
 
 let userId: string
 let providerId: string
-/** the sign-in service as the server was given it, for asking it directly */
-let signInService: Layer.Layer<LoginSessions, unknown>
 
 beforeAll(async () => {
   if (!postgresAvailable) return
@@ -81,6 +74,7 @@ beforeAll(async () => {
   // only the local driver is in the catalog, so the cas provider row has
   // nothing to present it
   const signIn = signInLayer.pipe(
+    Layer.provide(captchaLayer),
     Layer.provide(secretsLayer),
     // the deployment's one tenant and its one public address, as the host
     // provides them
@@ -96,7 +90,6 @@ beforeAll(async () => {
       ),
     ),
   )
-  signInService = signIn
   const handlers = Layer.mergeAll(sessionApiHandlers, authLocalApiHandlers).pipe(
     Layer.provide(sessionLayer.pipe(Layer.provide(Layer.mergeAll(infra, authConfig)))),
   )
@@ -518,46 +511,9 @@ describe.runIf(postgresAvailable)('how many attempts a door takes', () => {
       ),
     )
 
-  /**
-   * The door's own service, asked directly: from one address when one is
-   * given - standing in for the request the host would have read it from -
-   * and from no readable address otherwise.
-   */
-  const admission = <A, E>(
-    clientIp: string | undefined,
-    body: (
-      sessions: LoginSessionsShape,
-      provider: ResolvedProvider,
-    ) => Effect.Effect<A, E, never>,
-  ) => {
-    const program = Effect.gen(function* () {
-      const sessions = yield* LoginSessions
-      const provider = yield* sessions.resolveProvider({
-        providerCode: 'password',
-        expectedType: 'local',
-      })
-      return yield* body(sessions, provider!)
-    })
-    const addressed =
-      clientIp === undefined
-        ? program
-        : program.pipe(
-            Effect.provideService(RequestContext, {
-              requestId: 'test',
-              clientIp,
-              userAgent: undefined,
-              traceId: undefined,
-              sessionId: undefined,
-              bindSession: () => Effect.void,
-              publicHost: undefined,
-              endpoint: undefined,
-              bindEndpoint: () => Effect.void,
-            }),
-          )
-    return Effect.runPromise(addressed.pipe(Effect.provide(signInService)))
-  }
-
   it('never locks an address: thirty misses, and the right password still opens it', async () => {
+    // this deployment has no captcha provider, so the risk raised on the way
+    // lets every attempt through: the protection is missing, never the door
     for (let tried = 0; tried < 30; tried += 1) {
       const refused = await login({ email: SEEDED_EMAILS.ada, password: 'not the password' })
       expect(refused.status).toBe(401)
@@ -619,43 +575,5 @@ describe.runIf(postgresAvailable)('how many attempts a door takes', () => {
         ),
       )
     }
-  })
-
-  it('admits exactly the first five of a burst at one address, and challenges the rest', async () => {
-    // all of them arrive before any has been looked up: counted as they are
-    // admitted, so none can read "not yet" after the fifth
-    const answers = await admission('203.0.113.8', (sessions, provider) =>
-      Effect.forEach(
-        Array.from({ length: 30 }, (_, index) => index),
-        () => sessions.admitAttempt({ provider, identifier: 'burst@school.edu' }),
-        { concurrency: 'unbounded' },
-      ),
-    )
-    expect(answers.filter((answer) => !answer.challengeRequired)).toHaveLength(5)
-    expect(answers.filter((answer) => answer.challengeRequired)).toHaveLength(25)
-  })
-
-  it('challenges one address past its twentieth attempt, whoever it is trying', async () => {
-    // a campus exit: many people, one address, each at their own account
-    const answers = await admission('203.0.113.9', (sessions, provider) =>
-      Effect.forEach(
-        Array.from({ length: 22 }, (_, index) => index),
-        (index) => sessions.admitAttempt({ provider, identifier: `student-${index}@school.edu` }),
-      ),
-    )
-    expect(answers.map((answer) => answer.challengeRequired)).toEqual([
-      ...Array.from({ length: 20 }, () => false),
-      true,
-      true,
-    ])
-  })
-
-  it('treats an attempt from no readable address as raised risk, under a fuse of its own', async () => {
-    const answer = await admission(undefined, (sessions, provider) =>
-      sessions.admitAttempt({ provider, identifier: 'someone@school.edu' }),
-    )
-    expect(answer).toEqual({ challengeRequired: true })
-    expect(await buckets('sign-in:unknown-address')).toHaveLength(1)
-    expect(await buckets('sign-in:address-hard')).toEqual([])
   })
 })

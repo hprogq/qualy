@@ -24,6 +24,7 @@ import { apiHandlers as oidcApiHandlers, driver as oidcDriver } from '@qualy/plu
 import { authOidcApiGroup } from '@qualy/plugin-auth-oidc/api'
 import { Secrets } from '@qualy/plugin-secrets/plugin'
 import { secretsLayer } from '@qualy/plugin-secrets/testkit'
+import { captchaLayer } from '@qualy/plugin-captcha/testkit'
 import { sessionApiGroup } from '../src/api.ts'
 import { hashSessionToken } from '../src/session.ts'
 import { sessionApiHandlers } from '../src/server/index.ts'
@@ -237,6 +238,7 @@ beforeAll(async () => {
     }),
   )
   const signIn = signInLayer.pipe(
+    Layer.provide(captchaLayer),
     Layer.provide(secretsLayer),
     Layer.provide(Layer.mergeAll(singleTenantLayer, singleOriginLayer)),
     Layer.provide(authAuditLayer),

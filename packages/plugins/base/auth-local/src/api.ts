@@ -1,4 +1,5 @@
 import { TooManyAttemptsResponse } from '@qualy/auth-contract/session'
+import { CaptchaProof, CaptchaRequired } from '@qualy/plugin-captcha/contract'
 import { Schema } from 'effect'
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
 
@@ -41,8 +42,10 @@ export const authLocalApiGroup = HttpApiGroup.make('authLocal').add(
     payload: Schema.Struct({
       email: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(320)),
       password: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128)),
+      // sent again with the same request once a challenge it was answered with is met
+      captcha: Schema.optional(CaptchaProof),
     }),
     success: Schema.Struct({ user: signedInUser }),
-    error: [InvalidCredentials, TooManyAttemptsResponse],
+    error: [InvalidCredentials, TooManyAttemptsResponse, CaptchaRequired],
   }),
 )

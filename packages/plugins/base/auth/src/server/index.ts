@@ -21,6 +21,7 @@ import { placementViolations, primaryNode, usersBlockingOrgType } from './placem
 import { makeProviders } from './providers.ts'
 import { identityApiGroup, selfApiGroup, sessionApiGroup } from '../api.ts'
 import { LoginDrivers, LoginSessions, type AuthBindingDeclaration } from '@qualy/auth-contract/login'
+import { Captcha } from '@qualy/plugin-captcha/server'
 import { AuthConfig, SignIn, layer as signInLayer } from './sign-in.ts'
 import { AuthRequired, Authenticated, CurrentUser, Viewer } from '@qualy/auth-contract/session'
 import { make as makeUserTypes, type UserTypeRow } from './user-types.ts'
@@ -162,7 +163,7 @@ export const serviceLayer: Layer.Layer<
   | PublicOriginResolver
   | AuthOutbound,
   never,
-  Orm | Rbac | Audit | AuthConfig | LoginDrivers | Secrets
+  Orm | Rbac | Audit | AuthConfig | LoginDrivers | Secrets | Captcha
   // The two resolvers are part of what this plugin provides, not of what it
   // asks for: one deployment, one tenant and one public address. A host that
   // one day tells tenants apart by their name replaces these two layers and

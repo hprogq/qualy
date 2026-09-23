@@ -12,6 +12,7 @@ import {
   runSql,
 } from '@qualy/plugin-database/testkit'
 import { secretsLayer } from '@qualy/plugin-secrets/testkit'
+import { captchaLayer } from '@qualy/plugin-captcha/testkit'
 import { Secrets } from '@qualy/plugin-secrets/plugin'
 import { HttpServerRequest } from 'effect/unstable/http'
 import { type Orm } from '@qualy/plugin-database/server'
@@ -82,6 +83,7 @@ const stack = (url: string, publicUrl: string | null) =>
           ),
         ),
       ),
+      Layer.provideMerge(captchaLayer),
       Layer.provideMerge(secretsLayer),
       Layer.provideMerge(
         Layer.mergeAll(

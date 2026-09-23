@@ -57,6 +57,7 @@ const plugin = Plugin.define(
   {
     dependsOn: [
       '@qualy/plugin-audit',
+      '@qualy/plugin-captcha',
       '@qualy/plugin-database',
       '@qualy/plugin-mail',
       '@qualy/plugin-rbac',

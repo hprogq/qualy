@@ -7,6 +7,7 @@ import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Api } from '@qualy/api-kit/plugin'
 import { Plugin } from '@qualy/plugin-kit'
 import { LoginSessions } from '@qualy/auth-contract/login'
+import { CaptchaRequired } from '@qualy/plugin-captcha/contract'
 import { authLocalApiGroup, InvalidCredentials } from './api.ts'
 import { message } from '@qualy/i18n-contract'
 import {
@@ -96,9 +97,20 @@ const handlers = HttpApiBuilder.group(local, 'authLocal', (handlers) =>
       // what was typed is the key, whoever it belongs to: an address that is
       // not one is weighed exactly like one nobody has
       const identifier = email ?? payload.email.trim().toLowerCase()
-      // counted before anything is looked up or hashed; the answer's
-      // challenge has nothing to ask with yet and the attempt goes on
-      yield* sessions.admitAttempt({ provider: resolved, identifier })
+      // counted before anything is looked up or hashed
+      const admitted = yield* sessions.admitAttempt({
+        provider: resolved,
+        identifier,
+        ...(payload.captcha === undefined ? {} : { captcha: payload.captcha }),
+      })
+      if (admitted.kind === 'challenge') {
+        // nothing was judged, so nothing is recorded and nothing hashed: the
+        // same request comes back with a proof, and is judged then
+        return yield* new CaptchaRequired({
+          provider: admitted.prompt.provider,
+          challenge: { ...admitted.prompt.challenge },
+        })
+      }
       const person =
         email === null
           ? undefined
@@ -152,7 +164,8 @@ const handlers = HttpApiBuilder.group(local, 'authLocal', (handlers) =>
 
 const plugin = Plugin.define(
   '@qualy/plugin-auth-local',
-  { dependsOn: ['@qualy/plugin-auth'] },
+  // the captcha contract is read here directly, so it is named here too
+  { dependsOn: ['@qualy/plugin-auth', '@qualy/plugin-captcha'] },
   Ui.i18n('./client/i18n'),
   Login.driver(driver),
   Api.group(authLocalApiGroup, handlers),

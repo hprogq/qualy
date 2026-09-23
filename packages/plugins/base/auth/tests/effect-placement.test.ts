@@ -27,6 +27,7 @@ import { AuthConfig } from '../src/server/sign-in.ts'
 import { Iam } from '../src/server/index.ts'
 import { serviceLayer as authLayer } from '../src/server/index.ts'
 import { secretsLayer } from '@qualy/plugin-secrets/testkit'
+import { captchaLayer } from '@qualy/plugin-captcha/testkit'
 
 // The port org holds, and the only call org makes into auth.
 //
@@ -59,6 +60,7 @@ const stack = (url: string) =>
           ),
         ),
       ),
+      Layer.provideMerge(captchaLayer),
       Layer.provideMerge(secretsLayer),
       Layer.provideMerge(
         Layer.mergeAll(

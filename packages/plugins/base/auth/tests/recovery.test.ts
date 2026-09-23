@@ -31,6 +31,7 @@ import { recoveryBootCheck } from '../src/server/recovery.ts'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../src/constants.ts'
 import { authClosure } from './support/closure.ts'
 import { secretsLayer } from '@qualy/plugin-secrets/testkit'
+import { captchaLayer } from '@qualy/plugin-captcha/testkit'
 
 // How a tenant gets back in: its system account keeps a working password
 // door, provider administration cannot close it, and a process that finds a
@@ -62,6 +63,7 @@ const stack = (url: string, strictBoot: boolean) =>
           ),
         ),
       ),
+      Layer.provideMerge(captchaLayer),
       Layer.provideMerge(secretsLayer),
       Layer.provideMerge(
         Layer.mergeAll(
