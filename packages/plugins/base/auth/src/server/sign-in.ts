@@ -27,7 +27,7 @@ import { Secrets } from '@qualy/plugin-secrets/plugin'
 import { AuthConfig } from './auth-config.ts'
 import { configOf, entranceSecrets, makeReadiness } from './readiness.ts'
 import { makeFlows } from './flows.ts'
-import { LIMITS, makeLimiter, type LimitRule } from './limiter.ts'
+import { HARD_LIMITS, makeLimiter, type HardLimitRule } from './limiter.ts'
 import { actorOf } from './audit-actor.ts'
 import { BindingWritten } from '../actions.ts'
 import { Audit } from '@qualy/audit-contract/effect'
@@ -640,10 +640,10 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
   /** one more attempt from where this request came from, at this entrance */
   const fromHere = Effect.fn('Auth.signIn.fromHere')(function* (
     provider: ResolvedProvider,
-    rule: LimitRule,
+    rule: HardLimitRule,
   ) {
     const context = Option.getOrUndefined(yield* currentRequestContext)
-    const answer = yield* limiter.consume(
+    const answer = yield* limiter.consumeHard(
       provider.tenantId,
       rule,
       `${provider.providerId}\0${context?.clientIp ?? 'unknown'}`,
@@ -782,7 +782,7 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
 
     // a redirect costs a row, so where it is started from is counted first
     startFlow: (input) =>
-      withDb(fromHere(input.provider, LIMITS.flowStartByAddress)).pipe(
+      withDb(fromHere(input.provider, HARD_LIMITS.flowStartByAddress)).pipe(
         Effect.andThen(flows.startFlow(input)),
       ),
     consumeFlow: flows.consumeFlow,
@@ -797,11 +797,11 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         // weighed whether or not anybody answers to the identifier: the
         // refusal must not be the thing that tells an address that exists
         // from one that does not
-        const answer = yield* limiter.consumeAll(input.provider.tenantId, [
-          [LIMITS.signInByAddress, `${provider}\0${context?.clientIp ?? 'unknown'}`],
+        const answer = yield* limiter.consumeAllHard(input.provider.tenantId, [
+          [HARD_LIMITS.signInByAddress, `${provider}\0${context?.clientIp ?? 'unknown'}`],
           ...(input.identifier === undefined
             ? []
-            : [[LIMITS.signInByIdentifier, `${provider}\0${input.identifier}`] as const]),
+            : [[HARD_LIMITS.signInByIdentifier, `${provider}\0${input.identifier}`] as const]),
         ])
         if (!answer.allowed) {
           return yield* new TooManyAttempts({ retryAfterSeconds: answer.retryAfterSeconds })

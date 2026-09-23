@@ -26,7 +26,7 @@ import {
   UserEmailConflict,
   UserNotFound,
 } from './errors.ts'
-import { LIMITS, makeLimiter, type LimitRule } from './limiter.ts'
+import { HARD_LIMITS, makeLimiter, type HardLimitRule } from './limiter.ts'
 import { mailFor, type MailLocale, type MailPurpose } from './mail-copy.ts'
 import { PublicOriginResolver } from './public-origin.ts'
 import { AnonymousTenantResolver } from './tenancy.ts'
@@ -278,10 +278,10 @@ export const emailFlowsLayer: Layer.Layer<
 
     const throttle = Effect.fn('Auth.email.throttle')(function* (
       tenantId: string,
-      rule: LimitRule,
+      rule: HardLimitRule,
       key: string,
     ) {
-      const answer = yield* limiter.consume(tenantId, rule, key)
+      const answer = yield* limiter.consumeHard(tenantId, rule, key)
       if (!answer.allowed) {
         return yield* new TooManyAttempts({ retryAfterSeconds: answer.retryAfterSeconds })
       }
@@ -409,9 +409,9 @@ export const emailFlowsLayer: Layer.Layer<
         // counted before anything is looked up, and the same for an address
         // nobody has: the refusal must not tell the two apart
         const answer = yield* withDb(
-          limiter.consumeAll(tenant.value.id, [
-            [LIMITS.resetByAddress, context?.clientIp ?? 'unknown'],
-            [LIMITS.resetByIdentifier, normalized],
+          limiter.consumeAllHard(tenant.value.id, [
+            [HARD_LIMITS.resetByAddress, context?.clientIp ?? 'unknown'],
+            [HARD_LIMITS.resetByIdentifier, normalized],
           ]),
         )
         if (!answer.allowed) {
@@ -488,7 +488,7 @@ export const emailFlowsLayer: Layer.Layer<
             const person = yield* personOf(principal.tenantId, principal.userId)
             if (person === undefined || person.email === null) return yield* new EmailMissing()
             if (person.emailVerifiedAt !== null) return undefined
-            yield* throttle(principal.tenantId, LIMITS.mailBySelf, principal.userId)
+            yield* throttle(principal.tenantId, HARD_LIMITS.mailBySelf, principal.userId)
             return {
               email: person.email,
               challenge: yield* issueChallenge(principal.tenantId, person.id, 'verify', person.email),
@@ -554,7 +554,7 @@ export const emailFlowsLayer: Layer.Layer<
             if ((yield* emailTaken(principal.tenantId, normalized, person.id)) !== undefined) {
               return yield* new UserEmailConflict()
             }
-            yield* throttle(principal.tenantId, LIMITS.mailBySelf, principal.userId)
+            yield* throttle(principal.tenantId, HARD_LIMITS.mailBySelf, principal.userId)
             return yield* issueChallenge(principal.tenantId, person.id, 'change', normalized)
           }),
         )
@@ -627,7 +627,7 @@ export const emailFlowsLayer: Layer.Layer<
         if (door === undefined) return yield* new PasswordUnavailable()
         const standing = yield* withDb(credentialOf(tenantId, person.id, door.id)).pipe(Effect.orDie)
         if (standing?.credentialHash != null) {
-          yield* withDb(throttle(tenantId, LIMITS.passwordBySelf, person.id))
+          yield* withDb(throttle(tenantId, HARD_LIMITS.passwordBySelf, person.id))
           const right =
             input.currentPassword !== undefined &&
             (yield* door.binding.verify({
