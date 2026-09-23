@@ -530,6 +530,18 @@ const plugin = Plugin.define(
         },
         visibility: PUBLIC,
       },
+      // a heading of its own in the reader's account: the rounds they are in
+      // are not a fact about their account
+      {
+        collection: navigationGroups,
+        id: 'assessment/account',
+        value: {
+          id: 'assessment/account',
+          label: message('assessment/nav-group/user-detail', 'Assessment'),
+          order: 20,
+        },
+        visibility: PUBLIC,
+      },
       {
         collection: accountNavigation,
         id: 'assessment/account-batches',
@@ -538,7 +550,8 @@ const plugin = Plugin.define(
           label: message('assessment/person/batches-tab', 'Rounds taken part in'),
           target: { kind: 'page', pageId: 'assessment/account-batches' },
           icon: 'graduation-cap',
-          order: 5,
+          order: 10,
+          group: 'assessment/account',
         },
         visibility: AUTHENTICATED,
       },
