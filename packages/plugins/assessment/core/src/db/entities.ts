@@ -240,16 +240,19 @@ export const BatchParticipantEvent = defineEntity({
     tenantId: tenantOf('batch_participant_events_tenant_id_tenants_id_fkey'),
     batchId: p.uuid(),
     participantId: p.uuid(),
-    /** included, excluded, readmitted */
+    /** included, excluded, readmitted, placement-synced, placement-kept */
     kind: p.string().length(31),
     actorId: p.uuid().nullable(),
     reason: p.string().length(500).nullable(),
+    // what a placement decision was made about: where the round had the
+    // person, where the organization had them, and what the round took
+    details: p.json<Record<string, unknown>>().defaultRaw(`'{}'::jsonb`),
     occurredAt: p.datetime().defaultRaw('now()'),
   },
   checks: [
     {
       name: 'chk_batch_participant_events_kind',
-      expression: `kind IN ('included', 'excluded', 'readmitted')`,
+      expression: `kind IN ('included', 'excluded', 'readmitted', 'placement-synced', 'placement-kept')`,
     },
   ],
   indexes: [
@@ -532,6 +535,12 @@ export const BatchParticipant = defineEntity({
     // foreign keys would stop being one
     anchorLineage: p.json<readonly Record<string, unknown>[]>(),
     userTypeId: p.uuid(),
+    // The fingerprint of the organization's placement somebody last decided
+    // about: synced to it or kept the round's. The frozen columns only move
+    // on such a decision (or a readmission); this is what stops a change that
+    // was looked at and kept from being raised again. Null until the first
+    // decision, when the frozen columns themselves are what was last settled.
+    reconciledOrgStateHash: p.string().length(64).nullable(),
     status: p.string().length(16).defaultRaw(`'active'`),
     includedAt: p.datetime().defaultRaw('now()'),
     includedBy: p.uuid().nullable(),

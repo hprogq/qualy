@@ -2025,8 +2025,10 @@ export const nextDueBoundaryAt = db
 //
 // The roster is the batch's population and its only truth (§32.45): drawn
 // once when the round is created, and changed afterwards only by somebody
-// deciding to. There is no drift to compute and nothing to reconcile against
-// the live tree.
+// deciding to. It does not follow the live tree. Where somebody now stands
+// elsewhere, that is derived on read and offered as a difference; only an
+// explicit decision - sync to it, or keep the round's - rewrites or settles
+// the frozen placement (§32.86).
 
 export interface ParticipantRow {
   id: string
@@ -2040,6 +2042,8 @@ export interface ParticipantRow {
   status: string
   includedAt: number
   excludedAt: number | null
+  /** whether the organization has them where the round does; see placementStanding */
+  placement: PlacementStanding
 }
 
 const participantSelection = (k: Parameters<Parameters<typeof db.query>[0]>[0]) =>
@@ -2064,7 +2068,284 @@ const participantSelection = (k: Parameters<Parameters<typeof db.query>[0]>[0]) 
       sql<string>`batch_participants.anchor_path::text`.as('anchorPath'),
       epoch('batch_participants.included_at').as('includedAt'),
       epoch('batch_participants.excluded_at').as('excludedAt'),
+      // only a member's placement is anybody's question
+      sql<PlacementStanding>`case when batch_participants.status = 'active'
+        then ${placementStanding('batch_participants')} else 'current' end`.as('placement'),
     ])
+
+// --- placement reconciliation ---
+//
+// A placement is compared as one line of text, built the same way from a
+// frozen row and from where the person stands now: the unit, its path, each
+// level from the unit up to the root with its type, and the kind of person.
+// Names are left out on purpose - a class renamed has not moved anybody -
+// and the path and lineage are in, because a class moved whole to another
+// college keeps its id and still changes whose it is. Both sides are built
+// in sql so the list, a row's mark and the write that settles it all ask the
+// same question.
+
+/** where the round has a participant, as a line of text */
+const frozenPlacement = (participant: string) => sql<string>`(
+  ${sql.ref(`${participant}.assessment_anchor_node_id`)}::text || '|'
+  || ${sql.ref(`${participant}.anchor_path`)}::text || '|'
+  || coalesce((
+       select string_agg((step.value->>'nodeId') || ':' || coalesce(step.value->>'nodeTypeId', ''),
+                         ',' order by step.at)
+         from jsonb_array_elements(${sql.ref(`${participant}.anchor_lineage`)})
+              with ordinality as step(value, at)
+     ), '')
+  || '|' || ${sql.ref(`${participant}.user_type_id`)}::text
+)`
+
+/** where the organization has a person now, as the same line of text */
+const livePlacement = (user: string, node: string) => sql<string>`(
+  ${sql.ref(`${node}.id`)}::text || '|'
+  || ${sql.ref(`${node}.path`)}::text || '|'
+  || coalesce((
+       select string_agg(a.id::text || ':' || coalesce(a.org_type_id::text, ''),
+                         ',' order by a.depth desc)
+         from org_nodes a
+        where a.tenant_id = ${sql.ref(`${node}.tenant_id`)} and a.path @> ${sql.ref(`${node}.path`)}
+     ), '')
+  || '|' || ${sql.ref(`${user}.user_type_id`)}::text
+)`
+
+const fingerprintOf = (text: RawBuilder<string>) =>
+  sql<string>`encode(sha256(convert_to(${text}, 'UTF8')), 'hex')`
+
+/**
+ * Whether the organization still has a member where the round does.
+ *
+ * `current` when it does, or when the difference is one somebody already
+ * decided about; `changed` when it has them somewhere nobody has looked at
+ * yet; `unavailable` when it has them nowhere - deleted, disabled, or
+ * standing in no unit - and there is nothing to sync to.
+ */
+export type PlacementStanding = 'current' | 'changed' | 'unavailable'
+
+export const placementStanding = (participant: string) => sql<PlacementStanding>`coalesce((
+  select case
+           when live.fingerprint = ${fingerprintOf(frozenPlacement(participant))} then 'current'
+           when live.fingerprint = ${sql.ref(`${participant}.reconciled_org_state_hash`)} then 'current'
+           else 'changed'
+         end
+    from (
+      select ${fingerprintOf(livePlacement('lu', 'ln'))} as fingerprint
+        from users lu
+        join org_nodes ln on ln.tenant_id = lu.tenant_id and ln.id = lu.primary_org_node_id
+       where lu.tenant_id = ${sql.ref(`${participant}.tenant_id`)}
+         and lu.id = ${sql.ref(`${participant}.user_id`)}
+         and lu.deleted_at is null
+         and lu.enabled
+    ) live
+), 'unavailable')`
+
+/** one level of a placement's lineage, from the unit up */
+export interface PlacementStep {
+  readonly nodeId: string
+  readonly nodeTypeId: string | null
+}
+
+/** a placement as the round froze it or as the organization has it */
+export interface PlacementSnapshot {
+  readonly nodeId: string
+  readonly path: string
+  readonly lineage: readonly PlacementStep[]
+  readonly userTypeId: string
+}
+
+export interface PlacementRow {
+  readonly participantId: string
+  readonly userId: string
+  readonly displayName: string
+  readonly businessNo: string | null
+  readonly frozen: PlacementSnapshot
+  /** why there is no placement to sync to, when there is none */
+  readonly unavailable: 'gone' | 'disabled' | 'unplaced' | null
+  readonly live: PlacementSnapshot | null
+  readonly liveFingerprint: string | null
+  readonly frozenFingerprint: string
+  readonly reconciledFingerprint: string | null
+}
+
+const stepsOf = (value: unknown): PlacementStep[] =>
+  ((value ?? []) as Record<string, unknown>[]).map((step) => ({
+    nodeId: String(step.nodeId),
+    nodeTypeId: step.nodeTypeId == null ? null : String(step.nodeTypeId),
+  }))
+
+/**
+ * The members of a round with where it has them and where the organization
+ * has them, either every member whose placement needs a decision or the
+ * members named.
+ *
+ * Named members come back whatever their standing: a decision is checked
+ * against what holds when it is made, not against the list it was made from.
+ */
+export const participantPlacements = (
+  tenantId: string,
+  batchId: string,
+  only?: readonly string[],
+) =>
+  db
+    .query((k) =>
+      sql<Record<string, unknown>>`
+        select * from (
+          select p.id as participant_id, p.user_id, u.display_name, u.business_no,
+                 p.assessment_anchor_node_id as frozen_node_id, p.anchor_path::text as frozen_path,
+                 p.anchor_lineage as frozen_lineage, p.user_type_id as frozen_type_id,
+                 case when u.deleted_at is not null then 'gone'
+                      when not u.enabled then 'disabled'
+                      when n.id is null then 'unplaced' end as unavailable,
+                 n.id as live_node_id, n.path::text as live_path, u.user_type_id as live_type_id,
+                 (select jsonb_agg(jsonb_build_object('nodeId', a.id, 'nodeTypeId', a.org_type_id)
+                                   order by a.depth desc)
+                    from org_nodes a
+                   where n.id is not null and a.tenant_id = n.tenant_id and a.path @> n.path)
+                   as live_lineage,
+                 case when n.id is null then null else ${fingerprintOf(livePlacement('u', 'n'))} end
+                   as live_fingerprint,
+                 ${fingerprintOf(frozenPlacement('p'))} as frozen_fingerprint,
+                 p.reconciled_org_state_hash
+            from batch_participants p
+            join users u on u.tenant_id = p.tenant_id and u.id = p.user_id
+            left join org_nodes n on n.tenant_id = u.tenant_id and n.id = u.primary_org_node_id
+           where p.tenant_id = ${tenantId}::uuid
+             and p.batch_id = ${batchId}::uuid
+             and p.status = 'active'
+             ${only === undefined ? sql`` : sql`and p.id = any(${[...only]}::uuid[])`}
+        ) placements
+        ${
+          only === undefined
+            ? sql`where unavailable is not null
+                     or (live_fingerprint <> frozen_fingerprint
+                         and live_fingerprint is distinct from reconciled_org_state_hash)`
+            : sql``
+        }
+        order by business_no nulls last, display_name, participant_id
+      `.execute(k),
+    )
+    .pipe(
+      Effect.map((result) =>
+        result.rows.map(
+          (row): PlacementRow => ({
+            participantId: row.participant_id as string,
+            userId: row.user_id as string,
+            displayName: row.display_name as string,
+            businessNo: (row.business_no ?? null) as string | null,
+            frozen: {
+              nodeId: row.frozen_node_id as string,
+              path: row.frozen_path as string,
+              lineage: stepsOf(row.frozen_lineage),
+              userTypeId: row.frozen_type_id as string,
+            },
+            unavailable: (row.unavailable ?? null) as PlacementRow['unavailable'],
+            live:
+              row.unavailable != null || row.live_node_id == null
+                ? null
+                : {
+                    nodeId: row.live_node_id as string,
+                    path: row.live_path as string,
+                    lineage: stepsOf(row.live_lineage),
+                    userTypeId: row.live_type_id as string,
+                  },
+            liveFingerprint: (row.live_fingerprint ?? null) as string | null,
+            frozenFingerprint: row.frozen_fingerprint as string,
+            reconciledFingerprint: (row.reconciled_org_state_hash ?? null) as string | null,
+          }),
+        ),
+      ),
+    )
+
+/**
+ * Takes the organization's placement of one member, if it is still the one
+ * that was looked at.
+ *
+ * The fingerprint is part of the statement: somebody moved again between
+ * the preview and the press is not written to, and the caller sees no row.
+ */
+export const syncParticipantPlacement = (
+  tenantId: string,
+  batchId: string,
+  participantId: string,
+  observed: string,
+) =>
+  db
+    .query((k) =>
+      sql<{ id: string }>`
+        update batch_participants p
+           set assessment_anchor_node_id = n.id,
+               anchor_path = n.path,
+               anchor_lineage = (
+                 select jsonb_agg(jsonb_build_object('nodeId', a.id, 'nodeTypeId', a.org_type_id)
+                                  order by a.depth desc)
+                   from org_nodes a
+                  where a.tenant_id = n.tenant_id and a.path @> n.path),
+               user_type_id = u.user_type_id,
+               reconciled_org_state_hash = ${observed},
+               updated_at = now()
+          from users u
+          join org_nodes n on n.tenant_id = u.tenant_id and n.id = u.primary_org_node_id
+         where p.tenant_id = ${tenantId}::uuid
+           and p.batch_id = ${batchId}::uuid
+           and p.id = ${participantId}::uuid
+           and p.status = 'active'
+           and u.tenant_id = p.tenant_id
+           and u.id = p.user_id
+           and u.deleted_at is null
+           and u.enabled
+           and ${fingerprintOf(livePlacement('u', 'n'))} = ${observed}
+        returning p.id
+      `.execute(k),
+    )
+    .pipe(Effect.map((result) => result.rows.length > 0))
+
+/**
+ * Keeps the round's placement of one member while recording that the
+ * organization's current one was looked at, if it is still that one.
+ */
+export const keepParticipantPlacement = (
+  tenantId: string,
+  batchId: string,
+  participantId: string,
+  observed: string,
+) =>
+  db
+    .query((k) =>
+      sql<{ id: string }>`
+        update batch_participants p
+           set reconciled_org_state_hash = ${observed},
+               updated_at = now()
+          from users u
+          join org_nodes n on n.tenant_id = u.tenant_id and n.id = u.primary_org_node_id
+         where p.tenant_id = ${tenantId}::uuid
+           and p.batch_id = ${batchId}::uuid
+           and p.id = ${participantId}::uuid
+           and p.status = 'active'
+           and u.tenant_id = p.tenant_id
+           and u.id = p.user_id
+           and u.deleted_at is null
+           and u.enabled
+           and ${fingerprintOf(livePlacement('u', 'n'))} = ${observed}
+        returning p.id
+      `.execute(k),
+    )
+    .pipe(Effect.map((result) => result.rows.length > 0))
+
+/** the names of these kinds of person */
+export const userTypeNames = (tenantId: string, ids: readonly string[]) =>
+  ids.length === 0
+    ? Effect.succeed(new Map<string, string>())
+    : db
+        .query((k) =>
+          k
+            .selectFrom('UserType')
+            .select(['id', 'name'])
+            .where('tenantId', '=', tenantId)
+            .where('id', 'in', ids as string[])
+            .execute(),
+        )
+        .pipe(Effect.map((rows) => new Map(rows.map((row) => [row.id as string, row.name as string]))))
 
 const toParticipantRow = (row: Record<string, unknown>): ParticipantRow =>
   ({
@@ -2487,10 +2768,22 @@ export const activeElsewhere = (tenantId: string, userId: string, excludingBatch
  * per person put a college's worth of serialized inserts inside the batch
  * lock, where no claim can be filed and no review decided.
  */
+/** what can happen to somebody's place in a round */
+export type ParticipantEventKind =
+  | 'included'
+  | 'excluded'
+  | 'readmitted'
+  | 'placement-synced'
+  | 'placement-kept'
+
 export const insertParticipantEvents = (input: {
   tenantId: string
   batchId: string
-  events: readonly { participantId: string; kind: 'included' | 'excluded' | 'readmitted' }[]
+  events: readonly {
+    participantId: string
+    kind: ParticipantEventKind
+    details?: Record<string, unknown>
+  }[]
   actorId: string | null
   reason?: string | null
 }) =>
@@ -2508,6 +2801,7 @@ export const insertParticipantEvents = (input: {
                 kind: event.kind,
                 actorId: input.actorId,
                 reason: input.reason ?? null,
+                details: sql`${JSON.stringify(event.details ?? {})}::jsonb`,
               })) as never,
             )
             .execute(),
@@ -2520,7 +2814,7 @@ export const participantEvents = (tenantId: string, participantId: string) =>
     .query((k) =>
       k
         .selectFrom('BatchParticipantEvent')
-        .select(['id', 'kind', 'actorId', 'reason'])
+        .select(['id', 'kind', 'actorId', 'reason', 'details'])
         .select([epoch('occurred_at').as('occurredAt')])
         .where('tenantId', '=', tenantId)
         .where('participantId', '=', participantId)
@@ -2531,9 +2825,10 @@ export const participantEvents = (tenantId: string, participantId: string) =>
       Effect.map((rows) =>
         (rows as unknown as Record<string, unknown>[]).map((row) => ({
           id: row.id as string,
-          kind: row.kind as 'included' | 'excluded' | 'readmitted',
+          kind: row.kind as ParticipantEventKind,
           actorId: (row.actorId ?? null) as string | null,
           reason: (row.reason ?? null) as string | null,
+          details: (row.details ?? {}) as Record<string, unknown>,
           occurredAt: msOf(row.occurredAt),
         })),
       ),

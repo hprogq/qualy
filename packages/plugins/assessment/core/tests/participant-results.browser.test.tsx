@@ -51,6 +51,7 @@ const participant = (over: Record<string, unknown> = {}) => ({
   status: 'active' as const,
   includedAt: '2026-02-02T00:00:00.000Z',
   excludedAt: null,
+  placement: 'current' as const,
   ...over,
 })
 
@@ -162,6 +163,8 @@ const screen = (
         importParticipants: () => Effect.succeed({ added: 0 }),
         addParticipants: () => Effect.succeed({ added: 0, skipped: 0 }),
         setParticipantStatus: () => Effect.succeed({ ok: true }),
+        listParticipantPlacements: () =>
+          Effect.succeed({ items: [], nextCursor: null, changedTotal: 0, unavailableTotal: 0 }),
         listParticipants: () =>
           Effect.succeed({
             items: [participant(), participant({ id: OTHER_ID, displayName: '王君惠' })],
@@ -241,6 +244,57 @@ describe('the participant results screen', () => {
     } finally {
       await page.viewport(1280, 800)
     }
+  })
+
+  it('offers a move the organization made, and syncs only what it showed', async () => {
+    const decided = vi.fn((_request: Request) => Effect.succeed({ synced: 1, kept: 0 }))
+    const moved = {
+      participantId: PARTICIPANT_ID,
+      displayName: '郭航旗',
+      businessNo: '2023123456',
+      standing: 'changed' as const,
+      unavailable: null,
+      changes: ['placement'],
+      frozen: {
+        units: [{ id: 'n1', name: '软件学院' }, { id: 'n2', name: '软件2301班' }],
+        userType: { id: 't1', name: '学生' },
+      },
+      current: {
+        units: [{ id: 'n1', name: '软件学院' }, { id: 'n3', name: '软件2302班' }],
+        userType: { id: 't1', name: '学生' },
+      },
+      currentBeyondReach: false,
+      canSync: true,
+      observedFingerprint: 'f'.repeat(64),
+    }
+    screen({
+      listParticipants: () =>
+        Effect.succeed({
+          items: [participant({ placement: 'changed' }), participant({ id: OTHER_ID, displayName: '王君惠' })],
+          nextCursor: null,
+        }),
+      listParticipantPlacements: () =>
+        Effect.succeed({ items: [moved], nextCursor: null, changedTotal: 1, unavailableTotal: 0 }),
+      reconcileParticipantPlacements: decided,
+    })
+    // the roster marks who moved, and only them
+    await expect.element(page.getByTestId('placement-mark')).toHaveAttribute('data-placement', 'changed')
+    expect(page.getByTestId('placement-mark').elements()).toHaveLength(1)
+    const notice = page.getByTestId('placement-notice')
+    await expect.element(notice).toHaveAttribute('data-changed', '1')
+
+    await notice.getByRole('button').click()
+    const row = page.getByTestId('placement-difference')
+    await expect.element(row).toHaveAttribute('data-changes', 'placement')
+    await expect.element(row.getByText('软件学院 / 软件2302班')).toBeVisible()
+    await row.getByRole('button', { name: '同步' }).click()
+    await expect.poll(() => decided.mock.calls.length).toBe(1)
+    // the decision names what was shown, never where to put them
+    expect(decided.mock.calls[0]![0].payload).toEqual({
+      decisions: [
+        { participantId: PARTICIPANT_ID, observedFingerprint: 'f'.repeat(64), decision: 'sync' },
+      ],
+    })
   })
 
   it('opens a person into the same page, and the address says who', async () => {

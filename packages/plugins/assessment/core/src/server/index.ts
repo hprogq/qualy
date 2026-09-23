@@ -105,6 +105,7 @@ import {
   MaterialRangeInvalid,
   ParticipantInvalid,
   ParticipantNotFound,
+  ParticipantPlacementChanged,
   PhaseNotFound,
   PlanInvalid,
   DeterminationRefused,
@@ -136,6 +137,12 @@ import {
   deleteTemplateRow,
   insertBatch,
   insertParticipantEvents,
+  keepParticipantPlacement,
+  participantPlacements,
+  syncParticipantPlacement,
+  userTypeNames,
+  type PlacementRow,
+  type PlacementSnapshot,
   insertManagementAnchors,
   insertParticipants,
   insertRosterImport,
@@ -427,6 +434,76 @@ export interface AccessSyncPage {
   readonly nextCursor: string | null
   readonly pendingTotal: number
   readonly lapsedTotal: number
+}
+
+/** a placement as a reader may be told it; units root first */
+export interface PlacementView {
+  readonly units: readonly { id: string; name: string | null }[]
+  readonly userType: { id: string; name: string | null }
+}
+
+/** what differs between where a round has somebody and where the organization does */
+export type PlacementChange = 'placement' | 'ancestry' | 'user-type'
+
+export interface PlacementDifference {
+  readonly participantId: string
+  readonly displayName: string
+  readonly businessNo: string | null
+  readonly standing: 'changed' | 'unavailable'
+  readonly unavailable: 'gone' | 'disabled' | 'unplaced' | null
+  readonly changes: readonly PlacementChange[]
+  readonly frozen: PlacementView
+  readonly current: PlacementView | null
+  readonly currentBeyondReach: boolean
+  readonly canSync: boolean
+  readonly observedFingerprint: string | null
+}
+
+export interface PlacementPage {
+  readonly items: readonly PlacementDifference[]
+  readonly nextCursor: string | null
+  readonly changedTotal: number
+  readonly unavailableTotal: number
+}
+
+/** one decision about one member's placement */
+export interface PlacementDecision {
+  readonly participantId: string
+  readonly observedFingerprint: string
+  readonly decision: 'sync' | 'keep'
+}
+
+/** every difference there is, name for name: somebody can move and change kind at once */
+export const placementChanges = (
+  frozen: PlacementSnapshot,
+  live: PlacementSnapshot,
+): PlacementChange[] => {
+  const changes: PlacementChange[] = []
+  if (frozen.nodeId !== live.nodeId) changes.push('placement')
+  else if (
+    frozen.path !== live.path ||
+    JSON.stringify(frozen.lineage) !== JSON.stringify(live.lineage)
+  ) {
+    changes.push('ancestry')
+  }
+  if (frozen.userTypeId !== live.userTypeId) changes.push('user-type')
+  return changes
+}
+
+// The order differences are listed and paged in: people without a number
+// last, then by number, name and id. Compared by code point in both places,
+// so a cursor and the list it resumes agree whatever the database collates by.
+const placementKey = (row: PlacementRow): [string, string, string, string] => [
+  row.businessNo === null ? '1' : '0',
+  row.businessNo ?? '',
+  row.displayName,
+  row.participantId,
+]
+const comesAfter = (key: readonly string[], than: readonly string[]) => {
+  for (let at = 0; at < key.length; at += 1) {
+    if (key[at]! !== than[at]!) return key[at]! > than[at]!
+  }
+  return false
 }
 
 /** the order a page of changes resumes in, as a comparable key */
@@ -1214,6 +1291,28 @@ export class Assessment extends Context.Service<
       ParticipantRow,
       BatchNotFound | BatchReadOnly | ParticipantNotFound | ParticipantInvalid | AccessDenied
     >
+    /** members the organization now has somewhere other than this round does */
+    readonly listParticipantPlacements: (
+      tenantId: string,
+      batchId: string,
+      page: { cursor?: string; limit?: string },
+      as: Principal,
+    ) => Effect.Effect<PlacementPage, BatchNotFound | AccessDenied | BadRequest>
+    /** syncs or keeps each chosen member's placement, all of them or none */
+    readonly reconcileParticipantPlacements: (
+      tenantId: string,
+      batchId: string,
+      input: { decisions: readonly PlacementDecision[]; reason?: string | undefined },
+      as: Principal,
+    ) => Effect.Effect<
+      { synced: number; kept: number },
+      | BatchNotFound
+      | BatchReadOnly
+      | ParticipantNotFound
+      | ParticipantInvalid
+      | ParticipantPlacementChanged
+      | AccessDenied
+    >
     readonly scopeOptions: (
       tenantId: string,
       as: Principal,
@@ -1846,6 +1945,60 @@ export const make = Effect.fn('Assessment.make')(function* () {
       })),
       actorId,
       reason,
+    })
+
+  /**
+   * A page of placement differences, as this reader may be told them.
+   *
+   * Where the organization has somebody now is named only when this reader
+   * manages it: seeing that a member moved is theirs to see, where to is not
+   * when it is somebody else's unit. Units above the reader's reach are there
+   * by id without a name, on either side.
+   */
+  const placementDifferences = (tenantId: string, rows: readonly PlacementRow[], as: Principal) =>
+    Effect.gen(function* () {
+      const within = new Set<string>()
+      for (const row of rows) {
+        if (row.live !== null && (yield* rbac.canAt(as, MANAGE, row.live.nodeId))) {
+          within.add(row.participantId)
+        }
+      }
+      const shown = (row: PlacementRow) => (within.has(row.participantId) ? row.live : null)
+      const held = yield* rbac.listAuthorizedScope(as, MANAGE)
+      const nodeIds = new Set<string>()
+      const typeIds = new Set<string>()
+      for (const row of rows) {
+        for (const snapshot of [row.frozen, shown(row)]) {
+          if (snapshot === null) continue
+          for (const step of snapshot.lineage) nodeIds.add(step.nodeId)
+          typeIds.add(snapshot.userTypeId)
+        }
+      }
+      const names = yield* dieQuery(withDb(reachableNodeNames(tenantId, [...nodeIds], held)))
+      const types = yield* dieQuery(withDb(userTypeNames(tenantId, [...typeIds])))
+      const viewOf = (snapshot: PlacementSnapshot): PlacementView => ({
+        // the lineage is kept from the unit up; a reader reads from the top
+        units: [...snapshot.lineage]
+          .reverse()
+          .map((step) => ({ id: step.nodeId, name: names.get(step.nodeId) ?? null })),
+        userType: { id: snapshot.userTypeId, name: types.get(snapshot.userTypeId) ?? null },
+      })
+      return rows.map((row): PlacementDifference => {
+        const current = shown(row)
+        return {
+          participantId: row.participantId,
+          displayName: row.displayName,
+          businessNo: row.businessNo,
+          standing: row.unavailable === null ? 'changed' : 'unavailable',
+          unavailable: row.unavailable,
+          changes: row.live === null ? [] : placementChanges(row.frozen, row.live),
+          frozen: viewOf(row.frozen),
+          current: current === null ? null : viewOf(current),
+          currentBeyondReach: row.live !== null && current === null,
+          canSync: current !== null,
+          observedFingerprint: row.unavailable === null ? row.liveFingerprint : null,
+        }
+      })
     })
 
   const rosterWriteGuards = (tenantId: string, batchId: string, as: Principal) =>
@@ -4360,6 +4513,128 @@ export const make = Effect.fn('Assessment.make')(function* () {
       },
     ),
 
+    listParticipantPlacements: Effect.fn('Assessment.listParticipantPlacements')(
+      function* (tenantId, batchId, page, as) {
+        yield* requireBatchAdministration(tenantId, batchId, as)
+        // the comparison is over the whole roster either way - there is no
+        // partial answer to "who stands elsewhere" - so the page is over its
+        // result, and exists so a screen is not handed a college at once
+        const found = [...(yield* dieQuery(withDb(participantPlacements(tenantId, batchId))))].sort(
+          (a, b) => (comesAfter(placementKey(a), placementKey(b)) ? 1 : -1),
+        )
+        const fingerprint = `placements:${batchId}`
+        const key = readQueryCursor(page.cursor, fingerprint, ['text', 'text', 'text', 'uuid'])
+        if (key === null) return yield* cursorUnusable()
+        // the first row past the key, not the row after the one it names: a
+        // difference somebody settled between two pages has left the list
+        const after =
+          key === undefined ? 0 : found.findIndex((row) => comesAfter(placementKey(row), key))
+        const from = after === -1 ? found.length : after
+        const size = pageSize(page.limit, DEFAULT_PAGE_SIZE)
+        const rows = found.slice(from, from + size)
+        const last = rows.at(-1)
+        return {
+          items: yield* placementDifferences(tenantId, rows, as),
+          nextCursor:
+            from + size < found.length && last !== undefined
+              ? encodeQueryCursor(fingerprint, placementKey(last))
+              : null,
+          changedTotal: found.filter((row) => row.unavailable === null).length,
+          unavailableTotal: found.filter((row) => row.unavailable !== null).length,
+        }
+      },
+    ),
+
+    reconcileParticipantPlacements: Effect.fn('Assessment.reconcileParticipantPlacements')(
+      function* (tenantId, batchId, input, as) {
+        return yield* withDb(
+          transaction(
+            Effect.gen(function* () {
+              // the same guard every roster change takes: a placement taken
+              // into the round moves its routing and its ranking partition
+              yield* rosterWriteGuards(tenantId, batchId, as)
+              const decisions = new Map(input.decisions.map((row) => [row.participantId, row]))
+              const found = new Map(
+                (yield* participantPlacements(tenantId, batchId, [...decisions.keys()])).map(
+                  (row) => [row.participantId, row],
+                ),
+              )
+              const events: {
+                participantId: string
+                kind: 'placement-synced' | 'placement-kept'
+                details: Record<string, unknown>
+              }[] = []
+              for (const decision of decisions.values()) {
+                const row = found.get(decision.participantId)
+                // not in this round, or no longer a member of it
+                if (!row) return yield* new ParticipantNotFound()
+                // nowhere to take them to, and nothing to have looked at
+                if (row.live === null || row.liveFingerprint === null) {
+                  return yield* new ParticipantInvalid({ reason: 'user-not-eligible' })
+                }
+                if (row.liveFingerprint !== decision.observedFingerprint) {
+                  return yield* new ParticipantPlacementChanged({
+                    participantId: decision.participantId,
+                  })
+                }
+                if (decision.decision === 'sync') {
+                  // managing this round is not managing wherever its people
+                  // went: taking the placement in needs reach at both ends
+                  if (!(yield* rbac.canAt(as, MANAGE, row.live.nodeId))) {
+                    return yield* new ParticipantInvalid({ reason: 'user-out-of-scope' })
+                  }
+                  const written = yield* syncParticipantPlacement(
+                    tenantId,
+                    batchId,
+                    row.participantId,
+                    decision.observedFingerprint,
+                  )
+                  if (!written) {
+                    return yield* new ParticipantPlacementChanged({
+                      participantId: decision.participantId,
+                    })
+                  }
+                  events.push({
+                    participantId: row.participantId,
+                    kind: 'placement-synced',
+                    details: { previous: row.frozen, observed: row.live, result: row.live },
+                  })
+                } else {
+                  const written = yield* keepParticipantPlacement(
+                    tenantId,
+                    batchId,
+                    row.participantId,
+                    decision.observedFingerprint,
+                  )
+                  if (!written) {
+                    return yield* new ParticipantPlacementChanged({
+                      participantId: decision.participantId,
+                    })
+                  }
+                  events.push({
+                    participantId: row.participantId,
+                    kind: 'placement-kept',
+                    details: { round: row.frozen, observed: row.live },
+                  })
+                }
+              }
+              yield* insertParticipantEvents({
+                tenantId,
+                batchId,
+                events,
+                actorId: as.userId,
+                reason: input.reason ?? null,
+              })
+              return {
+                synced: events.filter((event) => event.kind === 'placement-synced').length,
+                kept: events.filter((event) => event.kind === 'placement-kept').length,
+              }
+            }),
+          ),
+        ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
+      },
+    ),
+
     scopeOptions: Effect.fn('Assessment.scopeOptions')(function* (tenantId, as) {
       // no separate permission: what a batch may face is what this caller may
       // manage, so the authorization scope IS the option list
@@ -5008,6 +5283,7 @@ const toParticipantDto = (row: ParticipantRow) => ({
   status: row.status as 'active' | 'excluded',
   includedAt: new Date(row.includedAt).toISOString(),
   excludedAt: isoOf(row.excludedAt),
+  placement: row.placement,
 })
 
 const toWarningDto = (warning: EditWarning) => ({
@@ -6244,6 +6520,35 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           principal,
         )
         return { participant: toParticipantDto(participant) }
+      }),
+    )
+    .handle(
+      'listParticipantPlacements',
+      Effect.fn('assessment.listParticipantPlacements.handler')(function* ({ params, query }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        return yield* assessment.listParticipantPlacements(
+          principal.tenantId,
+          params.batchId,
+          query,
+          principal,
+        )
+      }),
+    )
+    .handle(
+      'reconcileParticipantPlacements',
+      Effect.fn('assessment.reconcileParticipantPlacements.handler')(function* ({
+        params,
+        payload,
+      }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        return yield* assessment.reconcileParticipantPlacements(
+          principal.tenantId,
+          params.batchId,
+          payload,
+          principal,
+        )
       }),
     )
     .handle(

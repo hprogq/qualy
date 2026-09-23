@@ -649,3 +649,258 @@ describe.runIf(postgresAvailable).concurrent('the roster management face', () =>
     expect(offered.at(-1)!.name).toBe('Wing 600')
   })
 })
+
+// Where the organization moves somebody after the round froze them: offered
+// as a difference, never applied by itself, and settled only by a decision -
+// sync to it, or keep the round's - that is not raised again until the
+// organization moves them again (§32.86).
+describe.runIf(postgresAvailable).concurrent('placement reconciliation', () => {
+  let db: Awaited<ReturnType<typeof createTestContext>>
+
+  beforeAll(async () => {
+    db = await createTestContext('assessment-placements')
+  })
+
+  afterAll(async () => {
+    await db?.dispose()
+  })
+
+  const byName = (f: Seeded, batchId: string) =>
+    Effect.gen(function* () {
+      const assessment = yield* Assessment
+      const rows = yield* assessment.listParticipants(f.tenant, batchId, { limit: 50 }, f.principal)
+      return new Map(rows.map((row) => [row.displayName, row]))
+    })
+
+  const differences = (f: Seeded, batchId: string, as?: Principal) =>
+    Effect.flatMap(Assessment, (assessment) =>
+      assessment.listParticipantPlacements(f.tenant, batchId, {}, as ?? f.principal),
+    )
+
+  it('offers a move without making it, and settles it only by a decision', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('placements')
+        const assessment = yield* Assessment
+        const batch = yield* activateBatch(f, 'Batch', [f.gradeA])
+        // freshly frozen: the round and the organization agree to the byte
+        const fresh = yield* differences(f, batch.id)
+
+        yield* f.moveUser(f.s1, f.class2)
+        yield* f.setUserType(f.s2, f.teacherType)
+        const offered = yield* differences(f, batch.id)
+        const marks = yield* byName(f, batch.id)
+        const s1 = offered.items.find((row) => row.displayName === 'S1')!
+        const s2 = offered.items.find((row) => row.displayName === 'S2')!
+        // nothing moved on its own
+        const untouched = one<{ anchor: string }>(
+          yield* runSql(sql`select assessment_anchor_node_id as anchor from batch_participants
+                             where batch_id = ${batch.id} and user_id = ${f.s1}`),
+        ).anchor
+
+        const settled = yield* assessment.reconcileParticipantPlacements(
+          f.tenant,
+          batch.id,
+          {
+            decisions: [
+              {
+                participantId: s1.participantId,
+                observedFingerprint: s1.observedFingerprint!,
+                decision: 'keep',
+              },
+              {
+                participantId: s2.participantId,
+                observedFingerprint: s2.observedFingerprint!,
+                decision: 'sync',
+              },
+            ],
+            reason: 'stays in its class this term',
+          },
+          f.principal,
+        )
+        const after = yield* differences(f, batch.id)
+        const rows = rowsOf<{ user_id: string; anchor: string; type: string }>(
+          yield* runSql(sql`select user_id, assessment_anchor_node_id as anchor, user_type_id as type
+                              from batch_participants where batch_id = ${batch.id}`),
+        )
+        const events = rowsOf<{ kind: string; reason: string | null; details: Record<string, unknown> }>(
+          yield* runSql(sql`select kind, reason, details from batch_participant_events
+                             where batch_id = ${batch.id} and kind like 'placement-%'
+                             order by kind`),
+        )
+
+        // moved again: a new state of the organization, raised again
+        yield* f.moveUser(f.s1, f.class3)
+        const again = yield* differences(f, batch.id)
+        // and back where the round has them: nothing differs any more
+        yield* f.moveUser(f.s1, f.class1)
+        const home = yield* differences(f, batch.id)
+        return { f, fresh, offered, marks, s1, s2, untouched, settled, after, rows, events, again, home }
+      }),
+    )
+    const r = ok(exit)
+    expect(r.fresh).toMatchObject({ items: [], changedTotal: 0, unavailableTotal: 0 })
+    expect(r.offered.changedTotal).toBe(2)
+    expect(r.s1.changes).toEqual(['placement'])
+    expect(r.s2.changes).toEqual(['user-type'])
+    expect(r.s1.canSync).toBe(true)
+    expect(r.s1.frozen.units.at(-1)?.name).toBe('Class 1')
+    expect(r.s1.current?.units.at(-1)?.name).toBe('Class 2')
+    // the roster itself says who has a difference, and nobody else
+    expect(r.marks.get('S1')?.placement).toBe('changed')
+    expect(r.marks.get('S4')?.placement).toBe('current')
+    expect(r.untouched).toBe(r.s1.frozen.units.at(-1)?.id)
+
+    expect(r.settled).toEqual({ synced: 1, kept: 1 })
+    expect(r.after.items).toEqual([])
+    // kept stays where the round had it; synced takes the organization's kind
+    expect(r.rows.find((row) => row.user_id === r.f.s1)?.anchor).toBe(r.f.class1)
+    expect(r.rows.find((row) => row.user_id === r.f.s2)?.type).toBe(r.f.teacherType)
+    // kept: the round's placement stands; synced: the organization's is taken
+    const kept = r.events.find((event) => event.kind === 'placement-kept')!
+    const synced = r.events.find((event) => event.kind === 'placement-synced')!
+    expect(kept.reason).toBe('stays in its class this term')
+    expect(kept.details).toHaveProperty('observed')
+    expect(synced.details).toHaveProperty('previous')
+
+    expect(r.again.items.map((row) => row.displayName)).toEqual(['S1'])
+    expect(r.home.items).toEqual([])
+  })
+
+  it('sees a class moved whole, not a class renamed', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('ancestry')
+        const batch = yield* activateBatch(f, 'Batch', [f.gradeA])
+        yield* runSql(sql`update org_nodes set name = 'Class Two' where id = ${f.class2}`)
+        const renamed = yield* differences(f, batch.id)
+        // the class keeps its id and its people, and now belongs to grade B
+        yield* runSql(sql`update org_nodes set parent_id = ${f.gradeB}, path = 'r.b.c2'
+                           where id = ${f.class2}`)
+        const moved = yield* differences(f, batch.id)
+        return { renamed, moved }
+      }),
+    )
+    const { renamed, moved } = ok(exit)
+    expect(renamed.items).toEqual([])
+    expect(moved.items.map((row) => [row.displayName, row.changes])).toEqual([
+      ['S2', ['ancestry']],
+    ])
+  })
+
+  it('refuses the whole selection when one of it moved again since it was shown', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('stale')
+        const assessment = yield* Assessment
+        const batch = yield* activateBatch(f, 'Batch', [f.gradeA])
+        yield* f.moveUser(f.s1, f.class2)
+        yield* f.moveUser(f.s4, f.class2)
+        const shown = yield* differences(f, batch.id)
+        // somebody moves S4 on while the decision is being made
+        yield* f.moveUser(f.s4, f.class3)
+        const refused = yield* Effect.exit(
+          assessment.reconcileParticipantPlacements(
+            f.tenant,
+            batch.id,
+            {
+              decisions: shown.items.map((row) => ({
+                participantId: row.participantId,
+                observedFingerprint: row.observedFingerprint!,
+                decision: 'sync' as const,
+              })),
+            },
+            f.principal,
+          ),
+        )
+        const anchors = rowsOf<{ anchor: string }>(
+          yield* runSql(sql`select assessment_anchor_node_id as anchor from batch_participants
+                             where batch_id = ${batch.id} and user_id in (${f.s1}, ${f.s4})`),
+        ).map((row) => row.anchor)
+        return { refused, anchors, f }
+      }),
+    )
+    const { refused, anchors, f } = ok(exit)
+    expect(tagOf(refused)).toBe('ASSESSMENT_PARTICIPANT_PLACEMENT_CHANGED')
+    // all or nothing: S1 was still as shown, and is not synced either
+    expect(anchors).toEqual([f.class1, f.class1])
+  })
+
+  it('shows a manager that somebody left their reach, but not where to, and lets them keep', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('beyond')
+        const assessment = yield* Assessment
+        const batch = yield* activateBatch(f, 'Batch', [f.gradeA])
+        // a grade manager: the round is theirs, grade B is not
+        const manager = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+            values (${f.tenant}, 'Manager', ${f.teacherType}, ${f.gradeA}) returning id`),
+        ).id
+        const role = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+            values (${f.tenant}, 'grade', 'Grade', 'org', 'active', 'explicit', 'allow-list')
+            returning id`),
+        ).id
+        const permission = one<{ id: string }>(
+          yield* runSql(sql`select id from permissions where code = 'assessment.batch.manage'`),
+        ).id
+        yield* runSql(sql`insert into role_permissions (tenant_id, role_id, permission_id)
+          values (${f.tenant}, ${role}, ${permission})`)
+        yield* runSql(sql`
+          insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+          values (${f.tenant}, ${manager}, ${role}, ${f.gradeA}, 'subtree')`)
+        const asManager: Principal = { tenantId: f.tenant, userId: manager, sessionId: 's' }
+
+        yield* f.moveUser(f.s1, f.class3)
+        const shown = yield* differences(f, batch.id, asManager)
+        const row = shown.items.find((item) => item.displayName === 'S1')!
+        const sync = yield* Effect.exit(
+          assessment.reconcileParticipantPlacements(
+            f.tenant,
+            batch.id,
+            {
+              decisions: [
+                {
+                  participantId: row.participantId,
+                  observedFingerprint: row.observedFingerprint!,
+                  decision: 'sync',
+                },
+              ],
+            },
+            asManager,
+          ),
+        )
+        const keep = yield* assessment.reconcileParticipantPlacements(
+          f.tenant,
+          batch.id,
+          {
+            decisions: [
+              {
+                participantId: row.participantId,
+                observedFingerprint: row.observedFingerprint!,
+                decision: 'keep',
+              },
+            ],
+          },
+          asManager,
+        )
+        return { row, sync, keep }
+      }),
+    )
+    const { row, sync, keep } = ok(exit)
+    expect(row.canSync).toBe(false)
+    expect(row.currentBeyondReach).toBe(true)
+    // that they moved is theirs to see; the other grade's units are not
+    expect(row.current).toBeNull()
+    expect(tagOf(sync)).toBe('ASSESSMENT_PARTICIPANT_INVALID')
+    expect(reasonIn(sync)).toBe('user-out-of-scope')
+    expect(keep).toEqual({ synced: 0, kept: 1 })
+  })
+})

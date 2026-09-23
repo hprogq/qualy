@@ -23,6 +23,8 @@ import { toast } from '@qualy/ui/toast'
 import { ResizableSplit, StickyFill } from '@qualy/ui/screen'
 import { AddPeopleDialog } from '../roster/AddPeopleDialog.tsx'
 import { ImportDialog } from '../roster/ImportDialog.tsx'
+import { PlacementDialog, type PlacementDecision } from '../roster/PlacementDialog.tsx'
+import { PlacementNotice } from '../roster/PlacementNotice.tsx'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import {
@@ -105,6 +107,7 @@ const styles = stylex.create({
   listCount: { fontSize: 12, color: tokens.mutedForeground },
   listSpacer: { flexGrow: 1 },
   listActions: { display: 'flex', flexShrink: 0, alignItems: 'center', gap: 8 },
+  nameWithMark: { display: 'inline-flex', minWidth: 0, alignItems: 'center', gap: 8 },
   // one person per ruled line: a card per row would make finding somebody a
   // matter of scrolling past twenty-five boxes
   pagerRow: { display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 },
@@ -155,6 +158,7 @@ export function ParticipantResultList({
   const [adding, setAdding] = useState(false)
   const [importing, setImporting] = useState(false)
   const [excluding, setExcluding] = useState<{ id: string; name: string } | null>(null)
+  const [reconciling, setReconciling] = useState(false)
   const businessNo = useTerm(authTerms.businessNumber)
   const [units, setUnits] = useState<readonly string[]>([])
   const [unitScope, setUnitScope] = useState<'self' | 'subtree'>('subtree')
@@ -190,6 +194,16 @@ export function ParticipantResultList({
   }, [nextCursor, at, cursors, question])
 
   const rows = participants.data?.items ?? []
+
+  // whether the organization has anybody elsewhere: the totals ride on the
+  // first page, so one row is all this has to fetch to know
+  const placements = useQuery({
+    ...query.assessment.listParticipantPlacements.queryOptions({
+      params: { batchId },
+      query: { limit: '1' },
+    }),
+    enabled: manageable,
+  })
 
   // targeted invalidation: only this plugin's reads, never the whole cache
   const invalidate = () => queryClient.invalidateQueries({ queryKey: query.assessment.key() })
@@ -245,6 +259,29 @@ export function ParticipantResultList({
       invalidate()
     },
     onError,
+  })
+
+  const reconcile = useMutation({
+    mutationFn: (input: { decisions: readonly PlacementDecision[]; reason: string }) =>
+      run(
+        api.assessment.reconcileParticipantPlacements({
+          params: { batchId },
+          payload: {
+            decisions: [...input.decisions],
+            ...(input.reason !== '' ? { reason: input.reason } : {}),
+          },
+        }),
+      ),
+    onSuccess: (result: { synced: number; kept: number }) => {
+      toast.success(format(m.placementSettled, { count: result.synced + result.kept }))
+      invalidate()
+    },
+    // a refusal is about what the dialog shows, so it is said there and the
+    // differences are read again: one that moved on is shown as it is now
+    onError: (error: unknown) => {
+      toast.error(formatError(error))
+      invalidate()
+    },
   })
 
   const tree = (
@@ -330,6 +367,13 @@ export function ParticipantResultList({
               </span>
             )}
           </div>
+          {manageable && placements.data !== undefined && (
+            <PlacementNotice
+              changedTotal={placements.data.changedTotal}
+              unavailableTotal={placements.data.unavailableTotal}
+              onOpen={() => setReconciling(true)}
+            />
+          )}
           {narrow && (
             <button
               type="button"
@@ -394,7 +438,10 @@ export function ParticipantResultList({
                           person with their facts under them */}
                       {narrow ? (
                         <>
-                          <Cell lead>{row.displayName}</Cell>
+                          <Cell lead>
+                            {row.displayName}
+                            <PlacementMark placement={row.placement} />
+                          </Cell>
                           <Cell
                             numeric
                             unlabelled
@@ -409,7 +456,10 @@ export function ParticipantResultList({
                             {row.businessNo ?? format(m.noBusinessNoShort, { businessNo })}
                           </Cell>
                           <Cell tone="plain" unlabelled>
-                            {row.displayName}
+                            <span {...stylex.props(styles.nameWithMark)}>
+                              {row.displayName}
+                              <PlacementMark placement={row.placement} />
+                            </span>
                           </Cell>
                         </>
                       )}
@@ -516,6 +566,13 @@ export function ParticipantResultList({
         }
         onCancel={() => setExcluding(null)}
       />
+      <PlacementDialog
+        batchId={batchId}
+        open={reconciling}
+        pending={reconcile.isPending}
+        onDecide={(decisions, reason) => reconcile.mutate({ decisions, reason })}
+        onClose={() => setReconciling(false)}
+      />
       <AddPeopleDialog
         open={adding}
         pending={addPeople.isPending}
@@ -530,5 +587,21 @@ export function ParticipantResultList({
         onClose={() => setImporting(false)}
       />
     </div>
+  )
+}
+
+/**
+ * A light word beside a name whose person the organization has elsewhere.
+ *
+ * Only that it differs: where from and where to belong in the dialog, and a
+ * roster that spelt out every move would be a roster of moves.
+ */
+function PlacementMark({ placement }: { placement: 'current' | 'changed' | 'unavailable' }) {
+  const { format } = useI18n()
+  if (placement === 'current') return null
+  return (
+    <Badge variant="outline" data-testid="placement-mark" data-placement={placement}>
+      {format(placement === 'changed' ? m.placementChangedMark : m.placementUnavailableMark)}
+    </Badge>
   )
 }

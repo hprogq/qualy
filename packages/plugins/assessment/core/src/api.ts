@@ -63,6 +63,7 @@ import {
   BatchNotFound,
   ParticipantInvalid,
   ParticipantNotFound,
+  ParticipantPlacementChanged,
   AttachmentUnavailable,
   ReviewConflict,
   ScoringUnavailable,
@@ -332,6 +333,45 @@ const participantView = Schema.Struct({
   status: Schema.Literals(['active', 'excluded']),
   includedAt: Schema.String,
   excludedAt: Schema.NullOr(Schema.String),
+  /**
+   * Whether the organization still has them where this round does:
+   * `changed` is a difference nobody has decided about yet, `unavailable`
+   * an organization that has them nowhere. Never moves the round by itself.
+   */
+  placement: Schema.Literals(['current', 'changed', 'unavailable']),
+})
+
+/**
+ * A placement as a reader may be told it: the units from the root down, each
+ * named only where the reader's own management reaches, and the kind of
+ * person. A unit beyond that reach is there by id with no name.
+ */
+const placementView = Schema.Struct({
+  units: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.NullOr(Schema.String) })),
+  userType: Schema.Struct({ id: Schema.String, name: Schema.NullOr(Schema.String) }),
+})
+
+/** one member whose placement in the round and in the organization differ */
+const placementDifferenceView = Schema.Struct({
+  participantId: Schema.String,
+  displayName: Schema.String,
+  businessNo: Schema.NullOr(Schema.String),
+  /** a difference to decide about, or an organization that has them nowhere */
+  standing: Schema.Literals(['changed', 'unavailable']),
+  /** why there is nothing to sync to, for an unavailable one */
+  unavailable: Schema.NullOr(Schema.Literals(['gone', 'disabled', 'unplaced'])),
+  /** what differs, all of it: somebody can move and change kind at once */
+  changes: Schema.Array(Schema.Literals(['placement', 'ancestry', 'user-type'])),
+  /** where this round has them */
+  frozen: placementView,
+  /** where the organization has them; null when there is nowhere, or it is beyond the reader */
+  current: Schema.NullOr(placementView),
+  /** the organization has them somewhere this reader does not manage */
+  currentBeyondReach: Schema.Boolean,
+  /** whether this reader may take the organization's placement into the round */
+  canSync: Schema.Boolean,
+  /** what a decision about this row carries back; null where there is nothing to decide */
+  observedFingerprint: Schema.NullOr(Schema.String),
 })
 
 /**
@@ -3241,6 +3281,60 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
           BatchReadOnly,
           ParticipantNotFound,
           ParticipantInvalid,
+          AccessDenied,
+        ],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
+    // Where the organization now has members somewhere other than the round
+    // does. Derived on read and never applied by itself: the round moves
+    // only when somebody decides to (§32.86).
+    HttpApiEndpoint.get(
+      'listParticipantPlacements',
+      '/assessment/batches/:batchId/participant-placements',
+      {
+        params: Schema.Struct({ batchId: uuidInput }),
+        query: Schema.Struct(pageQuery),
+        success: Schema.Struct({
+          items: Schema.Array(placementDifferenceView),
+          nextCursor: Schema.NullOr(Schema.String),
+          // both totals in the first answer, so the roster can say whether
+          // anything needs deciding without walking every page
+          changedTotal: Schema.Number,
+          unavailableTotal: Schema.Number,
+        }),
+        error: [BatchNotFound, AccessDenied, BadRequest],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
+    // A decision per member, all of them or none: sync takes the placement
+    // that was shown, keep leaves the round's and records that it was shown.
+    // The placement itself is never sent - the server reads it again - and
+    // the fingerprint makes sure it is still the one that was looked at.
+    HttpApiEndpoint.patch(
+      'reconcileParticipantPlacements',
+      '/assessment/batches/:batchId/participant-placements',
+      {
+        params: Schema.Struct({ batchId: uuidInput }),
+        payload: Schema.Struct({
+          decisions: Schema.Array(
+            Schema.Struct({
+              participantId: uuidInput,
+              observedFingerprint: Schema.String.check(Schema.isMaxLength(64)),
+              decision: Schema.Literals(['sync', 'keep']),
+            }),
+          ).check(Schema.isMinLength(1), Schema.isMaxLength(100)),
+          reason: Schema.optional(boundedText(500)),
+        }),
+        success: Schema.Struct({ synced: Schema.Number, kept: Schema.Number }),
+        error: [
+          BatchNotFound,
+          BatchReadOnly,
+          ParticipantNotFound,
+          ParticipantInvalid,
+          ParticipantPlacementChanged,
           AccessDenied,
         ],
       },

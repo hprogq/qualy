@@ -45,6 +45,21 @@ export class ParticipantInvalid extends Schema.TaggedError<ParticipantInvalid>()
 ) {}
 
 /**
+ * The organization moved somebody again while their placement was being
+ * decided about.
+ *
+ * A decision is about the placement that was shown, and carries its
+ * fingerprint back; syncing to whatever holds by the time the press lands
+ * would take a placement nobody looked at. Nothing is written - the whole
+ * selection is refused - and the caller looks again.
+ */
+export class ParticipantPlacementChanged extends Schema.TaggedError<ParticipantPlacementChanged>()(
+  'ASSESSMENT_PARTICIPANT_PLACEMENT_CHANGED',
+  { participantId: Schema.String },
+  { httpApiStatus: 409, identifier: 'AssessmentParticipantPlacementChanged' },
+) {}
+
+/**
  * The material range cannot move where it was asked to, because entries
  * already in review or approved carry dates that would fall outside it. The
  * entries are named: shrinking the window means dealing with what is in it,

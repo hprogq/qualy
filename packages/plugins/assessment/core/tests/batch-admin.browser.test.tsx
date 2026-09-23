@@ -186,6 +186,8 @@ const assessmentStubs = (over: Stubs = {}): Stubs => ({
   listUserTypeOptions: () =>
     Effect.succeed({ userTypes: [{ id: USER_ID, code: 'student', name: '学生' }] }),
   listParticipants: () => Effect.succeed({ items: [], nextCursor: null }),
+  listParticipantPlacements: () =>
+    Effect.succeed({ items: [], nextCursor: null, changedTotal: 0, unavailableTotal: 0 }),
   previewImport: () => Effect.succeed({ candidates: 0 }),
   staffOptions: () => Effect.succeed({ nodes: [], roles: [] }),
   listAccess: () => Effect.succeed({ staff: [subject()] }),

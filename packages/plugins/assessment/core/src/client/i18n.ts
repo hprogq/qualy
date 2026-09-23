@@ -4985,6 +4985,81 @@ const i18n = definePluginMessages({
       id: 'assessment/roster/empty',
       defaultMessage: 'No participants yet.',
     },
+    /** a roster row whose person the organization now has elsewhere */
+    placementChangedMark: {
+      id: 'assessment/roster/placement-changed',
+      defaultMessage: 'Organization changed',
+    },
+    placementUnavailableMark: {
+      id: 'assessment/roster/placement-unavailable',
+      defaultMessage: 'Not in the organization',
+    },
+    placementPrompt: {
+      id: 'assessment/placement/prompt',
+      defaultMessage:
+        'Organization details changed for {count, plural, one {# person} other {# people}}.',
+    },
+    placementUnavailablePrompt: {
+      id: 'assessment/placement/unavailable-prompt',
+      defaultMessage:
+        '{count, plural, one {# person has} other {# people have}} no place in the organization any more.',
+    },
+    placementOpen: { id: 'assessment/placement/open', defaultMessage: 'Review changes' },
+    placementTitle: { id: 'assessment/placement/title', defaultMessage: 'Organization changes' },
+    placementHint: {
+      id: 'assessment/placement/hint',
+      defaultMessage:
+        "The roster does not follow the organization on its own. Sync each change to this batch, or keep the batch's placement.",
+    },
+    placementQuiet: {
+      id: 'assessment/placement/quiet',
+      defaultMessage: 'Everyone is where the organization has them.',
+    },
+    placementRound: { id: 'assessment/placement/round', defaultMessage: 'This batch' },
+    placementCurrent: { id: 'assessment/placement/current', defaultMessage: 'Organization' },
+    placementBeyond: {
+      id: 'assessment/placement/beyond',
+      defaultMessage: 'A unit outside what you manage',
+    },
+    placementBeyondHint: {
+      id: 'assessment/placement/beyond-hint',
+      defaultMessage: 'Syncing needs someone who manages both units.',
+    },
+    placementGone: { id: 'assessment/placement/gone', defaultMessage: 'Deleted from the organization' },
+    placementDisabled: { id: 'assessment/placement/disabled', defaultMessage: 'Account disabled' },
+    placementUnplaced: { id: 'assessment/placement/unplaced', defaultMessage: 'Not in any unit' },
+    placementUnavailableHint: {
+      id: 'assessment/placement/unavailable-hint',
+      defaultMessage: 'Remove them from the roster if they no longer take part.',
+    },
+    placementChangePlacement: { id: 'assessment/placement/change-placement', defaultMessage: 'Moved' },
+    placementChangeAncestry: {
+      id: 'assessment/placement/change-ancestry',
+      defaultMessage: 'Unit moved',
+    },
+    placementChangeUserType: {
+      id: 'assessment/placement/change-user-type',
+      defaultMessage: 'Type changed',
+    },
+    placementSync: { id: 'assessment/placement/sync', defaultMessage: 'Sync' },
+    placementKeep: { id: 'assessment/placement/keep', defaultMessage: "Keep the batch's" },
+    placementSyncSelected: { id: 'assessment/placement/sync-selected', defaultMessage: 'Sync selected' },
+    placementKeepSelected: { id: 'assessment/placement/keep-selected', defaultMessage: 'Keep selected' },
+    placementSelectPage: { id: 'assessment/placement/select-page', defaultMessage: 'Select page' },
+    placementSelected: {
+      id: 'assessment/placement/selected',
+      defaultMessage: '{count, plural, other {# selected}}',
+    },
+    placementSelectOne: { id: 'assessment/placement/select-one', defaultMessage: 'Select {name}' },
+    placementReason: { id: 'assessment/placement/reason', defaultMessage: 'Note (optional)' },
+    placementReasonPlaceholder: {
+      id: 'assessment/placement/reason-placeholder',
+      defaultMessage: 'For example: finishes this term in the old class',
+    },
+    placementSettled: {
+      id: 'assessment/placement/settled',
+      defaultMessage: '{count, plural, one {# change handled} other {# changes handled}}',
+    },
     columnParticipant: { id: 'assessment/roster/column-name', defaultMessage: 'Name' },
     columnParticipantStatus: {
       id: 'assessment/roster/column-status',
@@ -6563,6 +6638,10 @@ const i18n = definePluginMessages({
     ASSESSMENT_ADMINISTRATIVE_IMPORT_INVALID: {
       id: 'assessment/error/administrative-import-invalid',
       defaultMessage: 'This file cannot be imported as it stands.',
+    },
+    ASSESSMENT_PARTICIPANT_PLACEMENT_CHANGED: {
+      id: 'assessment/error/participant-placement-changed',
+      defaultMessage: 'The organization changed while you were deciding. Check the changes again.',
     },
     ASSESSMENT_ADMINISTRATIVE_RECORD_TARGETS_CHANGED: {
       id: 'assessment/error/administrative-record-targets-changed',
