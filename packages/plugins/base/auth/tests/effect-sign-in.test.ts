@@ -155,12 +155,25 @@ describe.runIf(postgresAvailable)('signing in', () => {
   it('offers only the providers whose driver this assembly loaded', async () => {
     const response = await fetch(`${base}/auth/login-methods`)
     expect(response.status).toBe(200)
-    const body = (await response.json()) as { methods: { code: string; mode: string }[] }
+    const body = await response.json()
     // the cas row is enabled and has no driver here: offering it would render
-    // a sign-in form nothing can answer
-    expect(body.methods).toEqual([
-      { code: 'password', type: 'local', name: 'Password', mode: 'component' },
-    ])
+    // a sign-in form nothing can answer. The workspace goes by name and by
+    // nothing else, and a door with no icon chosen is drawn by its kind's own.
+    expect(body).toEqual({
+      tenant: { name: 'Default' },
+      methods: [
+        {
+          code: 'password',
+          type: 'local',
+          name: 'Password',
+          prominence: 'secondary',
+          recommended: false,
+          icon: { kind: 'builtin', key: 'mail' },
+          mode: 'component',
+        },
+      ],
+      passwordRule: { minLength: 12, maxLength: 128 },
+    })
   })
 
   it('turns a proved password into a session, and reads it back', async () => {

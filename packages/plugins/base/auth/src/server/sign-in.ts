@@ -8,6 +8,9 @@ import { sql } from 'kysely'
 import {
   LoginDrivers,
   LoginSessions,
+  type LoginContext,
+  type LoginMethod as ContractLoginMethod,
+  type LoginProminence,
   type LoginPresentation,
   type LoginSessionsShape,
   ProviderSecretMissing,
@@ -35,6 +38,7 @@ export { AuthConfig }
 import { sessionCookieName, TooManyAttempts } from '@qualy/auth-contract/session'
 import { clearSessionCookie, setSessionCookie } from './session-cookie.ts'
 import { sameOriginPath } from './same-origin.ts'
+import { iconOf } from './login-icons.ts'
 
 // Signing in, and signing out.
 //
@@ -59,18 +63,33 @@ const activeTenantBySlug = (slug: string) =>
       .executeTakeFirst(),
   )
 
-/** the enabled providers of one tenant, in the order a screen shows them */
+/**
+ * The enabled providers of one tenant, in the order a screen shows them:
+ * the doors listed in full first, each group in its own order.
+ */
 const loginProviders = (tenantId: string) =>
   db.query((k) =>
     k
       .selectFrom('AuthProvider')
-      .select(['id', 'tenantId', 'code', 'type', 'name', 'config'])
+      .select([
+        'id',
+        'tenantId',
+        'code',
+        'type',
+        'name',
+        'config',
+        'prominence',
+        'recommended',
+        'icon',
+      ])
       .where('tenantId', '=', tenantId)
       .where('enabled', '=', true)
+      .orderBy(sql`prominence = 'primary'`, 'desc')
       .orderBy('sortOrder')
       .orderBy('code')
       .execute(),
   )
+
 
 /**
  * One public provider code, of the type the route belongs to.
@@ -524,11 +543,7 @@ const revokeSessionByToken = (tokenHash: string) =>
   db.query((k) => k.deleteFrom('Session').where('tokenHash', '=', tokenHash).execute())
 
 /** a provider row paired with how its driver asks to be presented */
-export type LoginMethod = {
-  readonly code: string
-  readonly type: string
-  readonly name: string
-} & LoginPresentation
+export type LoginMethod = ContractLoginMethod
 
 /** the standing itself: every ancestor of the node, root first, node last */
 export const lineageOf = (tenantId: string, path: string) =>
@@ -572,6 +587,47 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
   // the one judgment of whether a door can let anybody in; a door in service
   // always passes it, unless its driver changed what it needs under it
   const readiness = yield* makeReadiness
+
+  /**
+   * The ways into one tenant: enabled rows whose driver is loaded and whose
+   * entrance is ready. A row whose driver is absent is skipped rather than
+   * offered - it would render a sign-in form nothing can answer.
+   */
+  const methodsOf = Effect.fn('Auth.signIn.methodsOf')(function* (tenantId: string) {
+    const providers = yield* loginProviders(tenantId).pipe(Effect.orDie)
+    const methods: LoginMethod[] = []
+    for (const provider of providers) {
+      const found = yield* drivers.forType(provider.type)
+      if (!found || !(yield* readiness(provider)).ready) continue
+      const declared = found.driver.presentation
+      // the declaration names a module and the wire does not: a renderer
+      // is found by the driver's type, which the method already carries
+      let presentation: LoginPresentation =
+        declared.mode === 'component'
+          ? { mode: 'component' }
+          : { mode: 'redirect', href: declared.href({ code: provider.code }) }
+      if (presentation.mode === 'redirect') {
+        const path = sameOriginPath(presentation.href)
+        if (!path) {
+          yield* Effect.logWarning(
+            `login method ${provider.code} dropped: driver ${provider.type} returned a non-relative href`,
+          )
+          continue
+        }
+        presentation = { mode: 'redirect', href: path }
+      }
+      methods.push({
+        code: provider.code,
+        type: provider.type,
+        name: provider.name,
+        prominence: provider.prominence as LoginProminence,
+        recommended: provider.recommended,
+        icon: iconOf(provider.icon, found.driver.icon),
+        ...presentation,
+      })
+    }
+    return methods as readonly LoginMethod[]
+  })
   // who an anonymous caller is, and where the outside world reaches us: both
   // are resolvers, so the day a host decides either, only they change
   const tenants = yield* AnonymousTenantResolver
@@ -998,36 +1054,29 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
       Effect.fn('Auth.signIn.loginMethods')(function* () {
         const tenant = yield* defaultTenant()
         if (!tenant) return [] as readonly LoginMethod[]
-        const providers = yield* loginProviders(tenant.id).pipe(Effect.orDie)
-        const methods: LoginMethod[] = []
-        for (const provider of providers) {
-          const found = yield* drivers.forType(provider.type)
-          if (!found || !(yield* readiness(provider)).ready) continue
-          const declared = found.driver.presentation
-          // the declaration names a module and the wire does not: a renderer
-          // is found by the driver's type, which the method already carries
-          let presentation: LoginPresentation =
-            declared.mode === 'component'
-              ? { mode: 'component' }
-              : { mode: 'redirect', href: declared.href({ code: provider.code }) }
-          if (presentation.mode === 'redirect') {
-            const path = sameOriginPath(presentation.href)
-            if (!path) {
-              yield* Effect.logWarning(
-                `login method ${provider.code} dropped: driver ${provider.type} returned a non-relative href`,
-              )
-              continue
-            }
-            presentation = { mode: 'redirect', href: path }
+        return yield* methodsOf(tenant.id)
+      }),
+    ),
+
+    /**
+     * What the sign-in page is told: the workspace it is for, by name, and
+     * its ways in. Nothing else about the tenant leaves for a visitor who
+     * has not signed in.
+     */
+    loginContext: bound(
+      Effect.fn('Auth.signIn.loginContext')(function* () {
+        const tenant = yield* defaultTenant()
+        if (!tenant) return { tenant: null, methods: [], passwordRule: null } as LoginContext
+        const methods = yield* methodsOf(tenant.id)
+        let passwordRule: LoginContext['passwordRule'] = null
+        for (const method of methods) {
+          const binding = (yield* drivers.forType(method.type))?.driver.binding
+          if (binding?.mode === 'managed') {
+            passwordRule = { minLength: binding.secret.minLength, maxLength: binding.secret.maxLength }
+            break
           }
-          methods.push({
-            code: provider.code,
-            type: provider.type,
-            name: provider.name,
-            ...presentation,
-          })
         }
-        return methods as readonly LoginMethod[]
+        return { tenant: { name: tenant.name }, methods, passwordRule } as LoginContext
       }),
     ),
 

@@ -188,7 +188,31 @@ export const ProvidersReordered = AuditAction.define({
   target: 'auth.provider',
   version: 1,
   name: message('auth/audit/provider-reorder', 'Reorder the sign-in page'),
-  details: Schema.Struct({ order: Schema.Array(id) }),
+  // `primary`: the doors listed in full, first in `order`; absent from rows
+  // written before the page had two groups
+  details: Schema.Struct({ order: Schema.Array(id), primary: Schema.optional(Schema.Array(id)) }),
+})
+
+export const ProviderRecommended = AuditAction.define({
+  code: 'auth.provider.recommend',
+  target: 'auth.provider',
+  version: 1,
+  name: message('auth/audit/provider-recommend', 'Choose the recommended way to sign in'),
+  details: Schema.Struct({ providerId: Schema.NullOr(id) }),
+})
+
+// how a door is drawn: one of the page's own icons, an uploaded image, or its
+// kind's own; which image is recorded by its attachment, never its bytes
+export const ProviderIconChanged = AuditAction.define({
+  code: 'auth.provider.icon',
+  target: 'auth.provider',
+  version: 1,
+  name: message('auth/audit/provider-icon', 'Change how a way to sign in is drawn'),
+  details: Schema.Struct({
+    icon: Schema.Literals(['builtin', 'upload', 'default']),
+    key: Schema.optional(Schema.String),
+    attachmentId: Schema.optional(id),
+  }),
 })
 
 // A way in, written for a person or withdrawn from them. The door and the
@@ -255,4 +279,6 @@ export const userActions = [
   ProviderDeleted,
   ProviderStatusChanged,
   ProvidersReordered,
+  ProviderRecommended,
+  ProviderIconChanged,
 ] as const

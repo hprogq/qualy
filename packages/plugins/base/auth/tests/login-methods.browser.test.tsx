@@ -1,6 +1,6 @@
 import LoginMethodsPage from '../src/client/iam/LoginMethodsPage.tsx'
 import { describe, expect, it, vi } from 'vitest'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import type { authApi } from '@qualy/plugin-auth/client/api'
 import { Effect } from 'effect'
@@ -28,6 +28,10 @@ const provider = (over: Partial<ProviderDto> = {}): ProviderDto => ({
   setup: 'complete',
   isSystem: false,
   sortOrder: 0,
+  prominence: 'primary',
+  recommended: false,
+  icon: { kind: 'builtin', key: 'mail' },
+  iconChosen: false,
   version: 4,
   audience: { mode: 'unrestricted' },
   ...over,
@@ -221,7 +225,7 @@ describe('login methods screen', () => {
     const open = document.querySelectorAll('[data-audience="empty"]')
     expect(open).toHaveLength(1)
     // and the list itself is offered, empty of ticks rather than absent
-    const boxes = await page.getByRole('checkbox').elements()
+    const boxes = await page.getByTestId('audience-panel').getByRole('checkbox').elements()
     expect(boxes).toHaveLength(2)
     for (const box of boxes) expect(box).not.toBeChecked()
   })
@@ -574,5 +578,97 @@ describe('a way in, from added to gone', () => {
     await expect
       .element(page.getByTestId('method-sheet').getByText('邮箱密码').first())
       .toBeVisible()
+  })
+})
+
+describe('the sign-in page, as its administrator arranges it', () => {
+  const four = [
+    provider(),
+    cas({ id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', code: 'a', name: 'A 门' }),
+    cas({ id: 'ffffffff-ffff-4fff-8fff-ffffffffffff', code: 'b', name: 'B 门' }),
+    cas({ prominence: 'secondary' }),
+  ]
+
+  it('lists the main ways in apart from the rest, each group in its order', async () => {
+    renderScreen({
+      client: fakeClient(stubs({ listAuthProviders: () => Effect.succeed({ providers: four }) })),
+      route: '/admin/login-methods',
+      children: <LoginMethodsPage />,
+    })
+    const primary = page.getByTestId('method-group-primary')
+    const secondary = page.getByTestId('method-group-secondary')
+    await expect.element(primary).toHaveAttribute('data-count', '3')
+    await expect.element(secondary).toHaveAttribute('data-count', '1')
+    expect(
+      [...primary.element().querySelectorAll('[data-testid="method-row"]')].map((row) =>
+        row.getAttribute('data-code'),
+      ),
+    ).toEqual(['password', 'a', 'b'])
+  })
+
+  it('moves a way in between the groups from a phone, and not into a full one', async () => {
+    await page.viewport(390, 844)
+    try {
+      const arrange = vi.fn(() => Effect.succeed({ ok: true as const }))
+      renderScreen({
+        client: fakeClient(
+          stubs({
+            listAuthProviders: () => Effect.succeed({ providers: four }),
+            setAuthProviderOrder: arrange,
+          }),
+        ),
+        route: '/admin/login-methods',
+        children: <LoginMethodsPage />,
+      })
+      // the main ways in are full: the other one cannot join them
+      const other = page.getByTestId('method-group-secondary').getByTestId('method-order')
+      await other.click()
+      await expect.element(page.getByTestId('method-to-primary')).toHaveAttribute('data-disabled')
+      await userEvent.keyboard('{Escape}')
+      // one of them can leave for the rest
+      await page.getByTestId('method-group-primary').getByTestId('method-order').first().click()
+      await page.getByTestId('method-to-secondary').click()
+      await expect.poll(() => arrange.mock.calls.length).toBe(1)
+      expect(arrange.mock.calls[0]).toEqual([
+        {
+          payload: {
+            primary: ['eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', 'ffffffff-ffff-4fff-8fff-ffffffffffff'],
+            secondary: [CAS_ID, PASSWORD_ID],
+          },
+        },
+      ])
+    } finally {
+      await page.viewport(1280, 800)
+    }
+  })
+
+  it('recommends only a main way in, and draws a door by the icon chosen for it', async () => {
+    const recommend = vi.fn(() => Effect.succeed({ ok: true as const }))
+    const icon = vi.fn(() =>
+      Effect.succeed({ icon: { kind: 'builtin' as const, key: 'github' as const }, iconChosen: true }),
+    )
+    renderScreen({
+      client: fakeClient({
+        ...stubs({
+          listAuthProviders: () => Effect.succeed({ providers: four }),
+          getAuthProvider: () => Effect.succeed(detail(four[3]!)),
+          setRecommendedAuthProvider: recommend,
+        }),
+        loginIcon: { setProviderIcon: icon },
+      }),
+      route: `/admin/login-methods?provider=${CAS_ID}`,
+      children: <LoginMethodsPage />,
+    })
+    const shown = page.getByTestId('method-shown')
+    await expect.element(shown).toHaveAttribute('data-prominence', 'secondary')
+    // one of the rest cannot be the one recommended
+    await expect.element(shown.getByTestId('method-recommend')).toBeDisabled()
+    await shown.getByRole('button', { name: '更换' }).click()
+    await page.getByTestId('icon-picker').getByRole('button', { name: 'GitHub' }).click()
+    await expect.poll(() => icon.mock.calls.length).toBe(1)
+    expect(icon.mock.calls[0]).toEqual([
+      { params: { providerId: CAS_ID }, payload: { icon: { kind: 'builtin', key: 'github' } } },
+    ])
+    expect(recommend).not.toHaveBeenCalled()
   })
 })

@@ -29,6 +29,7 @@ import {
 /** the password door: one per tenant, provisioned by the platform */
 export const driver: LoginDriver = {
   type: 'local',
+  icon: 'mail',
   presentation: { mode: 'component', component: Ui.react('./client/LoginMethod') },
   provisioning: {
     mode: 'system-singleton',

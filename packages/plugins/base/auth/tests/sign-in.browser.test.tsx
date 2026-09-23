@@ -17,14 +17,36 @@ const password = {
   code: 'password',
   type: 'local',
   name: '账号密码',
+  prominence: 'primary' as const,
+  recommended: false,
+  icon: { kind: 'builtin' as const, key: 'mail' as const },
   mode: 'component' as const,
 }
+
+/** the public login context: a workspace by name, its ways in, and its password rule */
+const context = (methods: readonly unknown[]) => ({
+  tenant: { name: '示范大学' },
+  methods,
+  passwordRule: { minLength: 12, maxLength: 128 },
+})
+
+const away = (code: string, name: string, over: Record<string, unknown> = {}) => ({
+  code,
+  type: 'cas',
+  name,
+  prominence: 'secondary' as const,
+  recommended: false,
+  icon: null,
+  mode: 'redirect' as const,
+  href: `/api/auth/cas/${code}/start`,
+  ...over,
+})
 
 const screen = (login: Record<string, ReturnType<typeof lazy>>) =>
   renderScreen({
     client: fakeClient({
       app: { getManifest: emptyManifest() },
-      auth: { listLoginMethods: { methods: [password] } },
+      auth: { listLoginMethods: context([password]) },
     }),
     registry: { login },
     // the method is chosen in the address, so the screen opens on the
@@ -40,7 +62,7 @@ describe('the sign-in screen', () => {
     // renderer was resolved rather than the shell drawing an empty card
     await expect.element(page.getByLabelText('邮箱')).toBeVisible()
     await expect.element(page.getByLabelText('密码')).toBeVisible()
-    // exact, because the way back out of the driver is "← 其他登录方式"
+    // exact, because the way back out of the driver says 其他登录方式
     await expect.element(page.getByRole('button', { name: '登录', exact: true })).toBeVisible()
   })
 
@@ -54,7 +76,7 @@ describe('the sign-in screen', () => {
               pages: [{ id: 'auth/reset-password', path: '/reset-password', layout: 'blank' }],
             }),
         },
-        auth: { listLoginMethods: { methods: [password] } },
+        auth: { listLoginMethods: context([password]) },
       }),
       registry: {
         login: { local: lazy(() => import('@qualy/plugin-auth-local/client/LoginMethod')) },
@@ -83,7 +105,7 @@ describe('the sign-in screen', () => {
       .element(page.getByTestId('login-renderer'))
       .toHaveAttribute('data-renderer', 'missing')
     // and the way out is still there, which is the whole point of catching it
-    await expect.element(page.getByRole('button', { name: '← 其他登录方式' })).toBeVisible()
+    await expect.element(page.getByRole('button', { name: '其他登录方式' })).toBeVisible()
   })
 
   it('fails closed when this build carries no renderer for that type', async () => {
@@ -95,7 +117,7 @@ describe('the sign-in screen', () => {
       .element(page.getByTestId('login-renderer'))
       .toHaveAttribute('data-renderer', 'missing')
     await expect.element(page.getByLabelText('用户名')).not.toBeInTheDocument()
-    await expect.element(page.getByRole('button', { name: '← 其他登录方式' })).toBeVisible()
+    await expect.element(page.getByRole('button', { name: '其他登录方式' })).toBeVisible()
   })
 
   it('says why a sign-in that went elsewhere came back, and reads only codes', async () => {
@@ -103,7 +125,7 @@ describe('the sign-in screen', () => {
       renderScreen({
         client: fakeClient({
           app: { getManifest: emptyManifest() },
-          auth: { listLoginMethods: { methods: [password] } },
+          auth: { listLoginMethods: context([password]) },
         }),
         route,
         children: <LoginPage />,
@@ -120,12 +142,82 @@ describe('the sign-in screen', () => {
     renderScreen({
       client: fakeClient({
         app: { getManifest: emptyManifest() },
-        auth: { listLoginMethods: { methods: [password] } },
+        auth: { listLoginMethods: context([password]) },
       }),
       route: `/login?error=${encodeURIComponent('<b>hello</b>')}`,
       children: <LoginPage />,
     })
     await expect.element(page.getByRole('button', { name: '账号密码' })).toBeVisible()
     expect(document.querySelector('[data-testid="sign-in-failure"]')).toBeNull()
+  })
+})
+
+describe('the ways in, as the page lays them out', () => {
+  const open = (methods: readonly unknown[], route = '/login') =>
+    renderScreen({
+      client: fakeClient({
+        app: { getManifest: emptyManifest() },
+        auth: { listLoginMethods: context(methods) },
+      }),
+      route,
+      children: <LoginPage />,
+    })
+
+  it('names the workspace once, lists the main ways as equals and the rest as tiles', async () => {
+    open([
+      password,
+      away('cas', '统一身份认证', { prominence: 'primary' }),
+      away('github', 'GitHub', { icon: { kind: 'builtin', key: 'github' } }),
+    ])
+    await expect.element(page.getByTestId('sign-in-tenant')).toHaveTextContent('示范大学')
+    await expect.element(page.getByTestId('sign-in-primary').first()).toBeVisible()
+    expect(page.getByTestId('sign-in-primary').elements()).toHaveLength(2)
+    // nobody recommended one, so none of them is set apart
+    expect(
+      page.getByTestId('sign-in-primary').elements().map((key) => key.getAttribute('data-recommended')),
+    ).toEqual(['false', 'false'])
+    expect(page.getByTestId('sign-in-tile').elements()).toHaveLength(1)
+    await expect
+      .element(page.getByRole('button', { name: '使用GitHub登录' }))
+      .toBeVisible()
+    expect(page.getByTestId('sign-in-more').elements()).toHaveLength(0)
+  })
+
+  it('sets apart only the way the tenant recommends', async () => {
+    open([password, away('cas', '统一身份认证', { prominence: 'primary', recommended: true })])
+    await expect.element(page.getByTestId('sign-in-primary').first()).toBeVisible()
+    expect(
+      page.getByTestId('sign-in-primary').elements().map((key) => key.getAttribute('data-recommended')),
+    ).toEqual(['false', 'true'])
+  })
+
+  it('opens every other way from the last tile, and searches them when there are many', async () => {
+    const many = Array.from({ length: 10 }, (_, index) => away(`way${index}`, `方式${index}`))
+    open([password, ...many])
+    // six tiles in a row: five ways and the way to all of them
+    await expect.element(page.getByTestId('sign-in-more')).toBeVisible()
+    expect(page.getByTestId('sign-in-tile').elements()).toHaveLength(5)
+    await page.getByTestId('sign-in-more').click()
+    await expect.element(page.getByTestId('sign-in-all')).toBeVisible()
+    expect(page.getByTestId('sign-in-listed').elements()).toHaveLength(10)
+    await page.getByRole('searchbox').fill('方式3')
+    await expect.poll(() => page.getByTestId('sign-in-listed').elements().length).toBe(1)
+    // and back to where it started
+    await page.getByRole('button', { name: '返回' }).click()
+    await expect.element(page.getByTestId('sign-in-more')).toBeVisible()
+  })
+
+  it('says an expired sign-in in grey, not as an error, and lets it be put down', async () => {
+    open([password], '/login?error=AUTH_FLOW_REJECTED')
+    const notice = page.getByTestId('sign-in-failure')
+    await expect.element(notice).toHaveAttribute('data-tone', 'info')
+    await notice.getByRole('button', { name: '关闭' }).click()
+    await expect.poll(() => document.querySelector('[data-testid="sign-in-failure"]')).toBeNull()
+    await expect.element(page.getByRole('button', { name: '账号密码' })).toBeVisible()
+  })
+
+  it('offers nothing to choose when there is nothing to choose', async () => {
+    open([])
+    await expect.element(page.getByTestId('sign-in-empty')).toBeVisible()
   })
 })

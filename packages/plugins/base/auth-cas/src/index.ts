@@ -157,6 +157,7 @@ const fields: readonly EntranceField[] = [
 
 export const driver: LoginDriver = {
   type: 'cas',
+  icon: 'campus',
   presentation: {
     mode: 'redirect',
     href: ({ code }) => urls.authCas.start({ params: { providerCode: code }, query: {} }),

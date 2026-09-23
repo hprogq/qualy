@@ -29,6 +29,7 @@ import { Input } from '@qualy/ui/input'
 import { iamMessages as m } from '../../i18n.ts'
 import { authApi } from '../../api.ts'
 import { MethodFields } from './MethodFields.tsx'
+import { ShownCard } from './ShownCard.tsx'
 import { fieldShown, formValues, type EntranceKind } from './form-values.ts'
 import { CheckIcon, CopyIcon, TriangleAlertIcon } from 'lucide-react'
 import { toast } from '@qualy/ui/toast'
@@ -41,8 +42,9 @@ import { Alert, AlertDescription, AlertTitle } from '@qualy/ui/alert'
 // it is in service, who it lets through, whatever its kind needs to be told,
 // and whether it exists at all. An entrance goes into service only once it
 // has everything its kind needs, and while it is in service nothing it needs
-// can be taken away here. Where it answers is fixed when it is made, and
-// where it stands on the sign-in page is set by dragging it in the list.
+// can be taken away here. Where it answers is fixed when it is made; where it
+// stands on the sign-in page is set by dragging it in the list, and how it is
+// drawn there, and whether it is the one recommended, on its own card.
 
 export type ProviderRow = ApiResult<
   typeof authApi,
@@ -277,7 +279,15 @@ export function MethodSheet({
       title={provider.name}
       titleAside={<Tag outline>{kindWord}</Tag>}
       meta={
-        <MetaLine items={[format(m.loginMethodsTitle), format(m.providerPosition, { position })]} />
+        <MetaLine
+          items={[
+            format(m.loginMethodsTitle),
+            format(
+              provider.prominence === 'primary' ? m.methodShownPrimary : m.methodShownSecondary,
+              { position },
+            ),
+          ]}
+        />
       }
       actions={
         canManage ? (
@@ -462,10 +472,6 @@ export function MethodSheet({
               <span {...stylex.props(styles.aside)}>{format(m.methodCallbackHint)}</span>
             </DefLine>
           )}
-          <DefLine label={format(m.providerOrderLabel)}>
-            <span {...stylex.props(styles.figure)}>{position}</span>
-            <span {...stylex.props(styles.aside)}>{format(m.methodOrderHint)}</span>
-          </DefLine>
         </DefList>
         {canManage && (
           <CardFoot inset>
@@ -492,6 +498,8 @@ export function MethodSheet({
           </CardFoot>
         )}
       </Card>
+      <ShownCard provider={provider} position={position} canManage={canManage} />
+
       <ConfirmDialog
         open={asking !== null}
         {...(asking === 'disabled' ? { tone: 'destructive' as const } : {})}

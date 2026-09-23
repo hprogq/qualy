@@ -1,5 +1,6 @@
 import { Schema } from 'effect'
-import { HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
+import { BUILTIN_LOGIN_ICONS } from '@qualy/auth-contract/login-icons'
+import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/unstable/httpapi'
 import { AccessDenied, LastAdministrator } from '@qualy/rbac-contract/effect'
 import {
   BadRequest,
@@ -22,6 +23,9 @@ import { Authenticated, AuthRequired, TooManyAttemptsResponse } from '@qualy/aut
 import {
   GrantIncompatible,
   PlacementNotAllowed,
+  ProviderArrangementInvalid,
+  ProviderIconInvalid,
+  LoginMethodIconUnavailable,
   ProviderNotFound,
   ProviderVersionConflict,
   RecoveryChannelRequired,
@@ -281,6 +285,15 @@ const audiencePolicyWrite = Schema.Union([
   }),
 ])
 
+/** how a way in is drawn: one of the page's own icons, an uploaded image, or its initial */
+const loginMethodIcon = Schema.NullOr(
+  Schema.Union([
+    Schema.Struct({ kind: Schema.Literal('builtin'), key: Schema.Literals(BUILTIN_LOGIN_ICONS) }),
+    // by the version of the image, which is also what makes a new one a new address
+    Schema.Struct({ kind: Schema.Literal('image'), version: Schema.String }),
+  ]),
+)
+
 const authProvider = Schema.Struct({
   id: Schema.String,
   code: Schema.String,
@@ -293,6 +306,13 @@ const authProvider = Schema.Struct({
   setup: Schema.Literals(['complete', 'incomplete']),
   isSystem: Schema.Boolean,
   sortOrder: Schema.Number,
+  /** listed in full on the sign-in page, or a tile under those */
+  prominence: Schema.Literals(['primary', 'secondary']),
+  recommended: Schema.Boolean,
+  /** how the sign-in page draws it: the administrator's choice, else its kind's own */
+  icon: loginMethodIcon,
+  /** whether that icon is a choice somebody made rather than its kind's own */
+  iconChosen: Schema.Boolean,
   version: Schema.Number,
   audience: audiencePolicyView,
 })
@@ -445,14 +465,25 @@ export const identityApiGroup = HttpApiGroup.make('identity')
       ],
     }).middleware(Authenticated),
   )
-  // the order of the sign-in page is one fact about all of them, replaced whole
+  // How the sign-in page presents its doors is one fact about all of them,
+  // replaced whole: which are listed in full, in what order, and the rest in
+  // theirs. Every door is named exactly once.
   .add(
     HttpApiEndpoint.put('setAuthProviderOrder', '/auth/provider-order', {
       payload: Schema.Struct({
-        providerIds: Schema.Array(uuidInput).check(Schema.isMaxLength(50)),
+        primary: Schema.Array(uuidInput).check(Schema.isMaxLength(50)),
+        secondary: Schema.Array(uuidInput).check(Schema.isMaxLength(50)),
       }),
       success: Schema.Struct({ ok: Schema.Literal(true) }),
-      error: [ProviderNotFound, AccessDenied],
+      error: [ProviderNotFound, ProviderArrangementInvalid, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  // the one door the tenant recommends, or none: a tenant-wide fact
+  .add(
+    HttpApiEndpoint.put('setRecommendedAuthProvider', '/auth/provider-recommendation', {
+      payload: Schema.Struct({ providerId: Schema.NullOr(uuidInput) }),
+      success: Schema.Struct({ ok: Schema.Literal(true) }),
+      error: [ProviderNotFound, ProviderArrangementInvalid, AccessDenied],
     }).middleware(Authenticated),
   )
   .add(
@@ -831,20 +862,26 @@ export const identityApiGroup = HttpApiGroup.make('identity')
 // the same thing two different ways and left no room for the per-device
 // listing this will grow.
 
+/** where a door stands on the page and how it is drawn, the same for either kind */
+const loginMethodShown = {
+  code: Schema.String,
+  type: Schema.String,
+  name: Schema.String,
+  prominence: Schema.Literals(['primary', 'secondary']),
+  recommended: Schema.Boolean,
+  icon: loginMethodIcon,
+}
+
 /** the public descriptor of one way in; never config, never internal ids */
 const loginMethod = Schema.Union([
   Schema.Struct({
-    code: Schema.String,
-    type: Schema.String,
-    name: Schema.String,
+    ...loginMethodShown,
     // the renderer is found by `type`; naming its module here told every
     // anonymous visitor which package implements this way in
     mode: Schema.Literal('component'),
   }),
   Schema.Struct({
-    code: Schema.String,
-    type: Schema.String,
-    name: Schema.String,
+    ...loginMethodShown,
     mode: Schema.Literal('redirect'),
     href: Schema.String,
   }),
@@ -868,8 +905,17 @@ const signedInUser = Schema.Struct({
 
 export const sessionApiGroup = HttpApiGroup.make('auth')
   .add(
+    // The public login context: which workspace this is, by name only, and
+    // its ways in. Null when there is no workspace to sign in to here.
     HttpApiEndpoint.get('listLoginMethods', '/auth/login-methods', {
-      success: Schema.Struct({ methods: Schema.Array(loginMethod) }),
+      success: Schema.Struct({
+        tenant: Schema.NullOr(Schema.Struct({ name: Schema.String })),
+        methods: Schema.Array(loginMethod),
+        // what a password here has to be, where a door keeps passwords
+        passwordRule: Schema.NullOr(
+          Schema.Struct({ minLength: Schema.Number, maxLength: Schema.Number }),
+        ),
+      }),
     }),
   )
   .add(
@@ -1126,5 +1172,63 @@ export const selfApiGroup = HttpApiGroup.make('self')
     HttpApiEndpoint.delete('deleteSelfSessions', '/iam/self/sessions', {
       success: Schema.Struct({ ended: Schema.Number }),
       error: [UserNotFound],
+    }).middleware(Authenticated),
+  )
+
+/** the image kinds a door's icon may be: drawn by a browser without running anything */
+export const LOGIN_ICON_TYPES = ['image/png', 'image/jpeg', 'image/webp'] as const
+
+/** the most an icon may weigh; it is drawn at fifty pixels */
+export const LOGIN_ICON_MAX_BYTES = 256 * 1024
+
+// A door's uploaded icon: prepared and chosen by the tenant's administrators,
+// read by anybody on the sign-in page. Apart from the other groups because it
+// is the one part of this plugin that stores files.
+export const loginIconApiGroup = HttpApiGroup.make('loginIcon')
+  .add(
+    // the image itself, for the sign-in page; `v` is only the cache's key
+    HttpApiEndpoint.get('getLoginMethodIcon', '/auth/login-methods/:providerCode/icon', {
+      params: Schema.Struct({ providerCode: Schema.String.check(Schema.isMaxLength(63)) }),
+      query: Schema.Struct({ v: Schema.optional(Schema.String.check(Schema.isMaxLength(64))) }),
+      success: HttpApiSchema.StreamUint8Array(),
+      error: [LoginMethodIconUnavailable],
+    }),
+  )
+  .add(
+    // a place to put an image before choosing it: one ticket, one file
+    HttpApiEndpoint.post('prepareProviderIconUpload', '/auth/providers/:providerId/icon-uploads', {
+      params: Schema.Struct({ providerId: uuidInput }),
+      payload: Schema.Struct({
+        filename: trimmedName(255),
+        declaredMime: Schema.Literals(LOGIN_ICON_TYPES),
+        /** decimal bytes */
+        size: Schema.String.check(Schema.isPattern(/^[1-9]\d{0,6}$/)),
+      }),
+      success: Schema.Struct({
+        reservationId: Schema.String,
+        attachmentId: Schema.String,
+        grant: Schema.Struct({ driver: Schema.String, payload: Schema.Unknown }),
+        expiresAt: Schema.String,
+      }),
+      error: [ProviderNotFound, ProviderIconInvalid, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // how the door is drawn: one of the page's own icons, the image just
+    // uploaded, or its kind's own again
+    HttpApiEndpoint.put('setProviderIcon', '/auth/providers/:providerId/icon', {
+      params: Schema.Struct({ providerId: uuidInput }),
+      payload: Schema.Struct({
+        icon: Schema.Union([
+          Schema.Struct({
+            kind: Schema.Literal('builtin'),
+            key: Schema.Literals(BUILTIN_LOGIN_ICONS),
+          }),
+          Schema.Struct({ kind: Schema.Literal('upload'), reservationId: uuidInput }),
+          Schema.Struct({ kind: Schema.Literal('default') }),
+        ]),
+      }),
+      success: Schema.Struct({ icon: loginMethodIcon, iconChosen: Schema.Boolean }),
+      error: [ProviderNotFound, ProviderIconInvalid, AccessDenied],
     }).middleware(Authenticated),
   )

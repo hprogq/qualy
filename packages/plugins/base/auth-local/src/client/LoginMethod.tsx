@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useState, type CSSProperties, type FormEvent } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { PageLink, useApi, useRunApi } from '@qualy/web-runtime'
@@ -12,11 +12,32 @@ import { authLocalApi } from './api.ts'
 
 // embedded credential renderer: the auth core's login shell owns the page,
 // this form only proves the user against one local provider instance
+// a refused attempt nods no: the form shakes once, the way a door that stays
+// shut does, and the field that was wrong says so
+const shake = stylex.keyframes({
+  '0%': { transform: 'translateX(0)' },
+  '20%': { transform: 'translateX(8px)' },
+  '40%': { transform: 'translateX(-6px)' },
+  '60%': { transform: 'translateX(4px)' },
+  '80%': { transform: 'translateX(-2px)' },
+  '100%': { transform: 'translateX(0)' },
+})
+
 const styles = stylex.create({
-  form: { display: 'flex', flexDirection: 'column', gap: 16 },
+  form: { display: 'flex', flexDirection: 'column', gap: 18 },
+  shaking: {
+    animationName: shake,
+    animationDuration: '350ms',
+    animationTimingFunction: 'linear',
+    '@media (prefers-reduced-motion: reduce)': { animationName: 'none' },
+  },
+  refused: {
+    boxShadow: `0 0 0 1px color-mix(in oklab, ${tokens.danger} 60%, transparent), 0 0 0 4px color-mix(in oklab, ${tokens.danger} 8%, transparent)`,
+    borderRadius: 8,
+  },
   field: { display: 'flex', flexDirection: 'column', gap: 8 },
-  refusal: { fontSize: 14, lineHeight: '1.25rem', color: tokens.danger },
-  submit: { width: '100%' },
+  refusal: { margin: 0, fontSize: 13, lineHeight: '1.25rem', color: tokens.danger },
+  submit: { width: '100%', marginTop: 6 },
   // The link sits beside the label but follows the input in the document,
   // so Tab goes from the address straight to the password.
   passwordField: {
@@ -37,6 +58,9 @@ const styles = stylex.create({
   },
 })
 
+/** the doorstep's fields are a size up from a form's: the one thing on the page */
+const field = { '--input-height': '44px', '--input-radius': '11px' } as CSSProperties
+
 export default function LocalLoginMethod({ method, onAuthenticated }: LoginMethodRendererProps) {
   const api = useApi(authLocalApi)
   const run = useRunApi()
@@ -45,6 +69,8 @@ export default function LocalLoginMethod({ method, onAuthenticated }: LoginMetho
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // set by a refusal and put down when the shake ends, so the next one shakes again
+  const [shaking, setShaking] = useState(false)
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
@@ -61,12 +87,17 @@ export default function LocalLoginMethod({ method, onAuthenticated }: LoginMetho
       onAuthenticated()
     } catch (failure: unknown) {
       setError(formatError(failure))
+      setShaking(true)
       setBusy(false)
     }
   }
 
   return (
-    <form onSubmit={submit} {...stylex.props(styles.form)}>
+    <form
+      onSubmit={submit}
+      onAnimationEnd={() => setShaking(false)}
+      {...stylex.props(styles.form, shaking && styles.shaking)}
+    >
       <div {...stylex.props(styles.field)}>
         <Label htmlFor="email">{format(m.email)}</Label>
         <Input
@@ -74,6 +105,7 @@ export default function LocalLoginMethod({ method, onAuthenticated }: LoginMetho
           type="email"
           // the address is the account name, and a password manager files it so
           autoComplete="username"
+          style={field}
           value={email}
           onChange={(event) => setEmail(event.target.value)}
         />
@@ -86,9 +118,14 @@ export default function LocalLoginMethod({ method, onAuthenticated }: LoginMetho
           id="password"
           type="password"
           autoComplete="current-password"
+          style={field}
           value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          wrapperXstyle={styles.passwordInput}
+          onChange={(event) => {
+            setPassword(event.target.value)
+            setError(null)
+          }}
+          aria-invalid={error !== null}
+          wrapperXstyle={[styles.passwordInput, error !== null && styles.refused]}
         />
         {/* the page belongs to whoever owns people; a build without it
             has no link here rather than a dead one */}
@@ -103,6 +140,7 @@ export default function LocalLoginMethod({ method, onAuthenticated }: LoginMetho
       {error && <p {...stylex.props(styles.refusal)}>{error}</p>}
       <Button
         type="submit"
+        size="lg"
         className={stylex.props(styles.submit).className}
         disabled={busy || !email || !password}
       >

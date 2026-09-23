@@ -428,3 +428,58 @@ describe.runIf(postgresAvailable)('the entrance-settings migration', () => {
     }
   })
 })
+
+// Doors became primary or secondary. Every door used to be listed in full, so
+// the migration keeps the first three live ones of each tenant primary - a
+// data step over rows an earlier release wrote, proved against that shape.
+describe.runIf(postgresAvailable)('the login-method-prominence migration', () => {
+  it('keeps the first three live doors of each tenant listed in full', async () => {
+    const PROMINENCE = '20260923063919_login-method-prominence.sql'
+    expect(fs.existsSync(path.join(MIGRATIONS_FOLDER, PROMINENCE))).toBe(true)
+    const before = lineageBefore(PROMINENCE, 'prominence-upgrade')
+    const db = await createTestContext('prominence-upgrade', {
+      migrations: 'apply',
+      migrationsFolder: before,
+    })
+    try {
+      const tenant = async (slug: string) =>
+        (
+          await db.row<{ id: string }>(
+            `insert into tenants (slug, name) values ($1, $1) returning id`,
+            [slug],
+          )
+        ).id
+      const one = await tenant('one')
+      const two = await tenant('two')
+      const door = async (tenantId: string, code: string, sortOrder: number, deleted = false) =>
+        db.row(
+          `insert into auth_providers (tenant_id, code, type, name, sort_order, enabled, deleted_at)
+           values ($1, $2, 'cas', $2, $3, $4, $5) returning id`,
+          [tenantId, code, sortOrder, !deleted, deleted ? new Date() : null],
+        )
+      // out of order on purpose: the order shown is sort_order, then code
+      await door(one, 'fourth', 3)
+      await door(one, 'gone', 0, true)
+      await door(one, 'second', 1)
+      await door(one, 'first', 0)
+      await door(one, 'third', 2)
+      await door(two, 'only', 5)
+
+      await runMigrations(db.url, { folder: MIGRATIONS_FOLDER, entities: [] })
+
+      const { rows } = await db.query<{ code: string; prominence: string; recommended: boolean }>(
+        `select code, prominence, recommended from auth_providers order by code`,
+      )
+      expect(rows).toEqual([
+        { code: 'first', prominence: 'primary', recommended: false },
+        { code: 'fourth', prominence: 'secondary', recommended: false },
+        { code: 'gone', prominence: 'secondary', recommended: false },
+        { code: 'only', prominence: 'primary', recommended: false },
+        { code: 'second', prominence: 'primary', recommended: false },
+        { code: 'third', prominence: 'primary', recommended: false },
+      ])
+    } finally {
+      await db.dispose()
+    }
+  })
+})

@@ -58,11 +58,26 @@ describe('a forgotten password', () => {
   it('sets the new one with the token the link carried, and never two that differ', async () => {
     const redeem = vi.fn(() => Effect.succeed({ ok: true as const }))
     renderScreen({
-      client: client({ auth: { createPasswordResetRedemption: redeem } }),
+      client: client({
+        auth: {
+          createPasswordResetRedemption: redeem,
+          listLoginMethods: () =>
+            Effect.succeed({
+              tenant: null,
+              methods: [],
+              passwordRule: { minLength: 12, maxLength: 128 },
+            }),
+        },
+      }),
       route: '/reset-password#token=link-token',
       children: <ResetPasswordPage />,
     })
+    // the rule is said while it is typed, and holds the button until it is met
+    await page.getByLabelText('新密码', { exact: true }).fill('too short')
+    await expect.element(page.getByTestId('password-rule')).toHaveAttribute('data-met', 'false')
+    await expect.element(page.getByRole('button', { name: '设置密码' })).toBeDisabled()
     await page.getByLabelText('新密码', { exact: true }).fill('a long new password')
+    await expect.element(page.getByTestId('password-rule')).toHaveAttribute('data-met', 'true')
     await page.getByLabelText('再次输入新密码').fill('a different password')
     await page.getByRole('button', { name: '设置密码' }).click()
     await expect.element(page.getByTestId('password-mismatch')).toBeInTheDocument()

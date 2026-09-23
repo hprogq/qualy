@@ -60,6 +60,38 @@ export class ProviderNotFound extends Schema.TaggedError<ProviderNotFound>()(
   { httpApiStatus: 404, identifier: 'AuthProviderNotFound' },
 ) {}
 
+/**
+ * How the sign-in page was asked to present its doors does not hold.
+ *
+ * `primary-full`: more doors listed in full than the page has room for.
+ * `not-primary`: only a door listed in full can be the recommended one.
+ */
+export class ProviderArrangementInvalid extends Schema.TaggedError<ProviderArrangementInvalid>()(
+  'AUTH_PROVIDER_ARRANGEMENT_INVALID',
+  { reason: Schema.Literals(['primary-full', 'not-primary']) },
+  { httpApiStatus: 422, identifier: 'AuthProviderArrangementInvalid' },
+) {}
+
+/**
+ * An image offered as a door's icon that cannot be one.
+ *
+ * `type`: not a png, jpeg or webp - the kinds a browser draws without
+ * running anything. `size`: larger than an icon needs to be. `upload`: the
+ * upload it names never finished, or belongs to somebody else.
+ */
+export class ProviderIconInvalid extends Schema.TaggedError<ProviderIconInvalid>()(
+  'AUTH_PROVIDER_ICON_INVALID',
+  { reason: Schema.Literals(['type', 'size', 'upload']) },
+  { httpApiStatus: 422, identifier: 'AuthProviderIconInvalid' },
+) {}
+
+/** no uploaded icon for that door here */
+export class LoginMethodIconUnavailable extends Schema.TaggedError<LoginMethodIconUnavailable>()(
+  'AUTH_LOGIN_METHOD_ICON_UNAVAILABLE',
+  {},
+  { httpApiStatus: 404, identifier: 'AuthLoginMethodIconUnavailable' },
+) {}
+
 export class ProviderVersionConflict extends Schema.TaggedError<ProviderVersionConflict>()(
   'AUTH_PROVIDER_VERSION_CONFLICT',
   { currentVersion: Schema.Number },

@@ -241,6 +241,14 @@ const i18n = definePluginMessages({
     'audit.auth.provider.delete': { id: 'auth/audit/provider-delete', defaultMessage: 'Delete an entrance' },
     'audit.auth.provider.status': { id: 'auth/audit/provider-status', defaultMessage: 'Enable or disable an entrance' },
     'audit.auth.provider.reorder': { id: 'auth/audit/provider-reorder', defaultMessage: 'Reorder the sign-in page' },
+    'audit.auth.provider.recommend': {
+      id: 'auth/audit/provider-recommend',
+      defaultMessage: 'Choose the recommended way to sign in',
+    },
+    'audit.auth.provider.icon': {
+      id: 'auth/audit/provider-icon',
+      defaultMessage: 'Change how a way to sign in is drawn',
+    },
     'audit.auth.identity.bind': {
       id: 'auth/audit/identity-bind',
       defaultMessage: 'Set a sign-in credential for a user',
@@ -316,6 +324,94 @@ const i18n = definePluginMessages({
       defaultMessage: 'Change who may sign in through an entrance',
     },
     title: { id: 'auth/login/title', defaultMessage: 'Sign in to Qualy' },
+    chooseMethod: { id: 'auth/login/choose', defaultMessage: 'Choose a way to sign in' },
+    otherMethodsHeading: { id: 'auth/login/others', defaultMessage: 'Other ways to sign in' },
+    allOtherMethods: {
+      id: 'auth/login/all-others',
+      defaultMessage: 'All {count, plural, one {# other way} other {# other ways}}',
+    },
+    otherMethodsCount: {
+      id: 'auth/login/others-count',
+      defaultMessage: '{count, plural, one {# way} other {# ways}}',
+    },
+    signInWith: { id: 'auth/login/sign-in-with', defaultMessage: 'Sign in with {name}' },
+    searchMethods: { id: 'auth/login/search', defaultMessage: 'Search ways to sign in' },
+    noMethodMatch: { id: 'auth/login/no-match', defaultMessage: 'No way to sign in by that name' },
+    back: { id: 'auth/login/back', defaultMessage: 'Back' },
+    goingTo: { id: 'auth/login/going-to', defaultMessage: 'Going to {name}…' },
+    stayHere: { id: 'auth/login/stay', defaultMessage: 'Cancel' },
+    noMethodsTitle: { id: 'auth/login/no-methods-title', defaultMessage: 'Signing in is unavailable' },
+    dismiss: { id: 'auth/login/dismiss', defaultMessage: 'Dismiss' },
+    signInElsewhere: {
+      id: 'auth/login/elsewhere',
+      defaultMessage: 'Accounts that sign in another way have no Qualy password. Recover it with that service.',
+    },
+    // why a sign-in that went elsewhere came back without one: what
+    // happened, then what to do
+    failUnboundTitle: { id: 'auth/login/fail-unbound', defaultMessage: 'This account is not linked yet' },
+    failUnboundBody: {
+      id: 'auth/login/fail-unbound-body',
+      defaultMessage: 'Sign in another way, then link it under Account → Sign-in methods.',
+    },
+    failFlowTitle: {
+      id: 'auth/login/fail-flow',
+      defaultMessage: 'This sign-in expired or is already done',
+    },
+    failFlowBody: { id: 'auth/login/fail-flow-body', defaultMessage: 'Please sign in again.' },
+    failPersonTitle: { id: 'auth/login/fail-person', defaultMessage: 'No account to sign in to' },
+    failPersonBody: {
+      id: 'auth/login/fail-person-body',
+      defaultMessage:
+        'Your identity was confirmed, but no usable account here matches it. Contact your administrator.',
+    },
+    failMethodTitle: {
+      id: 'auth/login/fail-method',
+      defaultMessage: 'This way to sign in is unavailable',
+    },
+    failMethodBody: { id: 'auth/login/fail-method-body', defaultMessage: 'Try another way.' },
+    failAttemptsTitle: { id: 'auth/login/fail-attempts', defaultMessage: 'Too many attempts' },
+    failAttemptsBody: {
+      id: 'auth/login/fail-attempts-body',
+      defaultMessage: 'Try again in {minutes, plural, one {# minute} other {# minutes}}.',
+    },
+    // a way in a product owns, drawn as a letter on its colour
+    iconLetterGoogle: { id: 'auth/login/icon-google', defaultMessage: 'G' },
+    iconLetterApple: { id: 'auth/login/icon-apple', defaultMessage: 'A' },
+    iconLetterWechat: { id: 'auth/login/icon-wechat', defaultMessage: 'W' },
+    iconLetterWecom: { id: 'auth/login/icon-wecom', defaultMessage: 'W' },
+    iconLetterDingtalk: { id: 'auth/login/icon-dingtalk', defaultMessage: 'D' },
+    iconLetterFeishu: { id: 'auth/login/icon-feishu', defaultMessage: 'F' },
+    iconLetterQq: { id: 'auth/login/icon-qq', defaultMessage: 'Q' },
+    // recovery, in the same column as signing in
+    backToSignIn: { id: 'auth/reset/back', defaultMessage: 'Back to sign in' },
+    resetSending: { id: 'auth/reset/sending', defaultMessage: 'Sending…' },
+    resetSentTitle: { id: 'auth/reset/sent-title', defaultMessage: 'Check your email' },
+    resetSentBody: {
+      id: 'auth/reset/sent-body',
+      defaultMessage: 'If {email} is verified, a reset link is on its way to it. It works for one hour.',
+    },
+    resetOtherEmail: { id: 'auth/reset/other-email', defaultMessage: 'Use another email' },
+    resetSetTitle: { id: 'auth/reset/set-title', defaultMessage: 'Set a new password' },
+    resetSetHint: {
+      id: 'auth/reset/set-hint',
+      defaultMessage: 'Every device signed in to this account will be signed out.',
+    },
+    resetShowPassword: { id: 'auth/reset/show', defaultMessage: 'Show password' },
+    resetLength: {
+      id: 'auth/reset/length',
+      defaultMessage: 'At least {min, plural, other {# characters}}',
+    },
+    resetLengthShort: {
+      id: 'auth/reset/length-short',
+      defaultMessage:
+        'At least {min, plural, other {# characters}}, {left, plural, one {# more to go} other {# more to go}}',
+    },
+    resetMatch: { id: 'auth/reset/match', defaultMessage: 'Both entries match' },
+    resetSetting: { id: 'auth/reset/setting', defaultMessage: 'Setting…' },
+    resetDoneTitle: { id: 'auth/reset/done-title', defaultMessage: 'Your new password is set' },
+    resetDoneBody: { id: 'auth/reset/done-body', defaultMessage: 'Sign in with your new password.' },
+    resetExpiredTitle: { id: 'auth/reset/expired-title', defaultMessage: 'This link no longer works' },
+    resetAgain: { id: 'auth/reset/again', defaultMessage: 'Get a new link' },
 
     // the card any screen opens on a name it shows
     personOpenDetail: { id: 'auth/person/open-detail', defaultMessage: 'View details' },
@@ -370,7 +466,78 @@ const i18n = definePluginMessages({
       id: 'auth/login/no-methods',
       defaultMessage: 'No sign-in method is available. Please contact an administrator.',
     },
-    otherMethods: { id: 'auth/login/other-methods', defaultMessage: '← Other sign-in methods' },
+    otherMethods: { id: 'auth/login/other-methods', defaultMessage: 'Other ways to sign in' },
+    // the sign-in page's two groups, as the screen that arranges them says
+    methodsPrimaryTitle: { id: 'auth/login-methods/primary', defaultMessage: 'Main ways in' },
+    methodsPrimaryNote: {
+      id: 'auth/login-methods/primary-note',
+      defaultMessage: '{count} of {most}',
+    },
+    methodsPrimaryHint: {
+      id: 'auth/login-methods/primary-hint',
+      defaultMessage: 'Listed in full on the sign-in page',
+    },
+    methodsSecondaryTitle: { id: 'auth/login-methods/secondary', defaultMessage: 'Other ways in' },
+    methodsSecondaryHint: {
+      id: 'auth/login-methods/secondary-hint',
+      defaultMessage: 'Shown as icons under the main ones',
+    },
+    methodsDropHere: { id: 'auth/login-methods/drop-here', defaultMessage: 'Drag a way in here' },
+    methodsPrimaryFull: {
+      id: 'auth/login-methods/primary-full',
+      defaultMessage: 'Up to {most} main ways in',
+    },
+    methodToPrimary: {
+      id: 'auth/login-methods/to-primary',
+      defaultMessage: 'Move {name} to the main ways in',
+    },
+    methodToSecondary: {
+      id: 'auth/login-methods/to-secondary',
+      defaultMessage: 'Move {name} to the other ways in',
+    },
+    methodRecommendedBadge: { id: 'auth/login-methods/recommended', defaultMessage: 'Recommended' },
+    methodShownTitle: { id: 'auth/login-methods/shown', defaultMessage: 'On the sign-in page' },
+    methodShownAs: { id: 'auth/login-methods/shown-as', defaultMessage: 'Shown as' },
+    methodShownPrimary: {
+      id: 'auth/login-methods/shown-primary',
+      defaultMessage: 'Main way in, {position, selectordinal, one {#st} two {#nd} few {#rd} other {#th}}',
+    },
+    methodShownSecondary: {
+      id: 'auth/login-methods/shown-secondary',
+      defaultMessage: 'Other way in, {position, selectordinal, one {#st} two {#nd} few {#rd} other {#th}}',
+    },
+    methodRecommend: { id: 'auth/login-methods/recommend', defaultMessage: 'Recommended' },
+    methodRecommendHint: {
+      id: 'auth/login-methods/recommend-hint',
+      defaultMessage: 'Shown first in a darker style. Only a main way in can be.',
+    },
+    methodIconLabel: { id: 'auth/login-methods/icon', defaultMessage: 'Icon' },
+    methodIconChange: { id: 'auth/login-methods/icon-change', defaultMessage: 'Change' },
+    methodIconTitle: { id: 'auth/login-methods/icon-title', defaultMessage: 'Choose an icon' },
+    methodIconDefault: { id: 'auth/login-methods/icon-default', defaultMessage: 'Use its kind’s icon' },
+    methodIconUpload: { id: 'auth/login-methods/icon-upload', defaultMessage: 'Upload an image' },
+    methodIconUploading: { id: 'auth/login-methods/icon-uploading', defaultMessage: 'Uploading…' },
+    methodIconUploadHint: {
+      id: 'auth/login-methods/icon-upload-hint',
+      defaultMessage: 'PNG, JPEG or WebP, up to 256 KB, square works best',
+    },
+    methodIconSaved: { id: 'auth/login-methods/icon-saved', defaultMessage: 'Icon changed' },
+    iconNameCampus: { id: 'auth/login-icon/campus', defaultMessage: 'Campus' },
+    iconNameKey: { id: 'auth/login-icon/key', defaultMessage: 'Key' },
+    iconNameMail: { id: 'auth/login-icon/mail', defaultMessage: 'Mail' },
+    iconNameIdCard: { id: 'auth/login-icon/id-card', defaultMessage: 'ID card' },
+    iconNameShield: { id: 'auth/login-icon/shield', defaultMessage: 'Shield' },
+    iconNameGlobe: { id: 'auth/login-icon/globe', defaultMessage: 'Globe' },
+    iconNameGithub: { id: 'auth/login-icon/github', defaultMessage: 'GitHub' },
+    iconNameGitlab: { id: 'auth/login-icon/gitlab', defaultMessage: 'GitLab' },
+    iconNameMicrosoft: { id: 'auth/login-icon/microsoft', defaultMessage: 'Microsoft' },
+    iconNameGoogle: { id: 'auth/login-icon/google', defaultMessage: 'Google' },
+    iconNameApple: { id: 'auth/login-icon/apple', defaultMessage: 'Apple' },
+    iconNameWechat: { id: 'auth/login-icon/wechat', defaultMessage: 'WeChat' },
+    iconNameWecom: { id: 'auth/login-icon/wecom', defaultMessage: 'WeCom' },
+    iconNameDingtalk: { id: 'auth/login-icon/dingtalk', defaultMessage: 'DingTalk' },
+    iconNameFeishu: { id: 'auth/login-icon/feishu', defaultMessage: 'Feishu' },
+    iconNameQq: { id: 'auth/login-icon/qq', defaultMessage: 'QQ' },
     rendererMissing: {
       id: 'auth/login/renderer-missing',
       defaultMessage: 'This sign-in method is currently unavailable',
@@ -998,6 +1165,18 @@ const i18n = definePluginMessages({
     AUTH_PROVIDER_NOT_FOUND: {
       id: 'auth/error/provider-not-found',
       defaultMessage: 'This login method no longer exists.',
+    },
+    AUTH_PROVIDER_ARRANGEMENT_INVALID: {
+      id: 'auth/error/provider-arrangement-invalid',
+      defaultMessage: 'Up to three login methods can be main ones, and only a main one can be recommended.',
+    },
+    AUTH_PROVIDER_ICON_INVALID: {
+      id: 'auth/error/provider-icon-invalid',
+      defaultMessage: 'Use a PNG, JPEG or WebP image of 256 KB or less.',
+    },
+    AUTH_LOGIN_METHOD_ICON_UNAVAILABLE: {
+      id: 'auth/error/login-method-icon-unavailable',
+      defaultMessage: 'This icon is no longer available.',
     },
     AUTH_PROVIDER_VERSION_CONFLICT: {
       id: 'auth/error/provider-version-conflict',

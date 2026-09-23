@@ -38,7 +38,8 @@ import {
   primaryNavigation,
 } from '@qualy/ui-contract'
 import { config } from './server/auth-config.ts'
-import { identityApiGroup, selfApiGroup, sessionApiGroup } from './api.ts'
+import { identityApiGroup, loginIconApiGroup, selfApiGroup, sessionApiGroup } from './api.ts'
+import { loginIconApiHandlers } from './server/icons.ts'
 import { compositeForeignKeys, entities } from './db/entities.ts'
 import { permissions } from './permissions.ts'
 import {
@@ -60,6 +61,7 @@ const plugin = Plugin.define(
       '@qualy/plugin-mail',
       '@qualy/plugin-rbac',
       '@qualy/plugin-secrets',
+      '@qualy/plugin-storage',
       '@qualy/plugin-ui-registry',
     ],
     config,
@@ -410,6 +412,7 @@ const plugin = Plugin.define(
   Api.group(identityApiGroup, identityApiHandlers),
   Api.group(sessionApiGroup, sessionApiHandlers),
   Api.group(selfApiGroup, selfApiHandlers),
+  Api.group(loginIconApiGroup, loginIconApiHandlers),
   Plugin.layer(pluginLayer),
 )
 

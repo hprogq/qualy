@@ -153,6 +153,7 @@ const fields: readonly EntranceField[] = [
 
 export const driver: LoginDriver = {
   type: 'oidc',
+  icon: 'key',
   presentation: {
     mode: 'redirect',
     href: ({ code }) => urls.authOidc.start({ params: { providerCode: code }, query: {} }),

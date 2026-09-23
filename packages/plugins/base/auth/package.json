@@ -52,6 +52,7 @@
     "@qualy/api-kit": "workspace:*",
     "@qualy/audit-contract": "workspace:*",
     "@qualy/auth-contract": "workspace:*",
+    "@qualy/brand": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
     "@qualy/org-contract": "workspace:*",
     "@qualy/plugin-database": "workspace:*",
@@ -60,6 +61,7 @@
     "@qualy/plugin-org": "workspace:*",
     "@qualy/plugin-secrets": "workspace:*",
     "@qualy/plugin-settings": "workspace:*",
+    "@qualy/plugin-storage": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
     "@qualy/rbac-contract": "workspace:*",
     "@qualy/settings-contract": "workspace:*",
@@ -73,6 +75,7 @@
     "effect": "catalog:",
     "kysely": "catalog:",
     "lucide-react": "^0.552.0",
+    "motion": "^12.29.2",
     "react-router": "catalog:",
     "undici": "catalog:"
   },

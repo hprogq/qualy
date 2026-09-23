@@ -207,12 +207,30 @@ export const AuthProvider = defineEntity({
     // the whole row is versioned: the audience is a set replacement, and a
     // replacement based on a stale read must be refused, not merged
     version: p.integer().default(1),
-    // display order for the tenant's login method list
+    // order within its group on the sign-in page (see prominence)
     sortOrder: p.smallint().default(0),
+    // Listed in full on the sign-in page (primary, at most three per tenant)
+    // or drawn as a tile under them (secondary). How the page presents the
+    // door, not a ranking of the door.
+    prominence: p.string().length(16).defaultRaw(`'secondary'`),
+    // the one door the tenant recommends; only a primary one can be
+    recommended: p.boolean().default(false),
+    // How the door is drawn when not by its driver's own icon:
+    // {kind:'builtin', key} or {kind:'upload', attachmentId}. Null is the
+    // driver's icon.
+    icon: p.json<Record<string, unknown>>().nullable(),
     createdAt: p.datetime().defaultRaw('now()'),
     updatedAt: p.datetime().defaultRaw('now()'),
   },
   checks: [
+    {
+      name: 'chk_auth_providers_prominence',
+      expression: `prominence = 'primary' or prominence = 'secondary'`,
+    },
+    {
+      name: 'chk_auth_providers_recommended_is_primary',
+      expression: `recommended = false or prominence = 'primary'`,
+    },
     // code and type appear in public login urls (/auth/<type>/<code>/...)
     { name: 'chk_auth_providers_code_format', expression: `code ~ ${CODE}` },
     { name: 'chk_auth_providers_type_format', expression: `type ~ ${CODE}` },
@@ -239,6 +257,12 @@ export const AuthProvider = defineEntity({
       name: 'uq_auth_providers_tenant_code',
       expression:
         'create unique index uq_auth_providers_tenant_code on auth_providers (tenant_id, code) where deleted_at is null',
+    },
+    // at most one recommended door per tenant
+    {
+      name: 'uq_auth_providers_tenant_recommended',
+      expression:
+        'create unique index uq_auth_providers_tenant_recommended on auth_providers (tenant_id) where recommended and deleted_at is null',
     },
     // one provisioned door per driver type and tenant
     {

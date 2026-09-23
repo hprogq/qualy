@@ -31,6 +31,7 @@ import { layer as sessionLayer, viewerLayer } from './session.ts'
 import { recoveryBootCheck } from './recovery.ts'
 import { publicOriginBootCheck, PublicOriginResolver, singleOriginLayer } from './public-origin.ts'
 import { AnonymousTenantResolver, singleTenantLayer } from './tenancy.ts'
+import { loginIconsLayer } from './icons.ts'
 import { makeOutbound } from './outbound.ts'
 import { AuthOutbound } from '@qualy/auth-contract/outbound'
 import { EmailFlows, emailFlowsLayer } from './email-flows.ts'
@@ -184,6 +185,8 @@ export const pluginLayer = Layer.mergeAll(
   // meets the mail capability; a stack composing auth's services for a test
   // does not have to stand up mail
   emailFlowsLayer,
+  // and the doors' own images, which is where it meets storage
+  loginIconsLayer,
 ).pipe(
   // the checks stand on the services, which is also where the two resolvers
   // come from: merged beside them they would be built in parallel with what
@@ -245,7 +248,7 @@ export const sessionApiHandlers = HttpApiBuilder.group(local, 'auth', (handlers)
       'listLoginMethods',
       Effect.fn('auth.listLoginMethods.handler')(function* () {
         const signIn = yield* SignIn
-        return { methods: yield* signIn.loginMethods() }
+        return yield* signIn.loginContext()
       }),
     )
     .handle(
@@ -816,7 +819,18 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
         const rbac = yield* Rbac
         const principal = yield* CurrentUser
         yield* rbac.require(principal, 'auth.provider.manage')
-        yield* iam.providers.reorder(principal.tenantId, payload.providerIds, principal)
+        yield* iam.providers.reorder(principal.tenantId, payload, principal)
+        return { ok: true as const }
+      }),
+    )
+    .handle(
+      'setRecommendedAuthProvider',
+      Effect.fn('iam.setRecommendedAuthProvider.handler')(function* ({ payload }) {
+        const iam = yield* Iam
+        const rbac = yield* Rbac
+        const principal = yield* CurrentUser
+        yield* rbac.require(principal, 'auth.provider.manage')
+        yield* iam.providers.recommend(principal.tenantId, payload.providerId, principal)
         return { ok: true as const }
       }),
     )

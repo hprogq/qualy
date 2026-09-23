@@ -1192,6 +1192,9 @@ importers:
       '@qualy/auth-contract':
         specifier: workspace:*
         version: link:../../../contracts/auth
+      '@qualy/brand':
+        specifier: workspace:*
+        version: link:../../../web/brand
       '@qualy/i18n-contract':
         specifier: workspace:*
         version: link:../../../contracts/i18n
@@ -1216,6 +1219,9 @@ importers:
       '@qualy/plugin-settings':
         specifier: workspace:*
         version: link:../settings
+      '@qualy/plugin-storage':
+        specifier: workspace:*
+        version: link:../../infra/storage
       '@qualy/plugin-ui-registry':
         specifier: workspace:*
         version: link:../../infra/ui-registry
@@ -1255,6 +1261,9 @@ importers:
       lucide-react:
         specifier: ^0.552.0
         version: 0.552.0(react@19.2.8)
+      motion:
+        specifier: ^12.29.2
+        version: 12.43.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react:
         specifier: 'catalog:'
         version: 19.2.8

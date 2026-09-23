@@ -47,12 +47,57 @@ export interface LoginMethodRendererProps {
   onAuthenticated: () => void
 }
 
+export {
+  BUILTIN_LOGIN_ICONS,
+  MAX_PRIMARY_LOGIN_METHODS,
+  type BuiltinLoginIcon,
+} from './login-icons.ts'
+import type { BuiltinLoginIcon } from './login-icons.ts'
+
+/** how a way in is drawn: one of ours, an uploaded image by version, or its initial */
+export type LoginMethodIcon =
+  | { readonly kind: 'builtin'; readonly key: BuiltinLoginIcon }
+  | { readonly kind: 'image'; readonly version: string }
+  | null
+
+/**
+ * Where a way in stands on the sign-in page.
+ *
+ * `primary` doors are listed in full, at most three of them; the rest are
+ * `secondary`, drawn as tiles under them. It says how the page presents a
+ * door, not that the door matters more.
+ */
+export type LoginProminence = 'primary' | 'secondary'
+
+
 /** a provider row paired with how its driver asks to be presented */
 export type LoginMethod = {
   readonly code: string
   readonly type: string
   readonly name: string
+  readonly prominence: LoginProminence
+  /** the one door the tenant recommends, always a primary one; at most one */
+  readonly recommended: boolean
+  readonly icon: LoginMethodIcon
 } & LoginPresentation
+
+/**
+ * What an anonymous visitor is told about where they are signing in.
+ *
+ * The workspace by name and nothing else about it: the product is Qualy on
+ * every page, the tenant is only which workspace this is. Which tenant that
+ * is gets resolved on the server, so the page does not change when the
+ * answer starts coming from the host.
+ */
+export interface LoginContext {
+  readonly tenant: { readonly name: string } | null
+  readonly methods: readonly LoginMethod[]
+  /**
+   * What a password here has to be, where a door keeps passwords: the
+   * pages that set one say it while it is typed rather than after a refusal.
+   */
+  readonly passwordRule: { readonly minLength: number; readonly maxLength: number } | null
+}
 
 /**
  * How a driver finds the person a proof is about.
@@ -246,6 +291,8 @@ export type ProviderProvisioning =
 export interface LoginDriver {
   readonly type: string
   readonly presentation: LoginPresentationDeclaration
+  /** how its doors are drawn until an administrator chooses otherwise */
+  readonly icon?: BuiltinLoginIcon
   readonly provisioning: ProviderProvisioning
   readonly resolution: SubjectResolution
   readonly binding?: AuthBindingDeclaration

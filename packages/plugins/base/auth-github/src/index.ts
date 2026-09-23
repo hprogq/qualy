@@ -70,6 +70,7 @@ const fields: readonly EntranceField[] = [
 
 export const driver: LoginDriver = {
   type: 'github',
+  icon: 'github',
   presentation: {
     mode: 'redirect',
     href: ({ code }) => urls.authGithub.start({ params: { providerCode: code }, query: {} }),

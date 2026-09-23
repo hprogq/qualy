@@ -3,7 +3,12 @@ import { sql } from 'kysely'
 import { transaction, withDatabase } from '@qualy/plugin-database/server'
 import type { Principal } from '@qualy/rbac-contract'
 import { Audit } from '@qualy/audit-contract/effect'
-import { DERIVED_CONFIG_KEY, LoginDrivers } from '@qualy/auth-contract/login'
+import {
+  DERIVED_CONFIG_KEY,
+  LoginDrivers,
+  MAX_PRIMARY_LOGIN_METHODS,
+  type LoginProminence,
+} from '@qualy/auth-contract/login'
 import { Secrets } from '@qualy/plugin-secrets/plugin'
 import { translateConstraints } from '@qualy/plugin-database/server/constraints'
 import {
@@ -11,10 +16,12 @@ import {
   ProviderCreated,
   ProviderDeleted,
   ProvidersReordered,
+  ProviderRecommended,
   ProviderStatusChanged,
   ProviderUpdated,
 } from '../actions.ts'
 import { actorOf } from './audit-actor.ts'
+import { iconOf } from './login-icons.ts'
 import { db, lockTenant } from './db.ts'
 import { endFlowsOfProvider } from './flows.ts'
 import { PublicOriginResolver } from './public-origin.ts'
@@ -35,6 +42,7 @@ import {
   ProviderIsSystem,
   ProviderKindUnavailable,
   ProviderNotFound,
+  ProviderArrangementInvalid,
   ProviderVersionConflict,
   RecoveryChannelRequired,
   UserTypeNotFound,
@@ -71,6 +79,9 @@ const providerRows = (tenantId: string) =>
         'p.enabled',
         'p.isSystem',
         'p.sortOrder',
+        'p.recommended',
+        'p.icon',
+        eb.ref('p.prominence').$castTo<LoginProminence>().as('prominence'),
         'p.version',
         eb.ref('p.audienceMode').$castTo<'unrestricted' | 'allow-list'>().as('audienceMode'),
         sql<string[]>`coalesce((select array_agg(a.user_type_id::text order by a.user_type_id)
@@ -79,6 +90,8 @@ const providerRows = (tenantId: string) =>
       ])
       // a door taken out of service for good is history, not a door
       .where('p.deletedAt', 'is', null)
+      // the order of the sign-in page: the doors listed in full, then the rest
+      .orderBy(sql`p.prominence = 'primary'`, 'desc')
       .orderBy('p.sortOrder')
       .orderBy('p.code')
       .execute(),
@@ -621,28 +634,43 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
     }),
 
     /**
-     * The order of the sign-in page, said whole: every entrance, first to
-     * last. A list that names a stranger or leaves one out is refused rather
-     * than half applied.
+     * How the sign-in page presents its doors, said whole: the ones listed in
+     * full in their order, then the rest in theirs. A list that names a
+     * stranger or leaves a door out is refused rather than half applied, and
+     * so is one that lists more doors in full than the page has room for.
+     * A recommended door moved out of the full list stops being recommended:
+     * only a door listed in full can be.
      */
     reorder: Effect.fn('Iam.providers.reorder')(function* (
       tenantId: string,
-      providerIds: readonly string[],
+      arrangement: { readonly primary: readonly string[]; readonly secondary: readonly string[] },
       as: Principal,
     ) {
       return yield* write(tenantId, () =>
         Effect.gen(function* () {
           const standing = yield* providerRows(tenantId)
           const known = new Set(standing.map((row) => row.id))
-          const asked = [...new Set(providerIds)]
+          const primary = [...new Set(arrangement.primary)]
+          const secondary = [...new Set(arrangement.secondary)].filter((id) => !primary.includes(id))
+          const asked = [...primary, ...secondary]
           if (asked.length !== standing.length || asked.some((id) => !known.has(id))) {
             return yield* new ProviderNotFound()
           }
+          if (primary.length > MAX_PRIMARY_LOGIN_METHODS) {
+            return yield* new ProviderArrangementInvalid({ reason: 'primary-full' })
+          }
           for (const [index, id] of asked.entries()) {
+            const listed = index < primary.length
             yield* db.query((k) =>
               k
                 .updateTable('AuthProvider')
-                .set({ sortOrder: index })
+                .set({
+                  sortOrder: index,
+                  prominence: listed ? 'primary' : 'secondary',
+                  // in one statement with the prominence, or the check that
+                  // a recommended door is a primary one refuses the move
+                  ...(listed ? {} : { recommended: false }),
+                })
                 .where('tenantId', '=', tenantId)
                 .where('id', '=', id)
                 .execute(),
@@ -652,7 +680,60 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
             tenantId,
             actor: yield* actorOf(tenantId, as),
             target: { id: tenantId },
-            details: { order: asked },
+            details: { order: asked, primary },
+          })
+        }),
+      )
+    }),
+
+    /**
+     * The one door the tenant recommends, or none. Only a door listed in full
+     * can be it; choosing another takes the recommendation from the last.
+     */
+    recommend: Effect.fn('Iam.providers.recommend')(function* (
+      tenantId: string,
+      providerId: string | null,
+      as: Principal,
+    ) {
+      return yield* write(tenantId, () =>
+        Effect.gen(function* () {
+          const standing = yield* providerRows(tenantId)
+          const chosen =
+            providerId === null ? undefined : standing.find((row) => row.id === providerId)
+          if (providerId !== null && chosen === undefined) return yield* new ProviderNotFound()
+          if (chosen !== undefined && chosen.prominence !== 'primary') {
+            return yield* new ProviderArrangementInvalid({ reason: 'not-primary' })
+          }
+          const previous = standing.find((row) => row.recommended)
+          if (previous?.id === providerId) return
+          // cleared first: one recommended door per tenant is an index, and
+          // for a moment there would otherwise be two
+          yield* db.query((k) =>
+            k
+              .updateTable('AuthProvider')
+              .set({ recommended: false })
+              .where('tenantId', '=', tenantId)
+              .where('recommended', '=', true)
+              .execute(),
+          )
+          if (chosen !== undefined) {
+            yield* db.query((k) =>
+              k
+                .updateTable('AuthProvider')
+                .set({ recommended: true })
+                .where('tenantId', '=', tenantId)
+                .where('id', '=', chosen.id)
+                .execute(),
+            )
+          }
+          yield* audit.record(ProviderRecommended, {
+            tenantId,
+            actor: yield* actorOf(tenantId, as),
+            target:
+              chosen === undefined
+                ? { id: tenantId }
+                : { id: chosen.id, label: chosen.name },
+            details: { providerId: chosen?.id ?? null },
           })
         }),
       )
@@ -665,7 +746,8 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
       const rows = []
       for (const row of found) {
         const answer = yield* readiness(row)
-        const provisioning = (yield* drivers.forType(row.type))?.driver.provisioning
+        const driver = (yield* drivers.forType(row.type))?.driver
+        const provisioning = driver?.provisioning
         rows.push({
           id: row.id,
           code: row.code,
@@ -682,6 +764,10 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
           setup: answer.ready ? ('complete' as const) : ('incomplete' as const),
           isSystem: row.isSystem,
           sortOrder: row.sortOrder,
+          prominence: row.prominence,
+          recommended: row.recommended,
+          icon: iconOf(row.icon, driver?.icon),
+          iconChosen: row.icon !== null,
           version: row.version,
           audience:
             row.audienceMode === 'unrestricted'
@@ -737,6 +823,10 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
               setup: answer.ready ? ('complete' as const) : ('incomplete' as const),
               isSystem: provider.isSystem,
               sortOrder: provider.sortOrder,
+              prominence: provider.prominence,
+              recommended: provider.recommended,
+              icon: iconOf(provider.icon, driver?.icon),
+              iconChosen: provider.icon !== null,
               version: provider.version,
               audience:
                 provider.audienceMode === 'unrestricted'

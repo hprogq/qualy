@@ -690,3 +690,95 @@ describe.runIf(postgresAvailable)('an entrance a tenant adds', () => {
     }
   })
 })
+
+// How the sign-in page presents its doors: at most three listed in full, in
+// their order, the rest under them in theirs, and at most one recommended -
+// always one of those listed in full.
+describe.runIf(postgresAvailable)('the sign-in page arrangement', () => {
+  it('lists at most three in full, keeps each group in its order, and recommends one of them', async () => {
+    const db = await createTestContext('providers-arrangement')
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const iam = yield* Iam
+            const door = (code: string, order: number) =>
+              Effect.map(
+                runSql(sql`
+                  insert into auth_providers (tenant_id, code, type, name, sort_order)
+                  values (${f.tenant}, ${code}, 'campus', ${code}, ${order}) returning id`),
+                (result) => one<{ id: string }>(result).id,
+              )
+            const a = yield* door('a', 1)
+            const b = yield* door('b', 2)
+            const c = yield* door('c', 3)
+            const d = yield* door('d', 4)
+            const crowded = yield* Effect.result(
+              iam.providers.reorder(
+                f.tenant,
+                { primary: [a, b, c, d], secondary: [f.local.id] },
+                f.as,
+              ),
+            )
+            yield* iam.providers.reorder(
+              f.tenant,
+              { primary: [a, f.local.id, b], secondary: [d, c] },
+              f.as,
+            )
+            const arranged = yield* iam.providers.list(f.tenant)
+            const tile = yield* Effect.result(iam.providers.recommend(f.tenant, c, f.as))
+            yield* iam.providers.recommend(f.tenant, b, f.as)
+            yield* iam.providers.recommend(f.tenant, a, f.as)
+            const moved = yield* iam.providers.list(f.tenant)
+            // the recommended door leaves the full list, and stops being recommended
+            yield* iam.providers.reorder(
+              f.tenant,
+              { primary: [f.local.id, b], secondary: [a, d, c] },
+              f.as,
+            )
+            const demoted = yield* iam.providers.list(f.tenant)
+            const audited = yield* runSql<{ action_code: string }>(
+              sql`select action_code from audit_events
+                   where action_code in ('auth.provider.recommend', 'auth.provider.reorder')
+                   order by occurred_at, id`,
+            )
+            return { crowded, arranged, tile, moved, demoted, audited: audited.rows }
+          }),
+        ),
+      )
+      const view = (rows: readonly { code: string; prominence: string; recommended: boolean }[]) =>
+        rows.map((row) => `${row.code}:${row.prominence}${row.recommended ? ':*' : ''}`)
+      expect(failureOf(answer.crowded)).toMatchObject({
+        _tag: 'AUTH_PROVIDER_ARRANGEMENT_INVALID',
+        reason: 'primary-full',
+      })
+      expect(view(answer.arranged)).toEqual([
+        'a:primary',
+        'local:primary',
+        'b:primary',
+        'd:secondary',
+        'c:secondary',
+      ])
+      expect(failureOf(answer.tile)).toMatchObject({ reason: 'not-primary' })
+      // one recommended at a time: choosing a takes it from b
+      expect(view(answer.moved).filter((row) => row.endsWith(':*'))).toEqual(['a:primary:*'])
+      expect(view(answer.demoted)).toEqual([
+        'local:primary',
+        'b:primary',
+        'a:secondary',
+        'd:secondary',
+        'c:secondary',
+      ])
+      expect(answer.audited.map((row) => row.action_code)).toEqual([
+        'auth.provider.reorder',
+        'auth.provider.recommend',
+        'auth.provider.recommend',
+        'auth.provider.reorder',
+      ])
+    } finally {
+      await db.dispose()
+    }
+  })
+})

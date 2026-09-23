@@ -34,6 +34,7 @@ const INFRA = [
   '@qualy/plugin-database',
   '@qualy/plugin-mail',
   '@qualy/plugin-secrets',
+  '@qualy/plugin-storage',
   '@qualy/plugin-ui-registry',
 ]
 const KIT = ['@qualy/plugin-kit', '@qualy/ui-contract']
