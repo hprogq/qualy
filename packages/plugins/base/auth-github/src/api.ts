@@ -9,6 +9,15 @@ import { Viewer } from '@qualy/auth-contract/session'
 
 const providerCode = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(63))
 
+// Nothing a callback receives is bounded here. Its values are the other
+// side's - a code, a ticket, a session marker - and nothing promises how long
+// they run: a Microsoft authorization code runs to thousands of characters. A
+// value this contract refused would never reach the handler, and the person
+// would be shown a page of JSON instead of being sent back to the sign-in page
+// with a reason. The handler checks what it relies on and redirects when it
+// does not hold; the server bounds the request as a whole.
+const received = Schema.optional(Schema.String)
+
 /** GitHub did not vouch for anybody: the person turned back, or the code was refused */
 export class GithubRejected extends Schema.TaggedError<GithubRejected>()(
   'AUTH_GITHUB_REJECTED',
@@ -37,12 +46,12 @@ export const authGithubApiGroup = HttpApiGroup.make('authGithub')
   )
   .add(
     HttpApiEndpoint.get('callback', '/auth/github/:providerCode/callback', {
-      params: Schema.Struct({ providerCode }),
+      params: Schema.Struct({ providerCode: Schema.String }),
       query: Schema.Struct({
-        code: Schema.optional(Schema.String.check(Schema.isMaxLength(512))),
-        state: Schema.optional(Schema.String.check(Schema.isMaxLength(128))),
+        code: received,
+        state: received,
         // GitHub says why it sent the person back without a code
-        error: Schema.optional(Schema.String.check(Schema.isMaxLength(128))),
+        error: received,
       }),
       success: HttpApiSchema.Empty(303),
     }),

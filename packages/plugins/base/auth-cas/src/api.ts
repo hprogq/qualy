@@ -8,6 +8,15 @@ import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/unstable/ht
 
 const providerCode = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(63))
 
+// Nothing a callback receives is bounded here. Its values are the other
+// side's - a code, a ticket, a session marker - and nothing promises how long
+// they run: a Microsoft authorization code runs to thousands of characters. A
+// value this contract refused would never reach the handler, and the person
+// would be shown a page of JSON instead of being sent back to the sign-in page
+// with a reason. The handler checks what it relies on and redirects when it
+// does not hold; the server bounds the request as a whole.
+const received = Schema.optional(Schema.String)
+
 /**
  * Why a CAS sign-in did not go through, as the sign-in page is told.
  *
@@ -44,10 +53,10 @@ export const authCasApiGroup = HttpApiGroup.make('authCas')
   )
   .add(
     HttpApiEndpoint.get('callback', '/auth/cas/:providerCode/callback', {
-      params: Schema.Struct({ providerCode }),
+      params: Schema.Struct({ providerCode: Schema.String }),
       query: Schema.Struct({
-        flow: Schema.optional(Schema.String.check(Schema.isMaxLength(128))),
-        ticket: Schema.optional(Schema.String.check(Schema.isMaxLength(512))),
+        flow: received,
+        ticket: received,
       }),
       success: HttpApiSchema.Empty(303),
     }),

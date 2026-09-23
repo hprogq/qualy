@@ -349,6 +349,12 @@ describe.runIf(postgresAvailable)('a GitHub account', () => {
 
     const forged = await visit(`${base}/auth/github/hub/callback?code=x&state=nobody`)
     expect(landing(forged).code).toBe('AUTH_FLOW_REJECTED')
+    // however long the values, the person lands on the sign-in page with a reason
+    const long = await visit(
+      `${base}/auth/github/hub/callback?code=${'c'.repeat(4000)}&state=${'s'.repeat(4000)}`,
+    )
+    expect(long.status).toBe(303)
+    expect(landing(long)).toEqual({ path: '/login', code: 'AUTH_FLOW_REJECTED' })
 
     const third = await depart()
     const declined = await visit(

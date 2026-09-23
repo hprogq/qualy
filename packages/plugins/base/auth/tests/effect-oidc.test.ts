@@ -92,8 +92,8 @@ const op = {
    * for this departure, and claims the ID Token will carry - the defaults
    * being what an honest provider would say, a case overriding what it breaks.
    */
-  authorize(away: URL, claims: Claims) {
-    const code = `code-${op.next++}`
+  authorize(away: URL, claims: Claims, extra: { code?: string; sessionState?: string } = {}) {
+    const code = extra.code ?? `code-${op.next++}`
     op.codes.set(code, {
       redirectUri: away.searchParams.get('redirect_uri')!,
       challenge: away.searchParams.get('code_challenge')!,
@@ -103,6 +103,7 @@ const op = {
     const back = new URL(away.searchParams.get('redirect_uri')!)
     back.searchParams.set('code', code)
     back.searchParams.set('state', away.searchParams.get('state')!)
+    if (extra.sessionState !== undefined) back.searchParams.set('session_state', extra.sessionState)
     return back.toString()
   },
 }
@@ -470,5 +471,23 @@ describe.runIf(postgresAvailable)('an OpenID Connect account', () => {
     )
     const forged = await visit(`${base}/auth/oidc/op/callback?code=x&state=nobody`)
     expect(landing(forged).code).toBe('AUTH_FLOW_REJECTED')
+  })
+
+  it('takes a code as long as the provider makes it, and sends anything it cannot use back to sign in', async () => {
+    // Microsoft's codes run to thousands of characters, with a session marker beside them
+    const { away } = await depart()
+    const long = await visit(
+      op.authorize(away, { sub: 'sub-somebody' }, {
+        code: `c${'x'.repeat(4000)}`,
+        sessionState: '008cde9a-2e51-bdf4-ad65-bb981e0872cb',
+      }),
+    )
+    // through the whole exchange: nobody bound that account here
+    expect(long.status).toBe(303)
+    expect(landing(long)).toEqual({ path: '/login', code: 'AUTH_EXTERNAL_ACCOUNT_UNBOUND' })
+    // a state that is no state of ours, however long, is a refused flow and not a page of JSON
+    const odd = await visit(`${base}/auth/oidc/op/callback?code=x&state=${'s'.repeat(5000)}`)
+    expect(odd.status).toBe(303)
+    expect(landing(odd)).toEqual({ path: '/login', code: 'AUTH_FLOW_REJECTED' })
   })
 })

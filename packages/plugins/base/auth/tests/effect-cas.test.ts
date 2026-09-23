@@ -317,6 +317,12 @@ describe.runIf(postgresAvailable)('signing in through a CAS server', () => {
     expect(failureOf(forged).code).toBe('AUTH_FLOW_REJECTED')
     const none = await visit(`${base}/auth/cas/campus/callback?ticket=ST-1-x`)
     expect(failureOf(none).code).toBe('AUTH_FLOW_REJECTED')
+    // however long the values, the person lands on the sign-in page with a reason
+    const long = await visit(
+      `${base}/auth/cas/campus/callback?flow=${'f'.repeat(4000)}&ticket=ST-${'t'.repeat(4000)}`,
+    )
+    expect(long.status).toBe(303)
+    expect(failureOf(long)).toEqual({ path: '/login', code: 'AUTH_FLOW_REJECTED' })
   })
 
   it('is refused when the ticket was issued for another service, and the ticket is spent', async () => {
