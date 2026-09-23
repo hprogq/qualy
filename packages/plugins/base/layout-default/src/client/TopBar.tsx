@@ -1,11 +1,13 @@
-import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { NavLink } from 'react-router'
 import * as stylex from '@stylexjs/stylex'
 import { Wordmark } from '@qualy/brand/wordmark'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
+import { layout } from '@qualy/ui/theme/layout.stylex'
 import { shell } from './shell.stylex.ts'
 import { pending } from './pending.ts'
+import { chipRowFades, chips, useChipRow } from './chip-row.ts'
 import {
   headerActions,
   sidebarUser,
@@ -274,45 +276,21 @@ const styles = stylex.create({
       height: 1.5,
     },
   },
-  // The row runs past its own edge, said by fading what is under that edge.
-  //
-  // A row cut square at the screen's edge reads as a row that ends there -
-  // the chip it cuts through looks like a chip drawn badly rather than like
-  // more of them. The fade is only on the side there is more on.
-  fadeStart: { maskImage: 'linear-gradient(to right, transparent, black 14px)' },
-  fadeEnd: { maskImage: 'linear-gradient(to left, transparent, black 14px)' },
-  fadeBoth: {
-    maskImage:
-      'linear-gradient(to right, transparent, black 14px, black calc(100% - 14px), transparent)',
-  },
   // the row itself: what scrolls, and what remembers where it was
+  // Bled out to the edges of the page it hangs in and padded back: the words
+  // above keep their measure, but a row that scrolls has to run to the
+  // screen's edge, or it stops short of it and the last chip it shows looks
+  // like the last chip there is.
   chipRow: {
     display: 'flex',
     minWidth: 0,
-    width: '100%',
+    flexGrow: 1,
     alignItems: 'center',
     gap: 6,
     overflowX: 'auto',
     scrollbarWidth: 'none',
-  },
-  chip: {
-    display: 'inline-flex',
-    flexShrink: 0,
-    alignItems: 'center',
-    gap: 6,
-    height: 34,
-    paddingInline: 14,
-    borderRadius: 9999,
-    backgroundColor: tokens.surfaceMuted,
-    fontSize: 13.5,
-    whiteSpace: 'nowrap',
-    textDecoration: 'none',
-    color: tokens.mutedForeground,
-  },
-  chipOpen: {
-    backgroundColor: tokens.primary,
-    fontWeight: 500,
-    color: tokens.primaryForeground,
+    marginInline: { default: -24, [breakpoints.phone]: `calc(${layout.pageGutter} * -1)` },
+    paddingInline: { default: 24, [breakpoints.phone]: layout.pageGutter },
   },
 })
 
@@ -502,57 +480,16 @@ export function TopBar({
  * with the open one filled in.
  */
 export function SectionChips({ items }: { items: readonly ResolvedNavigationItem[] }) {
-  // Where the row was scrolled to, kept across pages.
-  //
-  // The row belongs to the application, but it is drawn by whatever band the
-  // open page happens to draw - so moving to another page builds it again
-  // from nothing, at offset zero, and the section the reader had scrolled to
-  // was suddenly off the left edge. It is one row per application, so one
-  // remembered offset is enough.
-  const seat = useRef<HTMLDivElement>(null)
-  // which edges the row runs past, so it can say so rather than ending in a
-  // chip cut clean in half that reads as the last one
-  const [more, setMore] = useState({ start: false, end: false })
-  const read = useCallback(() => {
-    const row = seat.current
-    if (row === null) return
-    const over = row.scrollWidth - row.clientWidth
-    setMore({ start: row.scrollLeft > 1, end: over > 1 && row.scrollLeft < over - 1 })
-  }, [])
-  useLayoutEffect(() => {
-    const row = seat.current
-    if (row === null) return
-    row.scrollLeft = held
-    // the open one brought back into view, for a reader who arrived by some
-    // other route than pressing it here
-    row.querySelector('[aria-current="page"]')?.scrollIntoView({
-      block: 'nearest',
-      inline: 'nearest',
-    })
-    read()
-    const watch = new ResizeObserver(read)
-    watch.observe(row)
-    return () => watch.disconnect()
-  }, [read])
+  // one row per application, remembered across its pages
+  const { seat, fade, onScroll } = useChipRow('sections')
   if (items.length < 2) return null
   return (
     <div
       ref={seat}
       data-testid="section-chips"
-      onScroll={(event) => {
-        held = event.currentTarget.scrollLeft
-        read()
-      }}
-      {...stylex.props(
-        styles.chipRow,
-        more.start && more.end
-          ? styles.fadeBoth
-          : more.start
-            ? styles.fadeStart
-            : more.end
-              ? styles.fadeEnd
-              : null,
-      )}
+      data-fade={fade ?? undefined}
+      onScroll={onScroll}
+      {...stylex.props(styles.chipRow, fade !== null && chipRowFades[fade])}
     >
       {items.map((item) =>
         item.target.kind === 'page' ? (
@@ -565,7 +502,7 @@ export function SectionChips({ items }: { items: readonly ResolvedNavigationItem
         ) : (
           <a
             key={item.id}
-            {...stylex.props(styles.chip)}
+            {...stylex.props(chips.chip)}
             href={item.target.href}
             {...(item.target.newWindow ? { target: '_blank', rel: 'noreferrer noopener' } : {})}
           >
@@ -576,9 +513,6 @@ export function SectionChips({ items }: { items: readonly ResolvedNavigationItem
     </div>
   )
 }
-
-/** how far the sections were scrolled, the last time anybody drew them */
-let held = 0
 
 function SectionChip({
   to,
@@ -602,7 +536,7 @@ function SectionChip({
       aria-busy={navigation.pending || undefined}
       data-pending={navigation.pending ? '' : undefined}
       className={({ isActive }) =>
-        stylex.props(styles.chip, isActive ? styles.chipOpen : navigation.pending && pending.chip)
+        stylex.props(chips.chip, isActive ? chips.open : navigation.pending && pending.chip)
           .className ?? ''
       }
     >

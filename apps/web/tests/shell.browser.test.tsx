@@ -326,6 +326,11 @@ describe('the application shell', () => {
     expect(chips.getBoundingClientRect().top).toBeGreaterThan(
       heading.getBoundingClientRect().bottom,
     )
+    // it scrolls to the screen's edge, while its first chip starts where the words do
+    const main = document.querySelector('main')!
+    expect(chips.getBoundingClientRect().left).toBeCloseTo(main.getBoundingClientRect().left, 0)
+    const first = chips.querySelector('a')!
+    expect(first.getBoundingClientRect().left).toBeCloseTo(heading.getBoundingClientRect().left, 0)
     await page.viewport(1280, 800)
   })
 
@@ -536,6 +541,10 @@ describe('the workspace shell', () => {
     const chips = page.getByTestId('person-chips')
     await expect.element(chips).toBeVisible()
     await expect.element(chips.getByRole('link', { name: '基本资料' })).toBeVisible()
+    // the same chip an application's sections are drawn with
+    const chip = chips.getByRole('link', { name: '基本资料' }).element()
+    expect(chip.getBoundingClientRect().height).toBe(34)
+    expect(getComputedStyle(chip).fontSize).toBe('13.5px')
     // so reading somebody's file is not somewhere the product disappears from
     await expect
       .element(page.getByTestId('bottom-bar').getByRole('link', { name: '测评' }))
@@ -677,6 +686,10 @@ describe('the account shell', () => {
       emailVerified: false,
       userType: { id: 'ut', name: '学生' },
       unit: { id: 'n', name: '示例学院' },
+  unitLineage: [
+    { id: 'r', name: '示例大学' },
+    { id: 'n', name: '示例学院' },
+  ],
       passwordStatus: 'unset',
     }
     let arrive!: () => void
@@ -716,6 +729,50 @@ describe('the account shell', () => {
     // under the banner moves when the person arrives
     expect(shown.top).toBeCloseTo(held.top, 0)
     expect(Math.abs(shown.height - held.height)).toBeLessThanOrEqual(2)
+    await page.viewport(1280, 800)
+  })
+})
+
+describe('a record\u2019s row of sections', () => {
+  it('brings a chip pressed at the edge into view, though the row is not drawn again', async () => {
+    await page.viewport(390, 844)
+    const sections = Array.from({ length: 8 }, (_, n) => ({
+      id: `probe/section-${String(n)}`,
+      label: text(`第${String(n)}部分资料`),
+      target: {
+        kind: 'page' as const,
+        pageId: `probe/section-${String(n)}`,
+        path: `/organization/users/:userId/s${String(n)}`,
+      },
+      order: n,
+    }))
+    renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.succeed({
+              ...manifest(),
+              collections: { ...manifest().collections, 'iam/user-detail-navigation': sections },
+            }),
+        },
+      }),
+      routes: [{ path: '/organization/users/:userId/*', element: <UserDetailShell /> }],
+      route: `/organization/users/${USER_ID}/s0`,
+    })
+    const row = page.getByTestId('person-chips')
+    await expect.element(row).toBeVisible()
+    const seat = row.element() as HTMLElement
+    const edge = seat.getBoundingClientRect().right
+    const cut = [...seat.querySelectorAll('a')].find(
+      (chip) => chip.getBoundingClientRect().right > edge,
+    )!
+    expect(cut).toBeDefined()
+    expect(seat.scrollLeft).toBe(0)
+    cut.click()
+    await vi.waitFor(() => expect(cut.getAttribute('aria-current')).toBe('page'))
+    await vi.waitFor(() =>
+      expect(cut.getBoundingClientRect().right).toBeLessThanOrEqual(edge + 1),
+    )
     await page.viewport(1280, 800)
   })
 })

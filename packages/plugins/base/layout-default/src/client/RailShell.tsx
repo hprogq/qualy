@@ -9,6 +9,7 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { shell } from './shell.stylex.ts'
 import { pending } from './pending.ts'
+import { chipRowFades, chips, useChipRow } from './chip-row.ts'
 import {
   drawerAccount,
   drawerIdentity,
@@ -462,25 +463,6 @@ const styles = stylex.create({
     overflowX: 'auto',
     scrollbarWidth: 'none',
   },
-  chip: {
-    display: 'inline-flex',
-    flexShrink: 0,
-    alignItems: 'center',
-    gap: 6,
-    height: 32,
-    paddingInline: 12,
-    borderRadius: 9999,
-    backgroundColor: tokens.surfaceMuted,
-    fontSize: 13,
-    whiteSpace: 'nowrap',
-    textDecoration: 'none',
-    color: tokens.mutedForeground,
-  },
-  chipOpen: {
-    backgroundColor: tokens.primary,
-    fontWeight: 500,
-    color: tokens.primaryForeground,
-  },
   personHeading: {
     margin: 0,
     paddingInline: 12,
@@ -796,7 +778,7 @@ function PersonChip({
       aria-busy={navigation.pending || undefined}
       data-pending={navigation.pending ? '' : undefined}
       className={({ isActive }) =>
-        stylex.props(styles.chip, isActive ? styles.chipOpen : navigation.pending && pending.chip)
+        stylex.props(chips.chip, isActive ? chips.open : navigation.pending && pending.chip)
           .className ?? ''
       }
     >
@@ -884,6 +866,32 @@ function DrawerEntry({
       </span>
       {badge !== undefined && <UiSlot token={badge} context={{ navigationId: id }} />}
     </NavLink>
+  )
+}
+
+/** a record's sections as a row, remembering where it was scrolled to */
+function PersonChips({
+  label,
+  name,
+  children,
+}: {
+  label: string
+  /** which record's row it is, so each keeps its own offset */
+  name: string
+  children: ReactNode
+}) {
+  const { seat, fade, onScroll } = useChipRow<HTMLElement>(`person:${name}`)
+  return (
+    <nav
+      ref={seat}
+      aria-label={label}
+      data-testid="person-chips"
+      data-fade={fade ?? undefined}
+      onScroll={onScroll}
+      {...stylex.props(styles.chipRow, fade !== null && chipRowFades[fade])}
+    >
+      {children}
+    </nav>
   )
 }
 
@@ -1153,11 +1161,7 @@ function CapableRailShell({
           {/* the record's own sections, across, at the foot of the banner
               that says whose record it is */}
           {banner && narrow && (
-            <nav
-              aria-label={format(m.personSections)}
-              data-testid="person-chips"
-              {...stylex.props(styles.chipRow)}
-            >
+            <PersonChips label={format(m.personSections)} name={pathname.split('/')[1] ?? ''}>
               {run.map((item) => (
                 <PersonChip
                   key={item.id}
@@ -1172,7 +1176,7 @@ function CapableRailShell({
                   }
                 />
               ))}
-            </nav>
+            </PersonChips>
           )}
         </div>
         {/* the corner the head holds open: whoever owns sessions fills it,

@@ -3,6 +3,7 @@ import { Outlet } from 'react-router'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
+import { layout } from '@qualy/ui/theme/layout.stylex'
 import {
   PageTitleScope,
   ScreenFillScope,
@@ -158,9 +159,8 @@ const styles = stylex.create({
     flexShrink: 0,
     alignItems: 'center',
     gap: 6,
-    overflowX: 'auto',
-    scrollbarWidth: 'none',
-    paddingInline: { default: 24, [breakpoints.phone]: 16 },
+    // the same inset the page's own container keeps, which the row bleeds out of
+    paddingInline: { default: 24, [breakpoints.phone]: layout.pageGutter },
     paddingTop: 16,
   },
   // exactly the height the bars leave, and no more however much it holds
