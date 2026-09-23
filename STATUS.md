@@ -20016,3 +20016,20 @@ CLAUDE.md 增加一条：scope 只能是一个主要模块，不许用逗号列�
 - `pnpm test`：`Tests  3 failed | 2184 passed | 17 skipped (2204)`。plugin-lifecycle 两条是本次改动所致（auth 现依赖 storage，测试的最小装配补上 storage 后通过）；effect-email-flows 一条是 Mailpit 投递等待超时，单独重跑通过；修正后三者合跑 `Tests  9 passed (9)`。
 - `pnpm test:browser`：`Tests  2 failed | 558 passed (560)`，失败的 review-recognition 与 formula-code-editor 均为整套负载下的超时，单独重跑 `Tests  19 passed (19)`。
 - 新测试：迁移数据步骤的升级测试；分组排列（主要满 3 拒绝、组内顺序、推荐唯一且移出主要即取消推荐、审计）；图标全流程（上传、选择、匿名读取字节一致、换内置后旧图 retired、恢复默认、SVG 与超大被拒、审计）；登录上下文的 HTTP 形状；浏览器侧登录页的租户名、主要与格子、推荐、「…」与搜索、灰色提示可关闭、无方式时的空状态、重置页位数规则，以及管理端的分组、手机上跨组移动与满员禁用、推荐与图标选择。
+
+## 登录页细节、限流与重复提交（2026-09-24）
+
+- **限流答错等待时间**：一次登录同时计 IP 桶（30 次 / 5 分钟）与邮箱桶（10 次 / 15 分钟），原先按顺序检查、先拒的先答：邮箱桶先满时答「15 分钟」，继续点到 IP 桶也满后改答「5 分钟」，而真正要等的仍是 15 分钟。limiter 增 `consumeAll`：每个桶都计数，拒绝时答最长的等待；登录与找回密码两处共用。
+- **防重复提交**：本地登录、找回密码、设置新密码三个按钮，请求在途时用 ref 拦截同一帧内的第二次点击；被拒后按钮停 1 秒；`TOO_MANY_ATTEMPTS` 时按服务端给的秒数禁用并倒计时（「2:05 后可重试」）。`@qualy/auth-contract/session` 增 `retryAfterOf`。
+- **退出登录的 401**：`useSessionTransition` 原先 `resetQueries` 会立即重取仍挂着的旧页面查询（导航是 transition，旧页面在新页面渲染前一直在），无会话请求 `/api/tenant/terminology` 得 401。改为原地 reset（不重取），manifest 保留旧数据并立即重取——manifest 变 pending 会让路由整体卸载重挂，旧页面随之再请求一次。
+- **登录页**：主题菜单（浅色 / 深色 / 跟随系统，View Transition 交叉淡入，回调内同步改 DOM，修复「Transition was aborted because of timeout」）；「正在前往」只遮右栏、换回小圆 spinner；其他方式格子 44px，触屏不再闪提示；主要方式右侧箭头随悬停前移；中文里拉丁名两侧加空格（`gapped`）；本机记住上次使用的方式并标出（主要方式为胶囊、格子为圆点）；本地账号标题上方显示租户名。
+- **本地账号表单**：邮箱格式与密码 12–128 位在离开字段或提交时判定，不合规不发请求，不用浏览器自带校验；错误信息展开收起而非跳动；显示密码按钮；记住邮箱（localStorage，取消勾选即删除）；加载骨架与表单同高。登录入口因此也按 12–128 拦截——短于 12 位的既有密码需经「忘记密码」重设。seed 拒绝规则外的密码。
+- **找回密码**：从本地账号的「忘记密码」进入时，「返回登录」回到本地账号表单；邮箱格式前端判定；删除已不使用的 `auth/reset/ask-sent`、`auth/reset/done`。
+- 浏览器测试 harness 增 `storage` 选项（渲染前写入 localStorage）。
+
+### 验收（实际执行）
+
+- `pnpm typecheck`：exit 0。
+- `pnpm test`：`Test Files  297 passed | 3 skipped (300)`，`Tests  2190 passed | 17 skipped (2207)`。
+- `pnpm test:browser`：`Tests  4 failed | 560 passed (564)`；失败的 shell rail 预取、item-editor、record-recognition、review-recognition 均为整套负载下超时，四个文件单独重跑 `Tests  74 passed (74)`。
+- 新测试：两个桶先后满时答最长等待（22 次拒绝均 > 300 秒）；退出登录只重取 manifest、旧页面不重挂不重取（旧实现重取 3 次）；本地表单不发送不合规输入、429 后按钮禁用且 `data-wait=125`、再点不发请求；记住的邮箱回填；上次使用的方式标记；设置新密码时位数不足点击只标红规则。
