@@ -208,10 +208,15 @@ export const ProviderIconChanged = AuditAction.define({
   target: 'auth.provider',
   version: 1,
   name: message('auth/audit/provider-icon', 'Change how a way to sign in is drawn'),
+  // `surface` and `version` arrived with images for a dark surface; rows
+  // written before them are an image for a light one
   details: Schema.Struct({
-    icon: Schema.Literals(['builtin', 'upload', 'default']),
+    icon: Schema.Literals(['builtin', 'upload', 'svg', 'clear', 'default']),
     key: Schema.optional(Schema.String),
+    surface: Schema.optional(Schema.Literals(['light', 'dark'])),
     attachmentId: Schema.optional(id),
+    /** an SVG's digest, never the drawing */
+    version: Schema.optional(Schema.String),
   }),
 })
 

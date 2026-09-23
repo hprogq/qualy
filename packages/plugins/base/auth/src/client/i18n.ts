@@ -143,6 +143,11 @@ const inUseBlockerMessage = defineMessage<{ count: number }>()({
   defaultMessage:
     '{count, plural, one {# person holds} other {# people hold}} this type, so it can be neither disabled nor deleted.',
 })
+const iconInvalidMessage = defineMessage<{ reason: string }>()({
+  id: 'auth/error/provider-icon-invalid',
+  defaultMessage:
+    '{reason, select, svg {That SVG carries scripts, outside references or elements an icon cannot use. Export it as plain shapes.} light-first {Upload the image for a light surface first.} other {Use a PNG, JPEG or WebP image up to 256 KB, or an SVG up to 64 KB.}}',
+})
 const placementInUseMessage = defineMessage<{ userCount: number }>()({
   id: 'auth/error/user-type-placement-in-use',
   defaultMessage:
@@ -523,8 +528,20 @@ const i18n = definePluginMessages({
     methodIconUploading: { id: 'auth/login-methods/icon-uploading', defaultMessage: 'Uploading…' },
     methodIconUploadHint: {
       id: 'auth/login-methods/icon-upload-hint',
-      defaultMessage: 'PNG, JPEG or WebP, up to 256 KB, square works best',
+      defaultMessage: 'PNG, JPEG or WebP up to 256 KB, or SVG up to 64 KB. Square works best',
     },
+    methodIconOwn: { id: 'auth/login-methods/icon-own', defaultMessage: 'Your own image' },
+    methodIconOnLight: { id: 'auth/login-methods/icon-on-light', defaultMessage: 'On light' },
+    methodIconOnDark: { id: 'auth/login-methods/icon-on-dark', defaultMessage: 'On dark' },
+    methodIconDarkOptional: {
+      id: 'auth/login-methods/icon-dark-optional',
+      defaultMessage: 'Optional. Without it, the light one is used',
+    },
+    methodIconDarkNeedsLight: {
+      id: 'auth/login-methods/icon-dark-needs-light',
+      defaultMessage: 'Upload the light one first',
+    },
+    methodIconRemoveDark: { id: 'auth/login-methods/icon-remove-dark', defaultMessage: 'Remove' },
     methodIconSaved: { id: 'auth/login-methods/icon-saved', defaultMessage: 'Icon changed' },
     iconNameCampus: { id: 'auth/login-icon/campus', defaultMessage: 'Campus' },
     iconNameKey: { id: 'auth/login-icon/key', defaultMessage: 'Key' },
@@ -1167,8 +1184,8 @@ const i18n = definePluginMessages({
       defaultMessage: 'Up to three login methods can be main ones, and only a main one can be recommended.',
     },
     AUTH_PROVIDER_ICON_INVALID: {
-      id: 'auth/error/provider-icon-invalid',
-      defaultMessage: 'Use a PNG, JPEG or WebP image of 256 KB or less.',
+      message: iconInvalidMessage,
+      values: (data) => ({ reason: data.reason }),
     },
     AUTH_LOGIN_METHOD_ICON_UNAVAILABLE: {
       id: 'auth/error/login-method-icon-unavailable',

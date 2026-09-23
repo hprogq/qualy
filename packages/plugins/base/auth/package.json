@@ -73,6 +73,7 @@
     "@stylexjs/stylex": "catalog:",
     "@tanstack/react-query": "catalog:",
     "effect": "catalog:",
+    "fast-xml-parser": "catalog:",
     "kysely": "catalog:",
     "lucide-react": "^0.552.0",
     "motion": "^12.29.2",

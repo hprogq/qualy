@@ -77,11 +77,13 @@ export class ProviderArrangementInvalid extends Schema.TaggedError<ProviderArran
  *
  * `type`: not a png, jpeg or webp - the kinds a browser draws without
  * running anything. `size`: larger than an icon needs to be. `upload`: the
- * upload it names never finished, or belongs to somebody else.
+ * upload it names never finished, or belongs to somebody else. `svg`: an SVG
+ * that is more than a drawing, or not one. `light-first`: an image for a dark
+ * surface on a door with none for a light one.
  */
 export class ProviderIconInvalid extends Schema.TaggedError<ProviderIconInvalid>()(
   'AUTH_PROVIDER_ICON_INVALID',
-  { reason: Schema.Literals(['type', 'size', 'upload']) },
+  { reason: Schema.Literals(['type', 'size', 'upload', 'svg', 'light-first']) },
   { httpApiStatus: 422, identifier: 'AuthProviderIconInvalid' },
 ) {}
 

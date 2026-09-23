@@ -830,7 +830,14 @@ function Home({
               onClick={() => onChoose(method)}
             >
               <span {...stylex.props(styles.primaryGlyph)}>
-                <LoginMethodGlyph code={method.code} name={method.name} icon={method.icon} size={20} />
+                <LoginMethodGlyph
+                  code={method.code}
+                  name={method.name}
+                  icon={method.icon}
+                  size={20}
+                  // the recommended one is filled, the page's ground turned over
+                  tone={method.recommended ? 'inverse' : 'plain'}
+                />
               </span>
               <span {...stylex.props(styles.primaryName)}>{method.name}</span>
               {method.code === last && (

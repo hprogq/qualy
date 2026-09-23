@@ -8,13 +8,14 @@ import { CurrentUser } from '@qualy/auth-contract/session'
 import { LoginDrivers, type BuiltinLoginIcon } from '@qualy/auth-contract/login'
 import type { Principal } from '@qualy/rbac-contract'
 import { Rbac } from '@qualy/rbac-contract/effect'
-import { servedTypeOf, Storage } from '@qualy/plugin-storage/server'
+import { servedTypeOf, Storage, type AttachmentOpen } from '@qualy/plugin-storage/server'
 import { LOGIN_ICON_MAX_BYTES, LOGIN_ICON_TYPES, loginIconApiGroup } from '../api.ts'
 import { ProviderIconChanged } from '../actions.ts'
 import { actorOf } from './audit-actor.ts'
 import { db, lockTenant } from './db.ts'
 import { LoginMethodIconUnavailable, ProviderIconInvalid, ProviderNotFound } from './errors.ts'
-import { iconOf } from './login-icons.ts'
+import { iconOf, storedIconOf, uploadsOf, type IconSlot, type StoredIcon } from './login-icons.ts'
+import { checkedSvg, svgVersion } from './svg-icon.ts'
 import { AnonymousTenantResolver } from './tenancy.ts'
 
 // A door's own image: uploaded by the tenant's administrators through the
@@ -23,19 +24,6 @@ import { AnonymousTenantResolver } from './tenancy.ts'
 // Apart from the rest of the provider service because it is the one part of
 // this plugin that stores files, and a stack that composes auth's services
 // for a test should not have to stand up a store.
-
-/** what a door's icon column holds for an uploaded image */
-interface StoredUpload {
-  readonly kind: 'upload'
-  readonly attachmentId: string
-}
-
-const uploadOf = (stored: unknown): StoredUpload | null => {
-  const icon = stored as { kind?: unknown; attachmentId?: unknown } | null
-  return icon?.kind === 'upload' && typeof icon.attachmentId === 'string'
-    ? { kind: 'upload', attachmentId: icon.attachmentId }
-    : null
-}
 
 /** a live door of one tenant by its public code, with what it is drawn by */
 const doorByCode = (tenantId: string, code: string) =>
@@ -70,10 +58,65 @@ const setIconColumn = (tenantId: string, providerId: string, icon: unknown) =>
       .execute(),
   )
 
+/** the ground an icon's image stands on */
+export type IconSurface = 'light' | 'dark'
+
 export type IconChoice =
   | { readonly kind: 'builtin'; readonly key: BuiltinLoginIcon }
-  | { readonly kind: 'upload'; readonly reservationId: string }
+  | { readonly kind: 'upload'; readonly reservationId: string; readonly surface: IconSurface }
+  | { readonly kind: 'svg'; readonly markup: string; readonly surface: IconSurface }
+  | { readonly kind: 'clear'; readonly surface: 'dark' }
   | { readonly kind: 'default' }
+
+/** what the icon address answers with: a drawing kept in the column, or a stored file */
+export type OpenedIcon =
+  | { readonly kind: 'svg'; readonly markup: string; readonly version: string }
+  | { readonly kind: 'stored'; readonly opened: AttachmentOpen }
+
+/** the icon a choice leaves a door with, given the one it had */
+const nextIcon = (
+  had: StoredIcon | null,
+  choice: IconChoice,
+  slot: IconSlot | null,
+): StoredIcon | null | 'light-first' => {
+  switch (choice.kind) {
+    case 'builtin':
+      return { kind: 'builtin', key: choice.key }
+    case 'default':
+      return null
+    case 'clear':
+      return had?.kind === 'image' ? { ...had, onDark: null } : had
+    case 'upload':
+    case 'svg': {
+      if (choice.surface === 'light') {
+        // a new light image keeps the dark one it had: the two are drawn
+        // for each other, and taking one away is its own choice
+        return { kind: 'image', onLight: slot!, onDark: had?.kind === 'image' ? had.onDark : null }
+      }
+      return had?.kind === 'image' ? { ...had, onDark: slot! } : 'light-first'
+    }
+  }
+}
+
+/** what the audit trail says of a choice: never the drawing itself */
+const auditDetails = (choice: IconChoice, slot: IconSlot | null) => {
+  switch (choice.kind) {
+    case 'builtin':
+      return { icon: 'builtin' as const, key: choice.key }
+    case 'default':
+      return { icon: 'default' as const }
+    case 'clear':
+      return { icon: 'clear' as const, surface: choice.surface }
+    case 'upload':
+    case 'svg':
+      return {
+        icon: choice.kind,
+        surface: choice.surface,
+        ...(slot?.kind === 'upload' ? { attachmentId: slot.attachmentId } : {}),
+        ...(slot?.kind === 'svg' ? { version: slot.version } : {}),
+      }
+  }
+}
 
 const make = Effect.gen(function* () {
   const withDb = yield* withDatabase
@@ -82,24 +125,30 @@ const make = Effect.gen(function* () {
   const drivers = yield* LoginDrivers
   const tenants = yield* AnonymousTenantResolver
 
-  /** the image a sign-in page draws a door by, when it has one */
-  const open = Effect.fn('Auth.icons.open')(function* (providerCode: string) {
+  /** the image a sign-in page draws a door by on a surface, when it has one */
+  const open = Effect.fn('Auth.icons.open')(function* (providerCode: string, surface: IconSurface) {
     const tenant = yield* tenants.resolve.pipe(
       Effect.catchTag('TenantUnavailable', () => new LoginMethodIconUnavailable()),
     )
     const door = yield* withDb(doorByCode(tenant.id, providerCode)).pipe(Effect.orDie)
-    const upload = uploadOf(door?.icon)
-    if (upload === null) return yield* new LoginMethodIconUnavailable()
+    const icon = storedIconOf(door?.icon)
+    if (icon?.kind !== 'image') return yield* new LoginMethodIconUnavailable()
+    // a door with no image of its own for a dark surface stands on one with its only image
+    const slot = surface === 'dark' ? (icon.onDark ?? icon.onLight) : icon.onLight
+    if (slot.kind === 'svg') {
+      return { kind: 'svg', markup: slot.markup, version: slot.version } satisfies OpenedIcon as OpenedIcon
+    }
     // the door names the image, and naming it is the whole permission:
     // an icon is on a page anybody may open
-    return yield* storage
-      .open({ tenantId: tenant.id, attachmentId: upload.attachmentId }, () => Effect.void)
+    const opened = yield* storage
+      .open({ tenantId: tenant.id, attachmentId: slot.attachmentId }, () => Effect.void)
       .pipe(
         Effect.catchTags({
           STORAGE_ATTACHMENT_NOT_FOUND: () => new LoginMethodIconUnavailable(),
           STORAGE_BACKEND_UNAVAILABLE: (error) => Effect.die(error),
         }),
       )
+    return { kind: 'stored', opened } satisfies OpenedIcon as OpenedIcon
   })
 
   /** a place to put an image before choosing it for a door */
@@ -134,8 +183,9 @@ const make = Effect.gen(function* () {
   /**
    * How a door is drawn from now on. An uploaded image is checked for what
    * the store actually holds - its type and its size - not for what the
-   * browser said it would send, and the image it replaces is retired rather
-   * than deleted: a page already open may still be drawing it.
+   * browser said it would send; an SVG is checked as it arrives. Images the
+   * door no longer names are retired rather than deleted: a page already
+   * open may still be drawing them.
    */
   const choose = Effect.fn('Auth.icons.choose')(function* (
     tenantId: string,
@@ -163,18 +213,22 @@ const make = Effect.gen(function* () {
         return yield* new ProviderIconInvalid({ reason: 'size' })
       }
     }
-    const stored =
-      choice.kind === 'builtin'
-        ? { kind: 'builtin', key: choice.key }
-        : uploaded !== null
-          ? { kind: 'upload', attachmentId: uploaded.id }
-          : null
-    const door = yield* withDb(
+    let slot: IconSlot | null = null
+    if (uploaded !== null) slot = { kind: 'upload', attachmentId: uploaded.id }
+    if (choice.kind === 'svg') {
+      const markup = checkedSvg(choice.markup)
+      if (markup === undefined) return yield* new ProviderIconInvalid({ reason: 'svg' })
+      slot = { kind: 'svg', markup, version: svgVersion(markup) }
+    }
+    const { door, stored } = yield* withDb(
       transaction(
         Effect.gen(function* () {
           yield* lockTenant(tenantId)
           const found = yield* doorById(tenantId, providerId)
           if (!found) return yield* new ProviderNotFound()
+          const had = storedIconOf(found.icon)
+          const next = nextIcon(had, choice, slot)
+          if (next === 'light-first') return yield* new ProviderIconInvalid({ reason: 'light-first' })
           if (uploaded !== null) {
             // bound in the transaction that names it, so nothing sweeps an
             // image a door is already drawn by
@@ -187,11 +241,12 @@ const make = Effect.gen(function* () {
                 }),
               )
           }
-          yield* setIconColumn(tenantId, providerId, stored)
-          const replaced = uploadOf(found.icon)
-          if (replaced !== null && replaced.attachmentId !== uploaded?.id) {
+          yield* setIconColumn(tenantId, providerId, next)
+          const kept = new Set(uploadsOf(next))
+          for (const attachmentId of uploadsOf(had)) {
+            if (kept.has(attachmentId)) continue
             yield* storage
-              .retire({ tenantId, attachmentId: replaced.attachmentId })
+              .retire({ tenantId, attachmentId })
               .pipe(Effect.catchTags({
                 STORAGE_ATTACHMENT_NOT_FOUND: () => Effect.void,
                 STORAGE_ATTACHMENT_INVALID: () => Effect.void,
@@ -201,14 +256,9 @@ const make = Effect.gen(function* () {
             tenantId,
             actor: yield* actorOf(tenantId, as),
             target: { id: found.id, label: found.name },
-            details:
-              choice.kind === 'builtin'
-                ? { icon: 'builtin', key: choice.key }
-                : uploaded !== null
-                  ? { icon: 'upload', attachmentId: uploaded.id }
-                  : { icon: 'default' },
+            details: auditDetails(choice, slot),
           })
-          return found
+          return { door: found, stored: next }
         }),
       ),
     ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
@@ -237,27 +287,37 @@ export const loginIconApiHandlers = HttpApiBuilder.group(local, 'loginIcon', (ha
       'getLoginMethodIcon',
       Effect.fn('auth.getLoginMethodIcon.handler')(function* ({ params, query }) {
         const icons = yield* LoginIcons
-        const opened = yield* icons.open(params.providerCode)
+        const answer = yield* icons.open(params.providerCode, query.surface ?? 'light')
+        // an image opened on its own is still only an image
+        const guarded = {
+          'x-content-type-options': 'nosniff',
+          'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+        }
+        // An address carrying the image's own version names bytes that
+        // never change; one without it is asked again every time.
+        const cache = (version: string) =>
+          query.v !== undefined && query.v === version
+            ? 'public, max-age=31536000, immutable'
+            : 'no-cache'
+        if (answer.kind === 'svg') {
+          return HttpServerResponse.text(answer.markup, {
+            contentType: 'image/svg+xml',
+            headers: { 'cache-control': cache(answer.version), ...guarded },
+          })
+        }
+        const opened = answer.opened
         if (opened.target.kind === 'redirect') {
           // a store that signs its own urls: the image is there, briefly
           return HttpServerResponse.redirect(opened.target.url, {
             headers: { 'cache-control': 'no-store' },
           })
         }
-        // An address carrying the image's own version names bytes that
-        // never change; one without it is asked again every time.
-        const pinned = query.v !== undefined && query.v === opened.meta.id
         return HttpServerResponse.stream(
           Stream.fromAsyncIterable(opened.target.body, (error) => error),
           {
             contentType: servedTypeOf(opened.meta.declaredMime),
             contentLength: Number(opened.meta.size),
-            headers: {
-              'cache-control': pinned ? 'public, max-age=31536000, immutable' : 'no-cache',
-              'x-content-type-options': 'nosniff',
-              // an image opened on its own is still only an image
-              'content-security-policy': "default-src 'none'; sandbox",
-            },
+            headers: { 'cache-control': cache(opened.meta.id), ...guarded },
           },
         )
       }),

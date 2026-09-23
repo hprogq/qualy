@@ -261,6 +261,28 @@ describe('the ways in, as the page lays them out', () => {
     ).toEqual(['false', 'false'])
   })
 
+  it('draws the recommended way by the version for its filled ground', async () => {
+    open([
+      away('cas', '统一身份认证', {
+        prominence: 'primary',
+        recommended: true,
+        icon: { kind: 'image', version: 'light-one', onDark: 'dark-one' },
+      }),
+      away('sso', '门户', {
+        prominence: 'primary',
+        icon: { kind: 'image', version: 'light-two', onDark: 'dark-two' },
+      }),
+    ])
+    await expect.element(page.getByTestId('sign-in-primary').first()).toBeVisible()
+    const [recommended, plain] = page.getByTestId('sign-in-primary').elements()
+    // a light page: the filled button is dark, the plain one is not
+    const drawn = (key: Element) => key.querySelector('[data-icon]')!
+    expect(drawn(recommended!).getAttribute('data-surface')).toBe('dark')
+    expect(drawn(recommended!).getAttribute('data-version')).toBe('dark-one')
+    expect(drawn(plain!).getAttribute('data-surface')).toBe('light')
+    expect(drawn(plain!).getAttribute('data-version')).toBe('light-two')
+  })
+
   it('sets apart only the way the tenant recommends', async () => {
     open([password, away('cas', '统一身份认证', { prominence: 'primary', recommended: true })])
     await expect.element(page.getByTestId('sign-in-primary').first()).toBeVisible()

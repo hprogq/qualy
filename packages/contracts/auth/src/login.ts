@@ -54,10 +54,18 @@ export {
 } from './login-icons.ts'
 import type { BuiltinLoginIcon } from './login-icons.ts'
 
-/** how a way in is drawn: one of ours, an uploaded image by version, or its initial */
+/**
+ * How a way in is drawn: one of ours, an uploaded image by version, or its
+ * initial.
+ *
+ * An image comes in up to two versions, by the ground it stands on rather
+ * than by the page's theme: `version` for a light surface, `onDark` for a
+ * dark one - which is a dark theme's page, and equally a light theme's
+ * recommended button. Without `onDark` the one image stands on both.
+ */
 export type LoginMethodIcon =
   | { readonly kind: 'builtin'; readonly key: BuiltinLoginIcon }
-  | { readonly kind: 'image'; readonly version: string }
+  | { readonly kind: 'image'; readonly version: string; readonly onDark: string | null }
   | null
 
 /**

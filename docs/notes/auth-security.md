@@ -402,3 +402,11 @@ smtp 后端对着 Mailpit 跑同一套,CI 设 `QUALY_REQUIRE_MAILPIT_TESTS=1`,�
 - **账号变更**：审计仍然只归管理员。`AuditAction` 新增可选的 `subject`，是写给被操作的那个人看的措辞；只允许用在目标为人（`PERSON_TARGET = 'auth.user'`）的动作上，`compileActionCatalog` 会拒绝不符合的声明。`Audit` 服务契约新增只读方法 `subjectEvents`，只返回目标是本人、结果为成功、且声明了 subject 的事件，字段只有时间、措辞以及「本人 / 他人」，不带 details、姓名或 IP。auth 通过这个服务表面提供 `GET /iam/self/account-changes`，不直接读审计表。
 - **分页**：登录记录和账号变更按用户要求使用页码分页（`numberedPageQuery` / `numberedPageOf` + `pageWindow`），并支持日期范围。这偏离了 CLAUDE.md「向前读的流用 keyset」的默认约定，代价是每页多一次 count 和一次 offset；两个列表都按单个用户过滤，规模有限。排序键是 (时间, id)，是全序。
 - **最近登录**：两张入口表的「最近登录」按入口从 `sign_in_events` 取最近一次成功登录，不再读绑定的 `lastUsedAt`。这是因为按字段找人的入口（CAS）没有绑定行。
+
+## 登录方式图标：两种背景与 SVG（2026-09-24 定案）
+
+- **按所在背景选，不按主题选**：上传的图标最多两张，`onLight`（必填）与 `onDark`（可选，缺省时沿用 `onLight`）。深色背景既包括深色主题的页面，也包括浅色主题下被推荐的实心按钮；组件用 `tone: 'plain' | 'inverse'` 说明自己站在页面底色上还是它的反色上，再结合当前主题得出实际背景。内置图标里线条类跟随文字颜色，品牌色字母块在两种背景上都清楚的不变，Apple 在深色背景上换成浅底深字。不对彩色图做 `filter: invert()`，那会毁掉品牌色。
+- **SVG 不经对象存储**：storage 有意把 SVG 当字节返回（它是文档，不是图片），这条平台策略不为图标开口子。SVG 以原文随请求提交（≤64 KB），校验通过后原样存进 `auth_providers.icon`，由 auth 的图标地址以 `image/svg+xml` 返回；存的就是验过的那份，校验与读取之间没有可替换的窗口。
+- **校验是拒绝，不是清洗**：元素白名单（形状、渐变、遮罩、少量滤镜、`style`/`title`/`desc`），任何其他元素、`on*` 属性、不以 `#` 开头的 `href`、DOCTYPE/ENTITY、除开头声明外的处理指令（`xml-stylesheet` 会被浏览器执行）、五个预定义以外的实体引用（数字实体可藏词）、`javascript:` / `@import` / `expression(` / 非 `#` 的 `url(` 都让整个文件被拒。改写标记的清洗器是第二个解析器，它与浏览器的分歧本身就是攻击面。
+- **第二道锁**：图标响应带 `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; sandbox` 与 `nosniff`，单独打开地址也执行不了任何东西；`style-src` 放行内联样式，是因为设计软件导出的 SVG 常用 `<style>`。
+- 审计只记选择与背景、上传的 attachmentId 或 SVG 的摘要，从不记图形本身。旧数据 `{kind:'upload'}` 由迁移 `20260923185234_login-icon-surfaces.sql` 改写为 `onLight`。

@@ -289,8 +289,13 @@ const audiencePolicyWrite = Schema.Union([
 const loginMethodIcon = Schema.NullOr(
   Schema.Union([
     Schema.Struct({ kind: Schema.Literal('builtin'), key: Schema.Literals(BUILTIN_LOGIN_ICONS) }),
-    // by the version of the image, which is also what makes a new one a new address
-    Schema.Struct({ kind: Schema.Literal('image'), version: Schema.String }),
+    // by the version of each image, which is also what makes a new one a new
+    // address: one for a light surface, and one for a dark surface if given
+    Schema.Struct({
+      kind: Schema.Literal('image'),
+      version: Schema.String,
+      onDark: Schema.NullOr(Schema.String),
+    }),
   ]),
 )
 
@@ -1181,6 +1186,12 @@ export const LOGIN_ICON_TYPES = ['image/png', 'image/jpeg', 'image/webp'] as con
 /** the most an icon may weigh; it is drawn at fifty pixels */
 export const LOGIN_ICON_MAX_BYTES = 256 * 1024
 
+/** the most an SVG icon may weigh; a mark is a few kilobytes */
+export const LOGIN_ICON_SVG_MAX_BYTES = 64 * 1024
+
+/** the ground an icon's image stands on */
+const iconSurface = Schema.Literals(['light', 'dark'])
+
 // A door's uploaded icon: prepared and chosen by the tenant's administrators,
 // read by anybody on the sign-in page. Apart from the other groups because it
 // is the one part of this plugin that stores files.
@@ -1189,7 +1200,11 @@ export const loginIconApiGroup = HttpApiGroup.make('loginIcon')
     // the image itself, for the sign-in page; `v` is only the cache's key
     HttpApiEndpoint.get('getLoginMethodIcon', '/auth/login-methods/:providerCode/icon', {
       params: Schema.Struct({ providerCode: Schema.String.check(Schema.isMaxLength(63)) }),
-      query: Schema.Struct({ v: Schema.optional(Schema.String.check(Schema.isMaxLength(64))) }),
+      query: Schema.Struct({
+        v: Schema.optional(Schema.String.check(Schema.isMaxLength(64))),
+        // the image for a dark surface, where there is one
+        surface: Schema.optional(Schema.Literal('dark')),
+      }),
       success: HttpApiSchema.StreamUint8Array(),
       error: [LoginMethodIconUnavailable],
     }),
@@ -1214,8 +1229,9 @@ export const loginIconApiGroup = HttpApiGroup.make('loginIcon')
     }).middleware(Authenticated),
   )
   .add(
-    // how the door is drawn: one of the page's own icons, the image just
-    // uploaded, or its kind's own again
+    // how the door is drawn: one of the page's own icons, an image for a light
+    // or a dark surface - uploaded, or an SVG sent as it is - the dark one
+    // taken away again, or its kind's own again
     HttpApiEndpoint.put('setProviderIcon', '/auth/providers/:providerId/icon', {
       params: Schema.Struct({ providerId: uuidInput }),
       payload: Schema.Struct({
@@ -1224,7 +1240,18 @@ export const loginIconApiGroup = HttpApiGroup.make('loginIcon')
             kind: Schema.Literal('builtin'),
             key: Schema.Literals(BUILTIN_LOGIN_ICONS),
           }),
-          Schema.Struct({ kind: Schema.Literal('upload'), reservationId: uuidInput }),
+          Schema.Struct({
+            kind: Schema.Literal('upload'),
+            reservationId: uuidInput,
+            surface: iconSurface,
+          }),
+          Schema.Struct({
+            kind: Schema.Literal('svg'),
+            // characters, not bytes; the bytes are weighed on arrival
+            markup: Schema.String.check(Schema.isMaxLength(LOGIN_ICON_SVG_MAX_BYTES)),
+            surface: iconSurface,
+          }),
+          Schema.Struct({ kind: Schema.Literal('clear'), surface: Schema.Literal('dark') }),
           Schema.Struct({ kind: Schema.Literal('default') }),
         ]),
       }),

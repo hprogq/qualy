@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { ImageUpIcon, RotateCcwIcon } from 'lucide-react'
+import { ImageUpIcon, RotateCcwIcon, XIcon } from 'lucide-react'
 import { upload } from '@qualy/plugin-storage/client'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
@@ -14,8 +14,9 @@ import { toast } from '@qualy/ui/toast'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { iamMessages as m } from '../../i18n.ts'
 import { authApi } from '../../api.ts'
-import { LOGIN_ICON_MAX_BYTES, LOGIN_ICON_TYPES } from '../../../api.ts'
+import { LOGIN_ICON_MAX_BYTES, LOGIN_ICON_SVG_MAX_BYTES, LOGIN_ICON_TYPES } from '../../../api.ts'
 import { LoginMethodGlyph } from '../../sign-in/glyph.tsx'
+import type { IconSurface } from '../../sign-in/surface.ts'
 import type { ProviderRow } from './MethodSheet.tsx'
 
 // Where an entrance stands on the sign-in page and how it is drawn there.
@@ -23,6 +24,10 @@ import type { ProviderRow } from './MethodSheet.tsx'
 // Its place is set by dragging it in the list, because a place is only
 // meaningful next to the others; what it is drawn by and whether the tenant
 // recommends it are its own, and set here.
+//
+// An icon is shown on both grounds it can stand on, because a mark that reads
+// on one can vanish on the other; the tenant's own image may come in a
+// version for each.
 
 /** a message this module formats, whichever one */
 type Said = Parameters<ReturnType<typeof useI18n>['format']>[0]
@@ -49,16 +54,33 @@ const NAMES: Record<BuiltinLoginIcon, Said> = {
 const styles = stylex.create({
   aside: { fontSize: 12.5, color: tokens.mutedForeground },
   iconLine: { display: 'flex', alignItems: 'center', gap: 12 },
+  previews: { display: 'inline-flex', gap: 6 },
   preview: {
     display: 'inline-flex',
     width: 44,
     height: 44,
+    flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 11,
-    backgroundColor: tokens.background,
     boxShadow: `inset 0 0 0 1px ${tokens.border}`,
   },
+  // the two grounds, fixed rather than themed: each is the one it names
+  onLight: { backgroundColor: '#ffffff', color: '#18181b' },
+  onDark: { backgroundColor: '#18181b', color: '#fafafa' },
+  small: { width: 36, height: 36, borderRadius: 9 },
+  section: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.divider,
+  },
+  slot: { display: 'flex', alignItems: 'center', gap: 10 },
+  slotWords: { display: 'flex', minWidth: 0, flex: 1, flexDirection: 'column', gap: 2 },
+  slotName: { fontSize: 13 },
   recommend: { display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' },
   recommendWords: { display: 'flex', flexDirection: 'column', gap: 2 },
   recommendName: { fontSize: 14 },
@@ -116,21 +138,30 @@ export function ShownCard({
   type Choice =
     | { kind: 'builtin'; key: BuiltinLoginIcon }
     | { kind: 'default' }
-    | { kind: 'upload'; file: File }
+    | { kind: 'clear'; surface: 'dark' }
+    | { kind: 'file'; file: File; surface: IconSurface }
   const choose = useMutation({
     mutationFn: async (choice: Choice) => {
-      if (choice.kind !== 'upload') {
+      const params = { providerId: provider.id }
+      if (choice.kind !== 'file') {
+        return runApi(api.loginIcon.setProviderIcon({ params, payload: { icon: choice } }))
+      }
+      const { file: picked, surface } = choice
+      // a drawing travels as it is and is checked on arrival; a picture
+      // goes through the store, which is what weighs it
+      if (picked.type === 'image/svg+xml' || picked.name.toLowerCase().endsWith('.svg')) {
+        const markup = await picked.text()
         return runApi(
-          api.loginIcon.setProviderIcon({ params: { providerId: provider.id }, payload: { icon: choice } }),
+          api.loginIcon.setProviderIcon({ params, payload: { icon: { kind: 'svg', markup, surface } } }),
         )
       }
       const ticket = await runApi(
         api.loginIcon.prepareProviderIconUpload({
-          params: { providerId: provider.id },
+          params,
           payload: {
-            filename: choice.file.name,
-            declaredMime: choice.file.type as (typeof LOGIN_ICON_TYPES)[number],
-            size: String(choice.file.size),
+            filename: picked.name,
+            declaredMime: picked.type as (typeof LOGIN_ICON_TYPES)[number],
+            size: String(picked.size),
           },
         }),
       )
@@ -141,12 +172,12 @@ export function ShownCard({
           grant: ticket.grant,
           expiresAt: Date.parse(ticket.expiresAt),
         },
-        choice.file,
+        picked,
       )
       return runApi(
         api.loginIcon.setProviderIcon({
-          params: { providerId: provider.id },
-          payload: { icon: { kind: 'upload', reservationId: ticket.reservationId } },
+          params,
+          payload: { icon: { kind: 'upload', reservationId: ticket.reservationId, surface } },
         }),
       )
     },
@@ -157,6 +188,35 @@ export function ShownCard({
     },
     onError: (error: unknown) => toast.error(formatError(error)),
   })
+
+  /** which ground the file being picked is for */
+  const aim = useRef<IconSurface>('light')
+  const pick = (surface: IconSurface) => {
+    aim.current = surface
+    file.current?.click()
+  }
+  const image = provider.iconChosen && provider.icon?.kind === 'image' ? provider.icon : null
+
+  /** the door as drawn on one ground */
+  const preview = (surface: IconSurface, small = false) => (
+    <span
+      data-testid={`method-icon-${surface}`}
+      title={format(surface === 'light' ? m.methodIconOnLight : m.methodIconOnDark)}
+      {...stylex.props(
+        styles.preview,
+        surface === 'light' ? styles.onLight : styles.onDark,
+        small && styles.small,
+      )}
+    >
+      <LoginMethodGlyph
+        code={provider.code}
+        name={provider.name}
+        icon={provider.icon}
+        size={small ? 18 : 22}
+        surface={surface}
+      />
+    </span>
+  )
 
   const chosenKey = provider.iconChosen && provider.icon?.kind === 'builtin' ? provider.icon.key : null
 
@@ -172,8 +232,9 @@ export function ShownCard({
         </DefLine>
         <DefLine label={format(m.methodIconLabel)}>
           <span {...stylex.props(styles.iconLine)}>
-            <span {...stylex.props(styles.preview)} data-testid="method-icon">
-              <LoginMethodGlyph code={provider.code} name={provider.name} icon={provider.icon} size={22} />
+            <span data-testid="method-icon" {...stylex.props(styles.previews)}>
+              {preview('light')}
+              {preview('dark')}
             </span>
             {canManage && (
               <Popover open={picking} onOpenChange={setPicking}>
@@ -182,7 +243,7 @@ export function ShownCard({
                     {format(choose.isPending ? m.methodIconUploading : m.methodIconChange)}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent align="start" width={316}>
+                <PopoverContent align="start" width={340}>
                   <div data-testid="icon-picker" {...stylex.props(styles.picker)}>
                     <span {...stylex.props(styles.pickerTitle)}>{format(m.methodIconTitle)}</span>
                     <div {...stylex.props(styles.grid)}>
@@ -207,18 +268,58 @@ export function ShownCard({
                         </button>
                       ))}
                     </div>
-                    <div {...stylex.props(styles.pickerActions)}>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={choose.isPending}
-                        onClick={() => file.current?.click()}
-                      >
-                        <ImageUpIcon aria-hidden />
-                        {format(m.methodIconUpload)}
-                      </Button>
+                    <div {...stylex.props(styles.section)}>
+                      <span {...stylex.props(styles.pickerTitle)}>{format(m.methodIconOwn)}</span>
+                      <div {...stylex.props(styles.slot)} data-testid="icon-slot-light">
+                        {preview('light', true)}
+                        <span {...stylex.props(styles.slotWords)}>
+                          <span {...stylex.props(styles.slotName)}>{format(m.methodIconOnLight)}</span>
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={choose.isPending}
+                          onClick={() => pick('light')}
+                        >
+                          <ImageUpIcon aria-hidden />
+                          {format(m.methodIconUpload)}
+                        </Button>
+                      </div>
+                      <div {...stylex.props(styles.slot)} data-testid="icon-slot-dark">
+                        {preview('dark', true)}
+                        <span {...stylex.props(styles.slotWords)}>
+                          <span {...stylex.props(styles.slotName)}>{format(m.methodIconOnDark)}</span>
+                          <span {...stylex.props(styles.aside)}>
+                            {format(image === null ? m.methodIconDarkNeedsLight : m.methodIconDarkOptional)}
+                          </span>
+                        </span>
+                        {image?.onDark != null ? (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={choose.isPending}
+                            onClick={() => choose.mutate({ kind: 'clear', surface: 'dark' })}
+                          >
+                            <XIcon aria-hidden />
+                            {format(m.methodIconRemoveDark)}
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            // a version for the dark ground stands beside one for the light
+                            disabled={choose.isPending || image === null}
+                            onClick={() => pick('dark')}
+                          >
+                            <ImageUpIcon aria-hidden />
+                            {format(m.methodIconUpload)}
+                          </Button>
+                        )}
+                      </div>
                       <span {...stylex.props(styles.aside)}>{format(m.methodIconUploadHint)}</span>
-                      {provider.iconChosen && (
+                    </div>
+                    {provider.iconChosen && (
+                      <div {...stylex.props(styles.pickerActions)}>
                         <Button
                           size="sm"
                           variant="ghost"
@@ -228,27 +329,30 @@ export function ShownCard({
                           <RotateCcwIcon aria-hidden />
                           {format(m.methodIconDefault)}
                         </Button>
-                      )}
-                    </div>
+                      </div>
+                    )}
                     <input
                       ref={file}
                       type="file"
-                      accept={LOGIN_ICON_TYPES.join(',')}
+                      accept={[...LOGIN_ICON_TYPES, 'image/svg+xml', '.svg'].join(',')}
                       data-testid="icon-file"
                       {...stylex.props(styles.hidden)}
                       onChange={(event) => {
                         const picked = event.target.files?.[0]
                         event.target.value = ''
                         if (picked === undefined) return
+                        const drawing =
+                          picked.type === 'image/svg+xml' || picked.name.toLowerCase().endsWith('.svg')
                         // said here rather than after an upload that would be refused
-                        if (
-                          !(LOGIN_ICON_TYPES as readonly string[]).includes(picked.type) ||
-                          picked.size > LOGIN_ICON_MAX_BYTES
-                        ) {
-                          toast.error(formatError({ _tag: 'AUTH_PROVIDER_ICON_INVALID' }))
+                        const fits = drawing
+                          ? picked.size <= LOGIN_ICON_SVG_MAX_BYTES
+                          : (LOGIN_ICON_TYPES as readonly string[]).includes(picked.type) &&
+                            picked.size <= LOGIN_ICON_MAX_BYTES
+                        if (!fits) {
+                          toast.error(formatError({ _tag: 'AUTH_PROVIDER_ICON_INVALID', reason: 'type' }))
                           return
                         }
-                        choose.mutate({ kind: 'upload', file: picked })
+                        choose.mutate({ kind: 'file', file: picked, surface: aim.current })
                       }}
                     />
                   </div>

@@ -483,3 +483,51 @@ describe.runIf(postgresAvailable)('the login-method-prominence migration', () =>
     }
   })
 })
+
+// A door's icon became an image in up to two versions. An upload chosen
+// before is read as the version for a light surface, with none of its own for
+// a dark one; the page's own icons are left as they were.
+describe.runIf(postgresAvailable)('the login-icon-surfaces migration', () => {
+  it('keeps an uploaded icon as the one for a light surface', async () => {
+    const SURFACES = '20260923185234_login-icon-surfaces.sql'
+    expect(fs.existsSync(path.join(MIGRATIONS_FOLDER, SURFACES))).toBe(true)
+    const before = lineageBefore(SURFACES, 'icon-surfaces-upgrade')
+    const db = await createTestContext('icon-surfaces-upgrade', {
+      migrations: 'apply',
+      migrationsFolder: before,
+    })
+    try {
+      const tenant = (
+        await db.row<{ id: string }>(
+          `insert into tenants (slug, name) values ('icons', 'Icons') returning id`,
+        )
+      ).id
+      const door = (code: string, icon: unknown) =>
+        db.row(
+          `insert into auth_providers (tenant_id, code, type, name, icon)
+           values ($1, $2, 'cas', $2, $3::jsonb) returning id`,
+          [tenant, code, icon === null ? null : JSON.stringify(icon)],
+        )
+      const attachmentId = '0199a000-0000-7000-8000-000000000001'
+      await door('uploaded', { kind: 'upload', attachmentId })
+      await door('builtin', { kind: 'builtin', key: 'github' })
+      await door('plain', null)
+
+      await runMigrations(db.url, { folder: MIGRATIONS_FOLDER, entities: [] })
+
+      const { rows } = await db.query<{ code: string; icon: unknown }>(
+        `select code, icon from auth_providers order by code`,
+      )
+      expect(rows).toEqual([
+        { code: 'builtin', icon: { kind: 'builtin', key: 'github' } },
+        { code: 'plain', icon: null },
+        {
+          code: 'uploaded',
+          icon: { kind: 'image', onLight: { kind: 'upload', attachmentId }, onDark: null },
+        },
+      ])
+    } finally {
+      await db.dispose()
+    }
+  })
+})

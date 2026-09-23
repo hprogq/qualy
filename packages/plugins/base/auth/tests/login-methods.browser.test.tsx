@@ -671,4 +671,79 @@ describe('the sign-in page, as its administrator arranges it', () => {
     ])
     expect(recommend).not.toHaveBeenCalled()
   })
+
+  it('takes an image for each ground, the dark one only beside a light one', async () => {
+    const icon = vi.fn(() =>
+      Effect.succeed({
+        icon: { kind: 'image' as const, version: 'v1', onDark: null },
+        iconChosen: true,
+      }),
+    )
+    renderScreen({
+      client: fakeClient({
+        ...stubs({
+          listAuthProviders: () => Effect.succeed({ providers: four }),
+          getAuthProvider: () => Effect.succeed(detail(four[3]!)),
+        }),
+        loginIcon: { setProviderIcon: icon },
+      }),
+      route: `/admin/login-methods?provider=${CAS_ID}`,
+      children: <LoginMethodsPage />,
+    })
+    const shown = page.getByTestId('method-shown')
+    // the door as it stands on either ground
+    await expect.element(shown.getByTestId('method-icon-light')).toBeVisible()
+    await expect.element(shown.getByTestId('method-icon-dark')).toBeVisible()
+    await shown.getByRole('button', { name: '更换' }).click()
+    // nothing of its own yet: nothing to put a dark version beside
+    await expect
+      .element(page.getByTestId('icon-slot-dark').getByRole('button', { name: '上传图片' }))
+      .toBeDisabled()
+    // an SVG goes as it is, for the light ground
+    const markup = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><path d="M0 0h1v1H0z"/></svg>'
+    await userEvent.upload(
+      page.getByTestId('icon-file'),
+      new File([markup], 'mark.svg', { type: 'image/svg+xml' }),
+    )
+    await expect.poll(() => icon.mock.calls.length).toBe(1)
+    expect(icon.mock.calls[0]).toEqual([
+      {
+        params: { providerId: CAS_ID },
+        payload: { icon: { kind: 'svg', markup, surface: 'light' } },
+      },
+    ])
+  })
+
+  it('takes away the dark version and keeps the light one', async () => {
+    const icon = vi.fn(() =>
+      Effect.succeed({
+        icon: { kind: 'image' as const, version: 'v1', onDark: null },
+        iconChosen: true,
+      }),
+    )
+    const drawn = {
+      ...four[3]!,
+      icon: { kind: 'image' as const, version: 'v1', onDark: 'v2' },
+      iconChosen: true,
+    }
+    renderScreen({
+      client: fakeClient({
+        ...stubs({
+          listAuthProviders: () => Effect.succeed({ providers: [...four.slice(0, 3), drawn] }),
+          getAuthProvider: () => Effect.succeed(detail(drawn)),
+        }),
+        loginIcon: { setProviderIcon: icon },
+      }),
+      route: `/admin/login-methods?provider=${CAS_ID}`,
+      children: <LoginMethodsPage />,
+    })
+    const shown = page.getByTestId('method-shown')
+    await shown.getByRole('button', { name: '更换' }).click()
+    await page.getByTestId('icon-slot-dark').getByRole('button', { name: '移除' }).click()
+    await expect.poll(() => icon.mock.calls.length).toBe(1)
+    expect(icon.mock.calls[0]).toEqual([
+      { params: { providerId: CAS_ID }, payload: { icon: { kind: 'clear', surface: 'dark' } } },
+    ])
+  })
 })
+
