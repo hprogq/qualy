@@ -318,4 +318,60 @@ describe.runIf(postgresAvailable)('a secret at rest', () => {
       await db.dispose()
     }
   })
+
+  it('derives a secret per domain, under a root no caller can leave', async () => {
+    const db = await createTestContext('secrets-derived')
+    try {
+      const other = Buffer.alloc(32, 9).toString('base64')
+      const derive = (domain: string, layer = secretsLayer) =>
+        run(
+          db.url,
+          Effect.flatMap(Secrets, (secrets) => secrets.deriveSecret(domain)),
+          layer,
+        ).then(ok)
+      const fingerprint = (scope: string, value: string) =>
+        run(
+          db.url,
+          Effect.flatMap(Secrets, (secrets) => secrets.fingerprint(scope, value)),
+          secretsLayer,
+        ).then(ok)
+      // computed here, from the key and the documented domains alone, so the
+      // separation itself is what is asserted and not merely two unequal texts
+      const { createHmac, hkdfSync } = await import('node:crypto')
+      const master = Buffer.from(TEST_MASTER_KEY, 'base64')
+      const hkdf = (info: string) => Buffer.from(hkdfSync('sha256', master, Buffer.alloc(0), info, 32))
+      const derivedVector = (domain: string) =>
+        hkdf(`qualy/secrets/derived/v1\0${domain}`).toString('base64url')
+      const fingerprintKey = hkdf('qualy/secrets/fingerprint/v1')
+
+      const challenge = await derive('captcha/altcha/challenge/v1')
+      expect(Redacted.value(challenge)).toBe(derivedVector('captcha/altcha/challenge/v1'))
+      expect(Redacted.value(await derive('captcha/altcha/challenge/v1'))).toBe(Redacted.value(challenge))
+      // another domain, another deployment's key: another secret
+      expect(Redacted.value(await derive('captcha/altcha/key/v1'))).toBe(
+        derivedVector('captcha/altcha/key/v1'),
+      )
+      expect(Redacted.value(await derive('captcha/altcha/key/v1'))).not.toBe(Redacted.value(challenge))
+      expect(Redacted.value(await derive('captcha/altcha/challenge/v1', secretsLayerWith(other)))).not.toBe(
+        Redacted.value(challenge),
+      )
+      // fingerprints are made under a key of their own, which is not
+      // anything a derived domain can name - not even its own label
+      expect(await fingerprint('sign-in:identifier', 'ada@school.edu')).toBe(
+        createHmac('sha256', fingerprintKey)
+          .update('sign-in:identifier')
+          .update('\0')
+          .update('ada@school.edu')
+          .digest('hex'),
+      )
+      const posing = await derive('qualy/secrets/fingerprint/v1')
+      expect(Redacted.value(posing)).not.toBe(fingerprintKey.toString('base64url'))
+      expect(Redacted.value(posing)).toBe(derivedVector('qualy/secrets/fingerprint/v1'))
+      // and it prints as what it is
+      expect(String(challenge)).not.toContain(Redacted.value(challenge))
+      expect(inspect(challenge)).not.toContain(Redacted.value(challenge))
+    } finally {
+      await db.dispose()
+    }
+  })
 })

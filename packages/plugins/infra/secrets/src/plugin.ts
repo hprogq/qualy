@@ -72,5 +72,17 @@ export class Secrets extends Context.Service<
      * The scope keeps two uses of one value apart.
      */
     readonly fingerprint: (scope: string, value: string) => Effect.Effect<string>
+    /**
+     * A secret of the deployment's own, derived for one use.
+     *
+     * For a capability that needs a key nobody has to configure - a signing
+     * key for the challenges it issues - and that may change whenever the
+     * master key does. Every domain lives under this capability's own root,
+     * so no domain a caller names can reach the key fingerprints are made
+     * with or the one secrets are sealed under: three uses of one master
+     * key, and none of them can be computed from another. Name the domain
+     * with its owner and a version, `captcha/altcha/challenge/v1`.
+     */
+    readonly deriveSecret: (domain: string) => Effect.Effect<Redacted.Redacted<string>>
   }
 >()('@qualy/plugin-secrets/Secrets') {}

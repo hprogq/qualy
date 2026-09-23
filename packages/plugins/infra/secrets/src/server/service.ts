@@ -16,6 +16,8 @@ const db = Db.scope([...entities] as const)
 
 /** what the fingerprint key is derived for; a new version is a new key */
 const FINGERPRINT_INFO = 'qualy/secrets/fingerprint/v1'
+/** the root every derived secret hangs from; a caller's domain is appended, never substituted */
+const DERIVED_SECRET_INFO = 'qualy/secrets/derived/v1'
 
 export const serviceLayer: Layer.Layer<Secrets, never, Orm | SecretsConfig> = Layer.effect(
   Secrets,
@@ -144,6 +146,15 @@ export const serviceLayer: Layer.Layer<Secrets, never, Orm | SecretsConfig> = La
       fingerprint: (scope: string, value: string) =>
         Effect.sync(() =>
           createHmac('sha256', fingerprintKey).update(scope).update('\0').update(value).digest('hex'),
+        ),
+
+      deriveSecret: (domain: string) =>
+        Effect.sync(() =>
+          Redacted.make(
+            Buffer.from(
+              hkdfSync('sha256', key(), Buffer.alloc(0), `${DERIVED_SECRET_INFO}\0${domain}`, 32),
+            ).toString('base64url'),
+          ),
         ),
 
       open: (ref: SecretRef, sealed: string) => {
