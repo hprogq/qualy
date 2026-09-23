@@ -579,16 +579,20 @@ describe('the workspace shell', () => {
 
 // --- the press, heard before the address moves --------------------------------
 
-/** a page whose code arrives when the test says so */
+/**
+ * A page whose code arrives when the test says so.
+ *
+ * The promise is made up front: React calls a lazy loader only once it first
+ * renders the page, and a test that let it go before that found nothing to
+ * call.
+ */
 const slowPage = () => {
   let release!: () => void
-  const Page = lazy(
-    () =>
-      new Promise<{ default: () => ReactNode }>((resolve) => {
-        release = () => resolve({ default: () => <main data-testid="page-entries" /> })
-      }),
-  )
-  return { Page, release: () => release() }
+  const arrived = new Promise<{ default: () => ReactNode }>((resolve) => {
+    release = () => resolve({ default: () => <main data-testid="page-entries" /> })
+  })
+  const Page = lazy(() => arrived)
+  return { Page, release }
 }
 
 describe('the user-detail shell', () => {
