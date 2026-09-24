@@ -20101,3 +20101,18 @@ A–C 的部署约束至此解除：ALTCHA 与能处理 428 的登录页在同�
 
 - ALTCHA 难度待中低端 Android 真机 p50 / p95。
 - 要改用 Resend 的部署：启用插件、配 key、设默认后端，并先在 staging 用真 key 发一封。
+
+## 密码策略与重置链接预检（2026-09-24）
+
+- **密码策略**改为 NIST SP 800-63B 第 4 版的做法（全文见 docs/notes/auth-security.md「密码」）：长度 15–128（NFKC 后按字符计），不设字符种类组合；不得含本人与平台的词（邮箱前缀、姓名及其拼音、学号、租户名、qualy）；zxcvbn-ts score ≥ 3，附国内常见密码与拼音姓名小词表。哈希与校验前 NFKC。判定只在 auth-local 一处，经登录驱动契约 `binding.prepare({secret, subject})` / `binding.assess` 暴露；拒绝时 `AUTH_BINDING_CREDENTIAL_INVALID` 带 `checks`。
+- **三处设置密码的表单共用一个 checklist**（重置页、账号安全、后台为用户设密码）：长度本地实时判，另两项停止输入约 350ms 后问服务端（三个 `…/assessments` 接口，权限与各自的设置接口相同）；按下保存时不满足的项标红。
+- **重置页打开即检查链接**（`POST /auth/password-resets/inspections`，只读不消费），失效当场说明；token 读出后从地址栏去掉。
+- CI 的 CSP 冒烟管理员密码加长到 15 位以上。
+- 未做（待定）：管理员设密码改为「只能触发重置」；按租户配置密码策略（无真实需求，按元规则不预建）。
+
+### 验收（实际执行）
+
+- `pnpm typecheck`：exit 0。
+- `pnpm test`（本地清单启用了 resend、停用了 smtp，未提交）：`Test Files  4 failed | 307 passed | 3 skipped (314)`，`Tests  11 failed | 2275 passed | 17 skipped (2291)`；11 个失败全在 apps/server 的 4 个文件，原因是本地清单（缺 `ResendConfig` / 测试进程无 resend key / 默认后端 smtp 未启用）。在 HEAD + 本次改动、已提交清单的临时 worktree 中重跑这 4 个文件：`Test Files  4 passed (4)`，`Tests  13 passed (13)`。
+- 新增与改动的 node 测试：auth-local strength `Tests  9 passed (9)`；effect-email-flows（重置链接预检与评估、自助评估）与 effect-users（管理员评估的权限与不写库）通过。
+- `pnpm test:browser`：`Test Files  1 failed | 77 passed (78)`，`Tests  1 failed | 586 passed (587)`；失败的 directory-import import-wizard 为 32 s 负载超时，单独重跑 `Tests  3 passed (3)`。
