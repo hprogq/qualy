@@ -334,8 +334,11 @@ export class BatchStatusInvalid extends Schema.TaggedError<BatchStatusInvalid>()
         'reason-required',
         'phase-required',
         'already-started',
+        'rounds-open',
       ]),
     ),
+    /** with `rounds-open`: how many review rounds are still unfinished */
+    openRounds: Schema.optional(Schema.Number),
   },
   { httpApiStatus: 409, identifier: 'AssessmentBatchStatusInvalid' },
 ) {}

@@ -284,6 +284,27 @@ export const reviewersAt = (input: {
  */
 export const OPEN_REVIEW_STATES = ['active', 'blocked', 'awaiting_supplement'] as const
 
+/**
+ * How many rounds of a batch are not over yet. Archiving asks this: once a
+ * batch is read-only nobody can decide, answer or unblock a round, so one
+ * left open would stay in review for good.
+ */
+export const openRoundCountOfBatch = (tenantId: string, batchId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('ReviewInstance as ri')
+        .innerJoin('Entry as e', (join) =>
+          join.onRef('e.tenantId', '=', 'ri.tenantId').onRef('e.id', '=', 'ri.entryId'),
+        )
+        .select((eb) => eb.fn.countAll<string>().as('open'))
+        .where('ri.tenantId', '=', tenantId)
+        .where('e.batchId', '=', batchId)
+        .where('ri.state', 'in', OPEN_REVIEW_STATES)
+        .executeTakeFirstOrThrow(),
+    )
+    .pipe(Effect.map((row) => Number(row.open)))
+
 /** whether the state still has reviewers at all, for the read predicates */
 export const isOpenReviewState = (state: string): boolean =>
   (OPEN_REVIEW_STATES as readonly string[]).includes(state)

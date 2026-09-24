@@ -74,6 +74,7 @@ import {
   mayReviewEntry,
   openInstances,
   openPanelOf,
+  openRoundCountOfBatch,
   reviewersAt,
   setInstanceState,
   stageNodesOf,
@@ -3121,6 +3122,15 @@ export const make = Effect.fn('Assessment.make')(function* () {
                     from,
                     to,
                     refusal: 'last-phase-not-entered',
+                  })
+                }
+                const openRounds = yield* openRoundCountOfBatch(tenantId, batchId)
+                if (openRounds > 0) {
+                  return yield* new BatchStatusInvalid({
+                    from,
+                    to,
+                    refusal: 'rounds-open',
+                    openRounds,
                   })
                 }
                 yield* updateBatchFields(tenantId, batchId, { status: 'archived' })

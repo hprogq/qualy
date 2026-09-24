@@ -1684,7 +1684,8 @@ export default {
   'assessment/error/template-not-found': '模板不存在或已被删除。',
   'assessment/error/template-conflict': '已存在同名模板，请更换名称。',
   'assessment/error/batch-read-only': '该批次已结束，无法修改。',
-  'assessment/error/batch-status-invalid': '当前批次状态不支持该操作。',
+  'assessment/error/batch-status-invalid':
+    '{refusal, select, roundsOpen {还有 {openRounds} 条申报在审核中，审完后再归档。} other {当前批次状态不支持该操作。}}',
   'assessment/error/batch-no-participants': '暂无参评人员，请先导入或添加人员。',
   'assessment/error/batch-reference-invalid': '所选单位或人员类型中包含已失效项目，请重新选择。',
   'assessment/error/plan-invalid': '阶段信息保存失败，请根据提示修改后重试。',

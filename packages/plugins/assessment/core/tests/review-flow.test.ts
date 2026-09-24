@@ -260,6 +260,51 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
     expect(result.detail.capabilities.canDecide).toBe(false)
   })
 
+  it('will not archive over a round still in review, and archives once it is handed back', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rv-archive-open')
+          const assessment = yield* Assessment
+          const admin = f.principal(f.admin)
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const { entryId } = yield* submitted(f, g, g.p1, f.s1)
+          const plan = yield* assessment.getPlan(f.t, g.batch.id, admin)
+          yield* assessment.advancePhase(
+            f.t,
+            g.batch.id,
+            { to: plan[plan.length - 1]!.id, force: true, reason: 'test reaches the end' },
+            admin,
+          )
+          const refused = yield* Effect.exit(
+            assessment.setBatchStatus(f.t, g.batch.id, { status: 'archived' }, admin),
+          )
+          // nobody may judge in the last phase, so the way out is to hand
+          // the claim back, which ends its round
+          yield* assessment.interveneOnEntry(
+            f.t,
+            entryId,
+            { kind: 'return-for-revision', reason: 'term closed before it was reviewed' },
+            admin,
+          )
+          yield* assessment.setBatchStatus(f.t, g.batch.id, { status: 'archived' }, admin)
+          const archived = yield* assessment.getBatch(f.t, g.batch.id, admin)
+          return { refused, archived }
+        }),
+      ),
+    )
+
+    expect(
+      errorOf<{ _tag: string; refusal?: string; openRounds?: number }>(result.refused),
+    ).toMatchObject({
+      _tag: 'ASSESSMENT_BATCH_STATUS_INVALID',
+      refusal: 'rounds-open',
+      openRounds: 1,
+    })
+    expect(result.archived.status).toBe('archived')
+  })
+
   it('closes a round exactly once', async () => {
     const result = ok(
       await run(

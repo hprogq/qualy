@@ -20174,3 +20174,16 @@ A–C 的部署约束至此解除：ALTCHA 与能处理 428 的登录页在同�
 
 - formula-compiler / formula / value-schema / 公式插件测试：`Test Files  37 passed (37)`，`Tests  239 passed (239)`。
 - `pnpm typecheck`、`pnpm lint`、`pnpm lint:types`、`pnpm format:check`：全部 exit 0。
+
+## 归档拒绝仍有进行中审核轮的批次（2026-09-24）
+
+- 补上 docs/notes/adversarial-audit-2026-08-22.md 记录的缺口：`setBatchStatus → archived` 以前只查「已进入最后阶段」，库里可能出现归档后仍有审核轮处在 active / blocked / awaiting_supplement 的批次。归档后五个审核动作全被 `BatchReadOnly` 拒绝，条目会永远停在审核中。
+- 现在归档前数本批次的未结束审核轮（`openRoundCountOfBatch`，状态集合取 `OPEN_REVIEW_STATES`），非零即拒：`ASSESSMENT_BATCH_STATUS_INVALID`，`refusal: 'rounds-open'`，并带 `openRounds`。界面提示「还有 N 条申报在审核中，审完后再归档。」
+- 最后阶段通常已关闭审核，出路是管理员的「退回修改」介入：它不受阶段闸门限制，退回后该轮以 superseded 结束。
+- 另：`docs/seed/`（本地私有材料，不入库）加入 oxfmt 与 oxlint 的忽略列表。原因是一次全仓 `pnpm format` 改写了其中的第三方项目文件，已按原始压缩包逐字节恢复。
+
+### 验收（实际执行）
+
+- review-flow 新增用例「will not archive over a round still in review, and archives once it is handed back」：`Tests  22 passed (22)`。
+- effect-assessment / provisional-scoring / scoring-audit / live 与 catalogs、error-codes 门禁：`Test Files  6 passed (6)`，`Tests  78 passed (78)`。
+- `pnpm format:check`、`pnpm lint`、`pnpm typecheck`：全部 exit 0。

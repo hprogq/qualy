@@ -27,6 +27,12 @@ const accessInvalid = defineMessage<{ reason: string }>()({
     '{reason, select, alreadyStaffed {That person already holds this role in the selected unit.} tooMany {Too many people and units at once. Add them in smaller groups.} other {The permission change could not be applied. Check the selected settings and try again.}}',
 })
 
+const batchStatusInvalid = defineMessage<{ refusal: string; openRounds: number }>()({
+  id: 'assessment/error/batch-status-invalid',
+  defaultMessage:
+    '{refusal, select, roundsOpen {{openRounds, plural, one {# entry is still in review.} other {# entries are still in review.}} Finish reviewing them before archiving.} other {The current batch status does not allow this operation.}}',
+})
+
 const determinationRefused = defineMessage<{ reason: string }>()({
   id: 'assessment/error/determination-refused',
   defaultMessage: 'The current scoring rule does not accept this determination: {reason}',
@@ -6551,8 +6557,11 @@ const i18n = definePluginMessages({
       defaultMessage: 'The batch has ended and cannot be modified.',
     },
     ASSESSMENT_BATCH_STATUS_INVALID: {
-      id: 'assessment/error/batch-status-invalid',
-      defaultMessage: 'The current batch status does not allow this operation.',
+      message: batchStatusInvalid,
+      values: (data) => ({
+        refusal: selectKey(data.refusal ?? 'other'),
+        openRounds: data.openRounds ?? 0,
+      }),
     },
     ASSESSMENT_BATCH_NO_PARTICIPANTS: {
       id: 'assessment/error/batch-no-participants',
