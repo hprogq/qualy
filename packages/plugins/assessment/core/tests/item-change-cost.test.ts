@@ -1,5 +1,5 @@
 import { Effect } from 'effect'
-import { sql, type KyselyPlugin, type QueryResult, type UnknownRow } from 'kysely'
+import { sql, type KyselyPlugin } from 'kysely'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
 import { entityManager } from '@qualy/plugin-database/server'
@@ -50,7 +50,7 @@ const watchStatements = Effect.gen(function* () {
       if (node.kind === 'RawNode') seen.push((node.sqlFragments ?? []).join(' ? '))
       return args.node
     },
-    transformResult: (args) => Promise.resolve(args.result as QueryResult<UnknownRow>),
+    transformResult: (args) => Promise.resolve(args.result),
   }
   const connection = em.getConnection()
   const watched = connection.getClient().withPlugin(plugin)

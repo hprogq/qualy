@@ -1976,7 +1976,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                     yield* lockPanelRecognition({
                       tenantId,
                       panelId: panel.id,
-                      values: opening as Record<string, unknown>,
+                      values: opening,
                       hash: recognitionHash(opening),
                       // frozen with its explanation: the round ends on this
                       // text, so "why it differs from what we inherited" has

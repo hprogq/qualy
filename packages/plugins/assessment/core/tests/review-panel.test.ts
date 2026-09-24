@@ -814,9 +814,9 @@ describe.runIf(postgresAvailable)('the sitting', () => {
               select recognition_hash as hash from review_votes where panel_id = ${panel.id}`)) as {
               rows: { hash: string | null }[]
             },
-            recognitions: (yield* runSql(
+            recognitions: yield* runSql(
               sql`select id from entry_recognitions where entry_id = ${w.entryId}`,
-            )) as { rows: unknown[] },
+            ),
             resolution: one<{ resolution: string }>(
               yield* runSql(sql`select resolution from review_panels where id = ${panel.id}`),
             ).resolution,

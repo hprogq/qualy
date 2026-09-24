@@ -124,7 +124,7 @@ const open = (
           return Effect.succeed({ deleted: true })
         },
       },
-    } as never),
+    }),
     route: `/assessment/formulas/${FN_ID}`,
     path: '/assessment/formulas/:functionId',
     children: <FormulaEditorPage />,
@@ -176,10 +176,10 @@ describe('the formula workbench', () => {
       expect(model.isDisposed()).toBe(false)
       expect(model.getValue()).toBe(`// typed\n${SAVED}`)
       expect(model.canUndo()).toBe(true)
-      model.undo()
+      await model.undo()
       expect(model.getValue()).toBe(SAVED)
     } finally {
-      view.unmount()
+      await view.unmount()
     }
   }, 60_000)
 
@@ -197,10 +197,10 @@ describe('the formula workbench', () => {
       await vi.waitFor(() => expect(drawn(model)).toBe(true), { timeout: 5_000 })
       expect(model.getValue()).toBe(`// typed\n${SAVED}`)
       expect(model.canUndo()).toBe(true)
-      model.undo()
+      await model.undo()
       expect(model.getValue()).toBe(SAVED)
     } finally {
-      view.unmount()
+      await view.unmount()
     }
   }, 60_000)
 
@@ -223,7 +223,7 @@ describe('the formula workbench', () => {
         timeout: 5_000,
       })
     } finally {
-      view.unmount()
+      await view.unmount()
     }
   }, 60_000)
 
@@ -235,10 +235,10 @@ describe('the formula workbench', () => {
       await page.getByRole('menuitem', { name: '载入最小示例' }).click()
       await page.getByRole('button', { name: '载入示例' }).click()
       await vi.waitFor(() => expect(model.getValue()).toBe(MINIMAL_EXAMPLE), { timeout: 5_000 })
-      model.undo()
+      await model.undo()
       expect(model.getValue()).toBe(SAVED)
     } finally {
-      view.unmount()
+      await view.unmount()
     }
   }, 60_000)
 
@@ -283,7 +283,7 @@ describe('the formula workbench', () => {
       await page.getByTestId('formula-example-add-confirm').click()
       await vi.waitFor(() => expect(rows()).toBe(2), { timeout: 5_000 })
     } finally {
-      view.unmount()
+      await view.unmount()
     }
   }, 60_000)
 
@@ -306,7 +306,7 @@ describe('the formula workbench', () => {
         timeout: 5_000,
       })
     } finally {
-      view.unmount()
+      await view.unmount()
     }
   }, 60_000)
 
@@ -327,7 +327,7 @@ describe('the formula workbench', () => {
         .toHaveAttribute('data-state', 'dirty')
       expect(await readLocalDraft(FN_ID)).toBeNull()
 
-      view.unmount()
+      await view.unmount()
       await vi.waitFor(
         async () => {
           const kept = await readLocalDraft(FN_ID)
@@ -362,7 +362,7 @@ describe('the formula workbench', () => {
         .element(page.getByTestId('formula-save-state'))
         .toHaveAttribute('data-state', 'dirty')
     } finally {
-      view.unmount()
+      await view.unmount()
       await forgetLocalDraft(FN_ID)
     }
   }, 60_000)
@@ -386,7 +386,7 @@ describe('the formula workbench', () => {
         { timeout: 5_000 },
       )
     } finally {
-      view.unmount()
+      await view.unmount()
     }
   }, 60_000)
 
@@ -423,7 +423,7 @@ describe('the formula workbench', () => {
       await vi.waitFor(() => expect(inputs()[0]!.value).toBe('1.5'), { timeout: 5_000 })
       expect(inputs()[1]!.value).toBe('2')
     } finally {
-      view.unmount()
+      await view.unmount()
     }
   }, 60_000)
 
@@ -462,7 +462,7 @@ describe('the formula workbench', () => {
       edge().dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
       await vi.waitFor(() => expect(Number(edge().getAttribute('aria-valuenow'))).toBe(before))
     } finally {
-      view.unmount()
+      await view.unmount()
     }
   }, 60_000)
 
@@ -482,7 +482,7 @@ describe('the formula workbench', () => {
         { timeout: 10_000 },
       )
     } finally {
-      same.unmount()
+      await same.unmount()
     }
     const ahead = await open({ status: [] }, { source: 'const older = 0\n', tests: [] })
     try {
@@ -496,7 +496,7 @@ describe('the formula workbench', () => {
         { timeout: 10_000 },
       )
     } finally {
-      ahead.unmount()
+      await ahead.unmount()
     }
   }, 60_000)
 })

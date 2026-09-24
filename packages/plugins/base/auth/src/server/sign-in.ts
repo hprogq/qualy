@@ -620,7 +620,7 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         ...presentation,
       })
     }
-    return methods as readonly LoginMethod[]
+    return methods
   })
   // who an anonymous caller is, and where the outside world reaches us: both
   // are resolvers, so the day a host decides either, only they change
@@ -838,8 +838,7 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         }
         // a proof carried while nothing is raised is not looked at: nothing
         // asked for it, and asking a provider costs
-        if (!challengeRequired)
-          return { kind: 'admitted' } satisfies AdmissionAnswer as AdmissionAnswer
+        if (!challengeRequired) return { kind: 'admitted' } satisfies AdmissionAnswer
         const guarded = yield* captcha.guard({
           tenantId,
           purpose: LOGIN_CAPTCHA,
@@ -849,9 +848,11 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
             input.identifier === undefined ? provider : `${provider}\0${input.identifier}`,
           ...(input.captcha === undefined ? {} : { proof: input.captcha }),
         })
-        return (guarded.kind === 'required'
-          ? { kind: 'challenge', prompt: guarded.prompt }
-          : { kind: 'admitted' }) satisfies AdmissionAnswer as AdmissionAnswer
+        return (
+          guarded.kind === 'required'
+            ? { kind: 'challenge', prompt: guarded.prompt }
+            : { kind: 'admitted' }
+        ) satisfies AdmissionAnswer
       }),
     ),
 
@@ -1126,7 +1127,7 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
     loginContext: bound(
       Effect.fn('Auth.signIn.loginContext')(function* () {
         const tenant = yield* defaultTenant()
-        if (!tenant) return { tenant: null, methods: [], passwordRule: null } as LoginContext
+        if (!tenant) return { tenant: null, methods: [], passwordRule: null }
         const methods = yield* methodsOf(tenant.id)
         let passwordRule: LoginContext['passwordRule'] = null
         for (const method of methods) {
@@ -1139,7 +1140,7 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
             break
           }
         }
-        return { tenant: { name: tenant.name }, methods, passwordRule } as LoginContext
+        return { tenant: { name: tenant.name }, methods, passwordRule }
       }),
     ),
 

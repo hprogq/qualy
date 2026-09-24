@@ -83,7 +83,7 @@ const deadline = <A, E>(call: Effect.Effect<A, E>, refuse: () => E): Effect.Effe
     // detached, exactly like the runtime adapter: a call stuck in a write
     // against a flapping connection cannot be interrupted, so awaiting the
     // fiber - always interruptible - is what the deadline races
-    const fiber = Effect.runForkWith(parent.context as Context.Context<never>)(call)
+    const fiber = Effect.runForkWith(parent.context)(call)
     const abandon = Effect.sync(() => fiber.interruptUnsafe(parent.id))
     return Effect.gen(function* () {
       const settled = yield* Effect.raceFirst(

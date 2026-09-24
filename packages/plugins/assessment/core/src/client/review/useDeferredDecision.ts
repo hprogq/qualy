@@ -95,11 +95,11 @@ export function useDeferredDecision({
         staged.kind === 'supplement'
           ? api.assessment.requestSupplement({
               params: { instanceId: staged.instanceId },
-              payload: staged.payload as never,
+              payload: staged.payload,
             })
           : api.assessment.decideReview({
               params: { instanceId: staged.instanceId },
-              payload: staged.payload as never,
+              payload: staged.payload,
             }),
       ).then(
         () => committed.current(staged),

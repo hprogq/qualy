@@ -70,12 +70,12 @@ export const groupsOf = (tenantId: string, batchId: string) =>
     .pipe(
       Effect.map((rows) =>
         rows.map((row): ScoreGroupRow => ({
-          id: row.id as string,
-          parentGroupId: (row.parentGroupId as string | null) ?? null,
-          name: row.name as string,
+          id: row.id,
+          parentGroupId: row.parentGroupId ?? null,
+          name: row.name,
           cap: (row as { capText: string | null }).capText,
           floor: (row as { floorText: string | null }).floorText,
-          sortOrder: row.sortOrder as number,
+          sortOrder: row.sortOrder,
           activeItemCount: Number((row as { activeCount: unknown }).activeCount),
           heldItemCount: Number((row as { heldCount: unknown }).heldCount),
           createdAt: msOf((row as { createdMs: unknown }).createdMs),

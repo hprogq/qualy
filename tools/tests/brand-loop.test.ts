@@ -27,6 +27,7 @@ const spelled = (): Map<string, Record<string, Record<string, unknown>>> => {
     // so reading it back is a matter of letting the engine parse it
     found.set(
       match[1]!,
+      // eslint-disable-next-line typescript/no-implied-eval -- reads the object literal the export wrote
       new Function(`return ${match[2]!}`)() as Record<string, Record<string, unknown>>,
     )
   }

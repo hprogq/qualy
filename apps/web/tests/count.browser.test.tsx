@@ -29,7 +29,7 @@ function contrastOf(el: Element) {
 }
 
 it('keeps its ground on every surface a label puts it on', async () => {
-  render(
+  await render(
     <UiProvider scheme="light">
       <Tabs variant="segmented" value="a">
         <TabsList>
@@ -67,7 +67,7 @@ it('keeps its ground on every surface a label puts it on', async () => {
 })
 
 it('reserves a digit of room before the number arrives', async () => {
-  render(
+  await render(
     <UiProvider scheme="light">
       <p>
         empty<Count>{''}</Count>

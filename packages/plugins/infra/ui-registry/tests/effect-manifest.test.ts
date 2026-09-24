@@ -329,7 +329,7 @@ describe('the manifest a viewer receives', () => {
         {
           collection: primaryNavigation,
           id: 'test/broken',
-          value: { id: 'test/broken', label, target: { kind: 'page' }, extra: true } as never,
+          value: { id: 'test/broken', label, target: { kind: 'page' }, extra: true },
           visibility: PUBLIC,
         },
       ],

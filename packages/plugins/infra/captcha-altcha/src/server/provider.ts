@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { Effect, Layer, Redacted, Schema } from 'effect'
 import { sql } from 'kysely'
-import { createChallenge, randomInt, verifySolution, type Challenge } from 'altcha-lib'
+import { createChallenge, randomInt, verifySolution } from 'altcha-lib'
 import { deriveKey } from 'altcha-lib/algorithms/pbkdf2'
 import { Db } from '@qualy/plugin-database/plugin'
 import { withDatabase, type Orm } from '@qualy/plugin-database/server'
@@ -186,7 +186,7 @@ export const registrationLayerWith = (
             hmacSignatureSecret: signing,
             hmacKeySignatureSecret: keySigning,
           }),
-        ).pipe(Effect.map((challenge) => ({ ...challenge }) as Record<string, unknown>))
+        ).pipe(Effect.map((challenge) => ({ ...challenge })))
 
       const verify = Effect.fn('CaptchaAltcha.verify')(function* (
         context: CaptchaProviderContext,
@@ -201,7 +201,7 @@ export const registrationLayerWith = (
         // visitor's check quietly failing
         const outcome = yield* Effect.promise(() =>
           verifySolution({
-            challenge: payload.challenge as Challenge,
+            challenge: payload.challenge,
             solution: payload.solution,
             deriveKey,
             hmacSignatureSecret: signing,

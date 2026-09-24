@@ -19,7 +19,7 @@ import '../src/app.css'
 describe('the StyleX pipeline actually styles', () => {
   it('a probe from a symlinked workspace package gets its compiled style', async () => {
     await import('virtual:stylex:runtime')
-    render(<StyleXProbe />)
+    await render(<StyleXProbe />)
     const probe = page.getByTestId('stylex-probe-ui')
     await expect.element(probe).toBeInTheDocument()
     // #0b1621, the sentinel in packages/web/ui/src/components/stylex-probe.tsx

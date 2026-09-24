@@ -33,7 +33,7 @@ export interface TimelineEntry {
 export function deriveTimeline(
   plan: PhasePlan,
   now: EpochMillis,
-  inEffect: number | null | undefined = undefined,
+  inEffect?: number | null,
 ): readonly TimelineEntry[] {
   const state = effectiveState(plan, now)
   const pendingAt = new Map(state.pending.map((p) => [p.phaseId, p.actualEntryAt]))

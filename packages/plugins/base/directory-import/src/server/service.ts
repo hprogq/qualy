@@ -428,7 +428,8 @@ export const make = Effect.gen(function* () {
       reusing: nodes
         .filter((node) => node.existing !== null)
         .map((node) => [node.key, node.existing!.id])
-        .sort(),
+        // the default order, which compares each pair as its text
+        .sort((a, b) => (String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0)),
       create: people
         .filter((one) => one.disposition === 'create')
         .map((one) => one.row.businessNo)
@@ -762,6 +763,7 @@ export const make = Effect.gen(function* () {
         displayName: row.displayNameSnapshot,
         orgPath: row.primaryOrgPathSnapshot,
         disposition: row.disposition as 'created' | 'existing',
+        // eslint-disable-next-line typescript/no-unnecessary-type-assertion -- keeps the literals from widening to string
         standing: (row.userId === null || row.presentId === null
           ? 'missing'
           : row.deletedAt !== null

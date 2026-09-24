@@ -291,7 +291,7 @@ export const buildAdministrativeWorkbook = async (spec: TemplateSpec): Promise<U
   meta.addRow([JSON.stringify(metadata)])
 
   const bytes = await book.xlsx.writeBuffer()
-  return new Uint8Array(bytes as ArrayBuffer)
+  return new Uint8Array(bytes)
 }
 
 /** the engine's reading of a cell, refused in this module's own word */

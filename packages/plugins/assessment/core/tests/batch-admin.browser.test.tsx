@@ -259,7 +259,7 @@ describe('the batch list', () => {
         capabilities: { create: true },
       })
     })
-    screen({ listBatches }, '/assessment/batches')
+    await screen({ listBatches }, '/assessment/batches')
 
     // the first page knows where it sits in the whole
     await expect.element(page.getByText('2026 春季综测')).toBeVisible()
@@ -289,7 +289,7 @@ describe('the batch list', () => {
   })
 
   it('offers neither creation nor drafts to somebody who administers nothing', async () => {
-    screen(
+    await screen(
       {
         listBatches: () =>
           Effect.succeed({
@@ -306,9 +306,9 @@ describe('the batch list', () => {
     await expect.element(page.getByRole('heading', { name: '2026 春季综测' })).toBeVisible()
     await expect.element(page.getByRole('link', { name: '2026 春季综测' })).toBeVisible()
     // the rounds they take part in are still theirs to read
-    expect(await page.getByRole('button', { name: '新建批次' }).elements()).toHaveLength(0)
+    expect(page.getByRole('button', { name: '新建批次' }).elements()).toHaveLength(0)
     // and a filter that could only ever answer with an empty page is not offered
-    expect(await page.getByRole('radio', { name: '草稿' }).elements()).toHaveLength(0)
+    expect(page.getByRole('radio', { name: '草稿' }).elements()).toHaveLength(0)
   })
 
   // The lines above the table are drawn from the reader's standing in the
@@ -331,12 +331,13 @@ describe('the batch list', () => {
   })
 
   const agendaStates = async () =>
-    (await page.getByTestId('hero-agenda').elements()).map((node) =>
-      node.getAttribute('data-agenda-state'),
-    )
+    page
+      .getByTestId('hero-agenda')
+      .elements()
+      .map((node) => node.getAttribute('data-agenda-state'))
 
   it('keeps a line for every standing the reader holds, empty or not', async () => {
-    screen(standing({ toFix: 0, draft: 0, submitted: 0 }, 0), '/assessment/batches')
+    await screen(standing({ toFix: 0, draft: 0, submitted: 0 }, 0), '/assessment/batches')
     await expect.element(page.getByRole('heading', { name: '2026 春季综测' })).toBeVisible()
     // a judge with an empty queue is still a judge, and somebody on the
     // roster who has filed nothing is still expected to - and the one with
@@ -345,20 +346,20 @@ describe('the batch list', () => {
   })
 
   it('draws no line for a standing the reader does not hold', async () => {
-    screen(standing(null, null), '/assessment/batches')
+    await screen(standing(null, null), '/assessment/batches')
     await expect.element(page.getByRole('heading', { name: '2026 春季综测' })).toBeVisible()
     expect(await agendaStates()).toEqual([])
   })
 
   it('puts what is waiting on the reader above what is not', async () => {
     // nothing in the queue, work of their own to redo: their own goes first
-    screen(standing({ toFix: 2, draft: 0, submitted: 0 }, 0), '/assessment/batches')
+    await screen(standing({ toFix: 2, draft: 0, submitted: 0 }, 0), '/assessment/batches')
     await expect.element(page.getByRole('heading', { name: '2026 春季综测' })).toBeVisible()
     expect(await agendaStates()).toEqual(['toFix', 'clear'])
   })
 
   it('leads on from a line that is asking, and from one that is only open', async () => {
-    screen(standing({ toFix: 0, draft: 0, submitted: 3 }, 4), '/assessment/batches')
+    await screen(standing({ toFix: 0, draft: 0, submitted: 3 }, 4), '/assessment/batches')
     await expect.element(page.getByRole('heading', { name: '2026 春季综测' })).toBeVisible()
     expect(await agendaStates()).toEqual(['waiting', 'submitted'])
     // the queue asks; filings already with the reviewers are the reader's
@@ -368,7 +369,7 @@ describe('the batch list', () => {
   })
 
   it('leads on from a line that asks nothing, in a quieter voice', async () => {
-    screen(standing(null, 0), '/assessment/batches')
+    await screen(standing(null, 0), '/assessment/batches')
     await expect.element(page.getByRole('heading', { name: '2026 春季综测' })).toBeVisible()
     expect(await agendaStates()).toEqual(['clear'])
     // every line in the block leads somewhere - a block where some lines
@@ -378,7 +379,7 @@ describe('the batch list', () => {
   })
 
   it('tells an empty result apart from an empty list', async () => {
-    screen(
+    await screen(
       {
         listBatches: () =>
           Effect.succeed({ items: [], nextCursor: null, total: 0, capabilities: { create: true } }),
@@ -389,7 +390,7 @@ describe('the batch list', () => {
     // the way to make one is the page's own button, once
     const empty = page.getByTestId('batch-list-empty')
     await expect.element(empty).toHaveAttribute('data-empty', 'none')
-    expect(await page.getByRole('button', { name: '新建批次' }).elements()).toHaveLength(1)
+    expect(page.getByRole('button', { name: '新建批次' }).elements()).toHaveLength(1)
     expect(empty.element().querySelector('button')).toBeNull()
 
     await page.getByRole('textbox', { name: '搜索批次名称' }).fill('不存在的名字')
@@ -404,7 +405,7 @@ describe('the batch list', () => {
 
   it('keeps the search in the list\u2019s own row, beside its filters, whoever reads it', async () => {
     await page.viewport(1280, 800)
-    screen(
+    await screen(
       {
         listBatches: () =>
           Effect.succeed({
@@ -429,7 +430,7 @@ describe('the batch list', () => {
 
   it('on a phone, says an empty list in the page rather than in a box, under the title in size', async () => {
     await page.viewport(390, 844)
-    screen(
+    await screen(
       {
         listBatches: () =>
           Effect.succeed({
@@ -453,7 +454,7 @@ describe('the batch list', () => {
     const said = empty.element().querySelector('[data-slot="empty-title"]')!
     expect(size(said)).toBeLessThan(size(title))
     // no card above the list, so the list has no name of its own to tell it apart
-    expect(await page.getByText('全部批次', { exact: true }).elements()).toHaveLength(0)
+    expect(page.getByText('全部批次', { exact: true }).elements()).toHaveLength(0)
     // the search opens out of its glyph, in the title's row
     await page.getByRole('button', { name: '搜索批次名称' }).click()
     const box = page.getByRole('textbox', { name: '搜索批次名称' })
@@ -479,7 +480,7 @@ describe('the batch list', () => {
   })
 
   it('opens a batch from the table and comes back', async () => {
-    screen({}, '/assessment/batches')
+    await screen({}, '/assessment/batches')
     await expect.element(page.getByRole('heading', { name: '测评批次' })).toBeVisible()
 
     await page.getByRole('link', { name: '2026 春季综测' }).click()
@@ -521,7 +522,7 @@ describe('the countdown', () => {
   it('says two units, and drops the smaller one when it is empty', async () => {
     // two units is what a bar with room says; the phone case is below
     await page.viewport(1280, 800)
-    screen(
+    await screen(
       {
         getBatch: () => Effect.succeed({ batch: batch({ status: 'active' }) }),
         getTimeline: () => Effect.succeed({ timeline: running(27 * HOUR + 30 * 60_000) }),
@@ -538,7 +539,7 @@ describe('the countdown', () => {
 
   it('says the larger unit alone when nothing is left under it', async () => {
     await page.viewport(1280, 800)
-    screen(
+    await screen(
       {
         getBatch: () => Effect.succeed({ batch: batch({ status: 'active' }) }),
         // a shade over three hours: exactly three would be two and
@@ -556,7 +557,7 @@ describe('the countdown', () => {
 
   it('says one unit beside the stage it belongs to, once the band is a head', async () => {
     await page.viewport(390, 844)
-    screen(
+    await screen(
       {
         getBatch: () => Effect.succeed({ batch: batch({ status: 'active' }) }),
         getTimeline: () => Effect.succeed({ timeline: running(39 * 60_000 + 13_000) }),
@@ -594,7 +595,7 @@ async function expectVisibleText(text: string) {
 describe('the batch overview', () => {
   it('keeps the whole flow on the page, beside the desk', async () => {
     await page.viewport(1280, 800)
-    screen(
+    await screen(
       {
         getBatch: () =>
           Effect.succeed({ batch: batch({ status: 'active', currentPhaseId: ENTRY_PHASE_ID }) }),
@@ -621,7 +622,7 @@ describe('the batch overview', () => {
       status: 'ended' as const,
       entry: { kind: 'entered' as const, at: at(-hoursAgo * HOUR) },
     })
-    screen(
+    await screen(
       {
         getBatch: () =>
           Effect.succeed({ batch: batch({ status: 'active', currentPhaseId: ENTRY_PHASE_ID }) }),
@@ -650,7 +651,7 @@ describe('the batch overview', () => {
 
   it('says what a stage with no time is waiting for', async () => {
     await page.viewport(1280, 800)
-    screen(
+    await screen(
       {
         getBatch: () =>
           Effect.succeed({ batch: batch({ status: 'active', currentPhaseId: ENTRY_PHASE_ID }) }),
@@ -694,13 +695,13 @@ describe('the batch lifecycle', () => {
   it('offers to delete a draft, and never says the word activate', async () => {
     const deleteBatch = vi.fn((_request: Request) => Effect.succeed({ deleted: true }))
     // the lifecycle lives on the settings page, not above every section
-    screen({ deleteBatch }, `/assessment/batches/${BATCH_ID}/settings`)
+    await screen({ deleteBatch }, `/assessment/batches/${BATCH_ID}/settings`)
 
     // a draft has run nothing, so removing it loses only the setup
     await expect
       .element(page.getByTestId('batch-standing').first())
       .toHaveAttribute('data-standing', 'draft')
-    expect(await page.getByRole('button', { name: '激活' }).elements()).toHaveLength(0)
+    expect(page.getByRole('button', { name: '激活' }).elements()).toHaveLength(0)
     await page.getByRole('button', { name: '删除批次' }).click()
     await page.getByRole('alertdialog').getByRole('button', { name: '删除批次' }).click()
     await vi.waitFor(() => expect(deleteBatch).toHaveBeenCalledTimes(1))
@@ -709,7 +710,7 @@ describe('the batch lifecycle', () => {
 
   it('saves the batch it is looking at, and sends only what it holds', async () => {
     const updateBatch = vi.fn((_request: Request) => Effect.succeed({ batch: batch() }))
-    screen({ updateBatch }, `/assessment/batches/${BATCH_ID}/settings`)
+    await screen({ updateBatch }, `/assessment/batches/${BATCH_ID}/settings`)
 
     // nothing to save until something differs from what was read
     await expect.element(page.getByRole('button', { name: '保存', exact: false })).toBeDisabled()
@@ -725,7 +726,7 @@ describe('the batch lifecycle', () => {
   })
 
   it('says a scheduled batch has not begun, rather than calling it under way', async () => {
-    screen({
+    await screen({
       getBatch: () => Effect.succeed({ batch: batch({ status: 'active', currentPhaseId: null }) }),
     })
     await expect
@@ -737,7 +738,7 @@ describe('the batch lifecycle', () => {
     const setBatchStatus = vi.fn((_request: Request) =>
       Effect.succeed({ batch: batch({ status: 'active' }) }),
     )
-    screen(
+    await screen(
       {
         getBatch: () =>
           Effect.succeed({ batch: batch({ status: 'archived', currentPhaseId: ENTRY_PHASE_ID }) }),
@@ -771,7 +772,7 @@ describe('creating a batch', () => {
     const createBatch = vi.fn((_request: Request) =>
       Effect.succeed({ batch: { ...batch(), id: 'created' } }),
     )
-    screen({ createBatch }, '/assessment/batches')
+    await screen({ createBatch }, '/assessment/batches')
 
     await page.getByRole('button', { name: '新建批次' }).click()
     const dialog = page.getByRole('dialog')
@@ -824,7 +825,7 @@ describe('the stage plan', () => {
 
   it('builds a stage from nothing, and sends structure without any time', async () => {
     const putPhases = vi.fn((_request: Request) => Effect.succeed({ phases: [], warnings: [] }))
-    screen({ putPhases })
+    await screen({ putPhases })
 
     await expect.element(page.getByTestId('phase-plan-empty')).toBeVisible()
 
@@ -849,7 +850,7 @@ describe('the stage plan', () => {
 
   it('offers a time to one stage at a time, from the top down', async () => {
     const schedulePhase = vi.fn((_request: Request) => Effect.succeed({ phases: [] }))
-    screen({ schedulePhase, getPhases: () => Effect.succeed(twoPhases()) })
+    await screen({ schedulePhase, getPhases: () => Effect.succeed(twoPhases()) })
 
     // the first unscheduled stage is the only one that can take a time; the
     // one behind it waits, which is a fact about the plan rather than the
@@ -866,7 +867,7 @@ describe('the stage plan', () => {
 
   it('withdraws a time from the last stage that has one', async () => {
     const schedulePhase = vi.fn((_request: Request) => Effect.succeed({ phases: [] }))
-    screen({
+    await screen({
       schedulePhase,
       getPhases: () => Effect.succeed(twoPhases({ planned: '2027-09-05T16:00:00.000Z' })),
     })
@@ -887,7 +888,7 @@ describe('the stage plan', () => {
   // a round is archived, where the last stage that ran is not a stage in
   // hand at all.
   it('takes the stage in hand from the round, not from what has been written down', async () => {
-    screen({
+    await screen({
       // entered, and the round is over: nothing is in hand
       getBatch: () =>
         Effect.succeed({ batch: batch({ status: 'archived', currentPhaseId: null }) }),
@@ -906,7 +907,7 @@ describe('the stage plan', () => {
 
   it('enters the stage at the front of the queue on the spot', async () => {
     const advancePhase = vi.fn((_request: Request) => Effect.succeed({ phases: [] }))
-    screen({
+    await screen({
       advancePhase,
       getBatch: () => Effect.succeed({ batch: batch({ status: 'active' }) }),
       listBatches: () =>
@@ -927,7 +928,7 @@ describe('the stage plan', () => {
   })
 
   it('offers only the permissions a stage may govern', async () => {
-    screen({ getPhases: () => Effect.succeed(twoPhases()) })
+    await screen({ getPhases: () => Effect.succeed(twoPhases()) })
 
     await page.getByRole('button', { name: '编辑详情' }).first().click()
     const panel = page.getByRole('dialog')
@@ -953,7 +954,7 @@ describe('the stage plan', () => {
 
   it('fills one stage from a stage preset, as a starting point only', async () => {
     const putPhases = vi.fn((_request: Request) => Effect.succeed({ phases: [], warnings: [] }))
-    screen({ putPhases, getPhases: () => Effect.succeed(twoPhases()) })
+    await screen({ putPhases, getPhases: () => Effect.succeed(twoPhases()) })
 
     await page.getByRole('button', { name: '编辑详情' }).first().click()
     const panel = page.getByRole('dialog')
@@ -977,7 +978,7 @@ describe('the stage plan', () => {
 
   it('adds a timeline template to the end, server-side', async () => {
     const putPhases = vi.fn((_request: Request) => Effect.succeed({ phases: [], warnings: [] }))
-    screen({ putPhases, getPhases: () => Effect.succeed(twoPhases()) })
+    await screen({ putPhases, getPhases: () => Effect.succeed(twoPhases()) })
 
     await page.getByRole('button', { name: '编辑阶段', exact: false }).click()
     await page.getByRole('button', { name: '从模板添加', exact: false }).click()
@@ -994,7 +995,7 @@ describe('the stage plan', () => {
   })
 
   it('says what was refused, next to the stage it names', async () => {
-    screen({
+    await screen({
       getPhases: () => Effect.succeed(twoPhases()),
       putPhases: () =>
         Effect.fail(
@@ -1018,7 +1019,7 @@ describe('the stage plan', () => {
 
 describe('the participants tab', () => {
   it('offers a draft the same two ways in that a running batch has', async () => {
-    screen({}, `/assessment/batches/${BATCH_ID}/results`)
+    await screen({}, `/assessment/batches/${BATCH_ID}/results`)
     // the roster exists from the moment the batch does, so a draft is a list
     // to check and add to rather than a screen waiting for a scope
     await expect.element(page.getByRole('button', { name: '从组织导入' })).toBeVisible()
@@ -1026,7 +1027,7 @@ describe('the participants tab', () => {
 
   it('imports from the organization only after saying how many that is', async () => {
     const importParticipants = vi.fn((_request: Request) => Effect.succeed({ added: 3 }))
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         app: {
           getManifest: () =>
@@ -1129,7 +1130,7 @@ describe('who may work on a batch', () => {
         ],
       }),
     )
-    accessScreen({
+    await accessScreen({
       listAccess: () =>
         Effect.succeed({
           staff: [
@@ -1169,7 +1170,7 @@ describe('who may work on a batch', () => {
   })
 
   it('offers nothing on the reader\u2019s own row', async () => {
-    accessScreen({
+    await accessScreen({
       listAccess: () =>
         Effect.succeed({
           staff: [
@@ -1194,7 +1195,7 @@ describe('who may work on a batch', () => {
 
   it('merges only what was ticked, and never offers to approve a withdrawal', async () => {
     const applyAccessSync = vi.fn((_request: Request) => Effect.succeed({ merged: 1 }))
-    accessScreen({
+    await accessScreen({
       previewAccessSync: () =>
         Effect.succeed({
           items: [
@@ -1249,7 +1250,7 @@ describe('who may work on a batch', () => {
 
   it('only offers to remove somebody this round brought in, and asks first', async () => {
     const removeStaff = vi.fn((_request: Request) => Effect.succeed({ staff: [] }))
-    accessScreen({
+    await accessScreen({
       listAccess: () =>
         Effect.succeed({
           staff: [
@@ -1327,7 +1328,7 @@ describe('the batch switcher', () => {
           )
         : answer
     })
-    screen({ listBatches }, `/assessment/batches/${BATCH_ID}`)
+    await screen({ listBatches }, `/assessment/batches/${BATCH_ID}`)
     await expect.element(page.getByRole('button', { name: '切换批次' })).toBeVisible()
     await page.getByRole('button', { name: '切换批次' }).click()
 
@@ -1373,8 +1374,8 @@ describe('a section inside the workspace shell', () => {
     // label with no positioned ancestor does, taking the page itself as its
     // containing block - the window grows a second scrollbar over a strip of
     // nothing, which is what a reader sees before anyone can explain it.
-    page.viewport(430, 820)
-    renderScreen({
+    await page.viewport(430, 820)
+    await renderScreen({
       client: fakeClient({
         app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
         assessment: assessmentStubs({
@@ -1394,7 +1395,7 @@ describe('a section inside the workspace shell', () => {
         slots: {
           'workspace-shell/context': {
             'assessment/batch-context': lazy(
-              (() => import('../src/client/batch/BatchContextBar.tsx')) as () => Promise<never>,
+              () => import('../src/client/batch/BatchContextBar.tsx'),
             ),
           },
         },

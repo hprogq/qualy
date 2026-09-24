@@ -57,17 +57,17 @@ function Harness() {
 
 describe('the workspace capability scope', () => {
   it('hides gated entries until published, shows them while held, and takes them back', async () => {
-    render(<Harness />)
+    await render(<Harness />)
 
     // before anything is published: ungated renders, gated does not flash in
     await expect.element(page.getByText('总览')).toBeVisible()
-    expect(await page.getByText('审核').elements()).toHaveLength(0)
+    expect(page.getByText('审核').elements()).toHaveLength(0)
 
     await page.getByRole('button', { name: 'publish' }).click()
     await expect.element(page.getByText('审核')).toBeVisible()
 
     await page.getByRole('button', { name: 'withdraw' }).click()
     await expect.element(page.getByText('总览')).toBeVisible()
-    expect(await page.getByText('审核').elements()).toHaveLength(0)
+    expect(page.getByText('审核').elements()).toHaveLength(0)
   })
 })

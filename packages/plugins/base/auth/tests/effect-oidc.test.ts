@@ -194,7 +194,7 @@ const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
 
 beforeAll(async () => {
   if (!postgresAvailable) return
-  op.keys = (await webcrypto.subtle.generateKey(
+  op.keys = await webcrypto.subtle.generateKey(
     {
       name: 'RSASSA-PKCS1-v1_5',
       modulusLength: 2048,
@@ -203,8 +203,8 @@ beforeAll(async () => {
     },
     true,
     ['sign', 'verify'],
-  )) as webcrypto.CryptoKeyPair
-  op.stranger = (await webcrypto.subtle.generateKey(
+  )
+  op.stranger = await webcrypto.subtle.generateKey(
     {
       name: 'RSASSA-PKCS1-v1_5',
       modulusLength: 2048,
@@ -213,7 +213,7 @@ beforeAll(async () => {
     },
     true,
     ['sign', 'verify'],
-  )) as webcrypto.CryptoKeyPair
+  )
   op.jwk = {
     ...(await webcrypto.subtle.exportKey('jwk', op.keys.publicKey)),
     kid: 'k1',

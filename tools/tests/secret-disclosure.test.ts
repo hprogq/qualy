@@ -31,7 +31,7 @@ const propertiesOf = (node: unknown, found: string[] = []): string[] => {
   if (node === null || typeof node !== 'object') return found
   for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
     if (key === 'properties' && value !== null && typeof value === 'object') {
-      found.push(...Object.keys(value as object))
+      found.push(...Object.keys(value))
     }
     propertiesOf(value, found)
   }

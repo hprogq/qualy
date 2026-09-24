@@ -644,7 +644,7 @@ export const managementAnchors = (tenantId: string, batchId: string) =>
         .where('batchId', '=', batchId)
         .execute(),
     )
-    .pipe(Effect.map((rows) => rows.map((row) => row.orgNodeId as string)))
+    .pipe(Effect.map((rows) => rows.map((row) => row.orgNodeId)))
 
 export const insertManagementAnchors = (
   tenantId: string,
@@ -681,7 +681,7 @@ export const rosterAnchors = (tenantId: string, batchId: string) =>
         .where('status', '=', 'active')
         .execute(),
     )
-    .pipe(Effect.map((rows) => rows.map((row) => row.assessmentAnchorNodeId as string)))
+    .pipe(Effect.map((rows) => rows.map((row) => row.assessmentAnchorNodeId)))
 
 export const nodesByIds = (tenantId: string, nodeIds: readonly string[]) =>
   nodeIds.length === 0
@@ -756,7 +756,7 @@ export const bumpConfigRevision = (tenantId: string, batchId: string) =>
         .returning('configRevision')
         .executeTakeFirstOrThrow(),
     )
-    .pipe(Effect.map((row) => row.configRevision as number))
+    .pipe(Effect.map((row) => row.configRevision))
 
 export const insertConfigEvent = (input: {
   tenantId: string
@@ -917,7 +917,7 @@ export const insertPhase = (input: {
         .returning('id')
         .executeTakeFirstOrThrow(),
     )
-    .pipe(Effect.map((row) => row.id as string))
+    .pipe(Effect.map((row) => row.id))
 
 export const updatePhaseFields = (
   tenantId: string,
@@ -1064,7 +1064,7 @@ export const accessSubjectPage = (
     })
     .pipe(
       Effect.map((rows) =>
-        rows.map((row) => ({ userId: row.userId as string, displayName: row.displayName })),
+        rows.map((row) => ({ userId: row.userId, displayName: row.displayName })),
       ),
     )
 
@@ -1123,9 +1123,7 @@ export const acceptAccessSource = (input: {
     )
     .pipe(
       Effect.flatMap((row) =>
-        acceptPermissions(input.tenantId, row.id as string, input.permissions).pipe(
-          Effect.as(row.id as string),
-        ),
+        acceptPermissions(input.tenantId, row.id, input.permissions).pipe(Effect.as(row.id)),
       ),
     )
 
@@ -1511,7 +1509,7 @@ export const batchItemIds = (tenantId: string, batchId: string) =>
         .where('batchId', '=', batchId)
         .execute(),
     )
-    .pipe(Effect.map((found) => new Set(found.map((row) => row.id as string))))
+    .pipe(Effect.map((found) => new Set(found.map((row) => row.id))))
 
 /** the participant rows of a batch, for validating a participant allowance */
 export const batchParticipantIds = (tenantId: string, batchId: string) =>
@@ -1524,7 +1522,7 @@ export const batchParticipantIds = (tenantId: string, batchId: string) =>
         .where('batchId', '=', batchId)
         .execute(),
     )
-    .pipe(Effect.map((found) => new Set(found.map((row) => row.id as string))))
+    .pipe(Effect.map((found) => new Set(found.map((row) => row.id))))
 
 /** the two allowances of one phase, for the gate */
 export const phaseScopes = (tenantId: string, phaseId: string) =>
@@ -1538,7 +1536,7 @@ export const phaseScopes = (tenantId: string, phaseId: string) =>
           .where('phaseId', '=', phaseId)
           .execute(),
       )
-      .pipe(Effect.map((found) => new Set(found.map((row) => row.itemId as string)))),
+      .pipe(Effect.map((found) => new Set(found.map((row) => row.itemId)))),
     participants: db
       .query((k) =>
         k
@@ -1548,7 +1546,7 @@ export const phaseScopes = (tenantId: string, phaseId: string) =>
           .where('phaseId', '=', phaseId)
           .execute(),
       )
-      .pipe(Effect.map((found) => new Set(found.map((row) => row.participantId as string)))),
+      .pipe(Effect.map((found) => new Set(found.map((row) => row.participantId)))),
   })
 
 // --- roster ---
@@ -1802,16 +1800,16 @@ export const batchUnits = (tenantId: string, batchId: string, held: Authorizatio
     )
     .pipe(
       Effect.map((rows) => {
-        const within = new Set(rows.map((row) => row.id as string))
+        const within = new Set(rows.map((row) => row.id))
         return rows.map((row) => ({
-          id: row.id as string,
-          name: row.name as string,
+          id: row.id,
+          name: row.name,
           // a parent outside this set is not named: the tree a reader is shown
           // starts where the batch, and their own authority, does
           parentId: within.has(row.parentId as string) ? (row.parentId as string) : null,
           // what kind of unit it is, so a picker fed these can label and
           // filter by kind the way it does with the whole tree
-          orgTypeId: row.orgTypeId as string,
+          orgTypeId: row.orgTypeId,
         }))
       }),
     )
@@ -1840,9 +1838,7 @@ export const reachableNodeNames = (
             )
             .execute(),
         )
-        .pipe(
-          Effect.map((rows) => new Map(rows.map((row) => [row.id as string, row.name as string]))),
-        )
+        .pipe(Effect.map((rows) => new Map(rows.map((row) => [row.id, row.name]))))
 
 export const oneOrgNode = (tenantId: string, nodeId: string) =>
   db
@@ -1854,7 +1850,7 @@ export const oneOrgNode = (tenantId: string, nodeId: string) =>
         .where('id', '=', nodeId)
         .executeTakeFirst(),
     )
-    .pipe(Effect.map((row) => (row ?? null) as { id: string; path: string } | null))
+    .pipe(Effect.map((row) => row ?? null))
 
 // --- templates ---
 
@@ -1878,7 +1874,7 @@ export const oneTemplate = (tenantId: string, templateId: string) =>
         .where('id', '=', templateId)
         .executeTakeFirst(),
     )
-    .pipe(Effect.map((row) => (row ?? null) as TemplateRow | null))
+    .pipe(Effect.map((row) => row ?? null))
 
 export const listTemplatesPage = (
   tenantId: string,
@@ -1921,7 +1917,7 @@ export const insertTemplate = (input: {
         .returning(templateColumns)
         .executeTakeFirstOrThrow(),
     )
-    .pipe(Effect.map((row) => row as unknown as TemplateRow))
+    .pipe(Effect.map((row) => row))
 
 export const updateTemplateRow = (
   tenantId: string,
@@ -1944,7 +1940,7 @@ export const updateTemplateRow = (
         .returning(templateColumns)
         .executeTakeFirst(),
     )
-    .pipe(Effect.map((row) => (row ?? null) as TemplateRow | null))
+    .pipe(Effect.map((row) => row ?? null))
 
 export const deleteTemplateRow = (tenantId: string, templateId: string) =>
   db
@@ -2345,9 +2341,7 @@ export const userTypeNames = (tenantId: string, ids: readonly string[]) =>
             .where('id', 'in', ids as string[])
             .execute(),
         )
-        .pipe(
-          Effect.map((rows) => new Map(rows.map((row) => [row.id as string, row.name as string]))),
-        )
+        .pipe(Effect.map((rows) => new Map(rows.map((row) => [row.id, row.name]))))
 
 const toParticipantRow = (row: Record<string, unknown>): ParticipantRow =>
   ({
@@ -2681,7 +2675,7 @@ export const activeParticipantByUser = (tenantId: string, batchId: string, userI
         .where('status', '=', 'active')
         .executeTakeFirst(),
     )
-    .pipe(Effect.map((row) => (row ?? null) as { id: string; status: string } | null))
+    .pipe(Effect.map((row) => row ?? null))
 
 export const oneParticipant = (tenantId: string, batchId: string, participantId: string) =>
   db

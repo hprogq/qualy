@@ -78,7 +78,7 @@ const tampered = async (
   const meta = book.getWorksheet(META_SHEET)!.getRow(1).getCell(1)
   const current = JSON.parse(String(meta.value)) as TemplateMetadata
   meta.value = JSON.stringify(edit(current))
-  return new Uint8Array((await book.xlsx.writeBuffer()) as ArrayBuffer)
+  return new Uint8Array(await book.xlsx.writeBuffer())
 }
 
 /** the reasons a parse refused with, or the reasons the proof refused with */

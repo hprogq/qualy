@@ -135,7 +135,7 @@ export const serviceLayer: Layer.Layer<Captcha, never, Secrets | CaptchaProvider
         return {
           kind: 'passed',
           via: 'verified',
-        } satisfies CaptchaGuardResult as CaptchaGuardResult
+        } satisfies CaptchaGuardResult
       }
       yield* guarded({ outcome: 'rejected' })
       return yield* challenge

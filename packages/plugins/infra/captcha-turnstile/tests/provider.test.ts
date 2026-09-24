@@ -1,14 +1,10 @@
 import { Effect, Layer, Redacted } from 'effect'
 import { describe, expect, it } from 'vitest'
-import type { Contributed, ProvideExtension } from '@qualy/plugin-kit'
+import type { ProvideExtension } from '@qualy/plugin-kit'
 import { Plugin } from '@qualy/plugin-kit'
 import { ShellPolicy, shellPolicyLayer } from '@qualy/api-kit/shell-policy'
 import { captchaPurpose } from '@qualy/plugin-captcha/contract'
-import {
-  Captcha,
-  CaptchaProviderDeclarations,
-  type CaptchaProviderDeclaration,
-} from '@qualy/plugin-captcha/plugin'
+import { Captcha, CaptchaProviderDeclarations } from '@qualy/plugin-captcha/plugin'
 import {
   CaptchaProviders,
   registryLayer,
@@ -181,9 +177,10 @@ describe('the challenge it issues and the origin it trusts', () => {
 describe('the assembly', () => {
   it('refuses Turnstile and ALTCHA together, naming both', () => {
     const contributions = [altcha, turnstile].flatMap((descriptor) =>
-      Plugin.contributionsOf(descriptor, CaptchaProviderDeclarations).map(
-        (value) => ({ pluginId: descriptor.id, value }) as Contributed<CaptchaProviderDeclaration>,
-      ),
+      Plugin.contributionsOf(descriptor, CaptchaProviderDeclarations).map((value) => ({
+        pluginId: descriptor.id,
+        value,
+      })),
     )
     expect(contributions).toHaveLength(2)
     expect(() => (Captcha.owner as unknown as ProvideExtension).compile(contributions)).toThrow(

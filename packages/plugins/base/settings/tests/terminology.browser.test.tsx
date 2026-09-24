@@ -50,11 +50,11 @@ function Probe() {
 
 describe('the tenant word for a term', () => {
   it('is the override where one was chosen, the default elsewhere', async () => {
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         app: { getManifest: () => Effect.succeed(emptyManifest()) },
         settings: { getTerminology: () => Effect.succeed(terminology({ 'zh-CN': '统一编号' }, 2)) },
-      } as never),
+      }),
       children: <Probe />,
     })
     await vi.waitFor(() =>
@@ -63,11 +63,11 @@ describe('the tenant word for a term', () => {
   })
 
   it('shows the default while the words cannot be reached', async () => {
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         app: { getManifest: () => Effect.succeed(emptyManifest()) },
         settings: { getTerminology: () => Effect.fail(apiError('SETTING_NOT_FOUND')) },
-      } as never),
+      }),
       children: <Probe />,
     })
     await vi.waitFor(() =>
@@ -81,11 +81,11 @@ describe('the terminology screen', () => {
     const put = vi.fn(() =>
       Effect.succeed({ id: term.id, override: { 'zh-CN': '统一编号' }, version: 3 }),
     )
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         app: { getManifest: () => Effect.succeed(emptyManifest()) },
         settings: { getTerminology: () => Effect.succeed(terminology({}, 2)), putTerm: put },
-      } as never),
+      }),
       children: <TerminologyPage />,
     })
     await expect.element(page.getByText('人员编号')).toBeVisible()
@@ -112,16 +112,16 @@ describe('the terminology screen on a phone', () => {
     const put = vi.fn(() =>
       Effect.succeed({ id: term.id, override: { 'zh-CN': '统一编号' }, version: 3 }),
     )
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         app: { getManifest: () => Effect.succeed(emptyManifest()) },
         settings: { getTerminology: () => Effect.succeed(terminology({}, 2)), putTerm: put },
-      } as never),
+      }),
       children: <TerminologyPage />,
     })
     await expect.element(page.getByText('人员编号')).toBeVisible()
     // no form is open until one is asked for
-    expect(await page.getByLabelText('简体中文').elements()).toHaveLength(0)
+    expect(page.getByLabelText('简体中文').elements()).toHaveLength(0)
 
     await page.getByText('人员编号').click()
     const box = page.getByLabelText('简体中文')

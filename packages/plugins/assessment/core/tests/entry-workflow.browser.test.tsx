@@ -200,8 +200,8 @@ const screen = (stubs: Stubs, route: string, elements: { path: string; element: 
 
 describe('the overview desk', () => {
   it('lists what needs a hand, and its key lands on the claim', async () => {
-    page.viewport(1280, 800)
-    screen(
+    await page.viewport(1280, 800)
+    await screen(
       {
         getTimeline: () => Effect.succeed({ timeline: [] }),
         // the key lands on the my-entries page, which reads the paper
@@ -310,8 +310,8 @@ describe('the overview desk', () => {
     await vi.waitFor(() => {
       expect(addressNow()).toContain(`open=${ITEM_ID}`)
       expect(addressNow()).toContain(`detail=${ENTRY_ID}`)
-      page.viewport(414, 896)
     })
+    await page.viewport(414, 896)
   })
 })
 
@@ -335,7 +335,7 @@ describe('filing a claim', () => {
       }),
     )
     let filed = false
-    screen(
+    await screen(
       {
         listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
         listMyEntries: () =>
@@ -345,11 +345,11 @@ describe('filing a claim', () => {
             nextCursor: null,
             attention: { unreadItemIds: [] },
           }),
-        createEntry: ((request: { payload: Record<string, unknown> }) => {
+        createEntry: (request: { payload: Record<string, unknown> }) => {
           filed = true
           return created(request)
-        }) as never,
-        setEntryStatus: submitted as never,
+        },
+        setEntryStatus: submitted,
       },
       `/assessment/batches/${BATCH_ID}/my-entries`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
@@ -398,11 +398,11 @@ describe('filing a claim', () => {
   it('offers keeping the claim from inside the question that hands it on', async () => {
     const created = vi.fn(() => Effect.succeed({ entry: entry() }))
     const submitted = vi.fn(() => Effect.succeed({ entry: entry({ status: 'in_review' }) }))
-    screen(
+    await screen(
       {
         listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
-        createEntry: created as never,
-        setEntryStatus: submitted as never,
+        createEntry: created,
+        setEntryStatus: submitted,
       },
       `/assessment/batches/${BATCH_ID}/my-entries`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
@@ -431,11 +431,11 @@ describe('filing a claim', () => {
   it('writes the claim down and hands it on in the one press', async () => {
     const created = vi.fn(() => Effect.succeed({ entry: entry() }))
     const submitted = vi.fn(() => Effect.succeed({ entry: entry({ status: 'in_review' }) }))
-    screen(
+    await screen(
       {
         listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
-        createEntry: created as never,
-        setEntryStatus: submitted as never,
+        createEntry: created,
+        setEntryStatus: submitted,
       },
       `/assessment/batches/${BATCH_ID}/my-entries`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
@@ -463,12 +463,12 @@ describe('filing a claim', () => {
         }),
       ),
     )
-    screen(
+    await screen(
       {
         listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
-        createEntry: created as never,
-        reviseEntry: revised as never,
-        setEntryStatus: submitted as never,
+        createEntry: created,
+        reviseEntry: revised,
+        setEntryStatus: submitted,
       },
       `/assessment/batches/${BATCH_ID}/my-entries`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
@@ -515,10 +515,10 @@ describe('filing a claim', () => {
         },
       },
     })
-    screen(
+    await screen(
       {
         listItems: () => Effect.succeed({ items: [withFiles], capabilities: { canManage: false } }),
-        prepareAttachmentUpload: prepared as never,
+        prepareAttachmentUpload: prepared,
       },
       `/assessment/batches/${BATCH_ID}/my-entries`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
@@ -575,11 +575,11 @@ describe('filing a claim', () => {
         },
       },
     })
-    screen(
+    await screen(
       {
         listItems: () =>
           Effect.succeed({ items: [changed ? asked : item()], capabilities: { canManage: false } }),
-        createEntry: conflict as never,
+        createEntry: conflict,
       },
       `/assessment/batches/${BATCH_ID}/my-entries`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
@@ -661,11 +661,11 @@ describe('filing a claim', () => {
         },
       },
     })
-    screen(
+    await screen(
       {
         listItems: () =>
           Effect.succeed({ items: [changed ? asked : before], capabilities: { canManage: false } }),
-        createEntry: conflict as never,
+        createEntry: conflict,
       },
       `/assessment/batches/${BATCH_ID}/my-entries`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
@@ -693,7 +693,7 @@ describe('filing a claim', () => {
     const listed = vi.fn(() =>
       Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
     )
-    screen({ listItems: listed as never }, `/assessment/batches/${BATCH_ID}/my-entries`, [
+    await screen({ listItems: listed }, `/assessment/batches/${BATCH_ID}/my-entries`, [
       { path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> },
     ])
     await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
@@ -707,7 +707,7 @@ describe('filing a claim', () => {
   it('wears the dot only until its owner looks', async () => {
     // wide, so the structure rail stands beside the paper instead of
     // folding into the phone's drawer
-    page.viewport(1280, 800)
+    await page.viewport(1280, 800)
     const looked = vi.fn(() => Effect.succeed({ ok: true as const }))
     // two questions, with the news on the SECOND: the reader lands settled
     // on the first, so the dwell-marking never touches the dot until they
@@ -717,7 +717,7 @@ describe('filing a claim', () => {
     // seats and the middle is where a dot can sit still
     const second = item({ id: ITEM2_ID, title: '献血加分', sortOrder: 1 })
     const third = item({ id: ITEM3_ID, title: '志愿服务', sortOrder: 2 })
-    screen(
+    await screen(
       {
         listItems: () =>
           Effect.succeed({ items: [item(), second, third], capabilities: { canManage: false } }),
@@ -728,7 +728,7 @@ describe('filing a claim', () => {
             nextCursor: null,
             attention: { unreadItemIds: [ITEM2_ID] },
           }),
-        markMyEntryRead: looked as never,
+        markMyEntryRead: looked,
       },
       `/assessment/batches/${BATCH_ID}/my-entries`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
@@ -750,11 +750,11 @@ describe('filing a claim', () => {
       .click()
     await vi.waitFor(() => expect(looked).toHaveBeenCalledOnce())
     await expect.poll(() => page.getByTestId('unread-dot').elements().length).toBe(0)
-    page.viewport(414, 896)
+    await page.viewport(414, 896)
   })
 
   it('shows the whole account, with the reviewer’s advice read-only', async () => {
-    screen(
+    await screen(
       {
         listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
         listMyEntries: () =>
@@ -879,7 +879,7 @@ describe('filing a claim', () => {
         createdAt: '2026-04-01T00:00:00.000Z',
       },
     })
-    screen(
+    await screen(
       {
         listItems: () => Effect.succeed({ items: [moved], capabilities: { canManage: false } }),
         listMyEntries: () =>
@@ -949,7 +949,7 @@ describe('filing a claim', () => {
       suggestedPayload: null,
       at,
     })
-    screen(
+    await screen(
       {
         listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
         listMyEntries: () =>
@@ -1024,7 +1024,7 @@ describe('filing a claim', () => {
         abandon: { state: 'hidden' as const, reason: null },
       },
     })
-    screen(
+    await screen(
       {
         listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
         listMyEntries: () =>
@@ -1059,7 +1059,7 @@ describe('filing a claim', () => {
     // the press is still drawn, with its reason, and cannot be taken: a
     // vanished button reads as a broken page. Counted, so a change that
     // removes it altogether does not pass this by having nothing to check.
-    const again = await page.getByRole('button', { name: '申诉', exact: true }).elements()
+    const again = page.getByRole('button', { name: '申诉', exact: true }).elements()
     expect(again).toHaveLength(1)
     expect(again[0]).toBeDisabled()
   })
@@ -1115,7 +1115,7 @@ describe('filing a claim', () => {
         [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
       )
 
-    show(null)
+    await show(null)
     await page.getByTestId('claim-row').first().click()
     await expect.element(page.getByTestId('entry-recognized')).toBeVisible()
     const said = () =>
@@ -1129,7 +1129,7 @@ describe('filing a claim', () => {
   })
 
   it('shows the question\u2019s routes by step name, and never who holds them', async () => {
-    screen(
+    await screen(
       {
         listItems: () =>
           Effect.succeed({
@@ -1179,7 +1179,7 @@ describe('filing a claim', () => {
   it('tells each round as its own section, its end and beginning said out loud', async () => {
     const ROUND_4 = '88888888-8888-4888-8888-888888888884'
     const ROUND_5 = '88888888-8888-4888-8888-888888888885'
-    screen(
+    await screen(
       {
         listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
         listMyEntries: () =>
@@ -1317,7 +1317,7 @@ describe('filing a claim', () => {
       requestedByName: '王敏',
       requestedAt: '2026-03-05T00:00:00.000Z',
     }
-    screen(
+    await screen(
       {
         listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
         listMyEntries: () =>
@@ -1426,7 +1426,7 @@ describe('filing a claim', () => {
   it('keeps every layer in the address, and takes it back out on close', async () => {
     // the layered addresses belong to the desk's two-pane layout
     await page.viewport(1280, 800)
-    screen(
+    await screen(
       {
         listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
         listMyEntries: () =>
@@ -1473,7 +1473,7 @@ describe('filing a claim', () => {
     // but two address layers, and two separate writes raced on the router's
     // snapshot - the second dropped the first, and with a group in ?open=
     // the dialog never opened at all
-    screen(
+    await screen(
       {
         listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
         listMyEntries: () =>
@@ -1497,7 +1497,7 @@ describe('filing a claim', () => {
   })
 
   it('says the places are used up where the way in stood', async () => {
-    screen(
+    await screen(
       {
         listItems: () =>
           Effect.succeed({
@@ -1678,7 +1678,7 @@ describe('judging a submission', () => {
     const decided = vi.fn(() =>
       Effect.succeed({ review: { ...review, state: 'completed' as const, outcome: 'approved' } }),
     )
-    screen(
+    await screen(
       {
         listReviewInbox: () =>
           Effect.succeed({
@@ -1696,7 +1696,7 @@ describe('judging a submission', () => {
             handledToday: 0,
           }),
         getReviewInstance: () => Effect.succeed({ review }),
-        decideReview: decided as never,
+        decideReview: decided,
       },
       `/assessment/batches/${BATCH_ID}/reviews`,
       [
@@ -1741,12 +1741,12 @@ describe('judging a submission', () => {
     const decided = vi.fn(() =>
       Effect.succeed({ review: { ...review, state: 'completed' as const, outcome: 'rejected' } }),
     )
-    screen(
+    await screen(
       {
         listReviewInbox: () =>
           Effect.succeed({ items: [inboxRow()], nextCursor: null, handledToday: 0 }),
         getReviewInstance: () => Effect.succeed({ review }),
-        decideReview: decided as never,
+        decideReview: decided,
       },
       `/assessment/batches/${BATCH_ID}/reviews/${INSTANCE_ID}`,
       [
@@ -1782,12 +1782,12 @@ describe('judging a submission', () => {
     const decided = vi.fn(() =>
       Effect.succeed({ review: { ...review, state: 'completed' as const, outcome: 'rejected' } }),
     )
-    screen(
+    await screen(
       {
         listReviewInbox: () =>
           Effect.succeed({ items: [inboxRow()], nextCursor: null, handledToday: 0 }),
         getReviewInstance: () => Effect.succeed({ review }),
-        decideReview: decided as never,
+        decideReview: decided,
       },
       `/assessment/batches/${BATCH_ID}/reviews/${INSTANCE_ID}`,
       [
@@ -1811,7 +1811,7 @@ describe('judging a submission', () => {
   })
 
   it('builds a supplement ask from the keyboard alone', async () => {
-    screen(
+    await screen(
       {
         listReviewInbox: () =>
           Effect.succeed({ items: [inboxRow()], nextCursor: null, handledToday: 0 }),
@@ -1854,7 +1854,7 @@ describe('judging a submission', () => {
     const decided = vi.fn(() =>
       Effect.succeed({ review: { ...review, state: 'completed' as const, outcome: 'rejected' } }),
     )
-    screen(
+    await screen(
       {
         getBatch: () =>
           Effect.succeed({
@@ -1866,7 +1866,7 @@ describe('judging a submission', () => {
         listReviewInbox: () =>
           Effect.succeed({ items: [inboxRow()], nextCursor: null, handledToday: 0 }),
         getReviewInstance: () => Effect.succeed({ review }),
-        decideReview: decided as never,
+        decideReview: decided,
       },
       `/assessment/batches/${BATCH_ID}/reviews/${INSTANCE_ID}`,
       [
@@ -1916,7 +1916,7 @@ describe('judging a submission', () => {
 
 describe('reading one’s standing', () => {
   it('shows the total, each group, and why a line does not count', async () => {
-    screen(
+    await screen(
       {
         listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
         getMyResult: () =>
@@ -1990,7 +1990,7 @@ describe('the phase gate on the paper', () => {
     })
 
   it('renders a shut create as a disabled control, not a trap', async () => {
-    screen(
+    await screen(
       {
         listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
         listMyEntries: () =>
@@ -2013,7 +2013,7 @@ describe('the phase gate on the paper', () => {
   })
 
   it('shuts the handing-on half of the dialog while drafts stay open', async () => {
-    screen(
+    await screen(
       {
         listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
         listMyEntries: () =>
@@ -2038,7 +2038,7 @@ describe('the phase gate on the paper', () => {
   })
 
   it('asks the one-way withdraw in the destructive register', async () => {
-    screen(
+    await screen(
       {
         listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
         listMyEntries: () =>
@@ -2065,7 +2065,7 @@ describe('the phase gate on the paper', () => {
   })
 
   it('keeps the ordinary withdraw in the ordinary register', async () => {
-    screen(
+    await screen(
       {
         listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
         listMyEntries: () =>

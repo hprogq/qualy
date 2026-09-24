@@ -46,7 +46,7 @@ const tabs = () => [...latest().querySelectorAll('[data-slot="tabs-trigger"]')]
 
 describe('a tablist', () => {
   it('is as wide as the views it names, not as wide as the room', async () => {
-    render(<Row width={1200} />)
+    await render(<Row width={1200} />)
     await settle()
     const box = list().getBoundingClientRect()
     expect(box.width).toBeLessThan(600)
@@ -56,18 +56,18 @@ describe('a tablist', () => {
   })
 
   it('keeps every name at its own width when the room is tight', async () => {
-    render(<Row width={1200} />)
+    await render(<Row width={1200} />)
     await settle()
     const roomy = tabs().map((t) => Math.round(t.getBoundingClientRect().width))
 
-    render(<Row width={200} />)
+    await render(<Row width={200} />)
     await settle()
     const tight = tabs().map((t) => Math.round(t.getBoundingClientRect().width))
     expect(tight).toEqual(roomy)
   })
 
   it('scrolls rather than folding onto a second row', async () => {
-    render(<Row width={200} />)
+    await render(<Row width={200} />)
     await settle()
     const el = list()
     expect(getComputedStyle(el).flexWrap).toBe('nowrap')

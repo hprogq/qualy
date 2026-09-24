@@ -11,7 +11,7 @@ const LONG = '外国语言文学与跨文化交际研究院国际中文教育与
 
 describe('the account menu', () => {
   it('cuts a long unit name short instead of widening', async () => {
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         app: { getManifest: () => Effect.succeed(emptyManifest()) },
         auth: {

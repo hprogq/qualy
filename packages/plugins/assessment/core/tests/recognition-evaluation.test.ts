@@ -1,7 +1,7 @@
 import { Effect, Exit } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { builtinAggregators } from '../src/scoring/builtins.ts'
-import { compileScoringPlan, type ScoringPlan } from '../src/scoring/plan.ts'
+import { compileScoringPlan } from '../src/scoring/plan.ts'
 import {
   evaluateRecognition,
   type RecognitionEvaluationFact,
@@ -51,7 +51,7 @@ const plan = await Effect.runPromise(
   }),
 ).then((outcome) => {
   if (!('plan' in outcome)) throw new Error(`fixture did not compile: ${JSON.stringify(outcome)}`)
-  return outcome.plan as ScoringPlan
+  return outcome.plan
 })
 
 const fact = (recognition: Record<string, unknown>): RecognitionEvaluationFact => ({

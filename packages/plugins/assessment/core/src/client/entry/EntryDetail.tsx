@@ -3,7 +3,6 @@ import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { AlertCircleIcon, XIcon } from 'lucide-react'
 import { useApiQuery } from '@qualy/web-runtime'
-import type { ApiResult } from '@qualy/web-runtime/api'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Badge } from '@qualy/ui/badge'
@@ -374,8 +373,6 @@ const styles = stylex.create({
   },
 })
 
-type History = ApiResult<typeof assessmentApi, 'assessment', 'getEntryHistory'>
-
 /**
  * The rewrite the reviewer proposed, next to the sentence that sent the
  * claim back: only the fields that would change, shown for the owner to
@@ -455,13 +452,13 @@ export function EntryDetail({
     ...query.assessment.getEntryHistory.queryOptions({ params: { entryId: entry.id } }),
     enabled: open,
   })
-  const rounds = ((history.data as History | undefined)?.rounds ?? []) as History['rounds']
+  const rounds = history.data?.rounds ?? []
   const answered = rounds.flatMap((round) =>
     round.supplements
       .filter((one) => one.status === 'answered' && one.response !== null)
       .map((one) => ({ ...one, roundNo: round.roundNo })),
   )
-  const versions = (history.data as History | undefined)?.revisions.length ?? 0
+  const versions = history.data?.revisions.length ?? 0
   // Read back against the form this version was written under, not the one
   // the question carries today. An administrator editing the question after
   // somebody filed moved answers out from under the reader: a field since
@@ -470,7 +467,7 @@ export function EntryDetail({
   // same object whenever nothing changed, which is the ordinary case and
   // needs no waiting; where they differ, the fields wait for the history
   // rather than showing the wrong ones in the meantime.
-  const filedUnder = ((history.data as History | undefined)?.revisions ?? []).find(
+  const filedUnder = (history.data?.revisions ?? []).find(
     (one) => one.id === entry.currentRevision?.id,
   )
   const fields = fieldsOf(

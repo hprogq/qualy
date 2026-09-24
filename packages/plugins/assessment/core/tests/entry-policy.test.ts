@@ -317,7 +317,7 @@ describe.runIf(postgresAvailable)('the entry resource policy', () => {
             doubleSubmit,
             withdrawn,
             resubmitted,
-            instances: (instances as { rows: unknown[] }).rows,
+            instances: instances.rows,
             events: (events as { rows: { kind: string }[] }).rows.map((row) => row.kind),
           }
         }),

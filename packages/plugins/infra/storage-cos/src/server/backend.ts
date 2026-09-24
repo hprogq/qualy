@@ -89,7 +89,7 @@ export const cosBackend = (settings: CosSettings): StorageBackend => {
         try: async (): Promise<BlobStat | null> => {
           try {
             const head = await cos.headObject(object(key))
-            const headers = head.headers as Record<string, unknown> | undefined
+            const headers = head.headers
             const length = headerOf(headers, 'content-length')
             const crc64 = headerOf(headers, 'x-cos-hash-crc64ecma')
             if (length === undefined || crc64 === undefined) {

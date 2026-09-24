@@ -238,7 +238,7 @@ const resolveRoute = (input: {
         skipped: nodeId === null ? 'no-holder' : null,
       })
     }
-    return resolved as readonly ResolvedStage[]
+    return resolved
   })
 
 /**

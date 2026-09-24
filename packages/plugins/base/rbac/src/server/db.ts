@@ -325,7 +325,7 @@ export const grantRuleTargets = (tenantId: string, granterRoleId: string) =>
         .orderBy('r.code')
         .execute(),
     )
-    .pipe(Effect.map((rows) => rows.map((row) => ({ id: row.id as string, code: row.code }))))
+    .pipe(Effect.map((rows) => rows.map((row) => ({ id: row.id, code: row.code }))))
 
 /** the offices that appoint this one, for the editor and the impact dialog */
 export const grantRuleSources = (tenantId: string, targetRoleId: string) =>
@@ -342,7 +342,7 @@ export const grantRuleSources = (tenantId: string, targetRoleId: string) =>
         .orderBy('r.name')
         .execute(),
     )
-    .pipe(Effect.map((rows) => rows.map((row) => ({ id: row.id as string, name: row.name }))))
+    .pipe(Effect.map((rows) => rows.map((row) => ({ id: row.id, name: row.name }))))
 
 /**
  * Whether the appointment graph, as it stands, lets this role reach itself.

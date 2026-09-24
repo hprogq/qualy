@@ -96,7 +96,7 @@ describe('the assembled barrier', () => {
   // keyed on that annotation cannot reach it.
   it.effect('runs a hook as the plugin that registered it', () =>
     Effect.gen(function* () {
-      const seen: (unknown | undefined)[] = []
+      const seen: unknown[] = []
       // the assembler wraps a plugin's build in its own identity
       const plugin = Layer.effectDiscard(
         Effect.gen(function* () {

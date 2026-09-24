@@ -20,7 +20,7 @@ const issuesOf = (
 ): readonly { field: string; reason: string }[] =>
   Exit.isFailure(exit)
     ? ((exit.cause as { reasons?: readonly { error?: { issues?: [] } }[] }).reasons ?? [])
-        .map((entry) => (entry.error as { issues?: [] } | undefined)?.issues ?? [])
+        .map((entry) => entry.error?.issues ?? [])
         .flat()
     : []
 

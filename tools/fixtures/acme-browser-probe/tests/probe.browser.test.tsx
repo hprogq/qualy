@@ -16,7 +16,7 @@ import { catalogs, errorMessages } from '@acme/qualy-browser-probe/client/i18n'
 // output, resolved through the package's exports map like any dependency.
 
 it('renders its own screen, in its own language, with nothing else assembled', async () => {
-  renderScreen({
+  await renderScreen({
     // the shell reads one manifest before it renders anything; this plugin
     // contributes no page to it, and does not have to
     client: fakeClient({ app: { getManifest: emptyManifest() } }),
@@ -29,5 +29,5 @@ it('renders its own screen, in its own language, with nothing else assembled', a
   await expect.element(page.getByRole('heading', { name: '探针' })).toBeVisible()
   const standing = page.getByText('就绪')
   await expect.element(standing).toBeVisible()
-  expect(await standing.element().getAttribute('data-probe-standing')).toBe('probe-3c07fe')
+  expect(standing.element().getAttribute('data-probe-standing')).toBe('probe-3c07fe')
 })

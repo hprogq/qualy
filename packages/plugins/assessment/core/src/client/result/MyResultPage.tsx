@@ -11,7 +11,7 @@ import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import type { EntryDto } from '../entry/model.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
-import { ResultLedger, type LedgerItem } from './ResultLedger.tsx'
+import { ResultLedger } from './ResultLedger.tsx'
 
 // One's own standing in a round: what the three api answers are, and what
 // to say when the arithmetic behind them cannot be reached.
@@ -149,7 +149,7 @@ function Standing({ batchId }: { batchId: string }) {
       {data !== undefined && (
         <ResultLedger
           result={data}
-          items={(items.data?.items ?? []) as readonly LedgerItem[]}
+          items={items.data?.items ?? []}
           entries={entries}
           emptyAction={<GoToEntries pending={pendingCount} drafts={draftCount} />}
         />

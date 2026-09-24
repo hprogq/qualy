@@ -2899,7 +2899,7 @@ export default function FormulaEditorPage() {
     contract === null
       ? []
       : contractWordsIssues(
-          contract.inputSchema as never,
+          contract.inputSchema,
           (schema, parameter) =>
             (schema as unknown as { properties: Record<string, unknown> }).properties[parameter],
         )

@@ -252,7 +252,7 @@ export const identify = async (
   if (label === undefined && config.serverMetadata().userinfo_endpoint !== undefined) {
     try {
       const info = await client.fetchUserInfo(config, tokens.access_token, subject)
-      label = labelOf(info as Record<string, unknown>)
+      label = labelOf(info)
     } catch {
       // a name is a courtesy; the sign-in stands on the ID Token
     }

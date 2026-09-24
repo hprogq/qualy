@@ -58,7 +58,7 @@ export const formulaAuthoringPolicy = {
           // a version nobody can find is the compile's answer to give, in
           // the vocabulary it has already established for it
           if (row === undefined) return
-          if ((row as unknown as { createdBy: string }).createdBy !== input.principal.userId) {
+          if (row.createdBy !== input.principal.userId) {
             return yield* Effect.fail({ path: AT, reason: 'formula-not-yours' })
           }
         }),

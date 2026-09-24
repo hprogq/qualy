@@ -68,7 +68,7 @@ const stack = (url: string) =>
     { catalog },
   )
 
-const run = <A, E>(url: string, effect: Effect.Effect<A, E, Rbac | Access | Orm | Orm>) =>
+const run = <A, E>(url: string, effect: Effect.Effect<A, E, Rbac | Access | Orm>) =>
   Effect.runPromiseExit(Effect.provide(effect, stack(url)))
 
 /** the lists a policy names, or null when it names everything */

@@ -364,9 +364,9 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
       // an active role's permissions are confirmed with their reach said out
       // loud; that dialog takes over, and the reader moves on from there
       if (role.status === 'active') setConfirmingPermissions(true)
-      else savePermissions.mutate(undefined as never, go)
-    } else if (tab === 'eligibility') saveEligibility.mutate(undefined as never, go)
-    else if (tab === 'appointment') saveGrantable.mutate(undefined as never, go)
+      else savePermissions.mutate(undefined, go)
+    } else if (tab === 'eligibility') saveEligibility.mutate(undefined, go)
+    else if (tab === 'appointment') saveGrantable.mutate(undefined, go)
   }
 
   // permissions arrive sorted by code and grouped by whoever declared them;
@@ -722,7 +722,7 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
                         setConfirmingPermissions(true)
                         return
                       }
-                      savePermissions.mutate(undefined as never)
+                      savePermissions.mutate(undefined)
                     }}
                   >
                     {format(m.savePermissions)}
@@ -846,7 +846,7 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
                 <Button
                   size="sm"
                   disabled={!eligibilityDirty || saveEligibility.isPending}
-                  onClick={() => saveEligibility.mutate(undefined as never)}
+                  onClick={() => saveEligibility.mutate(undefined)}
                 >
                   {format(m.save)}
                 </Button>
@@ -919,7 +919,7 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
                     <Button
                       size="sm"
                       disabled={!grantableDirty || saveGrantable.isPending}
-                      onClick={() => saveGrantable.mutate(undefined as never)}
+                      onClick={() => saveGrantable.mutate(undefined)}
                     >
                       {format(m.save)}
                     </Button>
@@ -957,7 +957,7 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
           {...stylex.props(styles.form)}
           onSubmit={(event) => {
             event.preventDefault()
-            saveProfile.mutate(undefined as never)
+            saveProfile.mutate(undefined)
           }}
         >
           <Field label={format(m.nameLabel)}>
@@ -987,7 +987,7 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
         confirmLabel={format(m.save)}
         cancelLabel={format(m.cancel)}
         pending={savePermissions.isPending}
-        onConfirm={() => savePermissions.mutate(undefined as never)}
+        onConfirm={() => savePermissions.mutate(undefined)}
         onCancel={() => setConfirmingPermissions(false)}
       />
 
@@ -998,7 +998,7 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
         confirmLabel={format(m.delete)}
         cancelLabel={format(m.cancel)}
         pending={remove.isPending}
-        onConfirm={() => remove.mutate(undefined as never)}
+        onConfirm={() => remove.mutate(undefined)}
         onCancel={() => setConfirmingDelete(false)}
       />
       <ConfirmDialog

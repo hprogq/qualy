@@ -388,7 +388,7 @@ export const runningBatch = (
         on sp.tenant_id = s.tenant_id and sp.source_id = s.id
       where s.batch_id = ${batch.id} and s.subject_id = ${f.recorder}
         and sp.permission_code = 'assessment.entry.record'`)
-    if ((accepted as { rows: unknown[] }).rows.length === 0) {
+    if (accepted.rows.length === 0) {
       throw new Error('fixture: the recorder was not accepted at creation')
     }
     const participantOf = (userId: string) =>

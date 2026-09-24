@@ -128,7 +128,7 @@ describe('the formula code editor', () => {
         'const a = 1\n',
       )
     } finally {
-      screen.unmount()
+      await screen.unmount()
     }
   })
 
@@ -187,7 +187,7 @@ describe('the formula code editor', () => {
         { timeout: 5_000 },
       )
     } finally {
-      screen.unmount()
+      await screen.unmount()
     }
   })
 
@@ -206,7 +206,7 @@ describe('the formula code editor', () => {
       const editor = monaco.editor.getEditors().find((one) => one.getModel() === formulaModel())!
       expect(editor.getOption(monaco.editor.EditorOption.readOnly)).toBe(true)
     } finally {
-      screen.unmount()
+      await screen.unmount()
     }
   })
 
@@ -240,7 +240,7 @@ describe('the formula code editor', () => {
       model.setValue('still editable\n')
       expect(model.getValue()).toBe('still editable\n')
     } finally {
-      screen.unmount()
+      await screen.unmount()
     }
   })
 })

@@ -42,7 +42,7 @@ describe('a change of identity', () => {
         </button>
       )
     }
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         app: {
           getManifest: () =>
@@ -95,7 +95,7 @@ describe('a change of identity', () => {
       const home = manifest.pages.some((entry) => entry.id === 'app/home') ? '/home' : '/login'
       return <Navigate to={home} replace />
     }
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         app: {
           // the new identity's manifest takes a moment, as over a network
@@ -160,7 +160,7 @@ describe('a session that stops working while a page is open', () => {
         </main>
       )
     }
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         app: {
           getManifest: () =>
@@ -203,7 +203,7 @@ describe('a session that stops working while a page is open', () => {
         </button>
       )
     }
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         app: {
           getManifest: () =>
@@ -247,7 +247,7 @@ describe('the manifest, asked again in the background', () => {
         </main>
       )
     }
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         app: {
           getManifest: () =>

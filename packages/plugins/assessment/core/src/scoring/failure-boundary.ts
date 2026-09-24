@@ -202,7 +202,7 @@ export const settleWithProbe = <A, E, R, Moved>(
     // type parameter here, and a tag cannot be told apart from an unknown one
     const first = yield* Effect.result(attempt(null))
     if (Result.isSuccess(first)) return first.success
-    if (!(first.failure instanceof ProbeNeeded)) return yield* Effect.fail(first.failure as E)
+    if (!(first.failure instanceof ProbeNeeded)) return yield* Effect.fail(first.failure)
     const probe = first.failure.probe
     yield* proveSettlement(runtime, probe)
     const second = yield* Effect.result(attempt(probe.identity))
@@ -210,7 +210,7 @@ export const settleWithProbe = <A, E, R, Moved>(
     if (second.failure instanceof ProbeNeeded) {
       return yield* Effect.fail(moved(probe, second.failure.probe))
     }
-    return yield* Effect.fail(second.failure as E)
+    return yield* Effect.fail(second.failure)
   })
 
 /**
@@ -290,7 +290,7 @@ export const proveSettlements = (
           ),
           Effect.map((result) =>
             result !== undefined && typeof result === 'object' && 'refused' in result
-              ? (result as { key: string; refused: DeterminationRefused })
+              ? result
               : { key, identity: identityOf(site, key, values) },
           ),
         ),

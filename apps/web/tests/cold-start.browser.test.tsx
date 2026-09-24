@@ -62,6 +62,7 @@ const reloadName = () =>
 const runBootScript = async () => {
   const script = /<script>([\s\S]*?)<\/script>/.exec(await shellSource())?.[1]
   if (script === undefined) throw new Error('index.html has no boot script')
+  // eslint-disable-next-line typescript/no-implied-eval -- runs the boot script the page would
   new Function(script)()
 }
 
@@ -161,11 +162,11 @@ describe('the cold start', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     await render(<Booting done={false} />)
     await expect.element(page.getByRole('status')).toBeInTheDocument()
-    expect(await page.getByTestId('cold-start-hint').elements()).toHaveLength(0)
+    expect(page.getByTestId('cold-start-hint').elements()).toHaveLength(0)
 
     vi.advanceTimersByTime(6000)
     await expect.element(page.getByTestId('cold-start-hint')).toBeInTheDocument()
-    expect(await page.getByRole('button', { name: copy.retry }).elements()).toHaveLength(0)
+    expect(page.getByRole('button', { name: copy.retry }).elements()).toHaveLength(0)
 
     vi.advanceTimersByTime(24_000)
     await expect.element(page.getByRole('button', { name: copy.retry })).toBeVisible()
@@ -271,7 +272,7 @@ describe('the cold start', () => {
       await runBootScript()
       // the watchdog says nothing while the application may still arrive
       vi.advanceTimersByTime(19_000)
-      expect(await page.getByRole('link', { name: reloadName() }).elements()).toHaveLength(0)
+      expect(page.getByRole('link', { name: reloadName() }).elements()).toHaveLength(0)
       vi.advanceTimersByTime(1_000)
       const reload = page.getByRole('link', { name: reloadName() })
       await expect.element(reload).toBeVisible()
@@ -289,7 +290,7 @@ describe('the cold start', () => {
       await runBootScript()
       document.getElementById('qualy-boot')?.remove()
       vi.advanceTimersByTime(20_000)
-      expect(await page.getByRole('link', { name: reloadName() }).elements()).toHaveLength(0)
+      expect(page.getByRole('link', { name: reloadName() }).elements()).toHaveLength(0)
     } finally {
       restore()
     }

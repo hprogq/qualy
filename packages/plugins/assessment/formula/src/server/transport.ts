@@ -27,10 +27,10 @@ export const tameTransport =
         if (Result.isSuccess(failure)) {
           return Predicate.isTagged(failure.success, 'RpcClientError')
             ? Effect.fail(unavailable())
-            : Effect.failCause(cause as Cause.Cause<E>)
+            : Effect.failCause(cause)
         }
         return peerIsUnusable(Cause.squash(cause))
           ? Effect.fail(unavailable())
-          : Effect.failCause(cause as Cause.Cause<E>)
+          : Effect.failCause(cause)
       }),
     )

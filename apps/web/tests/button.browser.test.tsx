@@ -39,7 +39,7 @@ const token = (name: string): string =>
 
 describe('the button keeps its product contract', () => {
   it('sizes follow the product rhythm', async () => {
-    mount(
+    await mount(
       <>
         <Button>plain</Button>
         <Button size="sm">small</Button>
@@ -62,7 +62,7 @@ describe('the button keeps its product contract', () => {
   })
 
   it('variants paint from the shared palette', async () => {
-    mount(
+    await mount(
       <>
         <Button>primary</Button>
         <Button variant="destructive">remove</Button>
@@ -83,7 +83,7 @@ describe('the button keeps its product contract', () => {
   })
 
   it('asChild renders the child with the button geometry', async () => {
-    mount(
+    await mount(
       // "mt-2" is an inert marker: the assertion below reads the class
       // attribute itself, so nothing here depends on the utility being
       // emitted by the production Tailwind scan
@@ -99,7 +99,7 @@ describe('the button keeps its product contract', () => {
 
   it('disabled and click reach the real element', async () => {
     let pressed = 0
-    mount(
+    await mount(
       <>
         <Button onClick={() => (pressed += 1)}>go</Button>
         <Button disabled>stuck</Button>
@@ -129,7 +129,7 @@ describe('the button keeps its product contract', () => {
         </form>
       )
     }
-    mount(<FormHarness />)
+    await mount(<FormHarness />)
     await page.getByRole('button', { name: 'just a button' }).click()
     await expect.element(page.getByTestId('submits')).toHaveTextContent('0')
     await page.getByRole('button', { name: 'send' }).click()

@@ -220,7 +220,7 @@ export function ParticipantResultList({
     onSuccess: (result: { added: number }) => {
       setAdding(false)
       toast.success(format(m.toastAdded, { count: result.added }))
-      invalidate()
+      void invalidate()
     },
     onError,
   })
@@ -239,7 +239,7 @@ export function ParticipantResultList({
     onSuccess: (result: { added: number }) => {
       setImporting(false)
       toast.success(format(m.toastImported, { count: result.added }))
-      invalidate()
+      void invalidate()
     },
     onError,
   })
@@ -256,7 +256,7 @@ export function ParticipantResultList({
     onSuccess: (result: { status: 'active' | 'excluded' }) => {
       setExcluding(null)
       toast.success(format(result.status === 'excluded' ? m.toastExcluded : m.toastRestored))
-      invalidate()
+      void invalidate()
     },
     onError,
   })
@@ -274,13 +274,13 @@ export function ParticipantResultList({
       ),
     onSuccess: (result: { synced: number; kept: number }) => {
       toast.success(format(m.placementSettled, { count: result.synced + result.kept }))
-      invalidate()
+      void invalidate()
     },
     // a refusal is about what the dialog shows, so it is said there and the
     // differences are read again: one that moved on is shown as it is now
     onError: (error: unknown) => {
       toast.error(formatError(error))
-      invalidate()
+      void invalidate()
     },
   })
 

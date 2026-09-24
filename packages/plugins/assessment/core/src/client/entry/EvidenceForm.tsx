@@ -277,8 +277,7 @@ export function EvidenceForm({
 
   const numberField = (field: EvidenceFieldSpec) => {
     const stored = value[field.key]
-    const draft =
-      numberDrafts[field.key] ?? (stored === undefined ? '' : String(stored as string | number))
+    const draft = numberDrafts[field.key] ?? (stored === undefined ? '' : String(stored))
     const invalid = draftInvalid(field, draft)
     return (
       <Field
@@ -382,11 +381,11 @@ export function EvidenceForm({
           // those days taught people to file the wrong date.
           const bounded = field.inMaterialRange === true && materialRange !== undefined
           const floor = [field.min, bounded ? materialRange.start : undefined]
-            .filter(Boolean)
+            .filter((day): day is string => Boolean(day))
             .sort()
             .at(-1)
           const ceiling = [field.max, bounded ? lastDay(materialRange.end) : undefined]
-            .filter(Boolean)
+            .filter((day): day is string => Boolean(day))
             .sort()
             .at(0)
           const window =

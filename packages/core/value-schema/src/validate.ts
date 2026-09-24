@@ -24,7 +24,6 @@ import {
   type DecimalParts,
 } from './decimal.ts'
 import {
-  DECIMAL_FORMAT,
   DECIMAL_MAXIMUM,
   DECIMAL_MINIMUM,
   MAX_SCALE,

@@ -172,7 +172,7 @@ const open = ({
           return Effect.succeed({ function: draft })
         },
       },
-    } as never),
+    }),
     route: `/assessment/formulas/${FN_ID}${route}`,
     path: '/assessment/formulas/:functionId',
     children: <FormulaEditorPage />,
@@ -223,7 +223,7 @@ describe('a formula’s draft and its history', () => {
         .element(page.getByTestId('formula-save-state'))
         .toHaveAttribute('data-state', 'dirty')
     } finally {
-      view.unmount()
+      await view.unmount()
     }
   }, 60_000)
 
@@ -261,7 +261,7 @@ describe('a formula’s draft and its history', () => {
         { timeout: 5_000 },
       )
     } finally {
-      view.unmount()
+      await view.unmount()
     }
   }, 60_000)
 
@@ -297,7 +297,7 @@ describe('a formula’s draft and its history', () => {
       await expect.element(page.getByTestId('formula-editor')).toBeVisible()
       expect(addressNow()).toBe(`/assessment/formulas/${FN_ID}`)
     } finally {
-      view.unmount()
+      await view.unmount()
     }
   }, 60_000)
 
@@ -324,7 +324,7 @@ describe('a formula’s draft and its history', () => {
       expect(wire.publishes).toEqual([])
       expect(addressNow()).toBe(`/assessment/formulas/${FN_ID}?view=release-1`)
     } finally {
-      view.unmount()
+      await view.unmount()
     }
   }, 60_000)
 
@@ -346,7 +346,7 @@ describe('a formula’s draft and its history', () => {
       })
       expect(wire.publishes).toEqual([])
     } finally {
-      view.unmount()
+      await view.unmount()
     }
   }, 60_000)
 
@@ -397,7 +397,7 @@ describe('a formula’s draft and its history', () => {
       // the restored draft is the editor's now, the edit it replaced gone
       await vi.waitFor(() => expect(model.getValue()).not.toBe(edited), { timeout: 10_000 })
     } finally {
-      view.unmount()
+      await view.unmount()
     }
   }, 60_000)
 
@@ -418,7 +418,7 @@ describe('a formula’s draft and its history', () => {
       await userEvent.keyboard('{Escape}')
       await expect.element(page.getByTestId('formula-editor')).toBeVisible()
     } finally {
-      view.unmount()
+      await view.unmount()
     }
   }, 60_000)
 
@@ -430,7 +430,7 @@ describe('a formula’s draft and its history', () => {
       await page.getByRole('tab', { name: '草稿记录' }).click()
       await expect.element(page.getByTestId('formula-revisions-empty')).toBeVisible()
     } finally {
-      view.unmount()
+      await view.unmount()
     }
   }, 60_000)
 
@@ -446,7 +446,7 @@ describe('a formula’s draft and its history', () => {
         from: { kind: 'draft-revision', revisionNo: 2 },
       })
     } finally {
-      view.unmount()
+      await view.unmount()
     }
   }, 60_000)
 })

@@ -165,7 +165,7 @@ export function AccessPanel({ batchId }: { batchId: string }) {
           ? format(m.toastLapsedCleared)
           : format(m.toastMerged, { count: result.merged }),
       )
-      invalidate()
+      void invalidate()
     },
     onError,
   })
@@ -199,7 +199,7 @@ export function AccessPanel({ batchId }: { batchId: string }) {
     onSuccess: () => {
       setAdjusting(null)
       toast.success(format(m.toastAdjusted))
-      invalidate()
+      void invalidate()
     },
     onError,
   })
@@ -223,7 +223,7 @@ export function AccessPanel({ batchId }: { batchId: string }) {
     onSuccess: () => {
       setAddingStaff(false)
       toast.success(format(m.toastStaffAdded))
-      invalidate()
+      void invalidate()
     },
     onError,
   })
@@ -234,7 +234,7 @@ export function AccessPanel({ batchId }: { batchId: string }) {
     onSuccess: () => {
       setRemoving(null)
       toast.success(format(m.toastStaffRemoved))
-      invalidate()
+      void invalidate()
     },
     onError,
   })

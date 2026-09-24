@@ -18,7 +18,7 @@ import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { BatchBanner } from '../batch/BatchScreen.tsx'
 import { useBatchLive } from '../live.ts'
-import { ResultLedger, type LedgerItem } from './ResultLedger.tsx'
+import { ResultLedger } from './ResultLedger.tsx'
 import { ParticipantEntries } from './ParticipantEntries.tsx'
 
 // One participant's whole account, in the page the list came from.
@@ -365,7 +365,7 @@ export function ParticipantResultDetail({
             {result.data !== undefined && (
               <ResultLedger
                 result={result.data}
-                items={(items.data?.items ?? []) as readonly LedgerItem[]}
+                items={items.data?.items ?? []}
                 entries={claims.map((one) => one.entry)}
                 // a number leads back to the filing it came from; this is
                 // the reason the two halves are one page

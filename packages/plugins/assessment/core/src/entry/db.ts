@@ -930,7 +930,7 @@ export const insertReviewEvent = (input: {
         .returning(['id'])
         .executeTakeFirstOrThrow(),
     )
-    .pipe(Effect.map((row) => String((row as { id: string }).id)))
+    .pipe(Effect.map((row) => String(row.id)))
 
 /** the open work a void sweeps: entries of this item still in someone's hands */
 export const openEntriesOfItem = (tenantId: string, itemId: string) =>
@@ -1114,10 +1114,10 @@ export const roundsOfEntry = (tenantId: string, entryId: string) =>
         rows.map((row): EntryRoundRow => ({
           id: row.id,
           roundNo: row.roundNo,
-          state: row.state as string,
+          state: row.state,
           outcome: row.outcome,
           revisionId: row.revisionId,
-          origin: row.origin as string,
+          origin: row.origin,
           supersedesInstanceId: row.supersedesInstanceId,
           appealedInstanceId: row.appealedInstanceId,
           appealedRecognitionId: row.appealedRecognitionId,

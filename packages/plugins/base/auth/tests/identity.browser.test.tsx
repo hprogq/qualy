@@ -156,7 +156,7 @@ const stubs = ({
 
 describe('user types screen', () => {
   it('lists each type with where it may belong and who lets it in', async () => {
-    renderScreen({
+    await renderScreen({
       client: fakeClient(
         stubs({
           identity: {
@@ -177,11 +177,11 @@ describe('user types screen', () => {
     // than leaving the cell blank
     await expect.element(row).toHaveAttribute('data-entrances', '0')
     // and no way to make more of them
-    expect(await page.getByText('新建用户类型').elements()).toHaveLength(0)
+    expect(page.getByText('新建用户类型').elements()).toHaveLength(0)
   })
 
   it('shows no management controls to a reader who may not manage', async () => {
-    renderScreen({
+    await renderScreen({
       client: fakeClient(
         stubs({
           identity: {
@@ -208,20 +208,18 @@ describe('user types screen', () => {
     await expect
       .element(page.getByTestId('placement-panel'))
       .toHaveAttribute('data-mode', 'unrestricted')
-    expect(await page.getByRole('tab').elements()).toHaveLength(0)
+    expect(page.getByRole('tab').elements()).toHaveLength(0)
     // and nothing on it acts
-    expect(await page.getByRole('button', { name: '保存', exact: false }).elements()).toHaveLength(
-      0,
-    )
-    expect(await page.getByRole('button', { name: '重命名' }).elements()).toHaveLength(0)
-    expect(await page.getByRole('button', { name: '停用' }).elements()).toHaveLength(0)
-    expect(await page.getByRole('button', { name: '删除' }).elements()).toHaveLength(0)
+    expect(page.getByRole('button', { name: '保存', exact: false }).elements()).toHaveLength(0)
+    expect(page.getByRole('button', { name: '重命名' }).elements()).toHaveLength(0)
+    expect(page.getByRole('button', { name: '停用' }).elements()).toHaveLength(0)
+    expect(page.getByRole('button', { name: '删除' }).elements()).toHaveLength(0)
     // and no way to make more of them
-    expect(await page.getByText('新建用户类型').elements()).toHaveLength(0)
+    expect(page.getByText('新建用户类型').elements()).toHaveLength(0)
   })
 
   it('refuses to offer a disable that the api would reject', async () => {
-    renderScreen({
+    await renderScreen({
       client: fakeClient(
         stubs({
           identity: {
@@ -249,7 +247,7 @@ describe('user types screen', () => {
 
   it('refuses an allow-list that names nothing', async () => {
     const save = vi.fn(() => Effect.succeed({ version: 4 }))
-    renderScreen({
+    await renderScreen({
       client: fakeClient(
         stubs({
           identity: {
@@ -301,7 +299,7 @@ describe('user types screen', () => {
       // the backend says LAST_ADMINISTRATOR in english; the reader must not
       Effect.fail(apiError('LAST_ADMINISTRATOR', undefined)),
     )
-    renderScreen({
+    await renderScreen({
       client: fakeClient(
         stubs({
           identity: {
@@ -329,9 +327,7 @@ describe('user types screen', () => {
     // a system identity stands at the tenant root whatever its row says, so
     // there is no placement to edit and the only save is the one behind the
     // rename dialog
-    expect(await page.getByRole('button', { name: '保存', exact: false }).elements()).toHaveLength(
-      0,
-    )
+    expect(page.getByRole('button', { name: '保存', exact: false }).elements()).toHaveLength(0)
     await page.getByRole('button', { name: '重命名' }).click()
     await page.getByRole('button', { name: '保存', exact: false }).click()
     // The refusal reaches the reader as a sentence rather than as a code,
@@ -341,7 +337,7 @@ describe('user types screen', () => {
     // test quoting it went red whenever rbac reworded.
     await expect.element(page.getByTestId('feedback')).toHaveAttribute('data-tone', 'error')
     expect(page.getByTestId('feedback').element().textContent ?? '').not.toBe('')
-    expect(await page.getByText('LAST_ADMINISTRATOR').elements()).toHaveLength(0)
+    expect(page.getByText('LAST_ADMINISTRATOR').elements()).toHaveLength(0)
     // the row is versioned as a whole, and a save that cannot say which
     // version it read is one that overwrites whoever went second
     expect(save).toHaveBeenCalledWith(
@@ -356,7 +352,7 @@ describe('user types screen', () => {
     // a call that stays in flight: the point is what the form does while one
     // is outstanding, so this effect is never allowed to settle
     const create = vi.fn(() => Effect.never as Effect.Effect<{ id: string }>)
-    renderScreen({
+    await renderScreen({
       client: fakeClient(
         stubs({
           identity: {
@@ -398,7 +394,7 @@ describe('user types screen', () => {
 
 describe('roles screen', () => {
   it('keeps the canonical administrator role out of reach', async () => {
-    renderScreen({
+    await renderScreen({
       client: fakeClient(
         stubs({
           access: {
@@ -427,17 +423,17 @@ describe('roles screen', () => {
 
     await expect.element(page.getByText('租户管理员').first()).toBeInTheDocument()
     // it is not renamed, not appointed through, and not saved
-    expect(await page.getByRole('button', { name: '重命名' }).elements()).toHaveLength(0)
-    expect(await page.getByRole('button', { name: '保存权限' }).elements()).toHaveLength(0)
-    expect(await page.getByRole('tab', { name: '可任命' }).elements()).toHaveLength(0)
+    expect(page.getByRole('button', { name: '重命名' }).elements()).toHaveLength(0)
+    expect(page.getByRole('button', { name: '保存权限' }).elements()).toHaveLength(0)
+    expect(page.getByRole('tab', { name: '可任命' }).elements()).toHaveLength(0)
     // and its standing offers nothing to switch and nothing destructive
     await expect.element(page.getByTestId('role-standing')).toHaveAttribute('data-status', 'active')
-    expect(await page.getByRole('button', { name: '删除角色' }).elements()).toHaveLength(0)
-    expect(await page.getByRole('tab', { name: '停用' }).elements()).toHaveLength(0)
+    expect(page.getByRole('button', { name: '删除角色' }).elements()).toHaveLength(0)
+    expect(page.getByRole('tab', { name: '停用' }).elements()).toHaveLength(0)
   })
 
   it('does not present a failed supporting query as an empty picker', async () => {
-    renderScreen({
+    await renderScreen({
       client: fakeClient(
         stubs({
           access: {
@@ -461,8 +457,8 @@ describe('roles screen', () => {
     // the section reports the failure and offers a retry rather than
     // rendering an empty, apparently-complete checkbox list
     await expect.element(page.getByRole('button', { name: '重试' }).first()).toBeInTheDocument()
-    expect(await page.getByRole('button', { name: '重试' }).elements()).toHaveLength(1)
-    expect(await page.getByRole('checkbox').elements()).toHaveLength(0)
+    expect(page.getByRole('button', { name: '重试' }).elements()).toHaveLength(1)
+    expect(page.getByRole('checkbox').elements()).toHaveLength(0)
     // the tab whose data did load is unaffected. Only the permissions tab
     // draws from the catalog: creation takes identity and kind, and
     // everything a role needs before it can be activated comes afterwards.
@@ -477,7 +473,7 @@ describe('roles screen', () => {
   // that were discarded on submit. It now asks for what it actually sends.
   it('creates a role from what the form asks for, including its kind', async () => {
     const create = vi.fn(() => Effect.succeed({ id: 'created-role' }))
-    renderScreen({
+    await renderScreen({
       client: fakeClient(
         stubs({
           access: {
@@ -497,10 +493,8 @@ describe('roles screen', () => {
     await page.getByRole('button', { name: '新建组织角色' }).click()
     await expect.element(page.getByRole('group', { name: '生效范围' })).toBeInTheDocument()
     // nothing is asked for that creation cannot carry
-    expect(await page.getByRole('group', { name: '权限' }).elements()).toHaveLength(0)
-    expect(await page.getByRole('group', { name: '可以授予这些用户类型' }).elements()).toHaveLength(
-      0,
-    )
+    expect(page.getByRole('group', { name: '权限' }).elements()).toHaveLength(0)
+    expect(page.getByRole('group', { name: '可以授予这些用户类型' }).elements()).toHaveLength(0)
 
     await page.getByRole('textbox', { name: '名称' }).fill('审核员')
     await page.getByRole('radio', { name: /在整个租户范围/ }).click()
@@ -524,7 +518,7 @@ describe('roles screen', () => {
       group: { kind: 'literal' as const, value: '综合测评' },
       target: 'org-node' as const,
     })
-    renderScreen({
+    await renderScreen({
       client: fakeClient(
         stubs({
           access: {
@@ -571,7 +565,7 @@ describe('roles screen', () => {
 
   it('asks before deleting, in a dialog that can be read and cancelled', async () => {
     const remove = vi.fn(() => Effect.succeed({ ok: true as const }))
-    renderScreen({
+    await renderScreen({
       client: fakeClient(
         stubs({
           access: {
@@ -653,7 +647,7 @@ describe('users workspace', () => {
     })
 
   it('looks at a person beside the roster from the mark at the end of their row, and says so in the address', async () => {
-    renderScreen({
+    await renderScreen({
       client: fakeClient(rosterStubs()),
       route: '/admin/users',
       children: <UsersPage />,
@@ -679,7 +673,7 @@ describe('users workspace', () => {
   })
 
   it('a deep link opens straight onto the person it names', async () => {
-    renderScreen({
+    await renderScreen({
       client: fakeClient(rosterStubs()),
       route: `/admin/users?user=${USER_ID}`,
       children: <UsersPage />,
@@ -703,7 +697,7 @@ describe('users workspace', () => {
         pageSize: 50,
       }),
     )
-    renderScreen({
+    await renderScreen({
       client: fakeClient(rosterStubs({ listUsers: list })),
       route: '/admin/users',
       children: <UsersPage />,
@@ -730,7 +724,7 @@ describe('users workspace', () => {
     // the hand that is still typing, and the control beside the search is
     // pushed on to a row of its own, which reads as a second band.
     await page.viewport(390, 844)
-    renderScreen({
+    await renderScreen({
       client: fakeClient(rosterStubs()),
       route: '/admin/users',
       children: <UsersPage />,
@@ -740,16 +734,16 @@ describe('users workspace', () => {
     const sheet = page.getByTestId('unit-sheet')
     await expect.element(sheet).toBeVisible()
     await expect.element(sheet.getByRole('button', { name: '组织栏选项' })).toBeVisible()
-    const search = await sheet.getByRole('searchbox', { name: '搜索组织' }).element()
-    const menu = await sheet.getByRole('button', { name: '组织栏选项' }).element()
+    const search = sheet.getByRole('searchbox', { name: '搜索组织' }).element()
+    const menu = sheet.getByRole('button', { name: '组织栏选项' }).element()
     expect(
       Math.abs(search.getBoundingClientRect().top - menu.getBoundingClientRect().top),
     ).toBeLessThan(8)
 
-    const tall = (await sheet.element()).getBoundingClientRect().height
+    const tall = sheet.element().getBoundingClientRect().height
     await userEvent.fill(sheet.getByRole('searchbox', { name: '搜索组织' }), '没有这个组织')
     await expect.element(sheet.getByText('未找到匹配的组织', { exact: false })).toBeVisible()
-    expect((await sheet.element()).getBoundingClientRect().height).toBeCloseTo(tall, 0)
+    expect(sheet.element().getBoundingClientRect().height).toBeCloseTo(tall, 0)
     await page.viewport(1280, 800)
   })
 
@@ -763,7 +757,7 @@ describe('users workspace', () => {
         pageSize: 50,
       }),
     )
-    renderScreen({
+    await renderScreen({
       client: fakeClient(rosterStubs({ listUsers: list })),
       route: '/admin/users',
       children: <UsersPage />,
@@ -794,7 +788,7 @@ describe('users workspace', () => {
     // unmounted row took the dialog's own state with it: what it opened
     // flashed and was gone.
     await page.viewport(390, 844)
-    renderScreen({
+    await renderScreen({
       client: fakeClient(rosterStubs()),
       route: '/admin/users',
       children: <UsersPage />,
@@ -827,7 +821,7 @@ describe('users workspace', () => {
         pageSize: 8,
       }),
     )
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         ...rosterStubs({ listUsers: list }),
         app: {

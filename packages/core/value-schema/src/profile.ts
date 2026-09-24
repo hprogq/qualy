@@ -318,7 +318,7 @@ const atomicIssues = (value: unknown, path: string): readonly ProfileIssue[] => 
         value,
         path,
         Array.isArray(choices) && choices.every((choice) => typeof choice === 'string')
-          ? (choices as string[])
+          ? (choices)
           : [],
       ),
     )

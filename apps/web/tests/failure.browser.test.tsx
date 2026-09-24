@@ -25,7 +25,7 @@ describe('a failure with a way to retry', () => {
         />
       )
     }
-    renderScreen({
+    await renderScreen({
       client: fakeClient({ app: { getManifest: () => Effect.succeed(emptyManifest()) } }),
       children: <Failing />,
     })

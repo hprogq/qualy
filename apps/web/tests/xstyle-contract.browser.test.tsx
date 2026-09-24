@@ -29,7 +29,7 @@ const computed = (selector: string, property: string) => () => {
 
 describe('xstyle composes over component base styles', () => {
   it('a caller override beats the base value and untouched properties survive', async () => {
-    mount(<Empty xstyle={caller.tighter}>空</Empty>)
+    await mount(<Empty xstyle={caller.tighter}>空</Empty>)
     // base padding is 48px; the caller said 24px
     await expect.poll(computed('[data-slot="empty"]', 'padding-top')).toBe('24px')
     // properties the caller left alone still come from the base
@@ -37,7 +37,7 @@ describe('xstyle composes over component base styles', () => {
   })
 
   it('the row gap of a person cell obeys the caller', async () => {
-    mount(
+    await mount(
       <div data-cell>
         <PersonCell name="张明远" xstyle={caller.wider} />
       </div>,
@@ -46,7 +46,7 @@ describe('xstyle composes over component base styles', () => {
   })
 
   it('an override rides through a composed component to its substrate', async () => {
-    mount(<Blank title="还没有内容" xstyle={caller.shorter} />)
+    await mount(<Blank title="还没有内容" xstyle={caller.shorter} />)
     // Blank sets 22rem; the caller's 10rem must win through the chain
     await expect.poll(computed('[data-slot="empty"]', 'min-height')).toBe('160px')
   })

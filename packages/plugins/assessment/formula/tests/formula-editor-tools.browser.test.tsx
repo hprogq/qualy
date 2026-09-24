@@ -228,7 +228,7 @@ describe('the formula authoring tools', () => {
         view.container.querySelector('[data-testid="formula-try-result"]')!.textContent,
       ).toContain('5')
     } finally {
-      view.unmount()
+      await view.unmount()
     }
   }, 60_000)
 
@@ -310,7 +310,7 @@ describe('the formula authoring tools', () => {
       expect(wire.saves[0]).not.toHaveProperty('draftTests')
       expect(wire.saves[0]).not.toHaveProperty('name')
     } finally {
-      view.unmount()
+      await view.unmount()
     }
   }, 60_000)
 
@@ -359,7 +359,7 @@ describe('the formula authoring tools', () => {
       )
       expect(view.container.querySelector('[data-testid="formula-try-adopt"]')).toBeNull()
     } finally {
-      view.unmount()
+      await view.unmount()
     }
   }, 60_000)
 
@@ -398,7 +398,7 @@ describe('the formula authoring tools', () => {
         survivor.querySelector('[data-testid="formula-case-result"]')?.getAttribute('data-passed'),
       ).toBe('true')
     } finally {
-      view.unmount()
+      await view.unmount()
     }
   }, 60_000)
 })

@@ -87,13 +87,13 @@ describe('hidden content leaves the page where it found it', () => {
   for (const [form, label] of Object.entries(forms)) {
     for (const [scene, build] of Object.entries(scenes)) {
       it(`${scene}, as ${form}`, async () => {
-        page.viewport(414, 800)
-        render(shell(build(null)))
+        await page.viewport(414, 800)
+        await render(shell(build(null)))
         await settle()
         const before = pageExtent()
-        cleanup()
+        await cleanup()
         await settle()
-        render(shell(build(label)))
+        await render(shell(build(label)))
         await settle()
         expect(pageExtent()).toEqual(before)
         // the region it belongs to still scrolls, which is the point of it
@@ -106,9 +106,9 @@ describe('hidden content leaves the page where it found it', () => {
   // sanity: a positioned panel is already a containing block, so nothing here
   // ever depended on the pin - these hold the case rather than prove it
   it('inside a dialog', async () => {
-    page.viewport(414, 800)
+    await page.viewport(414, 800)
     const before = pageExtent()
-    render(
+    await render(
       <UiProvider scheme="light">
         <Dialog defaultOpen>
           <DialogContent>
@@ -127,9 +127,9 @@ describe('hidden content leaves the page where it found it', () => {
   })
 
   it('inside a sheet', async () => {
-    page.viewport(414, 800)
+    await page.viewport(414, 800)
     const before = pageExtent()
-    render(
+    await render(
       <UiProvider scheme="light">
         <Sheet defaultOpen>
           <SheetContent>

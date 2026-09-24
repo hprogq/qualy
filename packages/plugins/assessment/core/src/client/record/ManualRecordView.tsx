@@ -8,8 +8,8 @@ import { AsyncSection } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
-import { administrativeItemsOf, type ItemDto } from '../entry/model.ts'
-import { RecordSteps, type RecognitionWire } from './RecordSteps.tsx'
+import { administrativeItemsOf } from '../entry/model.ts'
+import { RecordSteps } from './RecordSteps.tsx'
 import { ItemPicker } from './ItemPicker.tsx'
 import { NoAdministrativeItems, Wizard, WizardBody, WizardFoot, WizardRail } from './wizard.tsx'
 
@@ -55,9 +55,9 @@ export function ManualRecordView({
     ...query.assessment.getRecognitionContract.queryOptions({ params: { itemId } }),
     enabled: itemId !== '',
   })
-  const wire = (contract.data?.contract ?? null) as RecognitionWire | null
+  const wire = contract.data?.contract ?? null
 
-  const administrative = administrativeItemsOf((items.data?.items ?? []) as readonly ItemDto[])
+  const administrative = administrativeItemsOf(items.data?.items ?? [])
   const item = administrative.find((candidate) => candidate.id === itemId) ?? null
   // Everything filled in is ABOUT one question version and one filing.
   // Remounting on either is the whole reset: evidence payload, basis,

@@ -64,7 +64,7 @@ describe('the Effect api against the frozen surface', () => {
       if (node === null || typeof node !== 'object') return
       for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
         if (key === 'properties' && value !== null && typeof value === 'object') {
-          properties.push(...Object.keys(value as object))
+          properties.push(...Object.keys(value))
         }
         walk(value)
       }

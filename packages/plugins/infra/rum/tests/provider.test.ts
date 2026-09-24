@@ -25,8 +25,10 @@ const declaredOf = (contributions: readonly Contributed<RumProviderDeclaration>[
     ),
   )
 
-const contribution = (pluginId: string, code: string): Contributed<RumProviderDeclaration> =>
-  ({ pluginId, value: { code } }) as Contributed<RumProviderDeclaration>
+const contribution = (pluginId: string, code: string): Contributed<RumProviderDeclaration> => ({
+  pluginId,
+  value: { code },
+})
 
 describe('choosing a reporting provider', () => {
   it('is content with none: a deployment may report nowhere', () => {

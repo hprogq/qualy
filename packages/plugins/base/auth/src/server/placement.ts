@@ -136,7 +136,7 @@ export const primaryNode = (tenantId: string, userId: string) =>
     .pipe(
       Effect.orDie,
       Effect.map((row) => {
-        const nodeId = (row as { primaryOrgNodeId: string | null } | undefined)?.primaryOrgNodeId
+        const nodeId = row?.primaryOrgNodeId
         return nodeId === null || nodeId === undefined ? null : { nodeId }
       }),
     )

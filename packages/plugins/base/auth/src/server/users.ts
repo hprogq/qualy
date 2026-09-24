@@ -1344,7 +1344,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
           // a picker that quietly showed the first five hundred of a large tree
           // looked complete; saying so lets the screen ask for a search instead
           truncated: nodes.length > limit,
-          orgTypes: orgTypes.map((row) => ({ id: row.id as string, name: row.name as string })),
+          orgTypes: orgTypes.map((row) => ({ id: row.id, name: row.name })),
           userTypes: userTypes.map((row) => ({
             id: row.id,
             code: row.code,

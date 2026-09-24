@@ -265,7 +265,7 @@ const normalizeDraft = <E, R>(
               idByHandle.get(one.handle)!,
               {
                 label: one.label,
-                refinement: one.refinement as AtomicSchema | null,
+                refinement: one.refinement,
                 defaultFromFieldId: one.defaultFromFieldId,
               },
             ] as const,
@@ -283,7 +283,7 @@ const normalizeDraft = <E, R>(
         ),
       ),
     }
-    return { config: config as unknown }
+    return { config: config }
   })
 
 const normalizeStored = (submitted: object, current: unknown) =>
@@ -328,5 +328,5 @@ const normalizeStored = (submitted: object, current: unknown) =>
       recognitions: sortedRecord(Object.entries(stored.recognitions)),
       bindings: sortedRecord(Object.entries(stored.bindings)),
     }
-    return { config: config as unknown }
+    return { config: config }
   })

@@ -1317,7 +1317,7 @@ function Body({
         groups: groups.data?.groups ?? [],
         items: visible,
         entriesByItem,
-        standing: (standing.data ?? null) as Standing | null,
+        standing: standing.data ?? null,
         unreadItems,
       }),
     [groups.data, visible, entriesByItem, standing.data, unreadItems],
@@ -1678,7 +1678,7 @@ function Body({
             <Structure
               rows={rows}
               batchName={batchName}
-              standing={(standing.data ?? null) as Standing | null}
+              standing={standing.data ?? null}
               openId={marked}
               onOpen={goTo}
             />
@@ -1846,7 +1846,7 @@ function Body({
                     rows={rows}
                     entriesByItem={entriesByItem}
                     filing={filingByItem}
-                    standing={(standing.data ?? null) as Standing | null}
+                    standing={standing.data ?? null}
                     showTodoOnly={paperView === 'todo'}
                     busy={setStatus.isPending || declare.isPending}
                     onFile={(item, entry) => openAndFile(item.id, entry?.id ?? 'new')}
@@ -1880,7 +1880,7 @@ function Body({
               variant="sheet"
               rows={rows}
               batchName={batchName}
-              standing={(standing.data ?? null) as Standing | null}
+              standing={standing.data ?? null}
               openId={marked}
               onOpen={goTo}
             />

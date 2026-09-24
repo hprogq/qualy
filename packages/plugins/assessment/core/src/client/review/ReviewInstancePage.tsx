@@ -902,7 +902,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
     const marks = new Set<WorkbenchPart>()
     if (flowMatters && !visited.has('flow')) marks.add('flow')
     if (aboutMatters && !visited.has('about')) marks.add('about')
-    return marks as ReadonlySet<WorkbenchPart>
+    return marks
   }, [flowMatters, aboutMatters, visited])
   /** the decision dialogs' last quiet word: faces that matter, still unread */
   const unseen = (): readonly { part: WorkbenchPart; say: MessageDescriptor }[] => {

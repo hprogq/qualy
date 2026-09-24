@@ -152,7 +152,7 @@ export const makeFlows = Effect.fn('Auth.makeFlows')(function* () {
           return {
             flowId,
             state,
-            expiresAt: new Date(started.expiresAt as unknown as string),
+            expiresAt: new Date(started.expiresAt),
           } satisfies StartedFlow
         }),
       ),

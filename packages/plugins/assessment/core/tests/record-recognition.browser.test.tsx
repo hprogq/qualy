@@ -162,13 +162,14 @@ const open = (stubs: Record<string, unknown>) =>
         listAdministrativeEntries: () => Effect.succeed({ entries: [], nextCursor: null }),
         previewRecordDetermination: () =>
           Effect.succeed({ issues: [], amount: '6.00', refusal: null }),
+        // eslint-disable-next-line typescript/no-unnecessary-type-assertion -- the stub is typed as the endpoint it stands in for
         getRecognitionContract: ((request: { params: { itemId: string } }) =>
           Effect.succeed({
             contract: contractOf(request?.params?.itemId === ITEM_B ? REVISION_B : REVISION_A),
           })) as never,
         ...stubs,
       },
-    } as never),
+    }),
     routes: [
       { path: '/assessment/batches/:batchId/record', element: <AdministrativeRecordsPage /> },
     ] as never,
@@ -279,7 +280,7 @@ describe('recording with a determination', () => {
         request,
       }),
     )
-    open({ previewAdministrativeRecord: created as never })
+    await open({ previewAdministrativeRecord: created })
     await waitForItems()
     await chooseItem('竞赛获奖登记')
     const { userEvent } = await import('vitest/browser')
@@ -297,7 +298,7 @@ describe('recording with a determination', () => {
     await vi.waitFor(() => {
       if (created.mock.calls.length === 0) throw new Error('not asked yet')
     })
-    const sent = created.mock.calls[0]![0]!.payload as {
+    const sent = created.mock.calls[0]![0].payload as {
       payload?: Record<string, unknown>
       recognition?: { values?: Record<string, unknown> }
     }
@@ -320,9 +321,9 @@ describe('recording with a determination', () => {
         request,
       }),
     )
-    open({
-      previewAdministrativeRecord: created as never,
-      getRecognitionContract: (() =>
+    await open({
+      previewAdministrativeRecord: created,
+      getRecognitionContract: () =>
         Effect.succeed({
           contract: {
             itemRevisionId: REVISION_A,
@@ -345,7 +346,7 @@ describe('recording with a determination', () => {
               },
             ],
           },
-        })) as never,
+        }),
     })
     await waitForItems()
     await chooseItem('竞赛获奖登记')
@@ -362,7 +363,7 @@ describe('recording with a determination', () => {
     await vi.waitFor(() => {
       if (created.mock.calls.length === 0) throw new Error('not asked yet')
     })
-    const sent = created.mock.calls[0]![0]!.payload as {
+    const sent = created.mock.calls[0]![0].payload as {
       recognition?: { values?: Record<string, unknown> }
     }
     const values = sent.recognition?.values ?? {}
@@ -375,7 +376,7 @@ describe('recording with a determination', () => {
     // make the material somebody else's, so the sheet stands. What does not
     // stand is the checked list - a different set is a different list, and
     // the forward key has to earn it again.
-    open({})
+    await open({})
     await waitForItems()
     await chooseItem('竞赛获奖登记')
     await choosePerson('周予安')
@@ -397,16 +398,16 @@ describe('recording with a determination', () => {
 
   it('starts a clean sheet after a successful filing', async () => {
     const created = vi.fn(() => Effect.succeed({ operationId: 'op1', recordedCount: 1 }))
-    open({
-      previewAdministrativeRecord: (() =>
+    await open({
+      previewAdministrativeRecord: () =>
         Effect.succeed({
           item: { id: ITEM_A, title: '竞赛获奖登记', revisionId: REVISION_A },
           requestedCount: 1,
           eligibleCount: 1,
           blocked: [],
           targetFingerprint: 'fp',
-        })) as never,
-      recordAdministrativeBatch: created as never,
+        }),
+      recordAdministrativeBatch: created,
     })
     await waitForItems()
     await chooseItem('竞赛获奖登记')
@@ -452,7 +453,7 @@ describe('recording with a determination', () => {
   })
 
   it('starts a clean sheet on another question', async () => {
-    open({})
+    await open({})
     await waitForItems()
     await chooseItem('竞赛获奖登记')
     await vi.waitFor(() => {

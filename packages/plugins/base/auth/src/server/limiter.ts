@@ -208,9 +208,11 @@ export const makeLimiter = Effect.gen(function* () {
     key: string,
   ) {
     const row = yield* count(tenantId, rule.scope, rule.windowSeconds, key)
-    return (row.attempts > rule.limit
-      ? { allowed: false, retryAfterSeconds: row.retryAfterSeconds }
-      : { allowed: true }) satisfies LimitAnswer as LimitAnswer
+    return (
+      row.attempts > rule.limit
+        ? { allowed: false, retryAfterSeconds: row.retryAfterSeconds }
+        : { allowed: true }
+    ) satisfies LimitAnswer
   })
 
   /**
@@ -231,9 +233,9 @@ export const makeLimiter = Effect.gen(function* () {
       const answer = yield* consumeHard(tenantId, rule, key)
       if (!answer.allowed) wait = Math.max(wait, answer.retryAfterSeconds)
     }
-    return (wait > 0
-      ? { allowed: false, retryAfterSeconds: wait }
-      : { allowed: true }) satisfies LimitAnswer as LimitAnswer
+    return (
+      wait > 0 ? { allowed: false, retryAfterSeconds: wait } : { allowed: true }
+    ) satisfies LimitAnswer
   })
 
   /**

@@ -62,7 +62,7 @@ function DialogHarness() {
 
 describe('a dialog and the page under it', () => {
   it('opens, closes, and leaves the page clickable with focus on the trigger', async () => {
-    mount(<DialogHarness />)
+    await mount(<DialogHarness />)
     await page.getByRole('button', { name: 'open dialog' }).click()
     await expect.element(page.getByRole('dialog')).toBeVisible()
 
@@ -84,7 +84,7 @@ describe('a dialog and the page under it', () => {
   })
 
   it('closes the topmost layer per Escape, not everything at once', async () => {
-    mount(<DialogHarness />)
+    await mount(<DialogHarness />)
     await page.getByRole('button', { name: 'open dialog' }).click()
     await page.getByRole('button', { name: 'more' }).click()
     await expect.element(page.getByText('note')).toBeVisible()
@@ -99,7 +99,7 @@ describe('a dialog and the page under it', () => {
   })
 
   it('hosts a select whose choice lands without closing the dialog', async () => {
-    mount(<DialogHarness />)
+    await mount(<DialogHarness />)
     await page.getByRole('button', { name: 'open dialog' }).click()
     await page.getByRole('combobox', { name: 'flavor' }).click()
     await page.getByRole('option', { name: 'pear' }).click()
@@ -152,7 +152,7 @@ function Handover() {
 
 describe('two modals trading places', () => {
   it('never leaves the body dead to clicks', async () => {
-    mount(<Handover />)
+    await mount(<Handover />)
     await page.getByRole('button', { name: 'begin' }).click()
     await page.getByRole('button', { name: 'continue' }).click()
     await expect.element(page.getByText('step two')).toBeVisible()
@@ -192,7 +192,7 @@ function ConfirmHarness() {
 
 describe('a confirm asked twice', () => {
   it('answers cleanly on consecutive open and close', async () => {
-    mount(<ConfirmHarness />)
+    await mount(<ConfirmHarness />)
     await page.getByRole('button', { name: 'ask' }).click()
     await page.getByTestId('confirm-dismiss').click()
     await expect.element(page.getByRole('alertdialog')).not.toBeInTheDocument()
@@ -231,7 +231,7 @@ function PanelHarness() {
 
 describe('the side panel', () => {
   it('opens, closes by escape, and releases the page', async () => {
-    mount(<PanelHarness />)
+    await mount(<PanelHarness />)
     await page.getByRole('button', { name: 'inspect' }).click()
     await expect.element(page.getByText('facts')).toBeVisible()
 
@@ -270,7 +270,7 @@ function ToastHarness() {
 
 describe('a toast raised while a dialog is open', () => {
   it('stays in the accessibility tree', async () => {
-    mount(<ToastHarness />)
+    await mount(<ToastHarness />)
     await page.getByRole('button', { name: 'open' }).click()
     await page.getByRole('button', { name: 'save' }).click()
 

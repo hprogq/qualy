@@ -121,7 +121,7 @@ const open = (over: Record<string, unknown> = {}, onOpenRecord = () => undefined
           }),
       },
       directory: stubs(over),
-    } as never),
+    }),
     registry: {
       slots: { 'iam/org-node-picker': { 'auth/org-node-picker': CollegePicker } },
     } as never,
@@ -157,8 +157,8 @@ const pickFile = async () => {
 }
 
 const chooseOption = async (trigger: Element, name: string) => {
-  await userEvent.click(trigger as HTMLElement)
-  await userEvent.click(page.getByRole('option', { name }).element() as HTMLElement)
+  await userEvent.click(trigger)
+  await userEvent.click(page.getByRole('option', { name }).element())
 }
 
 describe('importing users from a spreadsheet', () => {
@@ -170,19 +170,19 @@ describe('importing users from a spreadsheet', () => {
   afterEach(() => dispose())
 
   it('draws the path the file lands on, with its own first row standing in it', async () => {
-    open()
+    await open()
     await pickFile()
-    await userEvent.click(page.getByRole('button', { name: '下一步' }).element() as HTMLElement)
+    await userEvent.click(page.getByRole('button', { name: '下一步' }).element())
     await vi.waitFor(() => {
       if (document.querySelector('[data-testid="import-body"]')?.getAttribute('data-step') !== '2')
         throw new Error('not on the columns step')
     })
 
     // the unit everybody hangs under, named by the picker that knows it
-    await userEvent.click(page.getByRole('button', { name: '软件学院' }).element() as HTMLElement)
+    await userEvent.click(page.getByRole('button', { name: '软件学院' }).element())
     await chooseOption(page.getByTestId('column-name').element(), '姓名')
     await chooseOption(page.getByTestId('column-business').element(), '学号')
-    await userEvent.click(page.getByRole('button', { name: '添加层级' }).element() as HTMLElement)
+    await userEvent.click(page.getByRole('button', { name: '添加层级' }).element())
     await chooseOption(page.getByRole('combobox', { name: '组织类型' }).element(), '年级')
     await chooseOption(page.getByRole('combobox', { name: '选择列' }).element(), '年级')
 
@@ -193,14 +193,14 @@ describe('importing users from a spreadsheet', () => {
   })
 
   it('names how many the file holds on the press that writes them', async () => {
-    open()
+    await open()
     await pickFile()
-    await userEvent.click(page.getByRole('button', { name: '下一步' }).element() as HTMLElement)
-    await userEvent.click(page.getByRole('button', { name: '软件学院' }).element() as HTMLElement)
+    await userEvent.click(page.getByRole('button', { name: '下一步' }).element())
+    await userEvent.click(page.getByRole('button', { name: '软件学院' }).element())
     await chooseOption(page.getByTestId('column-name').element(), '姓名')
     await chooseOption(page.getByTestId('column-business').element(), '学号')
     await chooseOption(page.getByTestId('user-type').element(), '本科生')
-    await userEvent.click(page.getByRole('button', { name: '预检文件' }).element() as HTMLElement)
+    await userEvent.click(page.getByRole('button', { name: '预检文件' }).element())
 
     await vi.waitFor(() => {
       if (document.querySelector('[data-testid="import-preview"]') === null)
@@ -212,7 +212,7 @@ describe('importing users from a spreadsheet', () => {
   })
 
   it('refuses to write while a row is wrong, and offers the list to take away', async () => {
-    open({
+    await open({
       previewUserImport: () =>
         Effect.succeed(
           preview({
@@ -231,12 +231,12 @@ describe('importing users from a spreadsheet', () => {
         ),
     })
     await pickFile()
-    await userEvent.click(page.getByRole('button', { name: '下一步' }).element() as HTMLElement)
-    await userEvent.click(page.getByRole('button', { name: '软件学院' }).element() as HTMLElement)
+    await userEvent.click(page.getByRole('button', { name: '下一步' }).element())
+    await userEvent.click(page.getByRole('button', { name: '软件学院' }).element())
     await chooseOption(page.getByTestId('column-name').element(), '姓名')
     await chooseOption(page.getByTestId('column-business').element(), '学号')
     await chooseOption(page.getByTestId('user-type').element(), '本科生')
-    await userEvent.click(page.getByRole('button', { name: '预检文件' }).element() as HTMLElement)
+    await userEvent.click(page.getByRole('button', { name: '预检文件' }).element())
 
     await vi.waitFor(() => {
       if (document.querySelector('[data-testid="import-preview"]') === null)

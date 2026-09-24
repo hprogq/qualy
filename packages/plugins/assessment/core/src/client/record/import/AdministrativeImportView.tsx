@@ -235,7 +235,7 @@ export function AdministrativeImportView({
   const [showAll, setShowAll] = useState(false)
   const [confirmed, setConfirmed] = useState(false)
 
-  const administrative = administrativeItemsOf((items.data?.items ?? []) as readonly ItemDto[])
+  const administrative = administrativeItemsOf(items.data?.items ?? [])
   const item = administrative.find((candidate) => candidate.id === itemId) ?? null
   const revisionId = item?.currentRevision?.id ?? ''
 

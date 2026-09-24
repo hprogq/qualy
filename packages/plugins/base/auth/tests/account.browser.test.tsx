@@ -93,7 +93,7 @@ const stubs = (entrances: Entrance[], over: Record<string, unknown> = {}) => ({
 
 describe('the reader’s profile', () => {
   it('shows what is on file about them', async () => {
-    renderScreen({
+    await renderScreen({
       client: fakeClient(stubs([])),
       route: '/account',
       children: <AccountProfilePage />,
@@ -113,7 +113,7 @@ describe('the reader’s profile', () => {
 describe('the reader’s ways in', () => {
   it('offers to let go only of what the server says may go', async () => {
     const release = vi.fn(() => Effect.succeed({ signedOut: false }))
-    renderScreen({
+    await renderScreen({
       client: fakeClient(
         stubs(
           [
@@ -135,11 +135,11 @@ describe('the reader’s ways in', () => {
     })
     const rows = page.getByTestId('account-entrance')
     await expect.element(rows.first()).toBeInTheDocument()
-    expect(await rows.elements()).toHaveLength(3)
+    expect(rows.elements()).toHaveLength(3)
     // the bound account is named by the fixture's own label
     await expect.element(page.getByText('zhang-dev').first()).toBeInTheDocument()
     const offered = page.getByRole('button', { name: '解除绑定' })
-    expect(await offered.elements()).toHaveLength(1)
+    expect(offered.elements()).toHaveLength(1)
 
     await offered.click()
     const asked = page.getByRole('alertdialog')
@@ -166,7 +166,7 @@ describe('the ways in on a phone', () => {
       bindHref: null,
       unbindable: false,
     }
-    renderScreen({
+    await renderScreen({
       client: fakeClient(stubs([campus])),
       route: '/account/logins',
       children: <AccountLoginsPage />,
@@ -185,7 +185,7 @@ describe('the ways in on a phone', () => {
 
 describe('binding an account of your own', () => {
   it('offers to bind where a way in takes one, and says why a bind came back', async () => {
-    renderScreen({
+    await renderScreen({
       client: fakeClient(
         stubs([
           password,
@@ -204,8 +204,8 @@ describe('binding an account of your own', () => {
       .toHaveAttribute('data-code', 'AUTH_BINDING_SUBJECT_TAKEN')
     const rows = page.getByTestId('account-entrance')
     await expect.element(rows.first()).toBeInTheDocument()
-    const bindable = (await rows.elements()).map((row) => row.getAttribute('data-bindable'))
+    const bindable = rows.elements().map((row) => row.getAttribute('data-bindable'))
     expect(bindable).toEqual(['false', 'true'])
-    expect(await page.getByRole('button', { name: '绑定', exact: true }).elements()).toHaveLength(1)
+    expect(page.getByRole('button', { name: '绑定', exact: true }).elements()).toHaveLength(1)
   })
 })

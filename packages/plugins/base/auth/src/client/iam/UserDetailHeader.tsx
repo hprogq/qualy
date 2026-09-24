@@ -433,7 +433,7 @@ export default function UserDetailHeader() {
               {...stylex.props(styles.form)}
               onSubmit={(event) => {
                 event.preventDefault()
-                saveProfile.mutate(undefined as never)
+                saveProfile.mutate(undefined)
               }}
             >
               <Field label={format(m.nameLabel)}>
@@ -506,7 +506,7 @@ export default function UserDetailHeader() {
             confirmLabel={format(m.deleteAction)}
             cancelLabel={format(m.cancel)}
             pending={remove.isPending}
-            onConfirm={() => remove.mutate(undefined as never)}
+            onConfirm={() => remove.mutate(undefined)}
             onCancel={() => setConfirmingDelete(false)}
           />
         </>

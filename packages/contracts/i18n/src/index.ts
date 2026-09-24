@@ -255,7 +255,7 @@ export const defineErrorTranslations =
         'message' in entry && typeof entry.message === 'object'
           ? (entry as { message: MessageDescriptor; values: (data: never) => MessageValues })
           : { message: entry as MessageDescriptor }
-      registry[code] = registration as ErrorMessageRegistration<never>
+      registry[code] = registration
       descriptors[code] = registration.message
     }
     return { registry, descriptors }
@@ -304,12 +304,12 @@ export function definePluginMessages<
     ...options.errors?.descriptors,
   }
   const outside = Object.values(declared).filter(
-    (descriptor) => !(descriptor as MessageDescriptor).id.startsWith(`${options.namespace}/`),
+    (descriptor) => !descriptor.id.startsWith(`${options.namespace}/`),
   )
   if (outside.length > 0) {
     throw new Error(
       `plugin ${options.namespace} declares messages outside its namespace: ${outside
-        .map((descriptor) => (descriptor as MessageDescriptor).id)
+        .map((descriptor) => descriptor.id)
         .join(', ')}`,
     )
   }

@@ -54,7 +54,7 @@ export const insertRecognition = (input: RecognitionWrite) =>
         .returning(['id'])
         .executeTakeFirstOrThrow(),
     )
-    .pipe(Effect.map((row) => String((row as { id: string }).id)))
+    .pipe(Effect.map((row) => String(row.id)))
 
 export interface RecognitionRow {
   readonly id: string
@@ -84,10 +84,7 @@ export const currentRecognitionOf = (tenantId: string, entryId: string) =>
           ? null
           : ({
               id: String((row as { id: string }).id),
-              values: ((row as { values: Record<string, unknown> }).values ?? {}) as Record<
-                string,
-                unknown
-              >,
+              values: (row as { values: Record<string, unknown> }).values ?? {},
               supersedesId: (row as { supersedesId: string | null }).supersedesId ?? null,
               entryRevisionId: String((row as { entryRevisionId: string }).entryRevisionId),
             } satisfies RecognitionRow),
@@ -117,10 +114,7 @@ export const recognitionById = (tenantId: string, entryId: string, recognitionId
           ? null
           : ({
               id: String((row as { id: string }).id),
-              values: ((row as { values: Record<string, unknown> }).values ?? {}) as Record<
-                string,
-                unknown
-              >,
+              values: (row as { values: Record<string, unknown> }).values ?? {},
               supersedesId: (row as { supersedesId: string | null }).supersedesId ?? null,
               entryRevisionId: String((row as { entryRevisionId: string }).entryRevisionId),
             } satisfies RecognitionRow),

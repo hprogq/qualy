@@ -149,7 +149,7 @@ await check('/api/app/observability', async (response) => {
   if (response.status !== 200) return `status ${response.status}`
   const body = (await response.json()) as { schema?: number; config?: unknown }
   if (body.schema !== 2) return `schema ${String(body.schema)}`
-  const keys = Object.keys(body as object).sort()
+  const keys = Object.keys(body).sort()
   if (keys.join(',') !== 'config,schema') return `keys ${keys.join(',')}`
   return body.config === null ? undefined : `reporting is configured on in this smoke`
 })

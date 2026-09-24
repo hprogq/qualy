@@ -117,7 +117,7 @@ export const formulaLanguageLayer = (options?: {
                 Effect.catch((failure) =>
                   Predicate.isTagged(failure, 'RpcClientError')
                     ? Effect.fail(new FormulaLanguageUnavailable())
-                    : Effect.fail(refusalOf(failure as LspSendError)),
+                    : Effect.fail(refusalOf(failure)),
                 ),
                 tameTransport(unavailable),
               )

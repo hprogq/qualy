@@ -64,11 +64,11 @@ describe('annotations never move the semantic identity', () => {
     const one = normalizeAtomicSchema({
       type: 'boolean',
       'x-qualy-i18n': { 'zh-CN': { title: '是否获奖' }, 'en-US': { title: 'Awarded' } },
-    } as AtomicSchema)
+    })
     const two = normalizeAtomicSchema({
       type: 'boolean',
       'x-qualy-i18n': { 'en-US': { title: 'Awarded' }, 'zh-CN': { title: '是否获奖' } },
-    } as AtomicSchema)
+    })
     expect(JSON.stringify(one)).toBe(JSON.stringify(two))
     const input = normalizeInputSchema({
       type: 'object',
@@ -156,7 +156,7 @@ describe('how a screen reads the words', () => {
       const spelled: ChoiceSchema = {
         type: 'string',
         enum: [value],
-        'x-qualy-enumLabels': Object.fromEntries([[value, '默认名称']]) as Record<string, string>,
+        'x-qualy-enumLabels': Object.fromEntries([[value, '默认名称']]),
         'x-qualy-i18n': { 'zh-CN': { enumLabels: {} } },
       }
       // locale record exists but has no OWN entry: the default label wins
@@ -166,7 +166,7 @@ describe('how a screen reads the words', () => {
         ...spelled,
         'x-qualy-i18n': {
           'zh-CN': {
-            enumLabels: Object.fromEntries([[value, '本地名称']]) as Record<string, string>,
+            enumLabels: Object.fromEntries([[value, '本地名称']]),
           },
         },
       }

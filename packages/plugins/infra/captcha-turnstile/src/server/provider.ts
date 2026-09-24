@@ -42,7 +42,7 @@ export const registrationLayer: Layer.Layer<
         action: actionOfPurpose(context.purpose),
         // 64 hex, well inside the 255 characters of A-Z a-z 0-9 _ - allowed
         cData: context.bindingHash,
-      } as Record<string, unknown>)
+      })
 
     const verify = Effect.fn('CaptchaTurnstile.verify')(function* (
       context: CaptchaProviderContext,

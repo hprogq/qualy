@@ -73,7 +73,7 @@ const settle = () =>
 
 describe('a timeline running down the page', () => {
   it('sits every mark on the rail it belongs to', async () => {
-    render(<Rail orientation="vertical" />)
+    await render(<Rail orientation="vertical" />)
     await settle()
     const marks = document.querySelectorAll('[data-slot="timeline-indicator"]')
     const rails = document.querySelectorAll('[data-slot="timeline-separator"]')
@@ -87,7 +87,7 @@ describe('a timeline running down the page', () => {
   // worth measuring at an offset the caller chose, because that is where it
   // went wrong: the mark moved and the rail's two ends did not move with it.
   it.each([undefined, 10, 24])('leaves equal room at both ends (offset %s)', async (offset) => {
-    render(
+    await render(
       <Rail orientation="vertical" {...(offset === undefined ? {} : { markOffset: offset })} />,
     )
     await settle()
@@ -101,7 +101,7 @@ describe('a timeline running down the page', () => {
   })
 
   it('moves the mark and its rail together', async () => {
-    render(<Rail orientation="vertical" markOffset={24} />)
+    await render(<Rail orientation="vertical" markOffset={24} />)
     await settle()
     const mark = document.querySelector('[data-slot="timeline-indicator"]')!
     const rail = document.querySelector('[data-slot="timeline-separator"]')!
@@ -111,7 +111,7 @@ describe('a timeline running down the page', () => {
   })
 
   it('draws no rail past the last event', async () => {
-    render(<Rail orientation="vertical" />)
+    await render(<Rail orientation="vertical" />)
     await settle()
     const rails = document.querySelectorAll('[data-slot="timeline-separator"]')
     expect(getComputedStyle(rails[0]!).display).not.toBe('none')
@@ -121,7 +121,7 @@ describe('a timeline running down the page', () => {
 
 describe('the same timeline on its side', () => {
   it('runs the rail from one mark to the next', async () => {
-    render(<Rail orientation="horizontal" />)
+    await render(<Rail orientation="horizontal" />)
     await settle()
     const marks = document.querySelectorAll('[data-slot="timeline-indicator"]')
     const rail = document.querySelector('[data-slot="timeline-separator"]')!

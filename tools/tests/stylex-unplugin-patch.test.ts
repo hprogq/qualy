@@ -25,9 +25,7 @@ interface PatchedPlugin {
 }
 
 const plugin = (): PatchedPlugin => {
-  const made = (
-    stylexUnplugin as unknown as (options: Record<string, unknown>) => unknown | unknown[]
-  )({
+  const made = (stylexUnplugin as unknown as (options: Record<string, unknown>) => unknown)({
     dev: true,
     runtimeInjection: false,
     useCSSLayers: true,

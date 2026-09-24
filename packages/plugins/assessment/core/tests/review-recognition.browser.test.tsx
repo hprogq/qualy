@@ -156,7 +156,7 @@ const open = (fixture: ReturnType<typeof review>, stubs: Record<string, unknown>
         previewDetermination: () => Effect.succeed({ issues: [], amount: '10.00', refusal: null }),
         ...stubs,
       },
-    } as never),
+    }),
     routes: [
       {
         path: '/assessment/batches/:batchId/reviews/:instanceId',
@@ -234,7 +234,7 @@ const previewAt = () => document.querySelector('[data-testid="score-preview"]')
 
 describe('approving with a determination', () => {
   it('shows the filing beside the form, through the words the form offered', async () => {
-    open(review())
+    await open(review())
     await openApprove()
     const filing = document.querySelector('[data-testid="approve-filing"]')!
     expect(filing).not.toBeNull()
@@ -253,7 +253,7 @@ describe('approving with a determination', () => {
           : { issues: [], amount: '10.00', refusal: null },
       ),
     )
-    open(review(), { previewDetermination: preview as never })
+    await open(review(), { previewDetermination: preview })
     await openApprove()
     const form = document.querySelector('[data-testid="recognition-form"]')!
     // nothing is asked while a field is still empty
@@ -276,7 +276,7 @@ describe('approving with a determination', () => {
 
   it('leaves a fixed question exactly as before: no form, no key on the wire', async () => {
     const decided = stagedDecide()
-    open(review({ recognitionForm: null }), { decideReview: decided as never })
+    await open(review({ recognitionForm: null }), { decideReview: decided })
     await openApprove()
     expect(document.querySelector('[data-testid="recognition-form"]')).toBeNull()
     await confirmAndWait(decided)
@@ -285,7 +285,7 @@ describe('approving with a determination', () => {
 
   it('pre-fills the seed, takes a first fill without a reason, and sends whole values', async () => {
     const decided = stagedDecide()
-    open(review(), { decideReview: decided as never })
+    await open(review(), { decideReview: decided })
     await openApprove()
     const form = document.querySelector('[data-testid="recognition-form"]')!
     // the seeded choice arrives chosen, by its business label
@@ -295,7 +295,7 @@ describe('approving with a determination', () => {
     await expect.element(approve).toBeDisabled()
     const ordinal = form.querySelector('[data-parameter="rec-ordinal"] input') as HTMLInputElement
     ordinal.focus()
-    await page.getByRole('dialog').getByRole('textbox').nth(0)
+    page.getByRole('dialog').getByRole('textbox').nth(0)
     // writing a fact nobody had determined is doing the job: no reason box
     const { userEvent } = await import('vitest/browser')
     await userEvent.fill(ordinal, '2')
@@ -309,7 +309,7 @@ describe('approving with a determination', () => {
 
   it('sends the decimal in canonical spelling', async () => {
     const decided = stagedDecide()
-    open(review(), { decideReview: decided as never })
+    await open(review(), { decideReview: decided })
     await openApprove()
     const form = document.querySelector('[data-testid="recognition-form"]')!
     const { userEvent } = await import('vitest/browser')
@@ -325,10 +325,7 @@ describe('approving with a determination', () => {
       .element(page.getByRole('dialog').getByRole('textbox', { name: '认定调整说明' }))
       .toBeVisible()
     await userEvent.fill(
-      page
-        .getByRole('dialog')
-        .getByRole('textbox', { name: '认定调整说明' })
-        .element() as HTMLInputElement,
+      page.getByRole('dialog').getByRole('textbox', { name: '认定调整说明' }).element(),
       '按打卡记录核定',
     )
     await confirmAndWait(decided)
@@ -341,7 +338,7 @@ describe('approving with a determination', () => {
 
   it('blocks a value the field refuses, and says why beside it', async () => {
     const decided = stagedDecide()
-    open(review(), { decideReview: decided as never })
+    await open(review(), { decideReview: decided })
     await openApprove()
     const form = document.querySelector('[data-testid="recognition-form"]')!
     const { userEvent } = await import('vitest/browser')
@@ -356,7 +353,7 @@ describe('approving with a determination', () => {
 
   it('demands a reason only when a seeded fact is contradicted', async () => {
     const decided = stagedDecide()
-    open(review(), { decideReview: decided as never })
+    await open(review(), { decideReview: decided })
     await openApprove()
     const form = document.querySelector('[data-testid="recognition-form"]')!
     const { userEvent } = await import('vitest/browser')
@@ -373,10 +370,7 @@ describe('approving with a determination', () => {
       .element(page.getByRole('dialog').getByRole('button', { name: /^通过/ }))
       .toBeDisabled()
     await userEvent.fill(
-      page
-        .getByRole('dialog')
-        .getByRole('textbox', { name: '认定调整说明' })
-        .element() as HTMLInputElement,
+      page.getByRole('dialog').getByRole('textbox', { name: '认定调整说明' }).element(),
       '证书落款为省级主办单位',
     )
     await confirmAndWait(decided)
@@ -389,7 +383,7 @@ describe('approving with a determination', () => {
 
   it('confirms a frozen sitting text read-only and verbatim', async () => {
     const decided = stagedDecide()
-    open(
+    await open(
       review({
         recognitionForm: {
           ...recognitionForm(),
@@ -399,7 +393,7 @@ describe('approving with a determination', () => {
           },
         },
       }),
-      { decideReview: decided as never },
+      { decideReview: decided },
     )
     await openApprove()
     const form = document.querySelector('[data-testid="recognition-form"]')!
@@ -419,7 +413,7 @@ describe('approving with a determination', () => {
     // unanswered - not an implicit false the approval quietly files
     const decided = stagedDecide()
     const fixture = review()
-    open(
+    await open(
       {
         ...fixture,
         recognitionForm: {
@@ -428,7 +422,7 @@ describe('approving with a determination', () => {
           locked: null,
         },
       } as never,
-      { decideReview: decided as never },
+      { decideReview: decided },
     )
     await openApprove()
     const approve = page.getByRole('dialog').getByRole('button', { name: /^通过/ })
@@ -461,11 +455,11 @@ describe('approving with a determination', () => {
   it('writes unsent words into this browser, and stops once the approval is sent', async () => {
     const id = `${INSTANCE_ID}:approve`
     const decided = stagedDecide()
-    open(review(), { decideReview: decided as never })
+    await open(review(), { decideReview: decided })
     await openApprove()
     const { userEvent } = await import('vitest/browser')
     await userEvent.fill(
-      page.getByRole('dialog').getByRole('textbox', { name: '审核意见' }).element() as HTMLElement,
+      page.getByRole('dialog').getByRole('textbox', { name: '审核意见' }).element(),
       '材料齐全，按一等奖认定',
     )
     const form = document.querySelector('[data-testid="recognition-form"]')!
@@ -498,7 +492,7 @@ describe('approving with a determination', () => {
       reason: '',
       values: { 'rec-level': 'national', 'rec-ordinal': '5', 'rec-hours': '2' },
     })
-    open(review())
+    await open(review())
     await openApprove()
     await expect.element(page.getByTestId('draft-note')).toBeVisible()
     const comment = () =>
@@ -517,7 +511,7 @@ describe('approving with a determination', () => {
 
   it('keeps the refusal entirely out of it', async () => {
     const decided = stagedDecide()
-    open(review(), { decideReview: decided as never })
+    await open(review(), { decideReview: decided })
     await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
     await page.getByRole('button', { name: /退回/ }).click()
     await expect.element(page.getByRole('dialog')).toBeVisible()
@@ -539,9 +533,9 @@ describe('approving with a determination', () => {
         ? { matches: false, media: query, addEventListener() {}, removeEventListener() {} }
         : real(query)) as typeof window.matchMedia
     try {
-      page.viewport(390, 844)
+      await page.viewport(390, 844)
       const decided = stagedDecide()
-      open(review(), { decideReview: decided as never })
+      await open(review(), { decideReview: decided })
       await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
       await page.getByRole('button', { name: /^通过/ }).click()
       await expect.element(page.getByRole('dialog')).toBeVisible()
@@ -565,7 +559,7 @@ describe('approving with a determination', () => {
 
   it("reads typed evidence in the reviewer's words, and suggests in kind", async () => {
     const decided = stagedDecide()
-    open(review({ recognitionForm: null }), { decideReview: decided as never })
+    await open(review({ recognitionForm: null }), { decideReview: decided })
     await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
     await page.getByRole('button', { name: /退回/ }).click()
     await expect.element(page.getByRole('dialog')).toBeVisible()
@@ -601,12 +595,12 @@ describe('approving with a determination', () => {
 
   it('offers no suggestion where the rejection goes to the next judge', async () => {
     const base = review({ recognitionForm: null })
-    open(
+    await open(
       {
         ...base,
         actions: { ...base.actions, rejectionReturns: false },
-      } as never,
-      { decideReview: stagedDecide() as never },
+      },
+      { decideReview: stagedDecide() },
     )
     await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
     await page.getByRole('button', { name: /退回/ }).click()

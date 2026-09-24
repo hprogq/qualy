@@ -292,7 +292,7 @@ const tidyChoice = (schema: AtomicSchema | null): AtomicSchema | null => {
   const kept = Object.fromEntries(
     Object.entries(labels).filter(([value]) => held.enum.includes(value)),
   )
-  return { ...held, 'x-qualy-enumLabels': kept } as AtomicSchema
+  return { ...held, 'x-qualy-enumLabels': kept }
 }
 
 const scoringDraftOf = (stored: unknown): ScoringDraft => {

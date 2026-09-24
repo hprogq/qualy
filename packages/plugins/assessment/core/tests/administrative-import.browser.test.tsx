@@ -227,7 +227,7 @@ const open = (route: string, stubs: Record<string, unknown> = {}) =>
           }),
         ...stubs,
       },
-    } as never),
+    }),
     routes: [
       { path: '/assessment/batches/:batchId/record', element: <AdministrativeRecordsPage /> },
     ] as never,
@@ -258,7 +258,7 @@ const pickWorkbook = async () => {
   )
   const next = page.getByTestId('record-step-next')
   await vi.waitFor(async () => {
-    if ((await next.element().getAttribute('disabled')) !== null)
+    if (next.element().getAttribute('disabled') !== null)
       throw new Error('the file has not landed yet')
   })
   await userEvent.click(next.element())
@@ -302,7 +302,7 @@ describe('importing a workbook of administrative records', () => {
   afterEach(() => dispose())
 
   it('opens on the records, with the imports one tab away', async () => {
-    open(base)
+    await open(base)
     await expect.element(page.getByTestId('administrative-entries')).toBeVisible()
     await page.getByRole('tab', { name: '导入记录' }).click()
     await expect.poll(() => addressNow()).toContain('tab=imports')
@@ -316,7 +316,7 @@ describe('importing a workbook of administrative records', () => {
     // shrink, and the reader pays for it with a scrollbar under a panel
     // that has nothing to scroll to. Measured rather than eyeballed,
     // because it has come back twice.
-    open(`${base}?mode=import`)
+    await open(`${base}?mode=import`)
     await chooseItem()
     await expect.element(page.getByTestId('administrative-import')).toBeVisible()
     const panel = document.querySelector<HTMLElement>('[data-slot="dialog-content"]')!
@@ -332,7 +332,7 @@ describe('importing a workbook of administrative records', () => {
     // time the file moves. A fixed height is also what puts the words off
     // centre when the area pads or spaces itself, which is why this is
     // measured rather than eyeballed.
-    open(`${base}?mode=import`)
+    await open(`${base}?mode=import`)
     await chooseItem()
     await vi.waitFor(() => {
       if (document.querySelector('[data-upload-seat]') === null)
@@ -348,7 +348,7 @@ describe('importing a workbook of administrative records', () => {
 
   it('offers no import while the server found errors in the file', async () => {
     const commit = vi.fn(() => Effect.succeed({ importId: NEW_IMPORT_ID, importedCount: 1 }))
-    open(`${base}?mode=import`, {
+    await open(`${base}?mode=import`, {
       previewAdministrativeImport: () =>
         Effect.succeed(
           previewOf([
@@ -359,7 +359,7 @@ describe('importing a workbook of administrative records', () => {
             },
           ]),
         ),
-      commitAdministrativeImport: commit as never,
+      commitAdministrativeImport: commit,
     })
     await chooseItem()
     // the template is the question's own, addressed by the question
@@ -388,7 +388,7 @@ describe('importing a workbook of administrative records', () => {
     const commit = vi.fn((_request: { payload: Record<string, unknown> }) =>
       Effect.succeed({ importId: NEW_IMPORT_ID, importedCount: 2 }),
     )
-    open(`${base}?mode=import`, {
+    await open(`${base}?mode=import`, {
       previewAdministrativeImport: () =>
         Effect.succeed(
           previewOf([
@@ -399,7 +399,7 @@ describe('importing a workbook of administrative records', () => {
             },
           ]),
         ),
-      commitAdministrativeImport: commit as never,
+      commitAdministrativeImport: commit,
     })
     await chooseItem()
     await pickWorkbook()
@@ -427,7 +427,7 @@ describe('importing a workbook of administrative records', () => {
       (_request: { params: { importId: string }; payload: { reason: string } }) =>
         Effect.succeed({ affectedCount: 118 }),
     )
-    open(`${base}?import=${IMPORT_ID}`, { reverseAdministrativeImport: reverse as never })
+    await open(`${base}?import=${IMPORT_ID}`, { reverseAdministrativeImport: reverse })
     const standing = page.getByTestId('import-standing')
     await expect.element(standing).toHaveAttribute('data-approved', '118')
     await expect.element(standing).toHaveAttribute('data-in-review', '3')
@@ -442,7 +442,7 @@ describe('importing a workbook of administrative records', () => {
   })
 
   it('does not offer a withdrawal the server said cannot work', async () => {
-    open(`${base}?import=${IMPORT_ID}`, {
+    await open(`${base}?import=${IMPORT_ID}`, {
       getAdministrativeImport: () => Effect.succeed(detail({ capabilities: { reverse: false } })),
     })
     await expect.element(page.getByTestId('import-standing')).toBeVisible()
@@ -450,7 +450,7 @@ describe('importing a workbook of administrative records', () => {
   })
 
   it('leads from an import to its facts and from a fact back to its import', async () => {
-    open(`${base}?import=${IMPORT_ID}`)
+    await open(`${base}?import=${IMPORT_ID}`)
     await page.getByTestId('import-row').click()
     await expect.poll(() => addressNow()).toContain(`entry=${ENTRY_ID}`)
     // the sheet names where the fact came from, and goes there
@@ -463,7 +463,7 @@ describe('importing a workbook of administrative records', () => {
     // the office wrote the record; an appeal re-determined it afterwards.
     // The two halves have different hands, and the sheet used to borrow the
     // filing's for both
-    open(`${base}?import=${IMPORT_ID}`, {
+    await open(`${base}?import=${IMPORT_ID}`, {
       listAdministrativeEntries: () =>
         Effect.succeed({
           entries: [
@@ -491,7 +491,7 @@ describe('importing a workbook of administrative records', () => {
   })
 
   it('goes back from one import to the imports it was opened from', async () => {
-    open(`${base}?tab=imports`)
+    await open(`${base}?tab=imports`)
     await page.getByTestId('administrative-import').click()
     await expect.poll(() => addressNow()).toContain(`import=${IMPORT_ID}`)
     await expect.element(page.getByTestId('administrative-import-detail')).toBeVisible()

@@ -5,9 +5,6 @@
   "categories": {
     "correctness": "error"
   },
-  "options": {
-    "reportUnusedDisableDirectives": "error"
-  },
   "rules": {
     "no-unused-vars": [
       "error",
@@ -25,7 +22,12 @@
     "vitest/no-conditional-expect": "off",
     "vitest/require-mock-type-parameters": "off",
     "vitest/require-to-throw-message": "off",
-    "typescript/switch-exhaustiveness-check": "error",
+    "typescript/switch-exhaustiveness-check": [
+      "error",
+      {
+        "considerDefaultExhaustiveForUnions": true
+      }
+    ],
     "typescript/no-misused-promises": "error",
     "typescript/await-thenable": "error",
     "typescript/no-floating-promises": "error",
@@ -42,6 +44,12 @@
       "error",
       {
         "skipComments": true
+      }
+    ],
+    "typescript/require-array-sort-compare": [
+      "error",
+      {
+        "ignoreStringArrays": true
       }
     ]
   },
@@ -66,7 +74,8 @@
     {
       "files": ["packages/core/formula/src/**", "packages/core/value-schema/src/**"],
       "rules": {
-        "no-unused-vars": "warn"
+        "no-unused-vars": "warn",
+        "typescript/no-unnecessary-type-assertion": "warn"
       }
     }
   ]

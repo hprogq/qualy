@@ -1056,6 +1056,7 @@ export default defineFormula({
                 mine,
               ),
             )
+            // eslint-disable-next-line typescript/no-unnecessary-type-assertion -- reads fields the tagged shape does not declare
             const report = tagOf(asked) as
               | {
                   _tag?: string
@@ -1079,6 +1080,7 @@ export default defineFormula({
               taken: Exit.isSuccess(taken),
               stood: Exit.isSuccess(stood),
               before: before.total,
+              // eslint-disable-next-line typescript/no-unnecessary-type-assertion -- reads fields the tagged shape does not declare
               rebound: tagOf(rebound) as
                 | { _tag?: string; approved?: { refused: number } }
                 | undefined,

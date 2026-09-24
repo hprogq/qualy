@@ -97,9 +97,7 @@ describe('across kinds', () => {
       [choice('a'), { type: 'string' }],
       [{ type: 'boolean' }, { type: 'string', format: 'date' }],
     ] as const) {
-      expect(code(assignmentPlan(source as AtomicSchema, target as AtomicSchema))).toBe(
-        'kind-mismatch',
-      )
+      expect(code(assignmentPlan(source, target as AtomicSchema))).toBe('kind-mismatch')
     }
   })
 

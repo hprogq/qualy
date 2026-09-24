@@ -196,7 +196,7 @@ const openSession = async (initialSource: string) => {
         client.SendLsp({ sessionId: opened.sessionId, sequence: sequenceOverride, jsonRpc }),
       ),
     nextSequence: () => (sequence += 1),
-    stopEvents: () => Effect.runPromise(Scope.close(eventScope as Scope.Closeable, Exit.void)),
+    stopEvents: () => Effect.runPromise(Scope.close(eventScope, Exit.void)),
     close: () => Effect.runPromise(client.CloseLsp({ sessionId: opened.sessionId })),
   }
 }
@@ -372,9 +372,7 @@ describe('the formula language service', { concurrent: false }, () => {
       )
       const context = await Effect.runPromise(Layer.buildWithScope(layer, ownScope))
       const ownClient = await Effect.runPromise(
-        Effect.provide(RpcClient.make(FormulaAuthoringRpcs), context).pipe(
-          Scope.provide(ownScope as Scope.Closeable),
-        ),
+        Effect.provide(RpcClient.make(FormulaAuthoringRpcs), context).pipe(Scope.provide(ownScope)),
       )
       const workspacesBefore = lspWorkspaceCount(ownTmp)
       const opened = await Effect.runPromise(ownClient.OpenLsp({ initialSource: FIXTURE }))
@@ -390,7 +388,7 @@ describe('the formula language service', { concurrent: false }, () => {
       expect(lspWorkspaceCount(ownTmp)).toBe(workspacesBefore)
       void opened
     } finally {
-      await Effect.runPromise(Scope.close(ownScope as Scope.Closeable, Exit.void))
+      await Effect.runPromise(Scope.close(ownScope, Exit.void))
       own.kill('SIGKILL')
       fs.rmSync(ownDir, { recursive: true, force: true })
       fs.rmSync(ownTmp, { recursive: true, force: true })

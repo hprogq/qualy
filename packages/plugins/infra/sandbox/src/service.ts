@@ -120,7 +120,7 @@ const transportDeadline = (
     // slam-the-door peer) - the deadline must not inherit that fate. The
     // stuck fiber gets a fire-and-forget interrupt and dies with the
     // connection's scope at the latest.
-    const fiber = Effect.runForkWith(parent.context as Context.Context<never>)(call)
+    const fiber = Effect.runForkWith(parent.context)(call)
     const abandon = Effect.sync(() => fiber.interruptUnsafe(parent.id))
     return Effect.gen(function* () {
       const settled = yield* Effect.raceFirst(

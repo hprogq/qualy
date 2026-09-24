@@ -255,13 +255,13 @@ async function main(): Promise<void> {
     const resolution = await resolveCurrent('list')
     const { commands } = await descriptorCommands(resolution)
     console.log('lifecycle: resolve, plan, generate, deploy, plugin')
-    for (const [key, entry] of [...commands.entries()].sort()) {
+    for (const [key, entry] of [...commands.entries()].sort(([a], [b]) =>
+      a < b ? -1 : a > b ? 1 : 0,
+    )) {
       console.log(`${key}  -  ${entry.command.summary} (${entry.plugin})`)
     }
     for (const capability of capabilityWork(resolution)) {
-      const names = Object.keys(
-        (resolution.providers.get(capability.key)?.provider.commands ?? {}) as object,
-      )
+      const names = Object.keys(resolution.providers.get(capability.key)?.provider.commands ?? {})
       for (const name of names.sort()) {
         console.log(`${capability.key} ${name}  -  capability command (${capability.pluginId})`)
       }

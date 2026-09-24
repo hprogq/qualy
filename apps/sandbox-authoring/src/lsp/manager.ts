@@ -528,7 +528,7 @@ export const makeLspManager = (): LspManager => {
       // the events stream IS the client's liveness: when its scope ends -
       // disconnect, interrupt, shutdown - the session ends with it
       yield* Effect.addFinalizer(() => Effect.promise(() => closeSession(session)))
-      return session.outbound as Queue.Dequeue<OutboundEvent, Cause.Done>
+      return session.outbound
     })
 
   const close: LspManager['close'] = (sessionId) =>

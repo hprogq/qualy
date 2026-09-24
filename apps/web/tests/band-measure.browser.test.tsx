@@ -22,7 +22,7 @@ const draw = (
   titleAside?: React.ReactNode,
 ) =>
   renderScreen({
-    client: fakeClient({ app: { getManifest: () => Effect.succeed(emptyManifest()) } } as never),
+    client: fakeClient({ app: { getManifest: () => Effect.succeed(emptyManifest()) } }),
     route: '/x',
     children: (
       <Screen
@@ -102,7 +102,7 @@ describe('the band every page of an application opens on', () => {
     await page.viewport(width, 900)
     const heights: number[] = []
     for (const [title, description, actions, aside] of shapes) {
-      draw(title, description, actions, aside)
+      await draw(title, description, actions, aside)
       await expect.element(page.getByRole('heading', { name: title }).first()).toBeVisible()
       heights.push(band().getBoundingClientRect().height)
     }

@@ -63,7 +63,7 @@ export const readSourceBytes = (
         Number.isFinite(declared) && declared > 0 ? declared : ADMIN_IMPORT_LIMITS.maxFileBytes,
         ADMIN_IMPORT_LIMITS.maxFileBytes,
       )
-      if (open.target.kind === 'stream') return await collect(open.target.body, ceiling)
+      if (open.target.kind === 'stream') return collect(open.target.body, ceiling)
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
       try {

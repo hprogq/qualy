@@ -114,7 +114,7 @@ const open = (stubs: Record<string, unknown>) =>
           Effect.succeed({ mode: 'provisional' as const, total: '0.00', groups: [], lines: [] }),
         ...stubs,
       },
-    } as never),
+    }),
     routes: [
       { path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> },
     ] as never,
@@ -126,8 +126,7 @@ const startFiling = async () => {
   const opener = document.querySelector('[data-testid="file-claim"]') as HTMLElement
   const { userEvent } = await import('vitest/browser')
   await vi.waitFor(() => {
-    if ((document.querySelector('[data-testid="file-claim"]') as HTMLElement | null) === null)
-      throw new Error('not yet')
+    if (document.querySelector('[data-testid="file-claim"]') === null) throw new Error('not yet')
   })
   await userEvent.click(opener ?? document.querySelector('[data-testid="file-claim"]')!)
   await expect.element(page.getByRole('dialog')).toBeVisible()
@@ -170,7 +169,7 @@ describe('filing typed evidence', () => {
         },
       }),
     )
-    open({ createEntry: created as never })
+    await open({ createEntry: created })
     await startFiling()
     const { userEvent } = await import('vitest/browser')
     // the screen offers the words; the wire carries the value
@@ -187,7 +186,7 @@ describe('filing typed evidence', () => {
 
   it('holds the doors shut over a half-typed number, even an optional one', async () => {
     const created = vi.fn(() => Effect.succeed({ entry: {} }))
-    open({ createEntry: created as never })
+    await open({ createEntry: created })
     await startFiling()
     const { userEvent } = await import('vitest/browser')
     await page.getByLabelText('赛事级别', { exact: false }).click()
@@ -218,7 +217,7 @@ describe('filing typed evidence', () => {
     const created = vi.fn((request: { payload: Record<string, unknown> }) =>
       Effect.fail({ _tag: 'never' as const, request }),
     )
-    open({ createEntry: created as never })
+    await open({ createEntry: created })
     await startFiling()
     const { userEvent } = await import('vitest/browser')
     const placing = page.getByLabelText('获奖序位', { exact: false })

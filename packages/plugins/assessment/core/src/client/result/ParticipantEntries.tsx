@@ -14,7 +14,7 @@ import { EntryStanding } from '../entry/EntryStanding.tsx'
 import { ManagedEntrySheet } from '../entry/ManagedEntrySheet.tsx'
 import { sourceLabelOf } from '../entry/source.ts'
 import { useLingering } from '@qualy/ui/use-lingering'
-import type { EntryDto, ItemDto } from '../entry/model.ts'
+import type { ItemDto } from '../entry/model.ts'
 
 // What this person filed, and what the round decided about each of it.
 //
@@ -331,7 +331,7 @@ export function ParticipantEntries({
         <ManagedEntrySheet
           key={lingering.entry.id}
           open={open !== null}
-          entry={lingering.entry as EntryDto}
+          entry={lingering.entry}
           item={itemsById.get(lingering.entry.itemId)!}
           recognition={lingering.recognition}
           trail={trailOf(itemsById.get(lingering.entry.itemId)!, groupsById)}

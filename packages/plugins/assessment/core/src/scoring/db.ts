@@ -24,11 +24,7 @@ export const participantRowByUser = (tenantId: string, batchId: string, userId: 
         .where('userId', '=', userId)
         .executeTakeFirst(),
     )
-    .pipe(
-      Effect.map((row) =>
-        row === undefined ? null : { id: row.id, status: row.status as string },
-      ),
-    )
+    .pipe(Effect.map((row) => (row === undefined ? null : { id: row.id, status: row.status })))
 
 /** a question the audit evaluates: active, configured, with the round it belongs to */
 export interface AuditableItem {
@@ -155,10 +151,10 @@ export const participantEntries = (tenantId: string, batchId: string, participan
         rows.map((row): ScoredEntryRow => ({
           id: row.id,
           itemId: row.itemId,
-          status: row.status as string,
+          status: row.status,
           revisionId: row.revisionId,
           recognitionId: row.recognitionId ?? null,
-          recognition: (row.recognition ?? {}) as Record<string, unknown>,
+          recognition: row.recognition ?? {},
           wasSubmitted: row.wasSubmitted === true,
           createdAt: msOf(row.createdMs),
         })),

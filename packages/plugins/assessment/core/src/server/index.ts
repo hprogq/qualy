@@ -2638,7 +2638,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
               reviewReasons: DEFAULT_REVIEW_REASONS,
               ...(input.timezone !== undefined ? { timezone: input.timezone } : {}),
             })
-            const batchId = created.id as string
+            const batchId = created.id
             yield* audit.record(BatchCreated, {
               tenantId,
               actor: { kind: 'user', userId: as.userId },
@@ -3078,7 +3078,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
             yield* recordConfigChange(
               tenantId,
               batchId,
-              locked.status as string,
+              locked.status,
               diff,
               as.userId,
               input.reason ?? null,
@@ -3102,7 +3102,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
               const locked = yield* lockBatch(tenantId, batchId)
               if (!locked) return yield* new BatchNotFound()
               yield* requireRosterReach(as, tenantId, batchId)
-              const from = locked.status as string
+              const from = locked.status
               const to = input.status
               const now = yield* Clock.currentTimeMillis
 
@@ -3611,7 +3611,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
             const locked = yield* lockBatch(tenantId, batchId)
             if (!locked) return yield* new BatchNotFound()
             yield* requireRosterReach(as, tenantId, batchId)
-            const from = locked.status as string
+            const from = locked.status
             // Only a draft, which is exactly the batch that never ran: the
             // first schedule takes it out of draft, and withdrawing that
             // schedule is how somebody gets back here. Everything on it is
@@ -3879,7 +3879,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
               yield* recordConfigChange(
                 tenantId,
                 batchId,
-                locked.status as string,
+                locked.status,
                 { phasePlan: { edited: editedIds, inserted: insertedKeys } },
                 actorId,
                 null,
@@ -3963,7 +3963,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
               yield* recordConfigChange(
                 tenantId,
                 batchId,
-                locked.status as string,
+                locked.status,
                 { phaseSchedule: { phaseId, plannedEntryAt } },
                 as.userId,
                 null,

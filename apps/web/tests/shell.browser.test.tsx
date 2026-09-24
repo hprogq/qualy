@@ -161,7 +161,7 @@ const manifest = () => ({
 // a rail that is already settled.
 const settledManifest = () => {
   const full = manifest()
-  const rail = full.collections['workspace-shell/navigation']!
+  const rail = full.collections['workspace-shell/navigation']
   return {
     ...full,
     collections: {
@@ -177,8 +177,8 @@ const settledManifest = () => {
 // only their own assessment, which is most of this product's readers
 const oneAppManifest = () => {
   const full = manifest()
-  const groups = full.collections['app-shell/navigation-groups']!
-  const pages = full.collections['app-shell/navigation-primary']!
+  const groups = full.collections['app-shell/navigation-groups']
+  const pages = full.collections['app-shell/navigation-primary']
   return {
     ...full,
     collections: {
@@ -209,7 +209,7 @@ const shell = (element: React.ReactNode, path: string, route: string) =>
 describe('the application shell', () => {
   it("stands the open application's sections down the side of a wide window, and in a row on a narrow one", async () => {
     await page.viewport(1440, 900)
-    shell(<AppShell />, '/organization/users', '/organization/users')
+    await shell(<AppShell />, '/organization/users', '/organization/users')
     const side = page.getByTestId('side-nav')
     await expect.element(side).toBeVisible()
     await expect
@@ -224,11 +224,11 @@ describe('the application shell', () => {
   })
 
   it('shows one tab per application and the sections of the open one', async () => {
-    shell(<AppShell />, '/organization/users', '/organization/users')
+    await shell(<AppShell />, '/organization/users', '/organization/users')
 
     // the brand leads the bar, named by its wordmark's title and nothing else
     await expect.element(page.getByRole('link', { name: 'Qualy' })).toBeVisible()
-    expect(await page.getByRole('link', { name: 'Qualy' }).elements()).toHaveLength(1)
+    expect(page.getByRole('link', { name: 'Qualy' }).elements()).toHaveLength(1)
     // an application is a tab; its sections are a row of their own, and only
     // when there is more than one to choose between
     await expect.element(page.getByRole('link', { name: '组织与权限' })).toBeVisible()
@@ -240,13 +240,13 @@ describe('the application shell', () => {
       .element(page.getByRole('link', { name: '组织与权限' }))
       .toHaveAttribute('aria-current', 'page')
     // the assessment application has a single section, so no second row
-    expect(await page.getByRole('link', { name: '全部测评' }).elements()).toHaveLength(0)
+    expect(page.getByRole('link', { name: '全部测评' }).elements()).toHaveLength(0)
   })
 
   it('says when the page has moved under its bars, and only then', async () => {
     // the bars sit inside the scrolling element; a page taller than it
     // puts them to the test
-    renderScreen({
+    await renderScreen({
       client: fakeClient({ app: { getManifest: () => Effect.succeed(manifest()) } }),
       route: '/organization/users',
       children: (
@@ -267,7 +267,7 @@ describe('the application shell', () => {
     // lies underneath, so the hairline is earned rather than stated. The
     // workspace shell, where a second bar lies underneath instead and never
     // moves, states it - the case further down.
-    const bar = (await page.getByRole('link', { name: 'Qualy' }).element()).parentElement!
+    const bar = page.getByRole('link', { name: 'Qualy' }).element().parentElement!
     expect(getComputedStyle(bar).borderBottomColor).toBe(BLANK)
     const main = document.querySelector('main')!
     main.scrollTo({ top: 400 })
@@ -295,7 +295,7 @@ describe('the application shell', () => {
             })
         }),
     )
-    renderScreen({
+    await renderScreen({
       client: fakeClient({ app: { getManifest: () => Effect.succeed(manifest()) } }),
       route: '/organization/users',
       children: (
@@ -337,13 +337,13 @@ describe('the application shell', () => {
   })
 
   it('holds its scrollbar\u2019s room whether or not the page is long, so pages do not shift', async () => {
-    shell(<AppShell />, '/organization/users', '/organization/users')
+    await shell(<AppShell />, '/organization/users', '/organization/users')
     await expect.element(page.getByRole('link', { name: 'Qualy' })).toBeVisible()
     expect(getComputedStyle(document.querySelector('main')!).scrollbarGutter).toBe('stable')
   })
 
   it('carries the applications at the foot as well, and only where there are two', async () => {
-    shell(<AppShell />, '/organization/users', '/organization/users')
+    await shell(<AppShell />, '/organization/users', '/organization/users')
     await expect.element(page.getByRole('link', { name: 'Qualy' })).toBeVisible()
     const foot = document.querySelector('[data-shell-bottom]')
     expect(foot).not.toBeNull()
@@ -355,7 +355,7 @@ describe('the application shell', () => {
   })
 
   it('leaves the foot bare for a reader with one application', async () => {
-    renderScreen({
+    await renderScreen({
       client: fakeClient({ app: { getManifest: () => Effect.succeed(oneAppManifest()) } }),
       routes: [{ path: '/assessment/batches', element: <AppShell /> }],
       route: '/assessment/batches',
@@ -365,7 +365,7 @@ describe('the application shell', () => {
   })
 
   it("says the page's own name once its heading has gone under the bars", async () => {
-    renderScreen({
+    await renderScreen({
       client: fakeClient({ app: { getManifest: () => Effect.succeed(manifest()) } }),
       route: '/organization/users',
       children: (
@@ -389,7 +389,7 @@ describe('the application shell', () => {
   })
 
   it('sends an application tab to its first page', async () => {
-    shell(<AppShell />, '/organization/users', '/organization/users')
+    await shell(<AppShell />, '/organization/users', '/organization/users')
     await expect
       .element(page.getByRole('link', { name: '测评' }))
       .toHaveAttribute('href', '/assessment/batches')
@@ -401,7 +401,7 @@ describe('the workspace shell', () => {
     // the rail is a column on a desktop and a drawer on a phone, and this
     // case is about the column
     await page.viewport(1280, 800)
-    shell(
+    await shell(
       <WorkspaceShell />,
       '/assessment/batches/:batchId/phases',
       `/assessment/batches/${BATCH_ID}/phases`,
@@ -412,13 +412,13 @@ describe('the workspace shell', () => {
       .toHaveAttribute('href', `/assessment/batches/${BATCH_ID}/phases`)
     // an entry this route cannot address is not shown pointing at a literal
     // ":otherId"
-    expect(await page.getByRole('link', { name: '别处' }).elements()).toHaveLength(0)
+    expect(page.getByRole('link', { name: '别处' }).elements()).toHaveLength(0)
     // an entry gated on a workspace capability stays hidden while nothing
     // has published one: unloaded is not "unfiltered"
-    expect(await page.getByRole('link', { name: '审核' }).elements()).toHaveLength(0)
+    expect(page.getByRole('link', { name: '审核' }).elements()).toHaveLength(0)
     // an entry gated on a workspace capability stays hidden while nothing
     // has published one: unloaded is not "unfiltered"
-    expect(await page.getByRole('link', { name: '审核' }).elements()).toHaveLength(0)
+    expect(page.getByRole('link', { name: '审核' }).elements()).toHaveLength(0)
     // the applications stay above it: a workspace is somewhere inside the
     // product, not a place the product disappears from
     await expect.element(page.getByRole('link', { name: '组织与权限' })).toBeVisible()
@@ -435,21 +435,19 @@ describe('the workspace shell', () => {
     // Which grey is not asserted, only that there is one: the weight is the
     // theme's business and may move.
     await page.viewport(1280, 800)
-    shell(
+    await shell(
       <WorkspaceShell />,
       '/assessment/batches/:batchId/phases',
       `/assessment/batches/${BATCH_ID}/phases`,
     )
     const brand = page.getByRole('link', { name: 'Qualy' })
     await expect.element(brand).toBeVisible()
-    expect(getComputedStyle((await brand.element()).parentElement!).borderBottomColor).not.toBe(
-      BLANK,
-    )
+    expect(getComputedStyle(brand.element().parentElement!).borderBottomColor).not.toBe(BLANK)
   })
 
   it('hands the bar at the foot of a phone to the open workspace\u2019s own sections', async () => {
     await page.viewport(390, 844)
-    renderScreen({
+    await renderScreen({
       client: fakeClient({ app: { getManifest: () => Effect.succeed(settledManifest()) } }),
       routes: [{ path: '/assessment/batches/:batchId/phases', element: <WorkspaceShell /> }],
       route: `/assessment/batches/${BATCH_ID}/phases`,
@@ -486,7 +484,7 @@ describe('the workspace shell', () => {
     await page.viewport(390, 844)
     const many = () => {
       const full = settledManifest()
-      const rail = full.collections['workspace-shell/navigation']!
+      const rail = full.collections['workspace-shell/navigation']
       return {
         ...full,
         collections: {
@@ -508,7 +506,7 @@ describe('the workspace shell', () => {
         },
       }
     }
-    renderScreen({
+    await renderScreen({
       client: fakeClient({ app: { getManifest: () => Effect.succeed(many()) } }),
       routes: [{ path: '/assessment/batches/:batchId/results', element: <WorkspaceShell /> }],
       route: `/assessment/batches/${BATCH_ID}/results`,
@@ -521,7 +519,7 @@ describe('the workspace shell', () => {
     const more = page.getByTestId('bottom-more')
     await expect.element(more).toBeVisible()
     // what is open is behind it, so it carries the ink
-    expect(getComputedStyle(await more.element()).fontWeight).toBe('500')
+    expect(getComputedStyle(more.element()).fontWeight).toBe('500')
 
     // and it opens the drawer holding every section plus the way out
     await more.click()
@@ -533,7 +531,7 @@ describe('the workspace shell', () => {
 
   it('leaves a person\u2019s sections a row under the banner, and the modules at the foot', async () => {
     await page.viewport(390, 844)
-    renderScreen({
+    await renderScreen({
       client: fakeClient({ app: { getManifest: () => Effect.succeed(manifest()) } }),
       routes: [{ path: '/organization/users/:userId/identities', element: <UserDetailShell /> }],
       route: `/organization/users/${USER_ID}/identities`,
@@ -555,7 +553,7 @@ describe('the workspace shell', () => {
 
   it('keeps the control that closes the rail inside the rail, and offers it back', async () => {
     await page.viewport(1280, 800)
-    shell(
+    await shell(
       <WorkspaceShell />,
       '/assessment/batches/:batchId/phases',
       `/assessment/batches/${BATCH_ID}/phases`,
@@ -600,7 +598,7 @@ const slowPage = () => {
 describe('the user-detail shell', () => {
   it('fills the rail with the person of the route, sections and all, under the banner slot', async () => {
     await page.viewport(1280, 800)
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         app: {
           getManifest: () =>
@@ -636,7 +634,7 @@ describe('the user-detail shell', () => {
           // has to know the endpoint for the query to be composed at all
           getUserOptions: () => Effect.succeed({ truncated: false, nodes: [], userTypes: [] }),
         },
-      } as never),
+      }),
       registry: {
         slots: {
           'iam/user-detail-header': {
@@ -661,7 +659,7 @@ describe('the user-detail shell', () => {
       .element(page.getByRole('link', { name: '参评批次' }))
       .toHaveAttribute('href', `/organization/users/${USER_ID}/assessment/batches`)
     // filed under the section its plugin registered, whose label the rail draws
-    const filed = await page.getByRole('link', { name: '参评批次' }).element()
+    const filed = page.getByRole('link', { name: '参评批次' }).element()
     expect(filed.closest('section')?.querySelector('p')?.textContent).toBe('测评')
     // the banner is whoever owns people saying who this is
     await expect.element(page.getByTestId('user-detail-header')).toBeVisible()
@@ -671,7 +669,7 @@ describe('the user-detail shell', () => {
     // the banner and the page under it start at one edge, on a window wider
     // than the measure as well as on one that is not
     const edgeOf = async (testId: string) =>
-      (await page.getByTestId(testId).element()).getBoundingClientRect().left
+      page.getByTestId(testId).element().getBoundingClientRect().left
     for (const width of [1440, 1100]) {
       await page.viewport(width, 800)
       await vi.waitFor(async () =>
@@ -710,7 +708,7 @@ describe('the account shell', () => {
             ).then(resolve)
         }),
     )
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         app: {
           getManifest: () =>
@@ -720,7 +718,7 @@ describe('the account shell', () => {
             }),
         },
         self: { getSelf: () => Effect.succeed(me) },
-      } as never),
+      }),
       registry: { slots: { 'account-shell/header': { 'auth/account-header': header } } },
       routes: [{ path: '/account', element: <AccountShell /> }],
       route: '/account',
@@ -752,7 +750,7 @@ describe('a record\u2019s row of sections', () => {
       },
       order: n,
     }))
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         app: {
           getManifest: () =>
@@ -784,7 +782,7 @@ describe('a record\u2019s row of sections', () => {
 describe('a record\u2019s section', () => {
   it('has the room under the banner to fill, so a failure stands in its middle', async () => {
     await page.viewport(1280, 800)
-    renderScreen({
+    await renderScreen({
       client: fakeClient({ app: { getManifest: () => Effect.succeed(manifest()) } }),
       route: '/account',
       children: (
@@ -819,7 +817,7 @@ describe('a press on the rail', () => {
         <Suspense fallback={<div data-testid="page-fallback" />}>{content}</Suspense>
       </>
     )
-    renderScreen({
+    await renderScreen({
       client: fakeClient({ app: { getManifest: () => Effect.succeed(manifest()) } }),
       routes: [
         {
@@ -838,7 +836,7 @@ describe('a press on the rail', () => {
     await expect.element(entry).toHaveAttribute('data-pending', '')
     await expect.element(entry).toHaveAttribute('aria-busy', 'true')
     await expect.element(page.getByTestId('page-phases')).toBeInTheDocument()
-    expect(await page.getByTestId('page-fallback').elements()).toHaveLength(0)
+    expect(page.getByTestId('page-fallback').elements()).toHaveLength(0)
     // and after a beat, busy: the loader stands in the icon's seat
     await expect.element(entry).toHaveAttribute('data-indicating', '')
     expect(entry.element().querySelector('[data-seg]')).not.toBeNull()
@@ -855,9 +853,9 @@ describe('a press on the rail', () => {
   })
 
   /** the application shell over the users page, with one more page whose code is slow */
-  const shellWithSlow = (slowPath: string) => {
+  const shellWithSlow = async (slowPath: string) => {
     const slow = slowPage()
-    renderScreen({
+    await renderScreen({
       client: fakeClient({ app: { getManifest: () => Effect.succeed(manifest()) } }),
       route: '/organization/users',
       children: (
@@ -882,7 +880,7 @@ describe('a press on the rail', () => {
 
   it('keeps the open section lit and runs a light over the pressed one until it arrives', async () => {
     await page.viewport(390, 844)
-    const slow = shellWithSlow('/organization/roles')
+    const slow = await shellWithSlow('/organization/roles')
     await expect.element(page.getByTestId('page-users')).toBeInTheDocument()
     const open = page.getByTestId('section-chip').filter({ hasText: '用户管理' })
     const pressed = page.getByTestId('section-chip').filter({ hasText: '角色管理' })
@@ -902,7 +900,7 @@ describe('a press on the rail', () => {
 
   it('answers a press at the foot at once, and puts the loader in its mark after a beat', async () => {
     await page.viewport(390, 844)
-    const slow = shellWithSlow('/assessment/batches')
+    const slow = await shellWithSlow('/assessment/batches')
     await expect.element(page.getByTestId('page-users')).toBeInTheDocument()
     const cell = page.getByTestId('bottom-bar').getByRole('link', { name: '测评' })
     await cell.click()
@@ -919,7 +917,7 @@ describe('a press on the rail', () => {
 
   it('keeps the open application lit at the top while the pressed one is on its way', async () => {
     await page.viewport(1280, 800)
-    const slow = shellWithSlow('/assessment/batches')
+    const slow = await shellWithSlow('/assessment/batches')
     await expect.element(page.getByTestId('page-users')).toBeInTheDocument()
     const bar = page.getByTestId('top-bar-apps')
     const pressed = bar.getByRole('link', { name: '测评' })
@@ -946,7 +944,7 @@ describe('a press on the rail', () => {
         lazy(() => Promise.resolve({ default: () => null })),
         { preload },
       )
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         app: {
           getManifest: () =>

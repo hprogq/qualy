@@ -127,7 +127,7 @@ const open = (
           )
         },
       },
-    } as never),
+    }),
     route: `/assessment/formulas/${FN_ID}?view=release-1`,
     path: '/assessment/formulas/:functionId',
     children: <FormulaEditorPage />,
@@ -156,7 +156,7 @@ const tick = async (name: string) => {
 describe('managing a published version’s audience', () => {
   it('offers a unit and asks the server for the whole audience it means', async () => {
     const wrote: unknown[] = []
-    open({
+    await open({
       scopes: [{ orgNodeId: COLLEGE, name: '信息学院' }],
       options: [{ id: DEPARTMENT, name: '计算机系', depth: 2 }],
       wrote,
@@ -178,7 +178,7 @@ describe('managing a published version’s audience', () => {
   it('takes an offer back without the permission that made it', async () => {
     const wrote: unknown[] = []
     // no options: this author cannot widen anywhere any more
-    open({ scopes: [{ orgNodeId: COLLEGE, name: '信息学院' }], options: [], wrote })
+    await open({ scopes: [{ orgNodeId: COLLEGE, name: '信息学院' }], options: [], wrote })
     await openSharing()
     // what is already offered stays on the list, and can still be unticked
     await tick('信息学院')
@@ -188,14 +188,14 @@ describe('managing a published version’s audience', () => {
   }, 30_000)
 
   it('says a version nobody was offered is not shared', async () => {
-    open({ scopes: [], options: [{ id: DEPARTMENT, name: '计算机系', depth: 2 }] })
+    await open({ scopes: [], options: [{ id: DEPARTMENT, name: '计算机系', depth: 2 }] })
     await page.getByTestId('formula-versions-open').click()
     await expect.element(page.getByTestId('formula-versions')).toBeVisible()
     expect(document.querySelectorAll('[data-testid="formula-release-shared"]').length).toBe(0)
   }, 30_000)
 
   it('reads back a refusal when somebody else moved the audience first', async () => {
-    open({
+    await open({
       scopes: [{ orgNodeId: COLLEGE, name: '信息学院' }],
       options: [{ id: DEPARTMENT, name: '计算机系', depth: 2 }],
       replace: () => Effect.fail(apiError('ASSESSMENT_FORMULA_SHARING_CONFLICT')) as never,

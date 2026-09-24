@@ -136,7 +136,7 @@ describe('a last word the rule sends back', () => {
         }),
       ),
     )
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
         assessment: {
@@ -172,7 +172,7 @@ describe('a last word the rule sends back', () => {
           decideReview: decided,
           previewDetermination: () => Effect.succeed({ issues: [], amount: '4.00', refusal: null }),
         },
-      } as never),
+      }),
       routes: [
         {
           path: '/assessment/batches/:batchId/reviews/:instanceId',
@@ -219,7 +219,7 @@ describe('an account the arithmetic cannot compute', () => {
         ? Effect.fail(apiError('ASSESSMENT_SCORING_UNAVAILABLE'))
         : Effect.succeed({ mode: 'provisional' as const, total: '3.00', groups: [], lines: [] }),
     )
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
         assessment: {
@@ -234,7 +234,7 @@ describe('an account the arithmetic cannot compute', () => {
             }),
           getMyResult: result,
         },
-      } as never),
+      }),
       routes: [
         { path: '/assessment/batches/:batchId/my-result', element: <MyResultPage /> },
       ] as never,
@@ -350,8 +350,10 @@ describe('a rule that re-prices what stands', () => {
       scoring: scoring({ amountChanged, baselineFailed }),
     })
 
-  const openEditor = (updateItem: (call: { payload: Record<string, unknown> }) => unknown) => {
-    renderScreen({
+  const openEditor = async (
+    updateItem: (call: { payload: Record<string, unknown> }) => unknown,
+  ) => {
+    await renderScreen({
       client: fakeClient({
         app: {
           getManifest: () =>
@@ -407,7 +409,7 @@ describe('a rule that re-prices what stands', () => {
             }),
           updateItem,
         },
-      } as never),
+      }),
       routes: [
         { path: '/assessment/batches/:batchId/items', element: <ItemSettingsPage /> },
       ] as never,
@@ -419,7 +421,7 @@ describe('a rule that re-prices what stands', () => {
             ),
           },
         },
-      } as never,
+      },
       route: `/assessment/batches/${BATCH_ID}/items?question=${ITEM_ID}`,
     })
   }
@@ -432,7 +434,7 @@ describe('a rule that re-prices what stands', () => {
 
   it('tells how many amounts change, and takes the token alone as the answer', async () => {
     const sent: Record<string, unknown>[] = []
-    openEditor((call) => {
+    await openEditor((call) => {
       sent.push(call.payload)
       return sent.length === 1
         ? Effect.fail(decisionRequired(47))
@@ -451,7 +453,7 @@ describe('a rule that re-prices what stands', () => {
 
   it('says what the rule in force already cannot score, and still lets it be replaced', async () => {
     const sent: Record<string, unknown>[] = []
-    openEditor((call) => {
+    await openEditor((call) => {
       sent.push(call.payload)
       return sent.length === 1
         ? Effect.fail(decisionRequired(0, 3))
@@ -469,7 +471,7 @@ describe('a rule that re-prices what stands', () => {
 
   it('offers no way through when the rule cannot take what stands', async () => {
     const sent: Record<string, unknown>[] = []
-    openEditor((call) => {
+    await openEditor((call) => {
       sent.push(call.payload)
       return Effect.fail(
         apiError('ASSESSMENT_ITEM_SCORING_INCOMPATIBLE', {

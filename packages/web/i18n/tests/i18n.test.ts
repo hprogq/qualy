@@ -36,7 +36,7 @@ const formatterFor = (catalog: MessageCatalog, locale = 'zh-CN'): MessageFormatt
       i18n._({
         id: descriptor.id,
         message: descriptor.defaultMessage,
-        values: args[0] as Record<string, unknown> | undefined,
+        values: args[0],
       }),
   }
 }

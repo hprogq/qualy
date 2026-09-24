@@ -589,7 +589,7 @@ export const instanceOf = (tenantId: string, instanceId: string) =>
               createdAt: msOf(row.createdMs),
               completedAt: row.completedMs == null ? null : msOf(row.completedMs),
               batchId: row.batchId,
-              batchStatus: row.batchStatus as string,
+              batchStatus: row.batchStatus,
               itemId: row.itemId,
               itemTitle: row.itemTitle,
               itemType: row.itemType,
@@ -1538,7 +1538,7 @@ export interface SupplementRow {
 export const supplementsOfInstances = (tenantId: string, instanceIds: readonly string[]) =>
   Effect.gen(function* () {
     const byInstance = new Map<string, SupplementRow[]>()
-    if (instanceIds.length === 0) return byInstance as ReadonlyMap<string, readonly SupplementRow[]>
+    if (instanceIds.length === 0) return byInstance
     const requests = yield* db.query((k) =>
       k
         .selectFrom('ReviewSupplementRequest as sr')
@@ -1610,7 +1610,7 @@ export const supplementsOfInstances = (tenantId: string, instanceIds: readonly s
       })
       byInstance.set(row.reviewInstanceId, bucket)
     }
-    return byInstance as ReadonlyMap<string, readonly SupplementRow[]>
+    return byInstance
   })
 
 /** the same for one round, which is what the workbench reads */
@@ -2491,7 +2491,7 @@ export const resolvedPanelOpinions = (tenantId: string, instanceId: string) =>
           })
           byStage.set(String(row.stage_id), bucket)
         }
-        return byStage as ReadonlyMap<string, readonly PanelVoteRow[]>
+        return byStage
       }),
     )
 
@@ -2585,11 +2585,7 @@ export const revisionAuthorOf = (tenantId: string, revisionId: string) =>
         .where('id', '=', revisionId)
         .executeTakeFirst(),
     )
-    .pipe(
-      Effect.map((row) =>
-        row === undefined ? null : { actorId: String((row as { actorId: string }).actorId) },
-      ),
-    )
+    .pipe(Effect.map((row) => (row === undefined ? null : { actorId: String(row.actorId) })))
 
 /** how one round came to exist, for walking a chain of re-routes */
 export const instanceLineageOf = (tenantId: string, instanceId: string) =>
@@ -2602,16 +2598,7 @@ export const instanceLineageOf = (tenantId: string, instanceId: string) =>
         .where('id', '=', instanceId)
         .executeTakeFirst(),
     )
-    .pipe(
-      Effect.map(
-        (row) =>
-          (row ?? null) as {
-            supersedesInstanceId: string | null
-            appealedInstanceId: string | null
-            origin: string
-          } | null,
-      ),
-    )
+    .pipe(Effect.map((row) => row ?? null))
 
 /**
  * What one round determined, as the fact it wrote.
@@ -2632,11 +2619,7 @@ export const recognitionOfInstance = (tenantId: string, instanceId: string) =>
         .limit(1)
         .executeTakeFirst(),
     )
-    .pipe(
-      Effect.map((row) =>
-        row === undefined ? null : ((row as { values: Record<string, unknown> }).values ?? null),
-      ),
-    )
+    .pipe(Effect.map((row) => (row === undefined ? null : (row.values ?? null))))
 
 /** the determination an open sitting has already frozen, if it has */
 export const lockedProposalOf = (tenantId: string, instanceId: string) =>
@@ -2657,8 +2640,8 @@ export const lockedProposalOf = (tenantId: string, instanceId: string) =>
         row === undefined || (row as { recognitionHash: string | null }).recognitionHash === null
           ? null
           : {
-              values: ((row as { recognitionPayload: Record<string, unknown> })
-                .recognitionPayload ?? {}) as Record<string, unknown>,
+              values:
+                (row as { recognitionPayload: Record<string, unknown> }).recognitionPayload ?? {},
               hash: String((row as { recognitionHash: string }).recognitionHash),
             },
       ),
@@ -2686,7 +2669,7 @@ export const revisionPayloadOf = (tenantId: string, revisionId: string) =>
     .pipe(
       Effect.map((row) =>
         row === undefined
-          ? { payload: {} as unknown, itemRevisionId: null }
+          ? { payload: {}, itemRevisionId: null }
           : {
               payload: (row as { payload: unknown }).payload,
               itemRevisionId: String((row as { itemRevisionId: string }).itemRevisionId),
@@ -2741,8 +2724,8 @@ export const panelRecognitionOf = (tenantId: string, panelId: string) =>
         row === undefined || (row as { recognitionHash: string | null }).recognitionHash === null
           ? null
           : {
-              values: ((row as { recognitionPayload: Record<string, unknown> })
-                .recognitionPayload ?? {}) as Record<string, unknown>,
+              values:
+                (row as { recognitionPayload: Record<string, unknown> }).recognitionPayload ?? {},
               hash: String((row as { recognitionHash: string }).recognitionHash),
               // the sitting's own explanation, carried to the word that ends
               // the round: "why provincial rather than national" is the part

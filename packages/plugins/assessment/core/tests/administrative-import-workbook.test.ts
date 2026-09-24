@@ -56,7 +56,7 @@ const filled = async (
   const sheet = book.getWorksheet(DATA_SHEET)!
   for (const row of rows) sheet.addRow([...row])
   edit?.(book)
-  return new Uint8Array((await book.xlsx.writeBuffer()) as ArrayBuffer)
+  return new Uint8Array(await book.xlsx.writeBuffer())
 }
 
 describe('the administrative import workbook', () => {
@@ -269,7 +269,7 @@ describe('the administrative import workbook', () => {
 
     const book = new ExcelJS.Workbook()
     book.addWorksheet(DATA_SHEET).addRow(['业务编号 *', '姓名'])
-    const noMeta = new Uint8Array((await book.xlsx.writeBuffer()) as ArrayBuffer)
+    const noMeta = new Uint8Array(await book.xlsx.writeBuffer())
     const missing = await parseAdministrativeWorkbook(noMeta).catch((error: unknown) => error)
     expect((missing as WorkbookUnreadable).reason).toBe('metadata-missing')
   })

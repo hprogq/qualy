@@ -431,7 +431,7 @@ describe('a hostile or absent peer', () => {
           if (Result.isSuccess(healed) || Date.now() > deadline) break
           await new Promise((resolve) => setTimeout(resolve, 250))
         }
-        if (!Result.isSuccess(healed!)) throw new Error('expected the reconnect to heal')
+        if (!Result.isSuccess(healed)) throw new Error('expected the reconnect to heal')
         expect(healed.success.output).toBe('alive')
         // the identity is the NEW process's: a cached claim about the first
         // instance would be provenance for a runtime that no longer exists
@@ -441,7 +441,7 @@ describe('a hostile or absent peer', () => {
         second.kill('SIGKILL')
       }
     } finally {
-      await Effect.runPromise(Scope.close(ownScope as Scope.Closeable, Exit.void))
+      await Effect.runPromise(Scope.close(ownScope, Exit.void))
       fs.rmSync(ownDir, { recursive: true, force: true })
     }
   }, 90_000)

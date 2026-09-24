@@ -227,11 +227,7 @@ const make = Effect.gen(function* () {
     locale: SupportedLocale,
   ) {
     const row = yield* withDb(storedValue(tenantId, term.id)).pipe(Effect.orDie)
-    return effectiveText(
-      term,
-      row === undefined ? undefined : (wordsOf(row.value) as LocalizedTextOverride),
-      locale,
-    )
+    return effectiveText(term, row === undefined ? undefined : wordsOf(row.value), locale)
   })
 
   return SettingsStore.of({ readTerminology, writeTerm, resolveTerm })

@@ -1441,7 +1441,7 @@ describe.runIf(postgresAvailable)('the recognition-history repair', () => {
         return filing
       }
       const entryOf = async (status: string) =>
-        await one(
+        one(
           `insert into entries (tenant_id, batch_id, item_id, participant_id, status, source)
            values ($1, $2, $3, $4, $5, 'self') returning id`,
           [tenant, batch, item, participant, status],
@@ -1474,7 +1474,7 @@ describe.runIf(postgresAvailable)('the recognition-history repair', () => {
         [tenant, instance, user],
       )
       const stack = async (eventId: string, at: string) =>
-        await one(
+        one(
           `insert into entry_recognitions
              (tenant_id, batch_id, entry_id, entry_revision_id, item_id, item_revision_id,
               values, source, review_instance_id, review_event_id, created_by, created_at)

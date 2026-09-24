@@ -30,7 +30,7 @@ function widthOf(slot: string) {
 }
 
 it('gives a dialog the measure it asked for', async () => {
-  render(
+  await render(
     <UiProvider scheme="light">
       <Dialog open>
         <DialogContent size="56rem">
@@ -46,7 +46,7 @@ it('gives a dialog the measure it asked for', async () => {
 })
 
 it('gives a dialog that asks for nothing the product measure, not the library one', async () => {
-  render(
+  await render(
     <UiProvider scheme="light">
       <Dialog open>
         <DialogContent>
@@ -62,7 +62,7 @@ it('gives a dialog that asks for nothing the product measure, not the library on
 })
 
 it('holds an alert to its own measure', async () => {
-  render(
+  await render(
     <UiProvider scheme="light">
       <AlertDialog open>
         <AlertDialogContent>
@@ -76,7 +76,7 @@ it('holds an alert to its own measure', async () => {
 })
 
 it('holds a sheet to a reading measure', async () => {
-  render(
+  await render(
     <UiProvider scheme="light">
       <Sheet open>
         <SheetContent side="right">
@@ -92,7 +92,7 @@ it('holds a sheet to a reading measure', async () => {
 })
 
 it('holds a hover card to its own measure rather than its text', async () => {
-  render(
+  await render(
     <UiProvider scheme="light">
       <HoverCard openDelay={0}>
         <HoverCardTrigger asChild>
@@ -115,7 +115,7 @@ it('holds a hover card to its own measure rather than its text', async () => {
 })
 
 it('holds a popover to its own measure rather than its text', async () => {
-  render(
+  await render(
     <UiProvider scheme="light">
       <Popover defaultOpen>
         <PopoverTrigger>open</PopoverTrigger>

@@ -18,7 +18,7 @@ const mount = (ui: React.ReactNode) => render(<UiProvider scheme="light">{ui}</U
 
 describe('the admin field wires its label', () => {
   it('the generated id ties the label to the control by name', async () => {
-    mount(<AdminField label="批次名称">{(id) => <Input id={id} name="title" />}</AdminField>)
+    await mount(<AdminField label="批次名称">{(id) => <Input id={id} name="title" />}</AdminField>)
     // reachable by accessible name is the entire point of the wiring
     await expect.element(page.getByLabelText('批次名称')).toBeVisible()
   })
@@ -26,7 +26,7 @@ describe('the admin field wires its label', () => {
 
 describe('a horizontal field aligns by what it holds', () => {
   it('a bare row centres; a row carrying a content column tops out', async () => {
-    mount(
+    await mount(
       <>
         <span data-testid="bare">
           <Field orientation="horizontal">
@@ -72,7 +72,7 @@ describe('the cards variant answers with real radios', () => {
     )
   }
   it('clicking a card checks its radio and moves the picked mark', async () => {
-    mount(<Cards />)
+    await mount(<Cards />)
     const second = page.getByRole('radio', { name: '仅限清单', exact: false })
     await expect.element(page.getByRole('radio', { name: '不限位置', exact: false })).toBeChecked()
     await second.click()

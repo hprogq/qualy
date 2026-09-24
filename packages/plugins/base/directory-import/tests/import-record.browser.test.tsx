@@ -84,13 +84,13 @@ const open = (stubs: Record<string, unknown> = {}) =>
           Effect.succeed({ toRetire: 2, alreadyGone: 0, withBindings: 1, withGrants: 0 }),
         ...stubs,
       },
-    } as never),
+    }),
     children: <ImportRecordSheet importId={IMPORT_ID} open onClose={() => undefined} />,
   })
 
 describe('the record of an import', () => {
   it('shows what it did and what became of the people', async () => {
-    open()
+    await open()
     await expect.element(page.getByText('students.xlsx', { exact: false })).toBeVisible()
     await vi.waitFor(() =>
       expect(document.querySelectorAll('[data-testid="import-row"]').length).toBe(2),
@@ -107,7 +107,7 @@ describe('the record of an import', () => {
 
   it('reverses only with a reason, and sends the reason typed', async () => {
     const reverse = vi.fn(() => Effect.succeed({ retired: 2, skipped: 0 }))
-    open({ reverseUserImport: reverse })
+    await open({ reverseUserImport: reverse })
     await page.getByRole('button', { name: '撤销本次导入' }).click()
     const confirm = page.getByRole('dialog').getByRole('button', { name: '撤销导入' })
     await expect.element(confirm).toBeDisabled()

@@ -294,7 +294,7 @@ describe('the seams the runtime reports at', () => {
     answering({ schema: 2, config: {} })
     const seen = fakeProvider()
     await startBrowserRum(release)
-    render(
+    await render(
       <MemoryRouter>
         <PluginComponent
           surface={{ kind: 'page', id: 'demo/boom' }}
@@ -322,7 +322,7 @@ describe('the seams the runtime reports at', () => {
     answering({ schema: 2, config: {} })
     const seen = fakeProvider()
     await startBrowserRum(release)
-    render(
+    await render(
       <MemoryRouter>
         <PluginComponent
           surface={{ kind: 'login', id: 'local' }}
@@ -344,7 +344,7 @@ describe('the seams the runtime reports at', () => {
     answering({ schema: 2, config: {} })
     const seen = fakeProvider()
     await startBrowserRum(release)
-    render(
+    await render(
       <MemoryRouter>
         <PluginComponent
           surface={{ kind: 'slot', slot: 'demo/bar', id: 'demo/gone' }}

@@ -95,7 +95,7 @@ describe('what the store is asked, and what comes back', () => {
   it('spells a download so the browser saves it, whatever the file is called', async () => {
     let asked: Record<string, unknown> = {}
     answers('getObjectUrl', (options: never, done: never) => {
-      asked = options as unknown as Record<string, unknown>
+      asked = options
       ;(done as unknown as (error: null, data: { Url: string }) => void)(null, {
         Url: 'https://bucket.example/signed',
       })
@@ -144,7 +144,7 @@ describe('what the store is asked, and what comes back', () => {
   it('names the bucket and the region from its own settings', async () => {
     let asked: Record<string, unknown> = {}
     answers('headObject', async (options: never) => {
-      asked = options as unknown as Record<string, unknown>
+      asked = options
       return { headers: { 'content-length': '1', 'x-cos-hash-crc64ecma': '2' } }
     })
     await Effect.runPromise(cosBackend(settings).stat('attachments/t/a'))

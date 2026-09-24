@@ -233,7 +233,7 @@ describe('the participant results screen', () => {
   it('gives the unit tree the window from where it stands to the bottom', async () => {
     await page.viewport(1280, 800)
     try {
-      screen()
+      await screen()
       await expect.element(page.getByText('郭航旗')).toBeVisible()
       const seat = page.getByTestId('sticky-fill')
       await expect.element(seat).toHaveAttribute('data-filling', 'true')
@@ -273,7 +273,7 @@ describe('the participant results screen', () => {
       canSync: true,
       observedFingerprint: 'f'.repeat(64),
     }
-    screen({
+    await screen({
       listParticipants: () =>
         Effect.succeed({
           items: [
@@ -309,7 +309,7 @@ describe('the participant results screen', () => {
   })
 
   it('opens a person into the same page, and the address says who', async () => {
-    screen()
+    await screen()
     await expect.element(page.getByText('郭航旗')).toBeVisible()
     await expect.element(page.getByText('王君惠')).toBeVisible()
 
@@ -322,14 +322,14 @@ describe('the participant results screen', () => {
   })
 
   it('restores an open account from the address alone', async () => {
-    screen({}, `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_ID}`)
+    await screen({}, `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_ID}`)
     // no press: a reload or a shared link lands on the person
     await expect.element(page.getByTestId('result-total')).toHaveTextContent('1.00')
     await expect.element(page.getByText('2023123456')).toBeVisible()
   })
 
   it('follows a scored line back to the claim that earned it', async () => {
-    screen()
+    await screen()
     await page.getByTestId('participant-row').first().click()
     await expect.element(page.getByTestId('result-total')).toBeVisible()
     await page.getByTestId('ledger-line').click()
@@ -346,7 +346,7 @@ describe('the participant results screen', () => {
     const interveneOnEntry = vi.fn((_request: Request) =>
       Effect.succeed({ entry: entry({ status: 'needs_revision' }) }),
     )
-    screen(
+    await screen(
       { interveneOnEntry },
       `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_ID}&view=entries&entry=${ENTRY_ID}`,
     )
@@ -355,7 +355,7 @@ describe('the participant results screen', () => {
     // the dialog commits in the act's own words, not "save"
     await page.getByRole('button', { name: '退回修改' }).last().click()
     expect(interveneOnEntry).toHaveBeenCalledTimes(1)
-    const sent = interveneOnEntry.mock.calls[0]![0] as Request
+    const sent = interveneOnEntry.mock.calls[0]![0]
     expect(sent.params?.['entryId']).toBe(ENTRY_ID)
     expect(sent.payload).toEqual({ kind: 'return-for-revision', reason: '证书与本人不符' })
   })
@@ -364,7 +364,7 @@ describe('the participant results screen', () => {
     // the band becomes the person the moment one is chosen, so a banner that
     // waited for the name would leave the heading blank for the length of a
     // request - the page visibly losing its title and getting it back
-    screen({
+    await screen({
       getParticipant: () => Effect.never as never,
     })
     await page.getByTestId('participant-row').first().click()
@@ -374,7 +374,7 @@ describe('the participant results screen', () => {
   })
 
   it('names a determination by the words the question uses, never by its id', async () => {
-    screen(
+    await screen(
       {},
       `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_ID}&view=entries&entry=${ENTRY_ID}`,
     )
@@ -389,11 +389,11 @@ describe('the participant results screen', () => {
     await expect.element(card).toMatchTextContent('等级')
     await expect.element(card).toMatchTextContent('省级')
     // the opaque address the contract stores it under is nobody's to read
-    expect((await card.element()).textContent ?? '').not.toContain('dddddddd')
+    expect(card.element().textContent ?? '').not.toContain('dddddddd')
   })
 
   it('says a score cannot be read rather than showing an old one', async () => {
-    screen(
+    await screen(
       {
         getParticipantResult: () =>
           Effect.fail({ _tag: 'ASSESSMENT_SCORING_UNAVAILABLE' } as never),

@@ -64,7 +64,7 @@ const screen = (login: Record<string, ReturnType<typeof lazy>>) =>
 
 describe('the sign-in screen', () => {
   it('renders the driver filed under the type the method names', async () => {
-    screen({ local: lazy(() => import('@qualy/plugin-auth-local/client/LoginMethod')) })
+    await screen({ local: lazy(() => import('@qualy/plugin-auth-local/client/LoginMethod')) })
     // the local driver's own form, which is the only thing that proves the
     // renderer was resolved rather than the shell drawing an empty card
     await expect.element(page.getByLabelText('邮箱')).toBeVisible()
@@ -74,7 +74,7 @@ describe('the sign-in screen', () => {
   })
 
   it('goes from the address to the password on Tab, and only then to a forgotten password', async () => {
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         app: {
           getManifest: () =>
@@ -102,7 +102,7 @@ describe('the sign-in screen', () => {
 
   it('sends nothing it can tell is wrong, and holds the button for the wait a refusal names', async () => {
     let tried = 0
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         app: { getManifest: emptyManifest() },
         auth: { ...anonymous, listLoginMethods: context([password]) },
@@ -151,7 +151,7 @@ describe('the sign-in screen', () => {
     })
     const sent: { email: string; captcha?: { provider: string; response: string } }[] = []
     try {
-      renderScreen({
+      await renderScreen({
         client: fakeClient({
           app: { getManifest: emptyManifest() },
           auth: { ...anonymous, listLoginMethods: context([password]) },
@@ -217,7 +217,7 @@ describe('the sign-in screen', () => {
     })
     let asked = 0
     try {
-      renderScreen({
+      await renderScreen({
         client: fakeClient({
           app: { getManifest: emptyManifest() },
           auth: { ...anonymous, listLoginMethods: context([password]) },
@@ -252,7 +252,7 @@ describe('the sign-in screen', () => {
   })
 
   it('fills in the address this browser was asked to keep', async () => {
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         app: { getManifest: emptyManifest() },
         auth: { ...anonymous, listLoginMethods: context([password]) },
@@ -275,7 +275,7 @@ describe('the sign-in screen', () => {
     const Broken = () => {
       throw new Error('this driver exploded')
     }
-    screen({ local: lazy(() => Promise.resolve({ default: Broken })) })
+    await screen({ local: lazy(() => Promise.resolve({ default: Broken })) })
     await expect
       .element(page.getByTestId('login-renderer'))
       .toHaveAttribute('data-renderer', 'missing')
@@ -287,7 +287,7 @@ describe('the sign-in screen', () => {
     // a deployment whose api offers a driver the browser bundle does not
     // have: the screen says so and offers the way back, rather than showing
     // a card with nothing in it
-    screen({})
+    await screen({})
     await expect
       .element(page.getByTestId('login-renderer'))
       .toHaveAttribute('data-renderer', 'missing')
@@ -305,7 +305,7 @@ describe('the sign-in screen', () => {
         route,
         children: <LoginPage />,
       })
-    back('/login?error=AUTH_PERSON_NOT_FOUND')
+    await back('/login?error=AUTH_PERSON_NOT_FOUND')
     await expect
       .element(page.getByTestId('sign-in-failure'))
       .toHaveAttribute('data-code', 'AUTH_PERSON_NOT_FOUND')
@@ -314,7 +314,7 @@ describe('the sign-in screen', () => {
   })
 
   it('shows nothing for an error that is not a code', async () => {
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         app: { getManifest: emptyManifest() },
         auth: { ...anonymous, listLoginMethods: context([password]) },
@@ -339,7 +339,7 @@ describe('the ways in, as the page lays them out', () => {
     })
 
   it('names the workspace once, lists the main ways as equals and the rest as tiles', async () => {
-    open([
+    await open([
       password,
       away('cas', '统一身份认证', { prominence: 'primary' }),
       away('github', 'GitHub', { icon: { kind: 'builtin', key: 'github' } }),
@@ -360,7 +360,7 @@ describe('the ways in, as the page lays them out', () => {
   })
 
   it('marks the way this browser last signed in by', async () => {
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         app: { getManifest: emptyManifest() },
         auth: {
@@ -386,7 +386,7 @@ describe('the ways in, as the page lays them out', () => {
   })
 
   it('draws the recommended way by the version for its filled ground', async () => {
-    open([
+    await open([
       away('cas', '统一身份认证', {
         prominence: 'primary',
         recommended: true,
@@ -408,7 +408,10 @@ describe('the ways in, as the page lays them out', () => {
   })
 
   it('sets apart only the way the tenant recommends', async () => {
-    open([password, away('cas', '统一身份认证', { prominence: 'primary', recommended: true })])
+    await open([
+      password,
+      away('cas', '统一身份认证', { prominence: 'primary', recommended: true }),
+    ])
     await expect.element(page.getByTestId('sign-in-primary').first()).toBeVisible()
     expect(
       page
@@ -420,7 +423,7 @@ describe('the ways in, as the page lays them out', () => {
 
   it('opens every other way from the last tile, and searches them when there are many', async () => {
     const many = Array.from({ length: 10 }, (_, index) => away(`way${index}`, `方式${index}`))
-    open([password, ...many])
+    await open([password, ...many])
     // six tiles in a row: five ways and the way to all of them
     await expect.element(page.getByTestId('sign-in-more')).toBeVisible()
     expect(page.getByTestId('sign-in-tile').elements()).toHaveLength(5)
@@ -435,7 +438,7 @@ describe('the ways in, as the page lays them out', () => {
   })
 
   it('says an expired sign-in in grey, not as an error, and lets it be put down', async () => {
-    open([password], '/login?error=AUTH_FLOW_REJECTED')
+    await open([password], '/login?error=AUTH_FLOW_REJECTED')
     const notice = page.getByTestId('sign-in-failure')
     await expect.element(notice).toHaveAttribute('data-tone', 'info')
     await notice.getByRole('button', { name: '关闭' }).click()
@@ -444,7 +447,7 @@ describe('the ways in, as the page lays them out', () => {
   })
 
   it('offers nothing to choose when there is nothing to choose', async () => {
-    open([])
+    await open([])
     await expect.element(page.getByTestId('sign-in-empty')).toBeVisible()
   })
 })
@@ -456,7 +459,7 @@ describe('the sign-in screen, for somebody already signed in', () => {
     })
 
   it('sends them home instead of offering a second sign-in', async () => {
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         app: { getManifest: emptyManifest() },
         auth: { getSession: signedInAs, listLoginMethods: context([password]) },
@@ -470,7 +473,7 @@ describe('the sign-in screen, for somebody already signed in', () => {
   })
 
   it('sends them on to where they were sent from, when that is an address here', async () => {
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         app: { getManifest: emptyManifest() },
         auth: { getSession: signedInAs, listLoginMethods: context([password]) },
@@ -486,7 +489,7 @@ describe('the sign-in screen, for somebody already signed in', () => {
   })
 
   it('sends them home instead when the way back leads elsewhere', async () => {
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         app: { getManifest: emptyManifest() },
         auth: { getSession: signedInAs, listLoginMethods: context([password]) },
@@ -498,7 +501,7 @@ describe('the sign-in screen, for somebody already signed in', () => {
   })
 
   it('offers the ways in when the session it had has lapsed', async () => {
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         app: { getManifest: emptyManifest() },
         auth: {
@@ -516,7 +519,7 @@ describe('the sign-in screen, for somebody already signed in', () => {
 
 describe('the way back after signing in', () => {
   it('stays in the address while a way in is chosen', async () => {
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         app: { getManifest: emptyManifest() },
         auth: { ...anonymous, listLoginMethods: context([password]) },

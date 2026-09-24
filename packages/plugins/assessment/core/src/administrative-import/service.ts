@@ -27,12 +27,7 @@ import { itemOf, revisionOf as itemRevisionOf, revisionsByIdOf } from '../item/d
 import { opensTo } from '../item/channels.ts'
 import { boundEvidenceKeys, fillBoundEvidence } from '../scoring/bound-evidence.ts'
 import { announce } from '../live/events.ts'
-import {
-  ScoringRuntimeCatalog,
-  type BatchContext,
-  type ItemPayloadInvalid,
-  type ItemTypeDriver,
-} from '../plugin.ts'
+import { ScoringRuntimeCatalog, type BatchContext, type ItemTypeDriver } from '../plugin.ts'
 import { proveSettlements } from '../scoring/failure-boundary.ts'
 import { readScoringPlan, type ScoringPlan } from '../scoring/plan.ts'
 import { currentRecognitionsOfEntries } from '../scoring/recognition-db.ts'
@@ -751,7 +746,7 @@ export const makeAdministrativeImportMethods = (
                     ...row,
                     issues: [
                       ...row.issues,
-                      ...(result.failure as ItemPayloadInvalid).issues.map((issue) => ({
+                      ...result.failure.issues.map((issue) => ({
                         severity: 'error' as const,
                         field: `evidence.${issue.field}`,
                         reason: issue.reason,

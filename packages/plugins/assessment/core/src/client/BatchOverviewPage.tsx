@@ -726,7 +726,7 @@ function MyDesk({
   const desk = overview.data
   const mixed = desk !== undefined && desk.participant !== null && desk.reviewer !== null
   if (overview.isError) {
-    return <p {...stylex.props(styles.failNote)}>{formatError(overview.error as never)}</p>
+    return <p {...stylex.props(styles.failNote)}>{formatError(overview.error)}</p>
   }
   if (desk !== undefined && desk.participant === null && desk.reviewer === null) {
     // an administrator without a standing here reads the stage plan alone
@@ -927,7 +927,7 @@ function MyDesk({
             ))}
           </div>
         ) : activity.isError ? (
-          <p {...stylex.props(styles.failNote)}>{formatError(activity.error as never)}</p>
+          <p {...stylex.props(styles.failNote)}>{formatError(activity.error)}</p>
         ) : rows.length === 0 ? (
           <p {...stylex.props(styles.quietNote)}>{format(m.overviewActivityNone)}</p>
         ) : (

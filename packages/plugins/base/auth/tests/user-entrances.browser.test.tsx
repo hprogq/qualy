@@ -113,7 +113,7 @@ const rowOf = (type: string) =>
 
 describe('the ways in of one person', () => {
   it('offers a control only where one can work', async () => {
-    open([local(), cas, oauth], true)
+    await open([local(), cas, oauth], true)
     await expect.element(page.getByTestId('entrances')).toBeInTheDocument()
     await vi.waitFor(() => expect(rowOf('local')).toBeTruthy())
     // a credential an administrator may set: one way to set it
@@ -130,21 +130,21 @@ describe('the ways in of one person', () => {
   })
 
   it('reads the address a password door finds them by off the person', async () => {
-    open([local(), cas], true)
+    await open([local(), cas], true)
     await vi.waitFor(() => expect(rowOf('local')?.textContent).toContain('ada@school.edu'))
     // the business number is the person's too, and nothing is bound for it
     expect(rowOf('cas').textContent).toContain('20230001')
   })
 
   it('offers no password to somebody the door could not find', async () => {
-    open([local()], true, {}, person({ email: null }))
+    await open([local()], true, {}, person({ email: null }))
     await vi.waitFor(() => expect(rowOf('local')).toBeTruthy())
     await vi.waitFor(() => expect(rowOf('local').querySelectorAll('button')).toHaveLength(0))
   })
 
   it('asks only for the password, and sends what was typed', async () => {
     const put = vi.fn(() => Effect.succeed({ id: 'created' }))
-    open([local()], true, { putUserAuthBinding: put })
+    await open([local()], true, { putUserAuthBinding: put })
     await page.getByRole('button', { name: '设置密码' }).click()
     const save = page.getByRole('dialog').getByRole('button', { name: '保存', exact: true })
     // the label is the door's own word, and a secret shorter than the door
@@ -168,7 +168,7 @@ describe('the ways in of one person', () => {
 
   it('withdraws only after asking', async () => {
     const remove = vi.fn(() => Effect.succeed({ ok: true as const }))
-    open([oauth], true, { deleteUserAuthBinding: remove })
+    await open([oauth], true, { deleteUserAuthBinding: remove })
     await page.getByRole('button', { name: '撤销' }).click()
     await expect.element(page.getByRole('alertdialog')).toBeInTheDocument()
     expect(remove).not.toHaveBeenCalled()
@@ -178,7 +178,7 @@ describe('the ways in of one person', () => {
   })
 
   it('offers nothing to a reader who may only look', async () => {
-    open([local(), oauth], false)
+    await open([local(), oauth], false)
     await expect.element(page.getByTestId('entrances')).toBeInTheDocument()
     await vi.waitFor(() => expect(rowOf('local')).toBeTruthy())
     expect(document.querySelectorAll('[data-testid="entrance-row"] button')).toHaveLength(0)

@@ -36,7 +36,7 @@ function Host() {
 
 describe('a slot contribution', () => {
   it('keeps its state when the slot re-renders with a new context', async () => {
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         app: { getManifest: { ...emptyManifest(), slots: { 'test/slot': [contribution] } } },
       }),

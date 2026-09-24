@@ -67,7 +67,7 @@ const describe = (failure: unknown): string => {
       parts.push(at.message)
       at = at.cause
     } else if (typeof at === 'object' && 'reason' in at) {
-      parts.push(String((at as { reason: unknown }).reason))
+      parts.push(String(at.reason))
       break
     } else {
       parts.push(String(at))

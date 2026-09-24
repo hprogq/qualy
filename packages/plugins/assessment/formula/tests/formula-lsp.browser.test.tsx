@@ -378,7 +378,7 @@ describe('the document against a scripted wire', () => {
       void held.then(() => {
         wired.socket.serverSend({
           jsonrpc: '2.0',
-          id: frame.id as number,
+          id: frame.id,
           result: {
             kind: 'full',
             items: [

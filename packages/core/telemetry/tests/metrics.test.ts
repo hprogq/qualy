@@ -33,7 +33,7 @@ describe('the bounded metric constructors', () => {
     )
     const values = snapshot
       .filter((state) => state.id === 'qualy_test.outcomes')
-      .map((state) => state.attributes?.outcome)
+      .map((state) => String(state.attributes?.outcome))
       .sort()
     expect(values).toEqual(['other', 'success'])
   })

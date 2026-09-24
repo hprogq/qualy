@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import { defineEntity } from '@mikro-orm/core'
 import { assertNoCollisions } from '../src/assembly/entities.ts'
 import { parseDeclaration } from '../src/assembly/contribution.ts'
-import type { DatabaseDeclaration } from '../src/plugin.ts'
 
 // What reading a plugin's database declaration refuses.
 //
@@ -22,7 +21,7 @@ const parse = (declaration: object) =>
   parseDeclaration('@qualy/plugin-a', '/pkg', {
     entities: [],
     ...declaration,
-  } as DatabaseDeclaration)
+  })
 
 describe('entity declarations', () => {
   it('refuses two plugins claiming one table', () => {

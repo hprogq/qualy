@@ -52,7 +52,7 @@ const widthOf = (testId: string) => {
 
 describe('the select trigger sizing contract', () => {
   it('fits its content by default, and obeys xstyle property overrides', async () => {
-    render(
+    await render(
       <UiProvider scheme="light">
         <Probe testId="bare" />
         <Probe testId="fixed" xstyle={caller.fixed} />

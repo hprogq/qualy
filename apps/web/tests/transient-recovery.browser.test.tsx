@@ -35,7 +35,7 @@ const manifestThat = (fail: () => number) => {
 }
 
 it('carries on once the backend comes back', async () => {
-  renderScreen({
+  await renderScreen({
     client: manifestThat(() => 2),
     children: <p>the application</p>,
   })
@@ -44,7 +44,7 @@ it('carries on once the backend comes back', async () => {
 }, 30_000)
 
 it('says so when the server means it', async () => {
-  renderScreen({
+  await renderScreen({
     client: fakeClient({
       app: {
         getManifest: () =>

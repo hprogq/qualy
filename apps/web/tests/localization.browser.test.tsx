@@ -132,7 +132,7 @@ const screen = (
     client: fakeClient({
       app: { getManifest: () => Effect.succeed(emptyManifest()) },
       assessment: { ...ambient, ...stubs },
-    } as never),
+    }),
     routes: [{ path, element }] as never,
     route,
     locale,
@@ -140,7 +140,7 @@ const screen = (
 
 describe('the words themselves', () => {
   it('agrees the plural and lands the numbers it is given', async () => {
-    screen(
+    await screen(
       {
         listMyEntries: () =>
           Effect.succeed({ participantId: PARTICIPANT_ID, entries: [entry()], nextCursor: null }),
@@ -177,7 +177,7 @@ describe('the words themselves', () => {
   })
 
   it('speaks the reader’s own acts to them, and names everybody else', async () => {
-    screen(
+    await screen(
       {
         listMyEntries: () =>
           Effect.succeed({ participantId: PARTICIPANT_ID, entries: [entry()], nextCursor: null }),
@@ -235,7 +235,7 @@ describe('the words themselves', () => {
   })
 
   it('renders the same screen in the other locale', async () => {
-    screen(
+    await screen(
       {
         listMyEntries: () =>
           Effect.succeed({ participantId: PARTICIPANT_ID, entries: [], nextCursor: null }),

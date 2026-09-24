@@ -165,7 +165,7 @@ const queue = () =>
           }),
         listAwaitingSupplements: () => Effect.succeed({ items: [], nextCursor: null }),
       },
-    } as never),
+    }),
     routes: [
       { path: '/assessment/batches/:batchId/reviews', element: <ReviewInboxPage /> },
     ] as never,
@@ -194,7 +194,7 @@ const open = (stubs: Record<string, unknown> = {}) =>
         getEntryHistory: () => Effect.succeed({ revisions: [], events: [], rounds: [] }),
         ...stubs,
       },
-    } as never),
+    }),
     routes: [
       {
         path: '/assessment/batches/:batchId/reviews/:instanceId',
@@ -240,8 +240,8 @@ afterEach(() => page.viewport(DEFAULT_VIEWPORT.width, DEFAULT_VIEWPORT.height))
 
 describe('one workbench, three widths', () => {
   it('pages the parts on a phone and opens on the filing', async () => {
-    page.viewport(390, 844)
-    open()
+    await page.viewport(390, 844)
+    await open()
     await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
 
     // all three faces exist side by side - the pager shows one whole face
@@ -267,8 +267,8 @@ describe('one workbench, three widths', () => {
   })
 
   it('keeps three columns and trades the queue rail away on a laptop', async () => {
-    page.viewport(1280, 800)
-    open()
+    await page.viewport(1280, 800)
+    await open()
     await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
     // the columns get the width first: all three stand, and the queue
     // becomes the key at the left of the header instead of a rail
@@ -281,8 +281,8 @@ describe('one workbench, three widths', () => {
   // up when the reviewer wants to jump, so it comes out from the side when
   // asked for, at every width, and the three columns keep the room.
   it('brings the queue out from the side when asked, on a desk as on a laptop', async () => {
-    page.viewport(1680, 950)
-    open()
+    await page.viewport(1680, 950)
+    await open()
     await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
     expect(parts()).toEqual(['flow', 'filing', 'about'])
     expect(document.querySelector('[data-testid="queue-sheet"]')).toBeNull()
@@ -292,8 +292,8 @@ describe('one workbench, three widths', () => {
   })
 
   it('lets the outer columns be dragged, between bounds it advertises', async () => {
-    page.viewport(1680, 950)
-    open()
+    await page.viewport(1680, 950)
+    await open()
     await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
     const flowWidth = () =>
       document.querySelector<HTMLElement>('[data-workbench-part="flow"]')?.getBoundingClientRect()
@@ -322,8 +322,8 @@ describe('one workbench, three widths', () => {
   })
 
   it('opens the queue from the keyboard and walks it with the arrows', async () => {
-    page.viewport(1680, 950)
-    open()
+    await page.viewport(1680, 950)
+    await open()
     await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
     const { userEvent } = await import('vitest/browser')
     await userEvent.keyboard('q')
@@ -340,8 +340,8 @@ describe('one workbench, three widths', () => {
   })
 
   it('keeps the queue inside the width it is given', async () => {
-    page.viewport(390, 844)
-    queue()
+    await page.viewport(390, 844)
+    await queue()
     await expect.element(page.getByText('周予安').first()).toBeVisible()
     // A table of fixed tracks is 11rem of name before anything else on a
     // 390px screen, and the rest of the row runs off the end of it. The
@@ -460,8 +460,8 @@ describe('the history under the flow pane', () => {
     // three columns at exactly the beside breakpoint: the flow column at
     // its narrowest real width, where the second-bearing clock used to run
     // out of the card and squeeze the grounds to nothing
-    page.viewport(1024, 900)
-    open({ getReviewInstance: () => Effect.succeed({ review: withHistory() }) })
+    await page.viewport(1024, 900)
+    await open({ getReviewInstance: () => Effect.succeed({ review: withHistory() }) })
     await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
 
     const rows = page.getByTestId('earlier-row').elements()
@@ -481,7 +481,7 @@ describe('the history under the flow pane', () => {
 
 describe('the round moving on mid-thought', () => {
   it('keeps the workbench up, says what happened, and offers the way on', async () => {
-    page.viewport(1440, 900)
+    await page.viewport(1440, 900)
     // reads succeed until the round is settled elsewhere; from then on the
     // server refuses them the way it refuses a round that stopped being
     // this reviewer's. Flag-driven, not call-counted: StrictMode makes the
@@ -509,7 +509,7 @@ describe('the round moving on mid-thought', () => {
           Stream.never,
         ),
       )
-    open({ getReviewInstance: detail as never, watchBatch: wake as never })
+    await open({ getReviewInstance: detail, watchBatch: wake })
 
     await expect.element(page.getByText('周予安').first()).toBeVisible()
     settledElsewhere = true
@@ -529,8 +529,8 @@ describe('the round moving on mid-thought', () => {
 
 describe('the escalation environment', () => {
   it('wears the caution band, names the steps, and hands the judge every earlier opinion', async () => {
-    page.viewport(1440, 900)
-    open({ getReviewInstance: () => Effect.succeed({ review: onLadder() }) })
+    await page.viewport(1440, 900)
+    await open({ getReviewInstance: () => Effect.succeed({ review: onLadder() }) })
     await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
 
     // the mode is worn, not explained: a band over the workbench, and the
@@ -568,8 +568,8 @@ describe('the four acts, always on the bar', () => {
   it('shows a blocked act standing, and a press answers with the reason', async () => {
     const restore = asThumb()
     try {
-      page.viewport(390, 844)
-      open()
+      await page.viewport(390, 844)
+      await open()
       await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
 
       // all four acts stand whatever this round offers; the blocked one is
@@ -599,8 +599,8 @@ describe('the four acts, always on the bar', () => {
   })
 
   it('keeps the routing pair compact and the verdict pair full-width on a phone', async () => {
-    page.viewport(390, 844)
-    open()
+    await page.viewport(390, 844)
+    await open()
     await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
     const of = (id: string) => page.getByTestId(id).element().getBoundingClientRect()
     const escalate = of('act-escalate')
@@ -620,8 +620,8 @@ describe('the four acts, always on the bar', () => {
 
 describe('the pager knows what must not be missed', () => {
   it('lifts the escalation over the pager, dots the flow face, and guards the verdict', async () => {
-    page.viewport(390, 844)
-    open({ getReviewInstance: () => Effect.succeed({ review: onLadder() }) })
+    await page.viewport(390, 844)
+    await open({ getReviewInstance: () => Effect.succeed({ review: onLadder() }) })
     await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
 
     // the notice stands over the faces, readable while the filing is up
@@ -671,11 +671,11 @@ describe('sending, under a thumb', () => {
   it('opens the act as a sheet, and sends only on a full slide', async () => {
     const restore = asThumb()
     try {
-      page.viewport(390, 844)
+      await page.viewport(390, 844)
       const decided = vi.fn(() =>
         Effect.succeed({ review: { ...review, state: 'completed', outcome: 'approved' } }),
       )
-      open({ decideReview: decided as never })
+      await open({ decideReview: decided })
       await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
 
       // a decision is an act with its own panel: the tap opens it and sends
@@ -755,7 +755,7 @@ describe('the version picker', () => {
     }
     // the round judges the newest version, which is the shape the picker is
     // drawn for: everything under it is something to read against
-    open({
+    await open({
       getEntryHistory: () => Effect.succeed(history),
       getReviewInstance: () =>
         Effect.succeed({ review: { ...review, revision: { ...review.revision, revisionNo: 3 } } }),

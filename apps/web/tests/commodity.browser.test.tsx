@@ -31,7 +31,7 @@ const token = (name: string): string =>
 
 describe('the checkbox says its state with the glyph', () => {
   it('shows no mark unticked, a mark ticked, a mark for the mixed state', async () => {
-    mount(
+    await mount(
       <>
         <span data-testid="wrap-off">
           <Checkbox aria-label="off" checked={false} />
@@ -53,7 +53,7 @@ describe('the checkbox says its state with the glyph', () => {
 
 describe('the badge palette carries no chroma', () => {
   it('default is the primary ink and secondary is the product grey', async () => {
-    mount(
+    await mount(
       <>
         <Badge>plain</Badge>
         <Badge variant="secondary">quiet</Badge>
@@ -79,7 +79,7 @@ describe('an icon inside a control sizes to the control', () => {
   // in a button or badge rendered at its own 24px default and dwarfed the
   // control around it. Pinned on the computed box, not on any class name.
   it('buttons and badges keep their icons at the product geometry', async () => {
-    mount(
+    await mount(
       <>
         <Button>
           <Glyph /> go
@@ -107,7 +107,7 @@ describe('the badge lays its content in one row', () => {
   // label is a plain block and the preflight makes svg and flex spans
   // block-level. Pinned on geometry: everything shares one line box.
   it('a dot, an icon and the word sit on the same line', async () => {
-    mount(
+    await mount(
       <Badge variant="secondary">
         <span style={{ display: 'flex' }} data-testid="dot" />
         <Glyph />
@@ -125,7 +125,7 @@ describe('the badge lays its content in one row', () => {
 
 describe('the disabled state carries no chroma', () => {
   it('a disabled button rests on the product greys', async () => {
-    mount(<Button disabled>stuck</Button>)
+    await mount(<Button disabled>stuck</Button>)
     const stuck = page.getByRole('button', { name: 'stuck' })
     const paint = () => getComputedStyle(stuck.element())
     // --q-surface-muted and --q-muted-foreground, not a slate tint

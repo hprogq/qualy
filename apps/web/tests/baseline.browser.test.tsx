@@ -62,7 +62,7 @@ const WATCHED = [
 ]
 
 it('dresses every bare element the product uses', async () => {
-  render(
+  await render(
     <div data-testid="bare">
       <button type="button">b</button>
       <input defaultValue="i" />

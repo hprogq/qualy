@@ -259,10 +259,7 @@ const render = (settings: LoggingSettings, line: Line): string => {
 
 export const qualyLogger = (settings: LoggingSettings): Logger.Logger<unknown, void> =>
   Logger.make((options) => {
-    const annotations = options.fiber.getRef(References.CurrentLogAnnotations) as Record<
-      string,
-      unknown
-    >
+    const annotations = options.fiber.getRef(References.CurrentLogAnnotations)
     const source = typeof annotations.source === 'string' ? annotations.source : 'app'
     const minimum = settings.sources[source]
     // Severity ascends Trace(0) -> Fatal(50000), with None above everything and

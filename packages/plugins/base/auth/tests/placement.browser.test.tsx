@@ -119,7 +119,7 @@ const open = (stubs: Record<string, unknown> = {}) =>
           }),
         ...stubs,
       },
-    } as never),
+    }),
     // the picker arrives the way the host delivers it, by surface
     registry: {
       slots: {
@@ -135,7 +135,7 @@ const open = (stubs: Record<string, unknown> = {}) =>
 
 describe('where one person stands', () => {
   it('spells the chain out as kind and name, a rung to a line', async () => {
-    open()
+    await open()
     const chain = page.getByTestId('org-chain')
     await expect.element(chain).toBeVisible()
     const rungs = [...(chain.element() as HTMLElement).querySelectorAll('[data-org-node]')]
@@ -147,7 +147,7 @@ describe('where one person stands', () => {
 
   it('draws the units it will not take, saying why, and sends the one it will', async () => {
     const moved = vi.fn(() => Effect.succeed({ ok: true }))
-    open({ setUserPlacement: moved })
+    await open({ setUserPlacement: moved })
     // the tree is behind a press: this page is a record, not a tree
     await page.getByTestId('move-open').click()
     const picker = page.getByTestId('move-picker')

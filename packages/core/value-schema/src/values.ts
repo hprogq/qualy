@@ -40,7 +40,7 @@ export const canonicalizeValues = (
   // values has no canonical form, and it is the validator's job to refuse
   // it - never this function's job to throw on it
   if (typeof values !== 'object' || values === null || Array.isArray(values)) {
-    return values as unknown as Record<string, unknown>
+    return values
   }
   const out: Record<string, unknown> = Object.create(null)
   for (const key of Object.keys(values)) {

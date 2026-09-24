@@ -1353,7 +1353,7 @@ describe.runIf(postgresAvailable)('recognitions', () => {
               itemId: g.item.id,
               itemType: g.item.itemType,
               scoreGroupId: g.item.scoreGroupId,
-              config: narrowed as never,
+              config: narrowed,
             },
             f.principal(f.admin),
           )

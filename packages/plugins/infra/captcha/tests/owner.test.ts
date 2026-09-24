@@ -24,8 +24,10 @@ const declaredOf = (contributions: readonly Contributed<CaptchaProviderDeclarati
     ),
   )
 
-const contribution = (pluginId: string, code: string): Contributed<CaptchaProviderDeclaration> =>
-  ({ pluginId, value: { code } }) as Contributed<CaptchaProviderDeclaration>
+const contribution = (pluginId: string, code: string): Contributed<CaptchaProviderDeclaration> => ({
+  pluginId,
+  value: { code },
+})
 
 const provider = (code: string): CaptchaProvider => ({
   code,

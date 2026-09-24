@@ -13,7 +13,7 @@ import '../src/app.css'
 // the styling migration by pointing at whatever still reads that pipeline.
 describe('the design system actually styles', () => {
   it('a default alert has a border and rounded corners', async () => {
-    render(
+    await render(
       <Alert>
         <AlertDescription>probe</AlertDescription>
       </Alert>,
@@ -30,7 +30,7 @@ describe('the design system actually styles', () => {
   // variant - which is exactly what can regress silently, so it is pinned on
   // the computed colours: a destructive description leaves the muted grey
   it('a destructive alert tints its description away from the muted grey', async () => {
-    render(
+    await render(
       <>
         <span data-testid="plain-alert">
           <Alert>

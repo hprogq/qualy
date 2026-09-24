@@ -45,7 +45,7 @@ const token = (name: string): string =>
 describe('the theme bridge keeps one source of truth', () => {
   it('choice drives both the product class and the widget attribute', async () => {
     localStorage.removeItem('qualy.theme')
-    render(
+    await render(
       <ThemeProvider>
         <Bridge>
           <SchemeHarness />
@@ -84,7 +84,7 @@ const sx = stylex.create({
 describe('StyleX sits above the widget layer', () => {
   it('a stylex class repaints a widget without !important', async () => {
     await import('virtual:stylex:runtime')
-    render(
+    await render(
       <UiProvider scheme="light">
         <>
           <Button>stock</Button>

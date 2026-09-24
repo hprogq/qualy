@@ -75,7 +75,7 @@ const open = (
         getRoleGrantOptions: () => Effect.succeed({ roles: roleOptions }),
         ...stubs,
       },
-    } as never),
+    }),
     registry,
     route: `/organization/users/${USER_ID}/role-grants`,
     path: '/organization/users/:userId/role-grants',
@@ -86,7 +86,7 @@ const rows = () => [...document.querySelectorAll('[data-testid="grant-row"]')]
 
 describe('the grants of one person', () => {
   it('keeps organizational and confined grants apart, and offers revoke only to the first', async () => {
-    open()
+    await open()
     await vi.waitFor(() => expect(rows().length).toBe(2))
     expect(rows().map((row) => row.getAttribute('data-grant-kind'))).toEqual([
       'organizational',
@@ -108,7 +108,7 @@ describe('the grants of one person', () => {
       seen(context.grant)
       return <span data-testid="grant-origin-batch">来自批次</span>
     }
-    open(
+    await open(
       {},
       {
         collections: {
@@ -156,7 +156,7 @@ describe('the grants of one person', () => {
 
   it('asks before revoking, and revokes the one grant asked about', async () => {
     const revoke = vi.fn(() => Effect.succeed({ ok: true as const }))
-    open({ deleteRoleGrant: revoke })
+    await open({ deleteRoleGrant: revoke })
     await vi.waitFor(() => expect(rows().length).toBe(2))
     await page.getByRole('button', { name: '撤销' }).click()
     await page.getByRole('alertdialog').getByRole('button', { name: '撤销' }).click()
@@ -166,7 +166,7 @@ describe('the grants of one person', () => {
 
   it('grants at the tenant when that is the chosen scope', async () => {
     const create = vi.fn(() => Effect.succeed({ id: 'created-grant' }))
-    open({ createRoleGrant: create })
+    await open({ createRoleGrant: create })
     // the form is a dialog over the section, opened from its heading
     await page.getByRole('button', { name: '授予角色' }).click()
     await expect.element(page.getByRole('combobox', { name: '角色' })).toBeInTheDocument()
@@ -194,7 +194,7 @@ describe('the grants of one person', () => {
         </button>
       )
     }
-    open(
+    await open(
       { getRoleGrantOptions: options, createRoleGrant: create },
       { slots: { 'iam/org-node-picker': [{ id: 'auth/org-node-picker', order: 0 }] } },
       {
@@ -234,7 +234,7 @@ describe('the grants of one person', () => {
   // an empty list is an answer: this caller holds nothing wide enough to pass
   // on here, which is different from a list that has not arrived
   it('says so when nothing can be granted rather than offering an empty picker', async () => {
-    open({ getRoleGrantOptions: () => Effect.succeed({ roles: [] }) })
+    await open({ getRoleGrantOptions: () => Effect.succeed({ roles: [] }) })
     // the form is a dialog over the section, opened from its heading
     await page.getByRole('button', { name: '授予角色' }).click()
     await expect.element(page.getByTestId('grant-nothing-offered')).toBeInTheDocument()

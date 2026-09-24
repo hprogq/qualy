@@ -2081,7 +2081,7 @@ describe.runIf(postgresAvailable)('reading a composition before it is saved', ()
         return yield* assessment.checkItem(
           f.tenant,
           batch.id,
-          { itemType: 'evidence', scoreGroupId: groupId, config: composed() as never },
+          { itemType: 'evidence', scoreGroupId: groupId, config: composed() },
           { tenantId: f.tenant, userId: f.student, sessionId: 's' },
         )
       }),

@@ -6,7 +6,6 @@ import {
   type ErrorMessageMap,
   type MessageCatalog,
   type MessageDescriptor,
-  type MessageValues,
   type PluginCatalogs,
   type ValuesOf,
   type SupportedLocale,
@@ -214,7 +213,7 @@ export function I18nProvider({
       i18n._({
         id: descriptor.id,
         message: descriptor.defaultMessage,
-        values: args[0] as MessageValues | undefined,
+        values: args[0],
       })
     return {
       locale,

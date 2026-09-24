@@ -47,7 +47,7 @@ describe('a stream that dies as soon as it opens', () => {
   it('waits longer before each dial instead of knocking at a fixed rate', async () => {
     const waits = recordRedials()
     let dials = 0
-    render(<DyingStream onDial={() => (dials += 1)} />)
+    await render(<DyingStream onDial={() => (dials += 1)} />)
 
     await vi.waitFor(() => expect(waits.length).toBeGreaterThanOrEqual(3), { timeout: 5_000 })
     expect(waits.slice(0, 3)).toEqual([6_000, 12_000, 24_000])

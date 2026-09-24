@@ -139,7 +139,7 @@ export function LoginMethodGlyph({
   )
   // the image for a dark ground where the tenant gave one, else the only one
   const dark = icon?.kind === 'image' && surface === 'dark' && icon.onDark !== null
-  const version = icon?.kind === 'image' ? (dark ? icon.onDark! : icon.version) : undefined
+  const version = icon?.kind === 'image' ? (dark ? icon.onDark : icon.version) : undefined
   const body = (() => {
     if (icon === null) return initial
     if (icon.kind === 'image') {

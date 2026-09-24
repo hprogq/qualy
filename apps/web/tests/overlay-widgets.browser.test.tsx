@@ -51,7 +51,7 @@ describe('the menu', () => {
   }
 
   it('opens, walks with arrows, answers Enter, and returns focus', async () => {
-    mount(<MenuHarness />)
+    await mount(<MenuHarness />)
     const trigger = page.getByRole('button', { name: 'actions' })
     await trigger.click()
     await expect.element(page.getByRole('menu')).toBeVisible()
@@ -65,7 +65,7 @@ describe('the menu', () => {
   })
 
   it('Escape closes the menu and nothing else', async () => {
-    mount(<MenuHarness />)
+    await mount(<MenuHarness />)
     await page.getByRole('button', { name: 'actions' }).click()
     await expect.element(page.getByRole('menu')).toBeVisible()
     await userEvent.keyboard('{Escape}')
@@ -75,7 +75,7 @@ describe('the menu', () => {
 
 describe('the tooltip', () => {
   it('shows on keyboard focus, not only on hover', async () => {
-    mount(
+    await mount(
       <TooltipProvider>
         <p>elsewhere</p>
         <Tooltip>
@@ -133,7 +133,7 @@ describe('the select as a form citizen', () => {
         </form>
       )
     }
-    mount(<FormHarness />)
+    await mount(<FormHarness />)
     await page.getByRole('combobox', { name: 'kind' }).click()
     // the description explains in the list only
     await expect.element(page.getByText('the second one')).toBeVisible()
@@ -162,7 +162,7 @@ describe('the select as a form citizen', () => {
         </>
       )
     }
-    mount(<KeysHarness />)
+    await mount(<KeysHarness />)
     const trigger = page.getByRole('combobox', { name: 'kind' })
     await expect.element(trigger).toBeVisible()
     ;(trigger.element() as HTMLElement).focus()
@@ -221,7 +221,7 @@ describe('a menu hosting a select', () => {
         </>
       )
     }
-    mount(<Harness />)
+    await mount(<Harness />)
     await page.getByRole('button', { name: 'account' }).click()
     await page.getByRole('combobox', { name: 'language' }).click()
     await expect.element(page.getByRole('option', { name: 'English' })).toBeVisible()
@@ -258,7 +258,7 @@ describe('a dialog hosting a select answers Escape one layer at a time', () => {
         </>
       )
     }
-    mount(<Harness />)
+    await mount(<Harness />)
     await page.getByRole('button', { name: 'begin' }).click()
     await page.getByRole('combobox', { name: 'flavor' }).click()
     await expect.element(page.getByRole('listbox')).toBeVisible()
@@ -285,7 +285,7 @@ describe('dialog accessibility wiring', () => {
         </Dialog>
       )
     }
-    mount(<Harness />)
+    await mount(<Harness />)
     const dialog = page.getByRole('dialog', { name: 'Move the file' })
     await expect.element(dialog).toBeVisible()
     await expect.element(dialog).toHaveAccessibleDescription('It leaves this folder for good.')
@@ -308,7 +308,7 @@ describe('dialog accessibility wiring', () => {
         />
       )
     }
-    mount(<Harness />)
+    await mount(<Harness />)
     const alert = page.getByRole('alertdialog', { name: 'Remove it?' })
     await expect.element(alert).toBeVisible()
     await expect.element(alert).toHaveAccessibleDescription('This cannot be undone.')
@@ -331,7 +331,7 @@ describe('the sheet', () => {
         </Sheet>
       )
     }
-    mount(<Harness />)
+    await mount(<Harness />)
     const panel = page.getByRole('dialog', { name: 'Panel' })
     await expect.element(panel).toBeVisible()
     await expect
@@ -357,7 +357,7 @@ describe('the sheet', () => {
         </>
       )
     }
-    mount(<Harness />)
+    await mount(<Harness />)
     await page.getByRole('button', { name: 'inspect' }).click()
     await expect.element(page.getByText('facts')).toBeVisible()
     await expect.poll(() => document.body.hasAttribute('data-scroll-locked')).toBe(true)

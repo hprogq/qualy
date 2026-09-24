@@ -420,8 +420,8 @@ export const FilingColumn = memo(function FilingColumn({
   // Keyed so a late fetch never performs an entrance: a fresh mount shows
   // its settled state, and only the user's own toggles animate.
   const arrived = !wantsHistory || !history.isPending
-  const revisions = ((history.data as { revisions?: readonly HistoryRevision[] } | undefined)
-    ?.revisions ?? []) as readonly HistoryRevision[]
+  const revisions =
+    (history.data as { revisions?: readonly HistoryRevision[] } | undefined)?.revisions ?? []
   const earlier = revisions.filter((one) => one.revisionNo < review.revision.revisionNo)
   const against =
     comparing === null

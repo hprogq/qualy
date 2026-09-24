@@ -101,7 +101,7 @@ const install = async (
     readonly hash?: string
   } = {},
 ) =>
-  await installWebRelease({
+  installWebRelease({
     source: buildOutput(releaseId, options),
     store,
     resolutionHash: options.hash ?? HASH,
@@ -126,7 +126,7 @@ describe('installing', () => {
       clientProtocol: 1,
       resolutionHash: HASH,
       // the surfaces this build can render, fingerprinted on the way in
-      browserContractHash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/) as unknown as string,
+      browserContractHash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
       installedAt: '2026-09-14T09:00:00.000Z',
       assets: ['assets/index-A.js', 'assets/tiny-A.js'],
     })

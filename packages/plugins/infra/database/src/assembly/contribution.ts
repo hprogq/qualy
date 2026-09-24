@@ -3,6 +3,9 @@ import path from 'node:path'
 import { isPluginDescriptor, Plugin } from '@qualy/plugin-kit'
 import { DatabaseEntities, type DatabaseDeclaration } from '../plugin.ts'
 
+/** the default sort order of strings, said out loud */
+const byCodeUnits = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
+
 // What a plugin says when it owns database objects, read from its descriptor.
 //
 // Capability is declared, never probed: a plugin without a Db.entities feature
@@ -108,7 +111,7 @@ export function parseDeclaration(
   return {
     entities: [...entities].sort(),
     ...(baselineDir === undefined ? {} : { baselineDir }),
-    dependsOn: [...dependsOn].sort(),
+    dependsOn: [...dependsOn].sort(byCodeUnits),
   }
 }
 

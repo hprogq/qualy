@@ -66,7 +66,7 @@ export const formulaLspQuotaLayer: Layer.Layer<FormulaLspQuota> = Layer.effect(
           if (taken >= FORMULA_LSP_SEATS_PER_PERSON) return [false, held] as const
           const next = new Map(held)
           next.set(key, taken + 1)
-          return [true, next as ReadonlyMap<string, number>] as const
+          return [true, next] as const
         }),
         (seated) =>
           seated
@@ -75,7 +75,7 @@ export const formulaLspQuotaLayer: Layer.Layer<FormulaLspQuota> = Layer.effect(
                 const remaining = (held.get(key) ?? 1) - 1
                 if (remaining > 0) next.set(key, remaining)
                 else next.delete(key)
-                return next as ReadonlyMap<string, number>
+                return next
               })
             : Effect.void,
       )

@@ -111,7 +111,7 @@ export const makeUriBoundary = (root: string): UriBoundary => {
 export const rewriteStrings = (
   value: unknown,
   rewrite: (text: string) => string | null,
-): unknown | null => {
+): unknown => {
   if (typeof value === 'string') return rewrite(value)
   if (Array.isArray(value)) {
     const out: unknown[] = []

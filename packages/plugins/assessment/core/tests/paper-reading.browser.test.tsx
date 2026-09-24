@@ -123,7 +123,7 @@ const paper = (route: string) =>
           })),
         getEntryHistory: () => Effect.succeed({ revisions: [], events: [], rounds: [] }),
       },
-    } as never),
+    }),
     route,
     routes: [
       {
@@ -164,6 +164,7 @@ const paperScroller = (): HTMLElement =>
   document.querySelectorAll('[data-slot="scroll-area-viewport"]')[1] as HTMLElement
 
 const marked = (): string =>
+  // eslint-disable-next-line typescript/no-unnecessary-type-assertion -- innerText is HTMLElement's, not Element's
   (document.querySelector('[aria-current="true"]') as HTMLElement | null)?.innerText
     .replace(/\s+/g, ' ')
     .trim() ?? ''
@@ -171,7 +172,7 @@ const marked = (): string =>
 describe('reading the paper', () => {
   it('lands on the question the address names, without moving the shell', async () => {
     await page.viewport(1440, 860)
-    paper(`/assessment/batches/${BATCH_ID}/my-entries?open=${TAIL}`)
+    await paper(`/assessment/batches/${BATCH_ID}/my-entries?open=${TAIL}`)
 
     await expect.element(page.getByRole('heading', { name: '学科竞赛获奖' })).toBeVisible()
     // the two panes start their reading at the same line: the paper's
@@ -194,7 +195,7 @@ describe('reading the paper', () => {
 
   it('marks the tail of the paper, which no scroll can lift to the reading line', async () => {
     await page.viewport(1440, 860)
-    paper(`/assessment/batches/${BATCH_ID}/my-entries`)
+    await paper(`/assessment/batches/${BATCH_ID}/my-entries`)
 
     await expect.element(page.getByRole('heading', { name: '品德题目 1' })).toBeVisible()
     const viewport = paperScroller()
@@ -204,7 +205,7 @@ describe('reading the paper', () => {
 
   it('keeps the mark on a band clicked into view at the end of the paper', async () => {
     await page.viewport(1440, 860)
-    paper(`/assessment/batches/${BATCH_ID}/my-entries`)
+    await paper(`/assessment/batches/${BATCH_ID}/my-entries`)
 
     await expect.element(page.getByRole('heading', { name: '品德题目 1' })).toBeVisible()
     await page.getByRole('button', { name: /^学业发展/ }).click()
@@ -222,7 +223,7 @@ describe('reading the paper', () => {
 
   it('folds the structure into a drawer on a phone, and a pick scrolls the paper', async () => {
     await page.viewport(390, 844)
-    paper(`/assessment/batches/${BATCH_ID}/my-entries`)
+    await paper(`/assessment/batches/${BATCH_ID}/my-entries`)
 
     await expect.element(page.getByRole('heading', { name: '品德题目 1' })).toBeVisible()
     // no rail beside the paper; the toolbar offers the drawer instead
@@ -242,7 +243,7 @@ describe('reading the paper', () => {
 
   it('pins the section strip under the phone toolbar once its card scrolls past', async () => {
     await page.viewport(390, 844)
-    paper(`/assessment/batches/${BATCH_ID}/my-entries`)
+    await paper(`/assessment/batches/${BATCH_ID}/my-entries`)
 
     await expect.element(page.getByRole('heading', { name: '品德题目 1' })).toBeVisible()
     const scroller = document.querySelector('main') as HTMLElement
@@ -274,7 +275,7 @@ describe('reading the paper', () => {
   // narrowed their window had no strip until they reloaded.
   it('names the section at every width, and after the window crosses over', async () => {
     await page.viewport(1440, 860)
-    paper(`/assessment/batches/${BATCH_ID}/my-entries`)
+    await paper(`/assessment/batches/${BATCH_ID}/my-entries`)
     await expect.element(page.getByRole('heading', { name: '品德题目 1' })).toBeVisible()
 
     const named = () => document.querySelector('[data-testid="band-strip"]')?.textContent ?? ''
@@ -296,7 +297,7 @@ describe('reading the paper', () => {
   it('never names a section the rail has already left', async () => {
     // short enough that the last section's head is carried up past the strip
     await page.viewport(390, 480)
-    paper(`/assessment/batches/${BATCH_ID}/my-entries`)
+    await paper(`/assessment/batches/${BATCH_ID}/my-entries`)
     await expect.element(page.getByRole('heading', { name: '品德题目 1' })).toBeVisible()
     const scroller = document.querySelector('main') as HTMLElement
     const strip = () => document.querySelector('[data-testid="band-strip"]')
@@ -329,7 +330,7 @@ describe('reading the paper', () => {
 
   it('glides to a question clicked in the rail, the first time as much as the tenth', async () => {
     await page.viewport(1440, 860)
-    paper(`/assessment/batches/${BATCH_ID}/my-entries`)
+    await paper(`/assessment/batches/${BATCH_ID}/my-entries`)
 
     await expect.element(page.getByRole('heading', { name: '品德题目 1' })).toBeVisible()
     const viewport = paperScroller()

@@ -88,10 +88,13 @@ function Form({
   )
 }
 
-const open = (placement: CaptchaPlacement = 'inline', initial: CaptchaPrompt | null = prompt()) => {
+const open = async (
+  placement: CaptchaPlacement = 'inline',
+  initial: CaptchaPrompt | null = prompt(),
+) => {
   const solved: CaptchaSolution[] = []
   const refreshed = { count: 0 }
-  renderScreen({
+  await renderScreen({
     client: fakeClient({ app: { getManifest: emptyManifest() } }),
     children: (
       <Form initial={initial} placement={placement} solved={solved} refreshed={refreshed} />
@@ -106,7 +109,7 @@ describe('a challenge that needs nobody', () => {
   it('works where nobody sees it and hands the proof over once', async () => {
     const script = scripted()
     provide(script)
-    const { solved } = open()
+    const { solved } = await open()
     await expect.poll(() => script.started).toBeGreaterThan(0)
     await expect.element(host()).toHaveAttribute('data-state', 'loading-provider')
     script.report({ kind: 'working' })
@@ -123,7 +126,7 @@ describe('a challenge that needs the person', () => {
   it('opens in the form, with the challenge in reach', async () => {
     const script = scripted()
     provide(script)
-    open()
+    await open()
     await expect.poll(() => script.started).toBeGreaterThan(0)
     script.report({ kind: 'interaction-required' })
     await expect.element(host()).toHaveAttribute('data-state', 'interaction')
@@ -141,7 +144,7 @@ describe('a challenge that needs the person', () => {
   it('comes over the page only once it needs the person, when placed there', async () => {
     const script = scripted()
     provide(script)
-    open('modal')
+    await open('modal')
     await expect.poll(() => script.started).toBeGreaterThan(0)
     script.report({ kind: 'working' })
     await expect.element(host()).toHaveAttribute('data-state', 'working')
@@ -165,7 +168,7 @@ describe('a challenge left behind', () => {
   it('delivers nothing once it was abandoned, however late the provider finishes', async () => {
     const script = scripted()
     provide(script)
-    const { solved } = open()
+    const { solved } = await open()
     await expect.poll(() => script.started).toBeGreaterThan(0)
     const late = script.report
     await page.getByRole('button', { name: 'abandon' }).click()
@@ -178,7 +181,7 @@ describe('a challenge left behind', () => {
   it('is taken down when the prompt goes', async () => {
     const script = scripted()
     provide(script)
-    const { solved } = open()
+    const { solved } = await open()
     await expect.poll(() => script.started).toBeGreaterThan(0)
     const late = script.report
     await page.getByRole('button', { name: 'drop' }).click()
@@ -190,7 +193,7 @@ describe('a challenge left behind', () => {
   it('starts the same challenge over when it can be met again', async () => {
     const script = scripted()
     provide(script)
-    const opened = open()
+    const opened = await open()
     await expect.poll(() => script.started).toBeGreaterThan(0)
     const before = script.started
     script.report({ kind: 'failed', recovery: 'restart' })
@@ -205,7 +208,7 @@ describe('a challenge left behind', () => {
   it('asks the caller for a new challenge when this one is spent', async () => {
     const script = scripted()
     provide(script)
-    const opened = open()
+    const opened = await open()
     await expect.poll(() => script.started).toBeGreaterThan(0)
     const before = script.started
     script.report({ kind: 'failed', recovery: 'refresh' })
@@ -219,7 +222,7 @@ describe('a challenge left behind', () => {
   it('fails at once for a provider this build does not carry', async () => {
     const script = scripted()
     provide(script)
-    open('inline', prompt('elsewhere'))
+    await open('inline', prompt('elsewhere'))
     await expect.element(host()).toHaveAttribute('data-state', 'failed')
     expect(script.started).toBe(0)
   })

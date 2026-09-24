@@ -87,7 +87,7 @@ const open = (
           return Effect.succeed({ function: { id: NEW_FUNCTION_ID } })
         },
       },
-    } as never),
+    }),
     routes: [
       { path: '/assessment/formula-templates', element: <TemplatesPage /> },
       { path: '/assessment/formula-templates/:versionId', element: <TemplatePage /> },
@@ -98,7 +98,7 @@ const open = (
 
 describe('the formula template library', () => {
   it('lists what other people offered, naming who wrote each one', async () => {
-    open()
+    await open()
     const row = page.getByTestId('template-row')
     await expect.element(row).toBeVisible()
     await expect.element(row).toHaveAttribute('data-version-id', VERSION_ID)
@@ -109,14 +109,14 @@ describe('the formula template library', () => {
   it('says a template whose source was archived still is one', async () => {
     // archival stops a formula being offered for its author's own new
     // questions; it says nothing about what they already offered others
-    open({ items: [template({ sourceStatus: 'archived' })] })
+    await open({ items: [template({ sourceStatus: 'archived' })] })
     await expect
       .element(page.getByTestId('template-row'))
       .toHaveAttribute('data-source-status', 'archived')
   })
 
   it('shows what a reader has to see before deciding to copy', async () => {
-    open({ route: `/assessment/formula-templates/${VERSION_ID}` })
+    await open({ route: `/assessment/formula-templates/${VERSION_ID}` })
     await expect.element(page.getByTestId('template-detail')).toBeVisible()
     // the source is here because copying hands it over anyway
     await expect.element(page.getByTestId('template-source')).toBeVisible()
@@ -124,7 +124,7 @@ describe('the formula template library', () => {
 
   it('starts a formula of my own, named what I meant to call it', async () => {
     const copied: { name: string; description?: string }[] = []
-    open({ route: `/assessment/formula-templates/${VERSION_ID}`, copied })
+    await open({ route: `/assessment/formula-templates/${VERSION_ID}`, copied })
     await expect.element(page.getByTestId('template-detail')).toBeVisible()
 
     await page.getByRole('button', { name: '复制到我的公式' }).first().click()
@@ -145,7 +145,7 @@ describe('the formula template library', () => {
   it('opens the examples the version was published with', async () => {
     // the count on the detail card is the way in: examples are the fastest
     // read of what the formula does, and there is nowhere else to see them
-    open({
+    await open({
       route: `/assessment/formula-templates/${VERSION_ID}`,
       detail: {
         tests: [
@@ -168,7 +168,7 @@ describe('the formula template library', () => {
   }, 30_000)
 
   it('reads the source out exactly, whatever the highlighter makes of it', async () => {
-    open({
+    await open({
       route: `/assessment/formula-templates/${VERSION_ID}`,
       detail: { sourceTs: RICH_SOURCE },
     })
@@ -205,7 +205,7 @@ describe('the formula template library', () => {
   it('offers no way to follow the source it came from', async () => {
     // a copy is a snapshot: there is nothing to sync, and a control saying
     // otherwise would promise something this product does not do
-    open({ route: `/assessment/formula-templates/${VERSION_ID}` })
+    await open({ route: `/assessment/formula-templates/${VERSION_ID}` })
     await expect.element(page.getByTestId('template-detail')).toBeVisible()
     for (const word of ['同步', '升级', '更新到']) {
       expect(page.getByText(word).elements()).toHaveLength(0)

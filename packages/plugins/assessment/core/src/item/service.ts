@@ -3,12 +3,7 @@ import { transaction, type Orm, type QueryFailed } from '@qualy/plugin-database/
 import type { Principal } from '@qualy/rbac-contract'
 import { AccessDenied } from '@qualy/rbac-contract/effect'
 import type { EpochMillis } from '../phase/engine/types.ts'
-import {
-  ScoringAuthoringPolicyCatalog,
-  ScoringRuntimeCatalog,
-  type ItemTypeDriver,
-  type RuntimeRef,
-} from '../plugin.ts'
+import { ScoringAuthoringPolicyCatalog, ScoringRuntimeCatalog, type RuntimeRef } from '../plugin.ts'
 import {
   ItemActionRefused,
   BatchNotFound,
@@ -605,7 +600,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
       ) {
         issues.push({ path: 'entryChannels', reason: 'entry-channels-frozen' })
       }
-      const driver = catalogs.itemTypes.get(input.item.itemType) as ItemTypeDriver | undefined
+      const driver = catalogs.itemTypes.get(input.item.itemType)
       if (driver?.configIssues !== undefined) {
         issues.push(
           ...driver
@@ -880,13 +875,13 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
         }
       }
       return {
-        entries: entries as readonly string[],
+        entries: entries,
         causes: [...causes.values()].map((one) => ({
           recognitionId: one.recognitionId,
           reason: one.reason,
           count: one.entries.size,
           values: [...one.values].sort().slice(0, STRANDED_VALUES_MOST),
-        })) as readonly StrandingCause[],
+        })),
       }
     })
 
@@ -991,7 +986,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
     scoring: (approvedTotal: number) => ScoringImpact
   }) =>
     Effect.gen(function* () {
-      const driver = catalogs.itemTypes.get(input.item.itemType) as ItemTypeDriver | undefined
+      const driver = catalogs.itemTypes.get(input.item.itemType)
       const live = yield* liveEntryPayloads(input.tenantId, input.item.id)
       const rounds = yield* openRoundsOfItem(input.tenantId, input.item.id)
       const refusals: Incompatible[] = []
@@ -1033,9 +1028,9 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
       return {
         live,
         rounds,
-        stranded: stranded as readonly string[],
+        stranded: stranded,
         stranding,
-        incompatible: refusals as readonly Incompatible[],
+        incompatible: refusals,
         impact: impactOf({
           candidateImpactHash: input.candidateImpactHash,
           scoring: input.scoring(live.filter((row) => row.status === 'approved').length),

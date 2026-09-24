@@ -42,7 +42,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     it('says a newer release is there, and lets the reader go on or reload', async () => {
       document.documentElement.dataset['locale'] = locale
       const { coordinator, reload } = setUp(probeFor('B'))
-      render(
+      await render(
         <ReleaseRecoveryGate coordinator={coordinator} copy={bootstrapMessages}>
           <main>the page</main>
         </ReleaseRecoveryGate>,
@@ -62,13 +62,13 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       expect(reload).not.toHaveBeenCalled()
       // the same release again is not news
       await coordinator.check({ force: true })
-      expect(await page.getByRole('status').elements()).toHaveLength(0)
+      expect(page.getByRole('status').elements()).toHaveLength(0)
     })
 
     it('reloads only when the reader asks', async () => {
       document.documentElement.dataset['locale'] = locale
       const { coordinator, reload } = setUp(probeFor('B'))
-      render(
+      await render(
         <ReleaseRecoveryGate coordinator={coordinator} copy={bootstrapMessages}>
           <main>the page</main>
         </ReleaseRecoveryGate>,
@@ -81,7 +81,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     it('takes the page over when a chunk is gone because the server moved on', async () => {
       document.documentElement.dataset['locale'] = locale
       const { coordinator, reload } = setUp(probeFor('B'))
-      render(
+      await render(
         <ReleaseRecoveryGate coordinator={coordinator} copy={bootstrapMessages}>
           <main>the page</main>
         </ReleaseRecoveryGate>,
@@ -92,7 +92,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
       expect(screen.element().getAttribute('data-release-recovery')).toBe('release-skew')
       await expect.element(page.getByRole('heading', { name: copy.releaseSkewTitle })).toBeVisible()
       await expect.element(page.getByText(copy.releaseSkewHint)).toBeVisible()
-      expect(await page.getByRole('main').elements()).toHaveLength(0)
+      expect(page.getByRole('main').elements()).toHaveLength(0)
       expect(reload).not.toHaveBeenCalled()
       await page.getByRole('button', { name: copy.reloadPage }).click()
       expect(reload).toHaveBeenCalledTimes(1)
@@ -101,7 +101,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     it('says a file failed to load, and does not claim an update', async () => {
       document.documentElement.dataset['locale'] = locale
       const { coordinator } = setUp(probeFor('A'))
-      render(
+      await render(
         <ReleaseRecoveryGate coordinator={coordinator} copy={bootstrapMessages}>
           <main>the page</main>
         </ReleaseRecoveryGate>,
@@ -117,7 +117,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
     it('says the server no longer speaks this page', async () => {
       document.documentElement.dataset['locale'] = locale
       const { coordinator } = setUp(probeFor('A'))
-      render(
+      await render(
         <ReleaseRecoveryGate coordinator={coordinator} copy={bootstrapMessages}>
           <main>the page</main>
         </ReleaseRecoveryGate>,

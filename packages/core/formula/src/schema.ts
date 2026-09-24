@@ -82,7 +82,7 @@ const text = (
     ...(maxLength === undefined ? {} : { maxLength }),
     ...(pattern === undefined ? {} : { pattern }),
     ...annotated(bounds),
-  } as TextSchema) as TextSchema
+  }) as TextSchema
 }
 
 // an integer schema always carries explicit bounds: JSON parsing loses
@@ -98,7 +98,7 @@ const integer = (
     minimum: bounds?.minimum ?? Number.MIN_SAFE_INTEGER,
     maximum: bounds?.maximum ?? Number.MAX_SAFE_INTEGER,
     ...annotated(bounds),
-  } as IntegerSchema) as IntegerSchema
+  }) as IntegerSchema
 
 const decimal = (
   bounds?: {
@@ -116,7 +116,7 @@ const decimal = (
     ...(minimum === undefined ? {} : { 'x-qualy-minimum': minimum }),
     ...(maximum === undefined ? {} : { 'x-qualy-maximum': maximum }),
     ...annotated(bounds),
-  } as DecimalSchema) as DecimalSchema
+  }) as DecimalSchema
 }
 
 const choice = <const Options extends Record<string, string>>(
@@ -128,17 +128,17 @@ const choice = <const Options extends Record<string, string>>(
     enum: Object.keys(options),
     'x-qualy-enumLabels': options,
     ...annotated(words),
-  } as ChoiceSchema) as ChoiceOf<keyof Options & string>
+  }) as ChoiceOf<keyof Options & string>
 
 const boolean = (words?: Annotations): BooleanSchema =>
-  normalizeAtomicSchema({ type: 'boolean', ...annotated(words) } as BooleanSchema) as BooleanSchema
+  normalizeAtomicSchema({ type: 'boolean', ...annotated(words) }) as BooleanSchema
 
 const date = (words?: Annotations): DateSchema =>
   normalizeAtomicSchema({
     type: 'string',
     format: 'date',
     ...annotated(words),
-  } as DateSchema) as DateSchema
+  }) as DateSchema
 
 /**
  * What the assessment scorer can actually carry: the platform's amount is a

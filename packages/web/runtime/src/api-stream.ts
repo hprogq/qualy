@@ -65,7 +65,7 @@ export function useApiStream<A>(
       const making = opener.current
       if (controller.signal.aborted || making === undefined) return
       const openedAt = Date.now()
-      browserRuntime
+      void browserRuntime
         .runPromise(
           Effect.flatMap(making(), (stream) =>
             Stream.runForEach(stream, (event) =>

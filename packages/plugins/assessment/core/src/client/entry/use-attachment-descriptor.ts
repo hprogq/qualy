@@ -35,10 +35,10 @@ interface Gathering {
 const gatherings = new WeakMap<object, Gathering>()
 
 const load = (client: Client, run: Run, attachmentId: string): Promise<Descriptor | null> => {
-  let gathering = gatherings.get(client as object)
+  let gathering = gatherings.get(client)
   if (gathering === undefined) {
     gathering = { waiting: new Map(), scheduled: false }
-    gatherings.set(client as object, gathering)
+    gatherings.set(client, gathering)
   }
   const settled = new Promise<Descriptor | null>((resolve, reject) => {
     const line = gathering.waiting.get(attachmentId)
@@ -94,7 +94,7 @@ export function useAttachmentDescriptor(attachmentId: string) {
   const run = useRunApi()
   return useQuery({
     queryKey: ['assessment', 'attachment', attachmentId],
-    queryFn: () => load(client, run as Run, attachmentId),
+    queryFn: () => load(client, run, attachmentId),
     /**
      * As fresh as the answer says it is.
      *

@@ -263,7 +263,7 @@ export const make = Effect.fn('FormulaTemplateLibrary.make')(function* () {
         })
         .pipe(Effect.orDie)
       if (version === undefined) return yield* new FormulaVersionNotFound()
-      return (version as { id: string }).id
+      return version.id
     })
 
   /** the audience a version carries, with the names a screen shows */
@@ -527,7 +527,7 @@ export const make = Effect.fn('FormulaTemplateLibrary.make')(function* () {
                   .executeTakeFirstOrThrow(),
               )
               .pipe(Effect.orDie)
-            const functionId = (created as { id: string }).id
+            const functionId = created.id
             // the new draft's history starts with what it was copied from
             yield* db
               .query((k) =>

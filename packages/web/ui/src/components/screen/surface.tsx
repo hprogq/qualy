@@ -890,7 +890,7 @@ export function TableRow({
   if (onOpen === undefined) {
     const { disabled: _disabled, ...divProps } = rest as Record<string, unknown>
     return (
-      <div {...(divProps as ComponentProps<'div'>)} {...look} data-selected={selected}>
+      <div {...divProps} {...look} data-selected={selected}>
         {body}
       </div>
     )
@@ -899,7 +899,7 @@ export function TableRow({
     const { disabled: _disabled, ...divProps } = rest as Record<string, unknown>
     return (
       <div
-        {...(divProps as ComponentProps<'div'>)}
+        {...divProps}
         {...look}
         role="link"
         tabIndex={0}

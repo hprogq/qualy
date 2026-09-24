@@ -140,7 +140,7 @@ const make = Effect.gen(function* () {
         kind: 'svg',
         markup: slot.markup,
         version: slot.version,
-      } satisfies OpenedIcon as OpenedIcon
+      } satisfies OpenedIcon
     }
     // the door names the image, and naming it is the whole permission:
     // an icon is on a page anybody may open
@@ -152,7 +152,7 @@ const make = Effect.gen(function* () {
           STORAGE_BACKEND_UNAVAILABLE: (error) => Effect.die(error),
         }),
       )
-    return { kind: 'stored', opened } satisfies OpenedIcon as OpenedIcon
+    return { kind: 'stored', opened } satisfies OpenedIcon
   })
 
   /** a place to put an image before choosing it for a door */

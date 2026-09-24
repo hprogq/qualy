@@ -65,10 +65,7 @@ const capture = Logger.layer([
   Logger.make((options) => {
     logged.push({
       message: String(Array.isArray(options.message) ? options.message[0] : options.message),
-      annotations: options.fiber.getRef(References.CurrentLogAnnotations) as Record<
-        string,
-        unknown
-      >,
+      annotations: options.fiber.getRef(References.CurrentLogAnnotations),
     })
   }),
 ])

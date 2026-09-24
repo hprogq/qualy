@@ -339,8 +339,7 @@ export const withDatabase: Effect.Effect<
   Orm
 > = Effect.gen(function* () {
   const orm = yield* Orm
-  return <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-    Effect.provideService(effect, Orm, orm) as Effect.Effect<A, E, Exclude<R, Orm>>
+  return <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.provideService(effect, Orm, orm)
 })
 
 export class QueryFailed extends Error {

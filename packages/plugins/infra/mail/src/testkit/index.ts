@@ -138,7 +138,10 @@ export const mailBackendContract = (under: MailBackendUnderTest): readonly Contr
         })
         const [got] = await under.inbox(to)
         assert(got?.html?.includes('<p>html part</p>') === true, `html was ${got?.html}`)
-        assert(got?.replyTo.includes('office@school.edu') === true, `reply-to was ${got?.replyTo}`)
+        assert(
+          got?.replyTo.includes('office@school.edu') === true,
+          `reply-to was ${String(got?.replyTo)}`,
+        )
       },
     },
   ]

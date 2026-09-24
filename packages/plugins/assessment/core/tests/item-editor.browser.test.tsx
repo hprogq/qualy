@@ -311,7 +311,7 @@ const open = (
       assessmentFormula: {
         listFormulaBindingOptions: () => Effect.succeed(had.formulas ?? bindingOptions()),
       },
-    } as never),
+    }),
     routes: [
       { path: '/assessment/batches/:batchId/items', element: <ItemSettingsPage /> },
     ] as never,
@@ -327,7 +327,7 @@ const open = (
           ),
         },
       },
-    } as never,
+    },
     route:
       had.question === undefined
         ? `/assessment/batches/${BATCH_ID}/items`
@@ -338,7 +338,7 @@ const editor = () => page.getByTestId('item-editor')
 
 /** into the editor of a question being composed */
 const composeQuestion = async () => {
-  open()
+  await open()
   await page.getByRole('button', { name: '新建' }).click()
   await page.getByRole('menuitem', { name: '新建项目' }).click()
   await expect.element(editor()).toBeVisible()
@@ -407,7 +407,7 @@ describe('choosing how a question is handled', () => {
 
   it('saves both doors when both are open', async () => {
     const saved: { config?: unknown }[] = []
-    open({ items: [officerItem()], question: ITEM_ID, saved })
+    await open({ items: [officerItem()], question: ITEM_ID, saved })
     await expect.element(page.getByRole('checkbox', { name: '工作人员统一认定' })).toBeVisible()
     await page.getByRole('checkbox', { name: '工作人员统一认定' }).click()
     await page.getByTestId('item-save').click()
@@ -421,7 +421,7 @@ describe('choosing how a question is handled', () => {
 
 describe('feeding the arithmetic', () => {
   it('lists the parameters, and a determined one becomes a determination field', async () => {
-    open({
+    await open({
       items: [formulaItem({ defaultFromFieldId: null })],
       question: ITEM_ID,
       panel: 'scoring',
@@ -441,7 +441,7 @@ describe('feeding the arithmetic', () => {
 
   it('links a new submission field to a determination, and unlinks it back into a field of its own', async () => {
     const saved: { config?: unknown }[] = []
-    open({
+    await open({
       items: [formulaItem({ defaultFromFieldId: null })],
       question: ITEM_ID,
       panel: 'scoring',
@@ -490,7 +490,7 @@ describe('feeding the arithmetic', () => {
   })
 
   it('asks before switching to take effect on submission while a determination has no field', async () => {
-    open({
+    await open({
       items: [formulaItem({ defaultFromFieldId: null })],
       question: ITEM_ID,
       surfaces: BOTH_CALCULATORS,
@@ -517,7 +517,7 @@ describe('feeding the arithmetic', () => {
   })
 
   it('blocks automatic scoring while a parameter takes a determined value', async () => {
-    open({ items: [formulaItem()], question: ITEM_ID, surfaces: BOTH_CALCULATORS })
+    await open({ items: [formulaItem()], question: ITEM_ID, surfaces: BOTH_CALCULATORS })
     await expect.element(page.getByRole('radio', { name: '自动计分' })).toBeVisible()
     await vi.waitFor(() => {
       if (
@@ -571,7 +571,7 @@ describe('the submission form', () => {
         },
       ],
     } as never
-    open({ items: [item], question: ITEM_ID, saved })
+    await open({ items: [item], question: ITEM_ID, saved })
     await expect.element(page.getByRole('textbox', { name: '项目名称' })).toBeVisible()
     await page.getByRole('textbox', { name: '项目名称' }).fill('学生干部任职（改）')
     await page.getByTestId('item-save').click()
@@ -583,7 +583,7 @@ describe('the submission form', () => {
 
   it("returns a formula question's arithmetic exactly as it arrived when nothing about it moved", async () => {
     const saved: { config?: unknown }[] = []
-    open({ items: [formulaItem()], question: ITEM_ID, surfaces: BOTH_CALCULATORS, saved })
+    await open({ items: [formulaItem()], question: ITEM_ID, surfaces: BOTH_CALCULATORS, saved })
     await expect.element(page.getByRole('textbox', { name: '项目名称' })).toBeVisible()
     await page.getByRole('textbox', { name: '项目名称' }).fill('竞赛获奖（改）')
     await page.getByTestId('item-save').click()
@@ -667,7 +667,7 @@ describe('records and review', () => {
       normal: { stages: [stageOf('s-first', '班委初审'), stageOf('s-second', '专业复审')] },
       escalation: { stages: [] },
     }
-    open({ items: [item], question: ITEM_ID, panel: 'rules' })
+    await open({ items: [item], question: ITEM_ID, panel: 'rules' })
     const steps = () => page.getByTestId('chain-step').elements()
     const sheet = () => page.getByTestId('stage-sheet')
     await vi.waitFor(() => expect(steps()).toHaveLength(2))
@@ -686,7 +686,7 @@ describe('records and review', () => {
 
   it('walks the save to the first unfinished thing instead of sending', async () => {
     const saved: { config?: unknown; itemType?: unknown }[] = []
-    open({ saved })
+    await open({ saved })
     await page.getByRole('button', { name: '新建' }).click()
     await page.getByRole('menuitem', { name: '新建项目' }).click()
     await expect.element(editor()).toBeVisible()
@@ -706,7 +706,7 @@ describe('saying what is wrong where it is wrong', () => {
   }
 
   it('says what a parameter is under its name, and refuses a fixed value outside its range in place', async () => {
-    open({
+    await open({
       items: [formulaItem({ defaultFromFieldId: null })],
       question: ITEM_ID,
       panel: 'scoring',
@@ -740,7 +740,7 @@ describe('saying what is wrong where it is wrong', () => {
 
   it('asks the server as the composition settles, and pins what it finds on the row it is about', async () => {
     const asked: unknown[] = []
-    open({
+    await open({
       items: [formulaItem({ defaultFromFieldId: null })],
       question: ITEM_ID,
       panel: 'scoring',
@@ -774,7 +774,7 @@ describe('saying what is wrong where it is wrong', () => {
   it('lists what a refused save was refused for, and thins the list as each is corrected', async () => {
     const saved: { config?: unknown }[] = []
     let live: readonly { path: string; reason: string }[] = []
-    open({
+    await open({
       items: [officerItem()],
       question: ITEM_ID,
       saved,
@@ -813,7 +813,7 @@ describe('saying what is wrong where it is wrong', () => {
 
   it('says what happened when somebody else saved first, and offers both ways on', async () => {
     const saved: { expectedRevisionId?: unknown }[] = []
-    open({
+    await open({
       items: [officerItem()],
       question: ITEM_ID,
       saved: saved as never,
@@ -840,7 +840,7 @@ describe('saying what is wrong where it is wrong', () => {
 describe('the form beside the arithmetic', () => {
   it('lets a linked field go by a name of its own, and says which field a determination starts from', async () => {
     const saved: { config?: unknown }[] = []
-    open({
+    await open({
       items: [formulaItem()],
       question: ITEM_ID,
       panel: 'scoring',
@@ -873,7 +873,7 @@ describe('the form beside the arithmetic', () => {
   })
 
   it('keeps what a record shows in lists on the page, under the form', async () => {
-    open({ items: [officerItem()], question: ITEM_ID, panel: 'scoring' })
+    await open({ items: [officerItem()], question: ITEM_ID, panel: 'scoring' })
     const block = page.getByTestId('summary-block')
     await expect.element(block).toBeVisible()
     expect(page.getByRole('dialog').elements()).toHaveLength(0)
@@ -897,7 +897,7 @@ describe('the form beside the arithmetic', () => {
 
 describe('the band', () => {
   it('says where the question is and how it is handled, and leaves the handling to the cards', async () => {
-    open({
+    await open({
       items: [formulaItem({ defaultFromFieldId: null })],
       question: ITEM_ID,
       surfaces: BOTH_CALCULATORS,
@@ -967,7 +967,7 @@ describe('choosing a published formula', () => {
 
   it('asks which formula, then which of its publications, and changes nothing until the second is confirmed', async () => {
     const saved: { config?: unknown }[] = []
-    open({
+    await open({
       items: [formulaItem()],
       question: ITEM_ID,
       panel: 'scoring',
@@ -1017,7 +1017,7 @@ describe('choosing a published formula', () => {
   })
 
   it('narrows the formulas by what is typed, and says so when nothing is left', async () => {
-    open({
+    await open({
       items: [formulaItem()],
       question: ITEM_ID,
       panel: 'scoring',
@@ -1037,7 +1037,7 @@ describe('choosing a published formula', () => {
 
 describe('what a participant will see', () => {
   it('says whose each box is to fill, rather than showing it empty', async () => {
-    open({ items: [officerItem()], question: ITEM_ID })
+    await open({ items: [officerItem()], question: ITEM_ID })
     await expect.element(page.getByRole('button', { name: '预览' })).toBeVisible()
     await page.getByRole('button', { name: '预览' }).click()
     const controls = () => page.getByTestId('preview-control').elements()
@@ -1062,7 +1062,7 @@ describe('what already stands under a question', () => {
     previewFor('formula@1', { parameters: { level: { ...LEVEL, title: '获奖级别' } } })
 
   it('holds shut the options that claims were determined as, and says why on hover', async () => {
-    open({
+    await open({
       items: [levelled()],
       question: ITEM_ID,
       panel: 'scoring',
@@ -1098,7 +1098,7 @@ describe('what already stands under a question', () => {
   })
 
   it('pins a narrowing that claims do not fit on the determination, not on the scoring method', async () => {
-    open({
+    await open({
       items: [levelled()],
       question: ITEM_ID,
       panel: 'scoring',
@@ -1121,7 +1121,7 @@ describe('what already stands under a question', () => {
   })
 
   it('reads a refusal that only names claims as one about the determinations', async () => {
-    open({
+    await open({
       items: [levelled()],
       question: ITEM_ID,
       panel: 'scoring',
@@ -1159,7 +1159,7 @@ describe('while the page loads', () => {
     const held = new Promise<void>((resolve) => {
       release = resolve
     })
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         app: {
           getManifest: () =>
@@ -1175,7 +1175,7 @@ describe('while the page loads', () => {
           itemOptions: () => Effect.succeed({ orgTypes: [], roles: [] }),
           reviewAlerts: () => Effect.succeed({ groups: [] }),
         },
-      } as never),
+      }),
       routes: [
         { path: '/assessment/batches/:batchId/items', element: <ItemSettingsPage /> },
       ] as never,

@@ -82,7 +82,7 @@ const stack = (url: string) =>
     { catalog },
   )
 
-const run = <A, E>(url: string, effect: Effect.Effect<A, E, Placement | Iam | Orm | Orm>) =>
+const run = <A, E>(url: string, effect: Effect.Effect<A, E, Placement | Iam | Orm>) =>
   Effect.runPromiseExit(Effect.provide(effect, stack(url)))
 
 const ok = <A, E>(exit: Exit.Exit<A, E>): A => {

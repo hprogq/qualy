@@ -455,9 +455,9 @@ describe.runIf(postgresAvailable)('an import, looked back on', () => {
                 sql`select state, outcome from review_instances where id = ${appealed.id}`,
               ),
             )
-            const cancelled = (yield* runSql(sql`
+            const cancelled = yield* runSql(sql`
               select kind from review_events where review_instance_id = ${appealed.id}
-               and kind = 'cancelled-by-staff'`)) as unknown as { rows: unknown[] }
+               and kind = 'cancelled-by-staff'`)
             return {
               reversed,
               round,

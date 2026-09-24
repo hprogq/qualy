@@ -47,7 +47,7 @@ const table = (
 describe('a row with a column after the one it is scanned by', () => {
   it('stacked, keeps that column on the line under the name and its state mid-row', async () => {
     await page.viewport(360, 740)
-    mount(table)
+    await mount(table)
     const row = await found(page.getByTestId('row'))
     const unit = await found(page.getByTestId('unit'))
     const since = await found(page.getByTestId('since'))
@@ -57,7 +57,7 @@ describe('a row with a column after the one it is scanned by', () => {
   })
 
   it('across, keeps the columns in their order', async () => {
-    mount(table)
+    await mount(table)
     const unit = box(await found(page.getByTestId('unit')))
     const state = box(await found(page.getByTestId('state')))
     const since = box(await found(page.getByTestId('since')))
@@ -68,7 +68,7 @@ describe('a row with a column after the one it is scanned by', () => {
 
 describe('a row with its own menu after the one it is scanned by', () => {
   it('across, keeps the scanned cell before the menu', async () => {
-    mount(
+    await mount(
       <Table columns="minmax(0, 1fr) 6rem 2rem">
         <TableHead>
           <span>name</span>
@@ -93,7 +93,7 @@ describe('a row with its own menu after the one it is scanned by', () => {
 describe('a strip of steps', () => {
   it('reaches the last dot to the end of the strip, leaving no room after it', async () => {
     await page.viewport(360, 740)
-    mount(
+    await mount(
       <div data-testid="strip" style={{ width: 320 }}>
         <Steps steps={['Basics', 'Phases']} current={0} />
       </div>,

@@ -255,10 +255,8 @@ export const administrativeRecordService = (deps: AdministrativeRecordDeps) => {
       typeof input.payload === 'object' && input.payload !== null && !Array.isArray(input.payload)
         ? fillBoundEvidence(
             plan,
-            input.payload as Record<string, unknown>,
-            input.recognition === undefined
-              ? {}
-              : ((input.recognition.values ?? {}) as Record<string, unknown>),
+            input.payload,
+            input.recognition === undefined ? {} : (input.recognition.values ?? {}),
           )
         : input.payload
     const decoded = yield* driver

@@ -105,7 +105,7 @@ describe('what a log is allowed to say the page was', () => {
     // whole batch in one try, so every log in it would vanish
     expect(() => beforeReport({})).not.toThrow()
     expect(() => beforeReport({ msg: 42, level: undefined })).not.toThrow()
-    expect(() => beforeReport({ originFrom: null } as never)).not.toThrow()
+    expect(() => beforeReport({ originFrom: null })).not.toThrow()
   })
 })
 

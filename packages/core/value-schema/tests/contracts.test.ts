@@ -90,7 +90,7 @@ describe('the profile', () => {
           type: 'string',
           format: 'qualy-decimal',
           'x-qualy-maxScale': 4,
-        } as DecimalSchema,
+        },
       },
       required: ['level', 'base'],
       additionalProperties: false,
@@ -132,7 +132,7 @@ describe('the profile', () => {
       format: 'qualy-decimal',
       'x-qualy-maxScale': 2,
       'x-qualy-minimum': '3.00',
-    } as DecimalSchema)
+    })
     expect((normalized as DecimalSchema)['x-qualy-minimum']).toBe('3')
     expect(Object.isFrozen(normalized)).toBe(true)
     const input = normalizeInputSchema({

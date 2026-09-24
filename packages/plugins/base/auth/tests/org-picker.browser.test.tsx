@@ -53,12 +53,12 @@ describe('the unit picker', () => {
   // chose the unit and toggled it, so looking into a college took the
   // college's classes off the screen.
   it('unfolds a branch when it is chosen, and never folds one', async () => {
-    renderScreen({ client: fakeClient(world()), children: <Harness single /> })
+    await renderScreen({ client: fakeClient(world()), children: <Harness single /> })
 
     const major = page.getByRole('button', { name: '软件工程 专业', exact: true })
     await expect.element(major).toBeVisible()
     // deep enough to start folded, so this is the press that opens it
-    expect(await page.getByRole('button', { name: /软件工程 2301 班/ }).elements()).toHaveLength(0)
+    expect(page.getByRole('button', { name: /软件工程 2301 班/ }).elements()).toHaveLength(0)
 
     await major.click()
     await expect.element(page.getByRole('button', { name: /软件工程 2301 班/ })).toBeVisible()
@@ -70,15 +70,12 @@ describe('the unit picker', () => {
     // the twistie is what folds
     await page.getByRole('button', { name: '展开或收起 软件工程' }).click()
     await expect
-      .poll(
-        async () =>
-          (await page.getByRole('button', { name: /软件工程 2301 班/ }).elements()).length,
-      )
+      .poll(async () => page.getByRole('button', { name: /软件工程 2301 班/ }).elements().length)
       .toBe(0)
   })
 
   it('says one chosen unit once, and a set of them underneath', async () => {
-    renderScreen({ client: fakeClient(world()), children: <Harness single /> })
+    await renderScreen({ client: fakeClient(world()), children: <Harness single /> })
 
     const college = page.getByRole('button', { name: '软件学院 学院', exact: true })
     await expect.element(college).toBeVisible()
@@ -86,7 +83,7 @@ describe('the unit picker', () => {
     // the row it was made on says it; nothing restates it below the tree,
     // because a single choice needs no list and no second way to undo it
     await expect.element(college).toHaveAttribute('aria-current', 'true')
-    expect(await page.getByTestId('chosen-units').elements()).toHaveLength(0)
+    expect(page.getByTestId('chosen-units').elements()).toHaveLength(0)
 
     // pressing the chosen row again is how it is let go
     await college.click()
@@ -94,7 +91,7 @@ describe('the unit picker', () => {
   })
 
   it('summarises a set of units, which one unit does not need', async () => {
-    renderScreen({ client: fakeClient(world()), children: <Harness single={false} /> })
+    await renderScreen({ client: fakeClient(world()), children: <Harness single={false} /> })
 
     const box = page.getByRole('checkbox', { name: '软件学院', exact: false })
     await expect.element(box).toBeVisible()

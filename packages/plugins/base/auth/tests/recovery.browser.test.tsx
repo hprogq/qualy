@@ -54,7 +54,7 @@ const client = (stubs: Record<string, Record<string, unknown>>) =>
 describe('a forgotten password', () => {
   it('asks for the email, and says the same whatever comes of it', async () => {
     const ask = vi.fn(() => Effect.succeed({ ok: true as const }))
-    renderScreen({
+    await renderScreen({
       client: client({ auth: { createPasswordReset: ask } }),
       route: '/reset-password',
       children: <ResetPasswordPage />,
@@ -77,7 +77,7 @@ describe('a forgotten password', () => {
     })
     const sent: { email: string; captcha?: { provider: string; response: string } }[] = []
     try {
-      renderScreen({
+      await renderScreen({
         client: client({
           auth: {
             createPasswordReset: ({ payload }: { payload: (typeof sent)[number] }) =>
@@ -121,7 +121,7 @@ describe('a forgotten password', () => {
         },
       }),
     )
-    renderScreen({
+    await renderScreen({
       client: client({
         auth: {
           createPasswordResetInspection: () => Effect.succeed({ ok: true as const }),
@@ -180,7 +180,7 @@ describe('a forgotten password', () => {
 
   it('says a link no longer works as the page opens, before anything is typed', async () => {
     const inspect = vi.fn(() => Effect.fail(apiError('AUTH_CHALLENGE_INVALID', undefined)))
-    renderScreen({
+    await renderScreen({
       client: client({
         auth: {
           createPasswordResetInspection: inspect,
@@ -204,7 +204,7 @@ describe('a link that confirms an email', () => {
   it('is taken up once, as the kind of link it is', async () => {
     const change = vi.fn(() => Effect.succeed({ ok: true as const }))
     const verify = vi.fn(() => Effect.succeed({ ok: true as const }))
-    renderScreen({
+    await renderScreen({
       client: client({
         auth: { createEmailChangeRedemption: change, createEmailVerificationRedemption: verify },
       }),
@@ -221,7 +221,7 @@ describe('a link that confirms an email', () => {
 
   it('says a link without its token is incomplete, and asks nothing', async () => {
     const verify = vi.fn(() => Effect.succeed({ ok: true as const }))
-    renderScreen({
+    await renderScreen({
       client: client({ auth: { createEmailVerificationRedemption: verify } }),
       route: '/confirm-email',
       children: <ConfirmEmailPage />,
@@ -234,7 +234,7 @@ describe('a link that confirms an email', () => {
 describe('the reader’s security', () => {
   it('asks for the current password where there is one, and sends it with the new', async () => {
     const put = vi.fn(() => Effect.succeed({ ok: true as const }))
-    renderScreen({
+    await renderScreen({
       client: client({
         self: {
           ...records,
@@ -276,7 +276,7 @@ describe('the reader’s security', () => {
   it('offers no password form before the address is proven, and sends the proof on request', async () => {
     const verify = vi.fn(() => Effect.succeed({ sent: true }))
     const change = vi.fn(() => Effect.succeed({ ok: true as const }))
-    renderScreen({
+    await renderScreen({
       client: client({
         self: {
           ...records,
@@ -323,7 +323,7 @@ describe('the reader’s devices and sign-ins', () => {
   it('ends one other device, or every other at once, and never offers the one in hand', async () => {
     const endOne = vi.fn(() => Effect.succeed({ ok: true as const }))
     const endAll = vi.fn(() => Effect.succeed({ ended: 1 }))
-    renderScreen({
+    await renderScreen({
       client: client({
         self: {
           getSelf: () => Effect.succeed(me()),
@@ -342,7 +342,7 @@ describe('the reader’s devices and sign-ins', () => {
     })
     const rows = page.getByTestId('session-row')
     await expect.element(rows.first()).toBeInTheDocument()
-    expect(await rows.elements()).toHaveLength(2)
+    expect(rows.elements()).toHaveLength(2)
     // the device in the words a person knows it by
     await expect.element(page.getByText('Chrome - macOS')).toBeVisible()
     await expect.element(page.getByText('Safari - iOS')).toBeVisible()
@@ -367,7 +367,7 @@ describe('the reader’s devices and sign-ins', () => {
   })
 
   it('keeps the history on a page of its own, reached from what is signed in now', async () => {
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         app: {
           getManifest: () =>
@@ -442,7 +442,7 @@ describe('the reader’s security activity', () => {
         pageSize: 5,
       }),
     )
-    renderScreen({
+    await renderScreen({
       client: client({ self: { listSelfSignIns: signIns, listSelfAccountChanges: changes } }),
       route: '/account/activity',
       children: <AccountActivityPage />,
@@ -450,11 +450,11 @@ describe('the reader’s security activity', () => {
     // on the page: the latest few of each, asked for as a few
     const recent = page.getByTestId('sign-ins-card').getByTestId('sign-in-row')
     await expect.element(recent.first()).toBeInTheDocument()
-    expect(await recent.elements()).toHaveLength(5)
+    expect(recent.elements()).toHaveLength(5)
     expect(signIns).toHaveBeenCalledWith({ query: { page: '1', limit: '5' } })
     const changed = page.getByTestId('account-changes').getByTestId('account-change')
     await expect.element(changed.first()).toBeInTheDocument()
-    expect((await changed.elements()).map((row) => row.getAttribute('data-actor'))).toEqual([
+    expect(changed.elements().map((row) => row.getAttribute('data-actor'))).toEqual([
       'self',
       'other',
     ])

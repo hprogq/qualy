@@ -79,7 +79,7 @@ const stack = (url: string) =>
     { catalog },
   )
 
-const run = <A, E>(url: string, effect: Effect.Effect<A, E, Iam | Rbac | Orm | Orm>) =>
+const run = <A, E>(url: string, effect: Effect.Effect<A, E, Iam | Rbac | Orm>) =>
   Effect.runPromiseExit(Effect.provide(effect, stack(url)))
 
 /** the rule the writes decide by, asked of one person through a caller's own query */

@@ -192,9 +192,7 @@ describe.runIf(postgresAvailable)('the formula calculator', () => {
           const unknownVersion = yield* Effect.exit(
             bound.compile({ versionId: '01920000-0000-7000-8000-0000000000aa' }, host),
           )
-          const defensive = yield* Effect.exit(
-            bound.compile({ versionId, extra: true } as never, host),
-          )
+          const defensive = yield* Effect.exit(bound.compile({ versionId, extra: true }, host))
           return {
             versionId,
             row,
@@ -396,7 +394,7 @@ describe.runIf(postgresAvailable)('the formula calculator', () => {
           // a plan whose config grew a key, rehashed to self-consistency,
           // passes the generic reader - and is refused HERE
           const tamperedConfig = yield* Effect.exit(
-            bound.verify({ ...frozen, config: { versionId, extra: true } as never }, host),
+            bound.verify({ ...frozen, config: { versionId, extra: true } }, host),
           )
           const wrongSha = yield* Effect.exit(
             bound.verify(
@@ -411,7 +409,7 @@ describe.runIf(postgresAvailable)('the formula calculator', () => {
             bound.verify({ ...frozen, contractHash: 'c'.repeat(64) }, host),
           )
           const missingProfiles = yield* Effect.exit(
-            bound.verify({ ...frozen, valueSchemaProfileVersion: undefined as never }, host),
+            bound.verify({ ...frozen, valueSchemaProfileVersion: undefined }, host),
           )
           const wrongProfiles = yield* Effect.exit(
             bound.verify({ ...frozen, regexProfileVersion: 999 }, host),

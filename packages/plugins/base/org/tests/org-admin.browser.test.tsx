@@ -140,7 +140,7 @@ describe('the organization screen', () => {
           }),
         ],
       })
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         ...client,
         org: { ...client.org, setNodePlacement: move },
@@ -158,11 +158,11 @@ describe('the organization screen', () => {
     await expect.element(listbox).toBeVisible()
     // the one legal destination, and none of the illegal ones
     await expect.element(listbox.getByRole('option', { name: '外国语学院' })).toBeVisible()
-    expect(await listbox.getByRole('option', { name: '软件2301班' }).elements()).toHaveLength(0)
-    expect(
-      await listbox.getByRole('option', { name: '软件学院', exact: false }).elements(),
-    ).toHaveLength(0)
-    expect(await listbox.getByRole('option', { name: '示例大学' }).elements()).toHaveLength(0)
+    expect(listbox.getByRole('option', { name: '软件2301班' }).elements()).toHaveLength(0)
+    expect(listbox.getByRole('option', { name: '软件学院', exact: false }).elements()).toHaveLength(
+      0,
+    )
+    expect(listbox.getByRole('option', { name: '示例大学' }).elements()).toHaveLength(0)
 
     await listbox.getByRole('option', { name: '外国语学院' }).click()
     await page.getByRole('button', { name: '移动', exact: true }).click()
@@ -178,7 +178,7 @@ describe('the organization screen', () => {
   it('deletes an empty leaf through the confirmation, and bars a parent', async () => {
     const remove = vi.fn(() => Effect.succeed({ ok: true }))
     const client = world()
-    renderScreen({
+    await renderScreen({
       client: fakeClient({ ...client, org: { ...client.org, deleteNode: remove } }),
       route: `/admin/org?node=${KLASS}`,
       children: <OrgPage />,
@@ -199,7 +199,7 @@ describe('the organization screen', () => {
 
   it('keeps deletion barred while a unit still holds children', async () => {
     const client = world()
-    renderScreen({
+    await renderScreen({
       client: fakeClient(client),
       route: `/admin/org?node=${COLLEGE}`,
       children: <OrgPage />,
@@ -231,7 +231,7 @@ describe('the organization screen', () => {
         ],
       })
     client.org.getNodeUsage = () => Effect.succeed({ isRoot: false, children: 3, usage: [] })
-    renderScreen({
+    await renderScreen({
       client: fakeClient(client),
       route: `/admin/org?node=${COLLEGE}`,
       children: <OrgPage />,
@@ -260,8 +260,8 @@ describe('the organization screen', () => {
             target: null,
           },
         ],
-      }) as never
-    renderScreen({
+      })
+    await renderScreen({
       client: fakeClient(client),
       route: `/admin/org?node=${KLASS}`,
       children: <OrgPage />,
@@ -296,8 +296,8 @@ describe('the organization screen', () => {
             target: null,
           },
         ],
-      }) as never
-    renderScreen({
+      })
+    await renderScreen({
       client: fakeClient(client),
       route: `/admin/org?node=${KLASS}`,
       children: <OrgPage />,
@@ -309,7 +309,7 @@ describe('the organization screen', () => {
   it('lists what was deleted and puts one back, holding a unit whose parent is gone too', async () => {
     const restore = vi.fn(() => Effect.succeed({ ok: true as const }))
     const client = world()
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         ...client,
         org: {
@@ -357,7 +357,7 @@ describe('the organization screen', () => {
   it('opens a unit from the tree and creates a child of a legal type only', async () => {
     const create = vi.fn(() => Effect.succeed({ id: 'created' }))
     const client = world()
-    renderScreen({
+    await renderScreen({
       client: fakeClient({ ...client, org: { ...client.org, createNode: create } }),
       route: `/admin/org?node=${COLLEGE}`,
       children: <OrgPage />,
@@ -404,7 +404,7 @@ describe('the organization screen', () => {
   it("starts a task from the unit's own row, without opening the unit", async () => {
     const create = vi.fn(() => Effect.succeed({ id: 'created' }))
     const client = world()
-    renderScreen({
+    await renderScreen({
       client: fakeClient({ ...client, org: { ...client.org, createNode: create } }),
       route: '/admin/org',
       children: <OrgPage />,
@@ -428,7 +428,7 @@ describe('the organization screen', () => {
   })
 
   it('opens a branch without folding it, and folds only from the twistie', async () => {
-    renderScreen({ client: fakeClient(world()), route: '/admin/org', children: <OrgPage /> })
+    await renderScreen({ client: fakeClient(world()), route: '/admin/org', children: <OrgPage /> })
 
     const rowOf = (name: string) =>
       document.querySelector<HTMLElement>(`[data-testid="tree-row"][data-node-name="${name}"]`)
@@ -451,7 +451,7 @@ describe('the organization screen', () => {
     const put = vi.fn(() => Effect.succeed({}))
     const drop = vi.fn(() => Effect.succeed({}))
     const client = world()
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         ...client,
         org: { ...client.org, putRule: put, deleteRule: drop },
@@ -508,7 +508,7 @@ describe('the organization screen', () => {
           { parentTypeId: COLLEGE_TYPE, childTypeId: CLASS_TYPE },
         ],
       })
-    renderScreen({
+    await renderScreen({
       client: fakeClient(client),
       route: '/admin/org?view=types',
       children: <OrgPage />,
@@ -565,7 +565,7 @@ describe('the organization screen', () => {
           }),
       },
     }
-    renderScreen({
+    await renderScreen({
       client: fakeClient(readOnly),
       route: `/admin/org?node=${ROOT}`,
       children: <OrgPage />,
@@ -573,8 +573,8 @@ describe('the organization screen', () => {
 
     await expect.element(page.getByRole('heading', { name: /示例大学/ })).toBeInTheDocument()
     await expect.element(page.getByTestId('node-note')).toHaveAttribute('data-manageable', 'false')
-    expect(await page.getByRole('button', { name: '重命名' }).elements()).toHaveLength(0)
-    expect(await page.getByRole('button', { name: '创建' }).elements()).toHaveLength(0)
-    expect(await page.getByRole('button', { name: '删除组织' }).elements()).toHaveLength(0)
+    expect(page.getByRole('button', { name: '重命名' }).elements()).toHaveLength(0)
+    expect(page.getByRole('button', { name: '创建' }).elements()).toHaveLength(0)
+    expect(page.getByRole('button', { name: '删除组织' }).elements()).toHaveLength(0)
   })
 })

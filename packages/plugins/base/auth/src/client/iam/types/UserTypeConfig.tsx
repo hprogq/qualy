@@ -373,7 +373,7 @@ export function UserTypeConfig({
                     savePlacement.isPending ||
                     (mode === 'allow-list' && orgTypeIds.length === 0)
                   }
-                  onClick={() => savePlacement.mutate(undefined as never)}
+                  onClick={() => savePlacement.mutate(undefined)}
                 >
                   {format(m.save)}
                 </Button>
@@ -499,7 +499,7 @@ export function UserTypeConfig({
           {...stylex.props(styles.form)}
           onSubmit={(event) => {
             event.preventDefault()
-            saveProfile.mutate(undefined as never)
+            saveProfile.mutate(undefined)
           }}
         >
           <Field label={format(m.nameLabel)}>
@@ -526,7 +526,7 @@ export function UserTypeConfig({
         confirmLabel={format(m.delete)}
         cancelLabel={format(m.cancel)}
         pending={remove.isPending}
-        onConfirm={() => remove.mutate(undefined as never)}
+        onConfirm={() => remove.mutate(undefined)}
         onCancel={() => setConfirmingDelete(false)}
       />
     </Screen>

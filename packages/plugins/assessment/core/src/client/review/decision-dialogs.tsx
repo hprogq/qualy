@@ -799,10 +799,7 @@ export function ApproveDialog({
   }, [fields, sources, locale])
   const locked = form?.locked ?? null
   const [drafts, setDrafts] = useState<Record<string, FieldDraft>>(() =>
-    draftsFromFields(
-      fields,
-      (locked?.values ?? initial?.recognition?.values ?? seed) as Record<string, unknown>,
-    ),
+    draftsFromFields(fields, locked?.values ?? initial?.recognition?.values ?? seed),
   )
   const [determinationReason, setDeterminationReason] = useState(initial?.recognition?.reason ?? '')
   // what the rule sent back outranks what was merely left unfinished, and a

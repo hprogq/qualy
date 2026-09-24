@@ -350,7 +350,7 @@ describe.runIf(postgresAvailable)('an entrance that sends people away', () => {
             )
             const sessions = yield* LoginSessions
             const provider = yield* resolve('campus')
-            const callback = yield* sessions.callbackUrl(provider!)
+            const callback = yield* sessions.callbackUrl(provider)
             return { detail, version, callback: callback.toString() }
           }),
         ),
@@ -374,8 +374,8 @@ describe.runIf(postgresAvailable)('one redirect through somebody else’s server
           db.url,
           Effect.gen(function* () {
             const sessions = yield* LoginSessions
-            const door = (yield* resolve('campus'))!
-            const other = (yield* resolve('campus-two'))!
+            const door = yield* resolve('campus')
+            const other = yield* resolve('campus-two')
             const started = yield* sessions.startFlow({
               provider: door,
               purpose: 'login',
@@ -457,7 +457,7 @@ describe.runIf(postgresAvailable)('one redirect through somebody else’s server
           db.url,
           Effect.gen(function* () {
             const sessions = yield* LoginSessions
-            const door = (yield* resolve('campus'))!
+            const door = yield* resolve('campus')
             const nowhere = yield* Effect.result(
               sessions.startFlow({
                 provider: door,
@@ -513,8 +513,8 @@ describe.runIf(postgresAvailable)('one redirect through somebody else’s server
           Effect.gen(function* () {
             const iam = yield* Iam
             const sessions = yield* LoginSessions
-            const door = (yield* resolve('campus'))!
-            const other = (yield* resolve('campus-two'))!
+            const door = yield* resolve('campus')
+            const other = yield* resolve('campus-two')
             const ofDoor = yield* sessions.startFlow({ provider: door, purpose: 'login' })
             const ofPerson = yield* sessions.startFlow({
               provider: other,
@@ -555,7 +555,7 @@ describe.runIf(postgresAvailable)('one redirect through somebody else’s server
         db.url,
         Effect.gen(function* () {
           const sessions = yield* LoginSessions
-          const door = (yield* resolve('campus'))!
+          const door = yield* resolve('campus')
           const first = yield* sessions.startFlow({
             provider: door,
             purpose: 'login',
@@ -594,7 +594,7 @@ describe.runIf(postgresAvailable)('what a driver keeps through a redirect', () =
           db.url,
           Effect.gen(function* () {
             const sessions = yield* LoginSessions
-            const door = (yield* resolve('campus'))!
+            const door = yield* resolve('campus')
             let seen: string | undefined
             const started = yield* sessions.startFlow({
               provider: door,
@@ -638,7 +638,7 @@ describe.runIf(postgresAvailable)('what a driver keeps through a redirect', () =
           db.url,
           Effect.gen(function* () {
             const sessions = yield* LoginSessions
-            const door = (yield* resolve('campus'))!
+            const door = yield* resolve('campus')
             const outcomes: (string | undefined)[] = []
             for (let started = 0; started <= limit; started += 1) {
               outcomes.push(
@@ -696,7 +696,7 @@ describe.runIf(postgresAvailable)('an account bound from the other side', () => 
           db.url,
           Effect.gen(function* () {
             const sessions = yield* LoginSessions
-            const door = (yield* resolve('campus'))!
+            const door = yield* resolve('campus')
             const login = yield* sessions.startFlow({ provider: door, purpose: 'login' })
             const loginTaken = yield* sessions.consumeFlow({
               provider: door,
@@ -771,7 +771,7 @@ describe.runIf(postgresAvailable)('an account bound from the other side', () => 
           db.url,
           Effect.gen(function* () {
             const sessions = yield* LoginSessions
-            const door = (yield* resolve('campus'))!
+            const door = yield* resolve('campus')
             const taken = yield* Effect.result(
               sessions.bindSubject({
                 provider: door,

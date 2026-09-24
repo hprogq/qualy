@@ -431,7 +431,7 @@ export function ItemEditor({
           payload: {
             itemType: itemTypeOf(draft, item),
             scoreGroupId: draft.scoreGroupId,
-            config: configNow as never,
+            config: configNow,
             ...(item === null ? {} : { itemId: item.id }),
           },
         }),
@@ -651,9 +651,7 @@ export function ItemEditor({
           return {
             id: before?.id ?? nextOptionKey(),
             value,
-            label:
-              (admitted['x-qualy-enumLabels'] as Record<string, string> | undefined)?.[value] ??
-              value,
+            label: admitted['x-qualy-enumLabels']?.[value] ?? value,
             enabled: true,
           }
         })
@@ -913,7 +911,7 @@ export function ItemEditor({
               title: draft.title.trim(),
               scoreGroupId: draft.scoreGroupId,
               maxEntries,
-              config: config as never,
+              config: config,
             },
           }),
         )
@@ -926,7 +924,7 @@ export function ItemEditor({
             scoreGroupId: draft.scoreGroupId,
             maxEntries,
             ...(itemType === item.itemType ? {} : { itemType }),
-            config: config as never,
+            config: config,
             expectedRevisionId: over === undefined ? (item.currentRevision?.id ?? null) : over,
             ...(reason === null ? {} : { reason }),
             ...(effects === undefined ? {} : { effects }),
@@ -1605,8 +1603,7 @@ export function ItemEditor({
           const field = draft.fields.find((one) => one.id === lingeringAsk.fieldId)
           if (recognition === undefined || seat === undefined || field === undefined) return null
           const admitted = admittedSchemaOf(recognition, seat.schema) as ChoiceSchema
-          const labels =
-            (admitted['x-qualy-enumLabels'] as Record<string, string> | undefined) ?? {}
+          const labels = admitted['x-qualy-enumLabels'] ?? {}
           return (
             <ChoiceMappingDialog
               open={ask?.kind === 'mapping'}

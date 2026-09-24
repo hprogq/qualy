@@ -31,7 +31,7 @@ const role = (over: Record<string, unknown>) => ({
 
 describe('the reader’s roles', () => {
   it('names where each role holds, folds a long list of powers, and says everything once', async () => {
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         app: { getManifest: () => Effect.succeed(emptyManifest()) },
         access: {
@@ -58,10 +58,7 @@ describe('the reader’s roles', () => {
     })
     const rows = page.getByTestId('account-role')
     await expect.element(rows.first()).toBeInTheDocument()
-    expect((await rows.elements()).map((row) => row.getAttribute('data-all'))).toEqual([
-      'false',
-      'true',
-    ])
+    expect(rows.elements().map((row) => row.getAttribute('data-all'))).toEqual(['false', 'true'])
     // fixture names, not copy
     await expect.element(rows.first().getByText('软件学院', { exact: false })).toBeVisible()
     // eight shown, the rest a press away

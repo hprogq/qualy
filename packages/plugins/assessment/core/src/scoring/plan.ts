@@ -27,7 +27,6 @@ import {
   validateInputProfile,
   type AssignmentPlan,
   type AtomicSchema,
-  type InputSchema,
   type NormalizedAtomicSchema,
   type NormalizedInputSchema,
 } from '@qualy/value-schema'
@@ -951,7 +950,7 @@ export const compileScoringPlan = (
         },
         parameters: parameters as Readonly<Record<string, ParameterBindingV2>>,
         recognitionSchemas,
-        defaultBindings: defaultBindings as ScoringPlanV2['defaultBindings'],
+        defaultBindings: defaultBindings,
         aggregator: { ref: authoring.aggregator.ref, config: aggregatorConfig },
         inputSchema,
         outputSchema,
@@ -1169,14 +1168,11 @@ const readPlanV2 = (
     // hash would forgive a denormalized spelling (a "3.00" decimal bound)
     // that the evaluator would then execute as written
     const denormalized =
-      canonicalJson(normalizeInputSchema(plan.inputSchema as unknown as InputSchema)) !==
-        canonicalJson(plan.inputSchema) ||
-      canonicalJson(normalizeAtomicSchema(plan.outputSchema as unknown as AtomicSchema)) !==
+      canonicalJson(normalizeInputSchema(plan.inputSchema)) !== canonicalJson(plan.inputSchema) ||
+      canonicalJson(normalizeAtomicSchema(plan.outputSchema)) !==
         canonicalJson(plan.outputSchema) ||
       Object.values(plan.recognitionSchemas).some(
-        (schema) =>
-          canonicalJson(normalizeAtomicSchema(schema as unknown as AtomicSchema)) !==
-          canonicalJson(schema),
+        (schema) => canonicalJson(normalizeAtomicSchema(schema)) !== canonicalJson(schema),
       )
     if (denormalized) {
       return yield* refuse('a stored schema is not in its normalized representation')
@@ -1260,7 +1256,7 @@ const readPlanV2 = (
     }
     // the answer still has to be a score
     const intoScore = assignmentPlan(
-      normalizeAtomicSchema(plan.outputSchema as unknown as AtomicSchema),
+      normalizeAtomicSchema(plan.outputSchema),
       normalizeAtomicSchema(SCORE_AMOUNT_SCHEMA),
     )
     if (intoScore.kind !== 'direct') {

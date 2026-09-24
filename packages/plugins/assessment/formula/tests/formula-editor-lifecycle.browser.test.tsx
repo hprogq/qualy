@@ -108,7 +108,7 @@ describe('the formula editor lifecycle', () => {
       },
       { timeout: 5_000 },
     )
-    first.unmount()
+    await first.unmount()
     // every socket the mount opened (StrictMode double-mounts) is closed,
     // the model is gone, and both marker owners are empty
     for (const socket of MockSocket.instances) expect(socket.closeCalls).toBeGreaterThan(0)
@@ -129,7 +129,7 @@ describe('the formula editor lifecycle', () => {
       expect(formulaModel()!.getValue()).toBe('two\n')
       expect(MockSocket.instances.length).toBeGreaterThan(socketsAfterFirst)
     } finally {
-      second.unmount()
+      await second.unmount()
     }
     expect(monaco.editor.getEditors().length).toBeLessThanOrEqual(editorsAfterFirst)
     expect(formulaModel()).toBeNull()

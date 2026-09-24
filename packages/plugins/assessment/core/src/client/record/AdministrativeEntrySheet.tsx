@@ -7,7 +7,7 @@ import { useLingering } from '@qualy/ui/use-lingering'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { ManagedEntrySheet, type RecognitionDto } from '../entry/ManagedEntrySheet.tsx'
-import type { EntryDto, ItemDto } from '../entry/model.ts'
+import type { ItemDto } from '../entry/model.ts'
 
 // One administrative fact, read and corrected.
 //
@@ -141,7 +141,7 @@ export function AdministrativeEntrySheet({
     <ManagedEntrySheet
       key={lingering.entry.id}
       open={open && ready !== null}
-      entry={lingering.entry as EntryDto}
+      entry={lingering.entry}
       item={lingering.item}
       recognition={determined}
       trail={trailOf(lingering.item, new Map((groups.data?.groups ?? []).map((g) => [g.id, g])))}

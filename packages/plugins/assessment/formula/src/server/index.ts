@@ -292,6 +292,7 @@ const functionDto = (row: FunctionRow) => ({
   name: row.name,
   description: row.description,
   authorUserId: row.createdBy,
+  // eslint-disable-next-line typescript/no-unnecessary-type-assertion -- keeps the literals from widening to string
   status: (row.archivedAt === null ? 'active' : 'archived') as 'active' | 'archived',
   draftRevision: row.draftRevision,
   detailsRevision: Number(row.detailsRevision ?? 1),
@@ -1298,7 +1299,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
             .pipe(Effect.orDie)
           yield* appendRevision({
             tenantId,
-            functionId: row.id as string,
+            functionId: row.id,
             revisionNo: 1,
             sourceTs: seed,
             tests: [],
@@ -1310,14 +1311,14 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
           yield* audit.record(FormulaFunctionCreated, {
             tenantId,
             actor: actorOf(as),
-            target: { id: row.id as string, label: input.name },
+            target: { id: row.id, label: input.name },
             details: {},
           })
           return row
         }),
       ),
     )
-    const row = yield* foundRow(tenantId, created.id as string).pipe(Effect.orDie)
+    const row = yield* foundRow(tenantId, created.id).pipe(Effect.orDie)
     return functionDetailDto(row)
   })
 
@@ -1395,14 +1396,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
             .pipe(
               Effect.orDie,
               Effect.map((source) => {
-                const found = source as
-                  | {
-                      id: string
-                      versionNo: number
-                      releaseName: string | null
-                      functionName: string
-                    }
-                  | undefined
+                const found = source
                 return found === undefined
                   ? null
                   : {
@@ -1538,8 +1532,8 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
               tenantId,
               functionId,
               revisionNo,
-              sourceTs: sourceTs ?? (locked.draftSourceTs as string),
-              tests: tests ?? (locked.draftTests as readonly unknown[]),
+              sourceTs: sourceTs ?? locked.draftSourceTs,
+              tests: tests ?? locked.draftTests,
               savedBy: as.userId,
               origin: 'saved',
             })
@@ -1550,9 +1544,9 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
             yield* audit.record(FormulaFunctionDetailsChanged, {
               tenantId,
               actor: actorOf(as),
-              target: { id: functionId, label: name ?? (locked.name as string) },
+              target: { id: functionId, label: name ?? locked.name },
               details: {
-                ...(name === undefined ? {} : { name: { from: locked.name as string, to: name } }),
+                ...(name === undefined ? {} : { name: { from: locked.name, to: name } }),
                 descriptionChanged: description !== undefined,
               },
             })
@@ -1691,7 +1685,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
           yield* audit.record(FormulaFunctionDeleted, {
             tenantId,
             actor: actorOf(as),
-            target: { id: functionId, label: locked.name as string },
+            target: { id: functionId, label: locked.name },
             details: {},
           })
         }),
@@ -1799,7 +1793,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
           // freeze bytes nobody asked to publish
           if (locked.draftRevision !== expectedDraftRevision)
             return yield* new FormulaDraftConflict({
-              draftRevision: locked.draftRevision as number,
+              draftRevision: locked.draftRevision,
             })
           const existing = yield* db
             .query((k) =>
@@ -1818,12 +1812,11 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
           // refused rather than minting a version claiming a rule moved
           if (existing !== undefined) {
             const same =
-              (existing['releaseName'] as string | null) === releaseName &&
-              (existing['releaseNotes'] as string | null) === releaseNotes
+              existing['releaseName'] === releaseName && existing['releaseNotes'] === releaseNotes
             if (same) return existing
             return yield* new FormulaVersionUnchanged({
               versionNo: Number(existing['versionNo']),
-              releaseName: (existing['releaseName'] as string | null) ?? null,
+              releaseName: existing['releaseName'] ?? null,
             })
           }
           // a different publication wearing the name already: the function
@@ -1891,7 +1884,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
         }),
       ),
     )
-    const published = yield* versionRow(tenantId, { versionId: inserted.id as string })
+    const published = yield* versionRow(tenantId, { versionId: inserted.id })
     if (published === undefined) return yield* Effect.die(new Error('a published version vanished'))
     return versionDetailDto(published)
   })
@@ -1958,8 +1951,8 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
           const held = Number(version.metadataRevision ?? 1)
           if (held !== request.expectedMetadataRevision)
             return yield* new FormulaVersionInfoConflict({ metadataRevision: held })
-          const was = (version.releaseName as string | null) ?? null
-          const wasNotes = (version.releaseNotes as string | null) ?? null
+          const was = version.releaseName ?? null
+          const wasNotes = version.releaseNotes ?? null
           // words that did not move are not an act: no revision, no trail row
           if (was === releaseName && wasNotes === releaseNotes) return
           const taken = yield* db
@@ -1970,7 +1963,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
                 .where('tenantId', '=', tenantId)
                 .where('functionId', '=', functionId)
                 .where('releaseName', '=', releaseName)
-                .where('id', '!=', version.id as string)
+                .where('id', '!=', version.id)
                 .executeTakeFirst(),
             )
             .pipe(Effect.orDie)
@@ -1987,7 +1980,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
                   metadataUpdatedBy: as.userId,
                 })
                 .where('tenantId', '=', tenantId)
-                .where('id', '=', version.id as string)
+                .where('id', '=', version.id)
                 .execute(),
             )
             .pipe(Effect.orDie)
@@ -1998,7 +1991,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
             actor: actorOf(as),
             target: { id: functionId, label: releaseName },
             details: {
-              versionId: version.id as string,
+              versionId: version.id,
               versionNo,
               ...(was === releaseName ? {} : { name: { from: was, to: releaseName } }),
               ...(wasNotes === releaseNotes ? {} : { notes: { from: wasNotes, to: releaseNotes } }),
@@ -2048,7 +2041,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
       )
       .pipe(Effect.orDie)
     if (found === undefined) return yield* new FormulaVersionNotFound()
-    const versionId = found.id as string
+    const versionId = found.id
     const frozen = yield* runtimeStore.resolve({ tenantId, versionId }).pipe(
       Effect.catchTags({
         ASSESSMENT_FORMULA_RUNTIME_MISSING: () => Effect.fail(new FormulaVersionNotFound()),
@@ -2225,9 +2218,9 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
                       found === undefined
                         ? Effect.fail(new FormulaVersionNotFound())
                         : Effect.succeed({
-                            sourceTs: found.sourceTs as string,
-                            tests: found.tests as readonly unknown[],
-                            provenance: { sourceVersionId: found.id as string },
+                            sourceTs: found.sourceTs,
+                            tests: found.tests,
+                            provenance: { sourceVersionId: found.id },
                             origin: 'restored-from-version' as const,
                           }),
                     ),
@@ -2248,8 +2241,8 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
                       found === undefined
                         ? Effect.fail(new FormulaDraftRevisionNotFound())
                         : Effect.succeed({
-                            sourceTs: found.sourceTs as string,
-                            tests: found.tests as readonly unknown[],
+                            sourceTs: found.sourceTs,
+                            tests: found.tests,
                             provenance: { sourceDraftRevisionNo: from.revisionNo },
                             origin: 'restored-from-draft' as const,
                           }),
@@ -2470,9 +2463,7 @@ export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula
             ...(payload.draftSourceTs === undefined
               ? {}
               : { draftSourceTs: payload.draftSourceTs }),
-            ...(payload.draftTests === undefined
-              ? {}
-              : { draftTests: payload.draftTests as readonly FormulaTestInput[] }),
+            ...(payload.draftTests === undefined ? {} : { draftTests: payload.draftTests }),
           },
           principal,
         )

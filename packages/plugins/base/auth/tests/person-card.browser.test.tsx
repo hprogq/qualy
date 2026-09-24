@@ -22,7 +22,7 @@ describe('a person in a table row', () => {
   // later, when the card's chunk landed and mounted a closed hover card in
   // every row.
   it('leaves the row unpainted while its card is shut', async () => {
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         app: { getManifest: () => Effect.succeed(emptyManifest()) },
         // never called: the card fetches only once somebody points at it,
@@ -49,7 +49,7 @@ describe('a person in a table row', () => {
     // the card is mounted and shut, which is the state the whole table is in
     // before anybody points at anything
     await expect.element(trigger).toHaveAttribute('aria-expanded', 'false')
-    const row = await page.getByTestId('person-row').element()
+    const row = page.getByTestId('person-row').element()
     // The row also tints under the pointer, and the pointer is wherever the
     // last test left it - over this row often enough that the assertion read
     // a hover tint, or the 150ms transition out of one, as the card's doing.

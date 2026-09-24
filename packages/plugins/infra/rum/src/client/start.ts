@@ -61,6 +61,6 @@ export const startBrowserRum = async (release: ObservedRelease): Promise<Dispose
   } catch {
     // the answer never came: no reporting, and nothing else about the page
     // changes. The registry's own warning covers the cases worth a line.
-    return await activateRumProvider(null, release)
+    return activateRumProvider(null, release)
   }
 }

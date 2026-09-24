@@ -147,7 +147,7 @@ export async function collectWebPlugins(
         hasCatalogs = true
       }
       if (module.errorMessages) {
-        for (const code of Object.keys(module.errorMessages as Record<string, unknown>)) {
+        for (const code of Object.keys(module.errorMessages)) {
           if (COMMON_ERROR_CODES.has(code)) {
             throw new Error(
               `${entry.name}: ${code} is a common error code and cannot be overridden`,

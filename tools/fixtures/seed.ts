@@ -126,7 +126,7 @@ const label = (id: string) => id.replaceAll('-', '')
 
 function drift(subject: string, field: string, expected: unknown, actual: unknown): never {
   throw new Error(
-    `seed drift: ${subject} has unexpected ${field} (${actual} instead of ${expected})`,
+    `seed drift: ${subject} has unexpected ${field} (${String(actual)} instead of ${String(expected)})`,
   )
 }
 

@@ -34,7 +34,7 @@ describe('the checkbox owns its state', () => {
         </>
       )
     }
-    mount(<Harness />)
+    await mount(<Harness />)
     const agree = page.getByRole('checkbox', { name: 'agree' })
     await expect.element(agree).not.toBeChecked()
     await agree.click()
@@ -57,7 +57,7 @@ describe('the checkbox owns its state', () => {
         </>
       )
     }
-    mount(<Harness />)
+    await mount(<Harness />)
     await expect.poll(() => box('some').indeterminate).toBe(true)
     // a click resolves the mixed state to a definite one
     await page.getByRole('checkbox', { name: 'some' }).click()
@@ -80,7 +80,7 @@ describe('the checkbox owns its state', () => {
         </>
       )
     }
-    mount(<Harness />)
+    await mount(<Harness />)
     await expect.element(page.getByRole('checkbox', { name: 'frozen' })).toBeDisabled()
     // clicking the label text reaches the control, the native association
     await page.getByText('through the label').click()
@@ -118,7 +118,7 @@ describe('the radio group picks one of several', () => {
 
   it('announces the group, follows clicks, skips disabled options', async () => {
     const picks: string[] = []
-    mount(<Flavors onPick={(value) => picks.push(value)} />)
+    await mount(<Flavors onPick={(value) => picks.push(value)} />)
     await expect.element(page.getByRole('radiogroup')).toBeInTheDocument()
     await expect.element(page.getByRole('radio', { name: 'vanilla' })).toBeChecked()
     await page.getByRole('radio', { name: 'hazelnut' }).click()
@@ -128,7 +128,7 @@ describe('the radio group picks one of several', () => {
   })
 
   it('arrow keys walk the group, as native radios do', async () => {
-    mount(<Flavors />)
+    await mount(<Flavors />)
     const vanilla = page.getByRole('radio', { name: 'vanilla' })
     await expect.element(vanilla).toBeChecked()
     ;(vanilla.element() as HTMLInputElement).focus()
@@ -158,7 +158,7 @@ describe('the input is a native form citizen', () => {
         </form>
       )
     }
-    mount(<Harness />)
+    await mount(<Harness />)
     const field = page.getByLabelText('name')
     await expect.element(field).toHaveValue('ada')
     await field.fill('lovelace')
@@ -167,7 +167,7 @@ describe('the input is a native form citizen', () => {
   })
 
   it('marks invalid through aria-invalid, the accessibility fact', async () => {
-    mount(<Input aria-label="broken" aria-invalid readOnly value="x" />)
+    await mount(<Input aria-label="broken" aria-invalid readOnly value="x" />)
     const field = page.getByRole('textbox', { name: 'broken' })
     await expect.element(field).toHaveAttribute('aria-invalid', 'true')
     // the invalid state is painted from the product danger token
@@ -204,7 +204,7 @@ describe('a leading icon laid over the input', () => {
   // leaving 40px of blank padding. The icon must be the thing under the
   // cursor at its own coordinates.
   it('stays visible above the field', async () => {
-    mount(
+    await mount(
       <div {...stylex.props(glassStyles.seat)}>
         <svg
           data-testid="glass"
@@ -246,7 +246,7 @@ describe('the input family types at one size', () => {
   // assertion anyone had written about a select went through its label
   // instead.
   it('says whether its list is open', async () => {
-    mount(
+    await mount(
       <Select>
         <SelectTrigger aria-label="picked">
           <SelectValue placeholder="pick" />
@@ -306,7 +306,7 @@ describe('the input family types at one size', () => {
         </>
       )
     }
-    mount(<Harness />)
+    await mount(<Harness />)
     const sizeOf = (el: Element | null) => {
       if (el === null) return 'missing'
       const style = getComputedStyle(el)

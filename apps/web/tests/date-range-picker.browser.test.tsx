@@ -32,7 +32,7 @@ function Harness({ initial }: { initial: DateRange }) {
 }
 
 const open = async (initial: DateRange) => {
-  render(<Harness initial={initial} />)
+  await render(<Harness initial={initial} />)
   // named by whatever it already holds, so the field is found by its slot
   await expect
     .poll(() => document.querySelector('[data-slot="date-range-picker"]') !== null)
@@ -205,7 +205,7 @@ describe('every shape a span can take is closed', () => {
 
 describe('one month at a time, with the neighbouring days on show', () => {
   it('runs one unbroken track across the turn of the month', async () => {
-    page.viewport(PHONE.width, PHONE.height)
+    await page.viewport(PHONE.width, PHONE.height)
     await open({ start: '2026-08-28', end: '2026-09-03' })
     await expect.poll(() => document.querySelectorAll('table').length).toBe(1)
     expect(openEnds()).toEqual([])
@@ -229,7 +229,7 @@ describe('one month at a time, with the neighbouring days on show', () => {
   })
 
   it('gives an end that falls on a neighbouring day the same circle as any other', async () => {
-    page.viewport(PHONE.width, PHONE.height)
+    await page.viewport(PHONE.width, PHONE.height)
     await open({ start: '2026-08-28', end: '2026-09-03' })
     const end = dated('2026年9月3日')
     expect(end.hasAttribute('data-outside')).toBe(true)
@@ -244,7 +244,7 @@ describe('one month at a time, with the neighbouring days on show', () => {
     // life of this test (every other case anchors its view with a value)
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date(2026, 7, 15))
-    page.viewport(PHONE.width, PHONE.height)
+    await page.viewport(PHONE.width, PHONE.height)
     await open({ start: '', end: '' })
     const second = dated('2026年9月2日')
     await userEvent.click(second)
@@ -271,7 +271,7 @@ describe('the day answers its own state', () => {
   })
 
   it('draws from the palette of whichever scheme it is in', async () => {
-    render(
+    await render(
       <UiProvider scheme="dark">
         <DateRangePicker
           value={{ start: '2026-08-03', end: '2026-08-13' }}

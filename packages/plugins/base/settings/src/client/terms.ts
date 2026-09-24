@@ -1,11 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useApi, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import {
-  effectiveText,
-  type LocalizedTextOverride,
-  type TermDefinition,
-} from '@qualy/settings-contract'
+import { effectiveText, type TermDefinition } from '@qualy/settings-contract'
 import { settingsApi } from './api.ts'
 
 // The word a tenant uses, read from a screen.
@@ -35,5 +31,5 @@ export function useTerm(term: TermDefinition): string {
   const { locale } = useI18n()
   const terminology = useTerminology()
   const found = terminology.data?.terms.find((one) => one.id === term.id)
-  return effectiveText(term, found?.override as LocalizedTextOverride | undefined, locale)
+  return effectiveText(term, found?.override, locale)
 }

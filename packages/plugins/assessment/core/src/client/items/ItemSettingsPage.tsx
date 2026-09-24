@@ -458,7 +458,7 @@ function Editor({
     mutationFn: (itemId: string) => run(api.assessment.deleteItem({ params: { itemId } })),
     onSuccess: () => {
       close()
-      refresh()
+      void refresh()
     },
     onError: (error) => toast.error(formatError(error)),
   })
@@ -501,7 +501,7 @@ function Editor({
     onSuccess: () => void refresh(),
     onError: (error) => {
       toast.error(formatError(error))
-      refresh()
+      void refresh()
     },
   })
 
@@ -529,7 +529,7 @@ function Editor({
     onSuccess: () => void refresh(),
     onError: (error) => {
       toast.error(formatError(error))
-      refresh()
+      void refresh()
     },
   })
 
@@ -537,7 +537,7 @@ function Editor({
   const roots = (allGroups as readonly TreeGroup[]).filter(
     (group) => group.parentGroupId === (paper?.id ?? null),
   )
-  const rows = structureRows(allGroups as readonly TreeGroup[], allItems, drafts, paper?.id ?? null)
+  const rows = structureRows(allGroups, allItems, drafts, paper?.id ?? null)
 
   const selectedItem =
     selection?.kind === 'item' ? (allItems.find((item) => item.id === selection.id) ?? null) : null
@@ -629,6 +629,20 @@ function Editor({
 
   const openGroupId = selectedItem?.scoreGroupId ?? writing?.groupId ?? null
 
+  /** a saved question, opened where the reader already is */
+  const opened = async (itemId: string) => {
+    // the created row has to be in hand before it can be opened, or the
+    // screen has nothing to show between the save and the refetch. The
+    // reader stays where they were, so nothing travels.
+    await refresh()
+    // and the question is named before the draft is let go: the other
+    // order leaves one render with neither, which is the structure, so
+    // the screen travels out to the list and back in again on a press
+    // that never left the question
+    onQuestion(itemId)
+    if (writing !== null) closeDraft(writing.localId)
+  }
+
   const editorArea =
     (selectedItem !== null || writing !== null) && options.data !== undefined ? (
       <ItemEditor
@@ -639,13 +653,8 @@ function Editor({
         participantCount={participantCount}
         item={selectedItem}
         groups={allGroups.map((one) => ({ id: one.id, name: one.name }))}
-        trail={trailOf(allGroups as readonly TreeGroup[], openGroupId)}
-        placement={placementOf(
-          allGroups as readonly TreeGroup[],
-          allItems,
-          openGroupId,
-          paper?.id ?? null,
-        )}
+        trail={trailOf(allGroups, openGroupId)}
+        placement={placementOf(allGroups, allItems, openGroupId, paper?.id ?? null)}
         paper={everyQuestion}
         defaultGroupId={writing?.groupId}
         options={options.data}
@@ -668,18 +677,7 @@ function Editor({
         }
         onCancel={() => (writing === null ? close() : closeDraft(writing.localId))}
         onReload={refresh}
-        onSaved={async (itemId) => {
-          // the created row has to be in hand before it can be opened, or the
-          // screen has nothing to show between the save and the refetch. The
-          // reader stays where they were, so nothing travels.
-          await refresh()
-          // and the question is named before the draft is let go: the other
-          // order leaves one render with neither, which is the structure, so
-          // the screen travels out to the list and back in again on a press
-          // that never left the question
-          onQuestion(itemId)
-          if (writing !== null) closeDraft(writing.localId)
-        }}
+        onSaved={(itemId) => void opened(itemId)}
       />
     ) : null
 
@@ -689,9 +687,9 @@ function Editor({
     ) : (
       <div {...stylex.props(styles.grow, styles.structureArea)}>
         <PaperSummary
-          paper={paper as TreeGroup}
-          roots={roots as readonly TreeGroup[]}
-          onEdit={() => setGroup({ kind: 'edit', group: paper as TreeGroup })}
+          paper={paper}
+          roots={roots}
+          onEdit={() => setGroup({ kind: 'edit', group: paper })}
         />
         <StructureTable
           rows={rows}
@@ -787,7 +785,7 @@ function Editor({
           open={group !== null}
           batchId={batchId}
           batchStatus={batchStatus}
-          groups={allGroups as readonly TreeGroup[]}
+          groups={allGroups}
           version={groupsVersion ?? 0}
           editing={lingeringGroup.kind === 'edit' ? lingeringGroup.group : null}
           parentId={lingeringGroup.kind === 'new' ? lingeringGroup.parentId : null}
@@ -811,7 +809,7 @@ function Editor({
           }}
           onClose={() => {
             setPendingMove(null)
-            refresh()
+            void refresh()
           }}
         />
       )}
@@ -839,7 +837,7 @@ function Editor({
           onClose={() => setVoiding(null)}
           onDone={() => {
             setVoiding(null)
-            refresh()
+            void refresh()
           }}
         />
       )}
@@ -965,7 +963,7 @@ function PaperSummary({
           {roots.map((group, index) => (
             <div
               key={group.id}
-              {...stylex.props(segments[index % segments.length]!)}
+              {...stylex.props(segments[index % segments.length])}
               style={{
                 width: `${Math.min(100, (unitsOf(group.cap ?? 0) / Math.max(held, total)) * 100)}%`,
               }}
@@ -976,7 +974,7 @@ function PaperSummary({
 
       {over && (
         <p {...stylex.props(styles.overNote)}>
-          {format(m.paperCapOver, { sum: sum!, total: trimAmount(paper.cap!) })}
+          {format(m.paperCapOver, { sum: sum, total: trimAmount(paper.cap!) })}
         </p>
       )}
       {sum === null && roots.length > 0 && (

@@ -71,7 +71,7 @@ describe('composing the shell policy', () => {
       'default-src',
       'sandbox',
     ]) {
-      expect(() => composeShellPolicy([{ owner: 'x', [directive]: ["'self'"] } as never])).toThrow(
+      expect(() => composeShellPolicy([{ owner: 'x', [directive]: ["'self'"] }])).toThrow(
         ShellPolicyRefused,
       )
     }

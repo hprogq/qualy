@@ -34,11 +34,9 @@ const withLimiter = async <A>(
     )
     return await Effect.runPromise(
       Effect.gen(function* () {
-        const tenant = (
-          (yield* runSql<{ id: string }>(
-            sql`insert into tenants (slug, name) values ('default', 'D') returning id`,
-          )) as { rows: { id: string }[] }
-        ).rows[0]!.id
+        const tenant = (yield* runSql<{ id: string }>(
+          sql`insert into tenants (slug, name) values ('default', 'D') returning id`,
+        )).rows[0]!.id
         const limiter = yield* makeLimiter
         return yield* body(limiter, tenant)
       }).pipe(Effect.provide(layer)),

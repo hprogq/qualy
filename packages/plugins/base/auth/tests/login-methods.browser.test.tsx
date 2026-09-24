@@ -164,7 +164,7 @@ const stubs = (over: Record<string, unknown> = {}) => ({
 describe('login methods screen', () => {
   it('replaces the whole audience, stating the version it read', async () => {
     const save = vi.fn(() => Effect.succeed({ version: 5 }))
-    renderScreen({
+    await renderScreen({
       client: fakeClient(stubs({ setAuthProviderAudience: save })),
       route: `/admin/login-methods?provider=${PASSWORD_ID}`,
       children: <LoginMethodsPage />,
@@ -196,7 +196,7 @@ describe('login methods screen', () => {
   })
 
   it('says out loud when a door would open for nobody', async () => {
-    renderScreen({
+    await renderScreen({
       client: fakeClient(
         stubs({
           listAuthProviders: () =>
@@ -225,13 +225,13 @@ describe('login methods screen', () => {
     const open = document.querySelectorAll('[data-audience="empty"]')
     expect(open).toHaveLength(1)
     // and the list itself is offered, empty of ticks rather than absent
-    const boxes = await page.getByTestId('audience-panel').getByRole('checkbox').elements()
+    const boxes = page.getByTestId('audience-panel').getByRole('checkbox').elements()
     expect(boxes).toHaveLength(2)
     for (const box of boxes) expect(box).not.toBeChecked()
   })
 
   it('offers no save to a reader who may only look', async () => {
-    renderScreen({
+    await renderScreen({
       client: fakeClient(
         stubs({
           listUserTypes: () =>
@@ -247,10 +247,8 @@ describe('login methods screen', () => {
     await expect
       .element(page.getByTestId('audience-panel'))
       .toHaveAttribute('data-mode', 'unrestricted')
-    expect(await page.getByRole('tab').elements()).toHaveLength(0)
-    expect(await page.getByRole('button', { name: '保存', exact: false }).elements()).toHaveLength(
-      0,
-    )
+    expect(page.getByRole('tab').elements()).toHaveLength(0)
+    expect(page.getByRole('button', { name: '保存', exact: false }).elements()).toHaveLength(0)
   })
 })
 
@@ -262,7 +260,7 @@ describe('a method as one row of a phone', () => {
     // before, which filled the row with strokes. A column dropped narrow
     // has no side to be ruled from either.
     await page.viewport(390, 844)
-    renderScreen({
+    await renderScreen({
       client: fakeClient(stubs()),
       route: '/admin/login-methods',
       children: <LoginMethodsPage />,
@@ -285,7 +283,7 @@ describe('a method as one row of a phone', () => {
     // own under the facts, which pushed the standing and the way in off the
     // row's middle.
     await page.viewport(390, 844)
-    renderScreen({
+    await renderScreen({
       client: fakeClient(stubs()),
       route: '/admin/login-methods',
       children: <LoginMethodsPage />,
@@ -304,7 +302,7 @@ describe('a method as one row of a phone', () => {
 describe('a way in, from added to gone', () => {
   it('is added as a name and an address, then opened to be set up', async () => {
     const create = vi.fn(() => Effect.succeed({ id: CAS_ID }))
-    renderScreen({
+    await renderScreen({
       client: fakeClient(
         stubs({
           listAuthProviderKinds: () => Effect.succeed({ kinds: [casKind] }),
@@ -331,7 +329,7 @@ describe('a way in, from added to gone', () => {
   it('is set up over saves, and offered for service only once it has everything', async () => {
     const update = vi.fn(() => Effect.succeed({ version: 5 }))
     const row = cas({ status: 'disabled', setup: 'incomplete' })
-    renderScreen({
+    await renderScreen({
       client: fakeClient(
         stubs({
           listAuthProviders: () => Effect.succeed({ providers: [provider(), row] }),
@@ -375,7 +373,7 @@ describe('a way in, from added to gone', () => {
       .element(page.getByTestId('method-missing'))
       .toHaveAttribute('data-missing', 'server,clientSecret')
     // nothing to switch it into service by
-    expect(await page.getByRole('tab', { name: '已启用' }).elements()).toHaveLength(0)
+    expect(page.getByRole('tab', { name: '已启用' }).elements()).toHaveLength(0)
 
     // part of it is enough to save
     await page.getByRole('textbox', { name: '服务地址' }).fill('https://cas.example.edu')
@@ -398,7 +396,7 @@ describe('a way in, from added to gone', () => {
 
   it('keeps what a way in service needs', async () => {
     const serving = cas()
-    renderScreen({
+    await renderScreen({
       client: fakeClient(
         stubs({
           listAuthProviders: () => Effect.succeed({ providers: [provider(), serving] }),
@@ -438,7 +436,7 @@ describe('a way in, from added to gone', () => {
   it('lets a stored secret go once the way in is out of service', async () => {
     const clear = vi.fn(() => Effect.succeed({ version: 5 }))
     const resting = cas({ status: 'disabled' })
-    renderScreen({
+    await renderScreen({
       client: fakeClient(
         stubs({
           listAuthProviders: () => Effect.succeed({ providers: [provider(), resting] }),
@@ -462,7 +460,7 @@ describe('a way in, from added to gone', () => {
   it('shows a box only while another asks for it, and folds the rest away', async () => {
     const update = vi.fn(() => Effect.succeed({ version: 5 }))
     const row = cas({ status: 'disabled' })
-    renderScreen({
+    await renderScreen({
       client: fakeClient(
         stubs({
           listAuthProviders: () => Effect.succeed({ providers: [provider(), row] }),
@@ -510,7 +508,7 @@ describe('a way in, from added to gone', () => {
   it('is deleted only after saying what it ends', async () => {
     const remove = vi.fn(() => Effect.succeed({ ok: true as const }))
     const row = cas()
-    renderScreen({
+    await renderScreen({
       client: fakeClient(
         stubs({
           listAuthProviders: () => Effect.succeed({ providers: [provider(), row] }),
@@ -541,7 +539,7 @@ describe('a way in, from added to gone', () => {
     const address =
       'https://qualy.school.edu.cn/api/auth/cas/campus-unified-identity-authentication/callback'
     const write = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined)
-    renderScreen({
+    await renderScreen({
       client: fakeClient(
         stubs({
           listAuthProviders: () => Effect.succeed({ providers: [cas()] }),
@@ -561,7 +559,7 @@ describe('a way in, from added to gone', () => {
   })
 
   it('shows the platform\u2019s own door as not to be deleted, and says why', async () => {
-    renderScreen({
+    await renderScreen({
       client: fakeClient(
         stubs({
           listAuthProviders: () => Effect.succeed({ providers: [provider({ isSystem: true })] }),
@@ -592,7 +590,7 @@ describe('the sign-in page, as its administrator arranges it', () => {
   ]
 
   it('lists the main ways in apart from the rest, each group in its order', async () => {
-    renderScreen({
+    await renderScreen({
       client: fakeClient(stubs({ listAuthProviders: () => Effect.succeed({ providers: four }) })),
       route: '/admin/login-methods',
       children: <LoginMethodsPage />,
@@ -612,7 +610,7 @@ describe('the sign-in page, as its administrator arranges it', () => {
     await page.viewport(390, 844)
     try {
       const arrange = vi.fn(() => Effect.succeed({ ok: true as const }))
-      renderScreen({
+      await renderScreen({
         client: fakeClient(
           stubs({
             listAuthProviders: () => Effect.succeed({ providers: four }),
@@ -655,7 +653,7 @@ describe('the sign-in page, as its administrator arranges it', () => {
         iconChosen: true,
       }),
     )
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         ...stubs({
           listAuthProviders: () => Effect.succeed({ providers: four }),
@@ -687,7 +685,7 @@ describe('the sign-in page, as its administrator arranges it', () => {
         iconChosen: true,
       }),
     )
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         ...stubs({
           listAuthProviders: () => Effect.succeed({ providers: four }),
@@ -735,7 +733,7 @@ describe('the sign-in page, as its administrator arranges it', () => {
       icon: { kind: 'image' as const, version: 'v1', onDark: 'v2' },
       iconChosen: true,
     }
-    renderScreen({
+    await renderScreen({
       client: fakeClient({
         ...stubs({
           listAuthProviders: () => Effect.succeed({ providers: [...four.slice(0, 3), drawn] }),

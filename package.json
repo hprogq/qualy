@@ -85,7 +85,7 @@
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "lint": "oxlint",
-    "lint:types": "oxlint --type-aware",
+    "lint:types": "oxlint --type-aware --report-unused-disable-directives-severity=error",
     "plugin:add": "node tools/repo/plugin-add.ts",
     "prepare": "effect-tsgo patch --typescript --no-oxlint",
     "qualy": "node apps/cli/src/main.ts",
