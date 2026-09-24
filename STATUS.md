@@ -20149,3 +20149,17 @@ A–C 的部署约束至此解除：ALTCHA 与能处理 428 的登录页在同�
 
 - `pnpm typecheck`：exit 0；plugin-isolation / workspace-deps / fast-refresh / catalogs：`Tests  68 passed (68)`。
 - 浏览器：session-transition、failure、transient-recovery、account：`Tests  12 passed (12)`。新增「后台刷新失败页面照常」测试，临时恢复旧判断时该测试失败（确认不是空测）。
+
+## 接入 Oxc（oxfmt + oxlint）与 CI 静态检查 job；产品改用 Resend 发信（2026-09-24）
+
+- **oxfmt 取代 Prettier**（`pnpm format` / `pnpm format:check`，版本精确 pin）：首轮重排单独一个 commit（`c433dace1`，已登记 `.git-blame-ignore-revs`）。公式 SDK（`packages/core/formula/src`、`packages/core/value-schema/src`）不格式化——其字节进公式产物与 `runtimeDigest`，首轮重排曾让 formula-compiler golden 失败，已恢复（`090ace099`）。Prettier 仍在 catalog：sandbox-authoring 的语言服务运行时用它。
+- **oxlint**：`pnpm lint`（不看类型，约 0.5 s）与 `pnpm lint:types`（经 oxlint-tsgolint，本机约 16 s、峰值约 4.7 GB，并报失效 disable 注释）。修掉的：206 处未用代码、10 条失效 disable、10 处 hooks 依赖（5 处每次渲染新建数组/对象致 memo 失效）、479 处测试未 await 的 render/mount/viewport/unmount（含一处写在 `waitFor` 回调里的视口恢复）、多余断言与 await、`catch` 重抛补 `cause`。规则逐条取舍与自动修复的三个坑见 docs/notes/tooling.md「Oxc」。
+- **CI**：新增无数据库的 `static` job（`format:check → lint → typecheck → lint:types`），与其他 job 并行；typecheck 从主 job 挪入。
+- **Resend**：qualy.yml 启用 `@qualy/plugin-mail-resend` 并设 `defaultBackend: resend`，smtp 保留安装、停用。开发环境也需要 `QUALY_MAIL_RESEND_API_KEY`；测试与生产冒烟工具注入占位 key，公开产物检查把该 key 列为仅服务端。
+
+### 验收（实际执行）
+
+- `pnpm format:check`、`pnpm lint`、`pnpm lint:types`、`pnpm typecheck`：全部 exit 0。
+- `pnpm test`（Resend 清单下）：`Test Files  312 passed | 3 skipped (315)`，`Tests  2292 passed | 17 skipped (2309)`。
+- `pnpm test:browser`（补 await 之后）：`Test Files  78 passed (78)`，`Tests  595 passed (595)`。
+- 未在本地跑：CI 的生产冒烟、镜像检查与 release smoke（需构建与容器），其注入的邮件变量已改为同时带 SMTP 与 Resend。
