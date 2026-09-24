@@ -70,11 +70,23 @@ plugins:
   '@qualy/plugin-auth-cas': {}
   '@qualy/plugin-auth-github': {}
   '@qualy/plugin-auth-oidc': {}
-  '@qualy/plugin-mail': {}
+
+  # Mail, the same shape as attachments: the backends are separate plugins,
+  # and the one mail goes out through is named here as the product's default.
+  # A deployment names another with QUALY_MAIL_DEFAULT_BACKEND, among the
+  # backends enabled here, without a new release.
+  '@qualy/plugin-mail':
+    config:
+      defaultBackend: smtp
   '@qualy/plugin-mail-smtp': {}
-  # the backend mail goes out through is QUALY_MAIL_DEFAULT_BACKEND (smtp unless set)
   '@qualy/plugin-mail-resend':
     enabled: false
+
+  # Challenges for risky requests. Unlike mail, which provider answers them is
+  # chosen by enabling it rather than by name: each provider brings its own
+  # browser code, and Turnstile its own script origin in the page's CSP, so
+  # the choice is part of the web release. At most one provider may be
+  # enabled - the assembly refuses two by name.
   '@qualy/plugin-captcha': {}
   '@qualy/plugin-captcha-altcha': {}
   '@qualy/plugin-captcha-turnstile':
