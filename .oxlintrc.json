@@ -1,6 +1,12 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "ignorePatterns": ["repos/**", "**/*.gen.ts", "apps/web/.qualy/**", "db/migrations/**"],
+  "ignorePatterns": [
+    "repos/**",
+    "**/*.gen.ts",
+    "apps/web/.qualy/**",
+    "db/migrations/**",
+    "docs/seed/**"
+  ],
   "plugins": ["typescript", "unicorn", "oxc", "vitest"],
   "categories": {
     "correctness": "error"
