@@ -20163,3 +20163,14 @@ A–C 的部署约束至此解除：ALTCHA 与能处理 428 的登录页在同�
 - `pnpm test`（Resend 清单下）：`Test Files  312 passed | 3 skipped (315)`，`Tests  2292 passed | 17 skipped (2309)`。
 - `pnpm test:browser`（补 await 之后）：`Test Files  78 passed (78)`，`Tests  595 passed (595)`。
 - 未在本地跑：CI 的生产冒烟、镜像检查与 release smoke（需构建与容器），其注入的邮件变量已改为同时带 SMTP 与 Resend。
+
+## 公式 SDK 恢复照常格式化，golden 重算（2026-09-24）
+
+- 撤销上一节「公式 SDK 不格式化、lint 只 warn」的例外：没有生产数据，而且已发布版本存的是各自的产物字节，SDK 字节变化不影响它们的执行（`runtime-compatibility.ts` 刻意不比对工具链来源）。`packages/core/formula/src` 与 `packages/core/value-schema/src` 用 oxfmt 格式化。
+- **golden 重算原因**：上述格式化改变了打进产物的 SDK 源码排版，`identity` 27268 → 27254 字节、`all-kinds` 27713 → 27699 字节（与最初失败时的差值相同）；公式语义不变。
+- 另：`6c163169c` 的类型感知修复已顺带删掉 SDK 里的多余断言与一个未用 import，纯类型层面，不进产物，golden 当时未变。
+
+### 验收（实际执行）
+
+- formula-compiler / formula / value-schema / 公式插件测试：`Test Files  37 passed (37)`，`Tests  239 passed (239)`。
+- `pnpm typecheck`、`pnpm lint`、`pnpm lint:types`、`pnpm format:check`：全部 exit 0。
