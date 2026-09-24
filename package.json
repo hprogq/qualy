@@ -65,6 +65,7 @@
     "@vitejs/plugin-react": "catalog:",
     "@vitest/browser-playwright": "catalog:",
     "effect": "catalog:",
+    "exceljs": "catalog:",
     "kysely": "catalog:",
     "lightningcss": "catalog:",
     "oxfmt": "0.70.0",
