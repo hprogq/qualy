@@ -16,7 +16,8 @@ const i18n = definePluginMessages({
     serverUrl: { id: 'auth-cas/field/server-url', defaultMessage: 'CAS server address' },
     serverUrlHint: {
       id: 'auth-cas/field/server-url-hint',
-      defaultMessage: 'The address the server’s pages sit under, such as https://cas.example.edu/cas',
+      defaultMessage:
+        'The address the server’s pages sit under, such as https://cas.example.edu/cas',
     },
     protocol: { id: 'auth-cas/field/protocol', defaultMessage: 'Protocol' },
     protocolCas3: { id: 'auth-cas/field/protocol-cas3', defaultMessage: 'CAS 3.0' },
@@ -70,7 +71,8 @@ const i18n = definePluginMessages({
     },
     AUTH_CAS_RESPONSE_INVALID: {
       id: 'auth-cas/error/response-invalid',
-      defaultMessage: 'Single sign-on answered in a way Qualy cannot read. Contact an administrator.',
+      defaultMessage:
+        'Single sign-on answered in a way Qualy cannot read. Contact an administrator.',
     },
   }),
   locales: {

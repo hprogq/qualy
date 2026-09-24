@@ -8,7 +8,13 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 // plain words: the path is a fact first and a set of links second.
 
 const styles = stylex.create({
-  path: { display: 'inline-flex', minWidth: 0, flexWrap: 'wrap', alignItems: 'baseline', columnGap: 6 },
+  path: {
+    display: 'inline-flex',
+    minWidth: 0,
+    flexWrap: 'wrap',
+    alignItems: 'baseline',
+    columnGap: 6,
+  },
   slash: { color: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)` },
   step: {
     color: tokens.mutedForeground,

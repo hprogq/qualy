@@ -118,7 +118,11 @@ export const make = Effect.gen(function* () {
       Effect.flatMap((allowed) =>
         allowed
           ? Effect.void
-          : Effect.fail(new AccessDenied({ reason: `${code} is not held at the unit the rows stand under` })),
+          : Effect.fail(
+              new AccessDenied({
+                reason: `${code} is not held at the unit the rows stand under`,
+              }),
+            ),
       ),
     )
 
@@ -141,7 +145,10 @@ export const make = Effect.gen(function* () {
   })
 
   /** the words a unit is known by, top to bottom, for a path a reader can read */
-  const namesOf = Effect.fn('DirectoryImport.namesOf')(function* (tenantId: string, node: OrgNodeRef) {
+  const namesOf = Effect.fn('DirectoryImport.namesOf')(function* (
+    tenantId: string,
+    node: OrgNodeRef,
+  ) {
     return (yield* ancestryOf(tenantId, node)).map((one) => one.name)
   })
 
@@ -169,7 +176,9 @@ export const make = Effect.gen(function* () {
   ) {
     const opened = yield* storage
       .open({ tenantId, attachmentId }, (meta) =>
-        meta.ownerUserId === as.userId ? Effect.void : Effect.fail(new UserImportSourceUnavailable()),
+        meta.ownerUserId === as.userId
+          ? Effect.void
+          : Effect.fail(new UserImportSourceUnavailable()),
       )
       .pipe(
         Effect.catchTags({
@@ -262,7 +271,11 @@ export const make = Effect.gen(function* () {
     const meta = prepared?.meta ?? (yield* stagedFile(tenantId, input.attachmentId, as))
     const table =
       prepared?.table ??
-      (yield* tableOf(yield* bytesOf(tenantId, input.attachmentId, as), input.sheet, input.headerRow))
+      (yield* tableOf(
+        yield* bytesOf(tenantId, input.attachmentId, as),
+        input.sheet,
+        input.headerRow,
+      ))
 
     const [root, types, rules] = yield* Effect.all([
       org.rootNode(tenantId),
@@ -272,8 +285,7 @@ export const make = Effect.gen(function* () {
     // the anchor and everything above it, root first, off its own path
     const anchorId = input.mapping.organization.anchorNodeId ?? root?.id ?? ''
     const anchorNode = (yield* org.nodesById(tenantId, [anchorId]))[0]
-    const ancestry =
-      anchorNode === undefined ? [] : yield* ancestryOf(tenantId, anchorNode)
+    const ancestry = anchorNode === undefined ? [] : yield* ancestryOf(tenantId, anchorNode)
     const resolved = resolveChain({
       root,
       types,
@@ -292,9 +304,15 @@ export const make = Effect.gen(function* () {
 
     // who the rows will be, and whether they may stand there at all
     const type = yield* users.userType(tenantId, input.userTypeId)
-    if (type === null) return yield* new UserImportMappingInvalid({ reason: 'user-type-missing', subject: input.userTypeId })
-    if (!type.enabled) return yield* new UserImportMappingInvalid({ reason: 'user-type-disabled', subject: type.id })
-    if (type.isSystem) return yield* new UserImportMappingInvalid({ reason: 'user-type-system', subject: type.id })
+    if (type === null)
+      return yield* new UserImportMappingInvalid({
+        reason: 'user-type-missing',
+        subject: input.userTypeId,
+      })
+    if (!type.enabled)
+      return yield* new UserImportMappingInvalid({ reason: 'user-type-disabled', subject: type.id })
+    if (type.isSystem)
+      return yield* new UserImportMappingInvalid({ reason: 'user-type-system', subject: type.id })
     const legal = yield* users.placementAllowedAtType(tenantId, type.id, chain.leafTypeId)
     if (legal !== true) {
       return yield* new UserImportMappingInvalid({ reason: 'placement', subject: chain.leafTypeId })
@@ -351,9 +369,10 @@ export const make = Effect.gen(function* () {
     // the people: on the books already, or not yet
     const complete = rows.filter((row) => row.issues.length === 0)
     const known = new Map(
-      (yield* users.byBusinessNo(tenantId, complete.map((row) => row.businessNo))).map(
-        (one) => [one.businessNo, one] as const,
-      ),
+      (yield* users.byBusinessNo(
+        tenantId,
+        complete.map((row) => row.businessNo),
+      )).map((one) => [one.businessNo, one] as const),
     )
     const people: {
       row: JudgedRow
@@ -365,7 +384,13 @@ export const make = Effect.gen(function* () {
       const leafKey = leafKeyOf(row)
       const leaf = leafKey === null ? null : nodeByKey.get(leafKey)!
       if (leaf?.conflict) {
-        issues.push({ rowNo: row.rowNo, field: null, severity: 'error', reason: 'node-type-conflict', detail: leaf.path })
+        issues.push({
+          rowNo: row.rowNo,
+          field: null,
+          severity: 'error',
+          reason: 'node-type-conflict',
+          detail: leaf.path,
+        })
         continue
       }
       const standingAt = leafKey === null ? chain.anchor.id : (leaf!.existing?.id ?? null)
@@ -414,7 +439,17 @@ export const make = Effect.gen(function* () {
         .sort(),
       errors: issues.length,
     })
-    return { meta, chain, table, rows, nodes, nodeByKey, people, issues, fingerprint } satisfies Plan
+    return {
+      meta,
+      chain,
+      table,
+      rows,
+      nodes,
+      nodeByKey,
+      people,
+      issues,
+      fingerprint,
+    } satisfies Plan
   })
 
   const previewOf = (found: Plan) => {
@@ -460,7 +495,11 @@ export const make = Effect.gen(function* () {
     // the file is read outside the lock: nothing about a workbook needs the
     // tenant serialized behind it
     const meta = yield* stagedFile(tenantId, input.attachmentId, as)
-    const table = yield* tableOf(yield* bytesOf(tenantId, input.attachmentId, as), input.sheet, input.headerRow)
+    const table = yield* tableOf(
+      yield* bytesOf(tenantId, input.attachmentId, as),
+      input.sheet,
+      input.headerRow,
+    )
     return yield* withDb(
       transaction(
         Effect.gen(function* () {
@@ -482,7 +521,9 @@ export const make = Effect.gen(function* () {
           for (const node of found.nodes) {
             if (node.existing !== null) continue
             const parentId =
-              node.parentKey === null ? found.chain.anchor.id : idOf(found.nodeByKey.get(node.parentKey)!)
+              node.parentKey === null
+                ? found.chain.anchor.id
+                : idOf(found.nodeByKey.get(node.parentKey)!)
             const made = yield* org
               .createChild(tenantId, { parentId, orgTypeId: node.orgTypeId, name: node.name }, as)
               .pipe(Effect.catchTag('OrgNodeRefused', () => new UserImportPlanChanged()))
@@ -499,7 +540,9 @@ export const make = Effect.gen(function* () {
                 businessNo: one.row.businessNo,
                 userTypeId: input.userTypeId,
                 primaryOrgNodeId:
-                  one.leafKey === null ? found.chain.anchor.id : idOf(found.nodeByKey.get(one.leafKey)!),
+                  one.leafKey === null
+                    ? found.chain.anchor.id
+                    : idOf(found.nodeByKey.get(one.leafKey)!),
               })),
               as,
             )
@@ -543,7 +586,10 @@ export const make = Effect.gen(function* () {
               const index = toCreate.indexOf(one)
               return {
                 sourceRowNo: one.row.rowNo,
-                userId: one.disposition === 'create' ? (createdIdByIndex.get(index) ?? null) : one.existingId,
+                userId:
+                  one.disposition === 'create'
+                    ? (createdIdByIndex.get(index) ?? null)
+                    : one.existingId,
                 businessNoSnapshot: one.row.businessNo,
                 displayNameSnapshot: one.row.displayName,
                 primaryOrgNodeIdSnapshot: leaf === null ? found.chain.anchor.id : idOf(leaf),
@@ -559,7 +605,9 @@ export const make = Effect.gen(function* () {
             found.nodes.map((node) => ({
               orgNodeId: idOf(node),
               parentNodeIdSnapshot:
-                node.parentKey === null ? found.chain.anchor.id : idOf(found.nodeByKey.get(node.parentKey)!),
+                node.parentKey === null
+                  ? found.chain.anchor.id
+                  : idOf(found.nodeByKey.get(node.parentKey)!),
               orgTypeIdSnapshot: node.orgTypeId,
               nameSnapshot: node.name,
               pathSnapshot: node.path,
@@ -613,7 +661,8 @@ export const make = Effect.gen(function* () {
   ) {
     const standing = yield* dieQuery(withDb(standingOf(tenantId, row.id)))
     const anchor = (yield* org.nodesById(tenantId, [row.anchorNodeId]))[0]
-    const anchorPath = anchor === undefined ? '' : (yield* namesOf(tenantId, anchor)).join(PATH_SEPARATOR)
+    const anchorPath =
+      anchor === undefined ? '' : (yield* namesOf(tenantId, anchor)).join(PATH_SEPARATOR)
     const types = new Map((yield* org.types(tenantId)).map((type) => [type.id, type.name]))
     const chain = (row.chainSnapshot as readonly { orgTypeId?: string }[]).map(
       (level) => types.get(level.orgTypeId ?? '') ?? '',
@@ -779,7 +828,11 @@ export const make = Effect.gen(function* () {
       .filter((node) => node.disposition === 'created' && node.orgNodeId !== null)
       .sort((a, b) => b.depthInImport - a.depthInImport)
     let deleted = 0
-    const retained: { orgNodeId: string; path: string; reason: 'has-children' | 'in-use' | 'missing' }[] = []
+    const retained: {
+      orgNodeId: string
+      path: string
+      reason: 'has-children' | 'in-use' | 'missing'
+    }[] = []
     for (const node of created) {
       if (node.presentId === null) continue
       const outcome = yield* org.deleteUnused(tenantId, node.orgNodeId!, as)
@@ -862,16 +915,14 @@ export const make = Effect.gen(function* () {
     reservationId: string,
     as: Principal,
   ) {
-    return yield* storage
-      .completeUpload({ tenantId, ownerUserId: as.userId, reservationId })
-      .pipe(
-        Effect.map((meta) => ({ id: meta.id, filename: meta.filename, size: meta.size.toString() })),
-        Effect.catchTags({
-          STORAGE_RESERVATION_NOT_FOUND: () => new UserImportSourceUnavailable(),
-          STORAGE_RESERVATION_INVALID: () => new UserImportSourceUnavailable(),
-          STORAGE_BACKEND_UNAVAILABLE: (error) => Effect.die(error),
-        }),
-      )
+    return yield* storage.completeUpload({ tenantId, ownerUserId: as.userId, reservationId }).pipe(
+      Effect.map((meta) => ({ id: meta.id, filename: meta.filename, size: meta.size.toString() })),
+      Effect.catchTags({
+        STORAGE_RESERVATION_NOT_FOUND: () => new UserImportSourceUnavailable(),
+        STORAGE_RESERVATION_INVALID: () => new UserImportSourceUnavailable(),
+        STORAGE_BACKEND_UNAVAILABLE: (error) => Effect.die(error),
+      }),
+    )
   })
 
   return {
@@ -894,9 +945,8 @@ export type DirectoryImportShape = Effect.Success<typeof make>
 
 // --- queries ---
 
-type ImportRow = Effect.Success<ReturnType<typeof importOf>> extends infer R
-  ? NonNullable<R>
-  : never
+type ImportRow =
+  Effect.Success<ReturnType<typeof importOf>> extends infer R ? NonNullable<R> : never
 
 const importColumns = (k: Parameters<Parameters<typeof db.query>[0]>[0]) =>
   k
@@ -927,9 +977,14 @@ const importColumns = (k: Parameters<Parameters<typeof db.query>[0]>[0]) =>
     .select([sql<string>`i.created_at::text`.as('cursorAt')])
 
 const importOf = (tenantId: string, importId: string) =>
-  db.query((k) =>
-    importColumns(k).where('i.tenantId', '=', tenantId).where('i.id', '=', importId).executeTakeFirst(),
-  ).pipe(Effect.map((row) => row ?? null))
+  db
+    .query((k) =>
+      importColumns(k)
+        .where('i.tenantId', '=', tenantId)
+        .where('i.id', '=', importId)
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => row ?? null))
 
 const importsPage = (input: {
   tenantId: string
@@ -958,10 +1013,7 @@ const importsPage = (input: {
   })
 
 /** how many imports this reader can reach, for the page numbers */
-const importsCount = (input: {
-  tenantId: string
-  scope: Parameters<typeof scopeCoverage>[0]
-}) =>
+const importsCount = (input: { tenantId: string; scope: Parameters<typeof scopeCoverage>[0] }) =>
   db.query((k) =>
     k
       .selectFrom('DirectoryImport as i')
@@ -1293,4 +1345,3 @@ const insertEvent = (input: {
   deletedNodeCount: number
   retainedNodeCount: number
 }) => db.query((k) => k.insertInto('DirectoryImportEvent').values(input).execute())
-

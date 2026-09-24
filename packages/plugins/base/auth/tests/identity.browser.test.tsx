@@ -130,8 +130,7 @@ const identityStubs = (over: Stubs<'identity'> = {}): Stubs<'identity'> => ({
   listAuthProviders: () => Effect.succeed({ providers: [] }),
   listAuthProviderKinds: () => Effect.succeed({ kinds: [] }),
   // the people of a type, which a type's own page lists
-  listUsers: () =>
-    Effect.succeed({ items: [], nextCursor: null, total: 0, page: 1, pageSize: 20 }),
+  listUsers: () => Effect.succeed({ items: [], nextCursor: null, total: 0, page: 1, pageSize: 20 }),
   ...over,
 })
 
@@ -835,9 +834,7 @@ describe('users workspace', () => {
           getManifest: () =>
             Effect.succeed({
               ...emptyManifest(),
-              pages: [
-                { id: 'auth/user-detail', path: '/people/:userId', layout: 'admin' },
-              ],
+              pages: [{ id: 'auth/user-detail', path: '/people/:userId', layout: 'admin' }],
             }),
         },
       }),
@@ -869,6 +866,3 @@ describe('users workspace', () => {
     expect(addressNow()).toContain(`/people/${SECOND_USER_ID}`)
   })
 })
-
-
-

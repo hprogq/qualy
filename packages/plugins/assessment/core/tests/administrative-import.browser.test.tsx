@@ -340,7 +340,9 @@ describe('importing a workbook of administrative records', () => {
     })
     const seat = document.querySelector<HTMLElement>('[data-upload-seat]')!
     const box = seat.getBoundingClientRect()
-    const said = seat.querySelector<HTMLElement>('[data-slot="dropzone-said"]')!.getBoundingClientRect()
+    const said = seat
+      .querySelector<HTMLElement>('[data-slot="dropzone-said"]')!
+      .getBoundingClientRect()
     expect(Math.abs((said.top + said.bottom) / 2 - (box.top + box.bottom) / 2)).toBeLessThan(1.5)
   })
 

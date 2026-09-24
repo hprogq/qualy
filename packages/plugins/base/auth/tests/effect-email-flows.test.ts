@@ -127,7 +127,9 @@ const seed = (url: string) =>
         yield* runSql(sql`insert into tenants (slug, name) values ('default','D') returning id`),
       ).id
       const orgType = one<{ id: string }>(
-        yield* runSql(sql`insert into org_types (tenant_id, name) values (${tenant}, 'U') returning id`),
+        yield* runSql(
+          sql`insert into org_types (tenant_id, name) values (${tenant}, 'U') returning id`,
+        ),
       ).id
       const root = one<{ id: string }>(
         yield* runSql(sql`
@@ -191,7 +193,11 @@ const seed = (url: string) =>
         adaElsewhere,
         linHere,
         adminHere,
-        as: (userId: string, sessionId: string): Principal => ({ tenantId: tenant, userId, sessionId }),
+        as: (userId: string, sessionId: string): Principal => ({
+          tenantId: tenant,
+          userId,
+          sessionId,
+        }),
       }
     }).pipe(Effect.provide(databaseFor(url, { migrations: 'off', entities: authClosure }))),
   )
@@ -232,9 +238,11 @@ describe.runIf(postgresAvailable)('a forgotten password', () => {
             yield* flows.requestReset({ email: 'nobody@school.edu', locale: 'en' })
             yield* flows.requestReset({ email: 'lin@school.edu', locale: 'zh-CN' })
             const link = yield* Effect.promise(() => tokenFrom(mail, 'ada@school.edu'))
-            const kept = yield* runSql<{ purpose: string; target_email: string | null; token_hash: string }>(
-              sql`select purpose, target_email, token_hash from user_email_challenges`,
-            )
+            const kept = yield* runSql<{
+              purpose: string
+              target_email: string | null
+              token_hash: string
+            }>(sql`select purpose, target_email, token_hash from user_email_challenges`)
             yield* flows.redeemReset({ token: link.token, password: 'a new password' })
             const again = yield* Effect.result(
               flows.redeemReset({ token: link.token, password: 'another password' }),
@@ -245,7 +253,13 @@ describe.runIf(postgresAvailable)('a forgotten password', () => {
             const sessions = yield* runSql<{ count: number }>(
               sql`select count(*)::int as count from sessions where user_id = ${f.ada}`,
             )
-            return { link, kept: kept.rows, again, credential: credential.rows[0]!, sessions: sessions.rows[0]!.count }
+            return {
+              link,
+              kept: kept.rows,
+              again,
+              credential: credential.rows[0]!,
+              sessions: sessions.rows[0]!.count,
+            }
           }),
         ),
       )
@@ -277,7 +291,10 @@ describe.runIf(postgresAvailable)('a forgotten password', () => {
             yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en' })
             const link = yield* Effect.promise(() => tokenFrom(mail, 'ada@school.edu'))
             yield* flows.inspectReset({ token: link.token })
-            const fine = yield* flows.assessReset({ token: link.token, password: 'quiet river stones' })
+            const fine = yield* flows.assessReset({
+              token: link.token,
+              password: 'quiet river stones',
+            })
             // the workspace's own name is the kind of word a password must not carry
             const personal = yield* flows.assessReset({
               token: link.token,
@@ -324,10 +341,14 @@ describe.runIf(postgresAvailable)('a forgotten password', () => {
             const flows = yield* EmailFlows
             yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en' })
             const link = yield* Effect.promise(() => tokenFrom(mail, 'ada@school.edu'))
-            const short = yield* Effect.result(flows.redeemReset({ token: link.token, password: 'short' }))
+            const short = yield* Effect.result(
+              flows.redeemReset({ token: link.token, password: 'short' }),
+            )
             yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en' })
             yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en' })
-            const fourth = yield* Effect.result(flows.requestReset({ email: 'ada@school.edu', locale: 'en' }))
+            const fourth = yield* Effect.result(
+              flows.requestReset({ email: 'ada@school.edu', locale: 'en' }),
+            )
             const open = yield* runSql<{ count: number }>(
               sql`select count(*)::int as count from user_email_challenges where consumed_at is null`,
             )
@@ -435,7 +456,11 @@ describe.runIf(postgresAvailable)('asking for a reset where a challenge can be a
             const flows = yield* EmailFlows
             const ask = (captcha?: { provider: string; response: string }) =>
               Effect.result(
-                flows.requestReset({ email, locale: 'en', ...(captcha === undefined ? {} : { captcha }) }),
+                flows.requestReset({
+                  email,
+                  locale: 'en',
+                  ...(captcha === undefined ? {} : { captcha }),
+                }),
               )
             const outcome = (result: { _tag: string; failure?: unknown }) => tagOf(result) ?? 'ok'
             const proofFor = (result: { _tag: string; failure?: unknown }) => ({
@@ -544,16 +569,23 @@ describe.runIf(postgresAvailable)('an email address', () => {
           Effect.gen(function* () {
             const flows = yield* EmailFlows
             const ada = f.as(f.ada, f.adaHere)
-            const taken = yield* Effect.result(flows.requestChange(ada, { newEmail: 'LIN@school.edu', locale: 'en' }))
+            const taken = yield* Effect.result(
+              flows.requestChange(ada, { newEmail: 'LIN@school.edu', locale: 'en' }),
+            )
             const system = yield* Effect.result(
-              flows.requestChange(f.as(f.admin, f.adminHere), { newEmail: 'root2@school.edu', locale: 'en' }),
+              flows.requestChange(f.as(f.admin, f.adminHere), {
+                newEmail: 'root2@school.edu',
+                locale: 'en',
+              }),
             )
             // two reset links out to the old address, which is about to stop being hers
             yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en' })
             yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en' })
             yield* flows.requestChange(ada, { newEmail: 'Ada.New@school.edu', locale: 'en' })
             const link = yield* Effect.promise(() => tokenFrom(mail, 'ada.new@school.edu'))
-            const before = yield* runSql<{ email: string }>(sql`select email from users where id = ${f.ada}`)
+            const before = yield* runSql<{ email: string }>(
+              sql`select email from users where id = ${f.ada}`,
+            )
             yield* flows.redeemChange(link.token)
             const resetsOpen = yield* runSql<{ count: number }>(
               sql`select count(*)::int as count from user_email_challenges
@@ -599,7 +631,9 @@ describe.runIf(postgresAvailable)('an email address', () => {
         await Effect.runPromiseExit(
           Effect.gen(function* () {
             const flows = yield* EmailFlows
-            const refused = yield* Effect.result(flows.requestVerification(f.as(f.lin, f.linHere), 'en'))
+            const refused = yield* Effect.result(
+              flows.requestVerification(f.as(f.lin, f.linHere), 'en'),
+            )
             const open = yield* runSql<{ count: number }>(
               sql`select count(*)::int as count from user_email_challenges where consumed_at is null`,
             )
@@ -631,18 +665,34 @@ describe.runIf(postgresAvailable)('one’s own password', () => {
             const wrong = yield* Effect.result(
               flows.setPassword(ada, { currentPassword: 'not it', newPassword: 'fresh password' }),
             )
-            const none = yield* Effect.result(flows.setPassword(ada, { newPassword: 'fresh password' }))
-            yield* flows.setPassword(ada, { currentPassword: 'ada-password', newPassword: 'fresh password' })
-            const sessions = yield* runSql<{ id: string }>(sql`select id from sessions where user_id = ${f.ada}`)
+            const none = yield* Effect.result(
+              flows.setPassword(ada, { newPassword: 'fresh password' }),
+            )
+            yield* flows.setPassword(ada, {
+              currentPassword: 'ada-password',
+              newPassword: 'fresh password',
+            })
+            const sessions = yield* runSql<{ id: string }>(
+              sql`select id from sessions where user_id = ${f.ada}`,
+            )
             // Lin has no password, and an address nobody proved
             const lin = f.as(f.lin, f.linHere)
-            const unproven = yield* Effect.result(flows.setPassword(lin, { newPassword: 'lin password' }))
+            const unproven = yield* Effect.result(
+              flows.setPassword(lin, { newPassword: 'lin password' }),
+            )
             yield* runSql(sql`update users set email_verified_at = now() where id = ${f.lin}`)
             yield* flows.setPassword(lin, { newPassword: 'lin password' })
             const credential = yield* runSql<{ user_id: string; credential_hash: string }>(
               sql`select user_id, credential_hash from user_auth_bindings where revoked_at is null order by user_id`,
             )
-            return { judged, wrong, none, sessions: sessions.rows.map((row) => row.id), unproven, credential: credential.rows }
+            return {
+              judged,
+              wrong,
+              none,
+              sessions: sessions.rows.map((row) => row.id),
+              unproven,
+              credential: credential.rows,
+            }
           }).pipe(Effect.provide(stack(db.url, mail.backend))),
         ),
       )
@@ -665,69 +715,78 @@ describe.runIf(postgresAvailable)('one’s own password', () => {
 })
 
 const MAILPIT = process.env['QUALY_TEST_MAILPIT_URL'] ?? 'http://127.0.0.1:8025'
-const mailpitAvailable = await fetch(`${MAILPIT}/api/v1/info`, { signal: AbortSignal.timeout(5_000) })
+const mailpitAvailable = await fetch(`${MAILPIT}/api/v1/info`, {
+  signal: AbortSignal.timeout(5_000),
+})
   .then((response) => response.ok)
   .catch(() => false)
 if (!mailpitAvailable && process.env['QUALY_REQUIRE_MAILPIT_TESTS'] === '1') {
   throw new Error(`the reset-by-mail suite is required but Mailpit is unreachable at ${MAILPIT}`)
 }
 
-describe.runIf(postgresAvailable && mailpitAvailable)('a forgotten password, through a real relay', () => {
-  it('arrives at the address, and its link sets the password', async () => {
-    const db = await createTestContext('email-reset-smtp')
-    const relay = smtpBackend({
-      host: '127.0.0.1',
-      port: Number(process.env['QUALY_TEST_MAILPIT_SMTP_PORT'] ?? '1025'),
-      tls: 'none',
-      auth: undefined,
+describe.runIf(postgresAvailable && mailpitAvailable)(
+  'a forgotten password, through a real relay',
+  () => {
+    it('arrives at the address, and its link sets the password', async () => {
+      const db = await createTestContext('email-reset-smtp')
+      const relay = smtpBackend({
+        host: '127.0.0.1',
+        port: Number(process.env['QUALY_TEST_MAILPIT_SMTP_PORT'] ?? '1025'),
+        tls: 'none',
+        auth: undefined,
+      })
+      try {
+        const f = await seed(db.url)
+        // an address of this run's own, so the inbox holds nothing else for it
+        const address = `ada-${Date.now().toString(36)}@school.edu`
+        await Effect.runPromise(
+          runSql(sql`update users set email = ${address} where id = ${f.ada}`).pipe(
+            Effect.provide(databaseFor(db.url, { migrations: 'off', entities: authClosure })),
+          ),
+        )
+        const answer = ok(
+          await Effect.runPromiseExit(
+            Effect.gen(function* () {
+              const flows = yield* EmailFlows
+              yield* flows.requestReset({ email: address, locale: 'zh-CN' })
+              const message = yield* Effect.promise(() =>
+                vi.waitFor(
+                  async () => {
+                    const search = (await (
+                      await fetch(
+                        `${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:"${address}"`)}`,
+                      )
+                    ).json()) as { messages: { ID: string }[] }
+                    const first = search.messages[0]
+                    if (first === undefined) throw new Error('nothing arrived yet')
+                    return (await (
+                      await fetch(`${MAILPIT}/api/v1/message/${first.ID}`)
+                    ).json()) as {
+                      Subject: string
+                      Text: string
+                    }
+                  },
+                  { timeout: 5_000, interval: 100 },
+                ),
+              )
+              const link = new URL(/https:\/\/\S+/.exec(message.Text)![0])
+              yield* flows.redeemReset({
+                token: new URLSearchParams(link.hash.slice(1)).get('token')!,
+                password: 'set through the relay',
+              })
+              const credential = yield* runSql<{ credential_hash: string }>(
+                sql`select credential_hash from user_auth_bindings where user_id = ${f.ada} and revoked_at is null`,
+              )
+              return { subject: message.Subject, credential: credential.rows[0]!.credential_hash }
+            }).pipe(Effect.provide(stack(db.url, relay.backend))),
+          ),
+        )
+        expect(answer.subject).toBe('重置您的密码')
+        expect(answer.credential).toBe('digest:set through the relay')
+      } finally {
+        relay.close()
+        await db.dispose()
+      }
     })
-    try {
-      const f = await seed(db.url)
-      // an address of this run's own, so the inbox holds nothing else for it
-      const address = `ada-${Date.now().toString(36)}@school.edu`
-      await Effect.runPromise(
-        runSql(sql`update users set email = ${address} where id = ${f.ada}`).pipe(
-          Effect.provide(databaseFor(db.url, { migrations: 'off', entities: authClosure })),
-        ),
-      )
-      const answer = ok(
-        await Effect.runPromiseExit(
-          Effect.gen(function* () {
-            const flows = yield* EmailFlows
-            yield* flows.requestReset({ email: address, locale: 'zh-CN' })
-            const message = yield* Effect.promise(() =>
-              vi.waitFor(
-                async () => {
-                  const search = (await (
-                    await fetch(`${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:"${address}"`)}`)
-                  ).json()) as { messages: { ID: string }[] }
-                  const first = search.messages[0]
-                  if (first === undefined) throw new Error('nothing arrived yet')
-                  return (await (await fetch(`${MAILPIT}/api/v1/message/${first.ID}`)).json()) as {
-                    Subject: string
-                    Text: string
-                  }
-                },
-                { timeout: 5_000, interval: 100 },
-              ),
-            )
-            const link = new URL(/https:\/\/\S+/.exec(message.Text)![0])
-            yield* flows.redeemReset({
-              token: new URLSearchParams(link.hash.slice(1)).get('token')!,
-              password: 'set through the relay',
-            })
-            const credential = yield* runSql<{ credential_hash: string }>(
-              sql`select credential_hash from user_auth_bindings where user_id = ${f.ada} and revoked_at is null`,
-            )
-            return { subject: message.Subject, credential: credential.rows[0]!.credential_hash }
-          }).pipe(Effect.provide(stack(db.url, relay.backend))),
-        ),
-      )
-      expect(answer.subject).toBe('重置您的密码')
-      expect(answer.credential).toBe('digest:set through the relay')
-    } finally {
-      relay.close()
-      await db.dispose()
-    }
-  })
-})
+  },
+)

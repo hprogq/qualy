@@ -31,7 +31,11 @@ const SELECTION = [
 const KIT = ['@qualy/plugin-kit', '@qualy/ui-contract']
 
 /** the CLI, as typed in some directory, in an environment naming no manifest */
-const qualy = (args: readonly string[], cwd: string, env: Record<string, string | undefined> = {}) => {
+const qualy = (
+  args: readonly string[],
+  cwd: string,
+  env: Record<string, string | undefined> = {},
+) => {
   const environment: Record<string, string | undefined> = {
     ...process.env,
     QUALY_CONFIG: undefined,
@@ -67,9 +71,9 @@ describe('the lifecycle in a standalone product', () => {
       expect(Object.keys(lock?.plugins ?? {}).sort()).toEqual([...SELECTION].sort())
       // and nothing of this repository's was touched: its lock still describes
       // its own manifest, not the product's three plugins
-      expect(Object.keys(readLock(path.join(repoRoot, 'qualy.lock.json'))!.plugins).length).toBeGreaterThan(
-        SELECTION.length,
-      )
+      expect(
+        Object.keys(readLock(path.join(repoRoot, 'qualy.lock.json'))!.plugins).length,
+      ).toBeGreaterThan(SELECTION.length)
 
       const planned = qualy(['plan'], at.dir)
       expect(planned.ok, planned.output).toBe(true)
@@ -134,7 +138,10 @@ describe('the lifecycle in a standalone product', () => {
     const at = product()
     try {
       expect(qualy(['resolve'], at.dir).ok).toBe(true)
-      fs.writeFileSync(path.join(at.dir, '.env'), 'DATABASE_URL=postgres://nobody:nobody@127.0.0.1:1/none\n')
+      fs.writeFileSync(
+        path.join(at.dir, '.env'),
+        'DATABASE_URL=postgres://nobody:nobody@127.0.0.1:1/none\n',
+      )
       const inside = path.join(at.dir, 'ops')
       fs.mkdirSync(inside, { recursive: true })
       const deployed = qualy(['deploy'], inside, {

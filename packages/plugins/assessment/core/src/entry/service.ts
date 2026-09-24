@@ -237,7 +237,11 @@ export type CreateEntryError =
   | ScoringUnavailable
   | AccessDenied
 export type ReviseEntryError =
-  EntryNotFound | ItemRevisionConflict | BatchReadOnly | EntryActionRefused | EntryPayloadInvalid
+  | EntryNotFound
+  | ItemRevisionConflict
+  | BatchReadOnly
+  | EntryActionRefused
+  | EntryPayloadInvalid
 /** the activity stream's public vocabulary; raw event kinds never leave */
 export type EntryStatusError =
   | EntryNotFound

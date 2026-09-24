@@ -235,7 +235,11 @@ export type UpdateItemError =
   | ItemScoringIncompatible
   | ScoringUnavailable
 export type ReplaceGroupsError =
-  BatchNotFound | BatchReadOnly | AccessDenied | ScoreGroupInvalid | ScoreGroupVersionConflict
+  | BatchNotFound
+  | BatchReadOnly
+  | AccessDenied
+  | ScoreGroupInvalid
+  | ScoreGroupVersionConflict
 
 export interface ItemMethods {
   readonly listItems: (

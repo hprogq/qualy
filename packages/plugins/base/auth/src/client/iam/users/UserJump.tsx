@@ -86,7 +86,13 @@ const styles = stylex.create({
     fontSize: 12,
     color: tokens.mutedForeground,
   },
-  note: { margin: 0, paddingInline: 10, paddingBlock: 12, fontSize: 13, color: tokens.mutedForeground },
+  note: {
+    margin: 0,
+    paddingInline: 10,
+    paddingBlock: 12,
+    fontSize: 13,
+    color: tokens.mutedForeground,
+  },
   glass: { width: 15, height: 15, color: tokens.mutedForeground },
 })
 
@@ -170,7 +176,9 @@ export function UserJump({
             role="combobox"
             aria-expanded={people.length > 0}
             aria-controls="user-jump-found"
-            aria-activedescendant={people[lit] === undefined ? undefined : `user-jump-${people[lit].id}`}
+            aria-activedescendant={
+              people[lit] === undefined ? undefined : `user-jump-${people[lit].id}`
+            }
             aria-label={format(m.jumpLabel, { businessNo })}
             placeholder={format(m.jumpLabel, { businessNo })}
             lead={<SearchIcon aria-hidden {...stylex.props(styles.glass)} />}
@@ -203,7 +211,11 @@ export function UserJump({
                 <li key={index} role="presentation" {...stylex.props(styles.row)}>
                   <Skeleton height={30} width={30} radius={9999} />
                   <span {...stylex.props(styles.words)}>
-                    <Skeleton height={12} width={`${String([40, 55, 35][index % 3])}%`} radius={4} />
+                    <Skeleton
+                      height={12}
+                      width={`${String([40, 55, 35][index % 3])}%`}
+                      radius={4}
+                    />
                     <Skeleton height={10} width="60%" radius={4} />
                   </span>
                 </li>

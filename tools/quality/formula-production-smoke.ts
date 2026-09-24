@@ -94,11 +94,7 @@ const runOrThrow = (
   }
 }
 
-const loginAs = async (
-  base: string,
-  email: string,
-  password: string,
-): Promise<SessionCookie> => {
+const loginAs = async (base: string, email: string, password: string): Promise<SessionCookie> => {
   const response = await fetch(`${base}/api/auth/local/local/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },

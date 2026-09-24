@@ -40,7 +40,12 @@ const password: Entrance = {
   resolution: { mode: 'user-field', field: 'email' },
   binding: {
     mode: 'managed',
-    secret: { label: { kind: 'literal', value: '密码' }, hint: null, minLength: 12, maxLength: 128 },
+    secret: {
+      label: { kind: 'literal', value: '密码' },
+      hint: null,
+      minLength: 12,
+      maxLength: 128,
+    },
   },
   lastSignInAt: null,
   bound: {
@@ -110,9 +115,20 @@ describe('the reader’s ways in', () => {
     const release = vi.fn(() => Effect.succeed({ signedOut: false }))
     renderScreen({
       client: fakeClient(
-        stubs([password, hub(), hub({ providerId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', name: '另一个', unbindable: false })], {
-          deleteSelfAuthBinding: release,
-        }),
+        stubs(
+          [
+            password,
+            hub(),
+            hub({
+              providerId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+              name: '另一个',
+              unbindable: false,
+            }),
+          ],
+          {
+            deleteSelfAuthBinding: release,
+          },
+        ),
       ),
       route: '/account/logins',
       children: <AccountLoginsPage />,
@@ -173,7 +189,11 @@ describe('binding an account of your own', () => {
       client: fakeClient(
         stubs([
           password,
-          hub({ bound: null, unbindable: false, bindHref: '/api/auth/github/hub/start?intent=bind' }),
+          hub({
+            bound: null,
+            unbindable: false,
+            bindHref: '/api/auth/github/hub/start?intent=bind',
+          }),
         ]),
       ),
       route: '/account/logins?error=AUTH_BINDING_SUBJECT_TAKEN',

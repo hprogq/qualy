@@ -207,12 +207,14 @@ const shell = (element: React.ReactNode, path: string, route: string) =>
   })
 
 describe('the application shell', () => {
-  it('stands the open application\'s sections down the side of a wide window, and in a row on a narrow one', async () => {
+  it("stands the open application's sections down the side of a wide window, and in a row on a narrow one", async () => {
     await page.viewport(1440, 900)
     shell(<AppShell />, '/organization/users', '/organization/users')
     const side = page.getByTestId('side-nav')
     await expect.element(side).toBeVisible()
-    await expect.element(side.getByRole('link', { name: '用户管理' })).toHaveAttribute('aria-current', 'page')
+    await expect
+      .element(side.getByRole('link', { name: '用户管理' }))
+      .toHaveAttribute('aria-current', 'page')
     await expect.element(side.getByRole('link', { name: '角色管理' })).toBeVisible()
     // one or the other carries the sections, never both
     await page.viewport(800, 900)
@@ -690,10 +692,10 @@ describe('the account shell', () => {
       emailVerified: false,
       userType: { id: 'ut', name: '学生' },
       unit: { id: 'n', name: '示例学院' },
-  unitLineage: [
-    { id: 'r', name: '示例大学' },
-    { id: 'n', name: '示例学院' },
-  ],
+      unitLineage: [
+        { id: 'r', name: '示例大学' },
+        { id: 'n', name: '示例学院' },
+      ],
       passwordStatus: 'unset',
     }
     let arrive!: () => void
@@ -774,9 +776,7 @@ describe('a record\u2019s row of sections', () => {
     expect(seat.scrollLeft).toBe(0)
     cut.click()
     await vi.waitFor(() => expect(cut.getAttribute('aria-current')).toBe('page'))
-    await vi.waitFor(() =>
-      expect(cut.getBoundingClientRect().right).toBeLessThanOrEqual(edge + 1),
-    )
+    await vi.waitFor(() => expect(cut.getBoundingClientRect().right).toBeLessThanOrEqual(edge + 1))
     await page.viewport(1280, 800)
   })
 })

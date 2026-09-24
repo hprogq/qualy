@@ -84,7 +84,9 @@ export const resendBackend = (
         `resend refused this deployment's request (${String(answer.status)}, ${nameOf(answer.body)}); check QUALY_MAIL_RESEND_API_KEY and the sending domain`,
       )
     } else if (meaning.reason === 'rejected') {
-      yield* Effect.logWarning(`resend refused a message (${String(answer.status)}, ${nameOf(answer.body)})`)
+      yield* Effect.logWarning(
+        `resend refused a message (${String(answer.status)}, ${nameOf(answer.body)})`,
+      )
     }
     return yield* new MailBackendFailed({ reason: meaning.reason })
   }),

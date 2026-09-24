@@ -10,7 +10,14 @@ import { lengthOf, type CheckState, type PasswordChecks } from './checks.ts'
 // on every form that sets a password. What it says comes from checks.ts.
 
 const styles = stylex.create({
-  list: { display: 'flex', flexDirection: 'column', gap: 5, margin: 0, padding: 0, listStyle: 'none' },
+  list: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 5,
+    margin: 0,
+    padding: 0,
+    listStyle: 'none',
+  },
   rule: {
     display: 'flex',
     alignItems: 'center',

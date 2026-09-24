@@ -120,7 +120,10 @@ const fields: readonly EntranceField[] = [
   {
     key: 'scopes',
     label: say('field/scopes', 'Scopes'),
-    hint: say('field/scopes-hint', 'Separated by spaces; openid is always asked for. Empty means openid profile email'),
+    hint: say(
+      'field/scopes-hint',
+      'Separated by spaces; openid is always asked for. Empty means openid profile email',
+    ),
     kind: 'text',
     required: false,
     section: 'advanced',

@@ -109,7 +109,9 @@ const seed = (url: string) =>
         yield* runSql(sql`insert into tenants (slug, name) values ('rescue','R') returning id`),
       ).id
       const orgType = one<{ id: string }>(
-        yield* runSql(sql`insert into org_types (tenant_id, name) values (${tenant}, 'U') returning id`),
+        yield* runSql(
+          sql`insert into org_types (tenant_id, name) values (${tenant}, 'U') returning id`,
+        ),
       ).id
       const root = one<{ id: string }>(
         yield* runSql(sql`

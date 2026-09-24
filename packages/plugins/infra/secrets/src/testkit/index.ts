@@ -15,7 +15,10 @@ export const TEST_MASTER_KEY = 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8='
 export const secretsLayerWith = (masterKey: string): Layer.Layer<Secrets, never, Orm> =>
   serviceLayer.pipe(
     Layer.provide(
-      Layer.succeed(SecretsConfig, SecretsConfig.of({ masterKey: Redacted.make(masterKeyFrom(masterKey)!) })),
+      Layer.succeed(
+        SecretsConfig,
+        SecretsConfig.of({ masterKey: Redacted.make(masterKeyFrom(masterKey)!) }),
+      ),
     ),
   )
 

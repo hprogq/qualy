@@ -52,7 +52,9 @@ export interface LspCompletionList {
 
 export interface LspHover {
   readonly contents:
-    string | { readonly value: string } | readonly (string | { readonly value: string })[]
+    | string
+    | { readonly value: string }
+    | readonly (string | { readonly value: string })[]
   readonly range?: LspRange
 }
 

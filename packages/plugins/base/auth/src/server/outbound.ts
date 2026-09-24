@@ -124,7 +124,10 @@ export const allowlistEntryValid = (entry: string) => {
     const bits = Number(prefix)
     return Number.isInteger(bits) && bits >= 0 && bits <= (isIP(network!) === 6 ? 128 : 32)
   }
-  return prefix === undefined && /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/i.test(entry)
+  return (
+    prefix === undefined &&
+    /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/i.test(entry)
+  )
 }
 
 const allowlist = (entries: readonly string[]) => {
@@ -207,7 +210,10 @@ export const makeOutbound = (policy: OutboundPolicy) => {
   }
 
   /** one request, made or refused; throws OutboundRefused or OutboundFailed */
-  const send = async (input: OutboundRequest, interrupted?: AbortSignal): Promise<OutboundResponse> => {
+  const send = async (
+    input: OutboundRequest,
+    interrupted?: AbortSignal,
+  ): Promise<OutboundResponse> => {
     let url: URL
     try {
       url = new URL(input.url)
@@ -296,7 +302,9 @@ export const makeOutbound = (policy: OutboundPolicy) => {
     }
   }
 
-  const fetch = (input: OutboundRequest): Effect.Effect<OutboundResponse, OutboundRefused | OutboundFailed> =>
+  const fetch = (
+    input: OutboundRequest,
+  ): Effect.Effect<OutboundResponse, OutboundRefused | OutboundFailed> =>
     Effect.tryPromise({
       try: (interrupted) => send(input, interrupted),
       catch: (error) =>
@@ -310,9 +318,14 @@ export const makeOutbound = (policy: OutboundPolicy) => {
    * client that makes its own requests. A refusal or a failure rejects the
    * promise with the port's own error, which the client passes on.
    */
-  const asFetch = async (resource: string | URL | Request, init?: RequestInit): Promise<Response> => {
+  const asFetch = async (
+    resource: string | URL | Request,
+    init?: RequestInit,
+  ): Promise<Response> => {
     const target = resource instanceof Request ? resource.url : resource.toString()
-    const method = (init?.method ?? (resource instanceof Request ? resource.method : 'GET')).toUpperCase()
+    const method = (
+      init?.method ?? (resource instanceof Request ? resource.method : 'GET')
+    ).toUpperCase()
     if (method !== 'GET' && method !== 'POST') throw new OutboundRefused({ reason: 'scheme' })
     const headers: Record<string, string> = {}
     new Headers(init?.headers).forEach((value, name) => {

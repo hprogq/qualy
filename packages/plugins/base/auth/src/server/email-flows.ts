@@ -241,7 +241,9 @@ export class EmailFlows extends Context.Service<
       readonly password: string
     }) => Effect.Effect<void, ChallengeInvalid | AuthBindingCredentialInvalid>
     /** whether a reset link would still be taken, without taking it */
-    readonly inspectReset: (input: { readonly token: string }) => Effect.Effect<void, ChallengeInvalid>
+    readonly inspectReset: (input: {
+      readonly token: string
+    }) => Effect.Effect<void, ChallengeInvalid>
     /** the checks the password a reset link would set is held to, while it is typed */
     readonly assessReset: (input: {
       readonly token: string
@@ -259,7 +261,9 @@ export class EmailFlows extends Context.Service<
       void,
       UserEmailConflict | SystemAccountProtected | MailNotSent | TooManyAttempts | UserNotFound
     >
-    readonly redeemChange: (token: string) => Effect.Effect<void, ChallengeInvalid | UserEmailConflict>
+    readonly redeemChange: (
+      token: string,
+    ) => Effect.Effect<void, ChallengeInvalid | UserEmailConflict>
     /** the checks a new password of the reader's own is held to, while it is typed */
     readonly assessPassword: (
       principal: Principal,
@@ -372,7 +376,8 @@ export const emailFlowsLayer: Layer.Layer<
         return yield* withDb(
           Effect.gen(function* () {
             const open = yield* openChallenge(token, 'reset')
-            if (open === undefined || open.tenantId !== tenantId) return yield* new ChallengeInvalid()
+            if (open === undefined || open.tenantId !== tenantId)
+              return yield* new ChallengeInvalid()
             const person = yield* personOf(tenantId, open.userId)
             if (person === undefined || person.emailVerifiedAt === null) {
               return yield* new ChallengeInvalid()
@@ -399,18 +404,18 @@ export const emailFlowsLayer: Layer.Layer<
           ...(message.html === undefined ? {} : { html: message.html }),
         })
         .pipe(
-        Effect.catchTag('MailUnavailable', (failed) =>
-          withDb(spend(challengeId)).pipe(
-            Effect.orDie,
-            Effect.andThen(Effect.fail(new MailNotSent())),
-            Effect.tap(() =>
-              Effect.logWarning('a link could not be mailed and was spent').pipe(
-                Effect.annotateLogs({ tenantId, reason: failed.reason }),
+          Effect.catchTag('MailUnavailable', (failed) =>
+            withDb(spend(challengeId)).pipe(
+              Effect.orDie,
+              Effect.andThen(Effect.fail(new MailNotSent())),
+              Effect.tap(() =>
+                Effect.logWarning('a link could not be mailed and was spent').pipe(
+                  Effect.annotateLogs({ tenantId, reason: failed.reason }),
+                ),
               ),
             ),
           ),
-        ),
-      )
+        )
 
     const writeCredential = Effect.fn('Auth.email.writeCredential')(function* (
       tenantId: string,
@@ -451,7 +456,12 @@ export const emailFlowsLayer: Layer.Layer<
         actor: yield* actorOf(tenantId, actor),
         target: { id: person.id, label: person.displayName },
         ...(person.primaryOrgNodeId === null ? {} : { organizationId: person.primaryOrgNodeId }),
-        details: { providerId: door.id, bindingId, replaced: standing !== undefined, endedSessions },
+        details: {
+          providerId: door.id,
+          bindingId,
+          replaced: standing !== undefined,
+          endedSessions,
+        },
       })
     })
 
@@ -466,7 +476,11 @@ export const emailFlowsLayer: Layer.Layer<
       ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
 
     return EmailFlows.of({
-      requestReset: Effect.fn('Auth.email.requestReset')(function* ({ email, locale, captcha: proof }) {
+      requestReset: Effect.fn('Auth.email.requestReset')(function* ({
+        email,
+        locale,
+        captcha: proof,
+      }) {
         const tenant = yield* tenants.resolve.pipe(Effect.option)
         if (Option.isNone(tenant)) return
         const tenantId = tenant.value.id
@@ -490,7 +504,11 @@ export const emailFlowsLayer: Layer.Layer<
               RISK_RULES.resetByIdentifierRisk,
               normalized,
             )
-            if (here.challengeRequired || again.challengeRequired || context?.clientIp === undefined) {
+            if (
+              here.challengeRequired ||
+              again.challengeRequired ||
+              context?.clientIp === undefined
+            ) {
               const guarded = yield* captcha.guard({
                 tenantId,
                 purpose: PASSWORD_RESET_CAPTCHA,
@@ -524,7 +542,10 @@ export const emailFlowsLayer: Layer.Layer<
             const person = yield* personOf(tenant.value.id, found.id)
             if (person === undefined) return undefined
             if ((yield* passwordDoor(tenant.value.id, person)) === undefined) return undefined
-            return { person, challenge: yield* issueChallenge(tenant.value.id, person.id, 'reset', null) }
+            return {
+              person,
+              challenge: yield* issueChallenge(tenant.value.id, person.id, 'reset', null),
+            }
           }),
         )
         if (issued === undefined) return
@@ -541,9 +562,7 @@ export const emailFlowsLayer: Layer.Layer<
             issued.challenge.id,
             normalized,
             mailFor('reset', locale, link, { to: normalized, workspace: tenant.value.name }),
-          ).pipe(
-            Effect.ignore,
-          ),
+          ).pipe(Effect.ignore),
           scope,
         )
       }),
@@ -566,7 +585,8 @@ export const emailFlowsLayer: Layer.Layer<
           tenantId,
           Effect.gen(function* () {
             const taken = yield* redeemChallenge(token, 'reset')
-            if (taken === undefined || taken.tenantId !== tenantId) return yield* new ChallengeInvalid()
+            if (taken === undefined || taken.tenantId !== tenantId)
+              return yield* new ChallengeInvalid()
             const person = yield* personOf(tenantId, taken.userId)
             // the person may have lost the address the link went to since
             if (person === undefined || person.emailVerifiedAt === null) {
@@ -578,7 +598,8 @@ export const emailFlowsLayer: Layer.Layer<
               secret: password,
               subject: yield* secretSubjectOf(tenantId, person.id),
             })
-            if (!prepared.ok) return yield* new AuthBindingCredentialInvalid({ checks: prepared.checks })
+            if (!prepared.ok)
+              return yield* new AuthBindingCredentialInvalid({ checks: prepared.checks })
             // everywhere they were signed in ends: whoever else knew the old
             // password is now on the outside
             yield* writeCredential(tenantId, person, door, prepared.credentialHash, undefined, {
@@ -594,41 +615,45 @@ export const emailFlowsLayer: Layer.Layer<
         )
       }),
 
-      requestVerification: Effect.fn('Auth.email.requestVerification')(function* (
-        principal,
-        locale,
-      ) {
-        const issued = yield* inLock(
-          principal.tenantId,
-          Effect.gen(function* () {
-            const person = yield* personOf(principal.tenantId, principal.userId)
-            if (person === undefined || person.email === null) return yield* new EmailMissing()
-            if (person.emailVerifiedAt !== null) return undefined
-            yield* throttle(principal.tenantId, HARD_LIMITS.mailBySelf, principal.userId)
-            return {
-              email: person.email,
-              challenge: yield* issueChallenge(principal.tenantId, person.id, 'verify', person.email),
-            }
-          }),
-        )
-        if (issued === undefined) return { sent: false }
-        const link = yield* withDb(
-          linkTo(principal.tenantId, CONFIRM_EMAIL_PATH, {
-            purpose: 'verify',
-            token: Redacted.value(issued.challenge.token),
-          }),
-        ).pipe(Effect.orDie)
-        yield* deliver(
-          principal.tenantId,
-          issued.challenge.id,
-          issued.email,
-          mailFor('verify', locale, link, {
-            to: issued.email,
-            workspace: yield* workspaceOf(principal.tenantId),
-          }),
-        )
-        return { sent: true }
-      }),
+      requestVerification: Effect.fn('Auth.email.requestVerification')(
+        function* (principal, locale) {
+          const issued = yield* inLock(
+            principal.tenantId,
+            Effect.gen(function* () {
+              const person = yield* personOf(principal.tenantId, principal.userId)
+              if (person === undefined || person.email === null) return yield* new EmailMissing()
+              if (person.emailVerifiedAt !== null) return undefined
+              yield* throttle(principal.tenantId, HARD_LIMITS.mailBySelf, principal.userId)
+              return {
+                email: person.email,
+                challenge: yield* issueChallenge(
+                  principal.tenantId,
+                  person.id,
+                  'verify',
+                  person.email,
+                ),
+              }
+            }),
+          )
+          if (issued === undefined) return { sent: false }
+          const link = yield* withDb(
+            linkTo(principal.tenantId, CONFIRM_EMAIL_PATH, {
+              purpose: 'verify',
+              token: Redacted.value(issued.challenge.token),
+            }),
+          ).pipe(Effect.orDie)
+          yield* deliver(
+            principal.tenantId,
+            issued.challenge.id,
+            issued.email,
+            mailFor('verify', locale, link, {
+              to: issued.email,
+              workspace: yield* workspaceOf(principal.tenantId),
+            }),
+          )
+          return { sent: true }
+        },
+      ),
 
       redeemVerification: Effect.fn('Auth.email.redeemVerification')(function* (token) {
         const tenant = yield* tenants.resolve.pipe(Effect.option)
@@ -638,7 +663,8 @@ export const emailFlowsLayer: Layer.Layer<
           tenantId,
           Effect.gen(function* () {
             const taken = yield* redeemChallenge(token, 'verify')
-            if (taken === undefined || taken.tenantId !== tenantId) return yield* new ChallengeInvalid()
+            if (taken === undefined || taken.tenantId !== tenantId)
+              return yield* new ChallengeInvalid()
             // proves the address it was sent to, and only while that is still
             // the address on file: a link to a replaced address proves nothing
             const marked = yield* db.query((k) =>
@@ -700,7 +726,8 @@ export const emailFlowsLayer: Layer.Layer<
           tenantId,
           Effect.gen(function* () {
             const taken = yield* redeemChallenge(token, 'change')
-            if (taken === undefined || taken.tenantId !== tenantId) return yield* new ChallengeInvalid()
+            if (taken === undefined || taken.tenantId !== tenantId)
+              return yield* new ChallengeInvalid()
             const person = yield* personOf(tenantId, taken.userId)
             if (person === undefined || person.isSystem) return yield* new ChallengeInvalid()
             if ((yield* emailTaken(tenantId, taken.targetEmail!, person.id)) !== undefined) {
@@ -751,7 +778,9 @@ export const emailFlowsLayer: Layer.Layer<
         if (person === undefined) return yield* new UserNotFound()
         const door = yield* withDb(passwordDoor(tenantId, person)).pipe(Effect.orDie)
         if (door === undefined) return yield* new PasswordUnavailable()
-        const standing = yield* withDb(credentialOf(tenantId, person.id, door.id)).pipe(Effect.orDie)
+        const standing = yield* withDb(credentialOf(tenantId, person.id, door.id)).pipe(
+          Effect.orDie,
+        )
         if (standing?.credentialHash != null) {
           yield* withDb(throttle(tenantId, HARD_LIMITS.passwordBySelf, person.id))
           const right =
@@ -769,14 +798,22 @@ export const emailFlowsLayer: Layer.Layer<
           secret: input.newPassword,
           subject: yield* withDb(secretSubjectOf(tenantId, person.id)).pipe(Effect.orDie),
         })
-        if (!prepared.ok) return yield* new AuthBindingCredentialInvalid({ checks: prepared.checks })
+        if (!prepared.ok)
+          return yield* new AuthBindingCredentialInvalid({ checks: prepared.checks })
         yield* inLock(
           tenantId,
           Effect.gen(function* () {
             const again = yield* personOf(tenantId, person.id)
             if (again === undefined) return yield* new UserNotFound()
             // every other session ends; the one that changed it goes on
-            yield* writeCredential(tenantId, again, door, prepared.credentialHash, principal.sessionId, principal)
+            yield* writeCredential(
+              tenantId,
+              again,
+              door,
+              prepared.credentialHash,
+              principal.sessionId,
+              principal,
+            )
           }),
         )
       }),

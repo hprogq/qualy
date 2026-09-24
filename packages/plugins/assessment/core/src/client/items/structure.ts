@@ -32,7 +32,8 @@ export interface StructureRow {
 const eachOf = (item: ItemDto): string | undefined =>
   (
     item.currentRevision?.scoringConfig as
-      { calculator?: { config?: { value?: string } } } | undefined
+      | { calculator?: { config?: { value?: string } } }
+      | undefined
   )?.calculator?.config?.value
 
 const stepsOf = (item: ItemDto): number | undefined => {
@@ -63,7 +64,8 @@ export const countedEntries = (folding: Folding, maxEntries: number | null): num
 const foldingOf = (item: ItemDto): Folding => {
   const aggregator = (
     item.currentRevision?.scoringConfig as
-      { aggregator?: { ref?: string; config?: { n?: number } } } | undefined
+      | { aggregator?: { ref?: string; config?: { n?: number } } }
+      | undefined
   )?.aggregator
   if (aggregator?.ref === 'max@1') return { rule: 'max' }
   if (aggregator?.ref === 'top-n-sum@1') return { rule: 'top-n', n: aggregator.config?.n ?? 1 }

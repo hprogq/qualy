@@ -3428,7 +3428,10 @@ const i18n = definePluginMessages({
       id: 'assessment/entry/score-if-approved',
       defaultMessage: 'If approved',
     },
-    entryStatusAppealing: { id: 'assessment/entry/status-appealing', defaultMessage: 'Under appeal' },
+    entryStatusAppealing: {
+      id: 'assessment/entry/status-appealing',
+      defaultMessage: 'Under appeal',
+    },
     entryStatusReopened: {
       id: 'assessment/entry/status-reopened',
       defaultMessage: 'Reopened for review',
@@ -5025,14 +5028,20 @@ const i18n = definePluginMessages({
       id: 'assessment/placement/beyond-hint',
       defaultMessage: 'Syncing needs someone who manages both units.',
     },
-    placementGone: { id: 'assessment/placement/gone', defaultMessage: 'Deleted from the organization' },
+    placementGone: {
+      id: 'assessment/placement/gone',
+      defaultMessage: 'Deleted from the organization',
+    },
     placementDisabled: { id: 'assessment/placement/disabled', defaultMessage: 'Account disabled' },
     placementUnplaced: { id: 'assessment/placement/unplaced', defaultMessage: 'Not in any unit' },
     placementUnavailableHint: {
       id: 'assessment/placement/unavailable-hint',
       defaultMessage: 'Remove them from the roster if they no longer take part.',
     },
-    placementChangePlacement: { id: 'assessment/placement/change-placement', defaultMessage: 'Moved' },
+    placementChangePlacement: {
+      id: 'assessment/placement/change-placement',
+      defaultMessage: 'Moved',
+    },
     placementChangeAncestry: {
       id: 'assessment/placement/change-ancestry',
       defaultMessage: 'Unit moved',
@@ -5043,8 +5052,14 @@ const i18n = definePluginMessages({
     },
     placementSync: { id: 'assessment/placement/sync', defaultMessage: 'Sync' },
     placementKeep: { id: 'assessment/placement/keep', defaultMessage: "Keep the batch's" },
-    placementSyncSelected: { id: 'assessment/placement/sync-selected', defaultMessage: 'Sync selected' },
-    placementKeepSelected: { id: 'assessment/placement/keep-selected', defaultMessage: 'Keep selected' },
+    placementSyncSelected: {
+      id: 'assessment/placement/sync-selected',
+      defaultMessage: 'Sync selected',
+    },
+    placementKeepSelected: {
+      id: 'assessment/placement/keep-selected',
+      defaultMessage: 'Keep selected',
+    },
     placementSelectPage: { id: 'assessment/placement/select-page', defaultMessage: 'Select page' },
     placementSelected: {
       id: 'assessment/placement/selected',

@@ -78,7 +78,9 @@ export class FormulaRuntimeUnsupported extends Data.TaggedError(
 }> {}
 
 export type FormulaRuntimeResolutionError =
-  FormulaRuntimeMissing | FormulaRuntimeTampered | FormulaRuntimeUnsupported
+  | FormulaRuntimeMissing
+  | FormulaRuntimeTampered
+  | FormulaRuntimeUnsupported
 
 export class FormulaRuntimeStore extends Context.Service<
   FormulaRuntimeStore,

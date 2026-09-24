@@ -42,8 +42,7 @@ export const PLUGIN_USAGE = [
   '  pnpm qualy plugin remove <package>',
 ].join('\n')
 
-const isVerb = (value: string | undefined): value is Verb =>
-  VERBS.includes(value as Verb)
+const isVerb = (value: string | undefined): value is Verb => VERBS.includes(value as Verb)
 
 /**
  * Every command here changes the assembly, and the browser half of a

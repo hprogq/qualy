@@ -19,7 +19,11 @@ import { serviceLayer as rbacLayer } from '@qualy/plugin-rbac/server'
 import { serviceLayer as auditLayer } from '@qualy/plugin-audit/server'
 import { AuditActionCatalog } from '@qualy/audit-contract/effect'
 import { compileActionCatalog } from '@qualy/audit-contract/plugin'
-import { loginDriversLayer, registerLoginDriver, type LoginDriver } from '@qualy/auth-contract/login'
+import {
+  loginDriversLayer,
+  registerLoginDriver,
+  type LoginDriver,
+} from '@qualy/auth-contract/login'
 import { driver as localDriver } from '@qualy/plugin-auth-local'
 import { userActions } from '../src/actions.ts'
 import { AuthConfig } from '../src/server/auth-config.ts'
@@ -118,7 +122,9 @@ const seed = (url: string) =>
         yield* runSql(sql`insert into tenants (slug, name) values ('default','D') returning id`),
       ).id
       const orgType = one<{ id: string }>(
-        yield* runSql(sql`insert into org_types (tenant_id, name) values (${tenant}, 'U') returning id`),
+        yield* runSql(
+          sql`insert into org_types (tenant_id, name) values (${tenant}, 'U') returning id`,
+        ),
       ).id
       const root = one<{ id: string }>(
         yield* runSql(sql`
@@ -136,7 +142,12 @@ const seed = (url: string) =>
           insert into user_types (tenant_id, code, name, placement_mode)
           values (${tenant}, 'staff', 'Staff', 'unrestricted') returning id`),
       ).id
-      const person = (name: string, email: string | null, businessNo: string | null, type: string) =>
+      const person = (
+        name: string,
+        email: string | null,
+        businessNo: string | null,
+        type: string,
+      ) =>
         Effect.map(
           runSql(sql`
             insert into users (tenant_id, display_name, user_type_id, primary_org_node_id, email, business_no)
@@ -155,7 +166,12 @@ const seed = (url: string) =>
         )
       const local = yield* door('local', 'local')
       const hubDoor = yield* door('hub', 'hub')
-      const bind = (userId: string, providerId: string, subject: string | null, hash: string | null) =>
+      const bind = (
+        userId: string,
+        providerId: string,
+        subject: string | null,
+        hash: string | null,
+      ) =>
         Effect.map(
           runSql(sql`
             insert into user_auth_bindings (tenant_id, user_id, auth_provider_id, subject, credential_hash, display_label)
@@ -192,7 +208,11 @@ const seed = (url: string) =>
         adaByPassword,
         adaByHub,
         linByHub,
-        as: (userId: string, sessionId: string): Principal => ({ tenantId: tenant, userId, sessionId }),
+        as: (userId: string, sessionId: string): Principal => ({
+          tenantId: tenant,
+          userId,
+          sessionId,
+        }),
       }
     }).pipe(Effect.provide(databaseFor(url, { migrations: 'off', entities: authClosure }))),
   )
@@ -239,9 +259,7 @@ describe.runIf(postgresAvailable)('the reader’s own account', () => {
         { type: 'local', bound: true, unbindable: false, thisSession: true },
       ])
       // asked from the session that came in through the hub account, that one is marked
-      expect(
-        answer.byHub.map((entrance) => [entrance.type, entrance.thisSession]),
-      ).toEqual([
+      expect(answer.byHub.map((entrance) => [entrance.type, entrance.thisSession])).toEqual([
         ['hub', true],
         ['local', false],
       ])
@@ -335,7 +353,9 @@ describe.runIf(postgresAvailable)('the reader’s own account', () => {
       expect(answer.released).toEqual({ signedOut: false })
       expect(answer.sessions).toEqual([f.adaByPassword])
       expect(answer.binding).toEqual({ revoked: true, revoked_by: f.ada })
-      expect(answer.audited).toEqual([{ action_code: 'auth.identity.revoke', actor_user_id: f.ada }])
+      expect(answer.audited).toEqual([
+        { action_code: 'auth.identity.revoke', actor_user_id: f.ada },
+      ])
       expect(tagOf(answer.again)).toBe('AUTH_BINDING_NOT_FOUND')
       expect(tagOf(answer.password)).toBe('AUTH_BINDING_UNSUPPORTED')
       // the let-go account's sign-ins are not this way's any more; the password's are
@@ -419,9 +439,7 @@ describe.runIf(postgresAvailable)('the reader’s own account', () => {
         '/auth/hub/hub/start?intent=bind',
       )
       // the system account lets its hub account go like anyone; its password stays
-      expect(answer.systemListed.find((entrance) => entrance.type === 'hub')?.unbindable).toBe(
-        true,
-      )
+      expect(answer.systemListed.find((entrance) => entrance.type === 'hub')?.unbindable).toBe(true)
       expect(answer.system).toEqual({ signedOut: false })
       expect(answer.systemLeft).toEqual([f.local])
     } finally {

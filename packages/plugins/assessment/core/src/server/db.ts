@@ -507,7 +507,9 @@ export const userBatchesPage = (
           .onRef('AssessmentBatch.id', '=', 'bp.batchId'),
       )
       .leftJoin('OrgNode as n', (join) =>
-        join.onRef('n.tenantId', '=', 'bp.tenantId').onRef('n.id', '=', 'bp.assessmentAnchorNodeId'),
+        join
+          .onRef('n.tenantId', '=', 'bp.tenantId')
+          .onRef('n.id', '=', 'bp.assessmentAnchorNodeId'),
       )
       .select([
         'bp.id as membershipId',
@@ -2227,33 +2229,31 @@ export const participantPlacements = (
     )
     .pipe(
       Effect.map((result) =>
-        result.rows.map(
-          (row): PlacementRow => ({
-            participantId: row.participant_id as string,
-            userId: row.user_id as string,
-            displayName: row.display_name as string,
-            businessNo: (row.business_no ?? null) as string | null,
-            frozen: {
-              nodeId: row.frozen_node_id as string,
-              path: row.frozen_path as string,
-              lineage: stepsOf(row.frozen_lineage),
-              userTypeId: row.frozen_type_id as string,
-            },
-            unavailable: (row.unavailable ?? null) as PlacementRow['unavailable'],
-            live:
-              row.unavailable != null || row.live_node_id == null
-                ? null
-                : {
-                    nodeId: row.live_node_id as string,
-                    path: row.live_path as string,
-                    lineage: stepsOf(row.live_lineage),
-                    userTypeId: row.live_type_id as string,
-                  },
-            liveFingerprint: (row.live_fingerprint ?? null) as string | null,
-            frozenFingerprint: row.frozen_fingerprint as string,
-            reconciledFingerprint: (row.reconciled_org_state_hash ?? null) as string | null,
-          }),
-        ),
+        result.rows.map((row): PlacementRow => ({
+          participantId: row.participant_id as string,
+          userId: row.user_id as string,
+          displayName: row.display_name as string,
+          businessNo: (row.business_no ?? null) as string | null,
+          frozen: {
+            nodeId: row.frozen_node_id as string,
+            path: row.frozen_path as string,
+            lineage: stepsOf(row.frozen_lineage),
+            userTypeId: row.frozen_type_id as string,
+          },
+          unavailable: (row.unavailable ?? null) as PlacementRow['unavailable'],
+          live:
+            row.unavailable != null || row.live_node_id == null
+              ? null
+              : {
+                  nodeId: row.live_node_id as string,
+                  path: row.live_path as string,
+                  lineage: stepsOf(row.live_lineage),
+                  userTypeId: row.live_type_id as string,
+                },
+          liveFingerprint: (row.live_fingerprint ?? null) as string | null,
+          frozenFingerprint: row.frozen_fingerprint as string,
+          reconciledFingerprint: (row.reconciled_org_state_hash ?? null) as string | null,
+        })),
       ),
     )
 
@@ -2345,7 +2345,9 @@ export const userTypeNames = (tenantId: string, ids: readonly string[]) =>
             .where('id', 'in', ids as string[])
             .execute(),
         )
-        .pipe(Effect.map((rows) => new Map(rows.map((row) => [row.id as string, row.name as string]))))
+        .pipe(
+          Effect.map((rows) => new Map(rows.map((row) => [row.id as string, row.name as string]))),
+        )
 
 const toParticipantRow = (row: Record<string, unknown>): ParticipantRow =>
   ({

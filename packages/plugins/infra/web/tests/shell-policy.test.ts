@@ -136,10 +136,9 @@ describe('composing the shell policy', () => {
       'https:',
       '',
     ]) {
-      expect(
-        () => composeShellPolicy([{ owner: 'x', 'script-src': [source] }]),
-        source,
-      ).toThrow(ShellPolicyRefused)
+      expect(() => composeShellPolicy([{ owner: 'x', 'script-src': [source] }]), source).toThrow(
+        ShellPolicyRefused,
+      )
     }
   })
 

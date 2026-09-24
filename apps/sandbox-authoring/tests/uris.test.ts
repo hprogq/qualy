@@ -70,9 +70,9 @@ describe('outbound sweep', () => {
 
 describe('the structural door', () => {
   it('admits real frames and turns primitives away', () => {
-    expect(
-      isJsonRecord(JSON.parse('{"jsonrpc":"2.0","id":1,"result":{"capabilities":{}}}')),
-    ).toBe(true)
+    expect(isJsonRecord(JSON.parse('{"jsonrpc":"2.0","id":1,"result":{"capabilities":{}}}'))).toBe(
+      true,
+    )
     expect(isJsonRecord(JSON.parse('{"jsonrpc":"2.0","method":"initialized"}'))).toBe(true)
     for (const body of ['null', '[]', '"x"', '1', 'true']) {
       expect(isJsonRecord(JSON.parse(body)), body).toBe(false)

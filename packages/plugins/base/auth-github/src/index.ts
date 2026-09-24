@@ -104,7 +104,8 @@ const failed = (failure: { readonly _tag: string; readonly retryAfterSeconds?: n
 /** the settings as a GitHub entrance reads them */
 const settingsOf = (config: Readonly<Record<string, unknown>>) => {
   const clientId = typeof config['clientId'] === 'string' ? config['clientId'] : undefined
-  const enterprise = typeof config['enterpriseUrl'] === 'string' ? config['enterpriseUrl'] : undefined
+  const enterprise =
+    typeof config['enterpriseUrl'] === 'string' ? config['enterpriseUrl'] : undefined
   return clientId === undefined ? undefined : { clientId, endpoints: endpointsOf(enterprise) }
 }
 

@@ -199,7 +199,12 @@ const AtomicControl = ({
     return (
       // unanswered is neither pressed, so a field nobody reached is never
       // quietly reported as "no"
-      <span role="radiogroup" id={id} data-answered={draft !== undefined} {...stylex.props(styles.pair)}>
+      <span
+        role="radiogroup"
+        id={id}
+        data-answered={draft !== undefined}
+        {...stylex.props(styles.pair)}
+      >
         {answers.map((answer) => (
           <button
             key={String(answer.value)}

@@ -49,7 +49,13 @@ import { captchaLayer } from '@qualy/plugin-captcha/testkit'
 
 // what the orm must know for a query to name a table: this suite runs auth and
 // rbac alongside org, so their tables are part of what the assembly serves
-const closure = [...orgEntities, ...authEntities, ...rbacEntities, ...auditEntities, ...secretsEntities] as const
+const closure = [
+  ...orgEntities,
+  ...authEntities,
+  ...rbacEntities,
+  ...auditEntities,
+  ...secretsEntities,
+] as const
 
 // the same declarations production compiles, stamped the same way
 const catalog = compileCatalog([
@@ -501,9 +507,7 @@ describe.runIf(postgresAvailable).concurrent('changing a node type across three 
               usage.some((one) => one.clearable && one.count > 0),
             )
           const standing = yield* reporter(f.tenant, leaf)
-          const blocked = yield* Effect.result(
-            org.deleteNode(f.tenant, leaf, f.principal, held()),
-          )
+          const blocked = yield* Effect.result(org.deleteNode(f.tenant, leaf, f.principal, held()))
           // move them off, and the same question answers the other way
           yield* runSql(sql`
             update users set primary_org_node_id = ${f.node} where tenant_id = ${f.tenant}`)

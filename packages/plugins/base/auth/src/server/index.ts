@@ -20,7 +20,11 @@ import { Audit } from '@qualy/audit-contract/effect'
 import { placementViolations, primaryNode, usersBlockingOrgType } from './placement.ts'
 import { makeProviders } from './providers.ts'
 import { identityApiGroup, selfApiGroup, sessionApiGroup } from '../api.ts'
-import { LoginDrivers, LoginSessions, type AuthBindingDeclaration } from '@qualy/auth-contract/login'
+import {
+  LoginDrivers,
+  LoginSessions,
+  type AuthBindingDeclaration,
+} from '@qualy/auth-contract/login'
 import { Captcha } from '@qualy/plugin-captcha/server'
 import { AuthConfig, SignIn, layer as signInLayer } from './sign-in.ts'
 import { AuthRequired, Authenticated, CurrentUser, Viewer } from '@qualy/auth-contract/session'

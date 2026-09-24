@@ -312,7 +312,12 @@ describe.runIf(postgresAvailable)('the user lifecycle', () => {
             Effect.result(iam.users.detail(f.as, f.person)),
             Effect.result(iam.users.update(f.tenant, f.person, { displayName: 'X' }, 2, f.as)),
             Effect.result(
-              iam.users.setStatus(f.tenant, f.person, { status: 'active', expectedVersion: 2 }, f.as),
+              iam.users.setStatus(
+                f.tenant,
+                f.person,
+                { status: 'active', expectedVersion: 2 },
+                f.as,
+              ),
             ),
             Effect.result(iam.users.remove(f.tenant, f.person, 2, f.as)),
           ])

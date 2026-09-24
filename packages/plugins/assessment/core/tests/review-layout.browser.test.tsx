@@ -329,7 +329,9 @@ describe('one workbench, three widths', () => {
     await userEvent.keyboard('q')
     await expect.element(page.getByTestId('queue-sheet')).toBeVisible()
     const stoodOn = () =>
-      document.querySelector('[data-testid="queue-row"][data-at="true"]')?.getAttribute('data-queue-index')
+      document
+        .querySelector('[data-testid="queue-row"][data-at="true"]')
+        ?.getAttribute('data-queue-index')
     const before = stoodOn()
     await userEvent.keyboard('{ArrowDown}')
     await expect.poll(stoodOn).not.toBe(before)

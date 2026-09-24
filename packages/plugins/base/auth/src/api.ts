@@ -878,11 +878,15 @@ export const identityApiGroup = HttpApiGroup.make('identity')
     ).middleware(Authenticated),
   )
   .add(
-    HttpApiEndpoint.delete('deleteUserAuthBinding', '/iam/users/:userId/auth-bindings/:providerId', {
-      params: Schema.Struct({ userId: uuidInput, providerId: uuidInput }),
-      success: Schema.Struct({ ok: Schema.Literal(true) }),
-      error: [UserNotFound, SystemAccountProtected, AuthBindingNotFound, AccessDenied],
-    }).middleware(Authenticated),
+    HttpApiEndpoint.delete(
+      'deleteUserAuthBinding',
+      '/iam/users/:userId/auth-bindings/:providerId',
+      {
+        params: Schema.Struct({ userId: uuidInput, providerId: uuidInput }),
+        success: Schema.Struct({ ok: Schema.Literal(true) }),
+        error: [UserNotFound, SystemAccountProtected, AuthBindingNotFound, AccessDenied],
+      },
+    ).middleware(Authenticated),
   )
 
 // The session is a resource, not a pair of verbs: reading it says who is
@@ -1128,12 +1132,7 @@ export const selfApiGroup = HttpApiGroup.make('self')
       params: Schema.Struct({ providerId: uuidInput }),
       // whether the session this came from was one of those ended with it
       success: Schema.Struct({ signedOut: Schema.Boolean }),
-      error: [
-        UserNotFound,
-        AuthBindingNotFound,
-        AuthBindingUnsupported,
-        AuthLastWayIn,
-      ],
+      error: [UserNotFound, AuthBindingNotFound, AuthBindingUnsupported, AuthLastWayIn],
     }).middleware(Authenticated),
   )
   .add(

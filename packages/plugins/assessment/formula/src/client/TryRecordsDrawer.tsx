@@ -107,7 +107,12 @@ const styles = stylex.create({
     lineHeight: '17px',
   },
   factsTerm: { color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)` },
-  factsValue: { minWidth: 0, margin: 0, overflowWrap: 'anywhere', color: tokens.surfaceMutedForeground },
+  factsValue: {
+    minWidth: 0,
+    margin: 0,
+    overflowWrap: 'anywhere',
+    color: tokens.surfaceMutedForeground,
+  },
   more: {
     alignSelf: 'flex-start',
     borderWidth: 0,

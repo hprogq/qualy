@@ -34,7 +34,9 @@ const guardWith = async (
   const db = await createTestContext('captcha-guard')
   try {
     return await Effect.runPromiseExit(
-      Effect.forEach(inputs, (input) => Effect.flatMap(Captcha, (captcha) => captcha.guard(input))).pipe(
+      Effect.forEach(inputs, (input) =>
+        Effect.flatMap(Captcha, (captcha) => captcha.guard(input)),
+      ).pipe(
         Effect.provide(
           layer.pipe(
             Layer.provideMerge(secretsLayer),
@@ -135,7 +137,14 @@ describe('the words a challenge is named by', () => {
   it('takes a namespaced purpose and refuses anything else', () => {
     expect(captchaPurpose('auth/login')).toBe('auth/login')
     expect(captchaPurpose('assessment/entry-submit')).toBe('assessment/entry-submit')
-    for (const bad of ['login', 'Auth/login', 'auth/', 'auth//login', 'auth/log_in', `a/${'x'.repeat(130)}`]) {
+    for (const bad of [
+      'login',
+      'Auth/login',
+      'auth/',
+      'auth//login',
+      'auth/log_in',
+      `a/${'x'.repeat(130)}`,
+    ]) {
       expect(() => captchaPurpose(bad), bad).toThrow(/not a captcha purpose/)
     }
   })
@@ -151,7 +160,9 @@ describe('the words a challenge is named by', () => {
     const decode = Schema.decodeUnknownExit(CaptchaProof)
     expect(Exit.isSuccess(decode({ provider: 'altcha', response: 'x' }))).toBe(true)
     expect(
-      Exit.isFailure(decode({ provider: 'altcha', response: 'x'.repeat(CAPTCHA_RESPONSE_MAX_LENGTH + 1) })),
+      Exit.isFailure(
+        decode({ provider: 'altcha', response: 'x'.repeat(CAPTCHA_RESPONSE_MAX_LENGTH + 1) }),
+      ),
     ).toBe(true)
     expect(Exit.isFailure(decode({ provider: '../foo', response: 'x' }))).toBe(true)
     expect(Exit.isFailure(decode({ provider: 'altcha', response: '' }))).toBe(true)

@@ -114,7 +114,12 @@ const DEMO_USERS = [
     userType: 'faculty',
     org: '2023级',
   },
-  { email: 'student@example.edu', displayName: '示例学生', userType: 'student', org: '软件2023级1班' },
+  {
+    email: 'student@example.edu',
+    displayName: '示例学生',
+    userType: 'student',
+    org: '软件2023级1班',
+  },
 ]
 
 const label = (id: string) => id.replaceAll('-', '')
@@ -398,8 +403,7 @@ async function provisionAdmin(
   options: SeedOptions,
   report: SeedReport,
 ): Promise<string> {
-  const { hashPassword: hashAny, PASSWORD_MIN_LENGTH, PASSWORD_MAX_LENGTH } =
-    await passwordModule()
+  const { hashPassword: hashAny, PASSWORD_MIN_LENGTH, PASSWORD_MAX_LENGTH } = await passwordModule()
   // the rule the sign-in page holds a password to: a seeded one outside it
   // could never be typed at the door
   const hashPassword = (password: string) => {
@@ -499,8 +503,7 @@ async function provisionAdmin(
 }
 
 async function seedDemoData(ctx: Ctx, options: SeedOptions, report: SeedReport): Promise<void> {
-  const { hashPassword: hashAny, PASSWORD_MIN_LENGTH, PASSWORD_MAX_LENGTH } =
-    await passwordModule()
+  const { hashPassword: hashAny, PASSWORD_MIN_LENGTH, PASSWORD_MAX_LENGTH } = await passwordModule()
   // the rule the sign-in page holds a password to: a seeded one outside it
   // could never be typed at the door
   const hashPassword = (password: string) => {

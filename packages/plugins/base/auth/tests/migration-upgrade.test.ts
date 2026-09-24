@@ -196,10 +196,9 @@ type Db = Awaited<ReturnType<typeof createTestContext>>
 /** a tenant as the release before bindings left it */
 const oldTenant = async (db: Db, slug: string) => {
   const tenant = (
-    await db.row<{ id: string }>(
-      `insert into tenants (slug, name) values ($1, $1) returning id`,
-      [slug],
-    )
+    await db.row<{ id: string }>(`insert into tenants (slug, name) values ($1, $1) returning id`, [
+      slug,
+    ])
   ).id
   const orgType = (
     await db.row<{ id: string }>(
@@ -293,9 +292,10 @@ describe.runIf(postgresAvailable)('the user-auth-bindings migration', () => {
         subject: string | null
         credential_hash: string
         display_label: string | null
-      }>(`select id, subject, credential_hash, display_label from user_auth_bindings where user_id = $1`, [
-        one.admin,
-      ])
+      }>(
+        `select id, subject, credential_hash, display_label from user_auth_bindings where user_id = $1`,
+        [one.admin],
+      )
       // same row, same credential; the sign-in name is gone, not moved
       expect(binding).toEqual({
         id: bound,
@@ -303,19 +303,23 @@ describe.runIf(postgresAvailable)('the user-auth-bindings migration', () => {
         credential_hash: 'digest',
         display_label: null,
       })
-      const email = await db.row<{ email: string | null }>(`select email from users where id = $1`, [
-        one.admin,
-      ])
+      const email = await db.row<{ email: string | null }>(
+        `select email from users where id = $1`,
+        [one.admin],
+      )
       expect(email.email).toBeNull()
       const event = await db.row<{ binding_id: string }>(
         `select binding_id from sign_in_events where session_id = $1`,
         [recorded],
       )
       expect(event.binding_id).toBe(bound)
-      const sessions = await db.query<{ id: string; auth_provider_id: string; auth_binding_id: string }>(
-        `select id, auth_provider_id, auth_binding_id from sessions where tenant_id = $1`,
-        [one.tenant],
-      )
+      const sessions = await db.query<{
+        id: string
+        auth_provider_id: string
+        auth_binding_id: string
+      }>(`select id, auth_provider_id, auth_binding_id from sessions where tenant_id = $1`, [
+        one.tenant,
+      ])
       // the accounted session names its door and binding; the other one ended
       expect(sessions.rows).toEqual([
         { id: recorded, auth_provider_id: local, auth_binding_id: bound },

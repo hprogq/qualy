@@ -191,10 +191,14 @@ beforeAll(async () => {
   const seeded = await Effect.runPromise(
     Effect.gen(function* () {
       const tenant = one<{ id: string }>(
-        yield* runSql(sql`insert into tenants (slug, name) values ('default','Default') returning id`),
+        yield* runSql(
+          sql`insert into tenants (slug, name) values ('default','Default') returning id`,
+        ),
       ).id
       const orgType = one<{ id: string }>(
-        yield* runSql(sql`insert into org_types (tenant_id, name) values (${tenant}, 'U') returning id`),
+        yield* runSql(
+          sql`insert into org_types (tenant_id, name) values (${tenant}, 'U') returning id`,
+        ),
       ).id
       const node = one<{ id: string }>(
         yield* runSql(sql`
@@ -306,7 +310,10 @@ describe.runIf(postgresAvailable)('a GitHub account', () => {
 
   it('is bound by whoever began the bind, and then signs them in under its new name', async () => {
     const cookie = await signedIn(ada)
-    const bind = await depart(`?intent=bind&returnTo=${encodeURIComponent('/account/logins')}`, cookie)
+    const bind = await depart(
+      `?intent=bind&returnTo=${encodeURIComponent('/account/logins')}`,
+      cookie,
+    )
     expect(bind.response.status).toBe(302)
     const bound = await visit(github.authorize(bind.away, { id: 1024, login: 'ada-dev' }))
     expect(bound.status).toBe(303)
@@ -330,7 +337,10 @@ describe.runIf(postgresAvailable)('a GitHub account', () => {
     )
     const taken = await visit(github.authorize(lins.away, { id: 1024, login: 'ada-renamed' }))
     expect(landing(taken)).toEqual({ path: '/account/logins', code: 'AUTH_BINDING_SUBJECT_TAKEN' })
-    const again = await depart(`?intent=bind&returnTo=${encodeURIComponent('/account/logins')}`, cookie)
+    const again = await depart(
+      `?intent=bind&returnTo=${encodeURIComponent('/account/logins')}`,
+      cookie,
+    )
     const second = await visit(github.authorize(again.away, { id: 2048, login: 'ada-alt' }))
     expect(landing(second)).toEqual({ path: '/account/logins', code: 'AUTH_BINDING_ALREADY_BOUND' })
   })

@@ -19,7 +19,10 @@ const i18n = definePluginMessages({
       defaultMessage: 'The provider’s address, exactly as its tokens name it',
     },
     discovery: { id: 'auth-oidc/field/discovery', defaultMessage: 'Endpoints' },
-    discoveryAuto: { id: 'auth-oidc/field/discovery-auto', defaultMessage: 'Discover from the issuer' },
+    discoveryAuto: {
+      id: 'auth-oidc/field/discovery-auto',
+      defaultMessage: 'Discover from the issuer',
+    },
     discoveryManual: { id: 'auth-oidc/field/discovery-manual', defaultMessage: 'Enter by hand' },
     authorizationEndpoint: {
       id: 'auth-oidc/field/authorization-endpoint',
@@ -27,13 +30,17 @@ const i18n = definePluginMessages({
     },
     tokenEndpoint: { id: 'auth-oidc/field/token-endpoint', defaultMessage: 'Token endpoint' },
     jwksUri: { id: 'auth-oidc/field/jwks-uri', defaultMessage: 'Key set (JWKS) address' },
-    userinfoEndpoint: { id: 'auth-oidc/field/userinfo-endpoint', defaultMessage: 'UserInfo endpoint' },
+    userinfoEndpoint: {
+      id: 'auth-oidc/field/userinfo-endpoint',
+      defaultMessage: 'UserInfo endpoint',
+    },
     clientId: { id: 'auth-oidc/field/client-id', defaultMessage: 'Client ID' },
     clientSecret: { id: 'auth-oidc/field/client-secret', defaultMessage: 'Client secret' },
     scopes: { id: 'auth-oidc/field/scopes', defaultMessage: 'Scopes' },
     scopesHint: {
       id: 'auth-oidc/field/scopes-hint',
-      defaultMessage: 'Separated by spaces; openid is always asked for. Empty means openid profile email',
+      defaultMessage:
+        'Separated by spaces; openid is always asked for. Empty means openid profile email',
     },
     tokenAuth: { id: 'auth-oidc/field/token-auth', defaultMessage: 'Client authentication' },
     tokenAuthAuto: { id: 'auth-oidc/field/token-auth-auto', defaultMessage: 'Automatic' },

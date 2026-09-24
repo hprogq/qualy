@@ -243,7 +243,11 @@ const shell = (url: string) => {
         // nobody listens on
         Layer.succeed(
           MailConfig,
-          MailConfig.of({ defaultBackend: 'smtp', from: 'no-reply@qualy.invalid', timeoutMs: 1_000 }),
+          MailConfig.of({
+            defaultBackend: 'smtp',
+            from: 'no-reply@qualy.invalid',
+            timeoutMs: 1_000,
+          }),
         ),
         Layer.succeed(
           SmtpConfig,

@@ -10,6 +10,9 @@ import { userActions } from '../../src/actions.ts'
 
 export const authAuditLayer = auditLayer.pipe(
   Layer.provide(
-    Layer.succeed(AuditActionCatalog, compileActionCatalog([{ owner: 'auth', actions: userActions }])),
+    Layer.succeed(
+      AuditActionCatalog,
+      compileActionCatalog([{ owner: 'auth', actions: userActions }]),
+    ),
   ),
 )

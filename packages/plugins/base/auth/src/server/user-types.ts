@@ -312,7 +312,8 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
         description?: string
         sortOrder?: number
         placementPolicy:
-          { mode: 'unrestricted' } | { mode: 'allow-list'; orgTypeIds: readonly string[] }
+          | { mode: 'unrestricted' }
+          | { mode: 'allow-list'; orgTypeIds: readonly string[] }
       },
       as: Principal,
     ) {

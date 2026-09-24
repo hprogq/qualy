@@ -420,7 +420,9 @@ function SubjectRow({
             data-origin={source.origin}
             variant={source.origin === 'explicit' ? 'outline' : 'secondary'}
           >
-            {format(source.origin === 'explicit' ? m.accessOriginExplicit : m.accessOriginInherited)}
+            {format(
+              source.origin === 'explicit' ? m.accessOriginExplicit : m.accessOriginInherited,
+            )}
           </Badge>
           {/* the assignment behind it is gone, so it grants nothing; the
               row stays because the round's own record of it stays */}

@@ -59,7 +59,11 @@ export default function CalculatorSummary({ context }: { context: CalculatorSumm
   ]
   const found = offered.find((one) => one.versionId === versionId)
   return (
-    <div {...stylex.props(styles.words)} data-testid="calculator-summary" data-version={versionId ?? ''}>
+    <div
+      {...stylex.props(styles.words)}
+      data-testid="calculator-summary"
+      data-version={versionId ?? ''}
+    >
       <div {...stylex.props(styles.head)}>
         <span {...stylex.props(styles.name)}>
           {found === undefined ? format(m.bindingTitle) : found.functionName}

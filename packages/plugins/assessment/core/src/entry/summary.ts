@@ -75,7 +75,8 @@ export const projectEntrySummary = (input: {
     return configured
       .flatMap((id) => {
         const field = byIdentity.get(id)
-        if (field === undefined || field.type === 'attachment' || field.type === 'boolean') return []
+        if (field === undefined || field.type === 'attachment' || field.type === 'boolean')
+          return []
         return [
           {
             fieldId: id,

@@ -21,7 +21,10 @@ export class OrgProvisioning extends Context.Service<
   OrgProvisioning,
   {
     readonly rootNode: (tenantId: string) => Effect.Effect<OrgNodeRef | null>
-    readonly nodesById: (tenantId: string, ids: readonly string[]) => Effect.Effect<readonly OrgNodeRef[]>
+    readonly nodesById: (
+      tenantId: string,
+      ids: readonly string[],
+    ) => Effect.Effect<readonly OrgNodeRef[]>
     /** the child of a parent that bears exactly this name, since names are unique under a parent */
     readonly childNamed: (
       tenantId: string,

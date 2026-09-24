@@ -29,7 +29,9 @@ const withLimiter = async <A>(
 ) => {
   const db = await createTestContext(name)
   try {
-    const layer = secretsLayer.pipe(Layer.provideMerge(databaseFor(db.url, { entities: authClosure })))
+    const layer = secretsLayer.pipe(
+      Layer.provideMerge(databaseFor(db.url, { entities: authClosure })),
+    )
     return await Effect.runPromise(
       Effect.gen(function* () {
         const tenant = (

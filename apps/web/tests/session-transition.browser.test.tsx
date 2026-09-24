@@ -121,7 +121,6 @@ describe('a change of identity', () => {
   })
 })
 
-
 describe('a session that stops working while a page is open', () => {
   it('drops what the last identity was shown and asks the manifest again, once', async () => {
     let expired = false
@@ -138,7 +137,9 @@ describe('a session that stops working while a page is open', () => {
       const notes = useQuery({
         queryKey: ['probe', 'notes'],
         queryFn: () =>
-          expired ? Promise.reject(apiError('SESSION_EXPIRED', undefined)) : Promise.resolve('notes'),
+          expired
+            ? Promise.reject(apiError('SESSION_EXPIRED', undefined))
+            : Promise.resolve('notes'),
         retry: false,
       })
       const manifest = useManifest()

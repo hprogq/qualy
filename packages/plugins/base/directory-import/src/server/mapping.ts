@@ -115,7 +115,8 @@ export const resolveChain = (input: {
   let current = anchor.orgTypeId
   while (remaining.size > 0) {
     const heads = [...remaining].filter(
-      (typeId) => ![...remaining].some((other) => other !== typeId && edges.has(`${other}>${typeId}`)),
+      (typeId) =>
+        ![...remaining].some((other) => other !== typeId && edges.has(`${other}>${typeId}`)),
     )
     const nexts = heads.filter((typeId) => edges.has(`${current}>${typeId}`))
     if (nexts.length === 0) return refuse({ reason: 'chain-broken', subject: current })

@@ -48,7 +48,9 @@ export const authCasApiGroup = HttpApiGroup.make('authCas')
       params: Schema.Struct({ providerCode }),
       // where to land once signed in; anything but a path inside this
       // application is dropped when the flow starts
-      query: Schema.Struct({ returnTo: Schema.optional(Schema.String.check(Schema.isMaxLength(RETURN_PATH_MAX_LENGTH))) }),
+      query: Schema.Struct({
+        returnTo: Schema.optional(Schema.String.check(Schema.isMaxLength(RETURN_PATH_MAX_LENGTH))),
+      }),
       success: HttpApiSchema.Empty(302),
     }),
   )

@@ -203,7 +203,9 @@ function TermBoxes({
 }: {
   term: Term
   drafts: Record<SupportedLocale, string>
-  setDrafts: (next: (current: Record<SupportedLocale, string>) => Record<SupportedLocale, string>) => void
+  setDrafts: (
+    next: (current: Record<SupportedLocale, string>) => Record<SupportedLocale, string>,
+  ) => void
   saving: boolean
 }) {
   const { format } = useI18n()

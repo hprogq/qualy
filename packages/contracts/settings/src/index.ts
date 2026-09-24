@@ -203,7 +203,9 @@ export type OverrideProblem =
 export const normalizeOverride = (
   definition: LocalizedTextSettingDefinition,
   override: Readonly<Record<string, string>>,
-): { readonly ok: true; readonly value: LocalizedTextOverride } | ({ readonly ok: false } & OverrideProblem) => {
+):
+  | { readonly ok: true; readonly value: LocalizedTextOverride }
+  | ({ readonly ok: false } & OverrideProblem) => {
   const value: Partial<Record<SupportedLocale, string>> = {}
   for (const [key, raw] of Object.entries(override)) {
     if (!(supportedLocales as readonly string[]).includes(key)) {

@@ -359,47 +359,47 @@ export default function UserDetailHeader() {
               </div>
             </div>
             {manageable && (
-                <div {...stylex.props(styles.actions)}>
-                  <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
-                    {format(m.editProfile)}
-                  </Button>
-                  {/* moving somebody is a section of their record, with the rules
+              <div {...stylex.props(styles.actions)}>
+                <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+                  {format(m.editProfile)}
+                </Button>
+                {/* moving somebody is a section of their record, with the rules
                       that refuse it said beside the tree; the band only leads there */}
-                  <Button variant="outline" size="sm" asChild>
-                    <PageLink page="auth/user-organization" params={{ userId }}>
-                      {format(m.transfer)}
-                    </PageLink>
-                  </Button>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="icon-sm" aria-label={format(m.moreActions)}>
-                        <EllipsisIcon aria-hidden />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent
-                      align="end"
-                      className={stylex.props(styles.moreMenu).className}
+                <Button variant="outline" size="sm" asChild>
+                  <PageLink page="auth/user-organization" params={{ userId }}>
+                    {format(m.transfer)}
+                  </PageLink>
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="icon-sm" aria-label={format(m.moreActions)}>
+                      <EllipsisIcon aria-hidden />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="end"
+                    className={stylex.props(styles.moreMenu).className}
+                  >
+                    <DropdownMenuItem
+                      disabled={setStatus.isPending}
+                      onSelect={() =>
+                        record.status === 'active'
+                          ? setConfirmingDisable(true)
+                          : setStatus.mutate('active')
+                      }
                     >
-                      <DropdownMenuItem
-                        disabled={setStatus.isPending}
-                        onSelect={() =>
-                          record.status === 'active'
-                            ? setConfirmingDisable(true)
-                            : setStatus.mutate('active')
-                        }
-                      >
-                        {format(record.status === 'active' ? m.disable : m.enable)}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        className={stylex.props(styles.danger).className}
-                        disabled={remove.isPending}
-                        onSelect={() => setConfirmingDelete(true)}
-                      >
-                        {format(m.deleteAction)}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
+                      {format(record.status === 'active' ? m.disable : m.enable)}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className={stylex.props(styles.danger).className}
+                      disabled={remove.isPending}
+                      onSelect={() => setConfirmingDelete(true)}
+                    >
+                      {format(m.deleteAction)}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             )}
           </div>
           {(feedback !== null || saved) && (

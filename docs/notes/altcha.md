@@ -26,10 +26,10 @@
 
 ## 解题耗时实测（cost 5000，PBKDF2/SHA-256，Apple M2 Max）
 
-| 环境 | counter 5000 | 7500 | 10000 |
-| --- | --- | --- | --- |
-| Node 24，单线程 `solveChallenge` | 2.6 s | 3.9 s | 5.2 s |
-| Chromium，driver + 1 个 worker | 2.2 s | 3.2 s | 4.3 s |
+| 环境                             | counter 5000 | 7500  | 10000 |
+| -------------------------------- | ------------ | ----- | ----- |
+| Node 24，单线程 `solveChallenge` | 2.6 s        | 3.9 s | 5.2 s |
+| Chromium，driver + 1 个 worker   | 2.2 s        | 3.2 s | 4.3 s |
 
 单次派生约 0.5 ms。
 

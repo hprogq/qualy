@@ -11,7 +11,12 @@
 import { Schema } from 'effect'
 
 export type JsonValue =
-  string | number | boolean | null | readonly JsonValue[] | { readonly [key: string]: JsonValue }
+  | string
+  | number
+  | boolean
+  | null
+  | readonly JsonValue[]
+  | { readonly [key: string]: JsonValue }
 
 /** the RPC surface's own version, reported by capabilities on both roles */
 export const RPC_API_VERSION = 1

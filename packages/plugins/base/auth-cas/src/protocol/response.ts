@@ -210,11 +210,16 @@ export const readJson = (body: string): CasAnswer => {
   if (keys.length !== 1) return unreadable
   if (keys[0] === 'authenticationFailure') {
     const code = (outcome['authenticationFailure'] as { code?: unknown } | null)?.code
-    return { kind: 'failure', code: typeof code === 'string' && code.trim() !== '' ? code.trim() : 'UNKNOWN' }
+    return {
+      kind: 'failure',
+      code: typeof code === 'string' && code.trim() !== '' ? code.trim() : 'UNKNOWN',
+    }
   }
   if (keys[0] !== 'authenticationSuccess') return unreadable
   const success = outcome['authenticationSuccess'] as Record<string, unknown> | null
-  const principal = principalFrom(typeof success?.['user'] === 'string' ? success['user'] : undefined)
+  const principal = principalFrom(
+    typeof success?.['user'] === 'string' ? success['user'] : undefined,
+  )
   if (principal === undefined) return unreadable
   const attributes: Record<string, string[]> = {}
   const raw = success?.['attributes']
@@ -261,7 +266,13 @@ export const readAnswer = (bytes: Uint8Array, format: ResponseFormat): CasAnswer
   }
   const start = body.trimStart()
   const detected: ResponseFormat =
-    format !== 'auto' ? format : start.startsWith('<') ? 'xml' : start.startsWith('{') ? 'json' : 'text'
+    format !== 'auto'
+      ? format
+      : start.startsWith('<')
+        ? 'xml'
+        : start.startsWith('{')
+          ? 'json'
+          : 'text'
   if (detected === 'xml') return readXml(start)
   if (detected === 'json') return readJson(start)
   return readText(start)

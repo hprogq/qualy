@@ -53,9 +53,7 @@ export const decrypt = (
     })
     decipher.setAAD(aadOf(ref))
     decipher.setAuthTag(encrypted.authTag)
-    return Buffer.concat([decipher.update(encrypted.ciphertext), decipher.final()]).toString(
-      'utf8',
-    )
+    return Buffer.concat([decipher.update(encrypted.ciphertext), decipher.final()]).toString('utf8')
   } catch {
     return undefined
   }

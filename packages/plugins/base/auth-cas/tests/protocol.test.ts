@@ -184,7 +184,9 @@ describe('an entrance’s settings', () => {
       },
     })
     const cas2 = settingsFrom({ serverUrl: 'https://cas.example.edu/cas', protocol: 'cas2' })
-    expect(cas2.ok && cas2.settings?.validateUrl).toBe('https://cas.example.edu/cas/serviceValidate')
+    expect(cas2.ok && cas2.settings?.validateUrl).toBe(
+      'https://cas.example.edu/cas/serviceValidate',
+    )
     const cas1 = settingsFrom({ serverUrl: 'https://cas.example.edu/cas', protocol: 'cas1' })
     expect(cas1.ok && cas1.settings).toMatchObject({
       validateUrl: 'https://cas.example.edu/cas/validate',
@@ -268,7 +270,10 @@ describe('one round trip', () => {
   } satisfies CasSettings
 
   it('sends the person away with the service, and asks about the ticket with the same string', () => {
-    const service = serviceFor(new URL('https://qualy.example.edu/api/auth/cas/campus/callback'), 'st4te_-x')
+    const service = serviceFor(
+      new URL('https://qualy.example.edu/api/auth/cas/campus/callback'),
+      'st4te_-x',
+    )
     expect(service).toBe('https://qualy.example.edu/api/auth/cas/campus/callback?flow=st4te_-x')
     const away = new URL(loginRedirect(settings, service))
     expect(away.origin + away.pathname).toBe('https://cas.example.edu/cas/login')
@@ -297,7 +302,14 @@ describe('one round trip', () => {
 
   it('takes only a service ticket', () => {
     expect(isServiceTicket('ST-1856339-aA5Yuvrxzpv8Tau1cYQ7')).toBe(true)
-    for (const ticket of ['PT-1-abc', 'TGT-1-abc', 'ST-', 'st-1-abc', 'ST-1 abc', `ST-${'x'.repeat(300)}`]) {
+    for (const ticket of [
+      'PT-1-abc',
+      'TGT-1-abc',
+      'ST-',
+      'st-1-abc',
+      'ST-1 abc',
+      `ST-${'x'.repeat(300)}`,
+    ]) {
       expect(isServiceTicket(ticket), ticket).toBe(false)
     }
   })
@@ -309,13 +321,25 @@ describe('one round trip', () => {
     }
     expect(businessNoOf(principal, { source: 'principal' })).toBe('demo.person')
     expect(
-      businessNoOf(principal, { source: 'attribute', attribute: 'id_number', fallbackToPrincipal: false }),
+      businessNoOf(principal, {
+        source: 'attribute',
+        attribute: 'id_number',
+        fallbackToPrincipal: false,
+      }),
     ).toBe('20990002')
     expect(
-      businessNoOf(principal, { source: 'attribute', attribute: 'ID_NUMBER', fallbackToPrincipal: false }),
+      businessNoOf(principal, {
+        source: 'attribute',
+        attribute: 'ID_NUMBER',
+        fallbackToPrincipal: false,
+      }),
     ).toBeUndefined()
     expect(
-      businessNoOf(principal, { source: 'attribute', attribute: 'missing', fallbackToPrincipal: true }),
+      businessNoOf(principal, {
+        source: 'attribute',
+        attribute: 'missing',
+        fallbackToPrincipal: true,
+      }),
     ).toBe('demo.person')
   })
 })

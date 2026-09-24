@@ -19,7 +19,11 @@ import { serviceLayer as rbacLayer } from '@qualy/plugin-rbac/server'
 import { serviceLayer as auditLayer } from '@qualy/plugin-audit/server'
 import { AuditActionCatalog } from '@qualy/audit-contract/effect'
 import { compileActionCatalog } from '@qualy/audit-contract/plugin'
-import { loginDriversLayer, registerLoginDriver, type LoginDriver } from '@qualy/auth-contract/login'
+import {
+  loginDriversLayer,
+  registerLoginDriver,
+  type LoginDriver,
+} from '@qualy/auth-contract/login'
 import { driver as localDriver } from '@qualy/plugin-auth-local'
 import { userActions } from '../src/actions.ts'
 import { AuthConfig } from '../src/server/auth-config.ts'
@@ -113,7 +117,8 @@ const shaped: LoginDriver = {
             : {
                 ok: true as const,
                 derived: {
-                  endpoint: values['mode'] === 'custom' ? values['target'] : 'https://fixed.example',
+                  endpoint:
+                    values['mode'] === 'custom' ? values['target'] : 'https://fixed.example',
                   strict: values['strict'],
                 },
               },
@@ -147,9 +152,7 @@ const stack = (url: string) =>
             registerLoginDriver(localDriver),
             registerLoginDriver(campus),
             registerLoginDriver(shaped),
-          ).pipe(
-            Layer.provideMerge(loginDriversLayer),
-          ),
+          ).pipe(Layer.provideMerge(loginDriversLayer)),
           uiLayer,
           Layer.succeed(
             AuthConfig,
@@ -634,7 +637,9 @@ describe.runIf(postgresAvailable)('an entrance a tenant adds', () => {
         ),
       )
       // a screen reads every field the same way
-      expect(answer.kind?.fields.map((field) => [field.key, field.section, field.visibleWhen])).toEqual([
+      expect(
+        answer.kind?.fields.map((field) => [field.key, field.section, field.visibleWhen]),
+      ).toEqual([
         ['mode', 'basic', null],
         ['target', 'basic', { field: 'mode', equals: 'custom' }],
         ['retries', 'advanced', null],

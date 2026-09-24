@@ -39,4 +39,3 @@ export const formValues = (
 /** whether the form shows a box, given what the form holds */
 export const fieldShown = (field: EntranceField, values: Readonly<Record<string, string>>) =>
   field.visibleWhen === null || values[field.visibleWhen.field] === field.visibleWhen.equals
-

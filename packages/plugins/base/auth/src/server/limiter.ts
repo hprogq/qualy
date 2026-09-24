@@ -108,7 +108,11 @@ export const RISK_RULES = {
    * Anybody can make somebody else's next sign-in ask for a challenge; nobody
    * can make it refuse.
    */
-  signInByIdentifierRisk: { scope: 'sign-in:identifier-risk', challengeAfter: 5, windowSeconds: 900 },
+  signInByIdentifierRisk: {
+    scope: 'sign-in:identifier-risk',
+    challengeAfter: 5,
+    windowSeconds: 900,
+  },
   /** forgotten-password requests from one address, past which each is challenged */
   resetByAddressRisk: { scope: 'reset:address-risk', challengeAfter: 5, windowSeconds: 900 },
   /**
@@ -204,11 +208,9 @@ export const makeLimiter = Effect.gen(function* () {
     key: string,
   ) {
     const row = yield* count(tenantId, rule.scope, rule.windowSeconds, key)
-    return (
-      row.attempts > rule.limit
-        ? { allowed: false, retryAfterSeconds: row.retryAfterSeconds }
-        : { allowed: true }
-    ) satisfies LimitAnswer as LimitAnswer
+    return (row.attempts > rule.limit
+      ? { allowed: false, retryAfterSeconds: row.retryAfterSeconds }
+      : { allowed: true }) satisfies LimitAnswer as LimitAnswer
   })
 
   /**
@@ -229,9 +231,9 @@ export const makeLimiter = Effect.gen(function* () {
       const answer = yield* consumeHard(tenantId, rule, key)
       if (!answer.allowed) wait = Math.max(wait, answer.retryAfterSeconds)
     }
-    return (
-      wait > 0 ? { allowed: false, retryAfterSeconds: wait } : { allowed: true }
-    ) satisfies LimitAnswer as LimitAnswer
+    return (wait > 0
+      ? { allowed: false, retryAfterSeconds: wait }
+      : { allowed: true }) satisfies LimitAnswer as LimitAnswer
   })
 
   /**

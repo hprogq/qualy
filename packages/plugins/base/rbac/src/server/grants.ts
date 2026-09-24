@@ -392,22 +392,21 @@ const holdsCanonicalAdmin = (tenantId: string, userId: string, canonicalKey: str
  * two names are a snapshot: the trail says what they were when it happened.
  */
 const grantLabel = (tenantId: string, userId: string, roleId: string) =>
-  db
-    .query(async (k) => {
-      const user = await k
-        .selectFrom('User')
-        .select('displayName')
-        .where('tenantId', '=', tenantId)
-        .where('id', '=', userId)
-        .executeTakeFirst()
-      const role = await k
-        .selectFrom('Role')
-        .select('name')
-        .where('tenantId', '=', tenantId)
-        .where('id', '=', roleId)
-        .executeTakeFirst()
-      return `${user?.displayName ?? userId} / ${role?.name ?? roleId}`
-    })
+  db.query(async (k) => {
+    const user = await k
+      .selectFrom('User')
+      .select('displayName')
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', userId)
+      .executeTakeFirst()
+    const role = await k
+      .selectFrom('Role')
+      .select('name')
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', roleId)
+      .executeTakeFirst()
+    return `${user?.displayName ?? userId} / ${role?.name ?? roleId}`
+  })
 
 const oneGrant = (tenantId: string, grantId: string) =>
   db.query((k) =>

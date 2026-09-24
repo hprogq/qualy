@@ -136,7 +136,11 @@ const make = Effect.gen(function* () {
     // a door with no image of its own for a dark surface stands on one with its only image
     const slot = surface === 'dark' ? (icon.onDark ?? icon.onLight) : icon.onLight
     if (slot.kind === 'svg') {
-      return { kind: 'svg', markup: slot.markup, version: slot.version } satisfies OpenedIcon as OpenedIcon
+      return {
+        kind: 'svg',
+        markup: slot.markup,
+        version: slot.version,
+      } satisfies OpenedIcon as OpenedIcon
     }
     // the door names the image, and naming it is the whole permission:
     // an icon is on a page anybody may open
@@ -196,7 +200,11 @@ const make = Effect.gen(function* () {
     const uploaded =
       choice.kind === 'upload'
         ? yield* storage
-            .completeUpload({ tenantId, ownerUserId: as.userId, reservationId: choice.reservationId })
+            .completeUpload({
+              tenantId,
+              ownerUserId: as.userId,
+              reservationId: choice.reservationId,
+            })
             .pipe(
               Effect.catchTags({
                 STORAGE_RESERVATION_NOT_FOUND: () => new ProviderIconInvalid({ reason: 'upload' }),
@@ -228,7 +236,8 @@ const make = Effect.gen(function* () {
           if (!found) return yield* new ProviderNotFound()
           const had = storedIconOf(found.icon)
           const next = nextIcon(had, choice, slot)
-          if (next === 'light-first') return yield* new ProviderIconInvalid({ reason: 'light-first' })
+          if (next === 'light-first')
+            return yield* new ProviderIconInvalid({ reason: 'light-first' })
           if (uploaded !== null) {
             // bound in the transaction that names it, so nothing sweeps an
             // image a door is already drawn by
@@ -245,12 +254,12 @@ const make = Effect.gen(function* () {
           const kept = new Set(uploadsOf(next))
           for (const attachmentId of uploadsOf(had)) {
             if (kept.has(attachmentId)) continue
-            yield* storage
-              .retire({ tenantId, attachmentId })
-              .pipe(Effect.catchTags({
+            yield* storage.retire({ tenantId, attachmentId }).pipe(
+              Effect.catchTags({
                 STORAGE_ATTACHMENT_NOT_FOUND: () => Effect.void,
                 STORAGE_ATTACHMENT_INVALID: () => Effect.void,
-              }))
+              }),
+            )
           }
           yield* audit.record(ProviderIconChanged, {
             tenantId,
@@ -332,7 +341,11 @@ export const loginIconApiHandlers = HttpApiBuilder.group(local, 'loginIcon', (ha
         const ticket = yield* icons.prepareUpload(
           principal.tenantId,
           params.providerId,
-          { filename: payload.filename, declaredMime: payload.declaredMime, size: BigInt(payload.size) },
+          {
+            filename: payload.filename,
+            declaredMime: payload.declaredMime,
+            size: BigInt(payload.size),
+          },
           principal,
         )
         return {

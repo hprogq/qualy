@@ -90,7 +90,10 @@ const Payload = Schema.Struct({
       keySignature: Schema.optional(hex),
       expiresAt: Schema.optional(Schema.Number),
       data: Schema.optional(
-        Schema.Record(Schema.String, Schema.Union([Schema.String, Schema.Number, Schema.Boolean, Schema.Null])),
+        Schema.Record(
+          Schema.String,
+          Schema.Union([Schema.String, Schema.Number, Schema.Boolean, Schema.Null]),
+        ),
       ),
     }),
     signature: Schema.optional(Schema.String),

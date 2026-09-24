@@ -54,7 +54,10 @@ export function RoleHolders({ roleId }: { roleId: string }) {
       {items.length === 0 ? (
         <CardEmpty>{format(m.holdersEmpty)}</CardEmpty>
       ) : (
-        <Table columns="minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.2fr)" openable={personReachable}>
+        <Table
+          columns="minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.2fr)"
+          openable={personReachable}
+        >
           <TableHead>
             <span>{format(m.holderColumn)}</span>
             <span>{format(m.grantScope)}</span>

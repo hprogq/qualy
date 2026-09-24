@@ -2,15 +2,33 @@ import { Effect, Layer, Redacted } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { solveChallenge, type Challenge } from 'altcha-lib'
 import { deriveKey } from 'altcha-lib/algorithms/pbkdf2'
-import { createTestContext, databaseFor, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
+import {
+  createTestContext,
+  databaseFor,
+  postgresAvailable,
+  runSql,
+} from '@qualy/plugin-database/testkit'
 import type { Orm } from '@qualy/plugin-database/server'
-import { entities as secretsEntities, secretsLayer, TEST_MASTER_KEY } from '@qualy/plugin-secrets/testkit'
+import {
+  entities as secretsEntities,
+  secretsLayer,
+  TEST_MASTER_KEY,
+} from '@qualy/plugin-secrets/testkit'
 import { Secrets } from '@qualy/plugin-secrets/plugin'
 import { captchaLayer } from '@qualy/plugin-captcha/testkit'
-import { CaptchaProviders, type CaptchaProvider, type CaptchaProviderContext } from '@qualy/plugin-captcha/server'
+import {
+  CaptchaProviders,
+  type CaptchaProvider,
+  type CaptchaProviderContext,
+} from '@qualy/plugin-captcha/server'
 import { captchaPurpose } from '@qualy/plugin-captcha/contract'
 import { sql } from 'kysely'
-import { EASY_TUNING, entities, registrationLayerWith, type AltchaTuning } from '../src/testkit/index.ts'
+import {
+  EASY_TUNING,
+  entities,
+  registrationLayerWith,
+  type AltchaTuning,
+} from '../src/testkit/index.ts'
 
 // A proof of work, issued, solved the way a browser solves it, and checked.
 //
@@ -56,7 +74,10 @@ const withProvider = async <A>(
 /** what the widget sends back: the challenge as issued and its solution, as base64 JSON */
 const solved = (challenge: Record<string, unknown>) =>
   Effect.promise(async () => {
-    const solution = await solveChallenge({ challenge: challenge as unknown as Challenge, deriveKey })
+    const solution = await solveChallenge({
+      challenge: challenge as unknown as Challenge,
+      deriveKey,
+    })
     if (solution === null) throw new Error('no solution found')
     return Buffer.from(JSON.stringify({ challenge, solution })).toString('base64')
   })
@@ -102,7 +123,10 @@ describe.runIf(postgresAvailable)('the ALTCHA provider', () => {
             context({ purpose: captchaPurpose('auth/password-reset') }),
             yield* proofFor(),
           ),
-          binding: yield* provider.verify(context({ bindingHash: 'b'.repeat(64) }), yield* proofFor()),
+          binding: yield* provider.verify(
+            context({ bindingHash: 'b'.repeat(64) }),
+            yield* proofFor(),
+          ),
         }
       }).pipe(Effect.orDie),
     )
@@ -123,7 +147,10 @@ describe.runIf(postgresAvailable)('the ALTCHA provider', () => {
             data: { ...challenge.parameters.data, bindingHash: 'b'.repeat(64) },
           },
         }
-        const tampered = yield* provider.verify(context({ bindingHash: 'b'.repeat(64) }), yield* solved(moved))
+        const tampered = yield* provider.verify(
+          context({ bindingHash: 'b'.repeat(64) }),
+          yield* solved(moved),
+        )
         const garbage = yield* provider.verify(context(), 'not a payload at all')
         const oversized = yield* provider.verify(context(), 'x'.repeat(5000))
         return { tampered, garbage, oversized }

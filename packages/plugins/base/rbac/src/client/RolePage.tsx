@@ -22,7 +22,13 @@ export default function RolePage() {
   const role = roles.data?.roles.find((candidate) => candidate.id === roleId)
 
   if (role !== undefined) {
-    return <RoleEditor key={role.id} role={role} canManage={roles.data?.capabilities.canManage ?? false} />
+    return (
+      <RoleEditor
+        key={role.id}
+        role={role}
+        canManage={roles.data?.capabilities.canManage ?? false}
+      />
+    )
   }
   return (
     <Screen

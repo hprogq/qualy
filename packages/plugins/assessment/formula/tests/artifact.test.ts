@@ -101,7 +101,8 @@ layer(sandboxLocalLayer({ size: 1, variant: 'release' }), { excludeTestServices:
           yield* invoke(artifact, '__qualyInvoke', [JSON.stringify(INPUT)]),
         ) as { ok: boolean; amount?: string }
         expect(answer).toEqual({ ok: true, amount: '0.9' })
-      }))
+      }),
+    )
 
     it.effect('carries q.fail out as an envelope, not a defect', () =>
       Effect.gen(function* () {
@@ -110,7 +111,8 @@ layer(sandboxLocalLayer({ size: 1, variant: 'release' }), { excludeTestServices:
           yield* invoke(artifact, '__qualyInvoke', [JSON.stringify({ ...INPUT, ordinal: 101 })]),
         ) as { ok: boolean; failure?: { message: string } }
         expect(answer).toEqual({ ok: false, failure: { message: 'ordinal is out of policy' } })
-      }))
+      }),
+    )
   })
 
   describe('the entrypoints cannot be hijacked by the module they wrap', () => {
@@ -160,7 +162,8 @@ ${MINIMAL_RUN}
             yield* invoke(artifact, '__qualyInvoke', [JSON.stringify({ value: '2.50' })]),
           ) as { ok: boolean; amount?: string }
           expect(answer).toEqual({ ok: true, amount: '2.5' })
-        }))
+        }),
+      )
     }
   })
 })

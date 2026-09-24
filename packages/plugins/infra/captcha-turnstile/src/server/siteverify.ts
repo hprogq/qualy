@@ -39,7 +39,9 @@ export const fetchTransportLayer: Layer.Layer<SiteverifyTransport> = Layer.succe
           return { status: response.status, body }
         },
         catch: (cause) =>
-          new SiteverifyUnreachable({ reason: cause instanceof Error ? cause.message : String(cause) }),
+          new SiteverifyUnreachable({
+            reason: cause instanceof Error ? cause.message : String(cause),
+          }),
       }),
   }),
 )
@@ -61,7 +63,9 @@ export const readAnswer = (body: unknown): SiteverifyAnswer | undefined => {
   const text = (value: unknown) => (typeof value === 'string' ? value : undefined)
   return {
     success: fields['success'],
-    errorCodes: Array.isArray(codes) ? codes.filter((code): code is string => typeof code === 'string') : [],
+    errorCodes: Array.isArray(codes)
+      ? codes.filter((code): code is string => typeof code === 'string')
+      : [],
     hostname: text(fields['hostname']),
     action: text(fields['action']),
     cdata: text(fields['cdata']),
@@ -103,17 +107,19 @@ const MISCONFIGURED: ReadonlySet<string> = new Set(['missing-input-secret', 'inv
 export const meaningOfRefusal = (codes: readonly string[]): RefusalMeaning => {
   const misconfigured = codes.filter((code) => MISCONFIGURED.has(code))
   if (misconfigured.length > 0) {
-    return { kind: 'unavailable', defect: `turnstile is misconfigured: ${misconfigured.join(', ')}` }
+    return {
+      kind: 'unavailable',
+      defect: `turnstile is misconfigured: ${misconfigured.join(', ')}`,
+    }
   }
-  const unknown = codes.filter(
-    (code) => !NO_PROOF.has(code) && !CLOUDFLARE_DOWN.has(code),
-  )
+  const unknown = codes.filter((code) => !NO_PROOF.has(code) && !CLOUDFLARE_DOWN.has(code))
   if (unknown.length > 0 || codes.length === 0) {
     return {
       kind: 'unavailable',
       defect: `siteverify refused this integration's request: ${unknown.join(', ') || 'no reason given'}`,
     }
   }
-  if (codes.some((code) => CLOUDFLARE_DOWN.has(code))) return { kind: 'unavailable', defect: undefined }
+  if (codes.some((code) => CLOUDFLARE_DOWN.has(code)))
+    return { kind: 'unavailable', defect: undefined }
   return { kind: 'rejected' }
 }

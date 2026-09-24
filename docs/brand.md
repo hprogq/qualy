@@ -117,13 +117,13 @@
 
 ## 场景接入
 
-| 场景                             | 位置                                   | 形态                                                                                                         |
-| -------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| 冷启动、i18n 回退、manifest 加载 | `@qualy/ui/spinner` 的 `LoadingScreen` | 首屏全套(下节)                                                                                               |
-| 路由级内容区等待                 | `PageLoading`                          | `<Loader size={24}>`,`opacity` 0 → 1、150ms、`animation-delay: 300ms`、`both`:300ms 内到达的页面永远看不到它 |
-| 按钮内、行内、提交态             | `Spinner`                              | `<Loader size={16}>`(浅极性),`role="status"` + `aria-label`,点击即显示、完成即消失                           |
-| 顶栏                             | `layout-default/TopBar.tsx` 的 `Brand` | `<Wordmark height={14} title="Qualy">`,永不 `live`;链接的可访问名称就是 `<title>`,不再另加 aria-label        |
-| favicon                          | `apps/web/public/favicon.svg`          | 静态标志,内嵌 `prefers-color-scheme` 切 `#18191D` / `#FAFAF8`;`index.html` 的 `<link rel="icon">`            |
+| 场景                             | 位置                                                  | 形态                                                                                                                                                |
+| -------------------------------- | ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 冷启动、i18n 回退、manifest 加载 | `@qualy/ui/spinner` 的 `LoadingScreen`                | 首屏全套(下节)                                                                                                                                      |
+| 路由级内容区等待                 | `PageLoading`                                         | `<Loader size={24}>`,`opacity` 0 → 1、150ms、`animation-delay: 300ms`、`both`:300ms 内到达的页面永远看不到它                                        |
+| 按钮内、行内、提交态             | `Spinner`                                             | `<Loader size={16}>`(浅极性),`role="status"` + `aria-label`,点击即显示、完成即消失                                                                  |
+| 顶栏                             | `layout-default/TopBar.tsx` 的 `Brand`                | `<Wordmark height={14} title="Qualy">`,永不 `live`;链接的可访问名称就是 `<title>`,不再另加 aria-label                                               |
+| favicon                          | `apps/web/public/favicon.svg`                         | 静态标志,内嵌 `prefers-color-scheme` 切 `#18191D` / `#FAFAF8`;`index.html` 的 `<link rel="icon">`                                                   |
 | 位图图标                         | `apps/web/public/favicon.png`、`apple-touch-icon.png` | Safari 不认 svg favicon,深色标签栏上裸黑 Q 会消失:白底圆角方(22% 圆角)上放黑 Q,32 与 180 两档;`index.html` 里 png 在 svg 之前,认 svg 的浏览器取后者 |
 
 `Spinner` / `LoadingScreen` / `PageLoading` 三个导出名与 props 不变,lucide 的 `Loader2Icon` 不再被引用。加载类元素带 `role="status"`,视觉隐藏文案用 `@qualy/ui/visually-hidden`;冷启动的文案由宿主(`apps/web/src/App.tsx`)从 `commonMessages` 的英文 `defaultMessage` 取出交给宿主组件——它运行在 catalog 之前,而 `@qualy/ui` 保持零文案。

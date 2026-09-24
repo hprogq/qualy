@@ -368,7 +368,9 @@ describe('a way in, from added to gone', () => {
     expect(status.getBoundingClientRect().right).toBeLessThanOrEqual(
       seat.getBoundingClientRect().right + 0.5,
     )
-    await expect.element(page.getByTestId('method-details')).toHaveAttribute('data-setup', 'incomplete')
+    await expect
+      .element(page.getByTestId('method-details'))
+      .toHaveAttribute('data-setup', 'incomplete')
     await expect
       .element(page.getByTestId('method-missing'))
       .toHaveAttribute('data-missing', 'server,clientSecret')
@@ -632,7 +634,10 @@ describe('the sign-in page, as its administrator arranges it', () => {
       expect(arrange.mock.calls[0]).toEqual([
         {
           payload: {
-            primary: ['eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', 'ffffffff-ffff-4fff-8fff-ffffffffffff'],
+            primary: [
+              'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+              'ffffffff-ffff-4fff-8fff-ffffffffffff',
+            ],
             secondary: [CAS_ID, PASSWORD_ID],
           },
         },
@@ -645,7 +650,10 @@ describe('the sign-in page, as its administrator arranges it', () => {
   it('recommends only a main way in, and draws a door by the icon chosen for it', async () => {
     const recommend = vi.fn(() => Effect.succeed({ ok: true as const }))
     const icon = vi.fn(() =>
-      Effect.succeed({ icon: { kind: 'builtin' as const, key: 'github' as const }, iconChosen: true }),
+      Effect.succeed({
+        icon: { kind: 'builtin' as const, key: 'github' as const },
+        iconChosen: true,
+      }),
     )
     renderScreen({
       client: fakeClient({
@@ -700,7 +708,8 @@ describe('the sign-in page, as its administrator arranges it', () => {
       .element(page.getByTestId('icon-slot-dark').getByRole('button', { name: '上传图片' }))
       .toBeDisabled()
     // an SVG goes as it is, for the light ground
-    const markup = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><path d="M0 0h1v1H0z"/></svg>'
+    const markup =
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><path d="M0 0h1v1H0z"/></svg>'
     await userEvent.upload(
       page.getByTestId('icon-file'),
       new File([markup], 'mark.svg', { type: 'image/svg+xml' }),
@@ -746,4 +755,3 @@ describe('the sign-in page, as its administrator arranges it', () => {
     ])
   })
 })
-

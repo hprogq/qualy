@@ -90,9 +90,9 @@ describe('the product package declares enough to stand alone', () => {
         previousLock: readLock(lockPathFor(manifestFile)),
       })
       const manifest = readManifest(manifestFile)
-      expect([...resolution.plugins.keys()].filter((id) => manifest.plugins.has(id)).sort()).toEqual(
-        [...manifest.plugins.keys()].sort(),
-      )
+      expect(
+        [...resolution.plugins.keys()].filter((id) => manifest.plugins.has(id)).sort(),
+      ).toEqual([...manifest.plugins.keys()].sort())
       // every package resolved from inside the room, not from this repository
       for (const id of resolution.plugins.keys()) {
         expect(

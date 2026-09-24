@@ -153,7 +153,10 @@ const i18n = definePluginMessages({
     },
     // the person's grants, on their own page
     navUserGrants: { id: 'rbac/user-detail/role-grants', defaultMessage: 'Role grants' },
-    organizationalSection: { id: 'rbac/grants/organizational', defaultMessage: 'In the organization' },
+    organizationalSection: {
+      id: 'rbac/grants/organizational',
+      defaultMessage: 'In the organization',
+    },
     organizationalHint: {
       id: 'rbac/grants/organizational-hint',
       defaultMessage: 'Only grants inside what you administer are shown here',
@@ -268,13 +271,11 @@ const i18n = definePluginMessages({
     rename: { id: 'rbac/action/rename', defaultMessage: 'Rename' },
     backToRoles: {
       id: 'rbac/roles/back',
-      defaultMessage:
-        'Back to roles',
+      defaultMessage: 'Back to roles',
     },
     roleGone: {
       id: 'rbac/roles/gone',
-      defaultMessage:
-        'This role no longer exists',
+      defaultMessage: 'This role no longer exists',
     },
     standingMeaning: {
       id: 'rbac/roles/standing-meaning',
@@ -283,8 +284,7 @@ const i18n = definePluginMessages({
     },
     deleteRole: {
       id: 'rbac/roles/delete',
-      defaultMessage:
-        'Delete role',
+      defaultMessage: 'Delete role',
     },
     roleStillHeld: {
       id: 'rbac/roles/still-held',
@@ -293,68 +293,55 @@ const i18n = definePluginMessages({
     },
     holderCount: {
       id: 'rbac/roles/holder-count',
-      defaultMessage:
-        '{count, plural, one {# person} other {# people}}',
+      defaultMessage: '{count, plural, one {# person} other {# people}}',
     },
     columnGrants: {
       id: 'rbac/roles/column-grants',
-      defaultMessage:
-        'Grants',
+      defaultMessage: 'Grants',
     },
     columnHolders: {
       id: 'rbac/roles/column-holders',
-      defaultMessage:
-        'Open to user types',
+      defaultMessage: 'Open to user types',
     },
     columnAnchors: {
       id: 'rbac/roles/column-anchors',
-      defaultMessage:
-        'Held at unit types',
+      defaultMessage: 'Held at unit types',
     },
     unsetWord: {
       id: 'rbac/roles/unset',
-      defaultMessage:
-        'not set',
+      defaultMessage: 'not set',
     },
     notApplicable: {
       id: 'rbac/roles/not-applicable',
-      defaultMessage:
-        'n/a',
+      defaultMessage: 'n/a',
     },
     everyWord: {
       id: 'rbac/roles/every',
-      defaultMessage:
-        'all',
+      defaultMessage: 'all',
     },
     countItems: {
       id: 'rbac/roles/count-items',
-      defaultMessage:
-        '{count}',
+      defaultMessage: '{count}',
     },
     statusOn: {
       id: 'rbac/roles/status-on',
-      defaultMessage:
-        'In force',
+      defaultMessage: 'In force',
     },
     statusOff: {
       id: 'rbac/roles/status-off',
-      defaultMessage:
-        'Off',
+      defaultMessage: 'Off',
     },
     selectNone: {
       id: 'rbac/action/select-none',
-      defaultMessage:
-        'None',
+      defaultMessage: 'None',
     },
     catalogOrgOnly: {
       id: 'rbac/roles/catalog-org-only',
-      defaultMessage:
-        'Only the permissions a per-unit role can carry are listed',
+      defaultMessage: 'Only the permissions a per-unit role can carry are listed',
     },
     catalogTenantOnly: {
       id: 'rbac/roles/catalog-tenant-only',
-      defaultMessage:
-        'Only the permissions a tenant-wide role can carry are listed',
+      defaultMessage: 'Only the permissions a tenant-wide role can carry are listed',
     },
     discard: { id: 'rbac/action/discard', defaultMessage: 'Discard' },
     selectAll: { id: 'rbac/action/select-all', defaultMessage: 'All' },
@@ -375,7 +362,10 @@ const i18n = definePluginMessages({
     standingAskOn: roleNamed('rbac/roles/ask-on', 'Put {name} into service?'),
     standingAskOff: roleNamed('rbac/roles/ask-off', 'Take {name} out of service?'),
     standingAskGrantable: roleNamed('rbac/roles/ask-grantable', 'Let {name} be granted?'),
-    standingAskNotGrantable: roleNamed('rbac/roles/ask-not-grantable', 'Stop {name} being granted?'),
+    standingAskNotGrantable: roleNamed(
+      'rbac/roles/ask-not-grantable',
+      'Stop {name} being granted?',
+    ),
     standingAskStatusBody: standingBody(
       'rbac/roles/ask-status-body',
       '{count, plural, =0 {Nobody holds it yet.} one {# grant gains or loses what it allows at once.} other {# grants gain or lose what it allows at once.}}',
@@ -385,7 +375,10 @@ const i18n = definePluginMessages({
       'Grants already made stay as they are; this decides whether new ones can be made.',
     ),
     confirm: { id: 'rbac/action/confirm', defaultMessage: 'Confirm' },
-    leaveTabTitle: { id: 'rbac/roles/leave-tab-title', defaultMessage: 'This tab has unsaved changes' },
+    leaveTabTitle: {
+      id: 'rbac/roles/leave-tab-title',
+      defaultMessage: 'This tab has unsaved changes',
+    },
     leaveTabBody: {
       id: 'rbac/roles/leave-tab-body',
       defaultMessage: 'Save them, discard them, or stay and keep editing.',
@@ -396,7 +389,8 @@ const i18n = definePluginMessages({
     },
     eligibilityListedBody: {
       id: 'rbac/field/eligibility-listed-body',
-      defaultMessage: 'Only people of the ticked types may be granted it. With none ticked, nobody can hold it',
+      defaultMessage:
+        'Only people of the ticked types may be granted it. With none ticked, nobody can hold it',
     },
     anchorAnywhereBody: {
       id: 'rbac/field/anchor-anywhere-body',

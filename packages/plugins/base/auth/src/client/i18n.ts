@@ -238,11 +238,26 @@ const i18n = definePluginMessages({
     // renders whatever language its reader asked for
     'audit.auth.user.create': { id: 'auth/audit/user-create', defaultMessage: 'Create user' },
     'audit.auth.user.update': { id: 'auth/audit/user-update', defaultMessage: 'Edit user' },
-    'audit.auth.provider.create': { id: 'auth/audit/provider-create', defaultMessage: 'Add an entrance' },
-    'audit.auth.provider.update': { id: 'auth/audit/provider-update', defaultMessage: 'Edit an entrance' },
-    'audit.auth.provider.delete': { id: 'auth/audit/provider-delete', defaultMessage: 'Delete an entrance' },
-    'audit.auth.provider.status': { id: 'auth/audit/provider-status', defaultMessage: 'Enable or disable an entrance' },
-    'audit.auth.provider.reorder': { id: 'auth/audit/provider-reorder', defaultMessage: 'Reorder the sign-in page' },
+    'audit.auth.provider.create': {
+      id: 'auth/audit/provider-create',
+      defaultMessage: 'Add an entrance',
+    },
+    'audit.auth.provider.update': {
+      id: 'auth/audit/provider-update',
+      defaultMessage: 'Edit an entrance',
+    },
+    'audit.auth.provider.delete': {
+      id: 'auth/audit/provider-delete',
+      defaultMessage: 'Delete an entrance',
+    },
+    'audit.auth.provider.status': {
+      id: 'auth/audit/provider-status',
+      defaultMessage: 'Enable or disable an entrance',
+    },
+    'audit.auth.provider.reorder': {
+      id: 'auth/audit/provider-reorder',
+      defaultMessage: 'Reorder the sign-in page',
+    },
     'audit.auth.provider.recommend': {
       id: 'auth/audit/provider-recommend',
       defaultMessage: 'Choose the recommended way to sign in',
@@ -344,15 +359,22 @@ const i18n = definePluginMessages({
     lastUsedName: { id: 'auth/login/last-used-name', defaultMessage: '{name}, last used' },
     goingTo: { id: 'auth/login/going-to', defaultMessage: 'Going to {name}…' },
     stayHere: { id: 'auth/login/stay', defaultMessage: 'Cancel' },
-    noMethodsTitle: { id: 'auth/login/no-methods-title', defaultMessage: 'Signing in is unavailable' },
+    noMethodsTitle: {
+      id: 'auth/login/no-methods-title',
+      defaultMessage: 'Signing in is unavailable',
+    },
     dismiss: { id: 'auth/login/dismiss', defaultMessage: 'Dismiss' },
     signInElsewhere: {
       id: 'auth/login/elsewhere',
-      defaultMessage: 'Accounts that sign in another way have no Qualy password. Recover it with that service.',
+      defaultMessage:
+        'Accounts that sign in another way have no Qualy password. Recover it with that service.',
     },
     // why a sign-in that went elsewhere came back without one: what
     // happened, then what to do
-    failUnboundTitle: { id: 'auth/login/fail-unbound', defaultMessage: 'This account is not linked yet' },
+    failUnboundTitle: {
+      id: 'auth/login/fail-unbound',
+      defaultMessage: 'This account is not linked yet',
+    },
     failUnboundBody: {
       id: 'auth/login/fail-unbound-body',
       defaultMessage: 'Sign in another way, then link it under Account → Sign-in methods.',
@@ -399,11 +421,15 @@ const i18n = definePluginMessages({
       id: 'auth/reset/finish-check',
       defaultMessage: 'Complete the security check to continue',
     },
-    resetEmailInvalid: { id: 'auth/reset/email-invalid', defaultMessage: 'Enter a valid email address' },
+    resetEmailInvalid: {
+      id: 'auth/reset/email-invalid',
+      defaultMessage: 'Enter a valid email address',
+    },
     resetSentTitle: { id: 'auth/reset/sent-title', defaultMessage: 'Check your email' },
     resetSentBody: {
       id: 'auth/reset/sent-body',
-      defaultMessage: 'If {email} is verified, a reset link is on its way to it. It works for one hour.',
+      defaultMessage:
+        'If {email} is verified, a reset link is on its way to it. It works for one hour.',
     },
     resetOtherEmail: { id: 'auth/reset/other-email', defaultMessage: 'Use another email' },
     resetSetTitle: { id: 'auth/reset/set-title', defaultMessage: 'Set a new password' },
@@ -436,8 +462,14 @@ const i18n = definePluginMessages({
     },
     resetSetting: { id: 'auth/reset/setting', defaultMessage: 'Setting…' },
     resetDoneTitle: { id: 'auth/reset/done-title', defaultMessage: 'Your new password is set' },
-    resetDoneBody: { id: 'auth/reset/done-body', defaultMessage: 'Sign in with your new password.' },
-    resetExpiredTitle: { id: 'auth/reset/expired-title', defaultMessage: 'This link no longer works' },
+    resetDoneBody: {
+      id: 'auth/reset/done-body',
+      defaultMessage: 'Sign in with your new password.',
+    },
+    resetExpiredTitle: {
+      id: 'auth/reset/expired-title',
+      defaultMessage: 'This link no longer works',
+    },
     resetAgain: { id: 'auth/reset/again', defaultMessage: 'Get a new link' },
 
     // the card any screen opens on a name it shows
@@ -527,11 +559,13 @@ const i18n = definePluginMessages({
     methodShownAs: { id: 'auth/login-methods/shown-as', defaultMessage: 'Shown as' },
     methodShownPrimary: {
       id: 'auth/login-methods/shown-primary',
-      defaultMessage: 'Main way in, {position, selectordinal, one {#st} two {#nd} few {#rd} other {#th}}',
+      defaultMessage:
+        'Main way in, {position, selectordinal, one {#st} two {#nd} few {#rd} other {#th}}',
     },
     methodShownSecondary: {
       id: 'auth/login-methods/shown-secondary',
-      defaultMessage: 'Other way in, {position, selectordinal, one {#st} two {#nd} few {#rd} other {#th}}',
+      defaultMessage:
+        'Other way in, {position, selectordinal, one {#st} two {#nd} few {#rd} other {#th}}',
     },
     methodRecommend: { id: 'auth/login-methods/recommend', defaultMessage: 'Recommended' },
     methodRecommendHint: {
@@ -541,7 +575,10 @@ const i18n = definePluginMessages({
     methodIconLabel: { id: 'auth/login-methods/icon', defaultMessage: 'Icon' },
     methodIconChange: { id: 'auth/login-methods/icon-change', defaultMessage: 'Change' },
     methodIconTitle: { id: 'auth/login-methods/icon-title', defaultMessage: 'Choose an icon' },
-    methodIconDefault: { id: 'auth/login-methods/icon-default', defaultMessage: 'Use its kind’s icon' },
+    methodIconDefault: {
+      id: 'auth/login-methods/icon-default',
+      defaultMessage: 'Use its kind’s icon',
+    },
     methodIconUpload: { id: 'auth/login-methods/icon-upload', defaultMessage: 'Upload an image' },
     methodIconUploading: { id: 'auth/login-methods/icon-uploading', defaultMessage: 'Uploading…' },
     methodIconUploadHint: {
@@ -714,7 +751,10 @@ const i18n = definePluginMessages({
       id: 'auth/users/new-no-types',
       defaultMessage: 'No kind of person may stand at this unit, so nobody can be made here.',
     },
-    newUserNoTypesGo: { id: 'auth/users/new-no-types-go', defaultMessage: 'Set where a type may stand' },
+    newUserNoTypesGo: {
+      id: 'auth/users/new-no-types-go',
+      defaultMessage: 'Set where a type may stand',
+    },
     moveNotManageable: { id: 'auth/users/move-not-manageable', defaultMessage: 'Not yours' },
     moveTypeRefused: {
       id: 'auth/users/move-type-refused',
@@ -745,7 +785,8 @@ const i18n = definePluginMessages({
     },
     methodCodeHint: {
       id: 'auth/login-methods/code-hint-new',
-      defaultMessage: 'Lowercase letters, digits and hyphens. It is part of every sign-in link, so it cannot be changed later',
+      defaultMessage:
+        'Lowercase letters, digits and hyphens. It is part of every sign-in link, so it cannot be changed later',
     },
     methodSecretStored: {
       id: 'auth/login-methods/secret-stored',
@@ -786,7 +827,10 @@ const i18n = definePluginMessages({
       id: 'auth/account/password-needs-email',
       defaultMessage: 'Verify your email to set a password',
     },
-    sendVerification: { id: 'auth/account/send-verification', defaultMessage: 'Send verification email' },
+    sendVerification: {
+      id: 'auth/account/send-verification',
+      defaultMessage: 'Send verification email',
+    },
     verificationSent: {
       id: 'auth/account/verification-sent',
       defaultMessage: 'Sent. Open the link in the email.',
@@ -804,17 +848,24 @@ const i18n = definePluginMessages({
     resetTitle: { id: 'auth/reset/title', defaultMessage: 'Reset password' },
     resetAskHint: {
       id: 'auth/reset/ask-hint',
-      defaultMessage: 'Enter your account’s email. If it is verified, a link to set a new password is sent to it',
+      defaultMessage:
+        'Enter your account’s email. If it is verified, a link to set a new password is sent to it',
     },
     resetAskSubmit: { id: 'auth/reset/ask-submit', defaultMessage: 'Send link' },
     resetNewPassword: { id: 'auth/reset/new-password', defaultMessage: 'New password' },
-    resetConfirmPassword: { id: 'auth/reset/confirm-password', defaultMessage: 'Repeat the new password' },
+    resetConfirmPassword: {
+      id: 'auth/reset/confirm-password',
+      defaultMessage: 'Repeat the new password',
+    },
     resetSubmit: { id: 'auth/reset/submit', defaultMessage: 'Set password' },
     passwordMismatch: { id: 'auth/reset/mismatch', defaultMessage: 'The two passwords differ.' },
     toSignIn: { id: 'auth/reset/to-sign-in', defaultMessage: 'Go to sign in' },
     confirmTitle: { id: 'auth/confirm/title', defaultMessage: 'Confirm email' },
     confirmVerified: { id: 'auth/confirm/verified', defaultMessage: 'Your email is verified' },
-    confirmChanged: { id: 'auth/confirm/changed', defaultMessage: 'Your account now uses this email' },
+    confirmChanged: {
+      id: 'auth/confirm/changed',
+      defaultMessage: 'Your account now uses this email',
+    },
     confirmMissing: {
       id: 'auth/confirm/missing',
       defaultMessage: 'This link is incomplete. Open it from the email again',
@@ -911,17 +962,24 @@ const i18n = definePluginMessages({
     methodMove: methodMoveMessage,
     methodMoveUp: methodMoveUpMessage,
     methodMoveDown: methodMoveDownMessage,
-    methodDisableTitle: methodNamed('auth/login-methods/disable-title', 'Take {name} out of service?'),
+    methodDisableTitle: methodNamed(
+      'auth/login-methods/disable-title',
+      'Take {name} out of service?',
+    ),
     methodEnableTitle: methodNamed('auth/login-methods/enable-title', 'Put {name} into service?'),
     methodDisableBody: {
       id: 'auth/login-methods/disable-body',
-      defaultMessage: 'Nobody can sign in through it from then on. People already signed in stay signed in.',
+      defaultMessage:
+        'Nobody can sign in through it from then on. People already signed in stay signed in.',
     },
     methodEnableBody: {
       id: 'auth/login-methods/enable-body',
       defaultMessage: 'It appears on the sign-in page at once, for the user types it admits.',
     },
-    personRolesConfined: { id: 'auth/person/roles-confined', defaultMessage: 'Confined to one object' },
+    personRolesConfined: {
+      id: 'auth/person/roles-confined',
+      defaultMessage: 'Confined to one object',
+    },
     unitChange: { id: 'auth/users/unit-change', defaultMessage: 'Change' },
     typeMembersTitle: { id: 'auth/user-types/members', defaultMessage: 'People of this type' },
     jumpOpen: { id: 'auth/users/jump-open', defaultMessage: 'Find a person' },
@@ -932,7 +990,10 @@ const i18n = definePluginMessages({
     pageSummary: pageSummaryMessage,
     pagerLabel: { id: 'auth/users/pager', defaultMessage: 'Pages' },
     resizeTree: { id: 'auth/users/resize-tree', defaultMessage: 'Resize the unit list' },
-    openInStructure: { id: 'auth/users/open-in-structure', defaultMessage: 'Open in the organization tree' },
+    openInStructure: {
+      id: 'auth/users/open-in-structure',
+      defaultMessage: 'Open in the organization tree',
+    },
     pickUnit: { id: 'auth/users/pick-unit', defaultMessage: 'Show the people of' },
     treeMenu: { id: 'auth/users/tree-menu', defaultMessage: 'Unit list options' },
     collapseAll: { id: 'auth/users/collapse-all', defaultMessage: 'Collapse all' },
@@ -1198,7 +1259,8 @@ const i18n = definePluginMessages({
     },
     AUTH_PROVIDER_ARRANGEMENT_INVALID: {
       id: 'auth/error/provider-arrangement-invalid',
-      defaultMessage: 'Up to three login methods can be main ones, and only a main one can be recommended.',
+      defaultMessage:
+        'Up to three login methods can be main ones, and only a main one can be recommended.',
     },
     AUTH_PROVIDER_ICON_INVALID: {
       message: iconInvalidMessage,
@@ -1273,7 +1335,7 @@ const i18n = definePluginMessages({
     },
     AUTH_BINDING_UNSUPPORTED: {
       id: 'auth/error/binding-unsupported',
-      defaultMessage: 'Nothing of this kind can be set on somebody else\'s behalf.',
+      defaultMessage: "Nothing of this kind can be set on somebody else's behalf.",
     },
     AUTH_BINDING_AUDIENCE_EXCLUDED: {
       id: 'auth/error/binding-audience-excluded',

@@ -21,7 +21,12 @@ export type StoredIcon =
   | { readonly kind: 'image'; readonly onLight: IconSlot; readonly onDark: IconSlot | null }
 
 const slotOf = (value: unknown): IconSlot | null => {
-  const slot = value as { kind?: unknown; attachmentId?: unknown; markup?: unknown; version?: unknown }
+  const slot = value as {
+    kind?: unknown
+    attachmentId?: unknown
+    markup?: unknown
+    version?: unknown
+  }
   if (slot?.kind === 'upload' && typeof slot.attachmentId === 'string') {
     return { kind: 'upload', attachmentId: slot.attachmentId }
   }
@@ -33,7 +38,12 @@ const slotOf = (value: unknown): IconSlot | null => {
 
 /** the column read as an icon, or null for none of the tenant's own */
 export const storedIconOf = (stored: unknown): StoredIcon | null => {
-  const icon = stored as { kind?: unknown; key?: unknown; onLight?: unknown; onDark?: unknown } | null
+  const icon = stored as {
+    kind?: unknown
+    key?: unknown
+    onLight?: unknown
+    onDark?: unknown
+  } | null
   if (icon?.kind === 'builtin' && BUILTIN_LOGIN_ICONS.includes(icon.key as BuiltinLoginIcon)) {
     return { kind: 'builtin', key: icon.key as BuiltinLoginIcon }
   }

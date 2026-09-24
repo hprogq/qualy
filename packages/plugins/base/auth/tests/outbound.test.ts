@@ -258,7 +258,9 @@ describe('the port as a Fetch API function', () => {
       privateAllowlist: [],
       resolve: () => Promise.resolve([{ address: '10.0.0.8', family: 4 }]),
     })
-    await expect(production.asFetch('https://idp.internal/.well-known/openid-configuration')).rejects.toMatchObject({
+    await expect(
+      production.asFetch('https://idp.internal/.well-known/openid-configuration'),
+    ).rejects.toMatchObject({
       _tag: 'OutboundRefused',
       reason: 'private',
     })

@@ -44,14 +44,37 @@ const open = (stubs: Record<string, unknown> = {}) =>
             import: summary(),
             events: [],
             nodes: [
-              { id: 'n1', orgNodeId: 'o1', path: '示例大学 / 软件学院 / 2023级', depth: 1, disposition: 'created', present: true },
+              {
+                id: 'n1',
+                orgNodeId: 'o1',
+                path: '示例大学 / 软件学院 / 2023级',
+                depth: 1,
+                disposition: 'created',
+                present: true,
+              },
             ],
           }),
         listUserImportRows: () =>
           Effect.succeed({
             items: [
-              { sourceRowNo: 2, userId: USER_ID, businessNo: '230101', displayName: '张三', orgPath: '示例大学 / 软件学院 / 2023级 / 1班', disposition: 'created', standing: 'active' },
-              { sourceRowNo: 3, userId: null, businessNo: '230102', displayName: '李四', orgPath: '示例大学 / 软件学院 / 2023级 / 1班', disposition: 'existing', standing: 'missing' },
+              {
+                sourceRowNo: 2,
+                userId: USER_ID,
+                businessNo: '230101',
+                displayName: '张三',
+                orgPath: '示例大学 / 软件学院 / 2023级 / 1班',
+                disposition: 'created',
+                standing: 'active',
+              },
+              {
+                sourceRowNo: 3,
+                userId: null,
+                businessNo: '230102',
+                displayName: '李四',
+                orgPath: '示例大学 / 软件学院 / 2023级 / 1班',
+                disposition: 'existing',
+                standing: 'missing',
+              },
             ],
             total: 2,
             page: 1,
@@ -74,7 +97,9 @@ describe('the record of an import', () => {
     )
     const rows = [...document.querySelectorAll('[data-testid="import-row"]')]
     expect(rows.map((row) => row.getAttribute('data-standing'))).toEqual(['active', 'missing'])
-    expect(document.querySelector('[data-testid="import-standing"]')?.getAttribute('data-living')).toBe('2')
+    expect(
+      document.querySelector('[data-testid="import-standing"]')?.getAttribute('data-living'),
+    ).toBe('2')
     // a created person is a way to their page; one no longer there is a name
     expect(rows[0]!.querySelector('a')).not.toBeNull()
     expect(rows[1]!.querySelector('a')).toBeNull()

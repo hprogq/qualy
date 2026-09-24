@@ -692,7 +692,8 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
   const versionRow = (
     tenantId: string,
     where:
-      { readonly functionId: string; readonly versionNo: number } | { readonly versionId: string },
+      | { readonly functionId: string; readonly versionNo: number }
+      | { readonly versionId: string },
   ) =>
     db
       .query((k) => {
@@ -1205,7 +1206,6 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
         return yield* new FormulaTestFailed({ report })
       return { ...prepared, report } satisfies CompiledFormula
     })
-
 
   const listFunctions = Effect.fn('FormulaLibrary.listFunctions')(function* (
     tenantId: string,

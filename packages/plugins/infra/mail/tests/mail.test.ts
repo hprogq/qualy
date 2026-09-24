@@ -1,7 +1,13 @@
 import { ConfigProvider, Cause, Effect, Exit, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { Mailer } from '../src/plugin.ts'
-import { config, DEVELOPMENT_FROM, MAIL_FROM_MISSING, MailConfig, senderValid } from '../src/server/config.ts'
+import {
+  config,
+  DEVELOPMENT_FROM,
+  MAIL_FROM_MISSING,
+  MailConfig,
+  senderValid,
+} from '../src/server/config.ts'
 import { mailBackendContract, mailerLayerWith, memoryMailBackend } from '../src/testkit/index.ts'
 
 // Sending mail, as the rest of the product sees it: one call, the
@@ -26,7 +32,9 @@ describe('the mail settings', () => {
       from: DEVELOPMENT_FROM,
     })
     const production = await configured({ NODE_ENV: 'production' })
-    expect(Exit.isFailure(production) && Cause.pretty(production.cause)).toContain(MAIL_FROM_MISSING)
+    expect(Exit.isFailure(production) && Cause.pretty(production.cause)).toContain(
+      MAIL_FROM_MISSING,
+    )
     const named = await configured(
       { NODE_ENV: 'production', QUALY_MAIL_FROM: 'Qualy <no-reply@school.edu>' },
       { defaultBackend: 'relay' },
@@ -38,7 +46,11 @@ describe('the mail settings', () => {
   })
 
   it('take a sender that is an address, with or without a name, and nothing that breaks a header', () => {
-    for (const good of ['no-reply@school.edu', 'Qualy <no-reply@school.edu>', '综测系统 <qualy@school.edu>']) {
+    for (const good of [
+      'no-reply@school.edu',
+      'Qualy <no-reply@school.edu>',
+      '综测系统 <qualy@school.edu>',
+    ]) {
       expect(senderValid(good), good).toBe(true)
     }
     for (const bad of ['school.edu', 'Qualy <>', 'a@b.edu\r\nBcc: c@d.edu', '']) {

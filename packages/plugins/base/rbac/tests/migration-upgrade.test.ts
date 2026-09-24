@@ -2,11 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import {
-  createTestContext,
-  lineageBefore,
-  postgresAvailable,
-} from '@qualy/plugin-database/testkit'
+import { createTestContext, lineageBefore, postgresAvailable } from '@qualy/plugin-database/testkit'
 import { MIGRATIONS_FOLDER, runMigrations } from '@qualy/plugin-database/migrator'
 
 // The anchor-mode migration carries a data step - every tenant role's

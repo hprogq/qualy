@@ -103,11 +103,7 @@ export default function AccountLoginsPage() {
       <AsyncSection
         pending={found.isPending || self.isPending}
         error={
-          found.isError
-            ? formatError(found.error)
-            : self.isError
-              ? formatError(self.error)
-              : null
+          found.isError ? formatError(found.error) : self.isError ? formatError(self.error) : null
         }
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}

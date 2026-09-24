@@ -1,7 +1,6 @@
 import { useI18n } from './index.tsx'
 import { commonMessages } from './messages.ts'
 
-
 /**
  * The words a generated form's pickers need.
  *

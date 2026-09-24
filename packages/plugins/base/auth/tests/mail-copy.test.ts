@@ -17,7 +17,9 @@ describe('the mail a link goes out in', () => {
     expect(mail.html).toContain('示范大学')
     expect(mail.html).toContain('li@school.edu')
     // the button and the spelled-out address are the one link, escaped
-    expect(mail.html.split('https://qualy.example/reset-password#token=abc&amp;x=1')).toHaveLength(3)
+    expect(mail.html.split('https://qualy.example/reset-password#token=abc&amp;x=1')).toHaveLength(
+      3,
+    )
   })
 
   it('escapes a workspace name and an address that are not text', () => {

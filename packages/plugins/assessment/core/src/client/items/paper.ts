@@ -45,4 +45,5 @@ export type TreeSelection = { kind: 'item'; id: string } | { kind: 'draft'; loca
 
 /** the group whose panel is open, and whether it exists yet */
 export type GroupTarget =
-  { kind: 'edit'; group: TreeGroup } | { kind: 'new'; parentId: string | null }
+  | { kind: 'edit'; group: TreeGroup }
+  | { kind: 'new'; parentId: string | null }

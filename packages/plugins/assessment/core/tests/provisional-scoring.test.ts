@@ -314,9 +314,7 @@ describe.runIf(postgresAvailable)('the provisional account', () => {
     ])
     expect(result.after.total).toBe('0.00')
     // and the draft, which was never put to anybody, leaves none
-    expect(result.after.lines.map((line) => line.lineId)).not.toContain(
-      `entry:${result.draft.id}`,
-    )
+    expect(result.after.lines.map((line) => line.lineId)).not.toContain(`entry:${result.draft.id}`)
   })
 
   it('prepares once per question in the arithmetic, and never outside it', async () => {
@@ -495,7 +493,9 @@ describe.runIf(postgresAvailable)('the provisional account', () => {
             f,
             {
               groups: [{ name: '文体', cap: '10.00' }],
-              items: [{ title: '退役复学', value: '3.00', group: 0, entryChannels: ['participant'] }],
+              items: [
+                { title: '退役复学', value: '3.00', group: 0, entryChannels: ['participant'] },
+              ],
             },
             'none',
           )

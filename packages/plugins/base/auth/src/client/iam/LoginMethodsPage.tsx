@@ -163,7 +163,11 @@ export default function LoginMethodsPage() {
   const place = (moving: string, into: Group, before: string | null) => {
     const next = groups()
     const from: Group = next.primary.includes(moving) ? 'primary' : 'secondary'
-    if (into === 'primary' && from !== 'primary' && next.primary.length >= MAX_PRIMARY_LOGIN_METHODS) {
+    if (
+      into === 'primary' &&
+      from !== 'primary' &&
+      next.primary.length >= MAX_PRIMARY_LOGIN_METHODS
+    ) {
       toast.error(format(m.methodsPrimaryFull, { most: MAX_PRIMARY_LOGIN_METHODS }))
       return
     }

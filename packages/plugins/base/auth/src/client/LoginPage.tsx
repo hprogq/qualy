@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type FocusEvent, type PointerEvent, type ReactNode } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FocusEvent,
+  type PointerEvent,
+  type ReactNode,
+} from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
@@ -114,7 +122,13 @@ const styles = stylex.create({
     color: tokens.primaryForeground,
   },
   primaryGlyph: { display: 'inline-flex', width: 22, justifyContent: 'center' },
-  primaryName: { flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  primaryName: {
+    flex: 1,
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
   away: { display: 'inline-flex', flexShrink: 0, opacity: 0.45 },
   // the way in this browser took last time, said quietly beside its name
   last: {
@@ -594,10 +608,7 @@ export default function LoginPage() {
             </span>
           )}
           <h1
-            {...stylex.props(
-              styles.subTitle,
-              context.data?.tenant != null && styles.eyebrowTitle,
-            )}
+            {...stylex.props(styles.subTitle, context.data?.tenant != null && styles.eyebrowTitle)}
           >
             {format(m.signInWith, { name: gapped(chosen.name, locale) })}
           </h1>
@@ -912,8 +923,7 @@ function Home({
           <div {...stylex.props(styles.tiles)}>
             {tiles.map((method) => {
               const signIn = format(m.signInWith, { name: gapped(method.name, locale) })
-              const said =
-                method.code === last ? format(m.lastUsedName, { name: signIn }) : signIn
+              const said = method.code === last ? format(m.lastUsedName, { name: signIn }) : signIn
               return (
                 <span key={method.code} {...stylex.props(styles.tileSeat)}>
                   <button
@@ -1027,10 +1037,17 @@ function AllMethods({
             onClick={() => onChoose(method)}
           >
             <span aria-hidden {...stylex.props(styles.listGlyph)}>
-              <LoginMethodGlyph code={method.code} name={method.name} icon={method.icon} size={16} />
+              <LoginMethodGlyph
+                code={method.code}
+                name={method.name}
+                icon={method.icon}
+                size={16}
+              />
             </span>
             <span {...stylex.props(styles.primaryName)}>{method.name}</span>
-            {method.code === last && <span {...stylex.props(styles.last)}>{format(m.lastWayIn)}</span>}
+            {method.code === last && (
+              <span {...stylex.props(styles.last)}>{format(m.lastWayIn)}</span>
+            )}
           </button>
         ))}
       </div>

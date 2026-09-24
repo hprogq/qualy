@@ -1092,7 +1092,8 @@ export default defineFormula({
               stood: Exit.isSuccess(stood),
               before: before.total,
               rebound: tagOf(rebound) as
-                { _tag?: string; approved?: { refused: number } } | undefined,
+                | { _tag?: string; approved?: { refused: number } }
+                | undefined,
               asked: report?._tag,
               amountChanged: report?.scoring?.approved.amountChanged,
               saved: saved.currentRevision?.revisionNo,

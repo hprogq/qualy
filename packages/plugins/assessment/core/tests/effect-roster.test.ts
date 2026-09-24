@@ -724,7 +724,11 @@ describe.runIf(postgresAvailable).concurrent('placement reconciliation', () => {
           yield* runSql(sql`select user_id, assessment_anchor_node_id as anchor, user_type_id as type
                               from batch_participants where batch_id = ${batch.id}`),
         )
-        const events = rowsOf<{ kind: string; reason: string | null; details: Record<string, unknown> }>(
+        const events = rowsOf<{
+          kind: string
+          reason: string | null
+          details: Record<string, unknown>
+        }>(
           yield* runSql(sql`select kind, reason, details from batch_participant_events
                              where batch_id = ${batch.id} and kind like 'placement-%'
                              order by kind`),
@@ -736,7 +740,21 @@ describe.runIf(postgresAvailable).concurrent('placement reconciliation', () => {
         // and back where the round has them: nothing differs any more
         yield* f.moveUser(f.s1, f.class1)
         const home = yield* differences(f, batch.id)
-        return { f, fresh, offered, marks, s1, s2, untouched, settled, after, rows, events, again, home }
+        return {
+          f,
+          fresh,
+          offered,
+          marks,
+          s1,
+          s2,
+          untouched,
+          settled,
+          after,
+          rows,
+          events,
+          again,
+          home,
+        }
       }),
     )
     const r = ok(exit)
@@ -785,9 +803,7 @@ describe.runIf(postgresAvailable).concurrent('placement reconciliation', () => {
     )
     const { renamed, moved } = ok(exit)
     expect(renamed.items).toEqual([])
-    expect(moved.items.map((row) => [row.displayName, row.changes])).toEqual([
-      ['S2', ['ancestry']],
-    ])
+    expect(moved.items.map((row) => [row.displayName, row.changes])).toEqual([['S2', ['ancestry']]])
   })
 
   it('refuses the whole selection when one of it moved again since it was shown', async () => {

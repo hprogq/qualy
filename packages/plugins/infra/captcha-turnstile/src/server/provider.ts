@@ -62,15 +62,20 @@ export const registrationLayer: Layer.Layer<
         .post(form)
         .pipe(
           Effect.mapError(
-            (error) => new CaptchaUnavailable({ reason: `siteverify unreachable: ${error.reason}` }),
+            (error) =>
+              new CaptchaUnavailable({ reason: `siteverify unreachable: ${error.reason}` }),
           ),
         )
       if (reply.status >= 500) {
-        return yield* new CaptchaUnavailable({ reason: `siteverify answered ${String(reply.status)}` })
+        return yield* new CaptchaUnavailable({
+          reason: `siteverify answered ${String(reply.status)}`,
+        })
       }
       const answer = readAnswer(reply.body)
       if (answer === undefined) {
-        yield* Effect.logError(`siteverify answered ${String(reply.status)} with a body it could not read`)
+        yield* Effect.logError(
+          `siteverify answered ${String(reply.status)} with a body it could not read`,
+        )
         return yield* new CaptchaUnavailable({ reason: 'siteverify answer unreadable' })
       }
       if (!answer.success) {

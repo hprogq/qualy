@@ -87,7 +87,8 @@ const styles = stylex.create({
 })
 
 /** the first thing in the challenge a person could operate */
-const FOCUSABLE = 'iframe, button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])'
+const FOCUSABLE =
+  'iframe, button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])'
 
 export function CaptchaChallenge({ gate }: { gate: CaptchaGate }) {
   const { format } = useI18n()

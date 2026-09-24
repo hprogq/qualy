@@ -139,7 +139,10 @@ describe('a forgotten password', () => {
       children: <ResetPasswordPage />,
     })
     const rule = (check: string) =>
-      page.getByTestId('password-checklist').element().querySelector<HTMLElement>(`[data-check="${check}"]`)!
+      page
+        .getByTestId('password-checklist')
+        .element()
+        .querySelector<HTMLElement>(`[data-check="${check}"]`)!
     const field = page.getByLabelText('新密码', { exact: true })
     // what it is held to is said while it is typed; a press before it holds
     // is answered by the list, and nothing is sent
@@ -256,7 +259,10 @@ describe('the reader’s security', () => {
     // held to the same list as every other form that sets a password
     await expect
       .element(
-        page.getByTestId('password-checklist').element().querySelector<HTMLElement>('[data-check="unguessable"]')!,
+        page
+          .getByTestId('password-checklist')
+          .element()
+          .querySelector<HTMLElement>('[data-check="unguessable"]')!,
       )
       .toHaveAttribute('data-state', 'met')
     await page.getByLabelText('再次输入新密码').fill('new password here')
@@ -282,7 +288,9 @@ describe('the reader’s security', () => {
       route: '/account/security',
       children: <AccountSecurityPage />,
     })
-    await expect.element(page.getByTestId('password-card')).toHaveAttribute('data-standing', 'unset')
+    await expect
+      .element(page.getByTestId('password-card'))
+      .toHaveAttribute('data-standing', 'unset')
     expect(document.querySelector('[data-testid="password-card"] form')).toBeNull()
     await expect.element(page.getByTestId('email-verified')).toHaveAttribute('data-verified', 'no')
     await page.getByRole('button', { name: '发送验证邮件' }).click()
@@ -427,7 +435,12 @@ describe('the reader’s security activity', () => {
       })
     })
     const changes = vi.fn(() =>
-      Effect.succeed({ items: [change('c1', 'self'), change('c2', 'other')], total: 2, page: 1, pageSize: 5 }),
+      Effect.succeed({
+        items: [change('c1', 'self'), change('c2', 'other')],
+        total: 2,
+        page: 1,
+        pageSize: 5,
+      }),
     )
     renderScreen({
       client: client({ self: { listSelfSignIns: signIns, listSelfAccountChanges: changes } }),
@@ -456,8 +469,13 @@ describe('the reader’s security activity', () => {
     await expect.element(sheet.getByTestId('records-pager')).toHaveAttribute('data-total', '30')
     // what narrows the rows at the start, the days at the end, on one line
     const toggles = sheet.getByRole('radiogroup').element().getBoundingClientRect()
-    const days = sheet.getByRole('button', { name: /全部日期/ }).element().getBoundingClientRect()
-    expect(Math.abs(days.top + days.height / 2 - (toggles.top + toggles.height / 2))).toBeLessThan(4)
+    const days = sheet
+      .getByRole('button', { name: /全部日期/ })
+      .element()
+      .getBoundingClientRect()
+    expect(Math.abs(days.top + days.height / 2 - (toggles.top + toggles.height / 2))).toBeLessThan(
+      4,
+    )
     expect(days.left).toBeGreaterThan(toggles.right)
     // on a phone the days take the whole row, and a range of two dates fits one line
     await page.viewport(360, 740)

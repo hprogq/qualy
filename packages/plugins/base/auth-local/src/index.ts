@@ -53,7 +53,10 @@ export const driver: LoginDriver = {
     prepare: Effect.fn('authLocal.binding.prepare')(function* ({ secret, subject }) {
       const checks = yield* Effect.sync(() => assessPassword(secret, subject))
       if (!acceptable(checks)) return { ok: false as const, checks }
-      return { ok: true as const, credentialHash: yield* Effect.promise(() => hashPassword(secret)) }
+      return {
+        ok: true as const,
+        credentialHash: yield* Effect.promise(() => hashPassword(secret)),
+      }
     }),
     assess: ({ secret, subject }) => Effect.sync(() => assessPassword(secret, subject)),
     verify: ({ secret, credentialHash }) =>
@@ -132,7 +135,10 @@ const handlers = HttpApiBuilder.group(local, 'authLocal', (handlers) =>
       })
       if (!binding?.credentialHash) {
         // resolved as far as the person: the record may say whom it was about
-        yield* sessions.failAttempt(resolved, { reason: 'binding-not-found', userId: person.userId })
+        yield* sessions.failAttempt(resolved, {
+          reason: 'binding-not-found',
+          userId: person.userId,
+        })
         return yield* fail()
       }
       const verified = yield* Effect.promise(() =>

@@ -40,7 +40,10 @@ const software = {
 }
 const headers = new Set(['A', 'B', 'C', 'D', 'E'])
 
-const mapping = (levels: readonly { orgTypeId: string; column: string }[], anchorNodeId: string | null = null) => ({
+const mapping = (
+  levels: readonly { orgTypeId: string; column: string }[],
+  anchorNodeId: string | null = null,
+) => ({
   displayName: { column: 'B' },
   businessNo: { column: 'A' },
   organization: { anchorNodeId, levels },
@@ -62,7 +65,9 @@ describe('resolving the chain of units', () => {
     })
     expect(resolved.ok).toBe(true)
     if (!resolved.ok) return
-    expect(resolved.chain.levels.map((level) => [level.orgTypeName, level.source, level.column])).toEqual([
+    expect(
+      resolved.chain.levels.map((level) => [level.orgTypeName, level.source, level.column]),
+    ).toEqual([
       ['学校', 'root', null],
       ['学院', 'column', 'C'],
       ['年级', 'column', 'D'],
@@ -83,7 +88,11 @@ describe('resolving the chain of units', () => {
     })
     expect(under.ok).toBe(true)
     if (under.ok) {
-      expect(under.chain.levels.map((level) => level.source)).toEqual(['root', 'fixed-node', 'column'])
+      expect(under.chain.levels.map((level) => level.source)).toEqual([
+        'root',
+        'fixed-node',
+        'column',
+      ])
       expect(under.chain.anchor.id).toBe(SOFTWARE)
     }
     const above = resolveChain({
@@ -120,7 +129,9 @@ describe('resolving the chain of units', () => {
     const ambiguous = resolveChain({
       root,
       types,
-      rules: rules.filter((rule) => !(rule.parentTypeId === CAMPUS && rule.childTypeId === COLLEGE)),
+      rules: rules.filter(
+        (rule) => !(rule.parentTypeId === CAMPUS && rule.childTypeId === COLLEGE),
+      ),
       ancestry: [root],
       mapping: mapping([
         { orgTypeId: CAMPUS, column: 'C' },
@@ -128,7 +139,10 @@ describe('resolving the chain of units', () => {
       ]),
       headers,
     })
-    expect(ambiguous).toEqual({ ok: false, problem: { reason: 'chain-ambiguous', subject: SCHOOL } })
+    expect(ambiguous).toEqual({
+      ok: false,
+      problem: { reason: 'chain-ambiguous', subject: SCHOOL },
+    })
   })
 
   it('holds every column to the sheet, and one field per column', () => {
@@ -183,7 +197,9 @@ describe('judging the rows of a file', () => {
       chain,
     )
     expect(rows[0]!.issues).toEqual([])
-    expect(rows[1]!.issues.map((issue) => [issue.reason, issue.detail])).toEqual([['duplicate-in-file', '2']])
+    expect(rows[1]!.issues.map((issue) => [issue.reason, issue.detail])).toEqual([
+      ['duplicate-in-file', '2'],
+    ])
     expect(rows[2]!.issues.map((issue) => [issue.field, issue.reason])).toEqual([
       ['businessNo', 'business-no-required'],
       [`org.${CLASS}`, 'org-level-required'],

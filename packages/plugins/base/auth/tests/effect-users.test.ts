@@ -442,7 +442,11 @@ describe.runIf(postgresAvailable).concurrent('users', () => {
         }),
       )
       const answer = ok(exit)
-      expect(answer.created).toEqual({ email: 'ada.lovelace@school.edu', verified: false, version: 1 })
+      expect(answer.created).toEqual({
+        email: 'ada.lovelace@school.edu',
+        verified: false,
+        version: 1,
+      })
       expect(answer.restated.email).toBe('ada.lovelace@school.edu')
       expect(answer.restated.verified).toBe(true)
       expect(answer.changed).toMatchObject({ email: 'ada@school.edu', verified: false })
@@ -543,7 +547,9 @@ describe.runIf(postgresAvailable).concurrent('what a caller may read about peopl
       // has Bob: they lead, by name; then the numbers, ascending
       const numbered = listed.filter((row) => !row.startsWith('-'))
       expect(numbered).toEqual(['2023001 Zed', '2023002 Cat', '2023010 Amy'])
-      expect(listed.slice(0, listed.length - numbered.length).every((row) => row.startsWith('-'))).toBe(true)
+      expect(
+        listed.slice(0, listed.length - numbered.length).every((row) => row.startsWith('-')),
+      ).toBe(true)
       expect(listed).toContain('- Bob')
       expect(new Set(listed).size).toBe(listed.length)
     } finally {
@@ -676,9 +682,16 @@ describe.runIf(postgresAvailable).concurrent('the way in written for a person', 
         select id, subject, credential_hash, revoked_at is not null as revoked
         from user_auth_bindings where user_id = ${userId} order by bound_at, id`),
       (found) =>
-        (found as unknown as {
-          rows: { id: string; subject: string | null; credential_hash: string; revoked: boolean }[]
-        }).rows,
+        (
+          found as unknown as {
+            rows: {
+              id: string
+              subject: string | null
+              credential_hash: string
+              revoked: boolean
+            }[]
+          }
+        ).rows,
     )
   const addressed = (userId: string, email: string) =>
     runSql(sql`update users set email = ${email} where id = ${userId}`)
@@ -735,7 +748,10 @@ describe.runIf(postgresAvailable).concurrent('the way in written for a person', 
       expect(answer.rows).toHaveLength(1)
       // the door finds the person by their own address: the binding holds the
       // driver's digest and no second copy of who they are
-      expect(answer.rows[0]).toMatchObject({ subject: null, credential_hash: 'digest:second-secret' })
+      expect(answer.rows[0]).toMatchObject({
+        subject: null,
+        credential_hash: 'digest:second-secret',
+      })
       // a changed secret that left the old session alive would have locked nobody out
       expect(answer.sessions).toBe(0)
       expect(answer.events).toEqual(['auth.identity.bind@2', 'auth.identity.bind@2'])
@@ -772,7 +788,11 @@ describe.runIf(postgresAvailable).concurrent('the way in written for a person', 
       const checks = (result: { _tag: string; success?: unknown }) =>
         result._tag === 'Success' ? result.success : result
       expect(checks(answer.fine)).toEqual({ length: true, impersonal: true, unguessable: true })
-      expect(checks(answer.personal)).toEqual({ length: true, impersonal: false, unguessable: true })
+      expect(checks(answer.personal)).toEqual({
+        length: true,
+        impersonal: false,
+        unguessable: true,
+      })
       expect(checks(answer.short)).toEqual({ length: false, impersonal: true, unguessable: true })
       expect(answer.outside).toBe('ACCESS_DENIED')
       // judging writes nothing
@@ -801,7 +821,9 @@ describe.runIf(postgresAvailable).concurrent('the way in written for a person', 
           yield* addressed(f.onLeft, 'ada@school.edu')
           const badSecret = yield* put(f.onLeft, 'short')
           // the door now admits nobody
-          yield* runSql(sql`update auth_providers set audience_mode = 'allow-list' where id = ${provider}`)
+          yield* runSql(
+            sql`update auth_providers set audience_mode = 'allow-list' where id = ${provider}`,
+          )
           const excluded = yield* put(f.onLeft, 'long-enough')
           const unknown = yield* Effect.result(
             iam.users.putBinding(
@@ -850,13 +872,20 @@ describe.runIf(postgresAvailable).concurrent('the way in written for a person', 
           yield* addressed(f.onLeft, 'ada@school.edu')
           yield* iam.users.putBinding(f.tenant, f.onLeft, provider, { secret: 'long-enough' }, f.as)
           yield* iam.users.revokeBinding(f.tenant, f.onLeft, provider, f.as)
-          const again = yield* Effect.result(iam.users.revokeBinding(f.tenant, f.onLeft, provider, f.as))
+          const again = yield* Effect.result(
+            iam.users.revokeBinding(f.tenant, f.onLeft, provider, f.as),
+          )
           const rebound = yield* Effect.result(
             iam.users.putBinding(f.tenant, f.onLeft, provider, { secret: 'long-enough' }, f.as),
           )
           // Grace is readable and not manageable, so her doors carry no controls
           const entrances = yield* iam.users.entrances(f.as, f.onRight)
-          return { again: tagOf(again), rebound: rebound._tag, rows: yield* bindingsOf(f.onLeft), entrances }
+          return {
+            again: tagOf(again),
+            rebound: rebound._tag,
+            rows: yield* bindingsOf(f.onLeft),
+            entrances,
+          }
         }),
       )
       const answer = ok(exit)
@@ -866,7 +895,10 @@ describe.runIf(postgresAvailable).concurrent('the way in written for a person', 
       expect(answer.entrances.manageable).toBe(false)
       expect(answer.entrances.entrances).toHaveLength(1)
       expect(answer.entrances.entrances[0]).toMatchObject({ type: 'local', bindingId: null })
-      expect(answer.entrances.entrances[0]!.resolution).toEqual({ mode: 'user-field', field: 'email' })
+      expect(answer.entrances.entrances[0]!.resolution).toEqual({
+        mode: 'user-field',
+        field: 'email',
+      })
       expect(answer.entrances.entrances[0]!.binding?.mode).toBe('managed')
       expect(answer.entrances.entrances[0]!.admits === true).toBe(true)
     } finally {
@@ -885,7 +917,9 @@ describe.runIf(postgresAvailable).concurrent('the way in written for a person', 
           const provider = yield* providerOf(f.tenant)
           const count = () =>
             Effect.map(
-              runSql(sql`select count(*)::int as count, 'x' as id from sessions where user_id = ${f.onLeft}`),
+              runSql(
+                sql`select count(*)::int as count, 'x' as id from sessions where user_id = ${f.onLeft}`,
+              ),
               (found) => one_<{ count: number }>(found).count,
             )
           const session = (hash: string) =>

@@ -12,7 +12,9 @@ import { describe, expect, it } from 'vitest'
 
 const require = createRequire(import.meta.url)
 const external = fs.readFileSync(
-  require.resolve('altcha/external', { paths: [new URL('..', import.meta.url).pathname] }).replace(/\.umd\.cjs$/, '.js'),
+  require
+    .resolve('altcha/external', { paths: [new URL('..', import.meta.url).pathname] })
+    .replace(/\.umd\.cjs$/, '.js'),
   'utf8',
 )
 

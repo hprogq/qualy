@@ -5,7 +5,11 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { Field, FormDialog } from '@qualy/ui/admin'
-import type { AtomicSchema, NormalizedAtomicSchema, NormalizedInputSchema } from '@qualy/value-schema'
+import type {
+  AtomicSchema,
+  NormalizedAtomicSchema,
+  NormalizedInputSchema,
+} from '@qualy/value-schema'
 import { AtomicValueField, InputValueForm } from '@qualy/web-value-form/InputValueForm'
 import { usePickerWords } from '@qualy/web-i18n/picker-words'
 import { materializeInput, type FieldDraft } from '@qualy/web-value-form/model'

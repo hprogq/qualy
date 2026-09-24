@@ -568,20 +568,20 @@ sandbox/llm ✓，formula ✗（有综测语义）、grades ✗（有自有业�
 
 原则：第一段产品域 `assessment`；名词复数、无动作段（禁止 /doApprove /publishResult）；状态变化 `PUT …/status`；领域决定作为一等资源 `POST …/decisions`、`POST …/votes`；列表一律 keyset 分页；响应带 capabilities/manageable；**新增/改名与 `tools/tests/support/frozen-routes.ts` 同笔更新**。路由预案：
 
-| 方法 路径                                                                                                     | 说明                                                                             |
-| ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| GET/POST `/assessment/batches`；GET/PATCH `/assessment/batches/{id}`                                          | 批次                                                                             |
-| GET/PUT `…/{id}/phases`；PUT `…/{id}/phase`                                                                   | 阶段计划编辑；推进（manual/force 带 reason）                                     |
-| GET `…/{id}/timeline`                                                                                         | 学生视角派生时间线                                                               |
-| GET `…/{id}/participants`；GET/PATCH `…/{id}/participant-placements`（§32.86）；PUT `…/participants/{pid}/status`                        | 花名册                                                                           |
-| GET/POST `…/{id}/items`；GET/PATCH `/assessment/items/{id}`；GET/PUT `…/{id}/score-groups`                    | 题目与组树                                                                       |
-| POST `/assessment/entries`；GET `…/{id}`；POST `…/{id}/revisions`；PUT `…/{id}/status`                        | 条目：新建/详情/追加修订(**仅本人**——代录是原子创建无后续修订权)/submit·withdraw |
-| GET `/assessment/review/inbox`；POST `/assessment/review/instances/{id}/decisions`；POST `…/votes`            | 收件箱与审核                                                                     |
-| GET `/assessment/batches/{id}/my-result`                                                                      | 实时预览（含 breakdown）                                                         |
-| POST/GET `/assessment/batches/{id}/score-runs`                                                                | 试算                                                                             |
-| POST `/assessment/publications`；GET `…/{id}`；GET `…/{id}/preflight`；PUT `…/{id}/status`；GET `…/{id}/rows` | 公示全流程（scheduled 时 body 带 publishAt+appealDeadline）                      |
-| POST `/assessment/entries/{id}/rounds`（锚定 publication+line；resubmit/reopen 按权限分流）                   | 申诉/复查 = 对终态条目开新一轮；决定复用 review decisions                        |
-| PUT `/assessment/batches/{id}/status`                                                                         | active / archived                                                                |
+| 方法 路径                                                                                                         | 说明                                                                             |
+| ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| GET/POST `/assessment/batches`；GET/PATCH `/assessment/batches/{id}`                                              | 批次                                                                             |
+| GET/PUT `…/{id}/phases`；PUT `…/{id}/phase`                                                                       | 阶段计划编辑；推进（manual/force 带 reason）                                     |
+| GET `…/{id}/timeline`                                                                                             | 学生视角派生时间线                                                               |
+| GET `…/{id}/participants`；GET/PATCH `…/{id}/participant-placements`（§32.86）；PUT `…/participants/{pid}/status` | 花名册                                                                           |
+| GET/POST `…/{id}/items`；GET/PATCH `/assessment/items/{id}`；GET/PUT `…/{id}/score-groups`                        | 题目与组树                                                                       |
+| POST `/assessment/entries`；GET `…/{id}`；POST `…/{id}/revisions`；PUT `…/{id}/status`                            | 条目：新建/详情/追加修订(**仅本人**——代录是原子创建无后续修订权)/submit·withdraw |
+| GET `/assessment/review/inbox`；POST `/assessment/review/instances/{id}/decisions`；POST `…/votes`                | 收件箱与审核                                                                     |
+| GET `/assessment/batches/{id}/my-result`                                                                          | 实时预览（含 breakdown）                                                         |
+| POST/GET `/assessment/batches/{id}/score-runs`                                                                    | 试算                                                                             |
+| POST `/assessment/publications`；GET `…/{id}`；GET `…/{id}/preflight`；PUT `…/{id}/status`；GET `…/{id}/rows`     | 公示全流程（scheduled 时 body 带 publishAt+appealDeadline）                      |
+| POST `/assessment/entries/{id}/rounds`（锚定 publication+line；resubmit/reopen 按权限分流）                       | 申诉/复查 = 对终态条目开新一轮；决定复用 review decisions                        |
+| PUT `/assessment/batches/{id}/status`                                                                             | active / archived                                                                |
 
 ## 23. 导航、URL 与页面（2026-08-11 定案）
 
@@ -1615,7 +1615,6 @@ Entry。批量撤销沿这些已物化的记录进行，**绝不按 target 说�
 ①**认定值与审核人分开**：参评人只看**当前生效的认定值**（最终一轮的结论），不按人、不按轮展示中间认定值——中间值本来就会被后一轮覆盖，按人展示只招来「谁给我打低了」的纠纷；各轮只留动作、时间、意见。
 ②**两个码，沿用 §11 的阶段开关，不新建配置体系**：`assessment.review.view-reviewers`（参评人操作码，同 §32.46 不进 RBAC 目录）与 `assessment.review.view-chain`（审核动作码，同 `review.escalate` 不进目录），都进 `PHASE_GATED_CODES`，在阶段编辑器的「审核」组里勾选，因此天然可随阶段配置（审核期关、公示后开，或始终关）。
 ③**默认关闭，fail closed，遮蔽在服务端**：码不在阶段的开放集里即隐藏，既有批次立刻不再显示（用户明确接受，不写补码迁移）。关闭时服务端把审核人的 `actorId` / `actorName`、退回意见的 `actorName`、补材料请求的发起人置空，事件退回无主语的句式；只对**申报人本人**遮蔽，工作人员与审核人读同一接口不受影响，申报人自己的动作保留署名。审核侧关闭时，当前步骤之后的步骤（以及尚未走上的复核路线）只回 `veiled: true` 与序号——路线有几步仍然可见，因为侧栏要画它。**不在前端打码**：收到姓名再画星号，等于把姓名发给任何打开网络面板的人。
-
 
 **32.86 名单与组织的显式对账：冻结，但可以显式重冻结**（2026-09-23，用户提出转班无处同步并附方案，采纳）。
 冻结锚点至今只有一个刷新入口——移出再重新加入（§32.47 的重新接纳）；普通转班因此要么不处理，要么借「移出 → 加入」绕一圈。删除 `anchor_auto_sync` 那条迁移与 §32.7 早已写明「组织变化作为差异列出、由管理员显式应用」，缺的正是中间这条显式路径（§32.54 ⑤ 随 scope 一并删掉的只是依赖 `batch_scope_nodes` 的新迁入检测，不是这条原则）。裁决：

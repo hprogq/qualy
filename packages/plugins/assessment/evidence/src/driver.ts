@@ -81,7 +81,9 @@ const textField = Schema.Struct({
   minLength: Schema.optional(Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0))),
   maxLength: Schema.optional(Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1))),
   /** held to the value profile's regex dialect, like every pattern a parameter carries */
-  pattern: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(MAX_PATTERN_BYTES))),
+  pattern: Schema.optional(
+    Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(MAX_PATTERN_BYTES)),
+  ),
 })
 
 const dateField = Schema.Struct({
@@ -668,11 +670,7 @@ const project = (fromConfig: unknown, toConfig: unknown, payload: unknown): unkn
     if (before.field !== undefined && before.field.type !== entry.type) continue
     const value = record[before.key]
     if (value === undefined) continue
-    if (
-      entry.type === 'choice' &&
-      before.field?.type === 'choice' &&
-      typeof value === 'string'
-    ) {
+    if (entry.type === 'choice' && before.field?.type === 'choice' && typeof value === 'string') {
       const chosen = before.field.options.find((option) => option.value === value)
       const now =
         chosen === undefined
@@ -690,7 +688,8 @@ const project = (fromConfig: unknown, toConfig: unknown, payload: unknown): unkn
 const dateWindowEmpty = (entry: EvidenceField, batch: BatchContext): boolean => {
   if (entry.type !== 'date') return false
   // a field that does not answer to the window cannot miss it
-  if (entry.inMaterialRange !== true) return entry.max !== undefined && entry.min !== undefined && entry.max < entry.min
+  if (entry.inMaterialRange !== true)
+    return entry.max !== undefined && entry.min !== undefined && entry.max < entry.min
   const lower =
     entry.min !== undefined && entry.min > batch.materialRange.start
       ? entry.min

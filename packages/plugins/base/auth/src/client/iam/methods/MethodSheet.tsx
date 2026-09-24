@@ -378,11 +378,7 @@ export function MethodSheet({
         )}
       </Card>
 
-      <Card
-        data-testid="method-details"
-        data-status={provider.status}
-        data-setup={provider.setup}
-      >
+      <Card data-testid="method-details" data-status={provider.status} data-setup={provider.setup}>
         <CardHead title={format(m.methodDetails)}>
           {/* only a finished entrance can be put in service; an unfinished
               one that is out of service says so instead of offering it */}

@@ -770,7 +770,8 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
         const group = yield* scoreGroupOf(tenantId, row.scoreGroupId)
         const each = (
           itemRevision?.scoringConfig as
-            { calculator?: { config?: { value?: unknown } } } | undefined
+            | { calculator?: { config?: { value?: unknown } } }
+            | undefined
         )?.calculator?.config?.value
         const others = yield* siblingEntries(tenantId, row.itemId, row.participantId)
         const previous = yield* previousConclusion(tenantId, row.entryId, row.roundNo)

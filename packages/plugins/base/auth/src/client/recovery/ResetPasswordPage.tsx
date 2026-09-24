@@ -3,13 +3,7 @@ import { Link, useLocation } from 'react-router'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import * as stylex from '@stylexjs/stylex'
-import {
-  ArrowLeftIcon,
-  CheckIcon,
-  CircleAlertIcon,
-  EyeIcon,
-  MailCheckIcon,
-} from 'lucide-react'
+import { ArrowLeftIcon, CheckIcon, CircleAlertIcon, EyeIcon, MailCheckIcon } from 'lucide-react'
 import {
   PageLink,
   useApi,
@@ -369,9 +363,7 @@ function Ask() {
           <h1 {...stylex.props(styles.title)}>{format(m.resetSentTitle)}</h1>
           {/* the same sentence whatever is behind the address, and only
               the address the person typed themselves */}
-          <p {...stylex.props(styles.hint)}>
-            {format(m.resetSentBody, { email: sentTo })}
-          </p>
+          <p {...stylex.props(styles.hint)}>{format(m.resetSentBody, { email: sentTo })}</p>
           <div {...stylex.props(styles.pair)}>
             <button
               type="button"
@@ -444,11 +436,11 @@ function Ask() {
                 : // the check is waiting on the person now, not on the page
                   gate.state === 'interaction'
                   ? format(m.resetFinishCheck)
-                : ask.isPending
-                  ? format(m.resetSending)
-                  : limited
-                    ? format(m.resetWait, { time: clock(secondsLeft) })
-                    : format(m.resetAskSubmit)}
+                  : ask.isPending
+                    ? format(m.resetSending)
+                    : limited
+                      ? format(m.resetWait, { time: clock(secondsLeft) })
+                      : format(m.resetAskSubmit)}
           </button>
         </form>
         <p {...stylex.props(styles.footnote)}>{format(m.signInElsewhere)}</p>
@@ -493,8 +485,7 @@ function SetNew({ token }: { token: string }) {
       ),
   })
   const set = useMutation({
-    mutationFn: () =>
-      run(api.auth.createPasswordResetRedemption({ payload: { token, password } })),
+    mutationFn: () => run(api.auth.createPasswordResetRedemption({ payload: { token, password } })),
     onError: (error: unknown) => {
       if (tagOf(error) === 'AUTH_BINDING_CREDENTIAL_INVALID') setRefused(true)
       hold(PAUSE_MS)
@@ -644,11 +635,7 @@ function SetNew({ token }: { token: string }) {
           {set.isError && tagOf(set.error) !== 'AUTH_BINDING_CREDENTIAL_INVALID' && (
             <p {...stylex.props(styles.refusal)}>{formatError(set.error)}</p>
           )}
-          <button
-            type="submit"
-            disabled={set.isPending || held}
-            {...stylex.props(styles.primary)}
-          >
+          <button type="submit" disabled={set.isPending || held} {...stylex.props(styles.primary)}>
             {format(set.isPending ? m.resetSetting : m.resetSubmit)}
           </button>
         </form>

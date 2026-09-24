@@ -161,7 +161,9 @@ describe('the sign-in screen', () => {
                 sent.push(payload)
                 // the door asks for a challenge whenever no proof came with the attempt
                 return payload.captcha === undefined
-                  ? Effect.fail(new CaptchaRequired({ provider: 'fake', challenge: { n: sent.length } }))
+                  ? Effect.fail(
+                      new CaptchaRequired({ provider: 'fake', challenge: { n: sent.length } }),
+                    )
                   : Effect.fail(new InvalidCredentials())
               }),
           },
@@ -347,12 +349,13 @@ describe('the ways in, as the page lays them out', () => {
     expect(page.getByTestId('sign-in-primary').elements()).toHaveLength(2)
     // nobody recommended one, so none of them is set apart
     expect(
-      page.getByTestId('sign-in-primary').elements().map((key) => key.getAttribute('data-recommended')),
+      page
+        .getByTestId('sign-in-primary')
+        .elements()
+        .map((key) => key.getAttribute('data-recommended')),
     ).toEqual(['false', 'false'])
     expect(page.getByTestId('sign-in-tile').elements()).toHaveLength(1)
-    await expect
-      .element(page.getByRole('button', { name: '使用 GitHub 登录' }))
-      .toBeVisible()
+    await expect.element(page.getByRole('button', { name: '使用 GitHub 登录' })).toBeVisible()
     expect(page.getByTestId('sign-in-more').elements()).toHaveLength(0)
   })
 
@@ -375,7 +378,10 @@ describe('the ways in, as the page lays them out', () => {
     })
     await expect.element(page.getByTestId('sign-in-tile')).toHaveAttribute('data-last', 'true')
     expect(
-      page.getByTestId('sign-in-primary').elements().map((key) => key.getAttribute('data-last')),
+      page
+        .getByTestId('sign-in-primary')
+        .elements()
+        .map((key) => key.getAttribute('data-last')),
     ).toEqual(['false', 'false'])
   })
 
@@ -405,7 +411,10 @@ describe('the ways in, as the page lays them out', () => {
     open([password, away('cas', '统一身份认证', { prominence: 'primary', recommended: true })])
     await expect.element(page.getByTestId('sign-in-primary').first()).toBeVisible()
     expect(
-      page.getByTestId('sign-in-primary').elements().map((key) => key.getAttribute('data-recommended')),
+      page
+        .getByTestId('sign-in-primary')
+        .elements()
+        .map((key) => key.getAttribute('data-recommended')),
     ).toEqual(['false', 'true'])
   })
 
@@ -512,7 +521,9 @@ describe('the way back after signing in', () => {
         app: { getManifest: emptyManifest() },
         auth: { ...anonymous, listLoginMethods: context([password]) },
       }),
-      registry: { login: { local: lazy(() => import('@qualy/plugin-auth-local/client/LoginMethod')) } },
+      registry: {
+        login: { local: lazy(() => import('@qualy/plugin-auth-local/client/LoginMethod')) },
+      },
       route: `/login?next=${encodeURIComponent('/reports')}`,
       children: <LoginPage />,
     })

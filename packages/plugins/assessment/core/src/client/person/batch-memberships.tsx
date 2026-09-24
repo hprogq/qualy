@@ -1,9 +1,5 @@
 import { useInfiniteQuery } from '@tanstack/react-query'
-import {
-  cursorPages,
-  usePageHref,
-  usePageNavigate,
-} from '@qualy/web-runtime'
+import { cursorPages, usePageHref, usePageNavigate } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import * as stylex from '@stylexjs/stylex'

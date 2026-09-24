@@ -258,7 +258,9 @@ export default function UserMenu() {
         {user.businessNo !== null ? (
           <span {...stylex.props(styles.whoNo)}>{user.businessNo}</span>
         ) : (
-          <span {...stylex.props(styles.whoNo, styles.whoNoAbsent)}>{format(m.noBusinessNo, { businessNo })}</span>
+          <span {...stylex.props(styles.whoNo, styles.whoNoAbsent)}>
+            {format(m.noBusinessNo, { businessNo })}
+          </span>
         )}
       </span>
       <Badge variant="secondary" className={stylex.props(styles.typeChip).className}>

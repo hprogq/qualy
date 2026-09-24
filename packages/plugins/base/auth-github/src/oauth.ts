@@ -136,7 +136,10 @@ export const identify = Effect.fn('authGithub.identify')(function* (
     return { kind: 'unavailable', reason: outboundReason(asked.failure) } satisfies GithubAnswer
   }
   if (asked.success.status !== 200) {
-    return { kind: 'unavailable', reason: `user-status:${asked.success.status}` } satisfies GithubAnswer
+    return {
+      kind: 'unavailable',
+      reason: `user-status:${asked.success.status}`,
+    } satisfies GithubAnswer
   }
   const user = json(asked.success) as { id?: unknown; login?: unknown } | undefined
   // the id is the account; the login can be changed by its owner any day

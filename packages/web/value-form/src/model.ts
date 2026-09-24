@@ -172,7 +172,10 @@ export const materializeFields = (
  * of waiting for somebody to press run. Returns a reason code; the words for
  * it belong to whoever owns the screen.
  */
-export const checkField = (schema: AtomicSchema, draft: FieldDraft | undefined): string | undefined => {
+export const checkField = (
+  schema: AtomicSchema,
+  draft: FieldDraft | undefined,
+): string | undefined => {
   const outcome = materializeField(schema, draft)
   if (outcome.kind === 'empty') return 'required'
   if (outcome.kind === 'invalid') return outcome.reason

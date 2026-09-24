@@ -101,7 +101,9 @@ describe.runIf(postgresAvailable)('applying a lineage', () => {
       const started = performance.now()
       await expect(
         withLockTimeout(500, () => runMigrations(target.db.url, { folder, entities: [] })),
-      ).rejects.toThrow(/another migration run has held the lock on .*migrator_lock_timeout.* for 500ms/)
+      ).rejects.toThrow(
+        /another migration run has held the lock on .*migrator_lock_timeout.* for 500ms/,
+      )
       // the bound, not a hang
       expect(performance.now() - started).toBeLessThan(10_000)
       const tables = await target.db.query(

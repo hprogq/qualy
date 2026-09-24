@@ -47,7 +47,13 @@ import type { ItemOptions } from '../options.ts'
 export type Mode = 'review' | 'direct' | 'automatic'
 
 export type FieldType =
-  'text' | 'date' | 'integer' | 'decimal' | 'choice' | 'boolean' | 'attachment'
+  | 'text'
+  | 'date'
+  | 'integer'
+  | 'decimal'
+  | 'choice'
+  | 'boolean'
+  | 'attachment'
 
 /** one option of a choice field; a person edits the label and nothing else */
 export interface OptionDraft {
@@ -102,7 +108,8 @@ export interface RecognitionDraft {
 
 /** what feeds one calculator parameter */
 export type BindingDraft =
-  { kind: 'constant'; value: unknown; draft?: ValueDraft } | { kind: 'recognition'; handle: string }
+  | { kind: 'constant'; value: unknown; draft?: ValueDraft }
+  | { kind: 'recognition'; handle: string }
 
 /** the stored versioned language, carried whole */
 export interface StoredScoringV2 {

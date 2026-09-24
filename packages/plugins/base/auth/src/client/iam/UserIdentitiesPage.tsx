@@ -47,11 +47,7 @@ import { instantWords } from '../when.ts'
 // password form; an account only the person can bind gets a sentence. This
 // screen knows none of the kinds by name.
 
-type Entrance = ApiResult<
-  typeof authApi,
-  'identity',
-  'listUserEntrances'
->['entrances'][number]
+type Entrance = ApiResult<typeof authApi, 'identity', 'listUserEntrances'>['entrances'][number]
 
 const styles = stylex.create({
   page: { display: 'flex', flexDirection: 'column', gap: 12 },
@@ -91,7 +87,9 @@ export default function UserIdentitiesPage() {
 
   const revoke = useMutation({
     mutationFn: (entrance: Entrance) =>
-      run(api.identity.deleteUserAuthBinding({ params: { userId, providerId: entrance.providerId } })),
+      run(
+        api.identity.deleteUserAuthBinding({ params: { userId, providerId: entrance.providerId } }),
+      ),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: query.identity.key() })
     },

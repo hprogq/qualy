@@ -48,7 +48,6 @@ import { Authenticated } from '@qualy/auth-contract/session'
 // A grant is created and removed rather than edited: it names a role, a
 // person and where it applies, and changing any of those is a different grant.
 
-
 const roleKind = Schema.Literals(['tenant', 'org'])
 const permissionTarget = Schema.Literals(['tenant', 'org-node'])
 const coverage = Schema.Literals(['self', 'subtree'])

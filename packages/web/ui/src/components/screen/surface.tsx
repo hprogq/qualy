@@ -830,7 +830,9 @@ export function TableRow({
   const after = reorders
     ? kids
         .slice(until, until + 1)
-        .map((child) => cloneElement(child as ReactElement<{ ordered?: boolean }>, { ordered: true }))
+        .map((child) =>
+          cloneElement(child as ReactElement<{ ordered?: boolean }>, { ordered: true }),
+        )
     : kids.slice(until)
   const labelled =
     until > from ? (
@@ -856,8 +858,7 @@ export function TableRow({
               const speaks = says(child)
               const rule = speaks && said
               if (speaks) said = true
-              const give =
-                oneLine && index === last && isValidElement(child) && child.type === Cell
+              const give = oneLine && index === last && isValidElement(child) && child.type === Cell
               return (
                 <Fragment key={index}>
                   {rule && <span aria-hidden {...stylex.props(styles.factRule)} />}

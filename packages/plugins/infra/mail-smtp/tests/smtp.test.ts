@@ -18,7 +18,9 @@ import {
 const MAILPIT = process.env['QUALY_TEST_MAILPIT_URL'] ?? 'http://127.0.0.1:8025'
 const SMTP_PORT = Number(process.env['QUALY_TEST_MAILPIT_SMTP_PORT'] ?? '1025')
 
-const mailpitAvailable = await fetch(`${MAILPIT}/api/v1/info`, { signal: AbortSignal.timeout(5_000) })
+const mailpitAvailable = await fetch(`${MAILPIT}/api/v1/info`, {
+  signal: AbortSignal.timeout(5_000),
+})
   .then((response) => response.ok)
   .catch(() => false)
 
@@ -54,7 +56,10 @@ describe('the relay settings', () => {
 
   it('want a relay in production, protected unless somebody says otherwise', async () => {
     expect(refusal(await configured({ NODE_ENV: 'production' }))).toContain(SMTP_HOST_MISSING)
-    const relay = await configured({ NODE_ENV: 'production', QUALY_MAIL_SMTP_HOST: 'smtp.school.edu' })
+    const relay = await configured({
+      NODE_ENV: 'production',
+      QUALY_MAIL_SMTP_HOST: 'smtp.school.edu',
+    })
     expect(Exit.isSuccess(relay) && relay.value).toMatchObject({ tls: 'starttls', port: 587 })
     const implicit = await configured({
       NODE_ENV: 'production',
@@ -62,7 +67,11 @@ describe('the relay settings', () => {
       QUALY_MAIL_SMTP_TLS: 'implicit',
     })
     expect(Exit.isSuccess(implicit) && implicit.value).toMatchObject({ tls: 'implicit', port: 465 })
-    const clear = { NODE_ENV: 'production', QUALY_MAIL_SMTP_HOST: 'smtp.school.edu', QUALY_MAIL_SMTP_TLS: 'none' }
+    const clear = {
+      NODE_ENV: 'production',
+      QUALY_MAIL_SMTP_HOST: 'smtp.school.edu',
+      QUALY_MAIL_SMTP_TLS: 'none',
+    }
     expect(refusal(await configured(clear))).toContain(SMTP_PLAINTEXT_REFUSED)
     expect(
       Exit.isSuccess(await configured({ ...clear, QUALY_MAIL_SMTP_ALLOW_PLAINTEXT: '1' })),
@@ -104,7 +113,10 @@ const inbox = async (address: string): Promise<readonly ReceivedMail[]> => {
       HTML: string
     }
     found.push({
-      from: message.From.Name === '' ? message.From.Address : `${message.From.Name} <${message.From.Address}>`,
+      from:
+        message.From.Name === ''
+          ? message.From.Address
+          : `${message.From.Name} <${message.From.Address}>`,
       to: message.To.map((one) => one.Address),
       subject: message.Subject,
       text: message.Text,
@@ -132,8 +144,10 @@ describe.runIf(mailpitAvailable)('the smtp backend against a real server', () =>
       }),
     )
     nowhere.close()
-    expect(Exit.isFailure(exit) && exit.cause.reasons[0]?._tag === 'Fail' && exit.cause.reasons[0].error.reason).toBe(
-      'unavailable',
-    )
+    expect(
+      Exit.isFailure(exit) &&
+        exit.cause.reasons[0]?._tag === 'Fail' &&
+        exit.cause.reasons[0].error.reason,
+    ).toBe('unavailable')
   })
 })

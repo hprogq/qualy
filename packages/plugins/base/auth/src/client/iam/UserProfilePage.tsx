@@ -116,7 +116,8 @@ export default function UserProfilePage() {
                 <DefList>
                   <DefLine label={format(m.nameLabel)}>{record.displayName}</DefLine>
                   <DefLine label={businessNoWord}>
-                    {record.businessNo ?? format(m.personNoBusinessNo, { businessNo: businessNoWord })}
+                    {record.businessNo ??
+                      format(m.personNoBusinessNo, { businessNo: businessNoWord })}
                   </DefLine>
                   <DefLine label={format(m.emailLabel)}>
                     <EmailWithStanding
@@ -175,7 +176,9 @@ export default function UserProfilePage() {
                             : role.orgNodeName === null
                               ? format(m.personRoleTenantWide)
                               : format(
-                                  role.coverage === 'subtree' ? m.personRoleSubtree : m.personRoleHere,
+                                  role.coverage === 'subtree'
+                                    ? m.personRoleSubtree
+                                    : m.personRoleHere,
                                   { node: role.orgNodeName },
                                 )}
                         </Cell>

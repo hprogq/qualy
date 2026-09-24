@@ -75,9 +75,17 @@ export class NodeParentDeleted extends Schema.TaggedError<NodeParentDeleted>()(
 
 export type UpdateNodeError = NodeNotFound | AccessDenied | NodeConstraintError
 export type RestoreNodeError =
-  NodeNotFound | NodeParentDeleted | RuleViolation | AccessDenied | NodeConstraintError
+  | NodeNotFound
+  | NodeParentDeleted
+  | RuleViolation
+  | AccessDenied
+  | NodeConstraintError
 export type DeleteNodeError =
-  NodeNotFound | NodeIsRoot | NodeHasChildren | AccessDenied | NodeConstraintError
+  | NodeNotFound
+  | NodeIsRoot
+  | NodeHasChildren
+  | AccessDenied
+  | NodeConstraintError
 
 export class TypeInUse extends Schema.TaggedError<TypeInUse>()(
   'ORG_TYPE_IN_USE',
@@ -113,7 +121,11 @@ export type CreateTypeError = AccessDenied | TypeConstraintError
 export type UpdateTypeError = TypeNotFound | AccessDenied | TypeConstraintError
 export type DeleteTypeError = TypeNotFound | TypeInUse | AccessDenied | TypeConstraintError
 export type PutRuleError =
-  RuleInvalid | TypeNotFound | RuleCycle | AccessDenied | TypeConstraintError
+  | RuleInvalid
+  | TypeNotFound
+  | RuleCycle
+  | AccessDenied
+  | TypeConstraintError
 export type DeleteRuleError = RuleNotFound | RuleInUse | AccessDenied | TypeConstraintError
 
 export class NodeConflict extends Schema.TaggedError<NodeConflict>()(
@@ -185,6 +197,15 @@ export class InvalidMove extends Schema.TaggedError<InvalidMove>()(
 ) {}
 
 export type CreateNodeError =
-  NodeNotFound | TypeNotFound | RuleViolation | AccessDenied | NodeConstraintError
+  | NodeNotFound
+  | TypeNotFound
+  | RuleViolation
+  | AccessDenied
+  | NodeConstraintError
 export type MoveNodeError =
-  NodeNotFound | NodeIsRoot | InvalidMove | RuleViolation | AccessDenied | NodeConstraintError
+  | NodeNotFound
+  | NodeIsRoot
+  | InvalidMove
+  | RuleViolation
+  | AccessDenied
+  | NodeConstraintError

@@ -38,15 +38,26 @@ describe('the words a person is known by', () => {
   })
 
   it('leave out what a person has not got', () => {
-    const words = subjectWords({ email: null, displayName: 'Ada Lovelace', businessNo: null, workspace: 'Demo' })
-    expect(words).toEqual(expect.arrayContaining(['adalovelace', 'ada', 'lovelace', 'demo', 'qualy']))
+    const words = subjectWords({
+      email: null,
+      displayName: 'Ada Lovelace',
+      businessNo: null,
+      workspace: 'Demo',
+    })
+    expect(words).toEqual(
+      expect.arrayContaining(['adalovelace', 'ada', 'lovelace', 'demo', 'qualy']),
+    )
     expect(words).not.toContain('')
   })
 })
 
 describe('a password', () => {
   it('passes when it is long, impersonal and not a guesser’s early try', () => {
-    for (const secret of ['lan-hai-yun-duo-7', 'correct horse battery', 'Tide pools at 6am, again']) {
+    for (const secret of [
+      'lan-hai-yun-duo-7',
+      'correct horse battery',
+      'Tide pools at 6am, again',
+    ]) {
       expect(judged(secret), secret).toEqual({ length: true, impersonal: true, unguessable: true })
     }
   })
@@ -61,7 +72,12 @@ describe('a password', () => {
   })
 
   it('is refused when it is repeated, sequential or keyboard-walked', () => {
-    for (const secret of ['aaaaaaaaaaaaaaa', '123456789012345', 'qwertyuiop12345', '5201314520131452']) {
+    for (const secret of [
+      'aaaaaaaaaaaaaaa',
+      '123456789012345',
+      'qwertyuiop12345',
+      '5201314520131452',
+    ]) {
       const checks = judged(secret)
       expect(checks.unguessable, secret).toBe(false)
       expect(acceptable(checks)).toBe(false)

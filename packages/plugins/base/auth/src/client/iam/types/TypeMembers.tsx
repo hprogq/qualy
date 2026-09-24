@@ -73,7 +73,10 @@ export function TypeMembers({ userTypeId }: { userTypeId: string }) {
         {items.length === 0 ? (
           <CardEmpty>{format(m.usersEmpty)}</CardEmpty>
         ) : (
-          <Table columns="8.5rem minmax(0, 0.8fr) minmax(0, 1.2fr) 4.5rem" openable={personReachable}>
+          <Table
+            columns="8.5rem minmax(0, 0.8fr) minmax(0, 1.2fr) 4.5rem"
+            openable={personReachable}
+          >
             <TableHead>
               <span>{businessNo}</span>
               <span>{format(m.columnName)}</span>

@@ -9,7 +9,12 @@ import { AccessDenied } from '@qualy/rbac-contract/effect'
 import { AuditActionCatalog } from '@qualy/audit-contract/effect'
 import { compileActionCatalog } from '@qualy/audit-contract/plugin'
 import { SettingCatalog, TenantSettings } from '@qualy/settings-contract/effect'
-import { compileSettingCatalog, defineSettingCategory, defineTerm, normalizeOverride } from '@qualy/settings-contract'
+import {
+  compileSettingCatalog,
+  defineSettingCategory,
+  defineTerm,
+  normalizeOverride,
+} from '@qualy/settings-contract'
 import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
 import { serviceLayer as rbacLayer } from '@qualy/plugin-rbac/server'
 import { serviceLayer as auditLayer } from '@qualy/plugin-audit/server'
@@ -76,7 +81,9 @@ describe('compiling the setting catalog', () => {
   })
 
   it('normalizes an override to the delta: trimmed, blanks and defaults dropped', () => {
-    expect(normalizeOverride(personId, { 'zh-CN': '  工号 ', 'en-US': 'Student or staff ID' })).toEqual({
+    expect(
+      normalizeOverride(personId, { 'zh-CN': '  工号 ', 'en-US': 'Student or staff ID' }),
+    ).toEqual({
       ok: true,
       value: { 'zh-CN': '工号' },
     })
@@ -93,7 +100,13 @@ describe('compiling the setting catalog', () => {
   })
 })
 
-const closure = [...orgEntities, ...authEntities, ...rbacEntities, ...auditEntities, ...entities] as const
+const closure = [
+  ...orgEntities,
+  ...authEntities,
+  ...rbacEntities,
+  ...auditEntities,
+  ...entities,
+] as const
 
 const stack = (url: string) =>
   booted(
@@ -116,7 +129,10 @@ const stack = (url: string) =>
           Layer.succeed(
             SettingCatalog,
             compileSettingCatalog([
-              { pluginId: '@qualy/plugin-probe', value: { categories: [category], settings: [personId] } },
+              {
+                pluginId: '@qualy/plugin-probe',
+                value: { categories: [category], settings: [personId] },
+              },
             ]),
           ),
         ),
@@ -130,8 +146,10 @@ const stack = (url: string) =>
     },
   )
 
-const run = <A, E>(url: string, effect: Effect.Effect<A, E, SettingsStore | TenantSettings | Orm>) =>
-  Effect.runPromiseExit(Effect.provide(effect, stack(url)))
+const run = <A, E>(
+  url: string,
+  effect: Effect.Effect<A, E, SettingsStore | TenantSettings | Orm>,
+) => Effect.runPromiseExit(Effect.provide(effect, stack(url)))
 
 const ok = <A, E>(exit: Exit.Exit<A, E>): A => {
   if (Exit.isSuccess(exit)) return exit.value
@@ -146,7 +164,9 @@ const seed = Effect.fn('seed')(function* (slug: string) {
     yield* runSql(sql`insert into tenants (slug, name) values (${slug}, ${slug}) returning id`),
   ).id
   const orgType = one<{ id: string }>(
-    yield* runSql(sql`insert into org_types (tenant_id, name) values (${tenant}, 'U') returning id`),
+    yield* runSql(
+      sql`insert into org_types (tenant_id, name) values (${tenant}, 'U') returning id`,
+    ),
   ).id
   const root = one<{ id: string }>(
     yield* runSql(sql`
@@ -218,7 +238,11 @@ describe.runIf(postgresAvailable)('tenant terminology', () => {
           }),
         ),
       )
-      expect(result.written).toEqual({ id: personId.id, override: { 'zh-CN': '统一编号' }, version: 1 })
+      expect(result.written).toEqual({
+        id: personId.id,
+        override: { 'zh-CN': '统一编号' },
+        version: 1,
+      })
       expect(result.aZh).toBe('统一编号')
       expect(result.aEn).toBe('Student or staff ID')
       expect(result.bZh).toBe('学工号')
@@ -245,10 +269,20 @@ describe.runIf(postgresAvailable)('tenant terminology', () => {
               t.admin,
             )
             const stale = yield* Effect.exit(
-              store.writeTerm(t.tenant, personId.id, { version: 0, override: { 'zh-CN': '编号' } }, t.admin),
+              store.writeTerm(
+                t.tenant,
+                personId.id,
+                { version: 0, override: { 'zh-CN': '编号' } },
+                t.admin,
+              ),
             )
             const behind = yield* Effect.exit(
-              store.writeTerm(t.tenant, personId.id, { version: 5, override: { 'zh-CN': '编号' } }, t.admin),
+              store.writeTerm(
+                t.tenant,
+                personId.id,
+                { version: 5, override: { 'zh-CN': '编号' } },
+                t.admin,
+              ),
             )
             const reset = yield* store.writeTerm(
               t.tenant,
@@ -285,7 +319,9 @@ describe.runIf(postgresAvailable)('tenant terminology', () => {
       expect(result.reset).toEqual({ id: personId.id, override: {}, version: 2 })
       expect(result.rows).toEqual([{ version: 2, value: {} }])
       expect(tagOf(result.unknown)).toBe('SETTING_NOT_FOUND')
-      expect(tagOf(result.denied)).toBe(AccessDenied.name === 'AccessDenied' ? 'ACCESS_DENIED' : 'ACCESS_DENIED')
+      expect(tagOf(result.denied)).toBe(
+        AccessDenied.name === 'AccessDenied' ? 'ACCESS_DENIED' : 'ACCESS_DENIED',
+      )
       expect(tagOf(result.tooLong)).toBe('SETTING_VALUE_INVALID')
       void systemActor
     } finally {

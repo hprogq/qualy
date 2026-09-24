@@ -24,7 +24,8 @@ const i18n = definePluginMessages({
     pickActor: { id: 'audit/filter/pick-actor', defaultMessage: 'Whose operations' },
     pickActorUnavailable: {
       id: 'audit/filter/pick-actor-unavailable',
-      defaultMessage: 'People cannot be looked up here. Open an event and choose its actor instead.',
+      defaultMessage:
+        'People cannot be looked up here. Open an event and choose its actor instead.',
     },
     onlyThisActor: { id: 'audit/detail/only-this-actor', defaultMessage: 'Only this person' },
     copyValue: copyValueMessage,

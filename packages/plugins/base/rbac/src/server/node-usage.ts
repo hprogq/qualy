@@ -56,11 +56,19 @@ export const grantsAtNode: NodeUsageReporter<Orm> = {
               // one holder's grants are withdrawn on their own record
               ...(named[0] === undefined
                 ? {}
-                : { target: { pageId: 'rbac/user-role-grants', params: { userId: named[0].userId } } }),
+                : {
+                    target: {
+                      pageId: 'rbac/user-role-grants',
+                      params: { userId: named[0].userId },
+                    },
+                  }),
             },
             {
               kind: 'grant-history',
-              label: message('rbac/node-usage/grant-history', 'Withdrawn role grants kept as history'),
+              label: message(
+                'rbac/node-usage/grant-history',
+                'Withdrawn role grants kept as history',
+              ),
               count: await countOf(false),
               clearable: false,
               examples: [],

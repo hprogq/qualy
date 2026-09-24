@@ -151,9 +151,7 @@ function LanguageMenu() {
         {supportedLocales.map((candidate) => (
           <DropdownMenuItem key={candidate} onSelect={() => setLocale(candidate)}>
             {localeNames[candidate]}
-            {candidate === locale && (
-              <CheckIcon aria-hidden {...stylex.props(styles.itemCheck)} />
-            )}
+            {candidate === locale && <CheckIcon aria-hidden {...stylex.props(styles.itemCheck)} />}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>
@@ -190,10 +188,7 @@ function ThemeMenu() {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         {options.map((option) => (
-          <DropdownMenuItem
-            key={option.value}
-            onSelect={() => setChoice(option.value)}
-          >
+          <DropdownMenuItem key={option.value} onSelect={() => setChoice(option.value)}>
             <option.icon aria-hidden {...stylex.props(styles.itemIcon)} />
             {option.label}
             {option.value === choice && (

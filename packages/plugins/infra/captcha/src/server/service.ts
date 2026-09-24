@@ -90,7 +90,10 @@ export const serviceLayer: Layer.Layer<Captcha, never, Secrets | CaptchaProvider
 
     const bypassed = (outcome: 'bypass_no_provider' | 'bypass_unavailable') =>
       guarded({ outcome }).pipe(
-        Effect.as({ kind: 'passed', via: 'bypassed' } satisfies CaptchaGuardResult as CaptchaGuardResult),
+        Effect.as({
+          kind: 'passed',
+          via: 'bypassed',
+        } satisfies CaptchaGuardResult as CaptchaGuardResult),
       )
 
     const guard = Effect.fn('Captcha.guard')(function* (input: CaptchaGuardInput) {
@@ -129,7 +132,10 @@ export const serviceLayer: Layer.Layer<Captcha, never, Secrets | CaptchaProvider
       if (verdict.answer === 'unavailable') return yield* unreachable('verify', verdict.reason)
       if (verdict.answer === 'verified') {
         yield* guarded({ outcome: 'verified' })
-        return { kind: 'passed', via: 'verified' } satisfies CaptchaGuardResult as CaptchaGuardResult
+        return {
+          kind: 'passed',
+          via: 'verified',
+        } satisfies CaptchaGuardResult as CaptchaGuardResult
       }
       yield* guarded({ outcome: 'rejected' })
       return yield* challenge

@@ -41,7 +41,6 @@ const endpointOf = (context: RequestContextShape | undefined, path: string): str
 const successLog = (level: LogLevel.LogLevel, message: string): Effect.Effect<void> =>
   level === 'None' ? Effect.void : Effect.logWithLevel(level === 'All' ? 'Trace' : level)(message)
 
-
 export const accessLog =
   (settings: LoggingSettings['access']) =>
   <A extends { readonly status: number }, E, R>(

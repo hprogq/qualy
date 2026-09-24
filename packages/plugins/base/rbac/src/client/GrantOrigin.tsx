@@ -12,7 +12,11 @@ import { rbacMessages as m } from './i18n.ts'
 export interface OriginGrant {
   readonly id: string
   readonly roleName: string
-  readonly resource: { readonly namespace: string; readonly type: string; readonly id: string } | null
+  readonly resource: {
+    readonly namespace: string
+    readonly type: string
+    readonly id: string
+  } | null
   readonly validFrom: string | null
   readonly validUntil: string | null
 }

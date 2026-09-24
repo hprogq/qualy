@@ -61,7 +61,8 @@ layer(sandboxLocalLayer({ size: 1, variant: 'release' }), { excludeTestServices:
         )
         expect(outcome.success.runtime.runtimeBuildId).toMatch(/^[0-9a-f]{64}$/)
         expect(outcome.success.runtime.instanceId.length).toBeGreaterThan(0)
-      }))
+      }),
+    )
 
     it.effect('refuses an artifact whose hash does not match', () =>
       Effect.gen(function* () {
@@ -72,7 +73,8 @@ layer(sandboxLocalLayer({ size: 1, variant: 'release' }), { excludeTestServices:
           arguments: [],
         })
         expect(failure._tag).toBe('SandboxArtifactMismatch')
-      }))
+      }),
+    )
 
     it.effect('refuses oversized artifacts and inputs before any engine work', () =>
       Effect.gen(function* () {
@@ -86,7 +88,8 @@ layer(sandboxLocalLayer({ size: 1, variant: 'release' }), { excludeTestServices:
           arguments: [wide],
         })
         expect(failure._tag).toBe('SandboxInputTooLarge')
-      }))
+      }),
+    )
 
     it.effect('maps engine verdicts onto the typed error family', () =>
       Effect.gen(function* () {
@@ -102,12 +105,14 @@ layer(sandboxLocalLayer({ size: 1, variant: 'release' }), { excludeTestServices:
           name: 'RangeError',
           message: 'policy says no',
         })
-      }))
+      }),
+    )
 
     it.effect('refuses a non-identifier entrypoint without reaching the engine', () =>
       Effect.gen(function* () {
         const failure = yield* failureOf(invocation('globalThis.f = () => 1', 'f(); spin'))
         expect(failure._tag).toBe('SandboxEvalFailed')
-      }))
+      }),
+    )
   },
 )

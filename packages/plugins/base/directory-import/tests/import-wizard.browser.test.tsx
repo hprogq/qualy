@@ -126,7 +126,12 @@ const open = (over: Record<string, unknown> = {}, onOpenRecord = () => undefined
       slots: { 'iam/org-node-picker': { 'auth/org-node-picker': CollegePicker } },
     } as never,
     children: (
-      <ImportWizard open anchorNodeId={null} onClose={() => undefined} onOpenRecord={onOpenRecord} />
+      <ImportWizard
+        open
+        anchorNodeId={null}
+        onClose={() => undefined}
+        onOpenRecord={onOpenRecord}
+      />
     ),
   })
 
@@ -214,7 +219,13 @@ describe('importing users from a spreadsheet', () => {
             users: { create: 125, existing: 3, warnings: 0, errors: 2 },
             issues: [
               { rowNo: 14, field: null, severity: 'error', reason: 'business-no-required' },
-              { rowNo: 52, field: null, severity: 'error', reason: 'duplicate-in-file', detail: '31' },
+              {
+                rowNo: 52,
+                field: null,
+                severity: 'error',
+                reason: 'duplicate-in-file',
+                detail: '31',
+              },
             ],
           }),
         ),

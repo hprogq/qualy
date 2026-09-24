@@ -2,7 +2,12 @@ import { ZxcvbnFactory } from '@zxcvbn-ts/core'
 import { adjacencyGraphs, dictionary } from '@zxcvbn-ts/language-common'
 import type { SecretChecks, SecretSubject } from '@qualy/auth-contract/login'
 import { pinyin } from 'pinyin-pro'
-import { normalizePassword, PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, passwordLength } from './rules.ts'
+import {
+  normalizePassword,
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  passwordLength,
+} from './rules.ts'
 import { COMMON_CN } from './strength-words.ts'
 
 // Whether a password is one worth keeping, past its length.
@@ -44,7 +49,11 @@ const spellings = (text: string): string[] => {
     syllables.join(''),
     // given name alone, and family name with the given name's initials
     syllables.slice(1).join(''),
-    syllables[0]! + syllables.slice(1).map((one) => one.slice(0, 1)).join(''),
+    syllables[0]! +
+      syllables
+        .slice(1)
+        .map((one) => one.slice(0, 1))
+        .join(''),
     initials,
   ]
 }

@@ -38,7 +38,14 @@ const styles = stylex.create({
     letterSpacing: '0.06em',
     color: QUIET,
   },
-  list: { display: 'flex', flexDirection: 'column', gap: 3, margin: 0, padding: 0, listStyle: 'none' },
+  list: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 3,
+    margin: 0,
+    padding: 0,
+    listStyle: 'none',
+  },
   link: {
     display: 'flex',
     height: 34,

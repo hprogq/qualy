@@ -12,7 +12,10 @@ import type * as formulaErrors from '../server/errors.ts'
 const i18n = definePluginMessages({
   namespace: 'assessment-formula',
   messages: {
-    navGroupLibrary: { id: 'assessment-formula/nav-group/library', defaultMessage: 'Scoring formulas' },
+    navGroupLibrary: {
+      id: 'assessment-formula/nav-group/library',
+      defaultMessage: 'Scoring formulas',
+    },
     'permission.assessment.formula.author': {
       id: 'assessment-formula/permission/author',
       defaultMessage: 'Write scoring formulas',
@@ -568,7 +571,8 @@ const i18n = definePluginMessages({
     },
     contractParameterTitleMissing: {
       id: 'assessment-formula/contract/parameter-title-missing',
-      defaultMessage: 'Give this parameter a title before publishing; people configuring an item read it.',
+      defaultMessage:
+        'Give this parameter a title before publishing; people configuring an item read it.',
     },
     contractParameterTitleDuplicate: {
       id: 'assessment-formula/contract/parameter-title-duplicate',
@@ -576,7 +580,8 @@ const i18n = definePluginMessages({
     },
     contractChoiceLabelMissing: {
       id: 'assessment-formula/contract/choice-label-missing',
-      defaultMessage: 'Give this choice a label before publishing; people configuring an item read it.',
+      defaultMessage:
+        'Give this choice a label before publishing; people configuring an item read it.',
     },
     contractChoiceLabelDuplicate: {
       id: 'assessment-formula/contract/choice-label-duplicate',
@@ -1059,7 +1064,8 @@ const i18n = definePluginMessages({
     },
     bindingImpactFresh: {
       id: 'assessment-formula/binding/impact-fresh',
-      defaultMessage: '{count, plural, =0 {Takes no parameters} one {# parameter will need a value} other {# parameters will need values}}',
+      defaultMessage:
+        '{count, plural, =0 {Takes no parameters} one {# parameter will need a value} other {# parameters will need values}}',
     },
     bindingImpactSame: {
       id: 'assessment-formula/binding/impact-same',
@@ -1067,11 +1073,13 @@ const i18n = definePluginMessages({
     },
     bindingImpactAdded: {
       id: 'assessment-formula/binding/impact-added',
-      defaultMessage: '{count, plural, one {# parameter is new and will need a value} other {# parameters are new and will need values}}',
+      defaultMessage:
+        '{count, plural, one {# parameter is new and will need a value} other {# parameters are new and will need values}}',
     },
     bindingImpactRemoved: {
       id: 'assessment-formula/binding/impact-removed',
-      defaultMessage: '{count, plural, one {# parameter is no longer taken; the rest stay as they are} other {# parameters are no longer taken; the rest stay as they are}}',
+      defaultMessage:
+        '{count, plural, one {# parameter is no longer taken; the rest stay as they are} other {# parameters are no longer taken; the rest stay as they are}}',
     },
     bindingImpactChosen: {
       id: 'assessment-formula/binding/impact-chosen',

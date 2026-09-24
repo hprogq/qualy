@@ -109,24 +109,27 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // never comes and the transition times out with the page frozen - and the
   // browser fades between the two. Where it cannot, or where motion is not
   // wanted, the colours simply change.
-  const setChoice = useCallback((next: ThemeChoice) => {
-    try {
-      window.localStorage.setItem(STORAGE_KEY, next)
-    } catch {
-      // the choice still applies to this page; it will not be remembered
-    }
-    const start = (
-      document as Document & { startViewTransition?: (update: () => void) => unknown }
-    ).startViewTransition
-    if (start === undefined || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      setChoiceState(next)
-      return
-    }
-    start.call(document, () => {
-      applyMode(next === 'system' ? (systemDark ? 'dark' : 'light') : next)
-      setChoiceState(next)
-    })
-  }, [systemDark])
+  const setChoice = useCallback(
+    (next: ThemeChoice) => {
+      try {
+        window.localStorage.setItem(STORAGE_KEY, next)
+      } catch {
+        // the choice still applies to this page; it will not be remembered
+      }
+      const start = (
+        document as Document & { startViewTransition?: (update: () => void) => unknown }
+      ).startViewTransition
+      if (start === undefined || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        setChoiceState(next)
+        return
+      }
+      start.call(document, () => {
+        applyMode(next === 'system' ? (systemDark ? 'dark' : 'light') : next)
+        setChoiceState(next)
+      })
+    },
+    [systemDark],
+  )
 
   const value = useMemo<ThemeState>(
     () => ({ choice, resolved, setChoice }),

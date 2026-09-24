@@ -5,15 +5,15 @@
 
 ## 七概念
 
-| 概念            | 定义                                                                          | 现状                                                                                                                |
-| --------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Component       | 构建内可懒加载的 React renderer,key 为 `<plugin>/<Name>`                      | plugins.gen 聚合,生成期命名空间校验                                                                                 |
-| Page            | 一个可路由主内容单元 = 恰好一个主 Component;`{ id, path, component, layout }` | id 必填(`org/tree` 式),layout 引用契约而非实现                                                                      |
-| Layout Contract | 语义布局协议(含版本):`app-shell/v1`、`workspace-shell/v1`、`user-detail-shell/v1`、`account-shell/v1`、`blank-shell/v1` | 定义于 @qualy/ui-contract                                                                                    |
-| Layout Provider | 契约的具体实现,由布局插件 registerLayout 注册                                 | @qualy/plugin-layout-default 提供两个默认实现                                                                       |
-| Collection      | 结构化数据表面,布局统一渲染(导航/未来面包屑)                                  | `app-shell/navigation-primary`、`workspace-shell/navigation`、`iam/user-detail-navigation`、`account-shell/navigation`(pageId 引用,manifest 期解析 path,页面消失项自动脱落);`iam/resource-grant-presenters`(键控 renderer 映射) |
-| Slot            | 松耦合 renderer 表面,cardinality one/many                                     | `app-shell/header-actions`、`app-shell/user-menu`、`workspace-shell/context`、`iam/user-detail-header`、`account-shell/header`、`iam/resource-grant-renderer` |
-| Theme           | 视觉 token,与结构布局分离                                                     | CSS variables 已就绪(@qualy/ui/theme.css),Provider 注册缓建                                                         |
+| 概念            | 定义                                                                                                                    | 现状                                                                                                                                                                                                                            |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Component       | 构建内可懒加载的 React renderer,key 为 `<plugin>/<Name>`                                                                | plugins.gen 聚合,生成期命名空间校验                                                                                                                                                                                             |
+| Page            | 一个可路由主内容单元 = 恰好一个主 Component;`{ id, path, component, layout }`                                           | id 必填(`org/tree` 式),layout 引用契约而非实现                                                                                                                                                                                  |
+| Layout Contract | 语义布局协议(含版本):`app-shell/v1`、`workspace-shell/v1`、`user-detail-shell/v1`、`account-shell/v1`、`blank-shell/v1` | 定义于 @qualy/ui-contract                                                                                                                                                                                                       |
+| Layout Provider | 契约的具体实现,由布局插件 registerLayout 注册                                                                           | @qualy/plugin-layout-default 提供两个默认实现                                                                                                                                                                                   |
+| Collection      | 结构化数据表面,布局统一渲染(导航/未来面包屑)                                                                            | `app-shell/navigation-primary`、`workspace-shell/navigation`、`iam/user-detail-navigation`、`account-shell/navigation`(pageId 引用,manifest 期解析 path,页面消失项自动脱落);`iam/resource-grant-presenters`(键控 renderer 映射) |
+| Slot            | 松耦合 renderer 表面,cardinality one/many                                                                               | `app-shell/header-actions`、`app-shell/user-menu`、`workspace-shell/context`、`iam/user-detail-header`、`account-shell/header`、`iam/resource-grant-renderer`                                                                   |
+| Theme           | 视觉 token,与结构布局分离                                                                                               | CSS variables 已就绪(@qualy/ui/theme.css),Provider 注册缓建                                                                                                                                                                     |
 
 ## 两个壳,一条边界(2026-08-12 扩展)
 
@@ -95,15 +95,15 @@ apps/web      → web-runtime / ui-contract(纯路由引擎,无布局 DOM)
 
 ## 缓建触发表
 
-| 机制                                                                                   | 触发条件                                                                |
-| -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| 多 Provider + 租户布局策略                                                             | 第二个布局实现插件真实出现                                              |
-| Theme Provider 注册与切换                                                              | 第二套主题或租户品牌定制需求出现                                        |
+| 机制                                                                                   | 触发条件                                                                    |
+| -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| 多 Provider + 租户布局策略                                                             | 第二个布局实现插件真实出现                                                  |
+| Theme Provider 注册与切换                                                              | 第二套主题或租户品牌定制需求出现                                            |
 | ~~页面级 Slot(user-detail/tabs 等)~~                                                   | 已于 2026-09-20 以布局契约 + 导航面落地(见「第三个壳」),不做页面级 Tab Slot |
-| Slot config schema 校验                                                                | 首个携带 config 的贡献出现                                              |
-| runtime bootstrap 插件(/runtime/bootstrap 聚合 viewer/tenant/ui + app/page 扩展 token) | 会话 7(依赖 RBAC 过滤;届时 me+manifest 合并、revision/ETag、加载 Shell) |
-| ui:validate 装配校验 CLI                                                               | manifest 与构建组件目录出现真实脱节事故                                 |
-| Collection/Slot 版本升级(v2)                                                           | 首次破坏性协议变更                                                      |
+| Slot config schema 校验                                                                | 首个携带 config 的贡献出现                                                  |
+| runtime bootstrap 插件(/runtime/bootstrap 聚合 viewer/tenant/ui + app/page 扩展 token) | 会话 7(依赖 RBAC 过滤;届时 me+manifest 合并、revision/ETag、加载 Shell)     |
+| ui:validate 装配校验 CLI                                                               | manifest 与构建组件目录出现真实脱节事故                                     |
+| Collection/Slot 版本升级(v2)                                                           | 首次破坏性协议变更                                                          |
 
 明确不做:微前端/Module Federation/远程 JS 加载、插件独立 Router/Tailwind、
 任意 manifest 深合并、贡献间依赖图、拖拽布局编辑器。

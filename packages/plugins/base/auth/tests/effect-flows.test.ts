@@ -212,7 +212,9 @@ describe('the address this deployment is reached at', () => {
   it('is an origin and nothing else', () => {
     expect(publicOriginFrom('https://qualy.example.edu')).toBe('https://qualy.example.edu')
     expect(publicOriginFrom(' https://qualy.example.edu/ ')).toBe('https://qualy.example.edu')
-    expect(publicOriginFrom('https://qualy.example.edu:8443')).toBe('https://qualy.example.edu:8443')
+    expect(publicOriginFrom('https://qualy.example.edu:8443')).toBe(
+      'https://qualy.example.edu:8443',
+    )
     // everything that would move, or carry, what is appended to it
     for (const wrong of [
       'qualy.example.edu',
@@ -241,9 +243,9 @@ describe('the address this deployment is reached at', () => {
   it('is the vite server in development, said out loud in production, and never wrong', async () => {
     expect(ok(await configured({}))).toBe(DEVELOPMENT_PUBLIC_URL)
     expect(ok(await configured({ NODE_ENV: 'production' }))).toBeUndefined()
-    expect(
-      ok(await configured({ NODE_ENV: 'production', QUALY_PUBLIC_URL: PUBLIC_URL })),
-    ).toBe(PUBLIC_URL)
+    expect(ok(await configured({ NODE_ENV: 'production', QUALY_PUBLIC_URL: PUBLIC_URL }))).toBe(
+      PUBLIC_URL,
+    )
     const malformed = await configured({ QUALY_PUBLIC_URL: 'qualy.example.edu' })
     expect(Cause.pretty((malformed as Exit.Failure<unknown, unknown>).cause)).toContain(
       PUBLIC_URL_MALFORMED,
@@ -385,9 +387,7 @@ describe.runIf(postgresAvailable)('one redirect through somebody else’s server
               sql`select state_hash, payload_sealed from auth_flows where id = ${started.flowId}`,
             )
             // the wrong entrance burns it without taking it up
-            const strayed = yield* Effect.result(
-              sessions.consumeFlow({ provider: other, state }),
-            )
+            const strayed = yield* Effect.result(sessions.consumeFlow({ provider: other, state }))
             const afterStray = yield* Effect.result(sessions.consumeFlow({ provider: door, state }))
 
             const again = yield* sessions.startFlow({
@@ -642,7 +642,9 @@ describe.runIf(postgresAvailable)('what a driver keeps through a redirect', () =
             const outcomes: (string | undefined)[] = []
             for (let started = 0; started <= limit; started += 1) {
               outcomes.push(
-                tagOf(yield* Effect.result(sessions.startFlow({ provider: door, purpose: 'login' }))),
+                tagOf(
+                  yield* Effect.result(sessions.startFlow({ provider: door, purpose: 'login' })),
+                ),
               )
             }
             const rows = yield* runSql<{ count: number }>(
@@ -652,7 +654,9 @@ describe.runIf(postgresAvailable)('what a driver keeps through a redirect', () =
           }),
         ),
       )
-      expect(answer.outcomes.slice(0, limit)).toEqual(Array.from({ length: limit }, () => undefined))
+      expect(answer.outcomes.slice(0, limit)).toEqual(
+        Array.from({ length: limit }, () => undefined),
+      )
       expect(answer.outcomes[limit]).toBe('TOO_MANY_ATTEMPTS')
       // the one refused cost no row
       expect(answer.rows).toBe(limit)
@@ -814,7 +818,9 @@ describe.runIf(postgresAvailable)('what a session keeps from the other side', ()
               auth_provider_id: string
               kind: string
               state_sealed: string
-            }>(sql`select session_id, auth_provider_id, kind, state_sealed from session_auth_grants`)
+            }>(
+              sql`select session_id, auth_provider_id, kind, state_sealed from session_auth_grants`,
+            )
             const grant = rows.rows[0]!
             const opened = yield* secrets.open(
               {
@@ -845,13 +851,18 @@ describe.runIf(postgresAvailable)('what a session keeps from the other side', ()
           }).pipe(
             Effect.provideService(
               HttpServerRequest.HttpServerRequest,
-              HttpServerRequest.fromWeb(new Request('http://localhost/api/auth/campus/campus/callback')),
+              HttpServerRequest.fromWeb(
+                new Request('http://localhost/api/auth/campus/campus/callback'),
+              ),
             ),
           ),
         ),
       )
       expect(answer.rows).toHaveLength(1)
-      expect(answer.rows[0]).toMatchObject({ auth_provider_id: expect.any(String), kind: 'upstream-session' })
+      expect(answer.rows[0]).toMatchObject({
+        auth_provider_id: expect.any(String),
+        kind: 'upstream-session',
+      })
       expect(answer.rows[0]!.state_sealed).not.toContain('TGT-upstream-value')
       expect(Redacted.value(answer.opened)).toBe('TGT-upstream-value')
       expect(tagOf(answer.lifted)).toBe('SecretUnreadable')

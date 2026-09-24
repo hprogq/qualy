@@ -24,16 +24,16 @@
 
 ## 1. 技术栈总览
 
-| 层 | 选型 | 备注 |
-| --- | --- | --- |
-| 运行时 | Node 24 LTS,**原生 strip-types 直接跑 TS,无加载器** | 冷启到端口 2.0s → 1.3s |
-| 后端 | **Effect v4**(HttpApi、Layer、Scope、Fiber、Schema) | 唯一运行时,Cordis 与 oRPC 已完全离场 |
-| 数据 | PostgreSQL 18(ltree、daterange、uuidv7)、MikroORM 7 定义实体、Kysely 写查询 | 迁移为纯 SQL,可 `psql -f` 执行 |
-| 前端 | React 19、React Router、TanStack Query、Vite、Mantine + StyleX、Lingui ICU | 插件化页面组合 |
-| 类型 | TypeScript 7 原生 tsc + `@effect/tsgo`(Effect 诊断进 tsc) | floating Effect、layer 需求泄漏在 typecheck 即失败 |
-| 测试 | Vitest(node)、Vitest Browser Mode(Playwright Chromium / WebKit) | 每轮建删约 150 个临时数据库 |
-| 可观测性 | Effect OTLP、OpenTelemetry Collector、Grafana LGTM、腾讯云 APM / CLS / RUM | |
-| 工程 | pnpm workspaces + catalog、GitHub Actions、AGPL-3.0-only | 约 40+ workspace 包,19 个插件 |
+| 层       | 选型                                                                        | 备注                                               |
+| -------- | --------------------------------------------------------------------------- | -------------------------------------------------- |
+| 运行时   | Node 24 LTS,**原生 strip-types 直接跑 TS,无加载器**                         | 冷启到端口 2.0s → 1.3s                             |
+| 后端     | **Effect v4**(HttpApi、Layer、Scope、Fiber、Schema)                         | 唯一运行时,Cordis 与 oRPC 已完全离场               |
+| 数据     | PostgreSQL 18(ltree、daterange、uuidv7)、MikroORM 7 定义实体、Kysely 写查询 | 迁移为纯 SQL,可 `psql -f` 执行                     |
+| 前端     | React 19、React Router、TanStack Query、Vite、Mantine + StyleX、Lingui ICU  | 插件化页面组合                                     |
+| 类型     | TypeScript 7 原生 tsc + `@effect/tsgo`(Effect 诊断进 tsc)                   | floating Effect、layer 需求泄漏在 typecheck 即失败 |
+| 测试     | Vitest(node)、Vitest Browser Mode(Playwright Chromium / WebKit)             | 每轮建删约 150 个临时数据库                        |
+| 可观测性 | Effect OTLP、OpenTelemetry Collector、Grafana LGTM、腾讯云 APM / CLS / RUM  |                                                    |
+| 工程     | pnpm workspaces + catalog、GitHub Actions、AGPL-3.0-only                    | 约 40+ workspace 包,19 个插件                      |
 
 ---
 
@@ -482,22 +482,22 @@
 
 ### 11.2 仓库级架构门禁(`tools/tests/`)
 
-| 门禁 | 守什么 |
-| --- | --- |
-| `plugin-isolation` | 每个插件服务端代码**独立编译**(每插件一个 tsconfig 探针,增量、并发);跨插件 import 边具名列出且**只许变短**;apps/web 不得声明插件 |
-| `open-world` | 外部 scope 第三方插件不改宿主即可 resolve / 收集 / 构建 |
-| `dist-only-plugin` | 仅含 `package.json` + `dist/` 的已发布插件可用 |
-| `effect-api-parity` + `frozen-routes` | 全量路由冻结,与运行时 OpenAPI 深比较 |
-| `api-paths` | 生产源码不得写出 `/api` 前缀字面量 |
-| `client-paths` | 客户端禁止硬编码内部路由 |
-| `error-codes` | 错误码全局唯一、归属冻结、与前端翻译交叉校验 |
-| `catalogs` | i18n 全语言完整、无孤儿、命名空间不越界、ICU 可编译 |
-| `browser-contract` | 构建侧与宿主侧 surface 集合及 browserContractHash 等值 |
-| `browser-graph` | 真实 Vite 打包浏览器依赖图,出现 pg、`node:*`、Buffer 等即失败(起因:`api.ts` → 错误类 → db → pg 四跳后页面 "Buffer is not defined") |
-| `test-layers` | 只有 database 基础设施可持有 pg 驱动、连接串与建删库;业务插件不得声明 `pg`(此前 6 个套件各自复制了 bootstrap) |
-| `package-exports` | 所有 workspace `exports` 指向存在的文件 |
-| `observability` | 采集配置密钥必须为环境变量引用、镜像钉版本 |
-| `vendor` | vendored 上游源码 lock 与 catalog 一致、不进任何工具链、无人 import |
+| 门禁                                  | 守什么                                                                                                                             |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `plugin-isolation`                    | 每个插件服务端代码**独立编译**(每插件一个 tsconfig 探针,增量、并发);跨插件 import 边具名列出且**只许变短**;apps/web 不得声明插件   |
+| `open-world`                          | 外部 scope 第三方插件不改宿主即可 resolve / 收集 / 构建                                                                            |
+| `dist-only-plugin`                    | 仅含 `package.json` + `dist/` 的已发布插件可用                                                                                     |
+| `effect-api-parity` + `frozen-routes` | 全量路由冻结,与运行时 OpenAPI 深比较                                                                                               |
+| `api-paths`                           | 生产源码不得写出 `/api` 前缀字面量                                                                                                 |
+| `client-paths`                        | 客户端禁止硬编码内部路由                                                                                                           |
+| `error-codes`                         | 错误码全局唯一、归属冻结、与前端翻译交叉校验                                                                                       |
+| `catalogs`                            | i18n 全语言完整、无孤儿、命名空间不越界、ICU 可编译                                                                                |
+| `browser-contract`                    | 构建侧与宿主侧 surface 集合及 browserContractHash 等值                                                                             |
+| `browser-graph`                       | 真实 Vite 打包浏览器依赖图,出现 pg、`node:*`、Buffer 等即失败(起因:`api.ts` → 错误类 → db → pg 四跳后页面 "Buffer is not defined") |
+| `test-layers`                         | 只有 database 基础设施可持有 pg 驱动、连接串与建删库;业务插件不得声明 `pg`(此前 6 个套件各自复制了 bootstrap)                      |
+| `package-exports`                     | 所有 workspace `exports` 指向存在的文件                                                                                            |
+| `observability`                       | 采集配置密钥必须为环境变量引用、镜像钉版本                                                                                         |
+| `vendor`                              | vendored 上游源码 lock 与 catalog 一致、不进任何工具链、无人 import                                                                |
 
 ### 11.3 测试分层
 
@@ -543,41 +543,41 @@
 
 ## 13. 面试故事素材(STAR 速查)
 
-| 故事 | 现象 | 根因 | 解决 |
-| --- | --- | --- | --- |
-| 冷缓存双 React | 浏览器套件只在冷缓存时全红 | 生成模块绝对路径不被 Vite 扫描 + pnpm 隔离下 React 多实例 | 相对路径 + scan 孪生文件、测试 root 改到拥有 React 的包、永远冷缓存的 CI job |
-| 登录成功却 500 | 一次登录被回滚 | 客户端 36 字符 b3 trace id 写入 `varchar(32)` | 严格校验 trace id 格式 |
-| 停用租户会话仍有效 | 安全级缺陷 | 会话校验链漏查租户状态 | 单条查询覆盖 session / 用户 / 类型 / 租户启用与过期 |
-| CLS 日志 400 | 云端日志导出失败 | CLS 忽略 gzip 编码 | curl 最小探针定位,`compression: none` |
-| 审计分页丢行 | 翻页边界少数据 | PG 微秒 vs JS 毫秒 | 游标用 `occurred_at::text` |
-| cookie 10 分钟失效 | 用户频繁掉登录 | `maxAge` 裸数字按毫秒解释 | 使用 Duration |
-| `ltree` 不存在 | 干净环境所有插件组合失败 | 扩展只存在宿主迁移历史里 | 插件自带、sha 锁定、幂等的 baseline 片段 |
-| CI teardown 挂起 | 测试结束进程不退 | 连接池 checkout 未归还 | AsyncLocalStorage 连接账本 + `pg_stat_activity` 报告;上游缺陷用 settle 规避 |
-| `Buffer is not defined` | 页面崩溃 | 契约文件四跳后把 pg 拖进浏览器 | browser-graph 门禁真实打包检查 |
-| 首屏错误丢失 | RUM 看不到首屏崩溃 | provider 未就绪时已被标记为已上报 | 带页面快照的待发队列 + 身份去重 |
-| 启动失败零输出 | grpc 配置下进程 exit 1 无日志 | logger 自身所在 layer 失败 | logger 之外的第二报告器 |
-| 后端重启杀 HMR | 每次改后端前端状态丢失 | Vite 在后端 scope 内 | 独立 Vite 进程 + 分阶段候选进程交接协议 |
+| 故事                    | 现象                          | 根因                                                      | 解决                                                                         |
+| ----------------------- | ----------------------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| 冷缓存双 React          | 浏览器套件只在冷缓存时全红    | 生成模块绝对路径不被 Vite 扫描 + pnpm 隔离下 React 多实例 | 相对路径 + scan 孪生文件、测试 root 改到拥有 React 的包、永远冷缓存的 CI job |
+| 登录成功却 500          | 一次登录被回滚                | 客户端 36 字符 b3 trace id 写入 `varchar(32)`             | 严格校验 trace id 格式                                                       |
+| 停用租户会话仍有效      | 安全级缺陷                    | 会话校验链漏查租户状态                                    | 单条查询覆盖 session / 用户 / 类型 / 租户启用与过期                          |
+| CLS 日志 400            | 云端日志导出失败              | CLS 忽略 gzip 编码                                        | curl 最小探针定位,`compression: none`                                        |
+| 审计分页丢行            | 翻页边界少数据                | PG 微秒 vs JS 毫秒                                        | 游标用 `occurred_at::text`                                                   |
+| cookie 10 分钟失效      | 用户频繁掉登录                | `maxAge` 裸数字按毫秒解释                                 | 使用 Duration                                                                |
+| `ltree` 不存在          | 干净环境所有插件组合失败      | 扩展只存在宿主迁移历史里                                  | 插件自带、sha 锁定、幂等的 baseline 片段                                     |
+| CI teardown 挂起        | 测试结束进程不退              | 连接池 checkout 未归还                                    | AsyncLocalStorage 连接账本 + `pg_stat_activity` 报告;上游缺陷用 settle 规避  |
+| `Buffer is not defined` | 页面崩溃                      | 契约文件四跳后把 pg 拖进浏览器                            | browser-graph 门禁真实打包检查                                               |
+| 首屏错误丢失            | RUM 看不到首屏崩溃            | provider 未就绪时已被标记为已上报                         | 带页面快照的待发队列 + 身份去重                                              |
+| 启动失败零输出          | grpc 配置下进程 exit 1 无日志 | logger 自身所在 layer 失败                                | logger 之外的第二报告器                                                      |
+| 后端重启杀 HMR          | 每次改后端前端状态丢失        | Vite 在后端 scope 内                                      | 独立 Vite 进程 + 分阶段候选进程交接协议                                      |
 
 ---
 
 ## 14. 数字一览
 
-| 指标 | 数值 |
-| --- | --- |
-| 插件 | 19 个(运行时 16,停用 2,detached 1) |
-| workspace 包 | 约 40+ |
-| 实体 / 权限码(lock 中) | 59 / 30 |
-| 审计动作 | 29 |
-| node 测试 | 1,781 项通过(247 文件) |
-| 浏览器测试 | Chromium 418 项(57 文件)+ WebKit 14 项 |
-| 每轮临时数据库 | 约 150 个 |
-| 冷启到端口 | 2.0s → 1.3s;后端重载约 1.1s |
-| 应用组合耗时 / 关闭耗时 | 10-13ms / 9ms |
-| HttpApi 类型检查伸缩 | 500 端点 5.4s(约 6ms/端点) |
-| MikroORM 上游合入 | 6 个缺陷修复,零 patch |
-| Argon2id | 64MiB / t=3 / p=4,hash 36ms |
-| 前端启动预算 | 24KB 门禁;RUM SDK 128KB 按需加载 |
-| 停用插件后产物 | 113 → 111 个 JS 资源;停用公式插件 → 100 |
+| 指标                    | 数值                                    |
+| ----------------------- | --------------------------------------- |
+| 插件                    | 19 个(运行时 16,停用 2,detached 1)      |
+| workspace 包            | 约 40+                                  |
+| 实体 / 权限码(lock 中)  | 59 / 30                                 |
+| 审计动作                | 29                                      |
+| node 测试               | 1,781 项通过(247 文件)                  |
+| 浏览器测试              | Chromium 418 项(57 文件)+ WebKit 14 项  |
+| 每轮临时数据库          | 约 150 个                               |
+| 冷启到端口              | 2.0s → 1.3s;后端重载约 1.1s             |
+| 应用组合耗时 / 关闭耗时 | 10-13ms / 9ms                           |
+| HttpApi 类型检查伸缩    | 500 端点 5.4s(约 6ms/端点)              |
+| MikroORM 上游合入       | 6 个缺陷修复,零 patch                   |
+| Argon2id                | 64MiB / t=3 / p=4,hash 36ms             |
+| 前端启动预算            | 24KB 门禁;RUM SDK 128KB 按需加载        |
+| 停用插件后产物          | 113 → 111 个 JS 资源;停用公式插件 → 100 |
 
 ---
 

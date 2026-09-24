@@ -1721,7 +1721,10 @@ describe('judging a submission', () => {
     // then for five seconds the pill offers the way back
     await page.getByRole('button', { name: /^通过/ }).click()
     expect(decided).not.toHaveBeenCalled()
-    await page.getByRole('dialog').getByRole('button', { name: /^通过/ }).click()
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: /^通过/ })
+      .click()
     await expect
       .element(page.getByTestId('decision-staged'))
       .toHaveAttribute('data-decision', 'approve')

@@ -125,7 +125,9 @@ export default defineCapabilityProvider<DatabaseContribution, DatabaseState>({
         throw new Error(
           `database: the committed lineage does not build the declared schema:\n` +
             [
-              ...pending.map((fragment) => `  baseline not compiled: ${fragment.plugin} ${fragment.file}`),
+              ...pending.map(
+                (fragment) => `  baseline not compiled: ${fragment.plugin} ${fragment.file}`,
+              ),
               ...diff.up.map((statement) => `  ${statement}`),
             ].join('\n') +
             '\nRun `pnpm qualy generate`, review the migration it writes, and commit it.',

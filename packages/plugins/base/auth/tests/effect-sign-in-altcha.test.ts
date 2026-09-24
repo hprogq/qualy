@@ -11,7 +11,11 @@ import {
   registrationLayerWith,
 } from '@qualy/plugin-captcha-altcha/testkit'
 import { SEEDED_EMAILS } from './support/sign-in-seed.ts'
-import { SIGN_IN_PASSWORD as password, startSignInServer, type SignInServer } from './support/sign-in-server.ts'
+import {
+  SIGN_IN_PASSWORD as password,
+  startSignInServer,
+  type SignInServer,
+} from './support/sign-in-server.ts'
 
 // The whole chain, with the provider a deployment runs: a password door that
 // asks for a challenge, the real ALTCHA provider issuing it, altcha-lib
@@ -68,7 +72,9 @@ const solve = async (challenge: unknown) => {
 describe.runIf(postgresAvailable)('signing in through an ALTCHA challenge', () => {
   it('asks, is answered with a solved challenge, and lets the right password in', async () => {
     for (let tried = 0; tried < 5; tried += 1) {
-      expect((await login({ email: SEEDED_EMAILS.ada, password: 'not the password' })).status).toBe(401)
+      expect((await login({ email: SEEDED_EMAILS.ada, password: 'not the password' })).status).toBe(
+        401,
+      )
     }
     const asked = await login({ email: SEEDED_EMAILS.ada, password })
     expect(asked.status).toBe(428)

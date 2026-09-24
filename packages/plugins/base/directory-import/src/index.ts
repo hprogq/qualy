@@ -35,7 +35,9 @@ const plugin = Plugin.define(
   },
   // history points at the tenant; people and units it names are read from
   // their owners' tables, never pinned
-  Db.entities(entities, { dependsOn: ['@qualy/plugin-org', '@qualy/plugin-auth', '@qualy/plugin-rbac'] }),
+  Db.entities(entities, {
+    dependsOn: ['@qualy/plugin-org', '@qualy/plugin-auth', '@qualy/plugin-rbac'],
+  }),
   Audit.actions('directory', directoryImportActions),
   Ui.i18n('./client/i18n'),
   // no page of its own: importing is a dialog over the roster it adds to, and

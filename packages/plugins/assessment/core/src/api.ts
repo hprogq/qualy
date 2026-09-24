@@ -228,7 +228,14 @@ const userEntryView = Schema.Struct({
   batchName: Schema.String,
   itemId: Schema.String,
   itemTitle: Schema.String,
-  status: Schema.Literals(['draft', 'in_review', 'needs_revision', 'approved', 'rejected', 'voided']),
+  status: Schema.Literals([
+    'draft',
+    'in_review',
+    'needs_revision',
+    'approved',
+    'rejected',
+    'voided',
+  ]),
   source: Schema.Literals(['self', 'proxy', 'record', 'import', 'system']),
   createdAt: Schema.String,
   updatedAt: Schema.String,
@@ -1535,7 +1542,9 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         params: Schema.Struct({ instanceId: uuidInput }),
         payload: Schema.Struct({ values: configJson }),
         success: Schema.Struct({
-          issues: Schema.Array(Schema.Struct({ recognitionId: Schema.String, reason: Schema.String })),
+          issues: Schema.Array(
+            Schema.Struct({ recognitionId: Schema.String, reason: Schema.String }),
+          ),
           amount: Schema.NullOr(Schema.String),
           refusal: Schema.NullOr(Schema.String),
         }),

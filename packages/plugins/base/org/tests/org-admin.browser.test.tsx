@@ -239,9 +239,7 @@ describe('the organization screen', () => {
       children: <OrgPage />,
     })
     await expect.element(page.getByRole('button', { name: '删除组织' })).toBeDisabled()
-    await expect
-      .element(page.getByTestId('node-delete'))
-      .toHaveAttribute('data-removable', 'false')
+    await expect.element(page.getByTestId('node-delete')).toHaveAttribute('data-removable', 'false')
   })
 
   // Everything else that points at a unit lives in plugins org cannot see.
@@ -306,9 +304,7 @@ describe('the organization screen', () => {
       route: `/admin/org?node=${KLASS}`,
       children: <OrgPage />,
     })
-    await expect
-      .element(page.getByTestId('node-delete'))
-      .toHaveAttribute('data-removable', 'true')
+    await expect.element(page.getByTestId('node-delete')).toHaveAttribute('data-removable', 'true')
     expect(document.querySelector('[data-hold="archived-rounds"]')).toBeNull()
   })
 
@@ -407,7 +403,7 @@ describe('the organization screen', () => {
   // folded the college away, taking the classes under it off the screen.
   // What is done to a unit is offered on its own row, so adding a class to a
   // college does not start with opening the college.
-  it('starts a task from the unit\'s own row, without opening the unit', async () => {
+  it("starts a task from the unit's own row, without opening the unit", async () => {
     const create = vi.fn(() => Effect.succeed({ id: 'created' }))
     const client = world()
     renderScreen({
@@ -530,14 +526,23 @@ describe('the organization screen', () => {
     // nothing is open until something is picked: the page is whole without it
     expect(document.querySelector('[data-testid="type-sheet"]')).toBeNull()
     const rows = () => page.getByTestId('type-row').elements()
-    expect(rows().map((row) => row.getAttribute('data-type-name'))).toEqual(['学校', '学院', '研究所', '班级'])
+    expect(rows().map((row) => row.getAttribute('data-type-name'))).toEqual([
+      '学校',
+      '学院',
+      '研究所',
+      '班级',
+    ])
     // a class may stand under a college and under an institute
     expect(rows()[3]?.getAttribute('data-under')).toBe('2')
 
     await page.getByTestId('type-row').nth(1).click()
     await expect.element(page.getByTestId('type-sheet')).toBeVisible()
-    await expect.element(page.getByTestId('type-row').nth(1)).toHaveAttribute('data-selected', 'true')
-    expect(document.querySelector(`[data-type-node="${COLLEGE_TYPE}"]`)?.getAttribute('data-open')).toBe('true')
+    await expect
+      .element(page.getByTestId('type-row').nth(1))
+      .toHaveAttribute('data-selected', 'true')
+    expect(
+      document.querySelector(`[data-type-node="${COLLEGE_TYPE}"]`)?.getAttribute('data-open'),
+    ).toBe('true')
   })
 
   it('shows a unit it may not manage without offering a single control', async () => {

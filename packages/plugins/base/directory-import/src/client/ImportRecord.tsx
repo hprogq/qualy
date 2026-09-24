@@ -1,12 +1,7 @@
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import {
-  PageLink,
-  useApi,
-  useApiQuery,
-  useRunApi,
-} from '@qualy/web-runtime'
+import { PageLink, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
@@ -163,7 +158,12 @@ export function ImportRecordSheet({
   }
   const reverse = useMutation({
     mutationFn: () =>
-      run(api.directory.reverseUserImport({ params: { importId }, payload: { reason: reason.trim() } })),
+      run(
+        api.directory.reverseUserImport({
+          params: { importId },
+          payload: { reason: reason.trim() },
+        }),
+      ),
     onSuccess: (outcome) => {
       toast.success(format(m.reversed, { retired: outcome.retired }))
       setReversing(false)
@@ -174,7 +174,9 @@ export function ImportRecordSheet({
   const clean = useMutation({
     mutationFn: () => run(api.directory.cleanUserImportNodes({ params: { importId } })),
     onSuccess: (outcome) => {
-      toast.success(format(m.cleaned, { deleted: outcome.deleted, retained: outcome.retained.length }))
+      toast.success(
+        format(m.cleaned, { deleted: outcome.deleted, retained: outcome.retained.length }),
+      )
       setCleaning(false)
       refresh()
     },
@@ -331,7 +333,9 @@ export function ImportRecordSheet({
                         </Cell>
                         <Cell>
                           {format(
-                            node.disposition === 'created' ? m.dispositionCreated : m.dispositionReused,
+                            node.disposition === 'created'
+                              ? m.dispositionCreated
+                              : m.dispositionReused,
                           )}
                         </Cell>
                         <Status tone={node.present ? 'plain' : 'bad'}>
@@ -500,7 +504,9 @@ export function ImportRecordSheet({
             </Button>
             <Button
               variant="destructive"
-              disabled={reason.trim() === '' || reverse.isPending || (reversal.data?.toRetire ?? 0) === 0}
+              disabled={
+                reason.trim() === '' || reverse.isPending || (reversal.data?.toRetire ?? 0) === 0
+              }
               onClick={() => reverse.mutate()}
             >
               {format(m.reverseConfirm)}
@@ -509,7 +515,14 @@ export function ImportRecordSheet({
         }
       >
         <Field required label={format(m.reverseReason)}>
-          {(id) => <Textarea id={id} rows={3} value={reason} onChange={(event) => setReason(event.target.value)} />}
+          {(id) => (
+            <Textarea
+              id={id}
+              rows={3}
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+            />
+          )}
         </Field>
       </FormDialog>
 

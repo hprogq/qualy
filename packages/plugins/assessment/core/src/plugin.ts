@@ -253,7 +253,11 @@ export interface CompiledCalculator extends CalculatorContract {
  *   anyway.
  */
 export type CalculatorFailureKind =
-  'refusal' | 'unavailable' | 'execution' | 'integrity' | 'invariant'
+  | 'refusal'
+  | 'unavailable'
+  | 'execution'
+  | 'integrity'
+  | 'invariant'
 
 /** the calculator could not say what it needs, under this configuration */
 export class CalculatorContractError extends Error {

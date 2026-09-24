@@ -1,5 +1,8 @@
 import { renderScreen as render } from '@qualy/testkit/browser'
-import { catalogs as settingsCatalogs, errorMessages as settingsErrors } from '../../src/client/i18n.ts'
+import {
+  catalogs as settingsCatalogs,
+  errorMessages as settingsErrors,
+} from '../../src/client/i18n.ts'
 // the host's stylesheet, because a screen asserted unstyled is a screen
 // nobody sees; it is the product's one stylesheet wherever a screen renders
 import '../../../../../../apps/web/src/app.css'

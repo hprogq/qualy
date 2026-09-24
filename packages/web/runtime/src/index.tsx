@@ -288,8 +288,9 @@ export function RuntimeProvider({
       utils.set(api, built)
       return built
     }
-    manifestKey.current = (utilsFor(appApi) as QueryUtils<ClientOf<typeof appApi>>).app.getManifest
-      .queryOptions().queryKey
+    manifestKey.current = (
+      utilsFor(appApi) as QueryUtils<ClientOf<typeof appApi>>
+    ).app.getManifest.queryOptions().queryKey
     return {
       clientFor: provider,
       utilsFor,
@@ -379,8 +380,9 @@ export function useSessionTransition() {
   const runtime = useRuntime()
   return useCallback(
     async (options: { destination: SessionDestination; replace?: boolean }) => {
-      const manifestKey = (runtime.utilsFor(appApi) as QueryUtils<ClientOf<typeof appApi>>).app
-        .getManifest.queryOptions().queryKey
+      const manifestKey = (
+        runtime.utilsFor(appApi) as QueryUtils<ClientOf<typeof appApi>>
+      ).app.getManifest.queryOptions().queryKey
       const go = (pages: typeof manifest.pages) =>
         void navigate(sessionDestinationHref(options.destination, pages), {
           replace: options.replace ?? true,
@@ -424,8 +426,9 @@ export function useSessionTransition() {
       // manifest gone pending takes the routes down with it, so the page being
       // left would mount again and ask again. It keeps its answer until the
       // new one arrives, asked for now.
-      const manifestHash = queryClient.getQueryCache().find({ queryKey: manifestKey, exact: true })
-        ?.queryHash
+      const manifestHash = queryClient
+        .getQueryCache()
+        .find({ queryKey: manifestKey, exact: true })?.queryHash
       await queryClient.cancelQueries()
       notifyManager.batch(() => {
         for (const query of queryClient.getQueryCache().getAll()) {

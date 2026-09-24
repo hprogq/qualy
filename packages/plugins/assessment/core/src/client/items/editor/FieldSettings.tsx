@@ -12,12 +12,7 @@ import {
 import { useI18n, useList } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Field } from '@qualy/ui/admin'
-import {
-  Field as FieldRow,
-  FieldContent,
-  FieldDescription,
-  FieldLabel,
-} from '@qualy/ui/field'
+import { Field as FieldRow, FieldContent, FieldDescription, FieldLabel } from '@qualy/ui/field'
 import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@qualy/ui/collapsible'
@@ -762,7 +757,9 @@ function AcceptPicker({ accept, onChange }: { accept: string; onChange: (next: s
                 resolved.length === 0 ? styles.kindBoxOn : styles.kindBoxOff,
               )}
             >
-              {resolved.length === 0 && <CheckIcon {...stylex.props(styles.icon12)} strokeWidth={3} />}
+              {resolved.length === 0 && (
+                <CheckIcon {...stylex.props(styles.icon12)} strokeWidth={3} />
+              )}
             </span>
             <span {...stylex.props(styles.kindName)}>{format(m.itemsAcceptAnyTile)}</span>
           </span>

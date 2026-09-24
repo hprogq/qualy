@@ -41,7 +41,13 @@ import { captchaLayer } from '@qualy/plugin-captcha/testkit'
 
 // what the orm must know for a query to name a table: this suite runs auth and
 // rbac alongside org, so their tables are part of what the assembly serves
-const closure = [...orgEntities, ...authEntities, ...rbacEntities, ...auditEntities, ...secretsEntities] as const
+const closure = [
+  ...orgEntities,
+  ...authEntities,
+  ...rbacEntities,
+  ...auditEntities,
+  ...secretsEntities,
+] as const
 
 // the same declarations production compiles, stamped the same way
 const catalog = compileCatalog([
@@ -221,9 +227,13 @@ describe.runIf(postgresAvailable).concurrent('tree behaviours nothing else asser
           )
           return {
             move: yield* Effect.result(org.moveNode(f.tenant, f.root, college.id, f.principal)),
-            remove: yield* Effect.result(org.deleteNode(f.tenant, f.root, f.principal, Effect.succeed(false))),
+            remove: yield* Effect.result(
+              org.deleteNode(f.tenant, f.root, f.principal, Effect.succeed(false)),
+            ),
             // and a node that still has children is not deletable either
-            occupied: yield* Effect.result(org.deleteNode(f.tenant, college.id, f.principal, Effect.succeed(false))),
+            occupied: yield* Effect.result(
+              org.deleteNode(f.tenant, college.id, f.principal, Effect.succeed(false)),
+            ),
           }
         }),
       )

@@ -38,16 +38,16 @@ describe('an OpenID Connect entrance', () => {
 
   it('names the issuer and the client as whose accounts it speaks for, and nothing else', () => {
     const provisioning = driver.provisioning
-    expect(provisioning.mode === 'tenant-managed' && provisioning.entrance.identityNamespaceKeys).toEqual([
-      'issuer',
-      'clientId',
-    ])
+    expect(
+      provisioning.mode === 'tenant-managed' && provisioning.entrance.identityNamespaceKeys,
+    ).toEqual(['issuer', 'clientId'])
   })
 
   it('tells a provider that refused from one that could not be asked', () => {
-    expect(sortFailure({ name: 'ResponseBodyError', code: 'OAUTH_RESPONSE_BODY_ERROR', status: 400 }).kind).toBe(
-      'rejected',
-    )
+    expect(
+      sortFailure({ name: 'ResponseBodyError', code: 'OAUTH_RESPONSE_BODY_ERROR', status: 400 })
+        .kind,
+    ).toBe('rejected')
     expect(sortFailure({ name: 'ResponseBodyError', status: 503 }).kind).toBe('unavailable')
     expect(
       sortFailure({ name: 'ClientError', cause: { _tag: 'OutboundRefused', reason: 'metadata' } }),

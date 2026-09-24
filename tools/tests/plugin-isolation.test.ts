@@ -373,8 +373,10 @@ const CROSS_PLUGIN_SURFACES: Readonly<Record<string, string>> = {
   '@qualy/plugin-mail/server': 'the mail capability: the registry a backend registers into',
   '@qualy/plugin-rum/server': 'the reporting capability',
   '@qualy/plugin-rum/client': 'the provider registry a reporting provider registers into',
-  '@qualy/plugin-captcha/server': 'the challenge capability: the guard a caller asks, the registry a provider registers into',
-  '@qualy/plugin-captcha/client': 'the challenge host a caller renders, the registry a provider registers into',
+  '@qualy/plugin-captcha/server':
+    'the challenge capability: the guard a caller asks, the registry a provider registers into',
+  '@qualy/plugin-captcha/client':
+    'the challenge host a caller renders, the registry a provider registers into',
   '@qualy/plugin-captcha/contract': 'the proof a request carries and the refusal that asks for one',
   '@qualy/plugin-settings/client/terms': 'the hook every screen reads a tenant word through',
   '@qualy/plugin-sandbox/service': 'the sandbox capability',

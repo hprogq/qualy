@@ -9,10 +9,17 @@ import type { EntitySchema } from '@mikro-orm/core'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { requestContext } from '@qualy/api-kit/request'
 import { Api } from '@qualy/api-kit/plugin'
-import { loginDriversLayer, registerLoginDriver, type LoginSessions } from '@qualy/auth-contract/login'
+import {
+  loginDriversLayer,
+  registerLoginDriver,
+  type LoginSessions,
+} from '@qualy/auth-contract/login'
 import { sessionCookieName } from '@qualy/auth-contract/session'
 import { hashPassword } from '@qualy/plugin-auth-local/password'
-import { apiHandlers as authLocalApiHandlers, driver as localDriver } from '@qualy/plugin-auth-local'
+import {
+  apiHandlers as authLocalApiHandlers,
+  driver as localDriver,
+} from '@qualy/plugin-auth-local'
 import { authLocalApiGroup } from '@qualy/plugin-auth-local/api'
 import { secretsLayer } from '@qualy/plugin-secrets/testkit'
 import type { Secrets } from '@qualy/plugin-secrets/plugin'
@@ -80,7 +87,9 @@ export const startSignInServer = async (input: {
     Layer.provide(sessionLayer.pipe(Layer.provide(Layer.mergeAll(infra, authConfig)))),
   )
   const application = HttpRouter.serve(
-    HttpApiBuilder.layer(Api.local(sessionApiGroup, authLocalApiGroup)).pipe(Layer.provide(handlers)),
+    HttpApiBuilder.layer(Api.local(sessionApiGroup, authLocalApiGroup)).pipe(
+      Layer.provide(handlers),
+    ),
     { middleware: requestContext() },
   ).pipe(
     Layer.provide(signIn),

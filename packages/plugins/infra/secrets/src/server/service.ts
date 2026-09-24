@@ -30,8 +30,7 @@ export const serviceLayer: Layer.Layer<Secrets, never, Orm | SecretsConfig> = La
     const fingerprintKey = Buffer.from(
       hkdfSync('sha256', key(), Buffer.alloc(0), FINGERPRINT_INFO, 32),
     )
-    const run = <A>(effect: Effect.Effect<A, QueryFailed, Orm>) =>
-      withDb(effect).pipe(Effect.orDie)
+    const run = <A>(effect: Effect.Effect<A, QueryFailed, Orm>) => withDb(effect).pipe(Effect.orDie)
 
     const rowOf = (ref: SecretRef) =>
       run(
@@ -145,7 +144,11 @@ export const serviceLayer: Layer.Layer<Secrets, never, Orm | SecretsConfig> = La
 
       fingerprint: (scope: string, value: string) =>
         Effect.sync(() =>
-          createHmac('sha256', fingerprintKey).update(scope).update('\0').update(value).digest('hex'),
+          createHmac('sha256', fingerprintKey)
+            .update(scope)
+            .update('\0')
+            .update(value)
+            .digest('hex'),
         ),
 
       deriveSecret: (domain: string) =>

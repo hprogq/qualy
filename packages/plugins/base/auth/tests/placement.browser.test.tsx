@@ -83,10 +83,38 @@ const open = (stubs: Record<string, unknown> = {}) =>
             userTypes: [],
             nodes: [
               // the top is readable and not this reader's to place into
-              unit({ orgNodeId: ROOT, name: '示例大学', parentId: null, depth: 0, orgTypeId: SCHOOL, manageable: false }),
-              unit({ orgNodeId: COLLEGE, name: '软件学院', parentId: ROOT, depth: 1, orgTypeId: COLLEGE_TYPE, manageable: true }),
-              unit({ orgNodeId: KLASS, name: '软件2301班', parentId: COLLEGE, depth: 2, orgTypeId: CLASS_TYPE, manageable: true }),
-              unit({ orgNodeId: SIBLING, name: '软件2302班', parentId: COLLEGE, depth: 2, orgTypeId: CLASS_TYPE, manageable: true }),
+              unit({
+                orgNodeId: ROOT,
+                name: '示例大学',
+                parentId: null,
+                depth: 0,
+                orgTypeId: SCHOOL,
+                manageable: false,
+              }),
+              unit({
+                orgNodeId: COLLEGE,
+                name: '软件学院',
+                parentId: ROOT,
+                depth: 1,
+                orgTypeId: COLLEGE_TYPE,
+                manageable: true,
+              }),
+              unit({
+                orgNodeId: KLASS,
+                name: '软件2301班',
+                parentId: COLLEGE,
+                depth: 2,
+                orgTypeId: CLASS_TYPE,
+                manageable: true,
+              }),
+              unit({
+                orgNodeId: SIBLING,
+                name: '软件2302班',
+                parentId: COLLEGE,
+                depth: 2,
+                orgTypeId: CLASS_TYPE,
+                manageable: true,
+              }),
             ],
           }),
         ...stubs,
@@ -94,7 +122,11 @@ const open = (stubs: Record<string, unknown> = {}) =>
     } as never),
     // the picker arrives the way the host delivers it, by surface
     registry: {
-      slots: { 'iam/org-node-picker': { 'auth/org-node-picker': lazy(async () => ({ default: OrgNodePicker })) } } as never,
+      slots: {
+        'iam/org-node-picker': {
+          'auth/org-node-picker': lazy(async () => ({ default: OrgNodePicker })),
+        },
+      } as never,
     },
     path: '/organization/users/:userId/organization',
     route: `/organization/users/${USER_ID}/organization`,

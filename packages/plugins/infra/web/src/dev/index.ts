@@ -52,7 +52,8 @@ export const viteLogger = Effect.gen(function* () {
   }
   // vite pads a coloured word with a space inside the colour, so taking the
   // colour away leaves doubled spaces behind it
-  const plain = (message: string) => stripVTControlCharacters(message).replace(/ {2,}/g, ' ').trimEnd()
+  const plain = (message: string) =>
+    stripVTControlCharacters(message).replace(/ {2,}/g, ' ').trimEnd()
   // vite reads this back to decide whether a run "had warnings", so it is
   // state the adapter owns rather than something it can forward
   const state = { warned: false }

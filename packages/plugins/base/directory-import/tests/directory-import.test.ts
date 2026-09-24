@@ -122,10 +122,8 @@ const stack = (url: string) => {
   return serviceLayer.pipe(Layer.provideMerge(withStorage))
 }
 
-const run = <A, E>(
-  url: string,
-  effect: Effect.Effect<A, E, DirectoryImport | Storage | Orm>,
-) => Effect.runPromiseExit(Effect.provide(effect, stack(url)))
+const run = <A, E>(url: string, effect: Effect.Effect<A, E, DirectoryImport | Storage | Orm>) =>
+  Effect.runPromiseExit(Effect.provide(effect, stack(url)))
 
 const ok = <A, E>(exit: Exit.Exit<A, E>): A => {
   if (Exit.isSuccess(exit)) return exit.value
@@ -206,7 +204,13 @@ const seed = Effect.fn('seed')(function* (slug: string) {
       insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
       values (${tenant}, 'dir', 'Directory', 'org', 'active', 'explicit', 'allow-list') returning id`),
   ).id
-  for (const code of ['auth.user.manage', 'auth.user.delete', 'auth.user.read', 'org.tree.manage', 'org.tree.read']) {
+  for (const code of [
+    'auth.user.manage',
+    'auth.user.delete',
+    'auth.user.read',
+    'org.tree.manage',
+    'org.tree.read',
+  ]) {
     const permission = one<{ id: string }>(
       yield* runSql(sql`
         insert into permissions (code, plugin, name, target_kind)
@@ -221,7 +225,14 @@ const seed = Effect.fn('seed')(function* (slug: string) {
     insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
     values (${tenant}, ${admin}, ${role}, ${root}, 'subtree')`)
   const principal: Principal = { tenantId: tenant, userId: admin, sessionId: admin }
-  return { tenant, root, software, types: { school, college, grade, klass }, student, admin: principal }
+  return {
+    tenant,
+    root,
+    software,
+    types: { school, college, grade, klass },
+    student,
+    admin: principal,
+  }
 })
 
 /** a spreadsheet staged the way a browser stages one */
@@ -313,7 +324,17 @@ describe.runIf(postgresAvailable)('importing people from a spreadsheet', () => {
           const detail = yield* service.detail(f.tenant, done.importId, f.admin)
           const rows = yield* service.rows(f.tenant, done.importId, {}, f.admin)
           const listed = yield* service.list(f.tenant, {}, f.admin)
-          return { inspected, preview, done, again: tagOf(again), people: people.rows, nodes: nodes.rows, detail, rows, listed }
+          return {
+            inspected,
+            preview,
+            done,
+            again: tagOf(again),
+            people: people.rows,
+            nodes: nodes.rows,
+            detail,
+            rows,
+            listed,
+          }
         }),
       ),
     )
@@ -333,10 +354,21 @@ describe.runIf(postgresAvailable)('importing people from a spreadsheet', () => {
       '示例大学 / 软件学院 / 2023级 / 1班',
       '示例大学 / 软件学院 / 2023级 / 2班',
     ])
-    expect(result.done).toMatchObject({ createdUsers: 3, existingUsers: 0, createdNodes: 3, reusedNodes: 0 })
+    expect(result.done).toMatchObject({
+      createdUsers: 3,
+      existingUsers: 0,
+      createdNodes: 3,
+      reusedNodes: 0,
+    })
     // one upload, one import
     expect(result.again).toBe('USER_IMPORT_SOURCE_USED')
-    expect(result.nodes.map((node) => node.name)).toEqual(['示例大学', '软件学院', '2023级', '1班', '2班'])
+    expect(result.nodes.map((node) => node.name)).toEqual([
+      '示例大学',
+      '软件学院',
+      '2023级',
+      '1班',
+      '2班',
+    ])
     expect(result.people.map((person) => person.display_name)).toEqual(['张三', '李四', '王五'])
     expect(result.detail.import.standing).toEqual({ living: 3, deleted: 0 })
     expect(result.detail.nodes.map((node) => [node.disposition, node.present])).toEqual([
@@ -344,11 +376,13 @@ describe.runIf(postgresAvailable)('importing people from a spreadsheet', () => {
       ['created', true],
       ['created', true],
     ])
-    expect(result.rows.items.map((row) => [row.businessNo, row.disposition, row.standing])).toEqual([
-      ['230101', 'created', 'active'],
-      ['230102', 'created', 'active'],
-      ['230103', 'created', 'active'],
-    ])
+    expect(result.rows.items.map((row) => [row.businessNo, row.disposition, row.standing])).toEqual(
+      [
+        ['230101', 'created', 'active'],
+        ['230102', 'created', 'active'],
+        ['230103', 'created', 'active'],
+      ],
+    )
     expect(result.listed.items.map((item) => item.id)).toEqual([result.done.importId])
   }, 120_000)
 
@@ -403,10 +437,12 @@ describe.runIf(postgresAvailable)('importing people from a spreadsheet', () => {
       ),
     )
     expect(result.preview.users).toEqual({ create: 0, existing: 1, warnings: 0, errors: 2 })
-    expect(result.preview.issues.map((issue) => [issue.rowNo, issue.reason, issue.detail])).toEqual([
-      [4, 'business-no-required', undefined],
-      [3, 'user-conflict', 'organization'],
-    ])
+    expect(result.preview.issues.map((issue) => [issue.rowNo, issue.reason, issue.detail])).toEqual(
+      [
+        [4, 'business-no-required', undefined],
+        [3, 'user-conflict', 'organization'],
+      ],
+    )
     expect(result.refused).toBe('USER_IMPORT_INVALID')
     // the administrator and the two already there: nothing else was written
     expect(result.count).toBe(3)
@@ -449,16 +485,27 @@ describe.runIf(postgresAvailable)('importing people from a spreadsheet', () => {
           )
           // somebody else moves into one of the new classes by hand
           const twoBan = one<{ id: string }>(
-            yield* runSql(sql`select id from org_nodes where tenant_id = ${f.tenant} and name = '2班'`),
+            yield* runSql(
+              sql`select id from org_nodes where tenant_id = ${f.tenant} and name = '2班'`,
+            ),
           ).id
           yield* runSql(sql`
             insert into users (tenant_id, display_name, user_type_id, primary_org_node_id, business_no)
             values (${f.tenant}, '手工', ${f.student}, ${twoBan}, 'manual')`)
           const before = yield* service.reversalPreview(f.tenant, done.importId, f.admin)
-          const reversed = yield* service.reverse(f.tenant, done.importId, { reason: '名单用错了' }, f.admin)
+          const reversed = yield* service.reverse(
+            f.tenant,
+            done.importId,
+            { reason: '名单用错了' },
+            f.admin,
+          )
           const cleaned = yield* service.cleanNodes(f.tenant, done.importId, f.admin)
           const detail = yield* service.detail(f.tenant, done.importId, f.admin)
-          const gone = yield* runSql<{ display_name: string; deleted: boolean; enabled: boolean }>(sql`
+          const gone = yield* runSql<{
+            display_name: string
+            deleted: boolean
+            enabled: boolean
+          }>(sql`
             select display_name, deleted_at is not null as deleted, enabled
               from users where tenant_id = ${f.tenant} and user_type_id = ${f.student}
              order by business_no`)
@@ -498,14 +545,18 @@ describe.runIf(postgresAvailable)('importing people from a spreadsheet', () => {
     // 1班 had nobody left and went; 2班 keeps its manual person, so it and
     // the grade above it stay
     expect(result.cleaned.deleted).toBe(1)
-    expect(result.cleaned.retained.map((node) => [node.path.split(' / ').at(-1), node.reason])).toEqual([
+    expect(
+      result.cleaned.retained.map((node) => [node.path.split(' / ').at(-1), node.reason]),
+    ).toEqual([
       ['2班', 'in-use'],
       ['2023级', 'has-children'],
     ])
     expect(result.nodes).toEqual(['示例大学', '软件学院', '2023级', '2班'])
     expect(result.detail.import.standing).toEqual({ living: 0, deleted: 2 })
     expect(result.detail.events.map((event) => event.kind)).toEqual(['nodes-cleaned', 'reversed'])
-    expect(result.detail.nodes.map((node) => [node.path.split(' / ').at(-1), node.present])).toEqual([
+    expect(
+      result.detail.nodes.map((node) => [node.path.split(' / ').at(-1), node.present]),
+    ).toEqual([
       ['2023级', true],
       ['1班', false],
       ['2班', true],

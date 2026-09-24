@@ -2,7 +2,12 @@ import { Layer } from 'effect'
 import { Plugin } from '@qualy/plugin-kit'
 import { Browser } from '@qualy/plugin-kit/browser'
 import { Captcha } from '@qualy/plugin-captcha/plugin'
-import { config, fetchTransportLayer, registrationLayer, TURNSTILE_PROVIDER } from './server/index.ts'
+import {
+  config,
+  fetchTransportLayer,
+  registrationLayer,
+  TURNSTILE_PROVIDER,
+} from './server/index.ts'
 
 // Cloudflare Turnstile as the deployment's challenge provider - for a
 // deployment Cloudflare serves, which mainland China is not; ALTCHA is the

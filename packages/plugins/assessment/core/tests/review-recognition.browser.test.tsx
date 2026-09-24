@@ -192,7 +192,10 @@ const stagedDecide = () =>
   vi.fn(() => Effect.succeed({ review: review({ state: 'completed', outcome: 'approved' }) }))
 
 const confirmAndWait = async (decided: ReturnType<typeof vi.fn>) => {
-  await page.getByRole('dialog').getByRole('button', { name: /^通过/ }).click()
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: /^通过/ })
+    .click()
   // through the 5-second undo window
   await vi.waitFor(() => expect(decided).toHaveBeenCalled(), { timeout: 8_000 })
 }

@@ -10,7 +10,6 @@ import { Authenticated } from '@qualy/auth-contract/session'
 // by operations, so this group offers a list and the catalog that explains
 // it, and nothing else - no update, no delete, ever.
 
-
 const outcome = Schema.Literals(['success', 'denied', 'failure'])
 
 /** one recorded operation, as the log screen shows it */

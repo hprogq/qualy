@@ -123,5 +123,4 @@ export const parseTyped = (
 }
 
 /** a value as a form box carries it */
-export const wireOf = (value: EntranceValue) =>
-  typeof value === 'string' ? value : String(value)
+export const wireOf = (value: EntranceValue) => (typeof value === 'string' ? value : String(value))

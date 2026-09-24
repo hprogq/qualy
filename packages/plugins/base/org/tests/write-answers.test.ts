@@ -42,7 +42,13 @@ import { captchaLayer } from '@qualy/plugin-captcha/testkit'
 // a defect. Both are about the sentence a committed or refused write says,
 // which no other suite here looks at.
 
-const closure = [...orgEntities, ...authEntities, ...rbacEntities, ...auditEntities, ...secretsEntities] as const
+const closure = [
+  ...orgEntities,
+  ...authEntities,
+  ...rbacEntities,
+  ...auditEntities,
+  ...secretsEntities,
+] as const
 
 const catalog = compileCatalog([
   { owner: 'org', permissions: orgPermissions },

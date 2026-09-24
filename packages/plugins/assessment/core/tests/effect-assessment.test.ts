@@ -1266,7 +1266,9 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     expect(timelineArchived.every((entry) => entry.status === 'ended')).toBe(true)
     expect(
       reasonsOf(backwards)
-        .flatMap((entry) => (entry.error as { refusals?: readonly { reason: string }[] }).refusals ?? [])
+        .flatMap(
+          (entry) => (entry.error as { refusals?: readonly { reason: string }[] }).refusals ?? [],
+        )
         .map((one) => one.reason),
     ).toEqual(['planned-not-in-future'])
     // and a stage in next week's diary opens nothing today
@@ -2280,7 +2282,12 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           f.principal,
         )
         const ask = (userIds: readonly string[]) =>
-          assessment.staffOptions(f.tenant, batch.id, { userIds, orgNodeIds: [f.class1] }, f.principal)
+          assessment.staffOptions(
+            f.tenant,
+            batch.id,
+            { userIds, orgNodeIds: [f.class1] },
+            f.principal,
+          )
         const teacherOnly = yield* ask([f.t1])
         const withAStudent = yield* ask([f.t1, f.s1])
         // and the write is the same answer, which is what the list is for
@@ -2901,7 +2908,7 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     expect(Object.keys(events[1]!.diff)).toEqual(['phasePlan'])
   })
 
-  it("keeps the tenant timetable out of one unit administrator hands", async () => {
+  it('keeps the tenant timetable out of one unit administrator hands', async () => {
     const exit = await run(
       db.url,
       Effect.gen(function* () {

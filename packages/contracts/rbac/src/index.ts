@@ -10,7 +10,8 @@ export { scopeCoverage, scopeCoverageAtLeast, type OrgNodeRef } from './scope.ts
 // one grant of one role to one user. A tenant role reaches the whole tenant
 // and carries no node; an org role is anchored and carries both.
 export type GrantTarget =
-  { kind: 'tenant' } | { kind: 'org-node'; orgNodeId: string; coverage: 'self' | 'subtree' }
+  | { kind: 'tenant' }
+  | { kind: 'org-node'; orgNodeId: string; coverage: 'self' | 'subtree' }
 
 export interface GrantInput {
   tenantId: string

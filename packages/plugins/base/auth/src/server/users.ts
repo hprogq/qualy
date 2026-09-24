@@ -273,12 +273,12 @@ const listUsers = (
       return {
         items: [],
         total: Number(
-            (
-              await found
-                .clearSelect()
-                .select((eb) => eb.fn.countAll<string>().as('count'))
-                .executeTakeFirstOrThrow()
-            ).count,
+          (
+            await found
+              .clearSelect()
+              .select((eb) => eb.fn.countAll<string>().as('count'))
+              .executeTakeFirstOrThrow()
+          ).count,
         ),
       }
     }
@@ -930,12 +930,15 @@ export const make = Effect.fn('Iam.users.make')(function* () {
             let type = types.get(row.userTypeId)
             if (type === undefined) {
               const found = yield* userTypeGuard(tenantId, row.userTypeId)
-              if (!found) return yield* new UserProvisioningRefused({ index, reason: 'type-missing' })
+              if (!found)
+                return yield* new UserProvisioningRefused({ index, reason: 'type-missing' })
               types.set(row.userTypeId, found)
               type = found
             }
-            if (!type.enabled) return yield* new UserProvisioningRefused({ index, reason: 'type-disabled' })
-            if (type.isSystem) return yield* new UserProvisioningRefused({ index, reason: 'type-system' })
+            if (!type.enabled)
+              return yield* new UserProvisioningRefused({ index, reason: 'type-disabled' })
+            if (type.isSystem)
+              return yield* new UserProvisioningRefused({ index, reason: 'type-system' })
           }
           const placements = new Map<string, boolean | undefined>()
           for (const [index, row] of rows.entries()) {
@@ -1252,7 +1255,8 @@ export const make = Effect.fn('Iam.users.make')(function* () {
                     .returning('id')
                     .executeTakeFirstOrThrow(),
                 )).id
-          const endedSessions = standing === undefined ? 0 : yield* deleteUserSessions(tenantId, userId)
+          const endedSessions =
+            standing === undefined ? 0 : yield* deleteUserSessions(tenantId, userId)
           yield* audit.record(BindingWritten, {
             tenantId,
             actor: yield* actorOf(tenantId, as),
@@ -1396,10 +1400,12 @@ export const make = Effect.fn('Iam.users.make')(function* () {
           // the business-number and email indexes are only reachable from
           // the two statements that write them, so their translation lives
           // with them
-        }).pipe(translateConstraints<UserConflict | UserEmailConflict>({
+        }).pipe(
+          translateConstraints<UserConflict | UserEmailConflict>({
             ...businessNoConstraints,
             ...emailConstraints,
-          })),
+          }),
+        ),
       )
     }),
 
@@ -1484,10 +1490,12 @@ export const make = Effect.fn('Iam.users.make')(function* () {
           // a type change can move the last administrator onto a type that
           // cannot sign in at all
           if (changingType) yield* rbac.assertTenantKeepsAdministrator(tenantId)
-        }).pipe(translateConstraints<UserConflict | UserEmailConflict>({
+        }).pipe(
+          translateConstraints<UserConflict | UserEmailConflict>({
             ...businessNoConstraints,
             ...emailConstraints,
-          })),
+          }),
+        ),
       )
     }),
 

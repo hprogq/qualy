@@ -305,7 +305,10 @@ describe('the formula language service', { concurrent: false }, () => {
           (typed.params?.diagnostics?.length ?? 0) > 0
         )
       })) as {
-        params: { version?: number; diagnostics: { code: string; source: string; message: string }[] }
+        params: {
+          version?: number
+          diagnostics: { code: string; source: string; message: string }[]
+        }
       }
       const codes = refusals.params.diagnostics.map((diagnostic) => diagnostic.code)
       expect(codes).toContain('formula/import')

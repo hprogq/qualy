@@ -42,7 +42,11 @@ export interface QualyServer {
   readonly stop: (options?: {
     readonly timeoutMs?: number
     readonly signal?: 'SIGTERM' | 'SIGINT'
-  }) => Promise<{ readonly exitCode: number | null; readonly timedOut: boolean; readonly ms: number }>
+  }) => Promise<{
+    readonly exitCode: number | null
+    readonly timedOut: boolean
+    readonly ms: number
+  }>
   readonly kill: () => void
 }
 
@@ -83,7 +87,8 @@ export const startQualyServer = (options: QualyServerOptions): QualyServer => {
   // relay nobody listens on is enough for every tool that only starts the
   // process; a tool about mail passes its own.
   const mail =
-    'QUALY_MAIL_SMTP_HOST' in (options.env ?? {}) || process.env['QUALY_MAIL_SMTP_HOST'] !== undefined
+    'QUALY_MAIL_SMTP_HOST' in (options.env ?? {}) ||
+    process.env['QUALY_MAIL_SMTP_HOST'] !== undefined
       ? {}
       : {
           QUALY_MAIL_FROM: 'Qualy <no-reply@qualy.invalid>',

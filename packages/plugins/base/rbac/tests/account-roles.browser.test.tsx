@@ -7,12 +7,20 @@ import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 // The reader's own roles: where each holds, and what it lets them do by
 // name - a long list folded, a role that carries everything said once.
 
-const power = (n: number) => ({ code: `x.${String(n)}`, name: { kind: 'literal' as const, value: `权限${String(n)}` } })
+const power = (n: number) => ({
+  code: `x.${String(n)}`,
+  name: { kind: 'literal' as const, value: `权限${String(n)}` },
+})
 
 const role = (over: Record<string, unknown>) => ({
   grantId: 'g',
   roleName: '辅导员',
-  target: { kind: 'org-node' as const, orgNodeId: 'n', orgNodeName: '软件学院', coverage: 'subtree' as const },
+  target: {
+    kind: 'org-node' as const,
+    orgNodeId: 'n',
+    orgNodeName: '软件学院',
+    coverage: 'subtree' as const,
+  },
   resource: null,
   validFrom: null,
   validUntil: null,
@@ -30,7 +38,10 @@ describe('the reader’s roles', () => {
           listSelfRoles: () =>
             Effect.succeed({
               roles: [
-                role({ grantId: 'g1', permissions: Array.from({ length: 12 }, (_, n) => power(n)) }),
+                role({
+                  grantId: 'g1',
+                  permissions: Array.from({ length: 12 }, (_, n) => power(n)),
+                }),
                 role({
                   grantId: 'g2',
                   roleName: '系统管理员',

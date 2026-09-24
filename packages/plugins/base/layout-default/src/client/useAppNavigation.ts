@@ -128,7 +128,10 @@ export function useAppNavigation(): AppNavigation {
   return {
     apps: all,
     activeApp: active?.id,
-    sections: sectionGroups.length > 0 ? sectionGroups.flatMap((group) => group.items) : (active?.items ?? []),
+    sections:
+      sectionGroups.length > 0
+        ? sectionGroups.flatMap((group) => group.items)
+        : (active?.items ?? []),
     sectionGroups,
   }
 }

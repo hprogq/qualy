@@ -106,7 +106,10 @@ const fields: readonly EntranceField[] = [
   {
     key: 'loginUrl',
     label: say('field/login-url', 'Sign-in address'),
-    hint: say('field/custom-hint', 'Leave empty to use the CAS 3.0 address under the server address'),
+    hint: say(
+      'field/custom-hint',
+      'Leave empty to use the CAS 3.0 address under the server address',
+    ),
     kind: 'url',
     required: false,
     section: 'advanced',
@@ -115,7 +118,10 @@ const fields: readonly EntranceField[] = [
   {
     key: 'validateUrl',
     label: say('field/validate-url', 'Ticket validation address'),
-    hint: say('field/custom-hint', 'Leave empty to use the CAS 3.0 address under the server address'),
+    hint: say(
+      'field/custom-hint',
+      'Leave empty to use the CAS 3.0 address under the server address',
+    ),
     kind: 'url',
     required: false,
     section: 'advanced',
@@ -269,9 +275,9 @@ const handlers = HttpApiBuilder.group(local, 'authCas', (handlers) =>
           return failed(new CasUpstreamUnavailable())
         }
         if (answer.kind === 'unreadable') {
-          yield* Effect.logWarning('cas validation answered in a form this driver cannot read').pipe(
-            Effect.annotateLogs({ provider: provider.code }),
-          )
+          yield* Effect.logWarning(
+            'cas validation answered in a form this driver cannot read',
+          ).pipe(Effect.annotateLogs({ provider: provider.code }))
           yield* sessions.failAttempt(provider, { reason: 'external-invalid' })
           return failed(new CasResponseInvalid())
         }

@@ -101,7 +101,17 @@ const oneProvider = (tenantId: string, providerId: string) =>
   db.query((k) =>
     k
       .selectFrom('AuthProvider')
-      .select(['id', 'tenantId', 'code', 'name', 'version', 'type', 'config', 'enabled', 'isSystem'])
+      .select([
+        'id',
+        'tenantId',
+        'code',
+        'name',
+        'version',
+        'type',
+        'config',
+        'enabled',
+        'isSystem',
+      ])
       .where('tenantId', '=', tenantId)
       .where('id', '=', providerId)
       .where('deletedAt', 'is', null)
@@ -166,7 +176,10 @@ const usageOf = (tenantId: string, providerId: string) =>
         .executeTakeFirstOrThrow(),
     )
     .pipe(
-      Effect.map((row) => ({ bindings: Number(row.bindings ?? 0), sessions: Number(row.sessions ?? 0) })),
+      Effect.map((row) => ({
+        bindings: Number(row.bindings ?? 0),
+        sessions: Number(row.sessions ?? 0),
+      })),
     )
 
 const replaceAudience = (
@@ -228,9 +241,7 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
    * Whether the tenant can still recover itself on the state being
    * committed: asked after every write that could close its door.
    */
-  const recoveryRemains = Effect.fn('Iam.providers.recoveryRemains')(function* (
-    tenantId: string,
-  ) {
+  const recoveryRemains = Effect.fn('Iam.providers.recoveryRemains')(function* (tenantId: string) {
     const doorTypes = recoveryDoorTypes(yield* drivers.all)
     if (!(yield* recoveryChannelIntact(tenantId, doorTypes, readiness))) {
       return yield* new RecoveryChannelRequired()
@@ -312,13 +323,21 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
                   visibleWhen:
                     field.visibleWhen === undefined
                       ? null
-                      : { field: field.visibleWhen.field, equals: wireOf(field.visibleWhen.equals) },
+                      : {
+                          field: field.visibleWhen.field,
+                          equals: wireOf(field.visibleWhen.equals),
+                        },
                   options:
                     field.kind === 'choice'
-                      ? field.options.map((option) => ({ value: option.value, label: option.label }))
+                      ? field.options.map((option) => ({
+                          value: option.value,
+                          label: option.label,
+                        }))
                       : [],
                   defaultValue:
-                    (field.kind === 'choice' || field.kind === 'toggle' || field.kind === 'number') &&
+                    (field.kind === 'choice' ||
+                      field.kind === 'toggle' ||
+                      field.kind === 'number') &&
                     field.defaultValue !== undefined
                       ? wireOf(field.defaultValue)
                       : null,
@@ -444,10 +463,14 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
               let derived: Readonly<Record<string, unknown>> | undefined
               if (kind.prepareConfig !== undefined) {
                 const prepared = yield* kind.prepareConfig({ values: shown })
-                if (!prepared.ok) return yield* new ProviderConfigInvalid({ field: prepared.invalid })
+                if (!prepared.ok)
+                  return yield* new ProviderConfigInvalid({ field: prepared.invalid })
                 derived = prepared.derived
               }
-              config = { ...next, ...(derived === undefined ? {} : { [DERIVED_CONFIG_KEY]: derived }) }
+              config = {
+                ...next,
+                ...(derived === undefined ? {} : { [DERIVED_CONFIG_KEY]: derived }),
+              }
               // whose accounts the door speaks for is fixed once anybody's is bound
               const before = effectiveValues(kind, previous)
               const moved = (kind.identityNamespaceKeys ?? []).find(
@@ -651,7 +674,9 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
           const standing = yield* providerRows(tenantId)
           const known = new Set(standing.map((row) => row.id))
           const primary = [...new Set(arrangement.primary)]
-          const secondary = [...new Set(arrangement.secondary)].filter((id) => !primary.includes(id))
+          const secondary = [...new Set(arrangement.secondary)].filter(
+            (id) => !primary.includes(id),
+          )
           const asked = [...primary, ...secondary]
           if (asked.length !== standing.length || asked.some((id) => !known.has(id))) {
             return yield* new ProviderNotFound()
@@ -729,10 +754,7 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
           yield* audit.record(ProviderRecommended, {
             tenantId,
             actor: yield* actorOf(tenantId, as),
-            target:
-              chosen === undefined
-                ? { id: tenantId }
-                : { id: chosen.id, label: chosen.name },
+            target: chosen === undefined ? { id: tenantId } : { id: chosen.id, label: chosen.name },
             details: { providerId: chosen?.id ?? null },
           })
         }),

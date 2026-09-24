@@ -575,8 +575,7 @@ export function ResultLedger({
                 key={share.id}
                 share={Math.min(100, (share.part / denominator) * 100)}
                 className={
-                  stylex.props(styles.segment, SEGMENT_INKS[index % SEGMENT_INKS.length])
-                    .className
+                  stylex.props(styles.segment, SEGMENT_INKS[index % SEGMENT_INKS.length]).className
                 }
               />
             ))}
@@ -633,9 +632,7 @@ export function ResultLedger({
               <span {...stylex.props(styles.figure)}>{format(m.resultGroupItems)}</span>
               <span {...stylex.props(styles.figure)}>{format(m.resultGroupChildren)}</span>
             </span>
-            <span {...stylex.props(styles.figure, styles.atEnd)}>
-              {format(m.resultGroupFinal)}
-            </span>
+            <span {...stylex.props(styles.figure, styles.atEnd)}>{format(m.resultGroupFinal)}</span>
           </div>
           {groups.map((group) => {
             const lines = result.lines.filter(
@@ -663,9 +660,7 @@ export function ResultLedger({
             )
           })}
           <div {...stylex.props(styles.cols, styles.ledgerFoot)}>
-            <span {...stylex.props(styles.footLabel, styles.atStart)}>
-              {format(m.resultTotal)}
-            </span>
+            <span {...stylex.props(styles.footLabel, styles.atStart)}>{format(m.resultTotal)}</span>
             <span {...stylex.props(styles.midBlank)}>
               <span />
               <span />

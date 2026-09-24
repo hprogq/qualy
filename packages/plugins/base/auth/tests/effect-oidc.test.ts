@@ -114,7 +114,13 @@ const json = (response: ServerResponse, status: number, body: unknown) => {
   response.end(JSON.stringify(body))
 }
 
-const answer = async (method: string, url: URL, headers: Record<string, unknown>, body: string, response: ServerResponse) => {
+const answer = async (
+  method: string,
+  url: URL,
+  headers: Record<string, unknown>,
+  body: string,
+  response: ServerResponse,
+) => {
   op.seen.push(`${method} ${url.pathname}`)
   if (url.pathname === '/.well-known/openid-configuration') {
     return json(response, 200, {
@@ -208,7 +214,12 @@ beforeAll(async () => {
     true,
     ['sign', 'verify'],
   )) as webcrypto.CryptoKeyPair
-  op.jwk = { ...(await webcrypto.subtle.exportKey('jwk', op.keys.publicKey)), kid: 'k1', alg: 'RS256', use: 'sig' }
+  op.jwk = {
+    ...(await webcrypto.subtle.exportKey('jwk', op.keys.publicKey)),
+    kid: 'k1',
+    alg: 'RS256',
+    use: 'sig',
+  }
   op.server = createPlainServer((request, response) => {
     let body = ''
     request.on('data', (chunk: Buffer) => (body += chunk.toString()))
@@ -277,10 +288,14 @@ beforeAll(async () => {
   const seeded = await Effect.runPromise(
     Effect.gen(function* () {
       const tenant = one<{ id: string }>(
-        yield* runSql(sql`insert into tenants (slug, name) values ('default','Default') returning id`),
+        yield* runSql(
+          sql`insert into tenants (slug, name) values ('default','Default') returning id`,
+        ),
       ).id
       const orgType = one<{ id: string }>(
-        yield* runSql(sql`insert into org_types (tenant_id, name) values (${tenant}, 'U') returning id`),
+        yield* runSql(
+          sql`insert into org_types (tenant_id, name) values (${tenant}, 'U') returning id`,
+        ),
       ).id
       const node = one<{ id: string }>(
         yield* runSql(sql`
@@ -404,15 +419,23 @@ describe.runIf(postgresAvailable)('an OpenID Connect account', () => {
 
   it('is bound by whoever began the bind, and signs them in by its sub', async () => {
     const cookie = await signedIn(ada)
-    const bind = await depart('op', `?intent=bind&returnTo=${encodeURIComponent('/account/logins')}`, cookie)
-    const bound = await visit(op.authorize(bind.away, { sub: 'sub-ada', preferred_username: 'ada.l' }))
+    const bind = await depart(
+      'op',
+      `?intent=bind&returnTo=${encodeURIComponent('/account/logins')}`,
+      cookie,
+    )
+    const bound = await visit(
+      op.authorize(bind.away, { sub: 'sub-ada', preferred_username: 'ada.l' }),
+    )
     expect(bound.status).toBe(303)
     expect(bound.headers.get('location')).toBe('/account/logins')
     expect(await labelOf()).toBe('ada.l')
 
     const login = await depart('op', '?returnTo=%2Fassessment')
     // the same sub under a new username: the account is the sub
-    const back = await visit(op.authorize(login.away, { sub: 'sub-ada', preferred_username: 'ada.renamed' }))
+    const back = await visit(
+      op.authorize(login.away, { sub: 'sub-ada', preferred_username: 'ada.renamed' }),
+    )
     expect(back.status).toBe(303)
     expect(back.headers.get('location')).toBe('/assessment')
     expect(back.headers.get('set-cookie')).toContain(`${sessionCookieName}=`)
@@ -479,10 +502,14 @@ describe.runIf(postgresAvailable)('an OpenID Connect account', () => {
     // Microsoft's codes run to thousands of characters, with a session marker beside them
     const { away } = await depart()
     const long = await visit(
-      op.authorize(away, { sub: 'sub-somebody' }, {
-        code: `c${'x'.repeat(4000)}`,
-        sessionState: '008cde9a-2e51-bdf4-ad65-bb981e0872cb',
-      }),
+      op.authorize(
+        away,
+        { sub: 'sub-somebody' },
+        {
+          code: `c${'x'.repeat(4000)}`,
+          sessionState: '008cde9a-2e51-bdf4-ad65-bb981e0872cb',
+        },
+      ),
     )
     // through the whole exchange: nobody bound that account here
     expect(long.status).toBe(303)

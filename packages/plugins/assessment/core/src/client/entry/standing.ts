@@ -135,7 +135,8 @@ export const mayFile = (item: ItemDto, entries: readonly EntryDto[]): boolean =>
 export const eachWorth = (item: ItemDto): string | undefined =>
   (
     item.currentRevision?.scoringConfig as
-      { calculator?: { config?: { value?: string } } } | undefined
+      | { calculator?: { config?: { value?: string } } }
+      | undefined
   )?.calculator?.config?.value
 
 /** how many people have to agree before a claim counts */

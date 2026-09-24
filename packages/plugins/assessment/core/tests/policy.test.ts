@@ -67,25 +67,21 @@ describe('the review policy shape', () => {
     expect(reasons(policy([stage()], [stage({ quorum: { type: 'all' } })]))).toContain(
       'policy-quorum-all-terminal',
     )
-    expect(
-      reasons(policy([stage()], [stage({ quorum: { type: 'all' } }), stage()])),
-    ).toEqual([])
+    expect(reasons(policy([stage()], [stage({ quorum: { type: 'all' } }), stage()]))).toEqual([])
   })
 
   it('refuses the quorums the engine cannot yet count, by their own name', () => {
     // atLeast's count is policy that must hold even when eligibility shrinks
     // the room, and no aggregation rule for it has been ruled
-    expect(
-      reasons(policy([stage({ quorum: { type: 'atLeast', count: 2 } })])),
-    ).toContain('policy-quorum-not-counted')
+    expect(reasons(policy([stage({ quorum: { type: 'atLeast', count: 2 } })]))).toContain(
+      'policy-quorum-not-counted',
+    )
   })
 
   it('takes a spoken name for a step, and refuses a blank one', () => {
     expect(reasons(policy([stage({ label: '班委初审' })]))).toEqual([])
     expect(reasons(policy([stage({ label: '   ' })]))).toContain('policy-label-invalid')
-    expect(reasons(policy([stage({ label: '名'.repeat(51) })]))).toContain(
-      'policy-label-invalid',
-    )
+    expect(reasons(policy([stage({ label: '名'.repeat(51) })]))).toContain('policy-label-invalid')
   })
 
   it('refuses everything outside the grammar, by name', () => {
@@ -95,27 +91,19 @@ describe('the review policy shape', () => {
         policy([{ id: 's', selector: { kind: 'whoeverIsAround' }, quorum: { type: 'any' } }]),
       ),
     ).toContain('policy-selector-kind')
-    expect(reasons(policy([stage({ quorum: { type: 'mostOf' } })]))).toContain(
-      'policy-quorum-type',
-    )
-    expect(reasons({ ...policy([stage()]), sideChain: {} })).toContain(
-      'policy-unknown-key',
-    )
+    expect(reasons(policy([stage({ quorum: { type: 'mostOf' } })]))).toContain('policy-quorum-type')
+    expect(reasons({ ...policy([stage()]), sideChain: {} })).toContain('policy-unknown-key')
   })
 
   it('refuses a policy written as one list with a marker in it', () => {
     // still read and still walked, never written again: accepting both
     // shapes is how the two routes would drift back into being a prefix of
     // one another (§32.62)
-    expect(reasons({ stages: [stage()], normalTerminal: 0 })).toEqual([
-      'policy-version-legacy',
-    ])
+    expect(reasons({ stages: [stage()], normalTerminal: 0 })).toEqual(['policy-version-legacy'])
   })
 
   it('insists every step is named, and named once', () => {
-    expect(reasons(policy([{ ...stage(), id: undefined }]))).toContain(
-      'policy-stage-id-required',
-    )
+    expect(reasons(policy([{ ...stage(), id: undefined }]))).toContain('policy-stage-id-required')
     expect(reasons(policy([{ ...stage(), id: 'Not A Name' }]))).toContain(
       'policy-stage-id-required',
     )

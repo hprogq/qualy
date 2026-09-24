@@ -96,12 +96,9 @@ describe.runIf(postgresAvailable)('what a shared formula does and does not grant
           const forAuthor = yield* mayBind(f.t, published.versionId, f.authorA)
 
           // B forks it and publishes the fork under their own name
-          const copy = yield* templates.copyTemplate(
-            f.t,
-            published.versionId,
-            viewer,
-            { name: '我的分叉' },
-          )
+          const copy = yield* templates.copyTemplate(f.t, published.versionId, viewer, {
+            name: '我的分叉',
+          })
           const forked = yield* addVersion(f.t, copy.functionId, f.authorB, 1)
           yield* runSql(sql`
             update assessment_formula_versions set published_at = now() where id = ${forked}`)
@@ -149,12 +146,9 @@ describe.runIf(postgresAvailable)('what a shared formula does and does not grant
 
           const published = yield* publishedVersion(f.t, f.authorA, '收回的共享')
           yield* offer(f.t, published.versionId, f.collegeA, f.authorA)
-          const copy = yield* templates.copyTemplate(
-            f.t,
-            published.versionId,
-            viewer,
-            { name: '仍然是我的' },
-          )
+          const copy = yield* templates.copyTemplate(f.t, published.versionId, viewer, {
+            name: '仍然是我的',
+          })
           const forked = yield* addVersion(f.t, copy.functionId, f.authorB, 1)
 
           // A withdraws the offer and archives the source behind it

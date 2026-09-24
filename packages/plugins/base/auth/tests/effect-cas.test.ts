@@ -85,7 +85,9 @@ const answerXml = (form: URLSearchParams) => {
     return `<cas:serviceResponse xmlns:cas="http://www.yale.edu/tp/cas"><cas:authenticationFailure code="INVALID_SERVICE">service mismatch</cas:authenticationFailure></cas:serviceResponse>`
   }
   const attributes = Object.entries(issued.attributes)
-    .flatMap(([name, values]) => values.map((value) => `<cas:${name}>${xmlEscape(value)}</cas:${name}>`))
+    .flatMap(([name, values]) =>
+      values.map((value) => `<cas:${name}>${xmlEscape(value)}</cas:${name}>`),
+    )
     .join('')
   return `<cas:serviceResponse xmlns:cas="http://www.yale.edu/tp/cas"><cas:authenticationSuccess><cas:user>${xmlEscape(issued.user)}</cas:user><cas:attributes>${attributes}</cas:attributes></cas:authenticationSuccess></cas:serviceResponse>`
 }
@@ -106,7 +108,11 @@ beforeAll(async () => {
     request.on('end', () => {
       const url = new URL(request.url ?? '/', 'http://cas.invalid')
       const form = request.method === 'POST' ? new URLSearchParams(body) : url.searchParams
-      cas.validations.push({ method: request.method ?? '', path: url.pathname, service: form.get('service') })
+      cas.validations.push({
+        method: request.method ?? '',
+        path: url.pathname,
+        service: form.get('service'),
+      })
       if (cas.mode === 'down') {
         response.writeHead(503)
         response.end()
@@ -170,10 +176,14 @@ beforeAll(async () => {
   const seeded = await Effect.runPromise(
     Effect.gen(function* () {
       const tenantId = one<{ id: string }>(
-        yield* runSql(sql`insert into tenants (slug, name) values ('default','Default') returning id`),
+        yield* runSql(
+          sql`insert into tenants (slug, name) values ('default','Default') returning id`,
+        ),
       ).id
       const orgType = one<{ id: string }>(
-        yield* runSql(sql`insert into org_types (tenant_id, name) values (${tenantId}, 'U') returning id`),
+        yield* runSql(
+          sql`insert into org_types (tenant_id, name) values (${tenantId}, 'U') returning id`,
+        ),
       ).id
       const node = one<{ id: string }>(
         yield* runSql(sql`
@@ -280,7 +290,9 @@ const latestEvent = () =>
 describe.runIf(postgresAvailable)('signing in through a CAS server', () => {
   it('is offered on the sign-in page as a way out to the server', async () => {
     const response = await fetch(`${base}/auth/login-methods`)
-    const body = (await response.json()) as { methods: { code: string; mode: string; href?: string }[] }
+    const body = (await response.json()) as {
+      methods: { code: string; mode: string; href?: string }[]
+    }
     expect(body.methods.find((method) => method.code === 'campus')).toMatchObject({
       mode: 'redirect',
       href: `${QUALY_API_PREFIX}/auth/cas/campus/start`,
@@ -297,9 +309,7 @@ describe.runIf(postgresAvailable)('signing in through a CAS server', () => {
     expect(back.headers.get('location')).toBe('/assessment/batches')
     expect(back.headers.get('set-cookie')).toContain(`${sessionCookieName}=`)
     // validated once, with the very string the flow was started with
-    expect(cas.validations).toEqual([
-      { method: 'GET', path: '/cas/p3/serviceValidate', service },
-    ])
+    expect(cas.validations).toEqual([{ method: 'GET', path: '/cas/p3/serviceValidate', service }])
     const event = await latestEvent()
     expect(event).toMatchObject({ outcome: 'success', user_id: userId })
 
@@ -358,11 +368,15 @@ describe.runIf(postgresAvailable)('signing in through a CAS server', () => {
     const refused = await comeBack(service, cas.issue(service, '20990999'))
     expect(failureOf(refused).code).toBe('AUTH_PERSON_NOT_FOUND')
     const event = await latestEvent()
-    expect(event).toMatchObject({ outcome: 'failure', reason_code: 'user-not-found', user_id: null })
+    expect(event).toMatchObject({
+      outcome: 'failure',
+      reason_code: 'user-not-found',
+      user_id: null,
+    })
     const people = await Effect.runPromise(
-      runSql<{ count: number }>(sql`select count(*)::int as count from users where tenant_id = ${tenant}`).pipe(
-        Effect.provide(probeInfra()),
-      ),
+      runSql<{ count: number }>(
+        sql`select count(*)::int as count from users where tenant_id = ${tenant}`,
+      ).pipe(Effect.provide(probeInfra())),
     )
     expect(people.rows[0]!.count).toBe(1)
   })

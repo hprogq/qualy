@@ -62,6 +62,12 @@ export const settingsApiGroup = HttpApiGroup.make('settings')
         override: localizedWords,
         version: Schema.Number,
       }),
-      error: [SettingNotFound, SettingVersionConflict, SettingValueInvalid, AccessDenied, BadRequest],
+      error: [
+        SettingNotFound,
+        SettingVersionConflict,
+        SettingValueInvalid,
+        AccessDenied,
+        BadRequest,
+      ],
     }).middleware(Authenticated),
   )

@@ -262,7 +262,11 @@ describe.runIf(postgresAvailable).concurrent('recording one finding on a group',
             yield* runSql(sql`select count(*)::int as n from entries
                                where tenant_id = ${f.t} and item_id = ${item.id}`),
           ).n
-          return { previewed: errorOf<{ _tag: string }>(previewed)?._tag, written: errorOf<{ _tag: string }>(written)?._tag, entries }
+          return {
+            previewed: errorOf<{ _tag: string }>(previewed)?._tag,
+            written: errorOf<{ _tag: string }>(written)?._tag,
+            entries,
+          }
         }),
       ),
     )

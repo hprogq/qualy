@@ -3,7 +3,9 @@
 // public page. This is a discovery and experience boundary only — the api
 // authorizes every request regardless of what the manifest showed.
 export type UiVisibility =
-  { kind: 'public' } | { kind: 'authenticated' } | { kind: 'permission'; code: string }
+  | { kind: 'public' }
+  | { kind: 'authenticated' }
+  | { kind: 'permission'; code: string }
 
 export const PUBLIC: UiVisibility = { kind: 'public' }
 export const AUTHENTICATED: UiVisibility = { kind: 'authenticated' }

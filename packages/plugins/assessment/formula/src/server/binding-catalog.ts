@@ -280,7 +280,10 @@ export const make = Effect.fn('BindableFormulaCatalog.make')(function* () {
           ),
         ).pipe(Effect.orDie)
         if (version === undefined) return yield* refuse('version-not-found')
-        const found = version as unknown as Omit<CandidateRow, 'functionName' | 'functionDescription'>
+        const found = version as unknown as Omit<
+          CandidateRow,
+          'functionName' | 'functionDescription'
+        >
         const fn = yield* database(
           db.query((k) =>
             k

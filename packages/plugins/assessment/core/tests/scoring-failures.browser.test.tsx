@@ -170,8 +170,7 @@ describe('a last word the rule sends back', () => {
               handledToday: 0,
             }),
           decideReview: decided,
-          previewDetermination: () =>
-            Effect.succeed({ issues: [], amount: '4.00', refusal: null }),
+          previewDetermination: () => Effect.succeed({ issues: [], amount: '4.00', refusal: null }),
         },
       } as never),
       routes: [
@@ -195,7 +194,10 @@ describe('a last word the rule sends back', () => {
       ) as HTMLInputElement
     await vi.waitFor(() => expect(ordinalInput()).not.toBeNull())
     await page.elementLocator(ordinalInput()).fill('9')
-    await page.getByRole('dialog').getByRole('button', { name: /^通过/ }).click()
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: /^通过/ })
+      .click()
     // through the undo window, to the refusal
     await vi.waitFor(() => expect(decided).toHaveBeenCalled(), { timeout: 8_000 })
 

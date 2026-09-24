@@ -63,7 +63,7 @@ const browserModulesOf = (dir: string): string[] => {
   )
 }
 
-describe('a plugin\'s browser half', () => {
+describe("a plugin's browser half", () => {
   it('is where the package says it is', () => {
     const missing: string[] = []
     let checked = 0

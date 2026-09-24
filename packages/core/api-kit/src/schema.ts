@@ -291,8 +291,7 @@ export const trimmedName = (max: number) =>
   Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(max), noNulByte)
 
 /** free text with a ceiling, not trimmed: the contract does not trim it either */
-export const boundedText = (max: number) =>
-  Schema.String.check(Schema.isMaxLength(max), noNulByte)
+export const boundedText = (max: number) => Schema.String.check(Schema.isMaxLength(max), noNulByte)
 
 /** an integer inside the range the column can actually hold */
 export const boundedInt = (min: number, max: number) =>

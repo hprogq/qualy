@@ -11,7 +11,11 @@ import {
 import { captchaLayerWith } from '@qualy/plugin-captcha/testkit'
 import type { CaptchaProvider } from '@qualy/plugin-captcha/server'
 import { SEEDED_EMAILS } from './support/sign-in-seed.ts'
-import { SIGN_IN_PASSWORD as password, startSignInServer, type SignInServer } from './support/sign-in-server.ts'
+import {
+  SIGN_IN_PASSWORD as password,
+  startSignInServer,
+  type SignInServer,
+} from './support/sign-in-server.ts'
 
 // Signing in where a challenge can be asked for.
 //
@@ -154,7 +158,8 @@ describe.runIf(postgresAvailable)('signing in where a challenge can be asked for
     const statuses: number[] = []
     for (let index = 0; index < 22; index += 1) {
       statuses.push(
-        (await login({ email: `student-${index}@school.edu`, password: 'not the password' })).status,
+        (await login({ email: `student-${index}@school.edu`, password: 'not the password' }))
+          .status,
       )
     }
     expect(statuses.slice(0, 20).every((status) => status === 401)).toBe(true)

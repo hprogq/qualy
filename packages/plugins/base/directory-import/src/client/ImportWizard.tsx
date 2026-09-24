@@ -210,7 +210,12 @@ const styles = stylex.create({
   // Narrow, a label over every control makes three rows into six. The name
   // goes beside what it names, in a column narrow enough to read down.
   said: { display: 'flex', minWidth: 0, alignItems: 'center', gap: 10 },
-  saidWord: { flexShrink: 0, width: '3.5rem', fontSize: 12.5, color: tokens.surfaceMutedForeground },
+  saidWord: {
+    flexShrink: 0,
+    width: '3.5rem',
+    fontSize: 12.5,
+    color: tokens.surfaceMutedForeground,
+  },
   saidSeat: { display: 'flex', minWidth: 0, flexGrow: 1 },
   // where the unit is not chosen here but shown and changed elsewhere
   anchorPress: {
@@ -896,9 +901,7 @@ export function ImportWizard({
       note={note}
       {...(at === 2 && !phone ? {} : {})}
       {...(at === 4 ? {} : { onClose })}
-      {...(at > 0 && at < 4
-        ? { onBack: () => setAt(at - 1), backLabel: format(m.back) }
-        : {})}
+      {...(at > 0 && at < 4 ? { onBack: () => setAt(at - 1), backLabel: format(m.back) } : {})}
       {...(at < 4 ? { onStep: (index: number) => index < at && setAt(index) } : {})}
       {...(phone && at === 2
         ? {
@@ -1338,7 +1341,11 @@ export function ImportWizard({
                       {preview.issues
                         .slice((issuePage - 1) * ISSUES_PER_PAGE, issuePage * ISSUES_PER_PAGE)
                         .map((issue, index) => (
-                          <div key={index} {...stylex.props(styles.issue)} data-testid="import-issue">
+                          <div
+                            key={index}
+                            {...stylex.props(styles.issue)}
+                            data-testid="import-issue"
+                          >
                             <span {...stylex.props(styles.issueWhere)}>
                               {issue.rowNo === null
                                 ? format(m.issueFile)
@@ -1392,9 +1399,7 @@ export function ImportWizard({
               {!phone && (
                 <div {...stylex.props(styles.card, styles.cardFills)}>
                   <div {...stylex.props(styles.cardHead)}>
-                    <span {...stylex.props(styles.cardTitle)}>
-                      {format(m.previewCreatedNodes)}
-                    </span>
+                    <span {...stylex.props(styles.cardTitle)}>{format(m.previewCreatedNodes)}</span>
                     <span {...stylex.props(styles.spring)} />
                     <span {...stylex.props(styles.tallyLabel)}>
                       {format(m.countOf, { count: preview.nodes.created })}
@@ -1464,9 +1469,7 @@ export function ImportWizard({
                 other; a thumb finds them in the foot, where its own hand is. */}
             {!phone && (
               <div {...stylex.props(styles.ways)}>
-                <Button onClick={() => onOpenRecord(done.importId)}>
-                  {format(m.openRecord)}
-                </Button>
+                <Button onClick={() => onOpenRecord(done.importId)}>{format(m.openRecord)}</Button>
                 <Button variant="outline" onClick={restart}>
                   {format(m.importAnother)}
                 </Button>
@@ -1483,9 +1486,7 @@ export function ImportWizard({
         title={format(m.anchorLabel)}
         description={format(m.anchorHint)}
         onClose={() => setPickingAnchor(false)}
-        footer={
-          <Button onClick={() => setPickingAnchor(false)}>{format(m.anchorDone)}</Button>
-        }
+        footer={<Button onClick={() => setPickingAnchor(false)}>{format(m.anchorDone)}</Button>}
       >
         <div {...stylex.props(styles.pickerSeat)}>{anchorPicker}</div>
       </FormDialog>

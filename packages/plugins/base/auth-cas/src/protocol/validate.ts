@@ -106,7 +106,10 @@ export const validateTicket = Effect.fn('authCas.validateTicket')(function* (
 })
 
 /** the person identifier an answer names, by the entrance's rule */
-export const businessNoOf = (principal: CasPrincipal, identity: CasIdentity): string | undefined => {
+export const businessNoOf = (
+  principal: CasPrincipal,
+  identity: CasIdentity,
+): string | undefined => {
   if (identity.source === 'principal') return principal.principal
   const value = principal.attributes[identity.attribute]
     ?.map((one) => one.trim())

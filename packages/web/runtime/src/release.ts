@@ -43,7 +43,11 @@ import {
  * being closed.
  */
 export type ReloadReason =
-  'release-skew' | 'asset-load-failed' | 'client-protocol' | 'assembly-skew' | 'release-expired'
+  | 'release-skew'
+  | 'asset-load-failed'
+  | 'client-protocol'
+  | 'assembly-skew'
+  | 'release-expired'
 
 /** what the api said, as a reason this page cannot continue */
 const REFUSED: Record<ClientUnsupportedReason, ReloadReason> = {

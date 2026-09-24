@@ -280,7 +280,11 @@ describe.runIf(postgresAvailable)('the review read boundary', () => {
             )
             const judged = (history: {
               rounds: readonly {
-                events: readonly { kind: string; actorId: string | null; actorName: string | null }[]
+                events: readonly {
+                  kind: string
+                  actorId: string | null
+                  actorName: string | null
+                }[]
               }[]
             }) =>
               history.rounds
@@ -307,9 +311,12 @@ describe.runIf(postgresAvailable)('the review read boundary', () => {
       refusalNamed: false,
       staffNamed: true,
     })
-    expect(
-      await told('veil-open', [...REVIEW_OPEN, 'assessment.review.view-reviewers']),
-    ).toEqual({ shown: true, named: true, refusalNamed: true, staffNamed: true })
+    expect(await told('veil-open', [...REVIEW_OPEN, 'assessment.review.view-reviewers'])).toEqual({
+      shown: true,
+      named: true,
+      refusalNamed: true,
+      staffNamed: true,
+    })
   })
 
   it('keeps the round with its reviewer through an open ask, and a rejection ends it', async () => {

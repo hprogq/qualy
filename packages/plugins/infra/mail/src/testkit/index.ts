@@ -87,14 +87,20 @@ const assert = (condition: boolean, message: string) => {
 
 /** the questions every mail backend answers the same way */
 export const mailBackendContract = (under: MailBackendUnderTest): readonly ContractCheck[] => {
-  const unique = () => `contract-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}@example.test`
+  const unique = () =>
+    `contract-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}@example.test`
   const deliver = (mail: OutgoingMail) => Effect.runPromise(under.backend.send(mail))
   return [
     {
       name: 'delivers plain text to one recipient, from the sender it is handed',
       run: async () => {
         const to = unique()
-        await deliver({ from: 'Qualy <no-reply@school.edu>', to, subject: 'plain', text: 'one line' })
+        await deliver({
+          from: 'Qualy <no-reply@school.edu>',
+          to,
+          subject: 'plain',
+          text: 'one line',
+        })
         const [got] = await under.inbox(to)
         assert(got !== undefined, 'nothing arrived')
         assert(got!.from.includes('no-reply@school.edu'), `from was ${got!.from}`)

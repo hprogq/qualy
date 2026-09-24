@@ -18034,8 +18034,8 @@ pnpm exec vitest run --config vitest.browser.config.ts \
 视觉核对                                          临时浏览器用例在真实 AppShell 内截图(1440/1280/390 宽):列表、模板列表与详情、编辑页填满栏下空间且无页脚、
                                                  版本列表独立滚动、试运行占位、侧拉编辑示例、编译失败诊断、空示例居中;临时用例已删除
 ```
-formula-editor-tools 浏览器用例随交互调整:示例经行菜单运行/移除,示例字段在侧拉 Sheet 里编辑,试运行「存为示例并设预期」按 `data-testid` 断言而不是按文案。
 
+formula-editor-tools 浏览器用例随交互调整:示例经行菜单运行/移除,示例字段在侧拉 Sheet 里编辑,试运行「存为示例并设预期」按 `data-testid` 断言而不是按文案。
 
 ## 计分公式的草稿修订、发布命名与手机工作台(2026-09-17)
 
@@ -18636,7 +18636,7 @@ pnpm vitest run tools/tests apps/server/tests    413 passed(supervisor 4/4,新�
   `migration-upgrade.test.ts` 建旧形态跑迁移断言三种回填。非 derived 题至少一个通道,已有条目后不得移除
   通道。createEntry 按申报对象是否本人分门(participant / administrative),门未开拒 `entry-channel-closed`。
 - **证据驱动**:字段 `description`;text 的 `minLength`、`pattern`;新增 boolean;选项 `{id?, value, label,
-  enabled?}`(enum 只含 enabled,投影按 id 重映射);`draftFields` 逐字段报问题,previewScoring 用它,一个
+enabled?}`(enum 只含 enabled,投影按 id 重映射);`draftFields` 逐字段报问题,previewScoring 用它,一个
   未命名字段不再让整张表单消失。
 - **行政认定只问一次**:record(单人与批量)与 import 的模板、表单不再重复询问被直接绑定的申报字段,
   服务端由认定值填入 payload(`scoring/bound-evidence.ts`)。
@@ -18693,7 +18693,6 @@ pnpm vitest run tools/tests apps/server/tests    413 passed(supervisor 4/4,新�
   失败的四条全在 `record-recognition.browser.test.tsx`:统一认定向导按「只问一次」不再显示被绑定的申报字段,
   而旧测试仍去填它。四条改写为新规则(申报字段不在表单上、认定值随请求走、请求里没有该字段),单跑
   `Test Files 1 passed (1)`,`Tests 5 passed (5)`;tests 工程 tsc 通过。
-
 
 ## 项目编辑页按设计稿复刻、参评填报控件与审核认定预览(2026-09-20)
 
@@ -18823,9 +18822,9 @@ pnpm vitest run tools/tests apps/server/tests    413 passed(supervisor 4/4,新�
   局外人看不到;申报记录管理员与 recorder 可见、同批参评人零条)`Tests 2 passed (2)`。
 - 浏览器:`user-role-grants.browser.test.tsx`(组织/专项分栏、专项无撤销按钮、键控 presenter 只渲染登记的那一个、
   撤销经 alertdialog 确认、租户授予、经单位选择器槽位授予、无可授予角色时的提示)+ `identity.browser.test.tsx`
-  + `shell.browser.test.tsx`:首轮 `Tests 2 failed | 33 passed (35)`(alertdialog 角色、顶栏「测评」与分组标签同名);
-  修后 rbac 文件全绿,`shell.browser.test.tsx` 全文件 `Tests 1 failed | 15 passed (16)`(Banner 需要 stub
-  `getUserOptions`,姓名与徽标同段),最后单例复跑 `Tests 1 passed`。
+  - `shell.browser.test.tsx`:首轮 `Tests 2 failed | 33 passed (35)`(alertdialog 角色、顶栏「测评」与分组标签同名);
+    修后 rbac 文件全绿,`shell.browser.test.tsx` 全文件 `Tests 1 failed | 15 passed (16)`(Banner 需要 stub
+    `getUserOptions`,姓名与徽标同段),最后单例复跑 `Tests 1 passed`。
 
 ## CI 浏览器套件的间歇失败:try-records 与共享的 IndexedDB(2026-09-20)
 
@@ -18836,7 +18835,7 @@ pnpm vitest run tools/tests apps/server/tests    413 passed(supervisor 4/4,新�
   (`keeps a try …` 与 `shows nothing …`),断言都是「期望 2 条得到 N 条」,N 在同一用例的两次尝试间递增
   (3→5、5→7、4→6、3→5),第二个用例接着从第一个留下的数量再加 1(6→7、8→9)。
   第 5 次(9 月 18 日 01:50)是另一种:`localization.browser.test.tsx` 整文件 `Failed to import test file … Vitest failed to
-  find the runner`,即 tester iframe 在负载下没初始化起来,与 try-records 无关。
+find the runner`,即 tester iframe 在负载下没初始化起来,与 try-records 无关。
 - **日志严格能推出的**:每次首轮尝试开始时该 formula 的 `draft` scope 里已经有 1 到 3 条不属于本用例的记录;用例失败后
   尾部的 `clear()` 不再执行,重试把上一次的行一起数进去,于是一条杂散记录变成整轮红。try-records 用的是 IndexedDB
   (`qualy-formula-local`),按 origin 共享,浏览器套件的各文件并行跑在同一 origin 的多个 iframe 里,harness 只清
@@ -18942,7 +18941,6 @@ docs/assessment-design.md §32.83。
 - 收口:`pnpm typecheck` `exit=0`;门禁 7 个文件(api-paths / effect-api-parity / error-codes / catalogs / fast-refresh /
   client-paths / browser-graph)`Test Files 7 passed (7)`,`Tests 42 passed (42)`;`item-editor` + `scoring-failures`
   浏览器 `Test Files 2 passed (2)`,`Tests 35 passed (35)`。本轮未跑全量浏览器套件(改动限于编辑器与其服务端)。
-
 
 ## 组织与权限各页按设计稿重做;术语库归入资源库(2026-09-20)
 
@@ -19336,7 +19334,7 @@ HEAD 的 run 是绿的;红的是中间提交 `ceb8ccb6`(那次的 `entry-workflo
    修在原语里而不是每个页面:`Table` 从自己的 `TableHead` 子节点读出列名,`TableRow` 按**位置**给 `Cell` 编号(带拖动手柄、勾选框这种非 Cell 首列也对得上),`Cell` 在窄屏把本列的名字画在值前。调用点一行没改。
    **是画不是写**:列名走 `::before` 的 `content: var(--q-cell-label)`。先试过隐藏 span,立刻被 `participant-results` 抓红——隐藏 span 会并进单元格的文本,`getByText('郭航旗')` 变成在找「姓名郭航旗」。生成内容不进文本节点,看的人变了、读的东西没变。
    窄屏另放开单元格换行(原来 `nowrap` + 省略号,而窄屏上头没有列名可以补全被吃掉的那一截)。
-   审计日志页自己手写行,不走表格原语,同样处理:现在是「操作人 李思思  对象 王五  成功」。
+   审计日志页自己手写行,不走表格原语,同样处理:现在是「操作人 李思思 对象 王五 成功」。
 
 2. **`SectionHead` 窄屏溢出**:角色授予页的「由具体业务对象授予，在该对象所在的页面管理」被切在屏幕外。现在窄屏换行,规则独占一行落在标题与动作下面。
 
@@ -19630,9 +19628,9 @@ HEAD 的 run 是绿的;红的是中间提交 `ceb8ccb6`(那次的 `entry-workflo
   (method、route 名、不含 query 的 path、scheme、status、继承 traceparent),挂在 serve 中间件最外层。不需要任何插件路径清单。
 - **限流**:表 `auth_rate_limit_buckets`,固定窗口、单条原子 upsert;本地登录按「入口 + 来源地址」30/5min 与「入口 + 邮箱」10/15min,
   在 Argon2 之前、邮箱存在与否同路径同桶;发起重定向按「入口 + 来源地址」30/5min。超限 429 `TOO_MANY_ATTEMPTS { retryAfterSeconds }`
-  + `Retry-After` 头(`TooManyAttemptsResponse`,`HttpApiSchema.encodeToWithHeaders`),只节流不锁号;闲置桶随计数懒清扫。
-  桶键是 `Secrets.fingerprint(scope, value)`:HKDF 从主密钥派生 `qualy/secrets/fingerprint/v1` 子密钥再 HMAC,scope 做域分离。
-  前端公共错误表新增 `TOO_MANY_ATTEMPTS`(按分钟向上取整告诉读者多久后再试)。
+  - `Retry-After` 头(`TooManyAttemptsResponse`,`HttpApiSchema.encodeToWithHeaders`),只节流不锁号;闲置桶随计数懒清扫。
+    桶键是 `Secrets.fingerprint(scope, value)`:HKDF 从主密钥派生 `qualy/secrets/fingerprint/v1` 子密钥再 HMAC,scope 做域分离。
+    前端公共错误表新增 `TOO_MANY_ATTEMPTS`(按分钟向上取整告诉读者多久后再试)。
 - **上游凭据** `session_auth_grants`:`completeLogin({ grants })` 与 session、sign-in event、binding touch 同事务写入,明文经 `seal`
   封在该 session 之下,会话删除即级联删除。本阶段没有驱动写 grant(CAS 的 `checkAliveTicket` 不保存)。
 - **自助绑定写口** `bindSubject({ provider, flow, subject, displayLabel })`:人只来自本入口刚消费的 bind flow(锁内复查),

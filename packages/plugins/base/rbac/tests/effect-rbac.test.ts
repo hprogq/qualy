@@ -1908,7 +1908,8 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
               where tenant_id = ${f.tenant} and id = ${confined}`),
           ).revoked
           return {
-            resource: row === undefined ? null : [row.resourceNamespace, row.resourceType, row.resourceId],
+            resource:
+              row === undefined ? null : [row.resourceNamespace, row.resourceType, row.resourceId],
             hasWindow: row?.validUntil != null,
             refused,
             still,

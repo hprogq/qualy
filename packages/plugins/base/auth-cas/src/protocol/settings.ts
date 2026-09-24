@@ -34,12 +34,11 @@ export interface CasSettings {
 }
 
 /** what each standard version validates at, and what it answers in */
-const PROFILES: Record<Exclude<CasProtocol, 'custom'>, { path: string; format: ResponseFormat }> =
-  {
-    cas3: { path: '/p3/serviceValidate', format: 'xml' },
-    cas2: { path: '/serviceValidate', format: 'xml' },
-    cas1: { path: '/validate', format: 'text' },
-  }
+const PROFILES: Record<Exclude<CasProtocol, 'custom'>, { path: string; format: ResponseFormat }> = {
+  cas3: { path: '/p3/serviceValidate', format: 'xml' },
+  cas2: { path: '/serviceValidate', format: 'xml' },
+  cas1: { path: '/validate', format: 'text' },
+}
 
 const PROTOCOLS: readonly CasProtocol[] = ['cas3', 'cas2', 'cas1', 'custom']
 

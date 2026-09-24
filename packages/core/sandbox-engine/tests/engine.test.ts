@@ -130,7 +130,7 @@ for (const variant of variants) {
       expect(response.verdict).toBe('stack-overflow')
     })
 
-    it("does not take the guest word for having been interrupted", async () => {
+    it('does not take the guest word for having been interrupted', async () => {
       // the verdict is read off the value the GUEST threw, so a formula can
       // spell an engine message exactly. `interrupted` is the one claim the
       // host can check - its own handler either fired or it did not - and a

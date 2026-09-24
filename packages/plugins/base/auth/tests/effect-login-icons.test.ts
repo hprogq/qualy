@@ -19,7 +19,11 @@ import { serviceLayer as rbacLayer } from '@qualy/plugin-rbac/server'
 import { serviceLayer as auditLayer } from '@qualy/plugin-audit/server'
 import { AuditActionCatalog } from '@qualy/audit-contract/effect'
 import { compileActionCatalog } from '@qualy/audit-contract/plugin'
-import { loginDriversLayer, registerLoginDriver, type LoginDriver } from '@qualy/auth-contract/login'
+import {
+  loginDriversLayer,
+  registerLoginDriver,
+  type LoginDriver,
+} from '@qualy/auth-contract/login'
 import { driver as localDriver } from '@qualy/plugin-auth-local'
 import { DEFAULT_LIMITS, StorageConfig } from '@qualy/plugin-storage/server'
 import { registryLayer } from '@qualy/plugin-storage/server/registry'
@@ -82,10 +86,7 @@ const stack = (url: string, backend: MemoryBackend) =>
       Layer.provideMerge(
         Layer.mergeAll(
           databaseFor(url, { entities: [...authClosure, ...storageEntities] }),
-          Layer.mergeAll(
-            registerLoginDriver(localDriver),
-            registerLoginDriver(campus),
-          ).pipe(
+          Layer.mergeAll(registerLoginDriver(localDriver), registerLoginDriver(campus)).pipe(
             Layer.provideMerge(loginDriversLayer),
           ),
           uiLayer,
@@ -108,8 +109,7 @@ const run = <A, E>(
   url: string,
   backend: MemoryBackend,
   effect: Effect.Effect<A, E, LoginIcons | Orm>,
-) =>
-  Effect.runPromiseExit(Effect.provide(effect, stack(url, backend)))
+) => Effect.runPromiseExit(Effect.provide(effect, stack(url, backend)))
 
 const ok = <A, E>(exit: Exit.Exit<A, E>): A => {
   if (Exit.isSuccess(exit)) return exit.value
@@ -177,7 +177,11 @@ const seed = (url: string) =>
         values (${tenant}, ${admin}, ${local.id}, null, 'digest')`)
       const as: Principal = { tenantId: tenant, userId: admin, sessionId: 's' }
       return { tenant, admin, person, local, as }
-    }).pipe(Effect.provide(databaseFor(url, { migrations: 'off', entities: [...authClosure, ...storageEntities] }))),
+    }).pipe(
+      Effect.provide(
+        databaseFor(url, { migrations: 'off', entities: [...authClosure, ...storageEntities] }),
+      ),
+    ),
   )
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
@@ -238,7 +242,9 @@ describe.runIf(postgresAvailable)('a door drawn by its own image', () => {
               f.as,
             )
             const retired = one<{ status: string }>(
-              yield* runSql(sql`select status from storage_attachments where id = ${first.attachmentId}`),
+              yield* runSql(
+                sql`select status from storage_attachments where id = ${first.attachmentId}`,
+              ),
             ).status
             const gone = yield* Effect.result(icons.open('campus', 'light'))
             const reset = yield* icons.choose(f.tenant, door, { kind: 'default' }, f.as)
@@ -323,7 +329,12 @@ describe.runIf(postgresAvailable)('a door drawn by its own image', () => {
                 .pipe(Effect.map((opened) => (opened.kind === 'svg' ? opened.markup : 'stored')))
             // nothing to stand a dark version beside yet
             const early = yield* Effect.result(
-              icons.choose(f.tenant, door, { kind: 'svg', markup: drawing('#fff'), surface: 'dark' }, f.as),
+              icons.choose(
+                f.tenant,
+                door,
+                { kind: 'svg', markup: drawing('#fff'), surface: 'dark' },
+                f.as,
+              ),
             )
             const light = yield* icons.choose(
               f.tenant,
@@ -355,7 +366,12 @@ describe.runIf(postgresAvailable)('a door drawn by its own image', () => {
               f.as,
             )
             const stillDark = yield* served('dark')
-            const cleared = yield* icons.choose(f.tenant, door, { kind: 'clear', surface: 'dark' }, f.as)
+            const cleared = yield* icons.choose(
+              f.tenant,
+              door,
+              { kind: 'clear', surface: 'dark' },
+              f.as,
+            )
             const scripted = yield* Effect.result(
               icons.choose(
                 f.tenant,
@@ -370,7 +386,9 @@ describe.runIf(postgresAvailable)('a door drawn by its own image', () => {
             )
             const reset = yield* icons.choose(f.tenant, door, { kind: 'default' }, f.as)
             const retired = one<{ status: string }>(
-              yield* runSql(sql`select status from storage_attachments where id = ${ticket.attachmentId}`),
+              yield* runSql(
+                sql`select status from storage_attachments where id = ${ticket.attachmentId}`,
+              ),
             ).status
             const audited = yield* runSql<{ details: Record<string, unknown> }>(
               sql`select details from audit_events where action_code = 'auth.provider.icon'

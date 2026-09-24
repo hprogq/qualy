@@ -214,7 +214,11 @@ describe.skipIf(!postgresAvailable)('storage', () => {
             size: 11n,
           })
           backend.put(`attachments/${tenantId}/${ticket.attachmentId}`, Buffer.from('<h1>hi</h1>'))
-          yield* storage.completeUpload({ tenantId, ownerUserId, reservationId: ticket.reservationId })
+          yield* storage.completeUpload({
+            tenantId,
+            ownerUserId,
+            reservationId: ticket.reservationId,
+          })
           const opened = yield* storage.open(
             { tenantId, attachmentId: ticket.attachmentId },
             () => Effect.void,

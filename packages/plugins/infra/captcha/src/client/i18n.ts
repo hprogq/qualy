@@ -1,4 +1,8 @@
-import { defineErrorTranslations, definePluginMessages, type ErrorsByCode } from '@qualy/i18n-contract'
+import {
+  defineErrorTranslations,
+  definePluginMessages,
+  type ErrorsByCode,
+} from '@qualy/i18n-contract'
 import type * as contract from '../contract.ts'
 
 // What the challenge host says: very little. A silent challenge is reported

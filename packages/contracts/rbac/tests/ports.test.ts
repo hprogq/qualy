@@ -65,7 +65,8 @@ describe('the port packages', () => {
         Effect.provide(Layer.mergeAll(rbacStub(true), placementStub)),
       )
       expect(result).toBe(3)
-    }))
+    }),
+  )
 
   it.effect('carries a denial as a failure the caller can see in its type', () =>
     Effect.gen(function* () {
@@ -77,7 +78,8 @@ describe('the port packages', () => {
       // what makes a handler that ignores it fail to compile
       const reason = (exit as Extract<typeof exit, { _tag: 'Failure' }>).cause.reasons[0]
       expect((reason as { error?: { _tag?: string } }).error?._tag).toBe('ACCESS_DENIED')
-    }))
+    }),
+  )
 
   it('compiles declarations into a catalog with owners stamped, refusing duplicates', () => {
     const catalog = compileCatalog([

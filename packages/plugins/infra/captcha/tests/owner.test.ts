@@ -2,11 +2,7 @@ import { Effect, Exit, Layer, Logger } from 'effect'
 import { describe, expect, it } from 'vitest'
 import type { Contributed, ProvideExtension } from '@qualy/plugin-kit'
 import { assembledLayer, runBootHooks } from '@qualy/api-kit/assembled'
-import {
-  Captcha,
-  DeclaredCaptchaProvider,
-  type CaptchaProviderDeclaration,
-} from '../src/plugin.ts'
+import { Captcha, DeclaredCaptchaProvider, type CaptchaProviderDeclaration } from '../src/plugin.ts'
 import { barrierLayer, CaptchaProviders, registryLayer } from '../src/server/registry.ts'
 import type { CaptchaProvider } from '../src/server/provider.ts'
 
@@ -134,7 +130,10 @@ describe('the boot barrier', () => {
   })
 
   it('refuses to start with a provider registered under another code, or none declared', async () => {
-    const other = await boot({ code: 'altcha', pluginId: '@qualy/plugin-captcha-altcha' }, provider('turnstile'))
+    const other = await boot(
+      { code: 'altcha', pluginId: '@qualy/plugin-captcha-altcha' },
+      provider('turnstile'),
+    )
     expect(String(Exit.isFailure(other.exit) ? other.exit.cause : '')).toMatch(
       /declares the captcha provider "altcha" but registered "turnstile"/,
     )

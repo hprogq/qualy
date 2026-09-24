@@ -6,7 +6,12 @@ import { CurrentUser } from '@qualy/auth-contract/session'
 import { Rbac, type AccessDenied } from '@qualy/rbac-contract/effect'
 import type { Principal } from '@qualy/rbac-contract'
 import { Audit } from '@qualy/audit-contract/effect'
-import { transaction, withDatabase, type Orm, type QueryFailed } from '@qualy/plugin-database/server'
+import {
+  transaction,
+  withDatabase,
+  type Orm,
+  type QueryFailed,
+} from '@qualy/plugin-database/server'
 import { translateConstraints } from '@qualy/plugin-database/server/constraints'
 import type { SupportedLocale, UiText } from '@qualy/i18n-contract'
 import { SettingCatalog, TenantSettings } from '@qualy/settings-contract/effect'
@@ -48,7 +53,11 @@ export interface TermView {
 }
 
 export interface TerminologyView {
-  readonly categories: readonly { readonly id: string; readonly label: UiText; readonly order: number }[]
+  readonly categories: readonly {
+    readonly id: string
+    readonly label: UiText
+    readonly order: number
+  }[]
   readonly terms: readonly TermView[]
 }
 
@@ -182,7 +191,11 @@ const make = Effect.gen(function* () {
                 : yield* db.query((k) =>
                     k
                       .updateTable('TenantSettingValue')
-                      .set({ value: jsonb(next), version: input.version + 1, updatedAt: new Date() })
+                      .set({
+                        value: jsonb(next),
+                        version: input.version + 1,
+                        updatedAt: new Date(),
+                      })
                       .where('tenantId', '=', tenantId)
                       .where('settingId', '=', settingId)
                       .where('version', '=', input.version)

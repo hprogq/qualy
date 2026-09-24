@@ -52,23 +52,20 @@ const activeTenantBySlug = (slug: string) =>
   )
 
 /** one deployment, one tenant, named by QUALY_DEFAULT_TENANT */
-export const singleTenantLayer: Layer.Layer<
-  AnonymousTenantResolver,
-  never,
-  Orm | AuthConfig
-> = Layer.effect(
-  AnonymousTenantResolver,
-  Effect.gen(function* () {
-    const config = yield* AuthConfig
-    const withDb = yield* withDatabase
-    const slug = config.defaultTenantSlug
-    return AnonymousTenantResolver.of({
-      resolve: withDb(activeTenantBySlug(slug)).pipe(
-        Effect.orDie,
-        Effect.flatMap((row) =>
-          row === undefined ? Effect.fail(new TenantUnavailable({ slug })) : Effect.succeed(row),
+export const singleTenantLayer: Layer.Layer<AnonymousTenantResolver, never, Orm | AuthConfig> =
+  Layer.effect(
+    AnonymousTenantResolver,
+    Effect.gen(function* () {
+      const config = yield* AuthConfig
+      const withDb = yield* withDatabase
+      const slug = config.defaultTenantSlug
+      return AnonymousTenantResolver.of({
+        resolve: withDb(activeTenantBySlug(slug)).pipe(
+          Effect.orDie,
+          Effect.flatMap((row) =>
+            row === undefined ? Effect.fail(new TenantUnavailable({ slug })) : Effect.succeed(row),
+          ),
         ),
-      ),
-    })
-  }),
-)
+      })
+    }),
+  )

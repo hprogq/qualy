@@ -1,7 +1,13 @@
 import * as stylex from '@stylexjs/stylex'
 import { useMemo, useState } from 'react'
 import { useInfiniteQuery } from '@tanstack/react-query'
-import { ArrowLeftIcon, ChevronRightIcon, FunctionSquareIcon, SearchIcon, SearchXIcon } from 'lucide-react'
+import {
+  ArrowLeftIcon,
+  ChevronRightIcon,
+  FunctionSquareIcon,
+  SearchIcon,
+  SearchXIcon,
+} from 'lucide-react'
 import { PageLink, useApi, useApiQuery, useRunApi, cursorPages } from '@qualy/web-runtime'
 import { useI18n, useList } from '@qualy/web-i18n'
 import { displayTitle, inputOrder, type InputSchema } from '@qualy/value-schema'
@@ -162,7 +168,13 @@ const styles = stylex.create({
     fontVariantNumeric: 'tabular-nums',
   },
   latestWords: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  dot: { width: 6, height: 6, flexShrink: 0, borderRadius: '9999px', backgroundColor: tokens.success },
+  dot: {
+    width: 6,
+    height: 6,
+    flexShrink: 0,
+    borderRadius: '9999px',
+    backgroundColor: tokens.success,
+  },
   chevron: { width: 14, height: 14, color: tokens.mutedForeground },
   cell: { fontSize: 12, color: tokens.mutedForeground, fontVariantNumeric: 'tabular-nums' },
   radio: {
@@ -243,7 +255,8 @@ interface Formula {
 /** the parameters in the order their author wrote them, under the words the reader's locale has for them */
 const parameterWords = (option: Option, locale: string): readonly string[] => {
   const schema = option.inputSchema as InputSchema | null
-  if (schema === null || typeof schema !== 'object' || schema.properties === undefined) return option.parameters
+  if (schema === null || typeof schema !== 'object' || schema.properties === undefined)
+    return option.parameters
   return inputOrder(schema).map((key) => {
     const own = schema.properties[key]
     return own === undefined ? key : displayTitle(own, key, locale)
@@ -279,7 +292,9 @@ export default function CalculatorEditor({ context }: { context: CalculatorEdito
   const runApi = useRunApi()
   const mine = context.calculator.ref === REF
   const chosen = mine
-    ? (((context.calculator.config as { versionId?: unknown } | null)?.versionId as string | undefined) ?? null)
+    ? (((context.calculator.config as { versionId?: unknown } | null)?.versionId as
+        | string
+        | undefined) ?? null)
     : null
 
   const request = {
@@ -314,7 +329,8 @@ export default function CalculatorEditor({ context }: { context: CalculatorEdito
     )
     // the binding this question already has, wherever it landed in policy:
     // once, and never twice if it is also on offer
-    if (current === null || offered.some((one) => one.versionId === current.versionId)) return offered
+    if (current === null || offered.some((one) => one.versionId === current.versionId))
+      return offered
     return [{ ...current, current: true }, ...offered]
   }, [versions.data])
 
@@ -323,7 +339,10 @@ export default function CalculatorEditor({ context }: { context: CalculatorEdito
   // would then be choosing a version of something else.
   const formulas = useMemo((): readonly Formula[] => {
     const order: string[] = []
-    const byFunction = new Map<string, { name: string; description: string | null; versions: Option[] }>()
+    const byFunction = new Map<
+      string,
+      { name: string; description: string | null; versions: Option[] }
+    >()
     for (const option of options) {
       const held = byFunction.get(option.functionId)
       if (held === undefined) {
@@ -361,7 +380,8 @@ export default function CalculatorEditor({ context }: { context: CalculatorEdito
       ? formulas
       : formulas.filter(
           (one) =>
-            one.name.toLowerCase().includes(needle) || (one.description ?? '').toLowerCase().includes(needle),
+            one.name.toLowerCase().includes(needle) ||
+            (one.description ?? '').toLowerCase().includes(needle),
         )
   const formula = opened === null ? undefined : formulas.find((one) => one.functionId === opened)
   const releaseWords = (option: Option) =>
@@ -381,7 +401,8 @@ export default function CalculatorEditor({ context }: { context: CalculatorEdito
     const impact = ((): string => {
       if (candidate === null) return ''
       if (candidate.versionId === chosen) return format(m.bindingImpactChosen)
-      if (inUse === null) return format(m.bindingImpactFresh, { count: candidate.parameters.length })
+      if (inUse === null)
+        return format(m.bindingImpactFresh, { count: candidate.parameters.length })
       const added = candidate.parameters.filter((one) => !inUse.parameters.includes(one)).length
       const removed = inUse.parameters.filter((one) => !candidate.parameters.includes(one)).length
       if (added > 0) return format(m.bindingImpactAdded, { count: added })
@@ -422,7 +443,11 @@ export default function CalculatorEditor({ context }: { context: CalculatorEdito
           <span>{format(m.bindingColRelease)}</span>
           <span>{format(m.bindingColDate)}</span>
         </div>
-        <div role="radiogroup" aria-label={format(m.bindingColVersion)} {...stylex.props(styles.list)}>
+        <div
+          role="radiogroup"
+          aria-label={format(m.bindingColVersion)}
+          {...stylex.props(styles.list)}
+        >
           {formula.versions.map((option) => {
             const held = context.disabled || !(option.bindableForNew || option.current)
             const on = option.versionId === selected
@@ -468,7 +493,9 @@ export default function CalculatorEditor({ context }: { context: CalculatorEdito
                     )
                   )}
                 </span>
-                <span {...stylex.props(styles.cell)}>{format(m.bindingReleaseNo, { no: option.versionNo })}</span>
+                <span {...stylex.props(styles.cell)}>
+                  {format(m.bindingReleaseNo, { no: option.versionNo })}
+                </span>
                 <span {...stylex.props(styles.cell)}>{dateWords(option.publishedAt)}</span>
               </button>
             )
@@ -523,7 +550,11 @@ export default function CalculatorEditor({ context }: { context: CalculatorEdito
             <span {...stylex.props(styles.blankHint)}>{format(m.bindingLoading)}</span>
           </div>
         ) : matching.length === 0 ? (
-          <div {...stylex.props(styles.blank)} data-testid="formula-picker-empty" data-searching={needle !== ''}>
+          <div
+            {...stylex.props(styles.blank)}
+            data-testid="formula-picker-empty"
+            data-searching={needle !== ''}
+          >
             {needle === '' ? (
               <FunctionSquareIcon aria-hidden {...stylex.props(styles.blankIcon)} />
             ) : (
@@ -558,7 +589,9 @@ export default function CalculatorEditor({ context }: { context: CalculatorEdito
                 <span {...stylex.props(styles.words)}>
                   <span {...stylex.props(styles.nameLine)}>
                     <span {...stylex.props(styles.name)}>{one.name}</span>
-                    {holdsCurrent && <span {...stylex.props(styles.tag)}>{format(m.bindingCurrent)}</span>}
+                    {holdsCurrent && (
+                      <span {...stylex.props(styles.tag)}>{format(m.bindingCurrent)}</span>
+                    )}
                   </span>
                   {one.description !== null && one.description !== '' && (
                     <span {...stylex.props(styles.sub)}>{one.description}</span>
@@ -576,14 +609,22 @@ export default function CalculatorEditor({ context }: { context: CalculatorEdito
         )}
         {versions.hasNextPage ? (
           <div {...stylex.props(styles.moreRow)}>
-            <Button variant="ghost" disabled={versions.isFetchingNextPage} onClick={() => void versions.fetchNextPage()}>
+            <Button
+              variant="ghost"
+              disabled={versions.isFetchingNextPage}
+              onClick={() => void versions.fetchNextPage()}
+            >
               {format(m.bindingMore)}
             </Button>
           </div>
         ) : null}
       </div>
       <div {...stylex.props(styles.foot, styles.footQuiet)}>
-        <span {...stylex.props(styles.footWords)} data-testid="formula-count" data-count={formulas.length}>
+        <span
+          {...stylex.props(styles.footWords)}
+          data-testid="formula-count"
+          data-count={formulas.length}
+        >
           {format(m.bindingCount, { count: formulas.length })}
         </span>
         <span {...stylex.props(styles.spacer)} />

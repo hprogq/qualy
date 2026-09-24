@@ -397,7 +397,8 @@ describe('a claim made twice', () => {
       }
       const exit = yield* build({ pages: [declaration, declaration] })
       expect(Exit.isFailure(exit)).toBe(true)
-    }))
+    }),
+  )
 
   it.effect('names both plugins when they claim one page id', () =>
     Effect.gen(function* () {
@@ -422,7 +423,8 @@ describe('a claim made twice', () => {
       expect(String(defect)).toMatch(
         /page probe\/page is declared by both @fake\/plugin-(first|second) and @fake\/plugin-(first|second)/,
       )
-    }))
+    }),
+  )
 
   it.effect('refuses one path claimed by two pages', () =>
     Effect.gen(function* () {
@@ -443,7 +445,8 @@ describe('a claim made twice', () => {
         ],
       })
       expect(Exit.isFailure(exit)).toBe(true)
-    }))
+    }),
+  )
 
   it.effect('refuses one layout contract claimed twice', () =>
     Effect.gen(function* () {
@@ -454,7 +457,8 @@ describe('a claim made twice', () => {
         ],
       })
       expect(Exit.isFailure(exit)).toBe(true)
-    }))
+    }),
+  )
 
   it.effect('refuses one id claimed twice under the same slot, and allows it across slots', () =>
     Effect.gen(function* () {
@@ -468,5 +472,6 @@ describe('a claim made twice', () => {
       // claim; the same id under another slot is a different seat
       expect(Exit.isFailure(yield* build({ slots: [item('a/one'), item('a/one')] }))).toBe(true)
       expect(Exit.isFailure(yield* build({ slots: [item('a/one'), item('b/two')] }))).toBe(false)
-    }))
+    }),
+  )
 })

@@ -34,7 +34,10 @@ const styles = stylex.create({
     display: 'grid',
     alignItems: 'end',
     gap: 12,
-    gridTemplateColumns: { default: 'repeat(2, minmax(0, 1fr))', '@media (max-width: 480px)': 'minmax(0, 1fr)' },
+    gridTemplateColumns: {
+      default: 'repeat(2, minmax(0, 1fr))',
+      '@media (max-width: 480px)': 'minmax(0, 1fr)',
+    },
   },
   scopeField: { width: '100%' },
   coverageField: { width: '100%' },
@@ -129,10 +132,7 @@ export function GrantRoleForm({
       <div {...stylex.props(styles.row)}>
         <Field label={format(m.grantScope)}>
           {(id) => (
-            <Select
-              value={scope}
-              onValueChange={(next) => setScope(next as 'tenant' | 'org-node')}
-            >
+            <Select value={scope} onValueChange={(next) => setScope(next as 'tenant' | 'org-node')}>
               <SelectTrigger id={id} xstyle={styles.scopeField}>
                 <SelectValue />
               </SelectTrigger>
@@ -165,32 +165,30 @@ export function GrantRoleForm({
           <UiSlot
             token={orgNodePicker}
             context={picker}
-            fallback={
-              <p {...stylex.props(styles.quietNote)}>{format(m.grantAnchorUnavailable)}</p>
-            }
+            fallback={<p {...stylex.props(styles.quietNote)}>{format(m.grantAnchorUnavailable)}</p>}
           />
         </div>
       )}
 
       <Field label={format(m.grantRole)}>
-          {(id) => (
-            <Select
-              value={selected}
-              disabled={roles.length === 0}
-              onValueChange={(next) => setRoleId(next)}
-            >
-              <SelectTrigger id={id} xstyle={styles.roleField}>
-                <SelectValue placeholder={format(m.grantRole)} />
-              </SelectTrigger>
-              <SelectContent>
-                {roles.map((role) => (
-                  <SelectItem key={role.id} value={role.id}>
-                    {role.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
+        {(id) => (
+          <Select
+            value={selected}
+            disabled={roles.length === 0}
+            onValueChange={(next) => setRoleId(next)}
+          >
+            <SelectTrigger id={id} xstyle={styles.roleField}>
+              <SelectValue placeholder={format(m.grantRole)} />
+            </SelectTrigger>
+            <SelectContent>
+              {roles.map((role) => (
+                <SelectItem key={role.id} value={role.id}>
+                  {role.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </Field>
 
       {/* an empty list is an answer, not a missing one: this caller holds

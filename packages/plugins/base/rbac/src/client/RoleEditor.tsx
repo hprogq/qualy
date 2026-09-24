@@ -71,7 +71,14 @@ const styles = stylex.create({
     flexShrink: 0,
     backgroundColor: `color-mix(in oklab, ${tokens.foreground} 12%, transparent)`,
   },
-  meaning: { minWidth: 0, flexGrow: 1, flexBasis: '16rem', fontSize: 12, lineHeight: 1.5, color: QUIET },
+  meaning: {
+    minWidth: 0,
+    flexGrow: 1,
+    flexBasis: '16rem',
+    fontSize: 12,
+    lineHeight: 1.5,
+    color: QUIET,
+  },
   removal: { display: 'inline-flex', alignItems: 'center', gap: 10 },
   removalWhy: { fontSize: 12, color: tokens.mutedForeground },
   tabsRow: {
@@ -131,7 +138,14 @@ const styles = stylex.create({
     borderBottomColor: tokens.divider,
   },
   partBody: { paddingInline: 16, paddingTop: 10, paddingBottom: 6 },
-  partHead: { display: 'flex', alignItems: 'center', gap: 10, paddingInline: 16, paddingTop: 12, flexWrap: 'wrap' },
+  partHead: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    paddingInline: 16,
+    paddingTop: 12,
+    flexWrap: 'wrap',
+  },
   partTitle: { fontSize: 13, fontWeight: 600 },
   spacer: { flexGrow: 1 },
   form: { display: 'flex', flexDirection: 'column', gap: 16 },
@@ -404,7 +418,11 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
         ? format(m.anywhereWord)
         : listJoin(
             (options.data?.orgTypes ?? [])
-              .filter((type) => role.anchorPolicy?.mode === 'allow-list' && role.anchorPolicy.orgTypeIds.includes(type.id))
+              .filter(
+                (type) =>
+                  role.anchorPolicy?.mode === 'allow-list' &&
+                  role.anchorPolicy.orgTypeIds.includes(type.id),
+              )
               .map((type) => type.name),
           )
   const appoints = listJoin(
@@ -414,7 +432,8 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
   )
   const catalogTotal = catalog.data?.permissions.length ?? 0
   const shownCodes = groups.flatMap((group) => group.items.map((item) => item.code))
-  const allShownPicked = shownCodes.length > 0 && shownCodes.every((code) => permissions.includes(code))
+  const allShownPicked =
+    shownCodes.length > 0 && shownCodes.every((code) => permissions.includes(code))
 
   return (
     <Screen
@@ -456,7 +475,8 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
                   // asked about first: everybody holding the role gains or
                   // loses what it grants the moment this lands
                   if (next === 'on' && role.status !== 'active') setStanding({ status: 'active' })
-                  if (next === 'off' && role.status === 'active') setStanding({ status: 'disabled' })
+                  if (next === 'off' && role.status === 'active')
+                    setStanding({ status: 'disabled' })
                 }}
                 options={[
                   { value: 'on', label: format(m.statusOn) },
@@ -470,7 +490,11 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
             ) : (
               <Tag>
                 {format(
-                  role.status === 'active' ? m.statusOn : role.status === 'draft' ? m.draftBadge : m.disabledBadge,
+                  role.status === 'active'
+                    ? m.statusOn
+                    : role.status === 'draft'
+                      ? m.draftBadge
+                      : m.disabledBadge,
                 )}
               </Tag>
             )}
@@ -484,7 +508,8 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
                 value={role.assignable ? 'yes' : 'no'}
                 onChange={(next) => {
                   if (setAssignable.isPending) return
-                  if ((next === 'yes') !== role.assignable) setStanding({ assignable: next === 'yes' })
+                  if ((next === 'yes') !== role.assignable)
+                    setStanding({ assignable: next === 'yes' })
                 }}
                 options={[
                   { value: 'yes', label: format(m.assignableOn) },
@@ -522,13 +547,27 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
         items={[
           {
             label: format(m.factHolders),
-            value: role.grantCount === 0 ? format(m.nobodyWord) : format(m.holderCount, { count: role.grantCount }),
+            value:
+              role.grantCount === 0
+                ? format(m.nobodyWord)
+                : format(m.holderCount, { count: role.grantCount }),
           },
-          { label: format(m.columnHolders), value: holderWord === '' ? format(m.unsetWord) : holderWord },
+          {
+            label: format(m.columnHolders),
+            value: holderWord === '' ? format(m.unsetWord) : holderWord,
+          },
           ...(role.kind === 'org'
-            ? [{ label: format(m.columnAnchors), value: orgWord === '' ? format(m.unsetWord) : orgWord }]
+            ? [
+                {
+                  label: format(m.columnAnchors),
+                  value: orgWord === '' ? format(m.unsetWord) : orgWord,
+                },
+              ]
             : []),
-          { label: format(m.tabAppointment), value: locked ? format(m.everyWord) : appoints === '' ? format(m.nobodyWord) : appoints },
+          {
+            label: format(m.tabAppointment),
+            value: locked ? format(m.everyWord) : appoints === '' ? format(m.nobodyWord) : appoints,
+          },
           {
             label: format(m.tabPermissions),
             value: role.holdsEveryPermission
@@ -615,12 +654,17 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
                 <CardEmpty>{format(m.searchEmpty)}</CardEmpty>
               ) : (
                 groups.map((group) => (
-                  <div key={group.title} {...stylex.props(styles.group)} data-testid="permission-group">
+                  <div
+                    key={group.title}
+                    {...stylex.props(styles.group)}
+                    data-testid="permission-group"
+                  >
                     <span {...stylex.props(styles.groupHead)}>
                       <span {...stylex.props(styles.groupTitle)}>{group.title}</span>
                       <span {...stylex.props(styles.groupCount)}>
                         {format(m.pickedOf, {
-                          picked: group.items.filter((item) => permissions.includes(item.code)).length,
+                          picked: group.items.filter((item) => permissions.includes(item.code))
+                            .length,
                           total: group.items.length,
                         })}
                       </span>
@@ -733,7 +777,9 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
                       disabled={!editable}
                       onChange={(next) =>
                         setUserTypeIds(
-                          next ? [...userTypeIds, type.id] : userTypeIds.filter((id) => id !== type.id),
+                          next
+                            ? [...userTypeIds, type.id]
+                            : userTypeIds.filter((id) => id !== type.id),
                         )
                       }
                     />
@@ -777,7 +823,9 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
                         disabled={!editable}
                         onChange={(next) =>
                           setOrgTypeIds(
-                            next ? [...orgTypeIds, type.id] : orgTypeIds.filter((id) => id !== type.id),
+                            next
+                              ? [...orgTypeIds, type.id]
+                              : orgTypeIds.filter((id) => id !== type.id),
                           )
                         }
                       />
@@ -970,7 +1018,9 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
           { name: role.name },
         )}
         description={format(
-          standing !== null && 'status' in standing ? m.standingAskStatusBody : m.standingAskGrantBody,
+          standing !== null && 'status' in standing
+            ? m.standingAskStatusBody
+            : m.standingAskGrantBody,
           { count: role.grantCount },
         )}
         confirmLabel={format(m.confirm)}

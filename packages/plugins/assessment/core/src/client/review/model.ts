@@ -36,7 +36,9 @@ export type AwaitingDto = ApiResult<
  * queue rail agree about which walk this is.
  */
 export type RunScope =
-  { kind: 'all' } | { kind: 'item'; itemId: string } | { kind: 'person'; businessNo: string }
+  | { kind: 'all' }
+  | { kind: 'item'; itemId: string }
+  | { kind: 'person'; businessNo: string }
 
 export const readRunScope = (raw: string): RunScope => {
   if (raw.startsWith('item:')) return { kind: 'item', itemId: raw.slice('item:'.length) }

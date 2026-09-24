@@ -35,7 +35,10 @@ describe('an SVG offered as an icon', () => {
       svg('<rect onclick="x()" width="1" height="1"/>'),
       svg('<a href="https://example.com"><path d="M0 0h1v1H0z"/></a>'),
       svg('<use href="https://example.com/sprite.svg#x"/>'),
-      svg('<use xlink:href="data:image/svg+xml,x"/>', ' xmlns:xlink="http://www.w3.org/1999/xlink"'),
+      svg(
+        '<use xlink:href="data:image/svg+xml,x"/>',
+        ' xmlns:xlink="http://www.w3.org/1999/xlink"',
+      ),
       svg('<image href="https://example.com/a.png"/>'),
       svg('<foreignObject><div>html</div></foreignObject>'),
       svg('<style>@import "https://example.com/a.css";</style>'),

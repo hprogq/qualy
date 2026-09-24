@@ -116,9 +116,9 @@ describe('what the platform said when it refused', () => {
     // an id that does not exist and an origin that is not allowed are
     // different problems with different fixes, and the code is the only thing
     // that separates them
-    expect(
-      explainRefusal('type:business, code:41, msg:project(probe-id) is not exist'),
-    ).toContain('no project has that reporting id')
+    expect(explainRefusal('type:business, code:41, msg:project(probe-id) is not exist')).toContain(
+      'no project has that reporting id',
+    )
     expect(
       explainRefusal('type:business, code:111, msg:id(x) in origin(y) is not allowed'),
     ).toContain('that origin is not on the project allow list')

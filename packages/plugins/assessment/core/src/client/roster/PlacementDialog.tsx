@@ -317,7 +317,9 @@ function DifferenceRow({
   const typed = row.changes.includes('user-type')
   const decidable = row.observedFingerprint !== null
   const said = (view: PlacementDifference['frozen']) =>
-    typed && view.userType.name !== null ? `${pathOf(view.units)} · ${view.userType.name}` : pathOf(view.units)
+    typed && view.userType.name !== null
+      ? `${pathOf(view.units)} · ${view.userType.name}`
+      : pathOf(view.units)
 
   return (
     <li

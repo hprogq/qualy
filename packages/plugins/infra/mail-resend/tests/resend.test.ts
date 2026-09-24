@@ -86,7 +86,11 @@ describe('a message handed to resend', () => {
   it('carries the html alternative and the reply-to under resend names', async () => {
     const api = standIn()
     await Effect.runPromise(
-      resendBackend({ apiKey: key }, api.post).send({ ...mail, html: '<p>h</p>', replyTo: 'o@school.edu' }),
+      resendBackend({ apiKey: key }, api.post).send({
+        ...mail,
+        html: '<p>h</p>',
+        replyTo: 'o@school.edu',
+      }),
     )
     expect(api.sent[0]!.body).toMatchObject({ html: '<p>h</p>', reply_to: 'o@school.edu' })
   })
@@ -134,7 +138,10 @@ describe('the resend backend contract', () => {
           replyTo: body['reply_to'] === undefined ? [] : [body['reply_to'] as string],
         })),
     )
-  for (const check of mailBackendContract({ backend: resendBackend({ apiKey: key }, api.post), inbox })) {
+  for (const check of mailBackendContract({
+    backend: resendBackend({ apiKey: key }, api.post),
+    inbox,
+  })) {
     it(check.name, check.run)
   }
 })

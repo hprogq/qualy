@@ -250,8 +250,7 @@ export const make = Effect.fn('Iam.self.make')(function* () {
                     hasCredential: door.hasCredential === true,
                   },
             // letting it go ends the session this is asked from
-            thisSession:
-              door.bindingId !== null && inHand?.authBindingId === door.bindingId,
+            thisSession: door.bindingId !== null && inHand?.authBindingId === door.bindingId,
             // where to begin binding one, for a door that binds and has none
             bindHref:
               driver.binding?.mode === 'self' &&
@@ -286,8 +285,11 @@ export const make = Effect.fn('Iam.self.make')(function* () {
             yield* lockTenant(principal.tenantId)
             const row = yield* requireSelf(principal)
             const found = yield* serving(principal.tenantId, principal.userId, row.userTypeId)
-            const target = (yield* doorsOf(principal.tenantId, principal.userId, row.userTypeId))
-              .find((door) => door.id === providerId)
+            const target = (yield* doorsOf(
+              principal.tenantId,
+              principal.userId,
+              row.userTypeId,
+            )).find((door) => door.id === providerId)
             const driver =
               target === undefined ? undefined : (yield* drivers.forType(target.type))?.driver
             if (target === undefined || target.bindingId === null) {

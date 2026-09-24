@@ -279,9 +279,12 @@ describe('the span a request exports', () => {
     // a CAS ticket, an OAuth code and a flow state all arrive in the query;
     // none of them may reach a trace backend
     const inbound = '9999888877776666555544443333aaaa'
-    await fetch(`${base}/things/42?ticket=ST-secret-ticket&code=c0de-secret&state=st4te-secret#frag`, {
-      headers: { traceparent: `00-${inbound}-00f067aa0ba902b7-01` },
-    })
+    await fetch(
+      `${base}/things/42?ticket=ST-secret-ticket&code=c0de-secret&state=st4te-secret#frag`,
+      {
+        headers: { traceparent: `00-${inbound}-00f067aa0ba902b7-01` },
+      },
+    )
     const span = await exportedSpan((candidate) => candidate.traceId === inbound)
     const keys = span.attributes.map((attribute) => attribute.key)
     expect(keys).not.toContain('url.full')
@@ -352,8 +355,7 @@ describe('the labels a request becomes', () => {
     await fetch(`${bare}/things/${uuid}`, { headers: { 'x-forwarded-proto': 'https' } })
     const untrusted = (await Effect.runPromise(Metric.snapshot)).filter(
       (state) =>
-        state.id === 'http.server.request.duration' &&
-        state.attributes?.['url.scheme'] === 'https',
+        state.id === 'http.server.request.duration' && state.attributes?.['url.scheme'] === 'https',
     )
     const httpsCount = untrusted.reduce(
       (total, state) => total + Number((state.state as { count?: number }).count ?? 0),

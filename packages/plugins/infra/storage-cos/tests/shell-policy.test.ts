@@ -67,30 +67,33 @@ const withLimits = (minutes: number) =>
 
 const entriesFor = (config: typeof settings) =>
   Effect.runPromise(
-      Effect.flatMap(ShellPolicy, (policy) => policy.entries).pipe(
-        Effect.provide(
-          registration.pipe(
-            Layer.provideMerge(
-              Layer.mergeAll(
-                shellPolicyLayer,
-                Layer.succeed(CosStorageConfig, config),
-                // the registration refuses a grant lifetime cam cannot mint,
-                // so the stub carries the product's own default
-                Layer.succeed(StorageConfig, StorageConfig.of({ defaultBackend: 'cos', limits: DEFAULT_LIMITS })),
-                Layer.succeed(
-                  StorageBackends,
-                  StorageBackends.of({
-                    register: () => Effect.void,
-                    resolve: () => Effect.die('not asked'),
-                    forWrite: Effect.die('not asked'),
-                    installed: Effect.succeed([]),
-                  }),
-                ),
+    Effect.flatMap(ShellPolicy, (policy) => policy.entries).pipe(
+      Effect.provide(
+        registration.pipe(
+          Layer.provideMerge(
+            Layer.mergeAll(
+              shellPolicyLayer,
+              Layer.succeed(CosStorageConfig, config),
+              // the registration refuses a grant lifetime cam cannot mint,
+              // so the stub carries the product's own default
+              Layer.succeed(
+                StorageConfig,
+                StorageConfig.of({ defaultBackend: 'cos', limits: DEFAULT_LIMITS }),
+              ),
+              Layer.succeed(
+                StorageBackends,
+                StorageBackends.of({
+                  register: () => Effect.void,
+                  resolve: () => Effect.die('not asked'),
+                  forWrite: Effect.die('not asked'),
+                  installed: Effect.succeed([]),
+                }),
               ),
             ),
           ),
         ),
       ),
+    ),
   )
 
 describe('the shell policy contribution', () => {

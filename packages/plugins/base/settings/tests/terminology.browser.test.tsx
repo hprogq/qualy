@@ -78,7 +78,9 @@ describe('the tenant word for a term', () => {
 
 describe('the terminology screen', () => {
   it('saves what was typed under the version it read, and resets to the default', async () => {
-    const put = vi.fn(() => Effect.succeed({ id: term.id, override: { 'zh-CN': '统一编号' }, version: 3 }))
+    const put = vi.fn(() =>
+      Effect.succeed({ id: term.id, override: { 'zh-CN': '统一编号' }, version: 3 }),
+    )
     renderScreen({
       client: fakeClient({
         app: { getManifest: () => Effect.succeed(emptyManifest()) },

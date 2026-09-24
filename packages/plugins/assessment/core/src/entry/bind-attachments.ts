@@ -111,7 +111,10 @@ export const bindCitedAttachments = (
         issues.push({ field: ref.field, reason: 'attachment-too-large' })
         continue
       }
-      if (ref.accept !== undefined && !acceptable(ref.accept, attachment.declaredMime, attachment.filename)) {
+      if (
+        ref.accept !== undefined &&
+        !acceptable(ref.accept, attachment.declaredMime, attachment.filename)
+      ) {
         issues.push({ field: ref.field, reason: 'attachment-type' })
         continue
       }

@@ -45,7 +45,10 @@ export type GateDecision =
   | {
       readonly allowed: false
       readonly reason:
-        'no-active-phase' | 'phase-closed' | 'item-out-of-scope' | 'participant-out-of-scope'
+        | 'no-active-phase'
+        | 'phase-closed'
+        | 'item-out-of-scope'
+        | 'participant-out-of-scope'
     }
 
 export function gateAllows(input: GateInput): GateDecision {

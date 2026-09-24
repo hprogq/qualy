@@ -160,7 +160,7 @@ default-src 'self'; script-src 'self' 'sha256-pKAg+of2SxxrkLJX27pRnCgcyN5Ud1dmuO
     或 `tenant-managed`(租户自行新增,带 `entrance` 字段声明——CAS/OIDC/GitHub 之后都是这种)。
   - `resolution`:`user-field`(按用户自己的字段找人:local 按 email,CAS 按 businessNo)或 `binding-subject`(按用户自己绑定的外部账号的稳定 id)。
   - `binding`:`managed`(管理员可代设的凭据,只存摘要,仅用于 `user-field`)、`self`(只能本人经驱动流程绑定,仅用于 `binding-subject`)或缺省(什么都不存)。
-  矛盾组合在注册时拒绝(`driverContradiction`)。旧的 `derived` 取消:它描述的是「怎么找人」而不是「怎么绑定」。
+    矛盾组合在注册时拒绝(`driverContradiction`)。旧的 `derived` 取消:它描述的是「怎么找人」而不是「怎么绑定」。
 - 驱动不直接查 `users` / `user_auth_bindings`:基座提供 `findUserByField` / `findBindingForUser` / `findBindingBySubject`(只看存活行,受众在基座判定),
   `completeLogin` 是唯一的 Session 写入者,并把入口与绑定记在 `sessions.auth_provider_id / auth_binding_id` 上。
 - 同租户可配多个同类型的 tenant-managed 实例;每租户恰好一扇 `is_system` 的 local 入口(`uq_auth_providers_tenant_system_type`)。
@@ -173,11 +173,11 @@ default-src 'self'; script-src 'self' 'sha256-pKAg+of2SxxrkLJX27pRnCgcyN5Ud1dmuO
 
 `user_identities` 更名 `user_auth_bindings`,`identifier` → `subject`(可空),新增 `display_label`:
 
-| 入口 | 找人方式 | 绑定里存什么 |
-| --- | --- | --- |
-| local(邮箱密码) | `users.email` | `subject = null`,`credential_hash` = argon2 摘要 |
-| CAS(之后) | `users.business_no` | 无绑定 |
-| GitHub / OIDC(之后) | 绑定的 `subject`(外部稳定 id) | `subject`,`display_label` 只供展示 |
+| 入口                | 找人方式                      | 绑定里存什么                                     |
+| ------------------- | ----------------------------- | ------------------------------------------------ |
+| local(邮箱密码)     | `users.email`                 | `subject = null`,`credential_hash` = argon2 摘要 |
+| CAS(之后)           | `users.business_no`           | 无绑定                                           |
+| GitHub / OIDC(之后) | 绑定的 `subject`(外部稳定 id) | `subject`,`display_label` 只供展示               |
 
 - 写入只有一处:`PUT|DELETE /iam/users/{userId}/auth-bindings/{providerId}`。PUT 只收 `{ secret }`,只对 `managed` 驱动;该人缺驱动按其找人的字段时
   `AUTH_BINDING_USER_FIELD_MISSING { field }`(没有邮箱就设不了密码)。授权、系统账户保护、受众检查、「摘要在事务外算、锁内复核」同前。

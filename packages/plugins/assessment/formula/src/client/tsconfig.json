@@ -1,6 +1,4 @@
 {
   "extends": "@qualy/tsconfig/vite-browser.json",
-  "include": [
-    "."
-  ]
+  "include": ["."]
 }

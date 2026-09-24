@@ -77,7 +77,6 @@ export type LoginMethodIcon =
  */
 export type LoginProminence = 'primary' | 'secondary'
 
-
 /** a provider row paired with how its driver asks to be presented */
 export type LoginMethod = {
   readonly code: string
@@ -201,10 +200,7 @@ export type AuthBindingDeclaration =
        * from. Asked when a person changes their own: the one who knows the
        * old one is the one who may set a new one.
        */
-      readonly verify: (input: {
-        secret: string
-        credentialHash: string
-      }) => Effect.Effect<boolean>
+      readonly verify: (input: { secret: string; credentialHash: string }) => Effect.Effect<boolean>
     }
   | {
       readonly mode: 'self'
@@ -644,9 +640,7 @@ export interface LoginSessionsShape {
    * Built from the deployment's public address and the path the driver
    * declares, so a driver never has to know how it is reached.
    */
-  readonly callbackUrl: (
-    provider: ResolvedProvider,
-  ) => Effect.Effect<URL, PublicOriginUnavailable>
+  readonly callbackUrl: (provider: ResolvedProvider) => Effect.Effect<URL, PublicOriginUnavailable>
   /**
    * Starts one redirect through somebody else's server.
    *

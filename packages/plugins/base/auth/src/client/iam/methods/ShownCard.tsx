@@ -153,7 +153,10 @@ export function ShownCard({
       if (picked.type === 'image/svg+xml' || picked.name.toLowerCase().endsWith('.svg')) {
         const markup = await picked.text()
         return runApi(
-          api.loginIcon.setProviderIcon({ params, payload: { icon: { kind: 'svg', markup, surface } } }),
+          api.loginIcon.setProviderIcon({
+            params,
+            payload: { icon: { kind: 'svg', markup, surface } },
+          }),
         )
       }
       const ticket = await runApi(
@@ -219,7 +222,8 @@ export function ShownCard({
     </span>
   )
 
-  const chosenKey = provider.iconChosen && provider.icon?.kind === 'builtin' ? provider.icon.key : null
+  const chosenKey =
+    provider.iconChosen && provider.icon?.kind === 'builtin' ? provider.icon.key : null
 
   return (
     <Card data-testid="method-shown" data-prominence={provider.prominence}>
@@ -274,7 +278,9 @@ export function ShownCard({
                       <div {...stylex.props(styles.slot)} data-testid="icon-slot-light">
                         {preview('light', true)}
                         <span {...stylex.props(styles.slotWords)}>
-                          <span {...stylex.props(styles.slotName)}>{format(m.methodIconOnLight)}</span>
+                          <span {...stylex.props(styles.slotName)}>
+                            {format(m.methodIconOnLight)}
+                          </span>
                         </span>
                         <Button
                           size="sm"
@@ -289,9 +295,15 @@ export function ShownCard({
                       <div {...stylex.props(styles.slot)} data-testid="icon-slot-dark">
                         {preview('dark', true)}
                         <span {...stylex.props(styles.slotWords)}>
-                          <span {...stylex.props(styles.slotName)}>{format(m.methodIconOnDark)}</span>
+                          <span {...stylex.props(styles.slotName)}>
+                            {format(m.methodIconOnDark)}
+                          </span>
                           <span {...stylex.props(styles.aside)}>
-                            {format(image === null ? m.methodIconDarkNeedsLight : m.methodIconDarkOptional)}
+                            {format(
+                              image === null
+                                ? m.methodIconDarkNeedsLight
+                                : m.methodIconDarkOptional,
+                            )}
                           </span>
                         </span>
                         {image?.onDark != null ? (
@@ -343,14 +355,17 @@ export function ShownCard({
                         event.target.value = ''
                         if (picked === undefined) return
                         const drawing =
-                          picked.type === 'image/svg+xml' || picked.name.toLowerCase().endsWith('.svg')
+                          picked.type === 'image/svg+xml' ||
+                          picked.name.toLowerCase().endsWith('.svg')
                         // said here rather than after an upload that would be refused
                         const fits = drawing
                           ? picked.size <= LOGIN_ICON_SVG_MAX_BYTES
                           : (LOGIN_ICON_TYPES as readonly string[]).includes(picked.type) &&
                             picked.size <= LOGIN_ICON_MAX_BYTES
                         if (!fits) {
-                          toast.error(formatError({ _tag: 'AUTH_PROVIDER_ICON_INVALID', reason: 'type' }))
+                          toast.error(
+                            formatError({ _tag: 'AUTH_PROVIDER_ICON_INVALID', reason: 'type' }),
+                          )
                           return
                         }
                         choose.mutate({ kind: 'file', file: picked, surface: aim.current })

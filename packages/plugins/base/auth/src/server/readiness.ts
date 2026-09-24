@@ -64,7 +64,9 @@ export const readinessOf = (
       ...entrance.fields
         .filter((field) => field.required && visibleIn(field, values))
         .filter((field) =>
-          field.kind === 'secret' ? !storedSecrets.includes(field.key) : values[field.key] === undefined,
+          field.kind === 'secret'
+            ? !storedSecrets.includes(field.key)
+            : values[field.key] === undefined,
         )
         .map((field): ReadinessGap => ({ kind: 'field', key: field.key })),
     )

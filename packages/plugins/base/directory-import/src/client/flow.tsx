@@ -244,7 +244,12 @@ export function FlowFrame({
     const way = onBack ?? onClose
     return (
       <Sheet open={open} onOpenChange={(next) => !next && onClose?.()}>
-        <SheetContent side="bottom" showCloseButton={false} xstyle={styles.sheet} data-testid={testId}>
+        <SheetContent
+          side="bottom"
+          showCloseButton={false}
+          xstyle={styles.sheet}
+          data-testid={testId}
+        >
           <div {...stylex.props(styles.phoneHead)}>
             <div {...stylex.props(styles.phoneHeadRow)}>
               {way !== undefined && (
@@ -285,7 +290,9 @@ export function FlowFrame({
           <div {...stylex.props(styles.phoneFoot)}>
             {foot}
             {pinned}
-            {note !== undefined && note !== null && <span {...stylex.props(styles.note)}>{note}</span>}
+            {note !== undefined && note !== null && (
+              <span {...stylex.props(styles.note)}>{note}</span>
+            )}
             {foot === undefined && rest.length > 0 && (
               <div {...stylex.props(styles.phoneRow)}>
                 {rest.map((action) => press(action, true, styles.phoneShare))}
@@ -333,7 +340,9 @@ export function FlowFrame({
               {backLabel}
             </Button>
           )}
-          {note !== undefined && note !== null && <span {...stylex.props(styles.note)}>{note}</span>}
+          {note !== undefined && note !== null && (
+            <span {...stylex.props(styles.note)}>{note}</span>
+          )}
           <span {...stylex.props(styles.spring)} />
           {foot === undefined && onClose !== undefined && (
             <Button variant="outline" onClick={onClose}>

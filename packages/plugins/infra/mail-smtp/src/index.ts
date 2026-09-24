@@ -15,8 +15,9 @@ const registration: Layer.Layer<never, never, MailBackends | SmtpConfig> = Layer
   Effect.gen(function* () {
     const settings = yield* SmtpConfig
     const registry = yield* MailBackends
-    const smtp = yield* Effect.acquireRelease(Effect.sync(() => smtpBackend(settings)), (made) =>
-      Effect.sync(() => made.close()),
+    const smtp = yield* Effect.acquireRelease(
+      Effect.sync(() => smtpBackend(settings)),
+      (made) => Effect.sync(() => made.close()),
     )
     yield* registry.register(smtp.backend)
     yield* Effect.logDebug(`mail handed to ${settings.host}:${settings.port} (${settings.tls})`)

@@ -62,7 +62,11 @@ describe('the Turnstile driver', () => {
   it('says when the person is needed, when they are done, and hands the token over once', async () => {
     install()
     const states: CaptchaClientState[] = []
-    await start({ container: document.body, challenge, onStateChange: (state) => states.push(state) })
+    await start({
+      container: document.body,
+      challenge,
+      onStateChange: (state) => states.push(state),
+    })
     const options = rendered[0]!.options
     options['before-interactive-callback']()
     options['after-interactive-callback']()
@@ -85,7 +89,11 @@ describe('the Turnstile driver', () => {
       'unsupported-callback',
     ] as const) {
       const states: CaptchaClientState[] = []
-      await start({ container: document.body, challenge, onStateChange: (state) => states.push(state) })
+      await start({
+        container: document.body,
+        challenge,
+        onStateChange: (state) => states.push(state),
+      })
       rendered.at(-1)!.options[callback]()
       expect(states.at(-1), callback).toEqual({ kind: 'failed', recovery: 'restart' })
     }
@@ -108,7 +116,11 @@ describe('the Turnstile driver', () => {
       })
       observer.observe(document.head, { childList: true })
     })
-    const starting = start({ container: document.body, challenge, onStateChange: (state) => states.push(state) })
+    const starting = start({
+      container: document.body,
+      challenge,
+      onStateChange: (state) => states.push(state),
+    })
     const script = await appended
     script.dispatchEvent(new Event('error'))
     await starting

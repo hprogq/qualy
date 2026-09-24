@@ -199,7 +199,9 @@ describe.runIf(postgresAvailable)('the formula library', () => {
     // source, has to name its parameters for them
     expect(refused._tag).toBe('ASSESSMENT_FORMULA_CONTRACT_INVALID')
     expect(
-      ((refused as { issues?: readonly { reason: string }[] }).issues ?? []).map((one) => one.reason),
+      ((refused as { issues?: readonly { reason: string }[] }).issues ?? []).map(
+        (one) => one.reason,
+      ),
     ).toEqual(['parameter-title-missing'])
   }, 120_000)
 

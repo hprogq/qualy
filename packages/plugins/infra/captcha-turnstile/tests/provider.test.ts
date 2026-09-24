@@ -9,7 +9,11 @@ import {
   CaptchaProviderDeclarations,
   type CaptchaProviderDeclaration,
 } from '@qualy/plugin-captcha/plugin'
-import { CaptchaProviders, registryLayer, type CaptchaProviderContext } from '@qualy/plugin-captcha/server'
+import {
+  CaptchaProviders,
+  registryLayer,
+  type CaptchaProviderContext,
+} from '@qualy/plugin-captcha/server'
 import altcha from '@qualy/plugin-captcha-altcha'
 import turnstile from '../src/index.ts'
 import {
@@ -50,7 +54,9 @@ type Reply = { status: number; body: unknown } | 'unreachable'
 
 const withProvider = async <A>(
   replies: readonly Reply[],
-  body: (verify: (over?: Partial<CaptchaProviderContext>, token?: string) => Effect.Effect<string>) => Effect.Effect<A>,
+  body: (
+    verify: (over?: Partial<CaptchaProviderContext>, token?: string) => Effect.Effect<string>,
+  ) => Effect.Effect<A>,
 ) => {
   const sent: URLSearchParams[] = []
   let next = 0
@@ -83,9 +89,9 @@ const withProvider = async <A>(
     Effect.gen(function* () {
       const provider = (yield* Effect.flatMap(CaptchaProviders, (registry) => registry.selected))!
       const verify = (over: Partial<CaptchaProviderContext> = {}, token = 'token') =>
-        provider.verify(context(over), token).pipe(
-          Effect.catchTag('CaptchaUnavailable', () => Effect.succeed('unavailable')),
-        )
+        provider
+          .verify(context(over), token)
+          .pipe(Effect.catchTag('CaptchaUnavailable', () => Effect.succeed('unavailable')))
       const answer = yield* body(verify)
       const issued = yield* provider.issue(context())
       const policy = yield* Effect.flatMap(ShellPolicy, (registry) => registry.entries)

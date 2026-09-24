@@ -1146,7 +1146,9 @@ export const blockedGroups = (tenantId: string, batchId: string) =>
           roleIds: row.role_ids.map(String),
           // why these wait: a staffing gap and a conflict rule read differently
           reason: (row.reason ?? 'no-assignee') as
-            'no-assignee' | 'no-independent-reviewer' | 'panel-seat-unfilled',
+            | 'no-assignee'
+            | 'no-independent-reviewer'
+            | 'panel-seat-unfilled',
           waiting: Number(row.waiting),
         })),
       ),

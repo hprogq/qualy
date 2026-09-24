@@ -93,7 +93,6 @@ const loginProviders = (tenantId: string) =>
       .execute(),
   )
 
-
 /**
  * One public provider code, of the type the route belongs to.
  *
@@ -778,7 +777,10 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
      */
     callbackUrl: (provider: ResolvedProvider) =>
       Effect.gen(function* () {
-        const base = yield* publicOrigin.resolve({ id: provider.tenantId, slug: provider.tenantSlug })
+        const base = yield* publicOrigin.resolve({
+          id: provider.tenantId,
+          slug: provider.tenantSlug,
+        })
         const found = yield* drivers.forType(provider.type)
         const declared = found?.driver.callback
         if (declared === undefined) {
@@ -853,7 +855,8 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         }
         // a proof carried while nothing is raised is not looked at: nothing
         // asked for it, and asking a provider costs
-        if (!challengeRequired) return { kind: 'admitted' } satisfies AdmissionAnswer as AdmissionAnswer
+        if (!challengeRequired)
+          return { kind: 'admitted' } satisfies AdmissionAnswer as AdmissionAnswer
         const guarded = yield* captcha.guard({
           tenantId,
           purpose: LOGIN_CAPTCHA,
@@ -863,11 +866,9 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
             input.identifier === undefined ? provider : `${provider}\0${input.identifier}`,
           ...(input.captcha === undefined ? {} : { proof: input.captcha }),
         })
-        return (
-          guarded.kind === 'required'
-            ? { kind: 'challenge', prompt: guarded.prompt }
-            : { kind: 'admitted' }
-        ) satisfies AdmissionAnswer as AdmissionAnswer
+        return (guarded.kind === 'required'
+          ? { kind: 'challenge', prompt: guarded.prompt }
+          : { kind: 'admitted' }) satisfies AdmissionAnswer as AdmissionAnswer
       }),
     ),
 
@@ -1148,7 +1149,10 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         for (const method of methods) {
           const binding = (yield* drivers.forType(method.type))?.driver.binding
           if (binding?.mode === 'managed') {
-            passwordRule = { minLength: binding.secret.minLength, maxLength: binding.secret.maxLength }
+            passwordRule = {
+              minLength: binding.secret.minLength,
+              maxLength: binding.secret.maxLength,
+            }
             break
           }
         }
@@ -1196,15 +1200,14 @@ export const layer: Layer.Layer<
   | AnonymousTenantResolver
   | PublicOriginResolver
   | Captcha
-> =
-  Layer.effectContext(
-    Effect.gen(function* () {
-      const signIn = yield* make()
-      return Context.empty().pipe(
-        Context.add(SignIn, signIn),
-        // the driver-facing surface is the same construction, published under
-        // the tag a driver can reach without importing this plugin
-        Context.add(LoginSessions, signIn.sessions),
-      )
-    }),
-  )
+> = Layer.effectContext(
+  Effect.gen(function* () {
+    const signIn = yield* make()
+    return Context.empty().pipe(
+      Context.add(SignIn, signIn),
+      // the driver-facing surface is the same construction, published under
+      // the tag a driver can reach without importing this plugin
+      Context.add(LoginSessions, signIn.sessions),
+    )
+  }),
+)

@@ -46,10 +46,7 @@ beforeAll(async () => {
           trustedProxies: [],
           access: { mode: 'api', level: 'Info', exclude: [] },
         }),
-      }).pipe(
-        Layer.provide(NodeHttpServer.layer(createServer, { port })),
-        Layer.provide(capture),
-      ),
+      }).pipe(Layer.provide(NodeHttpServer.layer(createServer, { port })), Layer.provide(capture)),
       scope,
     ),
   )

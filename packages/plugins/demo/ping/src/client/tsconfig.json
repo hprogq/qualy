@@ -1,6 +1,4 @@
 {
   "extends": "@qualy/tsconfig/browser.json",
-  "include": [
-    "."
-  ]
+  "include": ["."]
 }

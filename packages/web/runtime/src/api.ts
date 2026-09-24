@@ -133,7 +133,10 @@ const PIPELINE_REFUSALS: Record<number, string> = {
 
 type FellThrough = {
   readonly _tag: 'HttpClientError'
-  readonly reason: { readonly _tag: string; readonly response: HttpClientResponse.HttpClientResponse }
+  readonly reason: {
+    readonly _tag: string
+    readonly response: HttpClientResponse.HttpClientResponse
+  }
 }
 
 const fellThrough = (error: unknown): error is FellThrough =>

@@ -27,7 +27,10 @@ const i18n = definePluginMessages({
     forgot: { id: 'auth-local/action/forgot', defaultMessage: 'Forgot password?' },
     showPassword: { id: 'auth-local/action/show-password', defaultMessage: 'Show password' },
     hidePassword: { id: 'auth-local/action/hide-password', defaultMessage: 'Hide password' },
-    remember: { id: 'auth-local/field/remember', defaultMessage: 'Remember my email on this device' },
+    remember: {
+      id: 'auth-local/field/remember',
+      defaultMessage: 'Remember my email on this device',
+    },
     emailInvalid: { id: 'auth-local/check/email', defaultMessage: 'Enter a valid email address' },
     passwordShort: {
       id: 'auth-local/check/password-short',

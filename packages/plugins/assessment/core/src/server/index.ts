@@ -690,7 +690,12 @@ const MAX_STAFF_PAIRS = 2000
  * carries is more than a batch may hand out at all.
  */
 export type RoleRefusal =
-  'user-type' | 'authority' | 'self-escalation' | 'unavailable' | 'beyond-batch' | null
+  | 'user-type'
+  | 'authority'
+  | 'self-escalation'
+  | 'unavailable'
+  | 'beyond-batch'
+  | null
 
 /** one level of the lineage being frozen, with who could act there today */
 export interface ChainPreviewStep {
@@ -918,7 +923,12 @@ export class Assessment extends Context.Service<
           id: string
           name: string
           refusal:
-            'user-type' | 'authority' | 'self-escalation' | 'unavailable' | 'beyond-batch' | null
+            | 'user-type'
+            | 'authority'
+            | 'self-escalation'
+            | 'unavailable'
+            | 'beyond-batch'
+            | null
         }[]
       },
       BatchNotFound | AccessDenied
@@ -2714,25 +2724,19 @@ export const make = Effect.fn('Assessment.make')(function* () {
       return held.tenantWide || held.anchors.length > 0
     }),
 
-    listUserBatches: Effect.fn('Assessment.listUserBatches')(function* (
-      tenantId,
-      userId,
-      filter,
-      as,
-    ) {
-      const viewer = yield* viewerOf(as)
-      return yield* dieQuery(withDb(userBatchesPage(tenantId, userId, viewer, filter)))
-    }),
+    listUserBatches: Effect.fn('Assessment.listUserBatches')(
+      function* (tenantId, userId, filter, as) {
+        const viewer = yield* viewerOf(as)
+        return yield* dieQuery(withDb(userBatchesPage(tenantId, userId, viewer, filter)))
+      },
+    ),
 
-    listUserEntries: Effect.fn('Assessment.listUserEntries')(function* (
-      tenantId,
-      userId,
-      filter,
-      as,
-    ) {
-      const viewer = yield* viewerOf(as)
-      return yield* dieQuery(withDb(userEntriesPage(tenantId, userId, viewer, filter)))
-    }),
+    listUserEntries: Effect.fn('Assessment.listUserEntries')(
+      function* (tenantId, userId, filter, as) {
+        const viewer = yield* viewerOf(as)
+        return yield* dieQuery(withDb(userEntriesPage(tenantId, userId, viewer, filter)))
+      },
+    ),
 
     listBatches: Effect.fn('Assessment.listBatches')(function* (tenantId, filter, as) {
       const viewer = yield* viewerOf(as)

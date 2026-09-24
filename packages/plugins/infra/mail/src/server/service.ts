@@ -39,7 +39,9 @@ export const serviceLayer: Layer.Layer<Mailer, never, MailBackends | MailConfig>
           })
           .pipe(
             Effect.timeoutOption(Duration.millis(config.timeoutMs)),
-            Effect.map((done) => (done._tag === 'Some' ? ('sent' as const) : ('unavailable' as const))),
+            Effect.map((done) =>
+              done._tag === 'Some' ? ('sent' as const) : ('unavailable' as const),
+            ),
             Effect.catchTag('MailBackendFailed', (failed) => Effect.succeed(failed.reason)),
           )
         yield* sent({ outcome })

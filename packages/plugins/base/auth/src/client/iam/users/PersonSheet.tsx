@@ -117,7 +117,9 @@ export function PersonSheet({
       meta={
         person === undefined ? undefined : (
           // who, and nothing else: where they stand is said once, below
-          <MetaLine items={[person.user.businessNo ?? format(m.personNoBusinessNo, { businessNo })]} />
+          <MetaLine
+            items={[person.user.businessNo ?? format(m.personNoBusinessNo, { businessNo })]}
+          />
         )
       }
       closeLabel={format(commonMessages.close)}
@@ -189,8 +191,16 @@ export function PersonSheet({
             ] as const
           ).map(([kind, title, roles]) =>
             kind === 'confined' && roles.length === 0 ? null : (
-              <Card key={kind} data-testid="person-roles" data-kind={kind} data-count={roles.length}>
-                <CardHead title={format(title)} note={format(m.grantCount, { count: roles.length })} />
+              <Card
+                key={kind}
+                data-testid="person-roles"
+                data-kind={kind}
+                data-count={roles.length}
+              >
+                <CardHead
+                  title={format(title)}
+                  note={format(m.grantCount, { count: roles.length })}
+                />
                 {roles.length === 0 ? (
                   <CardEmpty>{format(m.personNoRoles)}</CardEmpty>
                 ) : (

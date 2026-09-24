@@ -20,7 +20,10 @@ import { loginDriversLayer, registerLoginDriver } from '@qualy/auth-contract/log
 import { hashPassword } from '@qualy/plugin-auth-local/password'
 import { hashSessionToken } from '../src/session.ts'
 import { SEEDED_EMAILS, seedSignIn } from './support/sign-in-seed.ts'
-import { apiHandlers as authLocalApiHandlers, driver as localDriver } from '@qualy/plugin-auth-local'
+import {
+  apiHandlers as authLocalApiHandlers,
+  driver as localDriver,
+} from '@qualy/plugin-auth-local'
 import { authLocalApiGroup } from '@qualy/plugin-auth-local/api'
 import { sessionApiGroup } from '../src/api.ts'
 import { sessionApiHandlers } from '../src/server/index.ts'
@@ -550,7 +553,10 @@ describe.runIf(postgresAvailable)('how many attempts a door takes', () => {
     const retryAfter = Number(slowed.headers.get('retry-after'))
     expect(retryAfter).toBeGreaterThan(0)
     expect(retryAfter).toBeLessThanOrEqual(300)
-    expect(await slowed.json()).toEqual({ _tag: 'TOO_MANY_ATTEMPTS', retryAfterSeconds: retryAfter })
+    expect(await slowed.json()).toEqual({
+      _tag: 'TOO_MANY_ATTEMPTS',
+      retryAfterSeconds: retryAfter,
+    })
   })
 
   it('forgets an address once its password is proven, even for an account that may not come in', async () => {

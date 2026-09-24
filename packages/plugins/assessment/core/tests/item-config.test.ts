@@ -837,11 +837,15 @@ describe.runIf(postgresAvailable)('item configuration', () => {
             escalation: { stages: escalation },
           })
           return {
-            twoRoutes: yield* create(routes([stage('n1'), stage('n2')], [stage('d1')]), ['participant']),
+            twoRoutes: yield* create(routes([stage('n1'), stage('n2')], [stage('d1')]), [
+              'participant',
+            ]),
             unknownSelector: yield* create(
               routes([
                 { id: 'n1', selector: { kind: 'whoeverIsAround' }, quorum: { type: 'any' } },
-              ]), ['participant']),
+              ]),
+              ['participant'],
+            ),
             nearestRole: yield* create(
               routes([
                 {
@@ -849,13 +853,19 @@ describe.runIf(postgresAvailable)('item configuration', () => {
                   selector: { kind: 'nearestRole', roleId: randomUUID() },
                   quorum: { type: 'any' },
                 },
-              ]), ['participant']),
-            quorumAll: yield* create(
-              routes([{ ...stage('n1'), quorum: { type: 'all' } }]), ['participant']),
+              ]),
+              ['participant'],
+            ),
+            quorumAll: yield* create(routes([{ ...stage('n1'), quorum: { type: 'all' } }]), [
+              'participant',
+            ]),
             unnamedStage: yield* create(
-              routes([{ selector: stage('n1').selector, quorum: { type: 'any' } }]), ['participant']),
-            oneListWithAMarker: yield* create(
-              { stages: [stage('n1')], normalTerminal: 0 }, ['participant']),
+              routes([{ selector: stage('n1').selector, quorum: { type: 'any' } }]),
+              ['participant'],
+            ),
+            oneListWithAMarker: yield* create({ stages: [stage('n1')], normalTerminal: 0 }, [
+              'participant',
+            ]),
             // the trusted path never walks the chain on the way in, but an
             // appeal resolves it from this very revision: it must be there
             administrativeChain: yield* create(routes([stage('n1')]), ['administrative']),
@@ -2060,9 +2070,9 @@ describe.runIf(postgresAvailable)('reading a composition before it is saved', ()
       { path: 'scoringConfig.bindings.ordinal', reason: 'constant-maximum' },
     ])
     // an id was never minted for it, so the handle is how the editor finds the row
-    expect(result.spare.issues.map((issue) => ({ reason: issue.reason, handle: issue.handle }))).toEqual([
-      { reason: 'recognition-unbound', handle: 'spare' },
-    ])
+    expect(
+      result.spare.issues.map((issue) => ({ reason: issue.reason, handle: issue.handle })),
+    ).toEqual([{ reason: 'recognition-unbound', handle: 'spare' }])
     expect(result.written.items).toBe('0')
   })
 
@@ -2085,4 +2095,3 @@ describe.runIf(postgresAvailable)('reading a composition before it is saved', ()
     expect(tagOf(result)).toBe('ACCESS_DENIED')
   })
 })
-

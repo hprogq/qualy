@@ -452,9 +452,17 @@ export const batchConstraints: Record<string, () => BatchReferenceInvalid> = {}
 
 export type CreateBatchError = BatchReferenceInvalid | AccessDenied
 export type UpdateBatchError =
-  BatchNotFound | BatchReadOnly | BatchReferenceInvalid | MaterialRangeInvalid | AccessDenied
+  | BatchNotFound
+  | BatchReadOnly
+  | BatchReferenceInvalid
+  | MaterialRangeInvalid
+  | AccessDenied
 export type SetBatchStatusError =
-  BatchNotFound | BatchStatusInvalid | BatchNoParticipants | PlanInvalid | AccessDenied
+  | BatchNotFound
+  | BatchStatusInvalid
+  | BatchNoParticipants
+  | PlanInvalid
+  | AccessDenied
 
 /** reading or changing who may work on a batch */
 export type BatchAccessError = BatchNotFound | AccessInvalid | AccessDenied
@@ -462,7 +470,11 @@ export type BatchAccessError = BatchNotFound | AccessInvalid | AccessDenied
 /** removing a draft that never ran; anything else is archived, not deleted */
 export type DeleteBatchError = BatchNotFound | BatchStatusInvalid | AccessDenied
 export type ReplacePlanError =
-  BatchNotFound | BatchReadOnly | TemplateNotFound | PlanInvalid | AccessDenied
+  | BatchNotFound
+  | BatchReadOnly
+  | TemplateNotFound
+  | PlanInvalid
+  | AccessDenied
 export type AdvancePhaseError = BatchNotFound | PhaseNotFound | AdvanceInvalid | AccessDenied
 
 /**
@@ -473,7 +485,12 @@ export type AdvancePhaseError = BatchNotFound | PhaseNotFound | AdvanceInvalid |
  * plan to run.
  */
 export type SchedulePhaseError =
-  BatchNotFound | BatchReadOnly | PhaseNotFound | PlanInvalid | BatchNoParticipants | AccessDenied
+  | BatchNotFound
+  | BatchReadOnly
+  | PhaseNotFound
+  | PlanInvalid
+  | BatchNoParticipants
+  | AccessDenied
 
 /**
  * The scoring rule refused this determination.

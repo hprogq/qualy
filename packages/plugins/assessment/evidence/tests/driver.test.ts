@@ -117,7 +117,9 @@ describe('what a payload must satisfy', () => {
     }
     expect(
       issuesOf(
-        Effect.runSyncExit(evidenceDriver.decodePayload(bounded, { 'enrolled-on': '2025-01-01' }, batch)),
+        Effect.runSyncExit(
+          evidenceDriver.decodePayload(bounded, { 'enrolled-on': '2025-01-01' }, batch),
+        ),
       ),
     ).toContainEqual({ field: 'enrolled-on', reason: 'out-of-range' })
   })
@@ -367,7 +369,8 @@ describe('the typed fields', () => {
       if (!Exit.isFailure(exit)) return []
       const failed = (exit.cause as { reasons?: readonly { error?: unknown }[] }).reasons ?? []
       const error = failed.map((one) => one.error).find((one) => one !== undefined) as
-        ItemPayloadInvalid | undefined
+        | ItemPayloadInvalid
+        | undefined
       return (error?.issues ?? []).map(
         (issue: { field: string; reason: string }) => `${issue.field}:${issue.reason}`,
       )
@@ -559,7 +562,9 @@ describe('the fields the value profile speaks', () => {
   it('offers a retired option to nobody, and keeps its words', () => {
     expect(reasonsOf(decode(config, { team: true, level: 'city' }))).toContain('level:not-a-choice')
     expect(Exit.isSuccess(decode(config, { team: true, level: 'provincial' }))).toBe(true)
-    const level = evidenceDriver.bindableFields!(config, batch).find((one) => one.fieldId === 'level')!
+    const level = evidenceDriver.bindableFields!(config, batch).find(
+      (one) => one.fieldId === 'level',
+    )!
     expect(level.schema).toMatchObject({
       enum: ['national', 'provincial'],
       'x-qualy-enumLabels': { national: '国家级', provincial: '省级' },
@@ -570,7 +575,12 @@ describe('the fields the value profile speaks', () => {
       Result.isFailure(
         Schema.decodeUnknownResult(evidenceConfig)({
           fields: [
-            { key: 'c', type: 'choice', label: 'C', options: [{ value: 'a', label: 'A', enabled: false }] },
+            {
+              key: 'c',
+              type: 'choice',
+              label: 'C',
+              options: [{ value: 'a', label: 'A', enabled: false }],
+            },
           ],
         }),
       ),
@@ -578,7 +588,9 @@ describe('the fields the value profile speaks', () => {
   })
 
   it('carries the words on the schema, so a binding and a form agree on them', () => {
-    const code = evidenceDriver.bindableFields!(config, batch).find((one) => one.fieldId === 'code')!
+    const code = evidenceDriver.bindableFields!(config, batch).find(
+      (one) => one.fieldId === 'code',
+    )!
     expect(code.schema).toMatchObject({
       type: 'string',
       minLength: 8,

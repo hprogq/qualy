@@ -59,7 +59,10 @@ const refusal = (exit: Exit.Exit<unknown, unknown>) =>
 
 describe('the master key', () => {
   it('is taken as exactly 32 bytes of base64', async () => {
-    const { exit } = await configured({ NODE_ENV: 'production', QUALY_SECRETS_MASTER_KEY: TEST_MASTER_KEY })
+    const { exit } = await configured({
+      NODE_ENV: 'production',
+      QUALY_SECRETS_MASTER_KEY: TEST_MASTER_KEY,
+    })
     expect(Exit.isSuccess(exit) && exit.value).toBe(TEST_MASTER_KEY)
   })
 
@@ -92,7 +95,10 @@ describe('the master key', () => {
     expect(logged).toContain(DEVELOPMENT_KEY_WARNING)
     // and that key does not start a production instance
     const fallback = Exit.isSuccess(exit) ? exit.value : ''
-    const production = await configured({ NODE_ENV: 'production', QUALY_SECRETS_MASTER_KEY: fallback })
+    const production = await configured({
+      NODE_ENV: 'production',
+      QUALY_SECRETS_MASTER_KEY: fallback,
+    })
     expect(refusal(production.exit)).toContain(DEVELOPMENT_KEY_IN_PRODUCTION)
   })
 })
@@ -201,7 +207,9 @@ describe.runIf(postgresAvailable)('a secret at rest', () => {
         db.url,
         Effect.gen(function* () {
           yield* runSql(sql`update secrets set owner_id = ${OTHER} where owner_id = ${OWNER}`)
-          return yield* Effect.flatMap(Secrets, (secrets) => secrets.get(ref('clientSecret', OTHER)))
+          return yield* Effect.flatMap(Secrets, (secrets) =>
+            secrets.get(ref('clientSecret', OTHER)),
+          )
         }),
       )
       expect(tagOf(moved)).toBe('SecretUnreadable')
@@ -300,9 +308,9 @@ describe.runIf(postgresAvailable)('a secret at rest', () => {
       // another scope, another value, or another deployment's key: another text
       expect(await digest('sign-in:address', 'ada@school.edu')).not.toBe(first)
       expect(await digest('sign-in:identifier', 'grace@school.edu')).not.toBe(first)
-      expect(await digest('sign-in:identifier', 'ada@school.edu', secretsLayerWith(other))).not.toBe(
-        first,
-      )
+      expect(
+        await digest('sign-in:identifier', 'ada@school.edu', secretsLayerWith(other)),
+      ).not.toBe(first)
       // and nothing anybody could compute without the key: not a plain
       // digest of the value, and not a MAC under the encryption key itself
       const { createHash, createHmac } = await import('node:crypto')
@@ -339,22 +347,27 @@ describe.runIf(postgresAvailable)('a secret at rest', () => {
       // separation itself is what is asserted and not merely two unequal texts
       const { createHmac, hkdfSync } = await import('node:crypto')
       const master = Buffer.from(TEST_MASTER_KEY, 'base64')
-      const hkdf = (info: string) => Buffer.from(hkdfSync('sha256', master, Buffer.alloc(0), info, 32))
+      const hkdf = (info: string) =>
+        Buffer.from(hkdfSync('sha256', master, Buffer.alloc(0), info, 32))
       const derivedVector = (domain: string) =>
         hkdf(`qualy/secrets/derived/v1\0${domain}`).toString('base64url')
       const fingerprintKey = hkdf('qualy/secrets/fingerprint/v1')
 
       const challenge = await derive('captcha/altcha/challenge/v1')
       expect(Redacted.value(challenge)).toBe(derivedVector('captcha/altcha/challenge/v1'))
-      expect(Redacted.value(await derive('captcha/altcha/challenge/v1'))).toBe(Redacted.value(challenge))
+      expect(Redacted.value(await derive('captcha/altcha/challenge/v1'))).toBe(
+        Redacted.value(challenge),
+      )
       // another domain, another deployment's key: another secret
       expect(Redacted.value(await derive('captcha/altcha/key/v1'))).toBe(
         derivedVector('captcha/altcha/key/v1'),
       )
-      expect(Redacted.value(await derive('captcha/altcha/key/v1'))).not.toBe(Redacted.value(challenge))
-      expect(Redacted.value(await derive('captcha/altcha/challenge/v1', secretsLayerWith(other)))).not.toBe(
+      expect(Redacted.value(await derive('captcha/altcha/key/v1'))).not.toBe(
         Redacted.value(challenge),
       )
+      expect(
+        Redacted.value(await derive('captcha/altcha/challenge/v1', secretsLayerWith(other))),
+      ).not.toBe(Redacted.value(challenge))
       // fingerprints are made under a key of their own, which is not
       // anything a derived domain can name - not even its own label
       expect(await fingerprint('sign-in:identifier', 'ada@school.edu')).toBe(

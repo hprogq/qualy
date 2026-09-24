@@ -72,11 +72,11 @@ scoring-preview 先拿字段校验把你拦死
 当前 `ItemSettingsPage.tsx` 是这样的：
 
 ```ts
-const [question, setQuestion] = usePageQueryState("question", "", {
-  history: "push",
-});
+const [question, setQuestion] = usePageQueryState('question', '', {
+  history: 'push',
+})
 
-const [composing, setComposing] = useState<string | null>(null);
+const [composing, setComposing] = useState<string | null>(null)
 ```
 
 也就是说：
@@ -264,13 +264,13 @@ fields:
 应该改成：
 
 ```ts
-fields;
+fields
 ```
 
 也就是新题：
 
 ```ts
-fields: [];
+fields: []
 ```
 
 只有两种情况才产生字段：
@@ -286,7 +286,7 @@ fields: [];
 当前 `evidence` driver 在 `packages/plugins/assessment/evidence/src/driver.ts` 明确规定：
 
 ```ts
-if (fields.length === 0) return "at least one field";
+if (fields.length === 0) return 'at least one field'
 ```
 
 这个规则不要因为编辑器需要空状态就删掉。
@@ -508,7 +508,7 @@ Recognition 又有：
 
 ```ts
 {
-  (label, refinement, defaultFromFieldId);
+  ;(label, refinement, defaultFromFieldId)
 }
 ```
 
@@ -539,7 +539,7 @@ Recognition 又有：
 
 ```ts
 {
-  kind: "prefill";
+  kind: 'prefill'
 }
 ```
 
@@ -816,7 +816,7 @@ pattern 无法证明
 当前代码有：
 
 ```ts
-const fieldName = (fieldId) => fieldLabels?.[fieldId] ?? fieldId;
+const fieldName = (fieldId) => fieldLabels?.[fieldId] ?? fieldId
 ```
 
 而 dropdown 甚至明确写了：
@@ -865,7 +865,7 @@ fmu7hlrl3om17
 
 ```tsx
 {
-  schema.title ?? parameter;
+  schema.title ?? parameter
 }
 ```
 
@@ -876,7 +876,7 @@ fmu7hlrl3om17
 `packages/core/value-schema/src/display.ts`
 
 ```ts
-displayTitle(schema, key, locale);
+displayTitle(schema, key, locale)
 ```
 
 它的 fallback 是：
@@ -892,13 +892,13 @@ displayTitle(schema, key, locale);
 所以 `ScoringBindingEditor` 应该直接改成：
 
 ```ts
-displayTitle(schema, parameter, locale);
+displayTitle(schema, parameter, locale)
 ```
 
 description 同样使用：
 
 ```ts
-displayDescription(schema, locale);
+displayDescription(schema, locale)
 ```
 
 choice label 使用：
@@ -1456,13 +1456,13 @@ N
 当前 `ItemConfigEditor` 里：
 
 ```ts
-const each = Number(draft.fixedValue.trim());
+const each = Number(draft.fixedValue.trim())
 ```
 
 `ceiling` 也是基于：
 
 ```ts
-draft.fixedValue;
+draft.fixedValue
 ```
 
 计算。
@@ -1470,7 +1470,7 @@ draft.fixedValue;
 然后 `ScoringSummary` 最后还固定写：
 
 ```ts
-format(m.itemsScoringMethodFixed);
+format(m.itemsScoringMethodFixed)
 ```
 
 也就是说，即使当前选择的是 Formula，右下这个计分摘要仍然在按 `fixedValue` 那套概念解释。
@@ -1480,7 +1480,7 @@ format(m.itemsScoringMethodFixed);
 ```ts
 itemsPreviewValue({
   value: trimAmount(draft.fixedValue.trim()),
-});
+})
 ```
 
 因此 Formula 页面现在不只是“看着拼”，还有可能显示一个**实际上没有业务含义的固定分值/上限**。
@@ -2615,10 +2615,10 @@ itemType × entrySource
 因为源码中的 `recognition` 并不等价于“审核”。`scoring/plan.ts` 已经明确区分：
 
 ```ts
-"review";
-"administrative";
-"automatic";
-"none";
+'review'
+'administrative'
+'automatic'
+'none'
 ```
 
 管理员统一认定时，也可以填写认定值，并没有一个正常审核人在那里。
@@ -2819,7 +2819,7 @@ default-field-not-guaranteed
 判断仍然使用：
 
 ```ts
-assignmentPlan(candidate, target);
+assignmentPlan(candidate, target)
 ```
 
 而不是重新写规则。
@@ -2867,14 +2867,14 @@ textField {
 没有：
 
 ```ts
-minLength;
-pattern;
+minLength
+pattern
 ```
 
 `prefill.ts` 因此直接：
 
 ```ts
-if (pattern !== undefined || minLength !== undefined) return false;
+if (pattern !== undefined || minLength !== undefined) return false
 ```
 
 这确实没有继续保留的理由。
@@ -3176,7 +3176,7 @@ recognition.defaultFromFieldId
 编辑器层应该派生：
 
 ```ts
-Map<fieldId, ParameterLink[]>;
+Map<fieldId, ParameterLink[]>
 ```
 
 注意是：
@@ -3549,7 +3549,7 @@ Sheet 顶部都采用相同结构：
 必须直接复用：
 
 ```ts
-recognitionSourceOf();
+recognitionSourceOf()
 ```
 
 的业务语义。
@@ -3571,13 +3571,13 @@ bindingDiagnostics
 
 ```ts
 type EditorProblem = {
-  area: "basics" | "calculator" | "parameter" | "field" | "rules" | "review";
+  area: 'basics' | 'calculator' | 'parameter' | 'field' | 'rules' | 'review'
 
-  entityId?: string;
-  code: string;
-  severity: "error" | "warning";
-  blocking: boolean;
-};
+  entityId?: string
+  code: string
+  severity: 'error' | 'warning'
+  blocking: boolean
+}
 ```
 
 例如：
@@ -3660,14 +3660,14 @@ scoringConfig.recognitions.xxx: ...
 更严重的是当前源码仍然存在一个语义错误：
 
 ```ts
-ParticipantPreview;
-ScoringSummary;
+ParticipantPreview
+ScoringSummary
 ```
 
 对非 fixed calculator 仍然大量使用：
 
 ```ts
-draft.fixedValue;
+draft.fixedValue
 ```
 
 `ScoringSummary` 甚至固定写：
@@ -3741,13 +3741,13 @@ administrative
 现在：
 
 ```ts
-const each = Number(draft.fixedValue.trim());
+const each = Number(draft.fixedValue.trim())
 ```
 
 然后用它算：
 
 ```ts
-ceiling;
+ceiling
 ```
 
 这只适用于 fixed calculator。
@@ -4695,7 +4695,7 @@ recognition.refinement
 当前 `FieldDraft` 仍然允许：
 
 ```ts
-label: "";
+label: ''
 ```
 
 然后这个对象马上进入主 draft。
@@ -5180,7 +5180,7 @@ top-n
 当前 Formula 项目仍然拿：
 
 ```ts
-draft.fixedValue;
+draft.fixedValue
 ```
 
 计算 `ceiling`，这一条必须进 P0。
@@ -5323,9 +5323,9 @@ payload
 
 ```ts
 where: {
-  (batchId, itemId);
+  ;(batchId, itemId)
 }
-doors;
+doors
 ```
 
 未保存 draft 没有真正 itemId，所以不能简单地把现在的 `EvidenceForm` 原封不动塞进 Preview Drawer。
@@ -5530,7 +5530,7 @@ diagnostics
 实现上可以有一个：
 
 ```ts
-reconcileScoringDraft(oldContract, newContract, draft);
+reconcileScoringDraft(oldContract, newContract, draft)
 ```
 
 继续复用 `validateValue()` 和 `assignmentPlan()`。
@@ -5662,7 +5662,7 @@ UI 完全可以自然表示成：
 
 ```ts
 {
-  mode: "none";
+  mode: 'none'
 }
 ```
 
@@ -5707,7 +5707,7 @@ UI 完全可以自然表示成：
 当前：
 
 ```ts
-entrySource: "student" | "administrative";
+entrySource: 'student' | 'administrative'
 ```
 
 把整个项目强行二选一。
@@ -5723,7 +5723,7 @@ source = self / record / import / ...
 所以更合理的模型应当是项目版本声明：
 
 ```ts
-entryChannels: ["participant", "administrative"];
+entryChannels: ['participant', 'administrative']
 ```
 
 用户界面不需要出现“channel”这个词，只显示：
@@ -6085,7 +6085,7 @@ Core 控制 Sheet 的标题、间距、保存状态，插件只提供里面的�
 多录入方式以后，原来的：
 
 ```ts
-recognitionSourceOf();
+recognitionSourceOf()
 ```
 
 也不能再返回一个单值了。
@@ -6366,7 +6366,7 @@ stages.length > 0 ? stages : [blankStage(...)]
 当前：
 
 ```ts
-itemType: "evidence" | "declaration" | "constant";
+itemType: 'evidence' | 'declaration' | 'constant'
 ```
 
 而且 `itemType` 存在 `assessment_items` 上，不在 revision 上。
@@ -6426,7 +6426,7 @@ N 个字段
 当前 `evidenceConfig` 里的：
 
 ```ts
-if (fields.length === 0) return "at least one field";
+if (fields.length === 0) return 'at least one field'
 ```
 
 删除。
@@ -6440,9 +6440,9 @@ if (fields.length === 0) return "at least one field";
 当前 `ItemTypeDriver.interaction` 是静态：
 
 ```ts
-"entry";
-"task";
-"derived";
+'entry'
+'task'
+'derived'
 ```
 
 这也是导致“自动型必须是另一个 itemType”的原因。
@@ -6488,7 +6488,7 @@ N 个字段 + 人工录入
 现在：
 
 ```ts
-entrySource: "student" | "administrative";
+entrySource: 'student' | 'administrative'
 ```
 
 改成概念上的：
@@ -6534,7 +6534,7 @@ legacy entrySource=administrative
 当前核心逻辑：
 
 ```ts
-const administrative = revision.entrySource === "administrative";
+const administrative = revision.entrySource === 'administrative'
 ```
 
 然后整条流程都依赖这个 boolean。
@@ -14071,7 +14071,7 @@ bindings[param] = constant
 我建议最终只显式增加一个项目模式字段，例如内部代码可以叫：
 
 ```ts
-mode: "review" | "direct" | "automatic";
+mode: 'review' | 'direct' | 'automatic'
 ```
 
 前端对应三种展示：
@@ -15183,7 +15183,7 @@ edit linked
 如果以后真的支持“多选题参与公式”，不要继续复用现在这个 scalar `ChoiceSchema`。现在公式里的 choice 是单值 enum，类型上就是：
 
 ```ts
-"national" | "provincial" | "city";
+;'national' | 'provincial' | 'city'
 ```
 
 多选实际应该是另一种集合类型，比如：
@@ -15299,11 +15299,11 @@ Popover 选择类型
 
 ```ts
 type ChoiceOption = {
-  id: string;
-  value: string;
-  label: string;
-  enabled: boolean;
-};
+  id: string
+  value: string
+  label: string
+  enabled: boolean
+}
 ```
 
 四个属性分别承担完全不同的职责：
@@ -15682,7 +15682,7 @@ national -> 省级
 我建议普通 choice option 有：
 
 ```ts
-enabled: boolean;
+enabled: boolean
 ```
 
 但 UI 不叫启用或禁用。
@@ -16199,8 +16199,8 @@ Sheet 负责完整字段配置，并且创建以后再次编辑还是同一个 S
 
 ```ts
 {
-  value: string;
-  label: string;
+  value: string
+  label: string
 }
 ```
 
@@ -16225,10 +16225,10 @@ label = 人看到的文字
 
 ```ts
 type ChoiceOption = {
-  id?: string;
-  value: string;
-  label: string;
-};
+  id?: string
+  value: string
+  label: string
+}
 ```
 
 这里甚至不必强制 `id` 一定是 UUID 格式，只需要：
@@ -16240,13 +16240,13 @@ type ChoiceOption = {
 并定义：
 
 ```ts
-optionIdentity(option) = option.id ?? option.value;
+optionIdentity(option) = option.id ?? option.value
 ```
 
 和现在的：
 
 ```ts
-fieldIdentity(field) = field.id ?? field.key;
+fieldIdentity(field) = field.id ?? field.key
 ```
 
 是同一种兼容思路。
@@ -16650,7 +16650,7 @@ national -> 国家级
 普通 Choice 不需要：
 
 ```ts
-enabled: boolean;
+enabled: boolean
 ```
 
 至少现在不需要。
@@ -17100,10 +17100,10 @@ oabc123
 
 ```ts
 interface ChoiceOption {
-  id?: string;
-  value: string;
-  label: string;
-  enabled: boolean;
+  id?: string
+  value: string
+  label: string
+  enabled: boolean
 }
 ```
 
@@ -17123,15 +17123,13 @@ interface ChoiceOption {
 现在字段是：
 
 ```ts
-const nextKey = () =>
-  `f${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+const nextKey = () => `f${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
 ```
 
 Choice 可以对应：
 
 ```ts
-const nextOptionKey = () =>
-  `o${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+const nextOptionKey = () => `o${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
 ```
 
 创建一个普通选项时：
@@ -17220,7 +17218,7 @@ enum = options
 同时应该补一个统一方法，例如：
 
 ```ts
-formatEvidenceValue(field, value);
+formatEvidenceValue(field, value)
 ```
 
 Choice 时从 `field.options` 的**全部选项，包括已停用项**里解析 label。
@@ -17386,11 +17384,11 @@ Choice 我建议最终定成：
 
 ```ts
 type ChoiceOption = {
-  id: string;
-  value: string;
-  label: string;
-  enabled: boolean;
-};
+  id: string
+  value: string
+  label: string
+  enabled: boolean
+}
 ```
 
 新建普通选项时，`id` 和 `value` 都由系统创建，思路可以直接参考现在字段的 `nextKey()`，例如分别生成稳定的内部 key。普通用户永远只编辑 `label`。`id` 创建后永远不变；`value` 平时也不变，只有建立公式关联这类明确的迁移操作才可能调整为公式要求的值。
@@ -17476,7 +17474,7 @@ Formula 发布条件我也建议直接定死，不要做运行时兜底。发布
 最后还有一个不影响你画 UI、但实现时需要补的地方：所有地方显示 Choice 值都应该走统一 formatter，不能直接渲染 payload string。现在源码里有些地方仍然直接拿字符串做摘要，这以后遇到停用选项、旧 revision、公式内部 value 时会暴露技术值。建议最终统一成类似：
 
 ```ts
-formatFieldValue(fieldConfig, value);
+formatFieldValue(fieldConfig, value)
 ```
 
 并让历史记录优先按照它所属 revision 的配置渲染，而不是当前项目配置。

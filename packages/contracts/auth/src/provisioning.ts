@@ -45,7 +45,13 @@ export interface UserTypeRef {
 /** a row the single-user path would have refused, named by its position */
 export class UserProvisioningRefused extends Data.TaggedError('UserProvisioningRefused')<{
   readonly index: number
-  readonly reason: 'type-missing' | 'type-disabled' | 'type-system' | 'node-missing' | 'placement' | 'conflict'
+  readonly reason:
+    | 'type-missing'
+    | 'type-disabled'
+    | 'type-system'
+    | 'node-missing'
+    | 'placement'
+    | 'conflict'
 }> {}
 
 export class UserProvisioning extends Context.Service<

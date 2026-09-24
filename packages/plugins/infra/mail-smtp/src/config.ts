@@ -20,7 +20,9 @@ export class SmtpConfig extends Context.Service<
     readonly host: string
     readonly port: number
     readonly tls: SmtpTls
-    readonly auth: { readonly user: string; readonly password: Redacted.Redacted<string> } | undefined
+    readonly auth:
+      | { readonly user: string; readonly password: Redacted.Redacted<string> }
+      | undefined
   }
 >()('@qualy/plugin-mail-smtp/SmtpConfig') {}
 
@@ -56,7 +58,8 @@ export const config = (
       }
       const tls: SmtpTls = tlsRaw
       const plaintextAllowed =
-        (yield* Config.String('QUALY_MAIL_SMTP_ALLOW_PLAINTEXT').pipe(Config.withDefault(''))) === '1'
+        (yield* Config.String('QUALY_MAIL_SMTP_ALLOW_PLAINTEXT').pipe(Config.withDefault(''))) ===
+        '1'
       if (production && tls === 'none' && !plaintextAllowed) {
         return yield* Effect.die(new Error(SMTP_PLAINTEXT_REFUSED))
       }

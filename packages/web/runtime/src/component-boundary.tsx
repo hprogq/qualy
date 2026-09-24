@@ -103,7 +103,8 @@ export function PluginComponent({
   missing,
 }: PluginComponentProps) {
   const Resolved = resolveSurface(registry, surface) as
-    ComponentType<Record<string, unknown>> | undefined
+    | ComponentType<Record<string, unknown>>
+    | undefined
   if (!Resolved) {
     console.error(
       `[qualy] ${surfaceLabel(surface)} is missing from this build; ` +

@@ -49,7 +49,8 @@ describe('the assembled barrier', () => {
       yield* Layer.build(application)
       expect(order.slice(-1)).toEqual(['serve'])
       expect(new Set(order.slice(0, -1))).toEqual(new Set(['first', 'second']))
-    }))
+    }),
+  )
 
   it.effect('stops the build, named, when a hook fails', () =>
     Effect.gen(function* () {
@@ -74,7 +75,8 @@ describe('the assembled barrier', () => {
       expect((failure.error as BootHookFailed).message).toContain('rbac/permission-catalog')
       // and the port never bound
       expect(served).toBe(false)
-    }))
+    }),
+  )
 
   it.effect('refuses two hooks with one name', () =>
     Effect.gen(function* () {
@@ -82,11 +84,10 @@ describe('the assembled barrier', () => {
         registering('mirror', Effect.void),
         registering('mirror', Effect.void),
       )
-      const exit = yield* Effect.exit(
-        Layer.build(plugins.pipe(Layer.provideMerge(assembledLayer))),
-      )
+      const exit = yield* Effect.exit(Layer.build(plugins.pipe(Layer.provideMerge(assembledLayer))))
       expect(exit._tag).toBe('Failure')
-    }))
+    }),
+  )
 
   // Whose work a hook is. The assembler annotates a plugin's build fiber
   // with its id, but the host runs the hooks on the barrier's own fiber -
@@ -116,5 +117,6 @@ describe('the assembled barrier', () => {
       )
       yield* Layer.build(application)
       expect(seen).toEqual(['@qualy/plugin-sweeper'])
-    }))
+    }),
+  )
 })

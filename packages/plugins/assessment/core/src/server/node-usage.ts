@@ -78,7 +78,10 @@ export const batchesAtNode: NodeUsageReporter<Orm> = {
               'managed-batches',
               administered,
               message('assessment/node-usage/managed', 'Rounds administered from here'),
-              message('assessment/node-usage/managed-archived', 'Archived rounds administered from here'),
+              message(
+                'assessment/node-usage/managed-archived',
+                'Archived rounds administered from here',
+              ),
             ),
             ...split(
               'participant-batches',

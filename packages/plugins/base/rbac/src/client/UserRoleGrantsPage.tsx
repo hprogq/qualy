@@ -19,15 +19,7 @@ import * as stylex from '@stylexjs/stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { AsyncSection, ConfirmDialog, Feedback, FormDialog } from '@qualy/ui/admin'
 import { PlusIcon } from 'lucide-react'
-import {
-  Card,
-  CardEmpty,
-  Cell,
-  SectionHead,
-  Table,
-  TableHead,
-  TableRow,
-} from '@qualy/ui/screen'
+import { Card, CardEmpty, Cell, SectionHead, Table, TableHead, TableRow } from '@qualy/ui/screen'
 import { Button } from '@qualy/ui/button'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { rbacMessages as m } from './i18n.ts'
@@ -118,9 +110,13 @@ export default function UserRoleGrantsPage() {
 
   const window = (grant: Grant) => (
     <>
-      {grant.validFrom !== null && <span>{format(m.validFrom, { when: moment(grant.validFrom) })}</span>}
+      {grant.validFrom !== null && (
+        <span>{format(m.validFrom, { when: moment(grant.validFrom) })}</span>
+      )}
       {grant.validUntil !== null && (
-        <span data-testid="grant-until">{format(m.validUntil, { when: moment(grant.validUntil) })}</span>
+        <span data-testid="grant-until">
+          {format(m.validUntil, { when: moment(grant.validUntil) })}
+        </span>
       )}
     </>
   )
@@ -164,7 +160,11 @@ export default function UserRoleGrantsPage() {
                     <Cell title={where(grant)} unlabelled>
                       {where(grant)}
                     </Cell>
-                    <Cell tone={grant.validFrom === null && grant.validUntil === null ? 'quiet' : 'muted'}>
+                    <Cell
+                      tone={
+                        grant.validFrom === null && grant.validUntil === null ? 'quiet' : 'muted'
+                      }
+                    >
                       {grant.validFrom === null && grant.validUntil === null ? (
                         format(m.windowOpen)
                       ) : (
@@ -235,11 +235,7 @@ export default function UserRoleGrantsPage() {
         )}
       </section>
 
-      <FormDialog
-        open={granting}
-        title={format(m.grantOpen)}
-        onClose={() => setGranting(false)}
-      >
+      <FormDialog open={granting} title={format(m.grantOpen)} onClose={() => setGranting(false)}>
         <GrantRoleForm userId={userId} onGranted={() => setGranting(false)} />
       </FormDialog>
 

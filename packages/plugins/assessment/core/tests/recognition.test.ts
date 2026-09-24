@@ -1222,8 +1222,16 @@ describe.runIf(postgresAvailable)('recognitions', () => {
     expect(result.refused.issues).toEqual([
       // why, per determination: the claim stands determined without the new
       // name, and carries the one that was taken away
-      { path: 'scoringConfig.recognitions.rec-grade', reason: 'strands-determination-missing', count: 1 },
-      { path: 'scoringConfig.recognitions.rec-level', reason: 'strands-determination-removed', count: 1 },
+      {
+        path: 'scoringConfig.recognitions.rec-grade',
+        reason: 'strands-determination-missing',
+        count: 1,
+      },
+      {
+        path: 'scoringConfig.recognitions.rec-level',
+        reason: 'strands-determination-removed',
+        count: 1,
+      },
       {
         path: `scoringConfig.recognitions:${result.entryId}`,
         reason: 'strands-existing-recognition',
@@ -1277,7 +1285,11 @@ describe.runIf(postgresAvailable)('recognitions', () => {
     expect(result.refused.issues).toEqual([
       // the round may still settle on the name that was taken away, and can
       // never settle on the one put in its place
-      { path: 'scoringConfig.recognitions.rec-level', reason: 'strands-determination-removed', count: 1 },
+      {
+        path: 'scoringConfig.recognitions.rec-level',
+        reason: 'strands-determination-removed',
+        count: 1,
+      },
       { path: 'scoringConfig.recognitions.rec-grade', reason: 'strands-open-round', count: 1 },
       {
         path: `scoringConfig.recognitions:${result.entryId}`,

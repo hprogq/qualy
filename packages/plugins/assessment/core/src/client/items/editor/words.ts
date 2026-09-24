@@ -389,7 +389,10 @@ export const kindWords = (schema: AtomicSchema, format: Format): string =>
   format(KIND_LABEL[kindOf(schema)])
 
 export type LinkVerdict =
-  { kind: 'fits' } | { kind: 'differs' } | { kind: 'kind-mismatch' } | { kind: 'taken' }
+  | { kind: 'fits' }
+  | { kind: 'differs' }
+  | { kind: 'kind-mismatch' }
+  | { kind: 'taken' }
 
 /** whether an existing field could stand in for this determination */
 export const linkVerdictOf = (

@@ -6,7 +6,12 @@
  */
 
 export type JsonValue =
-  string | number | boolean | null | readonly JsonValue[] | { readonly [key: string]: JsonValue }
+  | string
+  | number
+  | boolean
+  | null
+  | readonly JsonValue[]
+  | { readonly [key: string]: JsonValue }
 
 export interface InvokeRequest {
   readonly id: number

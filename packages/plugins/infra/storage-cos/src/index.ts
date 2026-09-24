@@ -21,48 +21,47 @@ const registration: Layer.Layer<
   never,
   never,
   StorageBackends | CosStorageConfig | ShellPolicy | StorageConfig
-> =
-  Layer.effectDiscard(
-    Effect.gen(function* () {
-      const settings = yield* CosStorageConfig
-      const registry = yield* StorageBackends
-      // A ticket this backend cannot honour is refused here rather than
-      // quietly rewritten. The upload grant's lifetime is the product's
-      // configuration; the credential's is cam's api, which accepts
-      // [15 minutes, 2 hours] and used to be clamped in silence - so a
-      // shorter grant left a credential outliving the ticket it was minted
-      // for, and a longer one failed uploads near the end of a window the
-      // browser had been promised.
-      const { limits } = yield* StorageConfig
-      const seconds = limits.uploadGrantTtlMinutes * 60
-      if (seconds < MIN_DURATION || seconds > MAX_DURATION) {
-        return yield* Effect.die(
-          new Error(
-            `storage.limits.uploadGrantTtlMinutes is ${limits.uploadGrantTtlMinutes}, which this backend cannot mint a credential for: cam accepts ${MIN_DURATION / 60} to ${MAX_DURATION / 60} minutes`,
-          ),
-        )
-      }
-      yield* registry.register(cosBackend(settings))
-      // the browser writes to the bucket itself, so the shell's content
-      // security policy has to let it connect there; the origin is this
-      // deployment's, known only once the configuration is read
-      const policy = yield* ShellPolicy
-      // Two origins and two directives. The browser WRITES to the bucket
-      // endpoint, and it READS from wherever this deployment's download
-      // urls point - the same host unless a download domain is named. A
-      // redirect delivery is fetched, and an image among the evidence is
-      // drawn, so both of those doors have to be open or the shell blocks
-      // the product's own files.
-      const writesTo = cosOrigin(settings)
-      const readsFrom = cosDownloadOrigin(settings)
-      yield* policy.register({
-        owner: '@qualy/plugin-storage-cos',
-        'connect-src': readsFrom === writesTo ? [writesTo] : [writesTo, readsFrom],
-        'img-src': [readsFrom],
-      })
-      yield* Effect.logDebug(`cos storage writing to ${settings.bucket} in ${settings.region}`)
-    }),
-  )
+> = Layer.effectDiscard(
+  Effect.gen(function* () {
+    const settings = yield* CosStorageConfig
+    const registry = yield* StorageBackends
+    // A ticket this backend cannot honour is refused here rather than
+    // quietly rewritten. The upload grant's lifetime is the product's
+    // configuration; the credential's is cam's api, which accepts
+    // [15 minutes, 2 hours] and used to be clamped in silence - so a
+    // shorter grant left a credential outliving the ticket it was minted
+    // for, and a longer one failed uploads near the end of a window the
+    // browser had been promised.
+    const { limits } = yield* StorageConfig
+    const seconds = limits.uploadGrantTtlMinutes * 60
+    if (seconds < MIN_DURATION || seconds > MAX_DURATION) {
+      return yield* Effect.die(
+        new Error(
+          `storage.limits.uploadGrantTtlMinutes is ${limits.uploadGrantTtlMinutes}, which this backend cannot mint a credential for: cam accepts ${MIN_DURATION / 60} to ${MAX_DURATION / 60} minutes`,
+        ),
+      )
+    }
+    yield* registry.register(cosBackend(settings))
+    // the browser writes to the bucket itself, so the shell's content
+    // security policy has to let it connect there; the origin is this
+    // deployment's, known only once the configuration is read
+    const policy = yield* ShellPolicy
+    // Two origins and two directives. The browser WRITES to the bucket
+    // endpoint, and it READS from wherever this deployment's download
+    // urls point - the same host unless a download domain is named. A
+    // redirect delivery is fetched, and an image among the evidence is
+    // drawn, so both of those doors have to be open or the shell blocks
+    // the product's own files.
+    const writesTo = cosOrigin(settings)
+    const readsFrom = cosDownloadOrigin(settings)
+    yield* policy.register({
+      owner: '@qualy/plugin-storage-cos',
+      'connect-src': readsFrom === writesTo ? [writesTo] : [writesTo, readsFrom],
+      'img-src': [readsFrom],
+    })
+    yield* Effect.logDebug(`cos storage writing to ${settings.bucket} in ${settings.region}`)
+  }),
+)
 
 const plugin = Plugin.define(
   '@qualy/plugin-storage-cos',

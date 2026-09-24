@@ -415,42 +415,42 @@ export const httpMetrics = (options?: {
   return <A extends { readonly status: number }, E, R>(
     httpApp: Effect.Effect<A, E, R>,
   ): Effect.Effect<A, E, R | HttpServerRequest.HttpServerRequest> =>
-  Effect.withFiber((fiber) => {
-    const request = Context.getUnsafe(fiber.context, HttpServerRequest.HttpServerRequest)
-    const span = Option.getOrUndefined(Context.getOption(fiber.context, Tracer.ParentSpan))
-    const started = performance.now()
-    return Effect.onExit(httpApp, (exit) =>
-      Effect.suspend(() => {
-        const seconds = (performance.now() - started) / 1000
-        const status =
-          exit._tag === 'Success'
-            ? exit.value.status
-            : HttpServerError.causeResponseStripped(exit.cause)[0].status
-        const spanAttribute = (key: string): string | undefined => {
-          const value =
-            span !== undefined && span._tag === 'Span' ? span.attributes.get(key) : undefined
-          return typeof value === 'string' ? value : undefined
-        }
-        const route = spanAttribute('http.route')
-        return Metric.update(
-          Metric.withAttributes(requestDuration, {
-            unit: 's',
-            'http.request.method': KNOWN_METHODS.has(request.method) ? request.method : '_OTHER',
-            // through the same trust policy every other forwarded header
-            // here goes through: believed only from a declared proxy, so a
-            // client cannot relabel its own request by sending the header
-            'url.scheme': schemeOf(request, trusted),
-            'http.response.status_code': String(status),
-            ...(route === undefined ? {} : { 'http.route': route }),
-            // a server error is the condition semconv requires error.type
-            // under; the status code is its stable low-cardinality form
-            ...(status >= 500 ? { 'error.type': String(status) } : {}),
-          }),
-          seconds,
-        )
-      }),
-    )
-  })
+    Effect.withFiber((fiber) => {
+      const request = Context.getUnsafe(fiber.context, HttpServerRequest.HttpServerRequest)
+      const span = Option.getOrUndefined(Context.getOption(fiber.context, Tracer.ParentSpan))
+      const started = performance.now()
+      return Effect.onExit(httpApp, (exit) =>
+        Effect.suspend(() => {
+          const seconds = (performance.now() - started) / 1000
+          const status =
+            exit._tag === 'Success'
+              ? exit.value.status
+              : HttpServerError.causeResponseStripped(exit.cause)[0].status
+          const spanAttribute = (key: string): string | undefined => {
+            const value =
+              span !== undefined && span._tag === 'Span' ? span.attributes.get(key) : undefined
+            return typeof value === 'string' ? value : undefined
+          }
+          const route = spanAttribute('http.route')
+          return Metric.update(
+            Metric.withAttributes(requestDuration, {
+              unit: 's',
+              'http.request.method': KNOWN_METHODS.has(request.method) ? request.method : '_OTHER',
+              // through the same trust policy every other forwarded header
+              // here goes through: believed only from a declared proxy, so a
+              // client cannot relabel its own request by sending the header
+              'url.scheme': schemeOf(request, trusted),
+              'http.response.status_code': String(status),
+              ...(route === undefined ? {} : { 'http.route': route }),
+              // a server error is the condition semconv requires error.type
+              // under; the status code is its stable low-cardinality form
+              ...(status >= 500 ? { 'error.type': String(status) } : {}),
+            }),
+            seconds,
+          )
+        }),
+      )
+    })
 }
 
 /**
