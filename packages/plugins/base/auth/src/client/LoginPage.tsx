@@ -135,7 +135,7 @@ const styles = stylex.create({
     flexShrink: 0,
     paddingBlock: 2,
     paddingInline: 7,
-    borderRadius: 999,
+    borderRadius: tokens.radiusPill,
     backgroundColor: `color-mix(in oklab, currentColor 8%, transparent)`,
     fontSize: 11.5,
     fontWeight: 500,
@@ -143,6 +143,21 @@ const styles = stylex.create({
     opacity: 0.75,
   },
   tileSeat: { position: 'relative', display: 'inline-flex' },
+  demoRow: { display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginTop: 16 },
+  demoChip: {
+    height: 32,
+    paddingInline: 14,
+    borderRadius: tokens.radiusPill,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    backgroundColor: { default: tokens.background, ':hover': tokens.surfaceMuted },
+    color: tokens.foreground,
+    fontSize: 13,
+    cursor: 'pointer',
+    transitionProperty: 'background-color',
+    transitionDuration: '150ms',
+  },
   lastDot: {
     position: 'absolute',
     top: -3,
@@ -484,6 +499,10 @@ export default function LoginPage() {
   }, [])
 
   const methods = context.data?.methods ?? []
+  const demoAccounts = context.data?.demoAccounts ?? []
+  const passwordMethod = methods.find(
+    (method) => method.mode === 'component' && method.type === 'local',
+  )
   const chosen = methods.find(
     (method) => method.mode === 'component' && method.code === params.get('method'),
   )
@@ -612,7 +631,11 @@ export default function LoginPage() {
           >
             {format(m.signInWith, { name: gapped(chosen.name, locale) })}
           </h1>
-          <MethodRenderer method={chosen} onAuthenticated={onAuthenticated} />
+          <MethodRenderer
+            method={chosen}
+            onAuthenticated={onAuthenticated}
+            prefill={demoAccounts[Number(params.get('demo') ?? -1)]}
+          />
         </div>
       )
     }
@@ -640,6 +663,10 @@ export default function LoginPage() {
         }}
         onChoose={(method) => choose(method, 'home')}
         onMore={() => go({ view: 'more' })}
+        demoAccounts={passwordMethod === undefined ? [] : demoAccounts}
+        onDemo={(index) =>
+          passwordMethod !== undefined && go({ method: passwordMethod.code, demo: String(index) })
+        }
       />
     )
   })()
@@ -789,6 +816,8 @@ function Home({
   onDismiss,
   onChoose,
   onMore,
+  demoAccounts,
+  onDemo,
 }: {
   last: string | null
   header: ReactNode
@@ -797,6 +826,8 @@ function Home({
   onDismiss: () => void
   onChoose: (method: LoginMethod) => void
   onMore: () => void
+  demoAccounts: readonly { readonly label: string }[]
+  onDemo: (index: number) => void
 }) {
   const { format, locale } = useI18n()
   const still = useReducedMotion() === true
@@ -911,6 +942,29 @@ function Home({
             </motion.button>
           ))}
         </div>
+      )}
+
+      {demoAccounts.length > 0 && (
+        <>
+          <div {...stylex.props(styles.divider)}>
+            <span {...stylex.props(styles.rule)} />
+            {format(m.demoHeading)}
+            <span {...stylex.props(styles.rule)} />
+          </div>
+          <div data-testid="sign-in-demo" {...stylex.props(styles.demoRow)}>
+            {demoAccounts.map((account, index) => (
+              <button
+                key={account.label}
+                type="button"
+                data-testid="sign-in-demo-account"
+                {...stylex.props(styles.demoChip)}
+                onClick={() => onDemo(index)}
+              >
+                {account.label}
+              </button>
+            ))}
+          </div>
+        </>
       )}
 
       {others.length > 0 && (
@@ -1059,9 +1113,11 @@ function AllMethods({
 function MethodRenderer({
   method,
   onAuthenticated,
+  prefill,
 }: {
   method: LoginMethod & { mode: 'component' }
   onAuthenticated: () => void
+  prefill: { readonly email: string; readonly password: string } | undefined
 }) {
   const { format } = useI18n()
   // Two ways a driver can fail to draw its form, one thing to say about
@@ -1089,7 +1145,13 @@ function MethodRenderer({
           a renderer that throws is caught and reported as `login:<type>` */}
       <PluginSurface
         surface={{ kind: 'login', id: method.type }}
-        props={{ method, onAuthenticated }}
+        props={{
+          method,
+          onAuthenticated,
+          ...(prefill === undefined
+            ? {}
+            : { prefill: { email: prefill.email, password: prefill.password } }),
+        }}
         loading={
           <div data-testid="login-renderer-waiting" aria-busy {...stylex.props(styles.boneForm)}>
             <div {...stylex.props(styles.boneStack)}>

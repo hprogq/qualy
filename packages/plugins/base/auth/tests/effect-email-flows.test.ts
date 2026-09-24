@@ -64,6 +64,7 @@ const stack = (
   url: string,
   backend: ReturnType<typeof memoryMailBackend>['backend'],
   captcha: typeof captchaLayer = captchaLayer,
+  demoAccounts: readonly { email: string; password: string; label: string }[] = [],
 ) => {
   const services = booted(
     authLayer.pipe(
@@ -93,6 +94,7 @@ const stack = (
               secureCookies: false,
               sessionCookieName: 'qualy_session',
               publicUrl: PUBLIC_URL,
+              demoAccounts,
             }),
           ),
         ),
@@ -790,3 +792,43 @@ describe.runIf(postgresAvailable && mailpitAvailable)(
     })
   },
 )
+
+describe.runIf(postgresAvailable)('a shared demo account', () => {
+  it('keeps its password and address whoever asks, and is never sent a reset', async () => {
+    const db = await createTestContext('email-demo-account')
+    const mail = memoryMailBackend()
+    try {
+      const f = await seed(db.url)
+      const demo = [{ email: 'ada@school.edu', password: 'ada-password', label: '学生' }]
+      const answer = ok(
+        await Effect.runPromiseExit(
+          Effect.gen(function* () {
+            const flows = yield* EmailFlows
+            const ada = f.as(f.ada, f.adaHere)
+            const password = yield* Effect.result(
+              flows.setPassword(ada, {
+                currentPassword: 'ada-password',
+                newPassword: 'taken over',
+              }),
+            )
+            const address = yield* Effect.result(
+              flows.requestChange(ada, { newEmail: 'someone.else@school.edu', locale: 'en' }),
+            )
+            // answered like any other address, and nothing goes out
+            yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en' })
+            const challenges = yield* runSql<{ count: number }>(
+              sql`select count(*)::int as count from user_email_challenges`,
+            )
+            return { password, address, challenges: challenges.rows[0]!.count }
+          }).pipe(Effect.provide(stack(db.url, mail.backend, captchaLayer, demo))),
+        ),
+      )
+      expect(tagOf(answer.password)).toBe('AUTH_DEMO_ACCOUNT_LOCKED')
+      expect(tagOf(answer.address)).toBe('AUTH_DEMO_ACCOUNT_LOCKED')
+      expect(answer.challenges).toBe(0)
+      expect(mail.outbox).toHaveLength(0)
+    } finally {
+      await db.dispose()
+    }
+  })
+})

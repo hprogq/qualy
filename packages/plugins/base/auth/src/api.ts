@@ -32,6 +32,7 @@ import {
   RecoveryChannelRequired,
   SessionNotFound,
   SystemAccountProtected,
+  DemoAccountLocked,
   UserEmailConflict,
   UserNotFound,
   UserPlacementNotFound,
@@ -767,6 +768,7 @@ export const identityApiGroup = HttpApiGroup.make('identity')
         GrantIncompatible,
         LastAdministrator,
         AccessDenied,
+        DemoAccountLocked,
       ],
     }).middleware(Authenticated),
   )
@@ -853,6 +855,7 @@ export const identityApiGroup = HttpApiGroup.make('identity')
         AuthBindingAudienceExcluded,
         AuthBindingCredentialInvalid,
         AccessDenied,
+        DemoAccountLocked,
       ],
     }).middleware(Authenticated),
   )
@@ -873,6 +876,7 @@ export const identityApiGroup = HttpApiGroup.make('identity')
           SystemAccountProtected,
           AuthBindingUnsupported,
           AccessDenied,
+          DemoAccountLocked,
         ],
       },
     ).middleware(Authenticated),
@@ -884,7 +888,13 @@ export const identityApiGroup = HttpApiGroup.make('identity')
       {
         params: Schema.Struct({ userId: uuidInput, providerId: uuidInput }),
         success: Schema.Struct({ ok: Schema.Literal(true) }),
-        error: [UserNotFound, SystemAccountProtected, AuthBindingNotFound, AccessDenied],
+        error: [
+          UserNotFound,
+          SystemAccountProtected,
+          AuthBindingNotFound,
+          AccessDenied,
+          DemoAccountLocked,
+        ],
       },
     ).middleware(Authenticated),
   )
@@ -946,6 +956,12 @@ export const sessionApiGroup = HttpApiGroup.make('auth')
         // what a password here has to be, where a door keeps passwords
         passwordRule: Schema.NullOr(
           Schema.Struct({ minLength: Schema.Number, maxLength: Schema.Number }),
+        ),
+        // a demonstration deployment's shared accounts, offered by name
+        demoAccounts: Schema.optional(
+          Schema.Array(
+            Schema.Struct({ label: Schema.String, email: Schema.String, password: Schema.String }),
+          ),
         ),
       }),
     }),
@@ -1132,7 +1148,13 @@ export const selfApiGroup = HttpApiGroup.make('self')
       params: Schema.Struct({ providerId: uuidInput }),
       // whether the session this came from was one of those ended with it
       success: Schema.Struct({ signedOut: Schema.Boolean }),
-      error: [UserNotFound, AuthBindingNotFound, AuthBindingUnsupported, AuthLastWayIn],
+      error: [
+        UserNotFound,
+        AuthBindingNotFound,
+        AuthBindingUnsupported,
+        AuthLastWayIn,
+        DemoAccountLocked,
+      ],
     }).middleware(Authenticated),
   )
   .add(
@@ -1156,6 +1178,7 @@ export const selfApiGroup = HttpApiGroup.make('self')
         SystemAccountProtected,
         MailNotSent,
         TooManyAttemptsResponse,
+        DemoAccountLocked,
       ],
     }).middleware(Authenticated),
   )
@@ -1185,6 +1208,7 @@ export const selfApiGroup = HttpApiGroup.make('self')
         PasswordUnavailable,
         AuthBindingCredentialInvalid,
         TooManyAttemptsResponse,
+        DemoAccountLocked,
       ],
     }).middleware(Authenticated),
   )

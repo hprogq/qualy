@@ -343,6 +343,7 @@ const i18n = definePluginMessages({
     title: { id: 'auth/login/title', defaultMessage: 'Sign in to Qualy' },
     chooseMethod: { id: 'auth/login/choose', defaultMessage: 'Choose a way to sign in' },
     otherMethodsHeading: { id: 'auth/login/others', defaultMessage: 'Other ways to sign in' },
+    demoHeading: { id: 'auth/login/demo', defaultMessage: 'Try a demo account' },
     allOtherMethods: {
       id: 'auth/login/all-others',
       defaultMessage: 'All {count, plural, one {# other way} other {# other ways}}',
@@ -1381,6 +1382,10 @@ const i18n = definePluginMessages({
     AUTH_LAST_WAY_IN: {
       id: 'auth/error/last-way-in',
       defaultMessage: 'Without it you could not sign in at all. Bind another way in first.',
+    },
+    AUTH_DEMO_ACCOUNT_LOCKED: {
+      id: 'auth/error/demo-account-locked',
+      defaultMessage: 'This is a shared demo account. Its sign-in details cannot be changed.',
     },
     AUTH_BINDING_NOT_FOUND: {
       id: 'auth/error/binding-not-found',

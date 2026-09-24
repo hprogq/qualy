@@ -44,6 +44,7 @@ export default {
   'auth/login/title': '登录 Qualy',
   'auth/login/choose': '请选择登录方式',
   'auth/login/others': '其他登录方式',
+  'auth/login/demo': '使用演示账号体验',
   'auth/login/all-others': '全部 {count} 种其他方式',
   'auth/login/others-count': '{count} 种',
   'auth/login/sign-in-with': '使用{name}登录',
@@ -484,6 +485,7 @@ export default {
   'auth/error/binding-user-field-missing':
     '{field, select, email {请先在基本资料中填写该用户的邮箱} other {请先在基本资料中填写该用户的编号}}',
   'auth/error/binding-not-found': '暂无可撤销的绑定',
+  'auth/error/demo-account-locked': '这是公共演示账号，登录信息不能修改',
   'auth/error/last-way-in': '解除后将无法登录，请先绑定其他登录方式',
   'auth/error/challenge-invalid': '链接已过期或已使用，请重新获取。',
   'auth/error/password-incorrect': '当前密码不正确',

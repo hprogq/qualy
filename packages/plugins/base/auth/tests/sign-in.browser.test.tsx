@@ -251,6 +251,55 @@ describe('the sign-in screen', () => {
     }
   })
 
+  it('offers a demo deployment’s accounts, and opens the password form filled in', async () => {
+    await renderScreen({
+      client: fakeClient({
+        app: { getManifest: emptyManifest() },
+        auth: {
+          ...anonymous,
+          listLoginMethods: {
+            ...context([password]),
+            demoAccounts: [
+              {
+                label: '学生',
+                email: 'student@demo.example.edu',
+                password: 'quiet-harbor-lantern-7',
+              },
+              {
+                label: '辅导员',
+                email: 'counsellor@demo.example.edu',
+                password: 'amber-field-river-3',
+              },
+            ],
+          },
+        },
+      }),
+      registry: {
+        login: { local: lazy(() => import('@qualy/plugin-auth-local/client/LoginMethod')) },
+      },
+      route: '/login',
+      children: <LoginPage />,
+    })
+    await expect.element(page.getByTestId('sign-in-demo')).toBeVisible()
+    expect(page.getByTestId('sign-in-demo-account').elements()).toHaveLength(2)
+    await page.getByRole('button', { name: '辅导员' }).click()
+    await expect.element(page.getByLabelText('邮箱')).toHaveValue('counsellor@demo.example.edu')
+    await expect.element(page.getByLabelText('密码')).toHaveValue('amber-field-river-3')
+  })
+
+  it('offers no demo accounts where the deployment names none', async () => {
+    await renderScreen({
+      client: fakeClient({
+        app: { getManifest: emptyManifest() },
+        auth: { ...anonymous, listLoginMethods: context([password]) },
+      }),
+      route: '/login',
+      children: <LoginPage />,
+    })
+    await expect.element(page.getByTestId('sign-in-primary').first()).toBeVisible()
+    expect(page.getByTestId('sign-in-demo').elements()).toHaveLength(0)
+  })
+
   it('fills in the address this browser was asked to keep', async () => {
     await renderScreen({
       client: fakeClient({

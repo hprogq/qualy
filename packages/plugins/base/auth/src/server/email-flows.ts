@@ -18,6 +18,7 @@ import { secretSubjectOf } from './secret-subject.ts'
 import {
   AuthBindingCredentialInvalid,
   ChallengeInvalid,
+  DemoAccountLocked,
   EmailMissing,
   EmailUnverified,
   MailNotSent,
@@ -34,6 +35,9 @@ import { mailFor, type MailLocale, type MailPurpose } from './mail-copy.ts'
 import { PublicOriginResolver } from './public-origin.ts'
 import { AnonymousTenantResolver } from './tenancy.ts'
 import { doorsOf } from './self.ts'
+import { AuthConfig } from './auth-config.ts'
+import { isDemoAccount } from './demo-accounts.ts'
+import { makeDemoGuard } from './demo-guard.ts'
 
 // The flows that go through somebody's inbox: proving an address, setting a
 // password without the old one, moving to a new address - and changing one's
@@ -259,7 +263,12 @@ export class EmailFlows extends Context.Service<
       input: { readonly newEmail: string; readonly locale: MailLocale },
     ) => Effect.Effect<
       void,
-      UserEmailConflict | SystemAccountProtected | MailNotSent | TooManyAttempts | UserNotFound
+      | UserEmailConflict
+      | SystemAccountProtected
+      | MailNotSent
+      | TooManyAttempts
+      | UserNotFound
+      | DemoAccountLocked
     >
     readonly redeemChange: (
       token: string,
@@ -280,6 +289,7 @@ export class EmailFlows extends Context.Service<
       | AuthBindingCredentialInvalid
       | TooManyAttempts
       | UserNotFound
+      | DemoAccountLocked
     >
   }
 >()('@qualy/plugin-auth/EmailFlows') {}
@@ -295,10 +305,13 @@ export const emailFlowsLayer: Layer.Layer<
   | PublicOriginResolver
   | AnonymousTenantResolver
   | Captcha
+  | AuthConfig
 > = Layer.effect(
   EmailFlows,
   Effect.gen(function* () {
     const withDb = yield* withDatabase
+    const guardDemo = yield* makeDemoGuard
+    const demoAccounts = (yield* AuthConfig).demoAccounts
     const mailer = yield* Mailer
     const audit = yield* Audit
     const drivers = yield* LoginDrivers
@@ -541,6 +554,9 @@ export const emailFlowsLayer: Layer.Layer<
             if (found === undefined) return undefined
             const person = yield* personOf(tenant.value.id, found.id)
             if (person === undefined) return undefined
+            // a shared demonstration account is never reset, and says so to
+            // nobody: the answer is the one any other address gets
+            if (isDemoAccount(demoAccounts, person.email)) return undefined
             if ((yield* passwordDoor(tenant.value.id, person)) === undefined) return undefined
             return {
               person,
@@ -693,6 +709,7 @@ export const emailFlowsLayer: Layer.Layer<
             if (person === undefined) return yield* new UserNotFound()
             // the recovery account's address is the seed's to set
             if (person.isSystem) return yield* new SystemAccountProtected()
+            yield* guardDemo(principal.tenantId, person.id)
             if ((yield* emailTaken(principal.tenantId, normalized, person.id)) !== undefined) {
               return yield* new UserEmailConflict()
             }
@@ -776,6 +793,7 @@ export const emailFlowsLayer: Layer.Layer<
         // the digest is worked out before the lock, as an administrator's is
         const person = yield* withDb(personOf(tenantId, principal.userId)).pipe(Effect.orDie)
         if (person === undefined) return yield* new UserNotFound()
+        yield* guardDemo(tenantId, person.id)
         const door = yield* withDb(passwordDoor(tenantId, person)).pipe(Effect.orDie)
         if (door === undefined) return yield* new PasswordUnavailable()
         const standing = yield* withDb(credentialOf(tenantId, person.id, door.id)).pipe(

@@ -2,6 +2,7 @@ import { Config, Context, Effect, Layer, Option, Schema } from 'effect'
 import { sessionCookieNameFor } from './session-cookie.ts'
 import { allowlistEntryValid, type OutboundPolicy } from './outbound.ts'
 import { decodePluginConfig } from '@qualy/plugin-kit/config'
+import { DEMO_ACCOUNTS_MALFORMED, parseDemoAccounts, type DemoAccount } from './demo-accounts.ts'
 
 // What this plugin knows about its own deployment, and how it works it out.
 //
@@ -42,6 +43,11 @@ export class AuthConfig extends Context.Service<
      * development, where a local identity server is how an entrance is tried.
      */
     readonly outbound?: OutboundPolicy
+    /**
+     * Accounts a demonstration deployment hands out: offered on the sign-in
+     * page, and their credentials frozen. Empty everywhere else.
+     */
+    readonly demoAccounts?: readonly DemoAccount[]
   }
 >()('@qualy/plugin-auth/AuthConfig') {}
 
@@ -140,7 +146,12 @@ export const config = (
       if (!allowlisted.every(allowlistEntryValid)) {
         return yield* Effect.die(new Error(PRIVATE_ALLOWLIST_MALFORMED))
       }
+      const demoAccounts = parseDemoAccounts(
+        yield* Config.String('QUALY_DEMO_ACCOUNTS').pipe(Config.withDefault('')),
+      )
+      if (demoAccounts === undefined) return yield* Effect.die(new Error(DEMO_ACCOUNTS_MALFORMED))
       return AuthConfig.of({
+        demoAccounts,
         outbound: {
           requireHttps: secureCookies,
           allowLoopback: !secureCookies,

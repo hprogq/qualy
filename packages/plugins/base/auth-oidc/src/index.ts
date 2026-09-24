@@ -196,6 +196,7 @@ const bindFailure = (reason: BindingRejection) => {
       return new BindingAlreadyBound()
     case 'provider-unavailable':
     case 'audience-excluded':
+    case 'demo-account':
       return new SignInMethodUnavailable()
     case 'user-unavailable':
       return new SignInPersonNotFound()

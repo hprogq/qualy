@@ -151,14 +151,18 @@ function Said({ id, children }: { id: string; children: ReactNode }) {
   )
 }
 
-export default function LocalLoginMethod({ method, onAuthenticated }: LoginMethodRendererProps) {
+export default function LocalLoginMethod({
+  method,
+  onAuthenticated,
+  prefill,
+}: LoginMethodRendererProps) {
   const api = useApi(authLocalApi)
   const run = useRunApi()
   const here = useLocation()
   const { format, formatError } = useI18n()
-  const [email, setEmail] = useState(remembered)
-  const [keep, setKeep] = useState(() => remembered() !== '')
-  const [password, setPassword] = useState('')
+  const [email, setEmail] = useState(() => prefill?.email ?? remembered())
+  const [keep, setKeep] = useState(() => prefill === undefined && remembered() !== '')
+  const [password, setPassword] = useState(prefill?.password ?? '')
   const [shown, setShown] = useState(false)
   // a field is judged once it has been left, or once the form was sent
   const [left, setLeft] = useState({ email: false, password: false })

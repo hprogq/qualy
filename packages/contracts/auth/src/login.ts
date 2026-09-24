@@ -45,6 +45,8 @@ export type LoginPresentationDeclaration =
 export interface LoginMethodRendererProps {
   method: LoginMethod & { mode: 'component' }
   onAuthenticated: () => void
+  /** a demonstration account picked on the sign-in page, for a form that takes an address and password */
+  prefill?: { readonly email: string; readonly password: string }
 }
 
 export {
@@ -104,6 +106,16 @@ export interface LoginContext {
    * pages that set one say it while it is typed rather than after a refusal.
    */
   readonly passwordRule: { readonly minLength: number; readonly maxLength: number } | null
+  /**
+   * Accounts a demonstration deployment hands out, with their passwords:
+   * published on purpose, and frozen so nobody can take them. Absent on any
+   * deployment that names none.
+   */
+  readonly demoAccounts?: readonly {
+    readonly label: string
+    readonly email: string
+    readonly password: string
+  }[]
 }
 
 /**
@@ -520,6 +532,8 @@ export type BindingRejection =
   | 'already-bound'
   /** somebody else has this account bound here */
   | 'subject-taken'
+  /** the person is a shared demonstration account, whose ways in are fixed */
+  | 'demo-account'
 
 export class AuthBindingRejected extends Data.TaggedError('AuthBindingRejected')<{
   readonly reason: BindingRejection

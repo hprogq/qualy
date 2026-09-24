@@ -111,7 +111,7 @@ export const make = Effect.fn('Auth.make')(function* () {
 const tags: Layer.Layer<
   Placement | UserPlacement | UserProvisioning | Iam,
   never,
-  Orm | Rbac | Audit | LoginDrivers | Secrets | PublicOriginResolver
+  Orm | Rbac | Audit | LoginDrivers | Secrets | PublicOriginResolver | AuthConfig
 > = Layer.effectContext(
   Effect.gen(function* () {
     const { placement, userPlacement, iam } = yield* make()

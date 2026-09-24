@@ -136,6 +136,10 @@ database。出现第二种有持久部署副作用的能力时,先设计启动�
 在 `QUALY_AUTH_PRIVATE_PROVIDER_ALLOWLIST` 里写它的主机名或网段(逗号分隔,缺省为空)。本机地址、link-local、云厂商 metadata
 地址无论是否写进去都连不到;格式不对的条目直接拒启。这份名单归部署,租户管理员改不了它。
 
+**演示账号**:`QUALY_DEMO_ACCOUNTS`(JSON 数组,每项 `email`、`password`、`label`)只给公开演示部署用。登录页会列出这些账号,
+点一下即填好邮箱与密码;同时冻结它们的登录信息:本人与管理员都不能改密码、改邮箱、增删登录方式,找回密码对它们静默不发信
+(对外回答与其他地址一致)。格式不对即拒启;不设则两种行为都不存在。
+
 **邮件**:产品经 Resend 发信(qualy.yml 启用 `@qualy/plugin-mail-resend`、`defaultBackend: resend`,smtp 插件停用)。
 生产必填 `QUALY_MAIL_FROM`(发件人,`Name <address>` 或裸地址,域名须已在 Resend 验证)与 `QUALY_MAIL_RESEND_API_KEY`(缺失或空白即拒启);
 开发环境同样需要 key。改用 SMTP 中继要换一个启用 `@qualy/plugin-mail-smtp` 的 release,并设 `QUALY_MAIL_DEFAULT_BACKEND=smtp` 与下面的中继变量:

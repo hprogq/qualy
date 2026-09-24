@@ -417,3 +417,10 @@ export class SessionNotFound extends Schema.TaggedError<SessionNotFound>()(
   {},
   { httpApiStatus: 404, identifier: 'SessionNotFound' },
 ) {}
+
+/** a shared demonstration account, whose credentials nobody may change */
+export class DemoAccountLocked extends Schema.TaggedError<DemoAccountLocked>()(
+  'AUTH_DEMO_ACCOUNT_LOCKED',
+  {},
+  { httpApiStatus: 403, identifier: 'DemoAccountLocked' },
+) {}

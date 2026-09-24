@@ -46,6 +46,7 @@ import {
   emailConstraints,
   userConstraints,
 } from './errors.ts'
+import { makeDemoGuard } from './demo-guard.ts'
 
 // People, and where they stand.
 //
@@ -723,6 +724,7 @@ type TypeRow = NonNullable<Effect.Success<ReturnType<typeof userTypeGuard>>>
 
 export const make = Effect.fn('Iam.users.make')(function* () {
   const rbac = yield* Rbac
+  const guardDemo = yield* makeDemoGuard
   const audit = yield* Audit
   const drivers = yield* LoginDrivers
   // a plain read opens no transaction, so it has nothing to take a database
@@ -1156,6 +1158,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
       input: { secret: string },
       as: Principal,
     ) {
+      yield* guardDemo(tenantId, userId)
       const provider = yield* withDb(providerGuard(tenantId, providerId)).pipe(Effect.orDie)
       if (!provider) return yield* new ProviderNotFound()
       const driver = (yield* drivers.forType(provider.type))?.driver
@@ -1193,6 +1196,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
       input: { secret: string },
       as: Principal,
     ) {
+      yield* guardDemo(tenantId, userId)
       const provider = yield* withDb(providerGuard(tenantId, providerId)).pipe(Effect.orDie)
       if (!provider) return yield* new ProviderNotFound()
       const driver = (yield* drivers.forType(provider.type))?.driver
@@ -1280,6 +1284,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
       providerId: string,
       as: Principal,
     ) {
+      yield* guardDemo(tenantId, userId)
       yield* writeBinding(tenantId, () =>
         Effect.gen(function* () {
           const user = yield* requireUser(tenantId, userId)
@@ -1424,6 +1429,8 @@ export const make = Effect.fn('Iam.users.make')(function* () {
       expectedVersion: number,
       as: Principal,
     ) {
+      // a demo account's address is how it signs in; it stays what it is
+      if (input.email !== undefined) yield* guardDemo(tenantId, userId)
       const email = input.email === undefined ? undefined : yield* storedEmail(input.email)
       yield* write(tenantId, () =>
         Effect.gen(function* () {

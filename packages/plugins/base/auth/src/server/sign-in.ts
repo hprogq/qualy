@@ -36,6 +36,7 @@ import { BindingWritten } from '../actions.ts'
 import { Audit } from '@qualy/audit-contract/effect'
 import { AnonymousTenantResolver } from './tenancy.ts'
 import { PublicOriginResolver } from './public-origin.ts'
+import { isDemoAccount } from './demo-accounts.ts'
 
 export { AuthConfig }
 import { sessionCookieName, TooManyAttempts } from '@qualy/auth-contract/session'
@@ -281,6 +282,18 @@ const servingDoor = (tenantId: string, providerId: string) =>
  * The person a bind is for, whether they may still use this entrance, and
  * whether they already have an account bound at it.
  */
+const emailOf = (tenantId: string, userId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('User')
+        .select('email')
+        .where('tenantId', '=', tenantId)
+        .where('id', '=', userId)
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => row?.email ?? null))
+
 const bindablePerson = (tenantId: string, userId: string, providerId: string) =>
   db.query((k) =>
     k
@@ -901,6 +914,9 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
             }
             const person = yield* bindablePerson(provider.tenantId, userId, provider.providerId)
             if (!person || !person.usable) return yield* refuse('user-unavailable')
+            if (isDemoAccount(config.demoAccounts, yield* emailOf(provider.tenantId, userId))) {
+              return yield* refuse('demo-account')
+            }
             if (!person.admits) return yield* refuse('audience-excluded')
             if (person.bound) return yield* refuse('already-bound')
             if (yield* subjectHeld(provider.tenantId, provider.providerId, input.subject)) {
@@ -1140,7 +1156,21 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
             break
           }
         }
-        return { tenant: { name: tenant.name }, methods, passwordRule }
+        const demoAccounts = config.demoAccounts ?? []
+        return {
+          tenant: { name: tenant.name },
+          methods,
+          passwordRule,
+          ...(demoAccounts.length === 0
+            ? {}
+            : {
+                demoAccounts: demoAccounts.map(({ label, email, password }) => ({
+                  label,
+                  email,
+                  password,
+                })),
+              }),
+        }
       }),
     ),
 

@@ -16,6 +16,7 @@ import {
 import { makeReadiness } from './readiness.ts'
 import { sameOriginPath } from './same-origin.ts'
 import { lineageOf } from './sign-in.ts'
+import { makeDemoGuard } from './demo-guard.ts'
 
 // The signed-in person's own account, as they read it.
 //
@@ -141,6 +142,7 @@ const opens = (
 
 export const make = Effect.fn('Iam.self.make')(function* () {
   const audit = yield* Audit
+  const guardDemo = yield* makeDemoGuard
   const drivers = yield* LoginDrivers
   const readiness = yield* makeReadiness
   const withDb = yield* withDatabase
@@ -279,6 +281,7 @@ export const make = Effect.fn('Iam.self.make')(function* () {
      * session was among those ended, so the screen knows to leave.
      */
     unbind: Effect.fn('Iam.self.unbind')(function* (principal: Principal, providerId: string) {
+      yield* guardDemo(principal.tenantId, principal.userId)
       return yield* withDb(
         transaction(
           Effect.gen(function* () {
