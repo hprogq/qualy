@@ -20083,3 +20083,21 @@ A–C 的部署约束至此解除：ALTCHA 与能处理 428 的登录页在同�
 - `pnpm test:browser`：每加入一个新包后的第一轮都被 Vite 依赖重打包中断（`optimized dependencies changed. reloading`，iframe 未就绪）；重跑 `Tests  3 failed | 582 passed (585)`，失败的 evidence-fields / paper-reading / record-recognition 为负载超时，单独重跑 `Tests  16 passed (16)`。
 - 未做：在 dev 服务上人工走一遍登录——当时本机没有运行 dev 服务（:5173 无监听）。改为服务端全链路测试：真实 ALTCHA provider（低难度）+ altcha-lib 解题，5×401 → 428 → 带 proof 200 → 旧 proof 再用 428 → 别的邮箱的 proof 无效；浏览器端真实 widget + worker 在 Chromium 中解题。
 - 新测试：gate 的 restart / refresh；ALTCHA provider（一次有效、8 并发同一 proof 恰好一个通过、跨 tenant / purpose / binding 拒绝、签名数据改动与过期拒绝、两把密钥互异且不等于主密钥、清扫）；driver 真解题与过期 → refresh；登录表单的 428 自动重提、proof 交出即作废、改邮箱丢弃迟到 proof；reset 的完整顺序（真实与不存在邮箱答案序列一致：ok、428、428、ok、ok、429，第 4 次不发信）、A/B/C 链接并存与改密后全部作废、改邮箱作废旧 reset 链接、重置页 428 流程；ShellPolicy script-src 接受 / 拒绝清单与执行策略不被改动；Turnstile 的 action 映射（31/32/33、超长、碰撞）、hostname（端口、IPv6、尾点）、错误码分类、Siteverify 八种回答、只向 Cloudflare 开放两条 directive、altcha 与 turnstile 同时启用被装配拒绝并点名、driver 的 render 选项与回调映射、加载失败不放行。
+
+## CAPTCHA 复审修复与 Resend 邮件后端（2026-09-24）
+
+- **复审七条**（`24fb310af`..`d57449ed0`）：ALTCHA counter 改为 1..10000（公开下界让脚本比浏览器少试一半，理由见 docs/notes/altcha.md），payload 按算法 / hex / 整数边界严格校验，库抛出视为缺陷；Turnstile 两把 key 去空白、空白即拒启，脚本 10 s 未加载即移除并失败；captcha 屏障对「注册的 code 与声明不符」与「未声明却注册」拒启；浮层改为 portal + 背景 inert + Tab 困在面板内；登录与重置页改邮箱先 `gate.cancel()`；reset 的 identifier 风险在 CAPTCHA 之前计数（先读后计的并发窗口关闭）。
+- **`@qualy/plugin-mail-resend`**：`Mail.backend({code:'resend'})`，与 smtp 并列，谁发信由 `QUALY_MAIL_DEFAULT_BACKEND` 决定。`QUALY_MAIL_RESEND_API_KEY` 只从环境读，启用而缺失或空白即拒启。POST `https://api.resend.com/emails`，10 s 超时；400 / 422 → rejected，409 / 429 / 5xx / 网络 → unavailable，401 / 403 与其余意料外状态 → unavailable 并记 error（key 或发信域配置错，不怪这封信）。提交的 qualy.yml 里停用；`.env.example`、`deploy/.env.example`、docs/deployment.md 已补。
+- **顺带修掉的真缺陷**：`decodePluginConfig(Schema.Struct({}), block)` 从不拒绝多余键——上游把空 Struct 当作 TS 的 `{}`（任意非空值，`repos/effect/packages/effect/src/SchemaAST.ts` 的「handle empty struct」分支直接走 `isNotNullish`，`onExcessProperty` 根本不看）。smtp、turnstile 与 resend 三个不收配置的插件因此会静默接受清单里的任何键。`decodePluginConfig` 现在对不声明任何键的 schema 要求清单块是空对象，plugin-kit 补了测试。
+
+### 验收（实际执行）
+
+- `pnpm typecheck`：exit 0。`qualy resolve --frozen-lockfile`：exit 0。
+- `pnpm test`（与 typecheck 并发）：`Test Files  3 failed | 307 passed | 3 skipped (313)`，`Tests  9 failed | 2265 passed | 17 skipped (2291)`；9 个失败全是 30 s 超时（effect-assessment、entry-policy、effect-sign-in），单独重跑 `Test Files  3 passed (3)`，`Tests  74 passed (74)`。
+- resend / smtp / turnstile / plugin-kit config 四组：`Test Files  6 passed (6)`，`Tests  37 passed (37)`。
+- 未做：真实 Resend 账号发信（没有 key）；契约测试跑在记录请求的替身上。
+
+### 下一步
+
+- ALTCHA 难度待中低端 Android 真机 p50 / p95。
+- 要改用 Resend 的部署：启用插件、配 key、设默认后端，并先在 staging 用真 key 发一封。
