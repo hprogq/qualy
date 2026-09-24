@@ -7,7 +7,7 @@ import { TooManyAttempts } from '@qualy/auth-contract/session'
 import { CaptchaRequired } from '@qualy/plugin-captcha/contract'
 import { InvalidCredentials } from '@qualy/plugin-auth-local/api'
 import { registerCaptchaProvider, type CaptchaClientState } from '@qualy/plugin-captcha/client'
-import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The sign-in screen finds a driver's renderer by the driver's TYPE.
 //
@@ -31,8 +31,11 @@ const password = {
 const context = (methods: readonly unknown[]) => ({
   tenant: { name: '示范大学' },
   methods,
-  passwordRule: { minLength: 12, maxLength: 128 },
+  passwordRule: { minLength: 15, maxLength: 128 },
 })
+
+/** nobody is signed in: the session read is refused, as it is for a visitor */
+const anonymous = { getSession: () => Effect.fail(apiError('AUTH_REQUIRED', undefined)) }
 
 const away = (code: string, name: string, over: Record<string, unknown> = {}) => ({
   code,
@@ -50,7 +53,7 @@ const screen = (login: Record<string, ReturnType<typeof lazy>>) =>
   renderScreen({
     client: fakeClient({
       app: { getManifest: emptyManifest() },
-      auth: { listLoginMethods: context([password]) },
+      auth: { ...anonymous, listLoginMethods: context([password]) },
     }),
     registry: { login },
     // the method is chosen in the address, so the screen opens on the
@@ -80,7 +83,7 @@ describe('the sign-in screen', () => {
               pages: [{ id: 'auth/reset-password', path: '/reset-password', layout: 'blank' }],
             }),
         },
-        auth: { listLoginMethods: context([password]) },
+        auth: { ...anonymous, listLoginMethods: context([password]) },
       }),
       registry: {
         login: { local: lazy(() => import('@qualy/plugin-auth-local/client/LoginMethod')) },
@@ -102,7 +105,7 @@ describe('the sign-in screen', () => {
     renderScreen({
       client: fakeClient({
         app: { getManifest: emptyManifest() },
-        auth: { listLoginMethods: context([password]) },
+        auth: { ...anonymous, listLoginMethods: context([password]) },
         authLocal: {
           login: () =>
             Effect.suspend(() => {
@@ -151,7 +154,7 @@ describe('the sign-in screen', () => {
       renderScreen({
         client: fakeClient({
           app: { getManifest: emptyManifest() },
-          auth: { listLoginMethods: context([password]) },
+          auth: { ...anonymous, listLoginMethods: context([password]) },
           authLocal: {
             login: ({ payload }: { payload: (typeof sent)[number] }) =>
               Effect.suspend((): Effect.Effect<never, CaptchaRequired | InvalidCredentials> => {
@@ -215,7 +218,7 @@ describe('the sign-in screen', () => {
       renderScreen({
         client: fakeClient({
           app: { getManifest: emptyManifest() },
-          auth: { listLoginMethods: context([password]) },
+          auth: { ...anonymous, listLoginMethods: context([password]) },
           authLocal: {
             login: () =>
               Effect.suspend(() => {
@@ -250,7 +253,7 @@ describe('the sign-in screen', () => {
     renderScreen({
       client: fakeClient({
         app: { getManifest: emptyManifest() },
-        auth: { listLoginMethods: context([password]) },
+        auth: { ...anonymous, listLoginMethods: context([password]) },
       }),
       registry: {
         login: { local: lazy(() => import('@qualy/plugin-auth-local/client/LoginMethod')) },
@@ -295,7 +298,7 @@ describe('the sign-in screen', () => {
       renderScreen({
         client: fakeClient({
           app: { getManifest: emptyManifest() },
-          auth: { listLoginMethods: context([password]) },
+          auth: { ...anonymous, listLoginMethods: context([password]) },
         }),
         route,
         children: <LoginPage />,
@@ -312,7 +315,7 @@ describe('the sign-in screen', () => {
     renderScreen({
       client: fakeClient({
         app: { getManifest: emptyManifest() },
-        auth: { listLoginMethods: context([password]) },
+        auth: { ...anonymous, listLoginMethods: context([password]) },
       }),
       route: `/login?error=${encodeURIComponent('<b>hello</b>')}`,
       children: <LoginPage />,
@@ -327,7 +330,7 @@ describe('the ways in, as the page lays them out', () => {
     renderScreen({
       client: fakeClient({
         app: { getManifest: emptyManifest() },
-        auth: { listLoginMethods: context(methods) },
+        auth: { ...anonymous, listLoginMethods: context(methods) },
       }),
       route,
       children: <LoginPage />,
@@ -358,6 +361,7 @@ describe('the ways in, as the page lays them out', () => {
       client: fakeClient({
         app: { getManifest: emptyManifest() },
         auth: {
+          ...anonymous,
           listLoginMethods: context([
             password,
             away('cas', '统一身份认证', { prominence: 'primary' }),
@@ -433,5 +437,42 @@ describe('the ways in, as the page lays them out', () => {
   it('offers nothing to choose when there is nothing to choose', async () => {
     open([])
     await expect.element(page.getByTestId('sign-in-empty')).toBeVisible()
+  })
+})
+
+describe('the sign-in screen, for somebody already signed in', () => {
+  const signedInAs = () =>
+    Effect.succeed({
+      user: { id: 'u1', displayName: '张三', email: 'zhang@school.edu', tenantId: 't1' },
+    })
+
+  it('sends them home instead of offering a second sign-in', async () => {
+    renderScreen({
+      client: fakeClient({
+        app: { getManifest: emptyManifest() },
+        auth: { getSession: signedInAs, listLoginMethods: context([password]) },
+      }),
+      route: '/login',
+      children: <LoginPage />,
+    })
+    await expect.poll(addressNow).toBe('/')
+    // the ways in were never offered
+    expect(page.getByRole('button', { name: '账号密码' }).elements()).toHaveLength(0)
+  })
+
+  it('offers the ways in when the session it had has lapsed', async () => {
+    renderScreen({
+      client: fakeClient({
+        app: { getManifest: emptyManifest() },
+        auth: {
+          getSession: () => Effect.fail(apiError('SESSION_EXPIRED', undefined)),
+          listLoginMethods: context([password]),
+        },
+      }),
+      route: '/login',
+      children: <LoginPage />,
+    })
+    await expect.element(page.getByRole('button', { name: '账号密码' })).toBeVisible()
+    expect(addressNow()).toBe('/login')
   })
 })

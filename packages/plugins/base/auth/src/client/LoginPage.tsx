@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FocusEvent, type PointerEvent, type ReactNode } from 'react'
-import { useSearchParams } from 'react-router'
+import { useNavigate, useSearchParams } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import * as stylex from '@stylexjs/stylex'
@@ -14,7 +14,15 @@ import {
   WifiOffIcon,
   XIcon,
 } from 'lucide-react'
-import { PluginSurface, useApiQuery, useSessionTransition } from '@qualy/web-runtime'
+import {
+  PluginSurface,
+  sessionDestinationHref,
+  useApi,
+  useApiQuery,
+  useManifest,
+  useRunApi,
+  useSessionTransition,
+} from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Skeleton } from '@qualy/ui/skeleton'
@@ -410,12 +418,32 @@ const failureFrom = (params: URLSearchParams) => {
 }
 
 export default function LoginPage() {
+  const api = useApi(authApi)
   const query = useApiQuery(authApi)
+  const run = useRunApi()
+  const navigate = useNavigate()
+  const manifest = useManifest()
   const { format, locale } = useI18n()
   const startSession = useSessionTransition()
   const [params, setParams] = useSearchParams()
   const still = useReducedMotion() === true
   const context = useQuery(query.auth.listLoginMethods.queryOptions())
+  // somebody already signed in has nothing to do here: one browser holds one
+  // session, and signing in again would replace it without a word. Asked
+  // afresh rather than from the cached identity, which can outlive a session
+  // by its stale time and would bounce an expired reader between here and home.
+  const present = useQuery({
+    queryKey: query.auth.getSession.key(),
+    queryFn: () => run(api.auth.getSession()),
+    retry: false,
+    refetchOnMount: 'always',
+  })
+  // decided by the read this visit made, never by a cached answer alone
+  const decided = present.isFetchedAfterMount
+  const signedIn = decided && present.isSuccess
+  useEffect(() => {
+    if (signedIn) void navigate(sessionDestinationHref({ kind: 'home' }, manifest.pages), { replace: true })
+  }, [signedIn, navigate, manifest.pages])
   const failed = failureFrom(params)
   const [leaving, setLeaving] = useState<LoginMethod | null>(null)
   // read once: the mark says where this visit came in last time, not a moment ago
@@ -481,7 +509,8 @@ export default function LoginPage() {
   )
 
   const panel = (() => {
-    if (context.isPending) {
+    // the form waits until it is known nobody is signed in
+    if (context.isPending || !decided || signedIn) {
       return (
         <div data-testid="sign-in-waiting" aria-busy {...stylex.props(styles.panel)}>
           <Skeleton className={stylex.props(styles.boneLine).className} />
