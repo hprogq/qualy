@@ -1167,7 +1167,7 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
                 demoAccounts: demoAccounts.map(({ label, email, password }) => ({
                   label,
                   email,
-                  password,
+                  publicPassword: password,
                 })),
               }),
         }

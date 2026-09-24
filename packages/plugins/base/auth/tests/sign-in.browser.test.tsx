@@ -263,12 +263,12 @@ describe('the sign-in screen', () => {
               {
                 label: '学生',
                 email: 'student@demo.example.edu',
-                password: 'quiet-harbor-lantern-7',
+                publicPassword: 'quiet-harbor-lantern-7',
               },
               {
                 label: '辅导员',
                 email: 'counsellor@demo.example.edu',
-                password: 'amber-field-river-3',
+                publicPassword: 'amber-field-river-3',
               },
             ],
           },

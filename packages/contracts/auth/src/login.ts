@@ -109,12 +109,13 @@ export interface LoginContext {
   /**
    * Accounts a demonstration deployment hands out, with their passwords:
    * published on purpose, and frozen so nobody can take them. Absent on any
-   * deployment that names none.
+   * deployment that names none. The field says `publicPassword` because it
+   * is one: no secret travels under the name a secret would.
    */
   readonly demoAccounts?: readonly {
     readonly label: string
     readonly email: string
-    readonly password: string
+    readonly publicPassword: string
   }[]
 }
 

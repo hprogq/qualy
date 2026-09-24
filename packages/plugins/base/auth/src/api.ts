@@ -960,7 +960,11 @@ export const sessionApiGroup = HttpApiGroup.make('auth')
         // a demonstration deployment's shared accounts, offered by name
         demoAccounts: Schema.optional(
           Schema.Array(
-            Schema.Struct({ label: Schema.String, email: Schema.String, password: Schema.String }),
+            Schema.Struct({
+              label: Schema.String,
+              email: Schema.String,
+              publicPassword: Schema.String,
+            }),
           ),
         ),
       }),

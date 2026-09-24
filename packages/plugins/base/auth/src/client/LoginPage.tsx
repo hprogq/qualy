@@ -1117,7 +1117,7 @@ function MethodRenderer({
 }: {
   method: LoginMethod & { mode: 'component' }
   onAuthenticated: () => void
-  prefill: { readonly email: string; readonly password: string } | undefined
+  prefill: { readonly email: string; readonly publicPassword: string } | undefined
 }) {
   const { format } = useI18n()
   // Two ways a driver can fail to draw its form, one thing to say about
@@ -1150,7 +1150,7 @@ function MethodRenderer({
           onAuthenticated,
           ...(prefill === undefined
             ? {}
-            : { prefill: { email: prefill.email, password: prefill.password } }),
+            : { prefill: { email: prefill.email, password: prefill.publicPassword } }),
         }}
         loading={
           <div data-testid="login-renderer-waiting" aria-busy {...stylex.props(styles.boneForm)}>
