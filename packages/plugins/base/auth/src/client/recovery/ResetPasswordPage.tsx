@@ -434,8 +434,11 @@ function Ask() {
           >
             {gate.state === 'loading-provider'
               ? format(m.resetPreparingCheck)
-              : gate.state === 'working' || gate.state === 'interaction'
+              : gate.state === 'working'
                 ? format(m.resetChecking)
+                : // the check is waiting on the person now, not on the page
+                  gate.state === 'interaction'
+                  ? format(m.resetFinishCheck)
                 : ask.isPending
                   ? format(m.resetSending)
                   : limited

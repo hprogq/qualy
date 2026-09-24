@@ -399,6 +399,10 @@ const i18n = definePluginMessages({
       defaultMessage: 'Preparing a security check…',
     },
     resetChecking: { id: 'auth/reset/checking', defaultMessage: 'Running a security check…' },
+    resetFinishCheck: {
+      id: 'auth/reset/finish-check',
+      defaultMessage: 'Complete the security check to continue',
+    },
     resetEmailInvalid: { id: 'auth/reset/email-invalid', defaultMessage: 'Enter a valid email address' },
     resetSentTitle: { id: 'auth/reset/sent-title', defaultMessage: 'Check your email' },
     resetSentBody: {
