@@ -73,7 +73,7 @@ export default function AccountHeader() {
     <div data-testid="account-header" {...stylex.props(styles.who)}>
       {me === undefined ? (
         <>
-          <Skeleton className={stylex.props(styles.portrait).className} />
+          <Skeleton circle className={stylex.props(styles.portrait).className} />
           <div {...stylex.props(styles.text)}>
             <Skeleton className={stylex.props(styles.boneName).className} />
             <Skeleton className={stylex.props(styles.boneMeta).className} />
