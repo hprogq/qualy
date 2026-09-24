@@ -96,6 +96,8 @@ export const startQualyServer = (options: QualyServerOptions): QualyServer => {
           QUALY_MAIL_SMTP_PORT: '1025',
           QUALY_MAIL_SMTP_TLS: 'none',
           QUALY_MAIL_SMTP_ALLOW_PLAINTEXT: '1',
+          // and a key for resend, whichever of the two the manifest enables
+          QUALY_MAIL_RESEND_API_KEY: 're_smoke_only',
         }
   const child: ChildProcess = spawn(
     process.execPath,

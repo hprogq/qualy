@@ -77,10 +77,10 @@ plugins:
   # backends enabled here, without a new release.
   '@qualy/plugin-mail':
     config:
-      defaultBackend: smtp
-  '@qualy/plugin-mail-smtp': {}
-  '@qualy/plugin-mail-resend':
+      defaultBackend: resend
+  '@qualy/plugin-mail-smtp':
     enabled: false
+  '@qualy/plugin-mail-resend': {}
 
   # Challenges for risky requests. Unlike mail, which provider answers them is
   # chosen by enabling it rather than by name: each provider brings its own

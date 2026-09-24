@@ -1,7 +1,7 @@
 {
   "lockfileVersion": 2,
-  "manifestHash": "sha256:3352fc7b80a0f7b90086e0e5715e9e362a4a2e0bea16c1cd0f6439709ddeafb0",
-  "resolutionHash": "sha256:944e69d34c79306af157425bd30fa0b2ff7d1bbce387dd8a10620202562c9416",
+  "manifestHash": "sha256:447a2dd7c741b034d4802b041283f9e7acef5bb57d4262b71def2de889750800",
+  "resolutionHash": "sha256:b8f0a3b97d484214a7686ebdaa58bdefc93c0eae8038c145c0fa3ce57dcbb8b4",
   "plugins": {
     "@qualy/plugin-assessment": {
       "version": "0.0.0",
@@ -226,11 +226,11 @@
     },
     "@qualy/plugin-mail-resend": {
       "version": "0.0.0",
-      "state": "disabled"
+      "state": "active"
     },
     "@qualy/plugin-mail-smtp": {
       "version": "0.0.0",
-      "state": "active"
+      "state": "disabled"
     },
     "@qualy/plugin-org": {
       "version": "0.0.0",
@@ -431,7 +431,7 @@
       "@qualy/plugin-directory-import",
       "@qualy/plugin-layout-default",
       "@qualy/plugin-mail",
-      "@qualy/plugin-mail-smtp",
+      "@qualy/plugin-mail-resend",
       "@qualy/plugin-org",
       "@qualy/plugin-rbac",
       "@qualy/plugin-rum",

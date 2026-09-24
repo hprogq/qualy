@@ -54,6 +54,8 @@ const spawnBackend = (): ChildProcess => {
       // the scratch database is already at the head of the lineage; a second
       // process applying it again is work this suite is not about
       QUALY_MIGRATIONS: 'off',
+      // the manifest sends mail through resend; nothing here sends any
+      QUALY_MAIL_RESEND_API_KEY: 're_test_only',
     },
     stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
   })

@@ -22,6 +22,7 @@
     "@qualy/plugin-auth": "workspace:*",
     "@qualy/plugin-database": "workspace:*",
     "@qualy/plugin-mail": "workspace:*",
+    "@qualy/plugin-mail-resend": "workspace:*",
     "@qualy/plugin-mail-smtp": "workspace:*",
     "@qualy/plugin-ping": "workspace:*",
     "@qualy/plugin-secrets": "workspace:*",

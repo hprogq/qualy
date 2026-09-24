@@ -55,6 +55,7 @@ describe.runIf(postgresAvailable)('the headless runtime', () => {
         NODE_ENV: 'development',
         // the one thing a runtime command must never inherit
         QUALY_MIGRATIONS: 'apply',
+        QUALY_MAIL_RESEND_API_KEY: 're_test_only',
       })
       const seen = await Effect.runPromise(
         Effect.gen(function* () {
@@ -88,6 +89,7 @@ describe.runIf(postgresAvailable)('the headless runtime', () => {
           DATABASE_URL: db.url,
           NODE_ENV: 'development',
           QUALY_MIGRATIONS: 'off',
+          QUALY_MAIL_RESEND_API_KEY: 're_test_only',
         })
         return Effect.runPromise(
           Effect.gen(function* () {

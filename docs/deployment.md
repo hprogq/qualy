@@ -136,12 +136,13 @@ database。出现第二种有持久部署副作用的能力时,先设计启动�
 在 `QUALY_AUTH_PRIVATE_PROVIDER_ALLOWLIST` 里写它的主机名或网段(逗号分隔,缺省为空)。本机地址、link-local、云厂商 metadata
 地址无论是否写进去都连不到;格式不对的条目直接拒启。这份名单归部署,租户管理员改不了它。
 
-**邮件**:`QUALY_MAIL_FROM`(发件人,`Name <address>` 或裸地址)与 `QUALY_MAIL_SMTP_HOST`(中继)是生产必填,缺任一即拒启。
+**邮件**:产品经 Resend 发信(qualy.yml 启用 `@qualy/plugin-mail-resend`、`defaultBackend: resend`,smtp 插件停用)。
+生产必填 `QUALY_MAIL_FROM`(发件人,`Name <address>` 或裸地址,域名须已在 Resend 验证)与 `QUALY_MAIL_RESEND_API_KEY`(缺失或空白即拒启);
+开发环境同样需要 key。改用 SMTP 中继要换一个启用 `@qualy/plugin-mail-smtp` 的 release,并设 `QUALY_MAIL_DEFAULT_BACKEND=smtp` 与下面的中继变量:
+`QUALY_MAIL_SMTP_HOST`(中继)在 smtp 启用时生产必填。
 `QUALY_MAIL_SMTP_TLS` 三态:`implicit`(465,一开始就是 TLS)、`starttls`(587,缺省,升级失败即不发)、`none`(明文,生产必须另设
 `QUALY_MAIL_SMTP_ALLOW_PLAINTEXT=1` 才接受);端口随之缺省,可用 `QUALY_MAIL_SMTP_PORT` 覆盖;账号与密码(`QUALY_MAIL_SMTP_USER` /
 `QUALY_MAIL_SMTP_PASSWORD`)要么都给要么都不给。这些是部署的,不进 qualy.yml,也不进租户的密钥表——单一产品只有一个中继。
-改走 Resend 的 HTTP API:release 的 qualy.yml 启用 `@qualy/plugin-mail-resend`(提交的清单里缺省停用),部署设
-`QUALY_MAIL_RESEND_API_KEY`(启用而缺失或空白即拒启)与 `QUALY_MAIL_DEFAULT_BACKEND=resend`;smtp 插件只要仍启用,上面的中继变量照样必填。
 Resend 答 400/422 算这封信被拒,429/409/5xx/超时算暂不可用;401/403 等是 key 或发信域配置错,同样算不可用并记 error 日志。
 启动时不连中继:中继宕着不影响启动,第一封信会失败并记日志与指标 `qualy.mail.sent{outcome}`。
 

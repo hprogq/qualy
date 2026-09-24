@@ -499,6 +499,9 @@ importers:
       '@qualy/plugin-mail':
         specifier: workspace:*
         version: link:../../packages/plugins/infra/mail
+      '@qualy/plugin-mail-resend':
+        specifier: workspace:*
+        version: link:../../packages/plugins/infra/mail-resend
       '@qualy/plugin-mail-smtp':
         specifier: workspace:*
         version: link:../../packages/plugins/infra/mail-smtp

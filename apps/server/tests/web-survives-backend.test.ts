@@ -139,6 +139,8 @@ const startBackend = async () => {
       PORT: String(port),
       DATABASE_URL: db!.url,
       QUALY_MIGRATIONS: 'off',
+      // the manifest sends mail through resend; nothing here sends any
+      QUALY_MAIL_RESEND_API_KEY: 're_test_only',
     },
     stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
   })
