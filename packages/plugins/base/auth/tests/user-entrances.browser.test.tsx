@@ -154,7 +154,7 @@ describe('the ways in of one person', () => {
     const length = page
       .getByTestId('password-checklist')
       .element()
-      .querySelector('[data-check="length"]')!
+      .querySelector<HTMLElement>('[data-check="length"]')!
     await expect.element(length).toHaveAttribute('data-refused', 'true')
     expect(put).not.toHaveBeenCalled()
     await page.getByLabelText('口令').fill('long-enough')

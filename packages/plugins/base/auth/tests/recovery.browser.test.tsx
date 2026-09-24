@@ -139,7 +139,7 @@ describe('a forgotten password', () => {
       children: <ResetPasswordPage />,
     })
     const rule = (check: string) =>
-      page.getByTestId('password-checklist').element().querySelector(`[data-check="${check}"]`)!
+      page.getByTestId('password-checklist').element().querySelector<HTMLElement>(`[data-check="${check}"]`)!
     const field = page.getByLabelText('新密码', { exact: true })
     // what it is held to is said while it is typed; a press before it holds
     // is answered by the list, and nothing is sent
@@ -256,7 +256,7 @@ describe('the reader’s security', () => {
     // held to the same list as every other form that sets a password
     await expect
       .element(
-        page.getByTestId('password-checklist').element().querySelector('[data-check="unguessable"]')!,
+        page.getByTestId('password-checklist').element().querySelector<HTMLElement>('[data-check="unguessable"]')!,
       )
       .toHaveAttribute('data-state', 'met')
     await page.getByLabelText('再次输入新密码').fill('new password here')
