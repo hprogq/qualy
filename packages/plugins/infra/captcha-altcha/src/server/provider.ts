@@ -39,6 +39,11 @@ export interface AltchaTuning {
    * The counter the solver has to reach, drawn afresh per challenge from
    * this range. It is the answer in deterministic mode: a fixed one would be
    * solved by one derivation instead of thousands.
+   *
+   * The range starts near 1 on purpose. The widget searches from 0, and a
+   * script can start wherever it likes - this code is public - so a floor of
+   * 5000 would cost a browser 5000 derivations it cannot skip and cost a
+   * script nothing. From 1 up the search costs both the same.
    */
   readonly counterMin: number
   readonly counterMax: number
@@ -48,7 +53,7 @@ export interface AltchaTuning {
 /** the only tuning a deployment runs with; a suite asks for an easier one */
 export const ALTCHA_TUNING: AltchaTuning = {
   cost: 5000,
-  counterMin: 5000,
+  counterMin: 1,
   counterMax: 10000,
   ttlMs: 5 * 60_000,
 }
@@ -73,16 +78,16 @@ const hex = Schema.String.check(Schema.isPattern(/^(?:[0-9a-f]{2})+$/))
 /** the widget's payload, decoded: the challenge as issued, and the solution to it */
 const Payload = Schema.Struct({
   challenge: Schema.Struct({
+    // held to what this provider issues, so what reaches the library is
+    // input it was built for, and anything it throws after that is a defect
     parameters: Schema.Struct({
-      algorithm: Schema.String,
-      nonce: Schema.String,
-      salt: Schema.String,
-      cost: Schema.Number,
-      keyLength: Schema.Number,
-      keyPrefix: Schema.String,
-      keySignature: Schema.optional(Schema.String),
-      memoryCost: Schema.optional(Schema.Number),
-      parallelism: Schema.optional(Schema.Number),
+      algorithm: Schema.Literal(ALGORITHM),
+      nonce: hex,
+      salt: hex,
+      cost: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 1_000_000 })),
+      keyLength: Schema.Int.check(Schema.isBetween({ minimum: 16, maximum: 64 })),
+      keyPrefix: hex,
+      keySignature: Schema.optional(hex),
       expiresAt: Schema.optional(Schema.Number),
       data: Schema.optional(
         Schema.Record(Schema.String, Schema.Union([Schema.String, Schema.Number, Schema.Boolean, Schema.Null])),
@@ -91,7 +96,7 @@ const Payload = Schema.Struct({
     signature: Schema.optional(Schema.String),
   }),
   solution: Schema.Struct({
-    counter: Schema.Number,
+    counter: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
     derivedKey: hex,
     time: Schema.optional(Schema.Number),
   }),
@@ -187,9 +192,11 @@ export const registrationLayerWith = (
         const payload = parsed(response)
         if (payload === undefined) return 'rejected' as const
         // the library checks expiry, the signature over every parameter - the
-        // data included - and the solution; what it throws on input it was
-        // not meant to see is a proof that is no proof
-        const outcome = yield* Effect.tryPromise(() =>
+        // data included - and the solution. The payload was held to the shape
+        // this provider issues before it got here, so a throw is the library
+        // or the runtime failing, and it surfaces as one rather than as every
+        // visitor's check quietly failing
+        const outcome = yield* Effect.promise(() =>
           verifySolution({
             challenge: payload.challenge as Challenge,
             solution: payload.solution,
@@ -197,8 +204,8 @@ export const registrationLayerWith = (
             hmacSignatureSecret: signing,
             hmacKeySignatureSecret: keySigning,
           }),
-        ).pipe(Effect.orElseSucceed(() => undefined))
-        if (outcome?.verified !== true) return 'rejected' as const
+        )
+        if (!outcome.verified) return 'rejected' as const
         // signed by us, so these are what we issued - and they must be what
         // this request is: this tenant, this purpose, this binding
         const data = decodeData(payload.challenge.parameters.data)
