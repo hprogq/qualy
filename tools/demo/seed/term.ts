@@ -589,7 +589,7 @@ export const runTerm = (input: {
           .map((cell) => String(cell ?? ''))
         const columnOf = (field: FieldSpec) => headers.findIndex((header) => header === field.label)
         for (const row of rows) {
-          const cells = headers.map(() => '' as string | number)
+          const cells = headers.map((): string | number => '')
           cells[0] = row.student.number
           cells[1] = row.student.name
           for (const field of item.spec.fields) {

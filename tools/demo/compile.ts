@@ -49,7 +49,7 @@ const text = (value: Cell): string => {
   if (value instanceof Date) return value.toISOString()
   if (typeof value === 'object') {
     if ('richText' in value) return value.richText.map((part) => part.text).join('')
-    if ('result' in value) return text(value.result as Cell)
+    if ('result' in value) return text(value.result)
     if ('text' in value) return String(value.text)
   }
   return String(value)

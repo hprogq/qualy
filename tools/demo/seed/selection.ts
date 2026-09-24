@@ -1005,7 +1005,7 @@ const importInto = (
     const headers = (sheet.getRow(1).values as unknown[]).slice(1).map((cell) => String(cell ?? ''))
     const scoring = item.spec.scoring
     for (const row of rows) {
-      const cells = headers.map(() => '' as string | number)
+      const cells = headers.map((): string | number => '')
       cells[0] = row.student.number
       cells[1] = row.student.name
       for (const field of item.spec.fields) {
