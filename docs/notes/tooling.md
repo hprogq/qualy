@@ -156,7 +156,7 @@ ui-registry(统一 API runtime 拉 manifest 契约;页面组件用 useApi)。这
 
 **oxfmt 取代 Prettier**:`oxfmt --migrate=prettier` 生成的配置与原 `.prettierrc`/`.prettierignore` 一致,并带上 `sortPackageJson: false`。首轮重排约 300 个文件(Prettier 本身积累的漂移 + 长联合类型改前导 `|` 的风格差异),单独一个 commit 并登记进 `.git-blame-ignore-revs`。实测:`directory-import/src/server/service.ts` 的链式调用从 Prettier 形态出发要两轮才收敛,之后稳定;`docs/aegis-official-docs.md` 的不幂等是 Prettier 同一套 Markdown 打印逻辑带来的,与 `docs/orpc-v2-docs.md` 一起作为上游资料忽略。**Prettier 仍在 catalog**:`apps/sandbox-authoring` 的公式编辑器语言服务在运行时用它格式化文档,不是遗留。
 
-**公式 SDK 不格式化**:`packages/core/formula/src` 与 `packages/core/value-schema/src` 的源码被原样打包进每个公式产物,并对内容做 `runtimeDigest`。首轮重排改了其中两个文件,`formula-compiler` 的 golden 立刻失败(产物少 14 字节),已恢复并加入 oxfmt 忽略;lint 在这两处对 `no-unused-vars`、`no-unnecessary-type-assertion` 只 warn。要清理,就在有意修改 SDK 的 commit 里一并重生成 golden。
+**公式 SDK 照常格式化**:`packages/core/formula/src` 与 `packages/core/value-schema/src` 的源码被原样打包进每个公式产物,首轮重排让 `formula-compiler` 的 golden 失败(产物少 14 字节)。起初把这两处排除在格式化之外,随后改判:已发布版本存的是各自的产物字节,沙箱只对存下的产物校验哈希,`runtime-compatibility.ts` 也刻意不比对工具链来源,所以 SDK 字节变化只影响「同一源码重新编译得到同一产物」这一点;golden 的规则本就是「有意修改 SDK 或工具链的 commit 里重算,并在 STATUS 写明原因」。纯类型层面的改动(删断言、删未用 import)不进产物,golden 不动。
 
 **oxlint 配置的取舍**(`categories.correctness = error`,另开的见 `.oxlintrc.json`):
 

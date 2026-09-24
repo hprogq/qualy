@@ -1,12 +1,12 @@
 {
   "identity": {
     "source": "import { Schema, defineFormula } from '@qualy/formula'\n\nexport default defineFormula({\n  input: Schema.input({\n    value: Schema.decimal({ minimum: '0.00', maximum: '10.00', maxScale: 2 }),\n  }),\n  output: Schema.scoreAmount({ maxScale: 2 }),\n  run: (input) => input.value,\n})\n",
-    "artifactSha256": "c9fed7653185b79dded192f4675f4321a082deb1b59459f60b9673d945507b53",
-    "artifactBytes": 27268
+    "artifactSha256": "65dffc600d319747de921475798ff69b4bf6add3878a683bf71a9ffea734c408",
+    "artifactBytes": 27254
   },
   "all-kinds": {
     "source": "import { Schema, defineFormula } from '@qualy/formula'\n\nexport default defineFormula({\n  input: Schema.input({\n    score: Schema.decimal({ minimum: '0.00', maximum: '100.00', maxScale: 2 }),\n    weight: Schema.integer({ minimum: 1, maximum: 10 }),\n    tier: Schema.choice({ national: '国家级', provincial: '省级' }),\n    verified: Schema.boolean(),\n    awardedOn: Schema.date(),\n    title: Schema.text({ maxLength: 120, pattern: '^[A-Za-z0-9 ]+$' }),\n  }),\n  output: Schema.scoreAmount({ maxScale: 4 }),\n  run: (input, q) => {\n    const base = q.decimal.mulInteger(input.score, input.weight)\n    if (!input.verified) q.fail('unverified evidence')\n    return q.decimal.quantize(base, 4)\n  },\n})\n",
-    "artifactSha256": "4a609e085e564a41a8827d7f2f9bdc46118d38577c427199a27930ffb01ab464",
-    "artifactBytes": 27713
+    "artifactSha256": "0b3ba425aa7458ab39e48796d0b2be6029f0217f678a665f2fc403901f5638f9",
+    "artifactBytes": 27699
   }
 }

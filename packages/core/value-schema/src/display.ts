@@ -32,7 +32,7 @@ import {
 const hasOwn = Object.prototype.hasOwnProperty
 
 const own = <T>(record: Readonly<Record<string, T>> | undefined, key: string): T | undefined =>
-  record !== undefined && hasOwn.call(record, key) ? (record[key]) : undefined
+  record !== undefined && hasOwn.call(record, key) ? record[key] : undefined
 
 const localeEntry = (
   schema: AtomicSchema | InputSchema,

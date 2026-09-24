@@ -47,7 +47,7 @@ export const constraintOf = (schema: AtomicSchema, reason: string): string | und
     case 'minLength':
       return numberOn(schema, 'minLength' satisfies keyof TextSchema)
     case 'enum':
-      return 'enum' in schema ? (schema).enum.join(', ') : undefined
+      return 'enum' in schema ? schema.enum.join(', ') : undefined
     case 'type':
     case 'format':
       return kindOf(schema)

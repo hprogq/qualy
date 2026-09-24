@@ -70,13 +70,6 @@
         "jsx-a11y/prefer-tag-over-role": "off",
         "jsx-a11y/no-autofocus": "off"
       }
-    },
-    {
-      "files": ["packages/core/formula/src/**", "packages/core/value-schema/src/**"],
-      "rules": {
-        "no-unused-vars": "warn",
-        "typescript/no-unnecessary-type-assertion": "warn"
-      }
     }
   ]
 }
