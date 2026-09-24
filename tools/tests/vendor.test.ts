@@ -109,7 +109,10 @@ describe('vendored upstream sources', () => {
     const tsconfig = JSON.parse(fs.readFileSync('tsconfig.json', 'utf8')) as { exclude?: string[] }
     expect(tsconfig.exclude).toContain('repos')
     expect(fs.readFileSync('vitest.config.ts', 'utf8')).toContain("'repos/**'")
-    expect(fs.readFileSync('.prettierignore', 'utf8')).toContain('repos/')
+    const formatter = JSON.parse(fs.readFileSync('.oxfmtrc.json', 'utf8')) as {
+      ignorePatterns?: string[]
+    }
+    expect(formatter.ignorePatterns).toContain('repos/')
     expect(fs.readFileSync('pnpm-workspace.yaml', 'utf8')).not.toContain('repos/')
     // and out of version control, except the lock that makes it reproducible
     const ignored = fs.readFileSync('.gitignore', 'utf8')

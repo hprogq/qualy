@@ -36,7 +36,7 @@ vendored 树里可能带着**写给别的仓库的 agent 配置**——drizzle-o
 
 - 禁止编辑(`.claude/settings.json` 已在权限层拒绝 Edit/Write)
 - 禁止从中 import
-- 不进 workspace、不进 tsconfig、不进 vitest、不被 prettier 扫描
+- 不进 workspace、不进 tsconfig、不进 vitest、不被格式化器(oxfmt)扫描
 - **进 .gitignore**,只有 `repos/vendor-lock.json` 例外
 
 原先的规则是「必须随仓库一起被审查和版本化」。可追溯性其实由 lock 承担:它记的是

@@ -82,6 +82,8 @@ catalog:
   '@types/pg': 8.23.1
   yaml: 2.9.0
   vitest: 5.0.1
+  # not the repository's formatter (that is oxfmt): the formula editor's
+  # language server in sandbox-authoring formats documents with it at runtime
   prettier: 3.9.6
   '@lingui/core': 6.6.0
   '@lingui/message-utils': 6.6.0

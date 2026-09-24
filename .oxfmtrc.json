@@ -1,0 +1,18 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "semi": false,
+  "singleQuote": true,
+  "printWidth": 100,
+  "sortPackageJson": false,
+  "ignorePatterns": [
+    "pnpm-lock.yaml",
+    "db/migrations/",
+    "*.gen.ts",
+    "cordis.gen.yml",
+    "repos/",
+    "apps/web/.qualy/",
+    "qualy.lock.json",
+    "docs/aegis-official-docs.md",
+    "docs/orpc-v2-docs.md"
+  ]
+}
