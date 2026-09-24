@@ -25,8 +25,10 @@ const EASE = [0.2, 0.8, 0.2, 1] as const
 
 const styles = stylex.create({
   host: { display: 'flex', flexDirection: 'column', gap: 8 },
-  inline: { overflow: 'hidden' },
-  region: { display: 'flex', justifyContent: 'center', paddingBlock: 4 },
+  inline: { overflow: 'hidden', width: '100%', minWidth: 0 },
+  // the width of whatever it stands in: a provider that sizes itself to its
+  // container lines up with the form around it
+  region: { width: '100%', minWidth: 0 },
   // present in the document, and invisible, while nothing needs the person
   parked: {
     position: 'absolute',

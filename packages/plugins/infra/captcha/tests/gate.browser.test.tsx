@@ -130,6 +130,12 @@ describe('a challenge that needs the person', () => {
     await expect.element(page.getByRole('button', { name: 'tick' })).toBeVisible()
     await expect.element(page.getByRole('button', { name: 'tick' })).toHaveFocus()
     expect(page.getByRole('dialog').elements()).toHaveLength(0)
+    // as wide as the form it stands in, so a provider sizing itself to its
+    // container lines up with the fields above it
+    const container = page.getByRole('button', { name: 'tick' }).element().parentElement!
+    expect(container.getBoundingClientRect().width).toBe(
+      host().element().getBoundingClientRect().width,
+    )
   })
 
   it('comes over the page only once it needs the person, when placed there', async () => {
