@@ -274,7 +274,9 @@ export default function LocalLoginMethod({ method, onAuthenticated }: LoginMetho
           onChange={(event) => {
             setEmail(event.target.value)
             setRefusal(null)
-            // a challenge is bound to the address it was issued for
+            // a challenge is bound to the address it was issued for: spent at
+            // once, so a proof finishing in this very moment reaches nobody
+            gate.cancel()
             setPrompt(null)
           }}
           onBlur={() => email !== '' && setLeft((was) => ({ ...was, email: true }))}
