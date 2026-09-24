@@ -149,3 +149,30 @@ ui-registry(统一 API runtime 拉 manifest 契约;页面组件用 useApi)。这
 **触发条件**(出现任一即必须先断环再做那件事):①引入 per-package 增量构建编排
 (turbo/nx/project references build);②把任一 workspace 包发布到 npm;③生产源码
 真实出现循环 import 的 TDZ 报错。
+
+## Oxc:oxfmt 与 oxlint(2026-09-24 接入,逐条实测)
+
+**为什么接**:CI 有 typecheck、测试与几十个架构门禁,但没有格式检查,也没有通用 lint;源码里散着约 35 条 `eslint-disable` 注释,没有执行器,是死文本。oxlint 补的正是中间这层(React hooks 依赖、可疑写法、未用代码),不替代任何既有门禁。不引 ESLint(慢,且 typescript-eslint 依赖本仓库已没有的 JS 编译器 API);不换 Biome(另一套类型推断,现有 disable 注释要全改写)。
+
+**oxfmt 取代 Prettier**:`oxfmt --migrate=prettier` 生成的配置与原 `.prettierrc`/`.prettierignore` 一致,并带上 `sortPackageJson: false`。首轮重排约 300 个文件(Prettier 本身积累的漂移 + 长联合类型改前导 `|` 的风格差异),单独一个 commit 并登记进 `.git-blame-ignore-revs`。实测:`directory-import/src/server/service.ts` 的链式调用从 Prettier 形态出发要两轮才收敛,之后稳定;`docs/aegis-official-docs.md` 的不幂等是 Prettier 同一套 Markdown 打印逻辑带来的,与 `docs/orpc-v2-docs.md` 一起作为上游资料忽略。**Prettier 仍在 catalog**:`apps/sandbox-authoring` 的公式编辑器语言服务在运行时用它格式化文档,不是遗留。
+
+**公式 SDK 不格式化**:`packages/core/formula/src` 与 `packages/core/value-schema/src` 的源码被原样打包进每个公式产物,并对内容做 `runtimeDigest`。首轮重排改了其中两个文件,`formula-compiler` 的 golden 立刻失败(产物少 14 字节),已恢复并加入 oxfmt 忽略;lint 在这两处对 `no-unused-vars`、`no-unnecessary-type-assertion` 只 warn。要清理,就在有意修改 SDK 的 commit 里一并重生成 golden。
+
+**oxlint 配置的取舍**(`categories.correctness = error`,另开的见 `.oxlintrc.json`):
+
+| 规则                                                                  | 处理                                     | 依据                                                                                                                                        |
+| --------------------------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `no-unused-vars`                                                      | error,`ignoreRestSiblings`、`_` 前缀忽略 | 首轮 206 条,多为未用 import;`{ [k]: gone, ...rest }` 是剔除键的惯用法                                                                       |
+| `react-hooks/exhaustive-deps`                                         | error(仅浏览器侧 override)               | 10 条:5 条是 `?? []` / `?? {}` 每次渲染新建导致 memo 失效,已修;2 条稳定句柄补进依赖;2 条有意,带理由抑制                                     |
+| `react-hooks/rules-of-hooks`                                          | error,仅浏览器侧                         | 放到服务端会把 Layer / sink 的 `.use` 误报成 hook                                                                                           |
+| `unicorn/no-useless-spread`                                           | off                                      | 5 条里 4 条是遍历时修改集合前必须的复制                                                                                                     |
+| `vitest/valid-title` 等                                               | off                                      | 看不懂 `it(check.name, check.run)` 契约套件与 `expect(v, message)`                                                                          |
+| `require-yield`                                                       | off                                      | `Effect.gen` / `Effect.fn` 不 yield 是正常写法,Effect 诊断另管                                                                              |
+| `no-irregular-whitespace`                                             | error,跳过注释                           | 注释里引用界面上真实的全角空格                                                                                                              |
+| `typescript/switch-exhaustiveness-check`                              | error,`default` 算穷举                   | 12 条全部带有意的 `default`                                                                                                                 |
+| `typescript/require-array-sort-compare`                               | error,忽略字符串数组                     | 其余改成与默认序等价的比较器(`database` 的 `dependsOn` 进 lock,顺序不能变)                                                                  |
+| `typescript/no-floating-promises`                                     | error,测试也开                           | 479 条测试里 `render()`/`mount()`/`page.viewport()`/`unmount()` 未 await,是实际竞态,已全部 await;源码 14 处是有意不等的缓存失效,写成 `void` |
+| `typescript/no-unnecessary-type-assertion`                            | error                                    | 首轮自动修复 379 条,其中 5 条是误报(防字面量放宽、断言成更宽类型),自动修复后 typecheck 失败,已恢复并带理由抑制                              |
+| `typescript/unbound-method`、`no-base-to-string`、`no-misused-spread` | off                                      | 分别是方法语法声明的接口、有意的 `String(unknown)`、按码点计数的展开                                                                        |
+
+**两条路径**:`pnpm lint` 不看类型(约 0.5 秒);`pnpm lint:types` 开 tsgolint(本机 16 秒、峰值约 4.7 GB,CI 4 核 16 GB 可承受),失效 disable 注释只在这一路报——类型感知规则的抑制注释在快路径上必然显得「失效」。CI 新增 `static` job(无数据库,与其他 job 并行):`format:check → lint → typecheck → lint:types`,`typecheck` 从主 job 挪到这里。

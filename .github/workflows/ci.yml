@@ -6,6 +6,26 @@ on:
   pull_request:
 
 jobs:
+  # Everything that reads the source without running it: no database, no
+  # browser, parallel to the jobs that need them, and the first to fail.
+  # Formatting and the fast lint take seconds; typecheck and the type-aware
+  # lint each build every TypeScript program, which is why the second lint
+  # is its own step rather than the default `pnpm lint` a developer runs.
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24.20.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm lint:types
+
   ci:
     runs-on: ubuntu-latest
     env:
@@ -97,7 +117,6 @@ jobs:
         run: |
           git cat-file -e "$BASE^{commit}" 2>/dev/null || git fetch --no-tags --quiet origin "$BASE" || true
           node tools/quality/check-migrations-immutable.ts "$BASE"
-      - run: pnpm typecheck
       - name: capability artifacts must be conflict free
         run: pnpm qualy database check
       # CI generates nothing. It replays the committed lineage onto a scratch
