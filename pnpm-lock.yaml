@@ -517,6 +517,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@qualy/auth-contract':
+        specifier: workspace:*
+        version: link:../../packages/contracts/auth
       '@qualy/brand':
         specifier: workspace:*
         version: link:../../packages/web/brand
@@ -1361,6 +1364,9 @@ importers:
       '@qualy/plugin-ui-registry':
         specifier: workspace:*
         version: link:../../infra/ui-registry
+      '@qualy/ui-contract':
+        specifier: workspace:*
+        version: link:../../../contracts/ui
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.115
@@ -1392,6 +1398,9 @@ importers:
       '@qualy/plugin-ui-registry':
         specifier: workspace:*
         version: link:../../infra/ui-registry
+      '@qualy/ui-contract':
+        specifier: workspace:*
+        version: link:../../../contracts/ui
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.115
@@ -1496,6 +1505,9 @@ importers:
       '@qualy/plugin-ui-registry':
         specifier: workspace:*
         version: link:../../infra/ui-registry
+      '@qualy/ui-contract':
+        specifier: workspace:*
+        version: link:../../../contracts/ui
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.115

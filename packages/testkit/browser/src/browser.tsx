@@ -31,13 +31,18 @@ import type { I18nProviderProps } from '@qualy/web-i18n'
 // stylesheet that is belongs to whoever is rendering.
 
 export interface FakeManifest {
+  viewer: 'anonymous' | 'authenticated'
   layouts: { contract: string }[]
   pages: { id: string; path: string; layout: string }[]
   collections: Record<string, unknown[]>
   slots: Record<string, { id: string; order: number }[]>
 }
 
+// anonymous unless a test says otherwise: a session that stops working is
+// only noticed under a signed-in manifest, and a screen test that answers
+// AUTH_REQUIRED on purpose is not asking for that
 export const emptyManifest = (): FakeManifest => ({
+  viewer: 'anonymous',
   layouts: [],
   pages: [],
   collections: {},

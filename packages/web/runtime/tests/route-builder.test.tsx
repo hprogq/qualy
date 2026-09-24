@@ -27,7 +27,12 @@ const slots: RouteSlots = {
 const ADMIN = 'app-shell/v1'
 const BLANK = 'blank-shell/v1'
 
-const manifest = (pages: Manifest['pages'], layouts = [ADMIN, BLANK]): Manifest => ({
+const manifest = (
+  pages: Manifest['pages'],
+  layouts = [ADMIN, BLANK],
+  viewer: Manifest['viewer'] = 'authenticated',
+): Manifest => ({
+  viewer,
   layouts: layouts.map((contract) => ({ contract })),
   pages,
   collections: {},
@@ -78,6 +83,43 @@ describe('manifest route projection', () => {
     // a layout matched first, the not-found screen nested within it: a
     // mistyped address keeps the navigation and the header
     expect(render(routes, '/nope/at/all')).toEqual([expect.anything(), 'NOT_FOUND'])
+  })
+
+  it('sends an anonymous viewer to sign in, not to not-found, carrying where they were', () => {
+    const anonymous = [page('auth/login', '/login', BLANK)]
+    const routes = buildManifestRoutes({
+      manifest: manifest(anonymous, [BLANK], 'anonymous'),
+      registry,
+      signInPage: 'auth/login',
+      slots,
+    })
+    // real, forbidden or never there: the same answer for every address
+    for (const address of ['/ping', '/nope/at/all']) {
+      const element = render(routes, address)?.at(-1) as { props?: { page?: { id: string } } }
+      expect(element).not.toBe('NOT_FOUND')
+      expect(element.props?.page?.id).toBe('auth/login')
+    }
+  })
+
+  it('tells a known identity an address it cannot place is not to be opened', () => {
+    const routes = buildManifestRoutes({
+      manifest: manifest(pages),
+      registry,
+      homePath: '/ping',
+      signInPage: 'auth/login',
+      slots,
+    })
+    expect(render(routes, '/nope/at/all')).toEqual([expect.anything(), 'NOT_FOUND'])
+  })
+
+  it('says not-found to an anonymous viewer when there is no sign-in page to send them to', () => {
+    const routes = buildManifestRoutes({
+      manifest: manifest([page('ping/page', '/ping')], [ADMIN], 'anonymous'),
+      registry,
+      signInPage: 'auth/login',
+      slots,
+    })
+    expect(render(routes, '/nope')?.at(-1)).toBe('NOT_FOUND')
   })
 
   it('picks the shell of the home page, not of whichever page came first', () => {

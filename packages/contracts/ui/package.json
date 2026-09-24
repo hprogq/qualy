@@ -8,6 +8,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./browser-contract": "./src/browser-contract.ts",
+    "./return-path": "./src/return-path.ts",
     "./package.json": "./package.json"
   },
   "dependencies": {

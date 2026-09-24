@@ -1,5 +1,6 @@
 import { Schema } from 'effect'
 import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/unstable/httpapi'
+import { RETURN_PATH_MAX_LENGTH } from '@qualy/ui-contract/return-path'
 import { Viewer } from '@qualy/auth-contract/session'
 
 // Two addresses a browser is sent to: `start` sends the person to GitHub -
@@ -39,7 +40,7 @@ export const authGithubApiGroup = HttpApiGroup.make('authGithub')
       query: Schema.Struct({
         // `bind` from somebody's own account: the account goes to them
         intent: Schema.optional(Schema.Literal('bind')),
-        returnTo: Schema.optional(Schema.String.check(Schema.isMaxLength(512))),
+        returnTo: Schema.optional(Schema.String.check(Schema.isMaxLength(RETURN_PATH_MAX_LENGTH))),
       }),
       success: HttpApiSchema.Empty(302),
     }).middleware(Viewer),

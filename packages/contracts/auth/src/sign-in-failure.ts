@@ -14,6 +14,8 @@ import { Schema } from 'effect'
 
 /** the sign-in page, as the auth plugin declares it */
 export const SIGN_IN_PAGE_PATH = '/login'
+/** the same page by id, which is how the browser names it */
+export const SIGN_IN_PAGE = 'auth/login'
 
 /** the entrance is not in service here, or cannot be used as it stands */
 export class SignInMethodUnavailable extends Schema.TaggedError<SignInMethodUnavailable>()(

@@ -12,6 +12,7 @@ import {
   type StartedFlow,
 } from '@qualy/auth-contract/login'
 import { db } from './db.ts'
+import { safeReturnPath } from '@qualy/ui-contract/return-path'
 
 // One redirect through somebody else's server, from the moment it leaves to
 // the moment it comes back.
@@ -47,27 +48,8 @@ const payloadRef = (flow: {
   key: `${flow.providerId}:${flow.purpose}`,
 })
 
-/**
- * A path inside this application, or nothing.
- *
- * Where somebody asked to be returned to arrives from the outside, so an
- * absolute url, a protocol-relative one, or anything that is not a path is
- * dropped rather than followed: the redirect happens under this
- * application's own name.
- */
-export const safeReturnPath = (path: string | undefined): string | undefined => {
-  if (path === undefined || !path.startsWith('/') || path.startsWith('//')) return undefined
-  const sentinel = 'https://qualy.invalid'
-  let target: URL
-  try {
-    target = new URL(path, sentinel)
-  } catch {
-    return undefined
-  }
-  if (target.origin !== sentinel) return undefined
-  const inside = `${target.pathname}${target.search}${target.hash}`
-  return inside.length > 255 ? undefined : inside
-}
+// where somebody asked to be returned to: one rule with the browser's
+export { safeReturnPath }
 
 /** a live session of this person, which is what a bind may be pinned to */
 const liveSession = (tenantId: string, userId: string, sessionId: string) =>

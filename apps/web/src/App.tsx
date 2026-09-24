@@ -29,6 +29,7 @@ import {
   slotComponents,
 } from 'virtual:qualy/plugins'
 import { releases, webRelease } from './release.ts'
+import { SIGN_IN_PAGE } from '@qualy/auth-contract/sign-in-failure'
 
 // There is no global client to build: each plugin derives its own from the
 // api definitions it calls, through the runtime's per-definition cache.
@@ -179,6 +180,7 @@ function ManifestRouter() {
       manifest={manifest}
       registry={registry}
       homePath={home?.target.kind === 'page' ? home.target.path : undefined}
+      signInPage={SIGN_IN_PAGE}
       slots={slots}
     />
   )

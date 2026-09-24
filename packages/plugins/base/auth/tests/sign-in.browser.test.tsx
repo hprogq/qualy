@@ -460,6 +460,34 @@ describe('the sign-in screen, for somebody already signed in', () => {
     expect(page.getByRole('button', { name: '账号密码' }).elements()).toHaveLength(0)
   })
 
+  it('sends them on to where they were sent from, when that is an address here', async () => {
+    renderScreen({
+      client: fakeClient({
+        app: { getManifest: emptyManifest() },
+        auth: { getSession: signedInAs, listLoginMethods: context([password]) },
+      }),
+      routes: [
+        { path: '/login', element: <LoginPage /> },
+        { path: '/reports', element: <main data-testid="reports" /> },
+      ],
+      route: `/login?next=${encodeURIComponent('/reports?term=2026#top')}`,
+    })
+    await expect.element(page.getByTestId('reports')).toBeInTheDocument()
+    expect(addressNow()).toBe('/reports?term=2026')
+  })
+
+  it('sends them home instead when the way back leads elsewhere', async () => {
+    renderScreen({
+      client: fakeClient({
+        app: { getManifest: emptyManifest() },
+        auth: { getSession: signedInAs, listLoginMethods: context([password]) },
+      }),
+      route: `/login?next=${encodeURIComponent('https://elsewhere.example/')}`,
+      children: <LoginPage />,
+    })
+    await expect.poll(addressNow).toBe('/')
+  })
+
   it('offers the ways in when the session it had has lapsed', async () => {
     renderScreen({
       client: fakeClient({
@@ -474,5 +502,22 @@ describe('the sign-in screen, for somebody already signed in', () => {
     })
     await expect.element(page.getByRole('button', { name: '账号密码' })).toBeVisible()
     expect(addressNow()).toBe('/login')
+  })
+})
+
+describe('the way back after signing in', () => {
+  it('stays in the address while a way in is chosen', async () => {
+    renderScreen({
+      client: fakeClient({
+        app: { getManifest: emptyManifest() },
+        auth: { ...anonymous, listLoginMethods: context([password]) },
+      }),
+      registry: { login: { local: lazy(() => import('@qualy/plugin-auth-local/client/LoginMethod')) } },
+      route: `/login?next=${encodeURIComponent('/reports')}`,
+      children: <LoginPage />,
+    })
+    await page.getByRole('button', { name: '账号密码' }).click()
+    await expect.element(page.getByLabelText('邮箱')).toBeVisible()
+    expect(new URLSearchParams(addressNow().split('?')[1]).get('next')).toBe('/reports')
   })
 })

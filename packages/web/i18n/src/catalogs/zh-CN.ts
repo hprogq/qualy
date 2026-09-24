@@ -27,7 +27,7 @@ export default {
   'common/action/close': '关闭',
   'common/answer/yes': '是',
   'common/answer/no': '否',
-  'common/action/go-home': '回到首页',
+  'common/action/go-home': '返回首页',
   'common/error/auth-required': '请先登录。',
   'common/error/session-expired': '登录状态已过期，请重新登录。',
   'common/error/too-many-attempts': '尝试次数过多，请 {minutes} 分钟后再试。',
@@ -67,6 +67,6 @@ export default {
   'common/page/empty-hint': '你的账号目前没有可访问的内容。',
   'common/component/page-failed': '该页面无法显示。',
   'common/component/layout-failed': 'Qualy 暂时无法显示，请重试。',
-  'common/page/not-found-title': '页面不存在',
-  'common/page/not-found-hint': '该地址无法打开，请检查后重试。',
+  'common/page/not-found-title': '页面无法访问',
+  'common/page/not-found-hint': '该页面不存在，或您暂无访问权限。',
 } satisfies CatalogFor<typeof runtimeMessages>

@@ -56,6 +56,10 @@ export const appApiGroup = HttpApiGroup.make('app').add(
   // does, so a signed-in administrator was served the anonymous manifest.
   HttpApiEndpoint.get('getManifest', '/app/manifest', {
     success: Schema.Struct({
+      // whether the server recognised a live session: which way an address
+      // this manifest cannot place is taken - to sign in first, or as a page
+      // this identity cannot open - and nothing about what it may see
+      viewer: Schema.Literals(['anonymous', 'authenticated']),
       layouts: Schema.Array(layout),
       pages: Schema.Array(page),
       collections: Schema.Record(Schema.String, Schema.Array(Schema.Unknown)),

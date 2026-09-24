@@ -93,6 +93,8 @@ describe('the Effect api against the frozen surface', () => {
       'slots',
       'title',
       'value',
+      // whether anybody is signed in: which way an unplaceable address goes
+      'viewer',
     ])
   })
 

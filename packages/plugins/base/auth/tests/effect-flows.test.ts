@@ -261,12 +261,16 @@ describe('the address this deployment is reached at', () => {
 describe('where somebody asked to be returned to', () => {
   it('is a path inside this application, or nothing', () => {
     expect(safeReturnPath('/assessment/batches?open=1')).toBe('/assessment/batches?open=1')
+    // a deep link with its query survives the round trip whole
+    const deep = `/assessment/batches?${'q=1&'.repeat(200)}`
+    expect(safeReturnPath(deep)).toBe(deep)
     for (const wrong of [
       undefined,
       'https://elsewhere.example/',
       '//elsewhere.example/',
       'javascript:alert(1)',
-      `/${'x'.repeat(300)}`,
+      '/\\elsewhere.example/',
+      `/${'x'.repeat(2048)}`,
     ]) {
       expect(safeReturnPath(wrong), String(wrong)).toBeUndefined()
     }

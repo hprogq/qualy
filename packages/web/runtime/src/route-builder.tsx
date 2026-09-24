@@ -1,10 +1,11 @@
 import { useEffect, useMemo, type ReactNode } from 'react'
 import { matchPath, Navigate, useLocation, useRoutes, type RouteObject } from 'react-router'
-import type { BrowserSurface } from '@qualy/ui-contract'
+import type { BrowserSurface, NamespacedId } from '@qualy/ui-contract'
 import { useI18n } from '@qualy/web-i18n'
 import { setObservedPage } from '@qualy/browser-observability'
 import type { Manifest } from './runtime-context.tsx'
 import type { ComponentRegistry } from './registry.ts'
+import { buildPageHref, type PageEntry } from './pages.ts'
 import { PluginComponent } from './component-boundary.tsx'
 
 // turns the authorized manifest into react-router route objects. Kept out of
@@ -35,13 +36,27 @@ export interface RouteBuilderOptions {
   // the page the bare origin redirects to, resolved from the manifest by the
   // host (normally the first visible primary navigation entry)
   homePath?: string
+  /**
+   * the page an anonymous viewer signs in at, by id. An address an anonymous
+   * manifest cannot place is sent there, told where it was, rather than
+   * called missing: it may be a page only a session shows.
+   */
+  signInPage?: NamespacedId
   slots: RouteSlots
+}
+
+/** to the sign-in page, carrying the address that could not be placed */
+function SignInFirst({ page }: { page: PageEntry }) {
+  const location = useLocation()
+  const next = `${location.pathname}${location.search}${location.hash}`
+  return <Navigate to={buildPageHref(page, { search: { next } })} replace />
 }
 
 export function buildManifestRoutes({
   manifest,
   registry,
   homePath,
+  signInPage,
   slots,
 }: RouteBuilderOptions): RouteObject[] {
   const byLayout = new Map<string, Manifest['pages']>()
@@ -75,9 +90,24 @@ export function buildManifestRoutes({
     index: true,
     element: home ? <Navigate to={home.path} replace /> : slots.empty,
   }
+  // Unplaceable, for somebody the server did not recognise, is not the same
+  // answer as for somebody it did. Anonymous, the address may well be a page
+  // a session shows - one that went away with an expired session - so it is
+  // sign in first, for every such address alike: real, forbidden or never
+  // there, nothing tells them apart. Only an identity that is known and
+  // still cannot place it is told the page cannot be opened.
+  const signIn =
+    manifest.viewer === 'anonymous' && signInPage !== undefined
+      ? routable.find((page) => page.id === signInPage)
+      : undefined
   const catchAll: RouteObject = {
     path: '*',
-    element: slots.notFound({ homePath: home?.path, standalone: shell === undefined }),
+    element:
+      signIn !== undefined ? (
+        <SignInFirst page={signIn} />
+      ) : (
+        slots.notFound({ homePath: home?.path, standalone: shell === undefined })
+      ),
   }
 
   const routes: RouteObject[] = manifest.layouts.map((layout) => {
@@ -122,7 +152,7 @@ export function ManifestRoutes(options: RouteBuilderOptions) {
     () => buildManifestRoutes(options),
     // slots carry localized copy, so a locale switch must rebuild them too;
     // the host memoizes the slot object so this stays cheap
-    [options.manifest, options.registry, options.homePath, options.slots],
+    [options.manifest, options.registry, options.homePath, options.signInPage, options.slots],
   )
   return (
     <>

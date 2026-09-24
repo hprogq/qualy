@@ -430,15 +430,28 @@ smtp 后端对着 Mailpit 跑同一套,CI 设 `QUALY_REQUIRE_MAILPIT_TESTS=1`,�
 - 界面不再显示「账号数」：有的登录方式根本不保存绑定（按学工号对应），绑定数推不出「能不能登录」。详情改显示
   「最近登录」（取 `sign_in_events` 最近一次成功，任何登录方式都会写）。
 
-## 已登录时的登录页（2026-09-24 定）
+## 深链、会话过期与登录页（2026-09-24 定）
 
-- `/login` 对已登录的人不显示登录方式，直接回首页（`replace`，不留历史）。一个浏览器只有一个会话，再登录会不声不响地顶掉当前身份；
-  换账号就是先退出，产品不做多账号，也不单设「切换账号」入口。
-- 判定用进入页面后**新发的一次** `GET /auth/session`（`refetchOnMount: 'always'`，以 `isFetchedAfterMount` 为准），不用缓存里的身份：
-  身份缓存有 30 秒保鲜期，会话刚过期时照缓存跳走会在登录页与首页之间来回弹。判定出来之前显示骨架屏，不先闪出表单。
-- `/reset-password`、`/confirm-email` 不跳：邮件链接可能在另一个账号已登录时打开，流程只认 token 不认会话；已登录却忘了当前密码的人
-  在账号安全页改不了（那里要当前密码），只能走找回。外部登录失败回到 `/login?error=…` 的都是未登录流程，绑定失败回发起的页面，
-  所以跳转不会吞掉错误说明。
+原则:**manifest 只回答「这个身份能看到什么」;匿名身份遇到无法定位的地址不下结论,先登录;身份确定之后,无法定位的地址才是「无法访问」。**
+不为路由恢复下发完整路由表。
+
+- manifest 带 `viewer: 'anonymous' | 'authenticated'`(ui-registry 构建时本就算出的事实),只说服务器是否认出一个有效会话,不带权限、角色或隐藏页面。
+- **路由兜底**(`@qualy/web-runtime` 的 route builder,宿主传 `signInPage = SIGN_IN_PAGE`,契约在 `@qualy/auth-contract/sign-in-failure`):
+  匿名 manifest 下无法匹配的地址一律 `replace` 到登录页 `?next=<pathname+search+hash>`——真实存在、无权限、从未存在的地址对匿名访客是同一个回答,不形成页面枚举 oracle;
+  匿名 manifest 里没有登录页(装配里没有 auth)时退回 not-found。已登录 manifest 下无法匹配 = 「页面无法访问 / 该页面不存在,或您暂无访问权限」,不区分两者。
+- **`next` 的合法性**只有一份:`@qualy/ui-contract/return-path` 的 `safeReturnPath`(相对哨兵 origin 解析、origin 不变才收、反斜杠等解析边角一并挡住,上限
+  `RETURN_PATH_MAX_LENGTH` = 2048),服务端 flow 与浏览器共用;另拒绝指向登录页自身(`/login?next=/login?next=…`)。
+- **登录后回去**:本地密码 → `useSessionTransition({ destination: { kind: 'return-path', path } })`,沿用既有顺序(先清旧身份缓存、取新 manifest、再导航);
+  新 manifest 能定位就打开,不能就落在已登录态的「无法访问」。外部登录(CAS / GitHub / OIDC)→ 登录页把 `next` 填进 start 地址已有的 `returnTo`,
+  服务端 `auth_flows.return_path` 保存、回调 303 过去,没有第二套机制。`returnTo` 接口上限、`return_path` 列宽(迁移 `20260924033822_auth-flow-return-path.sql`,
+  varchar 255 → 2048)与 `safeReturnPath` 三处统一为 2048,不会出现本地能回、OIDC 因地址稍长悄悄回首页。
+- **使用中会话过期**:web runtime 的 QueryCache / MutationCache 统一处理,只认 `AUTH_REQUIRED` / `SESSION_EXPIRED`(`isAuthenticationError`;密码错误等别的 401 不算),
+  且只在当前 manifest 为 `authenticated` 时触发(匿名访客收到这两个码是常态,否则会死循环)。流程:取消在途请求 → 重置除 manifest 外的全部缓存(上一身份的数据不留) →
+  重取 manifest → 仍为 `authenticated`(别处续了会话)就停 → 否则让仍在屏上的页面以匿名身份重问。**runtime 不知道登录页在哪**:当前地址在匿名 manifest 里还能定位
+  (PUBLIC 页)就原地不动,不能定位才由路由兜底送去登录。多个请求同时 401 只跑一次。
+- **已登录访问 `/login`**:有 `next` 去 `next`,否则回首页(`replace`)。判定用进页面后新发的一次 `GET /auth/session`(以 `isFetchedAfterMount` 为准),
+  不用 30 秒保鲜的身份缓存,防过期会话在登录页与首页之间来回弹;判定前显示骨架屏。换账号就是先退出,不做多账号与「切换账号」入口。
+- `/reset-password`、`/confirm-email` 不跳:邮件链接可能在另一个账号已登录时打开,流程只认 token;已登录却忘了当前密码的人只能走找回。
 
 ## 本人的会话、登录记录与账号变更（2026-09-23 定案）
 

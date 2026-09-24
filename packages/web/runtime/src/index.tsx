@@ -1,10 +1,13 @@
 import {
   defaultScheduler,
+  MutationCache,
   notifyManager,
+  QueryCache,
   QueryClient,
   QueryClientProvider,
   useQuery,
   useQueryClient,
+  type QueryKey,
 } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import {
@@ -40,7 +43,7 @@ import type {
 } from '@qualy/ui-contract'
 import { Button } from '@qualy/ui/button'
 import { Toaster } from '@qualy/ui/toast'
-import { useI18n } from '@qualy/web-i18n'
+import { isAuthenticationError, useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { LoadingScreen } from '@qualy/ui/spinner'
 import { afterFlight } from '@qualy/ui/flight'
@@ -199,6 +202,62 @@ const styles = stylex.create({
   },
 })
 
+/**
+ * What to do when a request says the session this page was built for is gone.
+ *
+ * Any query or mutation may be the one that finds out - an expired session
+ * is noticed by whatever asks next - so it is handled here, once, rather
+ * than by every page. Only the two codes that mean "no usable session" count
+ * (a refused password is also a 401 and is nothing of the kind), and only
+ * while the manifest in hand is a signed-in one: an anonymous visitor is
+ * told the same codes as a matter of course.
+ *
+ * What it does is what a sign-out does to the cache: nothing the previous
+ * identity was shown stays readable, and the manifest is asked again. It
+ * does not decide where the reader goes. The anonymous manifest that comes
+ * back either still places the address (a public page stays where it is) or
+ * does not, and the router sends them to sign in with the way back - the
+ * same rule as any other address an anonymous visitor cannot place.
+ *
+ * Many requests find out at once, so it runs once at a time; a manifest that
+ * comes back still signed in (the session was renewed in another tab) ends it
+ * there rather than asking everything again into the same refusal.
+ */
+function identityLostHandler(client: () => QueryClient, manifestKey: () => QueryKey) {
+  let settling = false
+  return (error: unknown) => {
+    if (settling || !isAuthenticationError(error)) return
+    const key = manifestKey()
+    if (client().getQueryData<Manifest>(key)?.viewer !== 'authenticated') return
+    settling = true
+    const queries = client()
+    void (async () => {
+      try {
+        await queries.cancelQueries()
+        const manifestHash = queries.getQueryCache().find({ queryKey: key, exact: true })?.queryHash
+        // the manifest keeps its answer until the new one arrives: every
+        // route stands under it, and a pending one takes them all down
+        notifyManager.batch(() => {
+          for (const query of queries.getQueryCache().getAll()) {
+            if (query.queryHash !== manifestHash) query.reset()
+          }
+        })
+        await queries.refetchQueries({ queryKey: key, exact: true })
+        queries.removeQueries({ type: 'inactive' })
+        if (queries.getQueryData<Manifest>(key)?.viewer === 'authenticated') return
+        // a page the anonymous manifest still has asks again as nobody; the
+        // manifest has just been answered
+        await queries.refetchQueries({
+          type: 'active',
+          predicate: (query) => query.queryHash !== manifestHash,
+        })
+      } finally {
+        settling = false
+      }
+    })()
+  }
+}
+
 export function RuntimeProvider({
   clientFor: provided,
   clientIdentity,
@@ -206,11 +265,18 @@ export function RuntimeProvider({
   registry,
   children,
 }: RuntimeProviderProps) {
+  const [manifestKey] = useState(() => ({ current: undefined as QueryKey | undefined }))
   const [queryClient] = useState(() => {
     // The page's first answers wait for the wordmark to land: a render in
     // the middle of its flight froze it mid-air (see @qualy/ui/flight).
     notifyManager.setScheduler((callback) => defaultScheduler(() => afterFlight(callback)))
-    return new QueryClient({
+    const lost = identityLostHandler(
+      () => made,
+      () => manifestKey.current ?? [],
+    )
+    const made: QueryClient = new QueryClient({
+      queryCache: new QueryCache({ onError: lost }),
+      mutationCache: new MutationCache({ onError: lost }),
       defaultOptions: {
         queries: { retry: retryQuery, retryDelay },
         // Never, and stated rather than inherited. A write whose response
@@ -221,6 +287,7 @@ export function RuntimeProvider({
         mutations: { retry: false },
       },
     })
+    return made
   })
   const [runtime] = useState(() => {
     const provider =
@@ -230,15 +297,18 @@ export function RuntimeProvider({
         ...(onClientUnsupported === undefined ? {} : { onClientUnsupported }),
       })
     const utils = new WeakMap<object, unknown>()
+    const utilsFor = (api: HttpApi.Constraint) => {
+      const cached = utils.get(api)
+      if (cached) return cached
+      const built = createQueryUtils(provider(api) as Record<string, never>)
+      utils.set(api, built)
+      return built
+    }
+    manifestKey.current = (utilsFor(appApi) as QueryUtils<ClientOf<typeof appApi>>).app.getManifest
+      .queryOptions().queryKey
     return {
       clientFor: provider,
-      utilsFor: (api: HttpApi.Constraint) => {
-        const cached = utils.get(api)
-        if (cached) return cached
-        const built = createQueryUtils(provider(api) as Record<string, never>)
-        utils.set(api, built)
-        return built
-      },
+      utilsFor,
     }
   })
   return (

@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@qualy/auth-contract": "workspace:*",
     "@qualy/brand": "workspace:*",
     "@qualy/browser-observability": "workspace:*",
     "@qualy/plugin-kit": "workspace:*",

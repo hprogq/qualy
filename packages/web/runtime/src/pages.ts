@@ -1,4 +1,5 @@
 import type { NamespacedId } from '@qualy/ui-contract'
+import { safeReturnPath } from '@qualy/ui-contract/return-path'
 
 /** what href building needs of a page: the manifest's wire shape suffices */
 export interface PageEntry {
@@ -57,7 +58,10 @@ export function buildPageHref(page: PageEntry, options: PageHrefOptions = {}): s
 // place a literal path is legitimate, and it lives in the runtime rather
 // than in any plugin.
 export type SessionDestination =
-  { kind: 'home' } | { kind: 'page'; page: NamespacedId; params?: Record<string, string> }
+  | { kind: 'home' }
+  | { kind: 'page'; page: NamespacedId; params?: Record<string, string> }
+  /** an address somebody was on before signing in; followed only when it is one here */
+  | { kind: 'return-path'; path: string }
 
 /**
  * Resolved against the pages the CURRENT manifest still shows. Signing out
@@ -70,6 +74,9 @@ export function sessionDestinationHref(
   pages: readonly PageEntry[],
 ): string {
   if (destination.kind === 'home') return '/'
+  // placed by the manifest that answers it, not this one: an address only
+  // the new identity can open lands on its page, one it cannot on not-found
+  if (destination.kind === 'return-path') return safeReturnPath(destination.path) ?? '/'
   const entry = pages.find((candidate) => candidate.id === destination.page)
   if (!entry) return '/'
   return buildPageHref(entry, { params: destination.params })

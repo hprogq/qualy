@@ -44,6 +44,8 @@ export interface ManifestPage {
 }
 
 export interface Manifest {
+  /** whether a live session was recognised, and nothing about what it may see */
+  readonly viewer: 'anonymous' | 'authenticated'
   readonly layouts: readonly ManifestLayout[]
   readonly pages: readonly ManifestPage[]
   readonly collections: Readonly<Record<string, readonly unknown[]>>
@@ -212,6 +214,7 @@ export const make = Effect.fn('Ui.manifest.make')(function* () {
       // only the layouts the surviving pages actually need
       const used = new Set(shown.map((page) => page.declaration.layout))
       return {
+        viewer: viewer.authenticated ? ('authenticated' as const) : ('anonymous' as const),
         layouts: layouts
           .filter((layout) => used.has(layout.declaration.contract))
           .sort((a, b) => a.declaration.contract.localeCompare(b.declaration.contract))

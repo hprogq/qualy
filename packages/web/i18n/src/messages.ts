@@ -107,7 +107,7 @@ export const commonMessages = {
     defaultMessage: 'Nothing is available to your account yet.',
   },
   goHome: { id: 'common/action/go-home', defaultMessage: 'Go to the home page' },
-  notFoundTitle: { id: 'common/page/not-found-title', defaultMessage: 'Page not found' },
+  notFoundTitle: { id: 'common/page/not-found-title', defaultMessage: "This page can't be opened" },
   pageFailed: {
     id: 'common/component/page-failed',
     defaultMessage: 'This page could not be displayed.',
@@ -121,6 +121,6 @@ export const commonMessages = {
   // differently would leak which pages exist
   notFoundHint: {
     id: 'common/page/not-found-hint',
-    defaultMessage: 'This address cannot be opened. Check it and try again.',
+    defaultMessage: 'It may not exist, or you may not have access.',
   },
 } as const satisfies Record<string, MessageDescriptor>

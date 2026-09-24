@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FocusEvent, type PointerEvent, type ReactNode } from 'react'
-import { useNavigate, useSearchParams } from 'react-router'
+import { useLocation, useNavigate, useSearchParams } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import * as stylex from '@stylexjs/stylex'
@@ -22,6 +22,7 @@ import {
   useManifest,
   useRunApi,
   useSessionTransition,
+  type SessionDestination,
 } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
@@ -32,6 +33,7 @@ import { authMessages as m } from './i18n.ts'
 import { authApi } from './api.ts'
 import { AuthShell, Ring } from './sign-in/AuthShell.tsx'
 import { gapped } from './sign-in/gapped.ts'
+import { returnPathFrom, startHref } from './sign-in/return-path.ts'
 import { LoginMethodGlyph } from './sign-in/glyph.tsx'
 
 // The sign-in page: which workspace this is, and the ways into it.
@@ -441,9 +443,18 @@ export default function LoginPage() {
   // decided by the read this visit made, never by a cached answer alone
   const decided = present.isFetchedAfterMount
   const signedIn = decided && present.isSuccess
+  // where the visitor was when they were sent here to sign in: an address
+  // inside this application and not this page itself, or nowhere
+  const here = useLocation().pathname
+  const next = returnPathFrom(params, here)
+  const destination: SessionDestination =
+    next === undefined ? { kind: 'home' } : { kind: 'return-path', path: next }
   useEffect(() => {
-    if (signedIn) void navigate(sessionDestinationHref({ kind: 'home' }, manifest.pages), { replace: true })
-  }, [signedIn, navigate, manifest.pages])
+    if (!signedIn) return
+    const to: SessionDestination =
+      next === undefined ? { kind: 'home' } : { kind: 'return-path', path: next }
+    void navigate(sessionDestinationHref(to, manifest.pages), { replace: true })
+  }, [signedIn, next, navigate, manifest.pages])
   const failed = failureFrom(params)
   const [leaving, setLeaving] = useState<LoginMethod | null>(null)
   // read once: the mark says where this visit came in last time, not a moment ago
@@ -472,8 +483,9 @@ export default function LoginPage() {
     last.current = view
   }, [view])
 
-  /** a new state of the page, as an entry in the browser's history */
-  const go = (next: Record<string, string>) => setParams(next)
+  /** a new state of the page, as an entry in the browser's history; the way back comes along */
+  const go = (state: Record<string, string>) =>
+    setParams({ ...state, ...(next === undefined ? {} : { next }) })
 
   const choose = (method: LoginMethod, from: View) => {
     if (method.mode === 'redirect') {
@@ -483,7 +495,9 @@ export default function LoginPage() {
       // redirect to the other side. The page says where it is going while
       // the browser gets there.
       setLeaving(method)
-      window.requestAnimationFrame(() => window.location.assign(method.href))
+      // the way back travels with the flow, which returns there once the
+      // other side has vouched for them
+      window.requestAnimationFrame(() => window.location.assign(startHref(method.href, next)))
       return
     }
     go({ method: method.code, ...(from === 'more' ? { from: 'more' } : {}) })
@@ -492,7 +506,7 @@ export default function LoginPage() {
   const onAuthenticated = () => {
     if (chosen !== undefined) markUsed(chosen.code)
     // a new identity must not inherit the previous one's cache
-    void startSession({ destination: { kind: 'home' } })
+    void startSession({ destination })
   }
 
   const header = (

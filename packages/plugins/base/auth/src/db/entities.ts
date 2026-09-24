@@ -490,7 +490,7 @@ export const AuthFlow = defineEntity({
     userId: p.uuid().nullable(),
     sessionId: p.uuid().nullable(),
     /** where in the application they asked to be returned to, if anywhere safe */
-    returnPath: p.string().length(255).nullable(),
+    returnPath: p.string().length(2048).nullable(),
     /** what the driver has to remember, sealed under this flow */
     payloadSealed: p.text().nullable(),
     expiresAt: p.datetime(),

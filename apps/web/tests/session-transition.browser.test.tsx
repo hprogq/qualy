@@ -5,7 +5,7 @@ import { Navigate } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { Effect } from 'effect'
 import { useManifest, useSessionTransition } from '@qualy/web-runtime'
-import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
+import { apiError, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 
 // A change of identity drops what the last one could read, and does not ask
 // for it again on the way out.
@@ -121,3 +121,106 @@ describe('a change of identity', () => {
   })
 })
 
+
+describe('a session that stops working while a page is open', () => {
+  it('drops what the last identity was shown and asks the manifest again, once', async () => {
+    let expired = false
+    let manifests = 0
+    const Secret = () => {
+      const records = useQuery({
+        queryKey: ['probe', 'records'],
+        queryFn: () =>
+          expired
+            ? Promise.reject(apiError('SESSION_EXPIRED', undefined))
+            : Promise.resolve('secret records'),
+        retry: false,
+      })
+      const notes = useQuery({
+        queryKey: ['probe', 'notes'],
+        queryFn: () =>
+          expired ? Promise.reject(apiError('SESSION_EXPIRED', undefined)) : Promise.resolve('notes'),
+        retry: false,
+      })
+      const manifest = useManifest()
+      return (
+        <main data-testid="secret" data-viewer={manifest.viewer}>
+          <span data-testid="records">{records.data ?? ''}</span>
+          <button
+            type="button"
+            onClick={() => {
+              expired = true
+              // two requests find out at once
+              void records.refetch()
+              void notes.refetch()
+            }}
+          >
+            later
+          </button>
+        </main>
+      )
+    }
+    renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.sync(() => {
+              manifests += 1
+              return { ...emptyManifest(), viewer: expired ? 'anonymous' : 'authenticated' }
+            }),
+        },
+      }),
+      routes: [{ path: '/secret', element: <Secret /> }],
+      route: '/secret',
+    })
+    await expect.element(page.getByTestId('records')).toHaveTextContent('secret records')
+    const before = manifests
+    await page.getByRole('button', { name: 'later' }).click()
+    await expect.element(page.getByTestId('secret')).toHaveAttribute('data-viewer', 'anonymous')
+    // nothing the last identity was shown is still on the screen
+    expect(page.getByTestId('records').element().textContent).toBe('')
+    // however many requests found out, the manifest was asked once
+    await new Promise((settle) => setTimeout(settle, 300))
+    expect(manifests - before).toBe(1)
+  })
+
+  it('leaves an anonymous visitor alone when a request says nobody is signed in', async () => {
+    let manifests = 0
+    let asked = 0
+    const Visitor = () => {
+      const session = useQuery({
+        queryKey: ['probe', 'session'],
+        queryFn: () => {
+          asked += 1
+          return Promise.reject(apiError('AUTH_REQUIRED', undefined))
+        },
+        retry: false,
+        enabled: false,
+      })
+      return (
+        <button type="button" onClick={() => void session.refetch()}>
+          ask
+        </button>
+      )
+    }
+    renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.sync(() => {
+              manifests += 1
+              return emptyManifest()
+            }),
+        },
+      }),
+      routes: [{ path: '/login', element: <Visitor /> }],
+      route: '/login',
+    })
+    await expect.element(page.getByRole('button', { name: 'ask' })).toBeInTheDocument()
+    const before = manifests
+    await page.getByRole('button', { name: 'ask' }).click()
+    await expect.poll(() => asked).toBe(1)
+    await new Promise((settle) => setTimeout(settle, 300))
+    // the answer is what an anonymous visitor is told: nothing to settle
+    expect({ manifests: manifests - before, asked }).toEqual({ manifests: 0, asked: 1 })
+  })
+})
