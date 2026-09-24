@@ -20140,3 +20140,14 @@ A–C 的部署约束至此解除：ALTCHA 与能处理 428 的登录页在同�
 - `pnpm test`：`Tests  12 failed | 2280 passed | 17 skipped (2309)`；11 个在 apps/server 的 4 个文件，原因同上一节（本地未提交清单启用 resend、停用 smtp），在 HEAD + 本次改动、已提交清单的临时 worktree 里重跑：`Test Files  4 passed (4)`，`Tests  13 passed (13)`；另 1 个是 effect-api-parity 的 manifest 词表，`viewer` 加入后 `Tests  4 passed (4)`。
 - `pnpm test:browser`：`Tests  2 failed | 592 passed (594)`；shell 预取与 review-recognition 草稿为负载超时，单独重跑 `Tests  39 passed (39)`。
 - 新增：route builder 三种兜底（匿名跳登录且对真实/不存在地址同答、已登录 404、无登录页退回 404）；runtime 会话过期（清上一身份数据、两个请求同时 401 只重取一次 manifest、匿名访客收到 AUTH_REQUIRED 不触发）；登录页 `next`（已登录按 next 跳、外站 next 回首页、选登录方式时 next 留在地址里）；`returnPathFrom` / `startHref` 单测（反斜杠、协议相对、指向登录页自身、超长一律丢弃）。
+
+## manifest 后台刷新失败不再整屏报错；头像骨架屏改圆（2026-09-24）
+
+- 切回标签页等场景下 manifest 会在后台重新请求（保留：会话过期、权限变化靠它被发现）。以前一次失败就把整个应用换成「暂时无法加载 Qualy」错误屏；现在只有**从未拿到过** manifest 的首次加载失败才整屏报错，已有 manifest 时失败保留当前界面，页面自己的请求各自报错。
+- 整屏错误的重试按钮改用宿主一直在用的 `Failure`（带图标、按下先显示转圈、同一错误再回来时抖一下）；`Failure` 从 `apps/web` 移到 `@qualy/web-runtime`，宿主与 runtime 共用。
+- 账号页头部头像的骨架屏改为圆形（`Skeleton circle`）。
+
+### 验收（实际执行）
+
+- `pnpm typecheck`：exit 0；plugin-isolation / workspace-deps / fast-refresh / catalogs：`Tests  68 passed (68)`。
+- 浏览器：session-transition、failure、transient-recovery、account：`Tests  12 passed (12)`。新增「后台刷新失败页面照常」测试，临时恢复旧判断时该测试失败（确认不是空测）。
