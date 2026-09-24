@@ -110,6 +110,9 @@ const escape = (value: string) =>
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;')
 
+/** the wordmark tools/brand/export.ts writes into the web release, and the box it is shown in */
+const MAIL_WORDMARK = { path: '/mail-wordmark.png', width: 71, height: 24 } as const
+
 const INK = '#1c1b19'
 const QUIET = '#6f6d69'
 const RULE = '#ecebe8'
@@ -122,9 +125,11 @@ const FONT =
  * address spelled out for a client that will not follow the button, and the
  * one line for somebody who did not ask for it.
  *
- * Tables and inline styles because that is what mail clients render; the
- * product's name is set as text, since an svg does not survive most of them.
- * Every value that came from outside is escaped.
+ * Tables and inline styles because that is what mail clients render. The
+ * wordmark is a png the web release serves (mail clients drop svg), found at
+ * the origin the link points to; a client that holds remote images back shows
+ * its alt text, set to look like the name it replaces. Every value that came
+ * from outside is escaped.
  */
 const htmlOf = (
   written: Written,
@@ -141,7 +146,7 @@ const htmlOf = (
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border-radius:14px;border:1px solid ${RULE};">
 <tr><td style="padding:22px 36px;border-bottom:1px solid ${RULE};${cell}">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
-<td style="${cell}font-size:18px;font-weight:700;letter-spacing:-0.02em;color:${INK};">Qualy</td>
+<td style="${cell}font-size:18px;font-weight:700;letter-spacing:-0.02em;color:${INK};"><img src="${escape(new URL(MAIL_WORDMARK.path, input.link).toString())}" width="${String(MAIL_WORDMARK.width)}" height="${String(MAIL_WORDMARK.height)}" alt="Qualy" style="display:block;border:0;outline:none;text-decoration:none;height:${String(MAIL_WORDMARK.height)}px;width:${String(MAIL_WORDMARK.width)}px;${cell}font-size:18px;font-weight:700;color:${INK};"></td>
 <td align="right" style="${cell}font-size:12.5px;color:${QUIET};">${input.workspace === null ? '' : escape(input.workspace)}</td>
 </tr></table>
 </td></tr>

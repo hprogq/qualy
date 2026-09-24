@@ -23,6 +23,11 @@ import { markPaths, wordmarkLayout } from '../../packages/web/brand/src/geometry
 //   self-contained Q on Qualy's light background for platforms that only
 //   accept one complete image.
 //
+// - mail-wordmark.png:
+//   the wordmark for the head of the mail the product sends, served from the
+//   web release. A raster on the card's own white: mail clients drop svg, and
+//   a transparent image would lose its ink in a client's dark mode.
+//
 // This is a design export tool rather than a build step. Its output is
 // reviewed and committed like an export from a drawing program.
 
@@ -225,6 +230,38 @@ const platformIconRasters: readonly [string, number][] = [
   [path.join(ASSETS, 'platform-icon.png'), 1024],
 ]
 
+/**
+ * The mail wordmark, at three times the size a message shows it: height
+ * `MAIL_WORDMARK_HEIGHT` css pixels, width following the wordmark's canvas.
+ * The message template states the same box.
+ */
+const MAIL_WORDMARK_HEIGHT = 24
+const MAIL_WORDMARK_DENSITY = 3
+const MAIL_WORDMARK = path.join(PUBLIC, 'mail-wordmark.png')
+
+const [, , canvasWidth, canvasHeight] = wordmark.viewBox.split(' ').map(Number) as [
+  number,
+  number,
+  number,
+  number,
+]
+const mailWordmark = () => {
+  // whole css pixels, so the template can state the box exactly
+  const shown = Math.round((MAIL_WORDMARK_HEIGHT * canvasWidth) / canvasHeight)
+  const height = MAIL_WORDMARK_HEIGHT * MAIL_WORDMARK_DENSITY
+  const width = shown * MAIL_WORDMARK_DENSITY
+  return {
+    width,
+    height,
+    svg: [
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${String(width)}" height="${String(height)}" viewBox="${wordmark.viewBox}" fill="${LIGHT_FOREGROUND}">`,
+      ...whole(wordmark.band, wordmark.segments[0]!).map((line) => `  ${line}`),
+      ...wordmark.letters.map((letter) => `  <path data-letter="${letter.char}" d="${letter.d}"/>`),
+      '</svg>',
+    ].join('\n'),
+  }
+}
+
 const browser = await chromium.launch()
 
 try {
@@ -342,6 +379,30 @@ try {
     await page.close()
 
     console.log(`brand: wrote ${path.relative(ROOT, file)}`)
+  }
+
+  {
+    const { width, height, svg: artwork } = mailWordmark()
+    const page = await browser.newPage({ viewport: { width, height } })
+    await page.setContent(
+      [
+        '<!doctype html>',
+        '<html>',
+        '<head>',
+        '<style>',
+        'html,body{margin:0;background:#ffffff;overflow:hidden}',
+        'svg{display:block}',
+        '</style>',
+        '</head>',
+        `<body>${artwork}</body>`,
+        '</html>',
+      ].join(''),
+    )
+    await page.screenshot({ path: MAIL_WORDMARK, clip: { x: 0, y: 0, width, height } })
+    await page.close()
+    console.log(
+      `brand: wrote ${path.relative(ROOT, MAIL_WORDMARK)} (${String(width)}x${String(height)}, shown at ${String(width / MAIL_WORDMARK_DENSITY)}x${String(MAIL_WORDMARK_HEIGHT)})`,
+    )
   }
 } finally {
   await browser.close()

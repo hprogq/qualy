@@ -26,7 +26,19 @@ describe('the mail a link goes out in', () => {
       workspace: '<img src=x onerror=alert(1)>',
     })
     expect(mail.html).not.toContain('<script>')
-    expect(mail.html).not.toContain('<img')
+    expect(mail.html).not.toContain('<img src=x')
     expect(mail.html).toContain('&lt;img src=x onerror=alert(1)&gt;')
+  })
+
+  it('heads the message with the wordmark from the origin the link points to', () => {
+    const mail = mailFor('verify', 'en', 'https://qualy.example/confirm#token=t', {
+      to: 'li@school.edu',
+      workspace: null,
+    })
+    const [image] = mail.html.match(/<img [^>]*>/g) ?? []
+    expect(image).toContain('src="https://qualy.example/mail-wordmark.png"')
+    // a client holding remote images back still shows the name
+    expect(image).toContain('alt="Qualy"')
+    expect(image).toContain('width="71" height="24"')
   })
 })
