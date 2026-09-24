@@ -32,72 +32,83 @@ interface Written {
 
 /** words every message shares, by language */
 const SHARED: Record<MailLocale, { readonly sentTo: string; readonly fallback: string }> = {
-  'zh-CN': { sentTo: '发送至', fallback: '按钮无法打开时，复制下面的地址到浏览器：' },
-  en: { sentTo: 'Sent to', fallback: 'If the button does not open, copy this address into your browser:' },
+  'zh-CN': {
+    sentTo: '发送至',
+    fallback: '若按钮无法正常点击，请复制下方链接至浏览器中打开：',
+  },
+  en: {
+    sentTo: 'Sent to',
+    fallback: "If the button above doesn't work, copy and paste this link into your browser:",
+  },
 }
 
 const COPY: Record<MailPurpose, Record<MailLocale, Written>> = {
   verify: {
     'zh-CN': {
-      subject: '验证你的邮箱',
-      text: (link) => `请打开下面的链接，确认该邮箱属于你。链接 24 小时内有效，只能使用一次。\n\n${link}\n\n如果不是你本人操作，忽略本邮件即可。`,
-      title: '验证你的邮箱',
-      lead: '请打开下面的链接，确认该邮箱属于你。',
+      subject: '验证您的邮箱',
+      text: (link) =>
+        `请点击下方链接完成邮箱验证。此链接有效期为 24 小时，且仅限使用一次。\n\n${link}\n\n如非本人操作，请直接忽略此邮件。`,
+      title: '验证您的邮箱',
+      lead: '请点击下方链接完成邮箱验证。',
       action: '验证邮箱',
-      note: '链接 24 小时内有效，只能使用一次。',
-      footer: '如果不是你本人操作，忽略本邮件即可。',
+      note: '此链接有效期为 24 小时，且仅限使用一次。',
+      footer: '如非本人操作，请直接忽略此邮件。',
     },
     en: {
-      subject: 'Verify your email',
+      subject: 'Verify your email address',
       text: (link) =>
-        `Open the link below to confirm this address is yours. It works once, within 24 hours.\n\n${link}\n\nIf this was not you, ignore this message.`,
-      title: 'Verify your email',
-      lead: 'Open the link below to confirm this address is yours.',
-      action: 'Verify email',
-      note: 'The link works once, within 24 hours.',
-      footer: 'If this was not you, ignore this message.',
+        `Please click the link below to verify your email address. This link is valid for 24 hours and can only be used once.\n\n${link}\n\nIf you did not request this, you can safely ignore this email.`,
+      title: 'Verify your email address',
+      lead: 'Please click the link below to verify your email address.',
+      action: 'Verify Email',
+      note: 'This link is valid for 24 hours and can only be used once.',
+      footer: 'If you did not request this, you can safely ignore this email.',
     },
   },
   reset: {
     'zh-CN': {
-      subject: '重置你的密码',
-      text: (link) => `请打开下面的链接设置新密码。链接 1 小时内有效，只能使用一次；设置后所有已登录的设备都会退出。\n\n${link}\n\n如果不是你本人操作，忽略本邮件即可，你的密码不会改变。`,
-      title: '重置你的密码',
-      lead: '请打开下面的链接设置新密码。',
+      subject: '重置您的密码',
+      text: (link) =>
+        `请点击下方链接设置新密码。此链接有效期为 1 小时，且仅限使用一次；重置成功后，所有已登录的设备将自动退出。\n\n${link}\n\n如非本人操作，请直接忽略此邮件，您的密码不会被修改。`,
+      title: '重置您的密码',
+      lead: '请点击下方链接设置新密码。',
       action: '设置新密码',
-      note: '链接 1 小时内有效，只能使用一次；设置后所有已登录的设备都会退出。',
-      footer: '如果不是你本人操作，忽略本邮件即可，你的密码不会改变。',
+      note: '此链接有效期为 1 小时，且仅限使用一次；重置成功后，所有已登录的设备将自动退出。',
+      footer: '如非本人操作，请直接忽略此邮件，您的密码不会被修改。',
     },
     en: {
       subject: 'Reset your password',
       text: (link) =>
-        `Open the link below to set a new password. It works once, within an hour, and signs you out everywhere.\n\n${link}\n\nIf this was not you, ignore this message; your password stays as it is.`,
+        `Please click the link below to set a new password. This link is valid for 1 hour and can only be used once. Setting a new password will sign you out of all devices.\n\n${link}\n\nIf you did not request this, you can safely ignore this email. Your password will remain unchanged.`,
       title: 'Reset your password',
-      lead: 'Open the link below to set a new password.',
-      action: 'Set a new password',
-      note: 'The link works once, within an hour. Setting it signs you out on every device.',
-      footer: 'If this was not you, ignore this message; your password stays as it is.',
+      lead: 'Please click the link below to set a new password.',
+      action: 'Set New Password',
+      note: 'This link is valid for 1 hour and can only be used once. Setting a new password will sign you out of all devices.',
+      footer:
+        'If you did not request this, you can safely ignore this email. Your password will remain unchanged.',
     },
   },
   change: {
     'zh-CN': {
-      subject: '确认新的邮箱',
-      text: (link) => `请打开下面的链接，把账号的邮箱改为本邮箱。链接 24 小时内有效，只能使用一次。\n\n${link}\n\n如果不是你本人操作，忽略本邮件即可，账号的邮箱不会改变。`,
-      title: '确认新的邮箱',
-      lead: '请打开下面的链接，把账号的邮箱改为本邮箱。',
+      subject: '确认新邮箱',
+      text: (link) =>
+        `请点击下方链接，确认将当前邮箱设置为您的账号邮箱。此链接有效期为 24 小时，且仅限使用一次。\n\n${link}\n\n如非本人操作，请直接忽略此邮件，您账号的关联邮箱不会改变。`,
+      title: '确认新邮箱',
+      lead: '请点击下方链接，确认将当前邮箱设置为您的账号邮箱。',
       action: '确认新邮箱',
-      note: '链接 24 小时内有效，只能使用一次。',
-      footer: '如果不是你本人操作，忽略本邮件即可，账号的邮箱不会改变。',
+      note: '此链接有效期为 24 小时，且仅限使用一次。',
+      footer: '如非本人操作，请直接忽略此邮件，您账号的关联邮箱不会改变。',
     },
     en: {
-      subject: 'Confirm your new email',
+      subject: 'Confirm your new email address',
       text: (link) =>
-        `Open the link below to make this your account's address. It works once, within 24 hours.\n\n${link}\n\nIf this was not you, ignore this message; nothing changes.`,
-      title: 'Confirm your new email',
-      lead: "Open the link below to make this your account's address.",
-      action: 'Confirm new email',
-      note: 'The link works once, within 24 hours.',
-      footer: 'If this was not you, ignore this message; nothing changes.',
+        `Please click the link below to confirm this as your new account email address. This link is valid for 24 hours and can only be used once.\n\n${link}\n\nIf you did not request this, you can safely ignore this email. Your account email will remain unchanged.`,
+      title: 'Confirm your new email address',
+      lead: 'Please click the link below to confirm this as your new account email address.',
+      action: 'Confirm New Email',
+      note: 'This link is valid for 24 hours and can only be used once.',
+      footer:
+        'If you did not request this, you can safely ignore this email. Your account email will remain unchanged.',
     },
   },
 }

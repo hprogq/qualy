@@ -9,10 +9,10 @@ describe('the mail a link goes out in', () => {
   it('lays out the same message, with the link as a button and spelled out', () => {
     const link = 'https://qualy.example/reset-password#token=abc&x=1'
     const mail = mailFor('reset', 'zh-CN', link, { to: 'li@school.edu', workspace: '示范大学' })
-    expect(mail.subject).toBe('重置你的密码')
+    expect(mail.subject).toBe('重置您的密码')
     expect(mail.text).toContain(link)
     expect(mail.html).toContain('<h1')
-    expect(mail.html).toContain('重置你的密码')
+    expect(mail.html).toContain('重置您的密码')
     expect(mail.html).toContain('设置新密码')
     expect(mail.html).toContain('示范大学')
     expect(mail.html).toContain('li@school.edu')

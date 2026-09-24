@@ -471,7 +471,7 @@ describe.runIf(postgresAvailable)('an email address', () => {
         ),
       )
       expect(answer.first).toEqual({ sent: true })
-      expect(answer.link.subject).toBe('验证你的邮箱')
+      expect(answer.link.subject).toBe('验证您的邮箱')
       expect(answer.link.url.pathname).toBe('/confirm-email')
       expect(new URLSearchParams(answer.link.url.hash.slice(1)).get('purpose')).toBe('verify')
       expect(answer.verified).toBe(true)
@@ -667,7 +667,7 @@ describe.runIf(postgresAvailable && mailpitAvailable)('a forgotten password, thr
           }).pipe(Effect.provide(stack(db.url, relay.backend))),
         ),
       )
-      expect(answer.subject).toBe('重置你的密码')
+      expect(answer.subject).toBe('重置您的密码')
       expect(answer.credential).toBe('digest:set through the relay')
     } finally {
       relay.close()
