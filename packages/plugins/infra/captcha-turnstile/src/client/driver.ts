@@ -19,6 +19,7 @@ interface TurnstileOptions {
   readonly action: string
   readonly cData: string
   readonly appearance: 'interaction-only'
+  readonly size: 'flexible'
   readonly retry: 'never'
   readonly 'refresh-expired': 'never'
   readonly 'refresh-timeout': 'never'
@@ -89,6 +90,8 @@ export const start: BrowserCaptchaProvider['start'] = async ({
     action: String(challenge['action']),
     cData: String(challenge['cData']),
     appearance: 'interaction-only',
+    // as wide as the form it appears in, rather than Cloudflare's fixed 300px
+    size: 'flexible',
     retry: 'never',
     'refresh-expired': 'never',
     'refresh-timeout': 'never',

@@ -48,6 +48,7 @@ describe('the Turnstile driver', () => {
       action: 'auth_login',
       cData: 'a'.repeat(64),
       appearance: 'interaction-only',
+      size: 'flexible',
       retry: 'never',
       'refresh-expired': 'never',
       'refresh-timeout': 'never',
