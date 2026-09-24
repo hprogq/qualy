@@ -14,6 +14,13 @@ import type { BrowserCaptchaProvider, CaptchaClientState } from '@qualy/plugin-c
 
 const SCRIPT = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'
 
+/**
+ * How long the script may take before the page stops waiting on it. A
+ * connection that hangs rather than fails would otherwise leave the button
+ * saying it is checking, forever, with nothing to try again.
+ */
+export const LOAD_TIMEOUT_MS = 10_000
+
 interface TurnstileOptions {
   readonly sitekey: string
   readonly action: string
@@ -50,12 +57,23 @@ const load = (): Promise<TurnstileApi> => {
     const script = document.createElement('script')
     script.src = SCRIPT
     script.async = true
+    const timer = window.setTimeout(() => {
+      // taken out, so a late arrival does not start a second copy beside
+      // the next attempt's
+      script.remove()
+      reject(new Error('turnstile took too long to load'))
+    }, LOAD_TIMEOUT_MS)
     script.addEventListener('load', () => {
+      window.clearTimeout(timer)
       const api = turnstileOf()
       if (api === undefined) reject(new Error('turnstile did not start'))
       else resolve(api)
     })
-    script.addEventListener('error', () => reject(new Error('turnstile could not be loaded')))
+    script.addEventListener('error', () => {
+      window.clearTimeout(timer)
+      script.remove()
+      reject(new Error('turnstile could not be loaded'))
+    })
     document.head.append(script)
   }).catch((error: unknown) => {
     // a failed load may succeed next time: forget it rather than keep it

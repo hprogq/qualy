@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CaptchaClientState } from '@qualy/plugin-captcha/client'
-import { forgetTurnstile, start, type TurnstileApi } from '../src/client/driver.ts'
+import { forgetTurnstile, LOAD_TIMEOUT_MS, start, type TurnstileApi } from '../src/client/driver.ts'
 
 // The driver against a Turnstile the suite stands in for: the page already
 // has one, so no script is fetched and nothing reaches Cloudflare. What is
@@ -114,5 +114,29 @@ describe('the Turnstile driver', () => {
     await starting
     expect(states).toEqual([{ kind: 'working' }, { kind: 'failed', recovery: 'restart' }])
     script.remove()
+  })
+
+  it('stops waiting on a script that neither loads nor fails, and can be tried again', async () => {
+    vi.useFakeTimers()
+    try {
+      const states: CaptchaClientState[] = []
+      const starting = start({
+        container: document.body,
+        challenge,
+        onStateChange: (state) => states.push(state),
+      })
+      // the request hangs: no load, no error
+      const script = [...document.head.querySelectorAll('script')].find((node) =>
+        node.src.includes('turnstile'),
+      )
+      expect(script).toBeDefined()
+      await vi.advanceTimersByTimeAsync(LOAD_TIMEOUT_MS)
+      await starting
+      expect(states).toEqual([{ kind: 'working' }, { kind: 'failed', recovery: 'restart' }])
+      // taken out, so a late arrival cannot start a second copy
+      expect(script!.isConnected).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

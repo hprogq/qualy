@@ -34,9 +34,12 @@ export const config = (
       yield* decodePluginConfig(Schema.Struct({}), manifest)
       const siteKey = yield* Config.option(Config.String('QUALY_CAPTCHA_TURNSTILE_SITE_KEY'))
       const secretKey = yield* Config.option(Config.Redacted('QUALY_CAPTCHA_TURNSTILE_SECRET_KEY'))
-      if (siteKey._tag === 'None' || secretKey._tag === 'None' || siteKey.value === '') {
-        return yield* Effect.die(new Error(TURNSTILE_KEYS_MISSING))
-      }
-      return TurnstileConfig.of({ siteKey: siteKey.value, secretKey: secretKey.value })
+      // an empty variable is an unset one: with a blank secret Siteverify
+      // answers every token with a configuration error, which lets every
+      // request through - "enabled" would quietly mean "off"
+      const site = siteKey._tag === 'Some' ? siteKey.value.trim() : ''
+      const secret = secretKey._tag === 'Some' ? Redacted.value(secretKey.value).trim() : ''
+      if (site === '' || secret === '') return yield* Effect.die(new Error(TURNSTILE_KEYS_MISSING))
+      return TurnstileConfig.of({ siteKey: site, secretKey: Redacted.make(secret) })
     }),
   )
