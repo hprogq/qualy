@@ -1,4 +1,4 @@
-import { Effect, Schema } from 'effect'
+import { Effect, Schema, SchemaAST, SchemaIssue } from 'effect'
 
 // How a plugin reads its block of the product manifest.
 //
@@ -37,4 +37,28 @@ export const decodePluginConfig = <A, I, RD>(
   schema: Schema.Codec<A, I, RD>,
   block: unknown,
 ): Effect.Effect<A, Schema.SchemaError, RD> =>
-  Schema.decodeUnknownEffect(schema)(block, { onExcessProperty: 'error' })
+  Effect.suspend(() => {
+    const ast = schema.ast
+    // `Schema.Struct({})` is TypeScript's `{}` upstream - any value but null
+    // and undefined - so it never looks at keys, excess or not. A plugin that
+    // takes no configuration spells exactly that, and would otherwise be the
+    // one plugin in which every key is a typo that nobody is told about.
+    if (
+      SchemaAST.isObjects(ast) &&
+      ast.propertySignatures.length === 0 &&
+      ast.indexSignatures.length === 0
+    ) {
+      if (typeof block !== 'object' || block === null || Array.isArray(block)) {
+        return Effect.fail(new Schema.SchemaError(new SchemaIssue.InvalidType(ast, block)))
+      }
+      const [key] = Reflect.ownKeys(block)
+      if (key !== undefined) {
+        return Effect.fail(
+          new Schema.SchemaError(
+            new SchemaIssue.Pointer([key], new SchemaIssue.UnexpectedKey(ast, undefined)),
+          ),
+        )
+      }
+    }
+    return Schema.decodeUnknownEffect(schema)(block, { onExcessProperty: 'error' })
+  })
