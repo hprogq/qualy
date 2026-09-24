@@ -177,6 +177,10 @@ describe('the sign-in screen', () => {
       await expect.element(submit).toHaveAttribute('data-captcha', 'working')
       await expect.element(submit).toBeDisabled()
       expect(submit.element().getAttribute('data-wait')).toBeNull()
+      // the provider needs the person: the button waits on them, still shut
+      reports.at(-1)!({ kind: 'interaction-required' })
+      await expect.element(submit).toHaveAttribute('data-captcha', 'interaction')
+      await expect.element(submit).toBeDisabled()
       // met: the same attempt goes again by itself, with the proof
       reports.at(-1)!({ kind: 'solved', response: 'proof-1' })
       await expect.poll(() => sent.length).toBe(2)

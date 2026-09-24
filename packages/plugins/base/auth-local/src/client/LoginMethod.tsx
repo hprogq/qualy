@@ -355,8 +355,11 @@ export default function LocalLoginMethod({ method, onAuthenticated }: LoginMetho
       >
         {gate.state === 'loading-provider'
           ? format(m.preparingCheck)
-          : gate.state === 'working' || gate.state === 'interaction'
+          : gate.state === 'working'
             ? format(m.checking)
+            : // the check is waiting on the person now, not on the page
+              gate.state === 'interaction'
+              ? format(m.finishCheck)
             : busy
               ? format(m.submitting)
               : held && limited

@@ -20,6 +20,10 @@ const i18n = definePluginMessages({
       defaultMessage: 'Preparing a security check…',
     },
     checking: { id: 'auth-local/action/checking', defaultMessage: 'Running a security check…' },
+    finishCheck: {
+      id: 'auth-local/action/finish-check',
+      defaultMessage: 'Complete the security check to continue',
+    },
     forgot: { id: 'auth-local/action/forgot', defaultMessage: 'Forgot password?' },
     showPassword: { id: 'auth-local/action/show-password', defaultMessage: 'Show password' },
     hidePassword: { id: 'auth-local/action/hide-password', defaultMessage: 'Hide password' },
