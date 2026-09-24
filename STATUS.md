@@ -20221,3 +20221,25 @@ A–C 的部署约束至此解除：ALTCHA 与能处理 428 的登录页在同�
 - 推免批次的时间相对生成当天，停在「材料审核」第 7 天；站点长期运行时约每月重新生成一次快照，否则时间会越走越远。
 - 批次卡片「全部办结却显示还没有开始」的产品缺陷，待定文案后修。
 - 部署：按 deploy/demo/README.md 在服务器上放快照、配置 `QUALY_DEMO_ACCOUNTS`，cron 每 6 小时还原。
+
+## 批次卡片「我的申报」按实情说话；本地预览演示库；开发改回 Mailpit（2026-09-25）
+
+- **批次卡片缺陷**（上一节记为未修）：卡片只数待修改、草稿、审核中三种，申报全部通过或有被驳回的都落进「还没有开始 / 去填报」；被要求补充材料的申报显示成安静的「审核中」，与概览「需要你处理」矛盾；申报期结束后一条没报也还叫人「去填报」。
+  - `listMyStanding` 的 `myEntries` 增加 `toAnswer`（开放补件、与 `myActionRowsOf` 同一判定，从 `submitted` 中扣出）、`rejected`、`approved` 与 `filing: open | upcoming | closed`（与 `createEntry` 同一道阶段门，限题补录阶段只要放行任一题即算开放）。只冻结路径、不冻结响应形状，无需改 frozen-routes。
+  - 卡片取第一件仍在进行的事，先说等读者动手的：待补充材料「N 份待补充材料 · 去补充」> 待修改 > 未提交 > 「N 份未通过 · 查看原因」> 审核中 > 「N 份已通过 · 查看」；一条没报时按填报状态分三种：开放「还没有开始 · 去填报」、以后阶段才开放「尚未开放填报 · 查看」、已结束「未申报 · 查看」。只报告状态的行（审核中、已通过、尚未开放、未申报）用安静字重。
+- **`pnpm demo:preview`**：把快照还原到演示容器里单独的 `qualy_demo_preview` 与 `data/demo-preview/storage`，再以演示账号启动开发会话；不碰 `qualy_demo` 与开发库，`--keep` 跳过还原。
+- **邮件**：qualy.yml 同时启用 smtp 与 resend，产品默认仍 resend；开发 `.env` 设 `QUALY_MAIL_DEFAULT_BACKEND=smtp` 即发到 Mailpit。新规则（`offerBackend`）：只有被选中发信的后端要求自己的配置齐全，另一个缺配置照常启动、登记为永不发信的后端，所以生产与演示服务器不需要多配 SMTP 主机。
+- 上一节 `pnpm test` 的 7 条失败确为本机 1Password 锁定所致：解锁后 `.env` 秒读、含 Resend key，supervisor 与 runtime-cli 单独重跑 `Tests  7 passed (7)`。
+
+### 验收（实际执行）
+
+- standing 新用例（补件待答、通过、驳回、填报开放到结束）：`Tests  2 passed (2)`；卡片浏览器用例（九种状态）所在文件 `Tests  48 passed (48)`。
+- 预览中截图：演示学生卡片「2 份未通过 · 查看原因」，班级负责人「1 份未通过 · 查看原因」（改前两处都是「还没有开始」）。
+- 邮件：mail / mail-smtp / mail-resend `Tests  24 passed (24)`（smtp 契约套件连本机 Mailpit）；以 `QUALY_MAIL_DEFAULT_BACKEND=smtp` 起预览、对已验证地址发找回密码，Mailpit 收到 `Reset your password`（`total 144 -> 145`）。
+- `pnpm qualy resolve --frozen-lockfile`、`pnpm typecheck`、`pnpm lint`、`pnpm lint:types`、`pnpm format:check`：全部 exit 0。
+- `pnpm test:browser`（卡片改动后）：`Test Files  78 passed (78)`，`Tests  606 passed (606)`。
+- `pnpm test`：第一次 8 条超时（钩子 30 s / 用例 120 s，分布在 administrative-record-batch、formula-library、auth providers/self，与改动无关），这 4 个文件单独重跑 `Tests  38 passed (38)`；随后全量重跑 `Test Files  313 passed | 3 skipped (316)`，`Tests  2300 passed | 17 skipped (2317)`。
+
+### 下一步
+
+- 本机 1Password 里的 `QUALY_MAIL_DEFAULT_BACKEND` 改成 `smtp`（目前是 `resend`），开发就发到 Mailpit。
