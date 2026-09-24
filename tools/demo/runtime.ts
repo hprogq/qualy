@@ -75,6 +75,35 @@ export const runSeedingHooks = Effect.gen(function* () {
   }
 })
 
+/**
+ * The assembly with the one setting a seeding run cannot live with.
+ *
+ * Upload tickets are rationed per person per hour of real time, and a run
+ * that tells three years in forty minutes has an active student start more
+ * uploads in one real hour than anybody could in a real one. The ration is
+ * raised for this process only: qualy.yml and the lock are not touched, and
+ * the served product keeps its limit.
+ */
+const seedingAssembly = (resolved: Awaited<ReturnType<typeof resolution>>) => {
+  const plugins = resolved.manifest.plugins as Map<string, { config?: unknown }>
+  const storage = plugins.get('@qualy/plugin-storage')
+  if (storage !== undefined) {
+    const config = (storage.config ?? {}) as { limits?: Record<string, unknown> }
+    plugins.set('@qualy/plugin-storage', {
+      ...storage,
+      config: {
+        ...config,
+        limits: {
+          ...config.limits,
+          prepareRatePerHour: 1_000_000,
+          maxActiveReservationsPerOwner: 1_000,
+        },
+      },
+    })
+  }
+  return resolved
+}
+
 /** the database the graph really reached, asked of the graph itself */
 const reached = Effect.gen(function* () {
   const found = yield* runSql(sql`select current_database() as name`)
@@ -98,10 +127,13 @@ export const runOverDemo = async <A>(
   // a key Resend will refuse: whatever a service does while seeding, no
   // message leaves this machine
   process.env.QUALY_MAIL_RESEND_API_KEY = 're_demo_seeder_sends_nothing'
+  // the seeder sets the demo accounts' passwords, which the running
+  // deployment then keeps anybody from changing
+  process.env.QUALY_DEMO_ACCOUNTS = ''
   process.env.QUALY_STORAGE_LOCAL_ROOT = path.resolve(DEMO_STORAGE_ROOT)
   process.env.QUALY_STORAGE_DEFAULT_BACKEND = 'local'
   process.env.QUALY_MIGRATIONS = 'off'
-  const loaded = loadAssembly(await resolution(), { host: [headlessHost] })
+  const loaded = loadAssembly(seedingAssembly(await resolution()), { host: [headlessHost] })
   const graph = headlessGraph(loaded, { env: process.env }) as Layer.Layer<unknown, unknown>
   const expected = new URL(url)
   const exit = await Effect.runPromiseExit(

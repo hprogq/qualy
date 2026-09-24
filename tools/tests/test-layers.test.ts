@@ -49,6 +49,16 @@ const SCRIPTS_MAY_CONNECT = new Set([
   // lifetime and bulk-writes the dataset the production server is measured
   // against; every other benchmark file reaches the database through it
   'tools/benchmarks/support/pg.ts',
+  // the demo seeder: target.ts owns which database it may write (never the
+  // developer's own), the runtime points the service graph at it, the
+  // timeline rewrites every timestamp column after the run, sign-ins are
+  // bulk-written in SQL, and the snapshot reads the finished database
+  'tools/demo/target.ts',
+  'tools/demo/runtime.ts',
+  'tools/demo/seed.ts',
+  'tools/demo/timeline.ts',
+  'tools/demo/seed/telemetry.ts',
+  'tools/demo/snapshot.ts',
   // this file states the patterns, so it contains all of them
   'tools/tests/test-layers.test.ts',
 ])
