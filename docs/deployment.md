@@ -140,6 +140,9 @@ database。出现第二种有持久部署副作用的能力时,先设计启动�
 `QUALY_MAIL_SMTP_TLS` 三态:`implicit`(465,一开始就是 TLS)、`starttls`(587,缺省,升级失败即不发)、`none`(明文,生产必须另设
 `QUALY_MAIL_SMTP_ALLOW_PLAINTEXT=1` 才接受);端口随之缺省,可用 `QUALY_MAIL_SMTP_PORT` 覆盖;账号与密码(`QUALY_MAIL_SMTP_USER` /
 `QUALY_MAIL_SMTP_PASSWORD`)要么都给要么都不给。这些是部署的,不进 qualy.yml,也不进租户的密钥表——单一产品只有一个中继。
+改走 Resend 的 HTTP API:release 的 qualy.yml 启用 `@qualy/plugin-mail-resend`(提交的清单里缺省停用),部署设
+`QUALY_MAIL_RESEND_API_KEY`(启用而缺失或空白即拒启)与 `QUALY_MAIL_DEFAULT_BACKEND=resend`;smtp 插件只要仍启用,上面的中继变量照样必填。
+Resend 答 400/422 算这封信被拒,429/409/5xx/超时算暂不可用;401/403 等是 key 或发信域配置错,同样算不可用并记 error 日志。
 启动时不连中继:中继宕着不影响启动,第一封信会失败并记日志与指标 `qualy.mail.sent{outcome}`。
 
 **恢复账号与 seed**:租户与其系统账户(租户自救用、以邮箱 + 密码登录)由 seed 供给;镜像不含 seed,从同一 release 的源码检出对部署库执行

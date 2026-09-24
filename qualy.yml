@@ -72,6 +72,9 @@ plugins:
   '@qualy/plugin-auth-oidc': {}
   '@qualy/plugin-mail': {}
   '@qualy/plugin-mail-smtp': {}
+  # the backend mail goes out through is QUALY_MAIL_DEFAULT_BACKEND (smtp unless set)
+  '@qualy/plugin-mail-resend':
+    enabled: false
   '@qualy/plugin-captcha': {}
   '@qualy/plugin-captcha-altcha': {}
   '@qualy/plugin-captcha-turnstile':

@@ -24,6 +24,7 @@
     "@qualy/plugin-directory-import": "workspace:*",
     "@qualy/plugin-layout-default": "workspace:*",
     "@qualy/plugin-mail": "workspace:*",
+    "@qualy/plugin-mail-resend": "workspace:*",
     "@qualy/plugin-mail-smtp": "workspace:*",
     "@qualy/plugin-org": "workspace:*",
     "@qualy/plugin-ping": "workspace:*",

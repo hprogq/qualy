@@ -1,0 +1,22 @@
+{
+  "name": "@qualy/plugin-mail-resend",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./backend": "./src/backend.ts",
+    "./config": "./src/config.ts",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@qualy/plugin-kit": "workspace:*",
+    "@qualy/plugin-mail": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@qualy/tsconfig": "workspace:*"
+  }
+}

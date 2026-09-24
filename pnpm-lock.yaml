@@ -245,6 +245,9 @@ importers:
       '@qualy/plugin-mail':
         specifier: workspace:*
         version: link:packages/plugins/infra/mail
+      '@qualy/plugin-mail-resend':
+        specifier: workspace:*
+        version: link:packages/plugins/infra/mail-resend
       '@qualy/plugin-mail-smtp':
         specifier: workspace:*
         version: link:packages/plugins/infra/mail-smtp
@@ -2125,6 +2128,22 @@ importers:
       '@qualy/telemetry':
         specifier: workspace:*
         version: link:../../../core/telemetry
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-rc.115
+    devDependencies:
+      '@qualy/tsconfig':
+        specifier: workspace:*
+        version: link:../../../build/tsconfig
+
+  packages/plugins/infra/mail-resend:
+    dependencies:
+      '@qualy/plugin-kit':
+        specifier: workspace:*
+        version: link:../../../core/plugin-kit
+      '@qualy/plugin-mail':
+        specifier: workspace:*
+        version: link:../mail
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.115
