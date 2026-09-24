@@ -49,6 +49,7 @@ import {
   AuthBindingAudienceExcluded,
   AuthBindingCredentialInvalid,
   AuthBindingNotFound,
+  SecretChecks,
   AuthBindingUnsupported,
   AuthBindingUserFieldMissing,
   AuthLastWayIn,
@@ -856,6 +857,27 @@ export const identityApiGroup = HttpApiGroup.make('identity')
     }).middleware(Authenticated),
   )
   .add(
+    // what a secret being typed for the person would be held to, before it is put
+    HttpApiEndpoint.post(
+      'createUserAuthBindingAssessment',
+      '/iam/users/:userId/auth-bindings/:providerId/assessments',
+      {
+        params: Schema.Struct({ userId: uuidInput, providerId: uuidInput }),
+        payload: Schema.Struct({
+          secret: Schema.String.check(Schema.isMaxLength(1024)),
+        }),
+        success: Schema.Struct({ checks: SecretChecks }),
+        error: [
+          UserNotFound,
+          ProviderNotFound,
+          SystemAccountProtected,
+          AuthBindingUnsupported,
+          AccessDenied,
+        ],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
     HttpApiEndpoint.delete('deleteUserAuthBinding', '/iam/users/:userId/auth-bindings/:providerId', {
       params: Schema.Struct({ userId: uuidInput, providerId: uuidInput }),
       success: Schema.Struct({ ok: Schema.Literal(true) }),
@@ -950,6 +972,28 @@ export const sessionApiGroup = HttpApiGroup.make('auth')
       }),
       success: Schema.Struct({ ok: Schema.Literal(true) }),
       error: [TooManyAttemptsResponse, CaptchaRequired],
+    }),
+  )
+  .add(
+    // whether a reset link would still be taken, asked when its page opens;
+    // the token travels in the body, as it does to be redeemed
+    HttpApiEndpoint.post('createPasswordResetInspection', '/auth/password-resets/inspections', {
+      payload: Schema.Struct({
+        token: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128)),
+      }),
+      success: Schema.Struct({ ok: Schema.Literal(true) }),
+      error: [ChallengeInvalid],
+    }),
+  )
+  .add(
+    // what the password a reset link would set is held to, while it is typed
+    HttpApiEndpoint.post('createPasswordResetAssessment', '/auth/password-resets/assessments', {
+      payload: Schema.Struct({
+        token: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128)),
+        password: Schema.String.check(Schema.isMaxLength(1024)),
+      }),
+      success: Schema.Struct({ checks: SecretChecks }),
+      error: [ChallengeInvalid],
     }),
   )
   .add(
@@ -1114,6 +1158,16 @@ export const selfApiGroup = HttpApiGroup.make('self')
         MailNotSent,
         TooManyAttemptsResponse,
       ],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // what a new password of the reader's own is held to, while it is typed
+    HttpApiEndpoint.post('createSelfPasswordAssessment', '/iam/self/password-assessments', {
+      payload: Schema.Struct({
+        password: Schema.String.check(Schema.isMaxLength(1024)),
+      }),
+      success: Schema.Struct({ checks: SecretChecks }),
+      error: [UserNotFound, PasswordUnavailable],
     }).middleware(Authenticated),
   )
   .add(

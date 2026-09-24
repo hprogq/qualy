@@ -249,10 +249,17 @@ export class AuthBindingAudienceExcluded extends Schema.TaggedError<AuthBindingA
   { httpApiStatus: 409, identifier: 'AuthBindingAudienceExcluded' },
 ) {}
 
-/** what was typed cannot be a credential of this kind */
+/** which of a secret's checks held, as a form lists them; true where it held */
+export const SecretChecks = Schema.Struct({
+  length: Schema.Boolean,
+  impersonal: Schema.Boolean,
+  unguessable: Schema.Boolean,
+})
+
+/** what was typed cannot be a credential of this kind, and which checks it failed */
 export class AuthBindingCredentialInvalid extends Schema.TaggedError<AuthBindingCredentialInvalid>()(
   'AUTH_BINDING_CREDENTIAL_INVALID',
-  {},
+  { checks: SecretChecks },
   { httpApiStatus: 422, identifier: 'AuthBindingCredentialInvalid' },
 ) {}
 

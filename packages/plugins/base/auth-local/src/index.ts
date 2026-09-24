@@ -17,6 +17,7 @@ import {
   timingEqualizerHash,
   verifyPassword,
 } from './password.ts'
+import { acceptable, assessPassword } from './strength.ts'
 
 // Email and password: find the person by their own email, prove them against
 // the credential bound to this door, then hand the proof to the core for
@@ -49,12 +50,12 @@ export const driver: LoginDriver = {
       minLength: PASSWORD_MIN_LENGTH,
       maxLength: PASSWORD_MAX_LENGTH,
     },
-    prepare: Effect.fn('authLocal.binding.prepare')(function* ({ secret }) {
-      if (secret.length < PASSWORD_MIN_LENGTH || secret.length > PASSWORD_MAX_LENGTH) {
-        return { ok: false as const }
-      }
+    prepare: Effect.fn('authLocal.binding.prepare')(function* ({ secret, subject }) {
+      const checks = yield* Effect.sync(() => assessPassword(secret, subject))
+      if (!acceptable(checks)) return { ok: false as const, checks }
       return { ok: true as const, credentialHash: yield* Effect.promise(() => hashPassword(secret)) }
     }),
+    assess: ({ secret, subject }) => Effect.sync(() => assessPassword(secret, subject)),
     verify: ({ secret, credentialHash }) =>
       Effect.promise(() => verifyPassword(credentialHash, secret)),
   },

@@ -140,6 +140,30 @@ export type SubjectResolution =
  *   the driver's own flow. An administrator reads it and may withdraw it.
  *   Only a `binding-subject` door can be bound this way.
  */
+/**
+ * What makes a secret acceptable, answered for one secret: true where it
+ * holds. The same three for every driver that manages one, so a form can
+ * list them before anything is sent and mark the one a refusal was about.
+ */
+export interface SecretChecks {
+  /** within the declared minimum and maximum length */
+  readonly length: boolean
+  /** carries nothing of the person or the workspace: a name, an address, a number */
+  readonly impersonal: boolean
+  /** not one of the common or patterned ones a guesser tries early */
+  readonly unguessable: boolean
+}
+
+/** who a secret is being set for, as far as judging it goes */
+export interface SecretSubject {
+  readonly email: string | null
+  readonly displayName: string
+  /** the student or staff number */
+  readonly businessNo: string | null
+  /** the workspace's name */
+  readonly workspace: string
+}
+
 export type AuthBindingDeclaration =
   | {
       readonly mode: 'managed'
@@ -159,9 +183,19 @@ export type AuthBindingDeclaration =
        */
       readonly prepare: (input: {
         secret: string
+        subject: SecretSubject
       }) => Effect.Effect<
-        { readonly ok: true; readonly credentialHash: string } | { readonly ok: false }
+        | { readonly ok: true; readonly credentialHash: string }
+        | { readonly ok: false; readonly checks: SecretChecks }
       >
+      /**
+       * The checks `prepare` would make, without making a digest: asked
+       * while the secret is still being typed.
+       */
+      readonly assess: (input: {
+        secret: string
+        subject: SecretSubject
+      }) => Effect.Effect<SecretChecks>
       /**
        * Whether what was typed is the credential a stored digest was made
        * from. Asked when a person changes their own: the one who knows the

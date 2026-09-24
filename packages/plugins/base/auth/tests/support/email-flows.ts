@@ -11,11 +11,14 @@ export const unusedEmailFlows = Layer.succeed(
   EmailFlows,
   EmailFlows.of({
     requestReset: unused,
+    inspectReset: unused,
+    assessReset: unused,
     redeemReset: unused,
     requestVerification: unused,
     redeemVerification: unused,
     requestChange: unused,
     redeemChange: unused,
+    assessPassword: unused,
     setPassword: unused,
   }),
 )

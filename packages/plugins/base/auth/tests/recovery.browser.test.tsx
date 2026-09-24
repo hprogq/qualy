@@ -7,7 +7,7 @@ import { page } from 'vitest/browser'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import type { authApi } from '@qualy/plugin-auth/client/api'
 import { Effect } from 'effect'
-import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 import { CaptchaRequired } from '@qualy/plugin-captcha/contract'
 import { registerCaptchaProvider, type CaptchaClientState } from '@qualy/plugin-captcha/client'
 
@@ -40,8 +40,16 @@ const records = {
   listSelfSignIns: () => Effect.succeed({ items: [], nextCursor: null }),
 }
 
+/** what a password is held to, as every page that sets one reads it */
+const passwordRule = () =>
+  Effect.succeed({ tenant: null, methods: [], passwordRule: { minLength: 15, maxLength: 128 } })
+
 const client = (stubs: Record<string, Record<string, unknown>>) =>
-  fakeClient({ app: { getManifest: () => Effect.succeed(emptyManifest()) }, ...stubs })
+  fakeClient({
+    app: { getManifest: () => Effect.succeed(emptyManifest()) },
+    ...stubs,
+    auth: { listLoginMethods: passwordRule, ...stubs['auth'] },
+  })
 
 describe('a forgotten password', () => {
   it('asks for the email, and says the same whatever comes of it', async () => {
@@ -104,41 +112,88 @@ describe('a forgotten password', () => {
 
   it('sets the new one with the token the link carried, and never two that differ', async () => {
     const redeem = vi.fn(() => Effect.succeed({ ok: true as const }))
+    const assess = vi.fn(({ payload }: { payload: { token: string; password: string } }) =>
+      Effect.succeed({
+        checks: {
+          length: [...payload.password].length >= 15,
+          impersonal: !payload.password.includes('zhang'),
+          unguessable: !/^(.)\1+$/.test(payload.password),
+        },
+      }),
+    )
     renderScreen({
       client: client({
         auth: {
+          createPasswordResetInspection: () => Effect.succeed({ ok: true as const }),
+          createPasswordResetAssessment: assess,
           createPasswordResetRedemption: redeem,
           listLoginMethods: () =>
             Effect.succeed({
               tenant: null,
               methods: [],
-              passwordRule: { minLength: 12, maxLength: 128 },
+              passwordRule: { minLength: 15, maxLength: 128 },
             }),
         },
       }),
       route: '/reset-password#token=link-token',
       children: <ResetPasswordPage />,
     })
-    // the rule is said while it is typed; a press before it is met is
-    // answered by the rule, and nothing is sent
-    await page.getByLabelText('新密码', { exact: true }).fill('too short')
-    await expect.element(page.getByTestId('password-rule')).toHaveAttribute('data-met', 'false')
+    const rule = (check: string) =>
+      page.getByTestId('password-checklist').element().querySelector(`[data-check="${check}"]`)!
+    const field = page.getByLabelText('新密码', { exact: true })
+    // what it is held to is said while it is typed; a press before it holds
+    // is answered by the list, and nothing is sent
+    await field.fill('too short')
+    await expect.element(rule('length')).toHaveAttribute('data-state', 'unmet')
     await page.getByRole('button', { name: '设置密码' }).click()
-    await expect.element(page.getByTestId('password-rule')).toHaveAttribute('data-refused', 'true')
+    await expect.element(rule('length')).toHaveAttribute('data-refused', 'true')
     expect(redeem).not.toHaveBeenCalled()
-    await page.getByLabelText('新密码', { exact: true }).fill('a long new password')
-    await expect.element(page.getByTestId('password-rule')).toHaveAttribute('data-met', 'true')
+    // long enough, and judged by the server against the person once typing pauses
+    await field.fill('zhang by the quiet sea')
+    await expect.element(rule('length')).toHaveAttribute('data-state', 'met')
+    await expect.element(rule('impersonal')).toHaveAttribute('data-state', 'unmet')
+    await expect.element(rule('impersonal')).toHaveAttribute('data-refused', 'true')
+    expect(assess).toHaveBeenCalledWith({
+      payload: { token: 'link-token', password: 'zhang by the quiet sea' },
+    })
+    await page.getByRole('button', { name: '设置密码' }).click()
+    expect(redeem).not.toHaveBeenCalled()
+
+    await field.fill('quiet river stones')
+    await expect.element(rule('impersonal')).toHaveAttribute('data-state', 'met')
+    await expect.element(rule('unguessable')).toHaveAttribute('data-state', 'met')
     await page.getByLabelText('再次输入新密码').fill('a different password')
     await page.getByRole('button', { name: '设置密码' }).click()
     await expect.element(page.getByTestId('password-mismatch')).toBeInTheDocument()
     expect(redeem).not.toHaveBeenCalled()
 
-    await page.getByLabelText('再次输入新密码').fill('a long new password')
+    await page.getByLabelText('再次输入新密码').fill('quiet river stones')
     await page.getByRole('button', { name: '设置密码' }).click()
     await expect.element(page.getByTestId('reset-done')).toBeInTheDocument()
     expect(redeem).toHaveBeenCalledWith({
-      payload: { token: 'link-token', password: 'a long new password' },
+      payload: { token: 'link-token', password: 'quiet river stones' },
     })
+  })
+
+  it('says a link no longer works as the page opens, before anything is typed', async () => {
+    const inspect = vi.fn(() => Effect.fail(apiError('AUTH_CHALLENGE_INVALID', undefined)))
+    renderScreen({
+      client: client({
+        auth: {
+          createPasswordResetInspection: inspect,
+          listLoginMethods: () =>
+            Effect.succeed({
+              tenant: null,
+              methods: [],
+              passwordRule: { minLength: 15, maxLength: 128 },
+            }),
+        },
+      }),
+      route: '/reset-password#token=spent-token',
+      children: <ResetPasswordPage />,
+    })
+    await expect.element(page.getByTestId('reset-expired')).toBeInTheDocument()
+    expect(inspect).toHaveBeenCalledWith({ payload: { token: 'spent-token' } })
   })
 })
 
@@ -178,7 +233,13 @@ describe('the reader’s security', () => {
     const put = vi.fn(() => Effect.succeed({ ok: true as const }))
     renderScreen({
       client: client({
-        self: { ...records, getSelf: () => Effect.succeed(me()), putSelfPassword: put },
+        self: {
+          ...records,
+          getSelf: () => Effect.succeed(me()),
+          putSelfPassword: put,
+          createSelfPasswordAssessment: () =>
+            Effect.succeed({ checks: { length: true, impersonal: true, unguessable: true } }),
+        },
       }),
       route: '/account/security',
       children: <AccountSecurityPage />,
@@ -192,6 +253,12 @@ describe('the reader’s security', () => {
     expect(document.querySelector('[data-testid="password-card"] form')).toBeNull()
     await page.getByLabelText('当前密码').fill('old password here')
     await page.getByLabelText('新密码', { exact: true }).fill('new password here')
+    // held to the same list as every other form that sets a password
+    await expect
+      .element(
+        page.getByTestId('password-checklist').element().querySelector('[data-check="unguessable"]')!,
+      )
+      .toHaveAttribute('data-state', 'met')
     await page.getByLabelText('再次输入新密码').fill('new password here')
     await page.getByRole('button', { name: '保存' }).click()
     await vi.waitFor(() => expect(put).toHaveBeenCalledTimes(1))
@@ -311,6 +378,7 @@ describe('the reader’s devices and sign-ins', () => {
           getSelf: () => Effect.succeed(me()),
           listSelfSessions: () => Effect.succeed({ items: [], nextCursor: null }),
         },
+        auth: { listLoginMethods: passwordRule },
       }),
       route: '/account/security',
       children: <AccountSecurityPage />,

@@ -12,6 +12,7 @@ import { Audit } from '@qualy/audit-contract/effect'
 import type { AuditActor } from '@qualy/audit-contract'
 import { LoginDrivers } from '@qualy/auth-contract/login'
 import { actorOf } from './audit-actor.ts'
+import { secretSubjectOf } from './secret-subject.ts'
 import { retireChallenges } from './email-flows.ts'
 import { normalizeEmail } from '@qualy/auth-contract/email'
 import {
@@ -1144,6 +1145,34 @@ export const make = Effect.fn('Iam.users.make')(function* () {
     ),
 
     /**
+     * The checks a credential typed for one person at one door is held to,
+     * while it is typed: asked of the driver with the same facts putBinding
+     * hands it, behind the same authority, and without making a digest.
+     */
+    assessBinding: Effect.fn('Iam.users.assessBinding')(function* (
+      tenantId: string,
+      userId: string,
+      providerId: string,
+      input: { secret: string },
+      as: Principal,
+    ) {
+      const provider = yield* withDb(providerGuard(tenantId, providerId)).pipe(Effect.orDie)
+      if (!provider) return yield* new ProviderNotFound()
+      const driver = (yield* drivers.forType(provider.type))?.driver
+      const binding = driver?.binding
+      if (binding?.mode !== 'managed' || driver?.resolution.mode !== 'user-field') {
+        return yield* new AuthBindingUnsupported()
+      }
+      const user = yield* withDb(requireUser(tenantId, userId)).pipe(
+        Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
+      )
+      if (user.isSystem) return yield* new SystemAccountProtected()
+      yield* manages(as, user.primaryOrgNodeId!)
+      const subject = yield* withDb(secretSubjectOf(tenantId, userId)).pipe(Effect.orDie)
+      return yield* binding.assess({ secret: input.secret, subject })
+    }),
+
+    /**
      * Sets the credential one person proves at one door, whole.
      *
      * Only for a door whose driver lets an administrator manage it, and only
@@ -1180,8 +1209,11 @@ export const make = Effect.fn('Iam.users.make')(function* () {
       if (before.isSystem) return yield* new SystemAccountProtected()
       yield* manages(as, before.primaryOrgNodeId!)
       if (before[field] === null) return yield* new AuthBindingUserFieldMissing({ field })
-      const prepared = yield* binding.prepare({ secret: input.secret })
-      if (!prepared.ok) return yield* new AuthBindingCredentialInvalid()
+      const prepared = yield* binding.prepare({
+        secret: input.secret,
+        subject: yield* withDb(secretSubjectOf(tenantId, userId)).pipe(Effect.orDie),
+      })
+      if (!prepared.ok) return yield* new AuthBindingCredentialInvalid({ checks: prepared.checks })
 
       return yield* writeBinding(tenantId, () =>
         Effect.gen(function* () {

@@ -161,13 +161,13 @@ jobs:
         env:
           DATABASE_URL: postgres://qualy:qualy@localhost:5432/qualy
           QUALY_ADMIN_EMAIL: admin@ci.example
-          QUALY_ADMIN_PASSWORD: csp-smoke-only
+          QUALY_ADMIN_PASSWORD: csp-smoke-only-admin
         run: pnpm seed
       - name: the content security policy can be enforced
         env:
           DATABASE_URL: postgres://qualy:qualy@localhost:5432/qualy
           QUALY_ADMIN_EMAIL: admin@ci.example
-          QUALY_ADMIN_PASSWORD: csp-smoke-only
+          QUALY_ADMIN_PASSWORD: csp-smoke-only-admin
           # and it may not quietly fall back to the login page here
           CSP_REQUIRE_SIGNED_IN: '1'
         run: node tools/quality/check-csp-enforce.ts

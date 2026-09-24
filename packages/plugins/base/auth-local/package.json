@@ -28,10 +28,13 @@
     "@qualy/web-i18n": "workspace:*",
     "@qualy/web-runtime": "workspace:*",
     "@stylexjs/stylex": "catalog:",
+    "@zxcvbn-ts/core": "4.2.0",
+    "@zxcvbn-ts/language-common": "4.1.3",
     "argon2": "catalog:",
     "effect": "catalog:",
     "lucide-react": "^0.552.0",
     "motion": "^12.29.2",
+    "pinyin-pro": "3.29.4",
     "react-router": "catalog:"
   },
   "devDependencies": {

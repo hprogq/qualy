@@ -28,6 +28,7 @@ import { Iam } from '../src/server/index.ts'
 import { serviceLayer as authLayer } from '../src/server/index.ts'
 import { secretsLayer } from '@qualy/plugin-secrets/testkit'
 import { captchaLayer } from '@qualy/plugin-captcha/testkit'
+import { acceptable, standInChecks } from './support/secret-checks.ts'
 
 // People, and who may administer them.
 //
@@ -54,12 +55,14 @@ const fakeLocalDriver = registerLoginDriver({
   binding: {
     mode: 'managed',
     secret: { label: { kind: 'literal', value: 'Password' }, minLength: 8, maxLength: 64 },
-    prepare: ({ secret }) =>
+    // a stand-in judge: long enough, and not the person's own address
+    prepare: ({ secret, subject }) =>
       Effect.succeed(
-        secret.length < 8 || secret.length > 64
-          ? { ok: false as const }
-          : { ok: true as const, credentialHash: `digest:${secret}` },
+        acceptable(standInChecks(secret, subject))
+          ? { ok: true as const, credentialHash: `digest:${secret}` }
+          : { ok: false as const, checks: standInChecks(secret, subject) },
       ),
+    assess: ({ secret, subject }) => Effect.succeed(standInChecks(secret, subject)),
     verify: ({ secret, credentialHash }) => Effect.succeed(credentialHash === `digest:${secret}`),
   },
 })
@@ -736,6 +739,44 @@ describe.runIf(postgresAvailable).concurrent('the way in written for a person', 
       // a changed secret that left the old session alive would have locked nobody out
       expect(answer.sessions).toBe(0)
       expect(answer.events).toEqual(['auth.identity.bind@2', 'auth.identity.bind@2'])
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('judges a password being typed for the person, behind the same authority as setting it', async () => {
+    const db = await createTestContext('effect-binding-assess')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const iam = yield* Iam
+          const provider = yield* providerOf(f.tenant)
+          const assess = (userId: string, secret: string) =>
+            Effect.result(iam.users.assessBinding(f.tenant, userId, provider, { secret }, f.as))
+          yield* addressed(f.onLeft, 'lovelace@school.edu')
+          yield* addressed(f.onRight, 'grace@school.edu')
+          return {
+            fine: yield* assess(f.onLeft, 'quiet river stones'),
+            // her own address is the kind of word a password must not carry
+            personal: yield* assess(f.onLeft, 'lovelace by the sea'),
+            short: yield* assess(f.onLeft, 'short'),
+            // Grace stands where the manager may read and not change
+            outside: tagOf(yield* assess(f.onRight, 'quiet river stones')),
+            rows: yield* bindingsOf(f.onLeft),
+          }
+        }),
+      )
+      const answer = ok(exit)
+      const checks = (result: { _tag: string; success?: unknown }) =>
+        result._tag === 'Success' ? result.success : result
+      expect(checks(answer.fine)).toEqual({ length: true, impersonal: true, unguessable: true })
+      expect(checks(answer.personal)).toEqual({ length: true, impersonal: false, unguessable: true })
+      expect(checks(answer.short)).toEqual({ length: false, impersonal: true, unguessable: true })
+      expect(answer.outside).toBe('ACCESS_DENIED')
+      // judging writes nothing
+      expect(answer.rows).toEqual([])
     } finally {
       await db.dispose()
     }

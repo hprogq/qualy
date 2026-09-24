@@ -31,6 +31,7 @@ import { EmailFlows, emailFlowsLayer } from '../src/server/email-flows.ts'
 import { Iam, serviceLayer as authLayer } from '../src/server/index.ts'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../src/constants.ts'
 import { authClosure } from './support/closure.ts'
+import { acceptable, standInChecks } from './support/secret-checks.ts'
 
 // What goes through somebody's inbox: a link to set a password, to prove an
 // address, to move to a new one - and changing one's own password. The mail
@@ -45,12 +46,14 @@ const passwordDoor = registerLoginDriver({
   binding: {
     mode: 'managed',
     secret: { label: { kind: 'literal', value: 'Password' }, minLength: 8, maxLength: 64 },
-    prepare: ({ secret }) =>
+    // a stand-in judge: long enough, and not the person's own address
+    prepare: ({ secret, subject }) =>
       Effect.succeed(
-        secret.length < 8 || secret.length > 64
-          ? { ok: false as const }
-          : { ok: true as const, credentialHash: `digest:${secret}` },
+        acceptable(standInChecks(secret, subject))
+          ? { ok: true as const, credentialHash: `digest:${secret}` }
+          : { ok: false as const, checks: standInChecks(secret, subject) },
       ),
+    assess: ({ secret, subject }) => Effect.succeed(standInChecks(secret, subject)),
     verify: ({ secret, credentialHash }) => Effect.succeed(credentialHash === `digest:${secret}`),
   },
 })
@@ -256,6 +259,55 @@ describe.runIf(postgresAvailable)('a forgotten password', () => {
       expect(tagOf(answer.again)).toBe('AUTH_CHALLENGE_INVALID')
       expect(answer.credential.credential_hash).toBe('digest:a new password')
       expect(answer.sessions).toBe(0)
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('is looked at before it is used, and judges a password for its person without taking it', async () => {
+    const db = await createTestContext('email-reset-look')
+    const mail = memoryMailBackend()
+    try {
+      await seed(db.url)
+      const answer = ok(
+        await Effect.runPromiseExit(
+          Effect.gen(function* () {
+            const flows = yield* EmailFlows
+            yield* runSql(sql`update tenants set name = 'Lighthouse'`)
+            yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en' })
+            const link = yield* Effect.promise(() => tokenFrom(mail, 'ada@school.edu'))
+            yield* flows.inspectReset({ token: link.token })
+            const fine = yield* flows.assessReset({ token: link.token, password: 'quiet river stones' })
+            // the workspace's own name is the kind of word a password must not carry
+            const personal = yield* flows.assessReset({
+              token: link.token,
+              password: 'lighthouse keeper',
+            })
+            const refused = yield* Effect.result(
+              flows.redeemReset({ token: link.token, password: 'lighthouse keeper' }),
+            )
+            // looking and judging took nothing: the link still sets the password
+            yield* flows.inspectReset({ token: link.token })
+            yield* flows.redeemReset({ token: link.token, password: 'quiet river stones' })
+            const spent = yield* Effect.result(flows.inspectReset({ token: link.token }))
+            const judgedSpent = yield* Effect.result(
+              flows.assessReset({ token: link.token, password: 'quiet river stones' }),
+            )
+            const unknown = yield* Effect.result(flows.inspectReset({ token: 'not-a-token' }))
+            return { fine, personal, refused, spent, judgedSpent, unknown }
+          }).pipe(Effect.provide(stack(db.url, mail.backend))),
+        ),
+      )
+      expect(answer.fine).toEqual({ length: true, impersonal: true, unguessable: true })
+      expect(answer.personal).toEqual({ length: true, impersonal: false, unguessable: true })
+      // the refusal says which check failed, as the form lists them
+      expect(answer.refused._tag === 'Failure' && answer.refused.failure).toMatchObject({
+        _tag: 'AUTH_BINDING_CREDENTIAL_INVALID',
+        checks: { length: true, impersonal: false, unguessable: true },
+      })
+      expect(tagOf(answer.spent)).toBe('AUTH_CHALLENGE_INVALID')
+      expect(tagOf(answer.judgedSpent)).toBe('AUTH_CHALLENGE_INVALID')
+      expect(tagOf(answer.unknown)).toBe('AUTH_CHALLENGE_INVALID')
     } finally {
       await db.dispose()
     }
@@ -574,6 +626,8 @@ describe.runIf(postgresAvailable)('one’s own password', () => {
           Effect.gen(function* () {
             const flows = yield* EmailFlows
             const ada = f.as(f.ada, f.adaHere)
+            yield* runSql(sql`update tenants set name = 'Lighthouse'`)
+            const judged = yield* flows.assessPassword(ada, { password: 'lighthouse keeper' })
             const wrong = yield* Effect.result(
               flows.setPassword(ada, { currentPassword: 'not it', newPassword: 'fresh password' }),
             )
@@ -588,10 +642,12 @@ describe.runIf(postgresAvailable)('one’s own password', () => {
             const credential = yield* runSql<{ user_id: string; credential_hash: string }>(
               sql`select user_id, credential_hash from user_auth_bindings where revoked_at is null order by user_id`,
             )
-            return { wrong, none, sessions: sessions.rows.map((row) => row.id), unproven, credential: credential.rows }
+            return { judged, wrong, none, sessions: sessions.rows.map((row) => row.id), unproven, credential: credential.rows }
           }).pipe(Effect.provide(stack(db.url, mail.backend))),
         ),
       )
+      // judged against the reader's own workspace, while it is typed
+      expect(answer.judged).toEqual({ length: true, impersonal: false, unguessable: true })
       expect(tagOf(answer.wrong)).toBe('AUTH_PASSWORD_INCORRECT')
       expect(tagOf(answer.none)).toBe('AUTH_PASSWORD_INCORRECT')
       expect(answer.sessions).toEqual([f.adaHere])

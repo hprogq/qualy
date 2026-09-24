@@ -4,7 +4,7 @@ import { sql } from 'kysely'
 import { transaction, withDatabase, type Orm } from '@qualy/plugin-database/server'
 import { Audit } from '@qualy/audit-contract/effect'
 import { normalizeEmail } from '@qualy/auth-contract/email'
-import { LoginDrivers } from '@qualy/auth-contract/login'
+import { LoginDrivers, type SecretChecks } from '@qualy/auth-contract/login'
 import { TooManyAttempts } from '@qualy/auth-contract/session'
 import { currentRequestContext } from '@qualy/api-kit/request'
 import { Mailer } from '@qualy/plugin-mail/plugin'
@@ -14,6 +14,7 @@ import { BindingWritten, UserUpdated } from '../actions.ts'
 import { CONFIRM_EMAIL_PATH, RESET_PASSWORD_PATH } from '../constants.ts'
 import { actorOf } from './audit-actor.ts'
 import { db, lockTenant } from './db.ts'
+import { secretSubjectOf } from './secret-subject.ts'
 import {
   AuthBindingCredentialInvalid,
   ChallengeInvalid,
@@ -179,6 +180,19 @@ const redeemChallenge = (token: string, purpose: MailPurpose) =>
       .executeTakeFirst(),
   )
 
+/** the same link redeemChallenge would take, left where it is */
+const openChallenge = (token: string, purpose: MailPurpose) =>
+  db.query((k) =>
+    k
+      .selectFrom('UserEmailChallenge')
+      .select(['tenantId', 'userId'])
+      .where('tokenHash', '=', digest(token))
+      .where('purpose', '=', purpose)
+      .where('consumedAt', 'is', null)
+      .where('expiresAt', '>', sql<Date>`now()`)
+      .executeTakeFirst(),
+  )
+
 const spend = (id: string) =>
   db.query((k) =>
     k
@@ -226,6 +240,13 @@ export class EmailFlows extends Context.Service<
       readonly token: string
       readonly password: string
     }) => Effect.Effect<void, ChallengeInvalid | AuthBindingCredentialInvalid>
+    /** whether a reset link would still be taken, without taking it */
+    readonly inspectReset: (input: { readonly token: string }) => Effect.Effect<void, ChallengeInvalid>
+    /** the checks the password a reset link would set is held to, while it is typed */
+    readonly assessReset: (input: {
+      readonly token: string
+      readonly password: string
+    }) => Effect.Effect<SecretChecks, ChallengeInvalid>
     readonly requestVerification: (
       principal: Principal,
       locale: MailLocale,
@@ -239,6 +260,11 @@ export class EmailFlows extends Context.Service<
       UserEmailConflict | SystemAccountProtected | MailNotSent | TooManyAttempts | UserNotFound
     >
     readonly redeemChange: (token: string) => Effect.Effect<void, ChallengeInvalid | UserEmailConflict>
+    /** the checks a new password of the reader's own is held to, while it is typed */
+    readonly assessPassword: (
+      principal: Principal,
+      input: { readonly password: string },
+    ) => Effect.Effect<SecretChecks, PasswordUnavailable | UserNotFound>
     readonly setPassword: (
       principal: Principal,
       input: { readonly currentPassword?: string; readonly newPassword: string },
@@ -332,6 +358,31 @@ export const emailFlowsLayer: Layer.Layer<
       }
       return undefined
     })
+
+    /**
+     * The person a reset link is for and the door it would set a password
+     * at, when redeeming it now would get that far; read, not taken. The
+     * same conditions redeemReset holds a link to.
+     */
+    const openReset = (token: string) =>
+      Effect.gen(function* () {
+        const tenant = yield* tenants.resolve.pipe(Effect.option)
+        if (Option.isNone(tenant)) return yield* new ChallengeInvalid()
+        const tenantId = tenant.value.id
+        return yield* withDb(
+          Effect.gen(function* () {
+            const open = yield* openChallenge(token, 'reset')
+            if (open === undefined || open.tenantId !== tenantId) return yield* new ChallengeInvalid()
+            const person = yield* personOf(tenantId, open.userId)
+            if (person === undefined || person.emailVerifiedAt === null) {
+              return yield* new ChallengeInvalid()
+            }
+            const door = yield* passwordDoor(tenantId, person)
+            if (door === undefined) return yield* new ChallengeInvalid()
+            return { tenantId, person, door }
+          }),
+        ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
+      })
 
     /** hands a message to the mailer after the link is committed; spends the link if it does not go */
     const deliver = (
@@ -497,6 +548,16 @@ export const emailFlowsLayer: Layer.Layer<
         )
       }),
 
+      inspectReset: Effect.fn('Auth.email.inspectReset')(function* ({ token }) {
+        yield* openReset(token)
+      }),
+
+      assessReset: Effect.fn('Auth.email.assessReset')(function* ({ token, password }) {
+        const { tenantId, person, door } = yield* openReset(token)
+        const subject = yield* withDb(secretSubjectOf(tenantId, person.id)).pipe(Effect.orDie)
+        return yield* door.binding.assess({ secret: password, subject })
+      }),
+
       redeemReset: Effect.fn('Auth.email.redeemReset')(function* ({ token, password }) {
         const tenant = yield* tenants.resolve.pipe(Effect.option)
         if (Option.isNone(tenant)) return yield* new ChallengeInvalid()
@@ -513,8 +574,11 @@ export const emailFlowsLayer: Layer.Layer<
             }
             const door = yield* passwordDoor(tenantId, person)
             if (door === undefined) return yield* new ChallengeInvalid()
-            const prepared = yield* door.binding.prepare({ secret: password })
-            if (!prepared.ok) return yield* new AuthBindingCredentialInvalid()
+            const prepared = yield* door.binding.prepare({
+              secret: password,
+              subject: yield* secretSubjectOf(tenantId, person.id),
+            })
+            if (!prepared.ok) return yield* new AuthBindingCredentialInvalid({ checks: prepared.checks })
             // everywhere they were signed in ends: whoever else knew the old
             // password is now on the outside
             yield* writeCredential(tenantId, person, door, prepared.credentialHash, undefined, {
@@ -670,6 +734,16 @@ export const emailFlowsLayer: Layer.Layer<
         )
       }),
 
+      assessPassword: Effect.fn('Auth.email.assessPassword')(function* (principal, input) {
+        const tenantId = principal.tenantId
+        const person = yield* withDb(personOf(tenantId, principal.userId)).pipe(Effect.orDie)
+        if (person === undefined) return yield* new UserNotFound()
+        const door = yield* withDb(passwordDoor(tenantId, person)).pipe(Effect.orDie)
+        if (door === undefined) return yield* new PasswordUnavailable()
+        const subject = yield* withDb(secretSubjectOf(tenantId, person.id)).pipe(Effect.orDie)
+        return yield* door.binding.assess({ secret: input.password, subject })
+      }),
+
       setPassword: Effect.fn('Auth.email.setPassword')(function* (principal, input) {
         const tenantId = principal.tenantId
         // the digest is worked out before the lock, as an administrator's is
@@ -691,8 +765,11 @@ export const emailFlowsLayer: Layer.Layer<
           // somebody with no password yet sets one only on a proven address
           return yield* new EmailUnverified()
         }
-        const prepared = yield* door.binding.prepare({ secret: input.newPassword })
-        if (!prepared.ok) return yield* new AuthBindingCredentialInvalid()
+        const prepared = yield* door.binding.prepare({
+          secret: input.newPassword,
+          subject: yield* withDb(secretSubjectOf(tenantId, person.id)).pipe(Effect.orDie),
+        })
+        if (!prepared.ok) return yield* new AuthBindingCredentialInvalid({ checks: prepared.checks })
         yield* inLock(
           tenantId,
           Effect.gen(function* () {

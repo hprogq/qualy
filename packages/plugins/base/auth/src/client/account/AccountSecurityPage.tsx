@@ -15,6 +15,8 @@ import { iamMessages as m } from '../i18n.ts'
 import { authApi } from '../api.ts'
 import { EmailWithStanding } from '../iam/person-facts.tsx'
 import { SessionsCard } from './security-records.tsx'
+import { PasswordChecklist } from '../password/PasswordChecklist.tsx'
+import { usePasswordChecks } from '../password/checks.ts'
 
 // The reader's own password and address, as two lines of one card: what
 // stands now, and the one thing that can be done about it. Doing it is a
@@ -149,12 +151,26 @@ function PasswordSetting({
   const [fresh, setFresh] = useState('')
   const [again, setAgain] = useState('')
   const [mismatch, setMismatch] = useState(false)
+  // said in red once a press found something wrong, for as long as it is
+  const [refused, setRefused] = useState(false)
+  const rule = useQuery(query.auth.listLoginMethods.queryOptions()).data?.passwordRule ?? null
+  const checks = usePasswordChecks({
+    password: fresh,
+    min: rule?.minLength ?? 0,
+    max: rule?.maxLength ?? Number.POSITIVE_INFINITY,
+    scope: ['self'],
+    assess: (typed) =>
+      run(api.self.createSelfPasswordAssessment({ payload: { password: typed } })).then(
+        (answer) => answer.checks,
+      ),
+  })
   const close = () => {
     setOpen(false)
     setCurrent('')
     setFresh('')
     setAgain('')
     setMismatch(false)
+    setRefused(false)
   }
   const save = useMutation({
     mutationFn: () =>
@@ -171,7 +187,12 @@ function PasswordSetting({
       toast.success(format(m.passwordChanged))
       await queryClient.invalidateQueries({ queryKey: query.self.key() })
     },
+    onError: (error: unknown) => {
+      if ((error as { _tag?: unknown })._tag === 'AUTH_BINDING_CREDENTIAL_INVALID') setRefused(true)
+    },
   })
+  const refusedByList =
+    save.isError && (save.error as { _tag?: unknown })._tag === 'AUTH_BINDING_CREDENTIAL_INVALID'
   const settable = standing === 'set' || (standing === 'unset' && emailVerified)
   const said =
     standing === 'unavailable'
@@ -221,6 +242,10 @@ function PasswordSetting({
           {...stylex.props(styles.form)}
           onSubmit={(event: FormEvent) => {
             event.preventDefault()
+            if (!checks.passable) {
+              setRefused(true)
+              return
+            }
             if (fresh !== again) {
               setMismatch(true)
               return
@@ -255,6 +280,14 @@ function PasswordSetting({
               />
             )}
           </Field>
+          {rule !== null && (
+            <PasswordChecklist
+              checks={checks}
+              password={fresh}
+              min={rule.minLength}
+              refused={refused}
+            />
+          )}
           <Field label={format(m.resetConfirmPassword)}>
             {(id) => (
               <Input
@@ -271,7 +304,9 @@ function PasswordSetting({
               {format(m.passwordMismatch)}
             </p>
           )}
-          {save.isError && <p {...stylex.props(styles.refusal)}>{formatError(save.error)}</p>}
+          {save.isError && !refusedByList && (
+            <p {...stylex.props(styles.refusal)}>{formatError(save.error)}</p>
+          )}
         </form>
       </FormDialog>
     </Setting>

@@ -123,7 +123,21 @@ default-src 'self'; script-src 'self' 'sha256-pKAg+of2SxxrkLJX27pRnCgcyN5Ud1dmuO
 
 - Argon2id,参数显式固定:memoryCost 64 MiB、timeCost 3、parallelism 4
   (argon2 包默认值,显式写死防止上游默认漂移);
-- 本机耗时实测见下;最小长度 12(创建/重置路径,登录输入不做策略校验以免泄露策略);
+- 本机耗时实测见下;哈希与校验前一律 NFKC 归一化(全角字符、组合字符在不同输入法下编码不同,归一化后才是同一个密码);
+- **密码策略(2026-09-24 定,取代「最小长度 12」)**,依据 NIST SP 800-63B 第 4 版,不采用「8 位 + 四类字符选三」:
+  - 长度 15–128,按 NFKC 后的字符数计(不是 UTF-16 单元)。15 是 NIST 对「密码是唯一因素」的下限,Qualy 没有 MFA;不按角色分档。
+  - **不设字符种类组合规则**:组合规则只产出 `Password1!` 这类可预测形态,NIST 明确禁止。
+  - **不含本人与平台的词**:邮箱 @ 前部分(整体、按 `._+-` 与数字切开的片段)、姓名(中文名转拼音全拼、名、姓 + 名首字母、首字母)、学号、租户名(同样转拼音)、`qualy`;
+    长度 ≥ 4 的词出现在密码里(不区分大小写)即不通过。表里没有手机号与生日——用户表不存这两项。
+  - **不易被猜到**:zxcvbn-ts(`@zxcvbn-ts/core` + `language-common`)score ≥ 3,上面的词作 `userInputs` 一起交给它;
+    另追加一份国内常见密码与拼音姓名小词表(`auth-local/src/strength-words.ts`,取自公开的国内高频密码统计,不是泄露库)。
+    score 3 的前提是慢哈希(argon2id)与登录限流都在;实测 `Password2024!!!` 也是 3,这是有意接受的边界。
+  - 不强制定期更换;允许粘贴与显示密码。
+  - 三项判定只有一份(`auth-local/src/strength.ts`),经登录驱动契约的 `binding.prepare` / `binding.assess` 暴露;核心按用户查
+    `secretSubjectOf` 交给驱动,设置时的拒绝(`AUTH_BINDING_CREDENTIAL_INVALID` 带 `checks`)与输入时的 checklist 用的是同一份事实。
+    输入时的评估接口:`POST /auth/password-resets/assessments`(凭重置 token)、`POST /iam/self/password-assessments`、
+    `POST /iam/users/{userId}/auth-bindings/{providerId}/assessments`(与设置密码同一套管理权限),停止输入约 350ms 后调用;
+  - 登录输入不做策略校验(服务端),前端登录表单只拦明显不合长度的输入。
 - 登录失败统一 INVALID_CREDENTIALS;未知用户走固定 dummy hash 校验拉平时序;
 - 密码、Cookie、raw token 禁止进入日志/错误详情/STATUS/迁移。
 
@@ -360,6 +374,8 @@ smtp 后端对着 Mailpit 跑同一套,CI 设 `QUALY_REQUIRE_MAILPIT_TESTS=1`,�
   管理员改邮箱、兑换改邮箱时作废该人全部未用链接。
 - **发信不与建链接同事务**:锁内建链接 → 提交 → 发信;发不出去就把该链接标为已用并记日志与指标,绝不 `BEGIN / INSERT / SMTP / COMMIT`。
   链接用 fragment(`/reset-password#token=…`、`/confirm-email#purpose=…&token=…`),token 不进任何服务端访问日志。
+  重置页打开即调 `POST /auth/password-resets/inspections`(token 在请求体,只读不消费),失效的链接当场说明,不等填完两遍新密码;
+  读出 token 后用 `history.replaceState` 把 fragment 从地址栏去掉。兑换时照旧在锁内原子消费——打开时有效不代表提交时仍有效。
   邮件文案在服务端 `mail-copy.ts`(中英两份,按请求的 Accept-Language 首选语言选),由 `@qualy/plugin-mail` 发出。
 - **找回密码** `POST /auth/password-resets`(匿名):先按来源地址(10 / 15 分钟)与邮箱(3 / 小时)计数,**无论邮箱存在与否同一句回答、同样的耗时**
   ——只对「邮箱已验证、在用、密码入口接纳」的人发信,且信在回答之后另起 fiber 发出。兑换 `POST /auth/password-resets/redemptions`

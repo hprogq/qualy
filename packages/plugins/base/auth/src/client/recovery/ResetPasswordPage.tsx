@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useLocation } from 'react-router'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
@@ -7,7 +7,6 @@ import {
   ArrowLeftIcon,
   CheckIcon,
   CircleAlertIcon,
-  CircleIcon,
   EyeIcon,
   MailCheckIcon,
 } from 'lucide-react'
@@ -32,6 +31,8 @@ import { CaptchaChallenge, useCaptchaGate } from '@qualy/plugin-captcha/client'
 import { authMessages as m } from '../i18n.ts'
 import { authApi } from '../api.ts'
 import { AuthShell } from '../sign-in/AuthShell.tsx'
+import { PasswordChecklist } from '../password/PasswordChecklist.tsx'
+import { usePasswordChecks } from '../password/checks.ts'
 import { clock, PAUSE_MS, useHold } from '../sign-in/hold.ts'
 
 // A forgotten password, in two visits. Without a token the page asks for the
@@ -40,6 +41,8 @@ import { clock, PAUSE_MS, useHold } from '../sign-in/hold.ts'
 // set - the fragment is not sent anywhere, so the token stays in the browser.
 
 const EASE = [0.2, 0.8, 0.2, 1] as const
+
+const tagOf = (error: unknown) => (error as { _tag?: unknown } | null | undefined)?._tag
 
 const styles = stylex.create({
   panel: { display: 'flex', flexDirection: 'column' },
@@ -111,19 +114,6 @@ const styles = stylex.create({
     cursor: 'pointer',
   },
   eyeOn: { color: tokens.foreground },
-  rule: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 7,
-    fontSize: 13,
-    color: tokens.mutedForeground,
-    transitionProperty: 'color',
-    transitionDuration: '200ms',
-  },
-  ruleMet: { color: tokens.foreground },
-  ruleBad: { color: tokens.danger },
-  ruleMark: { position: 'relative', display: 'inline-flex', width: 14, height: 14 },
-  ruleTick: { position: 'absolute', inset: 0 },
   said: { fontSize: 13 },
   saidBad: { color: tokens.danger },
   refusal: { margin: 0, fontSize: 13, color: tokens.danger },
@@ -258,7 +248,20 @@ function Badge({ tone, children }: { tone?: 'danger'; children: ReactNode }) {
 }
 
 export default function ResetPasswordPage() {
-  const token = new URLSearchParams(useLocation().hash.slice(1)).get('token')
+  const hash = useLocation().hash
+  // read once and kept: the address bar lets go of it below
+  const [token] = useState(() => new URLSearchParams(hash.slice(1)).get('token'))
+  useEffect(() => {
+    // out of the history and out of a screenshot; the router is not told,
+    // since nothing it renders depends on the fragment any more
+    if (token !== null && window.location.hash !== '') {
+      window.history.replaceState(
+        window.history.state,
+        '',
+        window.location.pathname + window.location.search,
+      )
+    }
+  }, [token])
   return <AuthShell>{token === null ? <Ask /> : <SetNew token={token} />}</AuthShell>
 }
 
@@ -460,27 +463,52 @@ function SetNew({ token }: { token: string }) {
   const run = useRunApi()
   const navigate = usePageNavigate()
   const { format, formatError } = useI18n()
-  const still = useReducedMotion() === true
   // what a password here has to be, said while it is typed
   const rule = useQuery(query.auth.listLoginMethods.queryOptions()).data?.passwordRule ?? null
+  // whether the link still works, asked as the page opens rather than after
+  // a new password has been thought of and typed twice
+  const inspection = useQuery({
+    queryKey: ['auth', 'password-reset-inspection', token],
+    queryFn: () => run(api.auth.createPasswordResetInspection({ payload: { token } })),
+    retry: false,
+    staleTime: Infinity,
+  })
   const [password, setPassword] = useState('')
   const [again, setAgain] = useState('')
   const [shown, setShown] = useState(false)
   const [mismatch, setMismatch] = useState(false)
-  // said in red once a press found it short, until it is long enough
-  const [short, setShort] = useState(false)
+  // said in red once a press found something wrong, for as long as it is
+  const [refused, setRefused] = useState(false)
   const sending = useRef(false)
   const { held, hold } = useHold()
+  const min = rule?.minLength ?? 0
+  const checks = usePasswordChecks({
+    password,
+    min,
+    max: rule?.maxLength ?? Number.POSITIVE_INFINITY,
+    scope: ['reset', token],
+    assess: (typed) =>
+      run(api.auth.createPasswordResetAssessment({ payload: { token, password: typed } })).then(
+        (answer) => answer.checks,
+      ),
+  })
   const set = useMutation({
     mutationFn: () =>
       run(api.auth.createPasswordResetRedemption({ payload: { token, password } })),
-    onError: () => hold(PAUSE_MS),
+    onError: (error: unknown) => {
+      if (tagOf(error) === 'AUTH_BINDING_CREDENTIAL_INVALID') setRefused(true)
+      hold(PAUSE_MS)
+    },
     onSettled: () => {
       sending.current = false
     },
   })
-  const expired =
-    set.isError && (set.error as { _tag?: string } | null)?._tag === 'AUTH_CHALLENGE_INVALID'
+  // the link stopped working: found as the page opened, while a password
+  // was judged, or when it was finally used
+  const lapsed = [inspection.error, checks.error, set.error].find(
+    (error) => tagOf(error) === 'AUTH_CHALLENGE_INVALID',
+  )
+  const expired = lapsed !== undefined
 
   if (set.isSuccess) {
     return (
@@ -510,7 +538,7 @@ function SetNew({ token }: { token: string }) {
             <CircleAlertIcon size={22} strokeWidth={1.9} />
           </Badge>
           <h1 {...stylex.props(styles.title)}>{format(m.resetExpiredTitle)}</h1>
-          <p {...stylex.props(styles.hint)}>{formatError(set.error)}</p>
+          <p {...stylex.props(styles.hint)}>{formatError(lapsed)}</p>
           <div {...stylex.props(styles.pair)}>
             <button
               type="button"
@@ -532,8 +560,6 @@ function SetNew({ token }: { token: string }) {
     )
   }
 
-  const min = rule?.minLength ?? 0
-  const long = password.length >= min && password.length > 0
   const matches = again.length > 0 && again === password
   return (
     <Slide id="set">
@@ -545,8 +571,8 @@ function SetNew({ token }: { token: string }) {
           noValidate
           onSubmit={(event: FormEvent) => {
             event.preventDefault()
-            if (!long) {
-              setShort(true)
+            if (!checks.passable) {
+              setRefused(true)
               return
             }
             if (password !== again) {
@@ -586,29 +612,7 @@ function SetNew({ token }: { token: string }) {
               </button>
             </span>
             {rule !== null && (
-              <span
-                data-testid="password-rule"
-                data-met={long}
-                data-refused={short && !long}
-                {...stylex.props(styles.rule, long && styles.ruleMet, short && !long && styles.ruleBad)}
-              >
-                <span aria-hidden {...stylex.props(styles.ruleMark)}>
-                  <CircleIcon size={14} strokeWidth={2} />
-                  <motion.span
-                    {...stylex.props(styles.ruleTick)}
-                    initial={false}
-                    animate={long ? { scale: 1, opacity: 1 } : { scale: 0.4, opacity: 0 }}
-                    transition={
-                      still ? { duration: 0 } : { type: 'spring', stiffness: 520, damping: 16 }
-                    }
-                  >
-                    <CheckIcon size={14} strokeWidth={2.6} />
-                  </motion.span>
-                </span>
-                {long || password.length === 0
-                  ? format(m.resetLength, { min })
-                  : format(m.resetLengthShort, { min, left: min - password.length })}
-              </span>
+              <PasswordChecklist checks={checks} password={password} min={min} refused={refused} />
             )}
           </div>
           <div {...stylex.props(styles.field)}>
@@ -636,7 +640,10 @@ function SetNew({ token }: { token: string }) {
               </span>
             )}
           </div>
-          {set.isError && <p {...stylex.props(styles.refusal)}>{formatError(set.error)}</p>}
+          {/* a refused password is said by the list above */}
+          {set.isError && tagOf(set.error) !== 'AUTH_BINDING_CREDENTIAL_INVALID' && (
+            <p {...stylex.props(styles.refusal)}>{formatError(set.error)}</p>
+          )}
           <button
             type="submit"
             disabled={set.isPending || held}

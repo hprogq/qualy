@@ -32,6 +32,8 @@ import { Input } from '@qualy/ui/input'
 import { toast } from '@qualy/ui/toast'
 import { iamMessages as m } from '../i18n.ts'
 import { authApi } from '../api.ts'
+import { PasswordChecklist } from '../password/PasswordChecklist.tsx'
+import { usePasswordChecks } from '../password/checks.ts'
 import { EntranceAccount } from './person-facts.tsx'
 import { instantWords } from '../when.ts'
 
@@ -271,6 +273,21 @@ function PasswordDialog({
   const binding = entrance.binding?.mode === 'managed' ? entrance.binding : null
   const [secret, setSecret] = useState('')
   const [feedback, setFeedback] = useState<string | null>(null)
+  // said in red once a press found something wrong, for as long as it is
+  const [refused, setRefused] = useState(false)
+  const checks = usePasswordChecks({
+    password: secret,
+    min: binding?.secret.minLength ?? 0,
+    max: binding?.secret.maxLength ?? Number.POSITIVE_INFINITY,
+    scope: ['binding', userId, entrance.providerId],
+    assess: (typed) =>
+      run(
+        api.identity.createUserAuthBindingAssessment({
+          params: { userId, providerId: entrance.providerId },
+          payload: { secret: typed },
+        }),
+      ).then((answer) => answer.checks),
+  })
 
   const save = useMutation({
     mutationFn: () =>
@@ -286,13 +303,15 @@ function PasswordDialog({
       toast.success(format(m.saved))
       onClose()
     },
-    onError: (error: unknown) => setFeedback(formatError(error)),
+    onError: (error: unknown) => {
+      // a refused secret is said by the list under it
+      if ((error as { _tag?: unknown })._tag === 'AUTH_BINDING_CREDENTIAL_INVALID') setRefused(true)
+      else setFeedback(formatError(error))
+    },
   })
 
   if (binding === null) return null
   const replacing = entrance.bound?.hasCredential === true
-  const ready =
-    secret.length >= binding.secret.minLength && secret.length <= binding.secret.maxLength
 
   return (
     <FormDialog
@@ -305,7 +324,7 @@ function PasswordDialog({
           <Button variant="outline" onClick={onClose}>
             {format(m.cancel)}
           </Button>
-          <Button type="submit" form="user-auth-binding" disabled={!ready || save.isPending}>
+          <Button type="submit" form="user-auth-binding" disabled={secret === '' || save.isPending}>
             {format(m.save)}
           </Button>
         </>
@@ -316,17 +335,17 @@ function PasswordDialog({
         {...stylex.props(styles.form)}
         onSubmit={(event) => {
           event.preventDefault()
-          if (ready) save.mutate()
+          if (!checks.passable) {
+            setRefused(true)
+            return
+          }
+          save.mutate()
         }}
       >
         <Feedback message={feedback} />
         <Field
           label={formatText(binding.secret.label)}
-          hint={
-            binding.secret.hint === null
-              ? format(m.identitySecretHint, { count: binding.secret.minLength })
-              : formatText(binding.secret.hint)
-          }
+          {...(binding.secret.hint === null ? {} : { hint: formatText(binding.secret.hint) })}
         >
           {(id) => (
             <Input
@@ -340,6 +359,12 @@ function PasswordDialog({
             />
           )}
         </Field>
+        <PasswordChecklist
+          checks={checks}
+          password={secret}
+          min={binding.secret.minLength}
+          refused={refused}
+        />
       </form>
     </FormDialog>
   )

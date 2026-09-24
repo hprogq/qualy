@@ -148,9 +148,15 @@ describe('the ways in of one person', () => {
     await page.getByRole('button', { name: '设置密码' }).click()
     const save = page.getByRole('dialog').getByRole('button', { name: '保存', exact: true })
     // the label is the door's own word, and a secret shorter than the door
-    // said it takes is not sent at all
+    // said it takes is answered by the list under it, not sent
     await page.getByLabelText('口令').fill('short')
-    await expect.element(save).toBeDisabled()
+    await save.click()
+    const length = page
+      .getByTestId('password-checklist')
+      .element()
+      .querySelector('[data-check="length"]')!
+    await expect.element(length).toHaveAttribute('data-refused', 'true')
+    expect(put).not.toHaveBeenCalled()
     await page.getByLabelText('口令').fill('long-enough')
     await save.click()
     await vi.waitFor(() => expect(put).toHaveBeenCalledTimes(1))

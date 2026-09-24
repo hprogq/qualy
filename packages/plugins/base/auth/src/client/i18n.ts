@@ -49,10 +49,6 @@ const businessNoMissingMessage = defineMessage<{ businessNo: string }>()({
   id: 'auth/person/business-no-missing',
   defaultMessage: 'No {businessNo} yet',
 })
-const identitySecretHintMessage = defineMessage<{ count: number }>()({
-  id: 'auth/person/identity-secret-hint',
-  defaultMessage: 'At least {count} characters',
-})
 const jumpLabelMessage = defineMessage<{ businessNo: string }>()({
   id: 'auth/users/jump',
   defaultMessage: 'Name or {businessNo}',
@@ -426,6 +422,18 @@ const i18n = definePluginMessages({
         'At least {min, plural, other {# characters}}, {left, plural, one {# more to go} other {# more to go}}',
     },
     resetMatch: { id: 'auth/reset/match', defaultMessage: 'Both entries match' },
+    passwordImpersonal: {
+      id: 'auth/password/impersonal',
+      defaultMessage: 'No name, student number, email or product name',
+    },
+    passwordUnguessable: {
+      id: 'auth/password/unguessable',
+      defaultMessage: 'Not a common or patterned password',
+    },
+    passwordAdvice: {
+      id: 'auth/password/advice',
+      defaultMessage: 'Try a few words strung together',
+    },
     resetSetting: { id: 'auth/reset/setting', defaultMessage: 'Setting…' },
     resetDoneTitle: { id: 'auth/reset/done-title', defaultMessage: 'Your new password is set' },
     resetDoneBody: { id: 'auth/reset/done-body', defaultMessage: 'Sign in with your new password.' },
@@ -970,7 +978,6 @@ const i18n = definePluginMessages({
       id: 'auth/person/identity-revoke-body',
       defaultMessage: 'They can no longer sign in this way, and are signed out everywhere.',
     },
-    identitySecretHint: identitySecretHintMessage,
     manageWaysIn: { id: 'auth/person/manage-ways-in', defaultMessage: 'Manage entrances' },
     manageRoles: { id: 'auth/person/manage-roles', defaultMessage: 'Manage roles' },
     rolesLabel: { id: 'auth/users/roles', defaultMessage: 'Roles' },

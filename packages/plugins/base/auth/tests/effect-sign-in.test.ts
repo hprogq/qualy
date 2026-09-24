@@ -174,7 +174,7 @@ describe.runIf(postgresAvailable)('signing in', () => {
           mode: 'component',
         },
       ],
-      passwordRule: { minLength: 12, maxLength: 128 },
+      passwordRule: { minLength: 15, maxLength: 128 },
     })
   })
 

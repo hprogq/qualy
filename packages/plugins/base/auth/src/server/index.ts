@@ -288,6 +288,21 @@ export const sessionApiHandlers = HttpApiBuilder.group(local, 'auth', (handlers)
       }),
     )
     .handle(
+      'createPasswordResetInspection',
+      Effect.fn('auth.createPasswordResetInspection.handler')(function* ({ payload }) {
+        const flows = yield* EmailFlows
+        yield* flows.inspectReset(payload)
+        return { ok: true as const }
+      }),
+    )
+    .handle(
+      'createPasswordResetAssessment',
+      Effect.fn('auth.createPasswordResetAssessment.handler')(function* ({ payload }) {
+        const flows = yield* EmailFlows
+        return { checks: yield* flows.assessReset(payload) }
+      }),
+    )
+    .handle(
       'createPasswordResetRedemption',
       Effect.fn('auth.createPasswordResetRedemption.handler')(function* ({ payload }) {
         const flows = yield* EmailFlows
@@ -381,6 +396,13 @@ export const selfApiHandlers = HttpApiBuilder.group(local, 'self', (handlers) =>
           locale: mailLocaleOf(request.headers['accept-language']),
         })
         return { ok: true as const }
+      }),
+    )
+    .handle(
+      'createSelfPasswordAssessment',
+      Effect.fn('iam.createSelfPasswordAssessment.handler')(function* ({ payload }) {
+        const flows = yield* EmailFlows
+        return { checks: yield* flows.assessPassword(yield* CurrentUser, payload) }
       }),
     )
     .handle(
@@ -982,6 +1004,21 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
                   },
           })),
         }
+      }),
+    )
+    .handle(
+      'createUserAuthBindingAssessment',
+      Effect.fn('iam.createUserAuthBindingAssessment.handler')(function* ({ params, payload }) {
+        const iam = yield* Iam
+        const principal = yield* CurrentUser
+        const checks = yield* iam.users.assessBinding(
+          principal.tenantId,
+          params.userId,
+          params.providerId,
+          { secret: payload.secret },
+          principal,
+        )
+        return { checks }
       }),
     )
     .handle(
