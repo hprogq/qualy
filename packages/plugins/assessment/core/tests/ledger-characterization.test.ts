@@ -18,7 +18,6 @@ const catalogs = {
 
 // The amounts arrive evaluated now; these fixtures name what fixed@1 would
 // have answered, which is the configured amount verbatim.
-const amount = (value: string) => scaledAmount(value)
 
 const group = (
   id: string,

@@ -14,7 +14,7 @@ import {
   postgresAvailable,
   runSql,
 } from '@qualy/plugin-database/testkit'
-import { kyselyOf, type Orm } from '@qualy/plugin-database/server'
+import { type Orm } from '@qualy/plugin-database/server'
 import { Rbac } from '@qualy/rbac-contract/effect'
 import type { Principal } from '@qualy/rbac-contract'
 import { serviceLayer as rbacLayer } from '@qualy/plugin-rbac/server'
@@ -263,7 +263,6 @@ describe.runIf(postgresAvailable).concurrent('identity behaviours nothing else a
         db.url,
         Effect.gen(function* () {
           const f = yield* seed()
-          const iam = yield* Iam
           const below = one<{ id: string }>(
             yield* runSql(sql`
               insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)

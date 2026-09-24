@@ -200,6 +200,7 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
     seed()
     setFeedback(null)
     setSearch('')
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- seeded per record, not per render's seed
   }, [role])
 
   const catalog = useQuery(

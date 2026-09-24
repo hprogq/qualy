@@ -8,7 +8,6 @@ import { Effect, Exit, Layer, Schema } from 'effect'
 import { sql } from 'kysely'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
-import type { Orm } from '@qualy/plugin-database/server'
 import { assembledLayer } from '@qualy/api-kit/assembled'
 import { sandboxLayer } from '@qualy/plugin-sandbox/service'
 import { formulaAuthoringLocalLayer } from '@qualy/plugin-assessment-formula/testkit'
@@ -42,7 +41,6 @@ import { registryLayer } from '@qualy/plugin-storage/server/registry'
 import { serviceLayer as storageOnlyLayer } from '@qualy/plugin-storage/server/service'
 import { backendLayer, memoryBackend } from '@qualy/plugin-storage/testkit'
 import type { Principal } from '@qualy/rbac-contract'
-import type { Rbac } from '@qualy/rbac-contract/effect'
 import { FormulaLibrary, layer as formulaLayer } from '../src/server/index.ts'
 import { FormulaRuntimeStore, runtimeStoreLayer } from '../src/server/runtime-store.ts'
 import { bindingCatalogLayer } from '../src/server/binding-catalog.ts'
@@ -367,11 +365,6 @@ describe.runIf(postgresAvailable)('formula scoring, end to end', () => {
             const assessment = yield* Assessment
             const catalog = yield* ScoringRuntimeCatalog
             const as: Principal = f.principal(f.admin)
-            const root = one<{ id: string }>(
-              yield* runSql(
-                sql`select id from org_nodes where tenant_id = ${f.t} and parent_id is null`,
-              ),
-            ).id
             const studentType = one<{ id: string }>(
               yield* runSql(sql`select id from user_types where tenant_id = ${f.t}`),
             ).id
@@ -853,11 +846,6 @@ describe.runIf(postgresAvailable)('formula scoring, end to end', () => {
             const library = yield* FormulaLibrary
             const catalog = yield* ScoringRuntimeCatalog
             const as: Principal = f.principal(f.admin)
-            const root = one<{ id: string }>(
-              yield* runSql(
-                sql`select id from org_nodes where tenant_id = ${f.t} and parent_id is null`,
-              ),
-            ).id
             const created = yield* library.createFunction(
               f.t,
               { name: '大公式', description: '' },
@@ -1142,12 +1130,6 @@ export default defineFormula({
             const library = yield* FormulaLibrary
             const catalog = yield* ScoringRuntimeCatalog
             const store = yield* FormulaRuntimeStore
-            const as: Principal = f.principal(f.admin)
-            const root = one<{ id: string }>(
-              yield* runSql(
-                sql`select id from org_nodes where tenant_id = ${f.t} and parent_id is null`,
-              ),
-            ).id
             // published while the sandbox was alive? no - publication needs
             // the sandbox too, so this suite plants the version by SQL from
             // an earlier publication's bytes

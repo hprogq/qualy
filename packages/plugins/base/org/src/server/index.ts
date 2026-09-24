@@ -115,9 +115,6 @@ import {
 // and a concurrent move can re-anchor the target in between, so the in-lock
 // check is a second decision rather than a repeat of the first.
 
-const rows = <Row extends Record<string, unknown>>(result: unknown) =>
-  (result as { rows: readonly Row[] }).rows
-
 /** the columns NODE_COLUMNS selects, as they come out of the database */
 interface NodeRow {
   id: string
@@ -1278,8 +1275,8 @@ export const orgApiHandlers = HttpApiBuilder.group(local, 'org', (handlers) =>
                 ? null
                 : {
                     pageId: one.target.pageId,
-                    params: { ...(one.target.params ?? {}) },
-                    search: { ...(one.target.search ?? {}) },
+                    params: { ...one.target.params },
+                    search: { ...one.target.search },
                   },
           })),
         }

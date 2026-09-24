@@ -386,13 +386,6 @@ const placementDifferenceView = Schema.Struct({
  * of the lineage being frozen, how many people hold any role anchored
  * exactly there. Zero is the number an administrator wants shouted.
  */
-const chainPreview = Schema.Array(
-  Schema.Struct({
-    nodeId: Schema.String,
-    nodeTypeId: Schema.String,
-    holders: Schema.Number,
-  }),
-)
 
 /** one accepted assignment, as the access page reads it */
 const accessSourceView = Schema.Struct({

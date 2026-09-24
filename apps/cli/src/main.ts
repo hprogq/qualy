@@ -20,7 +20,7 @@ import {
   runtimeLayers,
 } from '@qualy/assembly'
 import { PLUGIN_USAGE, runPluginCommand } from './plugin.ts'
-import { openFileSet, relativeToCwd, writeResolution } from './resolution.ts'
+import { openFileSet, writeResolution } from './resolution.ts'
 
 // The assembly commands.
 //

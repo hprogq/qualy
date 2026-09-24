@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { CheckIcon, CircleAlertIcon } from 'lucide-react'
+import { CircleAlertIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
 import { useQuery } from '@tanstack/react-query'
 import { useApi, useRunApi } from '@qualy/web-runtime'
@@ -782,10 +782,10 @@ export function ApproveDialog({
         : form.fields.map((field) => ({ id: field.id, schema: field.schema as AtomicSchema })),
     [form],
   )
-  const seed = (form?.seed ?? {}) as Record<string, unknown>
+  const seed = useMemo(() => (form?.seed ?? {}) as Record<string, unknown>, [form])
   // `?? {}` guards fixtures and callers built before the two fields existed
   const filed = (form?.filed ?? {}) as Record<string, unknown>
-  const sources = (form?.sources ?? {}) as Record<string, string>
+  const sources = useMemo(() => (form?.sources ?? {}) as Record<string, string>, [form])
   const filedFields = useMemo(() => fieldsOf(review.form.formConfig), [review.form.formConfig])
   // the other way round, for the filing's side: which determinations read each filed field
   const linked = useMemo(() => {
@@ -1006,7 +1006,6 @@ export function ApproveDialog({
           id={id}
           value={comment}
           rows={3}
-          // eslint-disable-next-line jsx-a11y/no-autofocus
           autoFocus={fine && form === null}
           onChange={(event) => setComment(event.target.value)}
         />
@@ -1654,7 +1653,6 @@ export function RejectDialog({
               // With reasons to pick, the cursor waits: focus in the box
               // would swallow the digits that pick them. Without any, the
               // words are the first question and the cursor starts there.
-              // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus={fine && reasons.length === 0}
               onChange={(event) => setComment(event.target.value)}
             />
@@ -1957,7 +1955,6 @@ export function EscalateDialog({
               value={comment}
               rows={3}
               // the same handover as the send-back: digits first, words next
-              // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus={fine && reasons.length === 0}
               onChange={(event) => setComment(event.target.value)}
             />

@@ -4,8 +4,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { ArrowUpRightIcon, InfoIcon, PlusIcon } from 'lucide-react'
 import {
   PageLink,
-  useApi,
-  useRunApi,
   useApiQuery,
   usePageHref,
   usePageNavigate,
@@ -178,8 +176,6 @@ const emsOf = (text: string) =>
   )
 
 export default function UsersPage() {
-  const api = useApi(authApi)
-  const runApi = useRunApi()
   const query = useApiQuery(authApi)
   const { format, formatError } = useI18n()
   const businessNo = useTerm(authTerms.businessNumber)

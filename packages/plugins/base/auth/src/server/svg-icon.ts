@@ -55,7 +55,7 @@ const ELEMENTS: ReadonlySet<string> = new Set([
 const ENTITY = /&(?!(?:amp|lt|gt|quot|apos);)/
 
 /** the one document type a drawing may name: SVG's own, with nothing defined inside it */
-const PUBLIC_DOCTYPE = /^<!DOCTYPE\s+svg\s+PUBLIC\s+"[^"\[\]<>]*"\s+"[^"\[\]<>]*"\s*>$/i
+const PUBLIC_DOCTYPE = /^<!DOCTYPE\s+svg\s+PUBLIC\s+"[^"[\]<>]*"\s+"[^"[\]<>]*"\s*>$/i
 
 /** words that only ever reach outside the drawing, anywhere in it */
 const REACHING = [

@@ -30,7 +30,6 @@ import {
   refinementOf,
   type Contract,
   type Draft,
-  type FieldDraft,
   type RecognitionDraft,
   type Standing,
 } from './model.ts'

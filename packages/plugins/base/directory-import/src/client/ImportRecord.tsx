@@ -7,7 +7,6 @@ import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection, ConfirmDialog, Field, FormDialog } from '@qualy/ui/admin'
-import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import {
   Card,

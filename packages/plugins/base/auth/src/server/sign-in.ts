@@ -50,23 +50,6 @@ import { iconOf } from './login-icons.ts'
 // downstream of the plugins that depend on it.
 
 /**
- * The anonymous tenant a sign-in screen belongs to.
- *
- * A lapsed tenant is not a tenant one may sign in to, so the liveness test
- * travels with the lookup rather than being a second thing to remember.
- */
-const activeTenantBySlug = (slug: string) =>
-  db.query((k) =>
-    k
-      .selectFrom('Tenant')
-      .select('id')
-      .where('slug', '=', slug)
-      .where('enabled', '=', true)
-      .where((eb) => eb.or([eb('expiresAt', 'is', null), eb('expiresAt', '>', sql<Date>`now()`)]))
-      .executeTakeFirst(),
-  )
-
-/**
  * The enabled providers of one tenant, in the order a screen shows them:
  * the doors listed in full first, each group in its own order.
  */

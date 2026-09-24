@@ -1,13 +1,13 @@
 import { lazy, Suspense, type ReactNode } from 'react'
 import { Outlet, Route, Routes } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
-import { page, userEvent } from 'vitest/browser'
+import { page } from 'vitest/browser'
 import { Effect } from 'effect'
 import { layoutComponents, slotComponents } from 'virtual:qualy/plugins'
 import { usePageTitle } from '@qualy/web-runtime'
 import { Screen } from '@qualy/ui/screen'
 import { PageLoading } from '@qualy/ui/spinner'
-import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
+import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 
 // The two shells, against a manifest rather than against props: what the top
 // bar shows, which application counts as open, and what the workspace rail

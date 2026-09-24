@@ -1,10 +1,9 @@
-import { execFileSync, spawnSync } from 'node:child_process'
-import { createHash } from 'node:crypto'
+import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { repoRoot } from '../lib/manifest.ts'
-import { checkoutOf, type Checkout } from './context.ts'
+import { checkoutOf } from './context.ts'
 
 // The release build: the three images of one release, one tag, one tree, one
 // platform.
@@ -62,9 +61,6 @@ const positional = args.filter(
   (argument, at) => !argument.startsWith('--') && args[at - 1] !== '--platform',
 )
 const named = positional[0]
-
-const git = (gitArgs: readonly string[], cwd = repoRoot) =>
-  execFileSync('git', [...gitArgs], { cwd, encoding: 'buffer', maxBuffer: 512 * 1024 * 1024 })
 
 const IMAGES: readonly (readonly [name: string, dockerfile: string])[] = [
   ['qualy-server', 'Dockerfile'],

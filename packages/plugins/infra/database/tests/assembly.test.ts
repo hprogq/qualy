@@ -11,7 +11,7 @@ import {
 import { createTestContext, postgresAvailable } from '../src/testkit.ts'
 import type { CapabilityWorkContext } from '@qualy/assembly-contract'
 import provider, { type DatabaseContribution, type DatabaseState } from '../src/assembly/index.ts'
-import { collectBaseline, compiledBaseline, pendingBaseline } from '../src/assembly/baseline.ts'
+import { collectBaseline, pendingBaseline } from '../src/assembly/baseline.ts'
 import { declaredEntityModules } from '../src/assembly/entities.ts'
 import { execFileSync } from 'node:child_process'
 import {

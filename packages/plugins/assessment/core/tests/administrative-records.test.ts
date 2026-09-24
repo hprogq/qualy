@@ -308,7 +308,7 @@ describe.runIf(postgresAvailable)('the administrative record book', () => {
       ),
     )
     // the filing side carries what was determined, at the field's own address
-    expect((read.currentRevision?.payload as Record<string, unknown>)['claimed-level-slot']).toBe(
+    expect((read.currentRevision!.payload as Record<string, unknown>)['claimed-level-slot']).toBe(
       'provincial',
     )
   })

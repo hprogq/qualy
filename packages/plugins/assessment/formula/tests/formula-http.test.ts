@@ -491,7 +491,7 @@ export default defineFormula({
     expect(byId.get('try')).toEqual({ clientId: 'try', actual: '3' })
     expect(byId.get('fail')).toMatchObject({ passed: false, actual: '2', expected: '5' })
     expect(byId.get('bad')?.passed).toBe(false)
-    expect((byId.get('bad')?.problems as readonly { at: string }[])[0]).toMatchObject({
+    expect((byId.get('bad')!.problems as readonly { at: string }[])[0]).toMatchObject({
       at: 'input',
       parameter: 'value',
     })
@@ -516,7 +516,6 @@ export default defineFormula({
   }, 120_000)
 
   it('pages the function list with a keyset cursor: no repeats, no gaps', async () => {
-    const owner = await rootNode()
     for (let index = 0; index < 12; index += 1) {
       const created = await call('POST', '/api/assessment/formula-functions', {
         name: `Paged ${String(index).padStart(2, '0')}`,

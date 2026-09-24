@@ -1,7 +1,7 @@
 import { likeContains, pageWindow } from '@qualy/api-kit/schema'
 import { UserProvisioning, UserProvisioningRefused } from '@qualy/auth-contract/provisioning'
 import { Effect } from 'effect'
-import { kyselyOf, query, transaction, withDatabase } from '@qualy/plugin-database/server'
+import { transaction, withDatabase } from '@qualy/plugin-database/server'
 import { translateConstraints } from '@qualy/plugin-database/server/constraints'
 import { db, type Db, lockTenant, userTypeGuard } from './db.ts'
 import { sql } from 'kysely'
@@ -53,9 +53,6 @@ import {
 // write here re-decides that on the locked connection rather than trusting a
 // check made before the lock. A transfer needs it at both ends, because moving
 // someone changes who administers them.
-
-const rows = <Row extends Record<string, unknown>>(result: unknown) =>
-  (result as { rows: readonly Row[] }).rows
 
 /**
  * A living user with the system flag their type carries, which every write

@@ -53,9 +53,6 @@ import { mailLocaleOf } from './mail-copy.ts'
 // Like rbac, this reads org's tables directly and never holds the org
 // service. Keeping it that way is what keeps the service graph acyclic.
 
-const rows = <Row extends Record<string, unknown>>(result: unknown) =>
-  (result as { rows: readonly Row[] }).rows
-
 export class Iam extends Context.Service<
   Iam,
   {

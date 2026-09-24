@@ -1,4 +1,4 @@
-import { Effect, identity, Result } from 'effect'
+import { Effect, identity } from 'effect'
 import {
   FetchHttpClient,
   HttpClient,

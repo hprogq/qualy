@@ -1,7 +1,6 @@
 import { plainText } from '@qualy/i18n-contract'
 import { Effect } from 'effect'
 import { db, type Db, admitsOrgType, admitsUserType, inForce } from './db.ts'
-import { kyselyOf, query } from '@qualy/plugin-database/server'
 import { sql, type Expression } from 'kysely'
 import {
   canonicalTenantAdmin,

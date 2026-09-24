@@ -1,7 +1,6 @@
 import * as stylex from '@stylexjs/stylex'
 import { ChevronRightIcon, LinkIcon } from 'lucide-react'
 import { useI18n, useList } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
 import type { AtomicSchema } from '@qualy/value-schema'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Field } from '@qualy/ui/admin'

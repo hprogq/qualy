@@ -13,7 +13,7 @@ import {
   draftsFromFields,
 } from '@qualy/web-value-form/model'
 import { InputValueForm, ValueFieldsForm } from '@qualy/web-value-form/InputValueForm'
-import { normalizeAtomicSchema, normalizeInputSchema } from '@qualy/value-schema'
+import { normalizeInputSchema } from '@qualy/value-schema'
 import '../src/app.css'
 
 // the four words every generated control needs; the form itself holds none

@@ -1149,7 +1149,6 @@ export function MetaLine({ items }: { items: readonly ReactNode[] }) {
   return (
     <span {...stylex.props(styles.metaLine)}>
       {said.map((item, index) => (
-        // eslint-disable-next-line react/no-array-index-key
         <span key={index} {...stylex.props(styles.metaItem)}>
           {index > 0 && <span aria-hidden {...stylex.props(styles.metaRule)} />}
           <span>{item}</span>

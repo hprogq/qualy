@@ -139,7 +139,7 @@ const formulaItem = (
       },
       bindings: {
         level: { kind: 'recognition', recognitionId: RECOGNITION_ID },
-        ...(over.bindings ?? {}),
+        ...over.bindings,
       },
     },
   },
@@ -412,7 +412,7 @@ describe('choosing how a question is handled', () => {
     await page.getByRole('checkbox', { name: '工作人员统一认定' }).click()
     await page.getByTestId('item-save').click()
     await vi.waitFor(() => expect(saved).toHaveLength(1))
-    expect((saved[0]?.config as { entryChannels: string[] }).entryChannels).toEqual([
+    expect((saved[0]!.config as { entryChannels: string[] }).entryChannels).toEqual([
       'participant',
       'administrative',
     ])
@@ -576,7 +576,7 @@ describe('the submission form', () => {
     await page.getByRole('textbox', { name: '项目名称' }).fill('学生干部任职（改）')
     await page.getByTestId('item-save').click()
     await vi.waitFor(() => expect(saved).toHaveLength(1))
-    const fields = (saved[0]?.config as { formConfig: { fields: { maxFileBytes?: number }[] } })
+    const fields = (saved[0]!.config as { formConfig: { fields: { maxFileBytes?: number }[] } })
       .formConfig.fields
     expect(fields[0]?.maxFileBytes).toBe(512 * 1024)
   })
@@ -588,7 +588,7 @@ describe('the submission form', () => {
     await page.getByRole('textbox', { name: '项目名称' }).fill('竞赛获奖（改）')
     await page.getByTestId('item-save').click()
     await vi.waitFor(() => expect(saved).toHaveLength(1))
-    expect((saved[0]?.config as { scoringConfig: unknown }).scoringConfig).toEqual(
+    expect((saved[0]!.config as { scoringConfig: unknown }).scoringConfig).toEqual(
       formulaItem().currentRevision.scoringConfig,
     )
   })
@@ -1011,7 +1011,7 @@ describe('choosing a published formula', () => {
     await page.getByTestId('item-save').click()
     await vi.waitFor(() => expect(saved).toHaveLength(1))
     expect(
-      (saved[0]?.config as { scoringConfig: { calculator: { config: { versionId: string } } } })
+      (saved[0]!.config as { scoringConfig: { calculator: { config: { versionId: string } } } })
         .scoringConfig.calculator.config.versionId,
     ).toBe(NEWER_VERSION_ID)
   })

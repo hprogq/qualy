@@ -58,7 +58,6 @@ const wordmark = wordmarkLayout(16)
 const LIGHT_BACKGROUND = 'oklch(0.99 0.001 80)'
 const LIGHT_FOREGROUND = 'oklch(0.21 0.006 80)'
 
-const DARK_BACKGROUND = 'oklch(0.17 0.006 80)'
 const DARK_FOREGROUND = 'oklch(0.93 0.004 80)'
 
 const svg = (viewBox: string, body: readonly string[], attributes = ' fill="currentColor"') =>

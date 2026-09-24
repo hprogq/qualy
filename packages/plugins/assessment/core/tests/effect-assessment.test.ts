@@ -3058,7 +3058,7 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
             f.principal,
           ),
         )
-        const timeline = yield* assessment.createTemplate(
+        yield* assessment.createTemplate(
           f.tenant,
           { name: 'whole plan', phases: [phase({ phaseKey: 'archive' })] },
           f.principal,

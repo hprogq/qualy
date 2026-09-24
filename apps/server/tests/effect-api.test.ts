@@ -3,13 +3,7 @@ import { readinessLayer } from '@qualy/api-kit/readiness'
 import { Effect, Exit, Layer, Redacted, Schema, Scope } from 'effect'
 import { NodeHttpServer } from '@effect/platform-node'
 import { HttpRouter } from 'effect/unstable/http'
-import {
-  HttpApiBuilder,
-  HttpApiClient,
-  HttpApiEndpoint,
-  HttpApiGroup,
-} from 'effect/unstable/httpapi'
-import { FetchHttpClient } from 'effect/unstable/http'
+import { HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
 import fs from 'node:fs'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'

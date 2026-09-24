@@ -114,7 +114,7 @@ try {
   const sockDir2 = path.join(probeDir, 'sock2')
   fs.mkdirSync(sockDir2)
   const hostSock = path.join(sockDir2, 'host.sock')
-  const server = net.createServer((c) => c.on('data', (d) => c.write('PONG')))
+  const server = net.createServer((c) => c.on('data', () => c.write('PONG')))
   await new Promise<void>((resolve) => server.listen(hostSock, resolve))
   try {
     // async on purpose: the ping server lives in THIS process, and a

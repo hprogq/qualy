@@ -45,7 +45,6 @@ import { make as makeDiagnostics } from './diagnostics.ts'
 import { ESCALATE, type Authority } from './escalation.ts'
 import { type GrantScope } from './grants.ts'
 import {
-  oneRoleProjected,
   revokeAllGrantsOfUser,
   revokeGrant,
   rolePermissionCodes,
@@ -70,9 +69,6 @@ import {
 // it because the connection travels in the fiber, so the authorization checks
 // that must see the caller's uncommitted state do, by construction rather than
 // by remembering an argument.
-
-const rows = <Row extends Record<string, unknown>>(result: unknown) =>
-  (result as { rows: readonly Row[] }).rows
 
 export const make = Effect.fn('Rbac.make')(function* (declared: readonly ActivePermission[]) {
   const audit = yield* Audit
@@ -271,7 +267,7 @@ export const make = Effect.fn('Rbac.make')(function* (declared: readonly ActiveP
     }
   })
 
-  // eslint-disable-next-line prefer-const -- assigned below, read lazily by
+  // assigned below, read lazily by
   // the role lifecycle, which needs the invariant this shape exposes
   let shapeRef: RbacShape
 

@@ -1,7 +1,7 @@
 import { Effect, Layer } from 'effect'
 import { HttpServerRequest } from 'effect/unstable/http'
 import { bindSessionId } from '@qualy/api-kit/request'
-import { kyselyOf, query, withDatabase } from '@qualy/plugin-database/server'
+import { withDatabase } from '@qualy/plugin-database/server'
 import { db } from './db.ts'
 import { sql } from 'kysely'
 import { AuthConfig } from './auth-config.ts'
@@ -12,7 +12,6 @@ import {
   CurrentViewer,
   SessionExpired,
   Viewer,
-  sessionCookieName,
 } from '@qualy/auth-contract/session'
 import { clearSessionCookie } from './session-cookie.ts'
 

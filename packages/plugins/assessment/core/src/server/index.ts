@@ -39,7 +39,6 @@ import {
   ScoringDefinitionCatalog,
   ScoringRuntimeCatalog,
   type AttachmentRef,
-  type ItemPayloadInvalid,
 } from '../plugin.ts'
 import { makeItemMethods, type ItemMethods, type ItemView } from '../item/service.ts'
 import { currentBatchConfigs, liveBatchPayloads, revisionsByIdOf } from '../item/db.ts'
@@ -128,7 +127,6 @@ import {
 } from '../errors.ts'
 import {
   db,
-  activeElsewhere,
   batchParticipantIds,
   batchesWithDueBoundaries,
   nextDueBoundaryAt,
@@ -170,7 +168,6 @@ import {
   insertPhaseEvent,
   insertTemplate,
   batchVisibleTo,
-  batchWithinReach,
   countBatches,
   activeBatchIdsVisibleTo,
   listBatchesPage,
@@ -192,7 +189,6 @@ import {
   activeParticipantByUser,
   batchItemIds,
   phaseScopes,
-  roleHoldersAt,
   replacePhaseScopes,
   rosterAnchors,
   scopeOptions as scopeOptionRows,
@@ -1877,22 +1873,6 @@ export const make = Effect.fn('Assessment.make')(function* () {
     })
 
   /** the degraded chain check: who could act at each frozen level, today */
-  const chainPreviewOf = (
-    tenantId: string,
-    lineage: readonly { nodeId: string; nodeTypeId: string }[],
-  ) =>
-    Effect.map(
-      roleHoldersAt(
-        tenantId,
-        lineage.map((step) => step.nodeId),
-      ),
-      (holders) =>
-        lineage.map((step): ChainPreviewStep => ({
-          nodeId: step.nodeId,
-          nodeTypeId: step.nodeTypeId,
-          holders: holders.get(step.nodeId) ?? 0,
-        })),
-    )
 
   /** the shared guards of every roster write, inside its transaction */
   /**
@@ -5424,7 +5404,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         // whichever chip is currently pressed
         const statusCounts = yield* assessment.countBatchesByStatus(
           principal.tenantId,
-          { ...(query.q !== undefined ? { q: query.q } : {}) },
+          query.q !== undefined ? { q: query.q } : {},
           principal,
         )
         const page = found.slice(0, limit)

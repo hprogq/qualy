@@ -1,9 +1,7 @@
 import OrgPage from '../src/client/OrgPage.tsx'
 import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
-import { userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
-import { AccessDenied } from '@qualy/rbac-contract/effect'
 import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // loaded through the registry the host actually uses, so a screen that lost

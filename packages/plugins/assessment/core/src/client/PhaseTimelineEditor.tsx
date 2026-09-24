@@ -288,7 +288,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
     query.assessment.listTemplates.queryOptions({ query: { kind: 'phase' } }),
   )
 
-  const rows = phases.data?.phases ?? []
+  const rows = useMemo(() => phases.data?.phases ?? [], [phases.data])
   const serverDrafts = useMemo(() => rows.map(draftOf), [rows])
   const shape = useMemo(() => shapeOf(rows, batch.currentPhaseId), [rows, batch.currentPhaseId])
 

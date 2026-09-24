@@ -9,7 +9,6 @@ import { ConfirmDialog } from '@qualy/ui/admin'
 import { DeleteChecklist } from './DeleteChecklist.tsx'
 import type { NodeTask } from './NodeDialogs.tsx'
 import { Button } from '@qualy/ui/button'
-import { Input } from '@qualy/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import {
   Card,
@@ -169,9 +168,7 @@ export function NodePanel({
     for (const child of shape.childrenOf.get(id) ?? []) collect(child.id)
   }
   collect(node.id)
-  const parentTypesAllowed = new Set(
-    shape.rules.filter((rule) => rule.childTypeId === node.orgTypeId).map((r) => r.parentTypeId),
-  )
+
   // what this unit could be instead: whatever its parent is allowed to hold.
   // A root answers to nobody, so its kind is not up for changing here.
   const parentType = node.parentId ? shape.byId.get(node.parentId)?.orgTypeId : undefined
@@ -179,13 +176,6 @@ export function NodePanel({
     (type) =>
       type.id !== node.orgTypeId &&
       shape.rules.some((rule) => rule.parentTypeId === parentType && rule.childTypeId === type.id),
-  )
-  const moveTargets = shape.nodes.filter(
-    (candidate) =>
-      candidate.manageable &&
-      !descendants.has(candidate.id) &&
-      candidate.id !== node.parentId &&
-      parentTypesAllowed.has(candidate.orgTypeId),
   )
 
   return (

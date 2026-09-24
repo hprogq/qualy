@@ -399,7 +399,7 @@ beforeAll(async () => {
 
   scope = await Effect.runPromise(Scope.make())
   await Effect.runPromise(Layer.buildWithScope(application, scope))
-  const seeded = Exit.match(await Effect.runPromiseExit(Effect.provide(seed(), infra)), {
+  Exit.match(await Effect.runPromiseExit(Effect.provide(seed(), infra)), {
     onFailure: (cause) => {
       throw new Error(inspect(cause, { depth: 8 }))
     },

@@ -13,7 +13,6 @@ import {
   lazy,
   useCallback,
   useEffect,
-  useMemo,
   useState,
   type ComponentType,
   type LazyExoticComponent,
@@ -23,7 +22,6 @@ import {
   appApi,
   RuntimeContext,
   useManifest,
-  useManifestPage,
   useRuntime,
   type ClientProvider,
   type Manifest,
@@ -32,26 +30,14 @@ import {
 import { Effect } from 'effect'
 import type { ClientUnsupportedReason } from '@qualy/release-contract'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
-import type {
-  BrowserSurface,
-  PageParams,
-  PageRef,
-  ParamsOption,
-  UiCollectionToken,
-  UiSlotToken,
-} from '@qualy/ui-contract'
+import type { UiCollectionToken, UiSlotToken } from '@qualy/ui-contract'
 import { Toaster } from '@qualy/ui/toast'
 import { isAuthenticationError, useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { LoadingScreen } from '@qualy/ui/spinner'
 import { afterFlight } from '@qualy/ui/flight'
 import { clientFor, type ClientIdentity, type ClientOf, type TransportOptions } from './api.ts'
-import {
-  emptyComponentRegistry,
-  resolveSurface,
-  type ComponentRegistry,
-  type RegisteredComponent,
-} from './registry.ts'
+import { type ComponentRegistry } from './registry.ts'
 import {
   createQueryUtils,
   retryDelay,
@@ -134,6 +120,7 @@ export function preloadable<T extends ComponentType<any>>(
     loaded === undefined
       ? fetch()
       : // the synchronous thenable React's initializer reads in one step
+        // eslint-disable-next-line unicorn/no-thenable -- a thenable is the point
         ({ then: (resolve: (value: { default: T }) => void) => resolve(loaded!) } as Promise<{
           default: T
         }>),

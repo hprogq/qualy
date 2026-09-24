@@ -330,7 +330,7 @@ export const FlowColumn = memo(function FlowColumn({
   const rerouted = previous?.kind === 'rerouted'
   // an appeal round carries its grounds in its own opening event, and the
   // grounds are the one thing this judge must read first
-  const appealed = review.events.find((event) => event.kind === 'appealed')
+
   const spoken =
     previous === null ? null : reviewEventMessage(previous.kind, previous.actorName !== null)
   const said =

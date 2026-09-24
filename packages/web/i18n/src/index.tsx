@@ -234,6 +234,7 @@ export function I18nProvider({
     }
     // `activated` is not read but ties the memo to the active catalog, so
     // every consumer re-renders after a locale switch
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deliberately one more than is read
   }, [i18n, locale, setLocale, errorMessages, activated])
 
   if (activated === undefined) return <>{fallback}</>

@@ -8,7 +8,6 @@ import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Button } from '@qualy/ui/button'
-import { Skeleton } from '@qualy/ui/skeleton'
 import {
   Dialog,
   DialogBody,

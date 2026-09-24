@@ -802,7 +802,6 @@ function Queue({
             <div {...stylex.props(styles.phoneSearchSeat)}>
               <SearchIcon aria-hidden className={stylex.props(styles.searchIcon).className} />
               <Input
-                // eslint-disable-next-line jsx-a11y/no-autofocus
                 autoFocus
                 name="review-search"
                 aria-label={format(m.reviewSearchPlaceholder)}

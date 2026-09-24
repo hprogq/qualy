@@ -86,13 +86,6 @@ export const uiLayer: Layer.Layer<Ui> = Layer.sync(Ui, () => {
   // anything can handle: the layer refuses to build and the process never
   // starts. This used to be caught while generating a catalog; the catalog is
   // gone, and boot is where it was always going to be caught anyway.
-  const scoped =
-    <T>(add: (declaration: T) => void, remove: (declaration: T) => void) =>
-    (declaration: T) =>
-      Effect.acquireRelease(
-        Effect.sync(() => add(declaration)),
-        () => Effect.sync(() => remove(declaration)),
-      ).pipe(Effect.orDie, Effect.asVoid)
 
   // The token's schema, if it carries one, judges the item as it arrives:
   // a malformed contribution stops the boot at its plugin, naming the
@@ -108,6 +101,7 @@ export const uiLayer: Layer.Layer<Ui> = Layer.sync(Ui, () => {
     } catch (error) {
       throw new Error(
         `collection ${declaration.collection.key} item ${declaration.id} from ${owner} is malformed: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
       )
     }
   }

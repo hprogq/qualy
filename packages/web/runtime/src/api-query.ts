@@ -123,7 +123,6 @@ export const cursorPages = {
 // every client fail the constraint and each endpoint infer as `never` - which
 // surfaces at the call sites as "possibly undefined" rather than as a
 // constraint error, miles from the cause.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type EndpointFn = (...args: any[]) => Effect.Effect<any, any>
 
 type Client = Record<string, Record<string, EndpointFn>>

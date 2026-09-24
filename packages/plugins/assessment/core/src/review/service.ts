@@ -14,7 +14,6 @@ import {
   canonicalRecognition,
   contradicted,
   recognitionFormFields,
-  sameRecognition,
   seedFromEvidence,
   type RecognitionIssue,
   type RecognitionValues,
@@ -63,7 +62,6 @@ import { itemOf, revisionOf } from '../item/db.ts'
 import {
   advanceReviewInstance,
   entryAttachmentHistory,
-  entryOf,
   entryRevisionOf,
   hasOpenRound,
   insertReviewEvent,
@@ -77,7 +75,6 @@ import {
 import type { GateDecision } from '../phase/gate.ts'
 import {
   escalationOpen,
-  enterableFrom,
   isPanelStage,
   readPolicy,
   resolveArrival,
@@ -654,7 +651,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
   const openBatches = (tenantId: string, batchIds: readonly string[]) =>
     Effect.gen(function* () {
       const open: string[] = []
-      for (const batchId of [...new Set(batchIds)]) {
+      for (const batchId of new Set(batchIds)) {
         const gate = yield* deps.reviewGate(tenantId, batchId)
         if (gate.allowed) open.push(batchId)
       }

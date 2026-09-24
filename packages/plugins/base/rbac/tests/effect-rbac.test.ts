@@ -73,9 +73,7 @@ const run = <A, E>(url: string, effect: Effect.Effect<A, E, Rbac | Access | Orm 
 
 /** the lists a policy names, or null when it names everything */
 type EligibilityView = { holderPolicy: { mode: string; userTypeIds?: readonly string[] } }
-type AnchorView = { anchorPolicy: { mode: string; orgTypeIds?: readonly string[] } | null }
 const eligibleOf = (read: EligibilityView) => read.holderPolicy.userTypeIds ?? null
-const anchoredOf = (read: AnchorView) => read.anchorPolicy?.orgTypeIds ?? null
 
 const tagOf = (result: { _tag: string; failure?: unknown }) =>
   result._tag === 'Failure' ? (result.failure as { _tag?: string })._tag : undefined
@@ -1323,11 +1321,6 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
             yield* runSql(sql`
               insert into user_types (tenant_id, code, name, placement_mode)
               values (${f.tenant}, 'guest', 'Guest', 'unrestricted') returning id`),
-          ).id
-          const orgType = one<{ id: string }>(
-            yield* runSql(
-              sql`select id from org_types where tenant_id = ${f.tenant} and name = 'U'`,
-            ),
           ).id
 
           const roleId = yield* access.roles.create(

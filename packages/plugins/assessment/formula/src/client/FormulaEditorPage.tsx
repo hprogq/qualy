@@ -2,7 +2,6 @@ import * as stylex from '@stylexjs/stylex'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import {
-  PageLink,
   useApi,
   useApiQuery,
   useClaimScreenFill,
@@ -56,7 +55,6 @@ import {
   PlusIcon,
   SaveIcon,
   SigmaIcon,
-  TagIcon,
   UploadIcon,
 } from 'lucide-react'
 import type { AtomicSchema } from '@qualy/value-schema'
@@ -924,7 +922,6 @@ export default function FormulaEditorPage() {
   useEffect(() => {
     setRowDrafts({})
     setRowIssues({})
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contract?.contractSha256])
 
   const fieldIssueText = (schema: AtomicSchema | undefined, reason: string): string =>
@@ -1144,19 +1141,6 @@ export default function FormulaEditorPage() {
    * code nor the inputs moved; a stale actual may NOT become an expected */
   const tryStale = (outcome: RunOutcome): boolean =>
     outcome.forSource !== source || outcome.forCase !== JSON.stringify(tryDrafts)
-
-  const saveTryAsCase = (expected: string) => {
-    if (contract === null) return
-    const materialized = materializeInput(contract.inputSchema, tryDrafts)
-    if (materialized.value === null) {
-      setTryIssues(translateIssues(contract.inputSchema, materialized.issues))
-      return
-    }
-    setTests([
-      ...tests,
-      { key: newTestKey(), name: '', inputText: JSON.stringify(materialized.value), expected },
-    ])
-  }
 
   /**
    * An example's input, taken over by the try column.

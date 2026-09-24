@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { useQueryClient } from '@tanstack/react-query'
-import { ArrowLeftIcon, DownloadIcon, PlusIcon, SearchIcon } from 'lucide-react'
+import { DownloadIcon, PlusIcon, SearchIcon } from 'lucide-react'
 import type { MessageDescriptor } from '@qualy/i18n-contract'
 import { useApiQuery, usePageQueryState, usePageQueryUpdate } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'

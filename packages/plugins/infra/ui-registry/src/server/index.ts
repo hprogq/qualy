@@ -4,7 +4,7 @@ import { Api } from '@qualy/api-kit/plugin'
 import { CurrentViewer } from '@qualy/auth-contract/session'
 import { appApiGroup } from '@qualy/app-contract'
 import { UiManifest, layer as manifestLayer } from './manifest.ts'
-import { Ui, uiLayer } from './registry.ts'
+import { Ui } from './registry.ts'
 
 // The registry as a layer: a projection over declarations, plus the one live
 // service it genuinely needs.

@@ -71,6 +71,7 @@ export function runtimeLevels(layers: readonly RuntimeLayer[]): RuntimeLayer[][]
     if (!(error instanceof CycleError)) throw error
     throw new Error(
       `runtime dependency cycle: ${error.cycle.join(' -> ')}. Static layers cannot express a cycle, so one of these has to stop needing the other at construction time`,
+      { cause: error },
     )
   }
 

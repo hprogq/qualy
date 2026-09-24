@@ -448,7 +448,7 @@ export function EntryDetail({
   const [tab, setTab] = useState<'content' | 'trail'>('content')
   const payload = (entry.currentRevision?.payload ?? {}) as Record<string, unknown>
   const revisionNo = entry.currentRevision?.revisionNo
-  const declared = item.itemType === 'declaration'
+
   // the same read the trail tab makes; the answered asks in the content tab
   // come from it, so the two tabs cannot tell different stories
   const history = useQuery({

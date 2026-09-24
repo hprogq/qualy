@@ -457,7 +457,7 @@ describe('a browser test outside the host reaches for neither aggregate nor host
         if (entry.name === 'node_modules') continue
         const at = path.join(dir, entry.name)
         if (entry.isDirectory()) stack.push(at)
-        else if (/\.browser\.test\.tsx$/.test(entry.name) || entry.name === 'screen.tsx') {
+        else if (entry.name.endsWith('.browser.test.tsx') || entry.name === 'screen.tsx') {
           found.push(at)
         }
       }

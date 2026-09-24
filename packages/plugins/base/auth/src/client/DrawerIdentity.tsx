@@ -1,7 +1,6 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { ChevronDownIcon } from 'lucide-react'
-import { PageLink, useApiQuery } from '@qualy/web-runtime'
+import { PageLink } from '@qualy/web-runtime'
 import { isAuthenticationError, useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
@@ -12,7 +11,6 @@ import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { authMessages as m } from './i18n.ts'
-import { authApi } from './api.ts'
 import { useIdentity } from './identity.ts'
 import { initialsOf } from './initials.ts'
 
@@ -160,7 +158,6 @@ const styles = stylex.create({
 })
 
 export default function DrawerIdentity() {
-  const query = useApiQuery(authApi)
   const { format, formatError } = useI18n()
   const businessNo = useTerm(authTerms.businessNumber)
   const [lineageOpen, setLineageOpen] = useState(false)

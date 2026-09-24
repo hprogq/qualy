@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
@@ -112,7 +112,7 @@ export function AddStaffDialog({
     }),
     enabled: open && chosen.length > 0 && orgNodeIds.length > 0,
   })
-  const roles = probes.data?.roles ?? []
+  const roles = useMemo(() => probes.data?.roles ?? [], [probes.data])
   // a role that stopped being on offer stops being the answer
   useEffect(() => {
     if (roleId !== null && !roles.some((role) => role.id === roleId && role.refusal === null)) {

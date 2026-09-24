@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
 import { readDraft, writeDraft } from '../src/client/local-store.ts'
-import { apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The approval collecting an explicit determination.
 //

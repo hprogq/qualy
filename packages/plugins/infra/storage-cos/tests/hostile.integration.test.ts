@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { Effect } from 'effect'
 import { afterAll, describe, expect, it } from 'vitest'
-import { backend, clientFor, cosConfigured, cosSettings, grantFor } from './support/bucket.ts'
+import { backend, clientFor, cosConfigured, grantFor } from './support/bucket.ts'
 
 // What the credential is for, and everything it is not for.
 //

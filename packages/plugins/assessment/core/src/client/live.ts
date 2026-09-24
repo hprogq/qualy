@@ -91,8 +91,8 @@ export function useBatchLive(
     )
     return () => clearTimeout(timer)
     // the alarm follows the diary and the batch; the client handles are
-    // stable for the page's lifetime
-  }, [nextPlannedAt, batchId])
+    // stable for the page's lifetime, so naming them re-arms nothing
+  }, [nextPlannedAt, batchId, queryClient, query.assessment.getTimeline])
 
   return useApiStream(
     streams ? () => api.assessment.watchBatch({ params: { batchId } }) : undefined,

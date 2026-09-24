@@ -368,7 +368,7 @@ describe.runIf(postgresAvailable)('one redirect through somebody else’s server
   it('is taken up once, by the entrance that started it, and never again', async () => {
     const db = await createTestContext('flows-consume')
     try {
-      const f = await seed(db.url)
+      await seed(db.url)
       const answer = ok(
         await run(
           db.url,

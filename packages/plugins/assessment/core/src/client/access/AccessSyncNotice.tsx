@@ -1,6 +1,5 @@
 import { InfoIcon, TriangleAlertIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
-import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useI18n } from '@qualy/web-i18n'
 import { Alert, AlertAction, AlertTitle } from '@qualy/ui/alert'
 import { Button } from '@qualy/ui/button'

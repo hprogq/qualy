@@ -1,6 +1,5 @@
-import { useQuery } from '@tanstack/react-query'
 import { LogOutIcon } from 'lucide-react'
-import { useApi, useApiQuery, useRunApi, useSessionTransition } from '@qualy/web-runtime'
+import { useApi, useRunApi, useSessionTransition } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -39,7 +38,7 @@ const styles = stylex.create({
 export default function DrawerSignOut() {
   const api = useApi(authApi)
   const run = useRunApi()
-  const query = useApiQuery(authApi)
+
   const { format, formatError } = useI18n()
   const endSession = useSessionTransition()
   const me = useIdentity()

@@ -110,6 +110,7 @@ export function collectDevServices(
           `${descriptor.id} declares dev service ${service.id} at ${specifier}, which does not resolve: ${
             error instanceof Error ? error.message : String(error)
           }`,
+          { cause: error },
         )
       }
       specs.push({

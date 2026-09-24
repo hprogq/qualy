@@ -1,6 +1,5 @@
 'use client'
 
-import type * as React from 'react'
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import dayjs from 'dayjs'

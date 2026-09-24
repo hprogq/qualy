@@ -1,5 +1,5 @@
-import { Effect, Schema } from 'effect'
-import { kyselyOf, query, transaction, withDatabase } from '@qualy/plugin-database/server'
+import { Effect } from 'effect'
+import { transaction, withDatabase } from '@qualy/plugin-database/server'
 import { sql } from 'kysely'
 import {
   db,
@@ -76,23 +76,9 @@ export {
 // point of the gate is that there is never a role which is enabled and can do
 // nothing.
 
-const rows = <Row extends Record<string, unknown>>(result: unknown) =>
-  (result as { rows: readonly Row[] }).rows
-
 const roleConstraints: Record<string, () => RoleConflict> = {
   uq_roles_tenant_code: () => new RoleConflict(),
   uq_roles_tenant_name: () => new RoleConflict(),
-}
-
-interface RoleRow extends Record<string, unknown> {
-  id: string
-  code: string
-  kind: 'tenant' | 'org'
-  status: 'draft' | 'active' | 'disabled'
-  permission_mode: 'explicit' | 'all-active'
-  system_key: string | null
-  assignable: boolean
-  version: number
 }
 
 const insertRole = (input: {
@@ -363,18 +349,6 @@ const countOrgTypes = (tenantId: string, ids: readonly string[]) =>
     .query((k) =>
       k
         .selectFrom('OrgType')
-        .select(sql<number>`count(*)::int`.as('count'))
-        .where('tenantId', '=', tenantId)
-        .where('id', 'in', ids)
-        .executeTakeFirst(),
-    )
-    .pipe(Effect.map((row) => row?.count ?? 0))
-
-const countRoles = (tenantId: string, ids: readonly string[]) =>
-  db
-    .query((k) =>
-      k
-        .selectFrom('Role')
         .select(sql<number>`count(*)::int`.as('count'))
         .where('tenantId', '=', tenantId)
         .where('id', 'in', ids)

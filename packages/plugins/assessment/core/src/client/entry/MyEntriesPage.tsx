@@ -7,7 +7,6 @@ import {
   useApiQuery,
   usePageQueryState,
   usePageQueryUpdate,
-  usePageRouteParams,
   useRunApi,
 } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
@@ -30,7 +29,6 @@ import { assessmentApi } from '../api.ts'
 import { useBatchLive } from '../live.ts'
 import { entryRefusalMessage } from './refusals.ts'
 import { assessmentMessages as m } from '../i18n.ts'
-import { useRestOfTheScroller } from '../rest-of-the-scroller.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { AppealDialog } from './AppealDialog.tsx'
 import { SupplementAnswerDialog } from './SupplementAnswerDialog.tsx'
@@ -1981,22 +1979,6 @@ function PaneScroller({ children }: { children: ReactNode }) {
   ) : (
     <>{children}</>
   )
-}
-
-/** the groups above a row, outermost first, with the ids that open them */
-const crumbsOf = (
-  rows: readonly StructureRow[],
-  row: StructureRow,
-): readonly { id: string; name: string }[] => {
-  const out: { id: string; name: string }[] = []
-  let at = row.parentId
-  while (at !== null) {
-    const group = rows.find((one) => one.id === at)
-    if (group === undefined) break
-    out.unshift({ id: group.id, name: group.name })
-    at = group.parentId
-  }
-  return out
 }
 
 /**

@@ -317,7 +317,7 @@ describe('the overview desk', () => {
 
 describe('filing a claim', () => {
   it('creates a draft through the composed form, then submits it', async () => {
-    const created = vi.fn((request: { payload: Record<string, unknown> }) =>
+    const created = vi.fn((_request: { payload: Record<string, unknown> }) =>
       Effect.succeed({ entry: entry() }),
     )
     const submitted = vi.fn(() =>

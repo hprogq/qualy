@@ -77,24 +77,9 @@ export {
 // role's every permission says nothing about being the one who appoints it,
 // and appointing an office does not require personally holding its duties.
 
-const rows = <Row extends Record<string, unknown>>(result: unknown) =>
-  (result as { rows: readonly Row[] }).rows
-
-type ErrorOf<T> = T extends Effect.Effect<unknown, infer E, unknown> ? E : never
-
 const grantConstraints: Record<string, () => GrantExists> = {
   uq_role_grants_anchored: () => new GrantExists(),
   uq_role_grants_tenant_wide: () => new GrantExists(),
-}
-
-interface RoleRow extends Record<string, unknown> {
-  id: string
-  code: string
-  kind: 'tenant' | 'org'
-  system_key: string | null
-  permission_mode: string
-  status: string
-  assignable: boolean
 }
 
 export interface GrantScope {

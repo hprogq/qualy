@@ -46,7 +46,7 @@ import {
   recognitionFormFields,
   type RecognitionValues,
 } from '../scoring/recognition.ts'
-import { assignmentPlan, kindOf, type NormalizedAtomicSchema } from '@qualy/value-schema'
+import { kindOf, type NormalizedAtomicSchema } from '@qualy/value-schema'
 import { normalizeScoringAuthoring } from '../scoring/authoring.ts'
 import { policyModeOf } from '../review/chain.ts'
 import type { EntryChannel } from './channels.ts'

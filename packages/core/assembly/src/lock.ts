@@ -150,7 +150,7 @@ export function readLock(file: string): AssemblyLock | undefined {
   try {
     parsed = JSON.parse(fs.readFileSync(file, 'utf8'))
   } catch (error) {
-    throw new Error(`${file} is not valid json: ${(error as Error).message}`)
+    throw new Error(`${file} is not valid json: ${(error as Error).message}`, { cause: error })
   }
   const lock = parsed as AssemblyLock
   if (lock?.lockfileVersion !== LOCKFILE_VERSION) {

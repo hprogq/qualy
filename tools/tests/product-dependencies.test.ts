@@ -27,7 +27,7 @@ const rewriteDependencies = (
   const manifest = JSON.parse(fs.readFileSync(file, 'utf8')) as {
     dependencies?: Record<string, string>
   }
-  const next = edit({ ...(manifest.dependencies ?? {}) })
+  const next = edit({ ...manifest.dependencies })
   fs.writeFileSync(file, `${JSON.stringify({ ...manifest, ...next }, null, 2)}\n`)
 }
 

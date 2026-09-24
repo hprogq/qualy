@@ -271,7 +271,7 @@ export function VersionPicker({
   const fine = useFinePointer()
   const history = useEntryHistory(entryId, open)
   const data = history.data as History | undefined
-  const revisions = data?.revisions ?? []
+  const revisions = useMemo(() => data?.revisions ?? [], [data])
   const [chosen, setChosen] = useState<string | null>(null)
   // reopened against a different comparison than last time: the list starts
   // where the screen behind it actually is

@@ -226,7 +226,6 @@ export function SupplementDialog({
           <Textarea
             id={id}
             rows={3}
-            // eslint-disable-next-line jsx-a11y/no-autofocus
             autoFocus={fine}
             value={instructions}
             onChange={(event) => setInstructions(event.target.value)}

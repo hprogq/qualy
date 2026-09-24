@@ -147,9 +147,6 @@ export function VersionSharingDialog({
     onError: (error: unknown) => setFailure(formatError(error)),
   })
 
-  const toggle = (id: string) =>
-    setChosen((held) => (held.includes(id) ? held.filter((one) => one !== id) : [...held, id]))
-
   return (
     <FormDialog
       open={open && version !== null}

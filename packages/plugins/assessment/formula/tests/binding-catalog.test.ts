@@ -12,7 +12,7 @@ import {
   type FormulaNotBindable,
 } from '../src/server/binding-catalog.ts'
 import { FormulaRuntimeStore, runtimeStoreLayer } from '../src/server/runtime-store.ts'
-import { one, seedFormulaFixture, servicesFor } from './support/stack.ts'
+import { seedFormulaFixture, servicesFor } from './support/stack.ts'
 import { addVersion, ARTIFACT, publishedVersion, sha256Hex } from './support/versions.ts'
 
 // What a question may be scored by, as a read model of FACTS - no principal

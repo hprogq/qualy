@@ -1,4 +1,4 @@
-import { Config, Context, Effect, Layer, Option, Redacted } from 'effect'
+import { Config, Context, Effect, Layer } from 'effect'
 import { manifestPath } from './manifest.ts'
 
 // Everything the assembly needs from its environment, in one place.

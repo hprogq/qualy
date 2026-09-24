@@ -22,9 +22,6 @@ export { AccessTargetRequired }
 // queries.ts. An explanation that disagrees with the answer is worse than no
 // explanation, because it sends somebody looking in the wrong place.
 
-const rows = <Row extends Record<string, unknown>>(result: unknown) =>
-  (result as { rows: readonly Row[] }).rows
-
 export interface PermissionSource {
   readonly roleId: string
   readonly roleCode: string

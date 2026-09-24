@@ -1,4 +1,4 @@
-import { Config, Effect, Layer } from 'effect'
+import { Config, Effect } from 'effect'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { Api } from '@qualy/api-kit/plugin'
 import { Plugin } from '@qualy/plugin-kit'

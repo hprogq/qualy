@@ -470,12 +470,7 @@ describe.runIf(postgresAvailable)('item configuration', () => {
           )
           const second = yield* planOf(kept.currentRevision!.id)
           // another calculator: no borrowed identity
-          const swapped = yield* assessment.updateItem(
-            f.tenant,
-            created.id,
-            { config: fixedV2 },
-            f.principal,
-          )
+          yield* assessment.updateItem(f.tenant, created.id, { config: fixedV2 }, f.principal)
           // and back: the previous plan is fixed's, so nothing continues
           const returned = yield* assessment.updateItem(
             f.tenant,

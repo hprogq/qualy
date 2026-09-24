@@ -5,7 +5,6 @@ import { describe, expect } from 'vitest'
 import { Placement } from '@qualy/auth-contract'
 import { AccessDenied, Rbac } from '../src/effect.ts'
 import { compileCatalog } from '../src/plugin.ts'
-import type { ActivePermission } from '../src/index.ts'
 
 // The point of the port packages, stated as a test.
 //

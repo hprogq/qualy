@@ -1,9 +1,8 @@
-import { Context, Deferred, Effect, Exit, Fiber, Layer, Logger, References, Scope } from 'effect'
+import { Deferred, Effect, Exit, Fiber, Layer, Logger, References, Scope } from 'effect'
 import { sql } from 'kysely'
 import { Client } from 'pg'
 import { describe, expect, it, vi } from 'vitest'
 import { entityManager, kyselyOf, query, transaction } from '../src/server/index.ts'
-import { Orm } from '../src/server/orm.ts'
 import { createTestContext, databaseFor, postgresAvailable } from '../src/testkit.ts'
 
 // What happens to a pool connection when its transaction cannot end cleanly,

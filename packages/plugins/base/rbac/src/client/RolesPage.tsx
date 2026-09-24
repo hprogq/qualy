@@ -21,7 +21,6 @@ import {
   TableRow,
   Tag,
 } from '@qualy/ui/screen'
-import { Button } from '@qualy/ui/button'
 import { rbacMessages as m } from './i18n.ts'
 import type { RoleRow } from './RoleEditor.tsx'
 import { NewRoleForm } from './NewRoleForm.tsx'

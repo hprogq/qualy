@@ -1,4 +1,3 @@
-import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { commonErrorCodes } from '@qualy/i18n-contract'
@@ -8,7 +7,7 @@ import { I18nCatalogs, uiSurfacesOf } from '@qualy/plugin-ui-registry/plugin'
 import { loginSurfacesOf } from '@qualy/auth-contract/plugin'
 import { surfaceLabel, type BrowserSurface, type ClientComponentRef } from '@qualy/ui-contract'
 import { currentResolution, readEntries, resolvePluginExport } from '@qualy/assembly/host'
-import { manifestPath, repoRoot } from './manifest.ts'
+import { manifestPath } from './manifest.ts'
 
 // The browser's plugin aggregate, as a module SOURCE rather than a file.
 //

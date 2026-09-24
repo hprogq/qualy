@@ -20,12 +20,7 @@ import {
 import { itemOf, revisionOf as itemRevisionOf } from '../item/db.ts'
 import { opensTo } from '../item/channels.ts'
 import { fillBoundEvidence } from '../scoring/bound-evidence.ts'
-import {
-  ScoringRuntimeCatalog,
-  type AttachmentRef,
-  type BatchContext,
-  type ItemTypeDriver,
-} from '../plugin.ts'
+import { ScoringRuntimeCatalog, type BatchContext, type ItemTypeDriver } from '../plugin.ts'
 import type { ActionDecision } from '../administrative-import/service.ts'
 import {
   mapEvaluationFailure,

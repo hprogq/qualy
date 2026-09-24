@@ -301,7 +301,7 @@ export function definePluginMessages<
 }): PluginMessages<Messages> {
   const declared: Record<string, MessageDescriptor> = {
     ...options.messages,
-    ...(options.errors?.descriptors ?? {}),
+    ...options.errors?.descriptors,
   }
   const outside = Object.values(declared).filter(
     (descriptor) => !(descriptor as MessageDescriptor).id.startsWith(`${options.namespace}/`),

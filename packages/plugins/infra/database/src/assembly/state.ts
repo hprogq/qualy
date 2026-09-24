@@ -58,7 +58,7 @@ export function resolveDatabase(
   } catch (error) {
     if (!(error instanceof CycleError)) throw error
     // this order has to exist: tables are created in it
-    throw new Error(`database dependency cycle: ${error.cycle.join(' -> ')}`)
+    throw new Error(`database dependency cycle: ${error.cycle.join(' -> ')}`, { cause: error })
   }
 }
 

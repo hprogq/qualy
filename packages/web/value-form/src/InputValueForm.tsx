@@ -173,7 +173,6 @@ export interface InputValueFormProps {
 
 const AtomicControl = ({
   schema,
-  name,
   draft,
   onDraft,
   locale,

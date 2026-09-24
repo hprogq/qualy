@@ -3,7 +3,6 @@ import * as stylex from '@stylexjs/stylex'
 import { ChevronRightIcon, InfoIcon, PlusIcon } from 'lucide-react'
 import { UiSlot } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { commonMessages } from '@qualy/web-i18n/messages'
 import { usePickerWords } from '@qualy/web-i18n/picker-words'
 import {
   choiceLabel,
@@ -15,7 +14,6 @@ import {
 import { draftFromValue, type FieldDraft as ValueDraft } from '@qualy/web-value-form/model'
 import type { MessageDescriptor, UiText } from '@qualy/i18n-contract'
 import { Feedback } from '@qualy/ui/admin'
-import { Button } from '@qualy/ui/button'
 import { DatePicker } from '@qualy/ui/date-picker'
 import { Input } from '@qualy/ui/input'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'

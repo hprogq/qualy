@@ -23,13 +23,7 @@ import { formulaApi } from './api.ts'
 import { formulaMessages as m } from './i18n.ts'
 import { ReleaseInfoPopover } from './ReleaseInfoPopover.tsx'
 import { LazyFormulaSourceViewer } from './lazy-editors.ts'
-import {
-  fieldIssueWords,
-  inputFactsOf,
-  inputIssueWords,
-  outcomeWords,
-  type OutcomeLike,
-} from './report-words.ts'
+import { inputFactsOf, inputIssueWords, outcomeWords, type OutcomeLike } from './report-words.ts'
 import {
   Sheet,
   SheetContent,

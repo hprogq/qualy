@@ -1,5 +1,5 @@
 import { Effect } from 'effect'
-import { kyselyOf, query, transaction, withDatabase } from '@qualy/plugin-database/server'
+import { transaction, withDatabase } from '@qualy/plugin-database/server'
 import { translateConstraints } from '@qualy/plugin-database/server/constraints'
 import { db, lockTenant, userTypeGuard, type Db } from './db.ts'
 import { sql } from 'kysely'
@@ -18,7 +18,6 @@ import {
   UserTypeUpdated,
 } from '../actions.ts'
 import {
-  RecoveryChannelRequired,
   UserTypeInUse,
   UserTypeIsSystem,
   UserTypeNotFound,
@@ -35,9 +34,6 @@ import {
 // stand, and nothing else. The rules worth reading twice are the ones that
 // keep a tenant able to administer itself, because both of them fail quietly
 // rather than loudly.
-
-const rows = <Row extends Record<string, unknown>>(result: unknown) =>
-  (result as { rows: readonly Row[] }).rows
 
 /**
  * The ids, deduplicated, or nothing if any of them is not a uuid.

@@ -7,18 +7,12 @@ import {
 import { recordAdministrativeEntryTx, voidAdministrativeEntryTx } from './administrative-write.ts'
 import { bindCitedAttachments } from './bind-attachments.ts'
 import { provenRecognition } from '../scoring/proven-recognition.ts'
-import {
-  canonicalRecognition,
-  judgeRecognition,
-  recognitionHash,
-  seedFromEvidence,
-} from '../scoring/recognition.ts'
+import { recognitionHash, seedFromEvidence } from '../scoring/recognition.ts'
 import { ProbeNeeded, probeIdentity, settleWithProbe } from '../scoring/failure-boundary.ts'
 import { ScoringRuntimeCatalog } from '../plugin.ts'
 import { readScoringPlan } from '../scoring/plan.ts'
 import { recognitionFormFields } from '../scoring/recognition.ts'
 import { fillBoundEvidence } from '../scoring/bound-evidence.ts'
-import type { ScoringPlan } from '../scoring/plan.ts'
 
 /**
  * The compiled arithmetic a revision carries.

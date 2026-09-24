@@ -263,7 +263,7 @@ export const boundsWords = (
   schema: AtomicSchema,
   locale: string,
   format: Format,
-  listJoin: ListJoin,
+  _listJoin: ListJoin,
 ): string => {
   const kind = kindOf(schema)
   switch (kind) {
@@ -325,7 +325,11 @@ export const boundsWords = (
 }
 
 /** a form field's own bounds, as the pen holds them: the same sentence for a field nobody linked */
-export const fieldBoundsWords = (field: FieldDraft, format: Format, listJoin: ListJoin): string => {
+export const fieldBoundsWords = (
+  field: FieldDraft,
+  format: Format,
+  _listJoin: ListJoin,
+): string => {
   switch (field.type) {
     case 'text': {
       const min = Number(field.minLength) || 0

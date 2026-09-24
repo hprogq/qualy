@@ -148,11 +148,19 @@ export function buildManifestRoutes({
 }
 
 export function ManifestRoutes(options: RouteBuilderOptions) {
+  const { manifest, registry, homePath, signInPage, slots } = options
   const routes = useMemo(
-    () => buildManifestRoutes(options),
+    () =>
+      buildManifestRoutes({
+        manifest,
+        registry,
+        slots,
+        ...(homePath === undefined ? {} : { homePath }),
+        ...(signInPage === undefined ? {} : { signInPage }),
+      }),
     // slots carry localized copy, so a locale switch must rebuild them too;
     // the host memoizes the slot object so this stays cheap
-    [options.manifest, options.registry, options.homePath, options.signInPage, options.slots],
+    [manifest, registry, homePath, signInPage, slots],
   )
   return (
     <>

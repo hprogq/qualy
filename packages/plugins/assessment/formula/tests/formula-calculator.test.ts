@@ -115,11 +115,6 @@ describe.runIf(postgresAvailable)('the formula calculator', () => {
           const f = yield* seedFormulaFixture('fc-compile')
           const library = yield* FormulaLibrary
           const as = f.principal(f.admin)
-          const root = one<{ id: string }>(
-            yield* runSql(
-              sql`select id from org_nodes where tenant_id = ${f.t} and parent_id is null`,
-            ),
-          ).id
           const batch = one<{ id: string }>(
             yield* runSql(sql`
               insert into assessment_batches (tenant_id, name, material_range)
@@ -347,11 +342,6 @@ describe.runIf(postgresAvailable)('the formula calculator', () => {
           const library = yield* FormulaLibrary
           const store = yield* FormulaRuntimeStore
           const as = f.principal(f.admin)
-          const root = one<{ id: string }>(
-            yield* runSql(
-              sql`select id from org_nodes where tenant_id = ${f.t} and parent_id is null`,
-            ),
-          ).id
           const created = yield* library.createFunction(
             f.t,
             { name: '冻结分', description: '' },
@@ -485,11 +475,6 @@ describe.runIf(postgresAvailable)('the formula calculator', () => {
           const library = yield* FormulaLibrary
           const store = yield* FormulaRuntimeStore
           const as = f.principal(f.admin)
-          const root = one<{ id: string }>(
-            yield* runSql(
-              sql`select id from org_nodes where tenant_id = ${f.t} and parent_id is null`,
-            ),
-          ).id
           const created = yield* library.createFunction(
             f.t,
             { name: '真跑分', description: '' },

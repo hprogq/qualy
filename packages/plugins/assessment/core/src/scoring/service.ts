@@ -1,10 +1,6 @@
 import { Effect } from 'effect'
 import { transaction, type Orm } from '@qualy/plugin-database/server'
-import {
-  ScoringRuntimeCatalog,
-  type CalculatorRuntimeError,
-  type PreparedCalculator,
-} from '../plugin.ts'
+import { ScoringRuntimeCatalog, type PreparedCalculator } from '../plugin.ts'
 import type { Principal } from '@qualy/rbac-contract'
 import type { AccessDenied } from '@qualy/rbac-contract/effect'
 import { BatchNotFound, ParticipantNotFound, ScoringUnavailable } from '../errors.ts'

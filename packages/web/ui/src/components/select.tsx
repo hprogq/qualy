@@ -9,7 +9,7 @@ import { clsx } from 'clsx'
 
 import { tokens } from '../theme/tokens.stylex.ts'
 import { seatOf } from '../lib/xstyle.ts'
-import { ChevronDownIcon, CheckIcon } from 'lucide-react'
+import { CheckIcon } from 'lucide-react'
 
 // The Qualy select keeps its compound shape (Root/Trigger/Value/Content/
 // Item) over the widget combobox, whose option model is children-registered

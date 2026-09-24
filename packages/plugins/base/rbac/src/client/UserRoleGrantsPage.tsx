@@ -1,18 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import {
-  resourceGrantPresenters,
-  resourceGrantRenderer,
-  type ResourceGrantContext,
-} from '@qualy/ui-contract'
-import {
-  PluginSurface,
-  useApi,
-  useApiQuery,
-  usePageRouteParams,
-  useRunApi,
-  useUiCollection,
-} from '@qualy/web-runtime'
+import { useApi, useApiQuery, usePageRouteParams, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import * as stylex from '@stylexjs/stylex'
@@ -21,7 +9,6 @@ import { AsyncSection, ConfirmDialog, Feedback, FormDialog } from '@qualy/ui/adm
 import { PlusIcon } from 'lucide-react'
 import { Card, CardEmpty, Cell, SectionHead, Table, TableHead, TableRow } from '@qualy/ui/screen'
 import { Button } from '@qualy/ui/button'
-import { Skeleton } from '@qualy/ui/skeleton'
 import { rbacMessages as m } from './i18n.ts'
 import { GrantOrigin } from './GrantOrigin.tsx'
 import { GrantRoleForm } from './GrantRoleForm.tsx'

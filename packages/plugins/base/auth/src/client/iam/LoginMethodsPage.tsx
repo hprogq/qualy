@@ -13,7 +13,6 @@ import {
 import { MAX_PRIMARY_LOGIN_METHODS } from '@qualy/auth-contract/login-icons'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
-import { Button } from '@qualy/ui/button'
 import { useIsBelow } from '@qualy/ui/use-mobile'
 import {
   DropdownMenu,

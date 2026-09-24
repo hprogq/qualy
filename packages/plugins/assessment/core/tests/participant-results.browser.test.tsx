@@ -343,7 +343,7 @@ describe('the participant results screen', () => {
   })
 
   it('sends a claim back for revision, with a reason', async () => {
-    const interveneOnEntry = vi.fn((request: Request) =>
+    const interveneOnEntry = vi.fn((_request: Request) =>
       Effect.succeed({ entry: entry({ status: 'needs_revision' }) }),
     )
     screen(

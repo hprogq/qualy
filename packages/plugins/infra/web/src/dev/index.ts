@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { stripVTControlCharacters } from 'node:util'
-import { Data, Effect, Queue, Schema } from 'effect'
+import { Data, Effect, Queue } from 'effect'
 import type { Logger as ViteLogger } from 'vite'
 import type { DevServiceContext } from '@qualy/plugin-kit/dev'
 import { proxyTable } from './proxy.ts'

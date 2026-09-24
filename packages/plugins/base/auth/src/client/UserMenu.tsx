@@ -1,6 +1,5 @@
-import { useQuery } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
-import { PageLink, useApi, useApiQuery, useRunApi, useSessionTransition } from '@qualy/web-runtime'
+import { PageLink, useApi, useRunApi, useSessionTransition } from '@qualy/web-runtime'
 import { isAuthenticationError, useI18n } from '@qualy/web-i18n'
 import { useTerm } from '@qualy/plugin-settings/client/terms'
 import { authTerms } from '@qualy/auth-contract/terms'
@@ -216,7 +215,7 @@ const styles = stylex.create({
 export default function UserMenu() {
   const api = useApi(authApi)
   const run = useRunApi()
-  const query = useApiQuery(authApi)
+
   const { format, formatError } = useI18n()
   const businessNo = useTerm(authTerms.businessNumber)
   const endSession = useSessionTransition()

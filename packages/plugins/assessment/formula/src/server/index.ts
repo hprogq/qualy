@@ -30,8 +30,6 @@ import {
   assignmentPlan,
   canonicalDecimal,
   constraintOf,
-  declaredTitle,
-  inputOrder,
   kindOf,
   normalizeAtomicSchema,
   normalizeInputSchema,
@@ -39,7 +37,6 @@ import {
   validateAtomicProfile,
   validateInputProfile,
   type AtomicSchema,
-  type DecimalSchema,
   type InputSchema,
   type NormalizedAtomicSchema,
   type NormalizedInputSchema,
@@ -90,11 +87,7 @@ import {
   AssessmentConfigurationAccess,
   AssessmentScoringAuthoringAccess,
 } from '@qualy/plugin-assessment/plugin'
-import {
-  BindableFormulaCatalog,
-  type BindableFormulaVersion,
-  type FormulaNotBindable,
-} from './binding-catalog.ts'
+import { BindableFormulaCatalog } from './binding-catalog.ts'
 import { contractWordsIssues } from '../contract-words.ts'
 
 /**

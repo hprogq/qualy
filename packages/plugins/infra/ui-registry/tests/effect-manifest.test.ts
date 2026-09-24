@@ -1,7 +1,7 @@
 import { NodeHttpServer } from '@effect/platform-node'
 import { Cause, Effect, Exit, Layer, Scope } from 'effect'
 import { HttpRouter } from 'effect/unstable/http'
-import { HttpApi, HttpApiBuilder } from 'effect/unstable/httpapi'
+import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { createServer } from 'node:http'
 import { it } from '@effect/vitest'
 import { afterAll, beforeAll, describe, expect } from 'vitest'

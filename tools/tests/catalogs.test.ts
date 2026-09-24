@@ -1,4 +1,3 @@
-import fs from 'node:fs'
 import path from 'node:path'
 import { manifestPath } from '../lib/manifest.ts'
 import { describe, expect, it } from 'vitest'

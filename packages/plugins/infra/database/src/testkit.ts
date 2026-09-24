@@ -397,7 +397,9 @@ export async function createTestContext(
     try {
       await teardown({ scope, admin, name })
     } catch (cleanup) {
-      throw new AggregateError([error, cleanup], `could not start a test database for ${label}`)
+      throw new AggregateError([error, cleanup], `could not start a test database for ${label}`, {
+        cause: cleanup,
+      })
     }
     throw error
   }

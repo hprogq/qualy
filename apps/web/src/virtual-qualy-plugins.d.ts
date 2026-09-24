@@ -10,7 +10,6 @@ declare module 'virtual:qualy/plugins' {
 
   // the tables are heterogeneous by nature; the shell wraps every entry in
   // React.lazy, which is where the per-screen prop types stop mattering
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   type Loader = () => Promise<{ readonly default: ComponentType<any> }>
 
   /** by page id */

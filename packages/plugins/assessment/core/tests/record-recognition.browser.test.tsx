@@ -459,7 +459,6 @@ describe('recording with a determination', () => {
       if (document.querySelector('[data-testid="record-recognition"]') === null)
         throw new Error('no recognition section yet')
     })
-    const { userEvent } = await import('vitest/browser')
     const recognition = recognitionChoice('rec-level')
     await recognition.pick('国家级')
     // switching questions is a new contract: the touched draft dies with

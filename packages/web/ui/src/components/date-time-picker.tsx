@@ -1,6 +1,5 @@
 'use client'
 
-import type * as React from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { DateTimePicker as MDateTimePicker } from '@mantine/dates'
 

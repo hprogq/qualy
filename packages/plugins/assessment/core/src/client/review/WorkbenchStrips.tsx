@@ -25,7 +25,6 @@ import { PART_LABEL, WORKBENCH_PARTS, type WorkbenchPart } from './Pane.tsx'
 
 const lg = '@media (min-width: 1024px)'
 const belowLg = '@media (max-width: 1023.98px)'
-const wide = '@media (min-width: 84rem)'
 
 const styles = stylex.create({
   // ---- the run's own strip ----

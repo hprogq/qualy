@@ -19,7 +19,6 @@ import {
   TableRow,
   Tag,
 } from '@qualy/ui/screen'
-import { Button } from '@qualy/ui/button'
 import { PlusIcon } from 'lucide-react'
 import { iamMessages as m } from '../i18n.ts'
 import { NewUserTypeForm } from './NewUserTypeForm.tsx'

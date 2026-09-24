@@ -42,7 +42,6 @@ import type {
   CalculatorCompileContext,
   CalculatorContractError,
   CalculatorDefinition,
-  CalculatorHostContext,
   CompiledCalculator,
   FrozenCalculatorContract,
   ItemTypeDriver,
