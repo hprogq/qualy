@@ -432,12 +432,14 @@ export const emailFlowsLayer: Layer.Layer<
               return yield* new TooManyAttempts({ retryAfterSeconds: fuse.retryAfterSeconds })
             }
             const here = yield* limiter.observeRisk(tenantId, RISK_RULES.resetByAddressRisk, place)
-            const again = yield* limiter.riskRequired(
+            // counted as it is weighed, like sign-in: requests arriving
+            // together cannot all find the address unasked-for
+            const again = yield* limiter.observeRisk(
               tenantId,
               RISK_RULES.resetByIdentifierRisk,
               normalized,
             )
-            if (here.challengeRequired || again || context?.clientIp === undefined) {
+            if (here.challengeRequired || again.challengeRequired || context?.clientIp === undefined) {
               const guarded = yield* captcha.guard({
                 tenantId,
                 purpose: PASSWORD_RESET_CAPTCHA,
@@ -461,7 +463,6 @@ export const emailFlowsLayer: Layer.Layer<
             if (!quota.allowed) {
               return yield* new TooManyAttempts({ retryAfterSeconds: quota.retryAfterSeconds })
             }
-            yield* limiter.observeRisk(tenantId, RISK_RULES.resetByIdentifierRisk, normalized)
           }),
         )
         const issued = yield* inLock(

@@ -113,9 +113,9 @@ export const RISK_RULES = {
   resetByAddressRisk: { scope: 'reset:address-risk', challengeAfter: 5, windowSeconds: 900 },
   /**
    * Forgotten-password requests for one email: the first in an hour goes
-   * unchallenged, every one after it is challenged. Read before the
-   * challenge and counted after it, so requests that arrive together can
-   * all find it unraised - which the mail quota after the challenge bounds.
+   * unchallenged, every one after it is challenged. Counted when the request
+   * is weighed, so of requests arriving together only the first goes
+   * unchallenged. It never refuses; the mail quota does that.
    */
   resetByIdentifierRisk: { scope: 'reset:identifier-risk', challengeAfter: 1, windowSeconds: 3600 },
 } as const satisfies Record<string, RiskRule>

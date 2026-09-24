@@ -249,10 +249,9 @@ default-src 'self'; script-src 'self' 'sha256-pKAg+of2SxxrkLJX27pRnCgcyN5Ud1dmuO
   - **CAPTCHA**:默认 provider 为 ALTCHA(本地 PoW,`@qualy/plugin-captcha-altcha`,2026-09-24 与能处理 428 的登录页同笔启用);
     没有 provider 的部署风险触发一律放行(启动时 WARN 一次),那样的部署对分布式撞库的防护弱于有 provider 时。
 - **找回密码(2026-09-24 起,docs/captcha.md §25–30)**与登录是不同模型:它限制的是发给别人的邮件,不是能否登录,所以可以对邮箱设 hard 配额。
-  顺序:规范化邮箱 → 「来源地址」hard 100 次 / 15 分钟 → 地址 risk(前 5 次不要求)+ 邮箱 risk(一小时内第 2 次起要求,只读)→
-  需要时过 CAPTCHA(purpose `auth/password-reset`,binding 为规范化邮箱)→ **过了 CAPTCHA 才**计「邮箱」hard 3 封 / 小时(第 4 次 429 且不发信)
-  → 计邮箱 risk → 才查账号。账号存在、不存在、邮箱未验证、没有本地密码走完全相同的前段。邮箱 risk 先读后计,并发首批可同时免 challenge,
-  由其后的 3 封 / 小时硬配额兜住。
+  顺序:规范化邮箱 → 「来源地址」hard 100 次 / 15 分钟 → 地址 risk(前 5 次不要求)+ 邮箱 risk(一小时内第 2 次起要求,与登录一样在
+  admission 时原子计数,并发请求只有第一个免 challenge)→ 需要时过 CAPTCHA(purpose `auth/password-reset`,binding 为规范化邮箱)→
+  **过了 CAPTCHA 才**计「邮箱」hard 3 封 / 小时(第 4 次 429 且不发信)→ 才查账号。账号存在、不存在、邮箱未验证、没有本地密码走完全相同的前段。
 - **reset 链接不再互相作废**:新请求不 retire 旧链接(否则陌生人每隔几分钟请求一次就能让受害者手里的链接永远失效);任一链接真正改密后,
   在同一租户锁内作废其余全部 reset 链接;改邮箱照旧作废发往旧地址的链接。验证邮箱 / 换邮箱的链接仍是新替换旧。
 - **其余 hard 限额不变**:本人发送验证 / 换邮箱邮件 5 次 / 小时;本人改密码试当前密码 10 次 / 15 分钟。

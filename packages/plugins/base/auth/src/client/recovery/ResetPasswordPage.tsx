@@ -416,7 +416,9 @@ function Ask() {
               aria-invalid={emailSaid !== null}
               onChange={(event) => {
                 setEmail(event.target.value)
-                // a challenge is bound to the address it was issued for
+                // a challenge is bound to the address it was issued for: spent
+                // at once, so a proof finishing in this very moment reaches nobody
+                gate.cancel()
                 setPrompt(null)
               }}
               onBlur={() => email !== '' && setChecked(true)}
