@@ -3,6 +3,7 @@ import * as stylex from '@stylexjs/stylex'
 import { BrowserRouter, Link } from 'react-router'
 import { primaryNavigation, surfaceLabel, type BrowserSurface } from '@qualy/ui-contract'
 import {
+  Failure,
   ManifestRoutes,
   preloadable,
   RuntimeProvider,
@@ -19,7 +20,6 @@ import { bootstrapMessages } from '@qualy/web-i18n/bootstrap'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Button } from '@qualy/ui/button'
 import { ColdStart, LoadingScreen, PageLoading } from '@qualy/ui/spinner'
-import { Failure } from './Failure.tsx'
 import {
   catalogs,
   errorMessages,
@@ -34,7 +34,7 @@ import { SIGN_IN_PAGE } from '@qualy/auth-contract/sign-in-failure'
 // There is no global client to build: each plugin derives its own from the
 // api definitions it calls, through the runtime's per-definition cache.
 // what the host draws when there is no page to draw: a route that leads
-// nowhere; a plugin component that failed to load is ./Failure.tsx
+// nowhere; a plugin component that failed to load is the runtime's Failure
 
 const styles = stylex.create({
   // the whole of the content area, not a band of it: in a shell the page

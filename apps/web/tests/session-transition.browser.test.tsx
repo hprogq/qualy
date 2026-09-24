@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { useEffect } from 'react'
 import { Navigate } from 'react-router'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Effect } from 'effect'
 import { useManifest, useSessionTransition } from '@qualy/web-runtime'
 import { apiError, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
@@ -222,5 +222,50 @@ describe('a session that stops working while a page is open', () => {
     await new Promise((settle) => setTimeout(settle, 300))
     // the answer is what an anonymous visitor is told: nothing to settle
     expect({ manifests: manifests - before, asked }).toEqual({ manifests: 0, asked: 1 })
+  })
+})
+
+describe('the manifest, asked again in the background', () => {
+  it('keeps the page standing when the ask fails', async () => {
+    let failing = false
+    let refused = 0
+    const Standing = () => {
+      const client = useQueryClient()
+      return (
+        <main data-testid="standing">
+          <button
+            type="button"
+            onClick={() => {
+              // the connection drops while the reader is away; coming back asks again
+              failing = true
+              void client.refetchQueries()
+            }}
+          >
+            back
+          </button>
+        </main>
+      )
+    }
+    renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            failing
+              ? Effect.suspend(() => {
+                  refused += 1
+                  return Effect.fail(apiError('INTERNAL_SERVER_ERROR', undefined))
+                })
+              : Effect.succeed({ ...emptyManifest(), viewer: 'authenticated' as const }),
+        },
+      }),
+      routes: [{ path: '/standing', element: <Standing /> }],
+      route: '/standing',
+    })
+    await page.getByRole('button', { name: 'back' }).click()
+    // the ask was made, and refused
+    await expect.poll(() => refused).toBeGreaterThan(0)
+    await new Promise((settle) => setTimeout(settle, 300))
+    await expect.element(page.getByTestId('standing')).toBeInTheDocument()
+    expect(page.getByRole('alert').elements()).toHaveLength(0)
   })
 })

@@ -9,7 +9,6 @@ import {
   useQueryClient,
   type QueryKey,
 } from '@tanstack/react-query'
-import * as stylex from '@stylexjs/stylex'
 import {
   lazy,
   useCallback,
@@ -41,7 +40,6 @@ import type {
   UiCollectionToken,
   UiSlotToken,
 } from '@qualy/ui-contract'
-import { Button } from '@qualy/ui/button'
 import { Toaster } from '@qualy/ui/toast'
 import { isAuthenticationError, useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
@@ -71,7 +69,9 @@ import {
   type SessionDestination,
 } from './pages.ts'
 import { PluginComponent, type PluginComponentProps } from './component-boundary.tsx'
+import { Failure } from './failure.tsx'
 
+export { Failure } from './failure.tsx'
 export {
   buildPageHref,
   sessionDestinationHref,
@@ -186,22 +186,6 @@ export interface RuntimeProviderProps {
 // renders a retry prompt instead of a permanently blank shell
 // the two screens the runtime draws itself, before a manifest exists to say
 // what a page looks like
-const styles = stylex.create({
-  failure: {
-    display: 'flex',
-    minHeight: '100vh',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 16,
-  },
-  quiet: {
-    fontSize: 14,
-    lineHeight: '1.25rem',
-    color: 'var(--q-muted-foreground)',
-  },
-})
-
 /**
  * What to do when a request says the session this page was built for is gone.
  *
@@ -356,19 +340,28 @@ function RuntimeLoader({
       cancelled = true
     }
   }, [layouts, registry])
-  if (manifest.isPending || (manifest.isSuccess && warm !== layouts)) return <LoadingScreen />
-  if (manifest.isError) {
-    return (
-      <div {...stylex.props(styles.failure)}>
-        <p {...stylex.props(styles.quiet)}>{format(commonMessages.manifestLoadFailed)}</p>
-        <Button variant="outline" onClick={() => void manifest.refetch()}>
-          {format(commonMessages.retry)}
-        </Button>
-      </div>
-    )
+  // Only a page that never had a manifest is stopped by not getting one. It
+  // is asked again in the background - a reader coming back to the tab may
+  // have been signed out, or had their access changed, meanwhile - and one of
+  // those asks failing on a poor connection leaves the manifest in hand
+  // standing: it still describes this identity, and the page's own requests
+  // say for themselves that they cannot reach the server.
+  const known = manifest.data
+  if (known === undefined) {
+    if (manifest.isError) {
+      return (
+        <Failure
+          message={format(commonMessages.manifestLoadFailed)}
+          onRetry={() => void manifest.refetch()}
+          fullscreen
+        />
+      )
+    }
+    return <LoadingScreen />
   }
+  if (warm !== layouts) return <LoadingScreen />
   return (
-    <RuntimeContext.Provider value={{ clientFor, utilsFor, registry, manifest: manifest.data }}>
+    <RuntimeContext.Provider value={{ clientFor, utilsFor, registry, manifest: known }}>
       {children}
     </RuntimeContext.Provider>
   )

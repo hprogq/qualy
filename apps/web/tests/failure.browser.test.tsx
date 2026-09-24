@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { useState } from 'react'
-import { Failure } from '../src/Failure.tsx'
+import { Failure } from '@qualy/web-runtime'
 import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 import { Effect } from 'effect'
 

@@ -2574,6 +2574,9 @@ importers:
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.115
+      lucide-react:
+        specifier: ^0.552.0
+        version: 0.552.0(react@19.2.8)
       react:
         specifier: 'catalog:'
         version: 19.2.8
