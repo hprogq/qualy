@@ -20187,3 +20187,37 @@ A–C 的部署约束至此解除：ALTCHA 与能处理 428 的登录页在同�
 - review-flow 新增用例「will not archive over a round still in review, and archives once it is handed back」：`Tests  22 passed (22)`。
 - effect-assessment / provisional-scoring / scoring-audit / live 与 catalogs、error-codes 门禁：`Test Files  6 passed (6)`，`Tests  78 passed (78)`。
 - `pnpm format:check`、`pnpm lint`、`pnpm typecheck`：全部 exit 0。
+
+## 公开演示数据：三学年六个归档批次 + 进行中的推免批次（2026-09-25）
+
+- 设计与隐私分层见 docs/notes/demo-data.md，服务器部署见 deploy/demo/README.md。原始材料 `docs/seed/` 不入库；`tools/demo/compile.ts` 只把计数、分布与比例写进 `library.json`，校名与城市名的替换表也留在 `docs/seed/place-words.json`（写进代码就等于公开了要抹掉的名字）。提交前用 users 表里 45,688 个姓名、68,640 个学号扫描全部待提交文件：命中 13 处全是通用词（教务处、软件工程等），无人名、无学号。
+- `pnpm demo:reset-db` → `pnpm demo:seed`（需 `QUALY_DEMO_DATABASE_URL` 与 `QUALY_DEMO_ADMIN_PASSWORD`，只写独立的 `qualy-postgres-demo` 容器，拒绝与 DATABASE_URL 同库、拒绝非空库）→ `pnpm demo:check` → `pnpm demo:snapshot`（产物在 `data/demo-baseline/`，gitignored）。开发库未被触碰，开工前另有备份 `data/backups/qualy-dev-20260924-161253.dump`。
+- 时间放置：每一步同时记数据库时钟与进程时钟两个窗口。九个由 Effect `Clock` 写的列按进程窗口放置——第一版里约 2.4% 的附件与第一学期的归档时间（显示成 2024-09-02）就错在这里；`role_grants.revoked_at` 偶尔早于本步窗口，按「缝里的值跟随下一步」放置。本次完整生成里后者有 12 条没被放置、闸门拦下；已按同一行为的审计时间补正（同一动作，相差 1–2 ms），并把规则写进 `LEADING_COLUMNS`，下次生成不再依赖运气。
+- 生成中发现并修掉的问题：
+  - 登录上下文把演示账号的公开密码放在 `password` 字段下，secret-disclosure 门禁拒绝；wire 改名 `publicPassword`，配置里的键不变。
+  - release-inputs 门禁数 postgres 镜像：演示集群加入后是 5 个；test-layers 门禁：tools/demo 六个直连数据库的文件逐个登记并写明理由。
+  - 综测负责人在推免批次没有审核身份，概览左侧整片空白（产品设计如此：无身份者只看阶段计划）；演示里给该角色加 `assessment.review.process`，并让少数竞赛 / 科研从辅导员上提到「学院推免工作组」。
+  - 演示学生在推免批次的申报全部审完时，批次卡片显示「还没有开始 / 去填报」：`agendaOf` 只认待改、草稿、审核中三种，全部办结与没报过走同一分支。**这是产品缺陷，未修**（改法涉及 listMyStanding 的返回形状与文案，属于产品决定）；演示里让该学生截止前一晚补交一条竞赛，至今待审。
+  - 租户名改为「示例大学」，本地登录方式改名「邮箱密码」并设为主入口。
+
+### 验收（实际执行）
+
+- 完整生成（`seed-final.log`）：
+  - 23-24-1 申报 1978 / 申诉 36；23-24-2 3166 / 106；24-25-1 2659 / 80；24-25-2 2870 / 168；25-26-1 2021 / 154；25-26-2 1070 / 72。
+  - 推免 `selection (review): 72 applicants, phase 2, file 445, review 510, import 1, supplement-answer 40, route-change 1, transfer 1`；登录记录 `10711 sign-ins written`。
+- `pnpm demo:check`：六个归档批次总分中位数 75.29 / 72.62 / 73.02 / 71.77 / 72.36 / 72.67（真实年级 71–75）。
+- 数据库核对：归档时间依次 2024-03-14、2024-09-15、2025-03-16、2025-09-14、2026-03-28、2026-09-14；14,533 个附件与其申报修订的时间差超过 5 秒的 0 个（修复前 347 个）；全库时间列除迁移台账外无播种时段残留。
+- 页面（Playwright 截图，看过）：登录页显示「示例大学」、主入口「邮箱密码」与四个演示账号；学生批次卡片「1 份审核中」；综测负责人概览有待办面板与最近动态。截图时产生的 3 个会话、3 条登录记录、2 个限流桶已在快照前删除。
+- `pnpm demo:snapshot`：`qualy-demo.dump 15.8 MB`、`storage.tar.gz 2.3 MB`。
+- `pnpm typecheck`、`pnpm lint`、`pnpm lint:types`、`pnpm format:check`：全部 exit 0。
+- `pnpm test`：`Tests  9 failed | 2288 passed | 17 skipped (2314)`。失败的是：
+  - supervisor 4 条与 runtime-cli 3 条：本机 `.env` 是 1Password 挂载的命名管道，子进程每次读取阻塞约 60 秒（日志里 `.env is a mounted environment` 之后正好空 60 秒），读到的内容也缺 `QUALY_MAIL_RESEND_API_KEY`，`startup failed: QUALY_MAIL_RESEND_API_KEY must be set`。属本机环境，与本次改动无关，未能在本机证明其通过。
+  - browser-graph 2 条：全量并行下 120 秒超时；单独运行 `Tests  19 passed (19)`。
+  - 本次引入的三处门禁失败（secret-disclosure、release-inputs、test-layers）修复后单独运行 `Tests  21 passed (21)`。
+- 登录页浏览器测试（`sign-in.browser.test.tsx`）：`Tests  24 passed (24)`。
+
+### 下一步
+
+- 推免批次的时间相对生成当天，停在「材料审核」第 7 天；站点长期运行时约每月重新生成一次快照，否则时间会越走越远。
+- 批次卡片「全部办结却显示还没有开始」的产品缺陷，待定文案后修。
+- 部署：按 deploy/demo/README.md 在服务器上放快照、配置 `QUALY_DEMO_ACCOUNTS`，cron 每 6 小时还原。
