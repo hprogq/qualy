@@ -373,6 +373,45 @@ export const entryCountsByBatchOf = (input: {
       )
 
 /**
+ * How many of this user's filings per round a reviewer has paused to ask
+ * them for more, by the same test `myActionRowsOf` lists them under: the ask
+ * is open and its round is still waiting on it. Such a filing is in_review,
+ * but it is waiting on its author, not on the reviewers.
+ */
+export const openAskCountsByBatchOf = (input: {
+  tenantId: string
+  userId: string
+  batchIds: readonly string[]
+}) =>
+  input.batchIds.length === 0
+    ? Effect.succeed([] as { batchId: string; total: string }[])
+    : db.query((k) =>
+        k
+          .selectFrom('ReviewSupplementRequest as sr')
+          .innerJoin('ReviewInstance as ri', (join) =>
+            join
+              .onRef('ri.tenantId', '=', 'sr.tenantId')
+              .onRef('ri.id', '=', 'sr.reviewInstanceId'),
+          )
+          .innerJoin('Entry as e', (join) =>
+            join.onRef('e.tenantId', '=', 'ri.tenantId').onRef('e.id', '=', 'ri.entryId'),
+          )
+          .innerJoin('BatchParticipant as bp', (join) =>
+            join.onRef('bp.tenantId', '=', 'e.tenantId').onRef('bp.id', '=', 'e.participantId'),
+          )
+          .select('e.batchId')
+          .select(({ fn }) => fn.count<string>('e.id').distinct().as('total'))
+          .where('sr.tenantId', '=', input.tenantId)
+          .where('e.batchId', 'in', [...input.batchIds])
+          .where('bp.userId', '=', input.userId)
+          .where('sr.status', '=', 'open')
+          .where('ri.state', '=', 'awaiting_supplement')
+          .where('e.status', '=', 'in_review')
+          .groupBy('e.batchId')
+          .execute(),
+      )
+
+/**
  * Which of these rounds this user takes part in at all.
  *
  * Asked apart from the counts above because nought filings and no place on

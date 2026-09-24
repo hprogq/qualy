@@ -312,6 +312,21 @@ const toSubmit = defineMessage<{ count: number }>()({
   defaultMessage: '{count, plural, one {# not sent} other {# not sent}}',
 })
 
+const toAnswer = defineMessage<{ count: number }>()({
+  id: 'assessment/batch/to-answer',
+  defaultMessage: '{count, plural, one {# needs more from you} other {# need more from you}}',
+})
+
+const notAccepted = defineMessage<{ count: number }>()({
+  id: 'assessment/batch/not-accepted',
+  defaultMessage: '{count, plural, one {# not accepted} other {# not accepted}}',
+})
+
+const accepted = defineMessage<{ count: number }>()({
+  id: 'assessment/batch/accepted',
+  defaultMessage: '{count, plural, one {# accepted} other {# accepted}}',
+})
+
 const underReview = defineMessage<{ count: number }>()({
   id: 'assessment/batch/under-review',
   defaultMessage: '{count, plural, one {# with the reviewers} other {# with the reviewers}}',
@@ -605,6 +620,9 @@ const i18n = definePluginMessages({
     toRevise,
     toSubmit,
     underReview,
+    toAnswer,
+    notAccepted,
+    accepted,
     stageAt,
     stageDeadline,
     stageUntil,
@@ -630,6 +648,17 @@ const i18n = definePluginMessages({
     /** on the roster, nothing filed yet */
     entriesNone: { id: 'assessment/batch/entries-none', defaultMessage: 'Nothing filed yet' },
     startEntries: { id: 'assessment/batch/start-entries', defaultMessage: 'Start filing' },
+    /** on the roster, nothing filed, and filing opens at a later stage */
+    filingUpcoming: {
+      id: 'assessment/batch/filing-upcoming',
+      defaultMessage: 'Filing not open yet',
+    },
+    /** on the roster, nothing filed, and filing is over */
+    filingMissed: { id: 'assessment/batch/filing-missed', defaultMessage: 'Nothing filed' },
+    /** a reviewer asked for more material */
+    answerAsk: { id: 'assessment/batch/answer-ask', defaultMessage: 'Respond' },
+    /** a filing was not accepted: its reasons come first */
+    seeWhy: { id: 'assessment/batch/see-why', defaultMessage: 'See why' },
     /** the quiet way in, for a line that is open without asking anything */
     viewLine: { id: 'assessment/batch/view', defaultMessage: 'View' },
     today: { id: 'assessment/batch/today', defaultMessage: 'Today' },

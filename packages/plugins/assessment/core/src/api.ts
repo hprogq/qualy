@@ -1762,7 +1762,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
      * there is no line to draw. So `reviewsWaiting` is null for somebody
      * who does not judge in that round, and `myEntries` is null for
      * somebody who is not on its roster; a participant who has filed
-     * nothing yet gets three noughts, which is a line worth drawing. The
+     * nothing yet gets all noughts, which is a line worth drawing. The
      * path carries no batch and no user for the same reason the review
      * queue's does not: there is nothing here to ask on somebody else's
      * behalf.
@@ -1772,12 +1772,20 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         items: Schema.Array(
           Schema.Struct({
             batchId: Schema.String,
-            /** this reader's own filings, by what each one is waiting for */
+            /**
+             * this reader's own filings, each counted once under what it is
+             * waiting for, and whether a new one can be started now, at a
+             * later stage, or not again
+             */
             myEntries: Schema.NullOr(
               Schema.Struct({
+                toAnswer: Schema.Number,
                 toFix: Schema.Number,
                 draft: Schema.Number,
+                rejected: Schema.Number,
                 submitted: Schema.Number,
+                approved: Schema.Number,
+                filing: Schema.Literals(['open', 'upcoming', 'closed']),
               }),
             ),
             reviewsWaiting: Schema.NullOr(Schema.Number),

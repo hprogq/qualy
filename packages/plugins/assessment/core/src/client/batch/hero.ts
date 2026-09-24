@@ -34,10 +34,31 @@ export type AgendaRow =
   | { readonly kind: 'review'; readonly waiting: number }
   | {
       readonly kind: 'own'
-      /** the earliest of the reader's own filings that is still in play */
-      readonly state: 'toFix' | 'draft' | 'submitted' | 'none'
+      /**
+       * the earliest of the reader's own filings that is still in play; with
+       * nothing filed, whether filing is open now (`none`), opens at a later
+       * stage (`upcoming`) or is over (`missed`)
+       */
+      readonly state: OwnState
       readonly count: number
     }
+
+export type OwnState =
+  | 'toAnswer'
+  | 'toFix'
+  | 'draft'
+  | 'rejected'
+  | 'submitted'
+  | 'approved'
+  | 'none'
+  | 'upcoming'
+  | 'missed'
+
+/** what a participant can get on with: every other own line only reports */
+const ASKING: ReadonlySet<OwnState> = new Set(['toAnswer', 'toFix', 'draft', 'rejected', 'none'])
+
+/** whether an own line asks something of the reader, or only reports */
+export const ownLineAsks = (state: OwnState): boolean => ASKING.has(state)
 
 /**
  * What this reader has to do in the round, in the order it is worth doing.
@@ -63,13 +84,21 @@ export const NO_AGENDA: BatchAgenda = { rows: [] }
  * one that holds up only the reader.
  */
 const urgency = (row: AgendaRow): number =>
-  row.kind === 'review' ? (row.waiting > 0 ? 3 : 0) : row.state === 'submitted' ? 0 : 2
+  row.kind === 'review' ? (row.waiting > 0 ? 3 : 0) : ASKING.has(row.state) ? 2 : 0
 
 /** the reader's standing in one round, as the lines the card draws for it */
 export const agendaOf = (
   items: readonly {
     batchId: string
-    myEntries: { toFix: number; draft: number; submitted: number } | null
+    myEntries: {
+      toAnswer: number
+      toFix: number
+      draft: number
+      rejected: number
+      submitted: number
+      approved: number
+      filing: 'open' | 'upcoming' | 'closed'
+    } | null
     reviewsWaiting: number | null
   }[],
   batchId: string | undefined,
@@ -80,16 +109,31 @@ export const agendaOf = (
   if (mine.reviewsWaiting !== null) rows.push({ kind: 'review', waiting: mine.reviewsWaiting })
   if (mine.myEntries !== null) {
     // one line, saying the earliest thing still in play: a reader with work
-    // to redo does not also need telling what is out for judgement
-    const { toFix, draft, submitted } = mine.myEntries
+    // to redo does not also need telling what is out for judgement. What
+    // waits on the reader comes first, a refusal (news they may answer)
+    // before what is still with the reviewers, and what was accepted only
+    // when nothing else is left. "Nothing filed" is three different lines,
+    // because "start filing" is only true while filing is open.
+    const own = mine.myEntries
+    const first = (
+      [
+        ['toAnswer', own.toAnswer],
+        ['toFix', own.toFix],
+        ['draft', own.draft],
+        ['rejected', own.rejected],
+        ['submitted', own.submitted],
+        ['approved', own.approved],
+      ] as const
+    ).find(([, count]) => count > 0)
     rows.push(
-      toFix > 0
-        ? { kind: 'own', state: 'toFix', count: toFix }
-        : draft > 0
-          ? { kind: 'own', state: 'draft', count: draft }
-          : submitted > 0
-            ? { kind: 'own', state: 'submitted', count: submitted }
-            : { kind: 'own', state: 'none', count: 0 },
+      first !== undefined
+        ? { kind: 'own', state: first[0], count: first[1] }
+        : {
+            kind: 'own',
+            state:
+              own.filing === 'open' ? 'none' : own.filing === 'upcoming' ? 'upcoming' : 'missed',
+            count: 0,
+          },
     )
   }
   return { rows: rows.sort((one, other) => urgency(other) - urgency(one)) }

@@ -14,7 +14,14 @@ import { dotDay, dotMoment } from './dates.ts'
 import { StatusBadge } from './StatusBadge.tsx'
 import { BatchProgress } from './BatchProgress.tsx'
 import { progressOf, type TimelineLike } from './progress.ts'
-import type { AgendaRow as AgendaKind, BatchAgenda, BatchCardRow, HeroFrame } from './hero.ts'
+import {
+  ownLineAsks,
+  type AgendaRow as AgendaKind,
+  type BatchAgenda,
+  type BatchCardRow,
+  type HeroFrame,
+  type OwnState,
+} from './hero.ts'
 
 // The batch that is running, as the thing the page leads with.
 //
@@ -750,19 +757,24 @@ function wordsOf(
       state: row.waiting > 0 ? 'waiting' : 'clear',
     }
   }
-  const [value, action] =
-    row.state === 'toFix'
-      ? [format(m.toRevise, { count: row.count }), format(m.continueEntries)]
-      : row.state === 'draft'
-        ? [format(m.toSubmit, { count: row.count }), format(m.continueDraft)]
-        : row.state === 'submitted'
-          ? [format(m.underReview, { count: row.count }), format(m.viewLine)]
-          : [format(m.entriesNone), format(m.startEntries)]
+  const count = { count: row.count }
+  const words: Record<OwnState, () => readonly [string, string]> = {
+    toAnswer: () => [format(m.toAnswer, count), format(m.answerAsk)],
+    toFix: () => [format(m.toRevise, count), format(m.continueEntries)],
+    draft: () => [format(m.toSubmit, count), format(m.continueDraft)],
+    rejected: () => [format(m.notAccepted, count), format(m.seeWhy)],
+    submitted: () => [format(m.underReview, count), format(m.viewLine)],
+    approved: () => [format(m.accepted, count), format(m.viewLine)],
+    none: () => [format(m.entriesNone), format(m.startEntries)],
+    upcoming: () => [format(m.filingUpcoming), format(m.viewLine)],
+    missed: () => [format(m.filingMissed), format(m.viewLine)],
+  }
+  const [value, action] = words[row.state]()
   return {
     label: format(m.myEntries),
     value,
     action,
-    quiet: row.state === 'submitted',
+    quiet: !ownLineAsks(row.state),
     page: 'assessment/batch-my-entries',
     state: row.state,
   }

@@ -315,10 +315,25 @@ describe('the batch list', () => {
   // round, not from the counts: the counts say WHAT a line says, the
   // standing says WHETHER there is one. Asserted through the rows' own
   // facts rather than through their words, which are copy.
-  const standing = (
-    myEntries: { toFix: number; draft: number; submitted: number } | null,
-    reviewsWaiting: number | null,
-  ) => ({
+  interface Filings {
+    toAnswer: number
+    toFix: number
+    draft: number
+    rejected: number
+    submitted: number
+    approved: number
+    filing: 'open' | 'upcoming' | 'closed'
+  }
+  const NOTHING: Filings = {
+    toAnswer: 0,
+    toFix: 0,
+    draft: 0,
+    rejected: 0,
+    submitted: 0,
+    approved: 0,
+    filing: 'open',
+  }
+  const standing = (mine: Partial<Filings> | null, reviewsWaiting: number | null) => ({
     listBatches: () =>
       Effect.succeed({
         items: [listRow({ status: 'active', currentPhaseId: ENTRY_PHASE_ID })],
@@ -327,7 +342,15 @@ describe('the batch list', () => {
         capabilities: { create: true },
       }),
     listMyStanding: () =>
-      Effect.succeed({ items: [{ batchId: BATCH_ID, myEntries, reviewsWaiting }] }),
+      Effect.succeed({
+        items: [
+          {
+            batchId: BATCH_ID,
+            myEntries: mine === null ? null : { ...NOTHING, ...mine },
+            reviewsWaiting,
+          },
+        ],
+      }),
   })
 
   const agendaStates = async () =>
@@ -337,7 +360,7 @@ describe('the batch list', () => {
       .map((node) => node.getAttribute('data-agenda-state'))
 
   it('keeps a line for every standing the reader holds, empty or not', async () => {
-    await screen(standing({ toFix: 0, draft: 0, submitted: 0 }, 0), '/assessment/batches')
+    await screen(standing({}, 0), '/assessment/batches')
     await expect.element(page.getByRole('heading', { name: '2026 春季综测' })).toBeVisible()
     // a judge with an empty queue is still a judge, and somebody on the
     // roster who has filed nothing is still expected to - and the one with
@@ -353,19 +376,38 @@ describe('the batch list', () => {
 
   it('puts what is waiting on the reader above what is not', async () => {
     // nothing in the queue, work of their own to redo: their own goes first
-    await screen(standing({ toFix: 2, draft: 0, submitted: 0 }, 0), '/assessment/batches')
+    await screen(standing({ toFix: 2 }, 0), '/assessment/batches')
     await expect.element(page.getByRole('heading', { name: '2026 春季综测' })).toBeVisible()
     expect(await agendaStates()).toEqual(['toFix', 'clear'])
   })
 
   it('leads on from a line that is asking, and from one that is only open', async () => {
-    await screen(standing({ toFix: 0, draft: 0, submitted: 3 }, 4), '/assessment/batches')
+    await screen(standing({ submitted: 3 }, 4), '/assessment/batches')
     await expect.element(page.getByRole('heading', { name: '2026 春季综测' })).toBeVisible()
     expect(await agendaStates()).toEqual(['waiting', 'submitted'])
     // the queue asks; filings already with the reviewers are the reader's
     // to look over whenever they like, so that line is open too
     await expect.element(page.getByRole('link', { name: '开始审核' })).toBeVisible()
     await expect.element(page.getByRole('link', { name: '查看' })).toBeVisible()
+  })
+
+  // A participant whose filings were all settled has not "not started", and
+  // one who filed nothing is only told to start while filing is open. Each
+  // line says the first thing still in play, what waits on the reader first.
+  it.each([
+    [{ approved: 4 }, 'approved'],
+    [{ approved: 3, rejected: 1 }, 'rejected'],
+    [{ rejected: 1, submitted: 2 }, 'rejected'],
+    [{ submitted: 2, toAnswer: 1 }, 'toAnswer'],
+    [{ toAnswer: 1, toFix: 1 }, 'toAnswer'],
+    [{}, 'none'],
+    [{ filing: 'upcoming' }, 'upcoming'],
+    [{ filing: 'closed' }, 'missed'],
+    [{ approved: 2, filing: 'closed' }, 'approved'],
+  ] as const)('says what became of the reader’s filings: %o reads as %s', async (mine, state) => {
+    await screen(standing(mine, null), '/assessment/batches')
+    await expect.element(page.getByRole('heading', { name: '2026 春季综测' })).toBeVisible()
+    expect(await agendaStates()).toEqual([state])
   })
 
   it('leads on from a line that asks nothing, in a quieter voice', async () => {

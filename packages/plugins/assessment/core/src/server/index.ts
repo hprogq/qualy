@@ -59,6 +59,7 @@ import { makeEntryMethods, type EntryMethods, type EntryView } from '../entry/se
 import { makeReviewMethods, type ReviewDetailView, type ReviewMethods } from '../review/service.ts'
 import {
   entryCountsByBatchOf,
+  openAskCountsByBatchOf,
   participatingBatchIdsOf,
   entrySummaryRowsOf,
   insertReviewEvent,
@@ -738,13 +739,26 @@ export type UserActivityKind =
 export interface MyStanding {
   readonly items: readonly {
     readonly batchId: string
-    readonly myEntries: {
-      readonly toFix: number
-      readonly draft: number
-      readonly submitted: number
-    } | null
+    readonly myEntries: MyFilings | null
     readonly reviewsWaiting: number | null
   }[]
+}
+
+/**
+ * A participant's own filings in one round, each counted once under what it
+ * is waiting for. `submitted` is what is with the reviewers; a filing whose
+ * round has paused to ask its author for more is `toAnswer` instead, since
+ * it waits on them. Withdrawn-for-good (voided) filings are not counted.
+ */
+export interface MyFilings {
+  readonly toAnswer: number
+  readonly toFix: number
+  readonly draft: number
+  readonly rejected: number
+  readonly submitted: number
+  readonly approved: number
+  /** whether a new filing can be started now, at a later stage, or not again */
+  readonly filing: 'open' | 'upcoming' | 'closed'
 }
 
 export interface MyOverview {
@@ -1856,6 +1870,36 @@ export const make = Effect.fn('Assessment.make')(function* () {
       }
     })
 
+  /**
+   * Whether this participant can start a filing in the round now, will be
+   * able to at a later stage, or has missed it. Asked of the same gate that
+   * `createEntry` passes, so "open" here is a create that would go through;
+   * a stage scoped to some questions is open when it admits any of them.
+   */
+  const filingOf = (tenantId: string, batch: BatchRow, participantId: string, now: EpochMillis) =>
+    Effect.gen(function* () {
+      const plan = toSnapshots(yield* listPhaseRows(tenantId, batch.id))
+      const here = yield* effectivePhaseIndex(tenantId, batch, plan, now)
+      if (here !== null) {
+        const phase = plan[here]!
+        const scopes = yield* phaseScopes(tenantId, phase.id)
+        const [anyItem] = scopes.items
+        const open = gateAllows({
+          code: 'assessment.entry.create',
+          profile: phase.permissionProfile,
+          itemScope: scopes.items,
+          participantScope: scopes.participants,
+          ctx: { participantId, ...(anyItem === undefined ? {} : { itemId: anyItem }) },
+        })
+        if (open.allowed) return 'open' as const
+      }
+      return plan
+        .slice(here === null ? 0 : here + 1)
+        .some((phase) => phase.permissionProfile.includes('assessment.entry.create'))
+        ? ('upcoming' as const)
+        : ('closed' as const)
+    })
+
   const decide = (
     view: {
       profile: readonly string[]
@@ -2832,16 +2876,36 @@ export const make = Effect.fn('Assessment.make')(function* () {
           withDb(reviewsWaitingByBatchOf({ tenantId, userId: as.userId, batchIds })),
         )).map((row) => [row.batchId, row.waiting]),
       )
-      const mine = new Map<string, { toFix: number; draft: number; submitted: number }>()
+      const asks = new Map(
+        (yield* dieQuery(
+          withDb(openAskCountsByBatchOf({ tenantId, userId: as.userId, batchIds })),
+        )).map((row) => [row.batchId, Number(row.total)]),
+      )
+      type Counts = Omit<MyFilings, 'filing'>
+      const none: Counts = {
+        toAnswer: 0,
+        toFix: 0,
+        draft: 0,
+        rejected: 0,
+        submitted: 0,
+        approved: 0,
+      }
+      const mine = new Map<string, Counts>()
       for (const row of filings) {
-        const counts = mine.get(row.batchId) ?? { toFix: 0, draft: 0, submitted: 0 }
-        // three of the six statuses, because three is what the reader can
-        // act on: what came back to be revised, what was never sent, what
-        // is out for judgement. A refusal is a fourth thing with a fourth
-        // next step (§32.65) and is not folded into 'to fix'
-        if (row.status === 'needs_revision') counts.toFix = Number(row.total)
-        if (row.status === 'draft') counts.draft = Number(row.total)
-        if (row.status === 'in_review') counts.submitted = Number(row.total)
+        const counts = { ...(mine.get(row.batchId) ?? none) }
+        const total = Number(row.total)
+        // A refusal is its own count, not folded into 'to fix' (§32.65): it
+        // has its own next steps. A filing out for judgement whose round is
+        // asking its author for more is counted as waiting on them.
+        if (row.status === 'needs_revision') counts.toFix = total
+        if (row.status === 'draft') counts.draft = total
+        if (row.status === 'rejected') counts.rejected = total
+        if (row.status === 'approved') counts.approved = total
+        if (row.status === 'in_review') {
+          const asked = asks.get(row.batchId) ?? 0
+          counts.toAnswer = asked
+          counts.submitted = total - asked
+        }
         mine.set(row.batchId, counts)
       }
       // Whether the line is drawn at all is the batch's own authority to
@@ -2851,6 +2915,15 @@ export const make = Effect.fn('Assessment.make')(function* () {
       const taking = new Set(
         yield* dieQuery(withDb(participatingBatchIdsOf({ tenantId, userId: as.userId, batchIds }))),
       )
+      const now = yield* Clock.currentTimeMillis
+      const filingFor = Effect.fn(function* (batchId: string) {
+        const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
+        const participant = yield* dieQuery(
+          withDb(activeParticipantByUser(tenantId, batchId, as.userId)),
+        )
+        if (!batch || participant === null) return 'closed' as const
+        return yield* dieQuery(withDb(filingOf(tenantId, batch, participant.id, now)))
+      })
       // Every round asks rbac its own question, so the rounds ask at once:
       // in series a reader with a dozen rounds under way waited for a dozen
       // round trips to answer a card that shows one of them.
@@ -2861,7 +2934,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
           return {
             batchId,
             myEntries: taking.has(batchId)
-              ? (mine.get(batchId) ?? { toFix: 0, draft: 0, submitted: 0 })
+              ? { ...(mine.get(batchId) ?? none), filing: yield* filingFor(batchId) }
               : null,
             reviewsWaiting: authority.has('assessment.review.process')
               ? (waiting.get(batchId) ?? 0)
