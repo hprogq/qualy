@@ -69,6 +69,20 @@ export const barrierLayer: Layer.Layer<
             ),
           )
         }
+        // the code a challenge is issued under is the one the assembly was
+        // told about, or a browser would be asked for a provider nobody chose
+        if (declared !== null && selected !== null && selected.code !== declared.code) {
+          return yield* Effect.die(
+            new Error(
+              `${declared.pluginId} declares the captcha provider "${declared.code}" but registered "${selected.code}"`,
+            ),
+          )
+        }
+        if (declared === null && selected !== null) {
+          return yield* Effect.die(
+            new Error(`the captcha provider "${selected.code}" registered without being declared`),
+          )
+        }
         if (selected === null) {
           yield* Effect.logWarning(
             'captcha: no provider selected; challenged requests will bypass CAPTCHA',

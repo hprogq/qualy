@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import type { CaptchaPrompt } from '../src/contract.ts'
 import {
   CaptchaChallenge,
@@ -149,6 +149,15 @@ describe('a challenge that needs the person', () => {
     script.report({ kind: 'interaction-required' })
     await expect.element(page.getByRole('dialog')).toBeVisible()
     await expect.element(page.getByRole('button', { name: 'tick' })).toBeVisible()
+    // the page behind it leaves the conversation, and Tab stays inside
+    const behind = page.getByRole('button', { name: 'abandon', includeHidden: true }).element()
+    await expect.poll(() => behind.closest('[inert]')).not.toBeNull()
+    await expect.element(page.getByRole('button', { name: 'tick' })).toHaveFocus()
+    await userEvent.keyboard('{Tab}')
+    await expect.element(page.getByRole('button', { name: 'tick' })).toHaveFocus()
+    // done: the page comes back
+    script.report({ kind: 'solved', response: 'proof' })
+    await expect.poll(() => behind.closest('[inert]')).toBeNull()
   })
 })
 

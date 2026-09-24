@@ -133,6 +133,17 @@ describe('the boot barrier', () => {
     expect(warnings).toEqual([])
   })
 
+  it('refuses to start with a provider registered under another code, or none declared', async () => {
+    const other = await boot({ code: 'altcha', pluginId: '@qualy/plugin-captcha-altcha' }, provider('turnstile'))
+    expect(String(Exit.isFailure(other.exit) ? other.exit.cause : '')).toMatch(
+      /declares the captcha provider "altcha" but registered "turnstile"/,
+    )
+    const stray = await boot(null, provider('altcha'))
+    expect(String(Exit.isFailure(stray.exit) ? stray.exit.cause : '')).toMatch(
+      /"altcha" registered without being declared/,
+    )
+  })
+
   it('refuses to start with a provider declared and never registered', async () => {
     const { exit } = await boot({ code: 'altcha', pluginId: '@qualy/plugin-captcha-altcha' }, null)
     expect(Exit.isFailure(exit)).toBe(true)

@@ -1,9 +1,11 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { motion, useReducedMotion } from 'motion/react'
 import * as stylex from '@stylexjs/stylex'
 import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
+import { Portal } from '@qualy/ui/portal'
+import { retainInertBackground } from '@qualy/ui/inert-background'
 import type { CaptchaGate } from './gate.ts'
 import { captchaMessages as m } from './i18n.ts'
 
@@ -19,7 +21,10 @@ import { captchaMessages as m } from './i18n.ts'
 //
 // The container never moves. A provider's widget can be an iframe, and an
 // iframe moved in the document starts over, so the overlay is the same
-// element restyled rather than a dialog it is carried into.
+// element restyled rather than a dialog it is carried into. For a caller
+// that places it over the page, that element lives from the start in a
+// portal of its own - outside the page, which is what lets the page go inert
+// behind it while the person is needed, with Tab kept inside it.
 
 const EASE = [0.2, 0.8, 0.2, 1] as const
 
@@ -103,6 +108,45 @@ export function CaptchaChallenge({ gate }: { gate: CaptchaGate }) {
     }
   }, [interacting, overlay, gate.containerRef])
 
+  // over the page: a host of its own outside it, made once and kept
+  const [host] = useState<HTMLElement | null>(() => {
+    if (!overlay || typeof document === 'undefined') return null
+    const element = document.createElement('div')
+    element.setAttribute('data-portal', '')
+    element.setAttribute('data-slot', 'captcha')
+    return element
+  })
+  useEffect(() => {
+    if (host === null) return
+    document.body.append(host)
+    return () => host.remove()
+  }, [host])
+  const panel = useRef<HTMLDivElement | null>(null)
+  // everything behind the challenge leaves the conversation while it is open
+  useEffect(() => {
+    if (!overlay || !interacting) return
+    return retainInertBackground(() => panel.current)
+  }, [overlay, interacting])
+  /** Tab and Shift-Tab go round inside the challenge, never out of it */
+  const keepFocus = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (!interacting || event.key !== 'Tab' || panel.current === null) return
+    const inside = [...panel.current.querySelectorAll<HTMLElement>(FOCUSABLE)]
+    const first = inside[0]
+    const last = inside.at(-1)
+    if (first === undefined || last === undefined) {
+      event.preventDefault()
+      panel.current.focus()
+      return
+    }
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault()
+      last.focus()
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault()
+      first.focus()
+    }
+  }
+
   const container = <div ref={gate.containerRef} {...stylex.props(styles.region)} />
 
   return (
@@ -118,9 +162,12 @@ export function CaptchaChallenge({ gate }: { gate: CaptchaGate }) {
         <span aria-live="polite">{busy ? format(m.working) : ''}</span>
       </VisuallyHidden>
       {overlay ? (
-        <>
+        <Portal into={host}>
           {interacting && <div aria-hidden {...stylex.props(styles.veil)} />}
           <div
+            ref={panel}
+            tabIndex={-1}
+            onKeyDown={keepFocus}
             {...(interacting
               ? { role: 'dialog', 'aria-modal': true, 'aria-label': format(m.dialogTitle) }
               : {})}
@@ -129,7 +176,7 @@ export function CaptchaChallenge({ gate }: { gate: CaptchaGate }) {
             {interacting && <p {...stylex.props(styles.title)}>{format(m.dialogTitle)}</p>}
             {container}
           </div>
-        </>
+        </Portal>
       ) : (
         <motion.div
           {...stylex.props(styles.inline)}
