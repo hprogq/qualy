@@ -20126,3 +20126,17 @@ A–C 的部署约束至此解除：ALTCHA 与能处理 428 的登录页在同�
 
 - `pnpm typecheck`：exit 0。
 - `sign-in.browser.test.tsx`：`Tests  19 passed (19)`（新增：已登录跳首页且不显示登录方式；会话过期照常显示）；`session-transition` 与 `localization`：`Tests  5 passed (5)`。
+
+## 深链恢复：匿名先登录、登录后回原地址（2026-09-24）
+
+- 问题：会话过期后重新打开受保护的地址（如手机 Safari），匿名 manifest 定位不到它，显示「页面不存在」。
+- 原则：manifest 继续只按身份裁剪，不下发完整路由表；匿名遇到无法定位的地址一律先登录（真实、无权限、不存在三者同一个回答），身份确定后才是「无法访问」。全文见 docs/notes/auth-security.md「深链、会话过期与登录页」。
+- 改动：manifest 带 `viewer`；route builder 在匿名 manifest 下把兜底路由改为跳登录页 `?next=`（宿主经契约 `SIGN_IN_PAGE` 告诉它登录页 id）；`SessionDestination` 新增 `return-path`；登录页把 `next` 带过本地登录、已登录跳转与外部登录（填进既有的 `returnTo`，服务端 `AuthFlow.returnPath` 原本就会 303 回去）；`safeReturnPath` 提到 `@qualy/ui-contract/return-path` 由服务端与浏览器共用，`returnTo`、`auth_flows.return_path`（迁移 `20260924033822_auth-flow-return-path.sql`）与校验上限统一为 2048；web runtime 全局处理使用中会话过期（只认 AUTH_REQUIRED / SESSION_EXPIRED，只在已登录 manifest 下触发，去重，清上一身份缓存后重取 manifest，去不去登录页仍由路由决定）；已登录态 404 文案改为「页面无法访问 / 该页面不存在，或您暂无访问权限。/ 返回首页」。
+- 测试工具的 `emptyManifest()` 默认 `viewer: 'anonymous'`，全局处理在其下不触发，现有屏幕测试行为不变。
+
+### 验收（实际执行）
+
+- `pnpm typecheck`：exit 0。`qualy database verify`：`84 committed migration(s) build the declared schema, zero drift`。
+- `pnpm test`：`Tests  12 failed | 2280 passed | 17 skipped (2309)`；11 个在 apps/server 的 4 个文件，原因同上一节（本地未提交清单启用 resend、停用 smtp），在 HEAD + 本次改动、已提交清单的临时 worktree 里重跑：`Test Files  4 passed (4)`，`Tests  13 passed (13)`；另 1 个是 effect-api-parity 的 manifest 词表，`viewer` 加入后 `Tests  4 passed (4)`。
+- `pnpm test:browser`：`Tests  2 failed | 592 passed (594)`；shell 预取与 review-recognition 草稿为负载超时，单独重跑 `Tests  39 passed (39)`。
+- 新增：route builder 三种兜底（匿名跳登录且对真实/不存在地址同答、已登录 404、无登录页退回 404）；runtime 会话过期（清上一身份数据、两个请求同时 401 只重取一次 manifest、匿名访客收到 AUTH_REQUIRED 不触发）；登录页 `next`（已登录按 next 跳、外站 next 回首页、选登录方式时 next 留在地址里）；`returnPathFrom` / `startHref` 单测（反斜杠、协议相对、指向登录页自身、超长一律丢弃）。
