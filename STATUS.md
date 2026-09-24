@@ -20116,3 +20116,13 @@ A–C 的部署约束至此解除：ALTCHA 与能处理 428 的登录页在同�
 - `pnpm test`（本地清单启用了 resend、停用了 smtp，未提交）：`Test Files  4 failed | 307 passed | 3 skipped (314)`，`Tests  11 failed | 2275 passed | 17 skipped (2291)`；11 个失败全在 apps/server 的 4 个文件，原因是本地清单（缺 `ResendConfig` / 测试进程无 resend key / 默认后端 smtp 未启用）。在 HEAD + 本次改动、已提交清单的临时 worktree 中重跑这 4 个文件：`Test Files  4 passed (4)`，`Tests  13 passed (13)`。
 - 新增与改动的 node 测试：auth-local strength `Tests  9 passed (9)`；effect-email-flows（重置链接预检与评估、自助评估）与 effect-users（管理员评估的权限与不写库）通过。
 - `pnpm test:browser`：`Test Files  1 failed | 77 passed (78)`，`Tests  1 failed | 586 passed (587)`；失败的 directory-import import-wizard 为 32 s 负载超时，单独重跑 `Tests  3 passed (3)`。
+
+## 已登录时访问登录页（2026-09-24）
+
+- `/login` 对已登录的人直接回首页；判定用进页面后新发的一次会话读取，不用 30 秒缓存（防过期会话来回弹）；判定前显示骨架屏。`/reset-password`、`/confirm-email` 不跳。理由见 docs/notes/auth-security.md「已登录时的登录页」。
+- 顺带修正上一笔提交的遗漏：两处浏览器测试的 `querySelector` 类型（`865ca663a`），当时 typecheck 在改测试之前跑，没拦住。
+
+### 验收（实际执行）
+
+- `pnpm typecheck`：exit 0。
+- `sign-in.browser.test.tsx`：`Tests  19 passed (19)`（新增：已登录跳首页且不显示登录方式；会话过期照常显示）；`session-transition` 与 `localization`：`Tests  5 passed (5)`。
