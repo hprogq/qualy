@@ -140,10 +140,12 @@ database。出现第二种有持久部署副作用的能力时,先设计启动�
 点一下即填好邮箱与密码;同时冻结它们的登录信息:本人与管理员都不能改密码、改邮箱、增删登录方式,找回密码对它们静默不发信
 (对外回答与其他地址一致)。格式不对即拒启;不设则两种行为都不存在。
 
-**邮件**:产品经 Resend 发信(qualy.yml 启用 `@qualy/plugin-mail-resend`、`defaultBackend: resend`,smtp 插件停用)。
-生产必填 `QUALY_MAIL_FROM`(发件人,`Name <address>` 或裸地址,域名须已在 Resend 验证)与 `QUALY_MAIL_RESEND_API_KEY`(缺失或空白即拒启);
-开发环境同样需要 key。改用 SMTP 中继要换一个启用 `@qualy/plugin-mail-smtp` 的 release,并设 `QUALY_MAIL_DEFAULT_BACKEND=smtp` 与下面的中继变量:
-`QUALY_MAIL_SMTP_HOST`(中继)在 smtp 启用时生产必填。
+**邮件**:qualy.yml 同时启用 `@qualy/plugin-mail-resend` 与 `@qualy/plugin-mail-smtp`,产品默认 `defaultBackend: resend`,
+部署以 `QUALY_MAIL_DEFAULT_BACKEND` 改选(开发环境设 `smtp`,发到本机 Mailpit)。**只有被选中发信的后端要求自己的配置齐全**,
+另一个缺配置也照常启动、从不被用来发信(规则在 `@qualy/plugin-mail/server` 的 `offerBackend`)。
+生产必填 `QUALY_MAIL_FROM`(发件人,`Name <address>` 或裸地址,经 Resend 时域名须已验证);经 Resend 发信时 `QUALY_MAIL_RESEND_API_KEY`
+缺失或空白即拒启。改用 SMTP 中继设 `QUALY_MAIL_DEFAULT_BACKEND=smtp` 与下面的中继变量,不需要换 release:
+`QUALY_MAIL_SMTP_HOST`(中继)在经 smtp 发信时生产必填。
 `QUALY_MAIL_SMTP_TLS` 三态:`implicit`(465,一开始就是 TLS)、`starttls`(587,缺省,升级失败即不发)、`none`(明文,生产必须另设
 `QUALY_MAIL_SMTP_ALLOW_PLAINTEXT=1` 才接受);端口随之缺省,可用 `QUALY_MAIL_SMTP_PORT` 覆盖;账号与密码(`QUALY_MAIL_SMTP_USER` /
 `QUALY_MAIL_SMTP_PASSWORD`)要么都给要么都不给。这些是部署的,不进 qualy.yml,也不进租户的密钥表——单一产品只有一个中继。

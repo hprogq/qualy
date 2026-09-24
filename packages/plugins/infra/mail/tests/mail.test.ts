@@ -8,6 +8,7 @@ import {
   MailConfig,
   senderValid,
 } from '../src/server/config.ts'
+import { MailBackends, offerBackend, registryLayer } from '../src/server/registry.ts'
 import { mailBackendContract, mailerLayerWith, memoryMailBackend } from '../src/testkit/index.ts'
 
 // Sending mail, as the rest of the product sees it: one call, the
@@ -107,5 +108,49 @@ describe('the sender', () => {
     })
     for (const check of checks) await check.run()
     expect(checks.length).toBeGreaterThan(0)
+  })
+})
+
+describe('a backend offering itself', () => {
+  // the deployment sends through `selected`; the backend on offer is "relay"
+  const offered = (selected: string, configured: { settings: string } | { refusal: string }) =>
+    Effect.runPromiseExit(
+      Effect.gen(function* () {
+        yield* offerBackend('relay', configured, () =>
+          Effect.succeed(memoryMailBackend('relay').backend),
+        )
+        return yield* Effect.flatMap(MailBackends, (registry) => registry.installed)
+      }).pipe(
+        Effect.provide(
+          registryLayer.pipe(
+            Layer.provide(
+              Layer.succeed(
+                MailConfig,
+                MailConfig.of({
+                  defaultBackend: selected,
+                  from: DEVELOPMENT_FROM,
+                  timeoutMs: 5_000,
+                }),
+              ),
+            ),
+          ),
+        ),
+      ),
+    )
+
+  it('registers when its settings are complete, picked or not', async () => {
+    for (const selected of ['relay', 'other']) {
+      const exit = await offered(selected, { settings: 'ok' })
+      expect(Exit.isSuccess(exit) && exit.value).toEqual(['relay'])
+    }
+  })
+
+  it('refuses to start without its settings only while it is the one that sends', async () => {
+    const picked = await offered('relay', { refusal: 'RELAY_HOST must be set' })
+    expect(Exit.isFailure(picked) && Cause.pretty(picked.cause)).toContain('RELAY_HOST must be set')
+    // not picked: still registered, so the barrier's declared-backends check
+    // holds, and never handed out for sending
+    const spare = await offered('other', { refusal: 'RELAY_HOST must be set' })
+    expect(Exit.isSuccess(spare) && spare.value).toEqual(['relay'])
   })
 })

@@ -1,7 +1,7 @@
 import { Effect, Redacted } from 'effect'
 import nodemailer from 'nodemailer'
 import { MailBackendFailed, type MailBackend } from '@qualy/plugin-mail/server'
-import type { SmtpConfig } from './config.ts'
+import type { SmtpSettings } from './config.ts'
 
 // Handing a message to an SMTP relay.
 //
@@ -10,8 +10,6 @@ import type { SmtpConfig } from './config.ts'
 // sender it will not relay for. Anything else - no connection, a timeout, a
 // TLS failure, a temporary 4xx - is the relay being unavailable, which the
 // sender may try again later.
-
-type Settings = Parameters<typeof SmtpConfig.of>[0]
 
 /** how nodemailer's failure reads, as the capability's two answers */
 export const reasonOf = (error: unknown): 'rejected' | 'unavailable' => {
@@ -22,7 +20,7 @@ export const reasonOf = (error: unknown): 'rejected' | 'unavailable' => {
   return failure?.code === 'EENVELOPE' || failure?.code === 'EMESSAGE' ? 'rejected' : 'unavailable'
 }
 
-export const smtpBackend = (settings: Settings) => {
+export const smtpBackend = (settings: SmtpSettings) => {
   const transport = nodemailer.createTransport({
     host: settings.host,
     port: settings.port,

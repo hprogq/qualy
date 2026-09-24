@@ -1,5 +1,6 @@
 import { Config, Context, Effect, Layer, Redacted, Schema } from 'effect'
 import { decodePluginConfig } from '@qualy/plugin-kit/config'
+import type { BackendSettings } from '@qualy/plugin-mail/server'
 
 // Where mail is handed over, and how the connection is protected.
 //
@@ -11,20 +12,25 @@ import { decodePluginConfig } from '@qualy/plugin-kit/config'
 // upgrades a plain connection and refuses to go on if it cannot (587), and
 // `none` sends in the clear - for a mail catcher on a developer's machine,
 // and in production only when somebody said so on purpose.
+//
+// Settings that are not enough to send with are recorded with the reason
+// rather than refused here: whether that stops the product depends on
+// whether this is the backend the deployment sends through (offerBackend).
+// A setting that is malformed rather than missing is refused all the same,
+// since nobody means it.
 
 export type SmtpTls = 'implicit' | 'starttls' | 'none'
 
-export class SmtpConfig extends Context.Service<
-  SmtpConfig,
-  {
-    readonly host: string
-    readonly port: number
-    readonly tls: SmtpTls
-    readonly auth:
-      | { readonly user: string; readonly password: Redacted.Redacted<string> }
-      | undefined
-  }
->()('@qualy/plugin-mail-smtp/SmtpConfig') {}
+export interface SmtpSettings {
+  readonly host: string
+  readonly port: number
+  readonly tls: SmtpTls
+  readonly auth: { readonly user: string; readonly password: Redacted.Redacted<string> } | undefined
+}
+
+export class SmtpConfig extends Context.Service<SmtpConfig, BackendSettings<SmtpSettings>>()(
+  '@qualy/plugin-mail-smtp/SmtpConfig',
+) {}
 
 export const SMTP_HOST_MISSING =
   'QUALY_MAIL_SMTP_HOST must name the relay mail is handed to in production'
@@ -48,7 +54,7 @@ export const config = (
       const production =
         (yield* Config.String('NODE_ENV').pipe(Config.withDefault('development'))) === 'production'
       const host = yield* Config.option(Config.String('QUALY_MAIL_SMTP_HOST'))
-      if (host._tag === 'None' && production) return yield* Effect.die(new Error(SMTP_HOST_MISSING))
+      if (host._tag === 'None' && production) return SmtpConfig.of({ refusal: SMTP_HOST_MISSING })
       // development hands mail to the catcher the compose stack runs
       const tlsRaw = yield* Config.String('QUALY_MAIL_SMTP_TLS').pipe(
         Config.withDefault(production ? 'starttls' : 'none'),
@@ -61,7 +67,7 @@ export const config = (
         (yield* Config.String('QUALY_MAIL_SMTP_ALLOW_PLAINTEXT').pipe(Config.withDefault(''))) ===
         '1'
       if (production && tls === 'none' && !plaintextAllowed) {
-        return yield* Effect.die(new Error(SMTP_PLAINTEXT_REFUSED))
+        return SmtpConfig.of({ refusal: SMTP_PLAINTEXT_REFUSED })
       }
       const port = yield* Config.Number('QUALY_MAIL_SMTP_PORT').pipe(
         Config.withDefault(host._tag === 'None' ? 1025 : PORTS[tls]),
@@ -72,13 +78,15 @@ export const config = (
         return yield* Effect.die(new Error(SMTP_AUTH_HALF))
       }
       return SmtpConfig.of({
-        host: host._tag === 'Some' ? host.value : '127.0.0.1',
-        port,
-        tls,
-        auth:
-          user._tag === 'Some' && password._tag === 'Some'
-            ? { user: user.value, password: password.value }
-            : undefined,
+        settings: {
+          host: host._tag === 'Some' ? host.value : '127.0.0.1',
+          port,
+          tls,
+          auth:
+            user._tag === 'Some' && password._tag === 'Some'
+              ? { user: user.value, password: password.value }
+              : undefined,
+        },
       })
     }),
   )

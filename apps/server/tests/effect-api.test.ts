@@ -247,9 +247,14 @@ const shell = (url: string) => {
         ),
         Layer.succeed(
           SmtpConfig,
-          SmtpConfig.of({ host: '127.0.0.1', port: 1, tls: 'none', auth: undefined }),
+          SmtpConfig.of({
+            settings: { host: '127.0.0.1', port: 1, tls: 'none', auth: undefined },
+          }),
         ),
-        Layer.succeed(ResendConfig, ResendConfig.of({ apiKey: Redacted.make('re_test_only') })),
+        Layer.succeed(
+          ResendConfig,
+          ResendConfig.of({ settings: { apiKey: Redacted.make('re_test_only') } }),
+        ),
         // the formula writer is pinned closed here on purpose: this suite's
         // subject is the api aggregate, not the rollout
         Layer.succeed(FormulaSettings, FormulaSettings.of({ authoring: false })),

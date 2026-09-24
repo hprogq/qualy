@@ -1,7 +1,7 @@
 import { Effect, Layer } from 'effect'
 import { Plugin } from '@qualy/plugin-kit'
 import { Mail } from '@qualy/plugin-mail/plugin'
-import { MailBackends } from '@qualy/plugin-mail/server'
+import { MailBackends, offerBackend } from '@qualy/plugin-mail/server'
 import { resendBackend } from './backend.ts'
 import { config, ResendConfig } from './config.ts'
 
@@ -13,10 +13,9 @@ import { config, ResendConfig } from './config.ts'
 
 const registration: Layer.Layer<never, never, MailBackends | ResendConfig> = Layer.effectDiscard(
   Effect.gen(function* () {
-    const settings = yield* ResendConfig
-    const registry = yield* MailBackends
-    yield* registry.register(resendBackend(settings))
-    yield* Effect.logDebug('mail handed to resend')
+    yield* offerBackend('resend', yield* ResendConfig, (settings) =>
+      Effect.as(Effect.logDebug('mail handed to resend'), resendBackend(settings)),
+    )
   }),
 )
 

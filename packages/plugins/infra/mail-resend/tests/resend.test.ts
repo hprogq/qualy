@@ -19,8 +19,13 @@ const configured = (env: Record<string, string>) =>
     ),
   )
 
-const refusal = (exit: Exit.Exit<unknown, unknown>) =>
-  Exit.isFailure(exit) ? Cause.pretty(exit.cause) : 'started'
+/** why these settings cannot send: refused outright, or recorded for the backend to act on */
+const refusal = (exit: Awaited<ReturnType<typeof configured>>) =>
+  Exit.isFailure(exit)
+    ? Cause.pretty(exit.cause)
+    : 'refusal' in exit.value
+      ? exit.value.refusal
+      : 'started'
 
 interface Sent {
   readonly url: string
@@ -48,7 +53,11 @@ describe('the resend settings', () => {
       RESEND_API_KEY_MISSING,
     )
     const exit = await configured({ QUALY_MAIL_RESEND_API_KEY: ' re_live \n' })
-    expect(Exit.isSuccess(exit) && Redacted.value(exit.value.apiKey)).toBe('re_live')
+    expect(
+      Exit.isSuccess(exit) &&
+        'settings' in exit.value &&
+        Redacted.value(exit.value.settings.apiKey),
+    ).toBe('re_live')
   })
 
   it('refuse anything written for it in the manifest', async () => {

@@ -40,13 +40,22 @@ const configured = (env: Record<string, string>) =>
     ),
   )
 
-const refusal = (exit: Exit.Exit<unknown, unknown>) =>
-  Exit.isFailure(exit) ? Cause.pretty(exit.cause) : 'started'
+type Configured = Awaited<ReturnType<typeof configured>>
+
+/** why these settings cannot send: refused outright, or recorded for the backend to act on */
+const refusal = (exit: Configured) =>
+  Exit.isFailure(exit)
+    ? Cause.pretty(exit.cause)
+    : 'refusal' in exit.value
+      ? exit.value.refusal
+      : 'started'
+
+const settingsOf = (exit: Configured) =>
+  Exit.isSuccess(exit) && 'settings' in exit.value ? exit.value.settings : undefined
 
 describe('the relay settings', () => {
   it('hand development mail to the local catcher, in the clear', async () => {
-    const exit = await configured({})
-    expect(Exit.isSuccess(exit) && exit.value).toEqual({
+    expect(settingsOf(await configured({}))).toEqual({
       host: '127.0.0.1',
       port: 1025,
       tls: 'none',
@@ -60,13 +69,13 @@ describe('the relay settings', () => {
       NODE_ENV: 'production',
       QUALY_MAIL_SMTP_HOST: 'smtp.school.edu',
     })
-    expect(Exit.isSuccess(relay) && relay.value).toMatchObject({ tls: 'starttls', port: 587 })
+    expect(settingsOf(relay)).toMatchObject({ tls: 'starttls', port: 587 })
     const implicit = await configured({
       NODE_ENV: 'production',
       QUALY_MAIL_SMTP_HOST: 'smtp.school.edu',
       QUALY_MAIL_SMTP_TLS: 'implicit',
     })
-    expect(Exit.isSuccess(implicit) && implicit.value).toMatchObject({ tls: 'implicit', port: 465 })
+    expect(settingsOf(implicit)).toMatchObject({ tls: 'implicit', port: 465 })
     const clear = {
       NODE_ENV: 'production',
       QUALY_MAIL_SMTP_HOST: 'smtp.school.edu',
@@ -74,8 +83,8 @@ describe('the relay settings', () => {
     }
     expect(refusal(await configured(clear))).toContain(SMTP_PLAINTEXT_REFUSED)
     expect(
-      Exit.isSuccess(await configured({ ...clear, QUALY_MAIL_SMTP_ALLOW_PLAINTEXT: '1' })),
-    ).toBe(true)
+      settingsOf(await configured({ ...clear, QUALY_MAIL_SMTP_ALLOW_PLAINTEXT: '1' })),
+    ).toBeDefined()
   })
 
   it('refuse a protection that is not one of the three, and half an account', async () => {

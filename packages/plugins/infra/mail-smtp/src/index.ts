@@ -1,7 +1,7 @@
 import { Effect, Layer } from 'effect'
 import { Plugin } from '@qualy/plugin-kit'
 import { Mail } from '@qualy/plugin-mail/plugin'
-import { MailBackends } from '@qualy/plugin-mail/server'
+import { MailBackends, offerBackend } from '@qualy/plugin-mail/server'
 import { smtpBackend } from './backend.ts'
 import { config, SmtpConfig } from './config.ts'
 
@@ -13,14 +13,16 @@ import { config, SmtpConfig } from './config.ts'
 
 const registration: Layer.Layer<never, never, MailBackends | SmtpConfig> = Layer.effectDiscard(
   Effect.gen(function* () {
-    const settings = yield* SmtpConfig
-    const registry = yield* MailBackends
-    const smtp = yield* Effect.acquireRelease(
-      Effect.sync(() => smtpBackend(settings)),
-      (made) => Effect.sync(() => made.close()),
+    yield* offerBackend('smtp', yield* SmtpConfig, (settings) =>
+      Effect.gen(function* () {
+        const smtp = yield* Effect.acquireRelease(
+          Effect.sync(() => smtpBackend(settings)),
+          (made) => Effect.sync(() => made.close()),
+        )
+        yield* Effect.logDebug(`mail handed to ${settings.host}:${settings.port} (${settings.tls})`)
+        return smtp.backend
+      }),
     )
-    yield* registry.register(smtp.backend)
-    yield* Effect.logDebug(`mail handed to ${settings.host}:${settings.port} (${settings.tls})`)
   }),
 )
 

@@ -10,7 +10,7 @@ import { serviceLayer as mailerLayer } from './service.ts'
 // nothing else is anybody's business.
 
 export { config, MailConfig, DEVELOPMENT_FROM, MAIL_FROM_MISSING, senderValid } from './config.ts'
-export { MailBackends } from './registry.ts'
+export { MailBackends, offerBackend, type BackendSettings } from './registry.ts'
 export { MailBackendFailed, type MailBackend, type OutgoingMail } from './backend.ts'
 
 /** the registry first, then the sender over it, and the barrier check at assembly */

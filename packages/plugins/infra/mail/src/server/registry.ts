@@ -17,8 +17,41 @@ export class MailBackends extends Context.Service<
     /** the deployment's choice; absent only in a boot the barrier refuses */
     readonly forSend: Effect.Effect<MailBackend | undefined>
     readonly installed: Effect.Effect<readonly string[]>
+    /** the code of the backend this deployment sends through */
+    readonly selected: string
   }
 >()('@qualy/plugin-mail/MailBackends') {}
+
+/** a backend's settings as the deployment gave them, or why they cannot send */
+export type BackendSettings<S> = { readonly settings: S } | { readonly refusal: string }
+
+/**
+ * Offers a backend to the registry under the one rule every backend keeps:
+ * its own settings must be complete only while it is the one that sends.
+ *
+ * Several backends may be enabled at once and the deployment picks one, so
+ * a backend nobody picked has no reason to stop the product for a relay or
+ * a key it will never use. The one picked still refuses to start without
+ * them, with the backend's own words. The unpicked one registers all the
+ * same - the barrier holds every declared backend to registering - as a
+ * backend that cannot be reached for sending.
+ */
+export const offerBackend = <S, R>(
+  code: string,
+  configured: BackendSettings<S>,
+  make: (settings: S) => Effect.Effect<MailBackend, never, R>,
+): Effect.Effect<void, never, MailBackends | R> =>
+  Effect.gen(function* () {
+    const registry = yield* MailBackends
+    if ('settings' in configured) return yield* registry.register(yield* make(configured.settings))
+    if (registry.selected === code) return yield* Effect.die(new Error(configured.refusal))
+    yield* registry.register({
+      code,
+      // forSend only ever hands out the selected backend
+      send: () => Effect.die(new Error(configured.refusal)),
+    })
+    yield* Effect.logDebug(`mail backend "${code}" is not the one that sends, and is not set up`)
+  })
 
 export const registryLayer: Layer.Layer<MailBackends, never, MailConfig> = Layer.effect(
   MailBackends,
@@ -36,6 +69,7 @@ export const registryLayer: Layer.Layer<MailBackends, never, MailConfig> = Layer
         }),
       forSend: Effect.sync(() => backends.get(config.defaultBackend)),
       installed: Effect.sync(() => [...backends.keys()]),
+      selected: config.defaultBackend,
     })
   }),
 )

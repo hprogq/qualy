@@ -74,12 +74,13 @@ plugins:
   # Mail, the same shape as attachments: the backends are separate plugins,
   # and the one mail goes out through is named here as the product's default.
   # A deployment names another with QUALY_MAIL_DEFAULT_BACKEND, among the
-  # backends enabled here, without a new release.
+  # backends enabled here, without a new release - development sets smtp and
+  # hands mail to the local Mailpit. Only the backend that sends needs its
+  # relay or key; the other one waits unconfigured.
   '@qualy/plugin-mail':
     config:
       defaultBackend: resend
-  '@qualy/plugin-mail-smtp':
-    enabled: false
+  '@qualy/plugin-mail-smtp': {}
   '@qualy/plugin-mail-resend': {}
 
   # Challenges for risky requests. Unlike mail, which provider answers them is
