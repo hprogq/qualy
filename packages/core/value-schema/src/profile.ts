@@ -124,12 +124,7 @@ export interface DateSchema extends SchemaAnnotations {
 }
 
 export type AtomicSchema =
-  | TextSchema
-  | IntegerSchema
-  | DecimalSchema
-  | ChoiceSchema
-  | BooleanSchema
-  | DateSchema
+  TextSchema | IntegerSchema | DecimalSchema | ChoiceSchema | BooleanSchema | DateSchema
 
 export interface InputSchema {
   readonly type: 'object'
@@ -351,7 +346,8 @@ const atomicIssues = (value: unknown, path: string): readonly ProfileIssue[] => 
         // labels, and both are bounded only by the ceiling above
         const admitted = new Set(choices)
         for (const [key, label] of Object.entries(labels)) {
-          if (!admitted.has(key)) found.push(issue(`${path}.${ENUM_LABELS}.${key}`, 'label-orphan'))
+          if (!admitted.has(key))
+            found.push(issue(`${path}.${ENUM_LABELS}.${key}`, 'label-orphan'))
           if (typeof label !== 'string')
             found.push(issue(`${path}.${ENUM_LABELS}.${key}`, 'label-not-a-string'))
           else if (label.length > PROFILE_LIMITS.choiceLabelLength)

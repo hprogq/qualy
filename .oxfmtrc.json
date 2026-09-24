@@ -13,6 +13,8 @@
     "apps/web/.qualy/",
     "qualy.lock.json",
     "docs/aegis-official-docs.md",
-    "docs/orpc-v2-docs.md"
+    "docs/orpc-v2-docs.md",
+    "packages/core/formula/src/",
+    "packages/core/value-schema/src/"
   ]
 }

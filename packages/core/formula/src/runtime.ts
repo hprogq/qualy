@@ -11,12 +11,7 @@ import { kindOf, type DecimalSchema, type InputSchema } from '@qualy/value-schem
 import { decimalFromString, decimalToString, type Decimal } from './decimal.ts'
 
 export type JsonValue =
-  | string
-  | number
-  | boolean
-  | null
-  | JsonValue[]
-  | { [key: string]: JsonValue }
+  string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
 
 export { formulaContext, type FormulaContext } from './context.ts'
 export { FormulaFailure, isFormulaFailure } from './failure.ts'
