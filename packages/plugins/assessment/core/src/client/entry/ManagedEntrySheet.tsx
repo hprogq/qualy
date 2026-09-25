@@ -127,10 +127,15 @@ export function ManagedEntrySheet({
   const [asking, setAsking] = useState<'return-for-revision' | 'void' | null>(null)
   const [correcting, setCorrecting] = useState<'reopen' | 'redetermine' | null>(null)
   // a correction offered but not open now carries the server's reason; the
-  // same code reads differently on this desk for a question without a route
+  // same code reads differently on this desk for a question without a route,
+  // and points to re-determining only for a reader who can re-determine now
   const why = (reason: string | null) =>
     reason === 'no-appeal-route'
-      ? format(m.staffReopenNoRoute)
+      ? format(
+          corrections?.redetermine.state === 'available'
+            ? m.staffReopenNoRoute
+            : m.staffReopenNoRouteOnly,
+        )
       : format(entryRefusalReason(reason ?? '') ?? m.refuseOther)
   // Which correction fits is a fact about where the claim came from. A
   // participant's own filing is theirs to change, so it goes back to them; an

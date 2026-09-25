@@ -1033,6 +1033,11 @@ const i18n = definePluginMessages({
       id: 'assessment/staff/reopen-no-route',
       defaultMessage: 'This item has no escalation workflow. Re-determine the result instead',
     },
+    /** the same, for a reader who holds no re-determination to turn to */
+    staffReopenNoRouteOnly: {
+      id: 'assessment/staff/reopen-no-route-only',
+      defaultMessage: 'This item has no escalation workflow',
+    },
     staffReopened: { id: 'assessment/staff/reopened', defaultMessage: 'Re-examination started' },
     staffRedetermine: { id: 'assessment/staff/redetermine', defaultMessage: 'Re-determine' },
     staffRedetermineTitle: {

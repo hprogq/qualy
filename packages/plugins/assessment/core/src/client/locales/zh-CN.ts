@@ -112,6 +112,7 @@ export default {
   'assessment/staff/reopen-title': '发起复查',
   'assessment/staff/reopen-hint': '将按复核流程从第一个环节重新审核，参评人员的申诉机会不受影响',
   'assessment/staff/reopen-no-route': '该项目未配置复核流程，可改用重新认定',
+  'assessment/staff/reopen-no-route-only': '该项目未配置复核流程',
   'assessment/staff/reopened': '已发起复查',
   'assessment/staff/redetermine': '重新认定',
   'assessment/staff/redetermine-title': '重新认定',

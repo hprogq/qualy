@@ -470,6 +470,33 @@ describe('the participant results screen', () => {
     expect(sent.payload).toEqual({ decision: 'reject', reason: '证书与本人不符' })
   })
 
+  // A question with no escalation workflow cannot be re-examined. The shut
+  // key says so, and points on to re-determining only for a reader who can
+  // re-determine now: the two are separate powers, and a hint towards an act
+  // the reader cannot see is not a way on.
+  it.each([
+    ['available', 'assessment/staff/reopen-no-route'],
+    ['hidden', 'assessment/staff/reopen-no-route-only'],
+  ] as const)(
+    'says why re-examining is shut, and points on only where it can (re-determine %s)',
+    async (state, sentence) => {
+      await screen(
+        correctable({
+          reopen: { state: 'blocked', reason: 'no-appeal-route' },
+          redetermine: { state, reason: null },
+        }),
+        `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_ID}&view=entries&entry=${ENTRY_ID}`,
+      )
+      await expect
+        .element(page.getByTestId('staff-reopen'))
+        .toHaveAttribute('data-offer', 'blocked')
+      // the key is disabled, so what answers the pointer is what holds it
+      await userEvent.hover(page.getByTestId('staff-reopen').element().parentElement!)
+      await expect.element(page.getByRole('tooltip')).toBeVisible()
+      await expect.poll(() => page.getByRole('tooltip').element().textContent).toBe(zhCN[sentence])
+    },
+  )
+
   it('offers neither correction where the server offers none', async () => {
     await screen(
       correctable({
