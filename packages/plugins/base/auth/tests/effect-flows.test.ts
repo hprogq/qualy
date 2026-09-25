@@ -38,6 +38,7 @@ import {
   publicOriginFrom,
   PUBLIC_URL_INSECURE,
   PUBLIC_URL_MALFORMED,
+  PUBLIC_URL_REQUIRED,
 } from '../src/server/auth-config.ts'
 import { Iam, serviceLayer as authLayer } from '../src/server/index.ts'
 import { AnonymousTenantResolver } from '../src/server/tenancy.ts'
@@ -285,7 +286,19 @@ describe('the address this deployment is reached at', () => {
 
   it('is the vite server in development, said out loud in production, and never wrong', async () => {
     expect(ok(await configured({}))).toBe(DEVELOPMENT_PUBLIC_URL)
-    expect(ok(await configured({ NODE_ENV: 'production' }))).toBeUndefined()
+    // production does not start without one, empty or absent
+    const unsets: Record<string, string>[] = [
+      {},
+      { QUALY_PUBLIC_URL: '' },
+      { QUALY_PUBLIC_URL: '  ' },
+    ]
+    for (const unset of unsets) {
+      const refused = await configured({ NODE_ENV: 'production', ...unset })
+      expect(Exit.isFailure(refused)).toBe(true)
+      expect(Cause.pretty((refused as Exit.Failure<unknown, unknown>).cause)).toContain(
+        PUBLIC_URL_REQUIRED,
+      )
+    }
     expect(ok(await configured({ NODE_ENV: 'production', QUALY_PUBLIC_URL: PUBLIC_URL }))).toBe(
       PUBLIC_URL,
     )

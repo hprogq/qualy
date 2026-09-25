@@ -99,6 +99,13 @@ export const startQualyServer = (options: QualyServerOptions): QualyServer => {
           // and a key for resend, whichever of the two the manifest enables
           QUALY_MAIL_RESEND_API_KEY: 're_smoke_only',
         }
+  // And an address it is reached at, which a production process also refuses
+  // to start without. Nothing is mailed or redirected while these tools run,
+  // so a name nobody resolves serves.
+  const publicUrl =
+    'QUALY_PUBLIC_URL' in (options.env ?? {}) || process.env['QUALY_PUBLIC_URL'] !== undefined
+      ? {}
+      : { QUALY_PUBLIC_URL: 'https://qualy.invalid' }
   const child: ChildProcess = spawn(
     process.execPath,
     [
@@ -109,7 +116,7 @@ export const startQualyServer = (options: QualyServerOptions): QualyServer => {
     ],
     {
       cwd: repoRoot,
-      env: { ...process.env, PORT: port, ...secretsKey, ...mail, ...options.env },
+      env: { ...process.env, PORT: port, ...secretsKey, ...mail, ...publicUrl, ...options.env },
       stdio: ['ignore', 'pipe', 'pipe'],
     },
   )

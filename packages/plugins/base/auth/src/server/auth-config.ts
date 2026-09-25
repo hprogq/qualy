@@ -32,8 +32,9 @@ export class AuthConfig extends Context.Service<
     readonly strictBoot?: boolean
     /**
      * The address the outside world reaches this deployment at, as an origin
-     * with nothing after it. Undefined where none is configured, which is
-     * legal until an entrance needs to be redirected back to.
+     * with nothing after it. A production process does not start without
+     * one and development falls back to its own; undefined only in a stack
+     * composed without one, which then mails no links.
      */
     readonly publicUrl?: string
     /**
@@ -69,6 +70,9 @@ export const PUBLIC_URL_MALFORMED =
 
 export const PUBLIC_URL_INSECURE =
   'QUALY_PUBLIC_URL must be https in production: a sign-in redirected back over http is one anybody on the path can take'
+
+export const PUBLIC_URL_REQUIRED =
+  'QUALY_PUBLIC_URL must be set in production: every link the product mails (setting a forgotten password, proving or changing an address) and every sign-in sent back from another server is addressed with it'
 
 /** where a development machine is reached, which is where the browser is served */
 export const DEVELOPMENT_PUBLIC_URL = 'http://localhost:5173'
@@ -123,11 +127,14 @@ export const config = (
         Option.filter((value) => value !== ''),
       )
       // a development machine is reached at the vite server, which is where
-      // the browser is served from; production says so or goes without
+      // the browser is served from; production says so or does not start -
+      // a process without one would answer every reset request as though it
+      // had mailed a link it could never write
+      if (secureCookies && Option.isNone(askedFor)) {
+        return yield* Effect.die(new Error(PUBLIC_URL_REQUIRED))
+      }
       const publicUrl = Option.isNone(askedFor)
-        ? secureCookies
-          ? undefined
-          : DEVELOPMENT_PUBLIC_URL
+        ? DEVELOPMENT_PUBLIC_URL
         : publicOriginFrom(askedFor.value)
       if (Option.isSome(askedFor) && publicUrl === undefined) {
         return yield* Effect.die(new Error(PUBLIC_URL_MALFORMED))

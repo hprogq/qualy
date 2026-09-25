@@ -12,9 +12,9 @@ import type { AnonymousTenant } from './tenancy.ts'
 // where to send them back, and that address is not something the application
 // can work out from the request: behind a proxy the request says whatever the
 // proxy says, and a callback built from it is a callback an attacker can
-// point elsewhere. So it is configuration - QUALY_PUBLIC_URL - and a
-// deployment that has not set one cannot put an entrance of that kind into
-// service.
+// point elsewhere. So it is configuration - QUALY_PUBLIC_URL - which a
+// production process does not start without; a stack composed without one
+// cannot put an entrance of that kind into service.
 //
 // A resolver rather than a string for the same reason tenancy is one: the day
 // tenants are told apart by their host, each has its own address, and only
@@ -69,9 +69,9 @@ const callbackEntrances = (types: readonly string[]) =>
  *
  * An entrance of a kind that redirects is in service and this deployment has
  * no address to be redirected back to: every sign-in through it would fail at
- * the last step, one visitor at a time. Production refuses to start and names
- * the entrances; development warns. The links mail carries are written with
- * the same address, so a deployment without one is told at start that its
+ * the last step, one visitor at a time. A production process never gets this
+ * far without an address - its configuration refuses first - so this speaks
+ * to a stack composed without one: it names the entrances, and says that
  * reset, confirmation and address-change mail cannot go out.
  */
 export class CallbackOriginMissing extends Data.TaggedError('CallbackOriginMissing')<{

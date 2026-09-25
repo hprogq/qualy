@@ -200,6 +200,9 @@ expectOut('no .env baked in', 'test -e /app/.env && echo present || echo absent'
       'QUALY_MAIL_SMTP_ALLOW_PLAINTEXT=1',
       '-e',
       'QUALY_MAIL_RESEND_API_KEY=re_smoke_only',
+      // and without the address it is reached at
+      '-e',
+      'QUALY_PUBLIC_URL=https://qualy.invalid',
       '-e',
       'QUALY_LOG_FORMAT=json',
       image,
