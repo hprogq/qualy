@@ -91,11 +91,17 @@ const isoInstant = Schema.String.check(Schema.isMaxLength(64))
  * The shape is not enough: `2026-02-31` matches it and is not a day. Left to
  * the pattern alone it travelled all the way to postgres, which refused it as
  * a database fault - a 500 for what is plainly a bad request. Checked by
- * round trip, because that is what "this date exists" means.
+ * round trip, because that is what "this date exists" means - in PostgreSQL's
+ * calendar too, which has no year 0: `0000-01-01` survives the round trip in
+ * JavaScript and fails the `::date` cast.
  */
 const isRealDate = (value: string) => {
   const at = new Date(`${value}T00:00:00Z`)
-  return !Number.isNaN(at.getTime()) && at.toISOString().slice(0, 10) === value
+  return (
+    !Number.isNaN(at.getTime()) &&
+    at.toISOString().slice(0, 10) === value &&
+    at.getUTCFullYear() >= 1
+  )
 }
 
 export const isoDate = Schema.String.check(

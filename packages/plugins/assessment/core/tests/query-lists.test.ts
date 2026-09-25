@@ -43,12 +43,15 @@ describe('a calendar date on the wire', () => {
   it('takes a day the calendar has', () => {
     expect(day('2026-02-28')).toBe('2026-02-28')
     expect(day('2024-02-29')).toBe('2024-02-29')
+    expect(day('0001-01-01')).toBe('0001-01-01')
   })
 
   it('refuses a day it does not', () => {
     expect(() => day('2026-02-31')).toThrow()
     expect(() => day('2026-13-01')).toThrow()
     expect(() => day('2025-02-29')).toThrow()
+    // a round trip in javascript, and no day at all to postgres
+    expect(() => day('0000-01-01')).toThrow()
   })
 
   it('still refuses anything of the wrong shape', () => {
