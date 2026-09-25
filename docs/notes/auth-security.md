@@ -202,6 +202,11 @@ default-src 'self'; script-src 'self' 'sha256-pKAg+of2SxxrkLJX27pRnCgcyN5Ud1dmuO
 - **生命周期**:`POST /auth/providers { type, code, name }` 建一个停用的空壳 → `PATCH` 分多次补齐(缺省保持、显式空串清除;密钥缺省或空串保持,
   非空替换;`DELETE /auth/providers/{id}/secrets/{key}` 是唯一的清除动作)→ 就绪后才能 `PUT .../status` 启用 →
   `DELETE /auth/providers/{id}?version=` 删除(系统入口 `AUTH_PROVIDER_IS_SYSTEM`;删除置墓碑、撤销存活绑定、删该入口的会话、销毁其密钥、审计 `auth.provider.delete`、复核恢复通道)。
+- **两个权限(2026-09-25 裁决)**:`auth.provider.manage` 只管排布——名称、主次与顺序、推荐、图标、受众、启停与删除。
+  新增入口、改配置字段(服务器地址、Client ID、身份映射等)与写入 / 清除密钥归租户权限 `auth.provider.trust.manage`:
+  它决定谁能以谁的身份登录,默认只有 canonical tenant-admin(all-active)持有,别的角色要显式授予。一次保存同时改名称与配置
+  就两个都要。两项都在租户锁内、写入事务里复核(用户类型的写入对 `auth.user-type.manage` 同样锁内复核)。
+  `GET /auth/providers` 带 `capabilities { canManage, canManageTrust }`,页面据此不渲染用不了的控件。
 - **身份命名空间锁**:驱动用 `identityNamespaceKeys` 点名「说明这些账号属于谁」的配置键(CAS 的服务器地址、OIDC 的 issuer)。
   只要该入口说过话——有过任何绑定(含已撤销),或有过一次成功登录——这些键不可再改(`AUTH_PROVIDER_IDENTITY_NAMESPACE_IN_USE`):
   已存的 subject 会开始指向别家的账号;按用户自己的字段找人的入口(CAS 按业务编号)根本不存绑定,只等绑定就永远不锁,

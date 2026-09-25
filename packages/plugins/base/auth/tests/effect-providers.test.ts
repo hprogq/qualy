@@ -942,3 +942,147 @@ describe.runIf(postgresAvailable)('the sign-in page arrangement', () => {
     }
   })
 })
+
+describe.runIf(postgresAvailable)('who may change a door', () => {
+  // Arranging the sign-in page and deciding what a door believes are two
+  // grants: whoever may point a door at a server of their choosing may sign
+  // in as anybody that server names.
+  it('keeps adding a door and what it believes apart from arranging it, and asks under the lock', async () => {
+    const db = await createTestContext('providers-trust')
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const iam = yield* Iam
+            const holder = (name: string, codes: readonly string[]) =>
+              Effect.gen(function* () {
+                const user = one<{ id: string }>(
+                  yield* runSql(sql`
+                    insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+                    select tenant_id, ${name}, user_type_id, primary_org_node_id
+                    from users where id = ${f.person} returning id`),
+                ).id
+                const role = one<{ id: string }>(
+                  yield* runSql(sql`
+                    insert into roles (tenant_id, code, name, kind, status, permission_mode)
+                    values (${f.tenant}, ${name}, ${name}, 'tenant', 'active', 'explicit')
+                    returning id`),
+                ).id
+                for (const code of codes) {
+                  yield* runSql(sql`
+                    insert into role_permissions (tenant_id, role_id, permission_id)
+                    select ${f.tenant}, ${role}, id from permissions where code = ${code}`)
+                }
+                const grant = one<{ id: string }>(
+                  yield* runSql(sql`
+                    insert into role_grants (tenant_id, user_id, role_id)
+                    values (${f.tenant}, ${user}, ${role}) returning id`),
+                ).id
+                const as: Principal = { tenantId: f.tenant, userId: user, sessionId: 's' }
+                return { as, grant }
+              })
+            const arranger = yield* holder('arranger', ['auth.provider.manage'])
+            const trustee = yield* holder('trustee', ['auth.provider.trust.manage'])
+            const id = yield* iam.providers.create(
+              f.tenant,
+              { type: 'campus', code: 'campus', name: 'Campus' },
+              f.as,
+            )
+            const tried = (write: Effect.Effect<unknown, unknown>) =>
+              Effect.map(Effect.result(write), (result) => tagOf(result) ?? result._tag)
+            const arranging = {
+              add: yield* tried(
+                iam.providers.create(
+                  f.tenant,
+                  { type: 'campus', code: 'second', name: 'Second' },
+                  arranger.as,
+                ),
+              ),
+              point: yield* tried(
+                iam.providers.update(
+                  f.tenant,
+                  id,
+                  { expectedVersion: 1, values: { server: 'https://evil.example/' } },
+                  arranger.as,
+                ),
+              ),
+              secret: yield* tried(
+                iam.providers.clearSecret(f.tenant, id, 'clientSecret', 1, arranger.as),
+              ),
+              rename: yield* tried(
+                iam.providers.update(
+                  f.tenant,
+                  id,
+                  { expectedVersion: 1, name: 'Campus SSO' },
+                  arranger.as,
+                ),
+              ),
+            }
+            const connecting = {
+              add: yield* tried(
+                iam.providers.create(
+                  f.tenant,
+                  { type: 'campus', code: 'third', name: 'Third' },
+                  trustee.as,
+                ),
+              ),
+              point: yield* tried(
+                iam.providers.update(
+                  f.tenant,
+                  id,
+                  { expectedVersion: 2, values: { server: 'https://cas.school.edu/' } },
+                  trustee.as,
+                ),
+              ),
+              rename: yield* tried(
+                iam.providers.update(
+                  f.tenant,
+                  id,
+                  { expectedVersion: 3, name: 'Late' },
+                  trustee.as,
+                ),
+              ),
+            }
+            // the arranger's grant is withdrawn while a request waits for the lock
+            yield* runSql(
+              sql`update role_grants set revoked_at = now() where id = ${arranger.grant}`,
+            )
+            const withdrawn = yield* tried(
+              iam.providers.update(f.tenant, id, { expectedVersion: 3, name: 'Late' }, arranger.as),
+            )
+            const row = one<{ name: string; config: string }>(
+              yield* runSql(
+                sql`select name, config::text as config, id from auth_providers where id = ${id}`,
+              ),
+            )
+            return {
+              arranging,
+              connecting,
+              withdrawn,
+              name: row.name,
+              config: JSON.parse(row.config) as unknown,
+            }
+          }),
+        ),
+      )
+      expect(answer.arranging).toEqual({
+        add: 'ACCESS_DENIED',
+        point: 'ACCESS_DENIED',
+        secret: 'ACCESS_DENIED',
+        rename: 'Success',
+      })
+      expect(answer.connecting).toEqual({
+        add: 'Success',
+        point: 'Success',
+        rename: 'ACCESS_DENIED',
+      })
+      expect(answer.withdrawn).toBe('ACCESS_DENIED')
+      expect(answer.name).toBe('Campus SSO')
+      expect(answer.config).toEqual({ server: 'https://cas.school.edu/' })
+    } finally {
+      await db.dispose()
+    }
+  })
+})

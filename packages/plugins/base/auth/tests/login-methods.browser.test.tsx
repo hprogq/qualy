@@ -145,10 +145,19 @@ const userType = (over: Partial<UserTypeDto> = {}): UserTypeDto => ({
   ...over,
 })
 
+/** the doors as the list answers them, with what this reader may do to them */
+const doorsOf = (
+  providers: readonly ProviderDto[],
+  capabilities: { canManage: boolean; canManageTrust: boolean } = {
+    canManage: true,
+    canManageTrust: true,
+  },
+) => ({ providers, capabilities })
+
 const stubs = (over: Record<string, unknown> = {}) => ({
   app: { getManifest: () => Effect.succeed(emptyManifest()) },
   identity: {
-    listAuthProviders: () => Effect.succeed({ providers: [provider()] }),
+    listAuthProviders: () => Effect.succeed(doorsOf([provider()])),
     getAuthProvider: () => Effect.succeed(detail(provider())),
     // the kinds that can be added: none installed here says so
     listAuthProviderKinds: () => Effect.succeed({ kinds: [] }),
@@ -200,8 +209,8 @@ describe('login methods screen', () => {
       client: fakeClient(
         stubs({
           listAuthProviders: () =>
-            Effect.succeed({
-              providers: [
+            Effect.succeed(
+              doorsOf([
                 provider(),
                 provider({
                   id: CAS_ID,
@@ -210,8 +219,8 @@ describe('login methods screen', () => {
                   name: '统一身份认证',
                   audience: { mode: 'allow-list', userTypeIds: [] },
                 }),
-              ],
-            }),
+              ]),
+            ),
         }),
       ),
       route: `/admin/login-methods?provider=${CAS_ID}`,
@@ -234,6 +243,8 @@ describe('login methods screen', () => {
     await renderScreen({
       client: fakeClient(
         stubs({
+          listAuthProviders: () =>
+            Effect.succeed(doorsOf([provider()], { canManage: false, canManageTrust: false })),
           listUserTypes: () =>
             Effect.succeed({ userTypes: [userType()], capabilities: { canManage: false } }),
         }),
@@ -332,7 +343,7 @@ describe('a way in, from added to gone', () => {
     await renderScreen({
       client: fakeClient(
         stubs({
-          listAuthProviders: () => Effect.succeed({ providers: [provider(), row] }),
+          listAuthProviders: () => Effect.succeed(doorsOf([provider(), row])),
           listAuthProviderKinds: () => Effect.succeed({ kinds: [casKind] }),
           getAuthProvider: () =>
             Effect.succeed(
@@ -389,6 +400,44 @@ describe('a way in, from added to gone', () => {
     })
   })
 
+  // Arranging doors and deciding what one believes are two grants: whoever
+  // may only arrange them renames a door, and is offered neither a new one
+  // nor its settings.
+  it('lets whoever may only arrange doors rename one, and nothing it believes', async () => {
+    const update = vi.fn(() => Effect.succeed({ version: 5 }))
+    const row = cas({ status: 'disabled', setup: 'incomplete' })
+    await renderScreen({
+      client: fakeClient(
+        stubs({
+          listAuthProviders: () =>
+            Effect.succeed(doorsOf([provider(), row], { canManage: true, canManageTrust: false })),
+          listAuthProviderKinds: () => Effect.succeed({ kinds: [casKind] }),
+          getAuthProvider: () =>
+            Effect.succeed(detail(row, { missing: [{ kind: 'field', key: 'server' }] })),
+          updateAuthProvider: update,
+        }),
+      ),
+      route: `/admin/login-methods?provider=${CAS_ID}`,
+      children: <LoginMethodsPage />,
+    })
+    // the kinds and the door's own settings are both in, so whatever is shut
+    // now is shut by permission rather than by waiting
+    await expect
+      .element(page.getByTestId('method-missing'))
+      .toHaveAttribute('data-missing', 'server')
+    await expect.element(page.getByRole('textbox', { name: '服务地址' })).toBeInTheDocument()
+    expect(page.getByRole('textbox', { name: '服务地址' }).element()).toBeDisabled()
+    expect(page.getByRole('button', { name: '新增登录方式' }).query()).toBeNull()
+    const details = page.getByTestId('method-details')
+    await details.getByRole('textbox', { name: '名称' }).fill('学校统一认证')
+    await details.getByRole('button', { name: '保存' }).click()
+    await vi.waitFor(() => expect(update).toHaveBeenCalledTimes(1))
+    expect(update).toHaveBeenCalledWith({
+      params: { providerId: CAS_ID },
+      payload: { version: 4, name: '学校统一认证' },
+    })
+  })
+
   const settled = {
     config: { server: 'https://cas.example.edu' },
     secrets: [{ key: 'clientSecret', stored: true }],
@@ -399,7 +448,7 @@ describe('a way in, from added to gone', () => {
     await renderScreen({
       client: fakeClient(
         stubs({
-          listAuthProviders: () => Effect.succeed({ providers: [provider(), serving] }),
+          listAuthProviders: () => Effect.succeed(doorsOf([provider(), serving])),
           listAuthProviderKinds: () => Effect.succeed({ kinds: [casKind] }),
           getAuthProvider: () => Effect.succeed(detail(serving, settled)),
         }),
@@ -439,7 +488,7 @@ describe('a way in, from added to gone', () => {
     await renderScreen({
       client: fakeClient(
         stubs({
-          listAuthProviders: () => Effect.succeed({ providers: [provider(), resting] }),
+          listAuthProviders: () => Effect.succeed(doorsOf([provider(), resting])),
           listAuthProviderKinds: () => Effect.succeed({ kinds: [casKind] }),
           getAuthProvider: () => Effect.succeed(detail(resting, settled)),
           deleteAuthProviderSecret: clear,
@@ -463,7 +512,7 @@ describe('a way in, from added to gone', () => {
     await renderScreen({
       client: fakeClient(
         stubs({
-          listAuthProviders: () => Effect.succeed({ providers: [provider(), row] }),
+          listAuthProviders: () => Effect.succeed(doorsOf([provider(), row])),
           listAuthProviderKinds: () => Effect.succeed({ kinds: [shapedKind] }),
           // the detail echoes what each box holds, defaults included
           getAuthProvider: () =>
@@ -511,7 +560,7 @@ describe('a way in, from added to gone', () => {
     await renderScreen({
       client: fakeClient(
         stubs({
-          listAuthProviders: () => Effect.succeed({ providers: [provider(), row] }),
+          listAuthProviders: () => Effect.succeed(doorsOf([provider(), row])),
           listAuthProviderKinds: () => Effect.succeed({ kinds: [casKind] }),
           getAuthProvider: () =>
             Effect.succeed(detail(row, { usage: { bindings: 37, sessions: 12 } })),
@@ -542,7 +591,7 @@ describe('a way in, from added to gone', () => {
     await renderScreen({
       client: fakeClient(
         stubs({
-          listAuthProviders: () => Effect.succeed({ providers: [cas()] }),
+          listAuthProviders: () => Effect.succeed(doorsOf([cas()])),
           getAuthProvider: () => Effect.succeed(detail(cas(), { callbackUrl: address })),
         }),
       ),
@@ -562,7 +611,7 @@ describe('a way in, from added to gone', () => {
     await renderScreen({
       client: fakeClient(
         stubs({
-          listAuthProviders: () => Effect.succeed({ providers: [provider({ isSystem: true })] }),
+          listAuthProviders: () => Effect.succeed(doorsOf([provider({ isSystem: true })])),
           getAuthProvider: () => Effect.succeed(detail(provider({ isSystem: true }))),
         }),
       ),
@@ -591,7 +640,7 @@ describe('the sign-in page, as its administrator arranges it', () => {
 
   it('lists the main ways in apart from the rest, each group in its order', async () => {
     await renderScreen({
-      client: fakeClient(stubs({ listAuthProviders: () => Effect.succeed({ providers: four }) })),
+      client: fakeClient(stubs({ listAuthProviders: () => Effect.succeed(doorsOf(four)) })),
       route: '/admin/login-methods',
       children: <LoginMethodsPage />,
     })
@@ -613,7 +662,7 @@ describe('the sign-in page, as its administrator arranges it', () => {
       await renderScreen({
         client: fakeClient(
           stubs({
-            listAuthProviders: () => Effect.succeed({ providers: four }),
+            listAuthProviders: () => Effect.succeed(doorsOf(four)),
             setAuthProviderOrder: arrange,
           }),
         ),
@@ -656,7 +705,7 @@ describe('the sign-in page, as its administrator arranges it', () => {
     await renderScreen({
       client: fakeClient({
         ...stubs({
-          listAuthProviders: () => Effect.succeed({ providers: four }),
+          listAuthProviders: () => Effect.succeed(doorsOf(four)),
           getAuthProvider: () => Effect.succeed(detail(four[3]!)),
           setRecommendedAuthProvider: recommend,
         }),
@@ -688,7 +737,7 @@ describe('the sign-in page, as its administrator arranges it', () => {
     await renderScreen({
       client: fakeClient({
         ...stubs({
-          listAuthProviders: () => Effect.succeed({ providers: four }),
+          listAuthProviders: () => Effect.succeed(doorsOf(four)),
           getAuthProvider: () => Effect.succeed(detail(four[3]!)),
         }),
         loginIcon: { setProviderIcon: icon },
@@ -736,7 +785,7 @@ describe('the sign-in page, as its administrator arranges it', () => {
     await renderScreen({
       client: fakeClient({
         ...stubs({
-          listAuthProviders: () => Effect.succeed({ providers: [...four.slice(0, 3), drawn] }),
+          listAuthProviders: () => Effect.succeed(doorsOf([...four.slice(0, 3), drawn])),
           getAuthProvider: () => Effect.succeed(detail(drawn)),
         }),
         loginIcon: { setProviderIcon: icon },

@@ -346,7 +346,15 @@ export const identityApiGroup = HttpApiGroup.make('identity')
     // the tenant's ways in, with who may use each: the door's own audience,
     // not a pair of flags on the user type
     HttpApiEndpoint.get('listAuthProviders', '/auth/providers', {
-      success: Schema.Struct({ providers: Schema.Array(authProvider) }),
+      success: Schema.Struct({
+        providers: Schema.Array(authProvider),
+        capabilities: Schema.Struct({
+          /** name, order, look, audience, in service or not, deletion */
+          canManage: Schema.Boolean,
+          /** adding a door, and its server, client, secrets and identity rule */
+          canManageTrust: Schema.Boolean,
+        }),
+      }),
       error: [AccessDenied],
     }).middleware(Authenticated),
   )

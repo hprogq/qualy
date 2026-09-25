@@ -222,6 +222,10 @@ const i18n = definePluginMessages({
       id: 'auth/permission/provider-manage',
       defaultMessage: 'Manage login methods',
     },
+    'permission.auth.provider.trust.manage': {
+      id: 'auth/permission/provider-trust-manage',
+      defaultMessage: 'Add and connect login methods',
+    },
     'permission.auth.user.read': {
       id: 'auth/permission/user-read',
       defaultMessage: 'View users',

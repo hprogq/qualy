@@ -101,6 +101,7 @@ export function MethodSheet({
   userTypes,
   kind,
   canManage,
+  canManageTrust,
   onClose,
 }: {
   open: boolean
@@ -110,7 +111,10 @@ export function MethodSheet({
   userTypes: readonly UserTypeRow[]
   /** what its kind needs to be told; absent when its driver declares nothing */
   kind: EntranceKind | undefined
+  /** its name, audience, status and deletion */
   canManage: boolean
+  /** what it believes: its settings and secrets */
+  canManageTrust: boolean
   onClose: () => void
 }) {
   const api = useApi(authApi)
@@ -436,8 +440,8 @@ export function MethodSheet({
               secrets={secrets}
               draft={values}
               onChange={setValues}
-              disabled={!canManage || detail.data === undefined}
-              {...(canManage ? { onClear: (key: string) => clearSecret.mutate(key) } : {})}
+              disabled={!canManageTrust || detail.data === undefined}
+              {...(canManageTrust ? { onClear: (key: string) => clearSecret.mutate(key) } : {})}
               // a door in service keeps the secrets it needs
               clearable={(key) =>
                 !clearSecret.isPending &&
@@ -469,7 +473,7 @@ export function MethodSheet({
             </DefLine>
           )}
         </DefList>
-        {canManage && (
+        {(canManage || canManageTrust) && (
           <CardFoot inset>
             {detailsDirty && <UnsavedMark>{format(m.unsaved)}</UnsavedMark>}
             <Spacer />

@@ -140,7 +140,10 @@ export default function LoginMethodsPage() {
   const userTypes = types.data?.userTypes ?? []
   const open = rows.find((provider) => provider.id === selected)
   const shown = useLingering(open ?? null)
-  const canManage = types.data?.capabilities.canManage ?? false
+  // arranging the doors, and adding one or changing what it believes, are
+  // two permissions
+  const canManage = providers.data?.capabilities.canManage ?? false
+  const canManageTrust = providers.data?.capabilities.canManageTrust ?? false
   const primaryRows = rows.filter((row) => row.prominence === 'primary')
   const secondaryRows = rows.filter((row) => row.prominence === 'secondary')
   const arrange = useMutation({
@@ -448,7 +451,7 @@ export default function LoginMethodsPage() {
       title={format(m.loginMethodsTitle)}
       description={format(m.loginMethodsHint)}
       actions={
-        canManage &&
+        canManageTrust &&
         (kinds.data?.kinds.length ?? 0) > 0 && (
           <BandActions
             moreLabel={format(commonMessages.bandMore)}
@@ -498,6 +501,7 @@ export default function LoginMethodsPage() {
           userTypes={userTypes}
           kind={kinds.data?.kinds.find((kind) => kind.type === shown.type)}
           canManage={canManage}
+          canManageTrust={canManageTrust}
           onClose={() => setSelected('')}
         />
       )}

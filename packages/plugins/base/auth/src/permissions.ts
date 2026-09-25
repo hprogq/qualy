@@ -39,6 +39,17 @@ export const permissions = [
     group: message('auth/permission-group/identity', 'People and sign-in'),
     target: 'tenant',
   },
+  // Apart from manage, which arranges the doors: adding one, and what one
+  // believes - its server, client and secrets, and how it reads a person
+  // from an answer - decide who can sign in as whom. The administrator
+  // holds it; anybody else only when given it on purpose.
+  {
+    code: 'auth.provider.trust.manage',
+    name: message('auth/permission/provider-trust-manage', 'Add and connect login methods'),
+    groupKey: 'identity',
+    group: message('auth/permission-group/identity', 'People and sign-in'),
+    target: 'tenant',
+  },
   {
     code: 'auth.user.read',
     name: message('auth/permission/user-read', 'View users'),

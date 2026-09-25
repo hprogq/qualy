@@ -521,6 +521,7 @@ export default {
   'auth/permission/user-type-manage': '管理用户类型',
   'auth/permission/provider-read': '查看登录方式',
   'auth/permission/provider-manage': '管理登录方式',
+  'auth/permission/provider-trust-manage': '新建与对接登录方式',
   'auth/permission-group/identity': '用户与登录',
   'auth/permission/user-read': '查看用户',
   'auth/permission/user-manage': '管理用户',

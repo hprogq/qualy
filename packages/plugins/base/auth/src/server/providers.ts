@@ -2,6 +2,7 @@ import { Effect, Redacted, Schema } from 'effect'
 import { sql } from 'kysely'
 import { transaction, withDatabase } from '@qualy/plugin-database/server'
 import type { Principal } from '@qualy/rbac-contract'
+import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
 import { Audit } from '@qualy/audit-contract/effect'
 import {
   DERIVED_CONFIG_KEY,
@@ -256,7 +257,20 @@ const replaceAudience = (
  */
 const jsonb = (value: unknown) => sql`${JSON.stringify(value)}::jsonb`
 
+/** a door's name, place, look, audience and whether it is in service */
+export const MANAGE = 'auth.provider.manage'
+
+/**
+ * Adding a door, and what it believes: its server, client, secrets and how
+ * it reads a person from an answer. Apart from arranging doors, because it
+ * decides who can sign in as whom.
+ */
+export const TRUST = 'auth.provider.trust.manage'
+
+type ProviderPermission = typeof MANAGE | typeof TRUST
+
 export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
+  const rbac = yield* Rbac
   const withDb = yield* withDatabase
   const audit = yield* Audit
   const drivers = yield* LoginDrivers
@@ -275,16 +289,33 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
     }
   })
 
-  /** one write under the tenant's lock */
-  const write = <A, E, R>(tenantId: string, body: () => Effect.Effect<A, E, R>) =>
+  /**
+   * One write under the tenant's lock, with the permissions it needs asked
+   * again on the locked connection: the handler refuses a caller without
+   * them first, and a grant withdrawn while the request waited for the lock
+   * must not still let the write through.
+   */
+  const write = <A, E, R>(
+    tenantId: string,
+    as: Principal,
+    codes: readonly ProviderPermission[],
+    body: () => Effect.Effect<A, E, R>,
+  ) =>
     withDb(
       transaction(
         Effect.gen(function* () {
           yield* lockTenant(tenantId)
+          for (const code of codes) yield* rbac.require(as, code)
           return yield* body()
         }),
       ),
     ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
+
+  /** somebody who may arrange doors, or configure them */
+  const requireEither = Effect.fn('Iam.providers.requireEither')(function* (as: Principal) {
+    if ((yield* rbac.hasPermission(as, MANAGE)) || (yield* rbac.hasPermission(as, TRUST))) return
+    return yield* new AccessDenied({ reason: 'permission not held' })
+  })
 
   /** the door as it stands, at the version the caller read */
   const current = Effect.fn('Iam.providers.current')(function* (
@@ -325,6 +356,9 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
   })
 
   return {
+    /** the handler's early refusal for a save that may need either permission */
+    requireEither,
+
     /**
      * The kinds of entrance an administrator may add, each with what it
      * needs to be told. Only drivers that say entrances of their kind can be
@@ -384,7 +418,7 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
       as: Principal,
     ) {
       yield* kindOf(input.type)
-      return yield* write(tenantId, () =>
+      return yield* write(tenantId, as, [TRUST], () =>
         Effect.gen(function* () {
           // a new entrance goes to the end of the sign-in page
           const last = yield* db.query((k) =>
@@ -443,12 +477,19 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
       },
       as: Principal,
     ) {
-      return yield* write(tenantId, () =>
+      return yield* write(tenantId, as, [], () =>
         Effect.gen(function* () {
           const provider = yield* current(tenantId, providerId, input.expectedVersion)
           const previous = configOf(provider.config)
           const changed: string[] = []
           const renamed = input.name !== undefined && input.name !== provider.name
+          // A name is arranging the door; a setting is what it believes.
+          // Each is asked for what the save touches, before anything is
+          // judged, so a caller with neither learns nothing about the door.
+          const configuring = input.values !== undefined && Object.keys(input.values).length > 0
+          if (renamed) yield* rbac.require(as, MANAGE)
+          if (configuring) yield* rbac.require(as, TRUST)
+          if (!renamed && !configuring) yield* requireEither(as)
           if (renamed) changed.push('name')
           let config: Readonly<Record<string, unknown>> = previous
           const replacedSecrets: [string, string][] = []
@@ -551,7 +592,7 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
       expectedVersion: number,
       as: Principal,
     ) {
-      return yield* write(tenantId, () =>
+      return yield* write(tenantId, as, [TRUST], () =>
         Effect.gen(function* () {
           const provider = yield* current(tenantId, providerId, expectedVersion)
           const kind = yield* kindOf(provider.type)
@@ -593,7 +634,7 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
       expectedVersion: number,
       as: Principal,
     ) {
-      return yield* write(tenantId, () =>
+      return yield* write(tenantId, as, [MANAGE], () =>
         Effect.gen(function* () {
           const provider = yield* current(tenantId, providerId, expectedVersion)
           yield* stillReady({ ...provider, enabled: status === 'active' }, provider.config)
@@ -631,7 +672,7 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
       expectedVersion: number,
       as: Principal,
     ) {
-      return yield* write(tenantId, () =>
+      return yield* write(tenantId, as, [MANAGE], () =>
         Effect.gen(function* () {
           const provider = yield* current(tenantId, providerId, expectedVersion)
           if (provider.isSystem) return yield* new ProviderIsSystem()
@@ -698,7 +739,7 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
       arrangement: { readonly primary: readonly string[]; readonly secondary: readonly string[] },
       as: Principal,
     ) {
-      return yield* write(tenantId, () =>
+      return yield* write(tenantId, as, [MANAGE], () =>
         Effect.gen(function* () {
           const standing = yield* providerRows(tenantId)
           const known = new Set(standing.map((row) => row.id))
@@ -749,7 +790,7 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
       providerId: string | null,
       as: Principal,
     ) {
-      return yield* write(tenantId, () =>
+      return yield* write(tenantId, as, [MANAGE], () =>
         Effect.gen(function* () {
           const standing = yield* providerRows(tenantId)
           const chosen =
@@ -919,7 +960,7 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
       expectedVersion: number,
       as: Principal,
     ) {
-      return yield* write(tenantId, () =>
+      return yield* write(tenantId, as, [MANAGE], () =>
         Effect.gen(function* () {
           const provider = yield* current(tenantId, providerId, expectedVersion)
           const userTypeIds = policy.mode === 'allow-list' ? [...new Set(policy.userTypeIds)] : []

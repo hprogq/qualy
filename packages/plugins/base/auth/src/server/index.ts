@@ -769,7 +769,13 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
         const rbac = yield* Rbac
         const principal = yield* CurrentUser
         yield* rbac.require(principal, 'auth.provider.read')
-        return { providers: yield* iam.providers.list(principal.tenantId) }
+        return {
+          providers: yield* iam.providers.list(principal.tenantId),
+          capabilities: {
+            canManage: yield* rbac.hasPermission(principal, 'auth.provider.manage'),
+            canManageTrust: yield* rbac.hasPermission(principal, 'auth.provider.trust.manage'),
+          },
+        }
       }),
     )
     .handle(
@@ -788,7 +794,7 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
         const iam = yield* Iam
         const rbac = yield* Rbac
         const principal = yield* CurrentUser
-        yield* rbac.require(principal, 'auth.provider.manage')
+        yield* rbac.require(principal, 'auth.provider.trust.manage')
         return {
           id: yield* iam.providers.create(
             principal.tenantId,
@@ -830,7 +836,7 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
         const iam = yield* Iam
         const rbac = yield* Rbac
         const principal = yield* CurrentUser
-        yield* rbac.require(principal, 'auth.provider.manage')
+        yield* rbac.require(principal, 'auth.provider.trust.manage')
         return {
           version: yield* iam.providers.clearSecret(
             principal.tenantId,
@@ -846,9 +852,10 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
       'updateAuthProvider',
       Effect.fn('iam.updateAuthProvider.handler')(function* ({ params, payload }) {
         const iam = yield* Iam
-        const rbac = yield* Rbac
         const principal = yield* CurrentUser
-        yield* rbac.require(principal, 'auth.provider.manage')
+        // a name and a setting are two permissions; which this save needs is
+        // decided under the lock, from what it touches
+        yield* iam.providers.requireEither(principal)
         return {
           version: yield* iam.providers.update(
             principal.tenantId,
