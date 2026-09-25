@@ -91,6 +91,7 @@ export default {
   'assessment/entry/issue-file-not-yours': '不能引用他人上传的文件',
   'assessment/entry/issue-file-elsewhere': '引用的文件已被其他申报使用',
   'assessment/entry/issue-other': '填写内容未通过校验',
+  'assessment/entry/list-issues': '{issues}，请打开申报修改',
   'assessment/entry/refuse-not-yours': '仅申报人本人可以修改该申报。',
   'assessment/entry/refuse-channel-closed': '该项目由工作人员统一认定，参评人员无需申报。',
   'assessment/entry/refuse-not-active': '你已不在本批次参评名单中。',

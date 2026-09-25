@@ -962,6 +962,11 @@ const i18n = definePluginMessages({
       id: 'assessment/entry/issue-other',
       defaultMessage: 'did not pass validation',
     },
+    /** the same field problems, said where no form is open to list them in */
+    entryListIssues: {
+      id: 'assessment/entry/list-issues',
+      defaultMessage: '{issues}. Open the entry to correct it',
+    },
     refuseChannelClosed: {
       id: 'assessment/entry/refuse-channel-closed',
       defaultMessage: 'This item is recorded by staff and cannot be filed by participants.',

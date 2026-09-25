@@ -9,6 +9,7 @@ import { Effect } from 'effect'
 import type { ApiResult, ClientOf } from '@qualy/web-runtime/api'
 import type { assessmentApi } from '@qualy/plugin-assessment/client/api'
 import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import zhCN from '../src/client/locales/zh-CN.ts'
 
 // The entry workflow as a person drives it: filing a claim on a question,
 // following what a reviewer did to it, judging one from the queue, and
@@ -393,6 +394,51 @@ describe('filing a claim', () => {
     expect(submitted).not.toHaveBeenCalled()
     await page.getByTestId('confirm-accept').click()
     await vi.waitFor(() => expect(submitted).toHaveBeenCalledOnce())
+  })
+
+  // Handing a kept claim on is where a question that nobody reviews checks
+  // its date against the round, and no form is open there to list the
+  // problem beside its field. The toast names the field and what is wrong
+  // with it, rather than reporting a save that nobody made.
+  it('names the field a hand-on was refused over, where no form is open', async () => {
+    const submitted = vi.fn(() =>
+      Effect.fail(
+        Object.assign(new Error('ASSESSMENT_ENTRY_PAYLOAD_INVALID'), {
+          _tag: 'ASSESSMENT_ENTRY_PAYLOAD_INVALID',
+          issues: [{ field: 'summary', reason: 'out-of-material-range' }],
+        }),
+      ),
+    )
+    await screen(
+      {
+        listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
+        listMyEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: [entry()],
+            nextCursor: null,
+            attention: { unreadItemIds: [] },
+          }),
+        setEntryStatus: submitted,
+      },
+      `/assessment/batches/${BATCH_ID}/my-entries`,
+      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+    )
+
+    await page.getByRole('button', { name: /2024 年入伍/ }).click()
+    const drawer = page.getByRole('dialog')
+    await drawer.getByRole('button', { name: '提交审核' }).click()
+    await page.getByTestId('confirm-accept').click()
+    await vi.waitFor(() => expect(submitted).toHaveBeenCalledOnce())
+
+    // the field by its own name and the problem by its catalog entry; the
+    // general "could not be saved" sentence is not what happened
+    await expect
+      .poll(() => document.querySelector('[data-sonner-toast]')?.textContent ?? '')
+      .toContain('事项说明')
+    const said = document.querySelector('[data-sonner-toast]')?.textContent ?? ''
+    expect(said).toContain(zhCN['assessment/entry/issue-out-of-range'])
+    expect(said).not.toContain(zhCN['assessment/error/entry-payload-invalid'])
   })
 
   it('offers keeping the claim from inside the question that hands it on', async () => {

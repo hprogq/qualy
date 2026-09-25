@@ -4,7 +4,6 @@ import * as stylex from '@stylexjs/stylex'
 import { useApi, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import type { MessageDescriptor } from '@qualy/i18n-contract'
 import { ConfirmDialog, Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import { RefreshCwIcon } from 'lucide-react'
 import { Badge } from '@qualy/ui/badge'
@@ -14,6 +13,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
 import { entryRefusalMessage, entryRefusalReason } from './refusals.ts'
+import { issueSentence } from './issues.ts'
 import { toast } from '@qualy/ui/toast'
 import { assessmentMessages as m } from '../i18n.ts'
 import { Basis } from './Basis.tsx'
@@ -242,31 +242,6 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
   },
 })
-
-/** the payload refusals the driver can raise, as sentences about one field */
-const ISSUE_SENTENCES: Record<string, MessageDescriptor> = {
-  required: m.entryIssueRequired,
-  'out-of-range': m.entryIssueOutOfRange,
-  'out-of-material-range': m.entryIssueOutOfRange,
-  'not-a-date': m.entryIssueNotADate,
-  'not-an-integer': m.entryIssueNotAnInteger,
-  'not-a-decimal': m.entryIssueNotADecimal,
-  'too-precise': m.entryIssueTooPrecise,
-  'not-a-choice': m.entryIssueNotAChoice,
-  'not-text': m.entryIssueNotText,
-  'not-a-boolean': m.entryIssueNotABoolean,
-  'too-long': m.entryIssueTooLong,
-  'too-many': m.entryIssueTooMany,
-  'too-many-attachments': m.entryIssueTooMany,
-  'not-attachments': m.entryIssueFileMissing,
-  'attachment-too-large': m.entryIssueFileTooLarge,
-  'attachment-type': m.entryIssueFileType,
-  'attachment-not-found': m.entryIssueFileMissing,
-  'attachment-retired': m.entryIssueFileMissing,
-  'attachment-not-yours': m.entryIssueFileNotYours,
-  'attachment-cross-entry': m.entryIssueFileElsewhere,
-  'duplicate-attachment': m.entryIssueFileElsewhere,
-}
 
 type EntryDialogProps = {
   /** false while it animates shut; it keeps drawing what it was showing */
@@ -648,8 +623,7 @@ function EntryDialogBody({
             <ul {...stylex.props(styles.issueList)}>
               {issues.map((issue, index) => (
                 <li key={index}>
-                  {labelOf(issue.field)}{' '}
-                  {format(ISSUE_SENTENCES[issue.reason] ?? m.entryIssueOther)}
+                  {labelOf(issue.field)} {format(issueSentence(issue.reason))}
                 </li>
               ))}
             </ul>

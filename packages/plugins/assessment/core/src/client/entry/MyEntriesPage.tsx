@@ -9,7 +9,7 @@ import {
   usePageQueryUpdate,
   useRunApi,
 } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+import { useI18n, useList } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { RefreshCwIcon, TableOfContentsIcon } from 'lucide-react'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
@@ -29,6 +29,7 @@ import { assessmentApi } from '../api.ts'
 import { useBatchLive } from '../live.ts'
 import { useMyEntriesQuery } from './my-entries.ts'
 import { entryRefusalMessage } from './refusals.ts'
+import { issueSentence, payloadIssuesOf } from './issues.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { AppealDialog } from './AppealDialog.tsx'
@@ -37,7 +38,7 @@ import { EntryDialog } from './EntryDialog.tsx'
 import { EntrySheet } from './EntrySheet.tsx'
 import { Paper } from './Paper.tsx'
 import { ROW_TAG, standingRows, type RowTag, type Standing, type StructureRow } from './standing.ts'
-import { trimAmount, type EntryDto, type FilingGateDto, type ItemDto } from './model.ts'
+import { fieldsOf, trimAmount, type EntryDto, type FilingGateDto, type ItemDto } from './model.ts'
 
 // One's own filings: the round's structure down the left, and whatever is
 // selected in it opened on the right.
@@ -1231,6 +1232,30 @@ function Body({
     void queryClient.invalidateQueries({ queryKey: query.assessment.key() })
   }
 
+  // A press made from the list or the drawer has no form open, so a refusal
+  // over the claim's fields (a date outside the round, found only when the
+  // claim is handed on) is said by those fields' names and what is wrong
+  // with each, and where to put it right - not as a failed save.
+  const listJoin = useList()
+  const sayFailure = (error: unknown, itemId: string): string => {
+    const issues = payloadIssuesOf(error)
+    if (issues !== null) {
+      const asked = (items.data?.items ?? []).find((one) => one.id === itemId) as
+        | ItemDto
+        | undefined
+      const fields = fieldsOf(asked?.currentRevision?.formConfig)
+      const said = issues.map(
+        (issue) =>
+          `${fields.find((field) => field.key === issue.field)?.label ?? issue.field} ${format(
+            issueSentence(issue.reason),
+          )}`,
+      )
+      return format(m.entryListIssues, { issues: listJoin(said) })
+    }
+    const refusal = entryRefusalMessage(error)
+    return refusal === null ? formatError(error) : format(refusal)
+  }
+
   /**
    * A declaration filed in its one press: created and handed on in the same
    * breath. The dialog never opens - there is nothing in it to fill - and
@@ -1271,15 +1296,14 @@ function Body({
       )
       refresh()
     },
-    onError: (error: unknown) => {
-      const refusal = entryRefusalMessage(error)
-      toast.error(refusal === null ? formatError(error) : format(refusal))
-    },
+    onError: (error: unknown, input) => toast.error(sayFailure(error, input.itemId)),
   })
 
   const setStatus = useMutation({
     mutationFn: (input: {
       entryId: string
+      /** the question it answers, so a refusal can name the question's fields */
+      itemId: string
       status: 'in_review' | 'draft' | 'voided'
       expectedItemRevisionId?: string
       expectedEntryRevisionId?: string
@@ -1312,10 +1336,7 @@ function Body({
       )
       refresh()
     },
-    onError: (error: unknown) => {
-      const refusal = entryRefusalMessage(error)
-      toast.error(refusal === null ? formatError(error) : format(refusal))
-    },
+    onError: (error: unknown, input) => toast.error(sayFailure(error, input.itemId)),
   })
 
   // Every question of the round this person takes part in, whoever fills it
@@ -1971,6 +1992,7 @@ function Body({
             const shown = (detailed?.entry ?? lingeringDetail.entry).currentRevision?.id
             setStatus.mutate({
               entryId: lingeringDetail.entry.id,
+              itemId: lingeringDetail.item.id,
               status,
               ...(expectedItemRevisionId === undefined ? {} : { expectedItemRevisionId }),
               ...(status !== 'in_review' || shown === undefined
