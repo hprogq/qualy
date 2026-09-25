@@ -101,6 +101,22 @@ describe('text postgres cannot keep', () => {
     }
   })
 
+  it('is refused in a body sent with no content type, which the endpoint reads as JSON', async () => {
+    // a Blob with no type, so fetch adds no content type of its own
+    const bare = await fetch(`${base}/probe/keep`, {
+      method: 'POST',
+      body: new Blob(['{"text":"a\\u0000b"}']),
+    })
+    expect(await refusedAsBadRequest(bare)).toEqual({ status: 400, tag: 'BAD_REQUEST' })
+    // and the same body, clean, still arrives: the endpoint does read it
+    const clean = await fetch(`${base}/probe/keep`, {
+      method: 'POST',
+      body: new Blob(['{"text":"ab"}']),
+    })
+    expect(clean.status).toBe(200)
+    expect(await clean.json()).toEqual({ seen: { text: 'ab' } })
+  })
+
   it('is refused in an address, path and query alike', async () => {
     for (const path of ['/probe/a%00b/find', '/probe/code/find?search=%00']) {
       expect(await refusedAsBadRequest(await fetch(`${base}${path}`)), path).toEqual({

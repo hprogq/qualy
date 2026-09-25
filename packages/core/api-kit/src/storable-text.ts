@@ -27,8 +27,20 @@ const refused = HttpServerResponse.schemaJson(BadRequest)(
   { status: 400 },
 ).pipe(Effect.orDie)
 
+/**
+ * The media type the endpoint will decode the body as.
+ *
+ * A body sent with no content type at all is decoded as JSON - the platform
+ * falls back to `application/json` when the header is missing
+ * (repos/effect/packages/effect/src/unstable/httpapi/HttpApiBuilder.ts,
+ * `decodePayload`) - so it is read as JSON here as well. Reading an absent
+ * header as "not JSON" let any request past this check by leaving the header
+ * off, and the endpoint parsed its body anyway. A route that streams its body
+ * is sent one: the local upload door's client always says
+ * `application/octet-stream`.
+ */
 const mediaType = (header: string | undefined): string =>
-  (header ?? '').split(';')[0]!.trim().toLowerCase()
+  (header ?? 'application/json').split(';')[0]!.trim().toLowerCase()
 
 /**
  * Whether a JSON body carries a string, or a key, PostgreSQL could not keep.
