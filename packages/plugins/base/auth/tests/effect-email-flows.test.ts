@@ -395,6 +395,16 @@ describe.runIf(postgresAvailable)('a forgotten password', () => {
             const fourth = yield* Effect.result(
               flows.requestReset({ email: 'ada@school.edu', locale: 'en' }),
             )
+            // the links are written after the answers, so once they have all gone
+            yield* Effect.promise(() =>
+              vi.waitFor(
+                () => {
+                  const sent = mail.outbox.filter((message) => message.to === 'ada@school.edu')
+                  if (sent.length < 3) throw new Error('not yet')
+                },
+                { timeout: 3_000 },
+              ),
+            )
             const open = yield* runSql<{ count: number }>(
               sql`select count(*)::int as count from user_email_challenges where consumed_at is null`,
             )
@@ -619,6 +629,57 @@ describe.runIf(postgresAvailable)('a link presented while the tenant is busy', (
         ],
         credential: 'digest:a new password',
       })
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('answers a reset for an address somebody holds as soon as it is counted', async () => {
+    const db = await createTestContext('email-reset-held-answered')
+    const mail = memoryMailBackend()
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await Effect.runPromiseExit(
+          Effect.gen(function* () {
+            const flows = yield* EmailFlows
+            // asked once before, so its counters already stand, as above
+            yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en' })
+            yield* Effect.promise(() => tokenFrom(mail, 'ada@school.edu'))
+            mail.outbox.length = 0
+            const withDb = yield* withDatabase
+            const held = yield* Deferred.make<void>()
+            const release = yield* Deferred.make<void>()
+            const holder = yield* withDb(
+              transaction(
+                Effect.gen(function* () {
+                  yield* lockTenant(f.tenant)
+                  yield* Deferred.succeed(held, undefined)
+                  yield* Deferred.await(release)
+                }),
+              ),
+            ).pipe(Effect.forkChild)
+            yield* Deferred.await(held)
+            const asking = yield* flows
+              .requestReset({ email: 'ada@school.edu', locale: 'en' })
+              .pipe(Effect.forkChild)
+            // answered while the row is still held: writing Ada's link waits
+            // for it, and the answer does not wait for that
+            const meanwhile = yield* Fiber.await(asking).pipe(Effect.timeoutOption('3 seconds'))
+            const sentMeanwhile = mail.outbox.length
+            yield* Deferred.succeed(release, undefined)
+            yield* Fiber.join(holder)
+            yield* Fiber.join(asking)
+            const link = yield* Effect.promise(() => tokenFrom(mail, 'ada@school.edu'))
+            return {
+              answered: Option.isSome(meanwhile),
+              sentMeanwhile,
+              linked: link.token.length > 0,
+            }
+          }).pipe(Effect.provide(stack(db.url, mail.backend))),
+        ),
+      )
+      expect(answer).toEqual({ answered: true, sentMeanwhile: 0, linked: true })
     } finally {
       await db.dispose()
     }

@@ -54,8 +54,9 @@ import { makeDemoGuard } from './demo-guard.ts'
 // leaves a link nobody was sent, which is then spent so it can never be used.
 //
 // A forgotten-password request answers the same whether or not anybody has
-// that address, and costs the same: the mail goes out on its own after the
-// answer, so how long the answer took says nothing either.
+// that address, and costs the same: the answer is given once the request is
+// counted, and finding the person, writing the link and sending it all happen
+// after it, so how long the answer took says nothing either.
 
 const TTL: Record<MailPurpose, string> = { verify: '24 hours', change: '24 hours', reset: '1 hour' }
 
@@ -676,50 +677,53 @@ export const emailFlowsLayer: Layer.Layer<
             }
           }),
         )
-        // Looked up before anything is locked: an address nobody holds, which
-        // is what a stream of made-up ones is, costs nobody the tenant's row,
-        // the queue every structural write waits in. Whoever it names is
-        // asked about again inside the lock.
-        const candidate = yield* withDb(personByVerifiedEmail(tenantId, normalized)).pipe(
-          Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
-        )
-        if (candidate === undefined) return
-        const issued = yield* inLock(
-          tenant.value.id,
-          Effect.gen(function* () {
-            const found = yield* personByVerifiedEmail(tenant.value.id, normalized)
-            if (found === undefined) return undefined
-            const person = yield* personOf(tenant.value.id, found.id)
-            if (person === undefined) return undefined
-            // a shared demonstration account is never reset, and says so to
-            // nobody: the answer is the one any other address gets
-            if (isDemoAccount(demoAccounts, person.email)) return undefined
-            if ((yield* passwordDoor(tenant.value.id, person)) === undefined) return undefined
-            return {
-              person,
-              challenge: yield* issueChallenge(tenant.value.id, person.id, 'reset', null),
-            }
-          }),
-        ).pipe(
-          // a link nobody can be sent is the answer every other address
-          // gets: whether this one has a person behind it stays unsaid
-          Effect.catchTag('AUTH_MAIL_NOT_SENT', () => Effect.succeed(undefined)),
-        )
-        if (issued === undefined) return
-        const link = yield* withDb(
-          linkTo(tenant.value.id, RESET_PASSWORD_PATH, {
-            token: Redacted.value(issued.challenge.token),
-          }),
-        ).pipe(Effect.orDie)
-        // after the answer, on its own: its time is nobody's business, and a
-        // failure is spent and logged rather than told to a stranger
+        // The answer is given here, once the request is counted: whether the
+        // address has anybody behind it is found out after, on a fiber of its
+        // own, so an address somebody holds - a lock, a link written, a
+        // commit - takes the requester no longer than one nobody does.
         yield* Effect.forkIn(
-          deliver(
-            tenant.value.id,
-            issued.challenge.id,
-            normalized,
-            mailFor('reset', locale, link, { to: normalized, workspace: tenant.value.name }),
-          ).pipe(Effect.ignore),
+          Effect.gen(function* () {
+            // looked up before anything is locked: an address nobody holds,
+            // which is what a stream of made-up ones is, costs nobody the
+            // tenant's row, the queue every structural write waits in.
+            // Whoever it names is asked about again inside the lock
+            const candidate = yield* withDb(personByVerifiedEmail(tenantId, normalized))
+            if (candidate === undefined) return
+            const issued = yield* inLock(
+              tenantId,
+              Effect.gen(function* () {
+                const found = yield* personByVerifiedEmail(tenantId, normalized)
+                if (found === undefined) return undefined
+                const person = yield* personOf(tenantId, found.id)
+                if (person === undefined) return undefined
+                // a shared demonstration account is never reset, and says so
+                // to nobody: the answer is the one any other address gets
+                if (isDemoAccount(demoAccounts, person.email)) return undefined
+                if ((yield* passwordDoor(tenantId, person)) === undefined) return undefined
+                return yield* issueChallenge(tenantId, person.id, 'reset', null)
+              }),
+            ).pipe(
+              // a link nobody can be sent is the answer every other address
+              // gets: whether this one has a person behind it stays unsaid
+              Effect.catchTag('AUTH_MAIL_NOT_SENT', () => Effect.succeed(undefined)),
+            )
+            if (issued === undefined) return
+            const link = yield* withDb(
+              linkTo(tenantId, RESET_PASSWORD_PATH, { token: Redacted.value(issued.token) }),
+            )
+            // a failure is spent and logged rather than told to a stranger
+            yield* deliver(
+              tenantId,
+              issued.id,
+              normalized,
+              mailFor('reset', locale, link, { to: normalized, workspace: tenant.value.name }),
+            )
+          }).pipe(
+            Effect.ignoreCause({
+              log: 'Warn',
+              message: 'a reset link could not be issued or sent',
+            }),
+          ),
           scope,
         )
       }),

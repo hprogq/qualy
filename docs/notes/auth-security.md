@@ -378,7 +378,8 @@ smtp 后端对着 Mailpit 跑同一套,CI 设 `QUALY_REQUIRE_MAILPIT_TESTS=1`,�
   读出 token 后用 `history.replaceState` 把 fragment 从地址栏去掉。兑换时照旧在锁内原子消费——打开时有效不代表提交时仍有效。
   邮件文案在服务端 `mail-copy.ts`(中英两份,按请求的 Accept-Language 首选语言选),由 `@qualy/plugin-mail` 发出。
 - **找回密码** `POST /auth/password-resets`(匿名):先按来源地址(10 / 15 分钟)与邮箱(3 / 小时)计数,**无论邮箱存在与否同一句回答、同样的耗时**
-  ——只对「邮箱已验证、在用、密码入口接纳」的人发信,且信在回答之后另起 fiber 发出。兑换 `POST /auth/password-resets/redemptions`
+  ——只对「邮箱已验证、在用、密码入口接纳」的人发信。**计数完成即回答**,查人、锁租户写链接、发信整体在回答之后另起 fiber
+  (2026-09-25 起;此前查到人的请求要多走锁、写入与提交,耗时能区分地址有没有主人),后台失败只记日志。兑换 `POST /auth/password-resets/redemptions`
   用驱动的 `binding.prepare` 生成摘要(规则仍是 12–128),写入后**结束该人全部会话**,审计 `auth.identity.bind`(actor 为本人)。
 - **自助改密码** `PUT /iam/self/password`:已有密码 → 必须给当前密码(驱动的 `binding.verify` 核对,按人 10 / 15 分钟计数)→
   写新摘要 → **结束其他会话、保留当前**;没有密码 → 邮箱必须已验证(`AUTH_EMAIL_UNVERIFIED`),且当前会话须**近期重新认证**
