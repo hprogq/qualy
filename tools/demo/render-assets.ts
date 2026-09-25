@@ -66,6 +66,21 @@ const table = (
     '#fff',
   )
 
+/** a form the applicant fills and signs: rows of what it asks, a statement, a place to sign */
+const form = (
+  title: string,
+  rows: readonly (readonly [string, string])[],
+  statement: string,
+  signer: string,
+) =>
+  page(
+    `<div class="plain"><div class="bar"></div><h2>${title}</h2>
+     <table>${rows.map(([label, value]) => `<tr><th style="width:32%">${label}</th><td>${value}</td></tr>`).join('')}</table>
+     <p style="margin-top:26px;font-size:21px;text-indent:0">${statement}</p>
+     <div class="sign">${signer}：________<br/>二〇二六年九月</div></div>`,
+    '#fff',
+  )
+
 const ASSETS: Record<string, string> = {
   'campus-1': certificate(
     '参与证明',
@@ -189,15 +204,96 @@ const ASSETS: Record<string, string> = {
     '滨海市高校体育协会',
     '二〇二五年十一月',
   ),
+  // what a reviewer asks for beyond the filing, and a student uploads in answer
+  'notice-1': table(
+    '获奖名单公示（节选）',
+    ['序号', '学院', '作品或队伍编号', '奖项'],
+    [
+      ['15', '计算机学院', 'DEMO-2025-0388', '二等奖'],
+      ['16', '信息学院', 'DEMO-2025-0402', '二等奖'],
+      ['17', '软件学院', 'DEMO-2025-0415', '二等奖'],
+      ['18', '软件学院', 'DEMO-2025-0521', '三等奖'],
+    ],
+    '名单截取自竞赛组委会公示页面，本页为演示用截图。',
+  ),
+  'notice-2': certificate(
+    '获奖通知',
+    '本届竞赛初赛由各市承办赛区组织，赛区获奖名单报省组委会统一审核公布，赛区获奖按<b>省级</b>认定。',
+    '省大学生竞赛组织委员会',
+    '二〇二六年七月',
+    '#f4f7fd',
+  ),
+  'roster-1': table(
+    '参赛队伍名单与成绩（节选）',
+    ['序号', '参赛单位', '项目', '队员编号', '成绩'],
+    [
+      ['7', '示例大学', '健身操舞', 'DEMO-07-01 至 07-08', '团体第三名'],
+      ['8', '滨海理工大学', '健身操舞', 'DEMO-08-01 至 08-08', '团体第四名'],
+    ],
+    '成绩册由赛事组委会印发，本页为演示用截图。',
+  ),
+  'research-3': certificate(
+    '立项通知书',
+    '经评审，该同学主持的大学生创新创业训练计划项目获准<b>省级立项</b>，请按计划开展研究。',
+    '省教育厅高等教育处（示例）',
+    '二〇二五年十一月',
+  ),
+  'application-1': form(
+    '推荐免试研究生申请表',
+    [
+      ['申请类别', '学术学位'],
+      ['前三学年平均学分绩', '见学院导入数据'],
+      ['英语水平', '全国大学英语四级'],
+    ],
+    '本人自愿申请推荐免试攻读硕士学位研究生，保证所填信息与所附材料真实有效。',
+    '申请人（签字）',
+  ),
+  'conduct-1': form(
+    '推免生思想品德考核表',
+    [
+      ['政治表现', '积极参加理论学习与主题教育活动'],
+      ['遵纪守法', '无违纪处分记录'],
+      ['集体活动', '积极参加班级与学院组织的集体活动'],
+    ],
+    '本人鉴定：在校期间认真学习，遵守校纪校规，团结同学，积极参加志愿服务。',
+    '本人（签字）',
+  ),
+  'signature-1': certificate(
+    '考核意见',
+    '经班级评议与班主任审核，该生思想政治表现良好，遵守校纪校规，同意推荐。',
+    '示例大学软件学院',
+    '班主任（签字）　二〇二六年九月',
+    '#f3f8f3',
+  ),
+  'transcript-1': page(
+    `<div class="plain"><div class="bar"></div><h2>学生成绩单（前三学年，节选）</h2>
+     <table><tr><th>学年</th><th>课程</th><th>学分</th><th>成绩</th></tr>
+     <tr><td>2023-2024</td><td>高等数学</td><td>5</td><td>91</td></tr>
+     <tr><td>2023-2024</td><td>程序设计基础</td><td>4</td><td>95</td></tr>
+     <tr><td>2024-2025</td><td>数据结构</td><td>4</td><td>93</td></tr>
+     <tr><td>2025-2026</td><td>操作系统</td><td>4</td><td>89</td></tr></table>
+     <p style="margin-top:26px;font-size:19px;color:#555;text-indent:0">教务处盖章后有效，本页为演示用截图。</p>
+     ${seal('示例大学教务处')}</div>`,
+    '#fff',
+  ),
 }
+
+// `node tools/demo/render-assets.ts notice-1 signature-1` renders only those,
+// leaving the committed bytes of every other picture as they are
+const only = process.argv.slice(2)
+const unknown = only.filter((name) => !(name in ASSETS))
+if (unknown.length > 0) throw new Error(`no such picture: ${unknown.join(', ')}`)
 
 fs.mkdirSync(OUT, { recursive: true })
 const browser = await chromium.launch()
 const context = await browser.newContext({ viewport: { width: 960, height: 680 } })
 const tab = await context.newPage()
+let rendered = 0
 for (const [name, html] of Object.entries(ASSETS)) {
+  if (only.length > 0 && !only.includes(name)) continue
+  rendered += 1
   await tab.setContent(html, { waitUntil: 'load' })
   await tab.screenshot({ path: path.join(OUT, `${name}.jpg`), type: 'jpeg', quality: 72 })
 }
 await browser.close()
-console.log(`rendered ${Object.keys(ASSETS).length} images into ${OUT}`)
+console.log(`rendered ${rendered} images into ${OUT}`)
