@@ -615,6 +615,40 @@ describe('reading somebody’s entries', () => {
     expect(rows().filter((one) => one.hasAttribute('data-awaiting-me'))).toHaveLength(0)
   })
 
+  // Somebody in the round saving a draft reads this person's account again,
+  // and never the reader's whole queue: a queue moves only with its own
+  // wake-ups.
+  it('reads the account again on a claim’s wake-up, and leaves the queue be', async () => {
+    await page.viewport(1440, 900)
+    let queueReads = 0
+    const claimReads = vi.fn(() =>
+      Effect.succeed({
+        participantId: PARTICIPANT_ID,
+        entries: [claim(1, OWN_ITEM, 'in_review')],
+        nextCursor: null,
+      }),
+    )
+    const { watchBatch, release } = wakeOnce('entries-changed')
+    await screen({
+      route: `${base}&open=${OWN_ITEM}`,
+      capabilities: { review: true },
+      queue: () => {
+        queueReads += 1
+        return []
+      },
+      stubs: { watchBatch, listParticipantEntries: claimReads },
+    })
+    await expect.poll(() => rows().length).toBe(1)
+    await expect.poll(() => queueReads).toBeGreaterThan(0)
+    const claimsBefore = claimReads.mock.calls.length
+    const queueBefore = queueReads
+    release()
+    await expect.poll(() => claimReads.mock.calls.length).toBeGreaterThan(claimsBefore)
+    // any read the same wake-up asked for has been asked for by now
+    await new Promise((settle) => setTimeout(settle, 200))
+    expect(queueReads).toBe(queueBefore)
+  })
+
   // Walking down the list keeps the half and the question being read, so one
   // question can be read person after person; the claim that was open was
   // the last person's. Going back to the list leaves the question behind.

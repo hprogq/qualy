@@ -222,11 +222,15 @@ export function ParticipantResultDetail({
         return
       // A decision changes both what the claim says and what it counts for,
       // and takes the round it closed out of whoever's queue it was in.
-      case 'entries-changed':
       case 'review-instance-changed':
         account()
         refreshQueue()
         return
+      // Anybody's claim in the round, a saved draft as often as not: the
+      // account may have moved, but a queue only moves on a round, and
+      // every write that moves one says so in its own wake-up. Reading the
+      // whole queue again on each of these would read it on every save.
+      case 'entries-changed':
       case 'result-changed':
         account()
         return
