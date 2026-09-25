@@ -136,9 +136,17 @@ const UUID_SHAPED = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
  * Accepts what the product really produces on both sides: an ISO instant
  * from a browser, and `timestamptz::text` from PostgreSQL, whose offset is
  * two digits and whose fraction is up to six.
+ *
+ * The offset is held to what PostgreSQL takes as well: at most fifteen hours
+ * and fifty-nine minutes either way (PostgreSQL 18, `time zone displacement
+ * out of range` past it). `+99` and `+05:99` passed the shape and failed the
+ * cast, which the self-service sign-in filter answered 500.
  */
 const TIMESTAMP_SHAPE =
-  /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:\.\d{1,6})?(?:Z|[+-]\d{2}(?::?\d{2})?)?$/
+  /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:\.\d{1,6})?(?:Z|[+-](\d{2})(?::?(\d{2}))?)?$/
+
+/** the widest offset from UTC PostgreSQL reads, in hours; the minutes below sixty */
+const MAX_OFFSET_HOURS = 15
 
 export const isReadableTimestamp = (value: string): boolean => {
   const parts = TIMESTAMP_SHAPE.exec(value)
@@ -155,6 +163,9 @@ export const isReadableTimestamp = (value: string): boolean => {
     probe.getUTCDate() !== day
   ) {
     return false
+  }
+  if (parts[7] !== undefined) {
+    if (Number(parts[7]) > MAX_OFFSET_HOURS || Number(parts[8] ?? '0') >= 60) return false
   }
   // leap seconds are spelled :60 and postgres takes them
   return Number(parts[4]) < 24 && Number(parts[5]) < 60 && Number(parts[6]) <= 60

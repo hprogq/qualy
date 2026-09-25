@@ -301,8 +301,31 @@ export const boundedInt = (min: number, max: number) =>
     Schema.isLessThanOrEqualTo(max),
   )
 
+/**
+ * The largest value an int4 column holds, which is what every version and
+ * revision column here is. Past it a lookup is not an empty answer but a
+ * database error (22003), which is a 500 for a malformed request.
+ */
+export const INT4_MAX = 2_147_483_647
+
 /** the version a set replacement was written against; never optional */
-export const expectedVersion = Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1))
+export const expectedVersion = Schema.Number.check(
+  Schema.isInt(),
+  Schema.isGreaterThanOrEqualTo(1),
+  Schema.isLessThanOrEqualTo(INT4_MAX),
+)
+
+/**
+ * A positive whole number written in the address - a version or a revision
+ * number - that the int4 column it is looked up in can hold. It stays a
+ * string: an address segment is one, and the handler reads the number off it.
+ */
+export const positiveIntParam = Schema.String.check(
+  Schema.isPattern(/^[1-9]\d{0,9}$/),
+  Schema.makeFilter((value: string) =>
+    Number(value) <= INT4_MAX ? undefined : `must be at most ${String(INT4_MAX)}`,
+  ),
+)
 
 /**
  * Refuses a patch that names no field at all.

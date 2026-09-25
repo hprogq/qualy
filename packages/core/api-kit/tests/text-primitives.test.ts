@@ -1,6 +1,13 @@
 import { Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
-import { boundedText, likeContains, trimmedName } from '../src/schema.ts'
+import {
+  boundedText,
+  expectedVersion,
+  INT4_MAX,
+  likeContains,
+  positiveIntParam,
+  trimmedName,
+} from '../src/schema.ts'
 
 // Every text field in the product is built from one of these two, so what
 // they admit is what reaches a text column. PostgreSQL stores no NUL byte
@@ -45,5 +52,28 @@ describe('a substring somebody typed', () => {
     expect(likeContains('100%')).toBe('%100\\%%')
     // the escape character itself, or it would escape the escapes
     expect(likeContains('a\\b')).toBe('%a\\\\b%')
+  })
+})
+
+describe('a number compared with an int4 column', () => {
+  // Past the column's range the comparison is not an empty answer but a
+  // database error (22003): `/versions/3000000000` answered 500.
+  const decodes = (schema: Schema.Codec<unknown, unknown>, value: unknown): boolean =>
+    Schema.decodeUnknownResult(schema)(value)._tag === 'Success'
+
+  it('takes a version written in the address while the column can hold it', () => {
+    for (const value of ['1', '42', String(INT4_MAX)]) {
+      expect(decodes(positiveIntParam, value), value).toBe(true)
+    }
+    for (const value of [String(INT4_MAX + 1), '3000000000', '0', '-1', '01', '1.5', '1e3', '']) {
+      expect(decodes(positiveIntParam, value), value).toBe(false)
+    }
+  })
+
+  it('takes an expected version while the column can hold it', () => {
+    expect(decodes(expectedVersion, 1)).toBe(true)
+    expect(decodes(expectedVersion, INT4_MAX)).toBe(true)
+    expect(decodes(expectedVersion, INT4_MAX + 1)).toBe(false)
+    expect(decodes(expectedVersion, 3_000_000_000)).toBe(false)
   })
 })

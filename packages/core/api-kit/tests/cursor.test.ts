@@ -84,6 +84,10 @@ describe('the pagination cursor', () => {
       '2026-09-19 12:00:00+00',
       '2026-09-19 12:00:00.123456+00',
       '2026-09-19 12:00:00',
+      // the widest offsets postgres reads, either way
+      '2026-09-19T12:00:00+15:59',
+      '2026-09-19T12:00:00-1559',
+      '2026-09-19T12:00:00+0530',
     ]) {
       expect(isReadableTimestamp(real), real).toBe(true)
     }
@@ -95,6 +99,13 @@ describe('the pagination cursor', () => {
       '2026-09-19T25:00:00Z',
       // what a JS Date prints, which is how a cursor once carried one
       'Sat Sep 19 2026 12:00:00 GMT+0800',
+      // offsets past what postgres reads: "time zone displacement out of
+      // range", which the sign-in filter answered 500
+      '2026-09-19T12:00:00+99',
+      '2026-09-19T12:00:00+16',
+      '2026-09-19T12:00:00-1600',
+      '2026-09-19T12:00:00+15:60',
+      '2026-09-19T12:00:00+05:99',
       'now',
       '2026-09-19',
       '',
