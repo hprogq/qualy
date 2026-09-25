@@ -18,6 +18,7 @@ import {
   readTable,
   readWorkbook,
   sheetsOf,
+  SPREADSHEET_LIMITS,
   SpreadsheetUnreadable,
   type SheetTable,
 } from '@qualy/spreadsheet'
@@ -946,10 +947,20 @@ export const make = Effect.gen(function* () {
         filename: input.filename,
         declaredMime: input.declaredMime,
         size: BigInt(input.size),
+        // no bigger than the reader will open: a larger file would be
+        // stored, counted against the uploader's quota, and never read
+        maxFileBytes: BigInt(SPREADSHEET_LIMITS.maxFileBytes),
       })
       .pipe(
         Effect.catchTags({
-          STORAGE_UPLOAD_REFUSED: (refused) => new AccessDenied({ reason: refused.reason }),
+          STORAGE_UPLOAD_REFUSED: (refused) =>
+            refused.reason === 'file-too-large'
+              ? new UserImportInvalid({
+                  issues: [
+                    { rowNo: null, field: null, severity: 'error', reason: 'file-too-large' },
+                  ],
+                })
+              : new AccessDenied({ reason: refused.reason }),
           STORAGE_BACKEND_UNAVAILABLE: (error) => Effect.die(error),
         }),
       )

@@ -406,6 +406,33 @@ describe.runIf(postgresAvailable)('importing people from a spreadsheet', () => {
     expect(result.listed.items.map((item) => item.id)).toEqual([result.done.importId])
   }, 120_000)
 
+  it('stores no file larger than the reader opens', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('g')
+          const service = yield* DirectoryImport
+          const prepare = (size: number) =>
+            Effect.exit(
+              service.prepareUpload(
+                f.tenant,
+                {
+                  filename: 'students.xlsx',
+                  declaredMime: 'application/octet-stream',
+                  size: String(size),
+                },
+                f.admin,
+              ),
+            )
+          return { over: yield* prepare(20 * 1024 * 1024), within: yield* prepare(1024 * 1024) }
+        }),
+      ),
+    )
+    expect(tagOf(result.over)).toBe('USER_IMPORT_INVALID')
+    expect(Exit.isSuccess(result.within)).toBe(true)
+  }, 120_000)
+
   it('reads no file for somebody who administers users nowhere', async () => {
     const result = ok(
       await run(

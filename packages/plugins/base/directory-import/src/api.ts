@@ -176,7 +176,7 @@ export const directoryApiGroup = HttpApiGroup.make('directory')
         grant: Schema.Struct({ driver: Schema.String, payload: configJson }),
         expiresAt: Schema.String,
       }),
-      error: [AccessDenied, BadRequest],
+      error: [AccessDenied, UserImportInvalid, BadRequest],
     }).middleware(Authenticated),
   )
   .add(
