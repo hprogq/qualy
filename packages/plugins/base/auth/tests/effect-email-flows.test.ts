@@ -1515,6 +1515,37 @@ const codeFrom = async (mail: Mailbox, to: string) => {
 const otherThan = (code: string) => `${code.slice(0, -1)}${String((Number(code.at(-1)) + 1) % 10)}`
 
 describe.runIf(postgresAvailable)('showing it is you again', () => {
+  it('is shown from two tabs at once, or pressed twice, without either failing', async () => {
+    const db = await createTestContext('email-reauth-concurrent')
+    const mail = memoryMailBackend()
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await Effect.runPromiseExit(
+          Effect.gen(function* () {
+            const flows = yield* EmailFlows
+            const fresh = f.as(f.ada, yield* freshSession(f.tenant, f.ada, f.local))
+            const shown = yield* Effect.forEach(
+              Array.from({ length: 6 }, (_, index) => index),
+              () =>
+                Effect.result(
+                  flows.reauthenticate(fresh, { method: 'password', password: 'ada-password' }),
+                ).pipe(Effect.map((result) => result._tag)),
+              { concurrency: 'unbounded' },
+            )
+            const kept = yield* runSql<{ count: number }>(sql`
+              select count(*)::int as count from session_auth_grants
+               where session_id = ${fresh.sessionId} and kind = 'qualy:reauthenticated'`)
+            return { shown, kept: kept.rows[0]!.count }
+          }).pipe(Effect.provide(stack(db.url, mail.backend))),
+        ),
+      )
+      expect(answer).toEqual({ shown: Array.from({ length: 6 }, () => 'Success'), kept: 1 })
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('is asked of a session before it moves the address, and shown with the password', async () => {
     const db = await createTestContext('email-reauth-password')
     const mail = memoryMailBackend()

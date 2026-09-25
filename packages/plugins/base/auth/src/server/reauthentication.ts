@@ -110,14 +110,10 @@ export const makeReauthentication = Effect.gen(function* () {
       sessionGrantRef(tenantId, sessionId, door.authProviderId, kind),
       Redacted.make(value),
     )
-    yield* db.query((k) =>
-      k
-        .deleteFrom('SessionAuthGrant')
-        .where('tenantId', '=', tenantId)
-        .where('sessionId', '=', sessionId)
-        .where('kind', '=', kind)
-        .execute(),
-    )
+    const expiresAt = sql<Date>`now() + make_interval(mins => ${minutes})`
+    // one statement: two asked at once for the same session - two tabs, a
+    // second press before the first answered - end as the later one, where
+    // a delete and then an insert had the second fail on the first's row
     const row = yield* db.query((k) =>
       k
         .insertInto('SessionAuthGrant')
@@ -127,8 +123,13 @@ export const makeReauthentication = Effect.gen(function* () {
           authProviderId: door.authProviderId,
           kind,
           stateSealed: sealed,
-          expiresAt: sql<Date>`now() + make_interval(mins => ${minutes})`,
+          expiresAt,
         })
+        .onConflict((conflict) =>
+          conflict
+            .columns(['tenantId', 'sessionId', 'authProviderId', 'kind'])
+            .doUpdateSet({ stateSealed: sealed, expiresAt }),
+        )
         .returning('expiresAt')
         .executeTakeFirstOrThrow(),
     )
