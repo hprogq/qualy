@@ -602,8 +602,15 @@ function useLaneFit(lanes: RefObject<HTMLDivElement | null>, count: number): Lan
 function StageLanes({ timeline, now }: { timeline: readonly TimelineLike[]; now: number }) {
   const zone = useBatchZone()
   const { format, locale } = useI18n()
-  const mark = useZoneMark(locale)
+  const markOf = useZoneMark(locale)
   const plan = planOf(timeline, now)
+  // Each end of the axis is marked with the batch's offset on its own day:
+  // the first date says whose clock the axis is on, and the last says it
+  // again only where that clock has moved its offset in between.
+  const startMark = plan.start === null ? null : markOf(plan.start)
+  const end = plan.start !== null && plan.end !== null && plan.end > plan.start ? plan.end : null
+  const endMark = end === null ? null : markOf(end)
+  const endOwnMark = endMark === startMark ? null : endMark
   const at = (fraction: number) => `${(Math.min(1, Math.max(0, fraction)) * 100).toFixed(2)}%`
   const lanesRef = useRef<HTMLDivElement>(null)
   const fit = useLaneFit(lanesRef, timeline.length)
@@ -661,16 +668,19 @@ function StageLanes({ timeline, now }: { timeline: readonly TimelineLike[]; now:
       {plan.start !== null && (
         <div
           data-testid="stage-axis"
-          {...(mark === null ? {} : { 'data-zone-mark': mark })}
+          {...(startMark === null ? {} : { 'data-zone-mark': startMark })}
+          {...(endOwnMark === null ? {} : { 'data-end-zone-mark': endOwnMark })}
           {...stylex.props(styles.axis)}
         >
           {/* the axis is one clock, so its first date says whose */}
-          <span {...stylex.props(styles.axisStart)}>{marked(dotDay(plan.start, zone), mark)}</span>
+          <span {...stylex.props(styles.axisStart)}>
+            {marked(dotDay(plan.start, zone), startMark)}
+          </span>
           {plan.today !== null && (
             <span {...stylex.props(styles.axisToday(at(plan.today)))}>{format(m.today)}</span>
           )}
-          {plan.end !== null && plan.end > plan.start && (
-            <span {...stylex.props(styles.axisEnd)}>{dotDay(plan.end, zone)}</span>
+          {end !== null && (
+            <span {...stylex.props(styles.axisEnd)}>{marked(dotDay(end, zone), endOwnMark)}</span>
           )}
         </div>
       )}
@@ -904,7 +914,7 @@ function CardBody({
 }: BatchCardProps): ReactNode {
   const { format, locale } = useI18n()
   const zone = useBatchZone()
-  const mark = useZoneMark(locale)
+  const markOf = useZoneMark(locale)
   // the card's own shape changes, not just its width, so the choice is made
   // here rather than in a media query
   const narrow = useIsMobile()
@@ -917,6 +927,7 @@ function CardBody({
   // the close on the batch's clock, spelled once for the sentence and the
   // fact beside it
   const closes = where.kind === 'until' ? dotMoment(where.at, zone) : null
+  const mark = where.kind === 'until' ? markOf(where.at) : null
 
   // The phone card is a different order, not a narrower one: what the
   // reader has to do moves above the run of stages. Two orders cannot be

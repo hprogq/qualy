@@ -104,7 +104,7 @@ export function ScheduleDialog({
           label={format(m.plannedStartLabel)}
           hint={
             <>
-              <ZoneNote purpose="enter" />
+              <ZoneNote purpose="enter" at={value} />
               {moved !== null && (
                 <span
                   data-testid="time-skipped"

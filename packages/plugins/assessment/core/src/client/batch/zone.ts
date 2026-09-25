@@ -60,12 +60,33 @@ export const calendarDaysBetween = (from: number, to: number, zone: string | und
 }
 
 /**
- * Whether the device reads the clock differently from the batch right now.
- * Compared by offset rather than by name: two names for the same wall are
- * the same wall to the reader.
+ * Whether the device reads the moment `at` differently from the batch, now
+ * when no moment is named. Compared by offset rather than by name: two names
+ * for the same wall are the same wall to the reader. Asked of a moment
+ * because two zones can keep one wall in summer and two in winter.
  */
-export const deviceDiffers = (zone: string | undefined, now: number = Date.now()): boolean =>
-  zone !== undefined && offsetMinutesAt(now, zone) !== offsetMinutesAt(now)
+export const deviceDiffers = (zone: string | undefined, at: number = Date.now()): boolean =>
+  zone !== undefined && offsetMinutesAt(at, zone) !== offsetMinutesAt(at)
+
+const WEEK = 7 * 86_400_000
+
+/**
+ * Whether the device reads any moment within half a year either side of
+ * `around` differently from the batch. For a notice about a whole screen,
+ * whose times fall in both halves of the year: a London device and a Lagos
+ * batch keep one wall all summer and are an hour apart all winter. Asked a
+ * week apart, since clocks change on a scale of seasons, not of days.
+ */
+export const deviceEverDiffers = (
+  zone: string | undefined,
+  around: number = Date.now(),
+): boolean => {
+  if (zone === undefined) return false
+  for (let week = -26; week <= 26; week += 1) {
+    if (deviceDiffers(zone, around + week * WEEK)) return true
+  }
+  return false
+}
 
 /** Intl's options for a batch time: the zone when there is one, nothing otherwise */
 export const inZone = (zone: string | undefined): { timeZone?: string } =>
@@ -100,25 +121,33 @@ export const zoneNameOf = (
 })
 
 /**
- * The batch's offset, "GMT+5:45", to write after a time read on its clock -
- * or null for a reader whose device keeps the same clock, to whom the bare
- * time is already their own. Where a whole plan is on screen, `ZoneNote`
- * says it once instead; this is for a time that stands alone, on a card or
- * in a row of a list.
+ * The batch's offset at `at`, "GMT+5:45", to write after that moment read on
+ * its clock - or null for a reader whose device reads the moment the same
+ * way, to whom the bare time is already their own. Both are asked of the
+ * moment shown, not of today: a New York deadline in December is at GMT-5
+ * however early in autumn it is read, and a Lagos one is an hour off a
+ * London device then though the two walls agree all summer.
+ *
+ * Where a whole plan is on screen, `ZoneNote` says the zone once instead;
+ * this is for a time that stands alone, on a card or in a row of a list.
  */
 export const zoneMarkOf = (
   zone: string | null | undefined,
   locale: string,
-  now: number = Date.now(),
+  at: number | string,
 ): string | null => {
   const clock = readableZone(zone)
-  return clock !== undefined && deviceDiffers(clock, now)
-    ? zoneNameOf(clock, locale, now).offset
-    : null
+  if (clock === undefined) return null
+  const moment = new Date(at).getTime()
+  if (Number.isNaN(moment) || !deviceDiffers(clock, moment)) return null
+  return zonePart(locale, clock, moment, 'shortOffset') ?? clock
 }
 
-/** `zoneMarkOf` for the batch this screen belongs to, said in `locale` */
-export const useZoneMark = (locale: string): string | null => zoneMarkOf(useBatchZone(), locale)
+/** `zoneMarkOf` for the batch this screen belongs to, said in `locale`, for any moment on it */
+export const useZoneMark = (locale: string): ((at: number | string) => string | null) => {
+  const zone = useBatchZone()
+  return (at) => zoneMarkOf(zone, locale, at)
+}
 
 /** a time with the batch's offset after it, when the reader needs one */
 export const marked = (time: string, mark: string | null): string =>

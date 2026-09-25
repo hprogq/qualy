@@ -3,7 +3,14 @@ import * as stylex from '@stylexjs/stylex'
 import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../i18n.ts'
-import { BatchZoneContext, deviceDiffers, readableZone, useBatchZone, zoneNameOf } from './zone.ts'
+import {
+  BatchZoneContext,
+  deviceDiffers,
+  deviceEverDiffers,
+  readableZone,
+  useBatchZone,
+  zoneNameOf,
+} from './zone.ts'
 
 // The batch's clock, handed down and said out loud.
 //
@@ -30,12 +37,25 @@ const styles = stylex.create({
   },
 })
 
-/** the zone said the way its reader names it, or nothing outside a batch */
-function useZoneLabel(zone: string | undefined): string | null {
+/**
+ * The zone said the way its reader names it, with its offset at `at` (now
+ * when no moment is named), or nothing outside a batch.
+ */
+function useZoneLabel(
+  zone: string | undefined,
+  at?: number,
+): { readonly label: string; readonly offset: string } | null {
   const { format, locale } = useI18n()
   if (zone === undefined) return null
-  const { name, offset } = zoneNameOf(zone, locale)
-  return name === undefined ? offset : format(m.zoneNamed, { name, offset })
+  const { name, offset } = zoneNameOf(zone, locale, at)
+  return { label: name === undefined ? offset : format(m.zoneNamed, { name, offset }), offset }
+}
+
+/** a moment as a number, or undefined when there is none or it does not parse */
+const momentOf = (at: number | string | null | undefined): number | undefined => {
+  if (at === null || at === undefined) return undefined
+  const moment = new Date(at).getTime()
+  return Number.isNaN(moment) ? undefined : moment
 }
 
 export function BatchZone({
@@ -54,37 +74,50 @@ export function BatchZone({
 /** which zone the times beside it are in: read against, or typed in */
 export function ZoneNote({
   purpose = 'read',
+  at,
   xstyle,
 }: {
   purpose?: 'read' | 'enter'
+  /**
+   * The one moment the note stands beside, such as the time being typed: its
+   * offset is the one said, since a zone that keeps summer time has two. Left
+   * out, the offset is today's.
+   */
+  at?: number | string | null
   xstyle?: stylex.StyleXStyles
 }) {
   const { format } = useI18n()
   const zone = useBatchZone()
-  const label = useZoneLabel(zone)
-  if (zone === undefined || label === null) return null
+  const moment = momentOf(at)
+  const said = useZoneLabel(zone, moment)
+  if (zone === undefined || said === null) return null
   return (
     <span
       // the zone itself, as the fact the sentence carries
       data-testid="batch-zone"
       data-zone={zone}
-      data-device={deviceDiffers(zone) ? 'different' : 'same'}
+      data-offset={said.offset}
+      data-device={deviceDiffers(zone, moment) ? 'different' : 'same'}
       {...stylex.props(styles.note, xstyle)}
     >
-      {format(purpose === 'enter' ? m.zoneEnter : m.zoneNote, { zone: label })}
+      {format(purpose === 'enter' ? m.zoneEnter : m.zoneNote, { zone: said.label })}
     </span>
   )
 }
 
-/** said once at the head of a batch screen, and only to a reader elsewhere */
+/**
+ * Said once at the head of a batch screen, and only to a reader elsewhere:
+ * one whose device reads the batch's times differently at any time of the
+ * year, not only today, since the screen shows times from both halves of it.
+ */
 export function ZoneAwayNotice({ xstyle }: { xstyle?: stylex.StyleXStyles }) {
   const { format } = useI18n()
   const zone = useBatchZone()
-  const label = useZoneLabel(zone)
-  if (!deviceDiffers(zone) || label === null) return null
+  const said = useZoneLabel(zone)
+  if (!deviceEverDiffers(zone) || said === null) return null
   return (
     <p data-testid="batch-zone-away" data-zone={zone} {...stylex.props(styles.away, xstyle)}>
-      {format(m.zoneAway, { zone: label })}
+      {format(m.zoneAway, { zone: said.label })}
     </p>
   )
 }

@@ -215,7 +215,7 @@ export function BatchProgress({
 }) {
   const { format, locale } = useI18n()
   const zone = useBatchZone()
-  const mark = useZoneMark(locale)
+  const markOf = useZoneMark(locale)
   // One threshold: under a tablet the bar has no room for the stage, so the
   // stage goes and the clock takes its name instead - "3 hours left in stage"
   // rather than a number beside nothing. A caller that asks for `single` has
@@ -242,6 +242,9 @@ export function BatchProgress({
 
   const current = timeline.find((entry) => entry.status === 'current')
   const stage = showStage ? (current?.displayName ?? null) : null
+  // the one moment this says outright, so the one that carries the batch's
+  // offset for a reader whose device reads it on another clock
+  const mark = progress.kind === 'starts' ? markOf(progress.at) : null
 
   const said =
     progress.kind === 'until' || progress.kind === 'since'
@@ -251,9 +254,7 @@ export function BatchProgress({
           spanMessage(m, progress, form),
         )
       : progress.kind === 'starts'
-        ? // the one moment this says outright, so the one that carries the
-          // batch's offset for a reader whose device keeps another clock
-          marked(
+        ? marked(
             new Date(progress.at).toLocaleString(locale, {
               dateStyle: 'medium',
               timeStyle: 'short',
@@ -309,7 +310,7 @@ export function BatchProgress({
                 'data-rest': String(progress.span.rest),
               }
             : {})}
-          {...(progress.kind === 'starts' && mark !== null ? { 'data-zone-mark': mark } : {})}
+          {...(mark === null ? {} : { 'data-zone-mark': mark })}
           {...stylex.props(styles.clock, tone)}
         >
           {filled !== null && !flat && <Ring fraction={filled} />}

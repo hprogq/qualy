@@ -242,6 +242,21 @@ const screen = (over: Stubs = {}, route = `/assessment/batches/${BATCH_ID}/phase
     route,
   })
 
+// New York keeps GMT-4 in summer and GMT-5 in winter, so the offset after a
+// time is the one of that time's own day. A moment is put in the half of the
+// year opposite today's, where an offset taken from today cannot pass for it.
+const NEW_YORK = 'America/New_York'
+// 23:59 on 19 December and on 19 July, New York time
+const WINTER = '2030-12-20T04:59:00.000Z'
+const SUMMER = '2030-07-20T03:59:00.000Z'
+const offsetAt = (timeZone: string, at: string | number) =>
+  new Intl.DateTimeFormat('zh-CN', { timeZone, timeZoneName: 'shortOffset' })
+    .formatToParts(new Date(at))
+    .find((part) => part.type === 'timeZoneName')!.value
+/** of the two, the one whose offset in New York is not today's */
+const otherHalf = () =>
+  offsetAt(NEW_YORK, Date.now()) === offsetAt(NEW_YORK, WINTER) ? SUMMER : WINTER
+
 describe('the batch list', () => {
   it('searches by name, filters by status and reads the next page', async () => {
     const seen: Request[] = []
@@ -589,7 +604,10 @@ describe('the batch list', () => {
     new Intl.DateTimeFormat('zh-CN', { timeZone, timeZoneName: 'shortOffset' })
       .formatToParts(Date.now())
       .find((part) => part.type === 'timeZoneName')!.value
-  const runningIn = (timezone: string) => ({
+  const runningIn = (
+    timezone: string,
+    { start = '2026-01-01T00:00:00.000Z', close = CLOSE }: { start?: string; close?: string } = {},
+  ) => ({
     listBatches: () =>
       Effect.succeed({
         items: [
@@ -600,7 +618,7 @@ describe('the batch list', () => {
               description: '',
               entryNote: '',
               status: 'current',
-              entry: { kind: 'entered', at: '2026-01-01T00:00:00.000Z' },
+              entry: { kind: 'entered', at: start },
             },
             {
               phaseId: REVIEW_PHASE_ID,
@@ -608,7 +626,7 @@ describe('the batch list', () => {
               description: '',
               entryNote: '',
               status: 'future',
-              entry: { kind: 'planned', at: CLOSE },
+              entry: { kind: 'planned', at: close },
             },
           ]),
         ],
@@ -646,6 +664,53 @@ describe('the batch list', () => {
     expect(page.getByTestId('stage-axis').element().hasAttribute('data-zone-mark')).toBe(false)
     await expect.element(page.getByTestId('batch-when')).toBeVisible()
     expect(page.getByTestId('batch-when').element().hasAttribute('data-zone-mark')).toBe(false)
+  })
+
+  it('marks a close with the offset its clock keeps on that day, not today', async () => {
+    await page.viewport(1280, 800)
+    const close = otherHalf()
+    const mark = offsetAt(NEW_YORK, close)
+    expect(mark).not.toBe(offsetAt(NEW_YORK, Date.now()))
+    await screen(runningIn(NEW_YORK, { close }), '/assessment/batches')
+
+    const deadline = page.getByTestId('stage-deadline')
+    await expect
+      .element(deadline)
+      .toHaveAttribute('data-moment', close === WINTER ? '12.19 23:59' : '07.19 23:59')
+    await expect.element(deadline).toHaveAttribute('data-zone-mark', mark)
+    expect(deadline.element().textContent).toContain(
+      `${close === WINTER ? '12.19' : '07.19'} 23:59 ${mark}`,
+    )
+    await expect.element(page.getByTestId('batch-when')).toHaveAttribute('data-zone-mark', mark)
+  })
+
+  it("marks the end of a stage axis again where the batch's clocks change between its ends", async () => {
+    await page.viewport(1280, 800)
+    // entered in January, at GMT-5 there; closing in July, at GMT-4
+    await screen(
+      runningIn(NEW_YORK, { start: '2026-01-10T17:00:00.000Z', close: SUMMER }),
+      '/assessment/batches',
+    )
+
+    const axis = page.getByTestId('stage-axis')
+    await expect
+      .element(axis)
+      .toHaveAttribute('data-zone-mark', offsetAt(NEW_YORK, '2026-01-10T17:00:00.000Z'))
+    await expect.element(axis).toHaveAttribute('data-end-zone-mark', offsetAt(NEW_YORK, SUMMER))
+    expect(axis.element().textContent).toContain(`2030.07.19 ${offsetAt(NEW_YORK, SUMMER)}`)
+  })
+
+  it('says the offset of a stage axis once where both its ends keep it', async () => {
+    await page.viewport(1280, 800)
+    // January and December, both at GMT-5 in New York
+    await screen(
+      runningIn(NEW_YORK, { start: '2026-01-10T17:00:00.000Z', close: WINTER }),
+      '/assessment/batches',
+    )
+
+    const axis = page.getByTestId('stage-axis')
+    await expect.element(axis).toHaveAttribute('data-zone-mark', offsetAt(NEW_YORK, WINTER))
+    expect(axis.element().hasAttribute('data-end-zone-mark')).toBe(false)
   })
 
   it('opens a batch from the table and comes back', async () => {
@@ -1333,6 +1398,31 @@ describe('the stage plan', () => {
     expect(clock.element().textContent).toContain(`${spelled} ${mark}`)
   })
 
+  it('marks when a round begins with the offset its clock keeps that day', async () => {
+    await page.viewport(1280, 800)
+    const opens = otherHalf()
+    await screen({
+      getBatch: () => Effect.succeed({ batch: batch({ status: 'active', timezone: NEW_YORK }) }),
+      getTimeline: () =>
+        Effect.succeed({
+          timeline: [
+            {
+              phaseId: ENTRY_PHASE_ID,
+              displayName: '正式填报',
+              description: '',
+              entryNote: '',
+              status: 'future' as const,
+              entry: { kind: 'planned' as const, at: opens },
+            },
+          ],
+        }),
+    })
+
+    const clock = page.getByTestId('stage-clock')
+    await expect.element(clock).toHaveAttribute('data-span', 'starts')
+    await expect.element(clock).toHaveAttribute('data-zone-mark', offsetAt(NEW_YORK, opens))
+  })
+
   it('says nothing about the device when it keeps the batch its own clock', async () => {
     await screen({
       getPhases: () => Effect.succeed(twoPhases({ planned: '2027-09-04T16:00:00.000Z' })),
@@ -1418,6 +1508,33 @@ describe('the stage plan', () => {
     await userEvent.click(page.getByRole('spinbutton', { name: '小时' }))
     await userEvent.keyboard('04')
     await vi.waitFor(() => expect(page.getByTestId('time-skipped').elements()).toHaveLength(0))
+  })
+
+  it('names the offset the batch clock keeps on the day being set', async () => {
+    const value = otherHalf()
+    await renderScreen({
+      client: fakeClient({ app: { getManifest: () => Effect.succeed(emptyManifest()) } }),
+      children: (
+        <BatchZone zone={NEW_YORK}>
+          <ScheduleDialog
+            open
+            name="审核"
+            canStartNow={false}
+            value={value}
+            pending={false}
+            onChange={() => {}}
+            onCancel={() => {}}
+            onSchedule={() => {}}
+            onStartNow={() => {}}
+          />
+        </BatchZone>
+      ),
+    })
+
+    const note = page.getByRole('dialog').getByTestId('batch-zone')
+    await expect.element(note).toHaveAttribute('data-zone', NEW_YORK)
+    await expect.element(note).toHaveAttribute('data-offset', offsetAt(NEW_YORK, value))
+    expect(note.element().textContent).toContain(offsetAt(NEW_YORK, value))
   })
 })
 

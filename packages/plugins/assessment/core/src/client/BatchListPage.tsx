@@ -524,11 +524,10 @@ function timeOf(
   locale: string,
 ): { text: string; mark: string | null } {
   const zone = readableZone(row.timezone)
-  const mark = zoneMarkOf(zone, locale)
-  const dated = (say: (date: string) => string, at: string) => ({
-    text: say(marked(dotDay(at, zone), mark)),
-    mark,
-  })
+  const dated = (say: (date: string) => string, at: string) => {
+    const mark = zoneMarkOf(zone, locale, at)
+    return { text: say(marked(dotDay(at, zone), mark)), mark }
+  }
   const timeline = row.timeline
   if (standing === 'archived') {
     // the last stage that was entered is the closest thing to a close the
