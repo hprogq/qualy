@@ -12,7 +12,7 @@ import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
 import type { ApiResult, ClientOf } from '@qualy/web-runtime/api'
 import type { assessmentApi } from '@qualy/plugin-assessment/client/api'
-import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // loaded through the registry the host actually uses, so a screen that lost
 // its key would fail here rather than at runtime
@@ -1458,6 +1458,70 @@ describe('who may work on a batch', () => {
     await expect
       .element(page.getByTestId('access-permission-assessment.review.process'))
       .toBeEnabled()
+  })
+
+  it('says why no role is offered when the selection itself is refused', async () => {
+    // the pickers as their owners contribute them, reduced to the one press
+    // this case needs: somebody chosen, somewhere chosen
+    const PickPeople = ({ context }: { context: { onChange: (ids: string[]) => void } }) => (
+      <button type="button" onClick={() => context.onChange([USER_ID])}>
+        pick people
+      </button>
+    )
+    const PickUnits = ({
+      context,
+    }: {
+      context: { onChange: (ids: string[], picked: []) => void }
+    }) => (
+      <button type="button" onClick={() => context.onChange([NODE_ID], [])}>
+        pick units
+      </button>
+    )
+    await renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.succeed({
+              ...emptyManifest(),
+              pages: PAGES,
+              slots: {
+                'iam/people-picker': [{ id: 'test/people', order: 0 }],
+                'iam/org-node-picker': [{ id: 'test/units', order: 0 }],
+              },
+            }),
+        },
+        assessment: assessmentStubs({
+          getBatch: () => Effect.succeed({ batch: batch({ status: 'active' }) }),
+          staffOptions: (request: Request) =>
+            request.query?.['userIds'] === undefined
+              ? Effect.succeed({ nodes: [], roles: [] })
+              : Effect.fail(apiError('ASSESSMENT_ACCESS_INVALID', { reason: 'too-many' })),
+        }),
+      }),
+      routes: [
+        { path: '/assessment/batches/:batchId/access', element: workspace(<BatchAccessPage />) },
+      ],
+      route: `/assessment/batches/${BATCH_ID}/access`,
+      registry: {
+        slots: {
+          'iam/people-picker': {
+            'test/people': lazy(() => Promise.resolve({ default: PickPeople })),
+          },
+          'iam/org-node-picker': {
+            'test/units': lazy(() => Promise.resolve({ default: PickUnits })),
+          },
+        },
+      },
+    })
+
+    await page.getByRole('button', { name: '添加工作人员' }).click()
+    await page.getByRole('button', { name: 'pick people' }).click()
+    await page.getByRole('button', { name: '下一步' }).click()
+    await page.getByRole('button', { name: 'pick units' }).click()
+    await page.getByRole('button', { name: '下一步' }).click()
+    // the refusal is what the step says, not an empty list of roles
+    await expect.element(page.getByTestId('add-staff-refused')).toBeVisible()
+    expect(page.getByRole('radiogroup').elements()).toHaveLength(0)
   })
 
   it('only offers to remove somebody this round brought in, and asks first', async () => {

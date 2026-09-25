@@ -49,6 +49,8 @@ const styles = stylex.create({
   // the dialog rather than overflow it and raise a second scrollbar
   stepWords: { display: 'flex', minHeight: 0, flexGrow: 1, flexDirection: 'column', gap: 8 },
   quiet: { fontSize: 14, lineHeight: '1.25rem', color: tokens.mutedForeground },
+  refused: { fontSize: 14, lineHeight: '1.25rem', color: tokens.danger },
+  waitingRoles: { height: '8rem', width: '100%' },
   waitingFill: { minHeight: 0, width: '100%', flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
   waitingTree: { minHeight: '16rem', width: '100%', flexGrow: 1 },
   foot: {
@@ -79,7 +81,7 @@ export function AddStaffDialog({
   onClose: () => void
 }) {
   const query = useApiQuery(assessmentApi)
-  const { format } = useI18n()
+  const { format, formatError } = useI18n()
   const [step, setStep] = useState(0)
   const [chosen, setChosen] = useState<readonly string[]>([])
   const [orgNodeIds, setOrgNodeIds] = useState<readonly string[]>([])
@@ -170,12 +172,23 @@ export function AddStaffDialog({
           {step === 2 && (
             <div {...stylex.props(styles.stepWords)}>
               <p {...stylex.props(styles.quiet)}>{format(m.addStaffAsHint)}</p>
-              <RolePicker
-                roles={roles}
-                value={roleId}
-                emptyLabel={format(m.addStaffNoRoles)}
-                onChange={setRoleId}
-              />
+              {/* a selection the server will not answer for - too many
+                  people and units at once - is said as that, not as a
+                  list of roles that happens to be empty */}
+              {probes.isError ? (
+                <p {...stylex.props(styles.refused)} data-testid="add-staff-refused" role="alert">
+                  {formatError(probes.error)}
+                </p>
+              ) : probes.isLoading ? (
+                <Skeleton className={stylex.props(styles.waitingRoles).className} />
+              ) : (
+                <RolePicker
+                  roles={roles}
+                  value={roleId}
+                  emptyLabel={format(m.addStaffNoRoles)}
+                  onChange={setRoleId}
+                />
+              )}
             </div>
           )}
         </DialogBody>
