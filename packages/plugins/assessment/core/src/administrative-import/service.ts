@@ -1358,7 +1358,10 @@ export const makeAdministrativeImportMethods = (
         : { available: false as const },
       actor: personOf(found.actorId, found.actorName),
       createdAt: new Date(found.createdAt).toISOString(),
-      defaultBasis: found.defaultBasis,
+      // The basis and the reasons are free text, and what an office writes
+      // there is as often as not the names: 关于给予王五等 3 人通报批评的决定.
+      // They wait for the same reach the file's name does.
+      defaultBasis: reachesAll ? found.defaultBasis : null,
       importedCount: found.importedCount,
       standing: standingOf(standing.get(importId)),
       reversals: events
@@ -1366,7 +1369,7 @@ export const makeAdministrativeImportMethods = (
         .map((event) => ({
           id: event.id,
           actor: personOf(event.actorId, event.actorName),
-          reason: event.reason,
+          reason: reachesAll ? event.reason : null,
           affectedCount: event.affectedCount,
           createdAt: new Date(event.createdAt).toISOString(),
         })),

@@ -172,6 +172,7 @@ describe.runIf(postgresAvailable)('an import, looked back on', () => {
             { defaultBasis: '学院统一依据' },
           )
           const recorder = f.principal(f.recorder)
+          yield* reverse(f, done.importId, '王五申诉成功撤回', f.admin)
           const whole = yield* assessment.getAdministrativeImport(
             f.t,
             done.importId,
@@ -196,13 +197,20 @@ describe.runIf(postgresAvailable)('an import, looked back on', () => {
     )
     // reaching everyone: the file is theirs to see
     expect(found.whole.source).toMatchObject({ available: true, filename: 'import.xlsx' })
+    expect(found.whole.defaultBasis).toBe('学院统一依据')
+    expect(found.whole.reversals.map((one) => one.reason)).toEqual(['王五申诉成功撤回'])
     // reaching only part of it: the import is still the round's record, so
     // what it was and what it did stay readable
     expect(found.partial.item).toEqual({ id: found.item.id, title: '违纪扣分' })
     expect(found.partial.importedCount).toBe(2)
     expect(found.partial.actor?.name).toBe('Admin')
-    // but the file's own name is a list of names, and waits with the rows
+    // but the file's own name is a list of names, and waits with the rows,
+    // as does the free text written about it
     expect(found.partial.source).toEqual({ available: false })
+    expect(found.partial.defaultBasis).toBe(null)
+    expect(found.partial.reversals.map((one) => [one.affectedCount, one.reason])).toEqual([
+      [2, null],
+    ])
     expect(found.listed.map((one) => one.source)).toEqual([{ available: false }])
     expect(errorOf<{ _tag: string }>(found.rows)?._tag).toBe('ACCESS_DENIED')
     expect(errorOf<{ _tag: string }>(found.source)?._tag).toBe('ACCESS_DENIED')

@@ -441,6 +441,30 @@ describe('importing a workbook of administrative records', () => {
     })
   })
 
+  it('says the basis is withheld from a reader the server held it back from', async () => {
+    await open(`${base}?import=${IMPORT_ID}`, {
+      getAdministrativeImport: () =>
+        Effect.succeed(
+          detail({
+            source: { available: false },
+            defaultBasis: null,
+            reversals: [
+              {
+                id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+                actor: { id: USER_ID, name: '张老师' },
+                reason: null,
+                affectedCount: 4,
+                createdAt: '2026-09-17T08:00:00.000Z',
+              },
+            ],
+          }),
+        ),
+    })
+    // not "none": there is a basis, this reader is not the one to read it
+    await expect.element(page.getByTestId('import-basis')).toHaveAttribute('data-state', 'withheld')
+    await expect.element(page.getByTestId('import-reversal')).toHaveAttribute('data-reason', 'none')
+  })
+
   it('does not offer a withdrawal the server said cannot work', async () => {
     await open(`${base}?import=${IMPORT_ID}`, {
       getAdministrativeImport: () => Effect.succeed(detail({ capabilities: { reverse: false } })),

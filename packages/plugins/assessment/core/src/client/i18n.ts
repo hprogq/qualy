@@ -2255,6 +2255,10 @@ const i18n = definePluginMessages({
       id: 'assessment/record/import/reversal-line',
       defaultMessage: '{actor} withdrew {count} on {when}: {reason}',
     },
+    importReversalLineBare: {
+      id: 'assessment/record/import/reversal-line-bare',
+      defaultMessage: '{actor} withdrew {count} on {when}',
+    },
     importRows: { id: 'assessment/record/import/rows', defaultMessage: 'Rows' },
     importColumnStatus: { id: 'assessment/record/import/column-status', defaultMessage: 'Status' },
     importColumnDetermination: {

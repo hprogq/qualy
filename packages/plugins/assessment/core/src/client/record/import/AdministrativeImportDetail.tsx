@@ -344,8 +344,23 @@ export function AdministrativeImportDetail({
                 {format(m.importDetailRevisionNo, { no: found.itemRevision.revisionNo })}
               </dd>
               <dt {...stylex.props(styles.term)}>{format(m.importDefaultBasis)}</dt>
-              <dd {...stylex.props(styles.value)}>
-                {found.defaultBasis ?? format(m.importDetailBasisNone)}
+              <dd
+                {...stylex.props(styles.value)}
+                data-testid="import-basis"
+                data-state={
+                  found.defaultBasis !== null
+                    ? 'written'
+                    : found.source.available
+                      ? 'none'
+                      : 'withheld'
+                }
+              >
+                {/* free text an office often writes names into, so it waits
+                    for the same reach the file does */}
+                {found.defaultBasis ??
+                  format(
+                    found.source.available ? m.importDetailBasisNone : m.importDetailSourceWithheld,
+                  )}
               </dd>
               <dt {...stylex.props(styles.term)}>{format(m.importDetailSource)}</dt>
               <dd {...stylex.props(styles.value)}>
@@ -407,13 +422,23 @@ export function AdministrativeImportDetail({
                   <dt {...stylex.props(styles.term)}>{format(m.importReversals)}</dt>
                   <dd {...stylex.props(styles.value, styles.reversals)}>
                     {found.reversals.map((one) => (
-                      <span key={one.id}>
-                        {format(m.importReversalLine, {
-                          when: when(one.createdAt),
-                          actor: one.actor?.name ?? format(m.eventSomebody),
-                          count: one.affectedCount,
-                          reason: one.reason ?? '',
-                        })}
+                      <span
+                        key={one.id}
+                        data-testid="import-reversal"
+                        data-reason={one.reason === null || one.reason === '' ? 'none' : 'written'}
+                      >
+                        {one.reason === null || one.reason === ''
+                          ? format(m.importReversalLineBare, {
+                              when: when(one.createdAt),
+                              actor: one.actor?.name ?? format(m.eventSomebody),
+                              count: one.affectedCount,
+                            })
+                          : format(m.importReversalLine, {
+                              when: when(one.createdAt),
+                              actor: one.actor?.name ?? format(m.eventSomebody),
+                              count: one.affectedCount,
+                              reason: one.reason,
+                            })}
                       </span>
                     ))}
                   </dd>

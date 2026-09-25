@@ -529,6 +529,7 @@ export default {
     '本次导入中有 {count} 条认定当前无法撤销，请分别处理后再试。',
   'assessment/record/import/reversals': '撤销记录',
   'assessment/record/import/reversal-line': '{when} 由 {actor} 撤销 {count} 条：{reason}',
+  'assessment/record/import/reversal-line-bare': '{when} 由 {actor} 撤销 {count} 条',
   'assessment/record/import/rows': '导入明细',
   'assessment/record/import/column-status': '状态',
   'assessment/record/import/column-determination': '当前认定',
