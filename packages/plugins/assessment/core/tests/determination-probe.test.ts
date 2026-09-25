@@ -527,6 +527,82 @@ describe.runIf(postgresAvailable)('proving a determination before it is a fact',
     expect(result.inside.entry.status).toBe('approved')
   }, 120_000)
 
+  // A determined day the question holds to the window was checked when it
+  // was written, and nothing held it there afterwards: a filing is re-read
+  // against a narrower window, and the determination beside it was not.
+  it('keeps the window from narrowing past a day a claim stands determined as', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('dp-window-determined')
+          const assessment = yield* Assessment
+          const admin = f.principal(f.admin)
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const groups = yield* assessment.listScoreGroups(f.t, g.batch.id, admin)
+          const item = yield* assessment.createItem(
+            f.t,
+            g.batch.id,
+            {
+              itemType: 'evidence',
+              title: '获奖日期',
+              scoreGroupId: groups.groups[0]!.id,
+              maxEntries: null,
+              config: {
+                entryChannels: ['participant'],
+                formConfig: { dated: true },
+                scoringConfig: datedScoring('claimed-when'),
+                reviewPolicy: { mode: 'none' },
+              },
+            },
+            admin,
+          )
+          yield* assessment.setItemStatus(f.t, item.id, { status: 'active' }, admin)
+          const as = f.principal(f.s1)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            {
+              itemId: item.id,
+              participantId: g.p1,
+              payload: { 'claimed-when-slot': '2026-05-01' },
+            },
+            as,
+          )
+          yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', as)
+          // the filing's own field is not held to the window; only the
+          // determination seeded from it is
+          const narrowed = yield* Effect.exit(
+            assessment.updateBatch(
+              f.t,
+              g.batch.id,
+              { materialRange: { start: '2026-06-01', end: '2026-09-01' } },
+              admin,
+            ),
+          )
+          const kept = yield* assessment.updateBatch(
+            f.t,
+            g.batch.id,
+            { materialRange: { start: '2026-04-01', end: '2026-09-01' } },
+            admin,
+          )
+          return {
+            entry: entry.id,
+            item: item.id,
+            narrowed,
+            kept,
+            status: yield* entryOf(entry.id),
+          }
+        }),
+      ),
+    )
+    expect(result.status.status).toBe('approved')
+    expect(errorOf<{ _tag: string; entries: unknown }>(result.narrowed)).toMatchObject({
+      _tag: 'ASSESSMENT_MATERIAL_RANGE_INVALID',
+      entries: [{ entryId: result.entry, itemId: result.item }],
+    })
+    expect(result.kept.materialRange.start).toBe('2026-04-01')
+  }, 120_000)
+
   it('holds the settlement to the question and the round the proof was made under', async () => {
     const result = ok(
       await run(

@@ -591,6 +591,33 @@ export const currentBatchConfigs = (tenantId: string, batchId: string) =>
     )
 
 /**
+ * What every live claim of a batch currently stands determined as, and the
+ * question version that determined it: a determination can be held to the
+ * material window as much as a filing is, so the range impact check reads
+ * both.
+ */
+export const liveBatchRecognitions = (tenantId: string, batchId: string) =>
+  db.query((k) =>
+    k
+      .selectFrom('Entry')
+      .innerJoin('EntryRecognition', (join) =>
+        join
+          .onRef('EntryRecognition.tenantId', '=', 'Entry.tenantId')
+          .onRef('EntryRecognition.id', '=', 'Entry.currentRecognitionId'),
+      )
+      .select([
+        'Entry.id as entryId',
+        'Entry.itemId as itemId',
+        'EntryRecognition.itemRevisionId as itemRevisionId',
+        'EntryRecognition.values as values',
+      ])
+      .where('Entry.tenantId', '=', tenantId)
+      .where('Entry.batchId', '=', batchId)
+      .where('Entry.status', 'in', ['in_review', 'approved'])
+      .execute(),
+  )
+
+/**
  * The doors each active question of a batch is open through, and nothing
  * else of its configuration: a participant's round list asks this on every
  * poll, and needs no form, rule or chain to answer whether filing is open.

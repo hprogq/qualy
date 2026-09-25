@@ -50,6 +50,7 @@ import {
   activeItemChannelsOf,
   currentBatchConfigs,
   liveBatchPayloads,
+  liveBatchRecognitions,
   revisionsByIdOf,
 } from '../item/db.ts'
 import { opensTo } from '../item/channels.ts'
@@ -63,8 +64,8 @@ import {
   type AdministrativeImportMethods,
 } from '../administrative-import/service.ts'
 import { currentRecognitionsOfEntries } from '../scoring/recognition-db.ts'
-import { readScoringPlan } from '../scoring/plan.ts'
-import { recognitionFormFields } from '../scoring/recognition.ts'
+import { readScoringPlan, type ScoringPlan } from '../scoring/plan.ts'
+import { judgeRecognition, recognitionFormFields } from '../scoring/recognition.ts'
 
 import { makeEntryMethods, type EntryMethods, type EntryView } from '../entry/service.ts'
 import { makeReviewMethods, type ReviewDetailView, type ReviewMethods } from '../review/service.ts'
@@ -3363,6 +3364,34 @@ export const make = Effect.fn('Assessment.make')(function* () {
                   if (Result.isFailure(decoded)) {
                     stranded.push({ entryId: row.entryId, itemId: row.itemId })
                   }
+                }
+                // What a claim stands determined as is held to the window
+                // too, wherever its question says a determined day must fall
+                // inside it: read against the plan of the version that
+                // determined it, as every door that writes one judges it.
+                const determined = yield* liveBatchRecognitions(tenantId, batchId)
+                const determinedUnder = yield* revisionsByIdOf(tenantId, [
+                  ...new Set(determined.map((row) => row.itemRevisionId)),
+                ])
+                const plans = new Map<string, Option.Option<ScoringPlan>>()
+                for (const row of determined) {
+                  if (stranded.some((one) => one.entryId === row.entryId)) continue
+                  let plan = plans.get(row.itemRevisionId)
+                  if (plan === undefined) {
+                    const revision = determinedUnder.get(row.itemRevisionId)
+                    plan =
+                      revision === undefined
+                        ? Option.none()
+                        : yield* Effect.option(readScoringPlan(revision))
+                    plans.set(row.itemRevisionId, plan)
+                  }
+                  if (Option.isNone(plan)) continue
+                  const outside = judgeRecognition(
+                    plan.value.recognitionSchemas,
+                    row.values,
+                    input.materialRange,
+                  ).some((issue) => issue.reason === 'out-of-material-range')
+                  if (outside) stranded.push({ entryId: row.entryId, itemId: row.itemId })
                 }
                 if (stranded.length > 0 || badItems.length > 0) {
                   return yield* new MaterialRangeInvalid({ entries: stranded, items: badItems })
