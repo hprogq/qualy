@@ -214,4 +214,68 @@ describe.runIf(postgresAvailable)('the standing of a reader across the rounds un
     // a settled filing stays counted once filing is over
     expect(mine(result.settled)).toEqual({ ...none, approved: 1, filing: 'closed' })
   }, 120_000)
+
+  // An appeal leaves the claim approved while its round runs, and an ask on
+  // that round is the author's to answer all the same: the card says so,
+  // as the batch's own to-do list does.
+  it('counts an ask on an appeal round as waiting on its author', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('standing-appeal-ask')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, {
+            profile: [...PROFILE, 'assessment.entry.appeal'],
+            escalation: [
+              {
+                id: 'esc',
+                selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
+                quorum: { type: 'any' },
+              },
+            ],
+          })
+          const s1 = f.principal(f.s1)
+          const judge = f.principal(f.reviewer)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          yield* assessment.decideReview(
+            f.t,
+            sent.currentReviewInstanceId!,
+            { decision: 'approve' },
+            judge,
+          )
+          const appealed = yield* assessment.appealEntry(
+            f.t,
+            entry.id,
+            { reason: '认定等级有误' },
+            s1,
+          )
+          yield* assessment.requestSupplement(
+            f.t,
+            appealed.id,
+            {
+              instructions: '请补充获奖证书',
+              requirements: [{ label: '证书', kind: 'file', required: true }],
+            },
+            judge,
+          )
+          const card = yield* assessment.listMyStanding(f.t, s1)
+          const desk = (yield* assessment.getMyOverview(f.t, g.batch.id, s1)).participant!
+          return { batchId: g.batch.id, card, desk }
+        }),
+      ),
+    )
+    const none = { toAnswer: 0, toFix: 0, draft: 0, rejected: 0, submitted: 0, approved: 0 }
+    expect(result.desk.actions.map((one) => one.kind)).toEqual(['supplement'])
+    expect(result.card.items.find((item) => item.batchId === result.batchId)!.myEntries).toEqual({
+      ...none,
+      toAnswer: 1,
+      filing: 'open',
+    })
+  }, 120_000)
 })

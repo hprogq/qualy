@@ -2877,10 +2877,11 @@ export const make = Effect.fn('Assessment.make')(function* () {
           withDb(reviewsWaitingByBatchOf({ tenantId, userId: as.userId, batchIds })),
         )).map((row) => [row.batchId, row.waiting]),
       )
+      // by round and by the status the asked-about filing stands in
       const asks = new Map(
         (yield* dieQuery(
           withDb(openAskCountsByBatchOf({ tenantId, userId: as.userId, batchIds })),
-        )).map((row) => [row.batchId, Number(row.total)]),
+        )).map((row) => [`${row.batchId}:${row.status}`, Number(row.total)]),
       )
       type Counts = Omit<MyFilings, 'filing'>
       const none: Counts = {
@@ -2894,19 +2895,20 @@ export const make = Effect.fn('Assessment.make')(function* () {
       const mine = new Map<string, Counts>()
       for (const row of filings) {
         const counts = { ...(mine.get(row.batchId) ?? none) }
-        const total = Number(row.total)
+        // A filing whose round is asking its author for more is counted as
+        // waiting on them, whatever status it stands in: an appealed claim
+        // keeps its approval or refusal while its round runs (§32.21), and
+        // its ask is as much the author's to answer as a first round's.
+        const asked = asks.get(`${row.batchId}:${row.status}`) ?? 0
+        const total = Number(row.total) - asked
+        counts.toAnswer += asked
         // A refusal is its own count, not folded into 'to fix' (§32.65): it
-        // has its own next steps. A filing out for judgement whose round is
-        // asking its author for more is counted as waiting on them.
+        // has its own next steps.
         if (row.status === 'needs_revision') counts.toFix = total
         if (row.status === 'draft') counts.draft = total
         if (row.status === 'rejected') counts.rejected = total
         if (row.status === 'approved') counts.approved = total
-        if (row.status === 'in_review') {
-          const asked = asks.get(row.batchId) ?? 0
-          counts.toAnswer = asked
-          counts.submitted = total - asked
-        }
+        if (row.status === 'in_review') counts.submitted = total
         mine.set(row.batchId, counts)
       }
       // Whether the line is drawn at all is the batch's own authority to

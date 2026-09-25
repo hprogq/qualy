@@ -375,8 +375,12 @@ export const entryCountsByBatchOf = (input: {
 /**
  * How many of this user's filings per round a reviewer has paused to ask
  * them for more, by the same test `myActionRowsOf` lists them under: the ask
- * is open and its round is still waiting on it. Such a filing is in_review,
- * but it is waiting on its author, not on the reviewers.
+ * is open and its round is still waiting on it. Such a filing is waiting on
+ * its author, not on the reviewers.
+ *
+ * Counted per status, because the status is not always in_review: an
+ * appeal leaves the claim standing approved or rejected while its round
+ * runs (§32.21), and an ask on that round is still the author's to answer.
  */
 export const openAskCountsByBatchOf = (input: {
   tenantId: string
@@ -384,7 +388,7 @@ export const openAskCountsByBatchOf = (input: {
   batchIds: readonly string[]
 }) =>
   input.batchIds.length === 0
-    ? Effect.succeed([] as { batchId: string; total: string }[])
+    ? Effect.succeed([] as { batchId: string; status: string; total: string }[])
     : db.query((k) =>
         k
           .selectFrom('ReviewSupplementRequest as sr')
@@ -399,15 +403,14 @@ export const openAskCountsByBatchOf = (input: {
           .innerJoin('BatchParticipant as bp', (join) =>
             join.onRef('bp.tenantId', '=', 'e.tenantId').onRef('bp.id', '=', 'e.participantId'),
           )
-          .select('e.batchId')
+          .select(['e.batchId', 'e.status'])
           .select(({ fn }) => fn.count<string>('e.id').distinct().as('total'))
           .where('sr.tenantId', '=', input.tenantId)
           .where('e.batchId', 'in', [...input.batchIds])
           .where('bp.userId', '=', input.userId)
           .where('sr.status', '=', 'open')
           .where('ri.state', '=', 'awaiting_supplement')
-          .where('e.status', '=', 'in_review')
-          .groupBy('e.batchId')
+          .groupBy(['e.batchId', 'e.status'])
           .execute(),
       )
 
