@@ -13,8 +13,9 @@ import { seedFormulaFixture, servicesFor } from './support/stack.ts'
 // A formula's life as one model: one draft that is edited, a revision left
 // behind by every save that changed what could be published, and publications
 // whose executable record is frozen for good while the name and notes on it
-// stay the author's to rewrite. History only grows - restoring an earlier
-// state appends a revision naming where it came from.
+// stay the author's to rewrite. History never rewinds - restoring an earlier
+// state appends a revision naming where it came from. How much of it a
+// formula keeps is formula-retention.test.ts.
 
 const stack = (url: string) =>
   formulaLayer.pipe(

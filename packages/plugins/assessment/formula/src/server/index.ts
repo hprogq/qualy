@@ -126,6 +126,20 @@ const MAX_CANONICAL_CONTRACT_BYTES = 65_536
 export const TESTS_LIMIT = 128 * 1024
 
 /**
+ * How much of one formula's older draft history is kept.
+ *
+ * Every content save keeps a whole snapshot, so the history is bounded per
+ * formula. Beyond the current draft's own revision and the revision each
+ * published version was published from, a formula keeps its newest revisions
+ * while they number at most this many and weigh at most this many bytes of
+ * source and examples together; the older ones go with the next revision
+ * written to that same formula. Another formula's history is never weighed
+ * or touched, however much its author writes elsewhere.
+ */
+export const KEPT_DRAFT_REVISIONS = 50
+export const KEPT_DRAFT_REVISION_BYTES = 4 * 1024 * 1024
+
+/**
  * Draft writes one person may make in a burst, and how long each one takes
  * to come back. Saving is a deliberate act in the editor, so nobody writing
  * a formula meets this; a script replaying saves to fill the disk does.
@@ -865,7 +879,104 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
         Effect.map((row) => (row === undefined ? undefined : (row as unknown as VersionRow))),
       )
 
-  /** appends one saved state of a draft; the caller holds the function row */
+  /**
+   * Lets the oldest of one formula's draft history go once it holds more
+   * than it keeps. The caller holds the function row, as every writer of a
+   * revision does, so nothing is appended or published meanwhile.
+   *
+   * Two kinds of revision never go. The current draft's own, whatever its
+   * age. And for each published version, the revision it was published
+   * from: the newest one holding exactly its source and examples that was
+   * saved no later than the publication. Only that one - a restore of the
+   * version afterwards holds the same bytes, and keeping every such copy
+   * would let restores grow the history without end. Everything else is
+   * weighed newest first, and whatever lies past the count or the bytes is
+   * deleted. Published versions live in their own table and are never read
+   * for deletion, let alone deleted.
+   */
+  const pruneRevisions = (tenantId: string, functionId: string) =>
+    db
+      .query((k) =>
+        k
+          .deleteFrom('FormulaDraftRevision')
+          .where('tenantId', '=', tenantId)
+          .where('functionId', '=', functionId)
+          .where('revisionNo', 'in', (outer) =>
+            outer
+              .selectFrom(
+                outer
+                  .selectFrom('FormulaDraftRevision as r')
+                  .innerJoin('FormulaFunction as f', (join) =>
+                    join.onRef('f.tenantId', '=', 'r.tenantId').onRef('f.id', '=', 'r.functionId'),
+                  )
+                  // The aliases below name no property of the revision table
+                  // on purpose: a derived table's columns are read back
+                  // through its source table's mapping, and `revisionNo` would
+                  // come back as a column the derived table does not have.
+                  .select((eb) => [
+                    'r.revisionNo as prunableNo',
+                    eb.fn
+                      .agg<number>('row_number')
+                      .over((over) => over.orderBy('r.revisionNo', 'desc'))
+                      .as('newerCount'),
+                    eb.fn
+                      .sum<number>(
+                        sql<number>`octet_length(r.source_ts) + octet_length(r.tests::text)`,
+                      )
+                      .over((over) => over.orderBy('r.revisionNo', 'desc'))
+                      .as('newerBytes'),
+                  ])
+                  .where('r.tenantId', '=', tenantId)
+                  .where('r.functionId', '=', functionId)
+                  .whereRef('r.revisionNo', '<', 'f.draftRevision')
+                  .where((eb) =>
+                    eb.not(
+                      eb.exists(
+                        eb
+                          .selectFrom('FormulaVersion as v')
+                          .select('v.id')
+                          .whereRef('v.tenantId', '=', 'r.tenantId')
+                          .whereRef('v.functionId', '=', 'r.functionId')
+                          .whereRef('v.sourceSha256', '=', 'r.sourceSha256')
+                          .whereRef('v.tests', '=', 'r.tests')
+                          .whereRef('r.savedAt', '<=', 'v.publishedAt')
+                          .where((later) =>
+                            later.not(
+                              later.exists(
+                                later
+                                  .selectFrom('FormulaDraftRevision as n')
+                                  .select('n.id')
+                                  .whereRef('n.tenantId', '=', 'r.tenantId')
+                                  .whereRef('n.functionId', '=', 'r.functionId')
+                                  .whereRef('n.revisionNo', '>', 'r.revisionNo')
+                                  .whereRef('n.savedAt', '<=', 'v.publishedAt')
+                                  .whereRef('n.sourceSha256', '=', 'v.sourceSha256')
+                                  .whereRef('n.tests', '=', 'v.tests'),
+                              ),
+                            ),
+                          ),
+                      ),
+                    ),
+                  )
+                  .as('held'),
+              )
+              .select('held.prunableNo')
+              .where((eb) =>
+                eb.or([
+                  eb('held.newerCount', '>', KEPT_DRAFT_REVISIONS),
+                  eb('held.newerBytes', '>', KEPT_DRAFT_REVISION_BYTES),
+                ]),
+              ),
+          )
+          .execute(),
+      )
+      .pipe(Effect.orDie, Effect.asVoid)
+
+  /**
+   * Appends one saved state of a draft, and lets the oldest of that
+   * formula's history go if it now holds more than it keeps. The caller
+   * holds the function row and has already moved its draft revision here.
+   */
   const appendRevision = (input: {
     readonly tenantId: string
     readonly functionId: string
@@ -895,7 +1006,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
           } as never)
           .execute(),
       )
-      .pipe(Effect.orDie, Effect.asVoid)
+      .pipe(Effect.orDie, Effect.andThen(pruneRevisions(input.tenantId, input.functionId)))
 
   const foundRow = (
     tenantId: string,

@@ -5,9 +5,12 @@ import { Tenant } from '@qualy/plugin-org/db'
 // mutable draft; every save of that draft's source or examples leaves an
 // immutable draft revision behind it; a published version is an immutable
 // execution contract - sources, artifact, schemas, toolchain identity, its
-// own test report and the name its author published it under. Revisions and
-// versions are never updated or deleted; archiving a function only hides it
-// from new configuration.
+// own test report and the name its author published it under. Versions are
+// never deleted, and nothing of them but their label ever changes.
+// Revisions are never updated; the oldest of one function's history go once
+// it holds more than it keeps, never its current draft's nor the ones its
+// versions were published from. Archiving a function only hides it from new
+// configuration.
 
 const p = defineEntity.properties
 
@@ -195,7 +198,10 @@ export const FormulaVersion = defineEntity({
  * is kilobytes, and a snapshot reads, restores and audits without replaying
  * anything. Renaming the function is not a revision: nothing that could be
  * published moved. Restoring an older state appends a new revision naming
- * where it came from; history only grows.
+ * where it came from rather than rewinding. What a function keeps of its
+ * history is bounded: the library lets the oldest revisions go once there
+ * are more than it keeps, sparing the current draft's and those a version
+ * was published from.
  *
  * `origin` says how the revision came to be. `sourceVersionId` and
  * `sourceDraftRevisionNo` name what it was restored or copied from, and like

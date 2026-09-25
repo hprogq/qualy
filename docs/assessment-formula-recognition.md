@@ -968,7 +968,7 @@ functionVersion = latest
 
 ```text
 FormulaFunction.draft      唯一可编辑的草稿(draft_source_ts / draft_tests / draft_revision)
-FormulaDraftRevision       草稿每次「源码或示例真的变了」留下的完整快照,只追加
+FormulaDraftRevision       草稿每次「源码或示例真的变了」留下的完整快照,只追加新行,按公式有上限地回收最旧的
 FormulaVersion             发布出来的不可变版本,带作者起的名字
 ```
 
@@ -994,7 +994,19 @@ source_draft_revision_no integer nullable(restored-from-draft)
   原 `FormulaDraftReplaced` 审计不再记录,目录项保留以读旧行。修订表就是草稿的领域历史,不再复制进审计。
 - 新建公式的草稿源码为空(修订 1,`created`);从模板复制的修订 1 是 `copied-from-template` 并指向来源版本。空源码不编译、不报错,试运行与发布不可用。
 - **恢复不回退**:`POST .../draft/restores`,`{expectedDraftRevision, from: {kind:'published-version', versionNo} | {kind:'draft-revision', revisionNo}}`,
-  从不可变行读取内容,追加一条新修订并记来源;与当前草稿完全相同时是 no-op。历史版本与旧修订本身永不改动。
+  从不可变行读取内容,追加一条新修订并记来源;与当前草稿完全相同时是 no-op。历史版本与旧修订本身永不改动(旧修订可能按下一条被回收,但不会被改写)。
+- **草稿记录按公式回收**(2026-09-25 用户裁决,原「修订只追加、永不删除」据此修订):每次保存都存整份快照,
+  只限频率与单份大小挡不住历史无限增长,所以每个公式的草稿记录有上限。规则:
+  ① **发布版本永不动**:`assessment_formula_versions` 不参与回收,回收只删草稿修订行。
+  ② **永不删除**的草稿修订有两类:当前草稿自己的修订(`revision_no = draft_revision`,即 head);以及每个发布版本
+  「发布自」的那一条——源码与示例与该版本完全相同、保存时间不晚于发布时间的修订中最新的一条。只保护这一条:
+  发布后再从该版本恢复出的修订内容相同,若都受保护,反复恢复就能让历史无限增长。
+  ③ 其余修订按修订号从新到旧计数,**最多保留 50 条、且源码与示例合计不超过 4 MiB**(源码按 UTF-8 字节、示例按
+  jsonb 文本字节;`KEPT_DRAFT_REVISIONS` / `KEPT_DRAFT_REVISION_BYTES`),超出任一上限的最旧者删除。
+  ④ **按公式各自计算**:回收只在向该公式追加修订的同一事务里、持有该公式行锁时执行(保存、恢复都算),只看、只删
+  这一个公式的修订;作者在公式 A 写得再多,也不会删到公式 B 的任何修订,包括 B 唯一的草稿。
+  回收后修订号不重排,列表出现断号;恢复自某条已回收修订的记录仍写着来源号码,只是那条修订不能再打开或恢复
+  (`ASSESSMENT_FORMULA_DRAFT_REVISION_NOT_FOUND`)。
 - **发布命名**:`releaseName`(必填,≤100)与 `releaseNotes`(可选,≤1000)是版本的**展示元数据,发布后仍可修改**;
   同一函数内名称唯一(部分唯一索引,旧版本为 null 不参与)。版本的**计算事实**——源码、示例、输入输出结构、产物、各类哈希与工具链版本、
   `versionId` / `versionNo` / `publishedAt` / `publishedBy`——永久不可变(2026-09-18 裁决)。
