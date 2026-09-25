@@ -565,6 +565,87 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     expect(answer.entered).toBeNull()
   })
 
+  // Who runs a round is measured over where its people stood when they were
+  // taken on; forcing a boundary was measured over where their units stand
+  // today. One class moved to another grade mid-round, and the grade's own
+  // administrators, who still ran the round, could no longer force it.
+  it('lets the administrators who run a round force it after one of its units moves', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('force-moved')
+        const assessment = yield* Assessment
+        const round = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Moved',
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            import: { orgNodeIds: [f.gradeA], userTypeIds: [f.studentType] },
+          },
+          f.principal,
+        )
+        yield* assessment.replacePlan(
+          f.tenant,
+          round.id,
+          { specs: [phase({ phaseKey: 'entry' }), phase({ phaseKey: 'review' })] },
+          f.principal,
+        )
+        const timetable = yield* assessment.getPlan(f.tenant, round.id, f.principal)
+        yield* assessment.advancePhase(f.tenant, round.id, { to: timetable[0]!.id }, f.principal)
+        yield* assessment.schedulePhase(
+          f.tenant,
+          round.id,
+          timetable[1]!.id,
+          Date.now() + 3 * HOUR,
+          f.principal,
+        )
+
+        // the grade's administrator, who may run and force its rounds
+        const lead = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+            values (${f.tenant}, 'Lead', ${f.teacherType}, ${f.gradeA}) returning id`),
+        ).id
+        const office = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+            values (${f.tenant}, 'grade-lead', 'Grade lead', 'org', 'active', 'explicit',
+                    'unrestricted')
+            returning id`),
+        ).id
+        yield* runSql(sql`
+          insert into role_permissions (tenant_id, role_id, permission_id)
+          select ${f.tenant}, ${office}, id from permissions
+          where code in ('assessment.batch.manage', 'assessment.batch.force-advance')`)
+        yield* runSql(sql`
+          insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+          values (${f.tenant}, ${lead}, ${office}, ${f.gradeA}, 'subtree')`)
+        const asLead = { tenantId: f.tenant, userId: lead, sessionId: 's' }
+
+        // one class moves to the other grade; the roster keeps where its
+        // students stood
+        yield* runSql(sql`
+          update org_nodes set parent_id = ${f.gradeB}, path = 'r.b.c1'
+          where id = ${f.class1}`)
+
+        const manages = yield* Effect.exit(assessment.getPlan(f.tenant, round.id, asLead))
+        const forced = yield* Effect.exit(
+          assessment.advancePhase(
+            f.tenant,
+            round.id,
+            { to: timetable[1]!.id, force: true, reason: 'review starts early' },
+            asLead,
+          ),
+        )
+        return { manages: manages._tag, forced }
+      }),
+    )
+    const { manages, forced } = ok(exit)
+    expect(manages).toBe('Success')
+    expect(tagOf(forced)).toBeUndefined()
+    expect(Exit.isSuccess(forced)).toBe(true)
+  })
+
   it('advances manually, demands force and a reason for early boundaries, and archives at the terminal', async () => {
     const exit = await run(
       db.url,

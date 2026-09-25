@@ -159,6 +159,7 @@ import {
   rosterImports,
   reachableNodeNames,
   batchUnits,
+  batchWithinReach,
   insertConfigEvent,
   insertPhase,
   insertLifecycleEvent,
@@ -4328,22 +4329,17 @@ export const make = Effect.fn('Assessment.make')(function* () {
               return yield* new AdvanceInvalid({ reason: 'force-required' })
             }
             if (input.force === true) {
-              const anchors = yield* rosterAnchors(tenantId, batchId)
-              // Asking once per unit somebody is standing in means asking
-              // nothing at all when nobody is: an active round whose people
-              // have all withdrawn could be forced on by anyone who could
-              // merely manage it. A round with no units of its own is
-              // nobody's in particular, so only authority over the whole
-              // tenant is wide enough - the same answer the roster reach
-              // gives for a round whose units have been deleted.
-              if (anchors.length === 0) {
-                const held = yield* rbac.listAuthorizedScope(as, FORCE_ADVANCE)
-                if (!held.tenantWide) {
-                  return yield* new AccessDenied({ reason: FORCE_ADVANCE })
-                }
-              }
-              for (const nodeId of anchors) {
-                yield* rbac.requireAt(as, FORCE_ADVANCE, nodeId)
+              // Measured the way managing the round is: over the units it
+              // is run from and the place everybody on it stood when they
+              // were taken on. Asked of each unit's live position instead,
+              // one unit moved to another college mid-round left the
+              // administrators who still ran the round unable to force it.
+              // A round with no units and nobody on it is nobody's in
+              // particular, so only authority over the whole tenant reaches
+              // it - never "holds the permission somewhere".
+              const held = yield* rbac.listAuthorizedScope(as, FORCE_ADVANCE)
+              if (!((yield* batchWithinReach(tenantId, batchId, held)) ?? held.tenantWide)) {
+                return yield* new AccessDenied({ reason: FORCE_ADVANCE })
               }
               if (input.reason === undefined || input.reason.trim() === '') {
                 return yield* new AdvanceInvalid({ reason: 'reason-required' })
