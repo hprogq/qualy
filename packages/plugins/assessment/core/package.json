@@ -17,6 +17,7 @@
     "./client/access/BatchGrantPresenter": "./src/client/access/BatchGrantPresenter.tsx",
     "./client/api": "./src/client/api.ts",
     "./client/batch/BatchContextBar": "./src/client/batch/BatchContextBar.tsx",
+    "./client/browser": "./src/client/browser.ts",
     "./client/entry/MyEntriesPage": "./src/client/entry/MyEntriesPage.tsx",
     "./client/i18n": "./src/client/i18n.ts",
     "./client/items/FixedCalculatorEditor": "./src/client/items/FixedCalculatorEditor.tsx",

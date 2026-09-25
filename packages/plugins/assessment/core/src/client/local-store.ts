@@ -152,6 +152,22 @@ export const forgetStaleDrafts = (olderThanMs: number, owner: string): Promise<v
     undefined,
   )
 
+/**
+ * Drops every unsent draft this browser holds, whoever wrote it.
+ *
+ * Signing out is the moment a shared browser passes to the next person, and
+ * a draft that waits for the next review screen to sweep it is readable in
+ * the browser's own storage until then.
+ */
+export const forgetEveryDraft = (): Promise<void> =>
+  inDrafts(
+    'readwrite',
+    (store) => {
+      store.clear()
+    },
+    undefined,
+  )
+
 export const forgetDraft = (id: string): Promise<void> =>
   inDrafts(
     'readwrite',

@@ -2,6 +2,7 @@ import { Layer } from 'effect'
 import { OrgUsage } from '@qualy/org-contract/plugin'
 import { batchesAtNode } from './server/node-usage.ts'
 import { Plugin } from '@qualy/plugin-kit'
+import { Browser } from '@qualy/plugin-kit/browser'
 import { Cli } from '@qualy/plugin-kit/cli'
 import { Api } from '@qualy/api-kit/plugin'
 import { Db } from '@qualy/plugin-database/plugin'
@@ -98,6 +99,8 @@ const plugin = Plugin.define(
     load: () => import('./cli/audit-scoring.ts'),
   }),
   Ui.i18n('./client/i18n'),
+  // what this browser keeps of a reviewer's unsent words goes when they sign out
+  Browser.module('./client/browser'),
   // the sidebar section this domain owns; its pages file under it by id
   // This plugin's own arithmetic takes a seat in the chooser like anybody
   // else's, and edits its configuration in the same slot: a built-in with a
