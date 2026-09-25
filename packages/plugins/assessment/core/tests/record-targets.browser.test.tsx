@@ -122,6 +122,36 @@ describe('choosing who a finding is about by unit', () => {
     })
   })
 
+  // The tree is read over the people a finding by this reader would reach,
+  // which is recording authority alone, and comes with the kinds of its
+  // units: a round of a thousand units is narrowed by kind, as the
+  // directory's own tree is.
+  it('draws the units a finding would reach, named as a block and narrowed by kind', async () => {
+    const asked = vi.fn((_request: Request) =>
+      Effect.succeed({
+        units: [
+          { id: COLLEGE, name: '软件学院', parentId: null, orgTypeId: 'college' },
+          { id: CLASS_A, name: '软件 2301 班', parentId: COLLEGE, orgTypeId: 'class' },
+        ],
+        orgTypes: [
+          { id: 'class', name: '班级' },
+          { id: 'college', name: '学院' },
+        ],
+        userTypes: [{ id: UNDERGRADUATE, name: '本科生' }],
+      }),
+    )
+    await open({ listRosterUnits: asked })
+    await page.getByRole('button', { name: '按组织选择' }).click()
+    const block = page.getByRole('region', { name: '组织单位' })
+    await expect.element(block.getByRole('checkbox', { name: /软件学院/ })).toBeVisible()
+    expect(asked.mock.calls.at(-1)![0].query).toEqual({ reading: 'recordable' })
+
+    await block.getByRole('combobox', { name: '组织类型' }).click()
+    await page.getByRole('option', { name: '班级' }).click()
+    await expect.element(block.getByRole('checkbox', { name: /软件 2301 班/ })).toBeVisible()
+    expect(block.getByRole('checkbox', { name: /软件学院/ }).elements()).toHaveLength(0)
+  })
+
   it('offers no choice of kind when the round admitted only one', async () => {
     await open({
       listRosterUnits: () =>

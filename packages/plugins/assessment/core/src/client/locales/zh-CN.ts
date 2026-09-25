@@ -443,6 +443,7 @@ export default {
   'assessment/record/unit-roster-note': '当前在这些组织中的人员',
   'assessment/record/unit-roster-empty': '这些组织中没有本批次的参评人员',
   'assessment/record/unit-roster-page': '第 {page} 页',
+  'assessment/record/units-title': '组织单位',
   'assessment/record/unit-kinds': '人员类型',
   'assessment/record/unit-kinds-hint': '都不勾选即包含全部类型',
   'assessment/record/units-once': '选中的是当前在该范围内的人员，此后的人员变动不影响本次认定',

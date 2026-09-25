@@ -295,7 +295,10 @@ describe.runIf(postgresAvailable)('the roster, as the results page reads it', ()
           ]
           const units = (
             as: string,
-            filter: { reading?: 'record' | 'accounts'; status?: 'active' | 'excluded' | 'all' },
+            filter: {
+              reading?: 'record' | 'accounts' | 'recordable'
+              status?: 'active' | 'excluded' | 'all'
+            },
           ) => assessment.listRosterUnits(f.t, g.batch.id, filter, f.principal(as))
           // recording over college A alone opens nobody's account
           const recorderAccounts = yield* Effect.exit(units(f.recorder, { reading: 'accounts' }))
@@ -308,6 +311,12 @@ describe.runIf(postgresAvailable)('the roster, as the results page reads it', ()
           })
           const record = yield* units(f.recorder, {})
           const accounts = yield* units(f.recorder, { reading: 'accounts' })
+          // what a finding recorded by unit reaches: recording alone
+          const recordable = yield* units(f.recorder, { reading: 'recordable' })
+          // and somebody who records on nobody has no such tree
+          const reviewerRecordable = yield* Effect.exit(
+            units(f.reviewer, { reading: 'recordable' }),
+          )
           // Wang Wu is class B's only member; taken off, the unit is only
           // where the people taken off stand
           yield* assessment.setParticipantStatus(
@@ -323,6 +332,8 @@ describe.runIf(postgresAvailable)('the roster, as the results page reads it', ()
             recorderAccounts,
             record,
             accounts,
+            recordable,
+            reviewerRecordable,
             active: yield* units(f.admin, { reading: 'accounts' }),
             everyone: yield* units(f.admin, { reading: 'accounts', status: 'all' }),
             excluded: yield* units(f.admin, { reading: 'accounts', status: 'excluded' }),
@@ -348,6 +359,15 @@ describe.runIf(postgresAvailable)('the roster, as the results page reads it', ()
       sorted(f.root, ids.collegeA, f.classA, ids.collegeB, ids.classB),
     )
     expect(idsOf(result.excluded)).toEqual(sorted(f.root, ids.collegeB, ids.classB))
+    // a finding recorded by unit reaches only whom recording covers, so the
+    // tree to record by holds nothing re-determining alone would add
+    expect(idsOf(result.recordable)).toEqual(sorted(f.root, ids.collegeA, f.classA))
+    expect(errorOf<{ _tag: string }>(result.reviewerRecordable)?._tag).toBe('ACCESS_DENIED')
+    // each unit carries its kind, and the kinds come named
+    expect(result.recordable.units.find((unit) => unit.id === f.classA)?.orgTypeId).toBe(
+      f.classType,
+    )
+    expect(result.recordable.orgTypes.map((kind) => kind.name).sort()).toEqual(['Class', 'College'])
     // the kinds of people come off the same members, as the round froze them
     expect(result.accounts.userTypes).toEqual([{ id: f.studentType, name: 'Student' }])
     expect(result.excluded.userTypes).toEqual([{ id: f.studentType, name: 'Student' }])

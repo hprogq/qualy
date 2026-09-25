@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { orgNodePickerView } from '@qualy/ui-contract'
@@ -56,6 +56,9 @@ const styles = stylex.create({
   // the tree takes the height the dialog gives and the kinds keep theirs at
   // the foot, so the dialog body never scrolls around a tree that scrolls
   unitsSide: { display: 'flex', minHeight: 0, minWidth: 0, flexDirection: 'column', gap: 16 },
+  // the units by name, the way the people beside them are headed
+  unitsBlock: { display: 'flex', minHeight: 0, flexGrow: 1, flexDirection: 'column', gap: 8 },
+  unitsTitle: { margin: 0, fontSize: 13, fontWeight: 600 },
   kinds: { display: 'flex', flexShrink: 0, flexDirection: 'column', gap: 4 },
   kindsHint: { fontSize: 12, color: tokens.mutedForeground },
 })
@@ -208,8 +211,10 @@ export function RecordTargets({
 
 /**
  * Units and kinds of people out of this round's own roster: the units its
- * people were admitted from and the kinds it admitted them as, both within
- * this reader's reach and both read from this domain.
+ * people were admitted from and the kinds it admitted them as, both read
+ * from this domain, over the people a finding by this reader would reach -
+ * recording authority alone, so no unit is offered that the finding would
+ * pass over.
  */
 function RosterUnits({
   batchId,
@@ -222,8 +227,12 @@ function RosterUnits({
 }) {
   const query = useApiQuery(assessmentApi)
   const { format, formatError } = useI18n()
+  const heading = useId()
   const roster = useQuery(
-    query.assessment.listRosterUnits.queryOptions({ params: { batchId }, query: {} }),
+    query.assessment.listRosterUnits.queryOptions({
+      params: { batchId },
+      query: { reading: 'recordable' },
+    }),
   )
   const kinds = roster.data?.userTypes ?? []
   return (
@@ -235,17 +244,24 @@ function RosterUnits({
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void roster.refetch()}
       >
-        <UiSlot
-          token={orgNodePickerView}
-          context={{
-            value: value.orgNodeIds,
-            onChange: (orgNodeIds: string[]) => onChange({ ...value, orgNodeIds }),
-            nodes: roster.data?.units ?? [],
-            loading: roster.isPending,
-            fill: true,
-          }}
-          fallback={<p {...stylex.props(styles.quiet)}>{format(m.pickerUnavailable)}</p>}
-        />
+        <section aria-labelledby={heading} {...stylex.props(styles.unitsBlock)}>
+          <h3 id={heading} {...stylex.props(styles.unitsTitle)}>
+            {format(m.recordUnitsTitle)}
+          </h3>
+          <UiSlot
+            token={orgNodePickerView}
+            context={{
+              value: value.orgNodeIds,
+              onChange: (orgNodeIds: string[]) => onChange({ ...value, orgNodeIds }),
+              nodes: roster.data?.units ?? [],
+              // their kinds, so a round of a thousand units narrows by kind
+              orgTypes: roster.data?.orgTypes ?? [],
+              loading: roster.isPending,
+              fill: true,
+            }}
+            fallback={<p {...stylex.props(styles.quiet)}>{format(m.pickerUnavailable)}</p>}
+          />
+        </section>
         {/* one kind of people is no choice; several are, and choosing none
             of them is choosing all */}
         {kinds.length > 1 && (

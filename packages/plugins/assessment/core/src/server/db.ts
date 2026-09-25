@@ -2796,8 +2796,9 @@ export const listRosterUnits = (
   },
 ) =>
   db.query((k) =>
-    sql<{ id: string; name: string; parentId: string | null }>`
-        select n.id::text as id, n.name as name, n.parent_id::text as "parentId"
+    sql<{ id: string; name: string; parentId: string | null; orgTypeId: string }>`
+        select n.id::text as id, n.name as name, n.parent_id::text as "parentId",
+               n.org_type_id::text as "orgTypeId"
           from org_nodes n
          where n.tenant_id = ${tenantId}::uuid
            and exists (

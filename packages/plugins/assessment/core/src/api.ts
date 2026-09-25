@@ -464,6 +464,8 @@ const rosterUnitView = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
   parentId: Schema.NullOr(Schema.String),
+  /** the unit's kind, named in the response's `orgTypes` */
+  orgTypeId: Schema.String,
 })
 
 const participantView = Schema.Struct({
@@ -3614,16 +3616,20 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         userTypeId: Schema.optional(uuidInput),
         /**
          * Whose members: the record page's (the people this reader may
-         * record on or re-determine over) when absent, or the results
-         * page's (the people whose accounts this reader may open), so a
-         * tree never holds a unit its own list shows nobody under.
+         * record on or re-determine over) when absent, the results page's
+         * (the people whose accounts this reader may open), or the people
+         * an administrative finding by this reader would reach
+         * (`recordable`: recording authority alone), so a tree never holds
+         * a unit its own list, or its own act, passes over.
          */
-        reading: Schema.optional(Schema.Literals(['record', 'accounts'])),
+        reading: Schema.optional(Schema.Literals(['record', 'accounts', 'recordable'])),
         /** members on the roster now when absent; taken off it; or both */
         status: Schema.optional(Schema.Literals(['active', 'excluded', 'all'])),
       }),
       success: Schema.Struct({
         units: Schema.Array(rosterUnitView),
+        /** the kinds of those units, named, so a picker can narrow by kind */
+        orgTypes: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
         userTypes: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
       }),
       error: [BatchNotFound, AccessDenied, BadRequest],

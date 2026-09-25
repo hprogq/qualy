@@ -614,6 +614,7 @@ const specToEngine = (spec: PhaseSpecInput): NewPhaseSpec => ({
 const MANAGE = BATCH_MANAGE
 const FORCE_ADVANCE = 'assessment.batch.force-advance'
 const REDETERMINE = 'assessment.entry.redetermine'
+const RECORD = 'assessment.entry.record'
 /** the staff authorities that read the part of a roster they act on */
 const ROSTER_READING_CODES: readonly string[] = ['assessment.entry.record', REDETERMINE]
 
@@ -1431,19 +1432,27 @@ export class Assessment extends Context.Service<
     readonly listParticipantScores: ScoringMethods['listParticipantScores']
     /**
      * The units this round's people were admitted from, as it froze them,
-     * and the kinds of people they were admitted as. Read off the members
-     * one of the two pages lists: the record page's by default, or the
-     * results page's (`accounts`), so a tree holds no unit whose list is
-     * empty for this reader.
+     * with their kinds named, and the kinds of people they were admitted as.
+     * Read off the members one of the two pages lists: the record page's by
+     * default, or the results page's (`accounts`), so a tree holds no unit
+     * whose list is empty for this reader. `recordable` is the members an
+     * administrative finding by this reader would reach - recording
+     * authority alone, whatever else they hold - so a tree to record by
+     * holds no unit the finding would pass over.
      */
     readonly listRosterUnits: (
       tenantId: string,
       batchId: string,
-      filter: { userTypeId?: string; reading?: 'record' | 'accounts'; status?: RosterMembers },
+      filter: {
+        userTypeId?: string
+        reading?: 'record' | 'accounts' | 'recordable'
+        status?: RosterMembers
+      },
       as: Principal,
     ) => Effect.Effect<
       {
-        units: readonly { id: string; name: string; parentId: string | null }[]
+        units: readonly { id: string; name: string; parentId: string | null; orgTypeId: string }[]
+        orgTypes: readonly { id: string; name: string }[]
         userTypes: readonly { id: string; name: string }[]
       },
       BatchNotFound | AccessDenied
@@ -2638,6 +2647,21 @@ export const make = Effect.fn('Assessment.make')(function* () {
       const codes = ROSTER_READING_CODES.filter((code) => authority.has(code))
       if (codes.length === 0) return yield* roster.failure
       return { userId: as.userId, permissionCode: codes }
+    })
+
+  /**
+   * Whom this reader may record on: recording authority accepted by the
+   * batch, over the people it covers, and nothing else - administering the
+   * roster or re-determining over it adds nobody an administrative finding
+   * would reach. Refused where they may record on nobody.
+   */
+  const recordingReachOf = (tenantId: string, batchId: string, as: Principal) =>
+    Effect.gen(function* () {
+      const authority = yield* batchAuthority(tenantId, batchId, as.userId)
+      if (!authority.has(RECORD)) {
+        return yield* new AccessDenied({ reason: 'cannot record in this batch' })
+      }
+      return { userId: as.userId, permissionCode: RECORD }
     })
 
   /**
@@ -5097,11 +5121,16 @@ export const make = Effect.fn('Assessment.make')(function* () {
         // the same ways in as the list it stands beside: administering the
         // roster reads all of it; otherwise the record page reads what
         // recording or re-determining covers, and the results page only
-        // what re-determining covers, which is whose accounts open
+        // what re-determining covers, which is whose accounts open. A
+        // finding recorded by unit reaches only whom recording covers
+        // (resolveRecordTargets), administrator or not, so that tree is
+        // read over recording alone.
         const reach =
           filter.reading === 'accounts'
             ? yield* accountReadingOf(tenantId, batchId, as)
-            : yield* rosterReadingOf(tenantId, batchId, as)
+            : filter.reading === 'recordable'
+              ? yield* recordingReachOf(tenantId, batchId, as)
+              : yield* rosterReadingOf(tenantId, batchId, as)
         const members = {
           ...(filter.status === undefined ? {} : { status: filter.status }),
           ...(reach === undefined ? {} : { reach }),
@@ -5115,7 +5144,10 @@ export const make = Effect.fn('Assessment.make')(function* () {
           ),
         )
         const userTypes = yield* dieQuery(withDb(listRosterUserTypes(tenantId, batchId, members)))
-        return { units: units.rows, userTypes }
+        const orgTypes = yield* dieQuery(
+          withDb(orgTypesNamed(tenantId, [...new Set(units.rows.map((unit) => unit.orgTypeId))])),
+        )
+        return { units: units.rows, orgTypes, userTypes }
       },
     ),
 
