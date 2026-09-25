@@ -192,6 +192,20 @@ export const trustedProxies = (entries: readonly string[]): TrustedProxies => {
  */
 const traceIdOf = (id: string): string | undefined => (/^[0-9a-f]{32}$/i.test(id) ? id : undefined)
 
+/** the longest user agent kept; a real one is a few hundred characters at most */
+const USER_AGENT_MAX_LENGTH = 512
+
+/**
+ * The client's user agent, cut to a length worth keeping.
+ *
+ * Also from the CLIENT, and written beside every session, sign-in and audit
+ * event, anonymous failed sign-ins included: uncut, a header could be most of
+ * the server's header limit, stored on every attempt and shown back on
+ * somebody's device list. Cut once here, for every sink.
+ */
+const userAgentOf = (value: string | undefined): string | undefined =>
+  value === undefined ? undefined : value.slice(0, USER_AGENT_MAX_LENGTH)
+
 export const clientAddressOf = (
   remoteAddress: string | undefined,
   forwardedFor: string | undefined,
@@ -494,7 +508,7 @@ export const requestContext = (options?: {
           request.headers['x-forwarded-for'],
           trusted,
         ),
-        userAgent: request.headers['user-agent'],
+        userAgent: userAgentOf(request.headers['user-agent']),
         publicHost: publicHostOf(request, trusted),
         // 'noop' is the disabled tracer's sentinel span
         // (repos/effect/packages/effect/src/internal/effect.ts:5645-5648),

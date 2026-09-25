@@ -219,6 +219,15 @@ describe('the request context on a live server', () => {
     expect(body.userAgent).toBe('qualy-test/1.0')
   })
 
+  it('keeps no more of a user agent than one is ever worth', async () => {
+    const long = `qualy-test/${'x'.repeat(8_000)}`
+    const body = (await (
+      await fetch(`${base}/context`, { headers: { 'user-agent': long } })
+    ).json()) as { userAgent: string }
+    // what a sign-in, a session and an audit event keep of it
+    expect(body.userAgent).toBe(long.slice(0, 512))
+  })
+
   it('runs under the server span the chain opened, inheriting traceparent', async () => {
     const fresh = (await (await fetch(`${base}/context`)).json()) as { traceId: string }
     // the chain opens a span for every request, telemetry backend or not
