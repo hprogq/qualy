@@ -420,6 +420,34 @@ export const selfApiHandlers = HttpApiBuilder.group(local, 'self', (handlers) =>
       }),
     )
     .handle(
+      'getSelfReauthentication',
+      Effect.fn('iam.getSelfReauthentication.handler')(function* () {
+        const iam = yield* Iam
+        const found = yield* iam.self.reauthentication(yield* CurrentUser)
+        return { ...found, until: instant(found.until) }
+      }),
+    )
+    .handle(
+      'putSelfReauthentication',
+      Effect.fn('iam.putSelfReauthentication.handler')(function* ({ payload }) {
+        const flows = yield* EmailFlows
+        const answer = yield* flows.reauthenticate(yield* CurrentUser, payload)
+        return { until: instant(answer.until) ?? '' }
+      }),
+    )
+    .handle(
+      'createSelfReauthenticationCode',
+      Effect.fn('iam.createSelfReauthenticationCode.handler')(function* () {
+        const flows = yield* EmailFlows
+        const request = yield* HttpServerRequest.HttpServerRequest
+        yield* flows.sendReauthenticationCode(
+          yield* CurrentUser,
+          mailLocaleOf(request.headers['accept-language']),
+        )
+        return { ok: true as const }
+      }),
+    )
+    .handle(
       'listSelfSignIns',
       Effect.fn('iam.listSelfSignIns.handler')(function* ({ query }) {
         const iam = yield* Iam

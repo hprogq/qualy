@@ -381,13 +381,38 @@ smtp 后端对着 Mailpit 跑同一套,CI 设 `QUALY_REQUIRE_MAILPIT_TESTS=1`,�
   ——只对「邮箱已验证、在用、密码入口接纳」的人发信,且信在回答之后另起 fiber 发出。兑换 `POST /auth/password-resets/redemptions`
   用驱动的 `binding.prepare` 生成摘要(规则仍是 12–128),写入后**结束该人全部会话**,审计 `auth.identity.bind`(actor 为本人)。
 - **自助改密码** `PUT /iam/self/password`:已有密码 → 必须给当前密码(驱动的 `binding.verify` 核对,按人 10 / 15 分钟计数)→
-  写新摘要 → **结束其他会话、保留当前**;没有密码 → 邮箱必须已验证才能直接设置(`AUTH_EMAIL_UNVERIFIED`);没有接纳本人的密码入口 →
+  写新摘要 → **结束其他会话、保留当前**;没有密码 → 邮箱必须已验证(`AUTH_EMAIL_UNVERIFIED`),且当前会话须**近期重新认证**
+  (见下节,2026-09-25 起,`AUTH_REAUTHENTICATION_REQUIRED`),按人与改密同一个桶计数后才生成摘要;没有接纳本人的密码入口 →
   `AUTH_PASSWORD_UNAVAILABLE`。托管凭据的驱动因此多声明一个 `verify`。
 - **验证邮箱** `POST /iam/self/email-verifications`(已验证则 `sent: false` 不发);**改邮箱** `POST /iam/self/email-changes` 发到**新**邮箱,
   **验证通过才替换** `users.email`(同时标为已验证、审计 `auth.user.update`);新邮箱被人占用 `USER_EMAIL_CONFLICT`;系统账户的邮箱只由 seed
   设定 `SYSTEM_ACCOUNT_PROTECTED`。两者按人每小时至多 5 封。发信失败对自助接口如实说 `AUTH_MAIL_NOT_SENT`。
+  发起改邮箱(含从无到有地设置邮箱)要求当前会话**近期重新认证**(2026-09-25 起)。本人「退出其他会话 / 退出某个会话」在同一事务里作废待确认的
+  改邮箱链接——怀疑会话被盗的人最自然的动作就是这个,预埋的链接不能活过它。
 - 界面:`/reset-password`(无 token 时问邮箱,有 token 时设新密码)、`/confirm-email`(打开即兑换,按 token 去重只请求一次)两个 PUBLIC 页;
   本地登录表单的「忘记密码？」;「我的 → 账号安全」(改 / 设密码、验证邮箱、改邮箱)。
+
+## 近期重新认证(2026-09-25 定,用户裁决 #3)
+
+会话只证明「某人某天登录过」,机房里没退出的电脑也是会话。决定「以后谁能进这个账号」的三件事——**改邮箱(含设置邮箱)、第一次设置本地密码、
+新增外部账号绑定**——都要求当前会话在最近 **10 分钟**内重新证明是本人;其余自助操作不受影响,改密码仍只凭当前密码。
+
+- **怎么证明由账号现状决定**(服务端 `GET /iam/self/reauthentication` 给出 `method`,浏览器照此开对话框):
+  1. 在接纳本人的密码入口上有存活密码 → 输入当前密码(`PUT /iam/self/reauthentication {method:'password'}`,与改密同一个 `password:user` 桶);
+  2. 没有密码、但邮箱已验证 → 向该邮箱发 6 位验证码(`POST /iam/self/reauthentication-codes`,与其他自助邮件同一个 `mail:user` 桶),
+     在**发起的那个会话**里填回(`{method:'code'}`,按人 5 次 / 15 分钟,对了即作废,只对发起会话有效);
+  3. 两者都没有 → 通过一个「每次都要求重新输入凭据」的入口重新登录(`method: 'sign-in'`,列出这些入口的起点);
+  4. 连这样的入口也没有 → `unavailable`,界面提示联系管理员——**做不到可靠重新认证的入口,不允许仅凭会话改关键凭据**。
+- **拒绝码**:缺少近期重新认证 `AUTH_REAUTHENTICATION_REQUIRED`;用错方式(有密码却要验证码等)`AUTH_REAUTHENTICATION_METHOD_UNAVAILABLE`;
+  验证码错或过期 `AUTH_REAUTHENTICATION_CODE_INVALID`。
+- **「重新登录」算不算**:驱动声明 `provesPresence(provider)`——这个入口的一次登录是否证明「人此刻在键盘前」。本地密码入口恒为真
+  (刚输入过密码);GitHub、OIDC 不声明(对方可能凭自己的会话直接放行)。
+  `completeLogin` 对声明为真的登录在新会话上直接记下重新认证,所以刚用密码登录的人 10 分钟内改邮箱不会被再问一次。
+- **状态放在哪**:会话上的一条核心自有授予 `session_auth_grants(kind = 'qualy:reauthenticated')`,`expires_at` 即有效期;待填的验证码是
+  `kind = 'qualy:reauthentication-code'`(密封存放,10 分钟)。两者都随会话级联删除——退出、被结束、过期即失效。`qualy:` 前缀归核心,
+  驱动交来的授予若用这个前缀,`completeLogin` 按缺陷拒绝。没有新增表或列(复用已有表,不触发数据层冻结规则)。
+- **在哪里检查**:改邮箱在租户锁内、计数之前检查;首次设密码在生成摘要之前检查;绑定在 `startFlow` 建 bind flow 时检查(flow 钉住会话,
+  10 分钟内回来即可,不在回调时再查)。重新认证本身不写审计:它不改变账号的任何事实,失败次数由限流桶承担。
 
 ## 「我的」自助接口(2026-09-23 定案)
 

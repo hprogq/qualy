@@ -20,5 +20,7 @@ export const unusedEmailFlows = Layer.succeed(
     redeemChange: unused,
     assessPassword: unused,
     setPassword: unused,
+    reauthenticate: unused,
+    sendReauthenticationCode: unused,
   }),
 )

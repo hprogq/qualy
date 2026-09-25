@@ -88,6 +88,12 @@ export const HARD_LIMITS = {
   /** tries at one person's own current password */
   passwordBySelf: { scope: 'password:user', limit: 10, windowSeconds: 900 },
   /**
+   * Tries at a code one person was mailed to show it is them. Six digits
+   * and this many tries a quarter hour, with a new code costing a mail of
+   * the few an hour they may be sent, leave a guesser nothing to work with.
+   */
+  reauthenticationCodeBySelf: { scope: 'reauthentication:code', limit: 5, windowSeconds: 900 },
+  /**
    * Passwords judged while they are typed: by one person for themselves, by
    * one administrator for others, or through one reset link. Each is a guess
    * estimate on the server's only thread, and a pause in typing asks for a

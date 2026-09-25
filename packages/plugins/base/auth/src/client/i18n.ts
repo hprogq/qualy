@@ -846,6 +846,35 @@ const i18n = definePluginMessages({
       id: 'auth/account/change-sent',
       defaultMessage: 'Sent to the new address. Open the link in it to finish.',
     },
+    reauthTitle: { id: 'auth/account/reauth-title', defaultMessage: 'Confirm it’s you' },
+    reauthPasswordHint: {
+      id: 'auth/account/reauth-password-hint',
+      defaultMessage: 'Enter your current password to continue',
+    },
+    reauthCodeHint: {
+      id: 'auth/account/reauth-code-hint',
+      defaultMessage: 'A code goes to {email}',
+    },
+    reauthCodeSend: { id: 'auth/account/reauth-code-send', defaultMessage: 'Send code' },
+    reauthCodeLabel: { id: 'auth/account/reauth-code-label', defaultMessage: 'Code' },
+    reauthCodeSentHint: {
+      id: 'auth/account/reauth-code-sent-hint',
+      defaultMessage: 'Sent to {email}. It works for 10 minutes',
+    },
+    reauthCodeAgain: { id: 'auth/account/reauth-code-again', defaultMessage: 'Send again' },
+    reauthSignInHint: {
+      id: 'auth/account/reauth-sign-in-hint',
+      defaultMessage: 'Sign in again with one of these to continue',
+    },
+    reauthSignInWith: {
+      id: 'auth/account/reauth-sign-in-with',
+      defaultMessage: 'Sign in with {name}',
+    },
+    reauthUnavailable: {
+      id: 'auth/account/reauth-unavailable',
+      defaultMessage: 'Ask an administrator to make this change',
+    },
+    reauthContinue: { id: 'auth/account/reauth-continue', defaultMessage: 'Continue' },
     resetTitle: { id: 'auth/reset/title', defaultMessage: 'Reset password' },
     resetAskHint: {
       id: 'auth/reset/ask-hint',
@@ -1394,6 +1423,18 @@ const i18n = definePluginMessages({
     AUTH_BINDING_NOT_FOUND: {
       id: 'auth/error/binding-not-found',
       defaultMessage: 'There is nothing bound here to withdraw.',
+    },
+    AUTH_REAUTHENTICATION_REQUIRED: {
+      id: 'auth/error/reauthentication-required',
+      defaultMessage: 'Confirm it’s you first.',
+    },
+    AUTH_REAUTHENTICATION_CODE_INVALID: {
+      id: 'auth/error/reauthentication-code-invalid',
+      defaultMessage: 'That code is not right, or it has expired.',
+    },
+    AUTH_REAUTHENTICATION_METHOD_UNAVAILABLE: {
+      id: 'auth/error/reauthentication-method-unavailable',
+      defaultMessage: 'Your account confirms it’s you another way. Reload and try again.',
     },
   }),
   locales: {

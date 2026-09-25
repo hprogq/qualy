@@ -21,6 +21,7 @@ import { UiTextSchema } from '@qualy/i18n-contract'
 import { EMAIL_MAX_LENGTH, normalizeEmail } from '@qualy/auth-contract/email'
 import { Authenticated, AuthRequired, TooManyAttemptsResponse } from '@qualy/auth-contract/session'
 import { CaptchaProof, CaptchaRequired } from '@qualy/plugin-captcha/contract'
+import { ReauthenticationRequired } from '@qualy/auth-contract/sign-in-failure'
 import {
   GrantIncompatible,
   PlacementNotAllowed,
@@ -61,6 +62,8 @@ import {
   MailNotSent,
   PasswordIncorrect,
   PasswordUnavailable,
+  ReauthenticationCodeInvalid,
+  ReauthenticationMethodUnavailable,
   ProviderConfigIncomplete,
   ProviderConfigInvalid,
   ProviderConflict,
@@ -1186,6 +1189,7 @@ export const selfApiGroup = HttpApiGroup.make('self')
         MailNotSent,
         TooManyAttemptsResponse,
         DemoAccountLocked,
+        ReauthenticationRequired,
       ],
     }).middleware(Authenticated),
   )
@@ -1216,6 +1220,66 @@ export const selfApiGroup = HttpApiGroup.make('self')
         AuthBindingCredentialInvalid,
         TooManyAttemptsResponse,
         DemoAccountLocked,
+        ReauthenticationRequired,
+      ],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // how the reader shows it is them before moving their address, setting
+    // a first password or binding another way in, and until when the
+    // session in hand already has
+    HttpApiEndpoint.get('getSelfReauthentication', '/iam/self/reauthentication', {
+      success: Schema.Struct({
+        method: Schema.Literals(['password', 'email', 'sign-in', 'unavailable']),
+        /** until when the session in hand stands re-authenticated; null when it does not */
+        until: Schema.NullOr(Schema.String),
+        /** for `sign-in`: the ways in to sign in again through, each with where it begins */
+        entrances: Schema.Array(
+          Schema.Struct({
+            providerId: Schema.String,
+            name: Schema.String,
+            type: Schema.String,
+            href: Schema.String,
+          }),
+        ),
+      }),
+      error: [UserNotFound],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // the session in hand shows it is its owner's: their password, or the
+    // code last mailed to it
+    HttpApiEndpoint.put('putSelfReauthentication', '/iam/self/reauthentication', {
+      payload: Schema.Union([
+        Schema.Struct({
+          method: Schema.Literal('password'),
+          password: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(1024)),
+        }),
+        Schema.Struct({
+          method: Schema.Literal('code'),
+          code: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(32)),
+        }),
+      ]),
+      success: Schema.Struct({ until: Schema.String }),
+      error: [
+        UserNotFound,
+        PasswordIncorrect,
+        ReauthenticationCodeInvalid,
+        ReauthenticationMethodUnavailable,
+        ReauthenticationRequired,
+        TooManyAttemptsResponse,
+      ],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // a code to the address the reader proved, for an account with no password
+    HttpApiEndpoint.post('createSelfReauthenticationCode', '/iam/self/reauthentication-codes', {
+      success: Schema.Struct({ ok: Schema.Literal(true) }),
+      error: [
+        UserNotFound,
+        ReauthenticationMethodUnavailable,
+        MailNotSent,
+        TooManyAttemptsResponse,
       ],
     }).middleware(Authenticated),
   )

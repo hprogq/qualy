@@ -328,6 +328,24 @@ export class EmailUnverified extends Schema.TaggedError<EmailUnverified>()(
   { httpApiStatus: 409, identifier: 'EmailUnverified' },
 ) {}
 
+/** the code typed is not the one sent to this session, or it has run out */
+export class ReauthenticationCodeInvalid extends Schema.TaggedError<ReauthenticationCodeInvalid>()(
+  'AUTH_REAUTHENTICATION_CODE_INVALID',
+  {},
+  { httpApiStatus: 400, identifier: 'ReauthenticationCodeInvalid' },
+) {}
+
+/**
+ * That way of showing it is them is not this account's: somebody with a
+ * password shows it with the password, and only somebody without one is
+ * sent a code, to an address they proved.
+ */
+export class ReauthenticationMethodUnavailable extends Schema.TaggedError<ReauthenticationMethodUnavailable>()(
+  'AUTH_REAUTHENTICATION_METHOD_UNAVAILABLE',
+  {},
+  { httpApiStatus: 409, identifier: 'ReauthenticationMethodUnavailable' },
+) {}
+
 /** there is no email on file to verify */
 export class EmailMissing extends Schema.TaggedError<EmailMissing>()(
   'AUTH_EMAIL_MISSING',

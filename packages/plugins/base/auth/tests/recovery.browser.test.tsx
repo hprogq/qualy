@@ -34,10 +34,21 @@ const me = (over: Partial<Me> = {}): Me => ({
   ...over,
 })
 
+type Reauthentication = ApiResult<typeof authApi, 'self', 'getSelfReauthentication'>
+
+/** a session that showed it is the reader's a moment ago, until an hour from now */
+const shown = (over: Partial<Reauthentication> = {}): Reauthentication => ({
+  method: 'password',
+  until: new Date(Date.now() + 3_600_000).toISOString(),
+  entrances: [],
+  ...over,
+})
+
 /** the devices and sign-ins the security page also lists, none of them */
 const records = {
   listSelfSessions: () => Effect.succeed({ items: [], nextCursor: null }),
   listSelfSignIns: () => Effect.succeed({ items: [], nextCursor: null }),
+  getSelfReauthentication: () => Effect.succeed(shown()),
 }
 
 /** what a password is held to, as every page that sets one reads it */
@@ -307,6 +318,106 @@ describe('the reader’s security', () => {
     await page.getByRole('button', { name: '发送确认邮件' }).click()
     await vi.waitFor(() => expect(change).toHaveBeenCalledTimes(1))
     expect(change).toHaveBeenCalledWith({ payload: { newEmail: 'zhang.new@school.edu' } })
+  })
+})
+
+describe('showing it is you before the account changes hands', () => {
+  it('asks for the password before the address moves, then moves it', async () => {
+    let until: string | null = null
+    const prove = vi.fn(() => {
+      until = new Date(Date.now() + 600_000).toISOString()
+      return Effect.succeed({ until })
+    })
+    const change = vi.fn(() => Effect.succeed({ ok: true as const }))
+    await renderScreen({
+      client: client({
+        self: {
+          ...records,
+          getSelf: () => Effect.succeed(me()),
+          getSelfReauthentication: () => Effect.sync(() => shown({ until })),
+          putSelfReauthentication: prove,
+          createSelfEmailChange: change,
+        },
+      }),
+      route: '/account/security',
+      children: <AccountSecurityPage />,
+    })
+    await page.getByRole('button', { name: '更改' }).click()
+    const asked = page.getByTestId('reauthentication')
+    await expect.element(asked).toHaveAttribute('data-method', 'password')
+    // the address form waits until the reader has shown it
+    expect(document.querySelector('input[type="email"]')).toBeNull()
+    await page.getByLabelText('当前密码').fill('current password here')
+    await page.getByRole('button', { name: '继续' }).click()
+    await vi.waitFor(() => expect(prove).toHaveBeenCalledTimes(1))
+    expect(prove).toHaveBeenCalledWith({
+      payload: { method: 'password', password: 'current password here' },
+    })
+    await page.getByLabelText('新邮箱').fill('zhang.new@school.edu')
+    await page.getByRole('button', { name: '发送确认邮件' }).click()
+    await vi.waitFor(() => expect(change).toHaveBeenCalledTimes(1))
+    expect(change).toHaveBeenCalledWith({ payload: { newEmail: 'zhang.new@school.edu' } })
+  })
+
+  it('mails a code before a first password when there is no password to ask for', async () => {
+    let until: string | null = null
+    const send = vi.fn(() => Effect.succeed({ ok: true as const }))
+    const prove = vi.fn(() => {
+      until = new Date(Date.now() + 600_000).toISOString()
+      return Effect.succeed({ until })
+    })
+    await renderScreen({
+      client: client({
+        self: {
+          ...records,
+          getSelf: () => Effect.succeed(me({ passwordStatus: 'unset' })),
+          getSelfReauthentication: () => Effect.sync(() => shown({ method: 'email', until })),
+          createSelfReauthenticationCode: send,
+          putSelfReauthentication: prove,
+          createSelfPasswordAssessment: () =>
+            Effect.succeed({ checks: { length: true, impersonal: true, unguessable: true } }),
+        },
+      }),
+      route: '/account/security',
+      children: <AccountSecurityPage />,
+    })
+    await page.getByRole('button', { name: '设置密码' }).click()
+    const asked = page.getByTestId('reauthentication')
+    await expect.element(asked).toHaveAttribute('data-method', 'email')
+    await expect.element(asked).toHaveAttribute('data-code-sent', 'false')
+    await page.getByRole('button', { name: '发送验证码' }).click()
+    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1))
+    await expect.element(asked).toHaveAttribute('data-code-sent', 'true')
+    await page.getByLabelText('验证码').fill('123456')
+    await page.getByRole('button', { name: '继续' }).click()
+    await vi.waitFor(() => expect(prove).toHaveBeenCalledTimes(1))
+    expect(prove).toHaveBeenCalledWith({ payload: { method: 'code', code: '123456' } })
+    // the form the code was for
+    await expect.element(page.getByLabelText('新密码', { exact: true })).toBeInTheDocument()
+  })
+
+  it('offers nothing to press where the account has no way to show it', async () => {
+    const change = vi.fn(() => Effect.succeed({ ok: true as const }))
+    await renderScreen({
+      client: client({
+        self: {
+          ...records,
+          getSelf: () =>
+            Effect.succeed(me({ passwordStatus: 'unavailable', emailVerified: false })),
+          getSelfReauthentication: () =>
+            Effect.succeed(shown({ method: 'unavailable', until: null })),
+          createSelfEmailChange: change,
+        },
+      }),
+      route: '/account/security',
+      children: <AccountSecurityPage />,
+    })
+    await page.getByRole('button', { name: '更改' }).click()
+    const asked = page.getByTestId('reauthentication')
+    await expect.element(asked).toHaveAttribute('data-method', 'unavailable')
+    expect(page.getByRole('button', { name: '继续' }).elements()).toHaveLength(0)
+    expect(document.querySelector('input[type="email"]')).toBeNull()
+    expect(change).not.toHaveBeenCalled()
   })
 })
 

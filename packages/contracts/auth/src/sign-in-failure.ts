@@ -60,6 +60,18 @@ export class BindingAlreadyBound extends Schema.TaggedError<BindingAlreadyBound>
 ) {}
 
 /**
+ * The change asked for is one a session alone may not make: the person has
+ * to show it is them first, and recently - with their password, a code sent
+ * to their proven address, or by signing in again through a way in that
+ * asks for their credentials every time.
+ */
+export class ReauthenticationRequired extends Schema.TaggedError<ReauthenticationRequired>()(
+  'AUTH_REAUTHENTICATION_REQUIRED',
+  {},
+  { httpApiStatus: 403, identifier: 'ReauthenticationRequired' },
+) {}
+
+/**
  * A page of this application, told why the person is back on it.
  *
  * For a flow that did not start at the sign-in page - binding an account

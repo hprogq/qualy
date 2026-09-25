@@ -66,6 +66,8 @@ export const driver: LoginDriver = {
     verify: ({ secret, credentialHash }) =>
       Effect.promise((signal) => verifyPassword(credentialHash, secret, { signal })),
   },
+  // a sign-in here is the password typed just now
+  provesPresence: () => true,
 }
 
 /**

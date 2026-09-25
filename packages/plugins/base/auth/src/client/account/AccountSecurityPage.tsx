@@ -1,7 +1,7 @@
 import { useId, useState, type FormEvent, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
+import { useApi, useApiQuery, usePageHref, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, Field, FormDialog } from '@qualy/ui/admin'
@@ -17,6 +17,7 @@ import { EmailWithStanding } from '../iam/person-facts.tsx'
 import { SessionsCard } from './security-records.tsx'
 import { PasswordChecklist } from '../password/PasswordChecklist.tsx'
 import { usePasswordChecks } from '../password/checks.ts'
+import { needsReauthentication, useReauthentication } from './Reauthentication.tsx'
 
 // The reader's own password and address, as two lines of one card: what
 // stands now, and the one thing that can be done about it. Doing it is a
@@ -27,7 +28,8 @@ import { usePasswordChecks } from '../password/checks.ts'
 // A password is changed with the current one; somebody who has none sets one
 // only once their address is proven, because the address is what a forgotten
 // password comes back through. A new address takes effect when the link sent
-// to it is followed, not before.
+// to it is followed, not before. Setting a first password and moving the
+// address both ask the reader to show it is them first.
 
 const styles = stylex.create({
   page: { display: 'flex', flexDirection: 'column', gap: 12 },
@@ -146,6 +148,7 @@ function PasswordSetting({
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
   const formId = useId()
+  const reauthentication = useReauthentication(usePageHref('auth/account-security'))
   const [open, setOpen] = useState(false)
   const [current, setCurrent] = useState('')
   const [fresh, setFresh] = useState('')
@@ -189,6 +192,8 @@ function PasswordSetting({
     },
     onError: (error: unknown) => {
       if ((error as { _tag?: unknown })._tag === 'AUTH_BINDING_CREDENTIAL_INVALID') setRefused(true)
+      // it lapsed while the form was open: shown again, and sent again
+      if (needsReauthentication(error)) reauthentication.ask(() => save.mutate())
     },
   })
   const refusedByList =
@@ -211,13 +216,21 @@ function PasswordSetting({
       {...(settable
         ? {
             actions: (
-              <Button size="xs" variant="outline" onClick={() => setOpen(true)}>
+              <Button
+                size="xs"
+                variant="outline"
+                onClick={() =>
+                  // a password they hold is asked for in the form itself
+                  standing === 'set' ? setOpen(true) : reauthentication.ensure(() => setOpen(true))
+                }
+              >
                 {format(standing === 'set' ? m.passwordChange : m.passwordSetFirst)}
               </Button>
             ),
           }
         : {})}
     >
+      {reauthentication.dialog}
       <FormDialog
         open={settable && open}
         title={format(standing === 'set' ? m.passwordChange : m.passwordSetFirst)}
@@ -304,7 +317,7 @@ function PasswordSetting({
               {format(m.passwordMismatch)}
             </p>
           )}
-          {save.isError && !refusedByList && (
+          {save.isError && !refusedByList && !needsReauthentication(save.error) && (
             <p {...stylex.props(styles.refusal)}>{formatError(save.error)}</p>
           )}
         </form>
@@ -318,6 +331,7 @@ function EmailSetting({ email, verified }: { email: string | null; verified: boo
   const run = useRunApi()
   const { format, formatError } = useI18n()
   const formId = useId()
+  const reauthentication = useReauthentication(usePageHref('auth/account-security'))
   const [open, setOpen] = useState(false)
   const [next, setNext] = useState('')
   const close = () => {
@@ -334,6 +348,9 @@ function EmailSetting({ email, verified }: { email: string | null; verified: boo
     onSuccess: () => {
       close()
       toast.success(format(m.changeSent))
+    },
+    onError: (error: unknown) => {
+      if (needsReauthentication(error)) reauthentication.ask(() => change.mutate())
     },
   })
   return (
@@ -353,12 +370,17 @@ function EmailSetting({ email, verified }: { email: string | null; verified: boo
               {format(m.sendVerification)}
             </Button>
           )}
-          <Button size="xs" variant="outline" onClick={() => setOpen(true)}>
+          <Button
+            size="xs"
+            variant="outline"
+            onClick={() => reauthentication.ensure(() => setOpen(true))}
+          >
             {format(email === null ? m.emailSetAction : m.emailChangeAction)}
           </Button>
         </>
       }
     >
+      {reauthentication.dialog}
       <FormDialog
         open={open}
         title={format(email === null ? m.emailSetTitle : m.emailChangeTitle)}
@@ -394,7 +416,9 @@ function EmailSetting({ email, verified }: { email: string | null; verified: boo
               />
             )}
           </Field>
-          {change.isError && <p {...stylex.props(styles.refusal)}>{formatError(change.error)}</p>}
+          {change.isError && !needsReauthentication(change.error) && (
+            <p {...stylex.props(styles.refusal)}>{formatError(change.error)}</p>
+          )}
         </form>
       </FormDialog>
     </Setting>

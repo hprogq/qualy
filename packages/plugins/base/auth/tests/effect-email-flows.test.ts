@@ -38,6 +38,7 @@ import { SYSTEM_ACCOUNT_USER_TYPE } from '../src/constants.ts'
 import { HARD_LIMITS } from '../src/server/limiter.ts'
 import { lockTenant } from '../src/server/db.ts'
 import { authClosure } from './support/closure.ts'
+import { reauthenticated } from './support/reauthenticated.ts'
 import { acceptable, standInChecks } from './support/secret-checks.ts'
 
 // What goes through somebody's inbox: a link to set a password, to prove an
@@ -223,6 +224,11 @@ const seed = (url: string) =>
       const adaElsewhere = yield* session(ada, 'b')
       const linHere = yield* session(lin, 'c')
       const adminHere = yield* session(admin, 'd')
+      // each showed it is its owner's a moment ago; a suite about asking
+      // for that opens a session of its own
+      for (const opened of [adaHere, adaElsewhere, linHere, adminHere]) {
+        yield* reauthenticated(opened)
+      }
       return {
         tenant,
         admin,
@@ -893,8 +899,15 @@ describe.runIf(postgresAvailable)('an email address', () => {
               values (${f.tenant}, ${f.admin}, ${role})`)
             const admin = f.as(f.admin, f.adminHere)
             // whoever holds one of Ada's sessions asks to move her address
-            // somewhere of theirs, and then Ada or an administrator acts
-            const stolen = f.as(f.ada, f.adaElsewhere)
+            // somewhere of theirs, and then Ada or an administrator acts; a
+            // session of hers they hold each time, which showed it was hers
+            // a moment before
+            const stolen = () =>
+              Effect.gen(function* () {
+                const opened = yield* freshSession(f.tenant, f.ada, f.local)
+                yield* reauthenticated(opened)
+                return f.as(f.ada, opened)
+              })
             const version = () =>
               Effect.map(
                 runSql<{ version: number }>(sql`select version from users where id = ${f.ada}`),
@@ -903,7 +916,7 @@ describe.runIf(postgresAvailable)('an email address', () => {
             const afterwards = Effect.fn('afterwards')(function* (
               takeBack: Effect.Effect<unknown, unknown, EmailFlows | Iam | Orm>,
             ) {
-              yield* flows.requestChange(stolen, {
+              yield* flows.requestChange(yield* stolen(), {
                 newEmail: 'thief@elsewhere.example',
                 locale: 'en',
               })
@@ -971,14 +984,15 @@ describe.runIf(postgresAvailable)('an email address', () => {
             const iam = yield* Iam
             const ada = f.as(f.ada, f.adaHere)
             const another = () =>
-              Effect.map(
-                runSql<{ id: string }>(sql`
+              Effect.gen(function* () {
+                const opened = yield* runSql<{ id: string }>(sql`
                   insert into sessions (tenant_id, user_id, auth_provider_id, token_hash, expires_at)
                   values (${f.tenant}, ${f.ada}, ${f.local}, md5(random()::text) || md5(random()::text),
                           now() + interval '1 day')
-                  returning id`),
-                (result) => result.rows[0]!.id,
-              )
+                  returning id`)
+                yield* reauthenticated(opened.rows[0]!.id)
+                return opened.rows[0]!.id
+              })
             // whoever holds one of Ada's sessions asks to move her address,
             // and Ada signs that session out, or every session but hers
             const afterwards = Effect.fn('afterwards')(function* (
@@ -1252,6 +1266,260 @@ describe.runIf(postgresAvailable)('one’s first password', () => {
         'TOO_MANY_ATTEMPTS',
       ])
       expect(answer.judged).toBe(limit)
+    } finally {
+      await db.dispose()
+    }
+  })
+})
+
+/** a session of somebody's that has not shown it is theirs since it was opened */
+const freshSession = (tenant: string, userId: string, providerId: string) =>
+  Effect.map(
+    runSql<{ id: string }>(sql`
+      insert into sessions (tenant_id, user_id, auth_provider_id, token_hash, expires_at)
+      values (${tenant}, ${userId}, ${providerId}, md5(random()::text) || md5(random()::text),
+              now() + interval '1 day')
+      returning id`),
+    (result) => result.rows[0]!.id,
+  )
+
+/** the code last mailed to an address */
+const codeFrom = async (mail: Mailbox, to: string) => {
+  const sent = await vi.waitFor(
+    () => {
+      const found = mail.outbox.filter((message) => message.to === to).at(-1)
+      if (found === undefined) throw new Error(`nothing sent to ${to} yet`)
+      return found
+    },
+    { timeout: 3_000 },
+  )
+  const code = /\b(\d{6})\b/.exec(sent.text)?.[1]
+  if (code === undefined) throw new Error(`no code in ${sent.text}`)
+  return { code, subject: sent.subject, html: sent.html ?? '' }
+}
+
+/** a code of the same length that is not this one */
+const otherThan = (code: string) => `${code.slice(0, -1)}${String((Number(code.at(-1)) + 1) % 10)}`
+
+describe.runIf(postgresAvailable)('showing it is you again', () => {
+  it('is asked of a session before it moves the address, and shown with the password', async () => {
+    const db = await createTestContext('email-reauth-password')
+    const mail = memoryMailBackend()
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await Effect.runPromiseExit(
+          Effect.gen(function* () {
+            const flows = yield* EmailFlows
+            const iam = yield* Iam
+            const fresh = f.as(f.ada, yield* freshSession(f.tenant, f.ada, f.local))
+            const asked = tagOf(
+              yield* Effect.result(
+                flows.requestChange(fresh, { newEmail: 'ada.new@school.edu', locale: 'en' }),
+              ),
+            )
+            const before = yield* iam.self.reauthentication(fresh)
+            // somebody with a password shows it with the password, and only so
+            const byCode = tagOf(
+              yield* Effect.result(flows.reauthenticate(fresh, { method: 'code', code: '123456' })),
+            )
+            const noCode = tagOf(yield* Effect.result(flows.sendReauthenticationCode(fresh, 'en')))
+            const wrong = tagOf(
+              yield* Effect.result(
+                flows.reauthenticate(fresh, { method: 'password', password: 'not it' }),
+              ),
+            )
+            const shown = yield* flows.reauthenticate(fresh, {
+              method: 'password',
+              password: 'ada-password',
+            })
+            const after = yield* iam.self.reauthentication(fresh)
+            yield* flows.requestChange(fresh, { newEmail: 'ada.new@school.edu', locale: 'en' })
+            const link = yield* Effect.promise(() => tokenFrom(mail, 'ada.new@school.edu'))
+            // a while later it no longer counts
+            yield* runSql(sql`
+              update session_auth_grants set expires_at = now() - interval '1 second'
+               where session_id = ${fresh.sessionId}`)
+            const lapsed = tagOf(
+              yield* Effect.result(
+                flows.requestChange(fresh, { newEmail: 'ada.other@school.edu', locale: 'en' }),
+              ),
+            )
+            return {
+              asked,
+              before: before.method,
+              beforeUntil: before.until,
+              byCode,
+              noCode,
+              wrong,
+              shown: shown.until !== undefined,
+              afterUntil: after.until !== null,
+              linked: link.token.length > 0,
+              lapsed,
+            }
+          }).pipe(Effect.provide(stack(db.url, mail.backend))),
+        ),
+      )
+      expect(answer).toEqual({
+        asked: 'AUTH_REAUTHENTICATION_REQUIRED',
+        before: 'password',
+        beforeUntil: null,
+        byCode: 'AUTH_REAUTHENTICATION_METHOD_UNAVAILABLE',
+        noCode: 'AUTH_REAUTHENTICATION_METHOD_UNAVAILABLE',
+        wrong: 'AUTH_PASSWORD_INCORRECT',
+        shown: true,
+        afterUntil: true,
+        linked: true,
+        lapsed: 'AUTH_REAUTHENTICATION_REQUIRED',
+      })
+      // nothing went out while the session had not shown it
+      expect(mail.outbox.map((message) => message.to)).toEqual(['ada.new@school.edu'])
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('is shown with a code to a proven address, in the session that asked, by somebody with no password', async () => {
+    const db = await createTestContext('email-reauth-code')
+    const mail = memoryMailBackend()
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await Effect.runPromiseExit(
+          Effect.gen(function* () {
+            const flows = yield* EmailFlows
+            const iam = yield* Iam
+            // Lin has no password; her address is proven now
+            yield* runSql(sql`update users set email_verified_at = now() where id = ${f.lin}`)
+            const fresh = f.as(f.lin, yield* freshSession(f.tenant, f.lin, f.local))
+            const other = f.as(f.lin, yield* freshSession(f.tenant, f.lin, f.local))
+            const first = tagOf(
+              yield* Effect.result(flows.setPassword(fresh, { newPassword: 'lin password' })),
+            )
+            const method = (yield* iam.self.reauthentication(fresh)).method
+            const byPassword = tagOf(
+              yield* Effect.result(
+                flows.reauthenticate(fresh, { method: 'password', password: 'anything' }),
+              ),
+            )
+            yield* flows.sendReauthenticationCode(fresh, 'zh-CN')
+            const sent = yield* Effect.promise(() => codeFrom(mail, 'lin@school.edu'))
+            const wrong = tagOf(
+              yield* Effect.result(
+                flows.reauthenticate(fresh, { method: 'code', code: otherThan(sent.code) }),
+              ),
+            )
+            // the code is this session's to type back, and no other's
+            const elsewhere = tagOf(
+              yield* Effect.result(
+                flows.reauthenticate(other, { method: 'code', code: sent.code }),
+              ),
+            )
+            yield* flows.reauthenticate(fresh, { method: 'code', code: ` ${sent.code} ` })
+            const again = tagOf(
+              yield* Effect.result(
+                flows.reauthenticate(fresh, { method: 'code', code: sent.code }),
+              ),
+            )
+            yield* flows.setPassword(fresh, { newPassword: 'lin password' })
+            const credential = yield* runSql<{ credential_hash: string }>(
+              sql`select credential_hash from user_auth_bindings
+                   where user_id = ${f.lin} and revoked_at is null`,
+            )
+            return {
+              first,
+              method,
+              byPassword,
+              subject: sent.subject,
+              wrong,
+              elsewhere,
+              again,
+              credential: credential.rows[0]?.credential_hash,
+            }
+          }).pipe(Effect.provide(stack(db.url, mail.backend))),
+        ),
+      )
+      expect(answer).toEqual({
+        first: 'AUTH_REAUTHENTICATION_REQUIRED',
+        method: 'email',
+        byPassword: 'AUTH_REAUTHENTICATION_METHOD_UNAVAILABLE',
+        subject: '您的身份验证码',
+        wrong: 'AUTH_REAUTHENTICATION_CODE_INVALID',
+        elsewhere: 'AUTH_REAUTHENTICATION_CODE_INVALID',
+        // spent by the try that took it
+        again: 'AUTH_REAUTHENTICATION_CODE_INVALID',
+        credential: 'digest:lin password',
+      })
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('takes only so many tries at a code', async () => {
+    const db = await createTestContext('email-reauth-code-tries')
+    const mail = memoryMailBackend()
+    try {
+      const f = await seed(db.url)
+      const { limit } = HARD_LIMITS.reauthenticationCodeBySelf
+      const answer = ok(
+        await Effect.runPromiseExit(
+          Effect.gen(function* () {
+            const flows = yield* EmailFlows
+            yield* runSql(sql`update users set email_verified_at = now() where id = ${f.lin}`)
+            const fresh = f.as(f.lin, yield* freshSession(f.tenant, f.lin, f.local))
+            yield* flows.sendReauthenticationCode(fresh, 'en')
+            const sent = yield* Effect.promise(() => codeFrom(mail, 'lin@school.edu'))
+            const tries: (string | undefined)[] = []
+            for (let tried = 0; tried < limit; tried += 1) {
+              tries.push(
+                tagOf(
+                  yield* Effect.result(
+                    flows.reauthenticate(fresh, { method: 'code', code: otherThan(sent.code) }),
+                  ),
+                ),
+              )
+            }
+            // the right one, once the tries are used up, is not looked at
+            const right = tagOf(
+              yield* Effect.result(
+                flows.reauthenticate(fresh, { method: 'code', code: sent.code }),
+              ),
+            )
+            return { tries, right }
+          }).pipe(Effect.provide(stack(db.url, mail.backend))),
+        ),
+      )
+      expect(answer).toEqual({
+        tries: Array.from({ length: limit }, () => 'AUTH_REAUTHENTICATION_CODE_INVALID'),
+        right: 'TOO_MANY_ATTEMPTS',
+      })
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('takes back a code that could not be mailed, and says so', async () => {
+    const db = await createTestContext('email-reauth-code-not-sent')
+    const mail = memoryMailBackend()
+    try {
+      const f = await seed(db.url)
+      mail.failWith('unavailable')
+      const answer = ok(
+        await Effect.runPromiseExit(
+          Effect.gen(function* () {
+            const flows = yield* EmailFlows
+            yield* runSql(sql`update users set email_verified_at = now() where id = ${f.lin}`)
+            const fresh = f.as(f.lin, yield* freshSession(f.tenant, f.lin, f.local))
+            const refused = tagOf(yield* Effect.result(flows.sendReauthenticationCode(fresh, 'en')))
+            const kept = yield* runSql<{ count: number }>(
+              sql`select count(*)::int as count from session_auth_grants
+                   where session_id = ${fresh.sessionId}`,
+            )
+            return { refused, kept: kept.rows[0]!.count }
+          }).pipe(Effect.provide(stack(db.url, mail.backend))),
+        ),
+      )
+      expect(answer).toEqual({ refused: 'AUTH_MAIL_NOT_SENT', kept: 0 })
     } finally {
       await db.dispose()
     }

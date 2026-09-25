@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mailFor } from '../src/server/mail-copy.ts'
+import { mailFor, noticeFor } from '../src/server/mail-copy.ts'
 
 // The mail a person gets, in both of its parts: the plain one every client
 // shows, and the laid-out one most do - which carries the same link, names
@@ -42,5 +42,22 @@ describe('the mail a link goes out in', () => {
     // a client holding remote images back still shows the name
     expect(image).toContain('alt="Qualy"')
     expect(image).toContain('width="71" height="24"')
+  })
+})
+
+describe('the mail a code goes out in', () => {
+  it('carries the code in both parts, and names the product even with nowhere to show it from', () => {
+    const mail = noticeFor('reauthentication-code', 'en', {
+      to: 'li@school.edu',
+      workspace: '<b>Demo</b>',
+      origin: null,
+      code: '042917',
+    })
+    expect(mail.text).toContain('042917')
+    expect(mail.html).toContain('042917')
+    expect(mail.html).not.toContain('<b>Demo</b>')
+    // no origin to serve the wordmark from, so no image at all
+    expect(mail.html).not.toMatch(/<img /)
+    expect(mail.html).toContain('>Qualy<')
   })
 })

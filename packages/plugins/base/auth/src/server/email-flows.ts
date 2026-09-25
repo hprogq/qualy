@@ -6,6 +6,7 @@ import { Audit } from '@qualy/audit-contract/effect'
 import { normalizeEmail } from '@qualy/auth-contract/email'
 import { LoginDrivers, type SecretChecks } from '@qualy/auth-contract/login'
 import { TooManyAttempts } from '@qualy/auth-contract/session'
+import { ReauthenticationRequired } from '@qualy/auth-contract/sign-in-failure'
 import { currentRequestContext } from '@qualy/api-kit/request'
 import { Mailer } from '@qualy/plugin-mail/plugin'
 import type { Principal } from '@qualy/rbac-contract'
@@ -24,6 +25,8 @@ import {
   MailNotSent,
   PasswordIncorrect,
   PasswordUnavailable,
+  ReauthenticationCodeInvalid,
+  ReauthenticationMethodUnavailable,
   SystemAccountProtected,
   UserEmailConflict,
   UserNotFound,
@@ -31,7 +34,8 @@ import {
 import { captchaPurpose, CaptchaRequired, type CaptchaProof } from '@qualy/plugin-captcha/contract'
 import { Captcha } from '@qualy/plugin-captcha/server'
 import { HARD_LIMITS, makeLimiter, RISK_RULES, type HardLimitRule } from './limiter.ts'
-import { mailFor, type MailLocale, type MailPurpose } from './mail-copy.ts'
+import { mailFor, noticeFor, type MailLocale, type MailPurpose } from './mail-copy.ts'
+import { makeReauthentication, requireReauthenticated } from './reauthentication.ts'
 import { PublicOriginResolver } from './public-origin.ts'
 import { AnonymousTenantResolver } from './tenancy.ts'
 import { doorsOf } from './self.ts'
@@ -272,6 +276,7 @@ export class EmailFlows extends Context.Service<
       | TooManyAttempts
       | UserNotFound
       | DemoAccountLocked
+      | ReauthenticationRequired
     >
     readonly redeemChange: (
       token: string,
@@ -293,6 +298,34 @@ export class EmailFlows extends Context.Service<
       | TooManyAttempts
       | UserNotFound
       | DemoAccountLocked
+      | ReauthenticationRequired
+    >
+    /**
+     * The session in hand shows it is its owner's: with the password when
+     * the account has one, or else with the code last mailed to it. Answers
+     * until when it stands so.
+     */
+    readonly reauthenticate: (
+      principal: Principal,
+      proof:
+        | { readonly method: 'password'; readonly password: string }
+        | { readonly method: 'code'; readonly code: string },
+    ) => Effect.Effect<
+      { readonly until: Date | string },
+      | UserNotFound
+      | PasswordIncorrect
+      | ReauthenticationCodeInvalid
+      | ReauthenticationMethodUnavailable
+      | ReauthenticationRequired
+      | TooManyAttempts
+    >
+    /** a code to show it is them, mailed to the address they proved, for an account with no password */
+    readonly sendReauthenticationCode: (
+      principal: Principal,
+      locale: MailLocale,
+    ) => Effect.Effect<
+      void,
+      UserNotFound | ReauthenticationMethodUnavailable | MailNotSent | TooManyAttempts
     >
   }
 >()('@qualy/plugin-auth/EmailFlows') {}
@@ -322,6 +355,7 @@ export const emailFlowsLayer: Layer.Layer<
     const tenants = yield* AnonymousTenantResolver
     const limiter = yield* makeLimiter
     const captcha = yield* Captcha
+    const reauthentication = yield* makeReauthentication
     // mail leaves on its own fiber, which lives as long as this layer does
     const scope = yield* Effect.scope
 
@@ -388,6 +422,27 @@ export const emailFlowsLayer: Layer.Layer<
         ) {
           return { id: door.id, driver, binding: driver.binding }
         }
+      }
+      return undefined
+    })
+
+    /**
+     * How this person shows it is them: the password when they hold one at
+     * the password door open to them, else a code to the address they
+     * proved. Undefined when neither is theirs to use.
+     */
+    const ownProofOf = Effect.fn('Auth.email.ownProof')(function* (
+      tenantId: string,
+      person: Person,
+    ) {
+      const door = yield* passwordDoor(tenantId, person)
+      const standing =
+        door === undefined ? undefined : yield* credentialOf(tenantId, person.id, door.id)
+      if (door !== undefined && standing?.credentialHash != null) {
+        return { method: 'password', door, credentialHash: standing.credentialHash } as const
+      }
+      if (person.email !== null && person.emailVerifiedAt !== null) {
+        return { method: 'code', email: person.email } as const
       }
       return undefined
     })
@@ -799,6 +854,9 @@ export const emailFlowsLayer: Layer.Layer<
             // the recovery account's address is the seed's to set
             if (person.isSystem) return yield* new SystemAccountProtected()
             yield* guardDemo(principal.tenantId, person.id)
+            // where the account's mail goes is where it is recovered from:
+            // a session alone does not move it
+            yield* requireReauthenticated(principal.tenantId, principal.sessionId)
             // counted before the address is looked up, and kept when it is
             // somebody's: asking is how anybody would learn whose it is
             yield* throttle(principal.tenantId, HARD_LIMITS.mailBySelf, principal.userId)
@@ -906,6 +964,11 @@ export const emailFlowsLayer: Layer.Layer<
           // somebody with no password yet sets one only on a proven address
           return yield* new EmailUnverified()
         } else {
+          // a first password is a new way in: the session in hand shows it
+          // is its owner's first, since there is no old password to ask for
+          yield* withDb(requireReauthenticated(tenantId, principal.sessionId)).pipe(
+            Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
+          )
           // no password to check, and a digest to work out all the same:
           // counted as a try at one would be
           yield* withDb(throttle(tenantId, HARD_LIMITS.passwordBySelf, person.id))
@@ -933,6 +996,90 @@ export const emailFlowsLayer: Layer.Layer<
           }),
         )
       }),
+
+      reauthenticate: Effect.fn('Auth.email.reauthenticate')(function* (principal, proof) {
+        const tenantId = principal.tenantId
+        const person = yield* withDb(personOf(tenantId, principal.userId)).pipe(Effect.orDie)
+        if (person === undefined) return yield* new UserNotFound()
+        const own = yield* withDb(ownProofOf(tenantId, person)).pipe(Effect.orDie)
+        if (own?.method !== proof.method) return yield* new ReauthenticationMethodUnavailable()
+        if (own.method === 'password' && proof.method === 'password') {
+          // tried as a current password is tried when it is changed
+          yield* withDb(throttle(tenantId, HARD_LIMITS.passwordBySelf, person.id))
+          const right = yield* own.door.binding.verify({
+            secret: proof.password,
+            credentialHash: own.credentialHash,
+          })
+          if (!right) return yield* new PasswordIncorrect()
+        } else {
+          // counted where a wrong code rolls nothing back
+          yield* withDb(throttle(tenantId, HARD_LIMITS.reauthenticationCodeBySelf, person.id))
+        }
+        const until = yield* withDb(
+          transaction(
+            Effect.gen(function* () {
+              if (proof.method === 'code') {
+                const right = yield* reauthentication.takeCode(
+                  tenantId,
+                  principal.sessionId,
+                  proof.code,
+                )
+                if (!right) return yield* new ReauthenticationCodeInvalid()
+              }
+              return yield* reauthentication.mark(
+                tenantId,
+                principal.sessionId,
+                proof.method === 'code' ? 'code' : 'password',
+              )
+            }),
+          ),
+        ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
+        // the session ended between the question and the answer
+        if (until === undefined) return yield* new ReauthenticationRequired()
+        return { until }
+      }),
+
+      sendReauthenticationCode: Effect.fn('Auth.email.sendReauthenticationCode')(
+        function* (principal, locale) {
+          const tenantId = principal.tenantId
+          const person = yield* withDb(personOf(tenantId, principal.userId)).pipe(Effect.orDie)
+          if (person === undefined) return yield* new UserNotFound()
+          const own = yield* withDb(ownProofOf(tenantId, person)).pipe(Effect.orDie)
+          if (own?.method !== 'code') return yield* new ReauthenticationMethodUnavailable()
+          // a code is mail somebody is sent, counted as a link to them is
+          yield* withDb(throttle(tenantId, HARD_LIMITS.mailBySelf, person.id))
+          const code = yield* withDb(
+            transaction(reauthentication.issueCode(tenantId, principal.sessionId)),
+          ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
+          // the session ended between the question and the answer; nothing to send it to
+          if (code === undefined) return yield* new ReauthenticationMethodUnavailable()
+          const slug = (yield* withDb(tenantSlug(tenantId)).pipe(Effect.orDie)).slug
+          const origin = yield* origins
+            .resolve({ id: tenantId, slug })
+            .pipe(Effect.option, Effect.map(Option.getOrNull))
+          const message = noticeFor('reauthentication-code', locale, {
+            to: own.email,
+            workspace: yield* workspaceOf(tenantId),
+            origin: origin === null ? null : origin.toString(),
+            code: Redacted.value(code),
+          })
+          yield* mailer
+            .send({ to: own.email, ...message })
+            .pipe(
+              Effect.catchTag('MailUnavailable', (failed) =>
+                withDb(reauthentication.dropCode(tenantId, principal.sessionId)).pipe(
+                  Effect.orDie,
+                  Effect.andThen(
+                    Effect.logWarning('a code could not be mailed and was taken back').pipe(
+                      Effect.annotateLogs({ tenantId, reason: failed.reason }),
+                    ),
+                  ),
+                  Effect.andThen(Effect.fail(new MailNotSent())),
+                ),
+              ),
+            )
+        },
+      ),
     })
   }),
 )

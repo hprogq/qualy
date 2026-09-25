@@ -36,6 +36,7 @@ import { singleTenantLayer } from '../src/server/tenancy.ts'
 import { singleOriginLayer } from '../src/server/public-origin.ts'
 import { flowCookieNameFor } from '../src/server/session-cookie.ts'
 import { authClosure } from './support/closure.ts'
+import { reauthenticated } from './support/reauthenticated.ts'
 import { authAuditLayer } from './support/audit.ts'
 import { unusedEmailFlows } from './support/email-flows.ts'
 
@@ -259,13 +260,18 @@ beforeEach(async () => {
 
 let tokens = 0
 /** a session for somebody, as a cookie a browser would send */
-const signedIn = async (userId: string) => {
+const signedIn = async (userId: string, recently = true) => {
   const token = `test-session-${++tokens}-${userId}`
   await Effect.runPromise(
-    runSql(sql`
-      insert into sessions (tenant_id, user_id, auth_provider_id, token_hash, expires_at)
-      select tenant_id, id, ${providerId}, ${hashSessionToken(token)}, now() + interval '1 day'
-        from users where id = ${userId}`).pipe(Effect.provide(probeInfra())),
+    Effect.gen(function* () {
+      const opened = yield* runSql<{ id: string }>(sql`
+        insert into sessions (tenant_id, user_id, auth_provider_id, token_hash, expires_at)
+        select tenant_id, id, ${providerId}, ${hashSessionToken(token)}, now() + interval '1 day'
+          from users where id = ${userId}
+        returning id`)
+      // it showed it is theirs a moment ago, unless asked for one that has not
+      if (recently) yield* reauthenticated(opened.rows[0]!.id)
+    }).pipe(Effect.provide(probeInfra())),
   )
   return `${sessionCookieName}=${token}`
 }
@@ -449,7 +455,7 @@ describe.runIf(postgresAvailable)('a GitHub account', () => {
     await visit(github.authorize(away, { id: 1024, login: 'ada-dev' }), browser)
     const kept = await Effect.runPromise(
       runSql<{ found: number }>(sql`
-        select (select count(*) from session_auth_grants)
+        select (select count(*) from session_auth_grants where kind not like 'qualy:%')
              + (select count(*) from sign_in_events where user_agent like '%gho_%')::int as found`).pipe(
         Effect.provide(probeInfra()),
       ),

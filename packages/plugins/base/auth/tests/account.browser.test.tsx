@@ -87,6 +87,8 @@ const stubs = (entrances: Entrance[], over: Record<string, unknown> = {}) => ({
   self: {
     getSelf: () => Effect.succeed(me()),
     listSelfEntrances: () => Effect.succeed({ entrances }),
+    getSelfReauthentication: () =>
+      Effect.succeed({ method: 'password' as const, until: null, entrances: [] }),
     ...over,
   },
 })
@@ -207,5 +209,47 @@ describe('binding an account of your own', () => {
     const bindable = rows.elements().map((row) => row.getAttribute('data-bindable'))
     expect(bindable).toEqual(['false', 'true'])
     expect(page.getByRole('button', { name: '绑定', exact: true }).elements()).toHaveLength(1)
+  })
+
+  it('asks to sign in again first where that is how the account shows it is theirs', async () => {
+    const campus = 'ffffffff-ffff-4fff-8fff-ffffffffffff'
+    await renderScreen({
+      client: fakeClient(
+        stubs(
+          [
+            hub({
+              bound: null,
+              unbindable: false,
+              bindHref: '/api/auth/github/hub/start?intent=bind',
+            }),
+          ],
+          {
+            getSelfReauthentication: () =>
+              Effect.succeed({
+                method: 'sign-in' as const,
+                until: null,
+                entrances: [
+                  {
+                    providerId: campus,
+                    name: '统一身份认证',
+                    type: 'cas',
+                    href: '/api/auth/cas/campus/start',
+                  },
+                ],
+              }),
+          },
+        ),
+      ),
+      route: '/account/logins',
+      children: <AccountLoginsPage />,
+    })
+    await page.getByRole('button', { name: '绑定', exact: true }).click()
+    const asked = page.getByTestId('reauthentication')
+    await expect.element(asked).toHaveAttribute('data-method', 'sign-in')
+    // one way to sign in again for each way the server named
+    expect(page.getByTestId('reauthentication-entrance').elements()).toHaveLength(1)
+    await expect
+      .element(page.getByTestId('reauthentication-entrance'))
+      .toHaveAttribute('data-provider-id', campus)
   })
 })

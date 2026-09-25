@@ -11,7 +11,9 @@ import {
   type ResolvedProvider,
   type StartedFlow,
 } from '@qualy/auth-contract/login'
+import type { ReauthenticationRequired } from '@qualy/auth-contract/sign-in-failure'
 import { db } from './db.ts'
+import { requireReauthenticated } from './reauthentication.ts'
 import { safeReturnPath } from '@qualy/ui-contract/return-path'
 
 // One redirect through somebody else's server, from the moment it leaves to
@@ -93,7 +95,7 @@ export const makeFlows = Effect.fn('Auth.makeFlows')(function* () {
     binding?: { userId: string; sessionId: string }
     returnPath?: string
     payload?: FlowPayload
-  }): Effect.Effect<StartedFlow, AuthFlowRejected> =>
+  }): Effect.Effect<StartedFlow, AuthFlowRejected | ReauthenticationRequired> =>
     withDb(
       transaction(
         Effect.gen(function* () {
@@ -108,6 +110,9 @@ export const makeFlows = Effect.fn('Auth.makeFlows')(function* () {
             ) {
               return yield* new AuthFlowRejected({ reason: 'session-mismatch' })
             }
+            // another way in is a way in for whoever holds the session: it
+            // begins only in one that showed it is its owner's a moment ago
+            yield* requireReauthenticated(input.provider.tenantId, input.binding.sessionId)
           }
           yield* sweep
           const state = Redacted.make(randomBytes(STATE_BYTES).toString('base64url'))

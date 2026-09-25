@@ -130,53 +130,88 @@ const RULE = '#ecebe8'
 const FONT =
   "-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',Helvetica,Arial,sans-serif"
 
+/** what every laid-out message is framed in, around what it says */
+interface Framed {
+  readonly subject: string
+  readonly title: string
+  readonly lead: string
+  /** the message's own part, as html already escaped */
+  readonly main: string
+  readonly footer: string
+  readonly sentTo: string
+  readonly to: string
+  readonly workspace: string | null
+  /** where the wordmark is served from; without one its name stands in */
+  readonly origin: string | null
+}
+
+const cell = `font-family:${FONT};`
+
 /**
- * The message as html: a card on a pale ground, the product and the
- * workspace across its top, then what it is, the button, what to know, the
- * address spelled out for a client that will not follow the button, and the
- * one line for somebody who did not ask for it.
+ * A message as html: a card on a pale ground, the product and the workspace
+ * across its top, then what it is, its own part, and the one line for
+ * somebody who did not ask for it.
  *
  * Tables and inline styles because that is what mail clients render. The
  * wordmark is a png the web release serves (mail clients drop svg), found at
- * the origin the link points to; a client that holds remote images back shows
- * its alt text, set to look like the name it replaces. Every value that came
- * from outside is escaped.
+ * the origin the message points to; a client that holds remote images back
+ * shows its alt text, set to look like the name it replaces. Every value
+ * that came from outside is escaped.
  */
-const htmlOf = (
-  written: Written,
-  shared: (typeof SHARED)[MailLocale],
-  input: { readonly link: string; readonly to: string; readonly workspace: string | null },
-) => {
-  const link = escape(input.link)
-  const cell = `font-family:${FONT};`
+const framed = (input: Framed) => {
+  const name = `${cell}font-size:18px;font-weight:700;color:${INK};`
+  const wordmark =
+    input.origin === null
+      ? `<span style="${name}">Qualy</span>`
+      : `<img src="${escape(new URL(MAIL_WORDMARK.path, input.origin).toString())}" width="${String(MAIL_WORDMARK.width)}" height="${String(MAIL_WORDMARK.height)}" alt="Qualy" style="display:block;border:0;outline:none;text-decoration:none;height:${String(MAIL_WORDMARK.height)}px;width:${String(MAIL_WORDMARK.width)}px;${name}">`
   return `<!doctype html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(written.subject)}</title></head>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(input.subject)}</title></head>
 <body style="margin:0;padding:0;background:#f7f6f4;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f7f6f4;">
 <tr><td align="center" style="padding:40px 16px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border-radius:14px;border:1px solid ${RULE};">
 <tr><td style="padding:22px 36px;border-bottom:1px solid ${RULE};${cell}">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
-<td style="${cell}font-size:18px;font-weight:700;letter-spacing:-0.02em;color:${INK};"><img src="${escape(new URL(MAIL_WORDMARK.path, input.link).toString())}" width="${String(MAIL_WORDMARK.width)}" height="${String(MAIL_WORDMARK.height)}" alt="Qualy" style="display:block;border:0;outline:none;text-decoration:none;height:${String(MAIL_WORDMARK.height)}px;width:${String(MAIL_WORDMARK.width)}px;${cell}font-size:18px;font-weight:700;color:${INK};"></td>
+<td style="${cell}font-size:18px;font-weight:700;letter-spacing:-0.02em;color:${INK};">${wordmark}</td>
 <td align="right" style="${cell}font-size:12.5px;color:${QUIET};">${input.workspace === null ? '' : escape(input.workspace)}</td>
 </tr></table>
 </td></tr>
 <tr><td style="padding:36px 36px 32px;${cell}">
-<h1 style="margin:0;font-size:24px;font-weight:600;letter-spacing:-0.025em;color:${INK};">${escape(written.title)}</h1>
-<p style="margin:10px 0 0;font-size:15px;line-height:1.7;color:#4a4845;">${escape(written.lead)}</p>
-<table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:28px;"><tr>
+<h1 style="margin:0;font-size:24px;font-weight:600;letter-spacing:-0.025em;color:${INK};">${escape(input.title)}</h1>
+<p style="margin:10px 0 0;font-size:15px;line-height:1.7;color:#4a4845;">${escape(input.lead)}</p>
+${input.main}
+</td></tr>
+<tr><td style="padding:18px 36px;border-top:1px solid ${RULE};${cell}font-size:12.5px;line-height:1.65;color:${QUIET};">${escape(input.footer)}</td></tr>
+</table>
+<p style="margin:16px 0 0;${cell}font-size:12px;color:#9a9894;">${escape(input.sentTo)} ${escape(input.to)}</p>
+</td></tr>
+</table>
+</body></html>`
+}
+
+/** a message whose point is its link: the link as a button, what to know, and the link spelled out */
+const htmlOf = (
+  written: Written,
+  shared: (typeof SHARED)[MailLocale],
+  input: { readonly link: string; readonly to: string; readonly workspace: string | null },
+) => {
+  const link = escape(input.link)
+  return framed({
+    subject: written.subject,
+    title: written.title,
+    lead: written.lead,
+    main: `<table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:28px;"><tr>
 <td style="border-radius:12px;background:${INK};"><a href="${link}" style="display:inline-block;padding:14px 26px;${cell}font-size:15px;font-weight:500;color:#fafaf9;text-decoration:none;border-radius:12px;">${escape(written.action)}</a></td>
 </tr></table>
 <p style="margin:24px 0 0;font-size:13.5px;line-height:1.7;color:${QUIET};">${escape(written.note)}</p>
 <p style="margin:28px 0 0;font-size:12.5px;color:${QUIET};">${escape(shared.fallback)}</p>
-<p style="margin:8px 0 0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;line-height:1.6;color:#555350;word-break:break-all;">${link}</p>
-</td></tr>
-<tr><td style="padding:18px 36px;border-top:1px solid ${RULE};${cell}font-size:12.5px;line-height:1.65;color:${QUIET};">${escape(written.footer)}</td></tr>
-</table>
-<p style="margin:16px 0 0;${cell}font-size:12px;color:#9a9894;">${escape(shared.sentTo)} ${escape(input.to)}</p>
-</td></tr>
-</table>
-</body></html>`
+<p style="margin:8px 0 0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;line-height:1.6;color:#555350;word-break:break-all;">${link}</p>`,
+    footer: written.footer,
+    sentTo: shared.sentTo,
+    to: input.to,
+    workspace: input.workspace,
+    origin: input.link,
+  })
 }
 
 export const mailFor = (
@@ -192,5 +227,80 @@ export const mailFor = (
     // the plain part stays as it was, for every client that shows no html
     text: written.text(link),
     html: htmlOf(written, SHARED[locale], { link, ...context }),
+  }
+}
+
+/**
+ * A message with nothing to follow: a code to type back into the page that
+ * asked for it. Apart from the links above because it names no link, and so
+ * says where it came from only by its workspace.
+ */
+export type NoticePurpose = 'reauthentication-code'
+
+interface WrittenNotice {
+  readonly subject: string
+  readonly title: string
+  readonly lead: string
+  readonly note: string
+  readonly footer: string
+}
+
+const NOTICES: Record<NoticePurpose, Record<MailLocale, WrittenNotice>> = {
+  'reauthentication-code': {
+    'zh-CN': {
+      subject: '您的身份验证码',
+      title: '身份验证码',
+      lead: '您正在更改账号的邮箱或登录方式，请在发起操作的页面中输入以下验证码：',
+      note: '验证码 10 分钟内有效，仅限在发起操作的页面中使用一次。',
+      footer: '如非本人操作，请勿将验证码告知他人，并尽快联系管理员。',
+    },
+    en: {
+      subject: 'Your verification code',
+      title: 'Your verification code',
+      lead: 'You are changing how your account is reached. Enter this code on the page that asked for it:',
+      note: 'The code works for 10 minutes, once, and only on the page that asked for it.',
+      footer:
+        'If you did not ask for this, do not share the code with anyone, and contact your administrator.',
+    },
+  },
+}
+
+export const noticeFor = (
+  purpose: NoticePurpose,
+  locale: MailLocale,
+  context: {
+    readonly to: string
+    readonly workspace: string | null
+    /** the address this deployment is reached at, for the wordmark; null when it has none */
+    readonly origin: string | null
+    /** the code to type back, for a message that carries one */
+    readonly code?: string
+  },
+) => {
+  const written = NOTICES[purpose][locale]
+  const code =
+    context.code === undefined
+      ? ''
+      : `<p style="margin:28px 0 0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:30px;font-weight:600;letter-spacing:0.3em;color:${INK};">${escape(context.code)}</p>`
+  return {
+    subject: written.subject,
+    text: [
+      written.lead,
+      ...(context.code === undefined ? [] : [context.code]),
+      written.note,
+      written.footer,
+    ].join('\n\n'),
+    html: framed({
+      subject: written.subject,
+      title: written.title,
+      lead: written.lead,
+      main: `${code}
+<p style="margin:24px 0 0;font-size:13.5px;line-height:1.7;color:${QUIET};">${escape(written.note)}</p>`,
+      footer: written.footer,
+      sentTo: SHARED[locale].sentTo,
+      to: context.to,
+      workspace: context.workspace,
+      origin: context.origin,
+    }),
   }
 }

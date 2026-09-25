@@ -45,6 +45,7 @@ import { safeReturnPath } from '../src/server/flows.ts'
 import { HARD_LIMITS } from '../src/server/limiter.ts'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../src/constants.ts'
 import { authClosure } from './support/closure.ts'
+import { reauthenticated } from './support/reauthenticated.ts'
 import { hashSessionToken } from '../src/session.ts'
 
 // A sign-in that leaves this application and comes back.
@@ -67,6 +68,8 @@ const campus: LoginDriver = {
   resolution: { mode: 'binding-subject' },
   binding: { mode: 'self' },
   callback: ({ code }) => `/api/auth/campus/${code}/callback`,
+  // an entrance told to ask for the password every time
+  provesPresence: ({ config }) => config['renew'] === true,
 }
 
 const PUBLIC_URL = 'https://qualy.example.edu'
@@ -200,6 +203,8 @@ const seed = (url: string) =>
                   now() + interval '1 day')
           returning id`),
       ).id
+      // it showed it is theirs a moment ago, which a bind begins from
+      yield* reauthenticated(session)
       const as: Principal = { tenantId: tenant, userId: admin, sessionId: 's' }
       return { tenant, admin, person, local, door, other, session, as }
     }).pipe(Effect.provide(databaseFor(url, { migrations: 'off', entities: authClosure }))),
@@ -934,7 +939,8 @@ describe.runIf(postgresAvailable)('what a session keeps from the other side', ()
               kind: string
               state_sealed: string
             }>(
-              sql`select session_id, auth_provider_id, kind, state_sealed from session_auth_grants`,
+              sql`select session_id, auth_provider_id, kind, state_sealed from session_auth_grants
+                   where kind = 'upstream-session'`,
             )
             const grant = rows.rows[0]!
             const opened = yield* secrets.open(
@@ -960,7 +966,8 @@ describe.runIf(postgresAvailable)('what a session keeps from the other side', ()
             )
             yield* runSql(sql`delete from sessions where id = ${grant.session_id}`)
             const left = yield* runSql<{ count: number }>(
-              sql`select count(*)::int as count from session_auth_grants`,
+              sql`select count(*)::int as count from session_auth_grants
+                   where session_id = ${grant.session_id}`,
             )
             return { rows: rows.rows, opened, lifted, left: left.rows[0]!.count }
           }).pipe(
@@ -982,6 +989,190 @@ describe.runIf(postgresAvailable)('what a session keeps from the other side', ()
       expect(Redacted.value(answer.opened)).toBe('TGT-upstream-value')
       expect(tagOf(answer.lifted)).toBe('SecretUnreadable')
       expect(answer.left).toBe(0)
+    } finally {
+      await db.dispose()
+    }
+  })
+})
+
+/** a session of the seeded person's, opened now and never shown to be theirs since */
+const openedFor = (f: { tenant: string; person: string; local: { id: string } }) =>
+  Effect.map(
+    runSql<{ id: string }>(sql`
+      insert into sessions (tenant_id, user_id, auth_provider_id, token_hash, expires_at)
+      values (${f.tenant}, ${f.person}, ${f.local.id}, md5(random()::text) || md5(random()::text),
+              now() + interval '1 day')
+      returning id`),
+    (result) => result.rows[0]!.id,
+  )
+
+/** the kinds of grant the person's newest session holds */
+const newestGrants = (person: string) =>
+  Effect.map(
+    runSql<{ kind: string }>(sql`
+      select g.kind from session_auth_grants g
+       where g.session_id = (select id from sessions where user_id = ${person}
+                              order by created_at desc, id desc limit 1)
+         and g.expires_at > now()`),
+    (result) => result.rows.map((row) => row.kind),
+  )
+
+const signingIn = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+  effect.pipe(
+    Effect.provideService(
+      HttpServerRequest.HttpServerRequest,
+      HttpServerRequest.fromWeb(new Request('http://localhost/api/auth/campus/campus/callback')),
+    ),
+  )
+
+describe.runIf(postgresAvailable)('showing it is you again', () => {
+  it('is what a bind begins from, a moment before', async () => {
+    const db = await createTestContext('flows-bind-reauthenticated')
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const door = yield* resolve('campus')
+            const fresh = yield* openedFor(f)
+            const stale = yield* openedFor(f)
+            yield* reauthenticated(stale, -1)
+            const bind = (sessionId: string) =>
+              setOut({ provider: door, purpose: 'bind', binding: { userId: f.person, sessionId } })
+            const refusedFresh = tagOf(yield* Effect.result(bind(fresh)))
+            const refusedStale = tagOf(yield* Effect.result(bind(stale)))
+            const started = yield* bind(f.session)
+            const flows = yield* runSql<{ session_id: string }>(
+              sql`select session_id from auth_flows where purpose = 'bind'`,
+            )
+            return {
+              refusedFresh,
+              refusedStale,
+              started: started.flowId.length > 0,
+              flows: flows.rows.map((row) => row.session_id),
+            }
+          }),
+        ),
+      )
+      expect(answer).toEqual({
+        refusedFresh: 'AUTH_REAUTHENTICATION_REQUIRED',
+        refusedStale: 'AUTH_REAUTHENTICATION_REQUIRED',
+        started: true,
+        flows: [answer.flows[0]],
+      })
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('is a sign-in through a way in that asked for the credentials just now', async () => {
+    const db = await createTestContext('flows-sign-in-reauthenticates')
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const sessions = yield* LoginSessions
+            const signIn = (providerId: string) =>
+              signingIn(
+                sessions.completeLogin({ tenantId: f.tenant, providerId, userId: f.person }),
+              )
+            yield* signIn(f.local.id)
+            const password = yield* newestGrants(f.person)
+            yield* signIn(f.door.id)
+            const riding = yield* newestGrants(f.person)
+            // the same entrance, told to ask for the password every time
+            yield* runSql(
+              sql`update auth_providers set config = '{"renew": true}' where id = ${f.door.id}`,
+            )
+            yield* signIn(f.door.id)
+            const asking = yield* newestGrants(f.person)
+            return { password, riding, asking }
+          }),
+        ),
+      )
+      expect(answer).toEqual({
+        password: ['qualy:reauthenticated'],
+        riding: [],
+        asking: ['qualy:reauthenticated'],
+      })
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('is never a grant a driver hands in under the core’s own name', async () => {
+    const db = await createTestContext('flows-grant-reserved')
+    try {
+      const f = await seed(db.url)
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const sessions = yield* LoginSessions
+          yield* signingIn(
+            sessions.completeLogin({
+              tenantId: f.tenant,
+              providerId: f.door.id,
+              userId: f.person,
+              grants: [{ kind: 'qualy:reauthenticated', state: Redacted.make('forged') }],
+            }),
+          )
+        }),
+      )
+      expect(Exit.isFailure(exit) && Cause.hasDies(exit.cause)).toBe(true)
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('is asked in the way the account has: its password, its proven address, or a way in', async () => {
+    const db = await createTestContext('flows-reauthentication-method')
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const iam = yield* Iam
+            const own: Principal = { tenantId: f.tenant, userId: f.person, sessionId: f.session }
+            const asked = () => iam.self.reauthentication(own)
+            // no password, an address never proven, no way in that asks again
+            const nothing = yield* asked()
+            yield* runSql(
+              sql`update auth_providers set config = '{"renew": true}' where id = ${f.door.id}`,
+            )
+            yield* runSql(sql`
+              insert into user_auth_bindings (tenant_id, user_id, auth_provider_id, subject)
+              values (${f.tenant}, ${f.person}, ${f.door.id}, 'ada-at-campus')`)
+            const again = yield* asked()
+            yield* runSql(sql`update users set email_verified_at = now() where id = ${f.person}`)
+            const address = yield* asked()
+            yield* runSql(sql`
+              insert into user_auth_bindings (tenant_id, user_id, auth_provider_id, subject, credential_hash)
+              values (${f.tenant}, ${f.person}, ${f.local.id}, null, 'digest')`)
+            const password = yield* asked()
+            return { nothing, again, address, password }
+          }),
+        ),
+      )
+      expect(answer.nothing).toMatchObject({ method: 'unavailable', entrances: [] })
+      // the seeded session showed it a moment ago
+      expect(answer.nothing.until).not.toBeNull()
+      expect(answer.again).toMatchObject({
+        method: 'sign-in',
+        entrances: [
+          {
+            providerId: f.door.id,
+            name: 'Campus',
+            type: 'campus',
+            href: '/api/auth/campus/campus/start',
+          },
+        ],
+      })
+      expect(answer.address).toMatchObject({ method: 'email', entrances: [] })
+      expect(answer.password).toMatchObject({ method: 'password', entrances: [] })
     } finally {
       await db.dispose()
     }

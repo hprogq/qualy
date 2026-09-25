@@ -3,6 +3,7 @@ import type { HttpServerRequest } from 'effect/unstable/http/HttpServerRequest'
 import type { UiText } from '@qualy/i18n-contract'
 import type { ClientComponentRef } from '@qualy/ui-contract'
 import type { TooManyAttempts } from './session.ts'
+import type { ReauthenticationRequired } from './sign-in-failure.ts'
 
 // The login surface a driver plugin needs, and the registry of drivers itself.
 //
@@ -359,6 +360,19 @@ export interface LoginDriver {
    * core, from the address the deployment is configured with.
    */
   readonly callback?: (provider: { readonly code: string }) => string
+  /**
+   * Whether signing in through this entrance proves the person is at the
+   * keyboard now, rather than riding a session the other side kept: a
+   * password typed here, or a single sign-on server told to ask for the
+   * password every time. Such a sign-in counts as having just shown it is
+   * them, which a change to how the account is reached asks for.
+   *
+   * Absent means it does not: an entrance whose other side may let the
+   * person straight through cannot stand for asking them again.
+   */
+  readonly provesPresence?: (provider: {
+    readonly config: Readonly<Record<string, unknown>>
+  }) => boolean
 }
 
 /**
@@ -549,7 +563,10 @@ export class AuthBindingRejected extends Data.TaggedError('AuthBindingRejected')
  * it; the driver that wrote it is the one that knows what it is.
  */
 export interface SessionGrantInput {
-  /** the driver's own word for what it keeps, one per session and entrance */
+  /**
+   * The driver's own word for what it keeps, one per session and entrance.
+   * Words starting `qualy:` are the core's own and refused.
+   */
   readonly kind: string
   readonly state: Redacted.Redacted<string>
   readonly expiresAt?: Date
@@ -667,7 +684,8 @@ export interface LoginSessionsShape {
    * nonce - is sealed under the flow's own identity and cannot be opened as
    * any other flow's. A bind pins the session it began in, so an account
    * bound on the way back is bound for the person who asked, in the session
-   * they asked from.
+   * they asked from - and begins only in a session that showed it is them
+   * a moment ago.
    */
   readonly startFlow: (input: {
     provider: ResolvedProvider
@@ -676,7 +694,11 @@ export interface LoginSessionsShape {
     binding?: { userId: string; sessionId: string }
     returnPath?: string
     payload?: FlowPayload
-  }) => Effect.Effect<StartedFlow, AuthFlowRejected | TooManyAttempts, HttpServerRequest>
+  }) => Effect.Effect<
+    StartedFlow,
+    AuthFlowRejected | TooManyAttempts | ReauthenticationRequired,
+    HttpServerRequest
+  >
   /**
    * Takes a flow up, once and only once.
    *

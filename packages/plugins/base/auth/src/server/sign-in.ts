@@ -39,6 +39,12 @@ import { Audit } from '@qualy/audit-contract/effect'
 import { AnonymousTenantResolver } from './tenancy.ts'
 import { PublicOriginResolver } from './public-origin.ts'
 import { isDemoAccount } from './demo-accounts.ts'
+import {
+  CORE_GRANT_PREFIX,
+  makeReauthentication,
+  provesPresence,
+  sessionGrantRef,
+} from './reauthentication.ts'
 
 export { AuthConfig }
 import { sessionCookieName, TooManyAttempts } from '@qualy/auth-contract/session'
@@ -235,13 +241,16 @@ const touchBinding = (bindingId: string, displayLabel: string | undefined) =>
       .execute(),
   )
 
-/** the grant's sealed identity: its session, its entrance, its kind, its format */
-const grantRef = (tenantId: string, sessionId: string, providerId: string, kind: string) => ({
-  tenantId,
-  ownerKind: 'session-grant',
-  ownerId: sessionId,
-  key: `${providerId}:${kind}:v1`,
-})
+/** the entrance a session is being opened through, as its driver is asked about it */
+const doorOf = (tenantId: string, providerId: string) =>
+  db.query((k) =>
+    k
+      .selectFrom('AuthProvider')
+      .select(['type', 'config'])
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', providerId)
+      .executeTakeFirst(),
+  )
 
 const insertGrant = (input: {
   tenantId: string
@@ -665,6 +674,7 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
   const tenants = yield* AnonymousTenantResolver
   const publicOrigin = yield* PublicOriginResolver
   const secrets = yield* Secrets
+  const reauthentication = yield* makeReauthentication
   const flows = yield* makeFlows()
   const limiter = yield* makeLimiter
   const captcha = yield* Captcha
@@ -1122,6 +1132,19 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         // proxy itself on any proxied deployment
         const context = Option.getOrUndefined(yield* currentRequestContext)
         const { token, tokenHash } = createSessionToken()
+        for (const grant of input.grants ?? []) {
+          if (grant.kind.startsWith(CORE_GRANT_PREFIX)) {
+            return yield* Effect.die(
+              new Error(`a session grant named ${grant.kind} is the core's own to keep`),
+            )
+          }
+        }
+        // a sign-in through a way in that asked for the person's credentials
+        // just now is as good as asking them again
+        const door = yield* doorOf(input.tenantId, input.providerId).pipe(Effect.orDie)
+        const present =
+          door !== undefined &&
+          provesPresence((yield* drivers.forType(door.type))?.driver, configOf(door.config))
         // one transaction: the session, the binding's last-used stamp, what
         // the session keeps from the other side and the sign-in event exist
         // together or not at all
@@ -1144,7 +1167,7 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
             // session it belongs to so it cannot be lifted onto another
             for (const grant of input.grants ?? []) {
               const sealed = yield* secrets.seal(
-                grantRef(input.tenantId, session.id, input.providerId, grant.kind),
+                sessionGrantRef(input.tenantId, session.id, input.providerId, grant.kind),
                 grant.state,
               )
               yield* insertGrant({
@@ -1155,6 +1178,9 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
                 sealed,
                 expiresAt: grant.expiresAt,
               }).pipe(Effect.orDie)
+            }
+            if (present) {
+              yield* reauthentication.mark(input.tenantId, session.id, 'sign-in').pipe(Effect.orDie)
             }
             yield* record(provider, {
               outcome: 'success',

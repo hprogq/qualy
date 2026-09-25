@@ -13,7 +13,8 @@ import {
   AuthLastWayIn,
   UserNotFound,
 } from './errors.ts'
-import { makeReadiness } from './readiness.ts'
+import { configOf, makeReadiness } from './readiness.ts'
+import { provesPresence, reauthenticatedUntil } from './reauthentication.ts'
 import { sameOriginPath } from './same-origin.ts'
 import { lineageOf } from './sign-in.ts'
 import { makeDemoGuard } from './demo-guard.ts'
@@ -170,6 +171,15 @@ export const make = Effect.fn('Iam.self.make')(function* () {
     return row
   })
 
+  /** the password way in open to the reader, with whether they hold one there */
+  const passwordDoorAmong = (found: readonly { door: Door; driver: LoginDriver }[]) =>
+    found.find(
+      ({ driver }) =>
+        driver.binding?.mode === 'managed' &&
+        driver.resolution.mode === 'user-field' &&
+        driver.resolution.field === 'email',
+    )
+
   return {
     /** who the reader is, as the product has them on file */
     profile: Effect.fn('Iam.self.profile')(function* (principal: Principal) {
@@ -183,12 +193,7 @@ export const make = Effect.fn('Iam.self.make')(function* () {
         }),
       ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
       // the password way in open to them, if any, and whether they hold one there
-      const passwordDoor = found.find(
-        ({ driver }) =>
-          driver.binding?.mode === 'managed' &&
-          driver.resolution.mode === 'user-field' &&
-          driver.resolution.field === 'email',
-      )
+      const passwordDoor = passwordDoorAmong(found)
       return {
         passwordStatus:
           passwordDoor === undefined
@@ -268,6 +273,48 @@ export const make = Effect.fn('Iam.self.make')(function* () {
               door.bindingId !== null &&
               usable.some((other) => other.door.id !== door.id),
           }))
+        }),
+      ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
+    }),
+
+    /**
+     * How the reader shows it is them before a change that asks for it, and
+     * until when the session in hand already has.
+     *
+     * The way follows from what the account has, in this order: the
+     * password; a code to the address they proved; signing in again through
+     * a way in that asks for their credentials every time. None of those is
+     * `unavailable`, and such an account's ways in are changed by somebody
+     * who administers it.
+     */
+    reauthentication: Effect.fn('Iam.self.reauthentication')(function* (principal: Principal) {
+      return yield* withDb(
+        Effect.gen(function* () {
+          const row = yield* requireSelf(principal)
+          const found = yield* serving(principal.tenantId, principal.userId, row.userTypeId)
+          const until = yield* reauthenticatedUntil(principal.tenantId, principal.sessionId)
+          const again = found.flatMap(({ door, driver }) => {
+            if (!opens(driver, door, row)) return []
+            if (!provesPresence(driver, configOf(door.config))) return []
+            if (driver.presentation.mode !== 'redirect') return []
+            const href = sameOriginPath(driver.presentation.href({ code: door.code }))
+            return href === undefined
+              ? []
+              : [{ providerId: door.id, name: door.name, type: door.type, href }]
+          })
+          const method =
+            passwordDoorAmong(found)?.door.hasCredential === true
+              ? ('password' as const)
+              : row.email !== null && row.emailVerifiedAt !== null
+                ? ('email' as const)
+                : again.length > 0
+                  ? ('sign-in' as const)
+                  : ('unavailable' as const)
+          return {
+            method,
+            until: until ?? null,
+            entrances: method === 'sign-in' ? again : [],
+          }
         }),
       ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
     }),

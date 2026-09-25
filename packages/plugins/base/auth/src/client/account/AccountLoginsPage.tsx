@@ -32,6 +32,7 @@ import { iamMessages as m } from '../i18n.ts'
 import { authApi } from '../api.ts'
 import { EntranceAccount } from '../iam/person-facts.tsx'
 import { instantWords } from '../when.ts'
+import { useReauthentication } from './Reauthentication.tsx'
 
 // How the reader can sign in: every way in that is open to them, what it
 // knows them by, and the accounts they bound themselves - which are theirs
@@ -61,6 +62,8 @@ export default function AccountLoginsPage() {
   const [releasing, setReleasing] = useState<Entrance | null>(null)
   const [searchParams] = useSearchParams()
   const here = usePageHref('auth/account-logins')
+  // another way in is one for whoever holds the session: they show it is them first
+  const reauthentication = useReauthentication(here)
   // only something shaped like a code is read from the address
   const failure = searchParams.get('error')
   const failed = failure !== null && /^[A-Z][A-Z0-9_]{2,63}$/.test(failure) ? failure : undefined
@@ -162,7 +165,11 @@ export default function AccountLoginsPage() {
                     <Cell narrow="end">
                       <span {...stylex.props(styles.end)}>
                         {entrance.bindHref !== null && (
-                          <Button size="xs" variant="ghost" onClick={() => bind(entrance)}>
+                          <Button
+                            size="xs"
+                            variant="ghost"
+                            onClick={() => reauthentication.ensure(() => bind(entrance))}
+                          >
                             {format(m.accountBind)}
                           </Button>
                         )}
@@ -186,6 +193,7 @@ export default function AccountLoginsPage() {
         </Card>
       </AsyncSection>
 
+      {reauthentication.dialog}
       <ConfirmDialog
         open={releasing !== null}
         tone="destructive"
