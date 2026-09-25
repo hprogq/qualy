@@ -25,8 +25,13 @@
 # The edge (TLS, HSTS, forwarded headers) is not here: ops/reverse-proxy has
 # the Caddy and nginx shapes, both pointed at the port published below.
 # There is no Redis: nothing in the application uses one.
+#
+# The project is not called `qualy`: a checkout's development compose file
+# takes that name from its directory, with services and volumes of the same
+# names, so a deployment command run in a development checkout would have
+# acted on the development database.
 
-name: qualy
+name: qualy-deployment
 
 services:
   postgres:

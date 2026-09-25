@@ -54,6 +54,10 @@ Then put the edge in front of the published port: `ops/reverse-proxy/` has
 the Caddy and nginx shapes (TLS, HSTS, forwarded headers), and
 `QUALY_TRUSTED_PROXIES` in `.env` names the peer the container sees.
 
+Do not run these commands from a development checkout's working copy against
+its own Docker: the deployment is its own project (`qualy-deployment`), but
+it still wants a host of its own.
+
 The tenant and its system account - the account the tenant recovers itself
 with, which signs in by email and password - are provisioned by the seed,
 run from a source checkout of the same release against the deployment's
@@ -117,7 +121,7 @@ The attachments written by the local storage backend live in the `storage`
 volume:
 
 ```sh
-docker run --rm -v qualy_storage:/data -v "$PWD":/backup alpine tar czf /backup/storage-$(date +%Y%m%d%H%M%S).tgz -C /data .
+docker run --rm -v qualy-deployment_storage:/data -v "$PWD":/backup alpine tar czf /backup/storage-$(date +%Y%m%d%H%M%S).tgz -C /data .
 ```
 
 Restoring the database replaces it, with the server stopped:
