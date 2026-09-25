@@ -5,7 +5,7 @@ import { permissions as authPermissions } from '@qualy/plugin-auth/permissions'
 import { permissions as rbacPermissions } from '@qualy/plugin-rbac/permissions'
 import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
 import { sql } from 'kysely'
-import { Effect, Exit, Layer } from 'effect'
+import { Deferred, Effect, Exit, Fiber, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 import {
   createTestContext,
@@ -16,7 +16,7 @@ import {
 import { entities as orgEntities } from '../src/db/entities.ts'
 import { entities as authEntities } from '@qualy/plugin-auth/db'
 import { entities as rbacEntities } from '@qualy/plugin-rbac/db'
-import { type Orm } from '@qualy/plugin-database/server'
+import { transaction, type Orm } from '@qualy/plugin-database/server'
 import type { Principal } from '@qualy/rbac-contract'
 import { serviceLayer as rbacLayer } from '@qualy/plugin-rbac/server'
 import { serviceLayer as auditLayer } from '@qualy/plugin-audit/server'
@@ -282,6 +282,131 @@ describe.runIf(postgresAvailable).concurrent('changing a node type across three 
       // allowed to make.
       expect(answer.real).toBe('ACCESS_DENIED')
       expect(answer.absent).toBe('ACCESS_DENIED')
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('tells a stranger nothing through the type, rule and bin writes either', async () => {
+    const db = await createTestContext('effect-org-stranger-root-writes')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const stranger = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.tenant}, 'Nobody', ${f.adminType}, ${f.node}) returning id`),
+          ).id
+          const asNobody = { tenantId: f.tenant, userId: stranger, sessionId: 's' }
+          // a binned unit whose parent went into the bin with it
+          const gone = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth, deleted_at)
+              values (${f.tenant}, ${f.node}, ${f.collegeType}, 'Gone', 'r.b.g', 2, now())
+              returning id`),
+          ).id
+          const goneChild = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth, deleted_at)
+              values (${f.tenant}, ${gone}, ${f.collegeType}, 'Gone too', 'r.b.g.c', 3, now())
+              returning id`),
+          ).id
+          const absent = '01a0b900-0000-7000-8000-00000000dead'
+          const org = yield* Org
+          const tags = (
+            attempts: readonly Effect.Effect<unknown, { _tag: string }, never>[],
+          ): Effect.Effect<readonly (string | undefined)[]> =>
+            Effect.forEach(attempts, (attempt) => Effect.map(Effect.result(attempt), tagOf))
+          return yield* tags([
+            org.createType(f.tenant, { name: 'Z' }, asNobody),
+            org.updateType(f.tenant, f.clubType, { name: 'Z' }, asNobody),
+            org.updateType(f.tenant, absent, { name: 'Z' }, asNobody),
+            org.deleteType(f.tenant, f.clubType, asNobody),
+            org.deleteType(f.tenant, absent, asNobody),
+            org.putRule(f.tenant, f.clubType, f.collegeType, asNobody),
+            org.putRule(f.tenant, absent, absent, asNobody),
+            org.deleteRule(f.tenant, f.collegeType, f.clubType, asNobody),
+            org.deleteRule(f.tenant, absent, absent, asNobody),
+            org.restoreNode(f.tenant, gone, asNobody),
+            org.restoreNode(f.tenant, goneChild, asNobody),
+            org.restoreNode(f.tenant, absent, asNobody),
+          ])
+        }),
+      )
+      // one answer whatever the id names: which unit is in the bin, and
+      // whether its parent is, is not a stranger's to learn
+      expect(ok(exit)).toEqual(Array.from({ length: 12 }, () => 'ACCESS_DENIED'))
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('does not queue a stranger behind the tenant lock before refusing them', async () => {
+    const db = await createTestContext('effect-org-stranger-lock')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const stranger = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.tenant}, 'Nobody', ${f.adminType}, ${f.node}) returning id`),
+          ).id
+          const asNobody = { tenantId: f.tenant, userId: stranger, sessionId: 's' }
+          const gone = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth, deleted_at)
+              values (${f.tenant}, ${f.node}, ${f.collegeType}, 'Gone', 'r.b.g', 2, now())
+              returning id`),
+          ).id
+          const org = yield* Org
+          // Another write holds the tenant lock while each refusal is asked
+          // for, and watches on its own connection for anybody queueing
+          // behind it. A refusal decided before the lock never queues.
+          const queuedBehind = (attempt: Effect.Effect<unknown, { _tag: string }, never>) =>
+            Effect.gen(function* () {
+              const locked = yield* Deferred.make<void>()
+              const answered = yield* Deferred.make<void>()
+              const holder = yield* Effect.forkChild(
+                transaction(
+                  Effect.gen(function* () {
+                    yield* runSql(sql`select 1 from tenants where id = ${f.tenant} for update`)
+                    yield* Deferred.succeed(locked, undefined)
+                    for (let waited = 0; waited < 200; waited += 1) {
+                      yield* runSql(sql`select pg_stat_clear_snapshot()`)
+                      const waiting = one<{ n: number }>(
+                        yield* runSql(sql`
+                          select count(*)::int as n from pg_stat_activity
+                           where datname = current_database() and wait_event_type = 'Lock'`),
+                      ).n
+                      if (waiting > 0) return true
+                      if (yield* Deferred.isDone(answered)) return false
+                      yield* Effect.sleep('20 millis')
+                    }
+                    return false
+                  }),
+                ),
+              )
+              yield* Deferred.await(locked)
+              const outcome = yield* Effect.result(attempt)
+              yield* Deferred.succeed(answered, undefined)
+              return { queued: yield* Fiber.join(holder), tag: tagOf(outcome) }
+            })
+          return {
+            putRule: yield* queuedBehind(org.putRule(f.tenant, f.clubType, f.clubType, asNobody)),
+            restore: yield* queuedBehind(org.restoreNode(f.tenant, gone, asNobody)),
+          }
+        }),
+      )
+      expect(ok(exit)).toEqual({
+        putRule: { queued: false, tag: 'ACCESS_DENIED' },
+        restore: { queued: false, tag: 'ACCESS_DENIED' },
+      })
     } finally {
       await db.dispose()
     }

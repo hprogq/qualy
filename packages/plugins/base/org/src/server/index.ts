@@ -532,15 +532,22 @@ export const make = Effect.fn('Org.make')(function* () {
     as: Principal,
     body: () => Effect.Effect<A, E, R>,
   ) =>
-    withDb(
-      transaction(
-        Effect.gen(function* () {
-          yield* lockTenant(tenantId)
-          yield* atRoot(tenantId, as)
-          return yield* body()
-        }),
+    // Refused before the lock as well, the way node writes are: the check
+    // inside is the authoritative one, this one keeps a caller who may not
+    // manage the structure from queueing every structural write of the
+    // tenant behind a request that was never going to be allowed.
+    withDb(atRoot(tenantId, as)).pipe(
+      Effect.andThen(
+        withDb(
+          transaction(
+            Effect.gen(function* () {
+              yield* lockTenant(tenantId)
+              yield* atRoot(tenantId, as)
+              return yield* body()
+            }),
+          ),
+        ),
       ),
-    ).pipe(
       translateConstraints(typeConstraints),
       // a statement that fails for a reason no constraint names is nobody's
       // decision, so it leaves the error channel here rather than widening
@@ -581,6 +588,17 @@ export const make = Effect.fn('Org.make')(function* () {
     nodeId: string,
     as: Principal,
   ) {
+    // Refused before the lock, like every other structural write. Somebody
+    // who manages no part of the structure gets the same answer for every
+    // id, so the refusal says nothing about what is in the bin; a manager is
+    // then held to the unit the node would return under. The checks inside
+    // are the authoritative ones.
+    if (!(yield* rbac.hasPermission(as, 'org.tree.manage'))) {
+      return yield* new AccessDenied({ reason: 'not allowed to restore units' })
+    }
+    const seen = yield* withDb(oneDeletedNode(tenantId, nodeId)).pipe(Effect.orDie)
+    if (!seen || seen.parentId === null) return yield* new NodeNotFound()
+    yield* rbac.requireAt(as, 'org.tree.manage', seen.parentId)
     yield* withDb(
       transaction(
         Effect.gen(function* () {
