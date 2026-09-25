@@ -538,13 +538,6 @@ export class Access extends Context.Service<
 >()('@qualy/plugin-rbac/Access') {}
 
 /**
- * What this plugin contributes.
- *
- * Two tags from one construction: the port peers hold, and rbac's own
- * administration surface, which no peer reaches through a tag.
- */
-/** the service alone; the entry composes it with the screen it registers */
-/**
  * Grant administration a screen is shown for, as the grant reads answer it.
  *
  * The reads already treat managing grants as seeing them (a holder who may
@@ -558,6 +551,13 @@ const MANAGE_IMPLIES_READ = [
   ['iam.tenant-grant.manage', 'iam.tenant-grant.read'],
 ] as const
 
+/**
+ * What this plugin contributes.
+ *
+ * Two tags from one construction: the port peers hold, and rbac's own
+ * administration surface, which no peer reaches through a tag.
+ */
+/** the service alone; the entry composes it with the screen it registers */
 export const serviceLayer: Layer.Layer<
   Rbac | Access | UiAuthorizer,
   never,
