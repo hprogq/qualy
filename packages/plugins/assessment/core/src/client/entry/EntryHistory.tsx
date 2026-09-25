@@ -909,7 +909,7 @@ const commentLabelOf = (kind: string) =>
         ? m.staffRedetermineReason
         : kind === 'escalated'
           ? m.reviewEscalateReason
-          : kind === 'rerouted'
+          : kind === 'rerouted' || kind === 'cancelled-item-voided'
             ? m.entryTrailReasonLabel
             : m.reviewComment
 

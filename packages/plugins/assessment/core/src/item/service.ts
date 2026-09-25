@@ -2361,11 +2361,14 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
                     outcome: 'cancelled',
                   })
                   if (cancelled) {
+                    // the why travels with it, as it does on the claims no
+                    // round was open for
                     yield* insertReviewEvent({
                       tenantId,
                       reviewInstanceId: entry.currentReviewInstanceId,
                       kind: 'cancelled-item-voided',
                       actorId: as.userId,
+                      comment: reason,
                     })
                     told = true
                   }
@@ -2411,6 +2414,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
                   reviewInstanceId: round.id,
                   kind: 'cancelled-item-voided',
                   actorId: as.userId,
+                  comment: reason,
                 })
                 yield* repointReviewRound({
                   tenantId,

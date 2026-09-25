@@ -657,9 +657,18 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
               return {
                 unread: desk.participant!.unreadItemIds,
                 activity: activity.items.map((row) => row.kind),
+                // why, in whichever of the two the reason rides
+                why: activity.items.map((row) => row.reason ?? row.comment),
               }
             })
+          const roundSaid = one<{ comment: string | null }>(
+            yield* runSql(sql`
+              select re.comment from review_events re
+              join review_instances ri on ri.id = re.review_instance_id
+              where ri.entry_id = ${inReview.id} and re.kind = 'cancelled-item-voided'`),
+          )
           return {
+            roundSaid,
             draftTrail: yield* trailOf(drafted.id),
             reviewTrail: yield* trailOf(inReview.id),
             draftOwner: yield* seenBy(f.s1),
@@ -677,9 +686,13 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
     ])
     // a round was open and says it there; the claim's own trail stays quiet
     expect(result.reviewTrail).toEqual([])
+    // the round's closing word carries the reason too, so both kinds of
+    // claim tell their owner why
+    expect(result.roundSaid.comment).toBe('policy withdrawn for the term')
     for (const owner of [result.draftOwner, result.reviewOwner]) {
       expect(owner.unread).toHaveLength(1)
       expect(owner.activity[0]).toBe('entry-voided-with-item')
+      expect(owner.why[0]).toBe('policy withdrawn for the term')
     }
   })
 
