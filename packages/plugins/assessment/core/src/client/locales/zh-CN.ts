@@ -373,6 +373,35 @@ export default {
   'assessment/result/line-revoked': '已撤销，不计入成绩',
   'assessment/result/line-none': '未申报',
   'assessment/result/line-adjustment': '分组上限',
+  'assessment/result/provisional-mark': '暂定',
+  'assessment/result/grand-total': '总分',
+  'assessment/result/group-full': '已满',
+  'assessment/result/ungrouped': '未分组项目',
+  'assessment/result/outline-label': '分组目录',
+  'assessment/result/nothing-asked': '本批次还没有计分项目',
+  'assessment/result/too-large-title': '成绩暂时无法计算',
+  'assessment/result/out-of': '/ {full} 分',
+  'assessment/result/head-note':
+    '{pending, plural, =0 {{drafts, plural, =0 {目前没有审核中的申报} other {# 条草稿尚未提交，提交并通过后计入}}} other {# 条申报审核中，通过后计入成绩}}{trimmed, select, none {} other {；超出分组上限的 {trimmed} 分不计入}}',
+  'assessment/result/outline-heading': '分组 {count}',
+  'assessment/result/group-pending': '{count} 条审核中',
+  'assessment/result/group-left': '还可得 {value}',
+  'assessment/result/fact':
+    '{kind, select, approved {{count} 条已通过} recorded {{count} 条已认定} notCounted {{count} 条未计入} reconsidering {{count} 条复核中} pending {{count} 条审核中} asked {{count} 条待补充} returned {{count} 条待修改} refused {{count} 条未通过} revoked {{count} 条已撤销} other {{count} 条草稿}}',
+  'assessment/result/tag':
+    '{kind, select, todo {{reader, select, staff {{count} 条待参评人处理} other {{count} 条待处理}}} drafts {{count} 条草稿} other {{count} 条审核中}}',
+  'assessment/result/word':
+    '{kind, select, approved {已通过} recorded {管理员认定} notCounted {已通过，按计分规则计入了其他申报} refused {未通过，不计入成绩} revoked {已撤销，不计入成绩} other {自动计入}}',
+  'assessment/result/made':
+    '{kind, select, voided {项目已停用，不计入成绩} derived {自动计入，无需申报} recorded {等待管理员认定} other {未申报}}',
+  'assessment/result/rule':
+    '{kind, select, each {每条 {value} 分} person {每人 {value} 分} other {管理员认定}}',
+  'assessment/result/line-tag':
+    '{kind, select, notCounted {未计入} refused {未通过} other {已撤销}}',
+  'assessment/result/more':
+    '{reader, select, staff {查看全部 {count} 条} other {在我的申报中查看全部 {count} 条}}',
+  'assessment/result/trim':
+    '{rule, select, floor {{group}合计 {raw}，低于下限 {limit}，按下限计入} other {{group}合计 {raw}，上限 {limit}，超出部分不计入}}',
   'assessment/record/tab': '行政认定',
   'assessment/record/hint': '由管理员统一认定的加分、扣分及其他事项，认定后直接计入成绩。',
   'assessment/record/empty': '本批次暂无需要行政认定的项目',

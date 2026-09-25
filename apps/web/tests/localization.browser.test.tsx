@@ -171,10 +171,12 @@ describe('the words themselves', () => {
       `/assessment/batches/${BATCH_ID}/my-result`,
     )
 
-    // the round's full marks: one number, interpolated into one sentence.
+    // the round's full marks: one number, interpolated beside the total.
     // An interpolation that silently drops its value reads as a sentence
     // with a hole in it, which no hook-based assertion would ever notice.
-    await expect.element(page.getByText('本批次满分 10.00')).toBeVisible()
+    await expect.element(page.getByText('/ 10 分')).toBeVisible()
+    // and what is still moving, counted into the one sentence under it
+    await expect.element(page.getByText('1 条申报审核中，通过后计入成绩')).toBeVisible()
   })
 
   it('speaks the reader’s own acts to them, and names everybody else', async () => {

@@ -401,6 +401,81 @@ const groupFloored = defineMessage<{ raw: string; floor: string }>()({
   defaultMessage: 'Subtotal {raw}; minimum applied: {floor}',
 })
 
+// The score ledger's own words. `reader` is `owner` on one's own page and
+// `staff` on somebody else's; `kind` values are the ledger model's own.
+const resultOutOf = defineMessage<{ full: string }>()({
+  id: 'assessment/result/out-of',
+  defaultMessage: 'of {full}',
+})
+
+const resultHeadNote = defineMessage<{ pending: number; drafts: number; trimmed: string }>()({
+  id: 'assessment/result/head-note',
+  defaultMessage:
+    '{pending, plural, =0 {{drafts, plural, =0 {Nothing is under review} one {# draft not submitted; it counts once submitted and approved} other {# drafts not submitted; they count once submitted and approved}}} one {# entry under review; it counts once approved} other {# entries under review; they count once approved}}{trimmed, select, none {} other {; {trimmed} above group limits is not counted}}',
+})
+
+const resultOutlineHeading = defineMessage<{ count: number }>()({
+  id: 'assessment/result/outline-heading',
+  defaultMessage: '{count, plural, one {# group} other {# groups}}',
+})
+
+const resultGroupPending = defineMessage<{ count: number }>()({
+  id: 'assessment/result/group-pending',
+  defaultMessage: '{count} under review',
+})
+
+const resultGroupLeft = defineMessage<{ value: string }>()({
+  id: 'assessment/result/group-left',
+  defaultMessage: 'Up to {value} more',
+})
+
+const resultFact = defineMessage<{ kind: string; count: number }>()({
+  id: 'assessment/result/fact',
+  defaultMessage:
+    '{kind, select, approved {{count} approved} recorded {{count} recorded by staff} notCounted {{count} not counted} reconsidering {{count} being re-examined} pending {{count} under review} asked {{count} awaiting more material} returned {{count} returned for revision} refused {{count} not approved} revoked {{count} revoked} other {{count, plural, one {# draft} other {# drafts}}}}',
+})
+
+const resultTag = defineMessage<{ kind: string; count: number; reader: string }>()({
+  id: 'assessment/result/tag',
+  defaultMessage:
+    '{kind, select, todo {{reader, select, staff {{count} waiting on the participant} other {{count} need your action}}} drafts {{count, plural, one {# draft} other {# drafts}}} other {{count} under review}}',
+})
+
+const resultWord = defineMessage<{ kind: string }>()({
+  id: 'assessment/result/word',
+  defaultMessage:
+    '{kind, select, approved {Approved} recorded {Recorded by staff} notCounted {Approved; another entry counts under the rule} refused {Not approved; not counted} revoked {Revoked; not counted} other {Counted automatically}}',
+})
+
+const resultMade = defineMessage<{ kind: string }>()({
+  id: 'assessment/result/made',
+  defaultMessage:
+    '{kind, select, voided {Item disabled; not counted} derived {Counted automatically} recorded {Awaiting staff entry} other {Nothing submitted}}',
+})
+
+const resultRule = defineMessage<{ kind: string; value: string }>()({
+  id: 'assessment/result/rule',
+  defaultMessage:
+    '{kind, select, each {{value} each} person {{value} per participant} other {Recorded by staff}}',
+})
+
+const resultLineTag = defineMessage<{ kind: string }>()({
+  id: 'assessment/result/line-tag',
+  defaultMessage: '{kind, select, notCounted {Not counted} refused {Not approved} other {Revoked}}',
+})
+
+const resultMore = defineMessage<{ count: number; reader: string }>()({
+  id: 'assessment/result/more',
+  defaultMessage:
+    '{reader, select, staff {View all {count}} other {View all {count} in My entries}}',
+})
+
+const resultTrim = defineMessage<{ rule: string; group: string; raw: string; limit: string }>()({
+  id: 'assessment/result/trim',
+  defaultMessage:
+    '{rule, select, floor {{group} adds up to {raw}, below its minimum of {limit}; the minimum counts} other {{group} adds up to {raw}, over its limit of {limit}; the excess is not counted}}',
+})
+
 const personIncludedAtMessage = defineMessage<{ when: string }>()({
   id: 'assessment/person/included-at',
   defaultMessage: 'Added {when}',
@@ -1808,6 +1883,35 @@ const i18n = definePluginMessages({
       id: 'assessment/result/line-adjustment',
       defaultMessage: 'Group limit',
     },
+    resultProvisionalMark: {
+      id: 'assessment/result/provisional-mark',
+      defaultMessage: 'Provisional',
+    },
+    resultGrandTotal: { id: 'assessment/result/grand-total', defaultMessage: 'Total score' },
+    resultGroupFull: { id: 'assessment/result/group-full', defaultMessage: 'Full' },
+    resultUngrouped: { id: 'assessment/result/ungrouped', defaultMessage: 'Ungrouped items' },
+    resultOutlineLabel: { id: 'assessment/result/outline-label', defaultMessage: 'Groups' },
+    resultNothingAsked: {
+      id: 'assessment/result/nothing-asked',
+      defaultMessage: 'This round has no scored items yet',
+    },
+    resultTooLargeTitle: {
+      id: 'assessment/result/too-large-title',
+      defaultMessage: 'The score cannot be calculated right now',
+    },
+    resultOutOf,
+    resultHeadNote,
+    resultOutlineHeading,
+    resultGroupPending,
+    resultGroupLeft,
+    resultFact,
+    resultTag,
+    resultWord,
+    resultMade,
+    resultRule,
+    resultLineTag,
+    resultMore,
+    resultTrim,
     // ------------------------------------------------------------------
     // recording on someone's behalf
     recordTab: { id: 'assessment/record/tab', defaultMessage: 'Administrative records' },
