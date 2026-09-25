@@ -760,11 +760,16 @@ export const make = Effect.gen(function* () {
     as: Principal,
   ) {
     yield* reachable(tenantId, importId, as)
+    // Seeing that an import happened is the anchor's; reading who is in it
+    // is each row's own. A reader whose authority stops at the anchor
+    // itself reaches none of the people it placed in the units below, and
+    // reads only the rows placed where their authority reaches.
+    const scope = yield* rbac.listAuthorizedScope(as, MANAGE)
     const limit = pageSize(page.limit, DEFAULT_PAGE_SIZE)
-    const total = yield* dieQuery(withDb(rowsCount(tenantId, importId)))
+    const total = yield* dieQuery(withDb(rowsCount({ tenantId, importId, scope })))
     const window = pageWindow(pageNumber(page.page), limit, total)
     const items = yield* dieQuery(
-      withDb(rowsPage({ tenantId, importId, offset: window.offset, limit })),
+      withDb(rowsPage({ tenantId, importId, scope, offset: window.offset, limit })),
     )
     return {
       total,
@@ -1107,10 +1112,37 @@ const nodesOf = (tenantId: string, importId: string) =>
       .execute(),
   )
 
-const rowsPage = (input: { tenantId: string; importId: string; offset: number; limit: number }) =>
+/** the rows of an import placed where the reader's authority reaches */
+const visibleRows = (
+  k: Parameters<Parameters<typeof db.query>[0]>[0],
+  input: { tenantId: string; importId: string; scope: Parameters<typeof scopeCoverage>[0] },
+) =>
+  k
+    .selectFrom('DirectoryImportRow as r')
+    // where the row placed the person; a unit since purged is reached by
+    // nobody below the tenant, the same as any other node that is not there
+    .leftJoin('OrgNode as n', (join) =>
+      join.onRef('n.tenantId', '=', 'r.tenantId').onRef('n.id', '=', 'r.primaryOrgNodeIdSnapshot'),
+    )
+    .where('r.tenantId', '=', input.tenantId)
+    .where('r.importId', '=', input.importId)
+    .where((eb) =>
+      scopeCoverage(input.scope, {
+        tenantId: eb.ref('n.tenantId'),
+        id: eb.ref('n.id'),
+        path: eb.ref('n.path'),
+      }),
+    )
+
+const rowsPage = (input: {
+  tenantId: string
+  importId: string
+  scope: Parameters<typeof scopeCoverage>[0]
+  offset: number
+  limit: number
+}) =>
   db.query((k) => {
-    const query = k
-      .selectFrom('DirectoryImportRow as r')
+    const query = visibleRows(k, input)
       .leftJoin('User as u', (join) =>
         join.onRef('u.tenantId', '=', 'r.tenantId').onRef('u.id', '=', 'r.userId'),
       )
@@ -1125,20 +1157,19 @@ const rowsPage = (input: { tenantId: string; importId: string; offset: number; l
         'u.enabled',
         'u.deletedAt',
       ])
-      .where('r.tenantId', '=', input.tenantId)
-      .where('r.importId', '=', input.importId)
       .orderBy('r.sourceRowNo', 'asc')
       .limit(input.limit)
       .offset(input.offset)
     return query.execute()
   })
 
-const rowsCount = (tenantId: string, importId: string) =>
+const rowsCount = (input: {
+  tenantId: string
+  importId: string
+  scope: Parameters<typeof scopeCoverage>[0]
+}) =>
   db.query((k) =>
-    k
-      .selectFrom('DirectoryImportRow')
-      .where('tenantId', '=', tenantId)
-      .where('importId', '=', importId)
+    visibleRows(k, input)
       .select((eb) => eb.fn.countAll<string>().as('count'))
       .executeTakeFirstOrThrow()
       .then((row) => Number(row.count)),

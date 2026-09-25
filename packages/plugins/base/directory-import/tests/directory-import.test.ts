@@ -445,6 +445,82 @@ describe.runIf(postgresAvailable)('importing people from a spreadsheet', () => {
     expect(result).toEqual(['ACCESS_DENIED', 'ACCESS_DENIED', 'ACCESS_DENIED'])
   }, 120_000)
 
+  it('reads to each reader only the rows placed where their authority reaches', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('e')
+          const service = yield* DirectoryImport
+          const commit = (rows: readonly (readonly string[])[], levels: readonly object[]) =>
+            Effect.gen(function* () {
+              const request = {
+                attachmentId: yield* staged(f.tenant, f.admin.userId, rows),
+                sheet: '名单',
+                headerRow: 1,
+                userTypeId: f.student,
+                mapping: {
+                  displayName: { column: 'B' },
+                  businessNo: { column: 'A' },
+                  organization: { anchorNodeId: f.software, levels: levels as never },
+                },
+              }
+              const preview = yield* service.preview(f.tenant, request, f.admin)
+              return yield* service.commit(
+                f.tenant,
+                { ...request, expectedPlanFingerprint: preview.planFingerprint },
+                f.admin,
+              )
+            })
+          // people in the classes under the college, and people at the college itself
+          const below = yield* commit(
+            [HEADER, ['230501', '张三', '2023级', '1班'], ['230502', '李四', '2023级', '2班']],
+            [
+              { orgTypeId: f.types.grade, column: 'C' },
+              { orgTypeId: f.types.klass, column: 'D' },
+            ],
+          )
+          const at = yield* commit(
+            [
+              ['学号', '姓名'],
+              ['230503', '王五'],
+            ],
+            [],
+          )
+          // a secretary whose authority over people is the college node alone
+          const secretary = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id, business_no)
+              values (${f.tenant}, '秘书', ${f.student}, ${f.software}, 'sec') returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+            select ${f.tenant}, ${secretary}, id, ${f.software}, 'self'
+              from roles where tenant_id = ${f.tenant} and code = 'dir'`)
+          const reader: Principal = { tenantId: f.tenant, userId: secretary, sessionId: secretary }
+          const listed = yield* service.list(f.tenant, {}, reader)
+          const numbers = (page: { items: readonly { businessNo: string }[]; total: number }) => ({
+            total: page.total,
+            numbers: page.items.map((row) => row.businessNo),
+          })
+          return {
+            listed: listed.items.map((item) => item.id).sort(),
+            imports: [below.importId, at.importId].sort(),
+            belowForSecretary: numbers(yield* service.rows(f.tenant, below.importId, {}, reader)),
+            atForSecretary: numbers(yield* service.rows(f.tenant, at.importId, {}, reader)),
+            belowForAdmin: numbers(yield* service.rows(f.tenant, below.importId, {}, f.admin)),
+          }
+        }),
+      ),
+    )
+    // that each import happened is the college's to know
+    expect(result.listed).toEqual(result.imports)
+    // who is in it, only where the reader reaches
+    expect(result.belowForSecretary).toEqual({ total: 0, numbers: [] })
+    expect(result.atForSecretary).toEqual({ total: 1, numbers: ['230503'] })
+    expect(result.belowForAdmin).toEqual({ total: 2, numbers: ['230501', '230502'] })
+  }, 120_000)
+
   it('refuses a file with a wrong row whole, and reads a person already on the books as present', async () => {
     const result = ok(
       await run(
