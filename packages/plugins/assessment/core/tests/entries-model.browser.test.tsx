@@ -57,9 +57,15 @@ describe('the head of the structure against the filters under it', () => {
 
   it('counts a claim under appeal or re-examination as in review for its owner', () => {
     // the one in review, the two out with the reviewers again, and the one
-    // a reviewer asked more of, which the owner's filter keeps as a to-do
+    // a reviewer asked more of - under the same filter as at the head
     expect(stats('owner').get('in_review')).toBe(4)
-    expect(counts('owner').get('in_review')).toBe(3)
+    expect(counts('owner').get('in_review')).toBe(stats('owner').get('in_review'))
+    // which is also the owner's own to-do: the owner's filters may overlap
+    expect(
+      chipsFor('owner')
+        .filter((chip) => chip.test(claims[6]!))
+        .map((chip) => chip.key),
+    ).toEqual(['all', 'todo', 'in_review'])
   })
 
   it('gives a staff reader every head figure as a filter of the same count', () => {

@@ -744,7 +744,8 @@ describe('reading one question’s claims', () => {
 
 describe('the head of the structure', () => {
   // The head's "in review" and the list's filter of the same name hold the
-  // same claims: one the owner appealed is out with the reviewers again.
+  // same claims: one the owner appealed is out with the reviewers again, and
+  // one a reviewer asked more of is still in review while it waits on them.
   it('counts an appealed claim as in review, as its filter does', async () => {
     await page.viewport(1440, 900)
     await workspace({
@@ -755,12 +756,25 @@ describe('the head of the structure', () => {
           openRound: { origin: 'appeal' },
         }),
         claim(3, itemId(1), 'approved'),
+        claim(4, itemId(1), 'in_review', {
+          supplement: {
+            requestId: 'r1',
+            instanceId: 'i1',
+            requestNo: 1,
+            instructions: '请补充盖章页',
+            requirements: [],
+            requestedByName: null,
+            requestedAt: '2026-04-02T00:00:00.000Z',
+          },
+        }),
       ],
     })
     await expect
       .poll(() => document.querySelector('[data-stat="in_review"]')?.getAttribute('data-count'))
-      .toBe('2')
-    expect(document.querySelector('[data-chip="in_review"]')?.getAttribute('data-count')).toBe('2')
+      .toBe('3')
+    expect(document.querySelector('[data-chip="in_review"]')?.getAttribute('data-count')).toBe('3')
+    // and it is the owner's to-do as well
+    expect(document.querySelector('[data-chip="todo"]')?.getAttribute('data-count')).toBe('1')
   })
 
   // Full marks are what the limited sections add up to; a deduction section

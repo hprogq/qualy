@@ -356,8 +356,11 @@ export const entryLineOf = (
  *
  * Each counts what the head's cell of the same name counts, so a figure at
  * the head and the filter under it never disagree. The owner's head folds
- * appeals into "in review"; a staff reader's head gives re-examinations
- * and appeals a cell of their own, and so a filter of their own.
+ * appeals, and claims a reviewer has asked more of, into "in review", and
+ * so does the owner's filter - a claim asked more of is also a to-do, so
+ * the owner's filters may overlap. A staff reader's head gives
+ * re-examinations and appeals a cell of their own, and so a filter of
+ * their own.
  */
 export type ChipKey =
   | 'all'
@@ -404,7 +407,7 @@ export const chipsFor = (viewer: Viewer): readonly Chip[] => [
     label: m.entryStatusInReview,
     test: (entry) =>
       viewer === 'owner'
-        ? (entry.status === 'in_review' && entry.supplement === null) || contested(entry)
+        ? entry.status === 'in_review' || contested(entry)
         : entry.status === 'in_review' && entry.supplement === null && !contested(entry),
     urgent: false,
   },
@@ -459,10 +462,10 @@ export const headStatsOf = (viewer: Viewer, entries: readonly EntryDto[]): reado
       {
         key: 'in_review',
         label: m.entryStatusInReview,
-        // the same claims the list's "in review" filter holds - a settled
+        // the same claims the list's "in review" filter holds: a settled
         // claim under appeal or re-examination is out with the reviewers
-        // again - plus the ones a reviewer has asked more of, which the
-        // filter keeps under the owner's to-do instead
+        // again, and one a reviewer has asked more of is still in review
+        // while it waits on the owner too
         count: count((e) => e.status === 'in_review' || contested(e)),
         waits: false,
       },
