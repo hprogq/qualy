@@ -2361,6 +2361,9 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
             if (item === null || item.currentRevisionId === null) {
               return yield* refuse('appeal', 'item-not-configured')
             }
+            // a withdrawn question ends the rounds it was asking (§12), and
+            // it does not start new ones; its decided claims stand as they are
+            if (item.status !== 'active') return yield* refuse('appeal', 'item-not-active')
             const live = yield* revisionOf(tenantId, item.currentRevisionId)
             if (live === null) return yield* refuse('appeal', 'item-not-configured')
             const filing = yield* revisionAuthorOf(tenantId, row.revisionId)

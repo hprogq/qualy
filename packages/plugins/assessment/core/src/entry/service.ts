@@ -1778,9 +1778,26 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           // gates per item: the questions being asked now, plus whatever
           // items the page's claims still name (a claim outlives its item)
           const activeItems = yield* activeItemIdsOf(tenantId, batchId)
-          const gatesByItem = yield* gatesFor(as, batchId, membership.id, [
+          const asked = new Set(activeItems)
+          const phaseGates = yield* gatesFor(as, batchId, membership.id, [
             ...new Set([...activeItems, ...pageRows.map((entry) => entry.itemId)]),
           ])
+          // A withdrawn question takes no new work on the claims it leaves
+          // behind - no new version, no new round, no appeal - whatever the
+          // phase opens, and those writes refuse it in these words.
+          const withdrawn: ActionDecision = {
+            allowed: false,
+            layer: 'policy',
+            reason: 'item-not-active',
+          }
+          const gatesByItem = new Map(
+            [...phaseGates].map(([itemId, gates]) => [
+              itemId,
+              asked.has(itemId)
+                ? gates
+                : { ...gates, edit: withdrawn, submit: withdrawn, appeal: withdrawn },
+            ]),
+          )
           const askedByEntry = new Map(
             (yield* openSupplementsOfEntries(
               tenantId,

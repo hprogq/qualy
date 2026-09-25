@@ -407,6 +407,123 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
     expect(result.anew.status).toBe('draft')
   })
 
+  // An appeal on a decided claim is open work on a question that no longer
+  // exists, even though the claim itself stands: the claim keeps its
+  // standing while appealed (§32.21), so the void finds the round by the
+  // round. The claim goes back to standing on the decision it was
+  // contesting, the withdrawn question takes no new appeals, and once it is
+  // restored the claim can be contested again.
+  it('ends an appeal on a decided claim with its question, and takes no new one', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('il-void-appeal')
+          const assessment = yield* Assessment
+          const admin = f.principal(f.admin)
+          const reviewer = f.principal(f.reviewer)
+          const g = yield* runningBatch(f, {
+            profile: [...REVIEW_OPEN, 'assessment.entry.appeal'],
+            escalation: [
+              {
+                id: 'esc',
+                label: '复核',
+                selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
+                quorum: { type: 'any' },
+              },
+            ],
+          })
+          const decided = (who: string, participantId: string, word: 'approve' | 'reject') =>
+            Effect.gen(function* () {
+              const owner = f.principal(who)
+              const entry = yield* assessment.createEntry(
+                f.t,
+                { itemId: g.item.id, participantId, payload: {} },
+                owner,
+              )
+              const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', owner)
+              yield* assessment.decideReview(
+                f.t,
+                sent.currentReviewInstanceId!,
+                word === 'approve'
+                  ? { decision: 'approve' }
+                  : { decision: 'reject', comment: '不足' },
+                reviewer,
+              )
+              return { entryId: entry.id, decision: sent.currentReviewInstanceId!, owner }
+            })
+          const approved = yield* decided(f.s1, g.p1, 'approve')
+          const refused = yield* decided(f.s2, g.p2, 'reject')
+          const appeal = yield* assessment.appealEntry(
+            f.t,
+            approved.entryId,
+            { reason: '等级认定有误' },
+            approved.owner,
+          )
+          yield* assessment.setItemStatus(
+            f.t,
+            g.item.id,
+            { status: 'voided', reason: '题目设置有误' },
+            admin,
+          )
+          const round = one<{ state: string; outcome: string }>(
+            yield* runSql(sql`select state, outcome from review_instances where id = ${appeal.id}`),
+          )
+          const events = (yield* runSql(sql`
+            select kind from review_events where review_instance_id = ${appeal.id}
+            order by created_at, id`)) as { rows: { kind: string }[] }
+          const claim = one<{ status: string; current_review_instance_id: string }>(
+            yield* runSql(sql`
+              select status, current_review_instance_id from entries where id = ${approved.entryId}`),
+          )
+          const queued = (yield* assessment.listReviewInbox(f.t, {}, reviewer)).items.map(
+            (row) => row.instanceId,
+          )
+          const card = (yield* assessment.listMyEntries(f.t, g.batch.id, {}, refused.owner))
+            .entries[0]!
+          const lateAppeal = yield* Effect.exit(
+            assessment.appealEntry(f.t, refused.entryId, { reason: '请复核' }, refused.owner),
+          )
+          yield* assessment.setItemStatus(f.t, g.item.id, { status: 'active' }, admin)
+          const appealedAgain = yield* Effect.exit(
+            assessment.appealEntry(
+              f.t,
+              approved.entryId,
+              { reason: '等级认定有误' },
+              approved.owner,
+            ),
+          )
+          return {
+            approved,
+            appealId: appeal.id,
+            round,
+            events: events.rows.map((row) => row.kind),
+            claim,
+            queued,
+            card: card.capabilities,
+            lateAppeal,
+            appealedAgain,
+          }
+        }),
+      ),
+    )
+
+    expect(result.round).toEqual({ state: 'completed', outcome: 'cancelled' })
+    expect(result.events[result.events.length - 1]).toBe('cancelled-item-voided')
+    expect(result.queued).not.toContain(result.appealId)
+    // the decided claim stands, on the decision it had been contesting
+    expect(result.claim).toEqual({
+      status: 'approved',
+      current_review_instance_id: result.approved.decision,
+    })
+    // the card says so before the press, for every door that would open new work
+    expect(result.card.appeal).toEqual({ state: 'blocked', reason: 'item-not-active' })
+    expect(result.card.edit).toEqual({ state: 'blocked', reason: 'item-not-active' })
+    expect(result.card.submit).toEqual({ state: 'blocked', reason: 'item-not-active' })
+    expect(refusalOf(result.lateAppeal)?.reason).toBe('item-not-active')
+    expect(result.appealedAgain._tag).toBe('Success')
+  })
+
   it('lets a file be read by its story’s people and nobody else, retirement included', async () => {
     const result = ok(
       await run(

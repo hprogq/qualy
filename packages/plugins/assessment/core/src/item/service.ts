@@ -2314,6 +2314,34 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
                   to: 'voided',
                 })
               }
+              // An appeal is open work too, on a decided claim: the claim
+              // keeps the standing it had while it is appealed (§32.21), so
+              // it is not among the entries above, and its round is found
+              // by the round. The round ends as the question's others did;
+              // the claim, which stands, goes back to standing on the
+              // decision the appeal was contesting - left on a cancelled
+              // round, it could never be appealed again once the question
+              // is restored.
+              for (const round of yield* openRoundsOfItem(tenantId, itemId)) {
+                const cancelled = yield* cancelReviewInstance({
+                  tenantId,
+                  instanceId: round.id,
+                  outcome: 'cancelled',
+                })
+                if (!cancelled) continue
+                yield* insertReviewEvent({
+                  tenantId,
+                  reviewInstanceId: round.id,
+                  kind: 'cancelled-item-voided',
+                  actorId: as.userId,
+                })
+                yield* repointReviewRound({
+                  tenantId,
+                  entryId: round.entryId,
+                  from: round.id,
+                  to: round.appealedInstanceId,
+                })
+              }
               yield* deps.recordConfigChange(
                 tenantId,
                 item.batchId,
