@@ -25,6 +25,12 @@ import { COMMON_CN } from './strength-words.ts'
 const ENOUGH_SCORE = 3
 /** a word shorter than this matches inside too many honest passwords */
 const CONTAINED_MIN = 4
+/**
+ * How much of a password the guess estimate reads: its cost grows with the
+ * square of the length and runs on the server's only thread, and a head a
+ * guesser would try early is not rescued by whatever follows it.
+ */
+const ESTIMATED_LENGTH = 64
 
 let factory: ZxcvbnFactory | undefined
 // built on first use: the ranked dictionaries take a moment and some memory
@@ -32,6 +38,7 @@ const estimator = () =>
   (factory ??= new ZxcvbnFactory({
     dictionary: { ...dictionary, 'common-cn': [...COMMON_CN] },
     graphs: adjacencyGraphs,
+    maxLength: ESTIMATED_LENGTH,
   }))
 
 const CJK = /[㐀-鿿]/

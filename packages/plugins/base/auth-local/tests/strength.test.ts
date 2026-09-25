@@ -84,6 +84,14 @@ describe('a password', () => {
     }
   })
 
+  it('is estimated on its first sixty-four characters', () => {
+    // a head a guesser tries first is not rescued by what follows it
+    expect(judged(`${'a'.repeat(64)}Xq7#vL9!mZ2@pR4$wT6^`).unguessable).toBe(false)
+    // and the longest a password may be is still judged, at the same cost
+    expect(judged('1'.repeat(128)).unguessable).toBe(false)
+    expect(judged(`Tide pools at 6am, again ${'1'.repeat(100)}`).unguessable).toBe(true)
+  })
+
   it('is refused when it is built from what Chinese users commonly choose', () => {
     expect(judged('woaini1314woaini').unguessable).toBe(false)
     expect(judged('qq123456qq123456').unguessable).toBe(false)
