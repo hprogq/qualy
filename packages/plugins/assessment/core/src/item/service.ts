@@ -48,7 +48,13 @@ import { kindOf, type NormalizedAtomicSchema } from '@qualy/value-schema'
 import { normalizeScoringAuthoring } from '../scoring/authoring.ts'
 import { policyModeOf } from '../review/chain.ts'
 import type { EntryChannel } from './channels.ts'
-import { validateItemConfig, weightIssues, type Catalogs, type ItemConfigInput } from './config.ts'
+import {
+  ITEMS_PER_BATCH_MOST,
+  validateItemConfig,
+  weightIssues,
+  type Catalogs,
+  type ItemConfigInput,
+} from './config.ts'
 import {
   cancelReviewInstance,
   insertEntryEvent,
@@ -94,6 +100,7 @@ import {
   insertItemRevision,
   mintRecognitionIds,
   itemAloneInPhaseScope,
+  itemCountOf,
   itemHasEntries,
   itemOf,
   itemsOf,
@@ -1458,6 +1465,13 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
             if (!locked) return yield* new BatchNotFound()
             yield* deps.requireRosterReach(as, tenantId, batchId)
             if (locked.status === 'archived') return yield* new BatchReadOnly()
+            // counted under the batch lock, so two creations cannot both
+            // take the last place
+            if ((yield* itemCountOf(tenantId, batchId)) >= ITEMS_PER_BATCH_MOST) {
+              return yield* new ItemConfigInvalid({
+                issues: [{ path: 'batch', reason: 'too-many-items' }],
+              })
+            }
             const heavy = weightIssues(input.config)
             if (heavy.length > 0) return yield* new ItemConfigInvalid({ issues: heavy })
             const batch = yield* oneBatch(tenantId, batchId)

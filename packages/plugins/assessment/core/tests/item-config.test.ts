@@ -52,6 +52,7 @@ import {
 import { hashCanonicalJson } from '@qualy/value-schema/hash'
 import { ScoringAuthoringPolicyCatalog, ScoringRuntimeCatalog } from '../src/plugin.ts'
 import { declarationDriver } from '../src/item/declaration.ts'
+import { ITEMS_PER_BATCH_MOST } from '../src/item/config.ts'
 
 // The configuration gauntlet, end to end: a question is created with its
 // first revision, every later save appends the next one, and a save that
@@ -894,6 +895,63 @@ describe.runIf(postgresAvailable)('item configuration', () => {
     expect(result.items.items).toEqual([])
     expect(issuesOf(result.swollen)).toEqual([{ path: 'config', reason: 'config-too-large' }])
     expect(result.after.items.map((item) => item.currentRevision?.revisionNo)).toEqual([1])
+  })
+
+  // A bound on one configuration bounds nothing while the number of them is
+  // open: the list of a round's questions carries every current revision,
+  // withdrawn ones too, to everybody who can see the round.
+  it('refuses a question past the most one batch may hold, withdrawn ones counted', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('item-count')
+          const assessment = yield* Assessment
+          const { batch, groupId } = yield* draftBatch(f, 'Round')
+          // one short of the most, half of them withdrawn
+          yield* runSql(sql`
+            insert into assessment_items (
+              tenant_id, batch_id, item_type, title, score_group_id,
+              status, voided_at, voided_by, void_reason)
+            select ${f.tenant}, ${batch.id}, 'evidence', 'q' || n, ${groupId},
+                   case when n % 2 = 0 then 'voided' else 'draft' end,
+                   case when n % 2 = 0 then now() end,
+                   case when n % 2 = 0 then ${f.admin}::uuid end,
+                   case when n % 2 = 0 then 'withdrawn' end
+            from generate_series(1, ${ITEMS_PER_BATCH_MOST - 1}) as n`)
+          const create = (title: string) =>
+            Effect.exit(
+              assessment.createItem(
+                f.tenant,
+                batch.id,
+                {
+                  itemType: 'evidence',
+                  title,
+                  scoreGroupId: groupId,
+                  maxEntries: null,
+                  config: studentConfig(),
+                },
+                f.principal,
+              ),
+            )
+          const last = yield* create('the last place')
+          const over = yield* create('one too many')
+          const count = one<{ count: string }>(
+            yield* runSql(
+              sql`select count(*) as count from assessment_items where batch_id = ${batch.id}`,
+            ),
+          ).count
+          return { last, over, count: Number(count) }
+        }),
+      ),
+    )
+    expect(result.last._tag).toBe('Success')
+    expect(tagOf(result.over)).toBe('ASSESSMENT_ITEM_CONFIG_INVALID')
+    expect(
+      errorOf<{ issues?: readonly { path: string; reason: string }[] }>(result.over)?.issues,
+    ).toEqual([{ path: 'batch', reason: 'too-many-items' }])
+    // nothing refused was written
+    expect(result.count).toBe(ITEMS_PER_BATCH_MOST)
   })
 
   it('takes the whole chain grammar, and refuses what is outside it', async () => {

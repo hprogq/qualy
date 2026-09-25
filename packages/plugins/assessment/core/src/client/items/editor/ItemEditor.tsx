@@ -177,6 +177,7 @@ const REFUSED_TITLE = {
   'read-only': m.itemsFailReadOnlyTitle,
   denied: m.itemsFailDeniedTitle,
   gone: m.itemsFailGoneTitle,
+  full: m.itemsFailFullTitle,
   scoring: m.itemsFailScoringTitle,
   incompatible: m.itemsFailIncompatibleTitle,
   other: m.itemsFailOtherTitle,
@@ -188,6 +189,7 @@ const REFUSED_HINT = {
   'read-only': m.itemsFailReadOnlyHint,
   denied: m.itemsFailDeniedHint,
   gone: m.itemsFailGoneHint,
+  full: m.itemsFailFullHint,
   scoring: m.itemsFailScoringHint,
   loose: m.itemsFailLooseHint,
 } as const
@@ -225,7 +227,7 @@ const plainOf = (item: ItemDto | null): Plain | null =>
     : { title: item.title, scoreGroupId: item.scoreGroupId, maxEntries: item.maxEntries }
 
 type Refused =
-  | { kind: 'conflict' | 'voided' | 'read-only' | 'denied' | 'gone' | 'scoring' }
+  | { kind: 'conflict' | 'voided' | 'read-only' | 'denied' | 'gone' | 'full' | 'scoring' }
   | { kind: 'incompatible' | 'other'; words: string }
   | { kind: 'loose'; reasons: readonly string[] }
 
@@ -1060,6 +1062,10 @@ export function ItemEditor({
       }
       if (issues.some((one) => one.reason === 'item-voided')) {
         setRefused({ kind: 'voided' })
+        return
+      }
+      if (issues.some((one) => one.reason === 'too-many-items')) {
+        setRefused({ kind: 'full' })
         return
       }
       const read = problemsFromIssues({ draft, contract, locale, issues })

@@ -247,6 +247,19 @@ export const itemsOf = (tenantId: string, batchId: string) =>
     )
     .pipe(Effect.map((rows) => rows.map((row) => toItem(row as Record<string, unknown>))))
 
+/** how many questions a batch holds, in any state */
+export const itemCountOf = (tenantId: string, batchId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('AssessmentItem')
+        .select((eb) => eb.fn.countAll<string>().as('count'))
+        .where('tenantId', '=', tenantId)
+        .where('batchId', '=', batchId)
+        .executeTakeFirstOrThrow(),
+    )
+    .pipe(Effect.map((row) => Number(row.count)))
+
 export const itemOf = (tenantId: string, itemId: string) =>
   db
     .query((k) =>

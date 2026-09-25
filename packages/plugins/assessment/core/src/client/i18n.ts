@@ -6703,6 +6703,14 @@ const i18n = definePluginMessages({
       id: 'assessment/items/fail-gone-hint',
       defaultMessage: 'Somebody deleted it while it was open here',
     },
+    itemsFailFullTitle: {
+      id: 'assessment/items/fail-full-title',
+      defaultMessage: 'Not added: the round holds as many questions as it can',
+    },
+    itemsFailFullHint: {
+      id: 'assessment/items/fail-full-hint',
+      defaultMessage: 'Delete a draft question the round no longer needs, then add this one',
+    },
     itemsFailScoringTitle: {
       id: 'assessment/items/fail-scoring-title',
       defaultMessage: 'Not saved: scoring is unavailable right now',

@@ -45,6 +45,15 @@ export interface Catalogs {
  */
 export const CONFIG_BYTES_MOST = 256 * 1024
 
+/**
+ * The most questions one batch may hold, drafts and withdrawn ones included.
+ *
+ * The other half of what a list of the batch's questions may weigh: every
+ * question the list carries brings its whole current revision, and a
+ * withdrawn question is listed like any other.
+ */
+export const ITEMS_PER_BATCH_MOST = 200
+
 /** the question's own words, as the participant reads them above the form */
 export const DESCRIPTION_MOST = 2000
 

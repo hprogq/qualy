@@ -397,6 +397,8 @@ const open = (
         reviewAlerts: () => Effect.succeed({ groups: [] }),
         reviewCoverage: () => Effect.succeed({ nodes: [] }),
         createItem: (call: { payload: { config?: unknown; itemType?: unknown } }) => {
+          const refusal = had.refuse?.shift()
+          if (refusal !== undefined) return Effect.fail(refusal)
           had.saved?.push(call.payload)
           return Effect.succeed({ item: { id: ITEM_ID } })
         },
@@ -946,6 +948,24 @@ describe('records and review', () => {
     // the ordinary route keeps one step: the last cannot be taken out
     await page.getByTestId('chain-step').first().click()
     await expect.element(sheet().getByRole('button', { name: '删除步骤' })).toBeDisabled()
+  })
+
+  it('says a round that holds as many questions as it can takes no new one', async () => {
+    await open({
+      refuse: [
+        apiError('ASSESSMENT_ITEM_CONFIG_INVALID', {
+          issues: [{ path: 'batch', reason: 'too-many-items' }],
+        }),
+      ],
+    })
+    await page.getByRole('button', { name: '新建' }).click()
+    await page.getByRole('menuitem', { name: '新建项目' }).click()
+    await expect.element(editor()).toBeVisible()
+    await page.getByRole('textbox', { name: '项目名称' }).fill('第二百零一项')
+    await page.getByRole('radio', { name: '自动计分' }).click()
+    await page.getByTestId('item-save').click()
+    await expect.element(page.getByTestId('save-refused')).toHaveAttribute('data-kind', 'full')
+    expect(document.querySelector('[data-testid="save-failure"]')).toBeNull()
   })
 
   it('walks the save to the first unfinished thing instead of sending', async () => {
