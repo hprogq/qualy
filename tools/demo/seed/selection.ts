@@ -476,11 +476,14 @@ export const runSelection = (input: {
         stages: [oneStage('lead', '学院推免工作组', world.types.college, world.roles.manager)],
       },
     })
-    // The conduct form climbs the school's own ladder: a class lead checks
-    // it; a doubt about it, an appeal against that check or a
-    // re-examination goes up rung by rung - the class's two leads sitting
-    // together, then a counsellor, then the working group, which concludes.
-    // Nobody hands a form down to the people below them.
+    // The conduct form is checked by one of the class's two leads, who are
+    // students themselves. Whatever goes over it again - a doubt passed up,
+    // an appeal, or a re-examination a counsellor or the lead opens, which
+    // starts at the escalation route's first step - comes first to those two
+    // leads sitting together, then to a counsellor, then to the working
+    // group, which concludes. A staff re-examination of a classmate's form
+    // therefore goes to students first; whether students should sit on
+    // these forms at all waits on the owner (docs/notes/demo-data.md).
     const conductPolicy = {
       normal: {
         stages: [oneStage('class', '班级综测负责人审核', world.types.class, world.roles.classLead)],
