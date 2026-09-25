@@ -24,6 +24,7 @@ import { assessmentMessages as m } from '../i18n.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { AwaitingSection } from './AwaitingSection.tsx'
 import { useAwaitingQuery, useReviewQueueQuery } from './queue.ts'
+import { useDraftSweep } from './use-draft.ts'
 import {
   groupByDay,
   groupByItem,
@@ -595,6 +596,7 @@ function Queue({
 }) {
   const query = useApiQuery(assessmentApi)
   const { format, formatError } = useI18n()
+  useDraftSweep()
   const [itemFilter, setItemFilter] = usePageQueryState('item')
   const [unitFilter, setUnitFilter] = usePageQueryState('unit')
   const [search, setSearch] = usePageQueryState('q')

@@ -1,3 +1,4 @@
+import { Effect } from 'effect'
 import { renderScreen as render } from '@qualy/testkit/browser'
 import {
   catalogs as assessmentCatalogs,
@@ -46,6 +47,35 @@ export {
   type FakeManifest,
 } from '@qualy/testkit/browser'
 
+/** who these screens are read by, unless a test says otherwise */
+export const READER_ID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'
+
+const signedIn = {
+  user: {
+    id: READER_ID,
+    displayName: '李老师',
+    businessNo: null,
+    userType: { id: 'type-staff', code: 'staff', name: '教职工' },
+    primaryOrgNode: {
+      id: 'node-root',
+      name: '示例大学',
+      orgType: { id: 'org-school', name: '学校' },
+      lineage: [],
+    },
+    tenant: { id: 'tenant-demo', slug: 'demo', name: '示例大学' },
+  },
+}
+
 export const renderScreen = (
   options: Omit<Parameters<typeof render>[0], 'catalogs' | 'errorMessages'>,
-) => render({ ...options, catalogs, errorMessages })
+) =>
+  render({
+    ...options,
+    // the shell's own read of who is signed in, which a few screens share
+    client: {
+      ...options.client,
+      auth: { getSession: () => Effect.succeed(signedIn), ...options.client['auth'] },
+    },
+    catalogs,
+    errorMessages,
+  })

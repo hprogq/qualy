@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { forgetDraft, readDraft, writeDraft } from '../local-store.ts'
+import { forgetDraft, forgetStaleDrafts, readDraft, writeDraft } from '../local-store.ts'
+import { useSignedInUserId } from '../signed-in.ts'
 
 // Keeping what a reviewer has typed but not sent.
 //
@@ -10,10 +11,26 @@ import { forgetDraft, readDraft, writeDraft } from '../local-store.ts'
 // takes words keeps them in this browser until the act is sent.
 //
 // It is this browser's copy and nothing more: it is never read by the server,
-// never seen by anybody else, and dropped the moment the act goes through.
+// and dropped the moment the act goes through. A browser can be shared, so a
+// draft belongs to whoever typed it: it is kept under their id, put back only
+// for them, and nothing is kept until the page knows who that is.
 
 /** how long the typing rests before it is written down */
 const SETTLE_MS = 500
+
+/** how long an unsent draft is worth keeping: a month of ordinary interruptions */
+const KEEP_DRAFTS_MS = 30 * 24 * 60 * 60 * 1000
+
+/**
+ * Sweeps the unsent words nobody came back for, and any somebody else left
+ * in this browser, once it is known who is reading.
+ */
+export function useDraftSweep(): void {
+  const reader = useSignedInUserId()
+  useEffect(() => {
+    if (reader !== null) void forgetStaleDrafts(KEEP_DRAFTS_MS, reader)
+  }, [reader])
+}
 
 export interface DraftKeeper {
   /** something typed earlier was put back, and the screen should say so */
@@ -50,6 +67,8 @@ export function useLocalDraft<T>({
   onRestore: (value: T) => void
   enabled?: boolean
 }): DraftKeeper {
+  const owner = useSignedInUserId()
+  const key = id === null || owner === null ? null : `${owner}:${id}`
   const [restored, setRestored] = useState(false)
   const [at, setAt] = useState<number | null>(null)
   const [loaded, setLoaded] = useState(false)
@@ -62,12 +81,12 @@ export function useLocalDraft<T>({
   const done = useRef(false)
 
   useEffect(() => {
-    if (id === null || !enabled) return
+    if (key === null || !enabled) return
     let left = false
     setLoaded(false)
     setRestored(false)
     done.current = false
-    void readDraft(id).then((row) => {
+    void readDraft(key).then((row) => {
       if (left) return
       // somebody who started typing while the read was in flight has already
       // said more than the row does
@@ -84,16 +103,16 @@ export function useLocalDraft<T>({
     // `empty` is a predicate over the shape, not state; re-reading on a new
     // closure identity would restore twice
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, enabled])
+  }, [key, enabled])
 
   useEffect(() => {
-    if (id === null || !enabled || !loaded || done.current) return
+    if (key === null || !enabled || !loaded || done.current) return
     const timer = setTimeout(() => {
-      void (empty(value) ? forgetDraft(id) : writeDraft(id, value))
+      void (empty(value) ? forgetDraft(key) : writeDraft(key, value))
     }, SETTLE_MS)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, enabled, loaded, value])
+  }, [key, enabled, loaded, value])
 
   return {
     restored,
@@ -101,12 +120,12 @@ export function useLocalDraft<T>({
     discard: () => {
       setRestored(false)
       setAt(null)
-      if (id !== null) void forgetDraft(id)
+      if (key !== null) void forgetDraft(key)
     },
     forget: () => {
       done.current = true
       setRestored(false)
-      if (id !== null) void forgetDraft(id)
+      if (key !== null) void forgetDraft(key)
     },
   }
 }

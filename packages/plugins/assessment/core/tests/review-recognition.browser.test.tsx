@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
 import { readDraft, writeDraft } from '../src/client/local-store.ts'
-import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { emptyManifest, fakeClient, READER_ID, renderScreen } from './support/screen.tsx'
 
 // The approval collecting an explicit determination.
 //
@@ -144,9 +144,17 @@ const review = (over: Record<string, unknown> = {}) => ({
   ...over,
 })
 
-const open = (fixture: ReturnType<typeof review>, stubs: Record<string, unknown> = {}) =>
+const open = (
+  fixture: ReturnType<typeof review>,
+  stubs: Record<string, unknown> = {},
+  /** who is signed in, when it is not the harness's own reader */
+  reader?: string,
+) =>
   renderScreen({
     client: fakeClient({
+      ...(reader === undefined
+        ? {}
+        : { auth: { getSession: () => Effect.succeed({ user: { id: reader } }) } }),
       app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
       assessment: {
         getBatch: () => Effect.succeed({ batch: batch() }),
@@ -453,7 +461,7 @@ describe('approving with a determination', () => {
   // mounted. What the browser's own store is for is the other way of losing
   // them: the tab reloaded, the browser restarted, the machine slept.
   it('writes unsent words into this browser, and stops once the approval is sent', async () => {
-    const id = `${INSTANCE_ID}:approve`
+    const id = `${READER_ID}:${INSTANCE_ID}:approve`
     const decided = stagedDecide()
     await open(review(), { decideReview: decided })
     await openApprove()
@@ -485,7 +493,7 @@ describe('approving with a determination', () => {
   })
 
   it('puts unsent words back when the page comes up again', async () => {
-    const id = `${INSTANCE_ID}:approve`
+    const id = `${READER_ID}:${INSTANCE_ID}:approve`
     // what the last visit left behind, before this one draws anything
     await writeDraft(id, {
       comment: '等待奖状原件',
@@ -507,6 +515,31 @@ describe('approving with a determination', () => {
     await page.getByTestId('draft-discard').click()
     await expect.poll(() => (comment() as HTMLTextAreaElement).value).toBe('')
     await expect.poll(() => readDraft(id), { timeout: 4_000 }).toBeNull()
+  })
+
+  it('never hands one reader the words another left in this browser', async () => {
+    const { userEvent } = await import('vitest/browser')
+    const comment = () =>
+      page.getByRole('dialog').getByRole('textbox', { name: '审核意见' }).element() as HTMLElement
+    // a colleague on the same machine writes, and leaves without sending
+    const colleague = 'ffffffff-ffff-4fff-8fff-ffffffffffff'
+    const theirs = await open(review(), {}, colleague)
+    await openApprove()
+    await userEvent.fill(comment(), '不同意，奖项级别存疑')
+    // past the half second the typing rests before it is written down
+    await new Promise((resolve) => setTimeout(resolve, 900))
+    await theirs.unmount()
+
+    await open(review())
+    await openApprove()
+    await expect.element(comment()).toBeVisible()
+    // and what they left is not kept for whoever comes next
+    await expect
+      .poll(() => readDraft(`${colleague}:${INSTANCE_ID}:approve`), { timeout: 4_000 })
+      .toBeNull()
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    expect(document.querySelector('[data-testid="draft-note"]')).toBeNull()
+    expect((comment() as HTMLTextAreaElement).value).toBe('')
   })
 
   it('keeps the refusal entirely out of it', async () => {

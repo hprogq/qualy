@@ -10,11 +10,14 @@
 const DATABASE = 'qualy-assessment-local'
 const VERSION = 1
 
-/** unsent words, one row per (round, act) */
+/** unsent words, one row per (person, round, act) */
 export const DRAFTS = 'drafts'
 
 export interface DraftRow {
-  /** `<instanceId>:<act>`; the act names the dialog, never the screen */
+  /**
+   * `<userId>:<instanceId>:<act>`: whose words, then where. The act names the
+   * dialog, never the screen.
+   */
   readonly id: string
   readonly at: number
   readonly value: unknown
@@ -121,24 +124,28 @@ export const writeDraft = (id: string, value: unknown): Promise<void> =>
   )
 
 /**
- * Drops what nobody came back for.
+ * Drops what nobody came back for, and what somebody else left here.
  *
  * A draft is kept until its act is sent, and some acts never are: a colleague
  * takes the round, the filing is withdrawn, the reviewer changes their mind
  * and closes the tab. Nothing else would ever delete those rows, so the store
- * would only grow. Swept once when the workbench opens, best effort like the
- * rest - a sweep that does not happen costs a few kilobytes.
+ * would only grow. And a browser can be shared: whoever signed in before
+ * left their unsent words behind, which are not the next person's to read.
+ * Swept when the review screens open, best effort like the rest - a sweep that
+ * does not happen costs a few kilobytes.
  */
-export const forgetStaleDrafts = (olderThanMs: number): Promise<void> =>
+export const forgetStaleDrafts = (olderThanMs: number, owner: string): Promise<void> =>
   inDrafts(
     'readwrite',
     (store) => {
       const before = Date.now() - olderThanMs
+      const mine = `${owner}:`
       const cursor = store.openCursor()
       cursor.onsuccess = () => {
         const at = cursor.result
         if (at === null) return
-        if (((at.value as DraftRow).at ?? 0) < before) at.delete()
+        const row = at.value as DraftRow
+        if ((row.at ?? 0) < before || !String(row.id).startsWith(mine)) at.delete()
         at.continue()
       }
     },
