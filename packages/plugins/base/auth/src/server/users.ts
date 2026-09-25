@@ -707,6 +707,28 @@ const revokeUserBindings = (tenantId: string, userId: string, actorId: string) =
     )
     .pipe(Effect.map((found) => found.length))
 
+/** the sessions one person opened at doors of these kinds, and no others */
+const deleteSessionsAtDoors = (tenantId: string, userId: string, types: readonly string[]) =>
+  db
+    .query((k) =>
+      types.length === 0
+        ? Promise.resolve([])
+        : k
+            .deleteFrom('Session')
+            .where('tenantId', '=', tenantId)
+            .where('userId', '=', userId)
+            .where('authProviderId', 'in', (eb) =>
+              eb
+                .selectFrom('AuthProvider')
+                .select('id')
+                .where('tenantId', '=', tenantId)
+                .where('type', 'in', [...types]),
+            )
+            .returning('id')
+            .execute(),
+    )
+    .pipe(Effect.map((found) => found.length))
+
 /** a disabled user loses access now, not when their session happens to expire */
 const deleteUserSessions = (tenantId: string, userId: string) =>
   db
@@ -1437,15 +1459,31 @@ export const make = Effect.fn('Iam.users.make')(function* () {
           const user = yield* requireUser(tenantId, userId)
           yield* requireVersion(user, expectedVersion)
           yield* manages(as, user.primaryOrgNodeId!)
-          // an address restated unchanged is not a change: it must not
-          // throw away the proof the person already gave for it
+          // an address or a number restated unchanged is not a change: it
+          // must not throw away the proof the person already gave for it
           const fields = {
             ...input,
             email: email === undefined || email === user.email ? undefined : email,
+            businessNo:
+              input.businessNo === undefined || input.businessNo === user.businessNo
+                ? undefined
+                : input.businessNo,
           }
-          // The recovery account's address is how the tenant gets back in;
-          // it is provisioned with the account and not edited from a screen.
-          if (fields.email !== undefined && user.isSystem) {
+          const doors = (yield* drivers.all).map(({ driver }) => driver)
+          const findingBy = (field: 'email' | 'businessNo') =>
+            doors.filter(
+              (driver) =>
+                driver.resolution.mode === 'user-field' && driver.resolution.field === field,
+            )
+          // The recovery account's way in is provisioned with it and not
+          // edited from a screen: not its address, which is how the tenant
+          // gets back in, and not any other field a door finds it by, which
+          // would open a door for whoever the new value belongs to.
+          if (
+            user.isSystem &&
+            (fields.email !== undefined ||
+              (fields.businessNo !== undefined && findingBy('businessNo').length > 0))
+          ) {
             return yield* new SystemAccountProtected()
           }
           const changingType =
@@ -1464,19 +1502,34 @@ export const make = Effect.fn('Iam.users.make')(function* () {
             if (blocking > 0) return yield* new GrantIncompatible({ grantCount: blocking })
           }
           yield* updateUser(tenantId, user.id, fields)
-          // The address is the name a password door signs in by. Somebody
-          // who proved themselves under the old one keeps no session: if the
-          // address changed because it stopped being theirs, whoever holds
-          // it now must not ride in on what it opened.
-          if (fields.email !== undefined) {
-            const types = (yield* drivers.all).flatMap(({ driver }) =>
-              driver.resolution.mode === 'user-field' && driver.resolution.field === 'email'
-                ? [driver.type]
-                : [],
-            )
-            if (yield* credentialAtDoorsOf(tenantId, user.id, types)) {
+          // A field a door finds people by is a name somebody signs in under.
+          // Whoever proved themselves under the old one keeps no session: if
+          // it changed because it was never theirs, or stopped being theirs,
+          // whoever it named must not ride in on what it opened.
+          for (const field of ['email', 'businessNo'] as const) {
+            if (fields[field] === undefined) continue
+            const finding = findingBy(field)
+            // a door that keeps a credential let in only whoever held one
+            const proving = finding.filter((driver) => driver.binding !== undefined)
+            // a door that keeps nothing took the field itself as the proof
+            const trusting = finding.filter((driver) => driver.binding === undefined)
+            if (
+              yield* credentialAtDoorsOf(
+                tenantId,
+                user.id,
+                proving.map((driver) => driver.type),
+              )
+            ) {
               yield* deleteUserSessions(tenantId, user.id)
+            } else {
+              yield* deleteSessionsAtDoors(
+                tenantId,
+                user.id,
+                trusting.map((driver) => driver.type),
+              )
             }
+          }
+          if (fields.email !== undefined) {
             // a link already sent went to the old address, or proves it:
             // either way it no longer speaks for this person
             yield* retireChallenges(tenantId, user.id, ['verify', 'reset', 'change'])

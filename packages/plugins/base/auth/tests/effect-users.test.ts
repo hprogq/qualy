@@ -67,6 +67,15 @@ const fakeLocalDriver = registerLoginDriver({
   },
 })
 
+// A door shaped like campus single sign-on: it keeps nothing about a person
+// and takes the business number the other server names as the whole proof.
+const fakeCampusDriver = registerLoginDriver({
+  type: 'campus',
+  presentation: { mode: 'redirect', href: () => '/nowhere' },
+  provisioning: { mode: 'tenant-managed', entrance: { label: literal('Campus'), fields: [] } },
+  resolution: { mode: 'user-field', field: 'businessNo' },
+})
+
 const stack = (url: string) =>
   booted(
     authLayer.pipe(
@@ -87,7 +96,9 @@ const stack = (url: string) =>
       Layer.provideMerge(
         Layer.mergeAll(
           databaseFor(url, { entities: authClosure }),
-          fakeLocalDriver.pipe(Layer.provideMerge(loginDriversLayer)),
+          Layer.mergeAll(fakeLocalDriver, fakeCampusDriver).pipe(
+            Layer.provideMerge(loginDriversLayer),
+          ),
           uiLayer,
           Layer.succeed(
             AuthConfig,
@@ -471,8 +482,9 @@ describe.runIf(postgresAvailable).concurrent('users', () => {
           ).id
           const system = one<{ id: string }>(
             yield* runSql(sql`
-              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id, email)
-              values (${f.tenant}, 'System', ${systemType}, ${f.root}, 'root@school.edu')
+              insert into users
+                (tenant_id, display_name, user_type_id, primary_org_node_id, email, business_no)
+              values (${f.tenant}, 'System', ${systemType}, ${f.root}, 'root@school.edu', 'SYS-1')
               returning id`),
           ).id
           // a manager of the whole tree, so authority is not what refuses
@@ -489,23 +501,35 @@ describe.runIf(postgresAvailable).concurrent('users', () => {
           const moved = yield* Effect.result(
             iam.users.update(f.tenant, system, { email: 'other@school.edu' }, 1, f.as),
           )
+          // a campus door finds people by their number: handing the account
+          // a new one would let whoever owns that number in as the tenant
+          const renumbered = yield* Effect.result(
+            iam.users.update(f.tenant, system, { businessNo: 'S0001X' }, 1, f.as),
+          )
           // saying what it already is changes nothing, and is not refused
           yield* iam.users.update(
             f.tenant,
             system,
-            { displayName: 'Platform', email: 'root@school.edu' },
+            { displayName: 'Platform', email: 'root@school.edu', businessNo: 'SYS-1' },
             1,
             f.as,
           )
-          const row = one<{ email: string; display_name: string }>(
-            yield* runSql(sql`select email, display_name from users where id = ${system}`),
+          const row = one<{ email: string; display_name: string; business_no: string }>(
+            yield* runSql(
+              sql`select email, display_name, business_no from users where id = ${system}`,
+            ),
           )
-          return { moved: tagOf(moved), row }
+          return { moved: tagOf(moved), renumbered: tagOf(renumbered), row }
         }),
       )
       const answer = ok(exit)
       expect(answer.moved).toBe('SYSTEM_ACCOUNT_PROTECTED')
-      expect(answer.row).toEqual({ email: 'root@school.edu', display_name: 'Platform' })
+      expect(answer.renumbered).toBe('SYSTEM_ACCOUNT_PROTECTED')
+      expect(answer.row).toEqual({
+        email: 'root@school.edu',
+        display_name: 'Platform',
+        business_no: 'SYS-1',
+      })
     } finally {
       await db.dispose()
     }
@@ -940,6 +964,53 @@ describe.runIf(postgresAvailable).concurrent('the way in written for a person', 
       const answer = ok(exit)
       expect(answer.withoutPassword).toBe(1)
       expect(answer.withPassword).toBe(0)
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('ends the sessions a business number opened when it changes, and only those', async () => {
+    const db = await createTestContext('effect-binding-number-change')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const iam = yield* Iam
+          const local = yield* providerOf(f.tenant)
+          const campus = one_<{ id: string }>(
+            yield* runSql(sql`
+              insert into auth_providers (tenant_id, code, type, name)
+              values (${f.tenant}, 'campus', 'campus', 'Campus') returning id`),
+          ).id
+          yield* runSql(sql`update users set business_no = '2023002' where id = ${f.onLeft}`)
+          const doors = () =>
+            Effect.map(
+              runSql<{ code: string }>(sql`
+                select p.code from sessions s
+                join auth_providers p on p.id = s.auth_provider_id
+                where s.user_id = ${f.onLeft} order by p.code`),
+              (found) => found.rows.map((row) => row.code),
+            )
+          const session = (provider: string, hash: string) =>
+            runSql(sql`
+              insert into sessions (tenant_id, user_id, auth_provider_id, token_hash, expires_at)
+              values (${f.tenant}, ${f.onLeft}, ${provider}, ${hash}, now() + interval '1 day')`)
+          // somebody signed in at the campus door under a number that was
+          // never Ada's, and Ada herself signed in with a password
+          yield* session(campus, 'campus')
+          yield* session(local, 'local')
+          // restating the number is not a change
+          yield* iam.users.update(f.tenant, f.onLeft, { businessNo: '2023002' }, 1, f.as)
+          const restated = yield* doors()
+          yield* iam.users.update(f.tenant, f.onLeft, { businessNo: '2023001' }, 2, f.as)
+          const corrected = yield* doors()
+          return { restated, corrected }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.restated).toEqual(['campus', 'local'])
+      expect(answer.corrected).toEqual(['local'])
     } finally {
       await db.dispose()
     }

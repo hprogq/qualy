@@ -228,10 +228,14 @@ export default function UserDetailHeader() {
           version: record?.version ?? 1,
           displayName,
           userTypeId,
-          businessNo: businessNo.trim() === '' ? undefined : businessNo.trim(),
-          // emptied means taken away; the recovery account's is not the
-          // form's to send at all
-          ...(system ? {} : { email: email.trim() === '' ? null : email.trim() }),
+          // emptied means taken away; the recovery account's address and
+          // number are not the form's to send at all
+          ...(system
+            ? {}
+            : {
+                businessNo: businessNo.trim() === '' ? undefined : businessNo.trim(),
+                email: email.trim() === '' ? null : email.trim(),
+              }),
         },
       }),
     ),
@@ -450,6 +454,7 @@ export default function UserDetailHeader() {
                   <Input
                     id={id}
                     value={businessNo}
+                    disabled={system}
                     onChange={(event) => setBusinessNo(event.target.value)}
                   />
                 )}
