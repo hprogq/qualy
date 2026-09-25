@@ -742,3 +742,30 @@ describe('how much a form may ask and an answer may carry', () => {
     ])
   })
 })
+
+// `constructor` fits the key pattern and is the one lowercase name every
+// object answers to. Read the plain way, a blank field found `Object` there.
+describe('a field keyed by a name every object answers to', () => {
+  const form = {
+    fields: [
+      { key: 'constructor', type: 'text', label: 'Note' },
+      { key: 'proof', type: 'attachment', label: 'Proof', maxCount: 2 },
+    ],
+  }
+
+  it('reads a blank answer as blank, not as what the object inherits', () => {
+    expect(Exit.isSuccess(decode(form, {}))).toBe(true)
+    const attachments = {
+      fields: [{ key: 'constructor', type: 'attachment', label: 'Proof', maxCount: 2 }],
+    }
+    expect(Exit.isSuccess(decode(attachments, {}))).toBe(true)
+    expect(evidenceDriver.attachmentRefs(attachments, {})).toEqual([])
+    expect(evidenceDriver.projectPayload!(form, form, {})).toEqual({})
+  })
+
+  it('refuses the name at save', () => {
+    expect(evidenceDriver.configIssues!(form, batch)).toEqual([
+      { path: 'formConfig.fields[0]', reason: 'field-key-reserved' },
+    ])
+  })
+})

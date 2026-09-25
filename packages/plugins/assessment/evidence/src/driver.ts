@@ -335,6 +335,14 @@ export type EvidenceConfig = typeof evidenceConfig.Type
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /**
+ * What a payload says for one field: its own answer, never something every
+ * object inherits. A field keyed `constructor` read the plain way found
+ * `Object` in a payload that left it blank.
+ */
+const answerOf = (record: Record<string, unknown>, key: string): unknown =>
+  Object.hasOwn(record, key) ? record[key] : undefined
+
+/**
  * One field's type as a value schema - the single truth the same field is
  * decoded, bound and seeded by.
  *
@@ -489,7 +497,7 @@ const decode = (
 
     const decoded: Record<string, unknown> = {}
     for (const entry of form.fields) {
-      const value = record[entry.key]
+      const value = answerOf(record, entry.key)
       const missing = value === undefined || value === null
       if (missing) {
         if (entry.required === true) issues.push({ field: entry.key, reason: 'required' })
@@ -627,7 +635,7 @@ const attachmentRefs = (config: unknown, payload: unknown): readonly AttachmentR
   const refs: AttachmentRef[] = []
   for (const entry of form.fields) {
     if (entry.type !== 'attachment') continue
-    const value = record[entry.key]
+    const value = answerOf(record, entry.key)
     if (!Array.isArray(value)) continue
     for (const item of value) {
       if (typeof item === 'string' && UUID.test(item)) {
@@ -680,7 +688,7 @@ const project = (fromConfig: unknown, toConfig: unknown, payload: unknown): unkn
     const before = was.get(fieldIdentity(entry))
     if (before === undefined) continue
     if (before.field !== undefined && before.field.type !== entry.type) continue
-    const value = record[before.key]
+    const value = answerOf(record, before.key)
     if (value === undefined) continue
     if (entry.type === 'choice' && before.field?.type === 'choice' && typeof value === 'string') {
       const chosen = before.field.options.find((option) => option.value === value)
@@ -744,6 +752,11 @@ const configIssues = (
   for (const [index, entry] of form.fields.entries()) {
     if (dateWindowEmpty(entry, batch)) {
       issues.push({ path: `formConfig.fields[${index}]`, reason: 'date-window-empty' })
+    }
+    // a name every object already answers to - `constructor` is the one the
+    // key pattern admits - would read as an answer where none was given
+    if (entry.key in Object.prototype) {
+      issues.push({ path: `formConfig.fields[${index}]`, reason: 'field-key-reserved' })
     }
     if (
       entry.type === 'attachment' &&

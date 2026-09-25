@@ -80,6 +80,14 @@ const styles = stylex.create({
   },
 })
 
+/**
+ * One field's answer in a payload: its own, never something every object
+ * inherits. A field keyed `constructor` read the plain way found `Object`,
+ * and the attachment list crashed the whole form trying to map it.
+ */
+const own = (record: Record<string, unknown>, key: string): unknown =>
+  Object.hasOwn(record, key) ? record[key] : undefined
+
 export interface EvidenceFieldSpec {
   /** what this field is called across versions of the form; older forms have none */
   readonly id?: string
@@ -276,7 +284,7 @@ export function EvidenceForm({
   }, [valid, onValidityChange])
 
   const numberField = (field: EvidenceFieldSpec) => {
-    const stored = value[field.key]
+    const stored = own(value, field.key)
     const draft = numberDrafts[field.key] ?? (stored === undefined ? '' : String(stored))
     const invalid = draftInvalid(field, draft)
     return (
@@ -329,7 +337,7 @@ export function EvidenceForm({
               {(id) => (
                 <Input
                   id={id}
-                  value={(value[field.key] as string | undefined) ?? ''}
+                  value={(own(value, field.key) as string | undefined) ?? ''}
                   maxLength={field.maxLength}
                   disabled={disabled}
                   onChange={(event) => setField(field.key, event.target.value)}
@@ -342,7 +350,7 @@ export function EvidenceForm({
           // Three states, not two: an optional yes-or-no left alone is
           // unanswered, and a switch has no way to say so. '' is the
           // unanswered state and leaves the payload, like an unpicked choice.
-          const held = value[field.key]
+          const held = own(value, field.key)
           const chosen = held === true ? 'true' : held === false ? 'false' : ''
           return (
             <Field
@@ -402,7 +410,7 @@ export function EvidenceForm({
               {(id) => (
                 <DatePicker
                   id={id}
-                  value={(value[field.key] as string | undefined) ?? null}
+                  value={(own(value, field.key) as string | undefined) ?? null}
                   min={floor === undefined ? undefined : String(floor)}
                   max={ceiling === undefined ? undefined : String(ceiling)}
                   disabled={disabled}
@@ -426,7 +434,8 @@ export function EvidenceForm({
         }
 
         if (field.type === 'choice') {
-          const chosen = typeof value[field.key] === 'string' ? (value[field.key] as string) : ''
+          const chosen =
+            typeof own(value, field.key) === 'string' ? (own(value, field.key) as string) : ''
           const offered = offeredOptions(field)
           // an answer naming an option since retired stays readable: it is
           // listed, disabled, so the words are there and nobody re-picks it
@@ -467,7 +476,7 @@ export function EvidenceForm({
           )
         }
 
-        const cited = (value[field.key] as readonly string[] | undefined) ?? []
+        const cited = (own(value, field.key) as readonly string[] | undefined) ?? []
         const kinds = fileKindLabels(field.accept, (family) =>
           format(
             family === 'image'

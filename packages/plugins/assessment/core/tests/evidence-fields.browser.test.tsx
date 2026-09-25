@@ -133,6 +133,30 @@ const startFiling = async () => {
 }
 
 describe('filing typed evidence', () => {
+  // `constructor` fits the key pattern, and every object answers to it: read
+  // the plain way, a blank attachment field found `Object` and the form
+  // crashed trying to list its files.
+  it('opens a form with a field keyed by a name every object answers to', async () => {
+    const plain = item()
+    const odd = {
+      ...plain,
+      currentRevision: {
+        ...plain.currentRevision,
+        formConfig: {
+          fields: [
+            { key: 'constructor', type: 'attachment', label: '证明材料', maxCount: 3 },
+            { key: 'award-name', type: 'text', label: '奖项名称' },
+          ],
+        },
+      },
+    }
+    await open({
+      listItems: () => Effect.succeed({ items: [odd], capabilities: { canManage: false } }),
+    })
+    await startFiling()
+    await expect.element(page.getByLabelText('奖项名称', { exact: false })).toHaveValue('')
+  })
+
   it('files the choice as its value, the integer as a number, the decimal as its spelling', async () => {
     const created = vi.fn((request: { payload: Record<string, unknown> }) =>
       Effect.succeed({
