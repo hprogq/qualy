@@ -8,6 +8,7 @@ import {
   expectedVersion,
   pageOf,
   pageQuery,
+  positiveIntParam,
   trimmedName,
   uuidInput,
 } from '@qualy/api-kit/schema'
@@ -98,8 +99,12 @@ const versionView = Schema.Struct({
   sharedCount: Schema.optional(Schema.Number),
 })
 
-/** one published version of one function, as its address names it */
-const versionParams = Schema.Struct({ functionId: id, versionNo: Schema.String })
+/**
+ * One published version of one function, as its address names it. The number
+ * is held to the int4 column it is looked up in: `/versions/3000000000` was a
+ * database error, answered 500.
+ */
+const versionParams = Schema.Struct({ functionId: id, versionNo: positiveIntParam })
 
 /** one case for an evaluator; the client id is an echo, not identity */
 const evaluationCase = Schema.Struct({
@@ -439,7 +444,7 @@ export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
       'getFormulaDraftRevision',
       '/assessment/formula-functions/:functionId/draft/revisions/:revisionNo',
       {
-        params: Schema.Struct({ functionId: id, revisionNo: Schema.String }),
+        params: Schema.Struct({ functionId: id, revisionNo: positiveIntParam }),
         success: Schema.Struct({ revision: draftRevisionDetail }),
         error: [FormulaFunctionNotFound, FormulaDraftRevisionNotFound, AccessDenied, BadRequest],
       },

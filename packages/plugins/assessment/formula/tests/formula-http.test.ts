@@ -274,6 +274,22 @@ describe.runIf(postgresAvailable)('the formula api over http', () => {
     expect(listed.status).toBeLessThan(500)
   })
 
+  it('refuses a version or revision number past what its column can hold', async () => {
+    // the columns are int4: a number past them is not "no such version" but
+    // a database error, which answered 500
+    const created = await call('POST', '/api/assessment/formula-functions', {
+      name: 'Out of range',
+    })
+    const id = (created.body as { function: { id: string } }).function.id
+    for (const path of [
+      `/api/assessment/formula-functions/${id}/versions/3000000000`,
+      `/api/assessment/formula-functions/${id}/versions/3000000000/sharing`,
+      `/api/assessment/formula-functions/${id}/draft/revisions/3000000000`,
+    ]) {
+      expect((await call('GET', path)).status, path).toBe(400)
+    }
+  })
+
   it('saves through the real HttpApiClient pipeline, the way the browser does', async () => {
     const created = await call('POST', '/api/assessment/formula-functions', {
       name: 'Client pipeline',
