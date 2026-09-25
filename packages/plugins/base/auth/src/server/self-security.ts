@@ -7,6 +7,7 @@ import type { Principal } from '@qualy/rbac-contract'
 import { SessionsEnded } from '../actions.ts'
 import { actorOf } from './audit-actor.ts'
 import { db } from './db.ts'
+import { retireChallenges } from './email-flows.ts'
 import { SessionNotFound, UserNotFound } from './errors.ts'
 
 // The reader's own security record: where they came in from and when, the
@@ -159,6 +160,10 @@ export const make = Effect.fn('Iam.selfSecurity.make')(function* () {
             return query.returning('id').execute()
           })
           if (scope === 'one' && ended.length === 0) return yield* new SessionNotFound()
+          // Signing somebody out is what a person does who thinks another
+          // has their account: a move to another address asked for in one
+          // of those sessions must not outlive it in that other's inbox.
+          yield* retireChallenges(principal.tenantId, principal.userId, ['change'])
           if (ended.length > 0) {
             yield* audit.record(SessionsEnded, {
               tenantId: principal.tenantId,

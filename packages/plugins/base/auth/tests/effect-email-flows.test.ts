@@ -833,6 +833,66 @@ describe.runIf(postgresAvailable)('an email address', () => {
     }
   })
 
+  it('does not change once its owner signs the other sessions out', async () => {
+    const db = await createTestContext('email-change-signed-out')
+    const mail = memoryMailBackend()
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await Effect.runPromiseExit(
+          Effect.gen(function* () {
+            const flows = yield* EmailFlows
+            const iam = yield* Iam
+            const ada = f.as(f.ada, f.adaHere)
+            const another = () =>
+              Effect.map(
+                runSql<{ id: string }>(sql`
+                  insert into sessions (tenant_id, user_id, auth_provider_id, token_hash, expires_at)
+                  values (${f.tenant}, ${f.ada}, ${f.local}, md5(random()::text) || md5(random()::text),
+                          now() + interval '1 day')
+                  returning id`),
+                (result) => result.rows[0]!.id,
+              )
+            // whoever holds one of Ada's sessions asks to move her address,
+            // and Ada signs that session out, or every session but hers
+            const afterwards = Effect.fn('afterwards')(function* (
+              stolen: string,
+              signOut: Effect.Effect<unknown, unknown, EmailFlows | Iam | Orm>,
+            ) {
+              yield* flows.requestChange(f.as(f.ada, stolen), {
+                newEmail: 'thief@elsewhere.example',
+                locale: 'en',
+              })
+              const link = yield* Effect.promise(() => tokenFrom(mail, 'thief@elsewhere.example'))
+              mail.outbox.length = 0
+              yield* signOut
+              return tagOf(yield* Effect.result(flows.redeemChange(link.token)))
+            })
+            const one = yield* afterwards(
+              f.adaElsewhere,
+              iam.selfSecurity.endSession(ada, f.adaElsewhere),
+            )
+            const others = yield* afterwards(
+              yield* another(),
+              iam.selfSecurity.endOtherSessions(ada),
+            )
+            const email = yield* runSql<{ email: string }>(
+              sql`select email from users where id = ${f.ada}`,
+            )
+            return { one, others, email: email.rows[0]!.email }
+          }).pipe(Effect.provide(stack(db.url, mail.backend))),
+        ),
+      )
+      expect(answer).toEqual({
+        one: 'AUTH_CHALLENGE_INVALID',
+        others: 'AUTH_CHALLENGE_INVALID',
+        email: 'ada@school.edu',
+      })
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('says an address is somebody else’s only as often as it would send a link', async () => {
     const db = await createTestContext('email-change-probe')
     const mail = memoryMailBackend()
