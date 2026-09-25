@@ -929,9 +929,7 @@ export const runSelection = (input: {
           )
         }
         const input_ =
-          said.decision === 'approve'
-            ? { ...approval(view.recognitionForm), ...said }
-            : said
+          said.decision === 'approve' ? { ...approval(view.recognitionForm), ...said } : said
         yield* assessment.decideReview(t, round!, input_, as)
       })
     /** the step judging now approves, unless it is `stop` */
@@ -941,12 +939,7 @@ export const runSelection = (input: {
         if (round === null) return
         const judge = yield* judgeFor(round)
         if (judge === null || judge.round.chain.stageId === stop) return
-        yield* assessment.decideReview(
-          t,
-          round,
-          approval(judge.round.recognitionForm),
-          judge.as,
-        )
+        yield* assessment.decideReview(t, round, approval(judge.round.recognitionForm), judge.as)
       })
     const askAs = (entry: Filed, as: Principal, instructions: string) =>
       Effect.gen(function* () {
