@@ -132,6 +132,8 @@ default-src 'self'; script-src 'self' 'sha256-pKAg+of2SxxrkLJX27pRnCgcyN5Ud1dmuO
   - **不易被猜到**:zxcvbn-ts(`@zxcvbn-ts/core` + `language-common`)score ≥ 3,上面的词作 `userInputs` 一起交给它;
     另追加一份国内常见密码与拼音姓名小词表(`auth-local/src/strength-words.ts`,取自公开的国内高频密码统计,不是泄露库)。
     score 3 的前提是慢哈希(argon2id)与登录限流都在;实测 `Password2024!!!` 也是 3,这是有意接受的边界。
+    **只估计 NFKC 后的前 64 个字符**(2026-09-25 记):估计的开销随长度平方增长,又跑在服务端唯一的线程上;猜测者先试的开头
+    不会因为后面接了什么而变安全。所以前 64 个字符弱、后面再强的密码照样不通过,这是有意的口径。
   - 不强制定期更换;允许粘贴与显示密码。
   - 三项判定只有一份(`auth-local/src/strength.ts`),经登录驱动契约的 `binding.prepare` / `binding.assess` 暴露;核心按用户查
     `secretSubjectOf` 交给驱动,设置时的拒绝(`AUTH_BINDING_CREDENTIAL_INVALID` 带 `checks`)与输入时的 checklist 用的是同一份事实。
@@ -211,7 +213,9 @@ default-src 'self'; script-src 'self' 'sha256-pKAg+of2SxxrkLJX27pRnCgcyN5Ud1dmuO
   当前实现是单租户(`QUALY_DEFAULT_TENANT`,停用或过期即 `TenantUnavailable`);将来按域名区分租户时只换这一层,驱动与 sign-in 都不碰租户概念。
   按域名的实现读请求上下文里**已解析**的 host,不读原始 Host 头——代理层没算进去之前,Host 不是证据。
 - **公开地址也是解析器**(`PublicOriginResolver`,`QUALY_PUBLIC_URL`):**必须是纯 origin**(绝对 http(s),无路径/查询/片段/凭据;生产必须 https),
-  格式错即拒启。开发缺省 `http://localhost:5173`(浏览器就是从那儿来的),生产不设就是「没有」。**回调地址绝不从请求推导**:
+  格式错即拒启。开发缺省 `http://localhost:5173`(浏览器就是从那儿来的),生产不设就是「没有」。**生产必填**(2026-09-25 明确):
+  找回密码、验证邮箱、改邮箱的邮件链接与第三方登录(CAS / GitHub / OIDC)的回跳都用它;不设时进程仍能启动但只告警,
+  任何邮件链接都不签发,会把人送走再送回的入口不能启用、已在用则拒启。`deploy/.env.example` 因此把它写成必填项。**回调地址绝不从请求推导**:
   代理后面请求说什么都行,据此拼出的 callback 是攻击者能指向别处的 callback。
 - **Cookie 仍是 host-only**(`__Host-` 前缀),永不设父域 Domain;公开 Auth URL 第一版保持不带租户段。
 - **驱动声明 `callback`** 即表示「会把人送走、还要送回来」:该类型的入口未配置公开地址时 readiness 不通过(`{kind:'public-origin'}`),
