@@ -662,6 +662,12 @@ export interface LiveEntryRow {
   /** what it currently stands recognised as, where it stands as anything */
   recognitionId: string | null
   recognition: Record<string, unknown> | null
+  /**
+   * A fact the office recorded or an import carried in. Nobody can revise
+   * one, so it is never handed back: it is corrected by voiding and
+   * recording again.
+   */
+  administrative: boolean
 }
 
 /**
@@ -806,6 +812,7 @@ export const liveEntryPayloads = (tenantId: string, itemId: string) =>
         .select([
           'Entry.id as entryId',
           'Entry.status as status',
+          'Entry.source as entrySource',
           'Entry.currentReviewInstanceId as reviewInstanceId',
           'EntryRevision.id as entryRevisionId',
           'EntryRevision.payload as payload',
@@ -857,6 +864,7 @@ export const liveEntryPayloads = (tenantId: string, itemId: string) =>
           one['recognitionValues'] === null || one['recognitionValues'] === undefined
             ? null
             : (one['recognitionValues'] as Record<string, unknown>),
+        administrative: one['entrySource'] === 'record' || one['entrySource'] === 'import',
       }
     })
   })

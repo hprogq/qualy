@@ -1028,6 +1028,129 @@ describe.runIf(postgresAvailable)('item configuration', () => {
     expect(result.logged.cause_revision_id).toBe(result.saved.currentRevision!.id)
   })
 
+  // A recorded fact is nobody's to revise, so "send back what the new form
+  // cannot read" never reaches one: it stays approved and keeps counting,
+  // the same answer the one-claim return gives it.
+  it('never sends a recorded fact back when a save returns what the form cannot read', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('item-compat-record')
+          const assessment = yield* Assessment
+          const { batch, groupId } = yield* draftBatch(f, 'Round')
+          const item = yield* assessment.createItem(
+            f.tenant,
+            batch.id,
+            {
+              itemType: 'evidence',
+              title: '违纪扣分',
+              scoreGroupId: groupId,
+              maxEntries: 1,
+              config: studentConfig({
+                entryChannels: ['participant', 'administrative'],
+                formConfig: { required: [] },
+              }),
+            },
+            f.principal,
+          )
+          const participantOf = (userId: string) =>
+            Effect.map(
+              runSql(sql`
+                select id from batch_participants
+                where batch_id = ${batch.id} and user_id = ${userId}`),
+              (rows) => one<{ id: string }>(rows).id,
+            )
+          // two approved claims whose material has no certificate, one filed
+          // by its participant and one recorded by the office
+          const approved = (userId: string, source: 'self' | 'record') =>
+            Effect.gen(function* () {
+              const participant = yield* participantOf(userId)
+              const entry = one<{ id: string }>(
+                yield* runSql(sql`
+                  insert into entries (tenant_id, batch_id, item_id, participant_id, source, status)
+                  values (${f.tenant}, ${batch.id}, ${item.id}, ${participant}, ${source}, 'draft')
+                  returning id`),
+              ).id
+              const revision = one<{ id: string }>(
+                yield* runSql(sql`
+                  insert into entry_revisions (tenant_id, entry_id, item_id, item_revision_id, revision_no, payload, actor_id, subject_id, source)
+                  values (${f.tenant}, ${entry}, ${item.id}, ${item.currentRevision!.id}, 1,
+                          '{"note":"no certificate here"}',
+                          ${source === 'self' ? userId : f.admin}, ${userId}, ${source})
+                  returning id`),
+              ).id
+              const recognition = one<{ id: string }>(
+                yield* runSql(sql`
+                  insert into entry_recognitions (tenant_id, batch_id, entry_id, entry_revision_id, item_id, item_revision_id, values, source, created_by)
+                  values (${f.tenant}, ${batch.id}, ${entry}, ${revision}, ${item.id},
+                          ${item.currentRevision!.id}, '{}',
+                          ${source === 'self' ? 'system' : 'record'}, ${f.admin})
+                  returning id`),
+              ).id
+              yield* runSql(sql`
+                update entries
+                set current_revision_id = ${revision}, current_recognition_id = ${recognition},
+                    status = 'approved'
+                where id = ${entry}`)
+              return entry
+            })
+          // the office records about somebody else, never about itself
+          const filed = yield* approved(f.admin, 'self')
+          const recorded = yield* approved(f.student, 'record')
+
+          const tighter = studentConfig({
+            entryChannels: ['participant', 'administrative'],
+            formConfig: { required: ['certificate'] },
+          })
+          const asked = yield* Effect.exit(
+            assessment.updateItem(f.tenant, item.id, { config: tighter }, f.principal),
+          )
+          const report = errorOf<{
+            impactToken: string
+            form: { approved: { total: number; incompatible: number } }
+          }>(asked)!
+          yield* assessment.updateItem(
+            f.tenant,
+            item.id,
+            {
+              config: tighter,
+              reason: '新增证书编号',
+              effects: {
+                impactToken: report.impactToken,
+                form: { inReview: 'keep', approved: 'return' },
+              },
+            },
+            f.principal,
+          )
+          const statusOf = (entryId: string) =>
+            Effect.map(
+              runSql(sql`select status from entries where id = ${entryId}`),
+              (rows) => one<{ status: string }>(rows).status,
+            )
+          const eventsOf = (entryId: string) =>
+            Effect.map(
+              runSql(sql`select kind from entry_events where entry_id = ${entryId}`),
+              (rows) => (rows as { rows: { kind: string }[] }).rows.map((row) => row.kind),
+            )
+          return {
+            report: report.form.approved,
+            filed: yield* statusOf(filed),
+            filedEvents: yield* eventsOf(filed),
+            recorded: yield* statusOf(recorded),
+            recordedEvents: yield* eventsOf(recorded),
+          }
+        }),
+      ),
+    )
+    // counted among what stands, never among what the answer would send back
+    expect(result.report).toEqual({ total: 2, incompatible: 1 })
+    expect(result.filed).toBe('needs_revision')
+    expect(result.filedEvents).toEqual(['revision-required'])
+    expect(result.recorded).toBe('approved')
+    expect(result.recordedEvents).toEqual([])
+  })
+
   it('saves without asking when the change disturbs nothing', async () => {
     const result = ok(
       await run(

@@ -993,6 +993,11 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
       const refusals: Incompatible[] = []
       if (driver !== undefined) {
         for (const row of live) {
+          // An administrative fact keeps reading under the form it was
+          // recorded with (§32.62). It is never one of the claims a save can
+          // send back: nobody could answer it, and it would stop counting
+          // until somebody voided it and recorded it again.
+          if (row.administrative) continue
           const carried =
             driver.projectPayload === undefined
               ? row.payload

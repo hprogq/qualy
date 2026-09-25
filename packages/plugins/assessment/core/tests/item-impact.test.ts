@@ -56,6 +56,7 @@ const report = (next: { formConfig: unknown; reviewPolicy: unknown }) =>
         formConfig: FORM,
         recognitionId: null,
         recognition: null,
+        administrative: false,
       },
     ],
     rounds: [
