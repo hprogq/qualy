@@ -274,6 +274,45 @@ describe('the score ledger model', () => {
     ).toMatchObject({ aside: 1, waitingOn: 'a' })
   })
 
+  it('sets nothing aside on a withdrawn question, and nothing decided on a live one', () => {
+    const model = buildLedger({
+      result: {
+        mode: 'provisional',
+        total: '6.00',
+        groups: [group({ groupId: 'g', final: '6.00', raw: '6.00', itemsTotal: '6.00' })],
+        lines: [
+          line({ lineId: 'v', kind: 'item-voided', value: '0.00', itemId: 'old' }),
+          line({
+            lineId: 'l',
+            kind: 'entry',
+            value: '6.00',
+            itemId: 'live',
+            provenance: { entryId: 'counted' },
+          }),
+        ],
+      },
+      items: [
+        item({ id: 'old', scoreGroupId: 'g', status: 'voided' }),
+        item({ id: 'live', scoreGroupId: 'g' }),
+      ],
+      entries: [
+        // decided before the question was withdrawn: kept as they were, and
+        // the question's own line stands for them on the account
+        claim({ id: 'kept-a', itemId: 'old', status: 'approved' }),
+        claim({ id: 'kept-r', itemId: 'old', status: 'rejected' }),
+        claim({ id: 'kept-n', itemId: 'old', status: 'needs_revision' }),
+        claim({ id: 'counted', itemId: 'live', status: 'approved' }),
+        // decided, and not on the account for a reason this reader cannot
+        // see: nothing about it is still to come
+        claim({ id: 'elsewhere', itemId: 'live', status: 'rejected' }),
+      ],
+    })
+    const [old, live] = itemsOf(model)
+    expect(old).toMatchObject({ voided: true, aside: 0, waitingOn: null })
+    expect(old!.lines.map((one) => one.kind)).toEqual(['item-voided'])
+    expect(live).toMatchObject({ voided: false, aside: 0 })
+  })
+
   it('writes a limit that bit under what it held down, and the figure it held it to', () => {
     const model = buildLedger({
       result: {

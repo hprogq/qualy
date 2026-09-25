@@ -178,7 +178,7 @@ export interface LedgerItemView {
   readonly perPerson: string | null
   readonly facts: ItemFacts
   readonly lines: readonly LedgerLineView[]
-  /** claims on the question that are not on the account: undecided, unsent, or waiting on the participant */
+  /** claims on the question that are not on the account: undecided, unsent, or waiting on the participant; none on a withdrawn question */
   readonly aside: number
   /** the one claim waiting on the participant to revise or add material, when there is exactly one */
   readonly waitingOn: string | null
@@ -496,6 +496,11 @@ export const buildLedger = ({
     let aside = 0
     const todo: (string | null)[] = []
     const onAccount = new Set(lines.map((line) => line.entryId))
+    // A withdrawn question is scored as one line of its own, whatever its
+    // claims came to: a claim already decided when it was withdrawn keeps its
+    // decision but is not on the account, and nothing about it is left to
+    // come. So nothing on it stands aside or waits on anybody.
+    const voided = item.status === 'voided' || lines.some((line) => line.kind === 'item-voided')
     for (const claim of claimsOf.get(item.id) ?? []) {
       // one word per claim, in the order it matters to the reader: an open
       // ask first, then a round looking at a settled claim again, then the
@@ -505,8 +510,13 @@ export const buildLedger = ({
       else if (claim.status === 'in_review') pending += 1
       else if (claim.status === 'needs_revision') returned += 1
       else if (isDraft(claim)) drafts += 1
-      if (claim.supplement != null || claim.status === 'needs_revision') todo.push(claim.id ?? null)
-      if (claim.id === undefined || !onAccount.has(claim.id)) aside += 1
+      if (voided) continue
+      const waits = claim.supplement != null || claim.status === 'needs_revision'
+      if (waits) todo.push(claim.id ?? null)
+      // off the account and still to come to something: undecided, unsent,
+      // or waiting on the participant
+      const open = waits || isMoving(claim) || isDraft(claim)
+      if (open && (claim.id === undefined || !onAccount.has(claim.id))) aside += 1
     }
     const channels = item.currentRevision?.entryChannels ?? []
     const derived = lines.some((line) => line.kind === 'derived')
@@ -517,7 +527,7 @@ export const buildLedger = ({
       title: item.title,
       depth,
       cents: lines.reduce((sum, line) => sum + line.cents, 0),
-      voided: item.status === 'voided' || lines.some((line) => line.kind === 'item-voided'),
+      voided,
       derived,
       recordedOnly: channels.includes('administrative') && !channels.includes('participant'),
       each: !derived && item.itemType !== 'constant' ? flat : null,

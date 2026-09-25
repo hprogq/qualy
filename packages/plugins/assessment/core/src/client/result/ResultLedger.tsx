@@ -1533,13 +1533,15 @@ function ItemRow({
   // the claims waiting on the participant: the one claim itself, or the
   // question on the filing page when there are several
   const toWaiting =
-    closed || item.facts.asked + item.facts.returned === 0
+    closed || item.voided || item.facts.asked + item.facts.returned === 0
       ? null
       : waitingOn !== null && onEntryOpen !== undefined
         ? () => onEntryOpen(waitingOn)
         : toItem
   const toAside = item.aside > 0 ? (toWaiting ?? toItem) : null
-  const expandable = item.lines.length >= 2 || (item.lines.length === 1 && toAside !== null)
+  // a withdrawn question is one line that says so, and nothing opens under it
+  const expandable =
+    !item.voided && (item.lines.length >= 2 || (item.lines.length === 1 && toAside !== null))
   const only = item.lines.length === 1 ? item.lines[0] : undefined
   const follow =
     !expandable && only !== undefined && only.entryId !== null && onEntryOpen !== undefined

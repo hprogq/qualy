@@ -700,6 +700,29 @@ describe('the rows of the account', () => {
     expect(itemRow('q2').querySelector('[data-testid="ledger-value"]')?.textContent).toBe('0.00')
   })
 
+  it('opens nothing under a withdrawn question, whatever its claims had come to', async () => {
+    await page.viewport(1440, 900)
+    const paper = normal()
+    // decided before the question was withdrawn: they keep their decisions,
+    // and the account holds the one line for the question instead
+    await screen({
+      ...paper,
+      entries: [
+        ...paper.entries,
+        entry('q13-a', 'q13', 'approved'),
+        entry('q13-b', 'q13', 'rejected'),
+      ],
+    })
+    await expect.element(page.getByTestId('result-total')).toBeVisible()
+    const row = itemRow('q13')
+    expect(row.getAttribute('data-voided')).toBe('true')
+    expect(row.querySelector('[aria-expanded]')).toBeNull()
+    expect(row.querySelector('[data-testid="ledger-lines"]')).toBeNull()
+    expect(row.querySelector('button')).toBeNull()
+    expect(row.querySelector('[data-made]')?.getAttribute('data-made')).toBe('voided')
+    expect(row.querySelector('[data-testid="ledger-value"]')?.textContent).toBe('—')
+  })
+
   it('tells a claim its owner gave up from one that was refused', async () => {
     await page.viewport(1440, 900)
     await screen(normal())
