@@ -305,6 +305,40 @@ describe.runIf(postgresAvailable)('a door drawn by its own image', () => {
     }
   })
 
+  it('is chosen only by somebody who may still arrange doors when the tenant is locked', async () => {
+    const db = await createTestContext('login-icons-reasked')
+    const backend = memoryBackend()
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await run(
+          db.url,
+          backend,
+          Effect.gen(function* () {
+            const icons = yield* LoginIcons
+            const door = one<{ id: string }>(
+              yield* runSql(sql`
+                insert into auth_providers (tenant_id, code, type, name)
+                values (${f.tenant}, 'campus', 'campus', 'Campus') returning id`),
+            ).id
+            // somebody whose grant was withdrawn after the handler let them by
+            const withdrawn: Principal = { tenantId: f.tenant, userId: f.person, sessionId: 's' }
+            const refused = yield* Effect.result(
+              icons.choose(f.tenant, door, { kind: 'builtin', key: 'github' }, withdrawn),
+            )
+            const icon = one<{ icon: unknown }>(
+              yield* runSql(sql`select icon from auth_providers where id = ${door}`),
+            ).icon
+            return { refused: failureOf(refused)?.['_tag'], icon }
+          }),
+        ),
+      )
+      expect(answer).toEqual({ refused: 'ACCESS_DENIED', icon: null })
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('stands on a dark surface with an image of its own, or with its only one', async () => {
     const db = await createTestContext('login-icons-surfaces')
     const backend = memoryBackend()

@@ -15,6 +15,7 @@ import { actorOf } from './audit-actor.ts'
 import { db, lockTenant } from './db.ts'
 import { LoginMethodIconUnavailable, ProviderIconInvalid, ProviderNotFound } from './errors.ts'
 import { iconOf, storedIconOf, uploadsOf, type IconSlot, type StoredIcon } from './login-icons.ts'
+import { MANAGE } from './providers.ts'
 import { checkedSvg, svgVersion } from './svg-icon.ts'
 import { AnonymousTenantResolver } from './tenancy.ts'
 
@@ -124,6 +125,7 @@ const make = Effect.gen(function* () {
   const audit = yield* Audit
   const drivers = yield* LoginDrivers
   const tenants = yield* AnonymousTenantResolver
+  const rbac = yield* Rbac
 
   /** the image a sign-in page draws a door by on a surface, when it has one */
   const open = Effect.fn('Auth.icons.open')(function* (providerCode: string, surface: IconSurface) {
@@ -232,6 +234,10 @@ const make = Effect.gen(function* () {
       transaction(
         Effect.gen(function* () {
           yield* lockTenant(tenantId)
+          // asked again on the locked connection: the handler refused a
+          // caller without it, and a grant withdrawn while this waited for
+          // the lock must not still let the image through
+          yield* rbac.require(as, MANAGE)
           const found = yield* doorById(tenantId, providerId)
           if (!found) return yield* new ProviderNotFound()
           const had = storedIconOf(found.icon)
@@ -285,7 +291,7 @@ export class LoginIcons extends Context.Service<LoginIcons, Effect.Success<typeo
 export const loginIconsLayer: Layer.Layer<
   LoginIcons,
   never,
-  Orm | Storage | Audit | LoginDrivers | AnonymousTenantResolver
+  Orm | Storage | Audit | LoginDrivers | AnonymousTenantResolver | Rbac
 > = Layer.effect(LoginIcons, make)
 
 const local = Api.local(loginIconApiGroup)
@@ -337,7 +343,7 @@ export const loginIconApiHandlers = HttpApiBuilder.group(local, 'loginIcon', (ha
         const icons = yield* LoginIcons
         const rbac = yield* Rbac
         const principal = yield* CurrentUser
-        yield* rbac.require(principal, 'auth.provider.manage')
+        yield* rbac.require(principal, MANAGE)
         const ticket = yield* icons.prepareUpload(
           principal.tenantId,
           params.providerId,
@@ -362,7 +368,7 @@ export const loginIconApiHandlers = HttpApiBuilder.group(local, 'loginIcon', (ha
         const icons = yield* LoginIcons
         const rbac = yield* Rbac
         const principal = yield* CurrentUser
-        yield* rbac.require(principal, 'auth.provider.manage')
+        yield* rbac.require(principal, MANAGE)
         return yield* icons.choose(principal.tenantId, params.providerId, payload.icon, principal)
       }),
     ),
