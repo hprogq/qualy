@@ -491,6 +491,55 @@ describe.runIf(postgresAvailable)('a link presented while the tenant is busy', (
       await db.dispose()
     }
   })
+
+  it('answers a reset for an address nobody holds without waiting for the row', async () => {
+    const db = await createTestContext('email-reset-unlocked')
+    const mail = memoryMailBackend()
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await Effect.runPromiseExit(
+          Effect.gen(function* () {
+            const flows = yield* EmailFlows
+            // asked once before, so its counters already stand: a counter's
+            // first row names the tenant and waits for its row like any
+            // insert that does, which is not what this is about
+            yield* flows.requestReset({ email: 'nobody@school.edu', locale: 'en' })
+            const withDb = yield* withDatabase
+            const held = yield* Deferred.make<void>()
+            const release = yield* Deferred.make<void>()
+            const holder = yield* withDb(
+              transaction(
+                Effect.gen(function* () {
+                  yield* lockTenant(f.tenant)
+                  yield* Deferred.succeed(held, undefined)
+                  yield* Deferred.await(release)
+                }),
+              ),
+            ).pipe(Effect.forkChild)
+            yield* Deferred.await(held)
+            const asking = yield* flows
+              .requestReset({ email: 'nobody@school.edu', locale: 'en' })
+              .pipe(Effect.forkChild)
+            // watched rather than timed out: a query waiting on a row lock
+            // cannot be interrupted, only let go
+            const meanwhile = yield* Fiber.await(asking).pipe(Effect.timeoutOption('3 seconds'))
+            yield* Deferred.succeed(release, undefined)
+            yield* Fiber.join(holder)
+            yield* Fiber.join(asking)
+            // somebody who is there is still sent a link once the row is free
+            yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en' })
+            const link = yield* Effect.promise(() => tokenFrom(mail, 'ada@school.edu'))
+            return { answered: Option.isSome(meanwhile), linked: link.token.length > 0 }
+          }).pipe(Effect.provide(stack(db.url, mail.backend))),
+        ),
+      )
+      expect(answer).toEqual({ answered: true, linked: true })
+      expect(mail.outbox.map((message) => message.to)).toEqual(['ada@school.edu'])
+    } finally {
+      await db.dispose()
+    }
+  })
 })
 
 describe.runIf(postgresAvailable)('asking for a reset where a challenge can be asked for', () => {

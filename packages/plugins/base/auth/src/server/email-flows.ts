@@ -579,6 +579,14 @@ export const emailFlowsLayer: Layer.Layer<
             }
           }),
         )
+        // Looked up before anything is locked: an address nobody holds, which
+        // is what a stream of made-up ones is, costs nobody the tenant's row,
+        // the queue every structural write waits in. Whoever it names is
+        // asked about again inside the lock.
+        const candidate = yield* withDb(personByVerifiedEmail(tenantId, normalized)).pipe(
+          Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
+        )
+        if (candidate === undefined) return
         const issued = yield* inLock(
           tenant.value.id,
           Effect.gen(function* () {
