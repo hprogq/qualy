@@ -2600,10 +2600,17 @@ export const make = Effect.fn('Assessment.make')(function* () {
           ]
     })
 
+    // Only a code a batch still accepts can lapse. One the product stopped
+    // offering (UNOFFERED_CODES) is never carried by any assignment again, so
+    // reading its absence as a withdrawal would report every batch that ever
+    // took it on as withdrawn by the organization, and clearing it would
+    // delete the inert rows the ruling keeps.
     const lapsed = sources.flatMap((source): AccessChange[] => {
       const assignment = assignments.find((row) => row.assignmentId === source.roleAssignmentId)
       const live = new Set(assignment?.codes ?? [])
-      const gone = source.accepted.filter((code) => !live.has(code))
+      const gone = source.accepted.filter(
+        (code) => BATCH_STAFF_CODES.includes(code as never) && !live.has(code),
+      )
       return gone.length === 0
         ? []
         : [

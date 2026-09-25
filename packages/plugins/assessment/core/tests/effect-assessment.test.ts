@@ -991,6 +991,117 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     expect(of(afterRevoke)).toEqual([])
   })
 
+  it('reads a code the product stopped offering as neither a withdrawal nor something to clear', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('unoffered-acceptance')
+        const assessment = yield* Assessment
+        const tutorRole = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into roles (tenant_id, code, name, kind, status, permission_mode,
+                               assignable, eligibility_mode, anchor_mode)
+            values (${f.tenant}, 'tutor', 'Tutor', 'org', 'active', 'explicit', true,
+                    'unrestricted', 'unrestricted')
+            returning id`),
+        ).id
+        yield* runSql(sql`
+          insert into role_permissions (tenant_id, role_id, permission_id)
+          select ${f.tenant}, ${tutorRole}, id from permissions
+           where code in ('assessment.review.process', 'assessment.entry.record')`)
+        const tutor = one<{ id: string }>(
+          yield* runSql(sql`
+            insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+            values (${f.tenant}, 'Tutor', ${f.teacherType}, ${f.gradeA}) returning id`),
+        ).id
+        yield* runSql(sql`
+          insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+          values (${f.tenant}, ${tutor}, ${tutorRole}, ${f.gradeA}, 'subtree')`)
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'Older round',
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            import: { orgNodeIds: [f.gradeA], userTypeIds: [f.studentType] },
+          },
+          f.principal,
+        )
+        // somebody the batch appointed itself, whose record was left holding
+        // nothing but a code no longer offered
+        yield* assessment.addStaff(
+          f.tenant,
+          batch.id,
+          { userIds: [f.t1], orgNodeIds: [f.class1], roleId: tutorRole },
+          f.principal,
+        )
+        const sourceOf = (userId: string) =>
+          Effect.map(
+            runSql(sql`
+              select id, role_assignment_id from batch_access_sources
+               where batch_id = ${batch.id} and subject_id = ${userId}`),
+            (result) => one<{ id: string; role_assignment_id: string }>(result),
+          )
+        const adminSource = yield* sourceOf(f.admin)
+        const appointed = yield* sourceOf(f.t1)
+        // what a batch accepted before the two codes left the catalog: the
+        // canonical administrator carried publication.manage in, and the
+        // appointment carried nothing else
+        yield* runSql(sql`
+          insert into batch_access_source_permissions (tenant_id, source_id, permission_code)
+          values (${f.tenant}, ${adminSource.id}, 'assessment.publication.manage')`)
+        yield* runSql(sql`
+          delete from batch_access_source_permissions where source_id = ${appointed.id}`)
+        yield* runSql(sql`
+          insert into batch_access_source_permissions (tenant_id, source_id, permission_code)
+          values (${f.tenant}, ${appointed.id}, 'assessment.entry.proxy')`)
+        const untouched = yield* assessment.previewAccessSync(f.tenant, batch.id, {}, f.principal)
+
+        // and a real withdrawal beside them, so clearing actually runs
+        yield* runSql(sql`
+          delete from role_permissions rp using permissions p
+          where p.id = rp.permission_id and rp.role_id = ${tutorRole}
+            and p.code = 'assessment.entry.record'`)
+        const withdrawn = yield* assessment.previewAccessSync(f.tenant, batch.id, {}, f.principal)
+        const cleared = yield* assessment.applyAccessSync(
+          f.tenant,
+          batch.id,
+          { accept: [] },
+          f.principal,
+        )
+        const after = yield* assessment.previewAccessSync(f.tenant, batch.id, {}, f.principal)
+        const kept = rowsOf<{ permission_code: string }>(
+          yield* runSql(sql`
+            select sp.permission_code from batch_access_source_permissions sp
+              join batch_access_sources s on s.id = sp.source_id
+             where s.batch_id = ${batch.id}
+               and sp.permission_code in ('assessment.publication.manage', 'assessment.entry.proxy')
+             order by sp.permission_code`),
+        ).map((row) => row.permission_code)
+        const appointment = one<{ revoked: boolean }>(
+          yield* runSql(sql`
+            select revoked_at is not null as revoked from role_grants
+             where id = ${appointed.role_assignment_id}`),
+        )
+        return { untouched, withdrawn, cleared, after, kept, appointment }
+      }),
+    )
+    const { untouched, withdrawn, cleared, after, kept, appointment } = ok(exit)
+    expect(untouched.lapsedTotal).toBe(0)
+    expect(untouched.items.filter((change) => change.kind === 'lapsed')).toEqual([])
+    // the withdrawal names only what the organization took back
+    expect(withdrawn.lapsedTotal).toBe(1)
+    expect(
+      withdrawn.items
+        .filter((change) => change.kind === 'lapsed')
+        .flatMap((change) => change.permissions),
+    ).toEqual(['assessment.entry.record'])
+    expect(cleared.cleared).toBe(1)
+    expect(after.lapsedTotal).toBe(0)
+    // the inert rows stay, and the appointment that holds only one stands
+    expect(kept).toEqual(['assessment.entry.proxy', 'assessment.publication.manage'])
+    expect(appointment.revoked).toBe(false)
+  })
+
   it('keeps what a stage is waiting for, and drops it once the stage has a time', async () => {
     const exit = await run(
       db.url,
