@@ -20,7 +20,7 @@ QUALY_DEMO_DATABASE_URL=postgres://qualy:qualy@localhost:5434/qualy_demo pnpm de
 `demo:check` 清点下文每个演示身份应当看到的情况，任何一项为 0 就以非零退出，这时不要打快照。生成时带了
 `--stage` 或 `--migration-state` 的，检查时带上同样的参数：它据此不要求那次生成本来就不会有的申诉、复查与流程调整。
 「辅导员能从名单打开参评人」一项等待裁决（docs/assessment-design.md §30 第 12 条），只打印、不判失败。
-它还核对库里没有只要文字的补件、没有不带文件的答复。
+它还核对库里没有只要文字的补件、没有不带文件的答复、没有与原件相同的答复，也没有落在 23:00 至 08:00 的审核动作。
 得到 `data/demo-baseline/qualy-demo.dump` 与 `storage.tar.gz`，上传到服务器的 `/opt/qualy/demo-baseline/`。
 
 - 两个密码都只来自环境变量，不进仓库，也不写进任何文档。2026-09-25 之前生成的基线里，四个演示身份的密码是仓库里公开的值，

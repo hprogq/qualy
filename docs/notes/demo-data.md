@@ -19,9 +19,21 @@
    「心理健康主题班会」……），权重沿用真实频率。
 
 人员全部虚构：姓名由姓氏与名字库随机组合且不重名，学号用不存在的学院代码 `099`。证明材料是
-`tools/demo/render-assets.ts` 用 HTML 渲染的示例证书（虚构印章、「演示材料 · 非真实证明」水印、不含人名），
-每条申报一个存储对象，靠硬链接共用字节。除证书、名单、时长记录外，还有补件与推免材料用的获奖名单公示、
-组委会获奖通知、赛事成绩册、省级立项通知、推免申请表、思想品德考核表（本人填写部分）、班主任签字页与盖章成绩单；
+`tools/demo/render-assets.ts` 按 `tools/demo/pictures.ts` 里的 HTML 渲染的示例图片（虚构印章、「演示材料 ·
+非真实证明」水印、不含人名），每条申报一个存储对象，靠硬链接共用字节。
+
+- **各学期共用的图不带日期**（`PROOF_ASSETS`：参与证明、获奖证书、成绩报告、时长记录、献血证等）：同一张图要撑起
+  2024 年春到 2026 年秋的申报，写哪个日期都会与多数申报矛盾；`pictures.test.ts` 守住这一点。
+- **只有某段经历或场景引用的图按那条申报写日期**：23-24-1 的时长记录与盖章服务证明、25-26-1 的图书馆与马拉松记录、
+  24-25-1 被维持驳回的那张证书（活动在上学期、证书在本学期颁发）、推免的赛区选拔赛证书等；`episodes.test.ts`
+  核对经历用的图，日期都在所属学期的材料期内、且早于该学期开始填报（被维持驳回的那条除外，它本就因时间被驳回）。
+- **推免资格材料各有「齐全」与「缺一样」两种**（`tools/demo/seed/papers.ts`）：签了字 / 没签字的申请表、带 / 不带
+  班主任意见的考核表、盖章 / 未盖章的成绩单、完整 / 截在分数之前的四级成绩报告（完整的有三份，分数各不相同，申报的
+  分数与所附报告一致）。约两成申请人某份材料缺一样；审核时齐全的通过，缺一样的被要求补上那一样或因此驳回（申请表
+  只补件不驳回，驳回就等于退出推免），补件答复上传的是齐全的那份。
+- 补件答复用的图与原件不同：获奖名单公示、更正公告、组委会通知、赛事成绩册、省级立项通知、任务书成员分工页、
+  活动通知参与分值页、盖章的实践鉴定意见、班主任签字页等。
+
 `node tools/demo/render-assets.ts <名字…>` 只重画点名的几张，其余已提交的图片字节不变。
 
 ## 怎么写进去
@@ -44,12 +56,20 @@
 - **一个学期是一条事件队列**（`tools/demo/seed/queue.ts`）：提交、审核、驳回改正、上提会签、补充材料、申诉、
   阶段推进按故事时间排序后依次执行，真实执行顺序与故事一致，UUIDv7 的排序因此也一致。
 - 登录记录是遥测，改写之后按「每人每天第一次操作之前」用 SQL 批量写入，地址取 RFC 5737 文档段。
-- 审核动作只落在白天：两步之间的间隔若把下一步推到 23:00 至次日 08:00，就顺延到当天或次日 09:00 后
-  （`awake`，保留分钟数，同一夜里被推迟的几步先后不变）。学生提交与答复不受此限，晚上提交本来就是常态。
+- 审核动作只落在白天：两步之间的间隔若把下一步推到 23:00 至次日 08:00，就推迟到当天或次日 09 点后，保留分钟数
+  （`awake`）。同一夜里被推迟的两步可能前后对调（01:50 → 09:50，02:07 → 09:07）；同一条申报的各步是串行排程的，
+  不受影响。学生提交与答复不受此限，晚上提交本来就是常态。`demo:check` 数 23:00 至 08:00 之间的工作人员动作
+  （审核决定、合议票、补件要求、复查、退回、迁移、重新认定、撤回），不为 0 即失败。
 - **写出来的材料都真实存在**。补充材料一律要一个文件（`tools/demo/seed/asks.ts`：一项必填的文件，外加可选的
-  「补充说明」），答复经产品的上传接口附上对应图片，文字只作说明；`demo:check` 核对库里没有只要文字的补件、
-  没有不带文件的答复。申诉只带理由（接口本来也只收理由），理由不说「附……」「已补充」；申诉确实需要新材料时，
-  由申诉轮里正在审的人发一次补件、学生上传后再裁决。修改重交上传的也是与说明相符的另一张图。
+  「补充说明」），答复经产品的上传接口附上对应图片，文字只作说明。随机流程只在有专属补件的题目上补件（校园文化活动、
+  社会实践、竞赛、科研、团体的文体获奖与四种推免资格材料），而且只向补件说得通的申报要：团体获奖才要成绩册，资格材料
+  只向缺那一样的要。经历与场景的补件单列在 `SCRIPTED_ASKS`，各自写明针对的原件。`demo:check` 核对库里没有只要文字
+  的补件、没有不带文件的答复、没有与该轮所审原件逐字节相同的答复；`asks.test.ts` 在生成前就核对同一件事。
+- 申诉只带理由（接口本来也只收理由）。随机申诉的理由在 `APPEAL_REASONS`，经历与场景的在 `SCRIPTED_APPEALS`，
+  代码只按名字引用；两者都不说「附……」「已补充」「补交」。申诉确实需要新材料时，由申诉轮里正在审的人发一次补件、
+  学生上传后再裁决。
+- 修改重交保留原有附件，只做说明里说的那件事：换一张重新拍摄的照片、在原件旁补上一页，或按证书改正填写的内容。
+  随机流程里被驳回后重交的申报不换材料，说明写「已核对材料，请重新审核」，不声称补了什么。
 - 播种进程内把上传频率配额调高（三年压在一小时里跑完，一个活跃学生会远超每小时 20 次），只改内存里的装配，
   不动 qualy.yml 与 lock。
 
@@ -72,7 +92,7 @@
 
 每学期按真实时间线：D-3 建批次；D 开始填报；D+1 辅导员导入学业、全科优秀、不及格、青年大学习、寝室、
 学生干部；D+2 另一位辅导员录入早晚自习缺勤与通报；D..D+4 学生晚间提交；班级负责人随交随审，
-约 7% 驳回（多半在截止前改正重交）、约 2.5% 上提到三位专业负责人会签、约 1% 要求补充材料；D+5 截止；
+约 7% 驳回（多半在截止前重交）、约 2.5% 上提到三位专业负责人会签、不到 1% 要求补充材料（只在有专属补件的题目上）；D+5 截止；
 D+9 开放申诉（条数取真实各学期），D+11 截止；D+13 归档（归档前断言没有未结束的审核轮）。
 
 审核链：班级综测负责人（每班两位）→ 上提与申诉走「三位专业负责人会签 → 年级负责人 → 辅导员终审」。
@@ -88,18 +108,20 @@ D+9 开放申诉（条数取真实各学期），D+11 截止；D+13 归档（归
 
 演示学生的每个学期除了随机的申报，还按 `tools/demo/seed/episodes.ts` 写出几条固定经历，每条都走真实服务：
 
-| 学期    | 经历                                                                                                                                                 |
-| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 23-24-1 | 班级负责人要求上传获奖名单公示页截图，学生上传后通过；只附了志愿平台截图的申报被驳回，补上盖章的服务证明重交通过                                     |
-| 23-24-2 | 班级负责人上提，三位专业负责人合议后辅导员认定；上传错证书被驳回的竞赛经申诉，申诉中按专业负责人的要求补交证书后改判通过                             |
-| 24-25-1 | 被驳回的活动申诉后维持原决定；辅导员录入的寝室扣分五天后撤回，成绩单留「已撤销」行                                                                   |
-| 24-25-2 | 按公示名单被下调名次的竞赛由辅导员发起复查，复查中学生上传更正后的获奖名单，名次调回；督查把参与分 0.2 重新认定为 0.5                                |
-| 25-26-1 | 综测负责人退回修改、学生补上赛事成绩册后重交通过；同一次图书馆志愿服务报了两条且都已通过，督查以重复申报撤销后一条；试行题目被作废，改在正式题目重报 |
-| 25-26-2 | 竞赛题改为「班级审核 → 辅导员确认」并迁移在审条目（reroute）；一条活动两次驳回、第三轮通过                                                           |
+| 学期    | 经历                                                                                                                                                                             |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 23-24-1 | 报了获奖却只附参与证明的活动，班级负责人要求上传获奖名单公示页，学生上传并注明所在行后通过；只附了志愿平台时长记录的申报被驳回，在原件旁补上盖章的服务证明重交通过               |
+| 23-24-2 | 证书只写参赛队获奖，班级负责人上提，三位专业负责人合议后辅导员认定；附了另一场比赛证书被驳回的竞赛经申诉，申诉中按要求上传本场的获奖证书后改判通过                               |
+| 24-25-1 | 证书在本学期颁发、活动却在上学期举办的获奖被驳回，申诉后维持原决定；辅导员录入的寝室扣分五天后撤回，成绩单留「已撤销」行                                                         |
+| 24-25-2 | 按公示名单被认定为二等奖的竞赛，由辅导员依组委会更正公告发起复查，复查中学生上传更正公告，改认定为一等奖；督查把参与分 0.2 重新认定为 0.5                                        |
+| 25-26-1 | 综测负责人退回修改、学生在证书旁补上赛事成绩册后重交通过；同一次图书馆志愿服务以时长记录和服务证明各报一条且都已通过，督查以重复申报撤销后一条；试行题目被作废，改在正式题目重报 |
+| 25-26-2 | 竞赛题改为「班级审核 → 辅导员确认」并迁移在审条目（reroute）；一条活动先因照片模糊、再因名次与证书不符两次驳回，重拍、改正后第三轮通过                                           |
+
+经历用的每张图都与申报一致：团体获奖附参赛队证书，个人获奖附个人证书，时长记录与服务证明的日期都在该学期的材料期内。
 
 `QUALY_DEMO_EPISODES=first` 把全部经历压进第一个学期，配合 `QUALY_DEMO_TERMS=1` 约 20 分钟跑完，用来改这些经历。
 
-生成后抽样（2026-09-26 凌晨基线，完整生成约 117 分钟）：六个学期总分中位数 72.2–75.4（真实年级 71–75），品德 9.8–10.8、学业 57.9–60.7、文体 3–3.4。
+生成后抽样（2026-09-26 基线，完整生成约 120 分钟）：六个学期总分中位数 71.4–75.3（真实年级 71–75），品德 9.8–10.8、学业 57.2–60.9、文体 3–3.6。
 
 ## 推免批次（进行中）
 
@@ -109,8 +131,9 @@ D+9 开放申诉（条数取真实各学期），D+11 截止；D+13 归档（归
 
 时间相对于生成当天：报名与材料提交从 16 天前开始，默认停在「材料审核」（`--stage=entry|review|appeal`）。
 「材料审核」阶段同时开放申诉与复查：单项审核结论一出，申请人即可申诉，辅导员也可替其复查。
-开放第 10 天综测负责人给竞赛与科研加了一级「专业负责人初审」并把在审条目迁到新一轮（`reroute-all`、从头审），
-大数据专业没有任命专业负责人，那几条随即无人可审，告警面板可见；`--migration-state=before` 把这一步留给现场演示。
+开放第 10 天综测负责人给竞赛与科研加了一级「专业负责人初审」并把在审条目迁到新一轮（`reroute-all`、从头审）。
+大数据专业没有任命专业负责人：一名大数据专业申请人在调整前两天提交的一条竞赛还在辅导员处，迁移后停在专业负责人初审、
+无人可审，综测负责人的告警面板列出它（`demo:check` 经产品的告警接口计数）；`--migration-state=before` 把这一步留给现场演示。
 另有一人转班待对账、若干补充材料中、待审与草稿。
 
 审核链：思想品德考核表由本班班级综测负责人（学生干部）审核，两位任一；它的复核链是「班级综测小组评议（本班两位
@@ -127,14 +150,15 @@ D+9 开放申诉（条数取真实各学期），D+11 截止；D+13 归档（归
 
 另一种安排供裁决时比较：普通链由辅导员审，复核链只设辅导员复核与推免工作组；班级合议只留在综测批次的活动类申报上。
 
-报名名单取成绩靠前的 72 人，其中必有演示学生与其同班 5 人；另取 6 名外班申请人（不含大数据专业）。
-`tools/demo/seed/selection.ts` 的「what the demonstration accounts open onto」一节按固定时刻写出：
+报名名单取成绩靠前的 72 人，其中必有演示学生与其同班 5 人，以及一名大数据专业学生；另取 6 名外班申请人
+（不含大数据专业）。`tools/demo/seed/selection.ts` 的「what the demonstration accounts open onto」一节按固定时刻写出：
 
-- **演示学生**：申请表、四级已通过；两条竞赛一条通过后被督查按团体项目重新认定（本批次里的纠错经历），一条被辅导员
-  以「市级赛区证书」驳回后申诉，推免工作组在申诉中要求上传组委会获奖通知，学生已上传，停在工作组；两条科研一条
-  被辅导员要求上传省级立项通知书（原证明是校级立项）、学生上传后随流程调整迁到专业负责人初审再通过，一条被综测
-  负责人退回修改、补充后重交通过；思想品德考核表被班级负责人以模板为由驳回，申诉后在班级合议中；成绩单被要求上传
-  盖章页的清晰照片，待答复；一条竞赛存为草稿未提交；截止前一晚补交的一条竞赛在辅导员处待审。
+- **演示学生**：申请表、四级已通过；两条竞赛一条附参赛队证书、却按个人申报，通过后被督查按团体项目重新认定（本批次里的
+  纠错经历），一条附的是赛区选拔赛证书，被辅导员以「与申报的省部级不符」驳回后申诉，推免工作组在申诉中要求上传组委会
+  关于赛区获奖认定的通知，学生已上传，停在工作组；两条科研一条被辅导员要求上传省级立项通知书（原证明是校级立项）、
+  学生上传后随流程调整迁到专业负责人初审再通过，一条因成果名称与登记号和登记证书不一致被综测负责人退回修改，按证书
+  改正后重交通过；思想品德考核表被班级负责人以模板为由驳回，申诉后在班级合议中；成绩单没有教务处盖章，被要求上传
+  盖章页，待答复；一条竞赛存为草稿未提交；截止前一晚补交的一条竞赛在辅导员处待审。
 - **班级负责人**（演示学生所在班）：本班 6 份考核表（演示学生与 5 名同学）都在其审核范围。演示学生那份在申诉合议中，
   另一席已投票，只差其本人一票（合议票在形成意见前对所有人保密，界面上看到的只是合议中）；一份未经任何人审；
   一份另一位负责人要求上传班主任签字页、学生已上传，回到待审；一份被其本人驳回（缺签字页）后申诉，另一席在申诉中
@@ -143,9 +167,10 @@ D+9 开放申诉（条数取真实各学期），D+11 截止；D+13 归档（归
 - **辅导员**（演示辅导员也是导入人）：待审、补件往返、驳回、上提、复查都由其本人做出；成绩导出漏了一名申请人，
   其学业成绩由辅导员按教务处补发的证明单独录入，同一人的成绩单缺盖章页，辅导员要求补件、学生已上传，回到其待审；
   一名申请人的品德与文体导入时误用上一学年均值，被其撤回（留「已撤销」行）并重新录入。
-- **综测负责人**：推免工作组的待审里有演示学生的申诉（申诉中补件已答复）、一条三轮（驳回重交、流程调整迁移、补件后上提）
-  的竞赛、一条辅导员发起的复查、一份班级合议分歧的考核表；另有一条由其要求补件、学生尚未答复；以「综测督查」身份
-  重新认定过演示学生的一条竞赛；此前处理过的上提留在其审核记录里。
+- **综测负责人**：推免工作组的待审里有演示学生的申诉（申诉中补件已答复）、一条三轮（证书照片反光被驳回、重拍重交、
+  流程调整迁移、补件后上提）的竞赛、一条辅导员发起的复查、一份班级合议分歧的考核表；另有一条由其要求补件、学生尚未
+  答复；告警面板里有一条无人可审的大数据专业竞赛；以「综测督查」身份重新认定过演示学生的一条竞赛；此前处理过的上提
+  留在其审核记录里。
 
 ## 演示账号
 
@@ -156,13 +181,122 @@ D+9 开放申诉（条数取真实各学期），D+11 截止；D+13 归档（归
 
 `pnpm demo:check` 在分数分布之后逐项清点上面每个账号应当看到的情况（`tools/demo/situations.ts`）：待审一律经产品自己的
 收件箱接口数（逐页读完），工作人员做过的事按做事的人计数（复查按发起人、撤回按撤回人、补件按提出人），其余读库；
-任何一项为 0 就列出并以非零退出。它接受与 `demo:seed` 相同的 `--stage` 与 `--migration-state`：停在「报名与材料提交」
+任何一项为 0 就列出并以非零退出。在这之前它先核对整库：申报与所站的轮一致、没有落后于最新认定的申报、没有无人指向的
+在途轮、没有只要文字的补件、没有不带文件的答复、没有与原件逐字节相同的答复、没有 23:00 至 08:00 的工作人员动作，
+任何一项不为 0 同样失败。它接受与 `demo:seed` 相同的 `--stage` 与 `--migration-state`：停在「报名与材料提交」
 的基线没有申诉、复查与流程调整，把流程调整留给现场演示的基线没有迁移过的条目，这些项照常打印、标注 `not seeded at this stage`，
 不算缺失。
 
 辅导员一项另问产品能否从名单打开演示学生。名单与参评人详情现在只对名册管理与重新认定开放，辅导员只有录入与审核
 权限，这一项是 0；录入权限的持有者是否读成绩账页待用户裁决（docs/assessment-design.md §30 第 12 条），所以它单列为
 「待裁决」，只打印不判失败，演示辅导员的角色不因此加权限。裁决后若放开，把它改回必需项。
+
+## 核对：当前基线的 `demo:check`
+
+2026-09-26 早晨的基线（`pnpm demo:reset-db` → `pnpm demo:seed`，默认 `--stage=review`、做了流程调整，生成 7189 秒，
+退出码 0 → `pnpm demo:check`，退出码 0 → `pnpm demo:snapshot --clear-runtime`）。`demo:check` 的输出原样如下
+（只去掉了开头一行开发用主密钥的告警）：
+
+```text
+2023-2024学年第一学期综合素质测评 [archived] 1009 people, sampled 85
+  total     p10 65.22 · median 75.32 · p90 82.62
+  品德行为表现   p10 10.00 · median 10.80 · p90 11.80
+  学业表现     p10 51.58 · median 60.72 · p90 68.19
+  文体表现     p10 3.00 · median 3.40 · p90 5.00
+2023-2024学年第二学期综合素质测评 [archived] 1007 people, sampled 84
+  total     p10 65.83 · median 72.49 · p90 78.57
+  品德行为表现   p10 10.00 · median 10.80 · p90 11.30
+  学业表现     p10 50.30 · median 57.87 · p90 64.29
+  文体表现     p10 3.00 · median 3.60 · p90 5.20
+2024-2025学年第一学期综合素质测评 [archived] 1002 people, sampled 84
+  total     p10 62.99 · median 73.86 · p90 80.81
+  品德行为表现   p10 10.00 · median 10.80 · p90 11.80
+  学业表现     p10 48.42 · median 59.60 · p90 65.35
+  文体表现     p10 3.00 · median 3.20 · p90 5.60
+2024-2025学年第二学期综合素质测评 [archived] 998 people, sampled 84
+  total     p10 63.61 · median 71.41 · p90 76.71
+  品德行为表现   p10 10.00 · median 10.80 · p90 11.80
+  学业表现     p10 49.61 · median 57.20 · p90 62.74
+  文体表现     p10 3.00 · median 3.20 · p90 6.30
+2025-2026学年第一学期综合素质测评 [archived] 982 people, sampled 82
+  total     p10 62.73 · median 71.72 · p90 79.83
+  品德行为表现   p10 10.00 · median 10.80 · p90 11.80
+  学业表现     p10 48.19 · median 57.22 · p90 65.83
+  文体表现     p10 3.00 · median 3.00 · p90 4.60
+2025-2026学年第二学期综合素质测评 [archived] 984 people, sampled 82
+  total     p10 61.29 · median 73.61 · p90 80.27
+  品德行为表现   p10 9.00 · median 9.80 · p90 10.00
+  学业表现     p10 48.74 · median 60.85 · p90 67.76
+  文体表现     p10 3.00 · median 3.00 · p90 4.50
+2027届推荐优秀应届本科毕业生免试攻读硕士学位研究生综合评价 [active] 984 people, sampled 82
+  total     p10 0.00 · median 0.00 · p90 0.00
+  学业成绩     p10 0.00 · median 0.00 · p90 0.00
+  素质拓展     p10 0.00 · median 0.00 · p90 0.00
+  资格材料     p10 0.00 · median 0.00 · p90 0.00
+claims off their verdict 0 · behind their determination 0 · open rounds nobody stands on 0
+asks for no file 0 · answers without the file 0 · answers repeating the filed picture 0
+staff decisions between 23:00 and 08:00 0
+
+what the demonstration accounts open onto (selection at review):
+  student       3  past: an ask for more material, answered with the file
+  student       4  past: refused, revised, filed again and approved
+  student       1  past: three rounds or more
+  student      13  past: judged by a panel
+  student       4  past: appeal against a refusal, granted
+  student       1  past: appeal against a refusal, not granted
+  student       2  past: an ask for material inside an appeal or a re-examination
+  student       1  past: re-examined by staff
+  student       1  past: re-determined upwards
+  student       1  past: approval revoked by re-determination
+  student       1  past: recorded fact taken back
+  student       1  past: claim on a voided question
+  student       1  past: a revoked line on their own result
+  student       1  past: a voided question on their own result
+  student       1  past: returned for revision by staff
+  student       1  past: moved onto a changed route
+  student       1  running: returned for revision by staff
+  student       1  running: moved onto a changed route
+  student       7  running: claims approved
+  student       2  running: claims in_review
+  student       2  running: claims rejected
+  student       1  running: claims draft
+  student       2  running: appeal under way
+  student       1  running: ask for more material open
+  student       2  running: an ask answered with the file
+  student       1  running: a determination corrected outside any round
+  student       1  running: class panel sitting
+  class-lead    4  running: waiting in the inbox
+  class-lead    1  running: panel with the other seat voted
+  class-lead    2  running: back after an answered ask
+  class-lead    2  running: appeal at the class panel
+  class-lead    2  running: rounds concluded
+  lead          4  running: waiting in the inbox
+  lead          2  running: appeal waiting
+  lead          1  running: re-examination waiting
+  lead          4  running: waiting after earlier rounds
+  lead          2  running: waiting after an answered ask
+  lead          1  running: waiting after a split panel
+  lead          2  running: own ask still out
+  lead          1  running: rounds nobody can review, in the alerts
+  lead         11  running: rounds concluded
+  lead          1  running: determinations corrected outside any round
+  counsellor   38  running: waiting in the inbox
+  counsellor    7  running: back after an answered ask
+  counsellor   12  running: own ask still out
+  counsellor   18  running: refusals
+  counsellor   14  running: escalations
+  counsellor    1  running: re-examinations opened
+  counsellor    2  running: facts recorded by hand
+  counsellor    1  running: recorded facts taken back
+  counsellor    0  running: opens a participant from the roster  (awaiting a ruling, not required)
+
+awaiting a ruling (docs/assessment-design.md §30, item 12: whether the recording permission reads the roster):
+  counsellor: running: opens a participant from the roster = 0
+```
+
+同一套代码另跑过两次短生成（`QUALY_DEMO_TERMS=1 QUALY_DEMO_EPISODES=first`），`demo:check` 均以 0 退出：默认阶段一次，
+各项都不为 0；`--stage=entry` 一次，申诉、复查、班级合议、流程调整与无人可审告警这些项标为 `not seeded at this stage`，
+没有缺失项。
 
 ## 本地预览
 
