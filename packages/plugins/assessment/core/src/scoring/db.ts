@@ -27,6 +27,20 @@ export const participantRowByUser = (tenantId: string, batchId: string, userId: 
     )
     .pipe(Effect.map((row) => (row === undefined ? null : { id: row.id, status: row.status })))
 
+/** the ids of one participant's administrative claims (record and import) */
+export const administrativeEntryIdsOf = (tenantId: string, participantId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('Entry')
+        .select('id')
+        .where('tenantId', '=', tenantId)
+        .where('participantId', '=', participantId)
+        .where('source', 'in', ['record', 'import'])
+        .execute(),
+    )
+    .pipe(Effect.map((rows) => new Set(rows.map((row) => row.id))))
+
 /** a question the audit evaluates: active, configured, with the round it belongs to */
 export interface AuditableItem {
   id: string

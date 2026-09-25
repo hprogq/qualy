@@ -24,7 +24,8 @@ import { evaluateEntry, type EvaluationFact } from './evaluate.ts'
 import { countEvaluation, mapResultFailure, mapRuntimeFailure } from './failure-boundary.ts'
 import { frozenCalculatorOf, readScoringPlan } from './plan.ts'
 import type { ScoringPlan } from './plan.ts'
-import { participantEntries, participantRowByUser } from './db.ts'
+import { administrativeEntryIdsOf, participantEntries, participantRowByUser } from './db.ts'
+import type { AccountReading } from '../entry/db.ts'
 
 // The two halves of scoring, joined here and nowhere else: facts are
 // gathered, amounts are evaluated against each item's frozen plan, and only
@@ -95,7 +96,8 @@ export interface ScoringDeps {
   ) => Effect.Effect<void, AccessDenied>
   /**
    * The staff account's door: administrative reach over this round's
-   * roster, or re-determining authority over this participant. The same
+   * roster, or re-determining or recording authority over this
+   * participant, and which of their claims that reader may open. The same
    * refusal whether the id names nobody or somebody out of reach.
    */
   readonly requireAccountReach: (
@@ -103,7 +105,7 @@ export interface ScoringDeps {
     tenantId: string,
     batchId: string,
     participantId: string,
-  ) => Effect.Effect<void, AccessDenied>
+  ) => Effect.Effect<AccountReading, AccessDenied>
   readonly itemTypes: ReadonlyMap<string, { readonly interaction: string }>
   readonly catalogs: {
     readonly aggregators: ReadonlyMap<string, { readonly kind: string }>
@@ -468,6 +470,24 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
     },
   )
 
+  /**
+   * An account as read by somebody who may open only some of its claims.
+   *
+   * Every line and amount stays - the total is the account's, not the
+   * reader's - but a line no longer points at a claim this reader could not
+   * open, so the ledger offers no way through that answers with a refusal.
+   */
+  const linkingOnly = (account: MyResultView, openable: ReadonlySet<string>): MyResultView => ({
+    ...account,
+    lines: account.lines.map((line) => {
+      const { provenance, ...rest } = line
+      if (provenance?.entryId === undefined || openable.has(provenance.entryId)) return line
+      return provenance.calculatorRef === undefined
+        ? rest
+        : { ...rest, provenance: { calculatorRef: provenance.calculatorRef } }
+    }),
+  })
+
   const getParticipantResult: ScoringMethods['getParticipantResult'] = Effect.fn(
     'Assessment.getParticipantResult',
   )(function* (tenantId, batchId, participantId, as) {
@@ -476,16 +496,18 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
       Effect.gen(function* () {
         const batch = yield* oneBatch(tenantId, batchId)
         if (!batch) return yield* new BatchNotFound()
-        // Administering this roster, or re-determining over this person
-        // (ruling of 2026-09-25 #33), is the whole authorization: a reader
-        // without either learns nothing about who is on somebody else's
-        // roster, not even whether the id they guessed is one.
-        yield* deps.requireAccountReach(as, tenantId, batchId, participantId)
+        // Administering this roster, or re-determining or recording over
+        // this person, is the whole authorization: a reader without any of
+        // them learns nothing about who is on somebody else's roster, not
+        // even whether the id they guessed is one.
+        const reading = yield* deps.requireAccountReach(as, tenantId, batchId, participantId)
         // scoped to this batch by the query itself, so an id from another
         // round reads as no such participant rather than as somebody else's
         const participant = yield* oneParticipant(tenantId, batchId, participantId)
         if (participant === null) return yield* new ParticipantNotFound()
-        return yield* accountOf(tenantId, batchId, participant.id, runtime)
+        const account = yield* accountOf(tenantId, batchId, participant.id, runtime)
+        if (reading === 'whole') return account
+        return linkingOnly(account, yield* administrativeEntryIdsOf(tenantId, participant.id))
       }).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error))),
     )
   })

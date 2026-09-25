@@ -5,6 +5,7 @@ import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-data
 import { Assessment } from '../src/server/index.ts'
 import { twoFactScoring } from './support/catalogs.ts'
 import { appointStaff } from './support/correction.ts'
+import { recordItem } from './support/administrative.ts'
 import { errorOf, GATED, ok, one, run, runningBatch, seed } from './support/round.ts'
 
 // What re-determining reads (ruling of 2026-09-25 #33): the power to change
@@ -144,6 +145,103 @@ describe.runIf(postgresAvailable)('what re-determining reads', () => {
     }
     expect(result.status).toBe('rejected')
     expect(result.told).toContain('approval-revoked')
+  })
+
+  it('opens everybody the roster lists to a recorder, and only the claims a recorder may open', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rr-recorder')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: OPEN })
+          const owner = f.principal(f.s1)
+          // one claim the student filed and had approved, one fact the
+          // office recorded about them
+          const filed = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            owner,
+          )
+          const sent = yield* assessment.setEntryStatus(f.t, filed.id, 'in_review', owner)
+          yield* assessment.decideReview(
+            f.t,
+            sent.currentReviewInstanceId!,
+            { decision: 'approve' },
+            f.principal(f.reviewer),
+          )
+          const deduction = yield* recordItem(f, g.batch.id)
+          const recorded = yield* assessment.createEntry(
+            f.t,
+            { itemId: deduction.id, participantId: g.p1, payload: {}, note: '校发〔2026〕9 号' },
+            f.principal(f.recorder),
+          )
+
+          const as = f.principal(f.recorder)
+          const roster = yield* assessment.listParticipants(f.t, g.batch.id, { limit: 50 }, as)
+          // every person listed opens
+          const opened = yield* Effect.forEach(roster, (row) =>
+            Effect.exit(assessment.getParticipant(f.t, g.batch.id, row.id, as)),
+          )
+          const claims = yield* assessment.listParticipantEntries(f.t, g.batch.id, g.p1, {}, as)
+          const account = yield* assessment.getParticipantResult(f.t, g.batch.id, g.p1, as)
+          // and the administrator, for the same account
+          const whole = yield* assessment.getParticipantResult(
+            f.t,
+            g.batch.id,
+            g.p1,
+            f.principal(f.admin),
+          )
+          const far = yield* Effect.exit(assessment.getParticipant(f.t, g.batch.id, g.p3, as))
+          const farAccount = yield* Effect.exit(
+            assessment.getParticipantResult(f.t, g.batch.id, g.p3, as),
+          )
+          const farClaims = yield* Effect.exit(
+            assessment.listParticipantEntries(f.t, g.batch.id, g.p3, {}, as),
+          )
+          const linked = (lines: readonly { provenance?: { entryId?: string } }[]) =>
+            lines.flatMap((line) =>
+              line.provenance?.entryId === undefined ? [] : [line.provenance.entryId],
+            )
+          return {
+            roster: roster.map((row) => row.id),
+            opened,
+            claims: claims.entries.map((row) => row.entry.id),
+            linked: linked(account.lines),
+            wholeLinked: linked(whole.lines),
+            total: account.total,
+            wholeTotal: whole.total,
+            lines: account.lines.length,
+            wholeLines: whole.lines.length,
+            far,
+            farAccount,
+            farClaims,
+            filed: filed.id,
+            recorded: recorded.id,
+            p1: g.p1,
+            p3: g.p3,
+          }
+        }),
+      ),
+    )
+    expect(result.roster).toContain(result.p1)
+    expect(result.roster).not.toContain(result.p3)
+    for (const opened of result.opened) expect(Exit.isSuccess(opened)).toBe(true)
+    // the fact the office wrote, not the claim the student filed
+    expect(result.claims).toEqual([result.recorded])
+    // the whole account, with a way through only to what opens
+    expect(result.total).toBe(result.wholeTotal)
+    expect(result.lines).toBe(result.wholeLines)
+    expect(result.wholeLinked).toEqual(expect.arrayContaining([result.filed, result.recorded]))
+    expect(result.linked).toEqual([result.recorded])
+    const refusals: readonly Exit.Exit<unknown, unknown>[] = [
+      result.far,
+      result.farAccount,
+      result.farClaims,
+    ]
+    for (const refused of refusals) {
+      expect(errorOf<{ _tag: string }>(refused)?._tag).toBe('ACCESS_DENIED')
+    }
   })
 
   it('reads no accounts for somebody holding neither door', async () => {

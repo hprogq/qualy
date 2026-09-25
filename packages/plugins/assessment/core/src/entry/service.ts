@@ -87,6 +87,7 @@ import {
   revisionAttachmentsOf,
   setEntryState,
   staffReachesParticipant,
+  type AccountReading,
   type EntryRow,
   type ParticipantAnchor,
 } from './db.ts'
@@ -585,8 +586,9 @@ export interface EntryDeps {
     batchId: string,
   ) => Effect.Effect<void, AccessDenied>
   /**
-   * Who may read one participant's claims as staff: administering the
-   * roster, or re-determining over this participant. The same refusal
+   * Who may read one participant's claims as staff, and which: administering
+   * the roster or re-determining over this participant reads every claim,
+   * recording over them reads the administrative ones. The same refusal
    * whether the id names nobody or somebody out of reach.
    */
   readonly requireAccountReach: (
@@ -594,7 +596,7 @@ export interface EntryDeps {
     tenantId: string,
     batchId: string,
     participantId: string,
-  ) => Effect.Effect<void, AccessDenied>
+  ) => Effect.Effect<AccountReading, AccessDenied>
   /** the same visibility every batch read passes through */
   readonly requireBatchVisible: (
     tenantId: string,
@@ -2215,13 +2217,17 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
         if (!batch) return yield* new BatchNotFound()
         // one refusal for an id out of reach and an id naming nobody, so a
         // reader without reach cannot learn whether an id is on this roster
-        yield* deps.requireAccountReach(as, tenantId, batchId, participantId)
+        const reading = yield* deps.requireAccountReach(as, tenantId, batchId, participantId)
         const participant = yield* participantOf(tenantId, batchId, participantId)
         if (participant === null) return yield* new ParticipantNotFound()
+        // the claims this reader may open one by one (`mayReadEntry`), and
+        // no others: a page that listed the rest would offer rows that
+        // answer with a refusal
         const rows = yield* entriesOfParticipantPage({
           tenantId,
           batchId,
           participantId,
+          administrativeOnly: reading === 'administrative',
           after: key === undefined ? undefined : [key[0]!, key[1]!],
           limit: limit + 1,
         })

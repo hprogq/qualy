@@ -626,6 +626,13 @@ export const participantOf = (tenantId: string, batchId: string, participantId: 
     )
 
 /**
+ * How much of one participant a member of staff reads once they may open
+ * them: the whole account and every claim, or the account and only the
+ * administrative claims (record and import).
+ */
+export type AccountReading = 'whole' | 'administrative'
+
+/**
  * Whether this member of staff may act on this participant, with the whole
  * of the M1 authority arithmetic plus the half M1 could not ask: scope.
  *
@@ -1123,6 +1130,8 @@ export const entriesOfParticipantPage = (input: {
   tenantId: string
   batchId: string
   participantId: string
+  /** the administrative claims only, for a reader who may open no others */
+  administrativeOnly?: boolean
   after?: readonly [string, string] | undefined
   limit: number
 }) =>
@@ -1135,6 +1144,9 @@ export const entriesOfParticipantPage = (input: {
         .where('tenantId', '=', input.tenantId)
         .where('batchId', '=', input.batchId)
         .where('participantId', '=', input.participantId)
+        .$if(input.administrativeOnly === true, (narrowed) =>
+          narrowed.where('source', 'in', ['record', 'import']),
+        )
         .orderBy('createdAt')
         .orderBy('id')
         .limit(input.limit)

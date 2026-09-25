@@ -83,6 +83,7 @@ import {
   participantOf,
   staffReachesParticipant,
   userActivityPage,
+  type AccountReading,
   type AdministrativeEntryRow,
 } from '../entry/db.ts'
 import {
@@ -2495,11 +2496,16 @@ export const make = Effect.fn('Assessment.make')(function* () {
     })
 
   /**
-   * Who may read one participant's account and claims: whoever administers
-   * the roster, and whoever may re-determine claims in this round over this
-   * participant (ruling of 2026-09-25 #33) - the power to change a result
-   * carries the least reading it takes to exercise it, and no more of the
-   * roster than the holder's accepted authority covers. An id naming nobody
+   * Who may open one participant, and how much of them they read.
+   *
+   * The same people the roster reading lists (rosterReadingOf), so nobody is
+   * listed who cannot then be opened: whoever administers the roster, and
+   * whoever may re-determine or record over this participant in this round.
+   * Administering and re-determining read the whole account and every claim
+   * (ruling of 2026-09-25 #33: the power to change a result carries the
+   * reading it takes). Recording reads the account and the administrative
+   * claims only, the same claims `mayReadEntry` lets it open (#21): writing
+   * facts about somebody is not reading what they filed. An id naming nobody
    * and an id out of reach get the same refusal.
    */
   const requireAccountReach = (
@@ -2507,25 +2513,27 @@ export const make = Effect.fn('Assessment.make')(function* () {
     tenantId: string,
     batchId: string,
     participantId: string,
-  ): Effect.Effect<void, AccessDenied> =>
+  ): Effect.Effect<AccountReading, AccessDenied> =>
     Effect.gen(function* () {
       const roster = yield* Effect.result(requireRosterReach(as, tenantId, batchId))
-      if (Result.isSuccess(roster)) return
+      if (Result.isSuccess(roster)) return 'whole' as const
       const participant = yield* dieQuery(withDb(participantOf(tenantId, batchId, participantId)))
-      const reaches =
-        participant !== null &&
-        (yield* dieQuery(
+      if (participant === null) return yield* roster.failure
+      const covers = (permissionCode: string) =>
+        dieQuery(
           withDb(
             staffReachesParticipant({
               tenantId,
               batchId,
               userId: as.userId,
-              permissionCode: REDETERMINE,
+              permissionCode,
               participant,
             }),
           ),
-        ))
-      if (!reaches) return yield* roster.failure
+        )
+      if (yield* covers(REDETERMINE)) return 'whole' as const
+      if (yield* covers('assessment.entry.record')) return 'administrative' as const
+      return yield* roster.failure
     })
 
   /**
@@ -4666,9 +4674,10 @@ export const make = Effect.fn('Assessment.make')(function* () {
       function* (tenantId, batchId, participantId, as) {
         const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
         if (!batch) return yield* new BatchNotFound()
-        // administering the roster, or re-determining over this person, is
-        // the door; a reader without either learns nothing about who is on
-        // it, not even whether an id they hold is one of them
+        // the same door as the roster that listed them: administering it, or
+        // re-determining or recording over this person; a reader without any
+        // of them learns nothing about who is on it, not even whether an id
+        // they hold is one of them
         yield* requireAccountReach(as, tenantId, batchId, participantId)
         const participant = yield* dieQuery(
           withDb(oneParticipant(tenantId, batchId, participantId)),
