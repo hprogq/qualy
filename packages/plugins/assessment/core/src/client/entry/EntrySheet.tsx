@@ -82,6 +82,15 @@ export function EntrySheet({
   const oneWay = resubmit !== undefined && resubmit.state !== 'available'
   const declared = item.itemType === 'declaration'
   const returned = entry.status === 'needs_revision'
+  // Sent back, the way on is to rewrite it and hand it in from the form. But
+  // editing and submitting are two phase gates: where the phase has shut
+  // editing and left submitting open, the form is not a way in, and handing
+  // it in unchanged from here is the one press the server will take.
+  const resubmitHere =
+    !returned ||
+    declared ||
+    (entry.capabilities.edit.state !== 'available' &&
+      entry.capabilities.submit.state === 'available')
 
   return (
     <>
@@ -121,14 +130,14 @@ export function EntrySheet({
                 can={entry.capabilities.edit}
                 busy={busy}
                 // sent back, rewriting it is the way on, and handing it in
-                // again happens from the form - never straight from here,
+                // again happens from the form rather than straight from here,
                 // where it would go back unchanged
-                variant={returned ? 'default' : 'outline'}
+                variant={returned && !resubmitHere ? 'default' : 'outline'}
                 label={format(entry.status === 'draft' ? m.myEntriesResume : m.entryEdit)}
                 onPress={onEdit}
               />
             )}
-            {!(returned && !declared) && (
+            {resubmitHere && (
               <Offered
                 can={entry.capabilities.submit}
                 busy={busy}

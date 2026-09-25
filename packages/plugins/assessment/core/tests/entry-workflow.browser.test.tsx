@@ -2704,6 +2704,57 @@ describe('the phase gate on the paper', () => {
       .toHaveAttribute('data-tone', 'destructive')
   })
 
+  // Editing and handing in are two gates. A claim sent back is rewritten and
+  // handed in from the form - but with editing shut and handing in open the
+  // form is no way in, and the one press the server would take needs a key.
+  it.each([
+    ['shut', shut, 1],
+    ['open', openGate, 0],
+  ] as const)(
+    'hands a sent-back claim in from the drawer only while editing is %s',
+    async (_editing, edit, keys) => {
+      const submitted = vi.fn(() => Effect.succeed({ entry: entry({ status: 'in_review' }) }))
+      const returned = entry({
+        status: 'needs_revision',
+        capabilities: {
+          edit,
+          submit: openGate,
+          withdraw: { state: 'hidden' as const, reason: null },
+          appeal: { state: 'hidden' as const, reason: null },
+          abandon: { state: 'available' as const, reason: null },
+        },
+      })
+      await screen(
+        {
+          listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
+          listMyEntries: () =>
+            Effect.succeed({
+              participantId: PARTICIPANT_ID,
+              entries: [returned],
+              filing: [{ itemId: ITEM_ID, create: openGate, submit: openGate }],
+              nextCursor: null,
+              attention: { unreadItemIds: [] },
+            }),
+          setEntryStatus: submitted,
+        },
+        `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}`,
+        [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+      )
+
+      await page.getByRole('button', { name: /2024 年入伍/ }).click()
+      const drawer = page.getByRole('dialog')
+      await expect.element(drawer.getByRole('button', { name: '修改' })).toBeInTheDocument()
+      expect(drawer.getByRole('button', { name: '重新提交' }).elements()).toHaveLength(keys)
+      if (keys === 0) return
+      await drawer.getByRole('button', { name: '重新提交' }).click()
+      await page.getByTestId('confirm-accept').click()
+      await vi.waitFor(() => expect(submitted).toHaveBeenCalledOnce())
+      expect(
+        (submitted.mock.calls[0] as unknown as [{ payload: { status: string } }])[0].payload.status,
+      ).toBe('in_review')
+    },
+  )
+
   it('keeps the ordinary withdraw in the ordinary register', async () => {
     await screen(
       {
