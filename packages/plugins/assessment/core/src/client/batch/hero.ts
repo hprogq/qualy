@@ -41,6 +41,11 @@ export type AgendaRow =
        */
       readonly state: OwnState
       readonly count: number
+      /**
+       * whether filing is open to the reader now: a draft or a claim sent
+       * back is only something to get on with while it is
+       */
+      readonly filing: 'open' | 'upcoming' | 'closed'
     }
 
 export type OwnState =
@@ -57,8 +62,19 @@ export type OwnState =
 /** what a participant can get on with: every other own line only reports */
 const ASKING: ReadonlySet<OwnState> = new Set(['toAnswer', 'toFix', 'draft', 'rejected', 'none'])
 
-/** whether an own line asks something of the reader, or only reports */
-export const ownLineAsks = (state: OwnState): boolean => ASKING.has(state)
+/**
+ * Whether an own line asks something of the reader, or only reports.
+ *
+ * Finishing a draft or reworking a claim sent back needs filing to be open;
+ * once it has closed those lines only say what was left, and offering to
+ * continue would be a way in to a form the round no longer takes.
+ */
+export const ownLineAsks = (row: {
+  readonly state: OwnState
+  readonly filing: 'open' | 'upcoming' | 'closed'
+}): boolean =>
+  ASKING.has(row.state) &&
+  !((row.state === 'draft' || row.state === 'toFix') && row.filing !== 'open')
 
 /**
  * What this reader has to do in the round, in the order it is worth doing.
@@ -84,7 +100,7 @@ export const NO_AGENDA: BatchAgenda = { rows: [] }
  * one that holds up only the reader.
  */
 const urgency = (row: AgendaRow): number =>
-  row.kind === 'review' ? (row.waiting > 0 ? 3 : 0) : ASKING.has(row.state) ? 2 : 0
+  row.kind === 'review' ? (row.waiting > 0 ? 3 : 0) : ownLineAsks(row) ? 2 : 0
 
 /** the reader's standing in one round, as the lines the card draws for it */
 export const agendaOf = (
@@ -127,12 +143,13 @@ export const agendaOf = (
     ).find(([, count]) => count > 0)
     rows.push(
       first !== undefined
-        ? { kind: 'own', state: first[0], count: first[1] }
+        ? { kind: 'own', state: first[0], count: first[1], filing: own.filing }
         : {
             kind: 'own',
             state:
               own.filing === 'open' ? 'none' : own.filing === 'upcoming' ? 'upcoming' : 'missed',
             count: 0,
+            filing: own.filing,
           },
     )
   }

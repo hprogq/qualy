@@ -381,6 +381,26 @@ describe('the batch list', () => {
     expect(await agendaStates()).toEqual(['toFix', 'clear'])
   })
 
+  // A draft or a claim sent back is something to get on with only while
+  // filing is open; after it closes the line says what was left and no
+  // longer asks, so it no longer leads either.
+  it('only reports drafts once filing has closed', async () => {
+    const asking = async () =>
+      page
+        .getByTestId('hero-agenda')
+        .elements()
+        .map((node) => [
+          node.getAttribute('data-agenda-state'),
+          node.getAttribute('data-agenda-asks'),
+        ])
+    await screen(standing({ draft: 1, filing: 'closed' }, 0), '/assessment/batches')
+    await expect.element(page.getByRole('heading', { name: '2026 春季综测' })).toBeVisible()
+    expect(await asking()).toEqual([
+      ['clear', 'false'],
+      ['draft', 'false'],
+    ])
+  })
+
   it('leads on from a line that is asking, and from one that is only open', async () => {
     await screen(standing({ submitted: 3 }, 4), '/assessment/batches')
     await expect.element(page.getByRole('heading', { name: '2026 春季综测' })).toBeVisible()

@@ -759,10 +759,12 @@ function wordsOf(
     }
   }
   const count = { count: row.count }
+  const asks = ownLineAsks(row)
   const words: Record<OwnState, () => readonly [string, string]> = {
     toAnswer: () => [format(m.toAnswer, count), format(m.answerAsk)],
-    toFix: () => [format(m.toRevise, count), format(m.continueEntries)],
-    draft: () => [format(m.toSubmit, count), format(m.continueDraft)],
+    // once filing has closed these only say what was left
+    toFix: () => [format(m.toRevise, count), format(asks ? m.continueEntries : m.viewLine)],
+    draft: () => [format(m.toSubmit, count), format(asks ? m.continueDraft : m.viewLine)],
     rejected: () => [format(m.notAccepted, count), format(m.seeWhy)],
     submitted: () => [format(m.underReview, count), format(m.viewLine)],
     approved: () => [format(m.accepted, count), format(m.viewLine)],
@@ -775,7 +777,7 @@ function wordsOf(
     label: format(m.myEntries),
     value,
     action,
-    quiet: !ownLineAsks(row.state),
+    quiet: !asks,
     page: 'assessment/batch-my-entries',
     state: row.state,
   }
@@ -797,6 +799,7 @@ function AgendaRow({
       data-testid="hero-agenda"
       data-agenda={page}
       data-agenda-state={state}
+      data-agenda-asks={!quiet}
       {...stylex.props(styles.agendaRow, styles.cell)}
     >
       <div {...stylex.props(styles.agendaWords)}>
@@ -840,7 +843,12 @@ function PhoneAgendaRow({
       />
     </>
   )
-  const marks = { 'data-testid': 'hero-agenda', 'data-agenda': page, 'data-agenda-state': state }
+  const marks = {
+    'data-testid': 'hero-agenda',
+    'data-agenda': page,
+    'data-agenda-state': state,
+    'data-agenda-asks': !quiet,
+  }
   return (
     <PageLink
       page={page}
