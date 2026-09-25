@@ -120,9 +120,18 @@ export function resolveInitialLocale(): SupportedLocale {
     typeof document === 'undefined' ? undefined : document.documentElement.dataset[ROOT_MARK]
   if (isSupported(marked)) return marked
   return resolveLocale({
-    stored: typeof localStorage === 'undefined' ? null : localStorage.getItem(STORAGE_KEY),
+    stored: storedLocale(),
     preferred: typeof navigator === 'undefined' ? [] : (navigator.languages ?? []),
   })
+}
+
+/** what an earlier visit chose, where this browser lets a page keep anything */
+const storedLocale = (): string | null => {
+  try {
+    return typeof localStorage === 'undefined' ? null : localStorage.getItem(STORAGE_KEY)
+  } catch {
+    return null
+  }
 }
 
 // the runtime's own catalogs (common/*), shipped with this package
@@ -201,7 +210,11 @@ export function I18nProvider({
   }, [i18n, locale, catalogs])
 
   const setLocale = useCallback((next: SupportedLocale) => {
-    localStorage.setItem(STORAGE_KEY, next)
+    try {
+      window.localStorage.setItem(STORAGE_KEY, next)
+    } catch {
+      // the choice still applies to this page; it will not be remembered
+    }
     setLocaleState(next)
   }, [])
 

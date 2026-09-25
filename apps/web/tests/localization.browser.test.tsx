@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
 import { pageComponents } from 'virtual:qualy/plugins'
+import { useI18n } from '@qualy/web-i18n'
 import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 
 // The one suite whose subject IS the copy.
@@ -250,5 +251,36 @@ describe('the words themselves', () => {
     // catalog is a layer rather than the source of the words
     await expect.element(page.getByText('My score')).toBeVisible()
     expect(page.getByText('我的成绩').elements()).toHaveLength(0)
+  })
+})
+
+// what every language menu calls, reduced to one press
+function LanguageSwitch() {
+  const { locale, setLocale } = useI18n()
+  return (
+    <button type="button" data-locale={locale} onClick={() => setLocale('en-US')}>
+      English
+    </button>
+  )
+}
+
+describe('choosing a language', () => {
+  it('changes the language where the browser keeps nothing for the page', async () => {
+    await renderScreen({
+      client: fakeClient({ app: { getManifest: () => Effect.succeed(emptyManifest()) } }),
+      children: <LanguageSwitch />,
+    })
+    const choice = page.getByRole('button', { name: 'English' })
+    await expect.element(choice).toHaveAttribute('data-locale', 'zh-CN')
+    // site data blocked: every write is refused the way the browser refuses it
+    const refused = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('The operation is insecure.', 'SecurityError')
+    })
+    try {
+      await choice.click()
+      await expect.element(choice).toHaveAttribute('data-locale', 'en-US')
+    } finally {
+      refused.mockRestore()
+    }
   })
 })
