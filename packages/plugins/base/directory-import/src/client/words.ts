@@ -48,6 +48,8 @@ export const issueText = (format: Format, issue: IssueLike, businessNo: string):
           )
           .join('/'),
       })
+    case 'business-no-taken':
+      return format(m.issueBusinessNoTaken, { businessNo })
     case 'node-type-conflict':
       return format(m.issueNodeConflict, { path: issue.detail ?? '' })
     default:

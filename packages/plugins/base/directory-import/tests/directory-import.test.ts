@@ -583,6 +583,71 @@ describe.runIf(postgresAvailable)('importing people from a spreadsheet', () => {
     expect(result.count).toBe(3)
   }, 120_000)
 
+  it('says only that a number is taken when the person holding it is out of reach', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('f')
+          const service = yield* DirectoryImport
+          // somebody at the school itself, outside the college
+          yield* runSql(sql`
+            insert into users (tenant_id, display_name, user_type_id, primary_org_node_id, business_no)
+            values (${f.tenant}, '别处', ${f.student}, ${f.root}, '230601')`)
+          // a college administrator: the whole college, nothing above it
+          const college = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id, business_no)
+              values (${f.tenant}, '学院管理员', ${f.student}, ${f.software}, 'cadm') returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+            select ${f.tenant}, ${college}, id, ${f.software}, 'subtree'
+              from roles where tenant_id = ${f.tenant} and code = 'dir'`)
+          const reader: Principal = { tenantId: f.tenant, userId: college, sessionId: college }
+          const request = (attachmentId: string) => ({
+            attachmentId,
+            sheet: '名单',
+            headerRow: 1,
+            userTypeId: f.student,
+            mapping: {
+              displayName: { column: 'B' },
+              businessNo: { column: 'A' },
+              organization: { anchorNodeId: f.software, levels: [] },
+            },
+          })
+          // a guess at who holds the number, from somebody who cannot see them
+          const guessed = yield* service.preview(
+            f.tenant,
+            request(
+              yield* staged(f.tenant, college, [
+                ['学号', '姓名'],
+                ['230601', '猜测'],
+              ]),
+            ),
+            reader,
+          )
+          const told = yield* service.preview(
+            f.tenant,
+            request(
+              yield* staged(f.tenant, f.admin.userId, [
+                ['学号', '姓名'],
+                ['230601', '猜测'],
+              ]),
+            ),
+            f.admin,
+          )
+          const shape = (preview: typeof guessed) =>
+            preview.issues.map((issue) => [issue.rowNo, issue.reason, issue.detail])
+          return { guessed: shape(guessed), told: shape(told) }
+        }),
+      ),
+    )
+    expect(result.guessed).toEqual([[2, 'business-no-taken', undefined]])
+    // the administrator over both still hears exactly what differs
+    expect(result.told).toEqual([[2, 'user-conflict', 'displayName,organization']])
+  }, 120_000)
+
   it('reverses the people through the ordinary lifecycle, cleans only the units nobody uses, and lets the list come in again', async () => {
     const result = ok(
       await run(

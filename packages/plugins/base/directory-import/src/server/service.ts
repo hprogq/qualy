@@ -391,6 +391,27 @@ export const make = Effect.gen(function* () {
         complete.map((row) => row.businessNo),
       )).map((one) => [one.businessNo, one] as const),
     )
+    // Somebody already on the books is described only to a caller who
+    // administers them. To anybody else, saying which of the name, the type
+    // or the unit differs from the row would confirm who holds a number the
+    // caller cannot see, a spreadsheet of guesses at a time; the number
+    // being taken is all the row needs to say.
+    const scope = yield* rbac.listAuthorizedScope(as, MANAGE)
+    const reached = scope.tenantWide
+      ? null
+      : yield* dieQuery(
+          withDb(
+            nodesReached(
+              tenantId,
+              scope,
+              [...known.values()].flatMap((one) =>
+                one.primaryOrgNodeId === null ? [] : [one.primaryOrgNodeId],
+              ),
+            ),
+          ),
+        )
+    const administers = (nodeId: string | null) =>
+      reached === null || (nodeId !== null && reached.has(nodeId))
     const people: {
       row: JudgedRow
       disposition: 'create' | 'existing'
@@ -414,6 +435,15 @@ export const make = Effect.gen(function* () {
       const found = known.get(row.businessNo)
       if (found === undefined) {
         people.push({ row, disposition: 'create', existingId: null, leafKey })
+        continue
+      }
+      if (!administers(found.primaryOrgNodeId)) {
+        issues.push({
+          rowNo: row.rowNo,
+          field: 'businessNo',
+          severity: 'error',
+          reason: 'business-no-taken',
+        })
         continue
       }
       const differs: string[] = []
@@ -1047,6 +1077,31 @@ const importsCount = (input: { tenantId: string; scope: Parameters<typeof scopeC
       .executeTakeFirstOrThrow()
       .then((row) => Number(row.count)),
   )
+
+/** which of these units the scope reaches, by the one predicate every read uses */
+const nodesReached = (
+  tenantId: string,
+  scope: Parameters<typeof scopeCoverage>[0],
+  nodeIds: readonly string[],
+) =>
+  nodeIds.length === 0
+    ? Effect.succeed(new Set<string>())
+    : db.query((k) =>
+        k
+          .selectFrom('OrgNode as n')
+          .select('n.id')
+          .where('n.tenantId', '=', tenantId)
+          .where('n.id', 'in', [...new Set(nodeIds)])
+          .where((eb) =>
+            scopeCoverage(scope, {
+              tenantId: eb.ref('n.tenantId'),
+              id: eb.ref('n.id'),
+              path: eb.ref('n.path'),
+            }),
+          )
+          .execute()
+          .then((rows) => new Set(rows.map((row) => row.id))),
+      )
 
 const standingOf = (tenantId: string, importId: string) =>
   db.query((k) =>
