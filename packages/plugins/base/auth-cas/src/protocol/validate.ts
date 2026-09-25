@@ -43,7 +43,14 @@ const ACCEPT: Record<CasSettings['responseFormat'], string> = {
   text: 'text/plain',
 }
 
-/** the validation request, as the entrance says to make it */
+/**
+ * The validation request, as the entrance says to make it.
+ *
+ * An entrance that asks for the password every time says so here as well as
+ * on the way out: the login page only hears a request the browser may drop,
+ * and it is the validation that refuses a ticket an existing single sign-on
+ * session issued.
+ */
 export const validationRequest = (
   settings: CasSettings,
   service: string,
@@ -54,17 +61,18 @@ export const validationRequest = (
   // most servers do not implement it and answer in XML regardless
   if (settings.responseFormat === 'json') url.searchParams.set('format', 'JSON')
   const headers = { accept: ACCEPT[settings.responseFormat] }
+  const asked = new URLSearchParams({ service, ticket })
+  if (settings.renew) asked.set('renew', 'true')
   if (settings.validateMethod === 'POST') {
     return {
       url: url.toString(),
       method: 'POST',
       headers,
-      body: new URLSearchParams({ service, ticket }),
+      body: asked,
       maxBytes: MAX_RESPONSE_BYTES,
     }
   }
-  url.searchParams.set('service', service)
-  url.searchParams.set('ticket', ticket)
+  for (const [name, value] of asked) url.searchParams.set(name, value)
   return { url: url.toString(), method: 'GET', headers, maxBytes: MAX_RESPONSE_BYTES }
 }
 

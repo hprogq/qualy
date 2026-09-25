@@ -54,6 +54,8 @@ interface Issued {
   readonly service: string
   readonly user: string
   readonly attributes: Record<string, string[]>
+  /** issued on a single sign-on session the browser already had, not a fresh login */
+  readonly fromSession: boolean
 }
 
 /** the CAS server: tickets it issued, what it was asked, and how it answers */
@@ -64,9 +66,14 @@ const cas = {
   validations: [] as { method: string; path: string; service: string | null }[],
   mode: 'normal' as 'normal' | 'down' | 'garbage',
   next: 1,
-  issue(service: string, user: string, attributes: Record<string, string[]> = {}) {
+  issue(
+    service: string,
+    user: string,
+    attributes: Record<string, string[]> = {},
+    fromSession = false,
+  ) {
     const ticket = `ST-${cas.next++}-synthetic`
-    cas.issued.set(ticket, { service, user, attributes })
+    cas.issued.set(ticket, { service, user, attributes, fromSession })
     return ticket
   },
 }
@@ -84,6 +91,11 @@ const answerXml = (form: URLSearchParams) => {
   }
   if (issued.service !== form.get('service')) {
     return `<cas:serviceResponse xmlns:cas="http://www.yale.edu/tp/cas"><cas:authenticationFailure code="INVALID_SERVICE">service mismatch</cas:authenticationFailure></cas:serviceResponse>`
+  }
+  // what renew means to a server: a ticket a standing session issued is
+  // refused when the validation asks for a fresh login
+  if (issued.fromSession && form.get('renew') === 'true') {
+    return `<cas:serviceResponse xmlns:cas="http://www.yale.edu/tp/cas"><cas:authenticationFailure code="INVALID_TICKET">not from a new login</cas:authenticationFailure></cas:serviceResponse>`
   }
   const attributes = Object.entries(issued.attributes)
     .flatMap(([name, values]) =>
@@ -455,6 +467,19 @@ describe.runIf(postgresAvailable)('signing in through a CAS server', () => {
     const other = await depart('legacy')
     const missing = await comeBack(other.service, cas.issue(other.service, '20990001'))
     expect(failureOf(missing).code).toBe('AUTH_PERSON_NOT_FOUND')
+
+    // asked for the password every time: a ticket the server issued on
+    // somebody's standing session, because the browser dropped the request
+    // on the way out, is not a sign-in
+    const reused = await depart('legacy')
+    const ticketOnSession = cas.issue(
+      reused.service,
+      'demo.person',
+      { id_number: ['20990001'] },
+      true,
+    )
+    const refused = await comeBack(reused.service, ticketOnSession)
+    expect(failureOf(refused).code).toBe('AUTH_CAS_TICKET_REJECTED')
   })
 
   it('offers nothing for a door that is not there, and slows a burst of departures', async () => {

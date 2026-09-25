@@ -287,6 +287,9 @@ describe('one round trip', () => {
     expect(asked.searchParams.get('service')).toBe(service)
     expect(asked.searchParams.get('ticket')).toBe('ST-1-abc')
     expect(asked.searchParams.get('format')).toBeNull()
+    // the server refuses a ticket a standing session issued only when the
+    // validation asks it to; the login page alone is a request a browser may drop
+    expect(asked.searchParams.get('renew')).toBe('true')
 
     const post = validationRequest(
       { ...settings, validateMethod: 'POST', responseFormat: 'json' },
@@ -298,6 +301,16 @@ describe('one round trip', () => {
     expect(new URL(post.url).searchParams.get('ticket')).toBeNull()
     expect((post.body as URLSearchParams).get('service')).toBe(service)
     expect((post.body as URLSearchParams).get('ticket')).toBe('ST-1-abc')
+    expect((post.body as URLSearchParams).get('renew')).toBe('true')
+
+    // an entrance that lets a standing session through says nothing of it
+    const quiet = { ...settings, renew: false }
+    expect(new URL(loginRedirect(quiet, service)).searchParams.get('renew')).toBeNull()
+    expect(
+      new URL(validationRequest(quiet, service, 'ST-1-abc').url).searchParams.has('renew'),
+    ).toBe(false)
+    const quietPost = validationRequest({ ...quiet, validateMethod: 'POST' }, service, 'ST-1-abc')
+    expect((quietPost.body as URLSearchParams).has('renew')).toBe(false)
   })
 
   it('takes only a service ticket', () => {
