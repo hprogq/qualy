@@ -2782,12 +2782,17 @@ export const resolveRecordTargets = (
     return query.orderBy('BatchParticipant.id').limit(limit).execute()
   })
 
+/** which members a roster's units and kinds are read off: those on it now, those taken off, or both */
+export type RosterMembers = 'active' | 'excluded' | 'all'
+
 export const listRosterUnits = (
   tenantId: string,
   batchId: string,
   filter: {
     reach?: { userId: string; permissionCode: string | readonly string[] }
     userTypeId?: string
+    /** on the roster now when absent: the record page acts only on those */
+    status?: RosterMembers
   },
 ) =>
   db.query((k) =>
@@ -2801,7 +2806,11 @@ export const listRosterUnits = (
                cross join lateral jsonb_array_elements(bp.anchor_lineage) as step
               where bp.tenant_id = n.tenant_id
                 and bp.batch_id = ${batchId}::uuid
-                and bp.status = 'active'
+                and ${
+                  (filter.status ?? 'active') === 'all'
+                    ? sql<boolean>`true`
+                    : sql<boolean>`bp.status = ${filter.status ?? 'active'}`
+                }
                 and (step.value ->> 'nodeId')::uuid = n.id
                 and ${
                   filter.userTypeId === undefined || filter.userTypeId === ''
@@ -2823,6 +2832,46 @@ export const listRosterUnits = (
            )
          order by n.path`.execute(k),
   )
+
+/**
+ * The kinds of people on a roster, as it froze them, over the same members
+ * its units are read from: a unit picker beside them narrows by kind without
+ * the directory's own list of kinds, which a recorder may not read.
+ */
+export const listRosterUserTypes = (
+  tenantId: string,
+  batchId: string,
+  filter: {
+    reach?: { userId: string; permissionCode: string | readonly string[] }
+    status?: RosterMembers
+  },
+) =>
+  db.query((k) => {
+    let query = k
+      .selectFrom('BatchParticipant as bp')
+      .innerJoin('UserType as ut', (join) =>
+        join.onRef('ut.tenantId', '=', 'bp.tenantId').onRef('ut.id', '=', 'bp.userTypeId'),
+      )
+      .select(['ut.id', 'ut.name'])
+      .distinct()
+      .where('bp.tenantId', '=', tenantId)
+      .where('bp.batchId', '=', batchId)
+    const status = filter.status ?? 'active'
+    if (status !== 'all') query = query.where('bp.status', '=', status)
+    if (filter.reach !== undefined) {
+      query = query.where(
+        staffReachOver({
+          tenantId,
+          batchId,
+          userId: filter.reach.userId,
+          permissionCode: filter.reach.permissionCode,
+          anchorNodeId: sql.ref('bp.assessment_anchor_node_id'),
+          anchorPath: sql.ref('bp.anchor_path'),
+        }),
+      )
+    }
+    return query.orderBy('ut.name').orderBy('ut.id').execute()
+  })
 
 export const listParticipantsPage = (
   tenantId: string,

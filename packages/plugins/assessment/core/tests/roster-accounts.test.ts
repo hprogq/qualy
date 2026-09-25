@@ -274,6 +274,84 @@ describe.runIf(postgresAvailable)('the roster, as the results page reads it', ()
     expect(names(result)).toEqual(['Xray', 'Yankee', 'Zulu'])
   })
 
+  it('draws the tree of units off the members the page beside it lists', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('ra-units')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: OPEN })
+          const unit = (name: string) =>
+            Effect.map(
+              runSql(sql`select id from org_nodes where tenant_id = ${f.t} and name = ${name}`),
+              (found) => one<{ id: string }>(found).id,
+            )
+          const [collegeA, collegeB, classB] = [
+            yield* unit('College A'),
+            yield* unit('College B'),
+            yield* unit('Class B1'),
+          ]
+          const units = (
+            as: string,
+            filter: { reading?: 'record' | 'accounts'; status?: 'active' | 'excluded' | 'all' },
+          ) => assessment.listRosterUnits(f.t, g.batch.id, filter, f.principal(as))
+          // recording over college A alone opens nobody's account
+          const recorderAccounts = yield* Effect.exit(units(f.recorder, { reading: 'accounts' }))
+          // and re-determining over class B opens its people's
+          yield* appointStaff(f, g.batch.id, {
+            name: 'Class B inspector',
+            at: classB,
+            codes: ['assessment.entry.redetermine'],
+            who: f.recorder,
+          })
+          const record = yield* units(f.recorder, {})
+          const accounts = yield* units(f.recorder, { reading: 'accounts' })
+          // Wang Wu is class B's only member; taken off, the unit is only
+          // where the people taken off stand
+          yield* assessment.setParticipantStatus(
+            f.t,
+            g.batch.id,
+            g.p3,
+            'excluded',
+            '转专业',
+            f.principal(f.admin),
+          )
+          return {
+            ids: { collegeA, collegeB, classB },
+            recorderAccounts,
+            record,
+            accounts,
+            active: yield* units(f.admin, { reading: 'accounts' }),
+            everyone: yield* units(f.admin, { reading: 'accounts', status: 'all' }),
+            excluded: yield* units(f.admin, { reading: 'accounts', status: 'excluded' }),
+            f,
+          }
+        }),
+      ),
+    )
+    const { f, ids } = result
+    const idsOf = (found: { units: readonly { id: string }[] }) =>
+      found.units.map((unit) => unit.id).sort()
+    const sorted = (...units: string[]) => [...units].sort()
+    expect(errorOf<{ _tag: string }>(result.recorderAccounts)?._tag).toBe('ACCESS_DENIED')
+    // the record page reads what recording and re-determining cover together
+    expect(idsOf(result.record)).toEqual(
+      sorted(f.root, ids.collegeA, f.classA, ids.collegeB, ids.classB),
+    )
+    // the results page only what re-determining covers: no unit whose list
+    // would be empty for this reader
+    expect(idsOf(result.accounts)).toEqual(sorted(f.root, ids.collegeB, ids.classB))
+    expect(idsOf(result.active)).toEqual(sorted(f.root, ids.collegeA, f.classA))
+    expect(idsOf(result.everyone)).toEqual(
+      sorted(f.root, ids.collegeA, f.classA, ids.collegeB, ids.classB),
+    )
+    expect(idsOf(result.excluded)).toEqual(sorted(f.root, ids.collegeB, ids.classB))
+    // the kinds of people come off the same members, as the round froze them
+    expect(result.accounts.userTypes).toEqual([{ id: f.studentType, name: 'Student' }])
+    expect(result.excluded.userTypes).toEqual([{ id: f.studentType, name: 'Student' }])
+  })
+
   it('lists to a re-determiner only the people it covers, and to a recorder nobody', async () => {
     const result = ok(
       await run(

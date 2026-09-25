@@ -3603,14 +3603,27 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
      * what appears in some participant's frozen lineage, so it answers "where
      * are this round's people" rather than "what does the university look
      * like today". Names come from the live nodes, because a renamed
-     * department should read as its new name.
+     * department should read as its new name. The kinds of people come
+     * with them, off the same members, as the round froze them.
      */
     HttpApiEndpoint.get('listRosterUnits', '/assessment/batches/:batchId/roster-units', {
       params: Schema.Struct({ batchId: uuidInput }),
       query: Schema.Struct({
         userTypeId: Schema.optional(uuidInput),
+        /**
+         * Whose members: the record page's (the people this reader may
+         * record on or re-determine over) when absent, or the results
+         * page's (the people whose accounts this reader may open), so a
+         * tree never holds a unit its own list shows nobody under.
+         */
+        reading: Schema.optional(Schema.Literals(['record', 'accounts'])),
+        /** members on the roster now when absent; taken off it; or both */
+        status: Schema.optional(Schema.Literals(['active', 'excluded', 'all'])),
       }),
-      success: Schema.Struct({ units: Schema.Array(rosterUnitView) }),
+      success: Schema.Struct({
+        units: Schema.Array(rosterUnitView),
+        userTypes: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
+      }),
       error: [BatchNotFound, AccessDenied, BadRequest],
     }).middleware(Authenticated),
   )

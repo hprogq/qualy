@@ -514,7 +514,11 @@ describe.runIf(postgresAvailable).concurrent('the roster management face', () =>
         const assessment = yield* Assessment
         // drawn from grade A, whose students stand in classes 1 and 2
         const batch = yield* activateBatch(f, 'Batch', [f.gradeA])
-        const units = () => assessment.listRosterUnits(f.tenant, batch.id, {}, f.principal)
+        const units = () =>
+          Effect.map(
+            assessment.listRosterUnits(f.tenant, batch.id, {}, f.principal),
+            (found) => found.units,
+          )
         const before = yield* units()
         // everybody in class 1 is moved to a class this round never drew from
         yield* f.moveUser(f.s1, f.class3)

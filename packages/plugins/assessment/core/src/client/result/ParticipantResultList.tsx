@@ -79,6 +79,9 @@ const TWO_COLUMNS = 1024
  */
 const ALL = 'all'
 
+/** where a unit on a row's path stands whose name is not to hand */
+const UNNAMED = '…'
+
 /** how long the page waits for a burst of live wake-ups to end before reading again */
 const LIVE_SETTLE = 1_000
 
@@ -296,22 +299,37 @@ export function ParticipantResultList({
     }, LIVE_SETTLE)
   })
 
-  // the units this round's people were admitted from, within this reader's
-  // reach: the tree the list is narrowed by, and the names of each row's unit
-  const units = useQuery(
-    query.assessment.listRosterUnits.queryOptions({ params: { batchId }, query: {} }),
-  )
+  // The units the people this list can show were admitted from: the tree the
+  // list is narrowed by, and the names of each row's unit. Read through this
+  // page's own door and over the standing the list is filtered to, so the
+  // tree holds no unit whose list comes back empty, and every row's units
+  // are in it.
+  const units = useQuery({
+    ...query.assessment.listRosterUnits.queryOptions({
+      params: { batchId },
+      query: { reading: 'accounts', status: view.status === '' ? 'all' : view.status },
+    }),
+    placeholderData: keepPreviousData,
+  })
   const byUnit = useMemo(
     () => new Map((units.data?.units ?? []).map((unit) => [unit.id, unit])),
     [units.data],
   )
-  /** a row's unit from the top down, less the root every row shares */
+  /**
+   * A row's unit from the top down, less the root every row shares. A unit
+   * that cannot be named keeps its place rather than dropping out, so the
+   * path never reads as a different one.
+   */
   const unitPath = (lineage: readonly { nodeId: string }[]) => {
-    const names = [...lineage]
-      .reverse()
-      .map((step) => byUnit.get(step.nodeId)?.name)
-      .filter((name): name is string => name !== undefined)
-    return (names.length > 1 ? names.slice(1) : names).join(' / ')
+    if (units.data === undefined) return { path: '', unknown: 0 }
+    const steps = [...lineage].reverse()
+    const names = (steps.length > 1 ? steps.slice(1) : steps).map(
+      (step) => byUnit.get(step.nodeId)?.name,
+    )
+    return {
+      path: names.map((name) => name ?? UNNAMED).join(' / '),
+      unknown: names.filter((name) => name === undefined).length,
+    }
   }
   const chosenUnit = view.unit === '' ? undefined : byUnit.get(view.unit)
 
@@ -616,7 +634,7 @@ export function ParticipantResultList({
                   <CardEmpty>{format(narrowed ? m.rosterNoMatch : m.rosterEmpty)}</CardEmpty>
                 ) : (
                   rows.map((row) => {
-                    const path = unitPath(row.anchorLineage)
+                    const { path, unknown } = unitPath(row.anchorLineage)
                     const who = (
                       <span {...stylex.props(styles.who)}>
                         <span {...stylex.props(styles.nameWithMark)}>
@@ -626,6 +644,7 @@ export function ParticipantResultList({
                         {path !== '' && (
                           <span
                             data-testid="participant-unit"
+                            data-unknown={unknown}
                             title={path}
                             {...stylex.props(styles.unitLine)}
                           >

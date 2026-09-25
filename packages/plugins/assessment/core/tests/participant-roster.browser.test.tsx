@@ -305,6 +305,29 @@ describe('the roster on the results page', () => {
     expect(addressNow()).toContain(`list-unit=${COLLEGE}`)
   })
 
+  it('reads the unit tree through this page’s door, over the standing the list shows', async () => {
+    const asked = vi.fn((_request: Request) =>
+      Effect.succeed({
+        // the class is not one this reader may name
+        units: [{ id: COLLEGE, name: '软件学院', parentId: null }],
+        userTypes: [],
+      }),
+    )
+    await open({ listRosterUnits: asked })
+    await expect.element(rows().first()).toBeVisible()
+    expect(asked.mock.calls.at(-1)![0].query).toEqual({ reading: 'accounts', status: 'all' })
+    // a unit that cannot be named keeps its place on the path
+    await expect
+      .element(page.getByTestId('participant-unit').first())
+      .toHaveAttribute('data-unknown', '1')
+
+    await page.getByRole('combobox', { name: '参评状态' }).click()
+    await page.getByRole('option', { name: '已移出' }).click()
+    await expect
+      .poll(() => asked.mock.calls.at(-1)![0].query)
+      .toEqual({ reading: 'accounts', status: 'excluded' })
+  })
+
   it('folds the unit tree behind one line on a phone, and says which unit is chosen', async () => {
     const asked = vi.fn((request: Request) => pageOf(request))
     await page.viewport(390, 844)

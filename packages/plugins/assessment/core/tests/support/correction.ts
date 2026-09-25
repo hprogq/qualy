@@ -12,11 +12,12 @@ import { one, type Seeded } from './round.ts'
 /**
  * Somebody new holding a role that carries `codes`, anchored at `at` over
  * its subtree, with the batch having accepted the staff codes among them.
+ * Given `who`, that person holds it instead, beside whatever else they hold.
  */
 export const appointStaff = (
   f: Seeded,
   batchId: string,
-  input: { name: string; at: string; codes: readonly string[] },
+  input: { name: string; at: string; codes: readonly string[]; who?: string },
 ) =>
   Effect.gen(function* () {
     const role = one<{ id: string }>(
@@ -31,11 +32,13 @@ export const appointStaff = (
         insert into role_permissions (tenant_id, role_id, permission_id)
         select ${f.t}, ${role}, p.id from permissions p where p.code = ${code}`)
     }
-    const who = one<{ id: string }>(
-      yield* runSql(sql`
-        insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
-        values (${f.t}, ${input.name}, ${f.studentType}, ${input.at}) returning id`),
-    ).id
+    const who =
+      input.who ??
+      one<{ id: string }>(
+        yield* runSql(sql`
+          insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+          values (${f.t}, ${input.name}, ${f.studentType}, ${input.at}) returning id`),
+      ).id
     const grant = one<{ id: string }>(
       yield* runSql(sql`
         insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)

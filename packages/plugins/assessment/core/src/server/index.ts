@@ -215,7 +215,9 @@ import {
   type RosterAccountsFilter,
   type RosterFilings,
   type RosterOrder,
+  type RosterMembers,
   listRosterUnits,
+  listRosterUserTypes,
   listPhaseRows,
   phaseRowsForBatches,
   listTemplatesPage,
@@ -1421,14 +1423,23 @@ export class Assessment extends Context.Service<
       BatchNotFound | AccessDenied
     >
     readonly listParticipantScores: ScoringMethods['listParticipantScores']
-    /** the units this round's people were admitted from, as it froze them */
+    /**
+     * The units this round's people were admitted from, as it froze them,
+     * and the kinds of people they were admitted as. Read off the members
+     * one of the two pages lists: the record page's by default, or the
+     * results page's (`accounts`), so a tree holds no unit whose list is
+     * empty for this reader.
+     */
     readonly listRosterUnits: (
       tenantId: string,
       batchId: string,
-      filter: { userTypeId?: string },
+      filter: { userTypeId?: string; reading?: 'record' | 'accounts'; status?: RosterMembers },
       as: Principal,
     ) => Effect.Effect<
-      readonly { id: string; name: string; parentId: string | null }[],
+      {
+        units: readonly { id: string; name: string; parentId: string | null }[]
+        userTypes: readonly { id: string; name: string }[]
+      },
       BatchNotFound | AccessDenied
     >
     /**
@@ -5070,18 +5081,28 @@ export const make = Effect.fn('Assessment.make')(function* () {
       function* (tenantId, batchId, filter, as) {
         const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
         if (!batch) return yield* new BatchNotFound()
-        // the same ways in as the roster itself: administering it reads all
-        // of it, acting on people in it reads the part that authority covers
-        const reach = yield* rosterReadingOf(tenantId, batchId, as)
-        const found = yield* dieQuery(
+        // the same ways in as the list it stands beside: administering the
+        // roster reads all of it; otherwise the record page reads what
+        // recording or re-determining covers, and the results page only
+        // what re-determining covers, which is whose accounts open
+        const reach =
+          filter.reading === 'accounts'
+            ? yield* accountReadingOf(tenantId, batchId, as)
+            : yield* rosterReadingOf(tenantId, batchId, as)
+        const members = {
+          ...(filter.status === undefined ? {} : { status: filter.status }),
+          ...(reach === undefined ? {} : { reach }),
+        }
+        const units = yield* dieQuery(
           withDb(
             listRosterUnits(tenantId, batchId, {
-              ...filter,
-              ...(reach === undefined ? {} : { reach }),
+              ...members,
+              ...(filter.userTypeId === undefined ? {} : { userTypeId: filter.userTypeId }),
             }),
           ),
         )
-        return found.rows
+        const userTypes = yield* dieQuery(withDb(listRosterUserTypes(tenantId, batchId, members)))
+        return { units: units.rows, userTypes }
       },
     ),
 
@@ -7286,13 +7307,16 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
       Effect.fn('assessment.listRosterUnits.handler')(function* ({ params, query }) {
         const assessment = yield* Assessment
         const principal = yield* CurrentUser
-        const units = yield* assessment.listRosterUnits(
+        return yield* assessment.listRosterUnits(
           principal.tenantId,
           params.batchId,
-          query.userTypeId === undefined ? {} : { userTypeId: query.userTypeId },
+          {
+            ...(query.userTypeId === undefined ? {} : { userTypeId: query.userTypeId }),
+            ...(query.reading === undefined ? {} : { reading: query.reading }),
+            ...(query.status === undefined ? {} : { status: query.status }),
+          },
           principal,
         )
-        return { units }
       }),
     )
     .handle(
