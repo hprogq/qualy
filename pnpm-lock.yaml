@@ -976,6 +976,9 @@ importers:
       react:
         specifier: 'catalog:'
         version: 19.2.8
+      react-router:
+        specifier: 'catalog:'
+        version: 8.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
     devDependencies:
       '@qualy/plugin-assessment-evidence':
         specifier: workspace:*
@@ -998,9 +1001,6 @@ importers:
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.18
-      react-router:
-        specifier: 'catalog:'
-        version: 8.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
 
   packages/plugins/assessment/evidence:
     dependencies:
