@@ -189,10 +189,8 @@ const screen = (
               reason: null,
             })),
           }),
-        listRosterUnits: () => Effect.succeed({ units: [] }),
         // what the add and import dialogs read, from this domain
         listScopeOptions: () => Effect.succeed({ nodes: [] }),
-        listUserTypeOptions: () => Effect.succeed({ userTypes: [] }),
         listParticipantCandidates: () =>
           Effect.succeed({ items: [], total: 0, page: 1, pageSize: 20 }),
         getParticipant: (request: Request) =>
