@@ -1799,7 +1799,7 @@ export default {
   'assessment/error/administrative-record-not-found': '该认定操作已不存在',
   'assessment/error/administrative-record-refused': '部分人员当前无法认定，本次未认定任何人',
   'assessment/error/item-scoring-incompatible':
-    '新的计分规则无法处理 {affected} 条已生效认定（{refused} 条被规则拒绝，{executionFailed} 条计算失败），请修正计分规则后重试。',
+    '{case, select, derived {该项目的计分规则无法给出分值，请修正计分规则后重试。} other {新的计分规则无法处理 {affected} 条已生效认定（{refused} 条被规则拒绝，{executionFailed} 条计算失败），请修正计分规则后重试。}}',
   'assessment/error/access-invalid':
     '{reason, select, alreadyStaffed {该人员已在所选单位担任该角色。} tooMany {一次选择的人员与单位过多，请分批添加。} other {权限变更失败，请检查相关设置后重试。}}',
   'assessment/error/advance-invalid': '当前无法进入下一阶段，请检查相关设置。',
