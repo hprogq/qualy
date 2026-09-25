@@ -204,7 +204,7 @@ const program = Effect.gen(function* () {
 
   // the demonstration accounts open, a few weeks before the selection
   story.set(new Date(startedAt - 27 * 86_400_000))
-  yield* openPersonaAccounts(world, personaStudent, story, accountsPassword)
+  const personas = yield* openPersonaAccounts(world, personaStudent, story, accountsPassword)
 
   const history = (
     (yield* runSql(
@@ -219,6 +219,7 @@ const program = Effect.gen(function* () {
     history,
     options: { stage, migrationBefore },
     now: new Date(startedAt),
+    personas,
   })
   console.log(
     `selection (${stage}${migrationBefore ? ', route change left for the demo' : ''}): ${selection.applicants.length} applicants, ${[
