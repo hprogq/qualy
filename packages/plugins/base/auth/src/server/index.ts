@@ -979,7 +979,23 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
         const iam = yield* Iam
         const principal = yield* CurrentUser
         const { version, ...fields } = payload
-        yield* iam.users.update(principal.tenantId, params.userId, fields, version, principal)
+        const changed = yield* iam.users.update(
+          principal.tenantId,
+          params.userId,
+          fields,
+          version,
+          principal,
+        )
+        // committed: the address the person left is told, as a change of
+        // their own would tell it
+        if (changed.addressLeft !== undefined) {
+          const flows = yield* EmailFlows
+          const request = yield* HttpServerRequest.HttpServerRequest
+          yield* flows.tellAddressLeft(principal.tenantId, {
+            ...changed.addressLeft,
+            locale: mailLocaleOf(request.headers['accept-language']),
+          })
+        }
         return { ok: true as const }
       }),
     )

@@ -76,6 +76,7 @@ const userGuard = (tenantId: string, userId: string) =>
         'u.id',
         'u.displayName',
         'u.email',
+        'u.emailVerifiedAt',
         'u.businessNo',
         'u.userTypeId',
         'u.primaryOrgNodeId',
@@ -1521,6 +1522,10 @@ export const make = Effect.fn('Iam.users.make')(function* () {
      *
      * It has to stay compatible with the grants they already hold, and it must
      * not take away the tenant's last way in.
+     *
+     * Answers the proven address the person just left, when there is one,
+     * for the caller to tell once this has committed; and whether anybody
+     * was signed out with it.
      */
     update: Effect.fn('Iam.users.update')(function* (
       tenantId: string,
@@ -1535,7 +1540,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
       as: Principal,
     ) {
       const email = input.email === undefined ? undefined : yield* storedEmail(input.email)
-      yield* write(tenantId, () =>
+      return yield* write(tenantId, () =>
         Effect.gen(function* () {
           // authority first: somebody without it learns nothing of the
           // person's existence, history or kind from how they are refused
@@ -1603,6 +1608,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
           // Whoever proved themselves under the old one keeps no session: if
           // it changed because it was never theirs, or stopped being theirs,
           // whoever it named must not ride in on what it opened.
+          let signedOut = 0
           for (const field of ['email', 'businessNo'] as const) {
             if (fields[field] === undefined) continue
             const finding = findingBy(field)
@@ -1617,9 +1623,9 @@ export const make = Effect.fn('Iam.users.make')(function* () {
                 proving.map((driver) => driver.type),
               )
             ) {
-              yield* deleteUserSessions(tenantId, user.id)
+              signedOut += yield* deleteUserSessions(tenantId, user.id)
             } else {
-              yield* deleteSessionsAtDoors(
+              signedOut += yield* deleteSessionsAtDoors(
                 tenantId,
                 user.id,
                 trusting.map((driver) => driver.type),
@@ -1644,6 +1650,13 @@ export const make = Effect.fn('Iam.users.make')(function* () {
           // a type change can move the last administrator onto a type that
           // cannot sign in at all
           if (changingType) yield* rbac.assertTenantKeepsAdministrator(tenantId)
+          // the address they had proven is where somebody who did not ask
+          // for this finds out
+          const left =
+            fields.email !== undefined && user.email !== null && user.emailVerifiedAt !== null
+              ? { to: user.email, signedOut: signedOut > 0 }
+              : undefined
+          return { addressLeft: left }
         }).pipe(
           translateConstraints<UserConflict | UserEmailConflict>({
             ...businessNoConstraints,

@@ -1246,6 +1246,97 @@ describe.runIf(postgresAvailable)('an email address', () => {
     }
   })
 
+  it('tells the proven address an administrator moved the account from, and only what happened', async () => {
+    const db = await createTestContext('email-change-by-administrator')
+    const mail = memoryMailBackend()
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await Effect.runPromiseExit(
+          Effect.gen(function* () {
+            const flows = yield* EmailFlows
+            const iam = yield* Iam
+            const role = one<{ id: string }>(
+              yield* runSql(sql`
+                insert into roles (tenant_id, code, name, kind, status, permission_mode, system_key)
+                values (${f.tenant}, 'admin', 'Admin', 'tenant', 'active', 'all-active', 'tenant-admin')
+                returning id`),
+            ).id
+            yield* runSql(sql`
+              insert into role_grants (tenant_id, user_id, role_id)
+              values (${f.tenant}, ${f.admin}, ${role})`)
+            const admin = f.as(f.admin, f.adminHere)
+            const version = (userId: string) =>
+              Effect.map(
+                runSql<{ version: number }>(sql`select version from users where id = ${userId}`),
+                (result) => result.rows[0]!.version,
+              )
+            // Ada's address was proven, and she signs in with a password
+            const ada = yield* iam.users.update(
+              f.tenant,
+              f.ada,
+              { email: 'ada.moved@school.edu' },
+              yield* version(f.ada),
+              admin,
+            )
+            // Lin's never was: nobody there to tell
+            const lin = yield* iam.users.update(
+              f.tenant,
+              f.lin,
+              { email: 'lin.moved@school.edu' },
+              yield* version(f.lin),
+              admin,
+            )
+            // a name is not an address
+            const renamed = yield* iam.users.update(
+              f.tenant,
+              f.ada,
+              { displayName: 'Ada L.' },
+              yield* version(f.ada),
+              admin,
+            )
+            yield* flows.tellAddressLeft(f.tenant, { ...ada.addressLeft!, locale: 'en' })
+            yield* flows.tellAddressLeft(f.tenant, {
+              to: 'quiet@school.edu',
+              signedOut: false,
+              locale: 'en',
+            })
+            // sent on a fiber of their own: read while the flows still stand
+            const sentTo = (to: string) =>
+              Effect.promise(() =>
+                vi.waitFor(
+                  () => {
+                    const found = mail.outbox.find((message) => message.to === to)
+                    if (found === undefined) throw new Error(`nothing told to ${to} yet`)
+                    return found
+                  },
+                  { timeout: 3_000 },
+                ),
+              )
+            return {
+              ada: ada.addressLeft,
+              lin: lin.addressLeft,
+              renamed: renamed.addressLeft,
+              told: yield* sentTo('ada@school.edu'),
+              quiet: yield* sentTo('quiet@school.edu'),
+            }
+          }).pipe(Effect.provide(stack(db.url, mail.backend))),
+        ),
+      )
+      expect(answer).toMatchObject({
+        ada: { to: 'ada@school.edu', signedOut: true },
+        lin: undefined,
+        renamed: undefined,
+      })
+      expect(answer.told.subject).toBe('An administrator changed your account email')
+      expect(answer.told.text).toContain('signed out')
+      // nobody was signed out, so the message does not say anybody was
+      expect(answer.quiet.text).not.toContain('signed out')
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('says an address is somebody else’s only as often as it would send a link', async () => {
     const db = await createTestContext('email-change-probe')
     const mail = memoryMailBackend()

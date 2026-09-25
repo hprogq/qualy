@@ -236,7 +236,11 @@ export const mailFor = (
  * because it names no link, and so says where it came from only by its
  * workspace.
  */
-export type NoticePurpose = 'reauthentication-code' | 'email-changed'
+export type NoticePurpose =
+  | 'reauthentication-code'
+  | 'email-changed'
+  /** the same word, of a change an administrator made */
+  | 'email-changed-by-administrator'
 
 interface WrittenNotice {
   readonly subject: string
@@ -280,6 +284,22 @@ const NOTICES: Record<NoticePurpose, Record<MailLocale, WrittenNotice>> = {
       footer: 'If you did not make this change, contact your administrator right away.',
     },
   },
+  'email-changed-by-administrator': {
+    'zh-CN': {
+      subject: '账号邮箱已由管理员更改',
+      title: '账号邮箱已更改',
+      lead: '管理员已将您账号的邮箱更改为新地址，此邮箱将不再用于登录和找回密码。',
+      note: '该账号在各设备上的登录已全部退出。',
+      footer: '如对此有疑问，请尽快联系管理员。',
+    },
+    en: {
+      subject: 'An administrator changed your account email',
+      title: 'Your account email was changed',
+      lead: 'An administrator changed the email for your account to a new address. This address is no longer used to sign in or to reset the password.',
+      note: 'Every device signed in to the account was signed out.',
+      footer: 'If you have questions about this change, contact your administrator.',
+    },
+  },
 }
 
 export const noticeFor = (
@@ -292,9 +312,16 @@ export const noticeFor = (
     readonly origin: string | null
     /** the code to type back, for a message that carries one */
     readonly code?: string
+    /**
+     * For word of a changed address: whether anybody was signed out with
+     * it. False drops the sentence saying so, which would otherwise tell the
+     * reader something that did not happen.
+     */
+    readonly signedOut?: boolean
   },
 ) => {
-  const written = NOTICES[purpose][locale]
+  const chosen = NOTICES[purpose][locale]
+  const written = context.signedOut === false ? { ...chosen, note: '' } : chosen
   const code =
     context.code === undefined
       ? ''
@@ -304,14 +331,17 @@ export const noticeFor = (
     text: [
       written.lead,
       ...(context.code === undefined ? [] : [context.code]),
-      written.note,
+      ...(written.note === '' ? [] : [written.note]),
       written.footer,
     ].join('\n\n'),
     html: framed({
       subject: written.subject,
       title: written.title,
       lead: written.lead,
-      main: `${code}
+      main:
+        written.note === ''
+          ? code
+          : `${code}
 <p style="margin:24px 0 0;font-size:13.5px;line-height:1.7;color:${QUIET};">${escape(written.note)}</p>`,
       footer: written.footer,
       sentTo: SHARED[locale].sentTo,

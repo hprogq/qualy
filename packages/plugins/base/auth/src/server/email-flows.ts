@@ -295,6 +295,17 @@ export class EmailFlows extends Context.Service<
         readonly viewer?: Principal
       },
     ) => Effect.Effect<void, ChallengeInvalid | UserEmailConflict>
+    /**
+     * Tells an address it is no longer somebody's, after an administrator
+     * moved the account to another: the address was proven, and it is where
+     * somebody who did not ask for the move finds out. Sent after the
+     * answer, on its own; a relay that fails costs the notice, never the
+     * change. `signedOut` says whether the change signed anybody out.
+     */
+    readonly tellAddressLeft: (
+      tenantId: string,
+      input: { readonly to: string; readonly signedOut: boolean; readonly locale: MailLocale },
+    ) => Effect.Effect<void>
     /** the checks a new password of the reader's own is held to, while it is typed */
     readonly assessPassword: (
       principal: Principal,
@@ -383,6 +394,40 @@ export const emailFlowsLayer: Layer.Layer<
         Effect.map((row) => row?.name ?? null),
         Effect.orElseSucceed(() => null),
       )
+
+    /**
+     * Word to an address the account just left: after the answer, on its
+     * own fiber, so a relay that fails costs the notice and never the change.
+     */
+    const tellLeft = (
+      tenantId: string,
+      purpose: 'email-changed' | 'email-changed-by-administrator',
+      input: { readonly to: string; readonly locale: MailLocale; readonly signedOut: boolean },
+    ) =>
+      Effect.forkIn(
+        Effect.gen(function* () {
+          const slug = (yield* withDb(tenantSlug(tenantId)).pipe(Effect.orDie)).slug
+          const origin = yield* origins
+            .resolve({ id: tenantId, slug })
+            .pipe(Effect.option, Effect.map(Option.getOrNull))
+          const message = noticeFor(purpose, input.locale, {
+            to: input.to,
+            workspace: yield* workspaceOf(tenantId),
+            origin: origin === null ? null : origin.toString(),
+            signedOut: input.signedOut,
+          })
+          yield* mailer
+            .send({ to: input.to, ...message })
+            .pipe(
+              Effect.catchTag('MailUnavailable', (failed) =>
+                Effect.logWarning('the old address could not be told of a change').pipe(
+                  Effect.annotateLogs({ tenantId, reason: failed.reason }),
+                ),
+              ),
+            )
+        }).pipe(Effect.ignore),
+        scope,
+      ).pipe(Effect.asVoid)
 
     const throttle = Effect.fn('Auth.email.throttle')(function* (
       tenantId: string,
@@ -959,32 +1004,15 @@ export const emailFlowsLayer: Layer.Layer<
           }),
         )
         if (left === null) return
-        // after the answer, on its own: a relay that fails costs the notice,
-        // never the change
-        yield* Effect.forkIn(
-          Effect.gen(function* () {
-            const slug = (yield* withDb(tenantSlug(tenantId)).pipe(Effect.orDie)).slug
-            const origin = yield* origins
-              .resolve({ id: tenantId, slug })
-              .pipe(Effect.option, Effect.map(Option.getOrNull))
-            const message = noticeFor('email-changed', context.locale ?? 'en', {
-              to: left,
-              workspace: yield* workspaceOf(tenantId),
-              origin: origin === null ? null : origin.toString(),
-            })
-            yield* mailer
-              .send({ to: left, ...message })
-              .pipe(
-                Effect.catchTag('MailUnavailable', (failed) =>
-                  Effect.logWarning('the old address could not be told of a change').pipe(
-                    Effect.annotateLogs({ tenantId, reason: failed.reason }),
-                  ),
-                ),
-              )
-          }).pipe(Effect.ignore),
-          scope,
-        )
+        yield* tellLeft(tenantId, 'email-changed', {
+          to: left,
+          locale: context.locale ?? 'en',
+          signedOut: true,
+        })
       }),
+
+      tellAddressLeft: (tenantId, input) =>
+        tellLeft(tenantId, 'email-changed-by-administrator', input),
 
       assessPassword: Effect.fn('Auth.email.assessPassword')(function* (principal, input) {
         const tenantId = principal.tenantId
