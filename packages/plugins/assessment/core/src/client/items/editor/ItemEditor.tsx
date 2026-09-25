@@ -213,7 +213,6 @@ type Ask =
 
 type Issue = ServerIssue
 
-/** a save the page has no row to pin on: what happened, in the words it has */
 /** what a question is besides its configuration, which the revision check does not cover */
 interface Plain {
   readonly title: string
@@ -226,6 +225,7 @@ const plainOf = (item: ItemDto | null): Plain | null =>
     ? null
     : { title: item.title, scoreGroupId: item.scoreGroupId, maxEntries: item.maxEntries }
 
+/** a save the page has no row to pin on: what happened, in the words it has */
 type Refused =
   | { kind: 'conflict' | 'voided' | 'read-only' | 'denied' | 'gone' | 'full' | 'scoring' }
   | { kind: 'incompatible' | 'other'; words: string }

@@ -1736,11 +1736,6 @@ export function RejectDialog({
   )
 }
 
-/**
- * One field of the comparison: what they wrote, and what would replace it.
- * The box starts empty - empty is "keep theirs" - and a box that has been
- * written in stops looking like the empty ones around it.
- */
 /** whether a typed suggestion draft could ever file as this field's value */
 const suggestionDraftInvalid = (field: EvidenceFieldSpec, draft: string): boolean => {
   const trimmed = draft.trim()
@@ -1784,6 +1779,11 @@ const suggestionDraftsOf = (
 /** the pick that keeps their answer, in a list that must name every row */
 const KEEP_THEIRS = '\u0000keep'
 
+/**
+ * One field of the comparison: what they wrote, and what would replace it.
+ * The box starts empty - empty is "keep theirs" - and a box that has been
+ * written in stops looking like the empty ones around it.
+ */
 function FieldRow({
   slot,
   field,

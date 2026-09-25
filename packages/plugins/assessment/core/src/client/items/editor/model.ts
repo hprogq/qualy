@@ -875,12 +875,6 @@ export const linkOf = (
 ): { parameter: string; handle: string; recognition: RecognitionDraft } | undefined =>
   recognitionRows(draft, contract).find((row) => row.recognition.fieldId === fieldId)
 
-/**
- * One field as the api stores it. A field that is the filing side of a
- * determination carries the determination's own type and bounds, whatever
- * it held: the two are one fact, and the determination is where it is set.
- */
-
 /** a size in megabytes as the whole number of bytes the api takes */
 const bytesOf = (megabytes: string): number => Math.round(Number(megabytes.trim()) * 1024 * 1024)
 
@@ -900,6 +894,11 @@ const attachmentLimitsHold = (field: FieldDraft): boolean => {
   )
 }
 
+/**
+ * One field as the api stores it. A field that is the filing side of a
+ * determination carries the determination's own type and bounds, whatever
+ * it held: the two are one fact, and the determination is where it is set.
+ */
 const fieldToWire = (
   field: FieldDraft,
   draft: Draft,
