@@ -2525,8 +2525,8 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
       // is a reconsideration of a settled decision, not a withdrawal of
       // it, and status moves only in the round's own terminal
       // transaction. Moving it here made contesting a deduction the way
-      // to stop the deduction counting - the 「分数悬置」 reading that
-      // ruling voids in as many words. What a reader needs in order to
+      // to stop the deduction counting - the "score held in suspense"
+      // reading that ruling voids in as many words. What a reader needs in order to
       // know a round is open is the round itself, which is attached in
       // the same statement.
       const moved = yield* setEntryState({

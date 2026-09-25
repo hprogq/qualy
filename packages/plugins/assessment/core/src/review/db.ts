@@ -2198,7 +2198,6 @@ export const mayReviewEntry = (input: { tenantId: string; userId: string; entryI
 // every conclusion is conditional, and the partial unique indexes are the
 // referee of last resort.
 
-/** the round row itself, taken for update: panel votes serialize on it */
 /** the round of this claim still running, if one is, taken under lock */
 export const openRoundOf = (tenantId: string, entryId: string) =>
   db
@@ -2214,6 +2213,7 @@ export const openRoundOf = (tenantId: string, entryId: string) =>
     )
     .pipe(Effect.map((row) => (row === undefined ? null : { id: row.id, origin: row.origin })))
 
+/** the round row itself, taken for update: panel votes serialize on it */
 export const lockReviewInstance = (tenantId: string, instanceId: string) =>
   db
     .query((k) =>
