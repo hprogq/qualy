@@ -452,6 +452,18 @@ export interface EntryMethods {
     as: Principal,
   ) => Effect.Effect<EntryView, EntryNotFound>
   /**
+   * Of these questions, the ones on which the participant could edit and
+   * submit a claim of theirs right now - the question the write path asks
+   * (`ownerMayRefile`), for a line that offers to continue only what would
+   * go through.
+   */
+  readonly itemsOwnerMayContinue: (
+    tenantId: string,
+    batchId: string,
+    participantId: string,
+    itemIds: readonly string[],
+  ) => Effect.Effect<ReadonlySet<string>>
+  /**
    * Whether this person may read that entry at all - the same boundary the
    * detail and its history use, offered to the doors that hold a citation
    * rather than a row (an attachment is one).
@@ -1262,6 +1274,26 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
         participant,
       })
     })
+
+  const itemsOwnerMayContinue: EntryMethods['itemsOwnerMayContinue'] = (
+    tenantId,
+    batchId,
+    participantId,
+    itemIds,
+  ) =>
+    withDb(
+      Effect.gen(function* () {
+        const open = new Set<string>()
+        const participant = yield* participantOf(tenantId, batchId, participantId)
+        if (participant === null) return open
+        for (const itemId of new Set(itemIds)) {
+          const item = yield* itemOf(tenantId, itemId)
+          if (item === null || item.batchId !== batchId) continue
+          if (yield* ownerMayRefile(tenantId, batchId, item, participant)) open.add(itemId)
+        }
+        return open
+      }),
+    ).pipe(Effect.orDie)
 
   /** the same question by id, for the doors that hold a citation rather than a row */
   const mayReadEntryById = (
@@ -2714,6 +2746,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
     createEntry,
     getEntry,
     mayReadEntryById,
+    itemsOwnerMayContinue,
     appendEntryRevision,
     setEntryStatus,
     markMyEntryRead,

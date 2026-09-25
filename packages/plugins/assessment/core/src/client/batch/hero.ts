@@ -44,10 +44,11 @@ export type AgendaRow =
       readonly state: OwnState
       readonly count: number
       /**
-       * whether filing is open to the reader now: a draft or a claim sent
-       * back is only something to get on with while it is
+       * on a draft or a claim sent back: whether the reader can edit and
+       * submit one now, as the server judged it - only then is it something
+       * to get on with
        */
-      readonly filing: 'open' | 'upcoming' | 'closed'
+      readonly continuable: boolean
     }
 
 export type OwnState =
@@ -67,16 +68,18 @@ const ASKING: ReadonlySet<OwnState> = new Set(['toAnswer', 'toFix', 'draft', 're
 /**
  * Whether an own line asks something of the reader, or only reports.
  *
- * Finishing a draft or reworking a claim sent back needs filing to be open;
- * once it has closed those lines only say what was left, and offering to
- * continue would be a way in to a form the round no longer takes.
+ * Finishing a draft or reworking a claim sent back needs the reader to be
+ * able to edit and submit it now, which is the server's to say: whether new
+ * filings can be started is a different question, since a stage may open
+ * editing without opening new filings, or for some questions only. Where
+ * none can go through, those lines only say what was left, and offering to
+ * continue would be a way in to a form the round does not take.
  */
 export const ownLineAsks = (row: {
   readonly state: OwnState
-  readonly filing: 'open' | 'upcoming' | 'closed'
+  readonly continuable: boolean
 }): boolean =>
-  ASKING.has(row.state) &&
-  !((row.state === 'draft' || row.state === 'toFix') && row.filing !== 'open')
+  ASKING.has(row.state) && !((row.state === 'draft' || row.state === 'toFix') && !row.continuable)
 
 /**
  * What this reader has to do in the round, in the order it is worth doing.
@@ -116,6 +119,7 @@ export const agendaOf = (
       submitted: number
       approved: number
       filing: 'open' | 'upcoming' | 'closed'
+      continuable: { draft: boolean; toFix: boolean }
     } | null
     reviewsWaiting: number | null
   }[],
@@ -133,39 +137,38 @@ export const agendaOf = (
     // when nothing else is left. "Nothing filed" is three different lines,
     // because "start filing" is only true while filing is open.
     //
-    // A draft or a claim sent back only waits on the reader while filing is
-    // open. Once it is not, those lines report what was left and ask
-    // nothing, so they give way to a line that still asks - a refusal the
-    // reader may answer must not sit under an old draft nobody can finish.
+    // A draft or a claim sent back only waits on the reader while they can
+    // edit and submit it. When they cannot, those lines report what was left
+    // and ask nothing, so they give way to a line that still asks - a
+    // refusal the reader may answer must not sit under an old draft nobody
+    // can finish.
     const own = mine.myEntries
-    const filingOpen = own.filing === 'open'
-    const order: readonly (readonly [OwnState, number])[] = filingOpen
-      ? [
-          ['toAnswer', own.toAnswer],
-          ['toFix', own.toFix],
-          ['draft', own.draft],
-          ['rejected', own.rejected],
-          ['submitted', own.submitted],
-          ['approved', own.approved],
-        ]
-      : [
-          ['toAnswer', own.toAnswer],
-          ['rejected', own.rejected],
-          ['toFix', own.toFix],
-          ['draft', own.draft],
-          ['submitted', own.submitted],
-          ['approved', own.approved],
-        ]
+    const workable = (state: 'toFix' | 'draft') => own.continuable[state]
+    const order: readonly (readonly [OwnState, number])[] = [
+      ['toAnswer', own.toAnswer],
+      ...(workable('toFix') ? [['toFix', own.toFix] as const] : []),
+      ...(workable('draft') ? [['draft', own.draft] as const] : []),
+      ['rejected', own.rejected],
+      ...(workable('toFix') ? [] : [['toFix', own.toFix] as const]),
+      ...(workable('draft') ? [] : [['draft', own.draft] as const]),
+      ['submitted', own.submitted],
+      ['approved', own.approved],
+    ]
     const first = order.find(([, count]) => count > 0)
     rows.push(
       first !== undefined
-        ? { kind: 'own', state: first[0], count: first[1], filing: own.filing }
+        ? {
+            kind: 'own',
+            state: first[0],
+            count: first[1],
+            continuable: first[0] === 'toFix' || first[0] === 'draft' ? workable(first[0]) : false,
+          }
         : {
             kind: 'own',
             state:
               own.filing === 'open' ? 'none' : own.filing === 'upcoming' ? 'upcoming' : 'missed',
             count: 0,
-            filing: own.filing,
+            continuable: false,
           },
     )
   }

@@ -459,6 +459,33 @@ export const reconsideredCountsByBatchOf = (input: {
       )
 
 /**
+ * The questions this user holds a draft or a claim sent back on, per round
+ * and status: whether they can get on with them is a question asked item by
+ * item, since a phase may open editing to some questions and not others.
+ */
+export const unfinishedItemsByBatchOf = (input: {
+  tenantId: string
+  userId: string
+  batchIds: readonly string[]
+}) =>
+  input.batchIds.length === 0
+    ? Effect.succeed([] as { batchId: string; itemId: string; status: string }[])
+    : db.query((k) =>
+        k
+          .selectFrom('Entry as e')
+          .innerJoin('BatchParticipant as bp', (join) =>
+            join.onRef('bp.tenantId', '=', 'e.tenantId').onRef('bp.id', '=', 'e.participantId'),
+          )
+          .select(['e.batchId', 'e.itemId', 'e.status'])
+          .distinct()
+          .where('e.tenantId', '=', input.tenantId)
+          .where('e.batchId', 'in', [...input.batchIds])
+          .where('bp.userId', '=', input.userId)
+          .where('e.status', 'in', ['draft', 'needs_revision'])
+          .execute(),
+      )
+
+/**
  * Which of these rounds this user takes part in at all.
  *
  * Asked apart from the counts above because nought filings and no place on

@@ -82,6 +82,7 @@ import {
   nodePathOf,
   participantOf,
   staffReachesParticipant,
+  unfinishedItemsByBatchOf,
   userActivityPage,
   type AccountReading,
   type AdministrativeEntryRow,
@@ -839,6 +840,12 @@ export interface MyFilings {
   readonly approved: number
   /** whether a new filing can be started now, at a later stage, or not again */
   readonly filing: 'open' | 'upcoming' | 'closed'
+  /**
+   * whether at least one draft, and at least one claim sent back, can be
+   * edited and submitted by its owner now - asked the way the write path
+   * asks it, item by item, which starting a new filing does not answer
+   */
+  readonly continuable: { readonly draft: boolean; readonly toFix: boolean }
 }
 
 export interface MyOverview {
@@ -3176,7 +3183,17 @@ export const make = Effect.fn('Assessment.make')(function* () {
           withDb(reconsideredCountsByBatchOf({ tenantId, userId: as.userId, batchIds })),
         )).map((row) => [`${row.batchId}:${row.status}`, Number(row.total)]),
       )
-      type Counts = Omit<MyFilings, 'filing'>
+      // the questions each round's drafts and claims sent back stand on
+      const unfinished = new Map<string, { draft: Set<string>; toFix: Set<string> }>()
+      for (const row of yield* dieQuery(
+        withDb(unfinishedItemsByBatchOf({ tenantId, userId: as.userId, batchIds })),
+      )) {
+        const held = unfinished.get(row.batchId) ?? { draft: new Set(), toFix: new Set() }
+        if (row.status === 'draft') held.draft.add(row.itemId)
+        else held.toFix.add(row.itemId)
+        unfinished.set(row.batchId, held)
+      }
+      type Counts = Omit<MyFilings, 'filing' | 'continuable'>
       const none: Counts = {
         toAnswer: 0,
         toFix: 0,
@@ -3222,8 +3239,28 @@ export const make = Effect.fn('Assessment.make')(function* () {
         const participant = yield* dieQuery(
           withDb(activeParticipantByUser(tenantId, batchId, as.userId)),
         )
-        if (!batch || participant === null) return 'closed' as const
-        return yield* dieQuery(withDb(filingOf(tenantId, batch, participant.id, now)))
+        if (!batch || participant === null) {
+          return { filing: 'closed' as const, continuable: { draft: false, toFix: false } }
+        }
+        // Starting a new filing and getting on with one already begun are
+        // different questions: a stage may open editing and submitting
+        // without opening new filings, or open them for some questions
+        // only. So what is left unfinished is asked the way its own write
+        // would ask it, question by question.
+        const held = unfinished.get(batchId)
+        const open =
+          held === undefined
+            ? new Set<string>()
+            : yield* entryMethods.itemsOwnerMayContinue(tenantId, batchId, participant.id, [
+                ...held.draft,
+                ...held.toFix,
+              ])
+        const any = (items: ReadonlySet<string> | undefined) =>
+          items !== undefined && [...items].some((itemId) => open.has(itemId))
+        return {
+          filing: yield* dieQuery(withDb(filingOf(tenantId, batch, participant.id, now))),
+          continuable: { draft: any(held?.draft), toFix: any(held?.toFix) },
+        }
       })
       // Every round asks rbac its own question, so the rounds ask at once:
       // in series a reader with a dozen rounds under way waited for a dozen
@@ -3235,7 +3272,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
           return {
             batchId,
             myEntries: taking.has(batchId)
-              ? { ...(mine.get(batchId) ?? none), filing: yield* filingFor(batchId) }
+              ? { ...(mine.get(batchId) ?? none), ...(yield* filingFor(batchId)) }
               : null,
             // the queue's own count, so under the queue's own gate
             reviewsWaiting: authority.has('assessment.review.process')

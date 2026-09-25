@@ -324,6 +324,7 @@ describe('the batch list', () => {
     submitted: number
     approved: number
     filing: 'open' | 'upcoming' | 'closed'
+    continuable: { draft: boolean; toFix: boolean }
   }
   const NOTHING: Filings = {
     toAnswer: 0,
@@ -333,7 +334,10 @@ describe('the batch list', () => {
     submitted: 0,
     approved: 0,
     filing: 'open',
+    // whatever was left, the reader could send it now
+    continuable: { draft: true, toFix: true },
   }
+  const STUCK = { draft: false, toFix: false }
   const standing = (mine: Partial<Filings> | null, reviewsWaiting: number | null) => ({
     listBatches: () =>
       Effect.succeed({
@@ -382,23 +386,41 @@ describe('the batch list', () => {
     expect(await agendaStates()).toEqual(['toFix', 'clear'])
   })
 
-  // A draft or a claim sent back is something to get on with only while
-  // filing is open; after it closes the line says what was left and no
-  // longer asks, so it no longer leads either.
-  it('only reports drafts once filing has closed', async () => {
-    const asking = async () =>
-      page
-        .getByTestId('hero-agenda')
-        .elements()
-        .map((node) => [
-          node.getAttribute('data-agenda-state'),
-          node.getAttribute('data-agenda-asks'),
-        ])
-    await screen(standing({ draft: 1, filing: 'closed' }, 0), '/assessment/batches')
+  // A draft or a claim sent back is something to get on with only while the
+  // reader can edit and send it, which the server says; when nobody can, the
+  // line says what was left and no longer asks, so it no longer leads either.
+  const asking = async () =>
+    page
+      .getByTestId('hero-agenda')
+      .elements()
+      .map((node) => [
+        node.getAttribute('data-agenda-state'),
+        node.getAttribute('data-agenda-asks'),
+      ])
+
+  it('only reports drafts nobody can send now', async () => {
+    await screen(
+      standing({ draft: 1, filing: 'open', continuable: STUCK }, 0),
+      '/assessment/batches',
+    )
     await expect.element(page.getByRole('heading', { name: '2026 春季综测' })).toBeVisible()
     expect(await asking()).toEqual([
       ['clear', 'false'],
       ['draft', 'false'],
+    ])
+  })
+
+  // a stage for finishing what was started takes no new filings, and still
+  // waits on the reader to send their draft
+  it('asks for a draft the reader can still send when new filings are over', async () => {
+    await screen(
+      standing({ draft: 1, filing: 'closed', continuable: { draft: true, toFix: false } }, 0),
+      '/assessment/batches',
+    )
+    await expect.element(page.getByRole('heading', { name: '2026 春季综测' })).toBeVisible()
+    expect(await asking()).toEqual([
+      ['draft', 'true'],
+      ['clear', 'false'],
     ])
   })
 
@@ -425,11 +447,17 @@ describe('the batch list', () => {
     [{ filing: 'upcoming' }, 'upcoming'],
     [{ filing: 'closed' }, 'missed'],
     [{ approved: 2, filing: 'closed' }, 'approved'],
-    // with filing shut, a draft nobody can finish gives way to a refusal the
-    // reader may still answer; while it is open the draft is the work
-    [{ draft: 1, rejected: 1, filing: 'closed' }, 'rejected'],
-    [{ toFix: 1, rejected: 1, filing: 'upcoming' }, 'rejected'],
+    // a draft nobody can send now gives way to a refusal the reader may
+    // still answer; while it can be sent the draft is the work, whether or
+    // not new filings are taken
+    [{ draft: 1, rejected: 1, filing: 'closed', continuable: STUCK }, 'rejected'],
+    [{ toFix: 1, rejected: 1, filing: 'upcoming', continuable: STUCK }, 'rejected'],
+    [{ toFix: 1, rejected: 1, continuable: { draft: true, toFix: false } }, 'rejected'],
     [{ draft: 1, rejected: 1 }, 'draft'],
+    [
+      { draft: 1, rejected: 1, filing: 'closed', continuable: { draft: true, toFix: false } },
+      'draft',
+    ],
   ] as const)('says what became of the reader’s filings: %o reads as %s', async (mine, state) => {
     await screen(standing(mine, null), '/assessment/batches')
     await expect.element(page.getByRole('heading', { name: '2026 春季综测' })).toBeVisible()

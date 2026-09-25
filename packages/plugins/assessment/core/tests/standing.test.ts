@@ -98,6 +98,7 @@ describe.runIf(postgresAvailable)('the standing of a reader across the rounds un
       submitted: 0,
       approved: 0,
       filing: 'open',
+      continuable: { draft: false, toFix: false },
     }
 
     // the round under way is there for both readers, and it is the only one
@@ -106,9 +107,17 @@ describe.runIf(postgresAvailable)('the standing of a reader across the rounds un
 
     // the student: their own filing moves between the buckets, and
     // nobody's work ever waits on them
-    expect(row(result.drafted).myEntries).toEqual({ ...open, draft: 1 })
+    expect(row(result.drafted).myEntries).toEqual({
+      ...open,
+      draft: 1,
+      continuable: { draft: true, toFix: false },
+    })
     expect(row(result.sent).myEntries).toEqual({ ...open, submitted: 1 })
-    expect(row(result.returned).myEntries).toEqual({ ...open, toFix: 1 })
+    expect(row(result.returned).myEntries).toEqual({
+      ...open,
+      toFix: 1,
+      continuable: { draft: false, toFix: true },
+    })
     for (const reading of [result.drafted, result.sent, result.returned]) {
       expect(row(reading).reviewsWaiting).toBeNull()
     }
@@ -204,7 +213,15 @@ describe.runIf(postgresAvailable)('the standing of a reader across the rounds un
 
     const mine = (standing: MyStanding) =>
       standing.items.find((item) => item.batchId === result.batchId)!.myEntries
-    const none = { toAnswer: 0, toFix: 0, draft: 0, rejected: 0, submitted: 0, approved: 0 }
+    const none = {
+      toAnswer: 0,
+      toFix: 0,
+      draft: 0,
+      rejected: 0,
+      submitted: 0,
+      approved: 0,
+      continuable: { draft: false, toFix: false },
+    }
 
     expect(mine(result.asked)).toEqual({ ...none, toAnswer: 1, filing: 'open' })
     expect(mine(result.accepted)).toEqual({ ...none, approved: 1, filing: 'open' })
@@ -318,7 +335,15 @@ describe.runIf(postgresAvailable)('the standing of a reader across the rounds un
         }),
       ),
     )
-    const none = { toAnswer: 0, toFix: 0, draft: 0, rejected: 0, submitted: 0, approved: 0 }
+    const none = {
+      toAnswer: 0,
+      toFix: 0,
+      draft: 0,
+      rejected: 0,
+      submitted: 0,
+      approved: 0,
+      continuable: { draft: false, toFix: false },
+    }
     expect(result.desk.actions.map((one) => one.kind)).toEqual(['supplement'])
     expect(result.card.items.find((item) => item.batchId === result.batchId)!.myEntries).toEqual({
       ...none,
@@ -369,9 +394,114 @@ describe.runIf(postgresAvailable)('the standing of a reader across the rounds un
         }),
       ),
     )
-    const none = { toAnswer: 0, toFix: 0, draft: 0, rejected: 0, submitted: 0, approved: 0 }
+    const none = {
+      toAnswer: 0,
+      toFix: 0,
+      draft: 0,
+      rejected: 0,
+      submitted: 0,
+      approved: 0,
+      continuable: { draft: false, toFix: false },
+    }
     expect(result.refused).toEqual({ ...none, rejected: 1, filing: 'open' })
     expect(result.appealing).toEqual({ ...none, submitted: 1, filing: 'open' })
+  }, 120_000)
+
+  // Getting on with a draft or a claim sent back is not starting a new
+  // filing: a stage may open editing and submitting and not creating, or the
+  // other way round. The card offers to continue on the same question each
+  // write asks, not on whether a new filing would go through.
+  it('offers to continue only what editing and submitting would take, whatever filing says', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('standing-continue')
+          const assessment = yield* Assessment
+          const admin = f.principal(f.admin)
+          const g = yield* runningBatch(f, { profile: PROFILE })
+          // one student with a draft, the other with a claim sent back
+          yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            f.principal(f.s1),
+          )
+          const sent = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p2, payload: {} },
+            f.principal(f.s2),
+          )
+          yield* assessment.setEntryStatus(f.t, sent.id, 'in_review', f.principal(f.s2))
+          yield* assessment.interveneOnEntry(
+            f.t,
+            sent.id,
+            { kind: 'return-for-revision', reason: '请补充证明' },
+            admin,
+          )
+          const profiled = (permissionProfile: readonly string[]) =>
+            Effect.gen(function* () {
+              const plan = yield* assessment.getPlan(f.t, g.batch.id, admin)
+              yield* assessment.replacePlan(
+                f.t,
+                g.batch.id,
+                {
+                  specs: plan.map((row, at) => ({
+                    id: row.id,
+                    phaseKey: row.phaseKey,
+                    displayName: row.displayName,
+                    permissionProfile: at === 0 ? [...permissionProfile] : row.permissionProfile,
+                  })),
+                },
+                admin,
+              )
+            })
+          const mine = (userId: string) =>
+            Effect.map(
+              assessment.listMyStanding(f.t, f.principal(userId)),
+              (standing) => standing.items.find((item) => item.batchId === g.batch.id)!.myEntries!,
+            )
+          // a stage for finishing what was started: no new filings
+          yield* profiled([
+            'assessment.entry.edit',
+            'assessment.entry.submit',
+            'assessment.review.process',
+          ])
+          const finishing = { draft: yield* mine(f.s1), toFix: yield* mine(f.s2) }
+          // new filings, and nothing already started may be sent
+          yield* profiled(['assessment.entry.create', 'assessment.review.process'])
+          const starting = { draft: yield* mine(f.s1), toFix: yield* mine(f.s2) }
+          return { finishing, starting }
+        }),
+      ),
+    )
+    expect(result.finishing.draft).toEqual(
+      expect.objectContaining({
+        draft: 1,
+        filing: 'closed',
+        continuable: { draft: true, toFix: false },
+      }),
+    )
+    expect(result.finishing.toFix).toEqual(
+      expect.objectContaining({
+        toFix: 1,
+        filing: 'closed',
+        continuable: { draft: false, toFix: true },
+      }),
+    )
+    expect(result.starting.draft).toEqual(
+      expect.objectContaining({
+        draft: 1,
+        filing: 'open',
+        continuable: { draft: false, toFix: false },
+      }),
+    )
+    expect(result.starting.toFix).toEqual(
+      expect.objectContaining({
+        toFix: 1,
+        filing: 'open',
+        continuable: { draft: false, toFix: false },
+      }),
+    )
   }, 120_000)
 
   // Whether filing is open, still to come or over is read off the stages

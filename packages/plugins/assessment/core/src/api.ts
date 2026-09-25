@@ -1907,6 +1907,13 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
                 submitted: Schema.Number,
                 approved: Schema.Number,
                 filing: Schema.Literals(['open', 'upcoming', 'closed']),
+                /**
+                 * whether at least one draft, and at least one claim sent
+                 * back, can be edited and submitted by this reader now: the
+                 * question the write path asks, so a line offers to continue
+                 * only what would go through
+                 */
+                continuable: Schema.Struct({ draft: Schema.Boolean, toFix: Schema.Boolean }),
               }),
             ),
             reviewsWaiting: Schema.NullOr(Schema.Number),
