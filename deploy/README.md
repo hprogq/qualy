@@ -52,7 +52,12 @@ curl -sf http://127.0.0.1:3000/health/ready
 
 Then put the edge in front of the published port: `ops/reverse-proxy/` has
 the Caddy and nginx shapes (TLS, HSTS, forwarded headers), and
-`QUALY_TRUSTED_PROXIES` in `.env` names the peer the container sees.
+`QUALY_TRUSTED_PROXIES` in `.env` names the peer the container sees, the
+compose network's gateway (`.env.example` has it). Check it once the edge is
+up: sign in through the public address and look at the sign-in record under
+the account's security page, or at the server's json access log. The address
+there must be your own public one; a `172.30.53.1` means the proxy is not
+trusted and every visitor shares that address in the rate limits.
 
 Do not run these commands from a development checkout's working copy against
 its own Docker: the deployment is its own project (`qualy-deployment`), but

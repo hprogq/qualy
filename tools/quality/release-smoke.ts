@@ -65,6 +65,9 @@ fs.writeFileSync(
     // and a key for resend, whichever of the two the manifest enables
     'QUALY_MAIL_RESEND_API_KEY=re_smoke_only',
     `QUALY_PORT=${String(port)}`,
+    // an address plan of its own, clear of a deployment on the same host
+    'QUALY_NETWORK_SUBNET=172.30.54.0/24',
+    'QUALY_NETWORK_GATEWAY=172.30.54.1',
     'QUALY_LOG_FORMAT=json',
     'QUALY_LOG_LEVEL=info',
     '',

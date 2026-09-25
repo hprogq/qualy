@@ -33,6 +33,19 @@
 
 name: qualy-deployment
 
+# A fixed address plan, so the address the server sees an edge proxy on this
+# host connect from is known in advance: a connection to the loopback-bound
+# published port reaches the container from this network's gateway, and
+# QUALY_TRUSTED_PROXIES in .env names that gateway. Without it every visitor
+# would share the gateway's address in the rate limits. Change both together
+# if the subnet collides with one this host already uses.
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${QUALY_NETWORK_SUBNET:-172.30.53.0/24}
+          gateway: ${QUALY_NETWORK_GATEWAY:-172.30.53.1}
+
 services:
   postgres:
     image: pgvector/pgvector:pg18-bookworm@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a

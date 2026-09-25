@@ -25,8 +25,10 @@ qualy.example.com {
 		# trusted proxy. Caddy forwards the Host header as received and adds
 		# X-Forwarded-For / X-Forwarded-Proto by default; X-Forwarded-Host is
 		# added here so the two agree. On the application side set
-		# QUALY_TRUSTED_PROXIES to this proxy's address (the peer the process
-		# sees, e.g. 127.0.0.1), or none of these headers are believed.
+		# QUALY_TRUSTED_PROXIES to the peer the process sees, or none of these
+		# headers are believed: under deploy/compose.yaml that is the compose
+		# network's gateway (172.30.53.1, deploy/.env.example), not 127.0.0.1;
+		# only a process running directly on this host sees 127.0.0.1.
 		header_up X-Forwarded-Host {http.request.host}
 
 		# Server-sent events (the batch live channel) are answered as an
