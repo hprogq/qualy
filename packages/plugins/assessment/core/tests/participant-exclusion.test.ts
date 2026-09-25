@@ -3,6 +3,7 @@ import { sql } from 'kysely'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
 import { Assessment } from '../src/server/index.ts'
+import { recordItem } from './support/administrative.ts'
 import { GATED, ok, one, refusalOf, run, runningBatch, seed } from './support/round.ts'
 
 // Taking somebody off a round's roster takes every act they had with it,
@@ -198,6 +199,205 @@ describe.runIf(postgresAvailable)('what leaving the roster does to open work', (
     expect(result.after.status).toBe('approved')
     expect(result.card).toEqual({ state: 'available', reason: null })
     expect(Exit.isSuccess(result.again)).toBe(true)
+  })
+
+  // What the round was decides, never the claim's status alone: every way a
+  // reconsidering round can stand when its participant leaves goes back to
+  // the conclusion it contested.
+  it('puts every contested claim back on what it contested, however the round stood', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('px-contested')
+          const assessment = yield* Assessment
+          const admin = f.principal(f.admin)
+          const reviewer = f.principal(f.reviewer)
+          const g = yield* runningBatch(f, {
+            profile: [...REVIEW_OPEN, 'assessment.entry.appeal'],
+            escalation: [
+              {
+                id: 'esc',
+                label: '复核',
+                selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
+                quorum: { type: 'any' },
+              },
+            ],
+          })
+          const appealed = (word: 'approve' | 'reject') =>
+            Effect.gen(function* () {
+              const s1 = f.principal(f.s1)
+              const entry = yield* assessment.createEntry(
+                f.t,
+                { itemId: g.item.id, participantId: g.p1, payload: {} },
+                s1,
+              )
+              const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+              yield* assessment.decideReview(
+                f.t,
+                sent.currentReviewInstanceId!,
+                word === 'approve'
+                  ? { decision: 'approve' }
+                  : { decision: 'reject', comment: '材料不足' },
+                reviewer,
+              )
+              const appeal = yield* assessment.appealEntry(f.t, entry.id, { reason: '请复核' }, s1)
+              return {
+                entryId: entry.id,
+                decision: sent.currentReviewInstanceId!,
+                appeal: appeal.id,
+              }
+            })
+          // the question takes more than one claim for the four below
+          yield* runSql(sql`update assessment_items set max_entries = null where id = ${g.item.id}`)
+          // a refusal under appeal
+          const refused = yield* appealed('reject')
+          // an approval under appeal, from before appeals left the claim
+          // where it stood: the claim was moved into review
+          const legacy = yield* appealed('approve')
+          yield* runSql(sql`update entries set status = 'in_review' where id = ${legacy.entryId}`)
+          // an appeal re-routed onto a newer chain: the round that replaced it
+          // still names what it contests
+          const rerouted = yield* appealed('approve')
+          yield* runSql(sql`
+            update review_instances set state = 'completed', outcome = 'superseded',
+              completed_at = now() where id = ${rerouted.appeal}`)
+          const successor = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into review_instances
+                (tenant_id, entry_id, revision_id, round_no, origin, initiator,
+                 appealed_instance_id, supersedes_instance_id, policy_revision_id,
+                 recognition_revision_id, effective_chain, current_route, current_stage_id,
+                 state, current_role_ids, current_node_id, current_node_path)
+              select tenant_id, entry_id, revision_id, round_no + 1, 'appeal', 'staff',
+                     appealed_instance_id, id, policy_revision_id, recognition_revision_id,
+                     effective_chain, current_route, current_stage_id, 'active',
+                     current_role_ids, current_node_id, current_node_path
+              from review_instances where id = ${rerouted.appeal}
+              returning id`),
+          ).id
+          yield* runSql(sql`
+            update entries set current_review_instance_id = ${successor}
+            where id = ${rerouted.entryId}`)
+          // an appeal standing blocked at a vacant step, which has no unit
+          const vacant = yield* appealed('reject')
+          yield* runSql(sql`
+            update review_instances set state = 'blocked', blocked_reason = 'no-assignee',
+              current_node_id = null, current_node_path = null
+            where id = ${vacant.appeal}`)
+
+          yield* assessment.setParticipantStatus(
+            f.t,
+            g.batch.id,
+            g.p1,
+            'excluded',
+            'transferred out',
+            admin,
+          )
+          const claimOf = (entryId: string) =>
+            Effect.map(
+              runSql(sql`
+                select status, current_review_instance_id from entries where id = ${entryId}`),
+              (rows) => one<{ status: string; current_review_instance_id: string | null }>(rows),
+            )
+          const roundOf = (id: string) =>
+            Effect.map(
+              runSql(sql`select state, outcome from review_instances where id = ${id}`),
+              (rows) => one<{ state: string; outcome: string }>(rows),
+            )
+          return {
+            refused: { ...refused, claim: yield* claimOf(refused.entryId) },
+            legacy: { ...legacy, claim: yield* claimOf(legacy.entryId) },
+            rerouted: {
+              ...rerouted,
+              claim: yield* claimOf(rerouted.entryId),
+              round: yield* roundOf(successor),
+            },
+            vacant: {
+              ...vacant,
+              claim: yield* claimOf(vacant.entryId),
+              round: yield* roundOf(vacant.appeal),
+            },
+          }
+        }),
+      ),
+    )
+    expect(result.refused.claim).toEqual({
+      status: 'rejected',
+      current_review_instance_id: result.refused.decision,
+    })
+    // not a draft: nobody reversed the approval it was contesting
+    expect(result.legacy.claim).toEqual({
+      status: 'approved',
+      current_review_instance_id: result.legacy.decision,
+    })
+    expect(result.rerouted.round).toEqual({ state: 'completed', outcome: 'subject-excluded' })
+    expect(result.rerouted.claim).toEqual({
+      status: 'approved',
+      current_review_instance_id: result.rerouted.decision,
+    })
+    expect(result.vacant.round).toEqual({ state: 'completed', outcome: 'subject-excluded' })
+    expect(result.vacant.claim).toEqual({
+      status: 'rejected',
+      current_review_instance_id: result.vacant.decision,
+    })
+  })
+
+  // an appeal against a determination the office recorded contests no round:
+  // when it ends with the roster place, the claim stands on no round again
+  it('puts an appealed record back on its determination alone', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('px-record')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, {
+            profile: [...REVIEW_OPEN, 'assessment.entry.appeal'],
+          })
+          const office = yield* recordItem(f, g.batch.id)
+          const recorded = yield* assessment.createEntry(
+            f.t,
+            { itemId: office.id, participantId: g.p1, payload: {}, note: '校发〔2026〕4 号' },
+            f.principal(f.recorder),
+          )
+          const s1 = f.principal(f.s1)
+          const before = one<{ current_recognition_id: string }>(
+            yield* runSql(
+              sql`select current_recognition_id from entries where id = ${recorded.id}`,
+            ),
+          )
+          const appeal = yield* assessment.appealEntry(f.t, recorded.id, { reason: '处分有误' }, s1)
+          yield* assessment.setParticipantStatus(
+            f.t,
+            g.batch.id,
+            g.p1,
+            'excluded',
+            'transferred out',
+            f.principal(f.admin),
+          )
+          const after = one<{
+            status: string
+            current_review_instance_id: string | null
+            current_recognition_id: string
+          }>(
+            yield* runSql(sql`
+              select status, current_review_instance_id, current_recognition_id
+              from entries where id = ${recorded.id}`),
+          )
+          const round = one<{ outcome: string }>(
+            yield* runSql(sql`select outcome from review_instances where id = ${appeal.id}`),
+          )
+          return { before, after, round }
+        }),
+      ),
+    )
+    expect(result.round.outcome).toBe('subject-excluded')
+    expect(result.after).toEqual({
+      status: 'approved',
+      current_review_instance_id: null,
+      current_recognition_id: result.before.current_recognition_id,
+    })
   })
 
   it('answers no ask from somebody already off the roster, and offers them none', async () => {
