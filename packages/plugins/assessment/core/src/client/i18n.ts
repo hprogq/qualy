@@ -3031,6 +3031,19 @@ const i18n = definePluginMessages({
       id: 'assessment/review/tip-reject-mid',
       defaultMessage: 'Record your objection; the next review step rules on it',
     },
+    reviewTipApproveRevisit: {
+      id: 'assessment/review/tip-approve-revisit',
+      defaultMessage: 'Pass it; this becomes the result of the review',
+    },
+    reviewTipRejectRevisit: {
+      id: 'assessment/review/tip-reject-revisit',
+      defaultMessage:
+        'Do not pass it; this becomes the result of the review and may revoke an approval',
+    },
+    reviewRejectRevisitTitle: {
+      id: 'assessment/review/reject-revisit-title',
+      defaultMessage: 'Do not pass {name}\u2019s claim',
+    },
     reviewTipApproveOpinion: {
       id: 'assessment/review/tip-approve-opinion',
       defaultMessage: 'Agree and suggest a determination; the next review step decides',

@@ -1586,14 +1586,25 @@ function DecisionBar({
   // reads, and escalating climbs without one; the ordinary route hands an
   // approval on until its last step.
   const onLadder = review.chain.route === 'escalation'
+  // a round revisiting a result - an appeal, a re-examination - concludes
+  // on the result itself: a refusal there may take an approval away, and
+  // is never an invitation to file again
+  const revisiting = revisitsResult(review)
   const approveTip = review.actions.approvalConcludes
-    ? m.reviewTipApprove
+    ? revisiting
+      ? m.reviewTipApproveRevisit
+      : m.reviewTipApprove
     : onLadder
       ? m.reviewTipApproveOpinion
       : m.reviewTipApproveMid
+  const rejectTip = !review.actions.rejectionReturns
+    ? m.reviewTipRejectMid
+    : revisiting
+      ? m.reviewTipRejectRevisit
+      : m.reviewTipReject
 
   return (
-    <footer {...stylex.props(styles.decisionFooter)}>
+    <footer {...stylex.props(styles.decisionFooter)} data-revisits={String(revisiting)}>
       {/* All four acts, always: a workbench whose buttons come and go has no
           stable map, and "why can I not escalate this one" is a question a
           missing button cannot answer. What varies is availability, and a
@@ -1636,7 +1647,7 @@ function DecisionBar({
           label={format(m.reviewReject)}
           icon={<CornerUpLeftIcon aria-hidden />}
           kbd="R"
-          why={format(review.actions.rejectionReturns ? m.reviewTipReject : m.reviewTipRejectMid)}
+          why={format(rejectTip)}
           concludes={review.actions.rejectionReturns}
           xstyle={[styles.rejectKey, styles.phoneVerdict]}
           kbdClassName="bg-[color-mix(in_oklab,var(--q-danger)_12%,transparent)] text-[var(--q-danger)]"
@@ -1735,6 +1746,10 @@ function ActionKey({
     </TooltipProvider>
   )
 }
+
+/** whether this round revisits a result rather than judging a filing for the first time */
+const revisitsResult = (review: Pick<ReviewDto, 'events'>): boolean =>
+  review.events.some((event) => event.kind === 'appealed' || event.kind === 'reopened')
 
 /** the words for a blocked act, keyed by the server's stable reason codes */
 const actionBlockedMessage = (reason: string | null): MessageDescriptor => {

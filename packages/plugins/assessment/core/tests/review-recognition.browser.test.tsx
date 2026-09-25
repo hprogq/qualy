@@ -660,9 +660,36 @@ describe('approving with a determination', () => {
     await expect.element(page.getByTestId('act-reject')).toHaveAttribute('data-concludes', 'false')
   })
 
+  // A round revisiting a result concludes on the result itself: a refusal
+  // there can take an approval away, and is never a request to file again
+  it('tells a round revisiting a result from a first look', async () => {
+    const base = review({ recognitionForm: null })
+    await open(
+      {
+        ...base,
+        events: [
+          {
+            kind: 'appealed',
+            actorId: null,
+            actorName: null,
+            reason: null,
+            comment: '证书等级认定有误',
+            suggestedPayload: null,
+            at: base.submittedAt,
+          },
+        ] as never,
+      },
+      { decideReview: stagedDecide() },
+    )
+    await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
+    await expect.element(page.getByTestId('act-reject')).toHaveAttribute('data-concludes', 'true')
+    expect(document.querySelector('[data-revisits]')?.getAttribute('data-revisits')).toBe('true')
+  })
+
   it('marks the verdicts as concluding where the round ends', async () => {
     await open(review({ recognitionForm: null }), { decideReview: stagedDecide() })
     await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
+    expect(document.querySelector('[data-revisits]')?.getAttribute('data-revisits')).toBe('false')
     await expect.element(page.getByTestId('act-approve')).toHaveAttribute('data-concludes', 'true')
     await expect.element(page.getByTestId('act-reject')).toHaveAttribute('data-concludes', 'true')
   })

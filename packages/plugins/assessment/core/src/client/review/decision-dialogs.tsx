@@ -1604,7 +1604,11 @@ export function RejectDialog({
       size="wide"
       restfulFocus={reasons.length > 0}
       title={format(
-        review.actions.rejectionReturns ? m.reviewRejectTitle : m.reviewRejectOpinionTitle,
+        !review.actions.rejectionReturns
+          ? m.reviewRejectOpinionTitle
+          : review.events.some((event) => event.kind === 'appealed' || event.kind === 'reopened')
+            ? m.reviewRejectRevisitTitle
+            : m.reviewRejectTitle,
         { name: review.participantName },
       )}
       description={format(m.reviewRejectSubtitle, {
