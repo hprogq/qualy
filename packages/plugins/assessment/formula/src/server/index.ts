@@ -2490,7 +2490,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
           // once allowed
           if (Buffer.byteLength(source.sourceTs, 'utf8') > SOURCE_LIMIT)
             return yield* new FormulaSourceTooLarge({ limit: SOURCE_LIMIT })
-          if (testsTooLarge(source.tests as readonly unknown[]))
+          if (testsTooLarge(source.tests))
             return yield* new FormulaTestsTooLarge({ limit: TESTS_LIMIT })
           // putting back exactly what is already there is not a change
           if (
