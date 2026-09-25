@@ -151,6 +151,14 @@ transaction 池化下会话不跟着客户端走,两者都不成立。
 `sslrootcert=<容器内路径>`;不挂的话每条连接都因证书不受信被拒,server 起不来。不要用 `sslmode=no-verify` 绕过,那等于不再核对连上的是谁。
 URL 原样交给驱动,应用连接池、迁移器与通知监听用的是同一套 TLS 设置。
 
+**`/api` 的请求体**:带请求体的 `/api` 请求必须声明 `Content-Type`,缺了就在路由之前答 415 `BAD_REQUEST`,请求体不被读取。
+浏览器与 typed client 总会带上;用 curl 或脚本直接调 API 时要显式写 `-H 'content-type: application/json'`。这一条比上游严:
+上游 HttpApi 在缺类型时按 JSON 解码,而缺类型的请求体在「解码 payload 的端点」与「流式读取的上传门」之间有两种读法,在路由前分不清,
+所以一律拒绝(`@qualy/api-kit/storable-text`)。要读完的请求体上限 2 MiB(上传门按预留大小流式写盘,不受此限)。
+声明了 payload 的端点在解码之前,先检查 JSON 请求体里有没有 PostgreSQL 存不下的文字(NUL、落单的代理项);地址里的 `%00`
+在路由前检查;两者都答 400 `BAD_REQUEST`。本地上传门(`PUT /api/storage/local/uploads/{reservationId}`)这类契约不声明 payload
+的流式端点,请求体从不被这项检查读取,不论 `Content-Type` 写什么。
+
 **CSP 报告与日志量**:`/csp-reports` 是匿名端点,server 对它每分钟最多写 50 行 Warn(同一「指令 + 被拦地址 + 来源文件」一分钟只写一次,
 超出预算的只计数),每行最长约 3KB。有人持续灌入时一天约 200MB,正好是 compose 给 server 的日志轮转上限(`json-file`,20m × 10),
 约一天前的日志会被挤掉。生产部署应把 server 日志转存到机器之外(Docker 的 `journald` / `syslog` / `fluentd` 等 logging driver,
