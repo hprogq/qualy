@@ -376,6 +376,10 @@ function EntryDialogBody({
   // handing it on waits on an answer; keeping a draft does not
   const [asking, setAsking] = useState(false)
   const [issues, setIssues] = useState<readonly { field: string; reason: string }[]>([])
+  // what the refused save carried: which bound a date broke is read off the
+  // date that was sent, not whatever the field holds by now
+  const sent = useRef<EvidencePayload>({})
+  const [refusedOver, setRefusedOver] = useState<EvidencePayload>({})
   /**
    * The question as this dialog drew it, held still.
    *
@@ -462,6 +466,7 @@ function EntryDialogBody({
       // included: handing it on is a decision about the rules in front of
       // the person pressing, not about the ones the draft was written under
       const seen = asked.currentRevision?.id
+      sent.current = payload
       const body = {
         payload,
         ...(seen === undefined ? {} : { expectedItemRevisionId: seen }),
@@ -523,7 +528,10 @@ function EntryDialogBody({
         return
       }
       const raised = error as { issues?: readonly { field: string; reason: string }[] }
-      if (Array.isArray(raised.issues)) setIssues(raised.issues)
+      if (Array.isArray(raised.issues)) {
+        setIssues(raised.issues)
+        setRefusedOver(sent.current)
+      }
       // saved elsewhere meanwhile: the page reads the claim again, so the
       // next opening starts from the version that stands now
       const refused = error as { _tag?: string; reason?: string }
@@ -728,6 +736,7 @@ function EntryDialogBody({
                     issueSentence(
                       issue.reason,
                       fields.find((field) => field.key === issue.field),
+                      { value: answerOf(refusedOver, issue.field), materialRange },
                     ),
                   )}
                 </li>

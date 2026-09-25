@@ -41,18 +41,42 @@ const ISSUE_SENTENCES: Record<string, MessageDescriptor> = {
  * The sentence for one field's problem, completing the field's name.
  *
  * The evidence driver reports a date outside the round's material window as
- * `out-of-range`, the same code a number past its bounds raises: the window
- * is folded into the date field's own bounds. So which news it is depends
- * on the field - a date the window binds is outside the round's material
- * period, anything else is outside what the field allows.
+ * `out-of-range`, the same code a date past the field's own earliest or
+ * latest raises: the driver folds the window and the field's bounds into one
+ * range, the narrower of each. So which news it is depends on where the date
+ * fell. A date inside the window broke the field's own bounds; one outside
+ * it is outside the round's material period, whatever else it broke. Where
+ * the date is not known, a field the window binds and that sets no bounds of
+ * its own can only have been refused by the window; one that also sets its
+ * own bounds is said in the field's words, which are true either way.
  */
 export const issueSentence = (
   reason: string,
-  field?: { readonly type?: string; readonly inMaterialRange?: boolean },
-): MessageDescriptor =>
-  reason === 'out-of-range' && field?.type === 'date' && field.inMaterialRange === true
-    ? m.entryIssueOutOfMaterialRange
-    : (ISSUE_SENTENCES[reason] ?? m.entryIssueOther)
+  field?: {
+    readonly type?: string
+    readonly inMaterialRange?: boolean
+    readonly min?: unknown
+    readonly max?: unknown
+  },
+  seen?: {
+    /** the value the refused save carried for this field */
+    readonly value?: unknown
+    /** the round's material window: start inclusive, end exclusive */
+    readonly materialRange?: { readonly start: string; readonly end: string }
+  },
+): MessageDescriptor => {
+  if (reason !== 'out-of-range' || field?.type !== 'date' || field.inMaterialRange !== true) {
+    return ISSUE_SENTENCES[reason] ?? m.entryIssueOther
+  }
+  const value = seen?.value
+  const window = seen?.materialRange
+  if (typeof value === 'string' && window !== undefined) {
+    const inside = value >= window.start && value < window.end
+    return inside ? m.entryIssueOutOfRange : m.entryIssueOutOfMaterialRange
+  }
+  const ownBounds = field.min !== undefined || field.max !== undefined
+  return ownBounds ? m.entryIssueOutOfRange : m.entryIssueOutOfMaterialRange
+}
 
 /** the fields a save was refused over, or null when the failure is not that */
 export const payloadIssuesOf = (

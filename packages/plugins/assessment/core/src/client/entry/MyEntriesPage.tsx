@@ -28,7 +28,7 @@ import { SupplementAnswerDialog } from './SupplementAnswerDialog.tsx'
 import { EntryDialog } from './EntryDialog.tsx'
 import { EntrySheet } from './EntrySheet.tsx'
 import { standingRows } from './standing.ts'
-import { fieldsOf, type EntryDto, type FilingGateDto, type ItemDto } from './model.ts'
+import { answerOf, fieldsOf, type EntryDto, type FilingGateDto, type ItemDto } from './model.ts'
 import { EntriesWorkspace } from './workspace/EntriesWorkspace.tsx'
 import { entryLineOf } from './workspace/model.ts'
 import { useWorkspaceMode } from './workspace/layout.ts'
@@ -228,7 +228,12 @@ function Body({
   // claim is handed on) is said by those fields' names and what is wrong
   // with each - not as a failed save.
   const listJoin = useList()
-  const sayFailure = (error: unknown, itemId: string): string => {
+  const sayFailure = (
+    error: unknown,
+    itemId: string,
+    /** what the refused claim carried, where the press sent one */
+    payload: Readonly<Record<string, unknown>> = {},
+  ): string => {
     const issues = payloadIssuesOf(error)
     if (issues !== null) {
       const asked = (items.data?.items ?? []).find((one) => one.id === itemId) as
@@ -237,7 +242,11 @@ function Body({
       const fields = fieldsOf(asked?.currentRevision?.formConfig)
       const said = issues.map((issue) => {
         const field = fields.find((one) => one.key === issue.field)
-        return `${field?.label ?? issue.field} ${format(issueSentence(issue.reason, field))}`
+        const sentence = issueSentence(issue.reason, field, {
+          value: answerOf(payload, issue.field),
+          materialRange,
+        })
+        return `${field?.label ?? issue.field} ${format(sentence)}`
       })
       return format(m.entryListIssues, { issues: listJoin(said) })
     }
@@ -324,7 +333,15 @@ function Body({
       )
       refresh()
     },
-    onError: (error: unknown, input) => toast.error(sayFailure(error, input.itemId)),
+    onError: (error: unknown, input) =>
+      toast.error(
+        sayFailure(
+          error,
+          input.itemId,
+          (entries.find((one) => one.id === input.entryId)?.currentRevision?.payload ??
+            {}) as Record<string, unknown>,
+        ),
+      ),
   })
 
   // Every question of the round this person takes part in, whoever fills it
