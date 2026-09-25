@@ -190,6 +190,17 @@ const styles = stylex.create({
   unitSwitchNote: { fontSize: 11.5, color: tokens.mutedForeground },
   unitSwitchGo: { flexShrink: 0, fontSize: 13, color: tokens.surfaceMutedForeground },
   unitSwitchIcon: { width: 14, height: 14, flexShrink: 0, color: tokens.mutedForeground },
+  // the unit the list is narrowed to, where the tree no longer holds it
+  offTree: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    columnGap: 8,
+    rowGap: 4,
+    fontSize: 13,
+    color: tokens.mutedForeground,
+  },
+  offTreeName: { minWidth: 0, overflowWrap: 'anywhere' },
   treeWaiting: { display: 'flex', flexDirection: 'column', gap: 10, paddingBlock: 8 },
   bone: { height: 14, borderRadius: 4 },
   listColumn: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 10 },
@@ -401,7 +412,22 @@ export function ParticipantResultList({
     units.data === undefined
       ? { path: '', unknown: 0 }
       : unitPathOf(lineage, (nodeId) => byUnit.get(nodeId)?.name)
-  const chosenUnit = view.unit === '' ? undefined : byUnit.get(view.unit)
+  // The unit the list is narrowed to can fall out of the tree: the tree is
+  // read over the standing the list shows, and a unit with nobody of that
+  // standing is not in it. The narrowing stays - the list answers the
+  // question that was asked - and is said, by the name it had, with a way
+  // to drop it, since the tree no longer offers one.
+  const named = useRef(new Map<string, string>())
+  useEffect(() => {
+    for (const unit of units.data?.units ?? []) named.current.set(unit.id, unit.name)
+  }, [units.data])
+  const unitName =
+    view.unit === '' ? undefined : (byUnit.get(view.unit)?.name ?? named.current.get(view.unit))
+  const offTree =
+    view.unit !== '' &&
+    units.data !== undefined &&
+    !units.isPlaceholderData &&
+    !byUnit.has(view.unit)
 
   // whether the organization has anybody elsewhere: the totals ride on the
   // first page, so one row is all this has to fetch to know
@@ -582,18 +608,42 @@ export function ParticipantResultList({
               type="button"
               data-testid="roster-unit-switch"
               data-unit={view.unit}
+              data-off-tree={offTree}
               {...stylex.props(styles.unitSwitch)}
               onClick={() => setUnitsOpen(true)}
             >
               <span {...stylex.props(styles.unitSwitchWords)}>
                 <span {...stylex.props(styles.unitSwitchName)}>
-                  {chosenUnit?.name ?? format(m.rosterUnitsAll)}
+                  {view.unit === ''
+                    ? format(m.rosterUnitsAll)
+                    : (unitName ?? format(m.rosterUnitChosen))}
                 </span>
                 <span {...stylex.props(styles.unitSwitchNote)}>{format(m.rosterUnits)}</span>
               </span>
               <span {...stylex.props(styles.unitSwitchGo)}>{format(m.rosterUnitsChange)}</span>
               <ChevronRightIcon aria-hidden {...stylex.props(styles.unitSwitchIcon)} />
             </button>
+          )}
+          {offTree && (
+            <div
+              data-testid="roster-unit-off-tree"
+              data-unit={view.unit}
+              {...stylex.props(styles.offTree)}
+            >
+              <span {...stylex.props(styles.offTreeName)}>
+                {format(m.rosterUnitNarrowed, {
+                  unit: unitName ?? format(m.rosterUnitChosen),
+                })}
+              </span>
+              <Button
+                size="xs"
+                variant="outline"
+                aria-label={format(m.rosterUnitClearLabel)}
+                onClick={() => onView({ unit: '' })}
+              >
+                {format(m.rosterUnitClear)}
+              </Button>
+            </div>
           )}
           <div {...stylex.props(styles.toolbar)}>
             <SearchField

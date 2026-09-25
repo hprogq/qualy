@@ -686,6 +686,70 @@ describe('the roster on the results page', () => {
       .toEqual({ reading: 'accounts', status: 'excluded' })
   })
 
+  // The tree is read over the standing the list shows, so a unit chosen
+  // under one standing can fall out of it under another. The list still
+  // answers the question asked - that unit, that standing - so the page says
+  // which unit it is narrowed to and offers to drop it, since the tree no
+  // longer can.
+  const OTHER = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa09'
+  const unitsByStanding = (request: Request) =>
+    Effect.succeed({
+      units:
+        request.query?.['status'] === 'excluded'
+          ? [{ id: OTHER, name: '数学学院', parentId: null }]
+          : [
+              { id: COLLEGE, name: '软件学院', parentId: null },
+              { id: CLASS_A, name: '软件 2301 班', parentId: COLLEGE },
+            ],
+      userTypes: [],
+    })
+
+  it('keeps a unit the tree no longer holds as the narrowing, and offers to drop it', async () => {
+    await page.viewport(1280, 800)
+    const asked = vi.fn((request: Request) => pageOf(request))
+    await open({ listParticipantAccounts: asked, listRosterUnits: unitsByStanding })
+    await page.getByRole('button', { name: '软件学院', exact: true }).click()
+    await expect.poll(() => asked.mock.calls.at(-1)![0].query?.['orgNodeIds']).toEqual([COLLEGE])
+    expect(page.getByTestId('roster-unit-off-tree').elements()).toHaveLength(0)
+
+    await page.getByRole('combobox', { name: '参评状态' }).click()
+    await page.getByRole('option', { name: '已移出' }).click()
+    const line = page.getByTestId('roster-unit-off-tree')
+    await expect.element(line).toHaveAttribute('data-unit', COLLEGE)
+    // said by the name it had, and still what the list is narrowed by
+    await expect.element(line).toMatchTextContent('软件学院')
+    expect(asked.mock.calls.at(-1)![0].query?.['orgNodeIds']).toEqual([COLLEGE])
+    expect(asked.mock.calls.at(-1)![0].query?.['status']).toBe('excluded')
+
+    await line.getByRole('button', { name: '清除单位筛选' }).click()
+    await expect.element(line).not.toBeInTheDocument()
+    expect(addressNow()).not.toContain('list-unit=')
+    await expect.poll(() => asked.mock.calls.at(-1)![0].query?.['orgNodeIds']).toBeUndefined()
+  })
+
+  it('names the unit on the folded switch even once the tree no longer holds it', async () => {
+    await page.viewport(1180, 820)
+    try {
+      await open(
+        { listRosterUnits: unitsByStanding },
+        `/assessment/batches/${BATCH_ID}/results?list-unit=${COLLEGE}`,
+        1180 - 224 - 17,
+      )
+      const line = page.getByTestId('roster-unit-switch')
+      await expect.element(line).toMatchTextContent('软件学院')
+      await page.getByRole('combobox', { name: '参评状态' }).click()
+      await page.getByRole('option', { name: '已移出' }).click()
+      await expect.element(line).toHaveAttribute('data-off-tree', 'true')
+      await expect.element(line).toHaveAttribute('data-unit', COLLEGE)
+      await expect.element(line).toMatchTextContent('软件学院')
+      await expect
+        .element(page.getByTestId('roster-unit-off-tree'))
+        .toHaveAttribute('data-unit', COLLEGE)
+    } finally {
+      await page.viewport(1280, 800)
+    }
+  })
+
   it('keeps a name readable beside the unit tree at a laptop’s width', async () => {
     await page.viewport(1280, 800)
     const busy = {

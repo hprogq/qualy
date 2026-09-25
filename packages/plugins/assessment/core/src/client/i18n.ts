@@ -5850,6 +5850,17 @@ const i18n = definePluginMessages({
     rosterUnitsAll: { id: 'assessment/roster/units-all', defaultMessage: 'Every unit' },
     rosterUnitsChange: { id: 'assessment/roster/units-change', defaultMessage: 'Change' },
     rosterUnits: { id: 'assessment/roster/units', defaultMessage: 'Organization unit' },
+    /** the unit the list is narrowed to, where the unit tree no longer holds it */
+    rosterUnitNarrowed: defineMessage<{ unit: string }>()({
+      id: 'assessment/roster/unit-narrowed',
+      defaultMessage: 'Narrowed to {unit}',
+    }),
+    rosterUnitChosen: { id: 'assessment/roster/unit-chosen', defaultMessage: 'the chosen unit' },
+    rosterUnitClear: { id: 'assessment/roster/unit-clear', defaultMessage: 'Clear' },
+    rosterUnitClearLabel: {
+      id: 'assessment/roster/unit-clear-label',
+      defaultMessage: 'Clear the unit filter',
+    },
     rosterEmpty: {
       id: 'assessment/roster/empty',
       defaultMessage: 'No participants yet.',
