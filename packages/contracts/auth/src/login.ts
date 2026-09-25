@@ -626,6 +626,10 @@ export type SignInFailureReason =
   | 'external-unavailable'
   /** the other side answered in a form the driver cannot read */
   | 'external-invalid'
+  /** the entrance went out of service or away while the proof was being made */
+  | 'provider-unavailable'
+  /** the entrance stopped admitting the person's kind while the proof was being made */
+  | 'audience-excluded'
 
 export interface SignedInUser {
   readonly id: string
@@ -834,12 +838,17 @@ export interface LoginSessionsShape {
   /**
    * The driver proved the user; create the session and set the cookie.
    *
-   * Answers undefined when the account state forbids signing in after all -
-   * recording the refusal with the precise reason itself - so a driver
-   * reports one uniform refusal rather than describing the account to
-   * whoever asked. On success the session (which remembers this door and
-   * this binding), the binding's last-used stamp and the sign-in event
-   * commit as one transaction. The only place a session is ever created.
+   * Answers undefined when the account state forbids signing in after all,
+   * or when the entrance went out of service or stopped admitting the
+   * person's kind while the proof was being made - recording the refusal
+   * with the precise reason itself - so a driver reports one uniform
+   * refusal rather than describing the account to whoever asked. The
+   * entrance is asked again in the transaction that writes the session,
+   * after any write closing it has committed, so a session never outlives
+   * the door it came through. On success the session (which remembers this
+   * door and this binding), the binding's last-used stamp and the sign-in
+   * event commit as one transaction. The only place a session is ever
+   * created.
    */
   readonly completeLogin: (input: {
     tenantId: string

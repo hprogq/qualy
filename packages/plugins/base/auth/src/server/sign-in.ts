@@ -283,6 +283,73 @@ const consumedBindFlow = (input: {
     )
     .pipe(Effect.map((row) => row !== undefined))
 
+/**
+ * The tenant's row, shared with every other sign-in and taken first, the way
+ * an administrator's write takes it: a sign-in that meets one queues behind
+ * it and then reads what it committed, instead of each holding what the
+ * other waits for.
+ */
+const shareTenant = (tenantId: string) =>
+  db.query((k) =>
+    k
+      .selectFrom('Tenant')
+      .select(sql<number>`1`.as('shared'))
+      .where('id', '=', tenantId)
+      .forKeyShare()
+      .execute(),
+  )
+
+/**
+ * The entrance, if it still serves, held until the session being opened
+ * through it is written: taking it out of service or narrowing who it admits
+ * updates this row, so neither can land between this read and the commit.
+ */
+const holdServingDoor = (tenantId: string, providerId: string) =>
+  db.query((k) =>
+    k
+      .selectFrom('AuthProvider')
+      .select('id')
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', providerId)
+      .where('enabled', '=', true)
+      .where('deletedAt', 'is', null)
+      .forShare()
+      .executeTakeFirst(),
+  )
+
+/** whether the entrance admits the person's kind as both stand now */
+const doorAdmits = (tenantId: string, providerId: string, userId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('User as u')
+        .select('u.id')
+        .where('u.tenantId', '=', tenantId)
+        .where('u.id', '=', userId)
+        .where((eb) =>
+          eb.or([
+            eb.exists(
+              eb
+                .selectFrom('AuthProvider as p')
+                .select('p.id')
+                .whereRef('p.tenantId', '=', 'u.tenantId')
+                .where('p.id', '=', providerId)
+                .where('p.audienceMode', '=', 'unrestricted'),
+            ),
+            eb.exists(
+              eb
+                .selectFrom('AuthProviderUserType as a')
+                .select('a.id')
+                .whereRef('a.tenantId', '=', 'u.tenantId')
+                .where('a.authProviderId', '=', providerId)
+                .whereRef('a.userTypeId', '=', 'u.userTypeId'),
+            ),
+          ]),
+        )
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => row !== undefined))
+
 /** the entrance, if it still serves */
 const servingDoor = (tenantId: string, providerId: string) =>
   db.query((k) =>
@@ -1168,6 +1235,31 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         // together or not at all
         const sessionId = yield* transaction(
           Effect.gen(function* () {
+            // The proof took time - a password hashed, a token exchanged,
+            // a ticket checked upstream - and the entrance was read before
+            // it. Taking a door out of service or narrowing who it admits
+            // ends the sessions it opened; one written after that would
+            // outlive it, so the door is asked again, held, here.
+            yield* shareTenant(input.tenantId).pipe(Effect.orDie)
+            let refused: SignInFailureReason | undefined
+            if (!(yield* holdServingDoor(input.tenantId, input.providerId).pipe(Effect.orDie))) {
+              refused = 'provider-unavailable'
+            } else if (
+              !(yield* doorAdmits(input.tenantId, input.providerId, input.userId).pipe(
+                Effect.orDie,
+              ))
+            ) {
+              refused = 'audience-excluded'
+            }
+            if (refused !== undefined) {
+              yield* record(provider, {
+                outcome: 'failure',
+                reason: refused,
+                userId: input.userId,
+                ...(input.bindingId === undefined ? {} : { bindingId: input.bindingId }),
+              })
+              return undefined
+            }
             const session = yield* insertSession({
               tenantId: input.tenantId,
               userId: input.userId,
@@ -1209,6 +1301,7 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
             return session.id
           }),
         )
+        if (sessionId === undefined) return undefined
         // this request now has a session, before anything else records it
         yield* bindSessionId(sessionId)
         yield* setCookie(token, config.sessionTtlSeconds)

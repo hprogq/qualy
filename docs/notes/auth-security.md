@@ -174,6 +174,12 @@ default-src 'self'; script-src 'self' 'sha256-pKAg+of2SxxrkLJX27pRnCgcyN5Ud1dmuO
   重新启用即恢复原样。`setAudience` 收窄时,同事务结束被移出受众的用户类型经该入口建立的会话(绑定保留)。两者的审计
   details 带 `endedSessions`。`GET /auth/providers/{id}` 的 `usage` 带总会话数与按用户类型的分组(`sessionsByUserType`),
   确认框据此说出停用或收窄会结束多少会话;数字是打开时的读数,写入以事务里的实际结果为准。
+  **进行中的登录不能在停用或收窄之后落地**:驱动的证明要花时间(argon2 排队、OIDC 换 token、CAS 上游验票),入口在
+  `resolveProvider` 时读过一次,之后才写会话。`completeLogin` 写会话的事务里先对租户行取 `FOR KEY SHARE`(与结构性写入
+  同一加锁顺序:结构性写入先取租户行,登录排在它后面,不会互相等成死锁),再对入口行取 `FOR SHARE` 并复查
+  「在用、未删除」,然后按用户**当前**类型复查受众;任一不成立就记一条失败(`provider-unavailable` / `audience-excluded`)、
+  不建会话,驱动照常回统一的拒绝。停用或收窄先提交的,登录读到的是提交后的状态;登录先拿到租户行的,停用或收窄等它提交,
+  随后的删除会把这条新会话一并结束。
 
 ## 绑定(2026-09-21 定,2026-09-22 改为 user_auth_bindings)
 

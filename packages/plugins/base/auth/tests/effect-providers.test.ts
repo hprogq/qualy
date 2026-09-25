@@ -4,6 +4,7 @@ import { permissions as authPermissions } from '@qualy/plugin-auth/permissions'
 import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
 import { sql } from 'kysely'
 import { Cause, Deferred, Effect, Exit, Fiber, Layer } from 'effect'
+import { HttpServerRequest } from 'effect/unstable/http'
 import { describe, expect, it } from 'vitest'
 import {
   createTestContext,
@@ -962,6 +963,148 @@ describe.runIf(postgresAvailable)('an entrance a tenant adds', () => {
           ['auth.provider.status', 0],
         ],
       )
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  // A sign-in is proven before its session is written, and the proof takes
+  // time: a password hashed, a ticket checked upstream. Taking the door out
+  // of service or narrowing it ends the sessions it opened, so a session
+  // written after that - by an upstream that held its answer back, say -
+  // would outlive the decision that was meant to end it.
+  it('opens nothing through a door closed or narrowed while a sign-in was on its way', async () => {
+    const db = await createTestContext('providers-closed-mid-sign-in')
+    try {
+      const f = await seed(db.url)
+      const answer = ok(
+        await run(
+          db.url,
+          Effect.gen(function* () {
+            const iam = yield* Iam
+            const signIn = yield* SignIn
+            const withDb = yield* withDatabase
+            const id = yield* iam.providers.create(
+              f.tenant,
+              { type: 'campus', code: 'campus', name: 'Campus' },
+              f.as,
+            )
+            const set = yield* iam.providers.update(
+              f.tenant,
+              id,
+              {
+                expectedVersion: 1,
+                values: { server: 'https://cas.example.edu/', clientSecret: 's3cret' },
+              },
+              f.as,
+            )
+            const served = yield* iam.providers.setStatus(f.tenant, id, 'active', set, f.as)
+            const student = one<{ id: string }>(
+              yield* runSql(sql`
+                insert into user_types (tenant_id, code, name, placement_mode)
+                values (${f.tenant}, 'student', 'Student', 'unrestricted') returning id`),
+            ).id
+            const bo = one<{ id: string }>(
+              yield* runSql(sql`
+                insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+                select tenant_id, 'Bo', ${student}, primary_org_node_id
+                  from users where id = ${f.person} returning id`),
+            ).id
+            // the other side has vouched for the person; this is the write
+            const arrive = (userId: string) =>
+              signIn.sessions.completeLogin({ tenantId: f.tenant, providerId: id, userId }).pipe(
+                Effect.provideService(
+                  HttpServerRequest.HttpServerRequest,
+                  HttpServerRequest.fromWeb(
+                    new Request('http://localhost/api/auth/campus/campus/callback'),
+                  ),
+                ),
+                Effect.map((user) => user?.id ?? null),
+              )
+            const sessionsOf = (userId: string) =>
+              Effect.map(
+                runSql<{ count: number }>(sql`
+                  select count(*)::int as count from sessions
+                   where auth_provider_id = ${id} and user_id = ${userId}`),
+                (result) => result.rows[0]!.count,
+              )
+            const signedIn = { ada: yield* arrive(f.person), bo: yield* arrive(bo) }
+
+            // students only, decided and not yet committed when Ada's
+            // sign-in comes to be written: it waits, and reads the decision
+            const narrowHeld = yield* Deferred.make<void>()
+            const narrowGo = yield* Deferred.make<void>()
+            const narrowing = yield* withDb(
+              transaction(
+                Effect.gen(function* () {
+                  const version = yield* iam.providers.setAudience(
+                    f.tenant,
+                    id,
+                    { mode: 'allow-list', userTypeIds: [student] },
+                    served,
+                    f.as,
+                  )
+                  yield* Deferred.succeed(narrowHeld, undefined)
+                  yield* Deferred.await(narrowGo)
+                  return version
+                }),
+              ),
+            ).pipe(Effect.forkChild)
+            yield* Deferred.await(narrowHeld)
+            const adaLate = yield* arrive(f.person).pipe(Effect.forkChild)
+            // long enough for the sign-in to reach the write and wait for it
+            yield* Effect.sleep('1 second')
+            yield* Deferred.succeed(narrowGo, undefined)
+            const narrowed = yield* Fiber.join(narrowing)
+            const excluded = yield* Fiber.join(adaLate)
+
+            // Bo's upstream holds its answer while the door is taken out of
+            // service, and hands it over once that has committed
+            const resolved = yield* Deferred.make<boolean>()
+            const answered = yield* Deferred.make<void>()
+            const boLate = yield* signIn.sessions
+              .resolveProvider({ providerCode: 'campus', expectedType: 'campus' })
+              .pipe(
+                Effect.tap((door) => Deferred.succeed(resolved, door !== undefined)),
+                Effect.tap(() => Deferred.await(answered)),
+                Effect.andThen(arrive(bo)),
+                Effect.forkChild,
+              )
+            const setOutThroughServingDoor = yield* Deferred.await(resolved)
+            yield* iam.providers.setStatus(f.tenant, id, 'disabled', narrowed, f.as)
+            yield* Deferred.succeed(answered, undefined)
+            const closed = yield* Fiber.join(boLate)
+
+            const recorded = yield* runSql<{ user_id: string; reason_code: string }>(sql`
+              select user_id, reason_code from sign_in_events
+               where provider_id = ${id} and outcome = 'failure'
+               order by occurred_at, id`)
+            return {
+              signedIn,
+              excluded,
+              setOutThroughServingDoor,
+              closed,
+              ada: yield* sessionsOf(f.person),
+              bo: yield* sessionsOf(bo),
+              recorded: recorded.rows.map((row) => [
+                row.user_id === bo ? 'bo' : 'ada',
+                row.reason_code,
+              ]),
+            }
+          }),
+        ),
+      )
+      // both came in while nothing stood in their way
+      expect(answer.signedIn.ada).not.toBeNull()
+      expect(answer.signedIn.bo).not.toBeNull()
+      expect(answer.excluded).toBeNull()
+      expect(answer.setOutThroughServingDoor).toBe(true)
+      expect(answer.closed).toBeNull()
+      expect({ ada: answer.ada, bo: answer.bo }).toEqual({ ada: 0, bo: 0 })
+      expect(answer.recorded).toEqual([
+        ['ada', 'audience-excluded'],
+        ['bo', 'provider-unavailable'],
+      ])
     } finally {
       await db.dispose()
     }
