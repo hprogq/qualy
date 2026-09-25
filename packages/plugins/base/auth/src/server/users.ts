@@ -1195,8 +1195,8 @@ export const make = Effect.fn('Iam.users.make')(function* () {
       const user = yield* withDb(requireUser(tenantId, userId)).pipe(
         Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
       )
-      if (user.isSystem) return yield* new SystemAccountProtected()
       yield* manages(as, user.primaryOrgNodeId!)
+      if (user.isSystem) return yield* new SystemAccountProtected()
       // a guess estimate costs the server's only thread; typed pauses ask
       // for a handful a minute, and a loop is refused
       const judged = yield* limiter.consumeHard(tenantId, HARD_LIMITS.passwordAssessment, as.userId)
@@ -1242,8 +1242,8 @@ export const make = Effect.fn('Iam.users.make')(function* () {
       const before = yield* withDb(requireUser(tenantId, userId)).pipe(
         Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
       )
-      if (before.isSystem) return yield* new SystemAccountProtected()
       yield* manages(as, before.primaryOrgNodeId!)
+      if (before.isSystem) return yield* new SystemAccountProtected()
       if (before[field] === null) return yield* new AuthBindingUserFieldMissing({ field })
       const prepared = yield* binding.prepare({
         secret: input.secret,
@@ -1254,8 +1254,8 @@ export const make = Effect.fn('Iam.users.make')(function* () {
       return yield* writeBinding(tenantId, () =>
         Effect.gen(function* () {
           const user = yield* requireUser(tenantId, userId)
-          if (user.isSystem) return yield* new SystemAccountProtected()
           yield* manages(as, user.primaryOrgNodeId!)
+          if (user.isSystem) return yield* new SystemAccountProtected()
           if (user[field] === null) return yield* new AuthBindingUserFieldMissing({ field })
           const admitted = yield* entrancesOf(tenantId, userId, user.userTypeId)
           if (admitted.find((entrance) => entrance.providerId === providerId)?.admits !== true) {
@@ -1323,8 +1323,8 @@ export const make = Effect.fn('Iam.users.make')(function* () {
       yield* writeBinding(tenantId, () =>
         Effect.gen(function* () {
           const user = yield* requireUser(tenantId, userId)
-          if (user.isSystem) return yield* new SystemAccountProtected()
           yield* manages(as, user.primaryOrgNodeId!)
+          if (user.isSystem) return yield* new SystemAccountProtected()
           const standing = yield* liveBinding(tenantId, userId, providerId)
           if (standing === undefined) return yield* new AuthBindingNotFound()
           yield* db.query((k) =>
@@ -1471,8 +1471,10 @@ export const make = Effect.fn('Iam.users.make')(function* () {
       yield* write(tenantId, () =>
         Effect.gen(function* () {
           const user = yield* requireUser(tenantId, userId)
-          yield* requireVersion(user, expectedVersion)
+          // authority first: somebody without it learns nothing of the
+          // person's history or kind from how they are refused
           yield* manages(as, user.primaryOrgNodeId!)
+          yield* requireVersion(user, expectedVersion)
           // an address or a number restated unchanged is not a change: it
           // must not throw away the proof the person already gave for it
           const fields = {
@@ -1586,9 +1588,9 @@ export const make = Effect.fn('Iam.users.make')(function* () {
       yield* write(tenantId, () =>
         Effect.gen(function* () {
           const user = yield* requireUser(tenantId, userId)
+          yield* manages(as, user.primaryOrgNodeId!)
           yield* requireVersion(user, expectedVersion)
           if (user.isSystem) return yield* new SystemAccountProtected()
-          yield* manages(as, user.primaryOrgNodeId!)
           yield* manages(as, primaryOrgNodeId)
           yield* requireOrgNode(tenantId, primaryOrgNodeId)
           // a transfer may not put someone where their kind of person may not be
@@ -1619,13 +1621,14 @@ export const make = Effect.fn('Iam.users.make')(function* () {
       yield* writeState(tenantId, () =>
         Effect.gen(function* () {
           const user = yield* requireUser(tenantId, userId)
-          yield* requireVersion(user, input.expectedVersion)
           const enabled = input.status === 'active'
           // authority first, then whether there is anything to do: answered
           // the other way round, a caller with no reach over this person
           // learned from the difference between success and a refusal
-          // whether they were enabled
+          // whether they were enabled, and from a version refused how often
+          // they had been changed
           yield* manages(as, user.primaryOrgNodeId!)
+          yield* requireVersion(user, input.expectedVersion)
           if (user.enabled === enabled) return
           if (!enabled && user.isSystem) return yield* new SystemAccountProtected()
           yield* setUserEnabled(tenantId, user.id, enabled)
@@ -1664,8 +1667,8 @@ export const make = Effect.fn('Iam.users.make')(function* () {
       yield* writeState(tenantId, () =>
         Effect.gen(function* () {
           const user = yield* requireUser(tenantId, userId)
-          yield* requireVersion(user, expectedVersion)
           yield* mayDelete(as, user.primaryOrgNodeId!)
+          yield* requireVersion(user, expectedVersion)
           if (user.isSystem) return yield* new SystemAccountProtected()
           yield* retire(tenantId, user, as, yield* actorOf(tenantId, as))
           yield* rbac.assertTenantKeepsAdministrator(tenantId)

@@ -827,6 +827,72 @@ describe.runIf(postgresAvailable).concurrent('the way in written for a person', 
     }
   })
 
+  it('tells somebody who may not administer a person nothing else about them', async () => {
+    const db = await createTestContext('effect-users-authority-first')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const iam = yield* Iam
+          const provider = yield* providerOf(f.tenant)
+          const systemType = one_<{ id: string }>(
+            yield* runSql(sql`
+              insert into user_types (tenant_id, code, name, placement_mode, is_system)
+              values (${f.tenant}, 'system-account', 'System', 'unrestricted', true)
+              returning id`),
+          ).id
+          const system = one_<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id, email)
+              values (${f.tenant}, 'System', ${systemType}, ${f.root}, 'root@school.edu')
+              returning id`),
+          ).id
+          // the manager's reach is the left branch: the root and the right are not theirs
+          const stale = 99
+          const answers = {
+            update: yield* Effect.result(
+              iam.users.update(f.tenant, f.onRight, { displayName: 'X' }, stale, f.as),
+            ),
+            status: yield* Effect.result(
+              iam.users.setStatus(
+                f.tenant,
+                f.onRight,
+                { status: 'disabled', expectedVersion: stale },
+                f.as,
+              ),
+            ),
+            remove: yield* Effect.result(iam.users.remove(f.tenant, f.onRight, stale, f.as)),
+            placement: yield* Effect.result(
+              iam.users.setPlacement(f.tenant, system, f.left, stale, f.as),
+            ),
+            put: yield* Effect.result(
+              iam.users.putBinding(f.tenant, system, provider, { secret: 'long-enough' }, f.as),
+            ),
+            assess: yield* Effect.result(
+              iam.users.assessBinding(f.tenant, system, provider, { secret: 'x' }, f.as),
+            ),
+            revoke: yield* Effect.result(iam.users.revokeBinding(f.tenant, system, provider, f.as)),
+          }
+          return Object.fromEntries(
+            Object.entries(answers).map(([write, answer]) => [write, tagOf(answer)]),
+          )
+        }),
+      )
+      expect(ok(exit)).toEqual({
+        update: 'ACCESS_DENIED',
+        status: 'ACCESS_DENIED',
+        remove: 'ACCESS_DENIED',
+        placement: 'ACCESS_DENIED',
+        put: 'ACCESS_DENIED',
+        assess: 'ACCESS_DENIED',
+        revoke: 'ACCESS_DENIED',
+      })
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('judges a password typed for somebody else only so often', async () => {
     const db = await createTestContext('effect-binding-assess-throttle')
     try {
