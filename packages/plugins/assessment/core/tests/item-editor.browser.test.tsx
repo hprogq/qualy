@@ -95,6 +95,30 @@ const officerItem = () => ({
   createdAt: '2026-02-01T00:00:00.000Z',
 })
 
+/** the same question with the escalation step a staff record's appeals are heard on */
+const officerWithAppeals = () => {
+  const officer = officerItem()
+  return {
+    ...officer,
+    currentRevision: {
+      ...officer.currentRevision,
+      reviewPolicy: {
+        ...officer.currentRevision.reviewPolicy,
+        escalation: {
+          stages: [
+            {
+              id: 's-appeal',
+              label: '学院复核',
+              selector: { kind: 'roleAt', nodeTypeId: ORG_TYPE_ID, roleIds: [ROLE_ID] },
+              quorum: { type: 'any' },
+            },
+          ],
+        },
+      },
+    },
+  }
+}
+
 /** the decimal the formula's parameter takes */
 const GRADE = {
   type: 'string',
@@ -522,28 +546,7 @@ describe('choosing how a question is handled', () => {
 
   it('saves both doors when both are open', async () => {
     const saved: { config?: unknown }[] = []
-    const officer = officerItem()
-    // a staff record's appeals are heard on the escalation route
-    const withAppeals = {
-      ...officer,
-      currentRevision: {
-        ...officer.currentRevision,
-        reviewPolicy: {
-          ...officer.currentRevision.reviewPolicy,
-          escalation: {
-            stages: [
-              {
-                id: 's-appeal',
-                label: '学院复核',
-                selector: { kind: 'roleAt', nodeTypeId: ORG_TYPE_ID, roleIds: [ROLE_ID] },
-                quorum: { type: 'any' },
-              },
-            ],
-          },
-        },
-      },
-    }
-    await open({ items: [withAppeals], question: ITEM_ID, saved })
+    await open({ items: [officerWithAppeals()], question: ITEM_ID, saved })
     await expect.element(page.getByRole('checkbox', { name: '工作人员统一认定' })).toBeVisible()
     await page.getByRole('checkbox', { name: '工作人员统一认定' }).click()
     await page.getByTestId('item-save').click()
@@ -597,7 +600,7 @@ describe('choosing how a question is handled', () => {
 
   it('names only the plain facts changed here, so a rename made elsewhere stands', async () => {
     const saved: Record<string, unknown>[] = []
-    await open({ items: [officerItem()], question: ITEM_ID, saved: saved as never })
+    await open({ items: [officerWithAppeals()], question: ITEM_ID, saved })
     await expect.element(page.getByRole('checkbox', { name: '工作人员统一认定' })).toBeVisible()
     await page.getByRole('checkbox', { name: '工作人员统一认定' }).click()
     await page.getByTestId('item-save').click()
