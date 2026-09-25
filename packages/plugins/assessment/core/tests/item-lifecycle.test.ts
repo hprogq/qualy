@@ -416,7 +416,17 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
           const assessment = yield* Assessment
           const admin = f.principal(f.admin)
           const s1 = f.principal(f.s1)
+          // a fourth student beside the first two, on the roster from the start
+          const s4 = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.t}, 'Zhao Liu', ${f.studentType}, ${f.classA}) returning id`),
+          ).id
           const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const p4 = one<{ id: string }>(
+            yield* runSql(sql`
+              select id from batch_participants where batch_id = ${g.batch.id} and user_id = ${s4}`),
+          ).id
           const file = (participantId: string, as: typeof s1) =>
             Effect.gen(function* () {
               const entry = yield* assessment.createEntry(
@@ -453,6 +463,27 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
               select entry_id from entry_events
               where kind = 'voided-with-item' and entry_id in (${inReview.id}, ${handedBack.id}, ${older.id})
               order by entry_id`)) as { rows: { entry_id: string }[] }
+          // a claim sent back that went with its question before the claim's
+          // own record was kept: nothing on its trail says so, and only the
+          // question's configuration event, written in the same transaction,
+          // can
+          yield* assessment.setItemStatus(f.t, g.item.id, { status: 'active' }, admin)
+          const preRecord = yield* file(p4, f.principal(s4))
+          yield* assessment.interveneOnEntry(
+            f.t,
+            preRecord.id,
+            { kind: 'return-for-revision', reason: '证书需要重新上传' },
+            admin,
+          )
+          yield* assessment.setItemStatus(
+            f.t,
+            g.item.id,
+            { status: 'voided', reason: 'withdrawn once more' },
+            admin,
+          )
+          yield* runSql(sql`
+            delete from entry_events
+            where kind = 'voided-with-item' and entry_id = ${preRecord.id}`)
           yield* assessment.setItemStatus(f.t, g.item.id, { status: 'active' }, admin)
           const lines = (participantId: string) =>
             Effect.map(
@@ -466,6 +497,7 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
             p1: yield* lines(g.p1),
             p2: yield* lines(g.p2),
             p3: yield* lines(g.p3),
+            p4: yield* lines(p4),
           }
         }),
       ),
@@ -477,6 +509,7 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
     expect(result.p1).toEqual([[`entry:${result.ids.abandoned}`, 'excluded-evidence', '0.00']])
     expect(result.p2).toEqual([])
     expect(result.p3).toEqual([])
+    expect(result.p4).toEqual([])
   })
 
   // An appeal on a decided claim is open work on a question that no longer

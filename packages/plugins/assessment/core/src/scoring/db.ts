@@ -172,6 +172,21 @@ export const participantEntries = (tenantId: string, batchId: string, participan
                     .whereRef('ri.entryId', '=', 'e.id')
                     .where('re.kind', '=', 'cancelled-item-voided'),
                 ),
+                // A claim that had been sent back for revision had no round
+                // to close, and before the claim's own record was kept
+                // nothing said it went with its question. Its void and the
+                // question's were one transaction, and a transaction has one
+                // clock: the question's configuration event carries the
+                // very instant the claim was last written.
+                eb.exists(
+                  eb
+                    .selectFrom('BatchConfigRevision as c')
+                    .select(eb.lit(1).as('one'))
+                    .whereRef('c.tenantId', '=', 'e.tenantId')
+                    .whereRef('c.batchId', '=', 'e.batchId')
+                    .whereRef('c.createdAt', '=', 'e.updatedAt')
+                    .where(sql<boolean>`c.diff ->> 'voidedItem' = e.item_id::text`),
+                ),
               ]),
             ])
             .as('voidedWithItem'),
