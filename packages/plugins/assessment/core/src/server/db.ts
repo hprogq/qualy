@@ -1761,6 +1761,118 @@ export const importCandidates = (
       Effect.map((result) => result.rows.map((row) => ({ userId: row.id, nodeId: row.nodeId }))),
     )
 
+export interface CandidateFilter {
+  readonly q?: string
+  readonly orgNodeId?: string
+  readonly orgScope?: 'self' | 'subtree'
+  readonly userTypeId?: string
+}
+
+/**
+ * People a roster administrator could add, as the add dialog pages them.
+ *
+ * The same population the write admits: enabled people standing somewhere
+ * the reader's own management covers (`admit` asks `canAt` of each), so the
+ * list offers nobody the write would refuse for being out of reach. Whether
+ * they are on this roster already rides along, for the picker to say so.
+ */
+const candidatesQuery = (
+  k: Parameters<Parameters<typeof db.query>[0]>[0],
+  tenantId: string,
+  batchId: string,
+  held: AuthorizationScope,
+  filter: CandidateFilter,
+) => {
+  let query = k
+    .selectFrom('User as u')
+    .innerJoin('OrgNode as n', (join) =>
+      join.onRef('n.tenantId', '=', 'u.tenantId').onRef('n.id', '=', 'u.primaryOrgNodeId'),
+    )
+    .leftJoin('UserType as ut', (join) =>
+      join.onRef('ut.tenantId', '=', 'u.tenantId').onRef('ut.id', '=', 'u.userTypeId'),
+    )
+    .leftJoin('BatchParticipant as bp', (join) =>
+      join
+        .onRef('bp.tenantId', '=', 'u.tenantId')
+        .onRef('bp.userId', '=', 'u.id')
+        .on('bp.batchId', '=', batchId),
+    )
+    .where('u.tenantId', '=', tenantId)
+    .where('u.enabled', '=', true)
+    .where('u.deletedAt', 'is', null)
+    .where((eb) =>
+      scopeCoverage(held, {
+        id: eb.ref('n.id'),
+        tenantId: eb.ref('n.tenantId'),
+        path: eb.ref('n.path'),
+      }),
+    )
+  const needle = filter.q?.trim() ?? ''
+  if (needle !== '') {
+    query = query.where((eb) =>
+      eb.or([
+        eb('u.displayName', 'ilike', likeContains(needle)),
+        eb('u.businessNo', 'ilike', likeContains(needle)),
+      ]),
+    )
+  }
+  if (filter.userTypeId !== undefined) query = query.where('u.userTypeId', '=', filter.userTypeId)
+  const at = filter.orgNodeId
+  if (at !== undefined) {
+    query =
+      filter.orgScope === 'self'
+        ? query.where('n.id', '=', at)
+        : query.where((eb) =>
+            eb.exists(
+              eb
+                .selectFrom('OrgNode as scope')
+                .select(eb.lit(1).as('one'))
+                .whereRef('scope.tenantId', '=', 'n.tenantId')
+                .where('scope.id', '=', at)
+                .where(sql<boolean>`n.path <@ scope.path`),
+            ),
+          )
+  }
+  return query
+}
+
+export const participantCandidatesPage = (
+  tenantId: string,
+  batchId: string,
+  held: AuthorizationScope,
+  filter: CandidateFilter,
+  window: { offset: number; limit: number },
+) =>
+  db.query((k) =>
+    candidatesQuery(k, tenantId, batchId, held, filter)
+      .select([
+        'u.id as userId',
+        'u.displayName',
+        'u.businessNo',
+        'ut.name as userTypeName',
+        'bp.status as roster',
+      ])
+      .orderBy('u.displayName')
+      .orderBy('u.id')
+      .offset(window.offset)
+      .limit(window.limit)
+      .execute(),
+  )
+
+export const participantCandidatesTotal = (
+  tenantId: string,
+  batchId: string,
+  held: AuthorizationScope,
+  filter: CandidateFilter,
+) =>
+  db
+    .query((k) =>
+      candidatesQuery(k, tenantId, batchId, held, filter)
+        .select((eb) => eb.fn.countAll<string>().as('total'))
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => Number(row?.total ?? 0)))
+
 /**
  * Adding people to a roster, by name of the people themselves.
  *
@@ -2805,6 +2917,279 @@ export const listParticipantsPage = (
     .pipe(
       Effect.map((found) => (found as unknown as Record<string, unknown>[]).map(toParticipantRow)),
     )
+
+// --- the roster as its accounts are read ---
+//
+// The results page walks the roster by page number, and each row carries
+// what that person's claims are waiting on. Counted in sql and only for the
+// people on the page: the reader here reads every claim of everybody listed
+// (roster administration, or re-determination over them), so the counts say
+// nothing the rows behind them would not.
+
+/** one claim, as what it is waiting on */
+export interface RosterFilings {
+  /** under a first review, or waiting for somebody to be able to take it */
+  readonly inReview: number
+  /** a round paused to ask its author for more */
+  readonly toSupplement: number
+  /** a settled claim an appeal or a re-examination is running on */
+  readonly reconsidering: number
+  /** sent back to its author */
+  readonly toRevise: number
+  /** a round nobody can take, whichever of the above it belongs to */
+  readonly blocked: number
+}
+
+export type RosterAttention = keyof RosterFilings
+
+export type RosterOrder = 'unit' | 'name' | 'business-no'
+
+export interface RosterAccountsFilter {
+  readonly status?: 'active' | 'excluded'
+  /** a name or a business number */
+  readonly q?: string
+  /** admitted from these units: the anchor itself, or anywhere under it */
+  readonly orgNodeIds?: readonly string[]
+  readonly orgScope?: 'self' | 'subtree'
+  /** only the people with at least one claim waiting on this */
+  readonly attention?: RosterAttention
+  readonly reach?: { userId: string; permissionCode: string | readonly string[] }
+}
+
+/** the states of a round that has not finished */
+const OPEN_ROUND_STATES = ['active', 'blocked', 'awaiting_supplement'] as const
+
+/** which open-round states and claim statuses each count reads */
+const FILING_SHAPES: Record<
+  RosterAttention,
+  { readonly statuses: readonly string[] | null; readonly rounds: readonly string[] | null }
+> = {
+  inReview: { statuses: ['in_review'], rounds: ['active', 'blocked'] },
+  toSupplement: { statuses: null, rounds: ['awaiting_supplement'] },
+  reconsidering: { statuses: ['approved', 'rejected'], rounds: ['active', 'blocked'] },
+  toRevise: { statuses: ['needs_revision'], rounds: null },
+  blocked: { statuses: null, rounds: ['blocked'] },
+}
+
+const rosterAccountsQuery = (
+  k: Parameters<Parameters<typeof db.query>[0]>[0],
+  tenantId: string,
+  batchId: string,
+  filter: RosterAccountsFilter,
+) => {
+  let query = participantSelection(k)
+    .where('BatchParticipant.tenantId', '=', tenantId)
+    .where('BatchParticipant.batchId', '=', batchId)
+  if (filter.status !== undefined) {
+    query = query.where('BatchParticipant.status', '=', filter.status)
+  }
+  const needle = filter.q?.trim() ?? ''
+  if (needle !== '') {
+    query = query.where((eb) =>
+      eb.or([
+        eb('u.displayName', 'ilike', likeContains(needle)),
+        eb('u.businessNo', 'ilike', likeContains(needle)),
+      ]),
+    )
+  }
+  if (filter.orgNodeIds !== undefined && filter.orgNodeIds.length > 0) {
+    const units = [...filter.orgNodeIds]
+    // the round's own account of where it drew somebody from, the same
+    // lineage its unit tree is built out of: a live node's path would put
+    // the filter and the tree in two coordinate systems once a unit moves
+    query = query.where(
+      filter.orgScope === 'self'
+        ? sql<boolean>`batch_participants.assessment_anchor_node_id = any(${units}::uuid[])`
+        : sql<boolean>`exists (
+            select 1 from jsonb_array_elements(batch_participants.anchor_lineage) as step
+             where (step.value ->> 'nodeId')::uuid = any(${units}::uuid[])
+          )`,
+    )
+  }
+  if (filter.reach !== undefined) {
+    query = query.where(
+      staffReachOver({
+        tenantId,
+        batchId,
+        userId: filter.reach.userId,
+        permissionCode: filter.reach.permissionCode,
+        anchorNodeId: sql.ref('batch_participants.assessment_anchor_node_id'),
+        anchorPath: sql.ref('batch_participants.anchor_path'),
+      }),
+    )
+  }
+  if (filter.attention !== undefined) {
+    const { statuses, rounds } = FILING_SHAPES[filter.attention]
+    query = query.where((eb) => {
+      let claims = eb
+        .selectFrom('Entry as e')
+        .select(eb.lit(1).as('one'))
+        .whereRef('e.tenantId', '=', 'BatchParticipant.tenantId')
+        .whereRef('e.participantId', '=', 'BatchParticipant.id')
+      if (statuses !== null) claims = claims.where('e.status', 'in', [...statuses])
+      if (rounds !== null) {
+        claims = claims.where((inner) =>
+          inner.exists(
+            inner
+              .selectFrom('ReviewInstance as ri')
+              .select(inner.lit(1).as('one'))
+              .whereRef('ri.tenantId', '=', 'e.tenantId')
+              .whereRef('ri.entryId', '=', 'e.id')
+              .where('ri.state', 'in', [...rounds]),
+          ),
+        )
+      }
+      return eb.exists(claims)
+    })
+  }
+  return query
+}
+
+/**
+ * One page of the roster, by page number, and how many the filter matches.
+ *
+ * Ordered by a total key: the placement path, the name or the business
+ * number, each with the membership id last, so a page cannot shuffle under
+ * the reader between two requests for it.
+ */
+export const rosterAccountsPage = (
+  tenantId: string,
+  batchId: string,
+  filter: RosterAccountsFilter,
+  order: RosterOrder,
+  window: { offset: number; limit: number },
+) =>
+  db
+    .query((k) => {
+      const ordered =
+        order === 'name'
+          ? rosterAccountsQuery(k, tenantId, batchId, filter).orderBy('u.displayName')
+          : order === 'business-no'
+            ? rosterAccountsQuery(k, tenantId, batchId, filter).orderBy('u.businessNo', (by) =>
+                by.asc().nullsLast(),
+              )
+            : rosterAccountsQuery(k, tenantId, batchId, filter).orderBy(
+                sql`batch_participants.anchor_path`,
+              )
+      return ordered
+        .orderBy('BatchParticipant.id')
+        .offset(window.offset)
+        .limit(window.limit)
+        .execute()
+    })
+    .pipe(
+      Effect.map((found) => (found as unknown as Record<string, unknown>[]).map(toParticipantRow)),
+    )
+
+/** how many people the same filter matches, across every page */
+export const rosterAccountsTotal = (
+  tenantId: string,
+  batchId: string,
+  filter: RosterAccountsFilter,
+) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom(rosterAccountsQuery(k, tenantId, batchId, filter).as('matched'))
+        .select((eb) => eb.fn.countAll<string>().as('total'))
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => Number(row?.total ?? 0)))
+
+/**
+ * What each of these people's claims is waiting on, one count per kind.
+ *
+ * A claim is counted under every kind it matches: a blocked round is also
+ * under review, and "blocked" is said beside that rather than instead of it.
+ */
+export const rosterFilingsOf = (
+  tenantId: string,
+  batchId: string,
+  participantIds: readonly string[],
+) =>
+  participantIds.length === 0
+    ? Effect.succeed(new Map<string, RosterFilings>())
+    : db
+        .query((k) =>
+          k
+            .selectFrom('Entry as e')
+            .leftJoin('ReviewInstance as ri', (join) =>
+              join
+                .onRef('ri.tenantId', '=', 'e.tenantId')
+                .onRef('ri.entryId', '=', 'e.id')
+                .on('ri.state', 'in', [...OPEN_ROUND_STATES]),
+            )
+            .select(['e.participantId', 'e.status', 'ri.state'])
+            .select((eb) => eb.fn.countAll<string>().as('total'))
+            .where('e.tenantId', '=', tenantId)
+            .where('e.batchId', '=', batchId)
+            .where('e.participantId', 'in', [...participantIds])
+            .groupBy(['e.participantId', 'e.status', 'ri.state'])
+            .execute(),
+        )
+        .pipe(
+          Effect.map((rows): ReadonlyMap<string, RosterFilings> => {
+            const counts = new Map<string, Record<RosterAttention, number>>()
+            for (const row of rows) {
+              const held = counts.get(row.participantId) ?? {
+                inReview: 0,
+                toSupplement: 0,
+                reconsidering: 0,
+                toRevise: 0,
+                blocked: 0,
+              }
+              for (const [kind, shape] of Object.entries(FILING_SHAPES) as [
+                RosterAttention,
+                (typeof FILING_SHAPES)[RosterAttention],
+              ][]) {
+                const status = shape.statuses === null || shape.statuses.includes(row.status)
+                const round =
+                  shape.rounds === null || (row.state !== null && shape.rounds.includes(row.state))
+                if (status && round) held[kind] += Number(row.total)
+              }
+              counts.set(row.participantId, held)
+            }
+            return counts
+          }),
+        )
+
+/**
+ * Which of these ids name somebody on this roster within the reader's reach.
+ *
+ * Asked once for a page of ids rather than once per id, so a question about
+ * twenty people is one statement.
+ */
+export const participantIdsWithin = (
+  tenantId: string,
+  batchId: string,
+  participantIds: readonly string[],
+  reach: { userId: string; permissionCode: string | readonly string[] } | undefined,
+) =>
+  participantIds.length === 0
+    ? Effect.succeed([] as readonly string[])
+    : db
+        .query((k) => {
+          let query = k
+            .selectFrom('BatchParticipant')
+            .select('BatchParticipant.id')
+            .where('BatchParticipant.tenantId', '=', tenantId)
+            .where('BatchParticipant.batchId', '=', batchId)
+            .where('BatchParticipant.id', 'in', [...participantIds])
+          if (reach !== undefined) {
+            query = query.where(
+              staffReachOver({
+                tenantId,
+                batchId,
+                userId: reach.userId,
+                permissionCode: reach.permissionCode,
+                anchorNodeId: sql.ref('batch_participants.assessment_anchor_node_id'),
+                anchorPath: sql.ref('batch_participants.anchor_path'),
+              }),
+            )
+          }
+          return query.execute()
+        })
+        .pipe(Effect.map((rows) => rows.map((row) => row.id) as readonly string[]))
 
 /** the row for one person in one batch, whatever its status */
 /**

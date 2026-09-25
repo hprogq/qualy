@@ -1,4 +1,4 @@
-import { Effect } from 'effect'
+import { Clock, Effect, Option } from 'effect'
 import { transaction, type Orm } from '@qualy/plugin-database/server'
 import { ScoringRuntimeCatalog, type PreparedCalculator } from '../plugin.ts'
 import type { Principal } from '@qualy/rbac-contract'
@@ -84,6 +84,22 @@ export interface ScoringMethods {
     | AccessDenied,
     ScoringRuntimeCatalog
   >
+  /**
+   * The current totals of a page of people, by the same arithmetic as their
+   * accounts, within what one request may spend (PAGE_SCORING). The people
+   * it does not reach come back deferred rather than slowing the page down;
+   * a failure of one account is said on its row, not as the page's.
+   */
+  readonly listParticipantScores: (
+    tenantId: string,
+    batchId: string,
+    participantIds: readonly string[],
+    as: Principal,
+  ) => Effect.Effect<
+    readonly ParticipantScore[],
+    BatchNotFound | ParticipantNotFound | AccessDenied,
+    ScoringRuntimeCatalog
+  >
 }
 
 export interface ScoringDeps {
@@ -106,11 +122,85 @@ export interface ScoringDeps {
     batchId: string,
     participantId: string,
   ) => Effect.Effect<AccountReading, AccessDenied>
+  /**
+   * The same door, asked of a page of people at once: every id has to name
+   * somebody the reader may open, or the whole question is refused.
+   */
+  readonly requireAccountsReach: (
+    as: Principal,
+    tenantId: string,
+    batchId: string,
+    participantIds: readonly string[],
+  ) => Effect.Effect<void, AccessDenied | ParticipantNotFound>
   readonly itemTypes: ReadonlyMap<string, { readonly interaction: string }>
   readonly catalogs: {
     readonly aggregators: ReadonlyMap<string, { readonly kind: string }>
   }
 }
+
+/**
+ * One evaluation per distinct determination on a question: a calculator sees
+ * nothing of a claim but what it was determined as, so claims determined
+ * alike are one piece of arithmetic (the key the settlement proof uses too).
+ */
+const keyOf = (itemId: string, recognition: Record<string, unknown>) =>
+  `${itemId}:${hashCanonicalJson(recognition)}`
+
+/**
+ * How many evaluations reading this account takes: one per question that
+ * grants an amount on its own, and one per distinct determination among the
+ * approved claims on questions in use.
+ */
+const evaluationsNeeded = (collected: {
+  readonly items: readonly {
+    readonly id: string
+    readonly status: string
+    readonly derived: boolean
+  }[]
+  readonly entries: readonly {
+    readonly itemId: string
+    readonly status: string
+    readonly recognition: Record<string, unknown>
+  }[]
+}) => {
+  const active = new Set(
+    collected.items.filter((item) => item.status === 'active').map((item) => item.id),
+  )
+  const needed = new Set<string>()
+  for (const item of collected.items) {
+    if (item.status === 'active' && item.derived) needed.add(`derived:${item.id}`)
+  }
+  for (const entry of collected.entries) {
+    if (entry.status === 'approved' && active.has(entry.itemId)) {
+      needed.add(keyOf(entry.itemId, entry.recognition))
+    }
+  }
+  return needed.size
+}
+
+/**
+ * What one request for a page of totals may spend before it stops and hands
+ * the rest back unscored: the arithmetic of a few whole accounts, and a few
+ * seconds. One person asked about alone gets the ceiling of one account and a
+ * longer wait, since that is the request that has to answer.
+ */
+export const PAGE_SCORING = { evaluations: 2 * MAX_ACCOUNT_EVALUATIONS, millis: 4_000 }
+export const ONE_SCORING = { millis: 15_000 }
+
+/** one person's current total, or why this request did not give it */
+export type ParticipantScore =
+  | { readonly participantId: string; readonly state: 'scored'; readonly total: string }
+  | {
+      readonly participantId: string
+      readonly state: 'unavailable'
+      readonly reason: 'scoring-unavailable' | 'account-too-large' | 'timed-out'
+    }
+  | { readonly participantId: string; readonly state: 'deferred' }
+
+const unavailable = (
+  participantId: string,
+  reason: 'scoring-unavailable' | 'account-too-large' | 'timed-out',
+): ParticipantScore => ({ participantId, state: 'unavailable', reason })
 
 export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
   const { withDb } = deps
@@ -247,26 +337,12 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
   ) =>
     Effect.gen(function* () {
       const plans = new Map(collected.items.map((item) => [item.id, item]))
-      // One evaluation per distinct determination on a question: a
-      // calculator sees nothing of a claim but what it was determined as,
-      // so claims determined alike are one piece of arithmetic (the key the
-      // settlement proof uses too). Counted before anything runs, so an
-      // account past the ceiling is refused whole rather than scored in part.
-      const keyOf = (itemId: string, recognition: Record<string, unknown>) =>
-        `${itemId}:${hashCanonicalJson(recognition)}`
-      const needed = new Set<string>()
-      for (const item of collected.items) {
-        if (item.status === 'active' && item.derived) needed.add(`derived:${item.id}`)
-      }
-      for (const entry of collected.entries) {
-        const item = plans.get(entry.itemId)
-        if (entry.status === 'approved' && item !== undefined && item.status === 'active') {
-          needed.add(keyOf(entry.itemId, entry.recognition))
-        }
-      }
-      if (needed.size > MAX_ACCOUNT_EVALUATIONS) {
+      // Counted before anything runs, so an account past the ceiling is
+      // refused whole rather than scored in part.
+      const needed = evaluationsNeeded(collected)
+      if (needed > MAX_ACCOUNT_EVALUATIONS) {
         return yield* new ScoringAccountTooLarge({
-          evaluations: needed.size,
+          evaluations: needed,
           limit: MAX_ACCOUNT_EVALUATIONS,
         })
       }
@@ -408,8 +484,18 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
     participantId: string,
     runtime: typeof ScoringRuntimeCatalog.Service,
   ) =>
+    Effect.flatMap(collectParticipantScoreInput(tenantId, batchId, participantId), (collected) =>
+      accountFrom(tenantId, batchId, runtime, collected),
+    )
+
+  /** the arithmetic half of `accountOf`, once the facts are in hand */
+  const accountFrom = (
+    tenantId: string,
+    batchId: string,
+    runtime: typeof ScoringRuntimeCatalog.Service,
+    collected: Effect.Success<ReturnType<typeof collectParticipantScoreInput>>,
+  ) =>
     Effect.gen(function* () {
-      const collected = yield* collectParticipantScoreInput(tenantId, batchId, participantId)
       // One prepared calculator per item, resolved lazily and only on the
       // paths that actually run arithmetic: an inactive question, or an
       // active one with nothing approved, prepares nothing - a question
@@ -512,5 +598,94 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
     )
   })
 
-  return { getMyResult, getParticipantResult }
+  const listParticipantScores: ScoringMethods['listParticipantScores'] = Effect.fn(
+    'Assessment.listParticipantScores',
+  )(function* (tenantId, batchId, participantIds, as) {
+    const runtime = yield* ScoringRuntimeCatalog
+    return yield* withDb(
+      Effect.gen(function* () {
+        const batch = yield* oneBatch(tenantId, batchId)
+        if (!batch) return yield* new BatchNotFound()
+        const wanted = [...new Set(participantIds)]
+        yield* deps.requireAccountsReach(as, tenantId, batchId, wanted)
+        const alone = wanted.length === 1
+        const deadline =
+          (yield* Clock.currentTimeMillis) + (alone ? ONE_SCORING.millis : PAGE_SCORING.millis)
+        let spent = 0
+        let stopped = false
+        const scores: ParticipantScore[] = []
+        // One account at a time, in the page's own order, so the people
+        // somebody sees first are the ones scored first when the page runs
+        // out of room.
+        for (const participantId of wanted) {
+          const now = yield* Clock.currentTimeMillis
+          if (stopped || now >= deadline) {
+            stopped = true
+            scores.push({ participantId, state: 'deferred' })
+            continue
+          }
+          // null: this person does not fit in what the page has left
+          const measure = Effect.gen(function* () {
+            const collected = yield* collectParticipantScoreInput(tenantId, batchId, participantId)
+            const needed = evaluationsNeeded(collected)
+            if (needed > MAX_ACCOUNT_EVALUATIONS) {
+              return unavailable(participantId, 'account-too-large')
+            }
+            // the first account always fits: the page may spend more than
+            // one account's ceiling
+            if (!alone && spent + needed > PAGE_SCORING.evaluations) return null
+            spent += needed
+            const account = yield* accountFrom(tenantId, batchId, runtime, collected)
+            const scored: ParticipantScore = {
+              participantId,
+              state: 'scored',
+              total: account.total,
+            }
+            return scored
+          })
+          const outcome = yield* measure.pipe(
+            // An outage is every account's, so the page stops asking rather
+            // than waiting on the same refusal once per person. What is past
+            // the ceiling is this account's alone and said on its row; the
+            // arithmetic cannot be allowed to decide the account is smaller
+            // than it is.
+            Effect.catchTags({
+              ASSESSMENT_SCORING_UNAVAILABLE: () =>
+                Effect.succeed(unavailable(participantId, 'scoring-unavailable')),
+              ASSESSMENT_SCORING_ACCOUNT_TOO_LARGE: () =>
+                Effect.succeed(unavailable(participantId, 'account-too-large')),
+            }),
+            Effect.timeoutOption(deadline - now),
+          )
+          if (Option.isNone(outcome)) {
+            // Out of time part-way through this one. Asked about alone, the
+            // time was all this person's, and that is the answer; on a page,
+            // the rest of the page is simply not reached.
+            stopped = true
+            scores.push(
+              alone
+                ? unavailable(participantId, 'timed-out')
+                : { participantId, state: 'deferred' },
+            )
+            continue
+          }
+          if (outcome.value === null) {
+            stopped = true
+            scores.push({ participantId, state: 'deferred' })
+            continue
+          }
+          if (
+            outcome.value.state === 'unavailable' &&
+            outcome.value.reason === 'scoring-unavailable'
+          ) {
+            stopped = true
+          }
+          scores.push(outcome.value)
+        }
+        return scores
+      }).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error))),
+    )
+  })
+
+  return { getMyResult, getParticipantResult, listParticipantScores }
 }

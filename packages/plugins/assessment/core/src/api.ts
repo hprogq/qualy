@@ -7,6 +7,8 @@ import {
   expectedVersion,
   kebabCode,
   MAX_CURSOR_LENGTH,
+  numberedPageOf,
+  numberedPageQuery,
   pageQuery,
   countedPageOf,
   pageOf,
@@ -379,6 +381,13 @@ export const MAX_ENTRIES_PER_ACCOUNT =
 export const MAX_ACCOUNT_EVALUATIONS = 500
 
 /**
+ * The most people one request may ask the current totals of: a page of the
+ * roster, never the roster. Each is a whole account's arithmetic, so the
+ * question has to stay one a request can finish.
+ */
+export const MAX_SCORED_PARTICIPANTS = 25
+
+/**
  * The actions one phase opens. Each is one of the gate's own codes, so there
  * are never more than the gate knows; the service still names any it does
  * not recognize.
@@ -475,6 +484,51 @@ const participantView = Schema.Struct({
    * an organization that has them nowhere. Never moves the round by itself.
    */
   placement: Schema.Literals(['current', 'changed', 'unavailable']),
+})
+
+/**
+ * What one person's claims are waiting on, one count per kind. A claim is
+ * counted under every kind it matches: a round nobody can take is also under
+ * review, and `blocked` says so beside it.
+ */
+const rosterFilingsView = Schema.Struct({
+  inReview: Schema.Number,
+  toSupplement: Schema.Number,
+  reconsidering: Schema.Number,
+  toRevise: Schema.Number,
+  blocked: Schema.Number,
+})
+
+/** one person on the roster, with what their claims are waiting on */
+const participantAccountView = Schema.Struct({
+  ...participantView.fields,
+  filings: rosterFilingsView,
+})
+
+/**
+ * One person's current total, or why this request did not give it.
+ *
+ * `deferred` is not a failure: the page ran out of the time or the arithmetic
+ * one request may spend before reaching this person, and asking about them
+ * alone will answer. `unavailable` is: the scoring service is down, or the
+ * account is past what one reading may evaluate, or one person's arithmetic
+ * alone ran out of time.
+ */
+const participantScoreView = Schema.Struct({
+  participantId: Schema.String,
+  state: Schema.Literals(['scored', 'unavailable', 'deferred']),
+  total: Schema.NullOr(Schema.String),
+  reason: Schema.NullOr(Schema.Literals(['scoring-unavailable', 'account-too-large', 'timed-out'])),
+})
+
+/** somebody the reader could put on the roster, and whether they are on it */
+const participantCandidateView = Schema.Struct({
+  userId: Schema.String,
+  displayName: Schema.String,
+  businessNo: Schema.NullOr(Schema.String),
+  userTypeName: Schema.NullOr(Schema.String),
+  /** on the roster now, taken off it, or never on it */
+  roster: Schema.NullOr(Schema.Literals(['active', 'excluded'])),
 })
 
 /**
@@ -3242,6 +3296,87 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       success: pageOf(participantView),
       error: [BatchNotFound, AccessDenied, BadRequest],
     }).middleware(Authenticated),
+  )
+  .add(
+    /**
+     * The roster as the results page walks it: by page number, with what each
+     * person's claims are waiting on.
+     *
+     * The same doors as opening one of them (roster administration, or
+     * re-determination over the people it covers), so everybody listed here
+     * opens. Recording authority reads the roster through `listParticipants`
+     * on the record page instead, and none of this.
+     */
+    HttpApiEndpoint.get(
+      'listParticipantAccounts',
+      '/assessment/batches/:batchId/participant-accounts',
+      {
+        params: Schema.Struct({ batchId: uuidInput }),
+        query: Schema.Struct({
+          ...numberedPageQuery,
+          status: Schema.optional(Schema.Literals(['active', 'excluded'])),
+          /** a name or a business number */
+          q: Schema.optional(boundedText(100)),
+          /** admitted from these units, as the round froze them */
+          orgNodeIds: Schema.optional(idList),
+          /** that unit only, or everything under it; under it when absent */
+          orgScope: Schema.optional(Schema.Literals(['self', 'subtree'])),
+          /** only the people with a claim waiting on this */
+          attention: Schema.optional(
+            Schema.Literals(['inReview', 'toSupplement', 'reconsidering', 'toRevise', 'blocked']),
+          ),
+          /** the placement path when absent */
+          sort: Schema.optional(Schema.Literals(['unit', 'name', 'business-no'])),
+        }),
+        success: numberedPageOf(participantAccountView),
+        error: [BatchNotFound, AccessDenied],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
+    /**
+     * The current totals of a page of people, computed now.
+     *
+     * One request spends a bounded amount of time and arithmetic: the people
+     * it did not reach come back `deferred`, and asking about one of them on
+     * their own answers for them. Every id has to be somebody the reader may
+     * open, or the whole question is refused the way opening them would be.
+     */
+    HttpApiEndpoint.get(
+      'listParticipantScores',
+      '/assessment/batches/:batchId/participant-scores',
+      {
+        params: Schema.Struct({ batchId: uuidInput }),
+        query: Schema.Struct({ participantIds: idListUpTo(MAX_SCORED_PARTICIPANTS) }),
+        success: Schema.Struct({ scores: Schema.Array(participantScoreView) }),
+        error: [BatchNotFound, ParticipantNotFound, AccessDenied],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
+    /**
+     * People the reader could put on this roster, from their own authority to
+     * run rounds rather than from the directory: who may be added is who this
+     * reader manages, so that is the list, whether or not they may also read
+     * the directory.
+     */
+    HttpApiEndpoint.get(
+      'listParticipantCandidates',
+      '/assessment/batches/:batchId/participant-candidates',
+      {
+        params: Schema.Struct({ batchId: uuidInput }),
+        query: Schema.Struct({
+          ...numberedPageQuery,
+          q: Schema.optional(boundedText(100)),
+          /** standing at this unit, or anywhere under it */
+          orgNodeId: Schema.optional(uuidInput),
+          orgScope: Schema.optional(Schema.Literals(['self', 'subtree'])),
+          userTypeId: Schema.optional(uuidInput),
+        }),
+        success: numberedPageOf(participantCandidateView),
+        error: [BatchNotFound, AccessDenied],
+      },
+    ).middleware(Authenticated),
   )
   .add(
     /**

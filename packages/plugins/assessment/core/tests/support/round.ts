@@ -151,7 +151,10 @@ export const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
  * still reads: what a question looks like when its rule stopped paying after
  * it went live, which no write through the service may produce.
  */
-export const breakGrant = (itemId: string, fails: 'refusal' | 'execution' | 'integrity') =>
+export const breakGrant = (
+  itemId: string,
+  fails: 'refusal' | 'execution' | 'integrity' | 'unavailable',
+) =>
   Effect.gen(function* () {
     const stored = one<{
       id: string

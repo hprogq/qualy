@@ -8,7 +8,7 @@ import { HttpServerResponse } from 'effect/unstable/http'
 import { Api } from '@qualy/api-kit/plugin'
 import { Assembled } from '@qualy/api-kit/assembled'
 import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
-import { BadRequest, cursorUnusable, pageSize } from '@qualy/api-kit/schema'
+import { BadRequest, cursorUnusable, pageNumber, pageSize, pageWindow } from '@qualy/api-kit/schema'
 import { CurrentUser } from '@qualy/auth-contract/session'
 import { transaction, withDatabase, type Orm } from '@qualy/plugin-database/server'
 import { BATCH_MANAGE, rosterReachOf } from './configuration-access.ts'
@@ -205,6 +205,16 @@ import {
   type UserEntryRow,
   countBatchesByStatus,
   listParticipantsPage,
+  participantCandidatesPage,
+  participantCandidatesTotal,
+  participantIdsWithin,
+  rosterAccountsPage,
+  rosterAccountsTotal,
+  rosterFilingsOf,
+  type CandidateFilter,
+  type RosterAccountsFilter,
+  type RosterFilings,
+  type RosterOrder,
   listRosterUnits,
   listPhaseRows,
   phaseRowsForBatches,
@@ -603,6 +613,21 @@ const FORCE_ADVANCE = 'assessment.batch.force-advance'
 const REDETERMINE = 'assessment.entry.redetermine'
 /** the staff authorities that read the part of a roster they act on */
 const ROSTER_READING_CODES: readonly string[] = ['assessment.entry.record', REDETERMINE]
+
+/**
+ * A page of the results roster when the reader names none: small, because
+ * every row on it is a whole account the page then asks the totals of.
+ */
+const ROSTER_PAGE_SIZE = 20
+
+/** a person none of whose claims is waiting on anything */
+const NO_FILINGS: RosterFilings = {
+  inReview: 0,
+  toSupplement: 0,
+  reconsidering: 0,
+  toRevise: 0,
+  blocked: 0,
+}
 
 const RANGE = /^\[(\d{4}-\d{2}-\d{2}),(\d{4}-\d{2}-\d{2})\)$/
 
@@ -1352,6 +1377,50 @@ export class Assessment extends Context.Service<
       },
       as: Principal,
     ) => Effect.Effect<readonly ParticipantRow[], BatchNotFound | AccessDenied>
+    /**
+     * The roster as the results page walks it: a numbered page, and what each
+     * person's claims are waiting on. The doors are the ones opening a person
+     * has (roster administration, or re-determination over them).
+     */
+    readonly listParticipantAccounts: (
+      tenantId: string,
+      batchId: string,
+      query: {
+        filter: Omit<RosterAccountsFilter, 'reach'>
+        order: RosterOrder
+        page: number
+        limit: number
+      },
+      as: Principal,
+    ) => Effect.Effect<
+      {
+        rows: readonly (ParticipantRow & { filings: RosterFilings })[]
+        total: number
+        page: number
+      },
+      BatchNotFound | AccessDenied
+    >
+    /** the people a roster administrator could add, as the add dialog pages them */
+    readonly listParticipantCandidates: (
+      tenantId: string,
+      batchId: string,
+      query: { filter: CandidateFilter; page: number; limit: number },
+      as: Principal,
+    ) => Effect.Effect<
+      {
+        rows: readonly {
+          userId: string
+          displayName: string
+          businessNo: string | null
+          userTypeName: string | null
+          roster: string | null
+        }[]
+        total: number
+        page: number
+      },
+      BatchNotFound | AccessDenied
+    >
+    readonly listParticipantScores: ScoringMethods['listParticipantScores']
     /** the units this round's people were admitted from, as it froze them */
     readonly listRosterUnits: (
       tenantId: string,
@@ -2551,6 +2620,26 @@ export const make = Effect.fn('Assessment.make')(function* () {
     })
 
   /**
+   * How much of a roster this reader reads on the results page: all of it
+   * when they administer it; otherwise the people their re-determining
+   * authority covers, intersected in sql (ruling of 2026-09-25 #33); and
+   * nothing, refused, when they hold neither. Undefined is "all of it".
+   *
+   * Narrower than `rosterReadingOf` on purpose: recording authority lists
+   * the people it may record on, on the record page, and whether it also
+   * reads their accounts is a question the owner has not ruled on
+   * (assessment-design §30). So it is not a door here.
+   */
+  const accountReadingOf = (tenantId: string, batchId: string, as: Principal) =>
+    Effect.gen(function* () {
+      const roster = yield* Effect.result(requireRosterReach(as, tenantId, batchId))
+      if (Result.isSuccess(roster)) return undefined
+      const authority = yield* batchAuthority(tenantId, batchId, as.userId)
+      if (!authority.has(REDETERMINE)) return yield* roster.failure
+      return { userId: as.userId, permissionCode: REDETERMINE }
+    })
+
+  /**
    * Who may open one participant, and how much of them they read.
    *
    * The same people the roster reading lists (rosterReadingOf), so nobody is
@@ -2589,6 +2678,27 @@ export const make = Effect.fn('Assessment.make')(function* () {
       if (yield* covers(REDETERMINE)) return 'whole' as const
       if (yield* covers('assessment.entry.record')) return 'administrative' as const
       return yield* roster.failure
+    })
+
+  /** the same door, asked of a page of people in one statement */
+  const requireAccountsReach = (
+    as: Principal,
+    tenantId: string,
+    batchId: string,
+    participantIds: readonly string[],
+  ): Effect.Effect<void, AccessDenied | ParticipantNotFound> =>
+    Effect.gen(function* () {
+      const roster = yield* Effect.result(requireRosterReach(as, tenantId, batchId))
+      const reach = Result.isSuccess(roster)
+        ? undefined
+        : { userId: as.userId, permissionCode: REDETERMINE }
+      const found = yield* dieQuery(
+        withDb(participantIdsWithin(tenantId, batchId, participantIds, reach)),
+      )
+      if (found.length === new Set(participantIds).size) return
+      // an administrator is told the id names nobody here; anybody else is
+      // told nothing a guessed id could learn from
+      return yield* Result.isSuccess(roster) ? new ParticipantNotFound() : roster.failure
     })
 
   /**
@@ -2891,6 +3001,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
     withDb,
     requireBatchVisible,
     requireAccountReach,
+    requireAccountsReach,
     itemTypes,
     catalogs: { aggregators: scoring.aggregators },
   })
@@ -4896,6 +5007,66 @@ export const make = Effect.fn('Assessment.make')(function* () {
       },
     ),
 
+    listParticipantAccounts: Effect.fn('Assessment.listParticipantAccounts')(
+      function* (tenantId, batchId, query, as) {
+        const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
+        if (!batch) return yield* new BatchNotFound()
+        // the reach is part of the question, so the count and the page are
+        // both of the people this reader may open and nobody else
+        const reach = yield* accountReadingOf(tenantId, batchId, as)
+        const filter = { ...query.filter, ...(reach === undefined ? {} : { reach }) }
+        const total = yield* dieQuery(withDb(rosterAccountsTotal(tenantId, batchId, filter)))
+        const window = pageWindow(query.page, query.limit, total)
+        const rows = yield* dieQuery(
+          withDb(
+            rosterAccountsPage(tenantId, batchId, filter, query.order, {
+              offset: window.offset,
+              limit: query.limit,
+            }),
+          ),
+        )
+        const filings = yield* dieQuery(
+          withDb(
+            rosterFilingsOf(
+              tenantId,
+              batchId,
+              rows.map((row) => row.id),
+            ),
+          ),
+        )
+        return {
+          rows: rows.map((row) => ({ ...row, filings: filings.get(row.id) ?? NO_FILINGS })),
+          total,
+          page: window.page,
+        }
+      },
+    ),
+
+    listParticipantCandidates: Effect.fn('Assessment.listParticipantCandidates')(
+      function* (tenantId, batchId, query, as) {
+        const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
+        if (!batch) return yield* new BatchNotFound()
+        // the people this reader could add are the people this reader
+        // manages: the write asks `canAt` of each, and this is that question
+        // asked of everybody at once
+        yield* requireRosterReach(as, tenantId, batchId)
+        const held = yield* rbac.listAuthorizedScope(as, MANAGE)
+        const total = yield* dieQuery(
+          withDb(participantCandidatesTotal(tenantId, batchId, held, query.filter)),
+        )
+        const window = pageWindow(query.page, query.limit, total)
+        const rows = yield* dieQuery(
+          withDb(
+            participantCandidatesPage(tenantId, batchId, held, query.filter, {
+              offset: window.offset,
+              limit: query.limit,
+            }),
+          ),
+        )
+        return { rows, total, page: window.page }
+      },
+    ),
+
     listRosterUnits: Effect.fn('Assessment.listRosterUnits')(
       function* (tenantId, batchId, filter, as) {
         const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
@@ -6872,6 +7043,94 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
             found.length > limit && last
               ? encodeQueryCursor(fingerprint, [last.anchorPath, last.id])
               : null,
+        }
+      }),
+    )
+    .handle(
+      'listParticipantAccounts',
+      Effect.fn('assessment.listParticipantAccounts.handler')(function* ({ params, query }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const limit = pageSize(query.limit, ROSTER_PAGE_SIZE)
+        const units = listed(query.orgNodeIds)
+        const found = yield* assessment.listParticipantAccounts(
+          principal.tenantId,
+          params.batchId,
+          {
+            filter: {
+              ...(query.status !== undefined ? { status: query.status } : {}),
+              ...(query.q !== undefined ? { q: query.q } : {}),
+              ...(units.length > 0 ? { orgNodeIds: units } : {}),
+              ...(query.orgScope !== undefined ? { orgScope: query.orgScope } : {}),
+              ...(query.attention !== undefined ? { attention: query.attention } : {}),
+            },
+            order: query.sort ?? 'unit',
+            page: pageNumber(query.page),
+            limit,
+          },
+          principal,
+        )
+        return {
+          items: found.rows.map((row) => ({ ...toParticipantDto(row), filings: row.filings })),
+          total: found.total,
+          page: found.page,
+          pageSize: limit,
+        }
+      }),
+    )
+    .handle(
+      'listParticipantScores',
+      Effect.fn('assessment.listParticipantScores.handler')(function* ({ params, query }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const scores = yield* assessment.listParticipantScores(
+          principal.tenantId,
+          params.batchId,
+          listed(query.participantIds),
+          principal,
+        )
+        return {
+          scores: scores.map((score) => ({
+            participantId: score.participantId,
+            state: score.state,
+            total: score.state === 'scored' ? score.total : null,
+            reason: score.state === 'unavailable' ? score.reason : null,
+          })),
+        }
+      }),
+    )
+    .handle(
+      'listParticipantCandidates',
+      Effect.fn('assessment.listParticipantCandidates.handler')(function* ({ params, query }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const limit = pageSize(query.limit, ROSTER_PAGE_SIZE)
+        const found = yield* assessment.listParticipantCandidates(
+          principal.tenantId,
+          params.batchId,
+          {
+            filter: {
+              ...(query.q !== undefined ? { q: query.q } : {}),
+              ...(query.orgNodeId !== undefined ? { orgNodeId: query.orgNodeId } : {}),
+              ...(query.orgScope !== undefined ? { orgScope: query.orgScope } : {}),
+              ...(query.userTypeId !== undefined ? { userTypeId: query.userTypeId } : {}),
+            },
+            page: pageNumber(query.page),
+            limit,
+          },
+          principal,
+        )
+        return {
+          items: found.rows.map((row) => ({
+            userId: row.userId,
+            displayName: row.displayName,
+            businessNo: row.businessNo,
+            userTypeName: row.userTypeName,
+            roster: row.roster === 'active' || row.roster === 'excluded' ? row.roster : null,
+          })),
+          total: found.total,
+          page: found.page,
+          pageSize: limit,
         }
       }),
     )
