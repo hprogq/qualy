@@ -759,12 +759,26 @@ function Workbench({ batch }: { batch: BatchDto }) {
       current.map((entry) => (entry.instanceId === id ? { ...entry, status } : entry)),
     )
 
-  /** the words of the last act that came back, for its dialog to reopen with */
-  const [held, setHeld] = useState<HeldWords | null>(null)
+  /**
+   * The words of every act that came back, one per round, for its dialog to
+   * reopen with. Per round because two can come back one after the other:
+   * a single seat gave the first one's words to the second's failure.
+   */
+  const [held, setHeld] = useState<ReadonlyMap<string, HeldWords>>(() => new Map())
+  const hold = (staged: StagedDecision) =>
+    setHeld((current) => new Map(current).set(staged.instanceId, heldWordsOf(staged)))
+  const letGo = (id: string) =>
+    setHeld((current) => {
+      if (!current.has(id)) return current
+      const next = new Map(current)
+      next.delete(id)
+      return next
+    })
+  const heldHere = held.get(instanceId)
   const heldFor = (act: 'approve' | 'reject' | 'escalate'): WordedDecision | undefined =>
-    held === null || held.act === 'supplement' || held.act !== act || held.instanceId !== instanceId
+    heldHere === undefined || heldHere.act === 'supplement' || heldHere.act !== act
       ? undefined
-      : held.worded
+      : heldHere.worded
   const withHeld = (act: 'approve' | 'reject' | 'escalate') => {
     const worded = heldFor(act)
     return worded === undefined ? {} : { initial: worded }
@@ -789,7 +803,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
         mark(staged.instanceId, 'gone')
       } else {
         setLog((current) => current.filter((entry) => entry.instanceId !== staged.instanceId))
-        setHeld(heldWordsOf(staged))
+        hold(staged)
       }
       toast.error(sayEntryFailure(error, { format, formatError }))
       refresh()
@@ -1064,7 +1078,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
     if (staged === null) return
     setLog((current) => current.filter((entry) => entry.instanceId !== staged.instanceId))
     // taken back is not thrown away: the dialog reopens on the same words
-    setHeld(heldWordsOf(staged))
+    hold(staged)
     goTo(staged.instanceId)
   }
 
@@ -1500,13 +1514,17 @@ function Workbench({ batch }: { batch: BatchDto }) {
             {...withHeld('approve')}
             onClose={() => setDialog(null)}
             onConfirm={(worded) => {
-              setHeld(null)
+              letGo(instanceId)
               stageDecision('approve', worded)
             }}
           />
         )}
         {lingeringDialog === 'reject' && review !== undefined && (
           <RejectDialog
+            // one round's words, never the next one's: the panel stays
+            // mounted after it closes, and without this the send-back
+            // written for one filing opened again on the one after it
+            key={`${review.id}:${heldFor('reject') === undefined ? 'fresh' : 'held'}`}
             open={dialog === 'reject'}
             review={review}
             reasons={batch.reviewReasons.reject}
@@ -1514,20 +1532,21 @@ function Workbench({ batch }: { batch: BatchDto }) {
             {...withHeld('reject')}
             onClose={() => setDialog(null)}
             onConfirm={(worded) => {
-              setHeld(null)
+              letGo(instanceId)
               stageDecision('reject', worded)
             }}
           />
         )}
         {lingeringDialog === 'escalate' && review !== undefined && (
           <EscalateDialog
+            key={`${review.id}:${heldFor('escalate') === undefined ? 'fresh' : 'held'}`}
             open={dialog === 'escalate'}
             review={review}
             reasons={batch.reviewReasons.escalate}
             {...withHeld('escalate')}
             onClose={() => setDialog(null)}
             onConfirm={(worded) => {
-              setHeld(null)
+              letGo(instanceId)
               stageDecision('escalate', worded)
             }}
           />
@@ -1549,14 +1568,13 @@ function Workbench({ batch }: { batch: BatchDto }) {
         />
         {lingeringDialog === 'supplement' && review !== undefined && (
           <SupplementDialog
+            key={`${instanceId}:${heldHere?.act === 'supplement' ? 'held' : 'fresh'}`}
             open={dialog === 'supplement'}
             instanceId={instanceId}
-            {...(held?.act === 'supplement' && held.instanceId === instanceId
-              ? { initial: held.worded }
-              : {})}
+            {...(heldHere?.act === 'supplement' ? { initial: heldHere.worded } : {})}
             onClose={() => setDialog(null)}
             onConfirm={(worded) => {
-              setHeld(null)
+              letGo(instanceId)
               stageSupplement(worded)
             }}
           />

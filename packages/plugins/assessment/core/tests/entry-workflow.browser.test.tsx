@@ -2116,6 +2116,53 @@ describe('judging a submission', () => {
       .toHaveValue('证书缺少落款。')
   }, 30_000)
 
+  it('reopens a send-back that did not go through with the advice it carried', async () => {
+    const decided = vi.fn(() =>
+      Effect.fail(
+        apiError('ASSESSMENT_ENTRY_ACTION_REFUSED', { action: 'decide', reason: 'phase-closed' }),
+      ),
+    )
+    await screen(
+      {
+        listReviewInbox: () =>
+          Effect.succeed({ items: [inboxRow()], nextCursor: null, handledToday: 0 }),
+        getReviewInstance: () => Effect.succeed({ review }),
+        decideReview: decided,
+      },
+      `/assessment/batches/${BATCH_ID}/reviews/${INSTANCE_ID}`,
+      [
+        {
+          path: '/assessment/batches/:batchId/reviews/:instanceId',
+          element: <ReviewInstancePage />,
+        },
+      ],
+    )
+
+    await page.getByRole('button', { name: /退回/ }).click()
+    await page.getByLabelText('审核意见', { exact: false }).fill('日期写错了。')
+    await page.getByRole('checkbox', { name: /附加修改建议/ }).click()
+    await page
+      .getByRole('dialog')
+      .getByRole('textbox', { name: '事项说明' })
+      .fill('入伍与退役的准确日期')
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: /确认退回/ })
+      .click()
+    await vi.waitFor(() => expect(decided).toHaveBeenCalledOnce(), { timeout: 8000 })
+    expect((decided.mock.calls[0] as unknown[])[0]).toMatchObject({
+      payload: { suggestedPayload: { summary: '入伍与退役的准确日期' } },
+    })
+
+    // back on the bench, and the advice comes back with the words
+    await vi.waitFor(() => expect(page.getByTestId('run-done').elements()).toHaveLength(0))
+    await page.getByRole('button', { name: /退回/ }).click()
+    await expect.element(page.getByRole('checkbox', { name: /附加修改建议/ })).toBeChecked()
+    await expect
+      .element(page.getByRole('dialog').getByRole('textbox', { name: '事项说明' }))
+      .toHaveValue('入伍与退役的准确日期')
+  }, 30_000)
+
   // a field key is the administrator's word, and `constructor` is one every
   // object answers to: read plainly, the advice grid found `Object` in an
   // untouched box and fell over trying to trim it
@@ -2169,6 +2216,75 @@ describe('judging a submission', () => {
     expect(Object.hasOwn(sent, 'constructor')).toBe(true)
     expect(sent['constructor']).toBe('某部')
   }, 30_000)
+
+  it('keeps the words of two send-backs that did not go through apart', async () => {
+    const OTHER_ID = '99999999-6666-4666-8666-666666666666'
+    const decided = vi.fn(() =>
+      Effect.fail(
+        apiError('ASSESSMENT_ENTRY_ACTION_REFUSED', { action: 'decide', reason: 'phase-closed' }),
+      ),
+    )
+    const other = { ...review, id: OTHER_ID, participantName: '李四', businessNo: '2023011043' }
+    await screen(
+      {
+        listReviewInbox: () =>
+          Effect.succeed({
+            items: [
+              inboxRow(),
+              inboxRow({ instanceId: OTHER_ID, participantName: '李四', businessNo: '2023011043' }),
+            ],
+            nextCursor: null,
+            handledToday: 0,
+          }),
+        getReviewInstance: (request: { params: { instanceId: string } }) =>
+          Effect.succeed({ review: request.params.instanceId === OTHER_ID ? other : review }),
+        decideReview: decided,
+      },
+      `/assessment/batches/${BATCH_ID}/reviews/${INSTANCE_ID}`,
+      [
+        {
+          path: '/assessment/batches/:batchId/reviews/:instanceId',
+          element: <ReviewInstancePage />,
+        },
+      ],
+    )
+
+    const sendBack = async (words: string) => {
+      await page.getByRole('button', { name: /退回/ }).click()
+      await page.getByLabelText('审核意见', { exact: false }).fill(words)
+      await page
+        .getByRole('dialog')
+        .getByRole('button', { name: /确认退回/ })
+        .click()
+    }
+    await sendBack('第一件缺少落款。')
+    // staging one moves the bench on to the next
+    await vi.waitFor(() => expect(addressNow()).toContain(OTHER_ID))
+    await sendBack('第二件日期不符。')
+    await vi.waitFor(() => expect(decided).toHaveBeenCalledTimes(2), { timeout: 12_000 })
+    await vi.waitFor(() => expect(page.getByTestId('run-done').elements()).toHaveLength(0))
+
+    // both came back, each with its own words: the one the bench stands on,
+    // and the other one step along the queue
+    const said: Record<string, string> = {
+      [INSTANCE_ID]: '第一件缺少落款。',
+      [OTHER_ID]: '第二件日期不符。',
+    }
+    const reopen = async (id: string) => {
+      await vi.waitFor(() => expect(addressNow()).toContain(id))
+      await page.getByRole('button', { name: /退回/ }).click()
+      await expect.element(page.getByLabelText('审核意见', { exact: false })).toHaveValue(said[id]!)
+      await page
+        .getByRole('dialog')
+        .getByRole('button', { name: /取消/ })
+        .click()
+      await vi.waitFor(() => expect(page.getByRole('dialog').elements()).toHaveLength(0))
+    }
+    const second = addressNow().includes(OTHER_ID)
+    await reopen(second ? OTHER_ID : INSTANCE_ID)
+    await userEvent.keyboard(second ? 'k' : 'j')
+    await reopen(second ? INSTANCE_ID : OTHER_ID)
+  }, 45_000)
 
   it('does not count a round somebody else settled first as handled here', async () => {
     const decided = vi.fn(() => Effect.fail(apiError('ASSESSMENT_REVIEW_CONFLICT')))

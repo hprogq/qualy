@@ -1469,7 +1469,6 @@ export function RejectDialog({
   const fine = useFinePointer()
   const [reason, setReason] = useState(initial?.reason ?? '')
   const [comment, setComment] = useState(initial?.comment ?? '')
-  const [suggesting, setSuggesting] = useState(false)
   const fields = fieldsOf(review.form.formConfig).filter((field) => field.type !== 'attachment')
   const filed = (review.revision.payload ?? {}) as Record<string, unknown>
   // advice goes to the person who filed, so it is offered only where this
@@ -1478,8 +1477,13 @@ export function RejectDialog({
   // rather than quietly dropping the words somebody wrote
   const maySuggest = fields.length > 0 && review.actions.rejectionReturns
   // empty means "keep theirs": only what the reviewer actually typed becomes
-  // part of the suggestion, so a box left alone never overwrites anything
-  const [suggested, setSuggested] = useState<Record<string, string>>({})
+  // part of the suggestion, so a box left alone never overwrites anything.
+  // A send-back that came back unsent reopens with its advice as well as
+  // its words: the fields it changed, as they were typed.
+  const [suggested, setSuggested] = useState<Record<string, string>>(() =>
+    suggestionDraftsOf(fields, filed, initial?.suggestedPayload),
+  )
+  const [suggesting, setSuggesting] = useState(() => Object.keys(suggested).length > 0)
   const commentBox = useRef<HTMLTextAreaElement | null>(null)
   const ready = comment.trim() !== '' && (reasons.length === 0 || reason !== '')
   const draft = useLocalDraft<{
@@ -1752,6 +1756,29 @@ const materializeSuggestion = (field: EvidenceFieldSpec, draft: string): unknown
   const trimmed = draft.trim()
   if (field.type === 'boolean') return trimmed === 'true'
   return field.type === 'integer' ? Number(trimmed) : trimmed
+}
+
+/**
+ * The boxes a sent suggestion was typed into, read back out of it: every
+ * field it changed, spelled the way that field's box takes it. What it kept
+ * of theirs stays empty, which is what keeping theirs looks like.
+ */
+const suggestionDraftsOf = (
+  fields: readonly EvidenceFieldSpec[],
+  filed: Record<string, unknown>,
+  suggestedPayload: unknown,
+): Record<string, string> => {
+  if (suggestedPayload === null || typeof suggestedPayload !== 'object') return {}
+  const sent = suggestedPayload as Record<string, unknown>
+  const drafts: Record<string, string> = {}
+  for (const field of fields) {
+    const value = answerOf(sent, field.key)
+    if (JSON.stringify(value) === JSON.stringify(answerOf(filed, field.key))) continue
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      drafts[field.key] = String(value)
+    }
+  }
+  return drafts
 }
 
 /** the pick that keeps their answer, in a list that must name every row */
