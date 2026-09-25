@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import { projectEntrySummary } from '../../entry/summary.ts'
 import { assessmentMessages as m } from '../i18n.ts'
+import { inZone, useBatchZone } from '../batch/zone.ts'
 import { EntryStanding } from './EntryStanding.tsx'
 import { entryRefusalReason } from './refusals.ts'
 import {
@@ -1669,6 +1670,7 @@ function ClaimRow({
   onOpen: () => void
 }) {
   const { format, locale } = useI18n()
+  const zone = useBatchZone()
   const fields = fieldsOf(item.currentRevision?.formConfig)
   const payload = (entry.currentRevision?.payload ?? {}) as Record<string, unknown>
   const revisionNo = entry.currentRevision?.revisionNo
@@ -1701,7 +1703,7 @@ function ClaimRow({
           ? format(m.paperUnsubmitted)
           : format(m.entryVersionNo, { no: revisionNo })}
       </span>
-      <span {...stylex.props(styles.claimWhenClock)}>{when(entry, locale)}</span>
+      <span {...stylex.props(styles.claimWhenClock)}>{when(entry, locale, zone)}</span>
     </>
   )
   return (
@@ -1763,10 +1765,11 @@ function ClaimRow({
   )
 }
 
-const when = (entry: EntryDto, locale: string): string =>
+const when = (entry: EntryDto, locale: string, zone: string | undefined): string =>
   new Date(entry.currentRevision?.createdAt ?? entry.createdAt).toLocaleString(locale, {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
+    ...inZone(zone),
   })

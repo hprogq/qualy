@@ -8,6 +8,8 @@ import { Button } from '@qualy/ui/button'
 import { DateTimePicker } from '@qualy/ui/date-time-picker'
 import { NativeSelect } from '@qualy/ui/native-select'
 import { assessmentMessages as m } from '../i18n.ts'
+import { ZoneNote } from '../batch/BatchZone.tsx'
+import { useBatchZone } from '../batch/zone.ts'
 
 // The three decisions a plan asks for outside the table: give a phase a time,
 // enter it now, or take its time back. Each is short, focused and reversible
@@ -44,6 +46,9 @@ export function ScheduleDialog({
   onStartNow: () => void
 }) {
   const { format, locale } = useI18n()
+  // the time is typed on the batch's clock: "00:00" is the school's midnight
+  // whatever zone the device keeps
+  const zone = useBatchZone()
   const [mode, setMode] = useState<'later' | 'now'>('later')
   const start = mode === 'now' ? 'now' : 'later'
   // the dialog animates out after its subject is gone; a title that empties
@@ -87,12 +92,13 @@ export function ScheduleDialog({
         />
       )}
       {start === 'later' && (
-        <Field label={format(m.plannedStartLabel)}>
+        <Field label={format(m.plannedStartLabel)} hint={<ZoneNote purpose="enter" />}>
           {(id) => (
             <DateTimePicker
               id={id}
               value={value}
               onChange={onChange}
+              timeZone={zone}
               placeholder={format(m.pickDateTime)}
               clearLabel={format(m.clearTime)}
               hourLabel={format(commonMessages.clockHour)}

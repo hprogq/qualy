@@ -21,6 +21,7 @@ import {
   type HistoryRevision,
   type ReviewDto,
 } from './model.ts'
+import { useBatchZone } from '../batch/zone.ts'
 import { useFinePointer } from './pointer.ts'
 import { Pane, type WorkbenchPart } from './Pane.tsx'
 
@@ -398,6 +399,7 @@ export const FilingColumn = memo(function FilingColumn({
   onPart: (part: WorkbenchPart) => void
 }) {
   const { format, locale } = useI18n()
+  const zone = useBatchZone()
   const fine = useFinePointer()
   // every field the question asks, files included and in their own places:
   // a field that asks for a certificate is not "materials", it is the
@@ -535,7 +537,7 @@ export const FilingColumn = memo(function FilingColumn({
             <p {...stylex.props(styles.filedVersion)}>
               {format(m.reviewFiledVersion, {
                 no: review.revision.revisionNo,
-                at: timeLabel(review.submittedAt, locale),
+                at: timeLabel(review.submittedAt, locale, zone),
               })}
             </p>
             <span {...stylex.props(styles.spacer)} />
@@ -736,6 +738,7 @@ function SupplementCard({
   endedBy: string | null
 }) {
   const { format, locale } = useI18n()
+  const zone = useBatchZone()
   const answers = (supplement.response?.payload ?? {}) as Record<string, unknown>
   return (
     <div {...stylex.props(styles.card)}>
@@ -757,7 +760,7 @@ function SupplementCard({
           )}
         </Badge>
         <span {...stylex.props(styles.spacer)} />
-        <p {...stylex.props(styles.cardWhen)}>{timeLabel(supplement.requestedAt, locale)}</p>
+        <p {...stylex.props(styles.cardWhen)}>{timeLabel(supplement.requestedAt, locale, zone)}</p>
       </div>
       <p {...stylex.props(styles.instructions)}>{supplement.instructions}</p>
       {supplement.response !== null && (

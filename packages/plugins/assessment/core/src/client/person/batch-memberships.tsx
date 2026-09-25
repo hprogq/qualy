@@ -103,6 +103,11 @@ const styles = stylex.create({
 /** one page of a person's rounds, as the api answers */
 export type BatchMembershipPage = ApiResult<typeof assessmentApi, 'assessment', 'listUserBatches'>
 
+/** a moment of one round, read on that round's own clock */
+function RoundMoment({ at, zone }: { at: string; zone: string }) {
+  return useWhen(zone).moment(Date.parse(at))
+}
+
 export function BatchMemberships({
   queryKey,
   fetchPage,
@@ -113,7 +118,6 @@ export function BatchMemberships({
   fetchPage: (cursor: string | undefined) => Promise<BatchMembershipPage>
 }) {
   const { format, formatError } = useI18n()
-  const when = useWhen()
   const navigate = usePageNavigate()
   // a row is a way into the round only for a reader who may open rounds
   const batchReachable = usePageHref('assessment/batch', { params: { batchId: '0' } }) !== undefined
@@ -181,7 +185,9 @@ export function BatchMemberships({
                       )}
                     </Status>
                   </Cell>
-                  <Cell numeric>{when.moment(new Date(membership.includedAt).getTime())}</Cell>
+                  <Cell numeric>
+                    <RoundMoment at={membership.includedAt} zone={batch.timezone} />
+                  </Cell>
                 </TableRow>
               ))}
             </Table>

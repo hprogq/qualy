@@ -90,8 +90,14 @@ export default defineConfig({
       enabled: true,
       // the product honors prefers-reduced-motion, and the suite asks for
       // it: a click that lands mid-entrance hits a moving target, and the
-      // flake roams with machine load
-      provider: playwright({ contextOptions: { reducedMotion: 'reduce' } }),
+      // flake roams with machine load. The device's time zone is pinned
+      // too: a batch's times are read on the batch's zone, and a screen
+      // tells a reader whose device keeps another one - so a suite that
+      // inherited the machine's zone would draw that notice on CI and not
+      // on a laptop. A test about another zone names it on the batch.
+      provider: playwright({
+        contextOptions: { reducedMotion: 'reduce', timezoneId: 'Asia/Shanghai' },
+      }),
       headless: true,
       // the screens are asserted styled now, so the window size matters:
       // desktop is the baseline, and a test about the phone layout says so

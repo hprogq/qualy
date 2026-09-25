@@ -22,6 +22,7 @@ import {
 import { assessmentMessages as m } from '../i18n.ts'
 import { stagesOf, type FlowEntry, type FlowStage } from './flow.ts'
 import { useWhen } from './when.ts'
+import { ZoneNote } from './BatchZone.tsx'
 
 // The stages of the round, drawn twice.
 //
@@ -156,6 +157,10 @@ const styles = stylex.create({
   quietNote: {
     fontSize: 14,
     color: tokens.mutedForeground,
+  },
+  zone: {
+    display: 'block',
+    marginTop: 12,
   },
   foldIcon: {
     width: 14,
@@ -413,32 +418,36 @@ export function BatchFlow({
   const shown = folded > 1 ? stages.slice(folded) : stages
 
   return (
-    <Timeline value={reachedIn(stages)} markOffset={10} xstyle={xstyle}>
-      {folded > 1 && (
-        <TimelineItem step={0} xstyle={flow.foldItem}>
-          <TimelineIndicator xstyle={flow.foldMark}>
-            <MoreVerticalIcon className={stylex.props(styles.foldIcon).className} />
-          </TimelineIndicator>
-          <TimelineSeparator xstyle={[flow.rail, flow.railUpright]} />
-          <button
-            type="button"
-            {...stylex.props(styles.foldButton)}
-            // how many stages are folded away, as the number rather than as
-            // the sentence carrying it
-            data-testid="flow-fold"
-            data-count={String(folded)}
-            onClick={() => setOpened(true)}
-          >
-            {format(m.flowEarlier, { count: folded })}
-          </button>
-        </TimelineItem>
-      )}
-      {shown.map((stage, index) => (
-        <TimelineItem key={stage.id} step={folded + index + 1} xstyle={flow.item}>
-          <Stage stage={stage} upright />
-        </TimelineItem>
-      ))}
-    </Timeline>
+    <>
+      <Timeline value={reachedIn(stages)} markOffset={10} xstyle={xstyle}>
+        {folded > 1 && (
+          <TimelineItem step={0} xstyle={flow.foldItem}>
+            <TimelineIndicator xstyle={flow.foldMark}>
+              <MoreVerticalIcon className={stylex.props(styles.foldIcon).className} />
+            </TimelineIndicator>
+            <TimelineSeparator xstyle={[flow.rail, flow.railUpright]} />
+            <button
+              type="button"
+              {...stylex.props(styles.foldButton)}
+              // how many stages are folded away, as the number rather than as
+              // the sentence carrying it
+              data-testid="flow-fold"
+              data-count={String(folded)}
+              onClick={() => setOpened(true)}
+            >
+              {format(m.flowEarlier, { count: folded })}
+            </button>
+          </TimelineItem>
+        )}
+        {shown.map((stage, index) => (
+          <TimelineItem key={stage.id} step={folded + index + 1} xstyle={flow.item}>
+            <Stage stage={stage} upright />
+          </TimelineItem>
+        ))}
+      </Timeline>
+      {/* whose clock the dates above are on, under the last of them */}
+      <ZoneNote xstyle={styles.zone} />
+    </>
   )
 }
 

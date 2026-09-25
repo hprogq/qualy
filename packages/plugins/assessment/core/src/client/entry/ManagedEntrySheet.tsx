@@ -10,6 +10,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
+import { inZone, useBatchZone } from '../batch/zone.ts'
 import { EntryDetail } from './EntryDetail.tsx'
 import { ReasonDialog } from '../items/ReasonDialog.tsx'
 import { sourceLabelOf } from './source.ts'
@@ -338,6 +339,7 @@ function Determination({
 }) {
   const query = useApiQuery(assessmentApi)
   const { format, locale } = useI18n()
+  const zone = useBatchZone()
   const contract = useQuery({
     ...query.assessment.getRecognitionContract.queryOptions({ params: { itemId } }),
     enabled: recognition !== null,
@@ -379,7 +381,7 @@ function Determination({
   // revised since, the reader is looking at a decision about older material
   const stale =
     entry.currentRevision !== null && entry.currentRevision.id !== recognition.entryRevisionId
-  // the reader's own calendar and clock, to the minute: seconds and a
+  // the batch's calendar and clock, to the minute: seconds and a
   // machine's default ordering were never read here
   const when = new Intl.DateTimeFormat(locale, {
     month: 'long',
@@ -387,6 +389,7 @@ function Determination({
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
+    ...inZone(zone),
   }).format(new Date(recognition.createdAt))
 
   return (

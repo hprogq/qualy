@@ -29,6 +29,7 @@ import {
 import { PhaseCard, PhaseRow, type PhaseRowProps } from './phase/PhaseRow.tsx'
 import { PhaseDetailsPanel } from './phase/PhaseDetailsPanel.tsx'
 import { ScheduleDialog, TemplateDialog, UnscheduleDialog } from './phase/PhaseDialogs.tsx'
+import { ZoneNote } from './batch/BatchZone.tsx'
 
 // The stage plan: the ordered list of business states a batch passes through,
 // and the two commands that change it.
@@ -52,6 +53,10 @@ const styles = stylex.create({
     alignItems: 'center',
     justifyContent: 'flex-end',
     gap: 8,
+  },
+  // the plan's clock, at the far end from the controls
+  zoneNote: {
+    marginInlineEnd: 'auto',
   },
   controlsSeat: {
     display: 'flex',
@@ -539,6 +544,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
       {/* the page header says what a stage plan is; this row is only the
           controls that act on it */}
       <div {...stylex.props(styles.controlsRow)}>
+        <ZoneNote xstyle={styles.zoneNote} />
         <div {...stylex.props(styles.controlsSeat)}>
           {/* how much is unsaved belongs to a moment that ends, and the
               count moves while somebody edits: the digit that changed is

@@ -16,6 +16,7 @@ import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Count } from '@qualy/ui/count'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
+import { inZone, useBatchZone } from '../batch/zone.ts'
 import { AttachmentLink } from './AttachmentLink.tsx'
 import { sourceLabelOf } from './source.ts'
 import { EntryTrail } from './EntryHistory.tsx'
@@ -441,6 +442,7 @@ export function EntryDetail({
 }) {
   const query = useApiQuery(assessmentApi)
   const { format, locale } = useI18n()
+  const zone = useBatchZone()
   const yesNo = { yes: format(m.recognitionYes), no: format(m.recognitionNo) }
   const [tab, setTab] = useState<'content' | 'trail'>('content')
   const payload = (entry.currentRevision?.payload ?? {}) as Record<string, unknown>
@@ -570,7 +572,7 @@ export function EntryDetail({
                       )}
                       <span {...stylex.props(styles.spacer)} />
                       <span {...stylex.props(styles.noticeWhen)} data-testid="refusal-when">
-                        {timeOf(entry.refusal.at, locale)}
+                        {timeOf(entry.refusal.at, locale, zone)}
                       </span>
                     </div>
                     {(entry.refusal.comment ?? '') !== '' && (
@@ -713,8 +715,8 @@ export function EntryDetail({
                       <p {...stylex.props(styles.sectionNote)}>
                         {format(m.entrySheetSupNote, {
                           round: ask.roundNo,
-                          asked: timeOf(ask.requestedAt, locale),
-                          answered: timeOf(ask.response!.respondedAt, locale),
+                          asked: timeOf(ask.requestedAt, locale, zone),
+                          answered: timeOf(ask.response!.respondedAt, locale, zone),
                         })}
                       </p>
                     </div>
@@ -779,6 +781,7 @@ export function EntryDetail({
  */
 function RecognizedValues({ entry }: { entry: EntryDto }) {
   const { format, locale } = useI18n()
+  const zone = useBatchZone()
   const standing = entry.recognition ?? null
   if (standing === null) return null
   const values = (standing.values ?? {}) as Record<string, unknown>
@@ -818,12 +821,12 @@ function RecognizedValues({ entry }: { entry: EntryDto }) {
         <span {...stylex.props(styles.spacer)} />
         <p {...stylex.props(styles.standingWhen)}>
           {standing.byPanel
-            ? format(m.recognitionByPanel, { when: timeOf(standing.createdAt, locale) })
+            ? format(m.recognitionByPanel, { when: timeOf(standing.createdAt, locale, zone) })
             : standing.actorName === null
-              ? timeOf(standing.createdAt, locale)
+              ? timeOf(standing.createdAt, locale, zone)
               : format(m.recognitionBy, {
                   who: standing.actorName,
-                  when: timeOf(standing.createdAt, locale),
+                  when: timeOf(standing.createdAt, locale, zone),
                 })}
         </p>
       </div>
@@ -840,10 +843,11 @@ function RecognizedValues({ entry }: { entry: EntryDto }) {
   )
 }
 
-const timeOf = (iso: string, locale: string): string =>
+const timeOf = (iso: string, locale: string, zone: string | undefined): string =>
   new Date(iso).toLocaleString(locale, {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
+    ...inZone(zone),
   })

@@ -11,6 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
 import { assessmentMessages as m } from '../i18n.ts'
 import { dotDay, dotMoment } from './dates.ts'
+import { BatchZone } from './BatchZone.tsx'
+import { useBatchZone } from './zone.ts'
 import { lastDay } from '../entry/model.ts'
 import { StatusBadge } from './StatusBadge.tsx'
 import { BatchProgress } from './BatchProgress.tsx'
@@ -598,6 +600,7 @@ function useLaneFit(lanes: RefObject<HTMLDivElement | null>, count: number): Lan
 }
 
 function StageLanes({ timeline, now }: { timeline: readonly TimelineLike[]; now: number }) {
+  const zone = useBatchZone()
   const { format } = useI18n()
   const plan = planOf(timeline, now)
   const at = (fraction: number) => `${(Math.min(1, Math.max(0, fraction)) * 100).toFixed(2)}%`
@@ -656,12 +659,12 @@ function StageLanes({ timeline, now }: { timeline: readonly TimelineLike[]; now:
       </TooltipProvider>
       {plan.start !== null && (
         <div {...stylex.props(styles.axis)}>
-          <span {...stylex.props(styles.axisStart)}>{dotDay(plan.start)}</span>
+          <span {...stylex.props(styles.axisStart)}>{dotDay(plan.start, zone)}</span>
           {plan.today !== null && (
             <span {...stylex.props(styles.axisToday(at(plan.today)))}>{format(m.today)}</span>
           )}
           {plan.end !== null && plan.end > plan.start && (
-            <span {...stylex.props(styles.axisEnd)}>{dotDay(plan.end)}</span>
+            <span {...stylex.props(styles.axisEnd)}>{dotDay(plan.end, zone)}</span>
           )}
         </div>
       )}
@@ -866,13 +869,7 @@ function PhoneAgendaRow({
   )
 }
 
-export function BatchCard({
-  row,
-  agenda,
-  frame,
-  entered = null,
-  now = Date.now(),
-}: {
+interface BatchCardProps {
   row: BatchCardRow
   agenda: BatchAgenda
   frame: HeroFrame
@@ -881,8 +878,26 @@ export function BatchCard({
   entered?: 'forward' | 'backward' | null
   /** the clock, for a test that wants to hold it still */
   now?: number
-}): ReactNode {
+}
+
+/** one round, every time on it read on that round's own clock */
+export function BatchCard(props: BatchCardProps): ReactNode {
+  return (
+    <BatchZone zone={props.row.timezone}>
+      <CardBody {...props} />
+    </BatchZone>
+  )
+}
+
+function CardBody({
+  row,
+  agenda,
+  frame,
+  entered = null,
+  now = Date.now(),
+}: BatchCardProps): ReactNode {
   const { format } = useI18n()
+  const zone = useBatchZone()
   // the card's own shape changes, not just its width, so the choice is made
   // here rather than in a media query
   const narrow = useIsMobile()
@@ -1043,7 +1058,7 @@ export function BatchCard({
                 long it has run */}
               {closes !== null && (
                 <span {...stylex.props(styles.stageWhen)}>
-                  {format(m.stageDeadline, { when: dotMoment(closes) })}
+                  {format(m.stageDeadline, { when: dotMoment(closes, zone) })}
                 </span>
               )}
               <BatchProgress timeline={row.timeline} single />

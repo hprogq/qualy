@@ -8,6 +8,7 @@ import { Button } from '@qualy/ui/button'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../i18n.ts'
 import { timeLabel, useHowLongAgo, type AwaitingDto } from './model.ts'
+import { useBatchZone } from '../batch/zone.ts'
 import { useAwaitingQuery } from './queue.ts'
 
 // What this reviewer's step is waiting on somebody else for.
@@ -388,6 +389,7 @@ function AwaitingRow({
   onOpen: () => void
 }) {
   const { format, locale } = useI18n()
+  const zone = useBatchZone()
   const listJoin = useList()
   const answered = row.status === 'answered'
   return (
@@ -433,7 +435,7 @@ function AwaitingRow({
         <span aria-hidden {...stylex.props(styles.dotSep)}>
           　
         </span>
-        <span {...stylex.props(styles.askedAt)}>{timeLabel(row.requestedAt, locale)}</span>
+        <span {...stylex.props(styles.askedAt)}>{timeLabel(row.requestedAt, locale, zone)}</span>
         <span {...stylex.props(styles.mobileSpacer)} />
         <span {...stylex.props(styles.openSeat)}>
           {/* one way in either way: the round is where both the answer and

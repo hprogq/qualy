@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import { useI18n } from '@qualy/web-i18n'
 import { assessmentMessages as m } from '../i18n.ts'
+import { calendarDaysBetween, inZone, useBatchZone, yearOf } from '../batch/zone.ts'
 
 // When something was filed, written the way somebody checking this round's
 // work reads it.
@@ -10,41 +11,36 @@ import { assessmentMessages as m } from '../i18n.ts'
 // anything older drops the hour, which had stopped meaning anything, and
 // keeps the year only once it is no longer this one.
 //
-// The line between them is midnight where the reader is, not a span of
+// The line between them is midnight on the batch's clock, not a span of
 // hours: a record filed at 23:50 reads as yesterday the next morning rather
 // than as nine hours ago.
 
 export function useWhen() {
   const { format, locale } = useI18n()
+  const zone = useBatchZone()
   return useCallback(
     (iso: string): string => {
       const at = new Date(iso)
       if (Number.isNaN(at.getTime())) return ''
-      const now = new Date()
-      const midnight = new Date(now)
-      midnight.setHours(0, 0, 0, 0)
-      const before = new Date(midnight)
-      before.setDate(before.getDate() - 1)
+      const now = Date.now()
+      const days = calendarDaysBetween(at.getTime(), now, zone)
 
-      if (at.getTime() >= midnight.getTime() || at.getTime() >= before.getTime()) {
+      if (days <= 1) {
         const time = new Intl.DateTimeFormat(locale, {
           hour: '2-digit',
           minute: '2-digit',
           hour12: false,
+          ...inZone(zone),
         }).format(at)
-        return format(
-          at.getTime() >= midnight.getTime() ? m.recordWhenToday : m.recordWhenYesterday,
-          {
-            time,
-          },
-        )
+        return format(days <= 0 ? m.recordWhenToday : m.recordWhenYesterday, { time })
       }
       return new Intl.DateTimeFormat(locale, {
-        ...(at.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }),
+        ...(yearOf(at.getTime(), zone) === yearOf(now, zone) ? {} : { year: 'numeric' }),
         month: 'long',
         day: 'numeric',
+        ...inZone(zone),
       }).format(at)
     },
-    [format, locale],
+    [format, locale, zone],
   )
 }

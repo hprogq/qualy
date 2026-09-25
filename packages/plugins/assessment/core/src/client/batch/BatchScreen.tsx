@@ -13,9 +13,10 @@ import { Resizing, Reveal } from '@qualy/ui/reveal'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import type { BatchDto } from '../phase/model.ts'
+import { BatchZone, ZoneAwayNotice } from './BatchZone.tsx'
 
 // What every section of a batch needs and none of them should fetch twice:
-// the batch itself.
+// the batch itself, and the clock its times are read on.
 //
 // Which batch this is, where it stands and what can be done to it as a whole
 // are not here - they are in the bar above the rail, said once for the whole
@@ -191,7 +192,7 @@ export function BatchScreen({
         onRetry={() => void detail.refetch()}
         xstyle={styles.fillColumn}
       >
-        {batch && children(batch)}
+        {batch && <BatchZone zone={batch.timezone}>{children(batch)}</BatchZone>}
       </AsyncSection>
     )
   }
@@ -265,7 +266,12 @@ export function BatchScreen({
               {batch.status === 'draft' && showing === 'section' && (
                 <p {...stylex.props(styles.draftNote)}>{format(m.draftBanner)}</p>
               )}
-              {children(batch)}
+              <BatchZone zone={batch.timezone}>
+                {/* only to a reader whose device keeps another zone: every
+                    time below is read on the batch's clock, not theirs */}
+                {showing === 'section' && <ZoneAwayNotice />}
+                {children(batch)}
+              </BatchZone>
             </Reveal>
           )}
         </AsyncSection>

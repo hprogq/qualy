@@ -31,6 +31,7 @@ import { assessmentApi } from './api.ts'
 import { NewBatchDialog } from './NewBatchForm.tsx'
 import { standingOf, type BatchStanding } from './batch/standing.ts'
 import { dotDay } from './batch/dates.ts'
+import { readableZone } from './batch/zone.ts'
 import { HeroSkeleton, ListSkeleton } from './batch/ListSkeleton.tsx'
 import { BatchCard } from './batch/BatchCard.tsx'
 import { agendaOf, type BatchCardRow, type HeroFrame } from './batch/hero.ts'
@@ -522,18 +523,20 @@ function timeOf(
     // the last stage that was entered is the closest thing to a close the
     // plan records; a batch that never ran a stage ended when it was made
     const last = [...timeline].reverse().find((entry) => entry.entry.kind === 'entered')
-    return format(m.endedOn, { date: dotDay(last?.entry.at ?? row.createdAt) })
+    return format(m.endedOn, {
+      date: dotDay(last?.entry.at ?? row.createdAt, readableZone(row.timezone)),
+    })
   }
   if (standing === 'active') {
     const at = timeline.findIndex((entry) => entry.status === 'current')
     const next = timeline[at + 1]
     return next?.entry.kind === 'planned' && next.entry.at !== null
-      ? format(m.stageUntil, { date: dotDay(next.entry.at) })
+      ? format(m.stageUntil, { date: dotDay(next.entry.at, readableZone(row.timezone)) })
       : format(m.flowEndPending)
   }
   const first = timeline.find((entry) => entry.entry.kind === 'planned' && entry.entry.at !== null)
   return first?.entry.at
-    ? format(m.startsOn, { date: dotDay(first.entry.at) })
+    ? format(m.startsOn, { date: dotDay(first.entry.at, readableZone(row.timezone)) })
     : format(m.timeUnset)
 }
 

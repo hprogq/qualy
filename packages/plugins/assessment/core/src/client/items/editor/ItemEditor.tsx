@@ -19,6 +19,7 @@ import { useSettled } from '@qualy/ui/use-settled'
 import { calculatorAuthoringOptions } from '../../../surfaces.ts'
 import { assessmentApi } from '../../api.ts'
 import { assessmentMessages as m } from '../../i18n.ts'
+import { dayKeyOf, inZone, useBatchZone } from '../../batch/zone.ts'
 import { BatchBanner } from '../../batch/BatchScreen.tsx'
 import type { ItemDto } from '../../entry/model.ts'
 import { ImpactDialog, type ChangeEffects, type ChangeImpact } from '../ImpactDialog.tsx'
@@ -282,6 +283,7 @@ export function ItemEditor({
   const api = useApi(assessmentApi)
   const run = useRunApi()
   const { format, formatError, locale } = useI18n()
+  const zone = useBatchZone()
   const listJoin = useList()
   // What the last save here answered with, until the page's own read of the
   // question catches up. Until then it IS the question: the next save names
@@ -1164,14 +1166,19 @@ export function ItemEditor({
   const savedWhen = ((): string | null => {
     if (revision === null) return null
     const at = new Date(revision.createdAt)
-    const time = new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(at)
-    return at.toDateString() === new Date().toDateString()
+    const time = new Intl.DateTimeFormat(locale, {
+      hour: '2-digit',
+      minute: '2-digit',
+      ...inZone(zone),
+    }).format(at)
+    return dayKeyOf(at.getTime(), zone) === dayKeyOf(Date.now(), zone)
       ? format(m.itemsTodayAt, { time })
       : new Intl.DateTimeFormat(locale, {
           month: 'long',
           day: 'numeric',
           hour: '2-digit',
           minute: '2-digit',
+          ...inZone(zone),
         }).format(at)
   })()
   const recognitionHandles = recognitionRows(draft, contract).map((row) => row.handle)

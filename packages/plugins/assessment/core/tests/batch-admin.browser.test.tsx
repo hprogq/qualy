@@ -1155,6 +1155,77 @@ describe('the stage plan', () => {
       .element(page.getByTestId('phase-refusal'))
       .toHaveAttribute('data-reason', 'scheduled-phase-immutable')
   })
+
+  // A round's times are the school's times. The suite's device keeps
+  // Shanghai's clock (the browser config pins it); Kathmandu runs 2:15
+  // behind it, an offset no other zone shares, so a time read or typed on
+  // the device's clock instead of the batch's cannot pass for the right one.
+  const ZONE = 'Asia/Kathmandu'
+  const zoned = () => Effect.succeed({ batch: batch({ timezone: ZONE }) })
+
+  it("reads a stage's time on the batch's clock, and says whose clock that is", async () => {
+    await screen({
+      getBatch: zoned,
+      // 18:15 UTC: midnight in Kathmandu, 02:15 the next day on the device
+      getPhases: () => Effect.succeed(twoPhases({ planned: '2027-09-04T18:15:00.000Z' })),
+    })
+
+    await vi.waitFor(() => {
+      const planned = page
+        .getByTestId('phase-when')
+        .elements()
+        .find((node) => node.getAttribute('data-when') === 'planned')
+      expect(planned?.querySelector('[data-wall]')?.getAttribute('data-wall')).toBe(
+        '2027-09-05 00:00',
+      )
+    })
+    await expect.element(page.getByTestId('batch-zone')).toHaveAttribute('data-zone', ZONE)
+    await expect.element(page.getByTestId('batch-zone')).toHaveAttribute('data-device', 'different')
+    // and once, at the head of the section, for a reader whose device is elsewhere
+    await expect.element(page.getByTestId('batch-zone-away')).toBeVisible()
+  })
+
+  it('says nothing about the device when it keeps the batch its own clock', async () => {
+    await screen({
+      getPhases: () => Effect.succeed(twoPhases({ planned: '2027-09-04T16:00:00.000Z' })),
+    })
+
+    await expect.element(page.getByTestId('batch-zone')).toHaveAttribute('data-device', 'same')
+    expect(page.getByTestId('batch-zone-away').elements()).toHaveLength(0)
+  })
+
+  it("takes a stage's time as typed on the batch's clock", async () => {
+    const schedulePhase = vi.fn((_request: Request) => Effect.succeed({ phases: [] }))
+    await screen({ schedulePhase, getBatch: zoned, getPhases: () => Effect.succeed(twoPhases()) })
+
+    await page.getByTestId('phase-schedule').click()
+    const dialog = page.getByRole('dialog')
+    // the field says whose clock it takes
+    await expect.element(dialog.getByTestId('batch-zone')).toHaveAttribute('data-zone', ZONE)
+
+    // the calendar opens on this month; the 15th is in every one of them
+    const today = new Date()
+    const month = String(today.getMonth() + 1).padStart(2, '0')
+    const day = new Intl.DateTimeFormat('zh-CN', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    }).format(new Date(today.getFullYear(), today.getMonth(), 15))
+    await dialog.getByLabelText('开始时间').click()
+    // picking the day hands the caret to the hour, where the time is typed;
+    // Enter hands the time back and closes the calendar over the dialog
+    await page.getByRole('button', { name: day }).click()
+    await expect.element(page.getByRole('spinbutton', { name: '小时' })).toHaveFocus()
+    await userEvent.keyboard('140000{Enter}')
+    await dialog.getByRole('button', { name: '确认排期' }).click()
+
+    await vi.waitFor(() => expect(schedulePhase).toHaveBeenCalledTimes(1))
+    // 14:00 in Kathmandu is 08:15 UTC; on the device's clock it would be 06:00
+    expect(schedulePhase.mock.calls[0]![0]).toMatchObject({
+      params: { batchId: BATCH_ID, phaseId: ENTRY_PHASE_ID },
+      payload: { plannedEntryAt: `${String(today.getFullYear())}-${month}-15T08:15:00.000Z` },
+    })
+  })
 })
 
 describe('the participants tab', () => {

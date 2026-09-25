@@ -13,9 +13,11 @@ import { useI18n } from '@qualy/web-i18n'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { TableCell, TableRow } from '@qualy/ui/table'
+import { instantToLocal } from '@qualy/ui/instant'
 import { assessmentMessages as m } from '../i18n.ts'
 import type { PlanRefusalLike } from '../refusals.ts'
 import type { PhaseDraft, PhaseDto, PlanShape } from './model.ts'
+import { inZone, useBatchZone } from '../batch/zone.ts'
 
 // One phase, as a table row on a desktop and as a stacked card on a phone.
 //
@@ -287,6 +289,7 @@ export interface PhaseRowProps {
 /** the parts a row and a card both show, so neither can drift from the other */
 function useParts(props: PhaseRowProps) {
   const { format, locale } = useI18n()
+  const zone = useBatchZone()
   const { draft, phase, index, shape, total, editing, readOnly } = props
   const [nameNear, setNameNear] = useState(false)
   const entered = phase?.actualEntryAt ?? null
@@ -297,8 +300,15 @@ function useParts(props: PhaseRowProps) {
   /** past the scheduled prefix, where structure is still free */
   const structural = index >= shape.scheduled
   const name = draft.displayName || format(m.unnamedSegment)
+  // on the batch's clock: a stage starts at the school's midnight, not the reader's
   const timeOf = (iso: string) =>
-    new Date(iso).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' })
+    new Date(iso).toLocaleString(locale, {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      ...inZone(zone),
+    })
+  // the same moment as a fact rather than as prose: the batch's wall clock
+  const wallOf = (iso: string) => instantToLocal(iso, zone)?.slice(0, 16)
   const relative = (iso: string) => {
     const parts = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' })
     const delta = new Date(iso).getTime() - Date.now()
@@ -378,7 +388,9 @@ function useParts(props: PhaseRowProps) {
             aria-hidden
             {...stylex.props(styles.whenGlyph, current && styles.whenGlyphCurrent)}
           />
-          <span {...stylex.props(styles.whenTime)}>{timeOf(entered)}</span>
+          <span data-wall={wallOf(entered)} {...stylex.props(styles.whenTime)}>
+            {timeOf(entered)}
+          </span>
         </span>
         <span {...stylex.props(styles.whenRelative)}>{relative(entered)}</span>
       </span>
@@ -386,7 +398,9 @@ function useParts(props: PhaseRowProps) {
       <span data-testid="phase-when" data-when="planned" {...stylex.props(styles.whenCol)}>
         <span {...stylex.props(styles.whenLine)}>
           <CalendarClockIcon aria-hidden {...stylex.props(styles.whenGlyph)} />
-          <span {...stylex.props(styles.whenTime)}>{timeOf(planned)}</span>
+          <span data-wall={wallOf(planned)} {...stylex.props(styles.whenTime)}>
+            {timeOf(planned)}
+          </span>
         </span>
         <span {...stylex.props(styles.whenRelative)}>{relative(planned)}</span>
       </span>

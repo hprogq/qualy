@@ -345,6 +345,25 @@ const stageDeadline = defineMessage<{ when: string }>()({
   defaultMessage: 'Closes {when}',
 })
 
+// the batch's own time zone: a batch's times are read on its clock, and the
+// screens say so wherever a time is set or read against a plan
+const zoneNamed = defineMessage<{ name: string; offset: string }>()({
+  id: 'assessment/zone/named',
+  defaultMessage: '{name} ({offset})',
+})
+const zoneNote = defineMessage<{ zone: string }>()({
+  id: 'assessment/zone/note',
+  defaultMessage: 'Times are shown in {zone}',
+})
+const zoneEnter = defineMessage<{ zone: string }>()({
+  id: 'assessment/zone/enter',
+  defaultMessage: 'Enter the time in {zone}',
+})
+const zoneAway = defineMessage<{ zone: string }>()({
+  id: 'assessment/zone/away',
+  defaultMessage: 'Your device uses a different time zone. Times in this batch are shown in {zone}',
+})
+
 const stageUntil = defineMessage<{ date: string }>()({
   id: 'assessment/batch/stage-until',
   defaultMessage: 'This stage until {date}',
@@ -627,6 +646,10 @@ const i18n = definePluginMessages({
     accepted,
     stageAt,
     stageDeadline,
+    zoneNamed,
+    zoneNote,
+    zoneEnter,
+    zoneAway,
     stageUntil,
     startsOn,
     previousBatch: { id: 'assessment/batch/previous', defaultMessage: 'Previous batch' },

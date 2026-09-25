@@ -5,6 +5,7 @@ import { useI18n } from '@qualy/web-i18n'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { answerOf, displayValueOf, fieldsOf } from '../entry/model.ts'
+import { calendarDaysBetween, dayKeyOf, inZone, useBatchZone, yearOf } from '../batch/zone.ts'
 
 // What the review screens agree on: the queue row, the three ways it is
 // laid out, and the run - the ordered slice of the queue a reviewer walks
@@ -91,10 +92,11 @@ export interface DayGroup {
   readonly rows: readonly InboxItemDto[]
 }
 
-export const groupByDay = (rows: readonly InboxItemDto[]): readonly DayGroup[] => {
+/** days are the batch's days (`zone`), the same days its "handled today" counts */
+export const groupByDay = (rows: readonly InboxItemDto[], zone?: string): readonly DayGroup[] => {
   const groups = new Map<string, InboxItemDto[]>()
   for (const row of rows) {
-    const day = new Date(row.submittedAt).toLocaleDateString('en-CA')
+    const day = dayKeyOf(Date.parse(row.submittedAt), zone)
     const group = groups.get(day)
     if (group === undefined) groups.set(day, [row])
     else group.push(row)
@@ -160,27 +162,28 @@ export const summaryOf = (
 
 export const rowSummary = (row: InboxItemDto): string => summaryOf(row.values)
 
-/** when a moment happened, in the reader's clock, without seconds */
 /**
  * A record's clock: to the second, because trails and conclusions are
  * compared and cited, and with the year whenever it is not this one. The
  * queue keeps its own coarser day-aware clock - operating surfaces read at
- * a glance, records read exactly.
+ * a glance, records read exactly. Both read on the batch's clock (`zone`).
  */
-export const timeLabel = (iso: string, locale: string): string => {
+export const timeLabel = (iso: string, locale: string, zone?: string): string => {
   const then = new Date(iso)
   return then.toLocaleString(locale, {
-    ...(then.getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' }),
+    ...(yearOf(then.getTime(), zone) === yearOf(Date.now(), zone) ? {} : { year: 'numeric' }),
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
+    ...inZone(zone),
   })
 }
 
-export const clockLabel = (iso: string, locale: string): string =>
-  new Date(iso).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
+/** when a moment happened, on the batch's clock, without seconds */
+export const clockLabel = (iso: string, locale: string, zone?: string): string =>
+  new Date(iso).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', ...inZone(zone) })
 
 /**
  * A clock that admits which day it is.
@@ -193,13 +196,13 @@ export const clockLabel = (iso: string, locale: string): string =>
  */
 export function useDayClock(): (iso: string) => string {
   const { format, locale } = useI18n()
+  const zone = useBatchZone()
   return (iso: string) => {
     const at = new Date(iso)
-    const floor = (day: Date) => new Date(day.getFullYear(), day.getMonth(), day.getDate())
-    const days = Math.round((floor(new Date()).getTime() - floor(at).getTime()) / 86_400_000)
-    if (days <= 0) return clockLabel(iso, locale)
+    const days = calendarDaysBetween(at.getTime(), Date.now(), zone)
+    if (days <= 0) return clockLabel(iso, locale, zone)
     if (days === 1) return format(m.timeYesterday)
-    return at.toLocaleDateString(locale, { month: '2-digit', day: '2-digit' })
+    return at.toLocaleDateString(locale, { month: '2-digit', day: '2-digit', ...inZone(zone) })
   }
 }
 

@@ -15,6 +15,7 @@ import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { assessmentMessages as m } from '../i18n.ts'
 import { reviewOutcomeMessage } from './events.ts'
 import { timeLabel, useEntryHistory, type HistoryRevision } from './model.ts'
+import { useBatchZone } from '../batch/zone.ts'
 import { useFinePointer } from './pointer.ts'
 
 // Choosing which version of a filing to read the judged one against.
@@ -266,6 +267,7 @@ export function VersionPicker({
   onClose: () => void
 }) {
   const { format, formatError, locale } = useI18n()
+  const zone = useBatchZone()
   // a phone gets the sheet where the thumb is; a keyboard gets the digits
   const narrow = useIsBelow(640)
   const fine = useFinePointer()
@@ -421,7 +423,7 @@ export function VersionPicker({
                                 {format(m.reviewVersionName, { no: revision.revisionNo })}
                               </span>
                               <span {...stylex.props(styles.versionWhen)}>
-                                {timeLabel(revision.createdAt, locale)}
+                                {timeLabel(revision.createdAt, locale, zone)}
                               </span>
                             </span>
                             {revision.note !== null && (

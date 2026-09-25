@@ -18,6 +18,7 @@ import { useIsBelow } from '@qualy/ui/use-mobile'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { BatchFlow } from './BatchFlow.tsx'
+import { BatchZone } from './BatchZone.tsx'
 import { BatchProgress } from './BatchProgress.tsx'
 import { BatchSwitcher } from './BatchSwitcher.tsx'
 
@@ -313,13 +314,15 @@ export default function BatchContextBar() {
           </span>
         ) : (
           <>
-            <BatchProgress
-              showStage
-              single={head}
-              flat={head}
-              timeline={stages}
-              xstyle={styles.progressText}
-            />
+            <BatchZone zone={batch.timezone}>
+              <BatchProgress
+                showStage
+                single={head}
+                flat={head}
+                timeline={stages}
+                xstyle={styles.progressText}
+              />
+            </BatchZone>
             {/* the whole plan, one press away rather than repeated above
                 every section: a reader who wants it asks for it */}
             {head && (
@@ -343,7 +346,9 @@ export default function BatchContextBar() {
             <SheetTitle>{format(m.flowTitle)}</SheetTitle>
           </SheetHeader>
           <div {...stylex.props(styles.flowBody)}>
-            <BatchFlow timeline={stages} />
+            <BatchZone zone={batch?.timezone}>
+              <BatchFlow timeline={stages} />
+            </BatchZone>
           </div>
         </SheetContent>
       </Sheet>

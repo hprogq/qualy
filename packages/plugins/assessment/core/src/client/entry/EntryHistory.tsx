@@ -12,6 +12,7 @@ import { Skeleton } from '@qualy/ui/skeleton'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
+import { inZone, useBatchZone, yearOf } from '../batch/zone.ts'
 import { AttachmentLink } from './AttachmentLink.tsx'
 import { answerOf, displayValueOf, fieldsOf } from './model.ts'
 import { ownReviewEventMessage, reviewEventMessage } from '../review/events.ts'
@@ -699,12 +700,13 @@ function Line({
   tone?: 'alert'
 }) {
   const { locale } = useI18n()
+  const zone = useBatchZone()
   return (
     <div {...stylex.props(styles.headRow)}>
       <p {...stylex.props(styles.lineTitle, tone === 'alert' && styles.lineAlert)}>{title}</p>
       {aside}
       <span {...stylex.props(styles.spacer)} />
-      <p {...stylex.props(styles.lineWhen)}>{timeOf(at, locale)}</p>
+      <p {...stylex.props(styles.lineWhen)}>{timeOf(at, locale, zone)}</p>
     </div>
   )
 }
@@ -1153,16 +1155,17 @@ function FiledFields({
 /**
  * A record's clock: to the second, because records are compared and cited,
  * and with the year whenever it is not this one - "12/31" across a year
- * boundary reads as the wrong year with no warning.
+ * boundary reads as the wrong year with no warning. On the batch's clock.
  */
-const timeOf = (iso: string, locale: string): string => {
+const timeOf = (iso: string, locale: string, zone: string | undefined): string => {
   const then = new Date(iso)
   return then.toLocaleString(locale, {
-    ...(then.getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' }),
+    ...(yearOf(then.getTime(), zone) === yearOf(Date.now(), zone) ? {} : { year: 'numeric' }),
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
+    ...inZone(zone),
   })
 }

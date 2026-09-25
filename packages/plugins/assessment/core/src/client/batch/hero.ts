@@ -15,6 +15,8 @@ export interface BatchCardRow {
   currentPhaseName: string | null
   participantCount: number
   materialRange: { start: string; end: string }
+  /** the zone the round's times are read in */
+  timezone: string
   timeline: readonly TimelineLike[]
 }
 

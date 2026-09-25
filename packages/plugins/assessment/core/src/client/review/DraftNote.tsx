@@ -2,6 +2,7 @@ import * as stylex from '@stylexjs/stylex'
 import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../i18n.ts'
+import { inZone, useBatchZone } from '../batch/zone.ts'
 import type { DraftKeeper } from './use-draft.ts'
 
 // Said where a panel opened with words already in it: whose they are, when
@@ -40,6 +41,7 @@ const styles = stylex.create({
 
 export function DraftNote({ draft, onDiscard }: { draft: DraftKeeper; onDiscard: () => void }) {
   const { format, locale } = useI18n()
+  const zone = useBatchZone()
   if (!draft.restored) return null
   const when =
     draft.at === null
@@ -50,6 +52,7 @@ export function DraftNote({ draft, onDiscard }: { draft: DraftKeeper; onDiscard:
           hour: '2-digit',
           minute: '2-digit',
           hour12: false,
+          ...inZone(zone),
         }).format(new Date(draft.at))
   return (
     <div {...stylex.props(styles.bar)} data-testid="draft-note">

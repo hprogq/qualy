@@ -7,6 +7,7 @@ import { Badge } from '@qualy/ui/badge'
 import { Ticker } from '@qualy/ui/ticker'
 import { useIsMobile } from '@qualy/ui/use-mobile'
 import { assessmentMessages as m } from '../i18n.ts'
+import { inZone, useBatchZone } from './zone.ts'
 import {
   displayKey,
   progressOf,
@@ -213,6 +214,7 @@ export function BatchProgress({
   xstyle?: stylex.StyleXStyles
 }) {
   const { format, locale } = useI18n()
+  const zone = useBatchZone()
   // One threshold: under a tablet the bar has no room for the stage, so the
   // stage goes and the clock takes its name instead - "3 hours left in stage"
   // rather than a number beside nothing. A caller that asks for `single` has
@@ -251,6 +253,7 @@ export function BatchProgress({
         ? new Date(progress.at).toLocaleString(locale, {
             dateStyle: 'medium',
             timeStyle: 'short',
+            ...inZone(zone),
           })
         : null
 

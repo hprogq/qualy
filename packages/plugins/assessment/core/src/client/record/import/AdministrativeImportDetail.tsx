@@ -15,6 +15,7 @@ import { toast } from '@qualy/ui/toast'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi, assessmentUrls } from '../../api.ts'
 import { assessmentMessages as m } from '../../i18n.ts'
+import { inZone, useBatchZone } from '../../batch/zone.ts'
 import { EntryStanding } from '../../entry/EntryStanding.tsx'
 import { ReasonDialog } from '../../items/ReasonDialog.tsx'
 import { sizeLabel } from '../../entry/model.ts'
@@ -163,6 +164,7 @@ export function AdministrativeImportDetail({
   const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
   const { format, formatError, locale } = useI18n()
+  const zone = useBatchZone()
   const businessNo = useTerm(authTerms.businessNumber)
   const [asking, setAsking] = useState(false)
 
@@ -250,9 +252,11 @@ export function AdministrativeImportDetail({
   })
 
   const when = (iso: string) =>
-    new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(
-      new Date(iso),
-    )
+    new Intl.DateTimeFormat(locale, {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      ...inZone(zone),
+    }).format(new Date(iso))
 
   // What was determined, as the parts it was determined in.
   //

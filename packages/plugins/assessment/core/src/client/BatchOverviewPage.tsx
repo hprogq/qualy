@@ -19,6 +19,7 @@ import { useBatchLive } from './live.ts'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import { BatchScreen } from './batch/BatchScreen.tsx'
 import { BatchFlow } from './batch/BatchFlow.tsx'
+import { calendarDaysBetween, inZone, useBatchZone, yearOf } from './batch/zone.ts'
 import { assessmentMessages as m } from './i18n.ts'
 
 // The batch's front page as one desk (§32.73, laid out to design 2a/2b):
@@ -684,6 +685,7 @@ function MyDesk({
   const run = useRunApi()
   const navigate = usePageNavigate()
   const { format, formatError, locale } = useI18n()
+  const zone = useBatchZone()
   const [lane, setLane] = useState<Lane>('all')
   // the desk's list fragments join in the reader's own punctuation
   const listJoin = useList()
@@ -712,7 +714,7 @@ function MyDesk({
     () => activity.data?.pages.flatMap((page) => page.items) ?? [],
     [activity.data],
   )
-  const groups = useMemo(() => groupByDay(rows, locale, format), [rows, locale, format])
+  const groups = useMemo(() => groupByDay(rows, locale, format, zone), [rows, locale, format, zone])
   // the unread questions, marked once each: the newest row of that question
   // in the feed carries the dot, read state stays the version pair's
   const freshRowIds = useMemo(() => {
@@ -757,7 +759,7 @@ function MyDesk({
       action: action.kind,
       subject: action.itemTitle,
       detail: action.summary === null ? sentence : `${sentence}：${action.summary}`,
-      at: clockOf(action.at, locale),
+      at: clockOf(action.at, locale, zone),
       verb: format(action.kind === 'supplement' ? m.overviewGoSupplement : m.overviewGoRevision),
       go: () =>
         openEntry(action.itemId, action.entryId, action.kind === 'supplement' ? 'detail' : 'entry'),
@@ -981,7 +983,9 @@ function MyDesk({
                       }}
                       {...stylex.props(styles.feedRow, openable && styles.feedRowOpenable)}
                     >
-                      <span {...stylex.props(styles.feedClockWide)}>{clockOf(row.at, locale)}</span>
+                      <span {...stylex.props(styles.feedClockWide)}>
+                        {clockOf(row.at, locale, zone)}
+                      </span>
                       <span {...stylex.props(styles.feedBody)}>
                         <span {...stylex.props(styles.feedTitleLine)}>
                           <span {...stylex.props(styles.feedTitleSeat)}>
@@ -1000,7 +1004,7 @@ function MyDesk({
                             </span>
                           )}
                           <span {...stylex.props(styles.feedClockNarrow)}>
-                            {clockOf(row.at, locale)}
+                            {clockOf(row.at, locale, zone)}
                           </span>
                         </span>
                         {identity.length > 0 && (
@@ -1048,18 +1052,19 @@ function MyDesk({
   )
 }
 
-const clockOf = (iso: string, locale: string) =>
-  new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(new Date(iso))
+const clockOf = (iso: string, locale: string, zone: string | undefined) =>
+  new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit', ...inZone(zone) }).format(
+    new Date(iso),
+  )
 
+/** the feed's days are the batch's days (`zone`), not the reader's */
 function groupByDay(
   rows: readonly ActivityItem[],
   locale: string,
   format: ReturnType<typeof useI18n>['format'],
+  zone: string | undefined,
 ): readonly { key: string; label: string; aside: string | null; items: ActivityItem[] }[] {
-  const today = new Date()
-  const floor = (date: Date) =>
-    new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
-  const todayFloor = floor(today)
+  const now = Date.now()
   /**
    * Which day a row belongs to, said the way a person says it.
    *
@@ -1074,13 +1079,16 @@ function groupByDay(
    */
   const dayOf = (iso: string) => {
     const at = new Date(iso)
-    const diff = Math.round((todayFloor - floor(at)) / 86_400_000)
+    const diff = calendarDaysBetween(at.getTime(), now, zone)
     const spelled = new Intl.DateTimeFormat(locale, {
       month: 'long',
       day: 'numeric',
-      ...(at.getFullYear() === today.getFullYear() ? {} : { year: 'numeric' }),
+      ...(yearOf(at.getTime(), zone) === yearOf(now, zone) ? {} : { year: 'numeric' }),
+      ...inZone(zone),
     }).format(at)
-    const weekday = new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(at)
+    const weekday = new Intl.DateTimeFormat(locale, { weekday: 'short', ...inZone(zone) }).format(
+      at,
+    )
     if (diff === 0) return { key: 'today', label: format(m.overviewToday), aside: spelled }
     if (diff === 1) return { key: 'yesterday', label: format(m.overviewYesterday), aside: spelled }
     return { key: spelled, label: spelled, aside: weekday }
