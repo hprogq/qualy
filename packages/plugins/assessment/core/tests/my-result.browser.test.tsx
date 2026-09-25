@@ -659,7 +659,9 @@ describe('an account that cannot be computed', () => {
 })
 
 describe('a round that moves while the page is open', () => {
-  const wakeOnce = () => {
+  const wakeOnce = (
+    kind: 'result-changed' | 'entries-changed' | 'item-changed' = 'result-changed',
+  ) => {
     let release = () => {}
     const gate = new Promise<void>((resolve) => {
       release = resolve
@@ -667,14 +669,20 @@ describe('a round that moves while the page is open', () => {
     const wake = () =>
       Effect.succeed(
         Stream.concat(
-          Stream.fromEffect(
-            Effect.promise(() => gate).pipe(Effect.as({ kind: 'result-changed' as const })),
-          ),
+          Stream.fromEffect(Effect.promise(() => gate).pipe(Effect.as({ kind }))),
           Stream.never,
         ),
       )
     return { wake, release: () => release() }
   }
+
+  const filings = (entries: Paper['entries']) =>
+    Effect.succeed({
+      participantId: PARTICIPANT_ID,
+      entries,
+      nextCursor: null,
+      attention: { unreadItemIds: [] },
+    })
 
   it('reads the account again when the round says it moved', async () => {
     const paper = normal()
@@ -709,6 +717,87 @@ describe('a round that moves while the page is open', () => {
     down = false
     await page.getByTestId('result-stale').getByRole('button').click()
     await expect.element(page.getByTestId('result-stale')).not.toBeInTheDocument()
+  })
+
+  it('keeps the account when a later read of the claims fails', async () => {
+    const paper = normal()
+    let down = false
+    const { wake, release } = wakeOnce('entries-changed')
+    await screen(paper, {
+      listMyEntries: () =>
+        down ? Effect.fail(apiError('ASSESSMENT_SCORING_UNAVAILABLE')) : filings(paper.entries),
+      watchBatch: wake,
+    })
+    await expect.element(page.getByTestId('result-total')).toHaveTextContent('49.50')
+    down = true
+    release()
+    const stale = page.getByTestId('result-stale')
+    await expect.element(stale).toHaveAttribute('data-reason', 'entries')
+    // the account and every row of it are still there
+    await expect.element(page.getByTestId('result-total')).toHaveTextContent('49.50')
+    expect(itemRow('q8').getAttribute('data-value')).toBe('12.00')
+    down = false
+    await stale.getByRole('button').click()
+    await expect.element(stale).not.toBeInTheDocument()
+  })
+
+  it('keeps the account when a later read of the questions fails', async () => {
+    const paper = normal()
+    let down = false
+    const { wake, release } = wakeOnce('item-changed')
+    await screen(paper, {
+      listItems: () =>
+        down
+          ? Effect.fail(apiError('ASSESSMENT_SCORING_UNAVAILABLE'))
+          : Effect.succeed({ items: paper.items, capabilities: { canManage: false } }),
+      watchBatch: wake,
+    })
+    await expect.element(page.getByTestId('result-total')).toHaveTextContent('49.50')
+    down = true
+    release()
+    await expect.element(page.getByTestId('result-stale')).toHaveAttribute('data-reason', 'entries')
+    expect(itemRow('q8').getAttribute('data-value')).toBe('12.00')
+  })
+
+  it('says why an account that grew past the ceiling cannot be read again, and offers no recalculation', async () => {
+    const paper = normal()
+    let grown = false
+    const { wake, release } = wakeOnce()
+    await screen(paper, {
+      getMyResult: () =>
+        grown
+          ? Effect.fail(
+              apiError('ASSESSMENT_SCORING_ACCOUNT_TOO_LARGE', { evaluations: 612, limit: 500 }),
+            )
+          : Effect.succeed(paper.result),
+      watchBatch: wake,
+    })
+    await expect.element(page.getByTestId('result-total')).toHaveTextContent('49.50')
+    grown = true
+    release()
+    const stale = page.getByTestId('result-stale')
+    await expect.element(stale).toHaveAttribute('data-reason', 'too-large')
+    await expect.element(page.getByTestId('result-total')).toHaveTextContent('49.50')
+    // asking again would meet the same ceiling
+    expect(stale.getByRole('button').elements()).toHaveLength(0)
+  })
+
+  it('reads the claims and the paper again with the account when there is no stream', async () => {
+    // only the polling clock is faked; everything else keeps real time
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    try {
+      const paper = normal()
+      let entries = paper.entries
+      await screen(paper, { listMyEntries: () => filings(entries) })
+      const moving = page.getByTestId('result-moving')
+      await expect.element(moving).toHaveAttribute('data-pending', '10')
+      // the two research claims are decided while nobody is pushing news
+      entries = entries.map((one) => (one.itemId === 'q4' ? entry(one.id, 'q4', 'approved') : one))
+      vi.advanceTimersByTime(30_000)
+      await expect.element(moving).toHaveAttribute('data-pending', '8')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

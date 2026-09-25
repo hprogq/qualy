@@ -1857,6 +1857,10 @@ const i18n = definePluginMessages({
       id: 'assessment/result/stale-title',
       defaultMessage: 'The score shown may be out of date',
     },
+    resultStaleEntries: {
+      id: 'assessment/result/stale-entries',
+      defaultMessage: 'The entry statuses shown may be out of date',
+    },
     resultRecalculate: { id: 'assessment/result/recalculate', defaultMessage: 'Recalculate' },
     resultGroupItems: { id: 'assessment/result/group-items', defaultMessage: 'Item subtotal' },
     resultGroupChildren: {

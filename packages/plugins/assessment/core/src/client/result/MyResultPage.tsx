@@ -91,6 +91,7 @@ const styles = stylex.create({
     fontSize: 13,
     color: tokens.warningForeground,
   },
+  staleWhy: { flexBasis: '100%', color: tokens.mutedForeground },
 })
 
 function Standing({ batchId }: { batchId: string }) {
@@ -126,13 +127,21 @@ function Standing({ batchId }: { batchId: string }) {
     }
   })
 
+  // The three answers keep time together. Without the stream nothing else
+  // tells the claims or the paper that the round moved, and an account read
+  // afresh beside claims read long ago counts one claim twice: approved on
+  // its line and still under review beside it.
+  const cadence = live ? 120_000 : 30_000
   const result = useQuery({
     ...query.assessment.getMyResult.queryOptions({ params: { batchId } }),
-    refetchInterval: live ? 120_000 : 30_000,
+    refetchInterval: cadence,
   })
-  const items = useQuery(query.assessment.listItems.queryOptions({ params: { batchId } }))
+  const items = useQuery({
+    ...query.assessment.listItems.queryOptions({ params: { batchId } }),
+    refetchInterval: cadence,
+  })
   // the filings, for what is still moving and for which claim a line was
-  const mine = useQuery(useMyEntriesQuery(batchId))
+  const mine = useQuery({ ...useMyEntriesQuery(batchId), refetchInterval: cadence })
   const entries = (mine.data?.entries ?? []) as readonly EntryDto[]
 
   const toEntries = (search?: Record<string, string>) =>
@@ -166,7 +175,30 @@ function Standing({ batchId }: { batchId: string }) {
     )
   }
 
-  const error = result.data === undefined ? result.error : (items.error ?? mine.error)
+  // Only a read that has never answered stands in the page's way. One that
+  // answered and then failed leaves its answer in place, and the page says
+  // what may be behind and whether asking again can help.
+  const error =
+    result.data === undefined
+      ? result.error
+      : items.data === undefined
+        ? items.error
+        : mine.data === undefined
+          ? mine.error
+          : null
+  const stale: 'too-large' | 'score' | 'entries' | null =
+    result.error !== null
+      ? isApiErrorCode(result.error, 'ASSESSMENT_SCORING_ACCOUNT_TOO_LARGE')
+        ? 'too-large'
+        : 'score'
+      : items.error !== null || mine.error !== null
+        ? 'entries'
+        : null
+  const readFailedAgain = () => {
+    if (result.error !== null) void result.refetch()
+    if (items.error !== null) void items.refetch()
+    if (mine.error !== null) void mine.refetch()
+  }
   return (
     <AsyncSection
       pending={result.isPending || items.isPending || mine.isPending}
@@ -201,18 +233,28 @@ function Standing({ batchId }: { batchId: string }) {
     >
       {result.data !== undefined && (
         <div {...stylex.props(styles.page)}>
-          {/* a later read failed: what was read stays, and says it may be behind */}
-          {result.error !== null && (
-            <div data-testid="result-stale" role="status" {...stylex.props(styles.stale)}>
-              <span>{format(m.resultStaleTitle)}</span>
-              <Button
-                variant="outline"
-                size="xs"
-                disabled={result.isFetching}
-                onClick={() => void result.refetch()}
-              >
-                {format(m.resultRecalculate)}
-              </Button>
+          {stale !== null && (
+            <div
+              data-testid="result-stale"
+              data-reason={stale}
+              role="status"
+              {...stylex.props(styles.stale)}
+            >
+              <span>{format(stale === 'entries' ? m.resultStaleEntries : m.resultStaleTitle)}</span>
+              {stale === 'too-large' ? (
+                // the account grew past what one reading may evaluate: asking
+                // again cannot help, so the page says why instead
+                <span {...stylex.props(styles.staleWhy)}>{formatError(result.error)}</span>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="xs"
+                  disabled={result.isFetching || items.isFetching || mine.isFetching}
+                  onClick={readFailedAgain}
+                >
+                  {format(stale === 'score' ? m.resultRecalculate : commonMessages.retry)}
+                </Button>
+              )}
             </div>
           )}
           <ResultLedger
