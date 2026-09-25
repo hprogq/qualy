@@ -27,6 +27,7 @@ import {
   db,
   admitsOrgType,
   admitsUserType,
+  appointmentHeld,
   grantRuleTargets,
   inForce,
   lockTenant,
@@ -77,6 +78,9 @@ export {
 // does not already hold - the one grant that is an escalation. Holding a
 // role's every permission says nothing about being the one who appoints it,
 // and appointing an office does not require personally holding its duties.
+// Taking somebody's grant back asks the giver's three questions again: what
+// one could not appoint, one cannot remove either. Only one's own grant is
+// shed without the appointment.
 
 const grantConstraints: Record<string, () => GrantExists> = {
   uq_role_grants_anchored: () => new GrantExists(),
@@ -93,6 +97,11 @@ export interface GrantScope {
    * may give or take back that role; reaching its grant is not enough.
    */
   administrator: boolean
+  /**
+   * Who the caller is: their own grants they may shed without being able to
+   * appoint them, and anybody else's only by holding the appointment.
+   */
+  userId: string
 }
 
 /** why a role cannot be given here, in words a screen can act on */
@@ -226,6 +235,19 @@ const grantRows = (
               scope.administrator
                 ? sql<boolean>`true`
                 : sql<boolean>`${eb.ref('r.systemKey')} is distinct from ${CANONICAL_ADMIN_ROLE}`
+            } and ${
+              // and somebody else's grant goes only with the authority that
+              // would make it: the office is the caller's to appoint where
+              // the grant stands. One's own is exempt, and the administrator
+              // appoints without edges - the write's own two exceptions.
+              scope.administrator
+                ? sql<boolean>`true`
+                : sql<boolean>`(${eb.ref('g.userId')} = ${scope.userId} or ${appointmentHeld({
+                    tenantId: eb.ref('g.tenantId'),
+                    actorUserId: scope.userId,
+                    targetRoleId: eb.ref('g.roleId'),
+                    orgNodeId: eb.ref('g.orgNodeId'),
+                  })})`
             })`
         ).as('manageable'),
       ])
@@ -1130,9 +1152,6 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
               type: grant.resourceType ?? '',
             })
           }
-          // one's own grant is revocable like any other: shedding a role
-          // never grows anybody, and the last administrator is still kept
-          // by the check below reading the state this removal leaves
           const target: GrantTarget =
             grant.orgNodeId === null
               ? { kind: 'tenant' }
@@ -1141,8 +1160,22 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
                   orgNodeId: grant.orgNodeId,
                   coverage: grant.coverage!,
                 }
-          yield* mayAdministerGrantsAt(actor, target)
-          yield* mayAdministerRole(actor, tenantId, grant.roleId)
+          if (grant.userId === actor.userId) {
+            // One's own grant goes with the authority any revocation takes:
+            // shedding a role never grows anybody, and the last administrator
+            // is still kept by the check below reading the state this removal
+            // leaves.
+            yield* mayAdministerGrantsAt(actor, target)
+            yield* mayAdministerRole(actor, tenantId, grant.roleId)
+          } else {
+            // Somebody else's goes only with the authority it would take to
+            // give it to them now (ruled 2026-09-25): the same questions a
+            // grant asks of whoever gives it - the reach, the administrator
+            // role's reservation, and the office being the caller's to
+            // appoint there - so an office one may not fill is not one one
+            // may empty either.
+            yield* mayConfer(actor, tenantId, grant.roleId, target)
+          }
           // withdrawn, not deleted: who held what, where and until when, and
           // who took it back, is history the row keeps
           yield* revokeGrant(tenantId, grantId, actor.userId)

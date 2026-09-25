@@ -269,6 +269,7 @@ export const make = Effect.fn('Rbac.make')(function* (declared: readonly ActiveP
       administrator: yield* bound(() =>
         holdsCanonicalAdmin(actor.tenantId, actor.userId, CANONICAL_ADMIN_ROLE),
       )().pipe(Effect.orDie),
+      userId: actor.userId,
     }
   })
 

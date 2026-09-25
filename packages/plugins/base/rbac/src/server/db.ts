@@ -272,20 +272,80 @@ export const rolePermissionCodes = (tenantId: string, roleId: string) =>
 /** withdrawn, not deleted: an authority that once existed is a fact */
 /**
  * Whether the actor holds a role whose appointment rules name this one, with
- * that holding in force where the new grant would anchor.
+ * that holding in force where the grant anchors - as one predicate.
  *
  * The rule is read against the actor's live, general grants: revoked or
  * expired holdings appoint nobody, and authority confined to one resource
  * appoints nobody outside it. The holding also has to stand over the target
  * node - a college administrator's edge to "counsellor" is an edge for their
  * own college's subtree, not a licence to appoint counsellors anywhere. A
- * tenant-wide holding (no anchor) stands everywhere.
+ * tenant-wide holding (no anchor) stands everywhere; a tenant-wide grant (no
+ * node) is stood over by nothing else.
  *
  * `across: 'subtree'` asks the wider question: whether the holding stands
  * over every node below the anchor as well, which a self holding at the
  * anchor does not. Appointing somebody at a node only needs the anchor; a
  * self-grant that would carry the edge across a subtree needs the subtree.
+ *
+ * A predicate rather than a query, so it is asked the same way wherever it
+ * is asked: of one prospective grant by the write, and row by row by the
+ * grants screen, which offers a revoke press by whether the caller could
+ * have made the grant. The node is cast because it may be a bound null, and
+ * the inner aliases are spelled out because the row asked about is usually a
+ * `role_grants` row aliased `g`, which a short alias here would shadow.
  */
+export const appointmentHeld = (input: {
+  tenantId: Expression<string> | string
+  actorUserId: string
+  targetRoleId: Expression<string> | string
+  /** where the grant anchors; null for a tenant-wide one */
+  orgNodeId: Expression<string | null> | string | null
+  /** how far past the anchor the holding has to stand; the anchor alone by default */
+  across?: 'self' | 'subtree'
+}) => {
+  const node = sql<string | null>`${input.orgNodeId}::uuid`
+  return sql<boolean>`exists (
+    select 1
+    from role_grant_rules appointment_rule
+    join role_grants appointer_grant
+      on appointer_grant.tenant_id = appointment_rule.tenant_id
+      and appointer_grant.role_id = appointment_rule.granter_role_id
+    join roles appointer_role
+      on appointer_role.tenant_id = appointer_grant.tenant_id
+      and appointer_role.id = appointer_grant.role_id
+    left join org_nodes appointer_node
+      on appointer_node.tenant_id = appointer_grant.tenant_id
+      and appointer_node.id = appointer_grant.org_node_id
+    where appointment_rule.tenant_id = ${input.tenantId}
+      and appointment_rule.target_role_id = ${input.targetRoleId}
+      and appointer_grant.user_id = ${input.actorUserId}
+      and appointer_grant.resource_id is null
+      and appointer_role.status = 'active'
+      and ${inForce({
+        revokedAt: sql.ref<Date | null>('appointer_grant.revoked_at'),
+        validFrom: sql.ref<Date | null>('appointer_grant.valid_from'),
+        validUntil: sql.ref<Date | null>('appointer_grant.valid_until'),
+      })}
+      and (
+        appointer_grant.org_node_id is null
+        or (${node} is not null and (
+          ${
+            input.across === 'subtree'
+              ? sql<boolean>`false`
+              : sql<boolean>`(appointer_grant.coverage = 'self'
+                  and appointer_grant.org_node_id = ${node})`
+          }
+          or (appointer_grant.coverage = 'subtree' and (
+            select appointment_target.path from org_nodes appointment_target
+            where appointment_target.tenant_id = appointer_grant.tenant_id
+              and appointment_target.id = ${node}
+          ) <@ appointer_node.path)
+        ))
+      )
+  )`
+}
+
+/** the same question, asked of one prospective grant */
 export const ruleAllowsAppointment = (input: {
   tenantId: string
   actorUserId: string
@@ -296,55 +356,8 @@ export const ruleAllowsAppointment = (input: {
   across?: 'self' | 'subtree'
 }) =>
   db
-    .query((k) =>
-      k
-        .selectFrom('RoleGrantRule as rule')
-        .innerJoin('RoleGrant as g', (join) =>
-          join
-            .onRef('g.tenantId', '=', 'rule.tenantId')
-            .onRef('g.roleId', '=', 'rule.granterRoleId'),
-        )
-        .innerJoin('Role as gr', (join) =>
-          join
-            .onRef('gr.tenantId', '=', 'g.tenantId')
-            .onRef('gr.id', '=', 'g.roleId')
-            .on('gr.status', '=', 'active'),
-        )
-        .leftJoin('OrgNode as held', (join) =>
-          join.onRef('held.tenantId', '=', 'g.tenantId').onRef('held.id', '=', 'g.orgNodeId'),
-        )
-        .where('rule.tenantId', '=', input.tenantId)
-        .where('rule.targetRoleId', '=', input.targetRoleId)
-        .where('g.userId', '=', input.actorUserId)
-        .where('g.resourceId', 'is', null)
-        .where((eb) =>
-          inForce({
-            revokedAt: eb.ref('g.revokedAt'),
-            validFrom: eb.ref('g.validFrom'),
-            validUntil: eb.ref('g.validUntil'),
-          }),
-        )
-        .where(
-          input.orgNodeId === null
-            ? sql<boolean>`g.org_node_id is null`
-            : sql<boolean>`(
-                g.org_node_id is null
-                or ${
-                  input.across === 'subtree'
-                    ? sql<boolean>`false`
-                    : sql<boolean>`(g.coverage = 'self' and g.org_node_id = ${input.orgNodeId})`
-                }
-                or (g.coverage = 'subtree' and (
-                  select target.path from org_nodes target
-                  where target.tenant_id = g.tenant_id and target.id = ${input.orgNodeId}
-                ) <@ held.path)
-              )`,
-        )
-        .select('g.id')
-        .limit(1)
-        .executeTakeFirst(),
-    )
-    .pipe(Effect.map((row) => row !== undefined))
+    .query((k) => k.selectNoFrom(appointmentHeld(input).as('allowed')).executeTakeFirst())
+    .pipe(Effect.map((row) => row?.allowed === true))
 
 /**
  * The offices a role appoints, named.

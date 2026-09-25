@@ -548,7 +548,8 @@ const i18n = definePluginMessages({
       GRANT_EXISTS: { id: 'rbac/error/grant-exists', defaultMessage: 'That grant already exists.' },
       GRANT_RULE_REFUSED: {
         id: 'rbac/error/grant-rule-refused',
-        defaultMessage: 'None of your roles may appoint people to this one.',
+        defaultMessage:
+          'None of your roles may appoint people to this one, so you cannot grant or revoke it.',
       },
       GRANT_USER_NOT_FOUND: {
         id: 'rbac/error/grant-user-not-found',

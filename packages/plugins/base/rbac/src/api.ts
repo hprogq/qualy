@@ -509,6 +509,8 @@ export const accessApiGroup = HttpApiGroup.make('access')
         GrantResourceBound,
         RoleNotFound,
         TenantAdminRequired,
+        // somebody else's grant is taken back only by whoever could appoint it
+        GrantRuleRefused,
         LastAdministrator,
         AccessDenied,
       ],

@@ -169,7 +169,7 @@ export default {
   'rbac/error/role-target-mismatch': '有 {count} 个权限不适用于该类角色。',
   'rbac/error/permission-not-found': '有 {count} 个权限当前不可用。',
   'rbac/error/role-escalation-refused': '不能把自己尚未持有的 {count} 个权限放进角色。',
-  'rbac/error/grant-rule-refused': '你持有的角色都不能任命该角色。',
+  'rbac/error/grant-rule-refused': '你持有的角色都不能任命该角色，因此不能授予或撤销。',
   'rbac/error/grant-escalation-refused': '不能通过给自己授予该角色获得新的权限。',
   'rbac/error/role-appointment-invalid':
     '{reason, select, self {角色不能任命自己。} cycle {任命关系不能构成循环。} kind {角色只能任命同类角色。} other {该角色未持有角色授予权限，不能任命任何角色。}}',
