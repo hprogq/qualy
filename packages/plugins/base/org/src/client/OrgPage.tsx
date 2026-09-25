@@ -11,7 +11,7 @@ import {
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import * as stylex from '@stylexjs/stylex'
-import { AsyncSection, Feedback } from '@qualy/ui/admin'
+import { AsyncSection } from '@qualy/ui/admin'
 import {
   BandAction,
   BandActions,
@@ -23,6 +23,7 @@ import {
   Tag,
 } from '@qualy/ui/screen'
 import { useLingering } from '@qualy/ui/use-lingering'
+import { toast } from '@qualy/ui/toast'
 import { Button } from '@qualy/ui/button'
 import { useIsBelow } from '@qualy/ui/use-mobile'
 import { orgMessages as m } from './i18n.ts'
@@ -56,7 +57,6 @@ export default function OrgPage() {
   const [view, setView] = usePageQueryState('view')
   const [selectedId, setSelectedId] = usePageQueryState('node')
   const [selectedTypeId, setSelectedTypeId] = usePageQueryState('type')
-  const [feedback, setFeedback] = useState<string | null>(null)
   const [creatingType, setCreatingType] = useState(false)
   const [binOpen, setBinOpen] = useState(false)
   // where the row stacks rather than laying itself across the card
@@ -84,14 +84,15 @@ export default function OrgPage() {
   const headcountsKnown = headcounts.isSuccess
 
   // targeted invalidation: only this plugin's queries, never the whole cache
-  const refresh = () => {
-    setFeedback(null)
-    return queryClient.invalidateQueries({ queryKey: query.org.key() })
-  }
+  const refresh = () => queryClient.invalidateQueries({ queryKey: query.org.key() })
   // the one crossing from an effect to a promise on this screen; typed api
   // errors localize from their code, the english message is the last resort.
   // What the call answered is handed on: whoever created something needs the
   // thing created, not the fact that the lists were read again.
+  //
+  // A refusal is said in a toast: every write here is made from a dialog or a
+  // sheet that stays up when it fails, and a note on the page would sit under
+  // the overlay where nobody can read it.
   const run: Run = (work) =>
     runApi(work)
       .then(async (answer) => {
@@ -99,7 +100,7 @@ export default function OrgPage() {
         return answer
       })
       .catch((error: unknown) => {
-        setFeedback(formatError(error))
+        toast.error(formatError(error))
         throw error
       })
 
@@ -175,7 +176,6 @@ export default function OrgPage() {
         )
       }
     >
-      <Feedback message={feedback} />
       <AsyncSection
         pending={treeQuery.isPending || typesQuery.isPending || rulesQuery.isPending}
         error={

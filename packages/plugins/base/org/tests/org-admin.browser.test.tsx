@@ -2,7 +2,7 @@ import OrgPage from '../src/client/OrgPage.tsx'
 import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
-import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
+import { apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // loaded through the registry the host actually uses, so a screen that lost
 // its key would fail here rather than at runtime
@@ -425,6 +425,31 @@ describe('the organization screen', () => {
     await expect
       .element(page.getByRole('button', { name: '在软件2301班下新建组织' }))
       .toHaveAttribute('data-barred', 'true')
+  })
+
+  // A dialog that is refused stays up so the name can be fixed, and what
+  // refused it must be readable while it does: a note on the page behind the
+  // overlay is under a layer that is inert and hidden from assistive tech.
+  it('says why a unit was not created while its dialog is still up', async () => {
+    const create = vi.fn(() => Effect.fail(apiError('ORG_NODE_CONFLICT')))
+    const client = world()
+    await renderScreen({
+      client: fakeClient({ ...client, org: { ...client.org, createNode: create } }),
+      route: '/admin/org',
+      children: <OrgPage />,
+    })
+    await page.getByRole('button', { name: '在软件学院下新建组织' }).click()
+    const task = page.getByTestId('node-task')
+    await task.getByRole('textbox', { name: '名称' }).fill('软件2301班')
+    await page.getByRole('button', { name: '创建', exact: true }).click()
+    await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(1))
+
+    await expect.element(task).toBeInTheDocument()
+    await expect.poll(() => document.querySelectorAll('[data-sonner-toast]').length).toBe(1)
+    const said = document.querySelector('[data-sonner-toast]')!
+    expect(said.getAttribute('data-type')).toBe('error')
+    expect(said.closest('[aria-hidden="true"]')).toBeNull()
+    expect(said.closest('[inert]')).toBeNull()
   })
 
   it('opens a branch without folding it, and folds only from the twistie', async () => {

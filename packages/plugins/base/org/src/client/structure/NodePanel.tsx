@@ -244,12 +244,15 @@ export function NodePanel({
             {...stylex.props(styles.inlineForm)}
             onSubmit={(event) => {
               event.preventDefault()
+              // a refusal is already said by run; the choice stays open to fix it
               void run(
                 api.org.changeNodeType({
                   params: { nodeId: node.id },
                   payload: { orgTypeId: nextTypeId },
                 }),
-              ).then(() => setRetyping(false))
+              )
+                .then(() => setRetyping(false))
+                .catch(() => undefined)
             }}
           >
             <Select value={nextTypeId} onValueChange={setNextTypeId}>

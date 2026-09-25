@@ -175,9 +175,10 @@ export function TypeSheet({
           {...stylex.props(styles.form)}
           onSubmit={(event) => {
             event.preventDefault()
-            void run(api.org.updateType({ params: { typeId: type.id }, payload: { name } })).then(
-              () => setRenaming(false),
-            )
+            // a refusal is already said by run; the field stays open to fix it
+            void run(api.org.updateType({ params: { typeId: type.id }, payload: { name } }))
+              .then(() => setRenaming(false))
+              .catch(() => undefined)
           }}
         >
           <Input
