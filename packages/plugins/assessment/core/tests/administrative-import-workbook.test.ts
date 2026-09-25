@@ -261,6 +261,35 @@ describe('the administrative import workbook', () => {
     expect(parsed.rows.map((row) => row.rowNo)).toEqual([2, 4])
   })
 
+  it('refuses a file carrying another sheet, and names a cell outside its columns', async () => {
+    const template = await buildAdministrativeWorkbook(spec())
+    const row = ['0012340', '张三', '入伍', 'national', '校发〔2026〕7 号'] as const
+    const read = async (bytes: Uint8Array) => {
+      const parsed = await parseAdministrativeWorkbook(bytes).catch((thrown: unknown) => thrown)
+      return parsed instanceof WorkbookUnreadable
+        ? parsed.reason
+        : (parsed as Awaited<ReturnType<typeof parseAdministrativeWorkbook>>).unread
+    }
+    // the file is kept and handed back to readers the import names; a
+    // roster pasted beside the rows would go with it to people it never named
+    const lookup = await filled(template, [row], (book) => {
+      book.addWorksheet('全院名单').addRow(['2023001', '王五', '110101200301011234'])
+    })
+    const besideTheRows = await filled(template, [[...row, '110101200301011234']])
+    const inTheHeader = await filled(template, [row], (book) => {
+      book.getWorksheet(DATA_SHEET)!.getCell('G1').value = '身份证号'
+    })
+    // a sheet or a column that holds nothing holds nothing to hand on
+    const blank = await filled(template, [row], (book) => {
+      book.addWorksheet('Sheet2')
+      book.getWorksheet(DATA_SHEET)!.getCell('H2').value = '  '
+    })
+    expect(await read(lookup)).toBe('extra-sheet')
+    expect(await read(besideTheRows)).toEqual({ rowNo: 2, column: 'F' })
+    expect(await read(inTheHeader)).toEqual({ rowNo: 1, column: 'G' })
+    expect(await read(blank)).toBe(null)
+  })
+
   it('refuses a workbook that is not one, and one whose metadata is gone', async () => {
     const notXlsx = await parseAdministrativeWorkbook(
       new TextEncoder().encode('this is not a spreadsheet'),

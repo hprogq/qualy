@@ -481,6 +481,8 @@ export default {
   'assessment/record/import/reason/too-many-columns': '列数过多',
   'assessment/record/import/reason/too-many-sheets': '工作表过多',
   'assessment/record/import/reason/data-sheet-missing': '缺少“行政认定”工作表',
+  'assessment/record/import/reason/extra-sheet': '请删除“行政认定”以外的工作表后重新上传',
+  'assessment/record/import/reason/extra-column': '请删除模板列之外的内容后重新上传',
   'assessment/record/import/reason/column-missing': '文件里缺少本题需要的一列。',
   'assessment/record/import/reason/column-unknown': '文件里多了一列本题不需要的内容。',
   'assessment/record/import/reason/column-header-mismatch': '某一列的表头与模板不一致。',

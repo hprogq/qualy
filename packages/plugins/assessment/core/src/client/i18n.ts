@@ -2091,6 +2091,14 @@ const i18n = definePluginMessages({
       id: 'assessment/record/import/reason/data-sheet-missing',
       defaultMessage: 'The 行政认定 sheet is missing',
     },
+    importReasonExtraSheet: {
+      id: 'assessment/record/import/reason/extra-sheet',
+      defaultMessage: 'Remove every sheet other than 行政认定, then upload again',
+    },
+    importReasonExtraColumn: {
+      id: 'assessment/record/import/reason/extra-column',
+      defaultMessage: 'Remove what is written outside the template columns, then upload again',
+    },
     importReasonColumnMissing: {
       id: 'assessment/record/import/reason/column-missing',
       defaultMessage: 'A column this question asks for is not in the file',

@@ -49,6 +49,8 @@ const WORDS = {
   'too-many-columns': m.importReasonTooManyColumns,
   'too-many-sheets': m.importReasonTooManySheets,
   'data-sheet-missing': m.importReasonSheetMissing,
+  'extra-sheet': m.importReasonExtraSheet,
+  'extra-column': m.importReasonExtraColumn,
   'column-missing': m.importReasonColumnMissing,
   'column-unknown': m.importReasonColumnUnknown,
   'column-header-mismatch': m.importReasonColumnHeader,

@@ -97,6 +97,8 @@ export const workbook = (
   itemId: string,
   who: string,
   rows: readonly (readonly string[])[],
+  /** whatever else a person did to the file before sending it back */
+  edit?: (book: ExcelJS.Workbook) => void,
 ) =>
   Effect.gen(function* () {
     const assessment = yield* Assessment
@@ -111,6 +113,7 @@ export const workbook = (
     yield* Effect.promise(() => book.xlsx.load(template.bytes as unknown as ArrayBuffer))
     const sheet = book.getWorksheet(DATA_SHEET)!
     for (const row of rows) sheet.addRow(laidOut(sheet, row))
+    edit?.(book)
     const bytes = Buffer.from(yield* Effect.promise(() => book.xlsx.writeBuffer()))
     const ticket = yield* storage.prepareUpload({
       tenantId: f.t,

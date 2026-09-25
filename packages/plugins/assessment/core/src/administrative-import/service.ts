@@ -701,6 +701,20 @@ export const makeAdministrativeImportMethods = (
         })),
       })
     }
+    // the columns are the question's now, so a cell outside them is content
+    // the import would keep without reading
+    if (parsed.unread !== null) {
+      return yield* new AdministrativeImportInvalid({
+        issues: [
+          {
+            rowNo: parsed.unread.rowNo,
+            field: parsed.unread.column,
+            severity: 'error',
+            reason: 'extra-column',
+          },
+        ],
+      })
+    }
     const rows = judgeRows({
       parsed,
       columns: layout.columns,

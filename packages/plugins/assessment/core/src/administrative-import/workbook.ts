@@ -148,6 +148,13 @@ export interface ParsedWorkbook {
   /** the words at the top of each declared column, as the person read them */
   readonly headers: Readonly<Record<string, string>>
   readonly rows: readonly RawRow[]
+  /**
+   * The first cell holding something outside the columns this reading took,
+   * or null. Reported rather than refused here: which columns those are is
+   * the metadata's claim, and a placement that does not hold is a refusal of
+   * its own, told first by the proof of the columns.
+   */
+  readonly unread: { readonly rowNo: number; readonly column: string } | null
 }
 
 /** a workbook this module will not read, said in one word */
@@ -309,6 +316,12 @@ const textOf = (cell: ExcelJS.Cell, rowNo: number): string => {
   }
 }
 
+/** whether a cell holds anything a person could read, a formula included */
+const holdsSomething = (cell: ExcelJS.Cell): boolean =>
+  cell.value !== null &&
+  cell.value !== undefined &&
+  !(typeof cell.value === 'string' && cell.value.trim() === '')
+
 /**
  * The file, read.
  *
@@ -389,6 +402,21 @@ export const parseAdministrativeWorkbook = async (bytes: Uint8Array): Promise<Pa
   if (sheet.columnCount > ADMIN_IMPORT_LIMITS.maxColumns) {
     throw new WorkbookUnreadable('too-many-columns')
   }
+  // The file is kept whole as the import's source, and handed back to
+  // whoever reaches every person the import named. Anything in it this
+  // reading does not take - a roster pasted in as a lookup sheet, a column
+  // of identity numbers beside the template's own - would go with it to
+  // people it never named, so a file carrying any is refused rather than
+  // kept: another sheet here, a cell outside the columns once they are
+  // proven (`unread`).
+  for (const other of book.worksheets) {
+    if (other.name === DATA_SHEET || other.name === META_SHEET) continue
+    other.eachRow({ includeEmpty: false }, (row) => {
+      row.eachCell({ includeEmpty: false }, (cell) => {
+        if (holdsSomething(cell)) throw new WorkbookUnreadable('extra-sheet')
+      })
+    })
+  }
   // How far the sheet REACHES, not how much of it is filled in. The ceiling
   // below counts rows that hold something, which a file can satisfy with two
   // of them while declaring a cell at row 1,048,576 - and the walk would
@@ -414,6 +442,16 @@ export const parseAdministrativeWorkbook = async (bytes: Uint8Array): Promise<Pa
   // the basis is whatever sits after the declared columns, which is where
   // the template put it
   const basisColumn = columnLetter(metadata.columns.length + 3)
+  const read = new Set(['A', 'B', basisColumn, ...metadata.columns.map((one) => one.column)])
+  let unread: ParsedWorkbook['unread'] = null
+  sheet.eachRow({ includeEmpty: false }, (row, rowNo) => {
+    row.eachCell({ includeEmpty: false }, (cell, columnNo) => {
+      const letter = columnLetter(columnNo)
+      if (unread === null && !read.has(letter) && holdsSomething(cell)) {
+        unread = { rowNo, column: letter }
+      }
+    })
+  })
 
   // The words at the top of each declared column. They are what the person
   // filling the file in actually read, which is what makes them the anchor
@@ -451,5 +489,5 @@ export const parseAdministrativeWorkbook = async (bytes: Uint8Array): Promise<Pa
     }
   }
 
-  return { metadata, headers, rows }
+  return { metadata, headers, rows, unread }
 }

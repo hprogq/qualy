@@ -54,6 +54,7 @@ const parsed = (
       ]),
     ),
   })),
+  unread: null,
 })
 
 const base = (over: Partial<PreviewInput> & Pick<PreviewInput, 'parsed'>): PreviewInput => ({

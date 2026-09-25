@@ -291,6 +291,13 @@ describe('the words an import problem gets', () => {
       expect(reasonText(said, { reason }, '编号')).not.toBe('assessment/record/import/reason/other')
     }
   })
+
+  it('has one for content the reading would not take', () => {
+    const said = ((descriptor: { id: string }) => descriptor.id) as never
+    for (const reason of ['extra-sheet', 'extra-column']) {
+      expect(reasonText(said, { reason }, '编号')).not.toBe('assessment/record/import/reason/other')
+    }
+  })
 })
 
 describe('importing a workbook of administrative records', () => {

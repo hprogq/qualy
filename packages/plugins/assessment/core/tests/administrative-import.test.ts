@@ -466,6 +466,61 @@ describe.runIf(postgresAvailable)('an administrative import', () => {
     expect(found.bound).toBe('staged')
   })
 
+  it('keeps no file that carries what the import does not read', async () => {
+    const found = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('ai-unread')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f)
+          yield* numbered(f)
+          const item = yield* recordItem(f, g.batch.id)
+          const revision = one<{ id: string }>(
+            yield* runSql(
+              sql`select current_revision_id as id from assessment_items where id = ${item.id}`,
+            ),
+          ).id
+          const refusal = (edit: (book: ExcelJS.Workbook) => void) =>
+            Effect.gen(function* () {
+              const attachmentId = yield* workbook(
+                f,
+                item.id,
+                f.recorder,
+                [['2023001', 'Zhang San', '校发〔2026〕12 号']],
+                edit,
+              )
+              const refused = yield* Effect.exit(
+                assessment.commitAdministrativeImport(
+                  f.t,
+                  g.batch.id,
+                  { attachmentId, itemId: item.id, expectedItemRevisionId: revision },
+                  f.principal(f.recorder),
+                ),
+              )
+              return errorOf<{ issues: { rowNo: number | null; reason: string }[] }>(
+                refused,
+              )?.issues.map((one) => [one.rowNo, one.reason])
+            })
+          // a whole-college roster kept as a lookup sheet, and a column of
+          // identity numbers beside the rows: the file would be kept whole
+          // and handed to anybody reaching the one person it imports
+          const lookup = yield* refusal((book) => {
+            book.addWorksheet('全院名单').addRow(['2023003', 'Wang Wu', '110101200301011234'])
+          })
+          const beside = yield* refusal((book) => {
+            const sheet = book.getWorksheet(DATA_SHEET)!
+            sheet.getCell(2, sheet.getRow(1).cellCount + 2).value = '110101200301011234'
+          })
+          return { lookup, beside, after: yield* counts(f) }
+        }),
+      ),
+    )
+    expect(found.lookup).toEqual([[null, 'extra-sheet']])
+    expect(found.beside).toEqual([[2, 'extra-column']])
+    expect(found.after).toEqual({ imports: 0, entries: 0 })
+  })
+
   it('refuses a row about the person importing it', async () => {
     const found = ok(
       await run(
