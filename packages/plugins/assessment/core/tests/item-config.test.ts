@@ -51,6 +51,7 @@ import {
 } from '../src/scoring/plan.ts'
 import { hashCanonicalJson } from '@qualy/value-schema/hash'
 import { ScoringAuthoringPolicyCatalog, ScoringRuntimeCatalog } from '../src/plugin.ts'
+import { declarationDriver } from '../src/item/declaration.ts'
 
 // The configuration gauntlet, end to end: a question is created with its
 // first revision, every later save appends the next one, and a save that
@@ -815,6 +816,84 @@ describe.runIf(postgresAvailable)('item configuration', () => {
     expect(issuesOf(result.floatAmount)).toContain('calculator-config-invalid')
     expect(issuesOf(result.badPolicy)).toContain('policy-stages-required')
     expect(issuesOf(result.strayGroup)).toContain('group-not-in-batch')
+  })
+
+  // Every revision is served whole to everybody who can see the round, and a
+  // participant's page asks again on every change. A description as long as
+  // the request body, or keys nothing reads, used to be stored as sent.
+  it('refuses a configuration too large to keep, and display settings nobody reads', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('item-weight')
+          const assessment = yield* Assessment
+          const { batch, groupId } = yield* draftBatch(f, 'Round')
+          const create = (over: Record<string, unknown>) =>
+            Effect.exit(
+              assessment.createItem(
+                f.tenant,
+                batch.id,
+                {
+                  itemType: 'evidence',
+                  title: 'heavy',
+                  scoreGroupId: groupId,
+                  maxEntries: null,
+                  config: studentConfig(over),
+                },
+                f.principal,
+              ),
+            )
+          const heavy = yield* create({ displayConfig: { description: 'x'.repeat(300_000) } })
+          const smuggled = yield* create({ displayConfig: { description: 'fine', junk: [1] } })
+          const wordy = yield* create({ displayConfig: { description: 'x'.repeat(2001) } })
+          const items = yield* assessment.listItems(f.tenant, batch.id, f.principal)
+
+          const kept = yield* assessment.createItem(
+            f.tenant,
+            batch.id,
+            {
+              itemType: 'evidence',
+              title: 'kept',
+              scoreGroupId: groupId,
+              maxEntries: null,
+              config: studentConfig({ displayConfig: { description: 'x'.repeat(2000) } }),
+            },
+            f.principal,
+          )
+          const swollen = yield* Effect.exit(
+            assessment.updateItem(
+              f.tenant,
+              kept.id,
+              {
+                config: studentConfig({
+                  formConfig: { required: [], padding: 'x'.repeat(300_000) },
+                }),
+                reason: 'padding',
+              },
+              f.principal,
+            ),
+          )
+          const after = yield* assessment.listItems(f.tenant, batch.id, f.principal)
+          return { heavy, smuggled, wordy, items, swollen, after }
+        }),
+      ),
+    )
+    const issuesOf = (exit: Exit.Exit<unknown, unknown>) =>
+      errorOf<{ issues?: readonly { path: string; reason: string }[] }>(exit)?.issues ?? []
+    expect(issuesOf(result.heavy)).toEqual([{ path: 'config', reason: 'config-too-large' }])
+    expect(issuesOf(result.smuggled)).toContainEqual({
+      path: 'displayConfig.junk',
+      reason: 'display-unknown-key',
+    })
+    expect(issuesOf(result.wordy)).toContainEqual({
+      path: 'displayConfig.description',
+      reason: 'display-description-invalid',
+    })
+    // nothing refused was written
+    expect(result.items.items).toEqual([])
+    expect(issuesOf(result.swollen)).toEqual([{ path: 'config', reason: 'config-too-large' }])
+    expect(result.after.items.map((item) => item.currentRevision?.revisionNo)).toEqual([1])
   })
 
   it('takes the whole chain grammar, and refuses what is outside it', async () => {
@@ -2231,5 +2310,27 @@ describe.runIf(postgresAvailable)('reading a composition before it is saved', ()
     )
 
     expect(tagOf(result)).toBe('ACCESS_DENIED')
+  })
+})
+
+// A declaration is the press itself; its payload is empty. It used to store
+// whatever arrived with the press, as large as the request, and serve it to
+// every reviewer of the claim.
+describe('a declaration', () => {
+  const decode = (payload: unknown) =>
+    Effect.runSyncExit(
+      declarationDriver.decodePayload({}, payload, {
+        materialRange: { start: '2026-03-01', end: '2026-09-01' },
+      }),
+    )
+
+  it('reads the press as the empty claim it is', () => {
+    expect(Exit.isSuccess(decode({}))).toBe(true)
+    expect(Exit.isSuccess(decode(undefined))).toBe(true)
+  })
+
+  it('refuses anything sent along with it', () => {
+    expect(Exit.isFailure(decode({ junk: 'x'.repeat(1000) }))).toBe(true)
+    expect(Exit.isFailure(decode(['not', 'a', 'claim']))).toBe(true)
   })
 })

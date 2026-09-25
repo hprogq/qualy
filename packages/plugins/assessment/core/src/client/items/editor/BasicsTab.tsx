@@ -229,6 +229,7 @@ export function BasicsTab({
               <Textarea
                 id={id}
                 rows={3}
+                maxLength={2000}
                 value={draft.description}
                 onChange={(event) => onPatch({ description: event.target.value })}
               />

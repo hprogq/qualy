@@ -42,6 +42,15 @@ const unknownKeys = (
   }
 }
 
+/**
+ * The longest route a policy may describe, and the most roles one step may
+ * name. Every round frozen from a policy carries its steps, and every
+ * reviewer lookup walks a step's roles: both are read far more often than
+ * they are written.
+ */
+const STAGES_MOST = 10
+const ROLES_MOST = 20
+
 const checkSelector = (issues: PolicyIssue[], stage: Record<string, unknown>, at: string) => {
   const selector = stage['selector']
   if (!isRecord(selector)) {
@@ -56,6 +65,8 @@ const checkSelector = (issues: PolicyIssue[], stage: Record<string, unknown>, at
     const roleIds = selector['roleIds']
     if (!Array.isArray(roleIds) || roleIds.length === 0 || !roleIds.every(isUuid)) {
       issues.push({ path: `${at}.selector.roleIds`, reason: 'policy-roles-required' })
+    } else if (roleIds.length > ROLES_MOST) {
+      issues.push({ path: `${at}.selector.roleIds`, reason: 'policy-roles-too-many' })
     }
     return
   }
@@ -141,6 +152,10 @@ const checkRoute = (
   const stages = held['stages']
   if (!Array.isArray(stages)) {
     issues.push({ path: `reviewPolicy.${route}.stages`, reason: 'policy-stages-required' })
+    return
+  }
+  if (stages.length > STAGES_MOST) {
+    issues.push({ path: `reviewPolicy.${route}.stages`, reason: 'policy-stages-too-many' })
     return
   }
   for (const [index, stage] of stages.entries()) {

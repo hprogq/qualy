@@ -48,7 +48,7 @@ import { kindOf, type NormalizedAtomicSchema } from '@qualy/value-schema'
 import { normalizeScoringAuthoring } from '../scoring/authoring.ts'
 import { policyModeOf } from '../review/chain.ts'
 import type { EntryChannel } from './channels.ts'
-import { validateItemConfig, type Catalogs, type ItemConfigInput } from './config.ts'
+import { validateItemConfig, weightIssues, type Catalogs, type ItemConfigInput } from './config.ts'
 import {
   cancelReviewInstance,
   insertEntryEvent,
@@ -595,6 +595,8 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
   }) =>
     Effect.gen(function* () {
       const issues = [...(yield* validateItemConfig(catalogs, input.item.itemType, input.config))]
+      // a configuration too large to keep is not read any further
+      if (issues.some((issue) => issue.reason === 'config-too-large')) return issues
       // once anything has been filed against the item, a door it came in
       // through may not be shut: the resource policy reads the doors from
       // the current revision, and closing one would strand every entry that
@@ -1433,6 +1435,8 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
             if (!locked) return yield* new BatchNotFound()
             yield* deps.requireRosterReach(as, tenantId, batchId)
             if (locked.status === 'archived') return yield* new BatchReadOnly()
+            const heavy = weightIssues(input.config)
+            if (heavy.length > 0) return yield* new ItemConfigInvalid({ issues: heavy })
             const batch = yield* oneBatch(tenantId, batchId)
             const groups = yield* groupsOf(tenantId, batchId)
             if (!groups.some((group) => group.id === input.scoreGroupId)) {
@@ -1679,6 +1683,8 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
               // not a change, and a stored form re-submitted is a no-op.
               let config: ItemConfigInput | undefined
               if (input.config !== undefined) {
+                const heavy = weightIssues(input.config)
+                if (heavy.length > 0) return yield* new ItemConfigInvalid({ issues: heavy })
                 const normalized = yield* normalizeScoringAuthoring({
                   current: current?.scoringConfig ?? null,
                   submitted: input.config.scoringConfig,
@@ -2556,6 +2562,8 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
             if (existing?.status === 'voided') {
               return { issues: [{ path: 'item', reason: 'item-voided' }], standing: [] }
             }
+            const heavy = weightIssues(input.config)
+            if (heavy.length > 0) return { issues: [...heavy], standing: [] }
             if (!catalogs.itemTypes.has(input.itemType)) {
               return {
                 issues: [...issues, { path: 'itemType', reason: 'item-type-not-installed' }],

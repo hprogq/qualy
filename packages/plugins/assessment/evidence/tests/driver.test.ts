@@ -701,3 +701,44 @@ describe('accepted configuration implies profile-legal schemas', () => {
     expect(refused([{ key: 't', type: 'text', label: 'T', maxLength: 500 }])).toBe(false)
   })
 })
+
+// What one form may ask, and what one answer may carry. Each revision is
+// served whole to every reader and each answer to every reviewer, so the
+// largest of either used to be decided by the request body alone.
+describe('how much a form may ask and an answer may carry', () => {
+  const text = (index: number) => ({ key: `note-${index}`, type: 'text', label: `Note ${index}` })
+
+  it('takes fifty fields and refuses a fifty-first at save', () => {
+    const fields = (count: number) => Array.from({ length: count }, (_, index) => text(index))
+    expect(evidenceDriver.configIssues!({ fields: fields(50) }, batch)).toEqual([])
+    expect(evidenceDriver.configIssues!({ fields: fields(51) }, batch)).toEqual([
+      { path: 'formConfig.fields', reason: 'fields-too-many' },
+    ])
+    // held at save, not in the schema: a form stored before still reads
+    expect(Exit.isSuccess(decode({ fields: fields(51) }, {}))).toBe(true)
+  })
+
+  it('refuses an attachment field listing more file kinds than any upload names', () => {
+    const attachment = (accept: readonly string[]) => ({
+      fields: [{ key: 'proof', type: 'attachment', label: 'Proof', maxCount: 1, accept }],
+    })
+    expect(evidenceDriver.configIssues!(attachment(['application/pdf']), batch)).toEqual([])
+    expect(
+      evidenceDriver.configIssues!(
+        attachment(Array.from({ length: 33 }, (_, index) => `.x${index}`)),
+        batch,
+      ),
+    ).toEqual([{ path: 'formConfig.fields[0]', reason: 'accept-too-long' }])
+    expect(evidenceDriver.configIssues!(attachment(['x'.repeat(101)]), batch)).toEqual([
+      { path: 'formConfig.fields[0]', reason: 'accept-too-long' },
+    ])
+  })
+
+  it('holds a text field that sets no length to the longest any field may set', () => {
+    const open = { fields: [{ key: 'story', type: 'text', label: 'Story' }] }
+    expect(Exit.isSuccess(decode(open, { story: 'x'.repeat(10_000) }))).toBe(true)
+    expect(issuesOf(decode(open, { story: 'x'.repeat(10_001) }))).toEqual([
+      { field: 'story', reason: 'too-long' },
+    ])
+  })
+})

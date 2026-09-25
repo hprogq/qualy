@@ -1986,7 +1986,9 @@ export const problemsFromIssues = (input: {
       })
       continue
     }
-    if (path === 'formConfig') {
+    // the whole form, or a configuration too large to keep - which only the
+    // form can make it, since every other part is capped where it is typed
+    if (path === 'formConfig' || path === 'formConfig.fields' || path === 'config') {
       placed.push({ area: 'scoring', block: 'form', code: 'form-refused', tone: 'error', reason })
       continue
     }

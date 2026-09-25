@@ -34,6 +34,88 @@ export interface Catalogs {
   readonly aggregators: ReadonlyMap<string, AggregatorDriver>
 }
 
+/**
+ * The most one saved configuration may weigh, as the JSON it is stored as.
+ *
+ * Every revision is served whole to everybody who can see the batch, and a
+ * participant's page asks for the list again on every change - so the size
+ * of a configuration is paid by every reader, as often as they look. The
+ * driver schemas bound what they read, not what else rides along with it;
+ * this bounds all of it at once, whatever the driver.
+ */
+export const CONFIG_BYTES_MOST = 256 * 1024
+
+/** the question's own words, as the participant reads them above the form */
+export const DESCRIPTION_MOST = 2000
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+/** the stored weight of a configuration, or null when it cannot be written as JSON at all */
+const weightOf = (input: ItemConfigInput): number | null => {
+  try {
+    const text = JSON.stringify([
+      input.formConfig,
+      input.scoringConfig,
+      input.reviewPolicy,
+      input.displayConfig,
+    ])
+    return new TextEncoder().encode(text).length
+  } catch {
+    // nested deeper than the serializer can walk
+    return null
+  }
+}
+
+/**
+ * A configuration too large to keep, said the way a save refuses it; empty
+ * when it fits. Asked first, before anything reads, normalizes or compiles
+ * what was submitted.
+ */
+export const weightIssues = (input: ItemConfigInput): readonly PolicyIssue[] => {
+  const weight = weightOf(input)
+  return weight === null || weight > CONFIG_BYTES_MOST
+    ? [{ path: 'config', reason: 'config-too-large' }]
+    : []
+}
+
+/**
+ * What the question shows about itself: its description, and the fields
+ * that identify a claim. Nothing else is read from it, so nothing else is
+ * kept - an unknown key would be stored and served to every reader for
+ * nobody to read.
+ */
+const displayIssues = (displayConfig: unknown): PolicyIssue[] => {
+  if (displayConfig === undefined || displayConfig === null) return []
+  if (!isRecord(displayConfig)) return [{ path: 'displayConfig', reason: 'display-not-an-object' }]
+  const issues: PolicyIssue[] = []
+  for (const key of Object.keys(displayConfig)) {
+    if (key !== 'description' && key !== 'entrySummary') {
+      issues.push({ path: `displayConfig.${key}`, reason: 'display-unknown-key' })
+    }
+  }
+  const description = displayConfig['description']
+  if (
+    description !== undefined &&
+    (typeof description !== 'string' || description.length > DESCRIPTION_MOST)
+  ) {
+    issues.push({ path: 'displayConfig.description', reason: 'display-description-invalid' })
+  }
+  const summary = displayConfig['entrySummary']
+  if (summary !== undefined) {
+    const ids = isRecord(summary) ? summary['fieldIds'] : undefined
+    if (!Array.isArray(ids) || !ids.every((id) => typeof id === 'string')) {
+      issues.push({ path: 'displayConfig.entrySummary', reason: 'summary-invalid' })
+    }
+    for (const key of isRecord(summary) ? Object.keys(summary) : []) {
+      if (key !== 'fieldIds') {
+        issues.push({ path: `displayConfig.entrySummary.${key}`, reason: 'display-unknown-key' })
+      }
+    }
+  }
+  return issues
+}
+
 const decodeIssues = (path: string, reason: string, schema: Schema.Top, value: unknown) =>
   Effect.match(Schema.decodeUnknownEffect(schema as Schema.Codec<unknown>)(value), {
     onSuccess: (): readonly PolicyIssue[] => [],
@@ -53,7 +135,12 @@ export const validateItemConfig = (
   input: ItemConfigInput,
 ): Effect.Effect<readonly PolicyIssue[]> =>
   Effect.gen(function* () {
-    const issues: PolicyIssue[] = []
+    // weighed before anything is read: past the ceiling, nothing else in it
+    // is worth decoding
+    const heavy = weightIssues(input)
+    if (heavy.length > 0) return heavy
+
+    const issues: PolicyIssue[] = [...displayIssues(input.displayConfig)]
 
     // the elected identity fields (§32.74): each must name a form field
     // that can identify a claim - present, not an attachment - and three

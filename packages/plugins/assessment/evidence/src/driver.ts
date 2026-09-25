@@ -5,6 +5,7 @@ import {
   fractionalDigits,
   normalizeAtomicSchema,
   parseDecimal,
+  PROFILE_LIMITS,
   validateAtomicProfile,
   type AtomicSchema,
 } from '@qualy/value-schema'
@@ -514,6 +515,17 @@ const decode = (
               issues.push({ field: entry.key, reason: reasonOf(entry.type, wrong[0]!.reason) })
               break
             }
+            // A field that sets no length of its own is still held to the
+            // longest any field may be set to: otherwise one answer could
+            // be as long as the request, stored with every revision and
+            // served to every reviewer.
+            if (
+              entry.maxLength === undefined &&
+              [...trimmed].length > PROFILE_LIMITS.textLengthBound
+            ) {
+              issues.push({ field: entry.key, reason: 'too-long' })
+              break
+            }
           }
           decoded[entry.key] = trimmed
           break
@@ -702,7 +714,18 @@ const dateWindowEmpty = (entry: EvidenceField, batch: BatchContext): boolean => 
 }
 
 /**
- * What the schema cannot see: a date field against the round it will run in.
+ * The most fields one form may ask, and the most file kinds one attachment
+ * field may list. Held at save rather than in the schema: a form stored
+ * before the ceiling still has to be readable, and every filing against it
+ * still has to decode.
+ */
+const FIELDS_MOST = 50
+const ACCEPT_MOST = 32
+const ACCEPT_LENGTH_MOST = 100
+
+/**
+ * What the schema cannot see: a date field against the round it will run in,
+ * and a form larger than anybody fills in.
  *
  * A window that misses the material range entirely is well-formed and
  * unusable - required, and no legal day exists. Refused at save, where the
@@ -714,10 +737,21 @@ const configIssues = (
 ): readonly { path: string; reason: string }[] => {
   const form = decodeConfig(config)
   if (form === null) return []
+  if (form.fields.length > FIELDS_MOST) {
+    return [{ path: 'formConfig.fields', reason: 'fields-too-many' }]
+  }
   const issues: { path: string; reason: string }[] = []
   for (const [index, entry] of form.fields.entries()) {
     if (dateWindowEmpty(entry, batch)) {
       issues.push({ path: `formConfig.fields[${index}]`, reason: 'date-window-empty' })
+    }
+    if (
+      entry.type === 'attachment' &&
+      entry.accept !== undefined &&
+      (entry.accept.length > ACCEPT_MOST ||
+        entry.accept.some((kind) => kind.length > ACCEPT_LENGTH_MOST))
+    ) {
+      issues.push({ path: `formConfig.fields[${index}]`, reason: 'accept-too-long' })
     }
   }
   return issues

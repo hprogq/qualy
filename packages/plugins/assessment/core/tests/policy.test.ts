@@ -159,3 +159,28 @@ describe('the review policy shape', () => {
     expect(found.filter((reason) => reason === 'policy-unknown-key')).toHaveLength(3)
   })
 })
+
+// Every round frozen from a policy carries its steps, and every reviewer
+// lookup walks a step's roles. Neither was bounded, so one save could make
+// every later read of the question pay for a route nobody walks.
+describe('how much one policy may say', () => {
+  it('takes a route of ten steps and refuses an eleventh', () => {
+    const route = (count: number) => Array.from({ length: count }, () => stage())
+    expect(reasons(policy(route(10)))).toEqual([])
+    expect(reasons(policy(route(11)))).toEqual(['policy-stages-too-many'])
+    expect(reasons(policy([stage()], route(11)))).toEqual(['policy-stages-too-many'])
+  })
+
+  it('takes twenty roles on a step and refuses more', () => {
+    const naming = (count: number) =>
+      stage({
+        selector: {
+          kind: 'roleAt',
+          nodeTypeId: randomUUID(),
+          roleIds: Array.from({ length: count }, () => randomUUID()),
+        },
+      })
+    expect(reasons(policy([naming(20)]))).toEqual([])
+    expect(reasons(policy([naming(21)]))).toEqual(['policy-roles-too-many'])
+  })
+})
