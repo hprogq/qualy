@@ -266,6 +266,57 @@ const SELECTION_ITEMS: readonly ItemSpec[] = [
   },
 ]
 
+/**
+ * The selection's phases. Re-examination opens while material is reviewed
+ * and while results may be appealed, as in the school's own assessments
+ * (term.ts); settling what was appealed opens nothing new.
+ */
+export const SELECTION_PHASES = [
+  {
+    phaseKey: 'entry',
+    displayName: '报名与材料提交',
+    permissionProfile: [
+      'assessment.entry.create',
+      'assessment.entry.edit',
+      'assessment.entry.submit',
+      'assessment.entry.withdraw',
+      'assessment.entry.abandon',
+      'assessment.entry.record',
+      'assessment.review.process',
+      'assessment.review.escalate',
+    ],
+  },
+  {
+    // a result reached while material is still being reviewed may
+    // be contested at once, and staff may re-examine one
+    phaseKey: 'review',
+    displayName: '材料审核',
+    permissionProfile: [
+      'assessment.review.process',
+      'assessment.review.escalate',
+      'assessment.review.reopen',
+      'assessment.entry.appeal',
+      'assessment.entry.record',
+    ],
+  },
+  {
+    phaseKey: 'appeal',
+    displayName: '结果公示与申诉',
+    permissionProfile: [
+      'assessment.entry.appeal',
+      'assessment.review.process',
+      'assessment.review.escalate',
+      'assessment.review.reopen',
+    ],
+  },
+  {
+    phaseKey: 'appeal-review',
+    displayName: '申诉处理',
+    permissionProfile: ['assessment.review.process', 'assessment.review.escalate'],
+  },
+  { phaseKey: 'archive', displayName: '归档', permissionProfile: [] },
+]
+
 const GROUPS = [
   { key: 'root', name: '推免综合测评', parent: null, cap: '100.00', floor: '0.00' },
   { key: 'academic', name: '学业成绩', parent: 'root', cap: '80.00', floor: '0.00' },
@@ -355,53 +406,7 @@ export const runSelection = (input: {
       assessment.replacePlan(
         t,
         batch.id,
-        {
-          specs: [
-            {
-              phaseKey: 'entry',
-              displayName: '报名与材料提交',
-              permissionProfile: [
-                'assessment.entry.create',
-                'assessment.entry.edit',
-                'assessment.entry.submit',
-                'assessment.entry.withdraw',
-                'assessment.entry.abandon',
-                'assessment.entry.record',
-                'assessment.review.process',
-                'assessment.review.escalate',
-              ],
-            },
-            {
-              // a result reached while material is still being reviewed may
-              // be contested at once, and staff may re-examine one
-              phaseKey: 'review',
-              displayName: '材料审核',
-              permissionProfile: [
-                'assessment.review.process',
-                'assessment.review.escalate',
-                'assessment.review.reopen',
-                'assessment.entry.appeal',
-                'assessment.entry.record',
-              ],
-            },
-            {
-              phaseKey: 'appeal',
-              displayName: '结果公示与申诉',
-              permissionProfile: [
-                'assessment.entry.appeal',
-                'assessment.review.process',
-                'assessment.review.escalate',
-                'assessment.review.reopen',
-              ],
-            },
-            {
-              phaseKey: 'appeal-review',
-              displayName: '申诉处理',
-              permissionProfile: ['assessment.review.process', 'assessment.review.escalate'],
-            },
-            { phaseKey: 'archive', displayName: '归档', permissionProfile: [] },
-          ],
-        },
+        { specs: SELECTION_PHASES.map((phase) => ({ ...phase })) },
         lead,
       ),
       300,

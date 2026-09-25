@@ -113,8 +113,10 @@ const ENTRY = [
   'assessment.review.process',
   'assessment.review.escalate',
 ]
-// staff may send a concluded claim through the escalation route again while
-// review and the appeals that follow it run
+// Staff may send a concluded claim through the escalation route again
+// (re-examination) while review runs and while students may appeal - the
+// same two windows the selection opens it in. Settling what was appealed
+// opens nothing new.
 const REVIEW = [
   'assessment.review.process',
   'assessment.review.escalate',
@@ -126,13 +128,19 @@ const APPEAL = [
   'assessment.review.process',
   'assessment.review.escalate',
   'assessment.entry.record',
+  'assessment.review.reopen',
+]
+const APPEAL_REVIEW = [
+  'assessment.review.process',
+  'assessment.review.escalate',
+  'assessment.entry.record',
 ]
 
 export const PHASES = [
   { phaseKey: 'entry', displayName: '材料填报', permissionProfile: ENTRY },
   { phaseKey: 'review', displayName: '审核整理', permissionProfile: REVIEW },
   { phaseKey: 'appeal', displayName: '结果申诉', permissionProfile: APPEAL },
-  { phaseKey: 'appeal-review', displayName: '申诉处理', permissionProfile: REVIEW },
+  { phaseKey: 'appeal-review', displayName: '申诉处理', permissionProfile: APPEAL_REVIEW },
   { phaseKey: 'archive', displayName: '归档', permissionProfile: [] as string[] },
 ]
 
