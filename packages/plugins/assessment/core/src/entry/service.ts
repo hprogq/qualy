@@ -1619,19 +1619,27 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                 if (entry.status === 'voided') {
                   return yield* refuse(action, 'entry-not-abandonable')
                 }
-                if (entry.status === 'in_review') {
-                  if (entry.currentReviewInstanceId === null) {
-                    return yield* refuse(action, 'entry-not-abandonable')
-                  }
-                  const cancelled = yield* cancelReviewInstance({
+                // The round, not the status: a claim under appeal keeps the
+                // standing it already had (§32.21), so an approved or refused
+                // claim can be carrying an open round. Left open, it would go
+                // on sitting in reviewers' queues and holding the batch open
+                // over a claim nobody is making any more. The pointer outlives
+                // its round, so `false` is "nothing was open" - which only an
+                // `in_review` claim cannot be.
+                const closed =
+                  entry.currentReviewInstanceId !== null &&
+                  (yield* cancelReviewInstance({
                     tenantId,
                     instanceId: entry.currentReviewInstanceId,
                     outcome: 'cancelled',
-                  })
-                  if (!cancelled) return yield* refuse(action, 'entry-not-abandonable')
+                  }))
+                if (entry.status === 'in_review' && !closed) {
+                  return yield* refuse(action, 'entry-not-abandonable')
+                }
+                if (closed) {
                   yield* insertReviewEvent({
                     tenantId,
-                    reviewInstanceId: entry.currentReviewInstanceId,
+                    reviewInstanceId: entry.currentReviewInstanceId!,
                     kind: 'cancelled-by-submitter',
                     actorId: as.userId,
                   })

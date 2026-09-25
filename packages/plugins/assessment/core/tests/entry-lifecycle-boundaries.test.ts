@@ -266,6 +266,114 @@ describe.runIf(postgresAvailable)('where withdraw ends and abandon does not', ()
     expect(result.after.current_recognition_id).toBe(result.settled.id)
   })
 
+  // Giving up a claim that is under appeal takes the appeal with it. The
+  // claim kept its standing through the appeal (§32.21), so the round is
+  // found through the claim's pointer, not its status - and a round left
+  // open over a voided claim would sit in the reviewers' queue, keep any
+  // ask alive, and hold the batch open.
+  it('closes the appeal a claim was carrying when its owner gives the claim up', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('lb-appeal-abandon')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, {
+            profile: [...GATED, 'assessment.review.process', 'assessment.entry.appeal'],
+            escalation: [
+              {
+                id: 'esc',
+                label: '复核',
+                selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
+                quorum: { type: 'any' },
+              },
+            ],
+          })
+          const reviewer = f.principal(f.reviewer)
+          /** a claim decided once, then appealed by its owner */
+          const appealed = (who: string, participantId: string, first: 'approve' | 'reject') =>
+            Effect.gen(function* () {
+              const owner = f.principal(who)
+              const entry = yield* assessment.createEntry(
+                f.t,
+                { itemId: g.item.id, participantId, payload: {} },
+                owner,
+              )
+              const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', owner)
+              yield* assessment.decideReview(
+                f.t,
+                sent.currentReviewInstanceId!,
+                first === 'approve'
+                  ? { decision: 'approve' }
+                  : { decision: 'reject', comment: '不足' },
+                reviewer,
+              )
+              const round = yield* assessment.appealEntry(
+                f.t,
+                entry.id,
+                { reason: '请复核' },
+                owner,
+              )
+              return { entryId: entry.id, roundId: round.id, owner }
+            })
+          const kept = yield* appealed(f.s1, g.p1, 'approve')
+          const asked = yield* appealed(f.s2, g.p2, 'reject')
+          yield* assessment.requestSupplement(
+            f.t,
+            asked.roundId,
+            {
+              instructions: 'show the certificate',
+              requirements: [{ label: '证书', kind: 'file', required: true }],
+            },
+            reviewer,
+          )
+          const queuedBefore = (yield* assessment.listReviewInbox(f.t, {}, reviewer)).items.map(
+            (row) => row.instanceId,
+          )
+          const gaveUp = yield* assessment.setEntryStatus(f.t, kept.entryId, 'voided', kept.owner)
+          yield* assessment.setEntryStatus(f.t, asked.entryId, 'voided', asked.owner)
+          const queuedAfter = (yield* assessment.listReviewInbox(f.t, {}, reviewer)).items.map(
+            (row) => row.instanceId,
+          )
+          const rounds = (yield* runSql(sql`
+            select ri.id, ri.state, ri.outcome,
+              exists (
+                select 1 from review_events ev
+                where ev.review_instance_id = ri.id and ev.kind = 'cancelled-by-submitter'
+              ) as said
+            from review_instances ri
+            where ri.id in (${kept.roundId}, ${asked.roundId})`)) as {
+            rows: { id: string; state: string; outcome: string; said: boolean }[]
+          }
+          const ask = one<{ status: string }>(
+            yield* runSql(sql`
+              select status from review_supplement_requests
+              where review_instance_id = ${asked.roundId}`),
+          )
+          const open = one<{ n: number }>(
+            yield* runSql(sql`
+              select count(*)::int as n from review_instances ri
+              join entries e on e.id = ri.entry_id
+              where e.batch_id = ${g.batch.id}
+                and ri.state in ('active', 'blocked', 'awaiting_supplement')`),
+          )
+          return { kept, queuedBefore, gaveUp, queuedAfter, rounds: rounds.rows, ask, open }
+        }),
+      ),
+    )
+
+    expect(result.queuedBefore).toContain(result.kept.roundId)
+    expect(result.gaveUp.status).toBe('voided')
+    for (const round of result.rounds) {
+      expect(round).toMatchObject({ state: 'completed', outcome: 'cancelled', said: true })
+    }
+    expect(result.rounds).toHaveLength(2)
+    expect(result.queuedAfter).not.toContain(result.kept.roundId)
+    // the ask on the other appeal went with its round
+    expect(result.ask.status).toBe('superseded')
+    expect(result.open.n).toBe(0)
+  })
+
   it('an approved claim can be given up: the entry voids, the verdict stands', async () => {
     const result = ok(
       await run(
