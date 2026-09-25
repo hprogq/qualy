@@ -20,7 +20,7 @@ import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
 import { DEFAULT_REVIEW_REASONS } from '../../review/reasons.ts'
 import { assessmentMessages as m } from '../i18n.ts'
-import { refusalMessage, refusalsOf } from '../refusals.ts'
+import { planRefusalWords, refusalsOf } from '../refusals.ts'
 import { ReopenDialog } from './ReopenDialog.tsx'
 import type { BatchDto } from '../phase/model.ts'
 import { dayAfter, lastDay } from '../entry/model.ts'
@@ -422,12 +422,7 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
   const said = (error: unknown) => {
     const refusals = refusalsOf(error)
     return refusals.length > 0
-      ? refusals
-          .map((refusal) => {
-            const sentence = refusalMessage(refusal.reason)
-            return sentence ? format(sentence) : refusal.reason
-          })
-          .join(' ')
+      ? refusals.map((refusal) => planRefusalWords(format, refusal.reason)).join(' ')
       : formatError(error)
   }
 

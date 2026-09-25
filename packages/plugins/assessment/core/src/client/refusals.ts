@@ -1,4 +1,5 @@
-import type { MessageDescriptor } from '@qualy/i18n-contract'
+import type { MessageDescriptor, MessageValues } from '@qualy/i18n-contract'
+import { MAX_PLAN_PHASES } from '../api.ts'
 import type { EditRefusalReason } from '../phase/engine/edits.ts'
 import { assessmentMessages as m } from './i18n.ts'
 
@@ -82,3 +83,15 @@ export function refusalsOf(error: unknown): readonly PlanRefusalLike[] {
 
 export const refusalMessage = (reason: string): MessageDescriptor | undefined =>
   (SENTENCES as Record<string, MessageDescriptor | undefined>)[reason]
+
+/**
+ * A plan refusal as the sentence a screen shows, with the limits it speaks
+ * of filled in from the same constants the api holds the plan to.
+ */
+export const planRefusalWords = (
+  format: (descriptor: MessageDescriptor, values?: MessageValues) => string,
+  reason: string,
+): string => {
+  const message = refusalMessage(reason)
+  return message === undefined ? reason : format(message, { most: MAX_PLAN_PHASES })
+}

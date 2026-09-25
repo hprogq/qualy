@@ -5819,7 +5819,7 @@ const i18n = definePluginMessages({
     },
     'refusal.plan-too-long': {
       id: 'assessment/refusal/plan-too-long',
-      defaultMessage: 'A timeline holds at most 50 stages. Remove some stages first.',
+      defaultMessage: 'A timeline holds at most {most} stages. Remove some stages first.',
     },
     'refusal.plan-changed': {
       id: 'assessment/refusal/plan-changed',

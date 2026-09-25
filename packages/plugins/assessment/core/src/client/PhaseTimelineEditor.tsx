@@ -17,7 +17,7 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from './i18n.ts'
 import { useBatchLive } from './live.ts'
 import { assessmentApi } from './api.ts'
-import { refusalMessage, refusalsOf, type PlanRefusalLike } from './refusals.ts'
+import { planRefusalWords, refusalsOf, type PlanRefusalLike } from './refusals.ts'
 import {
   countChanges,
   draftOf,
@@ -348,10 +348,7 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
     setPlanRefusals(refusals)
     setFailure(refusals.length > 0 ? null : formatError(error))
   }
-  const sentenceOf = (refusal: PlanRefusalLike) => {
-    const message = refusalMessage(refusal.reason)
-    return message ? format(message) : refusal.reason
-  }
+  const sentenceOf = (refusal: PlanRefusalLike) => planRefusalWords(format, refusal.reason)
 
   const savePlan = useMutation({
     mutationFn: ({
