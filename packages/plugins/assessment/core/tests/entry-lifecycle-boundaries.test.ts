@@ -170,6 +170,102 @@ describe.runIf(postgresAvailable)('where withdraw ends and abandon does not', ()
     expect(result.withdrawCard).toBe('hidden')
   })
 
+  // A refused claim under appeal still reads `rejected` (§32.21), which is
+  // also the status that may be edited or sent back as it stands. The appeal
+  // is judging the filing it was opened on, so both of those wait for it:
+  // a new version would leave the appeal's verdict with nowhere to land, and
+  // a second round beside it is one the claim cannot carry.
+  it('keeps a refused claim under appeal on its filing until the appeal is decided', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('lb-appeal-holds')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, {
+            profile: [...GATED, 'assessment.review.process', 'assessment.entry.appeal'],
+            escalation: [
+              {
+                id: 'esc',
+                label: '复核',
+                selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
+                quorum: { type: 'any' },
+              },
+            ],
+          })
+          const s1 = f.principal(f.s1)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const submitted = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          yield* assessment.decideReview(
+            f.t,
+            submitted.currentReviewInstanceId!,
+            { decision: 'reject', comment: 'not enough' },
+            f.principal(f.reviewer),
+          )
+          const appealed = yield* assessment.appealEntry(
+            f.t,
+            entry.id,
+            { reason: 'the certificate is genuine' },
+            s1,
+          )
+          const standing = () =>
+            Effect.map(
+              runSql(sql`
+                select status, current_revision_id, current_recognition_id
+                from entries where id = ${entry.id}`),
+              (rows) =>
+                one<{
+                  status: string
+                  current_revision_id: string
+                  current_recognition_id: string | null
+                }>(rows),
+            )
+          const before = yield* standing()
+          const edited = yield* Effect.exit(
+            assessment.appendEntryRevision(f.t, entry.id, { payload: {} }, s1),
+          )
+          const resubmitted = yield* Effect.exit(
+            assessment.setEntryStatus(f.t, entry.id, 'in_review', s1),
+          )
+          const seen = yield* assessment.getEntry(f.t, entry.id, s1)
+          const card = (yield* assessment.listMyEntries(f.t, g.batch.id, {}, s1)).entries[0]!
+          const during = yield* standing()
+          // the appeal is upheld at the ladder's only rung
+          yield* assessment.decideReview(
+            f.t,
+            appealed.id,
+            { decision: 'approve' },
+            f.principal(f.reviewer),
+          )
+          const after = yield* standing()
+          const settled = one<{ id: string }>(
+            yield* runSql(sql`
+              select id from entry_recognitions where review_instance_id = ${appealed.id}`),
+          )
+          return { before, edited, resubmitted, seen, card, during, after, settled }
+        }),
+      ),
+    )
+
+    expect(refusalOf(result.edited)?.reason).toBe('appeal-under-way')
+    // a refusal, not a defect: the second round never reached the database
+    expect(refusalOf(result.resubmitted)?.reason).toBe('appeal-under-way')
+    for (const capabilities of [result.seen.capabilities, result.card.capabilities]) {
+      expect(capabilities.edit).toEqual({ state: 'blocked', reason: 'appeal-under-way' })
+      expect(capabilities.submit).toEqual({ state: 'blocked', reason: 'appeal-under-way' })
+    }
+    // nothing moved while the appeal was heard
+    expect(result.during).toEqual(result.before)
+    // and the verdict landed on the claim it was about
+    expect(result.after.status).toBe('approved')
+    expect(result.after.current_revision_id).toBe(result.before.current_revision_id)
+    expect(result.after.current_recognition_id).toBe(result.settled.id)
+  })
+
   it('an approved claim can be given up: the entry voids, the verdict stands', async () => {
     const result = ok(
       await run(

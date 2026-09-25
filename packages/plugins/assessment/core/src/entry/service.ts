@@ -631,6 +631,14 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
         : gate !== undefined && !gate.allowed
           ? { state: 'blocked', reason: gate.reason }
           : { state: 'available', reason: null }
+    // A round under way on this claim answers it, whatever the status says:
+    // a refused claim under appeal still reads `rejected`, and the writes
+    // that would put new material or a second round beside that appeal
+    // refuse with this reason, so the screen says it before the press.
+    const underway: ActionDecision | undefined =
+      standing?.open === true
+        ? { allowed: false, layer: 'policy', reason: 'appeal-under-way' }
+        : undefined
     return {
       id: entry.id,
       batchId: entry.batchId,
@@ -683,7 +691,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             (entry.status === 'draft' ||
               entry.status === 'rejected' ||
               entry.status === 'needs_revision'),
-          gates?.edit,
+          underway ?? gates?.edit,
         ),
         // a rejected filing may go back as it stands (§32.65): the word was
         // "no, as filed" and the answer may be "look again". What was sent
@@ -694,7 +702,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             : when(
                 (entry.source === 'self' || entry.source === 'proxy') &&
                   (entry.status === 'draft' || entry.status === 'rejected'),
-                gates?.submit,
+                underway ?? gates?.submit,
               ),
         // Taking work back to edit ends where review begins (§32.69): once
         // anybody has decided, escalated, asked for material or voted -
@@ -1255,6 +1263,13 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           ) {
             return yield* refuse('edit', 'entry-not-editable')
           }
+          // A refused claim under appeal still reads `rejected` (§32.21), and
+          // the appeal is judging the filing it was opened on: a new version
+          // now would move the claim out from under its own round. Changing
+          // the material is the other door, and it opens when the round ends.
+          if (yield* hasOpenRound(tenantId, entryId)) {
+            return yield* refuse('edit', 'appeal-under-way')
+          }
           if (item.status !== 'active') return yield* refuse('edit', 'item-not-active')
           yield* sameQuestion(item, input.expectedItemRevisionId)
           const revision =
@@ -1375,6 +1390,13 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                 // asked for different material and only a new version answers
                 if (entry.status !== 'draft' && entry.status !== 'rejected') {
                   return yield* refuse(action, 'entry-not-submittable')
+                }
+                // one open round per claim (§15): a refused claim whose appeal
+                // is being heard is answered by that round, and a second one
+                // beside it - or an approval by rule that leaves it behind -
+                // is not a thing the claim can carry
+                if (yield* hasOpenRound(tenantId, entryId)) {
+                  return yield* refuse(action, 'appeal-under-way')
                 }
                 if (item.status !== 'active') return yield* refuse(action, 'item-not-active')
                 if (entry.currentRevisionId === null) {

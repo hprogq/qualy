@@ -984,6 +984,10 @@ const i18n = definePluginMessages({
       id: 'assessment/entry/refuse-appeal-not-withdrawable',
       defaultMessage: 'An appeal in progress cannot be withdrawn.',
     },
+    refuseAppealUnderWay: {
+      id: 'assessment/entry/refuse-appeal-under-way',
+      defaultMessage: 'Your appeal is being decided. You can edit or resubmit once it is.',
+    },
     refuseMaxEntries: {
       id: 'assessment/entry/refuse-max-entries',
       defaultMessage: 'The submission limit for this item has been reached.',

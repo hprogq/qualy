@@ -20,6 +20,7 @@ const SENTENCES: Record<string, MessageDescriptor> = {
   'entry-not-withdrawable': m.refuseNotWithdrawable,
   'review-under-way': m.refuseReviewUnderWay,
   'appeal-not-withdrawable': m.refuseAppealNotWithdrawable,
+  'appeal-under-way': m.refuseAppealUnderWay,
   'nothing-to-appeal': m.refuseNothingToAppeal,
   'decision-superseded': m.refuseDecisionSuperseded,
   'review-already-open': m.refuseReviewOpen,

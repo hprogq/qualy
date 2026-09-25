@@ -102,6 +102,7 @@ export default {
   'assessment/entry/refuse-review-under-way':
     '审核已开始，无法撤回修改；如不再主张本条申报，可选择放弃。',
   'assessment/entry/refuse-appeal-not-withdrawable': '申诉进行中，无法撤回。',
+  'assessment/entry/refuse-appeal-under-way': '申诉处理完成后才能修改或重新提交。',
   'assessment/entry/refuse-max-entries': '已达到该项目的申报条数上限。',
   'assessment/entry/refuse-item-voided': '项目已停用。',
   'assessment/entry/refuse-item-unconfigured': '项目尚未完成配置，请联系批次管理员。',
