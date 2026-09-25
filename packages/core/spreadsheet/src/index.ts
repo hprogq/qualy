@@ -52,7 +52,10 @@ const FURNITURE = 65_536
  * The ceilings on what a workbook's parts may hold, from the ceilings on what
  * the parser accepts: every sheet together holds no more cells than the one
  * widest table the parser would read, and no more rows than every sheet at
- * its longest.
+ * its longest. The cells are the ceiling on the reader's heap, so they are
+ * counted across sheets: a workbook of several full sheets is refused as
+ * `too-many-cells`, which a person answers by keeping the one sheet they
+ * import.
  */
 export const contentLimitsOf = (limits: SpreadsheetLimits): ContentLimits => {
   const cells = (limits.maxRows + 1) * limits.maxColumns
@@ -77,6 +80,7 @@ export type SpreadsheetRefusal =
   | 'too-many-sheets'
   | 'sheet-missing'
   | 'too-many-rows'
+  | 'too-many-cells'
   | 'too-many-columns'
   | 'cell-too-long'
   | 'formula-not-allowed'
@@ -159,6 +163,7 @@ const ARCHIVE_REFUSALS = {
   'too-large': 'file-too-large',
   'too-many-sheets': 'too-many-sheets',
   'too-many-rows': 'too-many-rows',
+  'too-many-cells': 'too-many-cells',
 } as const satisfies Record<ArchiveRefused['reason'], SpreadsheetRefusal>
 
 /**

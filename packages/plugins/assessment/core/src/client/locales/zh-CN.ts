@@ -528,6 +528,7 @@ export default {
   'assessment/record/import/reason/too-many-rows': '超过 2000 行',
   'assessment/record/import/reason/too-many-columns': '列数过多',
   'assessment/record/import/reason/too-many-sheets': '工作表过多',
+  'assessment/record/import/reason/too-many-cells': '单元格过多，请删除不需要导入的工作表和行',
   'assessment/record/import/reason/data-sheet-missing': '缺少“行政认定”工作表',
   'assessment/record/import/reason/extra-sheet': '请删除“行政认定”以外的工作表后重新上传',
   'assessment/record/import/reason/extra-column': '请删除模板列之外的内容后重新上传',

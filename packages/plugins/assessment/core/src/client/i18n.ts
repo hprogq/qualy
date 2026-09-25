@@ -2263,6 +2263,10 @@ const i18n = definePluginMessages({
       id: 'assessment/record/import/reason/too-many-sheets',
       defaultMessage: 'Too many sheets',
     },
+    importReasonTooManyCells: {
+      id: 'assessment/record/import/reason/too-many-cells',
+      defaultMessage: 'Too many cells. Delete the sheets and rows you are not importing',
+    },
     importReasonSheetMissing: {
       id: 'assessment/record/import/reason/data-sheet-missing',
       defaultMessage: 'The 行政认定 sheet is missing',

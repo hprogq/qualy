@@ -33,6 +33,10 @@ directory-import 不自己判断组织规则、站位、权限；它经端口问
 - 已存在且姓名 / 类型 / 组织一致 → `existing`，跳过；不一致 → `user-conflict`（列出不同的字段）；已删除 → `user-deleted`。**不做导入即更新，不做导入即恢复。**
 - 有任一错误行整批拒绝（`USER_IMPORT_INVALID`），不做部分成功。
 
+## 文件限额
+
+由 `@qualy/spreadsheet` 统一执行，名录导入与统一认定导入共用：文件不超过 10 MiB；最多 8 个工作表；单表最多 2000 行数据、128 列，单元格不超过 4000 字。**单元格数按全部工作表合计**，不超过一张满表（2001 × 128）：读取器会为工作簿里的每个工作表建对象，与导入哪一张无关，所以这条上限管的是堆。超出时以 `too-many-cells` 拒绝，界面提示删除不需要导入的工作表和行，而不是笼统的「文件过大」。
+
 ## Preview / Commit
 
 - 文件在事务外读取（`@qualy/spreadsheet`），判定在 `plan()` 中完成：先按 mapping 求链、验证列存在、人员类型可用且可站在链尾类型、`auth.user.manage` 覆盖 anchor（有节点要建时另需 `org.tree.manage`），再折叠期望树、逐级 childNamed、批量 byBusinessNo。最后按 commit 的写法逐个问将写到的节点：新建单位要求父节点在 `org.tree.manage` 范围内，新建人员要求落位节点在 `auth.user.manage` 范围内；尚未存在的节点只由最近已存在祖先上的 subtree 授权覆盖。够不到的节点列为 `unit-out-of-reach` / `placement-out-of-reach` 问题，而不是等到 commit 才 403。

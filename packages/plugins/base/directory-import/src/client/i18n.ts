@@ -310,6 +310,11 @@ const i18n = definePluginMessages({
       id: 'directory-import/issue/control-character',
       defaultMessage: 'A cell holds a line break or an invisible character',
     },
+    issueTooManyCells: {
+      id: 'directory-import/issue/too-many-cells',
+      defaultMessage:
+        'The workbook holds more cells than one import reads. Delete the sheets and rows you are not importing',
+    },
     issueUserConflict,
     issueBusinessNoTaken,
     issueNodeConflict,

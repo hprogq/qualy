@@ -37,6 +37,8 @@ export const issueText = (format: Format, issue: IssueLike, businessNo: string):
       return format(m.issueOrgNameTooLong)
     case 'control-character':
       return format(m.issueControlCharacter)
+    case 'too-many-cells':
+      return format(m.issueTooManyCells)
     case 'user-conflict':
       return format(m.issueUserConflict, {
         businessNo,

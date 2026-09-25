@@ -135,10 +135,34 @@ describe('what a workbook would become, counted before the reader builds it', ()
     const bytes = await numericBook(4 * SPREADSHEET_LIMITS.maxRows, SPREADSHEET_LIMITS.maxColumns)
     expect(bytes.byteLength).toBeLessThan(SPREADSHEET_LIMITS.maxFileBytes)
     expect(() => inspectArchive(bytes)).not.toThrow()
-    expect(refusalOf(bytes)).toBe('too-large')
+    expect(refusalOf(bytes)).toBe('too-many-cells')
     const refused = await openWorkbook(bytes).catch((error: unknown) => error)
-    expect((refused as SpreadsheetUnreadable).reason).toBe('file-too-large')
+    expect((refused as SpreadsheetUnreadable).reason).toBe('too-many-cells')
   }, 60_000)
+
+  // The cells are counted across sheets, because the reader builds every
+  // sheet whichever one is imported. A small file of several ordinary sheets
+  // was refused as too large, which told nobody to take the other sheets out.
+  it('says a workbook of several sheets holds too many cells, not that the file is too large', () => {
+    const rows = (sheet: number) =>
+      Array.from(
+        { length: SPREADSHEET_LIMITS.maxRows },
+        (_, at) =>
+          `<row r="${String(at + 2)}">${Array.from(
+            { length: 40 },
+            (_, column) => `<c r="${String(sheet)}${String(column)}"><v>1</v></c>`,
+          ).join('')}</row>`,
+      ).join('')
+    const sheets = [1, 2, 3, 4].map((sheet) => ({
+      name: `xl/worksheets/sheet${String(sheet)}.xml`,
+      data: `<worksheet xmlns="${NS}"><sheetData>${rows(sheet)}</sheetData></worksheet>`,
+    }))
+    const bytes = archiveOf(sheets)
+    expect(bytes.byteLength).toBeLessThan(SPREADSHEET_LIMITS.maxFileBytes)
+    expect(refusalOf(bytes)).toBe('too-many-cells')
+    // and any one of them alone is an ordinary sheet
+    expect(refusalOf(archiveOf(sheets.slice(0, 1)))).toBeNull()
+  })
 
   it('refuses more rows than every sheet at its longest', () => {
     const rows = Array.from(

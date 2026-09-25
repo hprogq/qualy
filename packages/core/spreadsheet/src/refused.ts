@@ -1,5 +1,10 @@
 /** why an archive is not handed to the reader */
-export type ArchiveRefusal = 'malformed' | 'too-large' | 'too-many-sheets' | 'too-many-rows'
+export type ArchiveRefusal =
+  | 'malformed'
+  | 'too-large'
+  | 'too-many-sheets'
+  | 'too-many-rows'
+  | 'too-many-cells'
 
 /** an archive this will not hand to the reader, in one word */
 export class ArchiveRefused extends Error {

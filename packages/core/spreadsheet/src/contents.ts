@@ -253,7 +253,11 @@ export const contentTally = (limits: ContentLimits) => {
   let sharedElements = 0
   let otherElements = 0
 
-  const over = (count: number, ceiling: number, reason: 'too-large' | 'too-many-rows') => {
+  const over = (
+    count: number,
+    ceiling: number,
+    reason: 'too-large' | 'too-many-rows' | 'too-many-cells',
+  ) => {
     if (count > ceiling) throw new ArchiveRefused(reason)
   }
 
@@ -280,7 +284,10 @@ export const contentTally = (limits: ContentLimits) => {
     cells += cellTags
     sheetElements += total - rowTags - cellTags
     over(rows, limits.maxRows, 'too-many-rows')
-    over(cells, limits.maxCells, 'too-large')
+    // the cells every sheet holds, together: a workbook of several full
+    // sheets passes each sheet's own ceiling and not this one, and what
+    // makes it readable is taking out the sheets nobody is importing
+    over(cells, limits.maxCells, 'too-many-cells')
     over(merges, limits.maxMerges, 'too-large')
     over(sheetElements, limits.maxSheetElements, 'too-large')
   }
