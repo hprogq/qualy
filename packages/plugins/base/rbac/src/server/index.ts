@@ -21,7 +21,7 @@ import { BadRequest, codeFrom, cursorUnusable, pageNumber, pageSize } from '@qua
 import { Audit } from '@qualy/audit-contract/effect'
 import { GrantRevoked } from '../actions.ts'
 import { accessApiGroup } from '../api.ts'
-import { make as makeGrants, type GrantRow } from './grants.ts'
+import { holdsCanonicalAdmin, make as makeGrants, type GrantRow } from './grants.ts'
 import { REACH_RANK, type Reach } from './authorization.ts'
 import {
   administratorSurvivors,
@@ -264,6 +264,9 @@ export const make = Effect.fn('Rbac.make')(function* (declared: readonly ActiveP
         read: held.has('iam.tenant-grant.read') || held.has('iam.tenant-grant.manage'),
         manage: held.has('iam.tenant-grant.manage'),
       },
+      administrator: yield* bound(() =>
+        holdsCanonicalAdmin(actor.tenantId, actor.userId, CANONICAL_ADMIN_ROLE),
+      )().pipe(Effect.orDie),
     }
   })
 

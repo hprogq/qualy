@@ -942,6 +942,7 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
               anchors: [{ orgNodeId: f.child, coverage: 'self' as const }],
             },
             tenantGrants: { read: false, manage: false },
+            administrator: false,
           }
           const listed = yield* access.grants.list(f.tenant, { orgNodeId: f.child }, atTheNode)
           return listed.map((row) => ({ coverage: row.coverage, manageable: row.manageable }))
@@ -1070,6 +1071,7 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
             },
             manage: { tenantWide: false, anchors: [] },
             tenantGrants: { read: false, manage: false },
+            administrator: false,
           }
           const scoped = yield* access.grants.list(f.tenant, {}, narrow)
           // one row per page, to catch a filter applied after the limit
@@ -2586,6 +2588,76 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
       expect(answer.after).toEqual([])
       // the administrator still sees the grant, and that its role is off
       expect(answer.listed).toEqual([[answer.role, 'disabled']])
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('offers the administrator grant for revoking only to an administrator', async () => {
+    const db = await createTestContext('effect-grant-admin-manageable')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const access = yield* Access
+          const rbac = yield* Rbac
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          // a clerk who administers tenant-wide grants and is no administrator
+          const clerk = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into roles (tenant_id, code, name, kind, status, permission_mode)
+              values (${f.tenant}, 'iam-clerk', 'IAM clerk', 'tenant', 'active', 'explicit')
+              returning id`),
+          ).id
+          for (const code of ['iam.tenant-grant.read', 'iam.tenant-grant.manage']) {
+            const permission = one<{ id: string }>(
+              yield* runSql(sql`
+                insert into permissions (code, plugin, name, target_kind)
+                values (${code}, 'rbac', ${code}, 'tenant')
+                on conflict (code) do update set code = excluded.code returning id`),
+            ).id
+            yield* runSql(sql`
+              insert into role_permissions (tenant_id, role_id, permission_id)
+              values (${f.tenant}, ${clerk}, ${permission})`)
+          }
+          yield* runSql(sql`
+            insert into role_grants (tenant_id, user_id, role_id)
+            values (${f.tenant}, ${f.anchored.userId}, ${clerk})`)
+          const manageable = (actor: Principal) =>
+            Effect.gen(function* () {
+              const rows = yield* access.grants.list(
+                f.tenant,
+                {},
+                yield* access.grantScopeFor(actor),
+              )
+              return Object.fromEntries(
+                rows
+                  .filter((row) => row.orgNodeId === null)
+                  .map((row) => [row.roleCode, row.manageable]),
+              )
+            })
+          const adminGrant = one<{ id: string }>(
+            yield* runSql(sql`
+              select id from role_grants where tenant_id = ${f.tenant} and role_id = ${f.role}`),
+          ).id
+          // the write the press would send, for the same answer
+          const pressed = yield* Effect.result(
+            access.grants.revoke(f.tenant, adminGrant, f.anchored, (tenantId) =>
+              rbac.assertTenantKeepsAdministrator(tenantId),
+            ),
+          )
+          return {
+            clerk: yield* manageable(f.anchored),
+            administrator: yield* manageable(f.principal),
+            pressed: tagOf(pressed),
+          }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.clerk).toEqual({ admin: false, 'iam-clerk': true })
+      expect(answer.pressed).toBe('TENANT_ADMIN_REQUIRED')
+      expect(answer.administrator).toEqual({ admin: true, 'iam-clerk': true })
     } finally {
       await db.dispose()
     }

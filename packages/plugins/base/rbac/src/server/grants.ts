@@ -88,6 +88,11 @@ export interface GrantScope {
   manage: AuthorizationScope
   /** a tenant-wide grant has no node, so node coverage cannot decide it */
   tenantGrants: { read: boolean; manage: boolean }
+  /**
+   * Whether the caller holds the canonical administrator role, which alone
+   * may give or take back that role; reaching its grant is not enough.
+   */
+  administrator: boolean
 }
 
 /** why a role cannot be given here, in words a screen can act on */
@@ -205,7 +210,7 @@ const grantRows = (
         'g.validUntil',
         (scope === undefined
           ? sql<boolean>`true`
-          : withinScope(
+          : sql<boolean>`(${withinScope(
               {
                 orgNodeId: eb.ref('g.orgNodeId'),
                 id: eb.ref('n.id'),
@@ -215,7 +220,13 @@ const grantRows = (
               scope.manage,
               scope.tenantGrants.manage,
               eb.ref('g.coverage'),
-            )
+            )} and ${
+              // the revoke asks this too: the administrator role is only
+              // given or taken back by somebody who holds it
+              scope.administrator
+                ? sql<boolean>`true`
+                : sql<boolean>`${eb.ref('r.systemKey')} is distinct from ${CANONICAL_ADMIN_ROLE}`
+            })`
         ).as('manageable'),
       ])
 
@@ -347,7 +358,7 @@ const orgNodeType = (tenantId: string, orgNodeId: string) =>
  * kept the two things this answer decides - the bypass of the appointment
  * graph, and the reservation on the administrator role itself.
  */
-const holdsCanonicalAdmin = (tenantId: string, userId: string, canonicalKey: string) =>
+export const holdsCanonicalAdmin = (tenantId: string, userId: string, canonicalKey: string) =>
   db
     .query((k) =>
       k
