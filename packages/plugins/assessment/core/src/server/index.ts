@@ -47,8 +47,8 @@ import {
 } from '../plugin.ts'
 import { makeItemMethods, type ItemMethods, type ItemView } from '../item/service.ts'
 import {
+  activeItemChannelsOf,
   currentBatchConfigs,
-  itemsOf as batchItemsOf,
   liveBatchPayloads,
   revisionsByIdOf,
 } from '../item/db.ts'
@@ -1987,21 +1987,12 @@ export const make = Effect.fn('Assessment.make')(function* () {
       if (here !== null) {
         const phase = plan[here]!
         const scopes = yield* phaseScopes(tenantId, phase.id)
-        const items = (yield* batchItemsOf(tenantId, batch.id)).filter(
+        const fileable = (yield* activeItemChannelsOf(tenantId, batch.id)).filter(
           (item) =>
-            item.status === 'active' &&
-            item.currentRevisionId !== null &&
-            itemTypes.get(item.itemType)?.interaction !== 'derived',
+            itemTypes.get(item.itemType)?.interaction !== 'derived' &&
+            opensTo(item.entryChannels, 'participant'),
         )
-        const revisions = yield* revisionsByIdOf(
-          tenantId,
-          items.map((item) => item.currentRevisionId!),
-        )
-        const fileable = items.filter((item) => {
-          const revision = revisions.get(item.currentRevisionId!)
-          return revision !== undefined && opensTo(revision.entryChannels, 'participant')
-        })
-        if (fileable.some((item) => admitting(phase, scopes, item.id))) return 'open' as const
+        if (fileable.some((item) => admitting(phase, scopes, item.itemId))) return 'open' as const
       }
       // what the clock has reached, whether or not the round is in service:
       // everything after it is still to come

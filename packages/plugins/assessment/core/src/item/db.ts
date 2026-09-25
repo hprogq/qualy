@@ -591,6 +591,41 @@ export const currentBatchConfigs = (tenantId: string, batchId: string) =>
     )
 
 /**
+ * The doors each active question of a batch is open through, and nothing
+ * else of its configuration: a participant's round list asks this on every
+ * poll, and needs no form, rule or chain to answer whether filing is open.
+ */
+export const activeItemChannelsOf = (tenantId: string, batchId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('AssessmentItem')
+        .innerJoin('AssessmentItemRevision', (join) =>
+          join
+            .onRef('AssessmentItemRevision.tenantId', '=', 'AssessmentItem.tenantId')
+            .onRef('AssessmentItemRevision.id', '=', 'AssessmentItem.currentRevisionId'),
+        )
+        .select([
+          'AssessmentItem.id as itemId',
+          'AssessmentItem.itemType as itemType',
+          'AssessmentItemRevision.entryChannels as entryChannels',
+        ])
+        .where('AssessmentItem.tenantId', '=', tenantId)
+        .where('AssessmentItem.batchId', '=', batchId)
+        .where('AssessmentItem.status', '=', 'active')
+        .execute(),
+    )
+    .pipe(
+      Effect.map((rows) =>
+        rows.map((row) => ({
+          itemId: String(row.itemId),
+          itemType: String(row.itemType),
+          entryChannels: readEntryChannels(row.entryChannels),
+        })),
+      ),
+    )
+
+/**
  * Every live entry of a batch with what its payload decodes by, for the
  * material-range impact check: each row carries its own item revision's form
  * and its item's driver, because history decodes by what it cited, never by
