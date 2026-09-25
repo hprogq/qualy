@@ -1032,6 +1032,8 @@ describe('rounds of other shapes', () => {
 describe('an account that has stopped moving', () => {
   const tagOf = (itemId: string) =>
     itemRow(itemId).querySelector('[data-tag]')?.getAttribute('data-tag') ?? null
+  const madeOf = (itemId: string) =>
+    itemRow(itemId).querySelector('[data-made]')?.getAttribute('data-made') ?? null
 
   it('promises nothing of an archived batch', async () => {
     await page.viewport(1440, 900)
@@ -1045,7 +1047,14 @@ describe('an account that has stopped moving', () => {
     // but nothing is marked as waiting to be handled or decided
     expect(tagOf('q3')).toBeNull()
     expect(tagOf('q4')).toBeNull()
-    expect(itemRow('q4').querySelector('[data-made]')?.getAttribute('data-made')).toBe('claims')
+    // the claims that never reached a decision say where they stopped
+    expect(madeOf('q4')).toBe('unsettled')
+    expect(madeOf('q3')).toBe('unsettled')
+    expect(madeOf('q8')).toBe('claims')
+    // and a record the office never made is not one still to come
+    expect(madeOf('q1')).toBe('unrecorded')
+    // a score that no longer changes is not called provisional
+    expect(page.getByTestId('result-mode').elements()).toHaveLength(0)
     await userEvent.click(itemRow('q3').querySelector('button[aria-expanded]') as HTMLElement)
     expect(itemRow('q3').querySelector('[data-follow="todo"]')).toBeNull()
   })
@@ -1068,6 +1077,8 @@ describe('an account that has stopped moving', () => {
       .element(page.getByTestId('result-moving'))
       .toHaveAttribute('data-closed', 'excluded')
     expect(tagOf('q3')).toBeNull()
+    expect(madeOf('q4')).toBe('unsettled')
+    expect(madeOf('q1')).toBe('unrecorded')
   })
 
   it('keeps an open batch open for somebody still on the roster', async () => {
@@ -1087,6 +1098,9 @@ describe('an account that has stopped moving', () => {
     await expect.element(page.getByTestId('result-total')).toBeVisible()
     expect(page.getByTestId('result-moving').element().hasAttribute('data-closed')).toBe(false)
     expect(tagOf('q3')).toBe('todo')
+    expect(madeOf('q4')).toBe('waits')
+    expect(madeOf('q1')).toBe('recorded')
+    await expect.element(page.getByTestId('result-mode')).toBeVisible()
   })
 })
 

@@ -998,10 +998,14 @@ function Head({
           ) : (
             <h1 {...stylex.props(styles.title)}>{heading}</h1>
           )}
-          <span data-testid="result-mode" data-mode={mode} {...stylex.props(styles.mode)}>
-            <span aria-hidden {...stylex.props(styles.modeDot)} />
-            {format(m.resultProvisionalMark)}
-          </span>
+          {/* an archived batch's score no longer changes, which is what the
+              note under it says; a mark calling it provisional would say otherwise */}
+          {closed !== 'archived' && (
+            <span data-testid="result-mode" data-mode={mode} {...stylex.props(styles.mode)}>
+              <span aria-hidden {...stylex.props(styles.modeDot)} />
+              {format(m.resultProvisionalMark)}
+            </span>
+          )}
         </div>
         <div {...stylex.props(styles.totalRow)}>
           <span
@@ -1419,7 +1423,16 @@ interface Tag {
 }
 
 /** what the line under a question's name is made of */
-type MadeKind = 'voided' | 'derived' | 'claim' | 'claims' | 'waits' | 'recorded' | 'none'
+type MadeKind =
+  | 'voided'
+  | 'derived'
+  | 'claim'
+  | 'claims'
+  | 'unsettled'
+  | 'waits'
+  | 'recorded'
+  | 'unrecorded'
+  | 'none'
 
 /** the counts a mark beside the name already says, so the line under it does not */
 const TAG_SAYS: Record<Tag['kind'], readonly (typeof FACT_ORDER)[number][]> = {
@@ -1429,15 +1442,30 @@ const TAG_SAYS: Record<Tag['kind'], readonly (typeof FACT_ORDER)[number][]> = {
 }
 
 /**
+ * On an account that has stopped moving, the claims that never reached a
+ * decision say where they stopped, not what they are waiting for: nothing
+ * that would come of them can come any more.
+ */
+const STOPPED: Partial<Record<(typeof FACT_ORDER)[number], string>> = {
+  pending: 'undecided',
+  reconsidering: 'unconcluded',
+  asked: 'unsupplied',
+  returned: 'unrevised',
+  drafts: 'unsent',
+}
+
+/**
  * Where a question's figure came from, in one line: which claim it was when
  * there is one, how its claims stand when there are several, and why it is
  * nothing when it is nothing. What the mark beside the name says is not said
  * again; where that leaves nothing, the line says what the figure waits for.
+ * On a closed account nothing waits: the line says only what is so.
  */
 const madeOf = (
   item: LedgerItemView,
   tag: Tag | null,
   reader: 'owner' | 'staff',
+  closed: boolean,
   format: Format,
   list: (parts: readonly string[]) => string,
   dayOf: (at: string | null) => string | null,
@@ -1458,13 +1486,19 @@ const madeOf = (
   }
   const told: readonly string[] = tag === null ? [] : TAG_SAYS[tag.kind]
   const parts = FACT_ORDER.filter((kind) => facts[kind] > 0 && !told.includes(kind)).map((kind) =>
-    format(m.resultFact, { kind, count: facts[kind] }),
+    format(m.resultFact, {
+      kind: (closed ? STOPPED[kind] : undefined) ?? kind,
+      count: facts[kind],
+    }),
   )
-  if (parts.length > 0) return { kind: 'claims', said: list(parts) }
+  if (parts.length > 0) {
+    return { kind: closed && moving > 0 ? 'unsettled' : 'claims', said: list(parts) }
+  }
   if (tag !== null) {
     return { kind: 'waits', said: format(m.resultWaitsFor, { kind: tag.kind, reader }) }
   }
-  const nothing = item.recordedOnly ? 'recorded' : 'none'
+  // the office's record is still to come only while the account is open
+  const nothing = item.recordedOnly ? (closed ? 'unrecorded' : 'recorded') : 'none'
   return { kind: nothing, said: format(m.resultMade, { kind: nothing }) }
 }
 
@@ -1553,7 +1587,7 @@ function ItemRow({
   // no mark says one is waiting to be handled or decided
   const tag = closed ? null : tagOf(item)
   const rule = ruleOf(item)
-  const made = madeOf(item, tag, reader, format, list, (at) => dayOf(at, locale, zone))
+  const made = madeOf(item, tag, reader, closed, format, list, (at) => dayOf(at, locale, zone))
   const nothing = item.lines.length === 0 && item.cents === 0
   const inset = { paddingInlineStart: 16 + item.depth * INDENT }
   const lineData =

@@ -438,7 +438,7 @@ const resultGroupLeft = defineMessage<{ value: string }>()({
 const resultFact = defineMessage<{ kind: string; count: number }>()({
   id: 'assessment/result/fact',
   defaultMessage:
-    '{kind, select, approved {{count} approved} recorded {{count} recorded by staff} notCounted {{count} not counted} reconsidering {{count} being re-examined} pending {{count} under review} asked {{count} awaiting more material} returned {{count} returned for revision} refused {{count} not approved} abandoned {{count} abandoned} revoked {{count} revoked} excluded {{count} excluded} other {{count, plural, one {# draft} other {# drafts}}}}',
+    '{kind, select, approved {{count} approved} recorded {{count} recorded by staff} notCounted {{count} not counted} reconsidering {{count} being re-examined} pending {{count} under review} asked {{count} awaiting more material} returned {{count} returned for revision} refused {{count} not approved} abandoned {{count} abandoned} revoked {{count} revoked} excluded {{count} excluded} undecided {{count} left undecided} unconcluded {{count} left in re-examination} unsupplied {{count} left without the material asked for} unrevised {{count} left returned for revision} unsent {{count, plural, one {# draft left unsubmitted} other {# drafts left unsubmitted}}} other {{count, plural, one {# draft} other {# drafts}}}}',
 })
 
 const resultTag = defineMessage<{ kind: string; count: number; reader: string }>()({
@@ -456,7 +456,7 @@ const resultWord = defineMessage<{ kind: string }>()({
 const resultMade = defineMessage<{ kind: string }>()({
   id: 'assessment/result/made',
   defaultMessage:
-    '{kind, select, voided {Item disabled; not counted} derived {Counted automatically} recorded {Awaiting staff entry} other {Nothing submitted}}',
+    '{kind, select, voided {Item disabled; not counted} derived {Counted automatically} recorded {Awaiting staff entry} unrecorded {Not recorded} other {Nothing submitted}}',
 })
 
 const resultRule = defineMessage<{ kind: string; value: string }>()({

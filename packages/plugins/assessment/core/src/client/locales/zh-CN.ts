@@ -390,13 +390,13 @@ export default {
   'assessment/result/group-pending': '{count} 条审核中',
   'assessment/result/group-left': '还可得 {value}',
   'assessment/result/fact':
-    '{kind, select, approved {{count} 条已通过} recorded {{count} 条已认定} notCounted {{count} 条未计入} reconsidering {{count} 条复核中} pending {{count} 条审核中} asked {{count} 条待补充} returned {{count} 条待修改} refused {{count} 条未通过} abandoned {{count} 条已放弃} revoked {{count} 条已撤销} excluded {{count} 条不计分} other {{count} 条草稿}}',
+    '{kind, select, approved {{count} 条已通过} recorded {{count} 条已认定} notCounted {{count} 条未计入} reconsidering {{count} 条复核中} pending {{count} 条审核中} asked {{count} 条待补充} returned {{count} 条待修改} refused {{count} 条未通过} abandoned {{count} 条已放弃} revoked {{count} 条已撤销} excluded {{count} 条不计分} undecided {{count} 条未审结} unconcluded {{count} 条复核未完成} unsupplied {{count} 条未补充材料} unrevised {{count} 条退回后未再提交} unsent {{count} 条草稿未提交} other {{count} 条草稿}}',
   'assessment/result/tag':
     '{kind, select, todo {{reader, select, staff {{count} 条待参评人处理} other {{count} 条待处理}}} drafts {{count} 条草稿} other {{count} 条审核中}}',
   'assessment/result/word':
     '{kind, select, approved {已通过} recorded {管理员认定} notCounted {已通过，按计分规则计入了其他申报} refused {未通过，不计入成绩} abandoned {已放弃，不计入成绩} revoked {已撤销，不计入成绩} excluded {不计入成绩} other {自动计入}}',
   'assessment/result/made':
-    '{kind, select, voided {项目已停用，不计入成绩} derived {自动计入，无需申报} recorded {等待管理员认定} other {未申报}}',
+    '{kind, select, voided {项目已停用，不计入成绩} derived {自动计入，无需申报} recorded {等待管理员认定} unrecorded {未认定} other {未申报}}',
   'assessment/result/rule': '{kind, select, person {每人 {value} 分} other {每条 {value} 分}}',
   'assessment/result/line-tag':
     '{kind, select, notCounted {未计入} refused {未通过} abandoned {已放弃} excluded {不计分} other {已撤销}}',
