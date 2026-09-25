@@ -873,12 +873,37 @@ export const make = Effect.gen(function* () {
     as: Principal,
   ) {
     const row = yield* reachable(tenantId, importId, as)
-    const [summary, events, nodes] = yield* Effect.all([
+    const scope = yield* rbac.listAuthorizedScope(as, MANAGE)
+    const [summary, events, nodes, visibleRows, allRows] = yield* Effect.all([
       summaryOf(tenantId, row),
       dieQuery(withDb(eventsOf(tenantId, importId))),
       dieQuery(withDb(nodesOf(tenantId, importId))),
+      dieQuery(withDb(rowsCount({ tenantId, importId, scope }))),
+      dieQuery(withDb(rowsCount({ tenantId, importId, scope: { tenantWide: true, anchors: [] } }))),
     ])
+    // The units, like the rows, only where the reader's authority reaches:
+    // the record that an import happened is the anchor's, the units under it
+    // are each their own. A unit since purged is reached by nobody below the
+    // tenant, as the rows' own reading has it. What is left out is counted,
+    // so a screen can say there is more than it shows.
+    const reached = yield* dieQuery(
+      withDb(
+        nodesReached(
+          tenantId,
+          scope,
+          nodes.flatMap((node) =>
+            node.presentId === null || node.orgNodeId === null ? [] : [node.orgNodeId],
+          ),
+        ),
+      ),
+    )
+    const shown = nodes.filter((node) =>
+      node.presentId === null || node.orgNodeId === null
+        ? scope.tenantWide
+        : reached.has(node.orgNodeId),
+    )
     return {
+      hidden: { rows: allRows - visibleRows, nodes: nodes.length - shown.length },
       import: summary,
       events: events.map((event) => ({
         id: event.id,
@@ -891,7 +916,7 @@ export const make = Effect.gen(function* () {
         retainedNodeCount: event.retainedNodeCount,
         createdAt: new Date(event.createdAt).toISOString(),
       })),
-      nodes: nodes.map((node) => ({
+      nodes: shown.map((node) => ({
         id: node.id,
         orgNodeId: node.orgNodeId,
         path: node.pathSnapshot,

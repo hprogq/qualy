@@ -296,7 +296,10 @@ export const directoryApiGroup = HttpApiGroup.make('directory')
       success: Schema.Struct({
         import: importSummary,
         events: Schema.Array(importEvent),
+        /** the import's units the reader's authority reaches */
         nodes: Schema.Array(importNode),
+        /** what this reader is not shown of the import: its rows and its units */
+        hidden: Schema.Struct({ rows: Schema.Number, nodes: Schema.Number }),
       }),
       error: [UserImportNotFound, AccessDenied],
     }).middleware(Authenticated),

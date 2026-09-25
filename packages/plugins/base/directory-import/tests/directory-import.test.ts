@@ -530,12 +530,18 @@ describe.runIf(postgresAvailable)('importing people from a spreadsheet', () => {
             total: page.total,
             numbers: page.items.map((row) => row.businessNo),
           })
+          const shape = (found: {
+            nodes: readonly { path: string }[]
+            hidden: { rows: number; nodes: number }
+          }) => ({ nodes: found.nodes.length, hidden: found.hidden })
           return {
             listed: listed.items.map((item) => item.id).sort(),
             imports: [below.importId, at.importId].sort(),
             belowForSecretary: numbers(yield* service.rows(f.tenant, below.importId, {}, reader)),
             atForSecretary: numbers(yield* service.rows(f.tenant, at.importId, {}, reader)),
             belowForAdmin: numbers(yield* service.rows(f.tenant, below.importId, {}, f.admin)),
+            detailForSecretary: shape(yield* service.detail(f.tenant, below.importId, reader)),
+            detailForAdmin: shape(yield* service.detail(f.tenant, below.importId, f.admin)),
           }
         }),
       ),
@@ -546,6 +552,10 @@ describe.runIf(postgresAvailable)('importing people from a spreadsheet', () => {
     expect(result.belowForSecretary).toEqual({ total: 0, numbers: [] })
     expect(result.atForSecretary).toEqual({ total: 1, numbers: ['230503'] })
     expect(result.belowForAdmin).toEqual({ total: 2, numbers: ['230501', '230502'] })
+    // the units the import made under the college, the same way: the grade
+    // and its two classes are below the secretary's reach, and counted
+    expect(result.detailForSecretary).toEqual({ nodes: 0, hidden: { rows: 2, nodes: 3 } })
+    expect(result.detailForAdmin).toEqual({ nodes: 3, hidden: { rows: 0, nodes: 0 } })
   }, 120_000)
 
   it('names in the preview every unit the commit could not write at, for authority over the anchor alone', async () => {
