@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { createHttpServer, HEADERS_TIMEOUT_MS, REQUEST_TIMEOUT_MS } from '../src/http-server.ts'
+import { DEFAULT_LIMITS } from '@qualy/plugin-storage/server'
+import {
+  CONNECTIONS_CHECK_INTERVAL_MS,
+  createHttpServer,
+  HEADERS_TIMEOUT_MS,
+  REQUEST_TIMEOUT_MS,
+} from '../src/http-server.ts'
 
 // How long a request may take to arrive.
 //
@@ -17,8 +23,23 @@ describe('the server this host listens with', () => {
     const server = createHttpServer()
     try {
       expect(server.requestTimeout).toBe(REQUEST_TIMEOUT_MS)
-      expect(server.requestTimeout).toBeGreaterThanOrEqual(30 * 60 * 1000)
+      expect(server.requestTimeout).toBeGreaterThanOrEqual(25 * 60 * 1000)
       expect(server.requestTimeout).toBeGreaterThan(NODE_DEFAULT_REQUEST_TIMEOUT_MS)
+    } finally {
+      server.close()
+    }
+  })
+
+  // The grant is checked when an upload starts, and the sweep reclaims the
+  // reservation once the grace after the grant has passed. An upload that
+  // started at the last moment of its grant has to be cut, at Node's next
+  // look, before that - or the sweep deletes a file still arriving.
+  it('cuts an upload before the sweep may reclaim what it is writing into', () => {
+    const server = createHttpServer()
+    try {
+      expect(server.requestTimeout + CONNECTIONS_CHECK_INTERVAL_MS).toBeLessThan(
+        DEFAULT_LIMITS.uploadCleanupGraceMinutes * 60 * 1000,
+      )
     } finally {
       server.close()
     }
