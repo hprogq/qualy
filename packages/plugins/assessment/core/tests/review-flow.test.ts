@@ -1464,16 +1464,41 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
             },
             admin,
           )
-          const moved = one<{ origin: string; appealed_instance_id: string | null }>(
+          const moved = one<{ id: string; origin: string; appealed_instance_id: string | null }>(
             yield* runSql(sql`
-              select origin, appealed_instance_id from review_instances
+              select id, origin, appealed_instance_id from review_instances
               where entry_id = ${entry.id} and supersedes_instance_id = ${appealed.id}`),
           )
+          // the claim follows its appeal onto the replacement, keeping the
+          // refusal it is contesting
+          const standing = one<{ status: string; current_review_instance_id: string }>(
+            yield* runSql(sql`
+              select status, current_review_instance_id from entries where id = ${entry.id}`),
+          )
+          const seen = yield* assessment.getEntry(f.t, entry.id, s1)
           // and the claim is still not withdrawable out of it
           const withdrawn = yield* Effect.exit(
             assessment.setEntryStatus(f.t, entry.id, 'draft', s1),
           )
-          return { moved, contested: sent.currentReviewInstanceId!, withdrawn }
+          // the replacement is decided like any appeal, and the claim can
+          // be contested again afterwards: it stands on a concluded round
+          yield* assessment.decideReview(
+            f.t,
+            moved.id,
+            { decision: 'approve' },
+            f.principal(f.reviewer),
+          )
+          const again = yield* Effect.exit(
+            assessment.appealEntry(f.t, entry.id, { reason: '认定仍有误' }, s1),
+          )
+          return {
+            moved,
+            standing,
+            openRound: seen.openRound,
+            contested: sent.currentReviewInstanceId!,
+            withdrawn,
+            again,
+          }
         }),
       ),
     )
@@ -1481,7 +1506,13 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
       origin: 'appeal',
       appealed_instance_id: result.contested,
     })
+    expect(result.standing).toEqual({
+      status: 'rejected',
+      current_review_instance_id: result.moved.id,
+    })
+    expect(result.openRound).toEqual({ origin: 'appeal' })
     expect(refusalOf(result.withdrawn)?.reason).toBe('appeal-not-withdrawable')
+    expect(Exit.isSuccess(result.again)).toBe(true)
   })
 
   // Advice for the person who filed rides only a rejection that reaches

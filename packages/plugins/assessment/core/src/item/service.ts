@@ -55,6 +55,7 @@ import {
   nodePathOf,
   openEntriesOfItem,
   participantOf,
+  repointReviewRound,
   setEntryState,
 } from '../entry/db.ts'
 import {
@@ -1290,13 +1291,26 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
             members: arrived.eligible,
           })
         }
-        yield* setEntryState({
+        // The claim follows its round onto the replacement, whatever it
+        // reads: a first round's claim is `in_review`, an appeal's keeps the
+        // approval or refusal it had (§32.21). Asked by status, an appeal's
+        // claim went on pointing at the round just superseded - the card
+        // said nothing was open, and the claim could never be appealed
+        // again. A claim that was not standing on the round moved here is
+        // data this save must not build on, so the whole save fails.
+        const followed = yield* repointReviewRound({
           tenantId: input.tenantId,
           entryId: round.entryId,
-          from: ['in_review'],
-          to: 'in_review',
-          currentReviewInstanceId: opened,
+          from: round.id,
+          to: opened,
         })
+        if (!followed) {
+          return yield* Effect.die(
+            new Error(
+              `review round ${round.id} was re-routed, but its entry ${round.entryId} was not standing on it`,
+            ),
+          )
+        }
         rerouted += 1
       }
 

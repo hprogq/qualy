@@ -500,6 +500,34 @@ export const setEntryState = (input: {
     )
     .pipe(Effect.map((row) => row !== undefined))
 
+/**
+ * Moves a claim's round pointer from one round to another, and nothing else.
+ *
+ * Compare-and-set on the pointer, never on the status: the claim under a
+ * round may read `in_review` (a first round) or keep the approval or refusal
+ * it already had (a round reconsidering one, §32.21), and which of those it
+ * is is not this write's business. `false` means the claim was not standing
+ * on `from`.
+ */
+export const repointReviewRound = (input: {
+  tenantId: string
+  entryId: string
+  from: string
+  to: string | null
+}) =>
+  db
+    .query((k) =>
+      k
+        .updateTable('Entry')
+        .set({ currentReviewInstanceId: input.to, updatedAt: sql`now()` })
+        .where('tenantId', '=', input.tenantId)
+        .where('id', '=', input.entryId)
+        .where('currentReviewInstanceId', '=', input.from)
+        .returning(['id'])
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => row !== undefined))
+
 export interface ParticipantAnchor {
   id: string
   userId: string
