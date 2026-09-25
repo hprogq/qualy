@@ -104,13 +104,7 @@ export const openPersonaAccounts = (
         ),
       )
       yield* story.step(
-        iam.users.putBinding(
-          world.tenantId,
-          userId,
-          provider,
-          { secret: password },
-          world.admin,
-        ),
+        iam.users.putBinding(world.tenantId, userId, provider, { secret: password }, world.admin),
       )
       world.personas.add(userId)
     }

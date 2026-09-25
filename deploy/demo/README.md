@@ -84,11 +84,11 @@ deploy/demo/restore.sh /opt/qualy/demo-baseline
 
 四个身份共用生成基线时给的 `QUALY_DEMO_PERSONA_PASSWORD`：
 
-| 账号                                 | 能看到什么                                                    |
-| ------------------------------------ | ------------------------------------------------------------- |
-| student@demo.qualy.example           | 六个学期的申报、审核与申诉历史；推免批次里正在辅导员处审核的材料 |
-| class-lead@demo.qualy.example        | 本班历次审核记录                                              |
-| counsellor@demo.qualy.example        | 推免材料审核的待办、补充材料与退回                            |
-| assessment-lead@demo.qualy.example   | 批次与阶段管理、题目与计分公式、名单对账、无人可审的告警      |
+| 账号                               | 能看到什么                                                       |
+| ---------------------------------- | ---------------------------------------------------------------- |
+| student@demo.qualy.example         | 六个学期的申报、审核与申诉历史；推免批次里正在辅导员处审核的材料 |
+| class-lead@demo.qualy.example      | 本班历次审核记录                                                 |
+| counsellor@demo.qualy.example      | 推免材料审核的待办、补充材料与退回                               |
+| assessment-lead@demo.qualy.example | 批次与阶段管理、题目与计分公式、名单对账、无人可审的告警         |
 
 系统管理员的密码只在生成基线时由环境变量给出，同样不公开。

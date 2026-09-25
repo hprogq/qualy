@@ -790,7 +790,7 @@ export const runSelection = (input: {
           const seen = yield* Effect.result(assessment.getReviewInstance(t, entry.instanceId, desk))
           if (seen._tag !== 'Success' || !seen.success.capabilities.canDecide)
             console.warn(
-              'WARNING: the persona student\'s last award is not waiting for the counsellor persona',
+              "WARNING: the persona student's last award is not waiting for the counsellor persona",
             )
         }),
       )
