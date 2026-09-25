@@ -126,7 +126,8 @@ database。出现第二种有持久部署副作用的能力时,先设计启动�
 `docker compose exec -e DATABASE_URL='postgres://…?statement_timeout=0' server node apps/cli/src/main.ts <命令>`(在运行中的 server 容器里,
 卷与沙箱 socket 都在)。
 迁移(`migrate` job 与开发态 apply)用自己的会话,不受这些上限约束:
-迁移器每开一个会话都先把这几项设为 0,URL 上的参数与库侧的 `ALTER ROLE / DATABASE … SET` 都不作用于迁移;它只限制等待迁移锁的时长
+迁移器每开一个会话都先把这三项,连同 `idle_session_timeout` 与 `transaction_timeout`(PostgreSQL 17 起才有,DBA 常把它设在角色上
+当安全网,超时直接断开会话)设为 0,URL 上的参数与库侧的 `ALTER ROLE / DATABASE … SET` 都不作用于迁移;它只限制等待迁移锁的时长
 (`QUALY_MIGRATION_LOCK_TIMEOUT_MS`,默认 120s)。
 
 **库前有 PgBouncer 这类连接池代理时**:上面三项 PostgreSQL 上限是随每条连接的启动报文(startup parameters)下发的。PgBouncer 默认拒绝

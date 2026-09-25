@@ -81,17 +81,20 @@ const lockTimeoutMs = (): number => {
  * startup settings - or on the database side with `ALTER ROLE ... SET`,
  * which a pooler that drops startup parameters needs. A session inherits
  * either way. A backfill that runs past the statement limit, DDL queued
- * behind a running server's lock past the lock limit, or the lock session
- * sitting idle for the length of a migration would each end the run
- * halfway. So the migrator sets its own values rather than taking whatever
- * the session came with; the one wait it does bound, on the advisory lock,
- * it bounds itself.
+ * behind a running server's lock past the lock limit, the lock session
+ * sitting idle for the length of a migration, or a migration's transaction
+ * outliving `transaction_timeout` (PostgreSQL 17 and later, a limit a DBA
+ * sets on a role as a safety net and which ends the session outright) would
+ * each end the run halfway. So the migrator sets its own values rather than
+ * taking whatever the session came with; the one wait it does bound, on the
+ * advisory lock, it bounds itself.
  */
 const UNBOUNDED = [
   'statement_timeout',
   'lock_timeout',
   'idle_in_transaction_session_timeout',
   'idle_session_timeout',
+  'transaction_timeout',
 ] as const
 
 /** one statement setting every limit in `UNBOUNDED`, `lock_timeout` to `$1` */

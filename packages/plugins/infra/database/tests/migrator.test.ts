@@ -215,7 +215,8 @@ describe.runIf(postgresAvailable)('applying a lineage', () => {
            current_setting('statement_timeout') as statement,
            current_setting('lock_timeout') as lock,
            current_setting('idle_in_transaction_session_timeout') as idle_in_transaction,
-           current_setting('idle_session_timeout') as idle;`,
+           current_setting('idle_session_timeout') as idle,
+           current_setting('transaction_timeout') as transaction;`,
       ].join('\n'),
     })
     const limited = new URL(target.db.url)
@@ -242,7 +243,7 @@ describe.runIf(postgresAvailable)('applying a lineage', () => {
       expect(applied).toBe(1)
       const seen = await target.db.query<Record<string, string>>('select * from limits_probe')
       expect(seen.rows).toEqual([
-        { statement: '0', lock: '0', idle_in_transaction: '0', idle: '0' },
+        { statement: '0', lock: '0', idle_in_transaction: '0', idle: '0', transaction: '0' },
       ])
     } finally {
       await reader.end().catch(() => {})
@@ -254,18 +255,42 @@ describe.runIf(postgresAvailable)('applying a lineage', () => {
 
   // A pooler that drops startup parameters leaves the limits to the
   // database's own defaults (docs/deployment.md), which every new session
-  // takes, the migrator's included.
+  // takes, the migrator's included; a DBA's safety net set on a role or a
+  // database is the same kind of default. Each limit here is shorter than
+  // the migration: the statement and transaction limits would end the
+  // migration itself, and the idle limit the session holding the migration
+  // lock, whose lock would go with it.
   it('runs under none of the limits the database gives its sessions either', async () => {
     const target = await emptyDatabase('migrator-database-limits')
     const folder = lineage({
-      '00000000000001_slow.sql': 'select pg_sleep(0.3);\ncreate table slow_probe (id int);\n',
+      '00000000000001_slow.sql': [
+        'select pg_sleep(0.3);',
+        // taken here only if the run's lock session did not outlive the
+        // idle limit
+        `create table slow_probe as select
+           pg_try_advisory_xact_lock(${MIGRATION_LOCK_KEY}) as lock_free,
+           current_setting('statement_timeout') as statement,
+           current_setting('idle_session_timeout') as idle,
+           current_setting('transaction_timeout') as transaction;`,
+      ].join('\n'),
     })
     const name = new URL(target.db.url).pathname.slice(1)
-    await target.db.query(`alter database "${name}" set statement_timeout = 100`)
+    // a session of its own that sets the defaults and then reads the result:
+    // every session opened after them, the suite's own pool included, would
+    // be held to them
+    const admin = new Client({ connectionString: target.db.url })
+    await admin.connect()
     try {
+      for (const limit of ['statement_timeout', 'idle_session_timeout', 'transaction_timeout']) {
+        await admin.query(`alter database "${name}" set ${limit} = 100`)
+      }
       const { applied } = await runMigrations(target.db.url, { folder, entities: [] })
       expect(applied).toBe(1)
+      const seen = await admin.query<Record<string, unknown>>('select * from slow_probe')
+      expect(seen.rows).toEqual([{ lock_free: false, statement: '0', idle: '0', transaction: '0' }])
     } finally {
+      await admin.query(`alter database "${name}" reset all`).catch(() => {})
+      await admin.end().catch(() => {})
       await target.dispose()
       fs.rmSync(folder, { recursive: true, force: true })
     }
