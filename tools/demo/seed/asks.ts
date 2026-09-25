@@ -99,6 +99,80 @@ export const EVERY_ASK: readonly Ask[] = [
   ...CET4_REPORTS.map((report) => ({ ...PAPERS['cet4']!.ask, asset: report.asset })),
 ]
 
+/**
+ * The asks the persona's episodes and the selection's scenes make, each with
+ * the picture the claim it is made on was filed with (`on`): the claim is
+ * filed with that picture, and what comes back is another one.
+ */
+export const SCRIPTED_ASKS = {
+  // 23-24-1: a prize claimed on a participation note, which names no place
+  placeInList: {
+    on: 'campus-1',
+    ask: {
+      instructions:
+        '所附为参与证明，没有获奖名次，请上传获奖名单公示页截图，并在说明里写明本人所在行',
+      file: '获奖名单公示页截图',
+      asset: 'notice-1',
+      filename: '获奖名单公示.jpg',
+      note: '本人在二等奖名单第 17 行',
+    },
+  },
+  // 23-24-2: filed with another contest's certificate; the right one comes in the appeal
+  rightCertificate: {
+    on: 'competition-3',
+    ask: {
+      instructions: '请上传该竞赛的获奖证书',
+      file: '获奖证书',
+      asset: 'competition-4',
+      filename: '获奖证书.jpg',
+    },
+  },
+  // 24-25-2: the organisers corrected their list after the claim was determined
+  correctedList: {
+    on: 'competition-4',
+    ask: {
+      instructions: '请上传组委会发布的获奖名单更正公告截图',
+      file: '获奖名单更正公告',
+      asset: 'notice-3',
+      filename: '获奖名单更正公告.jpg',
+      note: '本人参赛编号为 DEMO-0415',
+    },
+  },
+  // the selection: a university project claimed as a provincial one
+  provincialProject: {
+    on: 'research-1',
+    ask: {
+      instructions:
+        '立项通知书显示为校级立项，与申报的省部级不一致；如已升为省级项目，请上传省级立项通知书',
+      file: '省级立项通知书',
+      asset: 'research-3',
+      filename: '省级立项通知书.jpg',
+      note: '项目已于 2025 年 11 月升为省级立项',
+    },
+  },
+  // the selection: a zone's award, appealed as the province's
+  zoneNotice: {
+    on: 'competition-5',
+    ask: {
+      instructions: '请上传省赛组委会关于赛区获奖认定的通知',
+      file: '组委会获奖通知',
+      asset: 'notice-2',
+      filename: '组委会获奖通知.jpg',
+      note: '通知写明赛区获奖按省级认定',
+    },
+  },
+  // the selection: an award the published list does not show; still out
+  officialList: {
+    on: 'competition-4',
+    ask: {
+      instructions: '请提供竞赛官网获奖名单截图，并在说明里写明本人所在行',
+      file: '获奖名单截图',
+      asset: 'notice-1',
+      filename: '获奖名单截图.jpg',
+    },
+  },
+} as const satisfies Readonly<Record<string, { readonly on: string; readonly ask: Ask }>>
+
 /** asks, as `as` at the round's step, for what `ask` names */
 export const requestAsk = (tenantId: string, instanceId: string, ask: Ask, as: Principal) =>
   Effect.gen(function* () {

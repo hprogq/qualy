@@ -16,7 +16,7 @@ import {
   RESEARCH_SUBJECTS,
   RESEARCH_TREATMENTS,
 } from '../catalog.ts'
-import { answerAsk, askFor, requestAsk, type Ask } from './asks.ts'
+import { SCRIPTED_ASKS, answerAsk, askFor, requestAsk, type Ask } from './asks.ts'
 import { addMinutes, awake, principalOf, type Random, type Story } from './context.ts'
 import { PROOF_ASSETS, stageProof, stageWorkbook } from './files.ts'
 import { scoringConfigOf, type Versions } from './items.ts'
@@ -616,6 +616,8 @@ export const runSelection = (input: {
       scripted: boolean
       /** the last ask made on the claim, which the student answers with its picture */
       asked: Ask | null
+      /** the uploads the claim cites now */
+      attachments: readonly string[]
     }
     const filed: Filed[] = []
     const judgeFor = (instanceId: string) =>
@@ -791,6 +793,7 @@ export const runSelection = (input: {
           instanceId: null,
           scripted: waiting,
           asked: null,
+          attachments: [attachment],
         }
         filed.push(state)
         if (!submit) return state
@@ -936,7 +939,7 @@ export const runSelection = (input: {
             name: '中国大学生计算机设计大赛',
             term: '25-26-2',
             level: 'provincial',
-            rank: 2,
+            rank: 1,
             team: true,
           },
           'competition-1',
@@ -1033,22 +1036,36 @@ export const runSelection = (input: {
       Effect.asVoid(
         assessment.appealEntry(t, entry.entryId, { reason }, principalOf(t, entry.student.id)),
       )
-    const reviseAs = (entry: Filed, note: string) =>
+    /**
+     * Files the claim again, as the note says: with what it says changed,
+     * or with a picture taken again in place of the one it cited. What is
+     * not changed stays as it was, the files included.
+     */
+    const reviseAs = (
+      entry: Filed,
+      note: string,
+      change: { readonly payload?: Record<string, unknown>; readonly replace?: string },
+    ) =>
       Effect.gen(function* () {
         const me = principalOf(t, entry.student.id)
         const target = items.get(entry.item)!
-        const attachment = yield* stageProof(
-          t,
-          batch.id,
-          target.id,
-          entry.proof,
-          '补充-证明材料.jpg',
-          me,
-        )
+        if (change.replace !== undefined) {
+          const attachment = yield* stageProof(
+            t,
+            batch.id,
+            target.id,
+            change.replace,
+            '重新拍摄-证明材料.jpg',
+            me,
+          )
+          entry.attachments = [attachment]
+          entry.proof = change.replace
+        }
+        entry.payload = { ...entry.payload, ...change.payload }
         yield* assessment.appendEntryRevision(
           t,
           entry.entryId,
-          { payload: { ...entry.payload, proof: [attachment] }, note },
+          { payload: { ...entry.payload, proof: [...entry.attachments] }, note },
           me,
         )
         yield* assessment.setEntryStatus(t, entry.entryId, 'in_review', me)
@@ -1150,7 +1167,7 @@ export const runSelection = (input: {
         team: false,
       }
       scene(ago(14, '21:00'), () =>
-        fileFor(held, 'award-a', persona, 'competition', awardA, 'competition-2', '获奖证书.jpg'),
+        fileFor(held, 'award-a', persona, 'competition', awardA, 'competition-1', '获奖证书.jpg'),
       )
       scene(ago(14, '21:20'), () =>
         fileFor(
@@ -1165,7 +1182,7 @@ export const runSelection = (input: {
             rank: 2,
             team: true,
           },
-          'competition-3',
+          SCRIPTED_ASKS.zoneNotice.on,
           '获奖证书.jpg',
         ),
       )
@@ -1182,7 +1199,7 @@ export const runSelection = (input: {
             role: 'lead',
             source: '大学生创新创业训练计划',
           },
-          'research-1',
+          SCRIPTED_ASKS.provincialProject.on,
           '立项通知书.jpg',
         ),
       )
@@ -1213,7 +1230,7 @@ export const runSelection = (input: {
             name: '全国大学生数学建模竞赛',
             term: '25-26-1',
             level: 'provincial',
-            rank: 3,
+            rank: 1,
             team: true,
           },
           'competition-1',
@@ -1228,20 +1245,14 @@ export const runSelection = (input: {
         decideAs(one('award-b'), desk, {
           decision: 'reject',
           reason: '申报内容与证明材料不一致',
-          comment: '证书显示为市级赛区奖项，与申报的省级不符',
+          comment: '证书为滨海赛区选拔赛的奖项，与申报的省部级不符',
         }),
       )
       // the project certificate says the university's level; the provincial
       // one comes in answer, and the claim goes on to be approved
-      const provincial: Ask = {
-        instructions:
-          '立项通知书显示为校级立项，与申报的省部级不一致；如已升为省级项目，请上传省级立项通知书',
-        file: '省级立项通知书',
-        asset: 'research-3',
-        filename: '省级立项通知书.jpg',
-        note: '项目已于 2025 年 11 月升为省级立项',
-      }
-      scene(ago(12, '16:00'), () => askAs(one('research-a'), desk, provincial))
+      scene(ago(12, '16:00'), () =>
+        askAs(one('research-a'), desk, SCRIPTED_ASKS.provincialProject.ask),
+      )
       scene(ago(11, '20:30'), () => answerAs(one('research-a')))
       scene(ago(11, '16:00'), () =>
         assessment.interveneOnEntry(
@@ -1249,12 +1260,16 @@ export const runSelection = (input: {
           one('research-b').entryId,
           {
             kind: 'return-for-revision',
-            reason: '成果证明缺少软件著作权登记证书首页，请补充后重新提交',
+            reason: '成果名称与登记号和所附登记证书不一致，请按登记证书填写后重新提交',
           },
           lead,
         ),
       )
-      scene(ago(10, '21:00'), () => reviseAs(one('research-b'), '已补充登记证书首页'))
+      scene(ago(10, '21:00'), () =>
+        reviseAs(one('research-b'), '已按登记证书改正成果名称与登记号', {
+          payload: { title: '校园服务数据可视化平台 V1.0', source: '登记号 2025SR000000' },
+        }),
+      )
       scene(ago(9, '10:00'), () => passStep(one('research-b')))
       scene(ago(8, '11:00'), () => passStep(one('research-b')))
       scene(ago(9, '11:00'), () => passStep(one('research-a')))
@@ -1288,20 +1303,13 @@ export const runSelection = (input: {
       if (reviewing) {
         // the working group asks, inside the appeal, for the notice the
         // student's reason rests on
-        const notice: Ask = {
-          instructions: '请上传省赛组委会关于赛区获奖认定的通知',
-          file: '组委会获奖通知',
-          asset: 'notice-2',
-          filename: '组委会获奖通知.jpg',
-          note: '通知写明赛区获奖按省级认定',
-        }
         scene(ago(4, '20:30'), () =>
           appealAs(
             one('award-b'),
-            '市级赛区是省赛的初赛赛区，赛区获奖名单由省组委会统一公布，应按省级认定，请复核',
+            '赛区选拔赛是省赛的初赛，赛区获奖名单由省组委会统一公布，应按省级认定，请复核',
           ),
         )
-        scene(ago(3, '10:00'), () => askAs(one('award-b'), lead, notice))
+        scene(ago(3, '10:00'), () => askAs(one('award-b'), lead, SCRIPTED_ASKS.zoneNotice.ask))
         scene(ago(2, '19:30'), () => answerAs(one('award-b')))
         // the class's two leads sit on the student's appeal; one has voted
         scene(ago(5, '12:10'), () =>
@@ -1386,10 +1394,10 @@ export const runSelection = (input: {
             name: '中国国际大学生创新大赛',
             term: '25-26-1',
             level: 'provincial',
-            rank: 2,
+            rank: 1,
             team: true,
           },
-          'competition-2',
+          'competition-6',
           '获奖证书.jpg',
         ),
       )
@@ -1400,7 +1408,9 @@ export const runSelection = (input: {
           comment: '证书照片反光，获奖等级看不清，请重新上传',
         }),
       )
-      scene(ago(13, '20:00'), () => reviseAs(one('a1'), '已重新拍摄证书'))
+      scene(ago(13, '20:00'), () =>
+        reviseAs(one('a1'), '已重新拍摄证书', { replace: 'competition-1' }),
+      )
       scene(ago(9, '14:00'), () => passStep(one('a1'), 'counsellor'))
       scene(ago(8, '10:00'), () => askAs(one('a1'), desk))
       scene(ago(7, '20:00'), () => answerAs(one('a1')))
@@ -1459,7 +1469,7 @@ export const runSelection = (input: {
             rank: 1,
             team: false,
           },
-          'competition-1',
+          SCRIPTED_ASKS.officialList.on,
           '获奖证书.jpg',
         ),
       )
@@ -1468,17 +1478,10 @@ export const runSelection = (input: {
         decideAs(one('a3'), desk, {
           decision: 'escalate',
           reason: '材料真实性存疑',
-          comment: '证书编号在竞赛官网查询不到，请工作组核实',
+          comment: '竞赛官网公示的获奖名单里查不到该生，请工作组核实',
         }),
       )
-      scene(ago(5, '15:00'), () =>
-        askAs(one('a3'), lead, {
-          instructions: '请提供竞赛官网获奖名单截图，并标出证书编号所在行',
-          file: '获奖名单截图',
-          asset: 'notice-1',
-          filename: '获奖名单截图.jpg',
-        }),
-      )
+      scene(ago(5, '15:00'), () => askAs(one('a3'), lead, SCRIPTED_ASKS.officialList.ask))
     }
     if (a4 !== undefined) {
       scene(ago(14, '21:40'), () =>
@@ -1491,10 +1494,10 @@ export const runSelection = (input: {
             name: '全国大学生电子商务“创新、创意及创业”挑战赛',
             term: '25-26-2',
             level: 'provincial',
-            rank: 3,
+            rank: 1,
             team: true,
           },
-          'competition-3',
+          'competition-1',
           '获奖证书.jpg',
         ),
       )

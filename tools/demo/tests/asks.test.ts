@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { APPEAL_REASONS } from '../catalog.ts'
-import { EVERY_ASK, askFor, requirementsOf, type Filing } from '../seed/asks.ts'
+import { EVERY_ASK, SCRIPTED_ASKS, askFor, requirementsOf, type Filing } from '../seed/asks.ts'
 import { claimsOf } from '../seed/claims.ts'
 import { makeRandom } from '../seed/context.ts'
 import { PROOF_ASSETS } from '../seed/files.ts'
@@ -127,6 +127,14 @@ describe('asks for more material', () => {
         proof: PAPERS['cet4']!.flawed,
       })
       expect(ask?.asset).toBe(report.asset)
+    }
+  })
+
+  it('made by the episodes and scenes come back with another picture than the one filed', () => {
+    for (const [name, { on, ask }] of Object.entries(SCRIPTED_ASKS)) {
+      expect(ask.asset, name).not.toBe(on)
+      expect(fs.existsSync(path.join(ASSETS, `${ask.asset}.jpg`)), name).toBe(true)
+      expect(requirementsOf(ask).filter((one) => one.required)).toHaveLength(1)
     }
   })
 

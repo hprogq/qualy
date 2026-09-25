@@ -1,4 +1,5 @@
 import type { ItemSpec, Term } from '../rules.ts'
+import { SCRIPTED_ASKS } from './asks.ts'
 import type { Claim } from './claims.ts'
 
 // What the student a visitor signs in as went through, term by term.
@@ -66,16 +67,12 @@ const campus = (
   filename: `${activity}.jpg`,
 })
 
-const competition = (
-  name: string,
-  level: 'national' | 'provincial' | 'municipal',
-  rank: number,
-  team: boolean,
-): Claim => ({
+/** a provincial first prize, on the certificate that says so, a team's or one student's */
+const competition = (name: string, team: boolean): Claim => ({
   item: 'competition',
   // the award day is placed inside the term's material window when filed
-  payload: { name, level, rank, team },
-  proof: 'competition-1',
+  payload: { name, level: 'provincial', rank: 1, team },
+  proof: team ? 'competition-1' : 'competition-4',
   filename: '获奖证书.jpg',
 })
 
@@ -83,7 +80,7 @@ const practice = (
   activity: string,
   type: 'practice' | 'volunteer',
   evidence: string,
-  proof = 'practice-1',
+  proof: string,
 ): Claim => ({
   item: 'practice',
   payload: { activity, type, evidence },
@@ -109,21 +106,28 @@ export const TRIAL_ITEM: ItemSpec = {
 
 export const EPISODES: Readonly<Record<Term, readonly Episode[]>> = {
   '23-24-1': [
-    { kind: 'supplement', claim: campus('主题摄影比赛', '0.2', 'university', 2) },
+    // a second prize claimed on the participation note, which names no place
+    {
+      kind: 'supplement',
+      claim: {
+        ...campus('主题摄影比赛', '0.2', 'university', 2),
+        proof: SCRIPTED_ASKS.placeInList.on,
+      },
+    },
     // filed with the platform's record; the stamped certificate comes with the revision
     {
       kind: 'revise',
-      claim: practice('社区养老院助老服务', 'volunteer', 'hours', 'practice-2'),
+      claim: practice('社区养老院助老服务', 'volunteer', 'hours', 'hours-1'),
     },
   ],
   '23-24-2': [
-    { kind: 'panel', claim: competition('全国大学生数学建模竞赛', 'provincial', 1, true) },
+    { kind: 'panel', claim: competition('全国大学生数学建模竞赛', true) },
     // filed with a municipal contest's certificate by mistake
     {
       kind: 'appeal-corrected',
       claim: {
-        ...competition('省大学生信息素养大赛', 'provincial', 1, false),
-        proof: 'competition-3',
+        ...competition('省大学生信息素养大赛', false),
+        proof: SCRIPTED_ASKS.rightCertificate.on,
       },
     },
   ],
@@ -136,9 +140,13 @@ export const EPISODES: Readonly<Record<Term, readonly Episode[]>> = {
     { kind: 'record-void' },
   ],
   '24-25-2': [
+    // a first prize the published list gave as a second, until it was corrected
     {
       kind: 'reopen',
-      claim: competition('蓝桥杯全国软件和信息技术专业人才大赛', 'provincial', 1, false),
+      claim: {
+        ...competition('蓝桥杯全国软件和信息技术专业人才大赛', false),
+        proof: SCRIPTED_ASKS.correctedList.on,
+      },
     },
     { kind: 'raise', claim: campus('校园歌手大赛工作人员', '0.2', 'none', 1) },
   ],
@@ -158,27 +166,30 @@ export const EPISODES: Readonly<Record<Term, readonly Episode[]>> = {
         filename: '省大学生健身操舞锦标赛.jpg',
       },
     },
+    // one afternoon's service, filed once with the platform's record and once
+    // with the library's certificate for it
     {
       kind: 'revoke',
-      first: practice('图书馆志愿服务', 'volunteer', 'hours', 'practice-2'),
-      claim: practice('图书馆志愿服务', 'volunteer', 'certificate', 'practice-3'),
+      first: practice('图书馆志愿服务', 'volunteer', 'hours', 'hours-2'),
+      claim: practice('图书馆志愿服务', 'volunteer', 'certificate', 'service-2'),
     },
     {
       kind: 'item-void',
       claim: {
         item: TRIAL_ITEM.key,
         payload: { activity: '城市马拉松志愿者', hours: 12 },
-        proof: 'practice-2',
+        proof: 'hours-2',
         filename: '志愿时长截图.jpg',
       },
-      refiled: practice('城市马拉松志愿者', 'volunteer', 'hours'),
+      refiled: practice('城市马拉松志愿者', 'volunteer', 'hours', 'hours-2'),
     },
   ],
   '25-26-2': [
-    { kind: 'reroute', claim: competition('中国大学生计算机设计大赛', 'provincial', 2, true) },
+    { kind: 'reroute', claim: competition('中国大学生计算机设计大赛', true) },
+    // first filed with an out-of-focus photo of a second-prize certificate
     {
       kind: 'rounds',
-      claim: campus('职业生涯规划大赛', '0.2', 'college', 1),
+      claim: { ...campus('职业生涯规划大赛', '0.2', 'college', 1), proof: 'campus-6' },
       corrected: { 'award-rank': 2 },
     },
   ],

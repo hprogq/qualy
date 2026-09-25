@@ -8,7 +8,7 @@ import library from '../library.json' with { type: 'json' }
 import { APPEAL_REASONS, CADRE_POSTS, REJECTIONS } from '../catalog.ts'
 import type { FieldSpec, ItemSpec, Term } from '../rules.ts'
 import { claimsOf, type Claim } from './claims.ts'
-import { answerAsk, askFor, requestAsk, type Ask } from './asks.ts'
+import { SCRIPTED_ASKS, answerAsk, askFor, requestAsk, type Ask } from './asks.ts'
 import { addMinutes, awake, cst, principalOf, type Random, type Story } from './context.ts'
 import { episodesOf, TRIAL_ITEM, type Episode } from './episodes.ts'
 import { stageProof, stageWorkbook } from './files.ts'
@@ -159,6 +159,16 @@ interface Filed {
   readonly scripted: boolean
   /** the last ask made on the claim, which the student answers with its picture */
   asked: Ask | null
+  /** what the claim says now, and the pictures it cites, uploaded as `attachments` */
+  payload: Readonly<Record<string, unknown>>
+  pictures: readonly string[]
+  attachments: readonly string[]
+}
+
+/** a picture a student uploads, under the name they give it */
+interface Picture {
+  readonly asset: string
+  readonly filename: string
 }
 
 export interface TermOutcome {
@@ -363,6 +373,9 @@ export const runTerm = (input: {
           appealed: false,
           scripted,
           asked: null,
+          payload: claim.payload,
+          pictures: [claim.proof],
+          attachments: [proof],
         }
         filed.push(state)
         if (scripted) {
@@ -459,7 +472,11 @@ export const runTerm = (input: {
           return
         }
         // only where the question has an ask of its own that fits the claim
-        const ask = askFor(entry.claim)
+        const ask = askFor({
+          item: entry.claim.item,
+          payload: entry.payload,
+          proof: entry.pictures[0]!,
+        })
         if (
           roll < 0.105 &&
           ask !== undefined &&
@@ -595,33 +612,43 @@ export const runTerm = (input: {
         review(entry, addMinutes(queue.now, random.int(4 * 60, 30 * 60)))
       })
 
+    /**
+     * Files the claim again. The files it already cites stay unless a new
+     * picture replaces them or is added beside them; the note says what
+     * changed, and by default claims nothing new was supplied.
+     */
     const revise = (
       entry: Filed,
       options: {
         readonly payload?: Readonly<Record<string, unknown>>
         readonly note?: string
         readonly review?: boolean
-        /** the picture uploaded this time, when not the one first filed */
-        readonly proof?: string
+        /** a picture taken again, in place of what the claim cited */
+        readonly replace?: Picture
+        /** a picture added beside what the claim cites */
+        readonly add?: Picture
       } = {},
     ) =>
       Effect.gen(function* () {
         const me = asStudent(entry.student)
         const item = itemOf(entry.claim.item)
-        const proof = yield* stageProof(
-          t,
-          batch.id,
-          item.id,
-          options.proof ?? entry.claim.proof,
-          `补充-${entry.claim.filename}`,
-          me,
-        )
+        const upload = (picture: Picture) =>
+          stageProof(t, batch.id, item.id, picture.asset, picture.filename, me)
+        if (options.replace !== undefined) {
+          entry.attachments = [yield* upload(options.replace)]
+          entry.pictures = [options.replace.asset]
+        }
+        if (options.add !== undefined) {
+          entry.attachments = [...entry.attachments, yield* upload(options.add)]
+          entry.pictures = [...entry.pictures, options.add.asset]
+        }
+        entry.payload = { ...entry.payload, ...options.payload }
         yield* assessment.appendEntryRevision(
           t,
           entry.entryId,
           {
-            payload: { ...entry.claim.payload, ...options.payload, proof: [proof] },
-            note: options.note ?? '已按意见补充证明材料',
+            payload: { ...entry.payload, proof: [...entry.attachments] },
+            note: options.note ?? '已核对材料，请重新审核',
           },
           me,
         )
@@ -1163,13 +1190,7 @@ export const runTerm = (input: {
 
       switch (episode.kind) {
         case 'supplement': {
-          const ask: Ask = {
-            instructions: '证书上没有写名次，请上传获奖名单公示页截图，并标出本人所在行',
-            file: '获奖名单公示页截图',
-            asset: 'notice-1',
-            filename: '获奖名单公示.jpg',
-            note: '本人在二等奖名单第 17 行',
-          }
+          const { ask } = SCRIPTED_ASKS.placeInList
           fileAt(0, '20:30', episode.claim!)
           on(1, '19:30', (entry) => judged(entry, (judge) => askOn(entry, ask, judge.as)))
           on(2, '12:10', (entry) => answer(entry, false))
@@ -1190,7 +1211,7 @@ export const runTerm = (input: {
             revise(entry, {
               payload: { evidence: 'certificate' },
               note: '已补充服务单位盖章的志愿服务证明',
-              proof: 'practice-3',
+              add: { asset: 'service-1', filename: '志愿服务证明.jpg' },
               review: false,
             }),
           )
@@ -1199,7 +1220,13 @@ export const runTerm = (input: {
         case 'rounds':
           fileAt(0, '21:10', episode.claim!)
           on(1, '20:05', rejectNow('证明材料无法清晰辨识', '证书照片模糊，请重新上传清晰的证书'))
-          on(2, '12:30', (entry) => revise(entry, { note: '已重新拍摄证书', review: false }))
+          on(2, '12:30', (entry) =>
+            revise(entry, {
+              note: '已重新拍摄证书',
+              replace: { asset: 'campus-2', filename: '荣誉证书.jpg' },
+              review: false,
+            }),
+          )
           on(
             2,
             '20:15',
@@ -1236,7 +1263,7 @@ export const runTerm = (input: {
           on(1, '20:30', (entry) =>
             revise(entry, {
               note: '已上传赛事成绩册中本队所在页',
-              proof: 'roster-1',
+              add: { asset: 'roster-1', filename: '赛事成绩册.jpg' },
               review: false,
             }),
           )
@@ -1252,7 +1279,7 @@ export const runTerm = (input: {
                 {
                   decision: 'escalate',
                   reason: '认定标准存在争议',
-                  comment: '证书为赛区一等奖，是否按省级认定请专业负责人核定',
+                  comment: '证书只写参赛队获奖、未列队员，能否按该生获奖认定请专业负责人核定',
                 },
                 judge.as,
               ),
@@ -1263,13 +1290,7 @@ export const runTerm = (input: {
         case 'appeal-corrected': {
           // filed with the wrong certificate; the right one comes in answer
           // to an ask made inside the appeal
-          const ask: Ask = {
-            instructions: '请上传该竞赛的获奖证书',
-            file: '获奖证书',
-            asset: 'competition-1',
-            filename: '获奖证书.jpg',
-            note: '证书编号可在竞赛官网查询',
-          }
+          const { ask } = SCRIPTED_ASKS.rightCertificate
           fileAt(0, '22:00', episode.claim!)
           on(
             1,
@@ -1308,20 +1329,15 @@ export const runTerm = (input: {
           )
           return
         case 'reopen': {
-          const ask: Ask = {
-            instructions: '请上传组委会发布的更正后获奖名单截图',
-            file: '更正后的获奖名单',
-            asset: 'notice-1',
-            filename: '更正后的获奖名单.jpg',
-          }
+          const { ask } = SCRIPTED_ASKS.correctedList
           fileAt(0, '20:50', episode.claim!)
-          on(1, '20:30', approveNow('官网公示名单中该生为第二名，按公示名单认定', { rank: 2 }))
+          on(1, '20:30', approveNow('官网公示名单中该生为二等奖，按公示名单认定', { rank: 2 }))
           on(6, '10:20', (entry) =>
             Effect.gen(function* () {
               const round = yield* assessment.reopenEntry(
                 t,
                 entry.entryId,
-                { reason: '组委会已发布更正后的获奖名单，该生名次与原认定不符，请复核' },
+                { reason: '组委会已发布获奖名单更正公告，该生奖项与原认定不符，请复核' },
                 recorder,
               )
               entry.instanceId = round.id
@@ -1335,7 +1351,7 @@ export const runTerm = (input: {
               {
                 kind: 'approve',
                 override: { rank: 1 },
-                comment: '按组委会更正后的获奖名单认定为第一名',
+                comment: '按组委会更正后的获奖名单认定为一等奖',
               },
               4 * 60,
             ),
@@ -1443,11 +1459,13 @@ export const runTerm = (input: {
           others.forEach((student, index) =>
             queue.at(addMinutes(at(0, '21:00'), index * 23), 'episode', () =>
               Effect.asVoid(
+                // with the platform's record of their own, the one shared picture
                 file(
                   student,
                   {
                     ...episode.claim!,
-                    payload: { ...episode.claim!.payload, hours: 4 + index * 3 },
+                    payload: { ...episode.claim!.payload, hours: 8 },
+                    proof: 'practice-2',
                   },
                   true,
                 ),

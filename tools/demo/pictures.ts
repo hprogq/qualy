@@ -42,6 +42,10 @@ const page = (body: string, tone: string) => `<!doctype html>
   .bar { height: 10px; background: linear-gradient(90deg, #2b59c3, #6d8fe0); margin-bottom: 30px; }
 </style></head><body>${body}<div class="mark">演示材料 · 非真实证明</div></body></html>`
 
+const certificateBody = (title: string, text: string, issuer: string, date?: string) =>
+  `<div class="frame"><h1>${title}</h1><p>${text}</p>
+   <div class="sign">${issuer}${date === undefined ? '' : `<br/>${date}`}</div>${seal(issuer.slice(0, 10))}</div>`
+
 /** a certificate; `date` only on one a single claim cites */
 const certificate = (
   title: string,
@@ -49,10 +53,21 @@ const certificate = (
   issuer: string,
   date?: string,
   tone = '#fbf6ea',
-) =>
+) => page(certificateBody(title, text, issuer, date), tone)
+
+/** a phone photo of a certificate, out of focus */
+const blurred = (title: string, text: string, issuer: string, tone = '#fbf6ea') =>
   page(
-    `<div class="frame"><h1>${title}</h1><p>${text}</p>
-     <div class="sign">${issuer}${date === undefined ? '' : `<br/>${date}`}</div>${seal(issuer.slice(0, 10))}</div>`,
+    `<div style="position:absolute;inset:0;filter:blur(3.4px)">${certificateBody(title, text, issuer)}</div>`,
+    tone,
+  )
+
+/** a phone photo of a certificate, with the lamp's glare across what it awards */
+const glared = (title: string, text: string, issuer: string, tone = '#fbf6ea') =>
+  page(
+    `${certificateBody(title, text, issuer)}
+     <div style="position:absolute;left:150px;top:150px;width:760px;height:190px;
+                 background:radial-gradient(ellipse at 62% 50%, rgba(255,255,255,0.98) 38%, rgba(255,255,255,0) 72%)"></div>`,
     tone,
   )
 
@@ -372,5 +387,72 @@ export const PICTURES: Readonly<Record<string, string>> = {
       ['第三参与人', '文献调研与文档撰写', '已签字'],
     ],
     '任务书经指导教师与学院审核，本页为演示用截图。',
+  ),
+  // what one episode or scene cites alone, dated to fit it where it shows a date
+  'competition-4': certificate(
+    '获奖证书',
+    '该同学在省级大学生学科竞赛中表现优异，荣获<b>省级一等奖</b>。',
+    '省大学生竞赛组织委员会',
+    undefined,
+    '#f4f7fd',
+  ),
+  'competition-5': certificate(
+    '获奖证书',
+    '该参赛队在省级大学生学科竞赛滨海赛区选拔赛中荣获<b>赛区二等奖</b>。',
+    '滨海赛区竞赛组织委员会',
+    '二〇二六年五月',
+  ),
+  'competition-6': glared(
+    '获奖证书',
+    '该参赛队在省级大学生学科竞赛中表现优异，荣获<b>省级一等奖</b>。',
+    '省大学生竞赛组织委员会',
+  ),
+  'campus-6': blurred(
+    '荣誉证书',
+    '该同学在校园文化活动中表现突出，荣获<b>二等奖</b>，特发此证，以资鼓励。',
+    '示例大学学生工作处',
+    '#fdf2f2',
+  ),
+  'notice-3': table(
+    '获奖名单更正公告（节选）',
+    ['序号', '学院', '参赛编号', '奖项', '备注'],
+    [
+      ['1', '计算机学院', 'DEMO-0102', '一等奖', ''],
+      ['2', '软件学院', 'DEMO-0415', '一等奖', '更正，原公示为二等奖'],
+      ['3', '信息学院', 'DEMO-0233', '一等奖', ''],
+    ],
+    '经组委会复核，原公示名单中参赛编号 DEMO-0415 的奖项有误，现更正为一等奖，特此公告。本页为演示用截图。',
+  ),
+  'hours-1': table(
+    '志愿服务时长记录（示例）',
+    ['服务项目', '服务时间', '时长（小时）', '状态'],
+    [
+      ['新生报到迎新志愿服务', '2023-09-02', '6', '已认证'],
+      ['社区养老院助老服务', '2023-11-18', '4', '已认证'],
+    ],
+    '数据截取自志愿服务平台，本页为演示用截图。',
+  ),
+  'hours-2': table(
+    '志愿服务时长记录（示例）',
+    ['服务项目', '服务时间', '时长（小时）', '状态'],
+    [
+      ['图书馆志愿服务', '2025-10-18', '3', '已认证'],
+      ['城市马拉松志愿者', '2025-11-09', '12', '已认证'],
+    ],
+    '数据截取自志愿服务平台，本页为演示用截图。',
+  ),
+  'service-1': certificate(
+    '志愿服务证明',
+    '该同学于二〇二三年十一月十八日参加社区养老院助老服务，服务时长 4 小时，工作认真负责。',
+    '滨海市社区养老服务中心',
+    '二〇二三年十二月',
+    '#f4f7fd',
+  ),
+  'service-2': certificate(
+    '志愿服务证明',
+    '该同学于二〇二五年十月十八日参加图书馆志愿服务，服务时长 3 小时，表现良好。',
+    '示例大学图书馆',
+    '二〇二五年十月',
+    '#f4f7fd',
   ),
 }

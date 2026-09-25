@@ -1,8 +1,11 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { PICTURES } from '../pictures.ts'
 import { itemsOf, type Term } from '../rules.ts'
-import { EPISODE_KINDS, EPISODES, TRIAL_ITEM, episodesOf } from '../seed/episodes.ts'
+import { SCRIPTED_ASKS } from '../seed/asks.ts'
+import { EPISODE_KINDS, EPISODES, TRIAL_ITEM, episodesOf, type Episode } from '../seed/episodes.ts'
+import { TERM_PLANS } from '../seed/term.ts'
 
 // The persona student's written-out terms are only ever played by a full
 // seeding run, which takes over an hour. These catch, in a second, the
@@ -12,6 +15,40 @@ import { EPISODE_KINDS, EPISODES, TRIAL_ITEM, episodesOf } from '../seed/episode
 
 const questionsOf = (term: Term) => [...itemsOf(term), TRIAL_ITEM]
 const ASSETS = path.resolve('tools/demo/assets')
+const claimsOf = (episode: Episode) =>
+  [episode.first, episode.claim, episode.refiled].filter((claim) => claim !== undefined)
+
+const NUMERALS = '〇一二三四五六七八九'
+/** 二〇二三年十一月十八日 and 十二, read as numbers */
+const numeral = (text: string) =>
+  text.includes('十')
+    ? (text.startsWith('十') ? 1 : NUMERALS.indexOf(text[0]!)) * 10 +
+      (text.endsWith('十') ? 0 : NUMERALS.indexOf(text[text.length - 1]!))
+    : Number([...text].map((one) => NUMERALS.indexOf(one)).join(''))
+/** every day or month a picture shows, as yyyy-mm-dd or yyyy-mm */
+const datesOn = (asset: string) => {
+  const html = PICTURES[asset] ?? ''
+  const iso = [...html.matchAll(/\d{4}-\d{2}-\d{2}/g)].map((one) => one[0])
+  const written = [
+    ...html.matchAll(
+      /二〇([〇一二三四五六七八九]{2})年([十一二三四五六七八九]+)月(?:([十一二三四五六七八九]+)日)?/g,
+    ),
+  ].map(([, year, month, day]) => {
+    const ym = `20${numeral(year!)}-${String(numeral(month!)).padStart(2, '0')}`
+    return day === undefined ? ym : `${ym}-${String(numeral(day)).padStart(2, '0')}`
+  })
+  return [...iso, ...written]
+}
+
+/**
+ * What each episode's certificate says, where it matters to the claim: the
+ * level, the place and whether a team won it.
+ */
+const CERTIFICATES: Readonly<Record<string, { level: string; rank: number; team: boolean }>> = {
+  'competition-1': { level: 'provincial', rank: 1, team: true },
+  'competition-3': { level: 'municipal', rank: 2, team: false },
+  'competition-4': { level: 'provincial', rank: 1, team: false },
+}
 
 describe('the persona episodes', () => {
   afterEach(() => {
@@ -82,6 +119,59 @@ describe('the persona episodes', () => {
       .filter((claim) => !fs.existsSync(path.join(ASSETS, `${claim.proof}.jpg`)))
       .map((claim) => claim.proof)
     expect(absent).toEqual([])
+  })
+
+  it('files each claim with a picture of its own term', () => {
+    // a picture dated inside the term's window, and none issued after filing
+    // opened; the upheld appeal is refused for an activity held the term
+    // before, and its certificate says so
+    const problems: string[] = []
+    for (const plan of TERM_PLANS) {
+      for (const episode of EPISODES[plan.term]) {
+        for (const claim of claimsOf(episode)) {
+          for (const date of datesOn(claim.proof)) {
+            const day = date.length === 7 ? `${date}-01` : date
+            const outside = day < plan.material.start || day >= plan.material.end
+            if (day > plan.day || (outside && episode.kind !== 'appeal-upheld')) {
+              problems.push(`${plan.term} ${episode.kind}: ${claim.proof} shows ${date}`)
+            }
+          }
+        }
+      }
+    }
+    expect(problems).toEqual([])
+  })
+
+  it('files each award with a certificate that says what it claims', () => {
+    // except the one filed with another contest's certificate by mistake
+    const problems = Object.values(EPISODES)
+      .flat()
+      .filter((episode) => episode.kind !== 'appeal-corrected')
+      .flatMap(claimsOf)
+      .filter((claim) => claim.item === 'competition')
+      .filter((claim) => {
+        const says = CERTIFICATES[claim.proof]
+        return (
+          says === undefined ||
+          says.level !== claim.payload['level'] ||
+          says.rank !== claim.payload['rank'] ||
+          says.team !== claim.payload['team']
+        )
+      })
+      .map((claim) => `${String(claim.payload['name'])} ${claim.proof}`)
+    expect(problems).toEqual([])
+  })
+
+  it('files each claim an ask is made on with the picture the ask answers', () => {
+    const on: Partial<Record<Episode['kind'], string>> = {
+      supplement: SCRIPTED_ASKS.placeInList.on,
+      'appeal-corrected': SCRIPTED_ASKS.rightCertificate.on,
+      reopen: SCRIPTED_ASKS.correctedList.on,
+    }
+    for (const episode of Object.values(EPISODES).flat()) {
+      const expected = on[episode.kind]
+      if (expected !== undefined) expect(episode.claim?.proof, episode.kind).toBe(expected)
+    }
   })
 
   it('plays every episode in the first term when asked to', () => {
