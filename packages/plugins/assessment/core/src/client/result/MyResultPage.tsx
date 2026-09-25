@@ -12,6 +12,7 @@ import { assessmentMessages as m } from '../i18n.ts'
 import type { EntryDto } from '../entry/model.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { ResultLedger } from './ResultLedger.tsx'
+import { useMyEntriesQuery } from '../entry/my-entries.ts'
 
 // One's own standing in a round: what the three api answers are, and what
 // to say when the arithmetic behind them cannot be reached.
@@ -78,9 +79,7 @@ function Standing({ batchId }: { batchId: string }) {
   const items = useQuery(query.assessment.listItems.queryOptions({ params: { batchId } }))
   // for the two counts the empty state and the pending row speak in: what is
   // still moving is a fact about the filings, not about the score
-  const mine = useQuery(
-    query.assessment.listMyEntries.queryOptions({ params: { batchId }, query: {} }),
-  )
+  const mine = useQuery(useMyEntriesQuery(batchId))
   const data = result.data
   const entries = (mine.data?.entries ?? []) as readonly EntryDto[]
   const pendingCount = entries.filter((entry) => entry.status === 'in_review').length
@@ -169,7 +168,14 @@ function GoToEntries({ pending, drafts }: { pending: number; drafts: number }) {
         {format(m.resultGoEntries)}
       </Button>
       {(pending > 0 || drafts > 0) && (
-        <p {...stylex.props(styles.goCounts)}>{format(m.resultEmptyCounts, { pending, drafts })}</p>
+        <p
+          {...stylex.props(styles.goCounts)}
+          data-testid="result-moving"
+          data-pending={pending}
+          data-drafts={drafts}
+        >
+          {format(m.resultEmptyCounts, { pending, drafts })}
+        </p>
       )}
     </div>
   )

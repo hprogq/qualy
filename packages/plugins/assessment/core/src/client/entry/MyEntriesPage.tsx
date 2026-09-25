@@ -27,6 +27,7 @@ import { useLingering } from '@qualy/ui/use-lingering'
 import { Count } from '@qualy/ui/count'
 import { assessmentApi } from '../api.ts'
 import { useBatchLive } from '../live.ts'
+import { useMyEntriesQuery } from './my-entries.ts'
 import { entryRefusalMessage } from './refusals.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
@@ -1153,7 +1154,7 @@ function Body({
     refetchInterval: live ? 60_000 : 30_000,
   })
   const mine = useQuery({
-    ...query.assessment.listMyEntries.queryOptions({ params: { batchId }, query: {} }),
+    ...useMyEntriesQuery(batchId),
     refetchInterval: live ? 60_000 : 30_000,
   })
   // 'new' is a claim about to exist on whichever question is open; anything

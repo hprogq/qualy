@@ -2089,3 +2089,88 @@ describe('the phase gate on the paper', () => {
     await expect.element(page.getByTestId('confirm-accept')).toHaveAttribute('data-tone', 'default')
   })
 })
+
+describe('a round longer than one page', () => {
+  const LATER_ID = '33333333-3333-4333-8333-3333333333aa'
+  const asked = {
+    requestId: REQUEST_ID,
+    instanceId: INSTANCE_ID,
+    requestNo: 1,
+    instructions: '请补充盖章页',
+    requirements: [{ key: 'f1', label: '盖章页', kind: 'file' as const, required: true }],
+    requestedByName: '王敏',
+    requestedAt: '2026-03-05T00:00:00.000Z',
+  }
+  const hidden = { state: 'hidden' as const, reason: null }
+  // the api serves a person's filings oldest first, a page at a time: the
+  // newest claim, the one a reviewer is asking about, is on the second
+  const paged = (seen: (string | undefined)[]) => (input: { query: { cursor?: string } }) => {
+    seen.push(input.query.cursor)
+    return Effect.succeed(
+      input.query.cursor === undefined
+        ? {
+            participantId: PARTICIPANT_ID,
+            entries: [entry({ status: 'draft' })],
+            nextCursor: 'second-page',
+            attention: { unreadItemIds: [] },
+          }
+        : {
+            participantId: PARTICIPANT_ID,
+            entries: [
+              entry({
+                id: LATER_ID,
+                status: 'in_review',
+                currentReviewInstanceId: INSTANCE_ID,
+                supplement: asked,
+                createdAt: '2026-03-04T00:00:00.000Z',
+                capabilities: {
+                  edit: hidden,
+                  submit: hidden,
+                  withdraw: hidden,
+                  appeal: hidden,
+                  abandon: hidden,
+                },
+              }),
+            ],
+            nextCursor: null,
+            attention: { unreadItemIds: [] },
+          },
+    )
+  }
+
+  it('opens a claim that only the second page carries', async () => {
+    const seen: (string | undefined)[] = []
+    await screen(
+      {
+        listItems: () =>
+          Effect.succeed({
+            items: [item({ maxEntries: null })],
+            capabilities: { canManage: false },
+          }),
+        listMyEntries: paged(seen) as never,
+      },
+      `/assessment/batches/${BATCH_ID}/my-entries?open=${ITEM_ID}&detail=${LATER_ID}`,
+      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+    )
+
+    // the drawer the address names is open, on the claim the reviewer asked about
+    await expect.element(page.getByTestId('supplement-ask')).toBeVisible()
+    expect(seen).toContain('second-page')
+  })
+
+  it('counts what is still moving across every page', async () => {
+    const seen: (string | undefined)[] = []
+    await screen(
+      {
+        listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
+        listMyEntries: paged(seen) as never,
+      },
+      `/assessment/batches/${BATCH_ID}/my-result`,
+      [{ path: '/assessment/batches/:batchId/my-result', element: <MyResultPage /> }],
+    )
+
+    const moving = page.getByTestId('result-moving')
+    await expect.element(moving).toHaveAttribute('data-pending', '1')
+    await expect.element(moving).toHaveAttribute('data-drafts', '1')
+  })
+})
