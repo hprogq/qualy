@@ -224,8 +224,13 @@ export function BatchScreen({
           xstyle={[styles.bandInset, bannerFlush && showing === 'open' && styles.bandInsetFlush]}
         >
           <Resizing>
+            {/* The heading parked out of sight is out of reach too: not a
+                second heading to a screen reader, and no key in it to tab
+                to that nobody can see. */}
             <div {...stylex.props(styles.bannerSeat)}>
               <div
+                aria-hidden={showing !== 'section' || undefined}
+                inert={showing !== 'section'}
                 {...stylex.props(showing === 'section' ? styles.bannerShown : styles.bannerParked)}
               >
                 <PageHeader
@@ -237,6 +242,8 @@ export function BatchScreen({
               </div>
               <div
                 ref={setSlot}
+                aria-hidden={showing === 'section' || undefined}
+                inert={showing === 'section'}
                 {...stylex.props(showing === 'section' ? styles.bannerParked : styles.bannerShown)}
               />
             </div>

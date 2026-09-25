@@ -471,6 +471,9 @@ describe('reading somebody’s entries', () => {
       .element(page.getByTestId('structure-rail').getByRole('heading', { level: 2 }))
       .toBeInTheDocument()
     expect(document.querySelectorAll('[data-testid="entries-workspace"] h1')).toHaveLength(0)
+    // and the section's own heading, parked out of sight, is not a second one
+    await expect.poll(() => page.getByRole('heading', { level: 1 }).elements().length).toBe(1)
+    expect(page.getByRole('heading', { level: 1 }).element().textContent).toContain('郭航旗')
 
     await page.getByTestId('participant-tab-score').click()
     await expect.element(page.getByTestId('result-ledger')).toBeVisible()
