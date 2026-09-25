@@ -212,6 +212,18 @@ type Ask =
 type Issue = ServerIssue
 
 /** a save the page has no row to pin on: what happened, in the words it has */
+/** what a question is besides its configuration, which the revision check does not cover */
+interface Plain {
+  readonly title: string
+  readonly scoreGroupId: string
+  readonly maxEntries: number | null
+}
+
+const plainOf = (item: ItemDto | null): Plain | null =>
+  item === null
+    ? null
+    : { title: item.title, scoreGroupId: item.scoreGroupId, maxEntries: item.maxEntries }
+
 type Refused =
   | { kind: 'conflict' | 'voided' | 'read-only' | 'denied' | 'gone' | 'scoring' }
   | { kind: 'incompatible' | 'other'; words: string }
@@ -274,6 +286,11 @@ export function ItemEditor({
   const [answered, setAnswered] = useState<ItemDto | null>(null)
   useEffect(() => setAnswered(null), [given])
   const item = answered ?? given
+  // The plain facts - title, section, how many entries - as the composition
+  // found them. A save names only the ones changed here: the revision check
+  // guards the configuration, not these, and sending all three back would
+  // quietly undo a rename or a move somebody else made meanwhile.
+  const [origin, setOrigin] = useState(() => plainOf(item))
   const [draft, setDraft] = useState<Draft>(() => {
     if (held !== undefined) return held
     const seeded = draftOf(item, groups, options)
@@ -505,7 +522,8 @@ export function ItemEditor({
     item?.currentRevision !== undefined &&
     JSON.stringify(configOf(draft, item, contract, locale).scoringConfig) !==
       JSON.stringify(item.currentRevision.scoringConfig)
-  const placementMoved = item !== null && draft.scoreGroupId !== item.scoreGroupId
+  const placementMoved =
+    item !== null && draft.scoreGroupId !== (origin?.scoreGroupId ?? item.scoreGroupId)
   const needsReason =
     item !== null &&
     item.status === 'active' &&
@@ -922,13 +940,19 @@ export function ItemEditor({
           }),
         )
       }
+      // saving over somebody else's version states the whole composition
+      const moved = <K extends keyof Plain>(key: K, now: Plain[K]) =>
+        over !== undefined || origin === null || origin[key] !== now
+      const title = draft.title.trim()
       return run(
         api.assessment.updateItem({
           params: { itemId: item.id },
           payload: {
-            title: draft.title.trim(),
-            scoreGroupId: draft.scoreGroupId,
-            maxEntries,
+            ...(moved('title', title) ? { title } : {}),
+            ...(moved('scoreGroupId', draft.scoreGroupId)
+              ? { scoreGroupId: draft.scoreGroupId }
+              : {}),
+            ...(moved('maxEntries', maxEntries) ? { maxEntries } : {}),
             ...(itemType === item.itemType ? {} : { itemType }),
             config: config,
             expectedRevisionId: over === undefined ? (item.currentRevision?.id ?? null) : over,
@@ -958,6 +982,7 @@ export function ItemEditor({
         // typed while the save was out stays as typed.
         const saved = result.item
         setAnswered(saved)
+        setOrigin(plainOf(saved))
         setDraft((current) =>
           current === mutated.sent ? draftOf(saved, groups, options) : current,
         )
@@ -1062,6 +1087,7 @@ export function ItemEditor({
         return
       }
       setDraft(draftOf(fresh, groups, options))
+      setOrigin(plainOf(fresh))
       setRefused(null)
       setRefusal(null)
       setFailed(false)

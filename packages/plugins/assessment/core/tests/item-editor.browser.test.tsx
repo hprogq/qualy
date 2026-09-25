@@ -553,6 +553,26 @@ describe('choosing how a question is handled', () => {
       'administrative',
     ])
   })
+
+  it('names only the plain facts changed here, so a rename made elsewhere stands', async () => {
+    const saved: Record<string, unknown>[] = []
+    await open({ items: [officerItem()], question: ITEM_ID, saved: saved as never })
+    await expect.element(page.getByRole('checkbox', { name: '工作人员统一认定' })).toBeVisible()
+    await page.getByRole('checkbox', { name: '工作人员统一认定' }).click()
+    await page.getByTestId('item-save').click()
+    await vi.waitFor(() => expect(saved).toHaveLength(1))
+    expect(Object.keys(saved[0]!)).not.toContain('title')
+    expect(Object.keys(saved[0]!)).not.toContain('scoreGroupId')
+    expect(Object.keys(saved[0]!)).not.toContain('maxEntries')
+
+    // a title changed here is named
+    await tab(/基本信息/).click()
+    await page.getByRole('textbox', { name: '项目名称' }).fill('学生干部任职（改）')
+    await page.getByTestId('item-save').click()
+    await vi.waitFor(() => expect(saved).toHaveLength(2))
+    expect(saved[1]).toMatchObject({ title: '学生干部任职（改）' })
+    expect(Object.keys(saved[1]!)).not.toContain('scoreGroupId')
+  })
 })
 
 describe('feeding the arithmetic', () => {
