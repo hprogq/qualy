@@ -517,12 +517,18 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
    * seeding an edge per role would only be the same fact written out longhand.
    * Everything else needs a rule row, held through a live grant that stands
    * over the place the new grant would anchor.
+   *
+   * `span: 'coverage'` asks whether the holding stands over everything the
+   * target's coverage reaches rather than its anchor alone. Only the
+   * self-grant guard asks that: an edge a new subtree grant carries acts at
+   * every node below the anchor, so "already mine" has to hold there too.
    */
   const mayAppointRole = Effect.fn('Rbac.grants.mayAppointRole')(function* (
     actor: Principal,
     tenantId: string,
     roleId: string,
     target: GrantTarget,
+    span: 'anchor' | 'coverage' = 'anchor',
   ) {
     if (yield* holdsCanonicalAdmin(tenantId, actor.userId, CANONICAL_ADMIN_ROLE)) return
     const allowed = yield* ruleAllowsAppointment({
@@ -530,6 +536,7 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
       actorUserId: actor.userId,
       targetRoleId: roleId,
       orgNodeId: target.kind === 'org-node' ? target.orgNodeId : null,
+      ...(span === 'coverage' && target.kind === 'org-node' ? { across: target.coverage } : {}),
     })
     if (!allowed) return yield* new GrantRuleRefused()
   })
@@ -620,11 +627,14 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     // The offices this one appoints travel with it. Whether each is already
     // the actor's to appoint is asked through the same function the write
     // asks it with, so "already mine" cannot mean one thing while the guard
-    // runs and another the moment the new role is used. Only the answer
-    // leaves here: which offices exist is not this decision's to hand out.
+    // runs and another the moment the new role is used. It is asked across
+    // the new grant's coverage, not at its anchor alone: a subtree grant
+    // appoints at every node below, and a self holding at the anchor does
+    // not already. Only the answer leaves here: which offices exist is not
+    // this decision's to hand out.
     let gainsAppointments = false
     for (const office of yield* grantRuleTargets(tenantId, roleId)) {
-      const mine = yield* mayAppointRole(actor, tenantId, office.id, target).pipe(
+      const mine = yield* mayAppointRole(actor, tenantId, office.id, target, 'coverage').pipe(
         Effect.as(true),
         Effect.catchTag('GRANT_RULE_REFUSED', () => Effect.succeed(false)),
       )

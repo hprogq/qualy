@@ -248,6 +248,11 @@ export const rolePermissionCodes = (tenantId: string, roleId: string) =>
  * node - a college administrator's edge to "counsellor" is an edge for their
  * own college's subtree, not a licence to appoint counsellors anywhere. A
  * tenant-wide holding (no anchor) stands everywhere.
+ *
+ * `across: 'subtree'` asks the wider question: whether the holding stands
+ * over every node below the anchor as well, which a self holding at the
+ * anchor does not. Appointing somebody at a node only needs the anchor; a
+ * self-grant that would carry the edge across a subtree needs the subtree.
  */
 export const ruleAllowsAppointment = (input: {
   tenantId: string
@@ -255,6 +260,8 @@ export const ruleAllowsAppointment = (input: {
   targetRoleId: string
   /** where the new grant anchors; null for a tenant-wide grant */
   orgNodeId: string | null
+  /** how far past the anchor the holding has to stand; the anchor alone by default */
+  across?: 'self' | 'subtree'
 }) =>
   db
     .query((k) =>
@@ -290,7 +297,11 @@ export const ruleAllowsAppointment = (input: {
             ? sql<boolean>`g.org_node_id is null`
             : sql<boolean>`(
                 g.org_node_id is null
-                or (g.coverage = 'self' and g.org_node_id = ${input.orgNodeId})
+                or ${
+                  input.across === 'subtree'
+                    ? sql<boolean>`false`
+                    : sql<boolean>`(g.coverage = 'self' and g.org_node_id = ${input.orgNodeId})`
+                }
                 or (g.coverage = 'subtree' and (
                   select target.path from org_nodes target
                   where target.tenant_id = g.tenant_id and target.id = ${input.orgNodeId}

@@ -2441,6 +2441,119 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
     }
   })
 
+  it('refuses a self-grant that widens an appointing office from its node to the subtree', async () => {
+    const db = await createTestContext('effect-grant-self-appointment-coverage')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const access = yield* Access
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const staff = one<{ id: string }>(
+            yield* runSql(
+              sql`select id from user_types where tenant_id = ${f.tenant} and code = 'staff'`,
+            ),
+          ).id
+          const permission = (code: string) =>
+            Effect.map(
+              runSql(sql`
+                insert into permissions (code, plugin, name, target_kind)
+                values (${code}, 'org', ${code}, 'org-node')
+                on conflict (code) do update set code = excluded.code returning id`),
+              (result) => one<{ id: string }>(result).id,
+            )
+          const manage = yield* permission('iam.grant.manage')
+          const tree = yield* permission('org.tree.read')
+          const role = (code: string, permissions: readonly string[]) =>
+            Effect.gen(function* () {
+              const created = one<{ id: string }>(
+                yield* runSql(sql`
+                  insert into roles (tenant_id, code, name, kind, status, permission_mode,
+                                     eligibility_mode, anchor_mode)
+                  values (${f.tenant}, ${code}, ${code}, 'org', 'active', 'explicit',
+                          'unrestricted', 'unrestricted')
+                  returning id`),
+              ).id
+              for (const id of permissions) {
+                yield* runSql(sql`
+                  insert into role_permissions (tenant_id, role_id, permission_id)
+                  values (${f.tenant}, ${created}, ${id})`)
+              }
+              return created
+            })
+          const edge = (granter: string, target: string) =>
+            runSql(sql`
+              insert into role_grant_rules (tenant_id, granter_role_id, target_role_id)
+              values (${f.tenant}, ${granter}, ${target})`)
+          const outer = yield* role('office-outer', [manage])
+          const middle = yield* role('office-middle', [manage])
+          const inner = yield* role('office-inner', [tree])
+          yield* edge(outer, middle)
+          yield* edge(middle, inner)
+          // she appoints the middle office across the root's subtree, and
+          // already holds it herself - at the root alone
+          yield* runSql(sql`
+            insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+            values (${f.tenant}, ${f.anchored.userId}, ${outer}, ${f.root}, 'subtree')`)
+          yield* runSql(sql`
+            insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+            values (${f.tenant}, ${f.anchored.userId}, ${middle}, ${f.root}, 'self')`)
+          const li = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.tenant}, 'Li', ${staff}, ${f.child}) returning id`),
+          ).id
+          const take = (userId: string, orgNodeId: string, coverage: 'self' | 'subtree') =>
+            Effect.result(
+              access.grants.grant(
+                f.tenant,
+                { userId, roleId: middle, target: { kind: 'org-node', orgNodeId, coverage } },
+                f.anchored,
+              ),
+            )
+          const widened = yield* take(f.anchored.userId, f.root, 'subtree')
+          const offered = yield* access.grants.options(
+            f.tenant,
+            {
+              userId: f.anchored.userId,
+              target: { kind: 'org-node', orgNodeId: f.root, coverage: 'subtree' },
+            },
+            f.anchored,
+          )
+          // below the anchor her self holding appoints nobody either
+          const below = yield* take(f.anchored.userId, f.child, 'self')
+          // a third party is the appointment graph's call alone
+          const another = yield* take(li, f.root, 'subtree')
+          // once she holds the office across the subtree, taking it again at
+          // a node inside that subtree adds nothing
+          yield* runSql(sql`
+            insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+            values (${f.tenant}, ${f.anchored.userId}, ${middle}, ${f.root}, 'subtree')`)
+          const inside = yield* take(f.anchored.userId, f.child, 'subtree')
+          return {
+            widened: tagOf(widened),
+            withheld: (widened as { failure?: { permissions?: readonly string[] } }).failure
+              ?.permissions,
+            offer: offered.find((candidate) => candidate.code === 'office-middle')?.refusal,
+            below: tagOf(below),
+            another: another._tag,
+            inside: inside._tag,
+          }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.widened).toBe('GRANT_ESCALATION_REFUSED')
+      expect(answer.withheld).toEqual(['appointment-authority'])
+      expect(answer.offer).toBe('self-escalation')
+      expect(answer.below).toBe('GRANT_ESCALATION_REFUSED')
+      expect(answer.another).toBe('Success')
+      expect(answer.inside).toBe('Success')
+    } finally {
+      await db.dispose()
+    }
+  })
+
   it('explains a tenant capability the same way require does, node or no node', async () => {
     const db = await createTestContext('effect-explain-tenant')
     try {
