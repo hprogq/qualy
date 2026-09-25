@@ -15,8 +15,8 @@ import {
   SectionHead,
   Table,
   TableHead,
+  Status,
   TableRow,
-  Tag,
 } from '@qualy/ui/screen'
 import { Button } from '@qualy/ui/button'
 import { rbacMessages as m } from './i18n.ts'
@@ -162,7 +162,7 @@ export default function UserRoleGrantsPage() {
                     <Cell lead>
                       <LeadWord>{grant.roleName}</LeadWord>
                       {grant.roleStatus === 'disabled' && (
-                        <Tag outline>{format(m.disabledBadge)}</Tag>
+                        <Status tone="bad">{format(m.disabledBadge)}</Status>
                       )}
                     </Cell>
                     <Cell title={where(grant)} unlabelled>
@@ -229,7 +229,7 @@ export default function UserRoleGrantsPage() {
                     <Cell lead>
                       <LeadWord>{grant.roleName}</LeadWord>
                       {grant.roleStatus === 'disabled' && (
-                        <Tag outline>{format(m.disabledBadge)}</Tag>
+                        <Status tone="bad">{format(m.disabledBadge)}</Status>
                       )}
                     </Cell>
                     <Cell title={where(grant)} unlabelled>
