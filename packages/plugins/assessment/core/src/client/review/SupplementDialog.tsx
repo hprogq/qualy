@@ -109,9 +109,14 @@ export interface WordedSupplement {
   readonly requirements: readonly Piece[]
 }
 
+/** the longest the request endpoint takes: the instructions, and each piece's name */
+const INSTRUCTIONS_MAX = 2000
+const LABEL_MAX = 100
+
 export function SupplementDialog({
   open,
   instanceId,
+  initial,
   onClose,
   onConfirm,
 }: {
@@ -119,15 +124,19 @@ export function SupplementDialog({
   open: boolean
   /** the round the ask belongs to, which is what an unsent draft hangs on */
   instanceId: string
+  /** what the last attempt asked, when it came back unsent */
+  initial?: WordedSupplement
   onClose: () => void
   onConfirm: (worded: WordedSupplement) => void
 }) {
   const { format } = useI18n()
   const fine = useFinePointer()
-  const [instructions, setInstructions] = useState('')
-  const [pieces, setPieces] = useState<readonly Piece[]>([
-    { label: '', kind: 'file', required: true },
-  ])
+  const [instructions, setInstructions] = useState(initial?.instructions ?? '')
+  const [pieces, setPieces] = useState<readonly Piece[]>(() =>
+    initial === undefined || initial.requirements.length === 0
+      ? [{ label: '', kind: 'file', required: true }]
+      : initial.requirements.map((piece) => ({ ...piece })),
+  )
 
   const blankPieces: readonly Piece[] = [{ label: '', kind: 'file', required: true }]
   const draft = useLocalDraft<{ instructions: string; pieces: readonly Piece[] }>({
@@ -227,6 +236,7 @@ export function SupplementDialog({
             id={id}
             rows={3}
             autoFocus={fine}
+            maxLength={INSTRUCTIONS_MAX}
             value={instructions}
             onChange={(event) => setInstructions(event.target.value)}
           />
@@ -247,6 +257,7 @@ export function SupplementDialog({
             </span>
             <Input
               value={piece.label}
+              maxLength={LABEL_MAX}
               data-piece-slot={index + 1}
               placeholder={format(m.supplementPieceLabel)}
               className={stylex.props(styles.grow).className}

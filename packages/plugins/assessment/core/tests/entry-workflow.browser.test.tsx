@@ -1938,6 +1938,75 @@ describe('judging a submission', () => {
     })
   })
 
+  it('puts a send-back that did not go through back in the queue, words and all', async () => {
+    const decided = vi.fn(() =>
+      Effect.fail(
+        apiError('ASSESSMENT_ENTRY_ACTION_REFUSED', { action: 'decide', reason: 'phase-closed' }),
+      ),
+    )
+    await screen(
+      {
+        listReviewInbox: () =>
+          Effect.succeed({ items: [inboxRow()], nextCursor: null, handledToday: 0 }),
+        getReviewInstance: () => Effect.succeed({ review }),
+        decideReview: decided,
+      },
+      `/assessment/batches/${BATCH_ID}/reviews/${INSTANCE_ID}`,
+      [
+        {
+          path: '/assessment/batches/:batchId/reviews/:instanceId',
+          element: <ReviewInstancePage />,
+        },
+      ],
+    )
+
+    await page.getByRole('button', { name: /退回/ }).click()
+    await page.getByLabelText('审核意见', { exact: false }).fill('证书缺少落款。')
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: /确认退回/ })
+      .click()
+    // staged: the run is over for now, with the one send-back in it
+    await expect.element(page.getByTestId('run-done')).toHaveAttribute('data-handled', '1')
+    await vi.waitFor(() => expect(decided).toHaveBeenCalledOnce(), { timeout: 8000 })
+
+    // it did not go through, so it was not handled: the submission is back
+    // on the bench, and the send-back reopens with what was written
+    await vi.waitFor(() => expect(page.getByTestId('run-done').elements()).toHaveLength(0))
+    await page.getByRole('button', { name: /退回/ }).click()
+    await expect
+      .element(page.getByLabelText('审核意见', { exact: false }))
+      .toHaveValue('证书缺少落款。')
+  }, 30_000)
+
+  it('does not count a round somebody else settled first as handled here', async () => {
+    const decided = vi.fn(() => Effect.fail(apiError('ASSESSMENT_REVIEW_CONFLICT')))
+    await screen(
+      {
+        listReviewInbox: () =>
+          Effect.succeed({ items: [inboxRow()], nextCursor: null, handledToday: 0 }),
+        getReviewInstance: () => Effect.succeed({ review }),
+        decideReview: decided,
+      },
+      `/assessment/batches/${BATCH_ID}/reviews/${INSTANCE_ID}`,
+      [
+        {
+          path: '/assessment/batches/:batchId/reviews/:instanceId',
+          element: <ReviewInstancePage />,
+        },
+      ],
+    )
+
+    await page.getByRole('button', { name: /退回/ }).click()
+    await page.getByLabelText('审核意见', { exact: false }).fill('证书缺少落款。')
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: /确认退回/ })
+      .click()
+    await vi.waitFor(() => expect(decided).toHaveBeenCalledOnce(), { timeout: 8000 })
+    await expect.element(page.getByTestId('run-done')).toHaveAttribute('data-handled', '0')
+  }, 30_000)
+
   it('builds a supplement ask from the keyboard alone', async () => {
     await screen(
       {

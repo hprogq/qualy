@@ -26,6 +26,7 @@ import { useBatchLive } from '../live.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { entryStatusMessage, type EntryDto } from '../entry/model.ts'
+import { entryRefusalMessage } from '../entry/refusals.ts'
 import { reviewOutcomeMessage } from './events.ts'
 import { readRunScope, runRows, type InboxItemDto } from './model.ts'
 import { useReviewQueueQuery } from './queue.ts'
@@ -636,8 +637,39 @@ interface SessionEntry {
   readonly itemTitle: string
   /** asking for material ends the reviewer's turn too, so it is one of these */
   readonly decision: 'approve' | 'reject' | 'escalate' | 'supplement'
-  readonly status: 'waiting' | 'sent' | 'failed'
+  /**
+   * `gone` is a round somebody else settled or moved before this one
+   * arrived: it left the queue, but this sitting did not handle it.
+   */
+  readonly status: 'waiting' | 'sent' | 'gone'
 }
+
+/** what an act went out with and came back from, for its dialog to reopen with */
+type HeldWords =
+  | {
+      readonly instanceId: string
+      readonly act: 'approve' | 'reject' | 'escalate'
+      readonly worded: WordedDecision
+    }
+  | { readonly instanceId: string; readonly act: 'supplement'; readonly worded: WordedSupplement }
+
+const heldWordsOf = (staged: StagedDecision): HeldWords =>
+  staged.kind === 'supplement'
+    ? { instanceId: staged.instanceId, act: 'supplement', worded: staged.payload }
+    : {
+        instanceId: staged.instanceId,
+        act: staged.decision,
+        worded: {
+          ...(staged.payload.reason === undefined ? {} : { reason: staged.payload.reason }),
+          comment: staged.payload.comment ?? '',
+          ...(staged.payload.suggestedPayload === undefined
+            ? {}
+            : { suggestedPayload: staged.payload.suggestedPayload }),
+          ...(staged.payload.recognition === undefined
+            ? {}
+            : { recognition: staged.payload.recognition }),
+        },
+      }
 
 export default function ReviewInstancePage() {
   const { format } = useI18n()
@@ -702,6 +734,9 @@ function Workbench({ batch }: { batch: BatchDto }) {
   const [log, setLog] = useState<readonly SessionEntry[]>([])
   const startedAt = useRef(Date.now())
   const decidedIds = useMemo(() => new Set(log.map((entry) => entry.instanceId)), [log])
+  // what this sitting actually handled: a round that was gone by the time
+  // its decision arrived left the queue without being handled here
+  const handled = useMemo(() => log.filter((entry) => entry.status !== 'gone'), [log])
 
   const scopeRows = useMemo(
     () =>
@@ -716,7 +751,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
     [scopeRows, decidedIds],
   )
   const currentIndex = remaining.findIndex((row) => row.instanceId === instanceId)
-  const total = log.length + remaining.length
+  const total = handled.length + remaining.length
 
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: query.assessment.key() })
@@ -727,42 +762,40 @@ function Workbench({ batch }: { batch: BatchDto }) {
       current.map((entry) => (entry.instanceId === id ? { ...entry, status } : entry)),
     )
 
-  /** the last approval the rule sent back on this round, for the dialog to reopen with */
-  const [refused, setRefused] = useState<{ instanceId: string; worded: WordedDecision } | null>(
-    null,
-  )
+  /** the words of the last act that came back, for its dialog to reopen with */
+  const [held, setHeld] = useState<HeldWords | null>(null)
+  const heldFor = (act: 'approve' | 'reject' | 'escalate'): WordedDecision | undefined =>
+    held === null || held.act === 'supplement' || held.act !== act || held.instanceId !== instanceId
+      ? undefined
+      : held.worded
+  const withHeld = (act: 'approve' | 'reject' | 'escalate') => {
+    const worded = heldFor(act)
+    return worded === undefined ? {} : { initial: worded }
+  }
   const deferred = useDeferredDecision({
     onCommitted: (staged) => {
       mark(staged.instanceId, 'sent')
       refresh()
     },
     onFailed: (staged, error) => {
-      // The rule sending a determination back, or the arithmetic being out
-      // of reach, is not this sitting's decision failing: it is the round
-      // still waiting for one. It leaves the session log so it is back in
-      // the queue and the workbench stands, and what the reviewer typed
-      // comes back with it to correct or resend. Anything else stays
-      // logged as failed, the way it always did.
-      const theirs =
-        isApiErrorCode(error, 'ASSESSMENT_DETERMINATION_REFUSED') ||
-        isApiErrorCode(error, 'ASSESSMENT_SCORING_UNAVAILABLE')
-      if (theirs) {
-        setLog((current) => current.filter((entry) => entry.instanceId !== staged.instanceId))
-        if (staged.kind === 'decision' && staged.decision === 'approve') {
-          setRefused({
-            instanceId: staged.instanceId,
-            worded: {
-              comment: staged.payload.comment ?? '',
-              ...(staged.payload.recognition === undefined
-                ? {}
-                : { recognition: staged.payload.recognition }),
-            },
-          })
-        }
+      // A round somebody else settled or moved first is not this reader's
+      // any more: it stays off the queue, and out of what this sitting
+      // handled. Anything else - the rule sending a determination back, the
+      // arithmetic out of reach, a phase that closed, a dropped connection -
+      // means the round is still waiting for a decision: it leaves the log
+      // so it is back in the queue, and what the reviewer wrote comes back
+      // with it to correct or resend.
+      const gone =
+        isApiErrorCode(error, 'ASSESSMENT_REVIEW_CONFLICT') ||
+        isApiErrorCode(error, 'ASSESSMENT_REVIEW_NOT_FOUND')
+      if (gone) {
+        mark(staged.instanceId, 'gone')
       } else {
-        mark(staged.instanceId, 'failed')
+        setLog((current) => current.filter((entry) => entry.instanceId !== staged.instanceId))
+        setHeld(heldWordsOf(staged))
       }
-      toast.error(formatError(error))
+      const refusal = entryRefusalMessage(error)
+      toast.error(refusal === null ? formatError(error) : format(refusal))
       refresh()
     },
   })
@@ -1035,6 +1068,8 @@ function Workbench({ batch }: { batch: BatchDto }) {
     const staged = deferred.undo()
     if (staged === null) return
     setLog((current) => current.filter((entry) => entry.instanceId !== staged.instanceId))
+    // taken back is not thrown away: the dialog reopens on the same words
+    setHeld(heldWordsOf(staged))
     goTo(staged.instanceId)
   }
 
@@ -1219,7 +1254,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
             {done ? (
               <DoneScreen
                 batchId={batch.id}
-                log={log}
+                log={handled}
                 startedAt={startedAt.current}
                 inboxRows={(inbox.data?.items ?? []).filter(
                   (row) => row.batchId === batch.id && !decidedIds.has(row.instanceId),
@@ -1235,9 +1270,9 @@ function Workbench({ batch }: { batch: BatchDto }) {
                     again */}
                 {scopeRows.length > 0 && (
                   <RunStrip
-                    at={log.length + (currentIndex === -1 ? 1 : currentIndex + 1)}
+                    at={handled.length + (currentIndex === -1 ? 1 : currentIndex + 1)}
                     total={total}
-                    done={log.length}
+                    done={handled.length}
                     batchId={batch.id}
                   />
                 )}
@@ -1463,14 +1498,14 @@ function Workbench({ batch }: { batch: BatchDto }) {
           <ApproveDialog
             // remade whenever the claim or the sitting's frozen text moves:
             // drafts belong to one determination, never to the next
-            key={`${review.id}:${review.recognitionForm?.locked?.hash ?? 'open'}:${refused?.instanceId === review.id ? 'refused' : 'fresh'}`}
+            key={`${review.id}:${review.recognitionForm?.locked?.hash ?? 'open'}:${heldFor('approve') === undefined ? 'fresh' : 'held'}`}
             open={dialog === 'approve'}
             review={review}
             caution={caution(unseen())}
-            {...(refused?.instanceId === review.id ? { initial: refused.worded } : {})}
+            {...withHeld('approve')}
             onClose={() => setDialog(null)}
             onConfirm={(worded) => {
-              setRefused(null)
+              setHeld(null)
               stageDecision('approve', worded)
             }}
           />
@@ -1481,8 +1516,12 @@ function Workbench({ batch }: { batch: BatchDto }) {
             review={review}
             reasons={batch.reviewReasons.reject}
             caution={caution(unseen())}
+            {...withHeld('reject')}
             onClose={() => setDialog(null)}
-            onConfirm={(worded) => stageDecision('reject', worded)}
+            onConfirm={(worded) => {
+              setHeld(null)
+              stageDecision('reject', worded)
+            }}
           />
         )}
         {lingeringDialog === 'escalate' && review !== undefined && (
@@ -1490,8 +1529,12 @@ function Workbench({ batch }: { batch: BatchDto }) {
             open={dialog === 'escalate'}
             review={review}
             reasons={batch.reviewReasons.escalate}
+            {...withHeld('escalate')}
             onClose={() => setDialog(null)}
-            onConfirm={(worded) => stageDecision('escalate', worded)}
+            onConfirm={(worded) => {
+              setHeld(null)
+              stageDecision('escalate', worded)
+            }}
           />
         )}
         <ConfirmDialog
@@ -1513,8 +1556,14 @@ function Workbench({ batch }: { batch: BatchDto }) {
           <SupplementDialog
             open={dialog === 'supplement'}
             instanceId={instanceId}
+            {...(held?.act === 'supplement' && held.instanceId === instanceId
+              ? { initial: held.worded }
+              : {})}
             onClose={() => setDialog(null)}
-            onConfirm={stageSupplement}
+            onConfirm={(worded) => {
+              setHeld(null)
+              stageSupplement(worded)
+            }}
           />
         )}
       </div>

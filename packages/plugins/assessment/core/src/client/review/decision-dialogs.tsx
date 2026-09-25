@@ -568,6 +568,9 @@ const recognitionStyles = stylex.create({
   quietNote: { margin: 0, fontSize: 12, color: 'var(--q-surface-muted-foreground)' },
 })
 
+/** the longest opinion or adjustment reason the decision endpoint takes */
+const WORDS_MAX = 2000
+
 /** what both dialogs hand back: exactly the decision endpoint's payload */
 export interface WordedDecision {
   reason?: string
@@ -984,6 +987,7 @@ export function ApproveDialog({
               <Input
                 id={id}
                 value={determinationReason}
+                maxLength={WORDS_MAX}
                 onChange={(event) => setDeterminationReason(event.target.value)}
               />
             )}
@@ -1003,6 +1007,7 @@ export function ApproveDialog({
           id={id}
           value={comment}
           rows={3}
+          maxLength={WORDS_MAX}
           autoFocus={fine && form === null}
           onChange={(event) => setComment(event.target.value)}
         />
@@ -1438,6 +1443,7 @@ export function RejectDialog({
   review,
   reasons,
   caution,
+  initial,
   onClose,
   onConfirm,
 }: {
@@ -1447,14 +1453,16 @@ export function RejectDialog({
   reasons: readonly string[]
   /** a last quiet word above the act - faces that matter, still unread */
   caution?: ReactNode
+  /** what the last attempt said, when it came back unsent */
+  initial?: WordedDecision
   onClose: () => void
   onConfirm: (decision: WordedDecision) => void
 }) {
   const { format, locale } = useI18n()
   const pickerWords = usePickerWords()
   const fine = useFinePointer()
-  const [reason, setReason] = useState('')
-  const [comment, setComment] = useState('')
+  const [reason, setReason] = useState(initial?.reason ?? '')
+  const [comment, setComment] = useState(initial?.comment ?? '')
   const [suggesting, setSuggesting] = useState(false)
   const fields = fieldsOf(review.form.formConfig).filter((field) => field.type !== 'attachment')
   const filed = (review.revision.payload ?? {}) as Record<string, unknown>
@@ -1575,6 +1583,7 @@ export function RejectDialog({
               id={id}
               value={comment}
               rows={3}
+              maxLength={WORDS_MAX}
               onChange={(event) => setComment(event.target.value)}
             />
           )}
@@ -1647,6 +1656,7 @@ export function RejectDialog({
               ref={commentBox}
               value={comment}
               rows={3}
+              maxLength={WORDS_MAX}
               // With reasons to pick, the cursor waits: focus in the box
               // would swallow the digits that pick them. Without any, the
               // words are the first question and the cursor starts there.
@@ -1835,6 +1845,7 @@ export function EscalateDialog({
   open,
   review,
   reasons,
+  initial,
   onClose,
   onConfirm,
 }: {
@@ -1842,13 +1853,15 @@ export function EscalateDialog({
   open: boolean
   review: ReviewDto
   reasons: readonly string[]
+  /** what the last attempt said, when it came back unsent */
+  initial?: WordedDecision
   onClose: () => void
   onConfirm: (decision: WordedDecision) => void
 }) {
   const { format } = useI18n()
   const fine = useFinePointer()
-  const [reason, setReason] = useState('')
-  const [comment, setComment] = useState('')
+  const [reason, setReason] = useState(initial?.reason ?? '')
+  const [comment, setComment] = useState(initial?.comment ?? '')
   const commentBox = useRef<HTMLTextAreaElement | null>(null)
   const stages = review.chain.escalation
   const ready = comment.trim() !== '' && (reasons.length === 0 || reason !== '')
@@ -1882,6 +1895,7 @@ export function EscalateDialog({
               id={id}
               value={comment}
               rows={3}
+              maxLength={WORDS_MAX}
               onChange={(event) => setComment(event.target.value)}
             />
           )}
@@ -1951,6 +1965,7 @@ export function EscalateDialog({
               ref={commentBox}
               value={comment}
               rows={3}
+              maxLength={WORDS_MAX}
               // the same handover as the send-back: digits first, words next
               autoFocus={fine && reasons.length === 0}
               onChange={(event) => setComment(event.target.value)}
