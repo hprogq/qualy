@@ -122,9 +122,11 @@ database。出现第二种有持久部署副作用的能力时,先设计启动�
 该请求答 503 `SERVICE_UNAVAILABLE`,访问日志以 Error 记下原因;约束冲突与业务拒绝照旧。`/health/ready` 每个探针最多等 4s,超时即 503。
 要放宽某一项,在 `DATABASE_URL` 上加同名参数(如 `?statement_timeout=120000`,`0` 为关闭),例如对库跑耗时较长的
 `qualy assessment audit-scoring` 时;取连接的 5s 不开放配置。**值是毫秒整数**:驱动按 `parseInt` 读,`?statement_timeout=30s`
-会变成 30 毫秒,要写 `30000`。只为一条命令放宽时不要改 server 与 `migrate` 共用的 `.env`,在那条命令上单独给,例如
-`docker compose exec -e DATABASE_URL='postgres://…?statement_timeout=0' server node apps/cli/src/main.ts <命令>`(在运行中的 server 容器里,
-卷与沙箱 socket 都在)。
+会变成 30 毫秒,要写 `30000`。只为一条命令放宽时不要改 server 与 `migrate` 共用的 `.env`,也不要在宿主机命令行上写出完整连接串
+(密码会进 shell 历史和宿主机的进程列表):在容器里基于已有的 `DATABASE_URL` 拼上参数,例如
+`docker compose exec server sh -c 'DATABASE_URL="${DATABASE_URL}?statement_timeout=0" exec node apps/cli/src/main.ts <命令>'`
+(单引号让 `${DATABASE_URL}` 在容器内展开;在运行中的 server 容器里,卷与沙箱 socket 都在)。`DATABASE_URL` 已带查询参数
+(如 `?sslmode=verify-full`)时,把 `?` 换成 `&`。
 迁移(`migrate` job 与开发态 apply)用自己的会话,不受这些上限约束:
 迁移器每开一个会话都先把这三项,连同 `idle_session_timeout` 与 `transaction_timeout`(PostgreSQL 17 起才有,DBA 常把它设在角色上
 当安全网,超时直接断开会话)设为 0,URL 上的参数与库侧的 `ALTER ROLE / DATABASE … SET` 都不作用于迁移;它只限制等待迁移锁的时长
