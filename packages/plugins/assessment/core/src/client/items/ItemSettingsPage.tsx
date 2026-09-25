@@ -280,6 +280,9 @@ export default function ItemSettingsPage() {
   // anything had been open.
   const [question] = usePageQueryState('question', '', { history: 'push' })
   const [group] = usePageQueryState('group', '', { history: 'push' })
+  // which tab of the open question is showing; read here only to be put
+  // back (see the hold below)
+  const [panel] = usePageQueryState('panel', '', { history: 'replace' })
   // One write, two keys. Setting them through two state hooks made the
   // second overwrite the first's pending address, so a composition arrived
   // with no group and a close arrived with no question cleared.
@@ -294,11 +297,50 @@ export default function ItemSettingsPage() {
         : { question: `${DRAFT}${localId}`, group: groupId ?? group },
       { history: 'push' },
     )
+
+  // What is open is what the address says - until the address moves away
+  // from a saved question with unsaved changes. The browser's back button,
+  // the band's arrows and every other move of the address arrive after the
+  // fact, so the question stays on screen until the reader lets its changes
+  // go. A composition needs no such hold: it is kept in the structure.
+  //
+  // Held here rather than in the editor, because the band at the top speaks
+  // for whatever is on screen: a band that followed the address while the
+  // question stayed put changed shape under the question being asked about.
+  // The tab the question was on is kept with it, because the address the
+  // back button left has none - read from there, the question on hold fell
+  // back to its first tab, and staying came back to a different one.
+  const [unsaved, setUnsaved] = useState(false)
+  const [kept, setKept] = useState({ question, composing, panel })
+  const moved = kept.question !== question || kept.composing !== composing
+  const holding = moved && unsaved && kept.composing === null && kept.question !== ''
+  if (moved && !holding) setKept({ question, composing, panel })
+  else if (!moved && kept.panel !== panel) setKept({ ...kept, panel })
+  const shown = holding ? kept.question : question
+  // Staying puts the question back in the address once: the dialog answers
+  // a cancel twice, and a second entry in the history would take the next
+  // back press nowhere.
+  const restoring = useRef(false)
+  useEffect(() => {
+    if (!moved) restoring.current = false
+  }, [moved])
+  const stay = () => {
+    if (restoring.current) return
+    restoring.current = true
+    address({ question: kept.question, group: '', panel: kept.panel }, { history: 'push' })
+  }
+  // the dialog answers a confirm with a cancel as it closes; that one must
+  // not put the discarded question back in the address
+  const letGo = () => {
+    restoring.current = true
+    setUnsaved(false)
+  }
+
   return (
     <BatchScreen
       title={format(m.itemsTab)}
       description={format(m.itemsHint)}
-      banner={question === '' ? 'section' : 'open'}
+      banner={shown === '' ? 'section' : 'open'}
       bannerFlush
     >
       {(batch) => (
@@ -307,11 +349,17 @@ export default function ItemSettingsPage() {
           batchStatus={batch.status}
           materialRange={batch.materialRange}
           participantCount={batch.participantCount}
-          question={question}
+          question={shown}
           onQuestion={setQuestion}
-          composing={composing}
+          composing={holding ? kept.composing : composing}
           composingGroup={group}
           onComposing={setComposing}
+          unsaved={unsaved}
+          onUnsaved={setUnsaved}
+          holding={holding}
+          heldPanel={holding ? kept.panel : undefined}
+          onStay={stay}
+          onLetGo={letGo}
         />
       )}
     </BatchScreen>
@@ -323,11 +371,17 @@ function Editor({
   batchStatus,
   materialRange,
   participantCount,
-  question: addressQuestion,
+  question,
   onQuestion,
-  composing: addressComposing,
+  composing: composingId,
   composingGroup,
   onComposing,
+  unsaved,
+  onUnsaved,
+  holding,
+  heldPanel,
+  onStay,
+  onLetGo,
 }: {
   batchId: string
   batchStatus: string
@@ -342,6 +396,21 @@ function Editor({
   /** which group the composition in the address belongs to */
   composingGroup: string
   onComposing: (localId: string | null, groupId?: string) => void
+  /**
+   * Whether the open question holds edits the round has not been told
+   * about. Set by the editor, kept by the page: it decides whether a move
+   * of the address is held.
+   */
+  unsaved: boolean
+  onUnsaved: (unsaved: boolean) => void
+  /** the address has moved on, and the question is held until the reader says */
+  holding: boolean
+  /** the tab the held question was on, which the address no longer says */
+  heldPanel: string | undefined
+  /** keep the held question: it goes back into the address */
+  onStay: () => void
+  /** let the held question's changes go */
+  onLetGo: () => void
 }) {
   const query = useApiQuery(assessmentApi)
   const api = useApi(assessmentApi)
@@ -366,32 +435,6 @@ function Editor({
   const [group, setGroup] = useState<GroupTarget | null>(null)
   const lingeringGroup = useLingering(group)
   const lingeringVoid = useLingering(voiding)
-  // set by the open editor: publishing what is on screen would be a lie while
-  // the screen says something the round has not been told
-  const [unsaved, setUnsaved] = useState(false)
-  // What is open is what the address says - until the address moves away
-  // from a saved question with unsaved changes. The browser's back button,
-  // the band's arrows and every other move of the address arrive after the
-  // fact, so the question stays on screen until the reader lets its changes
-  // go. A composition needs no such hold: it is kept in the structure.
-  const [kept, setKept] = useState({ question: addressQuestion, composing: addressComposing })
-  const moved = kept.question !== addressQuestion || kept.composing !== addressComposing
-  const holding = moved && unsaved && kept.composing === null && kept.question !== ''
-  if (moved && !holding) setKept({ question: addressQuestion, composing: addressComposing })
-  const question = holding ? kept.question : addressQuestion
-  const composingId = holding ? kept.composing : addressComposing
-  // Staying puts the question back in the address once: the dialog answers
-  // a cancel twice, and a second entry in the history would take the next
-  // back press nowhere.
-  const restoring = useRef(false)
-  useEffect(() => {
-    if (!moved) restoring.current = false
-  }, [moved])
-  const stay = () => {
-    if (restoring.current) return
-    restoring.current = true
-    onQuestion(kept.question)
-  }
   // a drop that crosses groups on a running round waits here for its sentence
   const [pendingMove, setPendingMove] = useState<{
     itemId: string
@@ -427,7 +470,7 @@ function Editor({
 
   /** leave whatever is open and go back to the structure, its changes let go already */
   const close = () => {
-    setUnsaved(false)
+    onUnsaved(false)
     onComposing(null)
     onQuestion('')
   }
@@ -676,7 +719,7 @@ function Editor({
   /** a saved question, opened where the reader already is */
   const opened = async (itemId: string) => {
     // saved, so nothing on screen is waiting to be let go
-    setUnsaved(false)
+    onUnsaved(false)
     // the created row has to be in hand before it can be opened, or the
     // screen has nothing to show between the save and the refetch. The
     // reader stays where they were, so nothing travels.
@@ -706,7 +749,8 @@ function Editor({
         options={options.data}
         held={writing === null ? undefined : held[writing.localId]}
         onHold={onHold}
-        onDirty={setUnsaved}
+        onDirty={onUnsaved}
+        panelHeld={heldPanel}
         menu={
           selectedItem === null ? undefined : (
             <QuestionActions
@@ -867,13 +911,8 @@ function Editor({
         title={format(m.itemsLeaveUnsaved)}
         confirmLabel={format(m.discardEdits)}
         cancelLabel={format(commonMessages.cancel)}
-        onConfirm={() => {
-          // the dialog answers a confirm with a cancel as it closes; that
-          // one must not put the discarded question back in the address
-          restoring.current = true
-          setUnsaved(false)
-        }}
-        onCancel={stay}
+        onConfirm={onLetGo}
+        onCancel={onStay}
       />
 
       <ConfirmDialog

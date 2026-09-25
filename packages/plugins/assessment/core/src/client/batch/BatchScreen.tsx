@@ -202,7 +202,7 @@ export function BatchScreen({
       {/* Edge to edge, cutting the content area in two: a band inset inside
           the page's own width is a card pretending to be a header, and it
           reads as one more box among the boxes below it. */}
-      <div {...stylex.props(styles.band)}>
+      <div data-testid="batch-band" data-banner={showing} {...stylex.props(styles.band)}>
         {/* Hairlines in one direction, widely spaced, gathered at the far
             corner and gone by the time they reach the words: crossed the
             other way they read as graph paper, and evenly spread they read

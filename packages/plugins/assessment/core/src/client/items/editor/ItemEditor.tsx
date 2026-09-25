@@ -247,6 +247,7 @@ export function ItemEditor({
   held,
   onHold,
   onDirty,
+  panelHeld,
   onCancel,
   onReload,
   onSaved,
@@ -275,6 +276,11 @@ export function ItemEditor({
   onHold?: ((draft: Draft) => void) | undefined
   /** whether the pane holds edits the round has not been told about yet */
   onDirty?: ((dirty: boolean) => void) | undefined
+  /**
+   * The tab to show while the page holds this question after the address
+   * moved on: the address no longer says which one it was.
+   */
+  panelHeld?: string | undefined
   onCancel: () => void
   /** read the question again, because somebody else has changed it */
   onReload?: (() => Promise<unknown>) | undefined
@@ -306,8 +312,9 @@ export function ItemEditor({
   }, [draft, onHold])
 
   const [panelParam, setPanelParam] = usePageQueryState('panel', 'basics', { history: 'replace' })
-  const area: EditorArea = AREAS.includes(panelParam as EditorArea)
-    ? (panelParam as EditorArea)
+  const panelShown = panelHeld ?? panelParam
+  const area: EditorArea = AREAS.includes(panelShown as EditorArea)
+    ? (panelShown as EditorArea)
     : 'basics'
   const [sheet, setSheet] = useState<OpenSheet | null>(null)
   const lingeringSheet = useLingering(sheet)

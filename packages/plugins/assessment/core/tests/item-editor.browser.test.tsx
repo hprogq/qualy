@@ -662,6 +662,40 @@ describe('choosing how a question is handled', () => {
     expect(document.querySelector('[data-testid="item-editor"]')).toBeNull()
   })
 
+  // The band speaks for whatever is on screen, and a question on hold keeps
+  // the tab it was on: a band that followed the address changed shape under
+  // the question being asked about, and staying came back on the first tab.
+  it('keeps the band and the tab of a question the back button is held on', async () => {
+    await open({ items: [{ ...officerItem(), scoreGroupId: PAPER_ID }], withBack: true })
+    await vi.waitFor(() =>
+      expect(page.getByText('学生干部任职').elements().length).toBeGreaterThan(0),
+    )
+    await userEvent.click(
+      page
+        .getByText('学生干部任职')
+        .elements()
+        .find((one) => (one as HTMLElement).checkVisibility())!,
+    )
+    await page.getByRole('textbox', { name: '项目名称' }).fill('学生干部任职（改）')
+    await tab(/表单与计分/).click()
+    await expect.element(editor()).toHaveAttribute('data-panel', 'scoring')
+    await expect.element(page.getByTestId('batch-band')).toHaveAttribute('data-banner', 'open')
+
+    await page.getByTestId('browser-back').click()
+    await expect.element(page.getByRole('alertdialog')).toBeVisible()
+    // held: the band still speaks for the question, on the tab it was on
+    await expect.element(page.getByTestId('batch-band')).toHaveAttribute('data-banner', 'open')
+    await expect.element(editor()).toHaveAttribute('data-panel', 'scoring')
+
+    // and staying puts the tab back in the address with the question
+    await page.getByRole('alertdialog').getByRole('button', { name: '取消' }).click()
+    await vi.waitFor(() => {
+      expect(addressNow()).toContain(`question=${ITEM_ID}`)
+      expect(addressNow()).toContain('panel=scoring')
+    })
+    await expect.element(editor()).toHaveAttribute('data-panel', 'scoring')
+  })
+
   it('leaves at once when nothing was changed', async () => {
     await open({ items: [officerItem()], question: ITEM_ID })
     await expect.element(editor()).toBeVisible()
