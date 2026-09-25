@@ -8,6 +8,7 @@
   "exports": {
     ".": "./src/index.tsx",
     "./api": "./src/api.ts",
+    "./identity": "./src/identity.ts",
     "./release": "./src/release.ts"
   },
   "peerDependencies": {

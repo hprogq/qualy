@@ -867,6 +867,12 @@ start
 → 不得阻塞产品 first render
 ```
 
+登出信号（2026-09-25）：`@qualy/web-runtime/identity` 的 `onSignOut(listener)` 返回 disposer，
+由 `useSessionTransition` 在离开一个已登录身份时（登出、以他人身份登录）触发；从匿名登录不触发，
+会话过期也不触发（多半是同一个人回来，本机暂存的内容留给他）。插件在 `setup` 里注册、把 disposer
+交回宿主，用来清掉本浏览器替上一个人保存的未提交内容（首个用户：综测审核草稿）。子路径零依赖，
+不进 `BrowserPluginContext`——ctx 仍只有 release。
+
 generated aggregate：
 
 ```ts

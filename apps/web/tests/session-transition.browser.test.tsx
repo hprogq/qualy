@@ -5,6 +5,7 @@ import { Navigate } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Effect } from 'effect'
 import { useManifest, useSessionTransition } from '@qualy/web-runtime'
+import { onSignOut } from '@qualy/web-runtime/identity'
 import { apiError, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 
 // A change of identity drops what the last one could read, and does not ask
@@ -118,6 +119,71 @@ describe('a change of identity', () => {
     })
     await page.getByRole('button', { name: 'in' }).click()
     await expect.element(page.getByTestId('home')).toBeInTheDocument()
+  })
+})
+
+// What a plugin keeps in this browser for the person signed in - an unsent
+// review, say - has to go when they leave, not when the next person happens
+// to open the screen that sweeps it. Signing in from nobody leaves nobody.
+describe('leaving a signed-in identity', () => {
+  const Leave = ({ label }: { label: string }) => {
+    const transition = useSessionTransition()
+    return (
+      <button
+        type="button"
+        onClick={() => void transition({ destination: { kind: 'page', page: 'auth/login' } })}
+      >
+        {label}
+      </button>
+    )
+  }
+  const screen = (viewer: 'anonymous' | 'authenticated') =>
+    renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.succeed({
+              ...emptyManifest(),
+              viewer,
+              pages: [{ id: 'auth/login', path: '/login', layout: 'blank' }],
+            }),
+        },
+      }),
+      routes: [
+        { path: '/home', element: <Leave label="leave" /> },
+        { path: '/login', element: <main data-testid="landed" /> },
+      ],
+      route: '/home',
+    })
+
+  it('tells whoever kept something for the person who is leaving', async () => {
+    let told = 0
+    const stop = onSignOut(() => {
+      told += 1
+    })
+    try {
+      await screen('authenticated')
+      await page.getByRole('button', { name: 'leave' }).click()
+      await expect.element(page.getByTestId('landed')).toBeInTheDocument()
+      expect(told).toBe(1)
+    } finally {
+      stop()
+    }
+  })
+
+  it('tells nobody when nobody was signed in', async () => {
+    let told = 0
+    const stop = onSignOut(() => {
+      told += 1
+    })
+    try {
+      await screen('anonymous')
+      await page.getByRole('button', { name: 'leave' }).click()
+      await expect.element(page.getByTestId('landed')).toBeInTheDocument()
+      expect(told).toBe(0)
+    } finally {
+      stop()
+    }
   })
 })
 

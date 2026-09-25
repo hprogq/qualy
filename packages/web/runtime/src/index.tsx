@@ -37,6 +37,7 @@ import { commonMessages } from '@qualy/web-i18n/messages'
 import { LoadingScreen } from '@qualy/ui/spinner'
 import { afterFlight } from '@qualy/ui/flight'
 import { clientFor, type ClientIdentity, type ClientOf, type TransportOptions } from './api.ts'
+import { signingOut } from './identity.ts'
 import { type ComponentRegistry } from './registry.ts'
 import {
   createQueryUtils,
@@ -367,6 +368,10 @@ export function useSessionTransition() {
   const runtime = useRuntime()
   return useCallback(
     async (options: { destination: SessionDestination; replace?: boolean }) => {
+      // Leaving somebody who was signed in: whatever a plugin kept in this
+      // browser for them goes before the next person can find it. Signing
+      // in from nobody leaves nobody.
+      if (manifest.viewer === 'authenticated') signingOut()
       const manifestKey = (
         runtime.utilsFor(appApi) as QueryUtils<ClientOf<typeof appApi>>
       ).app.getManifest.queryOptions().queryKey
