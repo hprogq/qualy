@@ -362,6 +362,7 @@ export default {
   'assessment/result/group-floored': '合计 {raw}，按分组下限 {floor} 计入',
   'assessment/result/line-excluded': '已退回，不计入成绩',
   'assessment/result/line-voided': '项目已停用，不计入成绩',
+  'assessment/result/line-revoked': '已撤销，不计入成绩',
   'assessment/result/line-none': '未申报',
   'assessment/result/line-adjustment': '分组上限',
   'assessment/record/tab': '行政认定',

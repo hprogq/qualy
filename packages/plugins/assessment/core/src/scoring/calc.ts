@@ -104,6 +104,8 @@ export type ScoreInputEntry =
        * an absence is nothing to anchor on.
        */
       readonly standing: 'excluded'
+      /** a fact the office recorded and then revoked, rather than a refusal */
+      readonly revoked?: boolean
     })
   | (ScoreInputEntryBase & {
       /**
@@ -134,6 +136,8 @@ export interface BreakdownLine {
   readonly label: string
   readonly value: string
   readonly itemId?: string
+  /** on an excluded line: the office revoked the fact, nobody refused it */
+  readonly revoked?: boolean
   readonly provenance?: {
     readonly entryId?: string
     readonly entryRevisionId?: string
@@ -333,6 +337,7 @@ export const calcParticipant = (catalogs: ScoringCatalogs, input: ScoreInput): B
             label: item.title,
             value: formatAmount(0n),
             itemId: item.id,
+            ...(entry.revoked === true ? { revoked: true } : {}),
             provenance: {
               entryId: entry.id,
               ...(entry.revisionId !== null ? { entryRevisionId: entry.revisionId } : {}),

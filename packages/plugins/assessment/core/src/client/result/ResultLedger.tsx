@@ -59,6 +59,8 @@ type ResultLine = {
   label: string
   value: string
   itemId?: string
+  /** on an excluded line: the office revoked the fact, nobody refused it */
+  revoked?: boolean | undefined
   provenance?: { entryId?: string } | undefined
 }
 
@@ -736,7 +738,9 @@ function GroupRows({
         const spent = line.kind !== 'entry' && line.kind !== 'derived'
         const note =
           line.kind === 'excluded-evidence'
-            ? m.resultLineExcluded
+            ? line.revoked === true
+              ? m.resultLineRevoked
+              : m.resultLineExcluded
             : line.kind === 'derived'
               ? m.resultDerived
               : line.kind === 'entry-not-counted'
@@ -752,6 +756,8 @@ function GroupRows({
         return (
           <div
             key={line.lineId}
+            data-line-kind={line.kind}
+            data-revoked={line.revoked === true || undefined}
             {...stylex.props(styles.cols, styles.line, followable && styles.followable)}
             {...(followable
               ? {

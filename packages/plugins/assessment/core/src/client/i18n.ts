@@ -1741,6 +1741,10 @@ const i18n = definePluginMessages({
       defaultMessage: 'Returned 　 not counted',
     },
     resultLineNone: { id: 'assessment/result/line-none', defaultMessage: 'Not submitted' },
+    resultLineRevoked: {
+      id: 'assessment/result/line-revoked',
+      defaultMessage: 'Revoked 　 not counted',
+    },
     resultLineVoided: {
       id: 'assessment/result/line-voided',
       defaultMessage: 'Item disabled 　 not counted',

@@ -1317,6 +1317,8 @@ const breakdownLine = Schema.Struct({
   label: Schema.String,
   value: Schema.String,
   itemId: Schema.optional(Schema.String),
+  /** on an excluded line: the office revoked the fact, nobody refused it */
+  revoked: Schema.optional(Schema.Boolean),
   provenance: Schema.optional(
     Schema.Struct({
       entryId: Schema.optional(Schema.String),

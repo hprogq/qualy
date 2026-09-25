@@ -100,6 +100,8 @@ export interface ScoredEntryRow {
   wasSubmitted: boolean
   /** whether it was cancelled because its question was withdrawn */
   voidedWithItem: boolean
+  /** who wrote it: the participant, or the office (record / import) */
+  source: string
   createdAt: number
 }
 
@@ -124,6 +126,7 @@ export const participantEntries = (tenantId: string, batchId: string, participan
           'e.id',
           'e.itemId',
           'e.status',
+          'e.source',
           'e.currentRevisionId as revisionId',
           'e.currentRecognitionId as recognitionId',
           'rec.values as recognition',
@@ -208,6 +211,7 @@ export const participantEntries = (tenantId: string, batchId: string, participan
           recognition: row.recognition ?? {},
           wasSubmitted: row.wasSubmitted === true,
           voidedWithItem: row.voidedWithItem === true,
+          source: row.source,
           createdAt: msOf(row.createdMs),
         })),
       ),

@@ -332,6 +332,56 @@ describe.runIf(postgresAvailable)('the provisional account', () => {
     expect(result.after.lines.map((line) => line.lineId)).not.toContain(`entry:${result.draft.id}`)
   })
 
+  // A fact the office recorded was in force from the moment it was written:
+  // counted, and appealable. Revoking it takes it out of the total, and the
+  // account keeps the line at zero, said as revoked rather than as a score
+  // of nothing (ruling of 2026-09-25 #25).
+  it('keeps a line for a record the office revoked, and says it was revoked', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('sc-revoked')
+          const assessment = yield* Assessment
+          const g = yield* scoringBatch(f, {
+            groups: [{ name: '文体', cap: '10.00' }],
+            items: [
+              { title: '违纪扣分', value: '-1.00', group: 0, entryChannels: ['administrative'] },
+              { title: '退役复学', value: '3.00', group: 0, entryChannels: ['participant'] },
+            ],
+          })
+          const s1 = f.principal(f.s1)
+          const recorder = f.principal(f.recorder)
+          const filed = yield* approved(f, g.items[1]!, g.p1, f.s1)
+          const recorded = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.items[0]!, participantId: g.p1, payload: {}, note: '校发〔2026〕7 号' },
+            recorder,
+          )
+          const counted = yield* assessment.getMyResult(f.t, g.batch.id, s1)
+          yield* assessment.interveneOnEntry(
+            f.t,
+            recorded.id,
+            { kind: 'void', reason: '处分已撤销' },
+            recorder,
+          )
+          const after = yield* assessment.getMyResult(f.t, g.batch.id, s1)
+          return { counted, after, filed, recorded: recorded.id }
+        }),
+      ),
+    )
+    expect(result.counted.total).toBe('2.00')
+    expect(result.after.total).toBe('3.00')
+    const line = result.after.lines.find((one) => one.lineId === `entry:${result.recorded}`)
+    expect(line).toEqual(
+      expect.objectContaining({ kind: 'excluded-evidence', value: '0.00', revoked: true }),
+    )
+    // an excluded claim somebody refused is not said as revoked
+    expect(
+      result.after.lines.filter((one) => one.kind === 'excluded-evidence' && one.revoked !== true),
+    ).toEqual([])
+  })
+
   it('prepares once per question in the arithmetic, and never outside it', async () => {
     // The lazy seam: a calculator is prepared when - and only when - some
     // amount is actually about to be computed under its plan. An inactive

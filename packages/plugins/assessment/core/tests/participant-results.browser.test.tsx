@@ -525,6 +525,52 @@ describe('the participant results screen', () => {
     await vi.waitFor(() => expect(redetermineEntry).toHaveBeenCalledTimes(1))
   })
 
+  // a record the office revoked stays on the account at zero, marked as
+  // revoked rather than drawn like a refusal or a plain zero (ruling #25)
+  it('marks a revoked record apart from a refused claim on the account', async () => {
+    const revokedEntry = '12121212-1212-4121-8121-121212121212'
+    await screen(
+      {
+        getParticipantResult: () =>
+          Effect.succeed({
+            ...account,
+            lines: [
+              ...account.lines,
+              {
+                lineId: `entry:${revokedEntry}`,
+                kind: 'excluded-evidence' as const,
+                label: 'CET-6',
+                value: '0.00',
+                itemId: ITEM_ID,
+                revoked: true,
+                provenance: { entryId: revokedEntry },
+              },
+              {
+                lineId: `entry:${OTHER_ID}`,
+                kind: 'excluded-evidence' as const,
+                label: 'CET-6',
+                value: '0.00',
+                itemId: ITEM_ID,
+                provenance: { entryId: OTHER_ID },
+              },
+            ],
+          }),
+      },
+      `/assessment/batches/${BATCH_ID}/results?participant=${PARTICIPANT_ID}`,
+    )
+    await expect.element(page.getByTestId('result-total')).toHaveTextContent('1.00')
+    const excluded = () =>
+      [...document.querySelectorAll('[data-line-kind="excluded-evidence"]')].map((row) => [
+        row.getAttribute('data-entry'),
+        row.getAttribute('data-revoked'),
+      ])
+    await vi.waitFor(() => expect(excluded()).toHaveLength(2))
+    expect(excluded()).toEqual([
+      [revokedEntry, 'true'],
+      [OTHER_ID, null],
+    ])
+  })
+
   it('re-examines a concluded claim through the escalation workflow, with a reason', async () => {
     const reopenEntry = vi.fn((_request: Request) => Effect.fail(apiError('BAD', {})))
     await screen(

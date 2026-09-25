@@ -237,6 +237,8 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
         readonly wasSubmitted: boolean
         /** whether it went with its question, which takes that line away again */
         readonly voidedWithItem: boolean
+        /** who wrote it: the participant, or the office (record / import) */
+        readonly source: string
         readonly createdAt: number
       }[]
     },
@@ -330,12 +332,24 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
           // cancelled because its question was withdrawn has no line either,
           // even once the question is restored: nobody refused it, and the
           // question's own withdrawal is what there was to answer for.
+          //
+          // A fact the office recorded and then revoked keeps a line too
+          // (ruling of 2026-09-25 #25): it was never submitted, but it was
+          // in force - counted, and appealable - so taking it back is part
+          // of the account, said as revoked rather than as a score of zero.
+          const recorded = entry.source === 'record' || entry.source === 'import'
+          const revoked = entry.status === 'voided' && !entry.voidedWithItem && recorded
           const excluded =
             item !== undefined &&
             item.status === 'active' &&
             (entry.status === 'rejected' ||
+              revoked ||
               (entry.status === 'voided' && entry.wasSubmitted && !entry.voidedWithItem))
-          entries.push({ ...common, standing: excluded ? 'excluded' : 'unscored' })
+          entries.push(
+            excluded
+              ? { ...common, standing: 'excluded', revoked }
+              : { ...common, standing: 'unscored' },
+          )
           continue
         }
         // the table refuses an approved claim without a determination, so
