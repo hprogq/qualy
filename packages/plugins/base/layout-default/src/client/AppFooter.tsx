@@ -6,9 +6,8 @@ import { PageContainer } from '@qualy/ui/page-container'
 import { useI18n } from '@qualy/web-i18n'
 import { layoutMessages as m } from './i18n.ts'
 
-// The application's signature, once, under the page: the wordmark, its
-// line, and the four places a reader may need that are not pages of the
-// product. It belongs to the shell of the applications' own pages and to
+// The application's signature, once, under the page: the wordmark and its
+// line. It belongs to the shell of the applications' own pages and to
 // nothing else - a workspace somebody has entered does not sign every
 // screen - and it sits at the foot of the viewport when the page is short,
 // after the page when it is not.
@@ -21,10 +20,9 @@ import { layoutMessages as m } from './i18n.ts'
 
 const styles = stylex.create({
   foot: {
-    // Not on a phone. The signature is a desktop courtesy - a wordmark and
-    // four secondary links under the last row - and on a narrow screen it
-    // is a second navigation sitting right above the real one, which the
-    // reader reaches by scrolling past the content they came for.
+    // Not on a phone. The signature is a desktop courtesy under the last
+    // row, and on a narrow screen it sits right above the real navigation,
+    // which the reader reaches by scrolling past the content they came for.
     display: { default: null, [breakpoints.phone]: 'none' },
     flexShrink: 0,
     width: '100%',
@@ -53,29 +51,7 @@ const styles = stylex.create({
   tagline: {
     color: tokens.mutedForeground,
   },
-  links: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: 20,
-    margin: 0,
-    padding: 0,
-    listStyle: 'none',
-  },
-  link: {
-    color: {
-      default: tokens.mutedForeground,
-      ':hover': tokens.foreground,
-    },
-    textDecoration: 'none',
-  },
 })
-
-const LINKS = [
-  ['help', m.footHelp],
-  ['contact', m.footContact],
-  ['privacy', m.footPrivacy],
-  ['terms', m.footTerms],
-] as const
 
 export function AppFooter() {
   const { format } = useI18n()
@@ -87,15 +63,6 @@ export function AppFooter() {
             <Wordmark height={12} title="Qualy" />
             <span {...stylex.props(styles.tagline)}>{format(m.tagline)}</span>
           </div>
-          <ul {...stylex.props(styles.links)}>
-            {LINKS.map(([id, label]) => (
-              <li key={id}>
-                <a href="#" {...stylex.props(styles.link)}>
-                  {format(label)}
-                </a>
-              </li>
-            ))}
-          </ul>
         </div>
       </PageContainer>
     </footer>

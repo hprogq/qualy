@@ -41,10 +41,6 @@ const i18n = definePluginMessages({
       id: 'layout/footer/tagline',
       defaultMessage: 'Beyond the grade. Back to growth.',
     },
-    footHelp: { id: 'layout/footer/help', defaultMessage: 'Help centre' },
-    footContact: { id: 'layout/footer/contact', defaultMessage: 'Contact us' },
-    footPrivacy: { id: 'layout/footer/privacy', defaultMessage: 'Privacy policy' },
-    footTerms: { id: 'layout/footer/terms', defaultMessage: 'Terms of service' },
   },
   locales: {
     'zh-CN': () => import('./locales/zh-CN.ts'),

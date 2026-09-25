@@ -354,6 +354,19 @@ describe('the application shell', () => {
     ])
   })
 
+  it('signs the page without links that lead nowhere', async () => {
+    await shell(<AppShell />, '/organization/users', '/organization/users')
+    await expect.element(page.getByRole('link', { name: 'Qualy' })).toBeVisible()
+    const signature = document.querySelector('[data-shell-foot]')
+    expect(signature).not.toBeNull()
+    // an address that only returns to the top of the page is not a place
+    const nowhere = [...signature!.querySelectorAll('a')].filter((link) => {
+      const href = link.getAttribute('href')
+      return href === null || href === '' || href.startsWith('#')
+    })
+    expect(nowhere).toEqual([])
+  })
+
   it('leaves the foot bare for a reader with one application', async () => {
     await renderScreen({
       client: fakeClient({ app: { getManifest: () => Effect.succeed(oneAppManifest()) } }),
