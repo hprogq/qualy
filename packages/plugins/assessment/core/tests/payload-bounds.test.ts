@@ -74,6 +74,40 @@ describe('reopening a batch', () => {
   })
 })
 
+// The zone is bound into AT TIME ZONE, and the platform and PostgreSQL read
+// some spellings differently: `+08:00` is UTC+8 to one and UTC-8 to the
+// other, `+0800` and legacy aliases such as `CTT` are refused by the
+// database outright. Only region names reach the service.
+describe('a batch time zone', () => {
+  const update = payloadOf('updateBatch')
+  const create = payloadOf('createBatch')
+  const creating = (timezone: string) => ({
+    name: 'Zone',
+    materialRange: { start: '2026-03-01', end: '2026-09-01' },
+    timezone,
+    import: { orgNodeIds: [id(1)], userTypeIds: [id(2)] },
+  })
+
+  it('takes a region name', () => {
+    for (const timezone of [
+      'UTC',
+      'Asia/Shanghai',
+      'Etc/GMT-8',
+      'America/Argentina/Buenos_Aires',
+    ]) {
+      expect(accepts(update, { timezone }), timezone).toBe(true)
+    }
+    expect(accepts(create, creating('Asia/Shanghai'))).toBe(true)
+  })
+
+  it('refuses an offset or an alias the two sides read differently', () => {
+    for (const timezone of ['+0800', '+08:00', '+08', '-0530', 'CTT', 'CST', 'PRC']) {
+      expect(accepts(update, { timezone }), timezone).toBe(false)
+    }
+    expect(accepts(create, creating('+08:00'))).toBe(false)
+  })
+})
+
 // keeps the helper honest: an id this file builds is one the contract takes
 it('builds ids the contract accepts', () => {
   expect(accepts(queryOf('staffOptions'), { userIds: id(1) })).toBe(true)

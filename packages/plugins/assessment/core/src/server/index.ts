@@ -138,6 +138,7 @@ import {
   deleteTemplateRow,
   insertBatch,
   insertParticipantEvents,
+  knownTimeZone,
   keepParticipantPlacement,
   participantPlacements,
   syncParticipantPlacement,
@@ -2176,6 +2177,14 @@ export const make = Effect.fn('Assessment.make')(function* () {
     })
 
   /** this batch, as an object authority can be confined to */
+  /** a zone the database reads the way its name says, or a refusal before it is stored */
+  const requireKnownZone = (zone: string) =>
+    Effect.flatMap(knownTimeZone(zone), (known) =>
+      known
+        ? Effect.void
+        : Effect.fail(new BadRequest({ message: 'not a time zone the database knows' })),
+    )
+
   const batchResource = (batchId: string) => ({
     namespace: 'assessment',
     type: 'batch',
@@ -2703,6 +2712,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
           Effect.gen(function* () {
             const nodes = yield* validateScopeSelection(tenantId, input.import.orgNodeIds)
             for (const node of nodes) yield* rbac.requireAt(as, MANAGE, node.id)
+            if (input.timezone !== undefined) yield* requireKnownZone(input.timezone)
             const created = yield* insertBatch({
               tenantId,
               name: input.name,
@@ -3113,6 +3123,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
               diff.descriptionMd = [before.descriptionMd, input.descriptionMd]
             }
             if (input.timezone !== undefined && input.timezone !== before.timezone) {
+              yield* requireKnownZone(input.timezone)
               diff.timezone = [before.timezone, input.timezone]
             }
             // the lists are offer, not history: events copied the label they

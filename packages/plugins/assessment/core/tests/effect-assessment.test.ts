@@ -2908,6 +2908,52 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     expect(Object.keys(events[1]!.diff)).toEqual(['phasePlan'])
   })
 
+  // The zone is bound into AT TIME ZONE when a reviewer's day is counted, so
+  // the database is the one whose reading counts. A name the platform
+  // resolves and PostgreSQL does not used to be stored as given, and every
+  // reviewer inbox of the round then answered 500.
+  it('keeps a zone the database does not know off the batch', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('zones')
+        const assessment = yield* Assessment
+        const create = (timezone: string) =>
+          assessment.createBatch(
+            f.tenant,
+            {
+              name: `Zone ${timezone}`,
+              materialRange: { start: '2026-03-01', end: '2026-09-01' },
+              timezone,
+              import: { orgNodeIds: [f.root], userTypeIds: [f.studentType] },
+            },
+            f.principal,
+          )
+        const unknownAtCreate = yield* Effect.exit(create('US/Pacific-New'))
+        const batch = yield* create('Etc/GMT-8')
+        const unknownAtUpdate = yield* Effect.exit(
+          assessment.updateBatch(f.tenant, batch.id, { timezone: 'SystemV/AST4' }, f.principal),
+        )
+        const moved = yield* assessment.updateBatch(
+          f.tenant,
+          batch.id,
+          { timezone: 'UTC' },
+          f.principal,
+        )
+        const created = rowsOf<{ name: string }>(
+          yield* runSql(sql`select name from assessment_batches where tenant_id = ${f.tenant}`),
+        )
+        return { unknownAtCreate, unknownAtUpdate, moved, created, batch }
+      }),
+    )
+    const { unknownAtCreate, unknownAtUpdate, moved, created, batch } = ok(exit)
+    expect(tagOf(unknownAtCreate)).toBe('BAD_REQUEST')
+    expect(tagOf(unknownAtUpdate)).toBe('BAD_REQUEST')
+    expect(batch.timezone).toBe('Etc/GMT-8')
+    expect(moved.timezone).toBe('UTC')
+    expect(created.map((row) => row.name)).toEqual(['Zone Etc/GMT-8'])
+  })
+
   it('keeps the tenant timetable out of one unit administrator hands', async () => {
     const exit = await run(
       db.url,

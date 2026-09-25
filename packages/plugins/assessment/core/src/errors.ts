@@ -1,5 +1,6 @@
 import { Schema } from 'effect'
 import type { AccessDenied } from '@qualy/rbac-contract/effect'
+import type { BadRequest } from '@qualy/api-kit/schema'
 
 // The ways the assessment api can refuse, in their own module below both the
 // group that declares them and the layer that raises them. Codes are the
@@ -453,13 +454,14 @@ export const templateConstraints: Record<string, () => TemplateConflict> = {
  */
 export const batchConstraints: Record<string, () => BatchReferenceInvalid> = {}
 
-export type CreateBatchError = BatchReferenceInvalid | AccessDenied
+export type CreateBatchError = BatchReferenceInvalid | AccessDenied | BadRequest
 export type UpdateBatchError =
   | BatchNotFound
   | BatchReadOnly
   | BatchReferenceInvalid
   | MaterialRangeInvalid
   | AccessDenied
+  | BadRequest
 export type SetBatchStatusError =
   | BatchNotFound
   | BatchStatusInvalid

@@ -113,16 +113,21 @@ export const isoDate = Schema.String.check(
 const materialRange = Schema.Struct({ start: isoDate, end: isoDate })
 
 /**
- * A zone name the platform can actually resolve.
+ * A zone written as a region name, which the platform can resolve.
  *
  * The value is bound into `AT TIME ZONE` wherever a round's day boundaries
- * are worked out, and PostgreSQL refuses a name it does not know - which
- * arrives as a database fault, so one bad value answered 500 on that round's
- * reviewer inbox rather than being refused when it was set. `Intl` knows the
- * same tz database, so it can say no at the door.
+ * are worked out. The platform and PostgreSQL do not read every spelling
+ * alike: an offset such as `+08:00` is UTC+8 here and UTC-8 there (POSIX
+ * signs run the other way), `+0800` is refused there outright, and legacy
+ * aliases such as `CTT` resolve here and nowhere else. So only a region name
+ * is taken at the door - `Asia/Shanghai`, `Etc/GMT-8`, or `UTC` - and the
+ * service asks the database itself before the value is stored.
  */
 const timeZoneName = trimmedName(63).check(
   Schema.makeFilter((value: string) => {
+    if (value !== 'UTC' && !/^[A-Za-z]+(?:\/[A-Za-z0-9_+-]+)+$/.test(value)) {
+      return 'a time zone is written as a region name, such as Asia/Shanghai'
+    }
     try {
       new Intl.DateTimeFormat(undefined, { timeZone: value })
       return undefined

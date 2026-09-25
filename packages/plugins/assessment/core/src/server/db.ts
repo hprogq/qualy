@@ -603,6 +603,25 @@ export const userEntriesPage = (
 
 export type UserEntryRow = Effect.Success<ReturnType<typeof userEntriesPage>>[number]
 
+/**
+ * Whether the database knows this zone by name.
+ *
+ * The zone is bound into `AT TIME ZONE` wherever a round's day boundaries are
+ * worked out, so the database is the one whose answer counts: the platform's
+ * own zone list accepts offsets PostgreSQL reads with the opposite sign, and
+ * legacy aliases it does not know at all.
+ */
+export const knownTimeZone = (zone: string) =>
+  db
+    .query((k) =>
+      k
+        .selectNoFrom(
+          sql<boolean>`exists (select 1 from pg_timezone_names where name = ${zone})`.as('known'),
+        )
+        .executeTakeFirstOrThrow(),
+    )
+    .pipe(Effect.map((row) => row.known === true))
+
 export const insertBatch = (input: {
   tenantId: string
   name: string
