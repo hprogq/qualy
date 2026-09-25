@@ -575,4 +575,79 @@ describe.runIf(postgresAvailable).concurrent('user types', () => {
       await db.dispose()
     }
   })
+
+  // The handler asks before the write; a grant withdrawn while the request
+  // waited for the tenant lock must not still let it through.
+  it('asks again under the lock whether the author may still edit user types', async () => {
+    const db = await createTestContext('effect-ut-relocked')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const f = yield* seed()
+          const iam = yield* Iam
+          const author = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.tenant}, 'Author', ${f.staff}, ${f.node}) returning id`),
+          ).id
+          const role = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into roles (tenant_id, code, name, kind, status, permission_mode)
+              values (${f.tenant}, 'types', 'Types', 'tenant', 'active', 'explicit') returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into role_permissions (tenant_id, role_id, permission_id)
+            select ${f.tenant}, ${role}, id from permissions where code = 'auth.user-type.manage'`)
+          const grant = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into role_grants (tenant_id, user_id, role_id)
+              values (${f.tenant}, ${author}, ${role}) returning id`),
+          ).id
+          const as: Principal = { tenantId: f.tenant, userId: author, sessionId: 's' }
+          const renamed = yield* iam.userTypes.update(f.tenant, f.staff, { name: 'Staff!' }, 1, as)
+          yield* runSql(sql`update role_grants set revoked_at = now() where id = ${grant}`)
+          const tried = (write: Effect.Effect<unknown, unknown>) =>
+            Effect.map(Effect.result(write), (result) => tagOf(result) ?? result._tag)
+          return {
+            renamed,
+            update: yield* tried(iam.userTypes.update(f.tenant, f.staff, { name: 'Late' }, 2, as)),
+            status: yield* tried(iam.userTypes.setEnabled(f.tenant, f.staff, false, 2, as)),
+            policy: yield* tried(
+              iam.userTypes.setPlacementPolicy(
+                f.tenant,
+                f.staff,
+                { mode: 'unrestricted', orgTypeIds: [] },
+                2,
+                as,
+              ),
+            ),
+            create: yield* tried(
+              iam.userTypes.create(
+                f.tenant,
+                { code: 'late', name: 'Late', placementPolicy: { mode: 'unrestricted' } },
+                as,
+              ),
+            ),
+            remove: yield* tried(iam.userTypes.remove(f.tenant, f.staff, 2, as)),
+            name: one<{ name: string }>(
+              yield* runSql(sql`select name from user_types where id = ${f.staff}`),
+            ).name,
+          }
+        }),
+      )
+      expect(ok(exit)).toEqual({
+        renamed: 2,
+        update: 'ACCESS_DENIED',
+        status: 'ACCESS_DENIED',
+        policy: 'ACCESS_DENIED',
+        create: 'ACCESS_DENIED',
+        remove: 'ACCESS_DENIED',
+        name: 'Staff!',
+      })
+    } finally {
+      await db.dispose()
+    }
+  })
 })

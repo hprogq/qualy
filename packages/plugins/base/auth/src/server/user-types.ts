@@ -287,11 +287,15 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
     return row
   })
 
-  const write = <A, E, R>(tenantId: string, body: () => Effect.Effect<A, E, R>) =>
+  // The handler refuses a caller without the permission before any of this;
+  // it is asked again under the lock because a grant withdrawn while the
+  // request waited for it must not still let the write through.
+  const write = <A, E, R>(tenantId: string, as: Principal, body: () => Effect.Effect<A, E, R>) =>
     withDb(
       transaction(
         Effect.gen(function* () {
           yield* lockTenant(tenantId)
+          yield* rbac.require(as, 'auth.user-type.manage')
           return yield* body()
         }),
       ),
@@ -321,7 +325,7 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
       },
       as: Principal,
     ) {
-      return yield* write(tenantId, () =>
+      return yield* write(tenantId, as, () =>
         Effect.gen(function* () {
           const policy = input.placementPolicy
           const { id } = yield* insertUserType({
@@ -389,7 +393,7 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
       expectedVersion: number,
       as: Principal,
     ) {
-      return yield* write(tenantId, () =>
+      return yield* write(tenantId, as, () =>
         Effect.gen(function* () {
           const type = yield* guard(tenantId, userTypeId, expectedVersion)
           // a request that changes nothing must not invalidate every open
@@ -423,7 +427,7 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
       expectedVersion: number,
       as: Principal,
     ) {
-      return yield* write(tenantId, () =>
+      return yield* write(tenantId, as, () =>
         Effect.gen(function* () {
           const type = yield* guard(tenantId, userTypeId, expectedVersion)
           // asking for the state it is already in is not an edit, so it
@@ -467,7 +471,7 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
       const wanted = uniqueUuids(policy.mode === 'allow-list' ? policy.orgTypeIds : [])
       if (!wanted) return yield* new UserTypeOrgTypeNotFound()
 
-      return yield* write(tenantId, () =>
+      return yield* write(tenantId, as, () =>
         Effect.gen(function* () {
           const type = yield* lockUserType(tenantId, userTypeId)
           if (!type) return yield* new UserTypeNotFound()
@@ -521,7 +525,7 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
       expectedVersion: number,
       as: Principal,
     ) {
-      return yield* write(tenantId, () =>
+      return yield* write(tenantId, as, () =>
         Effect.gen(function* () {
           const type = yield* guard(tenantId, userTypeId, expectedVersion)
           if (type.isSystem || type.code === SYSTEM_ACCOUNT_USER_TYPE) {
