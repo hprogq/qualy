@@ -24,7 +24,12 @@ import { serviceLayer as rbacLayer } from '@qualy/plugin-rbac/server'
 import { serviceLayer as auditLayer } from '@qualy/plugin-audit/server'
 import { AuditActionCatalog } from '@qualy/audit-contract/effect'
 import { compileActionCatalog } from '@qualy/audit-contract/plugin'
-import { loginDriversLayer, registerLoginDriver } from '@qualy/auth-contract/login'
+import {
+  loginDriversLayer,
+  registerLoginDriver,
+  type AuthBindingDeclaration,
+  type LoginDriver,
+} from '@qualy/auth-contract/login'
 import { userActions } from '../src/actions.ts'
 import { AuthConfig } from '../src/server/auth-config.ts'
 import { EmailFlows, emailFlowsLayer } from '../src/server/email-flows.ts'
@@ -40,25 +45,54 @@ import { acceptable, standInChecks } from './support/secret-checks.ts'
 // is kept in memory and read back; the password is a digest a test can
 // read, because what is being checked is who may set one, not argon2.
 
-const passwordDoor = registerLoginDriver({
+const localBinding = {
+  mode: 'managed',
+  secret: { label: { kind: 'literal', value: 'Password' }, minLength: 8, maxLength: 64 },
+  // a stand-in judge: long enough, and not the person's own address
+  prepare: ({ secret, subject }) =>
+    Effect.succeed(
+      acceptable(standInChecks(secret, subject))
+        ? { ok: true as const, credentialHash: `digest:${secret}` }
+        : { ok: false as const, checks: standInChecks(secret, subject) },
+    ),
+  assess: ({ secret, subject }) => Effect.succeed(standInChecks(secret, subject)),
+  verify: ({ secret, credentialHash }) => Effect.succeed(credentialHash === `digest:${secret}`),
+} satisfies AuthBindingDeclaration
+
+const localDriver = {
   type: 'local',
   presentation: { mode: 'redirect', href: () => '/nowhere' },
   provisioning: { mode: 'system-singleton', code: 'local', label: literal('Password') },
   resolution: { mode: 'user-field', field: 'email' },
-  binding: {
-    mode: 'managed',
-    secret: { label: { kind: 'literal', value: 'Password' }, minLength: 8, maxLength: 64 },
-    // a stand-in judge: long enough, and not the person's own address
-    prepare: ({ secret, subject }) =>
-      Effect.succeed(
-        acceptable(standInChecks(secret, subject))
-          ? { ok: true as const, credentialHash: `digest:${secret}` }
-          : { ok: false as const, checks: standInChecks(secret, subject) },
-      ),
-    assess: ({ secret, subject }) => Effect.succeed(standInChecks(secret, subject)),
-    verify: ({ secret, credentialHash }) => Effect.succeed(credentialHash === `digest:${secret}`),
-  },
-})
+  binding: localBinding,
+} satisfies LoginDriver
+
+const passwordDoor = registerLoginDriver(localDriver)
+
+/**
+ * The same door, counting every digest it is asked for; one it would take
+ * is held until the gate opens, and says so when it starts.
+ */
+const countingDoor = (
+  made: { count: number },
+  started: Deferred.Deferred<void>,
+  gate: Deferred.Deferred<void>,
+) =>
+  registerLoginDriver({
+    ...localDriver,
+    binding: {
+      ...localBinding,
+      prepare: (input) =>
+        Effect.gen(function* () {
+          made.count += 1
+          const judged = yield* localBinding.prepare(input)
+          if (!judged.ok) return judged
+          yield* Deferred.succeed(started, undefined)
+          yield* Deferred.await(gate)
+          return judged
+        }),
+    },
+  })
 
 const PUBLIC_URL = 'https://qualy.example.edu'
 
@@ -68,6 +102,7 @@ const stack = (
   captcha: typeof captchaLayer = captchaLayer,
   demoAccounts: readonly { email: string; password: string; label: string }[] = [],
   publicUrl: string | null = PUBLIC_URL,
+  door: typeof passwordDoor = passwordDoor,
 ) => {
   const services = booted(
     authLayer.pipe(
@@ -87,7 +122,7 @@ const stack = (
       Layer.provideMerge(
         Layer.mergeAll(
           databaseFor(url, { entities: authClosure }),
-          passwordDoor.pipe(Layer.provideMerge(loginDriversLayer)),
+          door.pipe(Layer.provideMerge(loginDriversLayer)),
           uiLayer,
           Layer.succeed(
             AuthConfig,
@@ -423,6 +458,93 @@ describe.runIf(postgresAvailable)('reset links', () => {
   })
 })
 
+describe.runIf(postgresAvailable)('a reset link handed password after password', () => {
+  it('is judged only so often, and never while another use of it is working one out', async () => {
+    const db = await createTestContext('email-reset-redeem-bounded')
+    const mail = memoryMailBackend()
+    try {
+      await seed(db.url)
+      const { limit } = HARD_LIMITS.passwordAssessment
+      const made = { count: 0 }
+      const answer = ok(
+        await Effect.runPromiseExit(
+          Effect.gen(function* () {
+            const started = yield* Deferred.make<void>()
+            const gate = yield* Deferred.make<void>()
+            return yield* Effect.gen(function* () {
+              const flows = yield* EmailFlows
+              yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en' })
+              const link = yield* Effect.promise(() => tokenFrom(mail, 'ada@school.edu'))
+              // the same link, presented many times at once with a password
+              // the door would take: one of them works one out
+              const first = yield* flows
+                .redeemReset({ token: link.token, password: 'a new password' })
+                .pipe(Effect.forkChild)
+              yield* Deferred.await(started)
+              const meanwhile = yield* Effect.all(
+                Array.from({ length: 7 }, () =>
+                  Effect.result(
+                    flows.redeemReset({ token: link.token, password: 'a new password' }),
+                  ).pipe(Effect.map(tagOf)),
+                ),
+                { concurrency: 'unbounded' },
+              ).pipe(Effect.timeoutOption('3 seconds'))
+              const whileHeld = made.count
+              yield* Deferred.succeed(gate, undefined)
+              yield* Fiber.join(first)
+
+              // another link, handed one password after another the door
+              // will not take
+              mail.outbox.length = 0
+              yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en' })
+              const second = yield* Effect.promise(() => tokenFrom(mail, 'ada@school.edu'))
+              // what the first link was counted for is not this one's
+              yield* runSql(sql`delete from auth_rate_limit_buckets`)
+              made.count = 0
+              const refusals: (string | undefined)[] = []
+              for (let tried = 0; tried <= limit; tried += 1) {
+                refusals.push(
+                  tagOf(
+                    yield* Effect.result(
+                      flows.redeemReset({ token: second.token, password: 'short' }),
+                    ),
+                  ),
+                )
+              }
+              return {
+                meanwhile: Option.getOrUndefined(meanwhile),
+                whileHeld,
+                refusals,
+                judged: made.count,
+              }
+            }).pipe(
+              Effect.provide(
+                stack(
+                  db.url,
+                  mail.backend,
+                  captchaLayer,
+                  [],
+                  PUBLIC_URL,
+                  countingDoor(made, started, gate),
+                ),
+              ),
+            )
+          }),
+        ),
+      )
+      expect(answer.meanwhile).toEqual(Array.from({ length: 7 }, () => 'TOO_MANY_ATTEMPTS'))
+      expect(answer.whileHeld).toBe(1)
+      expect(answer.refusals).toEqual([
+        ...Array.from({ length: limit }, () => 'AUTH_BINDING_CREDENTIAL_INVALID'),
+        'TOO_MANY_ATTEMPTS',
+      ])
+      expect(answer.judged).toBe(limit)
+    } finally {
+      await db.dispose()
+    }
+  })
+})
+
 describe.runIf(postgresAvailable)('a link presented while the tenant is busy', () => {
   it('is refused without waiting when nobody issued it, and judges a password before waiting', async () => {
     const db = await createTestContext('email-redeem-unlocked')
@@ -435,6 +557,10 @@ describe.runIf(postgresAvailable)('a link presented while the tenant is busy', (
             const flows = yield* EmailFlows
             yield* flows.requestReset({ email: 'ada@school.edu', locale: 'en' })
             const link = yield* Effect.promise(() => tokenFrom(mail, 'ada@school.edu'))
+            // judged once while it was typed, so the link's counter already
+            // stands: a counter's first row names the tenant and waits for
+            // its row like any insert that does, which is not what this is about
+            yield* flows.assessReset({ token: link.token, password: 'a new password' })
             // somebody else's structural write holds the tenant's row
             const withDb = yield* withDatabase
             const held = yield* Deferred.make<void>()
@@ -1074,6 +1200,58 @@ describe.runIf(postgresAvailable)('one’s own password', () => {
           { user_id: f.lin, credential_hash: 'digest:lin password' },
         ]),
       )
+    } finally {
+      await db.dispose()
+    }
+  })
+})
+
+describe.runIf(postgresAvailable)('one’s first password', () => {
+  it('is judged only as often as a try at a current one would be', async () => {
+    const db = await createTestContext('email-self-first-password-throttle')
+    const mail = memoryMailBackend()
+    try {
+      const f = await seed(db.url)
+      const { limit } = HARD_LIMITS.passwordBySelf
+      const made = { count: 0 }
+      const answer = ok(
+        await Effect.runPromiseExit(
+          Effect.gen(function* () {
+            const started = yield* Deferred.make<void>()
+            const gate = yield* Deferred.make<void>()
+            yield* Deferred.succeed(gate, undefined)
+            return yield* Effect.gen(function* () {
+              const flows = yield* EmailFlows
+              // Lin has no password, and a proven address
+              yield* runSql(sql`update users set email_verified_at = now() where id = ${f.lin}`)
+              const lin = f.as(f.lin, f.linHere)
+              const refusals: (string | undefined)[] = []
+              for (let tried = 0; tried <= limit; tried += 1) {
+                refusals.push(
+                  tagOf(yield* Effect.result(flows.setPassword(lin, { newPassword: 'short' }))),
+                )
+              }
+              return { refusals, judged: made.count }
+            }).pipe(
+              Effect.provide(
+                stack(
+                  db.url,
+                  mail.backend,
+                  captchaLayer,
+                  [],
+                  PUBLIC_URL,
+                  countingDoor(made, started, gate),
+                ),
+              ),
+            )
+          }),
+        ),
+      )
+      expect(answer.refusals).toEqual([
+        ...Array.from({ length: limit }, () => 'AUTH_BINDING_CREDENTIAL_INVALID'),
+        'TOO_MANY_ATTEMPTS',
+      ])
+      expect(answer.judged).toBe(limit)
     } finally {
       await db.dispose()
     }

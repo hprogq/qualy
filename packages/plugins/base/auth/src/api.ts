@@ -1030,7 +1030,7 @@ export const sessionApiGroup = HttpApiGroup.make('auth')
         password: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(1024)),
       }),
       success: Schema.Struct({ ok: Schema.Literal(true) }),
-      error: [ChallengeInvalid, AuthBindingCredentialInvalid],
+      error: [ChallengeInvalid, AuthBindingCredentialInvalid, TooManyAttemptsResponse],
     }),
   )
   .add(

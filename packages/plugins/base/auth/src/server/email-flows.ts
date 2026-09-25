@@ -57,6 +57,9 @@ const TTL: Record<MailPurpose, string> = { verify: '24 hours', change: '24 hours
 
 const digest = (token: string) => createHash('sha256').update(token).digest('hex')
 
+/** how long somebody turned away for presenting a link twice at once is told to wait */
+const RETRY_SOON = 2
+
 /** the person as these flows need them; live, and neither they nor their type disabled */
 const personOf = (tenantId: string, userId: string) =>
   db.query((k) =>
@@ -243,7 +246,7 @@ export class EmailFlows extends Context.Service<
     readonly redeemReset: (input: {
       readonly token: string
       readonly password: string
-    }) => Effect.Effect<void, ChallengeInvalid | AuthBindingCredentialInvalid>
+    }) => Effect.Effect<void, ChallengeInvalid | AuthBindingCredentialInvalid | TooManyAttempts>
     /** whether a reset link would still be taken, without taking it */
     readonly inspectReset: (input: {
       readonly token: string
@@ -494,6 +497,33 @@ export const emailFlowsLayer: Layer.Layer<
       })
     })
 
+    /**
+     * The reset links being redeemed in this process right now, by digest.
+     *
+     * Only one redemption of a link can ever set a password, so a second
+     * one arriving while the first is still working out its digest is
+     * turned away rather than queued behind it: a link is anonymous to
+     * present, and every copy of it presented at once would otherwise be
+     * one more hash in the line every sign-in waits in.
+     */
+    const redeeming = new Set<string>()
+    const oneAtATime = <A, E, R>(token: string, body: Effect.Effect<A, E, R>) => {
+      const key = digest(token)
+      return Effect.acquireUseRelease(
+        Effect.sync(() => {
+          if (redeeming.has(key)) return false
+          redeeming.add(key)
+          return true
+        }),
+        (mine): Effect.Effect<A, E | TooManyAttempts, R> =>
+          mine ? body : Effect.fail(new TooManyAttempts({ retryAfterSeconds: RETRY_SOON })),
+        (mine) =>
+          Effect.sync(() => {
+            if (mine) redeeming.delete(key)
+          }),
+      )
+    }
+
     const inLock = <A, E, R>(tenantId: string, body: Effect.Effect<A, E, R>) =>
       withDb(
         transaction(
@@ -645,36 +675,46 @@ export const emailFlowsLayer: Layer.Layer<
         // holds the tenant's row for none of that time. Whether it may still
         // be written is asked again inside the lock.
         const { tenantId, person: asked, door: askedAt } = yield* openReset(token)
-        const prepared = yield* askedAt.binding.prepare({
-          secret: password,
-          subject: yield* withDb(secretSubjectOf(tenantId, asked.id)).pipe(Effect.orDie),
-        })
-        if (!prepared.ok)
-          return yield* new AuthBindingCredentialInvalid({ checks: prepared.checks })
-        yield* inLock(
-          tenantId,
+        // a password judged through the link, counted as one judged while
+        // typed is: a link that keeps being handed passwords the door will
+        // not take is never taken up, and could be handed them forever
+        yield* throttle(tenantId, HARD_LIMITS.passwordAssessment, `reset:${asked.id}`)
+        yield* oneAtATime(
+          token,
           Effect.gen(function* () {
-            const taken = yield* redeemChallenge(token, 'reset')
-            if (taken === undefined || taken.tenantId !== tenantId || taken.userId !== asked.id)
-              return yield* new ChallengeInvalid()
-            const person = yield* personOf(tenantId, taken.userId)
-            // the person may have lost the address the link went to since
-            if (person === undefined || person.emailVerifiedAt === null) {
-              return yield* new ChallengeInvalid()
-            }
-            const door = yield* passwordDoor(tenantId, person)
-            if (door === undefined || door.id !== askedAt.id) return yield* new ChallengeInvalid()
-            // everywhere they were signed in ends: whoever else knew the old
-            // password is now on the outside
-            yield* writeCredential(tenantId, person, door, prepared.credentialHash, undefined, {
-              tenantId,
-              userId: person.id,
-              sessionId: '',
+            const prepared = yield* askedAt.binding.prepare({
+              secret: password,
+              subject: yield* withDb(secretSubjectOf(tenantId, asked.id)).pipe(Effect.orDie),
             })
-            // the password is set: every other reset link still open is
-            // spent with this one, in the same lock, so two used at once
-            // cannot both set it
-            yield* retireChallenges(tenantId, person.id, ['reset'])
+            if (!prepared.ok)
+              return yield* new AuthBindingCredentialInvalid({ checks: prepared.checks })
+            yield* inLock(
+              tenantId,
+              Effect.gen(function* () {
+                const taken = yield* redeemChallenge(token, 'reset')
+                if (taken === undefined || taken.tenantId !== tenantId || taken.userId !== asked.id)
+                  return yield* new ChallengeInvalid()
+                const person = yield* personOf(tenantId, taken.userId)
+                // the person may have lost the address the link went to since
+                if (person === undefined || person.emailVerifiedAt === null) {
+                  return yield* new ChallengeInvalid()
+                }
+                const door = yield* passwordDoor(tenantId, person)
+                if (door === undefined || door.id !== askedAt.id)
+                  return yield* new ChallengeInvalid()
+                // everywhere they were signed in ends: whoever else knew the
+                // old password is now on the outside
+                yield* writeCredential(tenantId, person, door, prepared.credentialHash, undefined, {
+                  tenantId,
+                  userId: person.id,
+                  sessionId: '',
+                })
+                // the password is set: every other reset link still open is
+                // spent with this one, in the same lock, so two used at once
+                // cannot both set it
+                yield* retireChallenges(tenantId, person.id, ['reset'])
+              }),
+            )
           }),
         )
       }),
@@ -865,6 +905,10 @@ export const emailFlowsLayer: Layer.Layer<
         } else if (person.emailVerifiedAt === null) {
           // somebody with no password yet sets one only on a proven address
           return yield* new EmailUnverified()
+        } else {
+          // no password to check, and a digest to work out all the same:
+          // counted as a try at one would be
+          yield* withDb(throttle(tenantId, HARD_LIMITS.passwordBySelf, person.id))
         }
         const prepared = yield* door.binding.prepare({
           secret: input.newPassword,
